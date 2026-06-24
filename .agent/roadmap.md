@@ -29,7 +29,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 
 | Unit | Deliverable | Status | Ctx |
 |------|-------------|--------|-----|
-| M1.1 | Scaffold + tooling + scope doc | OPEN | — |
+| M1.1 | Scaffold + tooling + scope doc | DONE | 44% 87K/200K |
 | M1.2 | VPlot v0.1 schema (msgspec) | OPEN | — |
 | M1.3 | Synthetic datasets + golden good/bad specs | OPEN | — |
 | M1.4 | Deterministic evaluator + canonical hashing | OPEN | — |
