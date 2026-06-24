@@ -2,9 +2,6 @@
 
 Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `AGENTS.md`, `CLAUDE.md`. Earn each entry; delete when obsolete.
 
-## Working mode
-- User manually steers these early sessions; slash commands (`/session-prompt`, `/codex-review`) stay as-is until the user asks to adapt them.
-
 ## Conventions
 - License id: `Apache-2.0 WITH LLVM-exception`. Source files carry header `SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception` (language-appropriate comment). `LICENSE` = project-neutral Apache 2.0 body + LLVM exception only (LLVM banner / NCSA / third-party sections stripped).
 - Do-not-read enforcement lives in `.claude/settings.json` `permissions.deny` `Read()` (committed; needed because Read/Bash bypass `.gitignore`). Holds `LICENSE` + `uv.lock`. Keep synced as files land. Serena's parallel = `.serena/project.yml` `ignored_paths` (non-gitignored entries only); now holds `LICENSE` + `uv.lock`.
