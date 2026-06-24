@@ -3,7 +3,10 @@
 name = "verifier"
 version = "0.1.0"
 description = "Trusted core for the verified-plot PoC: independently recompute and verify chart specs before render."
-requires-python = ">=3.13"
+# Pinned to the 3.13.x line for hash determinism: NFC normalization follows the
+# interpreter's Unicode database (UCD 15.1.0 on 3.13; 3.14 ships UCD 16.0.0), so a
+# wider floor would admit an untested interpreter that computes different spec hashes.
+requires-python = ">=3.13,<3.14"
 license = "Apache-2.0 WITH LLVM-exception"
 license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
@@ -31,7 +34,8 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-# Strong, explicitly pinned set (stable across ruff upgrades, unlike "ALL").
+# Explicit select (never "ALL"): new rule categories never auto-enable on upgrade.
+# The exact rule set is still pinned by uv.lock, so run the gate with `uv run --locked`.
 # S (bandit), T20 (no print), DTZ (tz-aware datetime) are load-bearing for a security/determinism core.
 select = [
     "E", "W", "F", "I", "N", "UP", "B", "S", "T20", "DTZ",
@@ -81,9 +85,9 @@ source = ["verifier"]
 show_missing = true
 fail_under = 100
 exclude_also = [
+    # No "raise NotImplementedError" / "..." here: in a trusted core an unimplemented
+    # stub must show as uncovered and fail the 100% gate, not be quietly excused.
     "if TYPE_CHECKING:",
-    "raise NotImplementedError",
     "if __name__ == .__main__.:",
     "@(abc\\.)?abstractmethod",
-    "\\.\\.\\.",
 ]

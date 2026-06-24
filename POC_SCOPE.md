@@ -2,8 +2,9 @@
 
 A weak local LLM proposes a restricted JSON chart spec (VPlot). A separate trusted
 verifier independently recomputes the plotted data from the source CSV, runs
-structured checks, blocks invalid or misleading charts, and renders only verified
-charts with a provenance certificate. This document fixes the boundary.
+structured checks, blocks charts whose spec, data binding, or encoding fail those
+checks, and renders only the rest with a provenance certificate. This document fixes
+the boundary.
 
 ## What kinds of plots are allowed?
 
@@ -33,13 +34,26 @@ Because the renderer only ever receives verifier-recomputed data, a chart cannot
 display model-supplied numbers — that class of lie is impossible by construction, not a
 check. Checks instead target spec, encoding, policy, and dataset-binding consistency:
 fields exist in the plotted table, axis types match their fields, a bar chart's
-quantitative axis includes zero, quantitative axes carry units, the declared dataset
-hash matches the source bytes, and only allowlisted ops ever reach the evaluator.
+quantitative axis includes zero, a quantitative axis carries the unit the trusted
+column manifest declares for its field, the declared dataset hash matches the source
+bytes, and only allowlisted ops ever reach the evaluator.
+
+The emitted Vega-Lite carries no data transforms of its own — no encoding-level
+aggregate, bin, stack, impute, or sort, no scale-domain override, no top-level
+`transform`, and implicit stacking and sorting switched off — so the marks show exactly
+the recomputed rows, nothing re-derived downstream.
+
+What verification does NOT cover: representativeness or intent. A spec that filters to
+an unflattering-but-real subset, or picks a valid-but-misleading encoding, still passes
+every check — honest selection is the author's job. The badge records the full spec,
+every filter and sort included, so a reader can see which rows were chosen; the verifier
+guarantees the chart faithfully shows that selection, not that the selection is fair.
 
 ## What is intentionally not supported?
 
 arbitrary Python · arbitrary SQL · custom JavaScript · free-form Vega expressions ·
-map charts · faceting · interaction · dashboards · multi-source joins.
+Vega-Lite's own data transforms (aggregate, bin, stack, impute, sort, scale-domain
+override) · map charts · faceting · interaction · dashboards · multi-source joins.
 
 ## The line we hold (trusted computing base)
 
