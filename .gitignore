@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+build/
+dist/
+
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+
+# uv virtualenvs (per-layer; see global CLAUDE.md)
+.venv/
+.venv-host/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Service artifacts
+*.duckdb
+*.duckdb.wal
+*.log
+
+# Serena runtime cache (project.yml is committed when present)
+.serena/cache/
+
+# Claude Code machine-local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
