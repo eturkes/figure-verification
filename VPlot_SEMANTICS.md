@@ -118,6 +118,10 @@ The plotted table is closed under a TOTAL order so its hash is permutation-invar
 
 No `sort` op → step 1 is empty and step 2 alone is already total.
 
+An active sort key MUST survive into the plotted table: if a later op (e.g. a `select` after the
+`sort`) projects it away, the declared ordering is unrealizable → fail-closed semantic error
+(`sort.field_in_plotted_table`).
+
 Any remaining ties fall only between byte-identical rows, so the serialization is identical
 regardless of their relative order → the plotted-table hash is permutation-invariant under
 input-row permutation. (The dataset hash is NOT permutation-invariant — it is raw source

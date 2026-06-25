@@ -1,17 +1,21 @@
 # M1.4c/d eval design — pre-derived recipe (SCAFFOLDING → delete at M1 review)
 
 Implement `verifier/eval.py` from THIS doc; do not re-derive. Goldens + branch map + refactor code below are
-hand-derived vs `VPlot_SEMANTICS.md` §3–6 and design-verified (NOT run-verified — the prior session overflowed
-before writing code). The M1.4e DuckDB oracle independently confirms the goldens → treat them as expected-values
-to implement toward, confirm each by running the gate. Skip a full re-read of §3–6 — this doc distills it; open a
-specific § only for a cited uncertainty.
+hand-derived vs `VPlot_SEMANTICS.md` §3–6 and design-verified, NOT run-verified — the prior session overflowed
+before writing code. Run-verified THIS session: the goldens (re-checked arithmetically vs the CSVs) and the Step-0
+exponent guard (DoS + naive-equivalence); the eval recipe itself stays design-verified only. The M1.4e DuckDB
+oracle WILL independently confirm the goldens → treat them as expected-values to implement toward, confirm each by
+running the gate. Skip a full LINEAR re-read of §3–6 — this doc distills it; still spot-check the cited § per helper
+against the contract as you implement, opening the specific § for any uncertainty.
 
 ## Reads (minimal — the overflow cause was over-reading)
 `src/verifier/`: `canon.py` (Cell/Column/Table + `_format_decimal`), `ingest.py` (`load_table`, `Manifest`,
 `_coerce_numeric`/`_coerce_temporal` + the refactor below), `schema.py` (transform types), `errors.py`
 (`VerificationError`). `examples/index.json` (corpus). `tests/test_ingest.py` (test STYLE: explicit hand-verified
 `canon.Table` asserts, NOT syrupy). `data/sales.csv` + `data/weather.csv` (confirm the weather goldens g06/g07/g10).
-memory lines 41/55/56/57 (eval-relevant invariants — already durable, do not restate in code).
+`.agent/memory.md` eval-relevant invariants (already durable, do not restate in code): the `Column` kind-union +
+`Cell`/`_format_decimal` rules, deferred string-canonicalization, the PARSE-vs-VERIFY error layering
+(`VerificationError(msg, *, check=…)`), and the M1.4c filter-coercion entry.
 
 ## Step 0 — ingest refactor (do FIRST; then run existing ingest tests = cheap green check)
 Split `_coerce_numeric` so eval's filter coercion reuses parse+precision WITHOUT the table magnitude bound
@@ -19,6 +23,13 @@ Split `_coerce_numeric` so eval's filter coercion reuses parse+precision WITHOUT
 coverage-safe with existing ingest tests (check names unchanged; tests assert `.check` only; precision-before-
 magnitude reorder confirmed for `"9"*39`@scale1 → precision passes/magnitude fails → `data.numeric_value`, and
 `"0.5"`@scale0 → precision fails → `data.numeric_value`). CONFIRM by running `pytest tests/test_ingest.py`.
+The exponent guard (skip quantize when `exponent >= -scale`) is DoS prevention AND behavior-preserving: such
+values are already exact at `scale` (<= scale fractional places) so quantize is a no-op — run-verified this session
+(10/10 small cases identical to naive quantize; the huge-exponent literal returns in <0.01 ms vs a MemoryError/hang).
+It adds ONE branch → cover BOTH arms: the skip arm via an integral value (the existing `"9"*39` magnitude case, or
+`"12000"`@scale0) and the quantize arm via a fractional value (`"0.5"`@scale0). ingest.py must import `cast` (extend
+`from typing import Annotated, Literal` → `…, cast`); `as_tuple().exponent` is typed `int | Literal['n','N','F']` so
+`cast(int, …)` is required for mypy (a finite Decimal always yields the int branch).
 
 ```python
 def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
@@ -33,16 +44,21 @@ def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
     if not value.is_finite():
         msg = f"numeric value {text!r} is not finite"
         raise VerificationError(msg, check=check)
-    quantum = Decimal((0, (1,), -scale))
-    precision = max(value.adjusted() + scale + 2, 1)
-    context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
-    quantized = value.quantize(quantum, context=context)
-    if quantized != value:
-        msg = f"numeric value {text!r} has more than {scale} fractional place(s)"
-        raise VerificationError(msg, check=check)
-    if quantized.is_zero():
-        return quantized.copy_abs()
-    return quantized
+    # exponent guard (DoS prevention): a constructible huge-exponent literal (e.g. "1e999999999999999999",
+    # within filter max_length=128) has exponent >= -scale, so it is already exact at this scale -> skip
+    # quantize, which would otherwise try to materialize ~1e18 digits (MemoryError/hang). Only exponent
+    # < -scale (inherently small magnitude) can carry excess fractional places, so quantize is bounded there.
+    exponent = cast(int, value.as_tuple().exponent)  # finite -> int, never the 'n'/'N'/'F' specials
+    if exponent < -scale:
+        quantum = Decimal((0, (1,), -scale))
+        precision = max(value.adjusted() + scale + 2, 1)
+        context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
+        if value.quantize(quantum, context=context) != value:
+            msg = f"numeric value {text!r} has more than {scale} fractional place(s)"
+            raise VerificationError(msg, check=check)
+    if value.is_zero():
+        return value.copy_abs()
+    return value
 
 def _coerce_numeric(text: str, scale: int) -> Decimal:
     value = _decimal_at_scale(text, scale, check="data.numeric_value")
@@ -52,18 +68,19 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
     return value
 ```
 `_coerce_temporal(text, granularity, *, check: str = "data.temporal_value")` — add the kw-only `check` param, use
-it at all 3 raise sites (default preserves ingest behavior; eval passes `check="filter.value_type"`).
+it at all 4 raise sites (date-parse ValueError, datetime-parse ValueError, timezone `tzinfo is not None`,
+canonical-mismatch `canonical != text`; default preserves ingest behavior; eval passes `check="filter.value_type"`).
 
 ## eval.py recipe
 Imports: `operator`; `from decimal import Decimal`; `from fractions import Fraction`; `from typing import Any, cast`;
 `from collections.abc import Callable`; `from verifier import canon, ingest`; `from verifier.errors import
-VerificationError`; `from verifier.schema import (Aggregate, Filter, GroupBy, Select, Sort, VPlotSpec)` (+ any op
-types used in isinstance). `_CMP: dict[CmpOp, Callable[[Any, Any], bool]]` = {"eq":operator.eq,"ne":operator.ne,
+VerificationError`; `from verifier.schema import (Aggregate, CmpOp, Filter, GroupBy, Select, Sort, VPlotSpec)` (CmpOp for the
+`_CMP` annotation; + any op types used in isinstance). `_CMP: dict[CmpOp, Callable[[Any, Any], bool]]` = {"eq":operator.eq,"ne":operator.ne,
 "lt":operator.lt,"le":operator.le,"gt":operator.gt,"ge":operator.ge}.
 
 `evaluate(spec: VPlotSpec, manifest: ingest.Manifest, csv_bytes: bytes) -> canon.Table` — sole public entry:
 ```
-table = ingest.load_table(manifest, csv_bytes)        # source rows, source order
+table = ingest.load_table(csv_bytes, manifest)        # source rows, source order (csv_bytes FIRST)
 pending_keys: tuple[str,...] | None = None            # group_by awaiting its aggregate
 active_keys: list[tuple[str, str]] = []               # last sort with NO later aggregate → closure
 for op in spec.transform:
@@ -96,31 +113,43 @@ Helpers:
   `[_field_index(table,f) for f in op.fields]`; new columns/rows projected to idxs, NO dedup.
 - `_apply_filter(table, op)` — `i = _field_index(table, op.field)`; `coerced = _coerce_filter_value(op.value,
   table.columns[i])`; keep row iff `row[i] is not None and _CMP[op.cmp](row[i], coerced)` (null cell → drop, incl ne).
-- `_coerce_filter_value(value, column) -> Decimal | str` per §3 (ALL failures → `filter.value_type`):
-    - column.kind numeric: `isinstance(value,int)` (msgspec FilterValue = int|str, bool excluded) → `Decimal(value)`
+- `_coerce_filter_value(value, column) -> Decimal | str` per §3 (ALL failures → `filter.value_type`; dispatch on
+  column TYPE via `isinstance(column, canon.NumericColumn/TemporalColumn/StringColumn)`, NOT `.kind ==`, so mypy
+  narrows `.scale`/`.granularity`; the third arm is the `else` tail like `evaluate`'s Sort — exhaustive, reachable):
+    - `isinstance(column, canon.NumericColumn)`: `isinstance(value,int)` (msgspec FilterValue = int|str, bool excluded) → `Decimal(value)`
       [exact, compares by value]; `isinstance(value,str)` → `ingest._decimal_at_scale(value, column.scale,
       check="filter.value_type")` [parse+precision, NO magnitude].
-    - column.kind temporal: str → `ingest._coerce_temporal(value, column.granularity, check="filter.value_type")`
+    - `elif isinstance(column, canon.TemporalColumn)`: str → `ingest._coerce_temporal(value, column.granularity, check="filter.value_type")`
       [canonical ISO text]; int → raise `filter.value_type`.
-    - column.kind string: str → `value` verbatim; int → raise `filter.value_type`.
+    - `else` (StringColumn): str → `value` verbatim; int → raise `filter.value_type`.
   Cells: numeric=Decimal, temporal=canonical ISO str (sorts lexically=chronologically), string=str → `_CMP`
   compares (Decimal,Decimal)|(str,str) uniformly.
 - `_validate_sort(table, op)` — fields = `[k.field for k in op.by]`; `_require_distinct(fields,
   "sort.fields_distinct", "sort field")`; `for f in fields: _field_index(table, f)`.
 - `_apply_aggregate(table, op, pending_keys)`:
+    - `key_idxs = [_field_index(table, k) for k in pending_keys]` if `pending_keys is not None` else `[]` (keys were
+      validated at the group_by op + no op intervenes before aggregate, so this re-resolution never raises here).
     - groups: `pending_keys is None` → ONE group, key=() , rows=all (whole-table aggregate); else partition rows by
       key-tuple `tuple(row[idx] for idx in key_idxs)` (null key = its own group; first-seen dict order — closure
       re-sorts so order is irrelevant to the hash).
-    - out columns = group-key columns (from pending_keys, original Column objects) ++ one per measure via
-      `_measure_output_column(table.columns[src_idx], m.fn, m.output)`.
+    - per measure m: `src_idx = _field_index(table, m.field)` (raises `schema.fields_exist` if the measure field is
+      absent); `src_col = table.columns[src_idx]`; `out_col = _measure_output_column(src_col, m.fn, m.output)`;
+      `scale = src_col.scale if isinstance(src_col, canon.NumericColumn) else 0` (only mean consumes scale, and
+      mean ⇒ numeric src ⇒ scale valid; count/min/max/string ignore it).
+    - out columns = group-key columns (from pending_keys, original Column objects) ++ each measure's `out_col`.
     - collision: all output names (keys ++ measure outputs) distinct → else raise `aggregate.output_unique`.
-    - per group per measure: `_aggregate_one(m.fn, [g_row[src_idx] for g_row in group_rows], out_scale)`.
+    - per group per measure: `_aggregate_one(m.fn, [g_row[src_idx] for g_row in group_rows], scale)`.
     - rows = key cells ++ measure cells.
-- `_measure_output_column(src_col, fn, output) -> canon.Column` (raises `schema.field_types_match`):
-    - count → `NumericColumn(name=output, scale=0)` (any input kind).
-    - sum|mean → src MUST be numeric → `NumericColumn(output, src.scale)`; else raise.
-    - min|max → numeric→`NumericColumn(output, src.scale)`, temporal→`TemporalColumn(output, src.granularity)`,
-      string→`StringColumn(output)` (any of the three kinds OK).
+- `_measure_output_column(src_col, fn, output) -> canon.Column` (raises `schema.field_types_match`; the three
+  Column types are `kw_only` → construct BY KEYWORD; dispatch src kind via `isinstance(src_col, canon.NumericColumn)`
+  etc. so mypy narrows `.scale`/`.granularity`):
+    - count → `canon.NumericColumn(name=output, scale=0)` (any input kind).
+    - sum|mean → src MUST be numeric (`isinstance(src_col, canon.NumericColumn)`) → `canon.NumericColumn(name=output,
+      scale=src_col.scale)`; else raise. (Output scale = src scale per §3 "default = input scale"; v0.1 Measure +
+      manifest declare no output scale, so mean is always at src scale.)
+    - min|max → numeric→`canon.NumericColumn(name=output, scale=src_col.scale)`,
+      temporal→`canon.TemporalColumn(name=output, granularity=src_col.granularity)`,
+      string→`canon.StringColumn(name=output)` (any of the three kinds OK).
 - `_aggregate_one(fn, cells, scale) -> Cell`: `non_null = [c for c in cells if c is not None]`; count →
   `Decimal(len(non_null))`. Else if `not non_null` → `None` (zero non-nulls → null for sum/mean/min/max). sum →
   `sum(cast(list[Decimal], non_null))` (Decimal-exact, same scale; `cast` = no runtime branch). mean →
@@ -145,9 +174,10 @@ return _scaled_int_to_decimal(scaled.numerator, scale)
       `i = names.index(field); col = table.columns[i]`; `rows.sort(key=lambda r, i=i, c=col: _sort_key(r[i], c),
       reverse=(order=="descending"))` (default-arg bind i,c → ruff B023-safe).
     - `return canon.Table(columns=table.columns, rows=tuple(rows))`.
-- `_sort_key(cell, column) -> tuple[bool, Cell]`: `cell is None` → `(True, Decimal(0) if column.kind=="numeric"
-  else "")` (typed sentinel → null-vs-null never compares Decimal-vs-str; True>False → null GREATEST, works under
-  ascending null-last AND descending null-first via per-key reverse); else `(False, cell)`.
+- `_sort_key(cell, column) -> tuple[bool, Cell]`: `cell is None` → `(True, Decimal(0) if column.kind == "numeric"
+  else "")` (read-only `.kind` compare — no `.scale`/`.granularity` access → `isinstance` dispatch NOT needed here;
+  typed sentinel → null-vs-null never compares Decimal-vs-str; True>False → null GREATEST, works under ascending
+  null-last AND descending null-first via per-key reverse); else `(False, cell)`.
 
 Coverage gotchas (already worked out — honor to avoid gate cycles): NO bare always-true `assert` (partial branch);
 `cast` has no runtime branch; for-loops over always-non-empty iterables are coverage-safe; isinstance-`else`-Sort is
@@ -198,11 +228,16 @@ M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-ab
     group_by-then-sort; add the last-op + double cases inline.
   - whole-table aggregate (no preceding group_by) → one row.
   - count fn (non-null count, scale 0); all-null group → count 0 + sum/mean/min/max null (zero non-nulls).
-  - min/max on TEMPORAL and on STRING (g06 covers numeric max only).
+  - group_by with a NULL key cell → the null key forms its own group (emitted, not dropped; §5).
+  - min/max on NUMERIC, TEMPORAL, and STRING — ALL inline in M1.4c (g06/g09 land in M1.4d, so the numeric min/max
+    arm has NO M1.4c golden; cover numeric min AND max inline here).
   - filter §3 coercion rows beyond b10's int→numeric error: int→numeric ok, string→numeric ok, string→numeric
     over-precise→raise, string→numeric unparsable→raise, string→temporal ok, string→temporal bad→raise,
     int→temporal→raise, int→string→raise, string→string verbatim.
   - filter null cell → row dropped (incl cmp=ne).
+  - exponent-guard regression (DoS): a numeric-column filter literal `"1e999999999999999999"` coerces via
+    `_decimal_at_scale` instantly (exponent >= -scale → quantize skipped, no ~1e18-digit materialization) — assert
+    it returns/compares without hang, locking the Step-0 fix.
   - closure null GREATEST — BOTH sentinel branches: (a) numeric null via all-null-group aggregate then closure;
     (b) temporal/string null — select a column holding a null cell (ingest empty→None) → closure null-last on "".
   - `_scaled_int_to_decimal` negative `scaled` (sign branch) — direct call.
