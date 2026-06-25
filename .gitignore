@@ -32,8 +32,9 @@ htmlcov/
 # Serena runtime cache (project.yml is committed when present)
 .serena/cache/
 
-# Claude Code machine-local settings
+# Claude Code machine-local (settings + private instructions)
 .claude/settings.local.json
+CLAUDE.local.md
 
 # OS
 .DS_Store
