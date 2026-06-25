@@ -1,13 +1,13 @@
 {
   "version": "vplot-0.1",
   "dataset": {
-    "name": "sales.csv",
-    "hash": "sha256:76356bebaa43bc76ee98fd6a1f1aa29cd7f127408fd43de87adcb7ed5df0478f"
+    "name": "weather.csv",
+    "hash": "sha256:2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08"
   },
   "transform": [
     {
       "op": "filter",
-      "field": "revenue",
+      "field": "temp_c",
       "cmp": "gt",
       "value": 1.5
     }
@@ -15,11 +15,11 @@
   "mark": "scatter",
   "encoding": {
     "x": {
-      "field": "revenue",
+      "field": "temp_c",
       "type": "quantitative"
     },
     "y": {
-      "field": "orders",
+      "field": "precip_mm",
       "type": "quantitative"
     }
   }

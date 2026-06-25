@@ -6,21 +6,20 @@
   },
   "transform": [
     {
-      "op": "select",
-      "fields": [
-        "month",
-        "profit"
-      ]
+      "op": "filter",
+      "field": "profit",
+      "cmp": "gt",
+      "value": 0
     }
   ],
   "mark": "scatter",
   "encoding": {
     "x": {
-      "field": "month",
-      "type": "ordinal"
+      "field": "revenue",
+      "type": "quantitative"
     },
     "y": {
-      "field": "profit",
+      "field": "orders",
       "type": "quantitative"
     }
   }

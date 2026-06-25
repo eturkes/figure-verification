@@ -12,8 +12,10 @@ M1.5 checks; here we assert they DO decode (their badness is meaning, not shape)
 layer attribution in index.json stays honest. See VPlot_SEMANTICS.md for the taxonomy.
 """
 
+import csv
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -94,6 +96,32 @@ def test_hash_mismatch_fixture_is_genuinely_wrong() -> None:
     assert spec.dataset.hash != _source_hash(spec.dataset.name)
 
 
+@pytest.mark.parametrize("entry", _BAD, ids=_ids(_BAD))
+def test_bad_spec_declares_source_hash(entry: dict[str, Any]) -> None:
+    # Every bad spec pins the LIVE source hash, so the ONLY hash-divergent fixture is the dedicated
+    # mismatch one; a silent hash drift in any other fixture (or an over-precise float defect that
+    # also corrupted its dataset block) surfaces here. Reads raw JSON, so it covers the decode-fail
+    # specs too. Manifest-canonicality test guarantees the source bytes are stable.
+    raw: dict[str, Any] = json.loads((_BAD_DIR / entry["file"]).read_text(encoding="utf-8"))
+    declared, live = raw["dataset"]["hash"], _source_hash(raw["dataset"]["name"])
+    if entry["check"] == "dataset.hash_matches_source":
+        assert declared != live
+    else:
+        assert declared == live
+
+
+def test_missing_unit_fixture_targets_a_unitless_column() -> None:
+    # b13's premise: its quantitative channel plots a field the manifest leaves unit-less. Lock it
+    # so a unit added to that column can't silently make the missing-unit fixture pass.
+    [entry] = [b for b in _BAD if b["check"] == "label.quantitative_units_present"]
+    raw: dict[str, Any] = json.loads((_BAD_DIR / entry["file"]).read_text(encoding="utf-8"))
+    stem = Path(raw["dataset"]["name"]).stem
+    manifest: dict[str, Any] = json.loads((_SCHEMAS / f"{stem}.json").read_text(encoding="utf-8"))
+    units = {c["name"]: c.get("unit") for c in manifest["columns"]}
+    quant = [ch["field"] for ch in raw["encoding"].values() if ch["type"] == "quantitative"]
+    assert any(units.get(field) is None for field in quant)
+
+
 # --- datasets + manifests ----------------------------------------------------
 _NUMERIC, _TEMPORAL, _STRING = "numeric", "temporal", "string"
 
@@ -121,6 +149,48 @@ def test_manifest_well_formed(dataset: dict[str, Any]) -> None:
             assert col["scale"] >= 0
         if col["type"] == _TEMPORAL:
             assert col["granularity"] in {"date", "datetime"}
+
+
+def _max_decimals(values: list[str]) -> int:
+    out = 0
+    for v in values:
+        if v and "." in v:
+            out = max(out, len(v.split(".", 1)[1]))
+    return out
+
+
+@pytest.mark.parametrize("dataset", _INDEX["datasets"], ids=lambda d: d["name"])
+def test_manifest_numeric_scale_matches_data(dataset: dict[str, Any]) -> None:
+    # Declared numeric scale == the actual decimal precision in the CSV column, so the manifest
+    # can't silently over/under-state the precision the M1.4 evaluator quantizes to.
+    manifest: dict[str, Any] = json.loads((_ROOT / dataset["manifest"]).read_text(encoding="utf-8"))
+    with (_DATA / dataset["name"]).open(encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    for col in manifest["columns"]:
+        if col["type"] == _NUMERIC:
+            assert col["scale"] == _max_decimals([row[col["name"]] for row in rows])
+
+
+_TEMPORAL_RE = {
+    "date": re.compile(r"\d{4}-\d{2}-\d{2}"),
+    "datetime": re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?"),
+}
+
+
+@pytest.mark.parametrize("dataset", _INDEX["datasets"], ids=lambda d: d["name"])
+def test_temporal_columns_are_canonical(dataset: dict[str, Any]) -> None:
+    # §2: temporal cells are zero-padded ISO-8601 (date YYYY-MM-DD / datetime ...Thh:mm:ss). Locks
+    # the synthetic data so the M1.4 evaluator's date parsing receives canonical input only.
+    manifest: dict[str, Any] = json.loads((_ROOT / dataset["manifest"]).read_text(encoding="utf-8"))
+    with (_DATA / dataset["name"]).open(encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    for col in manifest["columns"]:
+        if col["type"] == _TEMPORAL:
+            pattern = _TEMPORAL_RE[col["granularity"]]
+            for row in rows:
+                cell = row[col["name"]]
+                if cell:
+                    assert pattern.fullmatch(cell), f"{dataset['name']}.{col['name']}={cell!r}"
 
 
 def test_manifests_are_canonical_json() -> None:

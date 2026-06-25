@@ -17,7 +17,7 @@ Enforced by `tests/test_examples.py`.
 - `transform` (×3) → M1.4. group_by placement (§4), aggregate-`as`/group-key collision (§5), sort-field distinctness (§5).
 
 ## By construction — no bad spec (`index.json.enforced_by_construction`)
-`aggregates_match_recomputation` · `filters_declared` · `scale.bar_y_zero` ·
+`aggregates_match_recomputation` · `filters_declared` · `scale.bar_quantitative_axis_zero` ·
 `legend_domain_matches_data` are unrepresentable as a model spec (the verifier recomputes all
 data; the renderer owns scales + legend). `derived_value_mismatch` is dropped — the model
 emits no plotted values.

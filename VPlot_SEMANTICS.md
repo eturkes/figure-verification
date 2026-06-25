@@ -141,7 +141,14 @@ bytes, §8.)
   manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
   in the manifest, M1.3 — presence is checked, not guaranteed by construction).
-- `bar` mark: the quantitative axis baseline includes 0 (`scale.bar_y_zero`, M1.5).
+- A DERIVED plotted column (an aggregate `as`) inherits manifest metadata through its measure to
+  the source field: `sum`/`mean`/`min`/`max` carry the source `unit` + `label`, so
+  `label.quantitative_units_present` resolves a derived quantitative channel through this lineage
+  (`count` is dimensionless — no inherited unit). A group_by KEY keeps its source column's
+  metadata; a derived column's numeric scale follows §3.
+- `bar` mark: the renderer sets the quantitative-axis baseline to 0
+  (`scale.bar_quantitative_axis_zero`, M1.6 renderer) — by construction (the model proposes no
+  scale), not a spec check.
 
 ## 8. Dataset binding
 
@@ -203,3 +210,5 @@ determinism), never a silent pass.
   (NL/CR/TAB/NUL/U+2028). Canonical handling (forbid-pattern vs NFC + escape-on-disclosure) is
   decided once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting
   valid filters on legitimate control-char cells.
+- A dimensionless `count` on a quantitative channel vs `label.quantitative_units_present` (block
+  it, or treat `count` as unit-exempt) — decided when M1.5 lands; no golden uses `count`.

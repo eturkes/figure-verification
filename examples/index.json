@@ -160,8 +160,8 @@
       "layer": "dataset-binding",
       "decodes": true,
       "check": "schema.fields_exist",
-      "caught_by": "M1.5",
-      "reason": "field 'profit' is absent from sales.csv"
+      "caught_by": "M1.4 eval / M1.5 checks",
+      "reason": "filter field 'profit' is absent from sales.csv"
     },
     {
       "file": "b08_dataset_hash_mismatch.json",
@@ -176,7 +176,7 @@
       "layer": "dataset-binding",
       "decodes": true,
       "check": "schema.field_types_match",
-      "caught_by": "M1.5 (input-type rule, semantics §4)",
+      "caught_by": "M1.4 eval / M1.5 checks (input-type rule, semantics §4)",
       "reason": "sum requires a numeric column; region is string"
     },
     {
@@ -239,7 +239,7 @@
   "enforced_by_construction": {
     "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists (M1.5/M1.6) -> no bad-spec attack vector",
     "transform.filters_declared": "every filter is a declared transform.filter op; the verifier recomputes from declared transforms only -> an undeclared filter is unrepresentable",
-    "scale.bar_y_zero": "the renderer sets the bar quantitative baseline to 0; the model proposes no scale (M1.6) -> a non-zero baseline is unrepresentable",
+    "scale.bar_quantitative_axis_zero": "the renderer sets the bar quantitative-axis baseline to 0 regardless of orientation (vertical or horizontal); the model proposes no scale (M1.6) -> a non-zero baseline is unrepresentable",
     "encoding.legend_domain_matches_data": "the renderer derives the color legend domain from the recomputed data (M1.6)",
     "derived_value_mismatch": "DROPPED (roadmap data-flow): the model supplies no plotted values, so a derived-value lie is impossible by construction"
   }
