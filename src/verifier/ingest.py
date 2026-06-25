@@ -85,9 +85,17 @@ def load_manifest(manifest_bytes: bytes) -> Manifest:
 
     Fail-closed like schema.decode_spec: unknown fields, an unknown column tag, or a
     bad scale are rejected, and a duplicate-key rescan (finding 4) rejects the last-wins
-    ambiguity msgspec tolerates so the decoded manifest matches its hashed bytes."""
+    ambiguity msgspec tolerates so the decoded manifest matches its hashed bytes.
+    Duplicate column NAMES are rejected too (the schema analog of a duplicate JSON key):
+    a column name is the table's field key, so a repeat makes every downstream name
+    reference (channels, transforms, checks) ambiguous."""
     manifest = _MANIFEST_DECODER.decode(manifest_bytes)
     json.loads(manifest_bytes, object_pairs_hook=_reject_duplicate_keys)
+    names = [c.name for c in manifest.columns]
+    if len(set(names)) != len(names):
+        dupes = sorted({n for n in names if names.count(n) > 1})
+        msg = f"manifest has duplicate column name(s): {dupes}"
+        raise msgspec.ValidationError(msg)
     return manifest
 
 
@@ -199,24 +207,38 @@ def load_table(csv_bytes: bytes, manifest: Manifest) -> canon.Table:
     except UnicodeDecodeError as exc:
         msg = "CSV bytes are not valid UTF-8"
         raise VerificationError(msg, check="data.charset") from exc
+    if csv_bytes.startswith(b"\xef\xbb\xbf"):
+        # A leading UTF-8 BOM is rejected, never silently stripped: the dataset hash is
+        # byte-exact source identity (section 8), so no parse path drops source bytes.
+        msg = "CSV begins with a UTF-8 BOM; expected BOM-free UTF-8"
+        raise VerificationError(msg, check="data.charset")
     # newline="" hands raw line endings to csv, which parses LF/CRLF identically (the
-    # dataset hash, not this parse, is the CRLF-sensitive source identity).
-    reader = csv.reader(io.StringIO(text, newline=""))
+    # dataset hash, not this parse, is the CRLF-sensitive source identity). strict=True
+    # fails closed on malformed quoting (a stray quote, an unterminated field) instead of
+    # silently normalizing it -- source structure is never repaired (data.csv_syntax).
+    reader = csv.reader(io.StringIO(text, newline=""), strict=True)
     try:
         header = next(reader)
     except StopIteration:
         msg = "CSV is empty; expected a header row"
         raise VerificationError(msg, check="data.header") from None
+    except csv.Error as exc:
+        msg = f"CSV is malformed: {exc}"
+        raise VerificationError(msg, check="data.csv_syntax") from exc
     expected = [c.name for c in columns]
     if header != expected:
         msg = f"CSV header {header!r} does not match manifest columns {expected!r}"
         raise VerificationError(msg, check="data.header")
     rows: list[tuple[canon.Cell, ...]] = []
-    for record in reader:
-        if len(record) != len(columns):
-            msg = f"CSV row has {len(record)} field(s); expected {len(columns)}: {record!r}"
-            raise VerificationError(msg, check="data.row_width")
-        rows.append(
-            tuple(_coerce_cell(col, cell) for col, cell in zip(columns, record, strict=True))
-        )
+    try:
+        for record in reader:
+            if len(record) != len(columns):
+                msg = f"CSV row has {len(record)} field(s); expected {len(columns)}: {record!r}"
+                raise VerificationError(msg, check="data.row_width")
+            rows.append(
+                tuple(_coerce_cell(col, cell) for col, cell in zip(columns, record, strict=True))
+            )
+    except csv.Error as exc:
+        msg = f"CSV is malformed: {exc}"
+        raise VerificationError(msg, check="data.csv_syntax") from exc
     return canon.Table(columns=columns, rows=tuple(rows))

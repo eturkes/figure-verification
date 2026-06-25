@@ -37,7 +37,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   schema; it is hashed into the VCert.
 - Column types: `numeric` (scale s ≥ 0 decimal places; integer = scale 0), `temporal`
   (canonical zero-padded ISO-8601 — date `YYYY-MM-DD` or datetime `YYYY-MM-DDThh:mm:ss[.ffffff]`,
-  granularity per manifest; lexical order = chronological), `string` (nominal/ordinal text,
+  the `.ffffff` present iff sub-second ≠ 0 so each instant has ONE form — `.000000` is
+  non-canonical; granularity per manifest; lexical order = chronological), `string` (nominal/ordinal text,
   Unicode after decode).
 - ONE null token: an empty cell → null. No other null source. Null prints as a single reserved
   sentinel in the canonical table (M1.4). NaN never exists (no float math, §3).

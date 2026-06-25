@@ -60,8 +60,10 @@ def test_weather_golden() -> None:
         canon.NumericColumn(name="precip_mm", scale=1),
         canon.NumericColumn(name="aqi", scale=0),
     )
-    # Decimal("0.0") cells (precip) exercise the -0/0 fold; the temporal column stores
-    # canonical ISO text in source order (no total sort yet).
+    # Decimal("0.0") precip cells exercise the zero-normalization branch (is_zero -> copy_abs,
+    # here on +0); the -0 -> +0 SIGN fold itself is locked separately in
+    # test_coerce_numeric_folds_negative_zero. The temporal column stores canonical ISO text
+    # in source order (no total sort yet).
     assert table.rows == (
         ("2026-01-01", "London", Decimal("4.5"), Decimal("2.0"), Decimal(42)),
         ("2026-01-01", "Cairo", Decimal("14.0"), Decimal("0.0"), Decimal(88)),
@@ -102,6 +104,32 @@ def test_coerce_numeric_folds_negative_zero() -> None:
     assert not result.is_signed()  # -0 folded to +0
 
 
+def test_numeric_grammar_is_decimal_string() -> None:
+    # Section 3 coerces numerics via Decimal(string) (the SAME coercer the evaluator reuses for
+    # filter values), so the source grammar is deliberately Decimal's -- NOT a stricter canonical
+    # form. Numerics canonicalize by VALUE (every form below collapses to one Decimal), unlike
+    # temporals which canonicalize by TEXT and so must be canonical-strict. DuckDB's DECIMAL cast
+    # accepts these same forms (measured); the M1.4d oracle ingests already-coerced Decimals and
+    # never re-parses source text, so the lax grammar raises no dual-engine divergence.
+    cases = [
+        ("1_000", 0, Decimal(1000)),
+        ("  12 ", 0, Decimal(12)),  # surrounding whitespace
+        ("+12", 0, Decimal(12)),
+        ("1e2", 0, Decimal(100)),  # scientific notation
+        ("01", 0, Decimal(1)),
+        (".5", 1, Decimal("0.5")),
+    ]
+    for text, scale, expected in cases:
+        assert ingest._coerce_numeric(text, scale) == expected
+
+
+def test_numeric_scale_38_min_value() -> None:
+    # The smallest positive DECIMAL(38,38) value: in-domain by magnitude, accepted. DuckDB's
+    # string CAST rejects this boundary (measured), but the oracle ingests coerced Decimals, not
+    # source text, so the verifier accepts the mathematically valid value.
+    assert ingest._coerce_numeric("1E-38", 38) == Decimal("1E-38")
+
+
 def test_datetime_cell_canonical() -> None:
     manifest = Manifest(
         dataset="t.csv", columns=(TemporalColumnSpec(name="ts", granularity="datetime"),)
@@ -131,6 +159,7 @@ def test_crlf_and_lf_yield_the_same_table() -> None:
         (NumericColumnSpec(name="v", scale=1), "NaN", "data.numeric_value"),  # non-finite
         (NumericColumnSpec(name="v", scale=1), "Infinity", "data.numeric_value"),  # non-finite
         (NumericColumnSpec(name="v", scale=1), "1.23", "data.numeric_value"),  # > scale places
+        (NumericColumnSpec(name="v", scale=0), "0.5", "data.numeric_value"),  # > scale @ 0
         (NumericColumnSpec(name="v", scale=0), "9" * 39, "data.numeric_value"),  # over-magnitude
         (
             TemporalColumnSpec(name="d", granularity="date"),
@@ -197,6 +226,32 @@ def test_rejects_invalid_utf8() -> None:
     assert excinfo.value.check == "data.charset"
 
 
+def test_rejects_utf8_bom() -> None:
+    manifest = Manifest(dataset="t.csv", columns=(StringColumnSpec(name="x"),))
+    with pytest.raises(VerificationError) as excinfo:
+        load_table(b"\xef\xbb\xbfx\nval\n", manifest)
+    assert excinfo.value.check == "data.charset"  # BOM rejected, never silently stripped
+
+
+def test_rejects_malformed_csv_quote() -> None:
+    # strict=True fails closed on a stray/unterminated quote rather than silently normalizing it.
+    # A first-record (header) and a later-record (body) malformation exercise both csv.Error paths.
+    manifest = Manifest(dataset="t.csv", columns=(StringColumnSpec(name="a"),))
+    for bad in (b'"a"x\n', b'a\n"x"y\n'):
+        with pytest.raises(VerificationError) as excinfo:
+            load_table(bad, manifest)
+        assert excinfo.value.check == "data.csv_syntax"
+
+
+def test_quoted_field_with_embedded_comma() -> None:
+    # strict=True still honors RFC-4180 quoting: a quoted comma is ONE string cell, not two.
+    manifest = Manifest(
+        dataset="t.csv", columns=(StringColumnSpec(name="a"), NumericColumnSpec(name="b", scale=0))
+    )
+    table = load_table(b'a,b\n"x,y",1\n', manifest)
+    assert table.rows == (("x,y", Decimal(1)),)
+
+
 # --- manifest parse layer ----------------------------------------------------
 def test_load_manifest_preserves_unit_and_label() -> None:
     manifest = load_manifest((DATA / "schemas" / "weather.json").read_bytes())
@@ -226,5 +281,16 @@ def test_load_manifest_rejects_unknown_tag() -> None:
 
 def test_load_manifest_rejects_duplicate_key() -> None:
     raw = b'{"dataset":"t.csv","dataset":"t.csv","columns":[{"type":"string","name":"x"}]}'
+    with pytest.raises(msgspec.ValidationError):
+        load_manifest(raw)
+
+
+def test_load_manifest_rejects_duplicate_column_name() -> None:
+    # Distinct JSON keys, but a repeated column NAME -> an ambiguous field key downstream ->
+    # rejected at the parse layer (the schema analog of the duplicate-JSON-key guard above).
+    raw = (
+        b'{"dataset":"t.csv","columns":['
+        b'{"type":"string","name":"x"},{"type":"numeric","name":"x","scale":0}]}'
+    )
     with pytest.raises(msgspec.ValidationError):
         load_manifest(raw)
