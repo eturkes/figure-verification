@@ -51,13 +51,19 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "PLR2004"] # asserts and bare magic values are idiomatic in tests
+# asserts + bare magic values are idiomatic in tests; TID251 lets tests import jsonschema.
+"tests/**" = ["S101", "PLR2004", "TID251"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["verifier"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+# jsonschema is a dev/test-only dep (no py.typed). Ban it outside tests/ so a stray src
+# import fails the gate instead of silently becoming Any under the global mypy override.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"jsonschema".msg = "test-only (golden assertion); do not import from src/"
 
 # --- types -------------------------------------------------------------------
 [tool.mypy]
@@ -73,7 +79,9 @@ enable_error_code = [
     "possibly-undefined",
 ]
 
-# jsonschema is test-only and ships no py.typed; keep mypy --strict quiet on its import.
+# jsonschema ships no py.typed; this override is GLOBAL. jsonschema is dev/test-only and
+# the ruff TID251 ban keeps it out of src/, so a stray src import fails the gate (ruff)
+# rather than silently type-checking as Any here.
 [[tool.mypy.overrides]]
 module = "jsonschema.*"
 ignore_missing_imports = true

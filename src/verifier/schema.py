@@ -25,10 +25,12 @@ DatasetName = Annotated[
 ]
 DatasetHash = Annotated[str, Meta(pattern=r"^(?!.*[\r\n])sha256:[0-9a-f]{64}$")]
 
-# Filter literals carry no float/Decimal: int|str rejects float/bool/null at
-# decode in strict mode (finding 3), keeping the M1.4 spec re-encode exact.
-# Decimals, where a field needs them, travel as bounded strings, lifted per manifest.
-FilterValue = int | Annotated[str, Meta(max_length=128)]
+# Filter literals carry no float/Decimal: int|str rejects float/bool/null at decode in
+# strict mode (finding 3), keeping the M1.4 spec re-encode exact. The int is bounded to
+# signed 64-bit (the universal integer-column domain); larger or fractional numbers
+# travel as bounded strings, lifted per manifest at eval.
+FilterInt = Annotated[int, Meta(ge=-(2**63), le=2**63 - 1)]
+FilterValue = FilterInt | Annotated[str, Meta(max_length=128)]
 
 # --- closed enums ------------------------------------------------------------
 Mark = Literal["bar", "line", "scatter"]
@@ -63,7 +65,9 @@ class Encoding(_Base, frozen=True, kw_only=True):
 # --- dataset binding ---------------------------------------------------------
 class Dataset(_Base, frozen=True, kw_only=True):
     name: DatasetName
-    hash: DatasetHash  # JSON key `hash`; binds the spec to the exact source bytes
+    # JSON key `hash`; DECLARES the expected SHA-256 of the source bytes. The bind/verify
+    # against the actual file bytes is M1.5 — this gate only checks the hash's shape.
+    hash: DatasetHash
 
 
 # --- transforms (tagged union on `op`) ---------------------------------------
@@ -137,20 +141,40 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 def decode_spec(raw: bytes | str) -> VPlotSpec:
     """Decode raw JSON into a validated VPlotSpec, or raise.
 
-    Raises msgspec.DecodeError on malformed JSON, msgspec.ValidationError on any
-    schema violation (unknown key, bad enum, float/bool/null where a scalar is
-    required, length/pattern breach) or a duplicate object key. A returned spec
-    is total: every field present and correctly typed.
+    The only two failure modes: msgspec.DecodeError on malformed or non-UTF-8 JSON,
+    msgspec.ValidationError on any schema violation (unknown key, bad enum,
+    float/bool/null where a scalar is required, length/pattern breach) or a duplicate
+    object key. A returned spec is total: every field present and correctly typed.
+
+    str input is normalized to UTF-8 bytes first so the strict decode and the
+    duplicate-key rescan see identical bytes, and a lone surrogate maps to DecodeError
+    instead of leaking UnicodeEncodeError. The rescan runs only after the decode
+    succeeds, so it sees solely the bounded VPlotSpec shape (no pathological depth); its
+    sole job is to reject the duplicate keys msgspec silently last-wins (finding 4).
     """
-    spec = _DECODER.decode(raw)
-    json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
+    if isinstance(raw, str):
+        try:
+            data = raw.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            msg = "spec input is not valid UTF-8"
+            raise msgspec.DecodeError(msg) from exc
+    else:
+        data = raw
+    spec = _DECODER.decode(data)
+    json.loads(data, object_pairs_hook=_reject_duplicate_keys)
     return spec
 
 
 def json_schema() -> dict[str, Any]:
-    """The VPlot JSON Schema, Draft 2020-12. The $schema URI is stamped last so a
-    future msgspec that emits its own cannot override our dialect (finding 5)."""
-    return {**msgspec.json.schema(VPlotSpec), "$schema": _DRAFT_2020_12}
+    """The VPlot JSON Schema, Draft 2020-12 — an ADVISORY mirror of decode_spec, not the
+    gate. JSON Schema's `integer` admits zero-fraction floats (1.0, 1e3) that strict
+    decode rejects and cannot express the float-token rejection, so the schema is
+    slightly more permissive; decode_spec is authoritative. The $schema URI is popped
+    and re-appended so it sorts last even if a future msgspec emits its own (finding 5)."""
+    doc = msgspec.json.schema(VPlotSpec)
+    doc.pop("$schema", None)
+    doc["$schema"] = _DRAFT_2020_12
+    return doc
 
 
 def json_schema_text() -> str:
