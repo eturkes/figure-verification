@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Canonical forms + provenance hashing — the deterministic backbone of the VCert.
 
-Evaluator-independent foundation (M1.4b's eval and M1.4c's oracle import it; no
-transform logic lives here). It pins ONE textual canonical form for a recomputed
+Evaluator-independent foundation (M1.4b's ingest, M1.4c's eval, and M1.4d's oracle
+import it; no transform logic lives here). It pins ONE textual canonical form for a recomputed
 table and FOUR SHA-256 hashes over text — never Arrow/Parquet bytes, which couple
 to a library version. The hashes split by purpose:
 
@@ -19,7 +19,7 @@ to a library version. The hashes split by purpose:
                noise (whitespace, key order, escaping) to one form.
   - manifest : the trusted per-column manifest's raw bytes; domain-tagged.
 
-Only the table hash is permutation-invariant (M1.4b closes every plot with a total
+Only the table hash is permutation-invariant (M1.4c closes every plot with a total
 sort); the dataset hash deliberately is not. Display metadata (unit/label) lives in
 the manifest, never in a Column, so it never enters the table hash. See memory Stack
 (Hashing) + Determinism invariants; VPlot_SEMANTICS.md is the meaning these realize.
@@ -79,7 +79,7 @@ type Column = NumericColumn | TemporalColumn | StringColumn
 
 class Table(Struct, frozen=True, kw_only=True):
     """A recomputed plotted table: columns plus rows already in canonical total order
-    (M1.4b's closure produces that order; this module only serializes/hashes it)."""
+    (M1.4c's closure produces that order; this module only serializes/hashes it)."""
 
     columns: tuple[Column, ...]
     rows: tuple[tuple[Cell, ...], ...]
