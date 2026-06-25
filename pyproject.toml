@@ -10,7 +10,9 @@ requires-python = ">=3.13,<3.14"
 license = "Apache-2.0 WITH LLVM-exception"
 license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
-dependencies = []
+# msgspec (NOT Pydantic): strict, fail-closed decode — float/bool/unknown-key tokens
+# are rejected at decode, so a valid spec is never partial or coerced. See memory Stack.
+dependencies = ["msgspec>=0.21,<1"]
 
 [dependency-groups]
 dev = [
@@ -20,6 +22,7 @@ dev = [
     "pytest-cov>=6",
     "hypothesis>=6.110",
     "syrupy>=4.8",
+    "jsonschema>=4.21", # test-only: assert the exported golden is Draft-2020-12 valid
     "duckdb>=1.1",
 ]
 
@@ -69,6 +72,11 @@ enable_error_code = [
     "ignore-without-code",
     "possibly-undefined",
 ]
+
+# jsonschema is test-only and ships no py.typed; keep mypy --strict quiet on its import.
+[[tool.mypy.overrides]]
+module = "jsonschema.*"
+ignore_missing_imports = true
 
 # --- tests / coverage --------------------------------------------------------
 [tool.pytest.ini_options]

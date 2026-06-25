@@ -1,0 +1,340 @@
+{
+  "$ref": "#/$defs/VPlotSpec",
+  "$defs": {
+    "VPlotSpec": {
+      "title": "VPlotSpec",
+      "type": "object",
+      "properties": {
+        "version": {
+          "enum": [
+            "vplot-0.1"
+          ]
+        },
+        "dataset": {
+          "$ref": "#/$defs/Dataset"
+        },
+        "transform": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Select"
+              },
+              {
+                "$ref": "#/$defs/Filter"
+              },
+              {
+                "$ref": "#/$defs/GroupBy"
+              },
+              {
+                "$ref": "#/$defs/Aggregate"
+              },
+              {
+                "$ref": "#/$defs/Sort"
+              }
+            ],
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "select": "#/$defs/Select",
+                "filter": "#/$defs/Filter",
+                "group_by": "#/$defs/GroupBy",
+                "aggregate": "#/$defs/Aggregate",
+                "sort": "#/$defs/Sort"
+              }
+            }
+          },
+          "maxItems": 64
+        },
+        "mark": {
+          "enum": [
+            "bar",
+            "line",
+            "scatter"
+          ]
+        },
+        "encoding": {
+          "$ref": "#/$defs/Encoding"
+        }
+      },
+      "required": [
+        "version",
+        "dataset",
+        "transform",
+        "mark",
+        "encoding"
+      ],
+      "additionalProperties": false
+    },
+    "Dataset": {
+      "title": "Dataset",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._-]*\\.csv$"
+        },
+        "hash": {
+          "type": "string",
+          "pattern": "^(?!.*[\\r\\n])sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "name",
+        "hash"
+      ],
+      "additionalProperties": false
+    },
+    "Select": {
+      "title": "Select",
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            "select"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "maxItems": 64,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "op",
+        "fields"
+      ],
+      "additionalProperties": false
+    },
+    "Filter": {
+      "title": "Filter",
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            "filter"
+          ]
+        },
+        "field": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "cmp": {
+          "enum": [
+            "eq",
+            "ge",
+            "gt",
+            "le",
+            "lt",
+            "ne"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "maxLength": 128
+            }
+          ]
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "cmp",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "GroupBy": {
+      "title": "GroupBy",
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            "group_by"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "maxItems": 32,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "op",
+        "keys"
+      ],
+      "additionalProperties": false
+    },
+    "Aggregate": {
+      "title": "Aggregate",
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            "aggregate"
+          ]
+        },
+        "measures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Measure"
+          },
+          "maxItems": 32,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "op",
+        "measures"
+      ],
+      "additionalProperties": false
+    },
+    "Measure": {
+      "title": "Measure",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "fn": {
+          "enum": [
+            "count",
+            "max",
+            "mean",
+            "min",
+            "sum"
+          ]
+        },
+        "as": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      },
+      "required": [
+        "field",
+        "fn",
+        "as"
+      ],
+      "additionalProperties": false
+    },
+    "Sort": {
+      "title": "Sort",
+      "type": "object",
+      "properties": {
+        "op": {
+          "enum": [
+            "sort"
+          ]
+        },
+        "by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SortKey"
+          },
+          "maxItems": 32,
+          "minItems": 1
+        }
+      },
+      "required": [
+        "op",
+        "by"
+      ],
+      "additionalProperties": false
+    },
+    "SortKey": {
+      "title": "SortKey",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "order": {
+          "enum": [
+            "ascending",
+            "descending"
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "order"
+      ],
+      "additionalProperties": false
+    },
+    "Encoding": {
+      "title": "Encoding",
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/Channel"
+        },
+        "y": {
+          "$ref": "#/$defs/Channel"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Channel"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "Channel": {
+      "title": "Channel",
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "type": {
+          "enum": [
+            "nominal",
+            "ordinal",
+            "quantitative",
+            "temporal"
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
