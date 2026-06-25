@@ -103,8 +103,9 @@ through each op. Empty list → the loaded table unchanged.
 - `select.fields` distinct; `group_by.keys` distinct; `sort.by` fields distinct.
 - aggregate `as` names: mutually unique AND disjoint from the group keys (no output-column
   collision).
-- Every referenced field exists in the CURRENT schema at that pipeline step (`schema.fields_exist`,
-  M1.5); encoding channels reference existing PLOTTED-table columns
+- Every TRANSFORM-referenced field exists in the CURRENT schema at that pipeline step
+  (`schema.fields_exist` — M1.4 eval ENFORCES it, raising during recompute; M1.5 `checks.py`
+  SURFACES it as a structured result); encoding channels reference existing PLOTTED-table columns
   (`encoding.fields_exist_in_plotted_table`, M1.5).
 
 ## 6. Canonical total ordering (M1.4)

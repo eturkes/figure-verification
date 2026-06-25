@@ -23,13 +23,19 @@ Split `_coerce_numeric` so eval's filter coercion reuses parse+precision WITHOUT
 coverage-safe with existing ingest tests (check names unchanged; tests assert `.check` only; precision-before-
 magnitude reorder confirmed for `"9"*39`@scale1 → precision passes/magnitude fails → `data.numeric_value`, and
 `"0.5"`@scale0 → precision fails → `data.numeric_value`). CONFIRM by running `pytest tests/test_ingest.py`.
-The exponent guard (skip quantize when `exponent >= -scale`) is DoS prevention AND behavior-preserving: such
-values are already exact at `scale` (<= scale fractional places) so quantize is a no-op — run-verified this session
-(10/10 small cases identical to naive quantize; the huge-exponent literal returns in <0.01 ms vs a MemoryError/hang).
-It adds ONE branch → cover BOTH arms: the skip arm via an integral value (the existing `"9"*39` magnitude case, or
-`"12000"`@scale0) and the quantize arm via a fractional value (`"0.5"`@scale0). ingest.py must import `cast` (extend
-`from typing import Annotated, Literal` → `…, cast`); `as_tuple().exponent` is typed `int | Literal['n','N','F']` so
-`cast(int, …)` is required for mypy (a finite Decimal always yields the int branch).
+The exponent guard (skip quantize when `exponent >= -scale`) is DoS prevention AND a VALUE no-op: a finite Decimal
+with `exponent >= -scale` already has <= scale fractional places, so quantize cannot change its VALUE. The guard
+matters because the UNGUARDED quantize crashes on a huge-exponent literal (e.g. `"1e999999999999999999"`, 20 chars,
+within filter max_length=128) two ways: for that exact literal `value.adjusted() == MAX_PREC`, so `precision =
+adjusted()+scale+2 > MAX_PREC` → `Context(prec=…)` raises ValueError BEFORE any digit materializes; for a slightly
+smaller huge exponent (`adjusted() < MAX_PREC`) `precision` stays in range → quantize then materializes ~1e18 digits
+→ MemoryError/hang. The guard skips both. It is VALUE-preserving only — the at-scale STORED representation (exponent)
+is restored by `_coerce_numeric`'s re-quantize below (the filter path skips that, a literal is only COMPARED),
+proven byte-identical to the prior `_coerce_numeric` this session (28/28 edge cases: value + as_tuple + raised check
+all identical). It adds ONE branch → cover BOTH arms: the skip arm via an integral value (the existing `"9"*39`
+magnitude case, or `"12000"`@scale0) and the quantize arm via a fractional value (`"0.5"`@scale0). ingest.py must
+import `cast` (extend `from typing import Annotated, Literal` → `…, cast`); `as_tuple().exponent` is typed `int |
+Literal['n','N','F']` so `cast(int, …)` is required for mypy (a finite Decimal always yields the int branch).
 
 ```python
 def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
@@ -45,9 +51,9 @@ def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
         msg = f"numeric value {text!r} is not finite"
         raise VerificationError(msg, check=check)
     # exponent guard (DoS prevention): a constructible huge-exponent literal (e.g. "1e999999999999999999",
-    # within filter max_length=128) has exponent >= -scale, so it is already exact at this scale -> skip
-    # quantize, which would otherwise try to materialize ~1e18 digits (MemoryError/hang). Only exponent
-    # < -scale (inherently small magnitude) can carry excess fractional places, so quantize is bounded there.
+    # within filter max_length=128) has exponent >= -scale, already exact at this scale -> skip quantize.
+    # Unguarded it crashes: Context(prec>MAX_PREC) ValueError when adjusted()==MAX_PREC, else ~1e18-digit
+    # materialization (MemoryError/hang). Only exponent < -scale carries excess fractional places (bounded).
     exponent = cast(int, value.as_tuple().exponent)  # finite -> int, never the 'n'/'N'/'F' specials
     if exponent < -scale:
         quantum = Decimal((0, (1,), -scale))
@@ -65,7 +71,15 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
     if not (value.is_zero() or value.adjusted() <= _MAX_PRECISION - 1 - scale):
         msg = f"numeric value {text!r} exceeds DECIMAL({_MAX_PRECISION}, {scale}) magnitude"
         raise VerificationError(msg, check="data.numeric_value")
-    return value
+    # canonical stored form: re-quantize to exactly `scale` places (value was proved exact at scale by
+    # _decimal_at_scale; the magnitude bound above — zero exempt — keeps this quantize bounded, no DoS).
+    # Restores the original at-scale stored-cell behavior (byte-identical, verified); the filter path skips
+    # this (a literal is only COMPARED).
+    quantum = Decimal((0, (1,), -scale))
+    precision = max(value.adjusted() + scale + 2, 1)
+    context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
+    normalized = value.quantize(quantum, context=context)
+    return normalized.copy_abs() if normalized.is_zero() else normalized
 ```
 `_coerce_temporal(text, granularity, *, check: str = "data.temporal_value")` — add the kw-only `check` param, use
 it at all 4 raise sites (date-parse ValueError, datetime-parse ValueError, timezone `tzinfo is not None`,
@@ -115,8 +129,11 @@ Helpers:
   table.columns[i])`; keep row iff `row[i] is not None and _CMP[op.cmp](row[i], coerced)` (null cell → drop, incl ne).
 - `_coerce_filter_value(value, column) -> Decimal | str` per §3 (ALL failures → `filter.value_type`; dispatch on
   column TYPE via `isinstance(column, canon.NumericColumn/TemporalColumn/StringColumn)`, NOT `.kind ==`, so mypy
-  narrows `.scale`/`.granularity`; the third arm is the `else` tail like `evaluate`'s Sort — exhaustive, reachable):
-    - `isinstance(column, canon.NumericColumn)`: `isinstance(value,int)` (msgspec FilterValue = int|str, bool excluded) → `Decimal(value)`
+  narrows `.scale`/`.granularity`; the third arm is the `else` tail like `evaluate`'s Sort — exhaustive, reachable.
+  INVARIANT — specs reaching `evaluate` are decode-origin (`schema.decode_spec`) and msgspec rejects `bool` for
+  `FilterValue = int | str` at the parse boundary, so `value` is a genuine `int | str` here; M1.4c filter-value
+  tests build specs via decode, NOT direct `Filter(value=…)` construction that would bypass it):
+    - `isinstance(column, canon.NumericColumn)`: `isinstance(value,int)` (genuine int per the decode-origin invariant above, no bool) → `Decimal(value)`
       [exact, compares by value]; `isinstance(value,str)` → `ingest._decimal_at_scale(value, column.scale,
       check="filter.value_type")` [parse+precision, NO magnitude].
     - `elif isinstance(column, canon.TemporalColumn)`: str → `ingest._coerce_temporal(value, column.granularity, check="filter.value_type")`
@@ -132,14 +149,18 @@ Helpers:
     - groups: `pending_keys is None` → ONE group, key=() , rows=all (whole-table aggregate); else partition rows by
       key-tuple `tuple(row[idx] for idx in key_idxs)` (null key = its own group; first-seen dict order — closure
       re-sorts so order is irrelevant to the hash).
-    - per measure m: `src_idx = _field_index(table, m.field)` (raises `schema.fields_exist` if the measure field is
-      absent); `src_col = table.columns[src_idx]`; `out_col = _measure_output_column(src_col, m.fn, m.output)`;
-      `scale = src_col.scale if isinstance(src_col, canon.NumericColumn) else 0` (only mean consumes scale, and
-      mean ⇒ numeric src ⇒ scale valid; count/min/max/string ignore it).
-    - out columns = group-key columns (from pending_keys, original Column objects) ++ each measure's `out_col`.
+    - measure_plans (build in ONE pass, store per measure — do NOT recompute inside the per-group loop, else a
+      two-loop transcription reuses the LAST measure's `src_idx`/`scale`): for each measure `m`, `src_idx =
+      _field_index(table, m.field)` (raises `schema.fields_exist` if the measure field is absent); `src_col =
+      table.columns[src_idx]`; `out_col = _measure_output_column(src_col, m.fn, m.output)`; `scale = src_col.scale if
+      isinstance(src_col, canon.NumericColumn) else 0` (only mean consumes scale, and mean ⇒ numeric src ⇒ scale
+      valid; count/min/max/string ignore it). Collect `measure_plans = [(m, src_idx, out_col, scale), ...]` (mypy
+      infers `list[tuple[Measure, int, canon.Column, int]]`).
+    - out columns = group-key columns (from pending_keys, original Column objects) ++ `[out_col for (_m, _idx,
+      out_col, _scale) in measure_plans]`.
     - collision: all output names (keys ++ measure outputs) distinct → else raise `aggregate.output_unique`.
-    - per group per measure: `_aggregate_one(m.fn, [g_row[src_idx] for g_row in group_rows], scale)`.
-    - rows = key cells ++ measure cells.
+    - per group: per `(m, src_idx, _out_col, scale)` in measure_plans → `_aggregate_one(m.fn, [g_row[src_idx] for
+      g_row in group_rows], scale)`; row = key cells ++ those measure cells.
 - `_measure_output_column(src_col, fn, output) -> canon.Column` (raises `schema.field_types_match`; the three
   Column types are `kw_only` → construct BY KEYWORD; dispatch src kind via `isinstance(src_col, canon.NumericColumn)`
   etc. so mypy narrows `.scale`/`.granularity`):
@@ -151,10 +172,13 @@ Helpers:
       temporal→`canon.TemporalColumn(name=output, granularity=src_col.granularity)`,
       string→`canon.StringColumn(name=output)` (any of the three kinds OK).
 - `_aggregate_one(fn, cells, scale) -> Cell`: `non_null = [c for c in cells if c is not None]`; count →
-  `Decimal(len(non_null))`. Else if `not non_null` → `None` (zero non-nulls → null for sum/mean/min/max). sum →
-  `sum(cast(list[Decimal], non_null))` (Decimal-exact, same scale; `cast` = no runtime branch). mean →
-  `mean_at_scale(sum(cast(list[Decimal], non_null)), len(non_null), scale)`. min/max → `min`/`max(non_null)`
-  (Decimal|str comparable within one kind).
+  `Decimal(len(non_null))`. Else if `not non_null` → `None` (zero non-nulls → null for sum/mean/min/max). Then
+  `decimals = cast(list[Decimal], non_null)` (no runtime branch; a no-op on the string/temporal min/max path, which
+  never reads it) — sum → `sum(decimals, Decimal(0))`; mean → `mean_at_scale(sum(decimals, Decimal(0)),
+  len(non_null), scale)`; min/max → `min`/`max(non_null)` (Decimal|str comparable within one kind). The `Decimal(0)`
+  start is REQUIRED: `sum`'s no-start overload types as `Decimal | Literal[0]` (mypy-strict-verified), failing BOTH
+  the `Cell` return AND `mean_at_scale`'s `Decimal` arg; confining `sum` to the sum/mean arms keeps a string/temporal
+  min/max off the Decimal `sum`.
 - `mean_at_scale(total: Decimal, count: int, scale: int) -> Decimal` (PUBLIC — M1.4e oracle reuses for parity;
   Decimal-exact, ONE HALF_EVEN rounding via Fraction → no float, no Decimal double-round):
 ```python
@@ -227,6 +251,12 @@ M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-ab
   - transform.group_by_placement: group_by as LAST op (post-loop) AND double group_by (top-of-loop) — b14 covers
     group_by-then-sort; add the last-op + double cases inline.
   - whole-table aggregate (no preceding group_by) → one row.
+  - multi-measure aggregate over DIFFERENT source columns (measure_plans regression): group_by month, measures
+    [sum revenue→r, mean orders→o] → assert BOTH output columns correct (r from revenue, o from orders — a
+    last-measure-index bug would read orders for both).
+  - pre-aggregate sort DISCARDED by the aggregate reset: sort revenue desc, then group_by month + sum revenue →
+    assert output order = the closure re-sort (month asc), NOT the pre-agg desc order (aggregate locks
+    `active_keys=[]`).
   - count fn (non-null count, scale 0); all-null group → count 0 + sum/mean/min/max null (zero non-nulls).
   - group_by with a NULL key cell → the null key forms its own group (emitted, not dropped; §5).
   - min/max on NUMERIC, TEMPORAL, and STRING — ALL inline in M1.4c (g06/g09 land in M1.4d, so the numeric min/max
@@ -240,6 +270,8 @@ M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-ab
     it returns/compares without hang, locking the Step-0 fix.
   - closure null GREATEST — BOTH sentinel branches: (a) numeric null via all-null-group aggregate then closure;
     (b) temporal/string null — select a column holding a null cell (ingest empty→None) → closure null-last on "".
+  - active DESCENDING sort with a null cell → assert the null sorts FIRST (§6 null-greatest ⇒ descending null-first
+    via per-key reverse); complements the ascending null-last closure case above.
   - `_scaled_int_to_decimal` negative `scaled` (sign branch) — direct call.
   - mean HALF_EVEN-to-even (e.g. the 0.005@2→0.00 case) — direct `mean_at_scale` or a 2-row group.
 - Accept: 6 bad → specific check; g01/g04/g05 row-for-row; aggregation Decimal-exact (no float); gate green @100% branch.
