@@ -4,7 +4,7 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
 
 ## Conventions
 - License id: `Apache-2.0 WITH LLVM-exception`. Source files carry header `SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception` (language-appropriate comment). `LICENSE` = project-neutral Apache 2.0 body + LLVM exception only (LLVM banner / NCSA / third-party sections stripped).
-- Do-not-read enforcement lives in `.claude/settings.json` `permissions.deny` `Read()` (committed; needed because Read/Bash bypass `.gitignore`). Holds `LICENSE` + `uv.lock`. Keep synced as files land. Serena's parallel = `.serena/project.yml` `ignored_paths` (non-gitignored entries only); now holds `LICENSE` + `uv.lock`.
+- Do-not-read set (currently `LICENSE` + `uv.lock`; mechanism → `CLAUDE.md`): sync both fronts as new not-worth-reading files land.
 - Git identity from global gitconfig (`Emir Turkes <eturkes@bu.edu>`); user drives remote.
 
 ## Stack (M1 trusted core) — researched SOTA, deliberately overriding the outline's human-popular defaults
