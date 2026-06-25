@@ -173,7 +173,7 @@ def test_manifest_numeric_scale_matches_data(dataset: dict[str, Any]) -> None:
 
 _TEMPORAL_RE = {
     "date": re.compile(r"\d{4}-\d{2}-\d{2}"),
-    "datetime": re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?"),
+    "datetime": re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?"),
 }
 
 
