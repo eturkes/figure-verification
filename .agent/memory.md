@@ -34,4 +34,5 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
 
 ## Deferred
 - M1.4: when `verifier/eval.py` imports duckdb (oracle) it ships no `py.typed` — add a mypy per-module override (`ignore_missing_imports`) or a stubs pkg so `mypy --strict` stays clean; same check for vl-convert-python at M1.6.
+- M1.4: DuckDB oracle `mean` → do the division in PYTHON on the exact SQL `SUM`+`COUNT`, never SQL `/`. DECIMAL division (and `avg()`) evaluates through DOUBLE → rounds HALF-AWAY ≠ our HALF_EVEN (verified `mean(0.00, 0.01)` @ scale 2 → SQL `0.01` vs evaluator `0.00`); SQL contributes only the exact `SUM`/`COUNT`. Detailed in `VPlot_SEMANTICS.md` §10.
 - M1.4/M1.6: filter-literal strings are length-bound only (`max_length=128`) → still admit control chars (NL/CR/TAB/NUL/U+2028). Pick canonical handling (forbid-pattern vs NFC + escape-on-disclosure) once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting valid filters on control-char cells. Recorded in `VPlot_SEMANTICS.md` "Open".

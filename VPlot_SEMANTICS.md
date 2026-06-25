@@ -15,17 +15,20 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 - The untrusted model emits ONLY the spec: `transform` + `encoding` + declared `dataset.hash`.
   Never plotted values, labels, units, scales, or policy.
 - The trusted verifier recomputes ALL plotted data from the source CSV; the renderer inlines
-  ONLY that recomputed table → a model-supplied number cannot reach a chart (impossible by
-  construction, not a check). `transform.aggregates_match_recomputation` (M1.5) asserts the
-  inlined `data.values` are byte-identical to the recomputation, backed by the oracle.
+  ONLY that recomputed table → a model-supplied PLOTTED value cannot reach `data.values`
+  (impossible by construction, not a check). Model-supplied spec PARAMETERS (filter literals,
+  field names, channel types) shape the selection and are disclosed in the badge — never inlined
+  as mark data. `transform.aggregates_match_recomputation` (M1.5) asserts the inlined
+  `data.values` are byte-identical to the recomputation, backed by the oracle.
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
   intent: a valid cherry-picked `filter` passes. The VCert badge (M1.6) discloses every
   applied filter + sort, so a reader sees the selected subset; the verifier guarantees the
   chart faithfully shows that selection, not that the selection is fair.
-- Axis titles + units = trusted manifest, never the spec → `label.quantitative_units_present`
-  correct by construction.
+- Axis titles + units = trusted manifest, never the spec (their VALUE is correct by
+  construction). `label.quantitative_units_present` (M1.5) still ENFORCES that a unit is present
+  per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given.
 
 ## 2. Data model
 
@@ -43,9 +46,12 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 
 ## 3. Numbers + rounding
 
-- Numeric cells → `Decimal` quantized to the column's manifest scale (exact). Integer = scale 0.
-- Aggregation + division are EXACT-then-QUANTIZE, `ROUND_HALF_EVEN`, associative →
-  order-independent → hash-stable. No float, no Kahan.
+- Numeric cells → `Decimal` at the column's manifest scale. The cell must be EXACTLY representable
+  at scale s (≤ s decimal places); excess precision = a SEMANTIC error — source data is never
+  silently rounded (only computed aggregates quantize, below). Integer = scale 0.
+- Aggregation is EXACT, then QUANTIZE `ROUND_HALF_EVEN`. Exact summation + count are
+  order-independent → hash-stable; `mean` adds ONE final division + quantize (its inputs are
+  order-independent, so the result is too — division itself is not associative). No float, no Kahan.
   - `sum` → exact Σ; output scale = input scale.
   - `mean` → (exact Σ) / (non-null count), ONE division, quantize HALF_EVEN to the
     manifest-declared output scale (M1.3; default = input scale).
@@ -56,7 +62,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 
   | column | spec int | spec string |
   |---|---|---|
-  | numeric | `Decimal(int)` @ scale | `Decimal(string)` @ scale; unparsable → semantic error |
+  | numeric | `Decimal(int)` @ scale | `Decimal(string)`, exact at scale; unparsable OR over-precise (> s places) → semantic error |
   | temporal | semantic error | parse canonical ISO; bad format → semantic error |
   | string | semantic error | used verbatim |
 
@@ -103,9 +109,13 @@ through each op. Empty list → the loaded table unchanged.
 ## 6. Canonical total ordering (M1.4)
 
 The plotted table is closed under a TOTAL order so its hash is permutation-invariant:
-1. the declared `sort` keys (order + direction + null-greatest), THEN
+1. the ACTIVE declared sort — the LAST `sort` op in the pipeline (an earlier `sort` superseded by
+   a later one, or discarded by an intervening `aggregate`, does NOT apply); its keys in order +
+   direction + null-greatest, THEN
 2. every remaining column, in plotted-table column order, ascending null-greatest — a fixed
    tiebreak.
+
+No `sort` op → step 1 is empty and step 2 alone is already total.
 
 Any remaining ties fall only between byte-identical rows, so the serialization is identical
 regardless of their relative order → the plotted-table hash is permutation-invariant under
@@ -127,8 +137,10 @@ bytes, §8.)
 
 - `x`, `y` required; `color` optional = a third channel, same rules. The color legend domain =
   the data's distinct values (`encoding.legend_domain_matches_data`, M1.5).
-- Axis title = manifest display label, with the manifest unit appended (M1.6) →
-  `label.quantitative_units_present` true by construction.
+- Axis title = manifest display label + manifest unit appended (M1.6); the title VALUE is
+  manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
+  manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
+  in the manifest, M1.3 — presence is checked, not guaranteed by construction).
 - `bar` mark: the quantitative axis baseline includes 0 (`scale.bar_y_zero`, M1.5).
 
 ## 8. Dataset binding
@@ -136,16 +148,19 @@ bytes, §8.)
 - `dataset.hash` = `sha256:` + 64 lowercase hex = SHA-256 over the RAW CSV file bytes, exactly
   as stored (sensitive to row order / CRLF / BOM by design = byte-exact SOURCE identity).
 - Resolved by `dataset.name` under `data/` ONLY: the name matches
-  `^[A-Za-z0-9][A-Za-z0-9._-]*\.csv$` (no path separators / `..` / absolute), and the resolved
-  path stays within `data/`. `dataset.hash_matches_source` (M1.5) recomputes the source hash,
-  confirms path-confinement, and compares; mismatch → block.
+  `^[A-Za-z0-9][A-Za-z0-9._-]*\.csv$` — no path separator and no leading separator, so it is a
+  relative single segment. (The pattern still admits a literal `..` substring, e.g. `a..csv`,
+  harmless without a separator.) Traversal is prevented by the separator-free pattern PLUS the
+  resolved-path-within-`data/` check. `dataset.hash_matches_source` (M1.5) recomputes the source
+  hash, confirms path-confinement, and compares; mismatch → block.
 
 ## 9. Error layers
 
 - DECODE (M1.2a, `decode_spec`) = SYNTAX: unknown field/op/mark/enum, wrong container/type,
   float/bool/null token, length/pattern breach, duplicate key, malformed or non-UTF-8 JSON.
-  Outcome: a total `VPlotSpec`, or `msgspec.ValidationError` / `msgspec.DecodeError` — never a
-  partial or coerced object.
+  Outcome for any `bytes | str` input (the `decode_spec` signature): a total `VPlotSpec`, or
+  `msgspec.ValidationError` / `msgspec.DecodeError` — never a partial or coerced object. (A
+  non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
   baseline, units present. Outcome: structured `{check, status, message, severity}`; any blocking
@@ -158,8 +173,11 @@ A spec can pass DECODE yet fail SEMANTIC.
 The oracle (`threads=1`, columns as matching `DECIMAL`) must reproduce the evaluator's canonical
 table byte-for-byte on goldens. Conform DuckDB to THESE semantics with explicit constructs (do
 not rely on its defaults):
-- `mean` via `SUM(col) / COUNT(col)` in DECIMAL + HALF_EVEN, NOT `avg()`/`mean()` (these return
-  DOUBLE for DECIMAL/INTEGER → lossy).
+- `mean`: take the EXACT `SUM(col)` (DECIMAL) and `COUNT(col)` (BIGINT) from DuckDB, then do the
+  ONE division + HALF_EVEN quantize in PYTHON (identical to the evaluator). Do NOT divide in SQL:
+  both `avg()` and `SUM(col)/COUNT(col)` evaluate through DOUBLE, and the cast back to DECIMAL
+  rounds HALF-AWAY, not HALF_EVEN (verified: mean(0.00, 0.01) @ scale 2 → SQL 0.01, evaluator
+  0.00). SQL contributes only the exact SUM + COUNT.
 - sort null placement via explicit `NULLS LAST` (ascending) / `NULLS FIRST` (descending).
 - `group_by` NULL = single group; `COUNT(col)` = non-null; `SUM`/`MIN`/`MAX` over all-null =
   NULL — all match by default and are asserted, not assumed.
@@ -175,8 +193,9 @@ determinism), never a silent pass.
 - Named cmp ops (eq/ne/lt/le/gt/ge) vs operator symbols.
 - Filter values = `int | string` (no float/Decimal tokens); decimals travel as bounded strings,
   coerced per §3.
-- The "derived-value mismatch" check is DROPPED — impossible by construction (the model supplies
-  no values, §1).
+- The MODEL-SUPPLIED "derived-value mismatch" check is DROPPED — impossible by construction (the
+  model supplies no plotted values, §1). The renderer-inlined-data-equals-recomputation check
+  (`transform.aggregates_match_recomputation`, §1) REMAINS in force.
 
 ## Open (resolve when the layer lands)
 

@@ -19,13 +19,13 @@ from typing import Any
 
 import msgspec
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn, SearchStrategy
 
 from verifier.schema import VPlotSpec, decode_spec
 
-# decode_spec's entire failure surface (anything else propagating is a contract breach).
+# decode_spec's entire failure surface for bytes|str input (anything else = a contract breach).
 _DECODE_ERRORS = (msgspec.ValidationError, msgspec.DecodeError)
 
 # --- valid-component strategies (mirror the schema's constrained aliases) -----------------
@@ -119,8 +119,27 @@ def _valid_spec_dicts(draw: DrawFn) -> dict[str, Any]:
     }
 
 
+# A minimal schema-valid spec: the explicit SUCCESS example for the decode-or-raise fuzz tests
+# (whose random inputs realistically never form a valid spec) and the float-rejection base.
+_BASE_SPEC: dict[str, Any] = {
+    "version": "vplot-0.1",
+    "dataset": {"name": "d.csv", "hash": "sha256:" + "0" * 64},
+    "transform": [],
+    "mark": "bar",
+    "encoding": {
+        "x": {"field": "a", "type": "nominal"},
+        "y": {"field": "b", "type": "quantitative"},
+    },
+}
+_BASE_SPEC_BYTES = msgspec.json.encode(_BASE_SPEC)
+
+
 # --- never-partial: decode-or-raise over arbitrary input ----------------------------------
+# Each fuzz test pins the SUCCESS leg with an explicit valid @example (findings 7/8: random
+# bytes/text/JSON never realistically form a valid spec, so the VPlotSpec assertion would
+# otherwise be unreached); the random inputs exercise the RAISE leg + never-partial.
 @given(raw=st.binary(max_size=512))
+@example(raw=_BASE_SPEC_BYTES)
 def test_arbitrary_bytes_decode_or_raise(raw: bytes) -> None:
     try:
         spec = decode_spec(raw)
@@ -130,6 +149,7 @@ def test_arbitrary_bytes_decode_or_raise(raw: bytes) -> None:
 
 
 @given(raw=st.text(max_size=512))
+@example(raw=_BASE_SPEC_BYTES.decode("utf-8"))
 def test_arbitrary_text_decode_or_raise(raw: str) -> None:
     """The str path (UTF-8 normalize, lone-surrogate → DecodeError) is decode-or-raise too."""
     try:
@@ -157,6 +177,7 @@ _JSON_VALUES = st.recursive(
 
 
 @given(value=_JSON_VALUES)
+@example(value=_BASE_SPEC)
 def test_arbitrary_json_decode_or_raise(value: object) -> None:
     """Structurally-valid JSON that does not match the schema raises; never a partial object."""
     try:
@@ -180,18 +201,6 @@ def test_valid_spec_decodes_and_reencode_is_a_fixed_point(spec_dict: dict[str, A
 
 
 # --- float rejection (finding 3): no number slot admits a float token ---------------------
-_BASE_SPEC: dict[str, Any] = {
-    "version": "vplot-0.1",
-    "dataset": {"name": "d.csv", "hash": "sha256:" + "0" * 64},
-    "transform": [],
-    "mark": "bar",
-    "encoding": {
-        "x": {"field": "a", "type": "nominal"},
-        "y": {"field": "b", "type": "quantitative"},
-    },
-}
-
-
 @given(value=st.floats(allow_nan=False, allow_infinity=False), cmp=st.sampled_from(_CMP_OPS))
 def test_float_filter_value_rejected(value: float, cmp: str) -> None:
     """A JSON float where a FilterValue (int|str) sits is rejected at decode: strict mode
