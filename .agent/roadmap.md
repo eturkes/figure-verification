@@ -34,7 +34,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.2b | VPlot semantics doc + never-partial fuzz suite | DONE | 63% 126K/200K |
 | M1.3 | Synthetic datasets + golden good/bad specs | DONE | 72% 144K/200K |
 | M1.4a | Canonical forms + provenance hashing (`canon.py`) | DONE | 71% 141K/200K |
-| M1.4b | Typed ingest: manifest + CSV→`Table` (`ingest.py`) | OPEN | — |
+| M1.4b | Typed ingest: manifest + CSV→`Table` (`ingest.py` + `errors.py`) | DONE | 68% 136K/200K |
 | M1.4c | Deterministic evaluator: transform pipeline (`eval.py`) | OPEN | — |
 | M1.4d | Dual-engine oracle + determinism properties | OPEN | — |
 | M1.5 | Verification checks v0 | OPEN | — |
