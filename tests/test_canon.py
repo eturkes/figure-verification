@@ -3,9 +3,11 @@
 
 Asserts: the dataset hash is a tag-free raw-byte identity sensitive to row order /
 CRLF / BOM; serialize_table emits stable typed-NDJSON (HALF_EVEN numerics, negative
-zero folded, null distinct from "null"); the table/spec/manifest hashes are domain-
-tagged; the spec hash is NFC-stable, flips on an edit, and asserts the pinned Unicode
-database; and all four hashes are byte-identical across two PYTHONHASHSEED subprocesses.
+zero folded, null distinct from "null", cells byte-faithful + control-escaped); the
+table/spec/manifest hashes are domain-tagged; the spec hash is byte-faithful (NFC-
+equivalent filter values hash apart) and flips on an edit; fixed golden vectors pin
+the canonical bytes; and all four hashes are byte-identical across two PYTHONHASHSEED
+subprocesses.
 """
 
 import hashlib
@@ -37,10 +39,14 @@ from verifier.canon import (
 from verifier.schema import VPlotSpec, decode_spec
 
 ZERO_HASH = "sha256:" + "0" * 64
+# "cafe" in two NFC-equivalent but byte-different forms: precomposed e-acute (U+00E9) vs
+# e + combining acute (U+0301). Built via chr() so this source stays pure ASCII.
+_CAFE_COMPOSED = "caf" + chr(0x00E9)
+_CAFE_DECOMPOSED = "cafe" + chr(0x0301)
 
 
 def _spec(value: object = "West", *, mark: str = "bar") -> VPlotSpec:
-    """A valid spec whose single filter carries `value` (the lone NFC-sensitive site —
+    """A valid spec whose single filter carries `value` (the lone non-ASCII-capable site —
     field/dataset names are ASCII by pattern) and whose mark is editable for hash flips."""
     raw: dict[str, Any] = {
         "version": "vplot-0.1",
@@ -99,6 +105,20 @@ def test_serialize_escapes_string_cells() -> None:
     assert serialize_table(table) == '["s:string"]\n["a\\nb"]\n'
 
 
+def test_serialize_emits_raw_utf8_and_escapes_control_and_meta() -> None:
+    """Non-ASCII and U+2028 (a JS line separator, valid in JSON) emit as RAW UTF-8 — msgspec
+    runs no \\uXXXX pass — while quote, backslash, and NUL are JSON-escaped, so no cell can
+    break the NDJSON line structure."""
+    raw = _CAFE_COMPOSED + chr(0x2028)
+    raw_table = Table(columns=(StringColumn(name="s"),), rows=((raw,),))
+    assert serialize_table(raw_table) == '["s:string"]\n["' + raw + '"]\n'  # verbatim, unescaped
+    quote, backslash = chr(0x22), chr(0x5C)
+    hazards = "a" + quote + backslash + chr(0x00)
+    token = quote + "a" + backslash + quote + backslash + backslash + backslash + "u0000" + quote
+    haz_table = Table(columns=(StringColumn(name="s"),), rows=((hazards,),))
+    assert serialize_table(haz_table) == '["s:string"]\n[' + token + "]\n"  # JSON-escaped cell
+
+
 @pytest.mark.parametrize(
     ("value", "scale", "rendered"),
     [
@@ -139,7 +159,13 @@ def test_serialize_rejects_type_mismatched_cells() -> None:
 
 def test_serialize_rejects_row_width_mismatch() -> None:
     table = Table(columns=(StringColumn(name="a"), StringColumn(name="b")), rows=(("x",),))
-    with pytest.raises(ValueError, match="shorter"):  # zip(strict=True)
+    with pytest.raises(ValueError, match="shorter"):  # zip(strict=True): row shorter than columns
+        serialize_table(table)
+
+
+def test_serialize_rejects_row_too_long() -> None:
+    table = Table(columns=(StringColumn(name="a"),), rows=(("x", "y"),))
+    with pytest.raises(ValueError, match="longer"):  # zip(strict=True): the opposite direction
         serialize_table(table)
 
 
@@ -152,6 +178,18 @@ def test_column_kind_discriminator() -> None:
     assert NumericColumn(name="v", scale=2).kind == "numeric"
     assert TemporalColumn(name="d", granularity="datetime").kind == "temporal"
     assert StringColumn(name="s").kind == "string"
+
+
+def test_table_cells_are_byte_faithful() -> None:
+    """Cells are hashed byte-faithfully (NO Unicode normalization): a precomposed vs a
+    decomposed "cafe" — NFC-equivalent yet byte-different — must serialize and hash APART,
+    locking against a future encoder that normalizes cells (the M1.4b trap)."""
+    assert unicodedata.normalize("NFC", _CAFE_DECOMPOSED) == _CAFE_COMPOSED  # same NFC class
+    assert _CAFE_COMPOSED != _CAFE_DECOMPOSED  # different code points
+    composed = Table(columns=(StringColumn(name="s"),), rows=((_CAFE_COMPOSED,),))
+    decomposed = Table(columns=(StringColumn(name="s"),), rows=((_CAFE_DECOMPOSED,),))
+    assert serialize_table(composed) != serialize_table(decomposed)
+    assert hash_table(composed) != hash_table(decomposed)
 
 
 # --- table hash: domain-tagged over the canonical form -----------------------
@@ -183,7 +221,7 @@ def test_hash_table_equal_for_independently_built_identical_tables() -> None:
     assert hash_table(_table()) == hash_table(_table())
 
 
-# --- spec hash: deterministic re-encode, NFC-stable, UCD-pinned --------------
+# --- spec hash: deterministic re-encode, byte-faithful -----------------------
 def test_hash_spec_is_sha256_prefixed_and_stable_across_reencode() -> None:
     digest = hash_spec(_spec())
     assert digest.startswith("sha256:") and len(digest) == len("sha256:") + 64
@@ -194,17 +232,11 @@ def test_hash_spec_flips_on_edit() -> None:
     assert hash_spec(_spec(mark="bar")) != hash_spec(_spec(mark="line"))
 
 
-def test_hash_spec_folds_nfc_equivalent_strings() -> None:
-    composed, decomposed = "café", "café"  # é vs e + combining acute
-    assert composed != decomposed
-    assert unicodedata.normalize("NFC", decomposed) == composed
-    assert hash_spec(_spec(composed)) == hash_spec(_spec(decomposed))
-
-
-def test_hash_spec_rejects_unicode_database_drift(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(unicodedata, "unidata_version", "16.0.0")
-    with pytest.raises(RuntimeError, match="Unicode database"):
-        hash_spec(_spec())
+def test_hash_spec_distinguishes_nfc_variants() -> None:
+    """The spec hash is byte-faithful: NFC-equivalent but byte-different filter values hash
+    APART, since the evaluator compares string filters verbatim (VPlot_SEMANTICS sections 3/4)."""
+    assert unicodedata.normalize("NFC", _CAFE_DECOMPOSED) == _CAFE_COMPOSED  # same NFC class
+    assert hash_spec(_spec(_CAFE_COMPOSED)) != hash_spec(_spec(_CAFE_DECOMPOSED))
 
 
 # --- manifest hash: domain-tagged over raw bytes -----------------------------
@@ -221,7 +253,27 @@ def test_runtime_versions_reports_the_running_environment() -> None:
     assert versions.canon_version == canon.CANON_VERSION
     assert versions.python == platform.python_version()
     assert versions.msgspec == msgspec.__version__
-    assert versions.unidata == unicodedata.unidata_version == canon.EXPECTED_UNIDATA
+    assert versions.unidata == unicodedata.unidata_version
+
+
+# --- golden hash vectors: pin the canonical bytes against any drift -----------
+def test_golden_hash_vectors() -> None:
+    """Fixed digests for fixed inputs. Unlike the domain-tag tests (which recompute from
+    serialize_table/tags), these pin the canonical FORM itself: any change to serialize_table,
+    the tags, msgspec escaping, Decimal rendering, or CANON_VERSION flips a vector — catching
+    drift (msgspec / Python / locale) that the self-referential checks would pass."""
+    assert hash_dataset(b"region,revenue\nWest,10\n") == (
+        "sha256:4f8e01a5645ff7807c62c71cadc220a21a3f7641cdd48cd700cbcfb9036208b9"
+    )
+    assert hash_table(_table()) == (
+        "sha256:d31b9cba88803946e945969c0b1d01acc8011af7af678f8fbfb80a1b193c606d"
+    )
+    assert hash_spec(_spec()) == (
+        "sha256:990615ee353d3f4c534c141cf3ff993cbee0b15a9453806d9f8fd3b31c6cbe67"
+    )
+    assert hash_manifest(b"manifest-bytes") == (
+        "sha256:6b9268d3f0f95dd8ce488d3bc2dce35469ea29b9674d67d5c4b9ff3cc6376ad8"
+    )
 
 
 # --- cross-process determinism (PYTHONHASHSEED) ------------------------------
@@ -236,7 +288,9 @@ spec = decode_spec(
         {
             "version": "vplot-0.1",
             "dataset": {"name": "sales.csv", "hash": "sha256:" + "0" * 64},
-            "transform": [{"op": "filter", "field": "region", "cmp": "eq", "value": "café"}],
+            "transform": [
+                {"op": "filter", "field": "region", "cmp": "eq", "value": "caf" + chr(0x00E9)}
+            ],
             "mark": "line",
             "encoding": {
                 "x": {"field": "a", "type": "temporal"},
@@ -249,7 +303,7 @@ table = canon.Table(
     columns=(canon.StringColumn(name="r"), canon.NumericColumn(name="v", scale=2)),
     rows=(("West", Decimal("10.50")), (None, None)),
 )
-print(canon.hash_dataset(b"region,rev\\nWest,10.50\\n"))
+print(canon.hash_dataset(b"region,rev,West,10.50"))
 print(canon.hash_table(table))
 print(canon.hash_spec(spec))
 print(canon.hash_manifest(b"manifest-bytes"))

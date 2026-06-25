@@ -11,10 +11,12 @@ to a library version. The hashes split by purpose:
                and is row-order / CRLF / BOM sensitive by design.
   - table    : the typed-NDJSON serialization (serialize_table) of the recomputed
                plotted table; domain-tagged.
-  - spec     : the validated VPlotSpec re-encoded deterministically (msgspec finding 8)
-               then NFC-normalized; domain-tagged. NFC folds combining-mark variants of
-               string values so a spec means one thing; the pinned UCD is asserted so a
-               Unicode database shift cannot silently move spec hashes.
+  - spec     : the validated VPlotSpec re-encoded deterministically (msgspec finding 8);
+               domain-tagged. Byte-faithful — NO Unicode normalization — matching the
+               evaluator + DuckDB oracle, which compare string filters verbatim by UTF-8
+               code-point order (VPlot_SEMANTICS sections 3/4/10); folding here would collide
+               specs that select different rows. The re-encode still folds JSON surface
+               noise (whitespace, key order, escaping) to one form.
   - manifest : the trusted per-column manifest's raw bytes; domain-tagged.
 
 Only the table hash is permutation-invariant (M1.4b closes every plot with a total
@@ -34,10 +36,10 @@ from msgspec import Struct
 
 from verifier.schema import VPlotSpec
 
-# Serialization-format + Unicode-database pins. A CANON_VERSION bump invalidates stale
-# domain-tagged hashes (the raw dataset hash stays format-free); the UCD pin guards NFC.
+# Serialization-format pin: a CANON_VERSION bump invalidates stale domain-tagged hashes
+# (the raw dataset hash stays format-free). Golden hex vectors (tests) lock the canonical
+# bytes, so encoder/runtime drift under a fixed CANON_VERSION fails loudly.
 CANON_VERSION = "canon-0.1"
-EXPECTED_UNIDATA = "15.1.0"
 
 # order="deterministic" sorts dict/set keys and renders Decimal->string with no Unicode
 # pass (finding 8); a VPlotSpec has neither dicts nor Decimals, so this only locks struct
@@ -153,18 +155,23 @@ def serialize_table(table: Table) -> str:
 
 
 # --- hashes ------------------------------------------------------------------
-def _digest(domain: str, payload: bytes) -> str:
+def _digest(domain: Literal["table", "spec", "manifest"], payload: bytes) -> str:
     """SHA-256 over a `vplot-<domain>/<CANON_VERSION>\\n` tag + payload, `sha256:`-prefixed.
     The tag domain-separates table/spec/manifest hashes and ties them to the format version
-    so a serialization bump cannot collide with a stale hash."""
+    so a serialization bump cannot collide with a stale hash. The tag/payload split is
+    injective only because `domain` is a closed, slash-free literal set — an arbitrary
+    domain string must not be threaded in."""
     tag = f"vplot-{domain}/{CANON_VERSION}\n".encode()
     return "sha256:" + hashlib.sha256(tag + payload).hexdigest()
 
 
 def hash_dataset(csv_bytes: bytes) -> str:
     """The source-identity hash: raw CSV bytes, `sha256:`-prefixed, NO domain tag. Equals
-    what a spec's `dataset.hash` declares, so it stays format-free and byte-exact (row
-    order, CRLF, and a BOM all change it)."""
+    what a spec's `dataset.hash` declares (= `sha256sum` of the file), so it stays format-
+    free and byte-exact (row order, CRLF, and a BOM all change it). Untagged, a crafted CSV
+    could share a preimage with a tagged digest; that is inert because the VCert separates
+    the four hashes by SLOT (dataset/table/spec/manifest) and never compares bare digests
+    across domains, and the dataset is trusted source (the model emits only the spec)."""
     return "sha256:" + hashlib.sha256(csv_bytes).hexdigest()
 
 
@@ -174,18 +181,13 @@ def hash_table(table: Table) -> str:
 
 
 def hash_spec(spec: VPlotSpec) -> str:
-    """The validated spec's hash: deterministic msgspec re-encode (finding 8), NFC-normalized,
-    domain-tagged. NFC of the whole encoded JSON equals NFC of its string values (structural
-    chars are NFC-stable), so combining-mark variants of a filter value hash alike. Asserts
-    the pinned Unicode database first, since NFC follows it (memory Stack)."""
-    if unicodedata.unidata_version != EXPECTED_UNIDATA:
-        msg = (
-            f"Unicode database {unicodedata.unidata_version!r} != pinned {EXPECTED_UNIDATA!r}; "
-            "spec hashes would drift"
-        )
-        raise RuntimeError(msg)
-    encoded = _SPEC_ENCODER.encode(spec).decode("utf-8")
-    return _digest("spec", unicodedata.normalize("NFC", encoded).encode("utf-8"))
+    """The validated spec's hash: a deterministic msgspec re-encode (finding 8), domain-tagged.
+    Byte-faithful (NO Unicode normalization): the evaluator + DuckDB oracle compare string
+    filters verbatim by UTF-8 code-point order (VPlot_SEMANTICS sections 3/4/10), so the hash must
+    distinguish exactly what they distinguish — folding combining-mark variants here would
+    collide specs that select different rows. The re-encode still canonicalizes JSON surface
+    noise (whitespace, key order, escaping) to one form."""
+    return _digest("spec", _SPEC_ENCODER.encode(spec))
 
 
 def hash_manifest(manifest_bytes: bytes) -> str:
