@@ -106,13 +106,19 @@ def test_serialize_escapes_string_cells() -> None:
 
 
 def test_serialize_emits_raw_utf8_and_escapes_control_and_meta() -> None:
-    """Non-ASCII and U+2028 (a JS line separator, valid in JSON) emit as RAW UTF-8 — msgspec
+    """Non-ASCII + the JS separators U+2028/U+2029 (raw in JSON) emit as RAW UTF-8 — msgspec
     runs no \\uXXXX pass — while quote, backslash, and NUL are JSON-escaped, so no cell can
     break the NDJSON line structure."""
-    raw = _CAFE_COMPOSED + chr(0x2028)
+    raw = _CAFE_COMPOSED + chr(0x2028) + chr(0x2029)
     raw_table = Table(columns=(StringColumn(name="s"),), rows=((raw,),))
-    assert serialize_table(raw_table) == '["s:string"]\n["' + raw + '"]\n'  # verbatim, unescaped
-    quote, backslash = chr(0x22), chr(0x5C)
+    out = serialize_table(raw_table)
+    assert out == '["s:string"]\n["' + raw + '"]\n'  # verbatim, unescaped
+    out_bytes = out.encode("utf-8")  # assert on the actual hash input, at the byte level
+    backslash = chr(0x5C)
+    for ch in (chr(0x00E9), chr(0x2028), chr(0x2029)):  # e-acute, line sep, paragraph sep
+        assert ch.encode("utf-8") in out_bytes  # present as raw multi-byte UTF-8
+        assert (backslash + f"u{ord(ch):04x}").encode("utf-8") not in out_bytes  # never escaped
+    quote = chr(0x22)
     hazards = "a" + quote + backslash + chr(0x00)
     token = quote + "a" + backslash + quote + backslash + backslash + backslash + "u0000" + quote
     haz_table = Table(columns=(StringColumn(name="s"),), rows=((hazards,),))
@@ -132,6 +138,17 @@ def test_serialize_emits_raw_utf8_and_escapes_control_and_meta() -> None:
 def test_format_decimal_half_even_and_precision(value: Decimal, scale: int, rendered: str) -> None:
     table = Table(columns=(NumericColumn(name="v", scale=scale),), rows=((value,),))
     assert serialize_table(table).splitlines()[1] == f"[{rendered}]"
+
+
+def test_format_decimal_total_over_extreme_finite_magnitude() -> None:
+    """canon stays total over any finite Decimal: an astronomical magnitude formats without
+    raising InvalidOperation (the per-value context widens the exponent range past the default
+    ~1e6 Emax). Magnitude-bounding the trusted dataset is M1.4b's parse-boundary job."""
+    table = Table(columns=(NumericColumn(name="v", scale=0),), rows=((Decimal("1e1000000"),),))
+    rendered = serialize_table(table).splitlines()[1]
+    assert rendered.startswith("[1") and rendered.endswith("0]")
+    assert len(rendered) == 1_000_003  # "[" + "1" + 1e6 zeros + "]"
+    assert set(rendered[2:-1]) == {"0"}  # the body is exactly 1e6 zeros
 
 
 def test_negative_zero_is_folded() -> None:
@@ -261,7 +278,9 @@ def test_golden_hash_vectors() -> None:
     """Fixed digests for fixed inputs. Unlike the domain-tag tests (which recompute from
     serialize_table/tags), these pin the canonical FORM itself: any change to serialize_table,
     the tags, msgspec escaping, Decimal rendering, or CANON_VERSION flips a vector — catching
-    drift (msgspec / Python / locale) that the self-referential checks would pass."""
+    drift (msgspec / Python / locale) that the self-referential checks would pass. The last two
+    carry a non-ASCII filter and cell, so a msgspec switch from raw UTF-8 to escaped non-ASCII
+    would also flip a vector (finding B)."""
     assert hash_dataset(b"region,revenue\nWest,10\n") == (
         "sha256:4f8e01a5645ff7807c62c71cadc220a21a3f7641cdd48cd700cbcfb9036208b9"
     )
@@ -273,6 +292,16 @@ def test_golden_hash_vectors() -> None:
     )
     assert hash_manifest(b"manifest-bytes") == (
         "sha256:6b9268d3f0f95dd8ce488d3bc2dce35469ea29b9674d67d5c4b9ff3cc6376ad8"
+    )
+    assert hash_spec(_spec(_CAFE_COMPOSED)) == (
+        "sha256:e36a4396d094f0bb92d48d9a72ad8c51902953e06573baeefaff829fce85d29c"
+    )
+    cafe_table = Table(
+        columns=(StringColumn(name="city"), NumericColumn(name="rev", scale=2)),
+        rows=((_CAFE_COMPOSED, Decimal("10.50")),),
+    )
+    assert hash_table(cafe_table) == (
+        "sha256:72bbc5136f489b7201c3903aed10feac1764f370b9869bdfe78992e75eb9d025"
     )
 
 

@@ -28,7 +28,7 @@ the manifest, never in a Column, so it never enters the table hash. See memory S
 import hashlib
 import platform
 import unicodedata
-from decimal import ROUND_HALF_EVEN, Context, Decimal
+from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Context, Decimal
 from typing import ClassVar, Literal
 
 import msgspec
@@ -97,15 +97,19 @@ class Versions(Struct, frozen=True, kw_only=True):
 # --- typed-NDJSON serialization ----------------------------------------------
 def _format_decimal(value: Decimal, scale: int) -> str:
     """A numeric cell as a fixed-point JSON number token with exactly `scale` fractional
-    places, ROUND_HALF_EVEN. The context precision is computed per value so quantize
-    never raises InvalidOperation on a large magnitude (+2 covers a rounding carry);
-    negative zero is folded to positive so 0 and -0 share a canonical form."""
+    places, ROUND_HALF_EVEN. The per-value context sets precision = adjusted()+scale+2 AND
+    widens the exponent range to the decimal-module max, so quantize stays total over every
+    finite magnitude (+2 covers a rounding carry; the default Emax/Emin would reject a value
+    whose adjusted exponent exceeds ~1e6, e.g. Decimal("1e1000000")). Negative zero folds to
+    positive so 0 and -0 share a canonical form. Magnitude-bounding the trusted dataset is
+    M1.4b's parse-boundary job, not canon's."""
     if not value.is_finite():
         msg = f"non-finite numeric cell: {value!r}"
         raise ValueError(msg)
     quantum = Decimal((0, (1,), -scale))  # exact 10**-scale, context-free
     precision = max(value.adjusted() + scale + 2, 1)
-    quantized = value.quantize(quantum, context=Context(prec=precision, rounding=ROUND_HALF_EVEN))
+    context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
+    quantized = value.quantize(quantum, context=context)
     if quantized.is_zero():
         quantized = quantized.copy_abs()
     return format(quantized, f".{scale}f")
