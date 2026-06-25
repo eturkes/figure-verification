@@ -1,0 +1,27 @@
+{
+  "version": "vplot-0.1",
+  "dataset": {
+    "name": "weather.csv",
+    "hash": "sha256:2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08"
+  },
+  "transform": [
+    {
+      "op": "select",
+      "fields": [
+        "temp_c",
+        "precip_mm"
+      ]
+    }
+  ],
+  "mark": "scatter",
+  "encoding": {
+    "x": {
+      "field": "temp_c",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "precip_mm",
+      "type": "quantitative"
+    }
+  }
+}

@@ -25,6 +25,12 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
 - Validate spec against schema BEFORE recompute, so only allowlisted ops reach the evaluator (upholds `security.no_arbitrary_code`). No `eval`/`exec`/dynamic import anywhere.
 - Renderer pins `vl_version` + a bundled font for byte-stable SVG; one spec per render (Vega element-id counter is process-global). It emits NO Vega-Lite data transform: drop encoding-level `aggregate`/`bin`/`stack`/`impute`/`sort`, any `scale.domain`/`scale.type` override, and top-level `transform`; explicitly set `stack:null` + an explicit `sort` matching the recomputed row order to defeat Vega-Lite's IMPLICIT stacking/sorting — else displayed marks diverge from the inlined recomputed table and the inline-equals-pixels claim breaks.
 
+## M1.3 corpus + manifest (golden inputs)
+- Trusted manifest = `data/schemas/<stem>.json` (`columns` ordered = CSV header; numeric→`scale`≥0, temporal→`granularity`∈date|datetime, optional `unit`/`label`). `aqi` left unit-less ON PURPOSE = the B13 missing-unit fixture.
+- `month` (`YYYY-MM`) = `string`/`ordinal`, NOT `temporal` (semantics temporal = `YYYY-MM-DD`/datetime only, §2) → M1.4/M1.5/M1.6 treat month as ordinal; `weather.date` is the temporal exemplar.
+- `NA` (region/city) = literal string; only an empty cell is null (§2) → the hand-rolled M1.4 loader must NOT adopt pandas na_values defaults.
+- `examples/index.json` = corpus source of truth (good=10, 1/intent + semantically valid; bad=18 with `decodes`/`layer`/`check`/`reason`/`caught_by`; `enforced_by_construction` = checks with no model-spec attack vector). Good specs bake the live `sha256(raw CSV)` → editing a CSV breaks that binding BY DESIGN.
+
 ## Ops (dev loop)
 - venv is per-layer (uv bakes abs paths): container `.venv`, host `.venv-host`, both git-ignored. In non-interactive shells `export UV_PROJECT_ENVIRONMENT=.venv` (+ `UV_LINK_MODE=copy` to silence the cross-fs hardlink warning) before `uv` calls.
 - Run the gate `--locked` (`uv run --locked …`) so lockfile-pinned ruff/mypy/etc. — not a newer floor-satisfying release — define the result; the explicit ruff `select` avoids ALL's auto-enable, but individual prefixes still gain rules on upgrade, so uv.lock pins the rule set.

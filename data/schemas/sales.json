@@ -1,0 +1,29 @@
+{
+  "dataset": "sales.csv",
+  "columns": [
+    {
+      "name": "month",
+      "type": "string",
+      "label": "Month"
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "label": "Region"
+    },
+    {
+      "name": "revenue",
+      "type": "numeric",
+      "scale": 0,
+      "unit": "USD",
+      "label": "Revenue"
+    },
+    {
+      "name": "orders",
+      "type": "numeric",
+      "scale": 0,
+      "unit": "orders",
+      "label": "Orders"
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "version": "vplot-0.1",
+  "dataset": {
+    "name": "sales.csv",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "transform": [
+    {
+      "op": "group_by",
+      "keys": [
+        "month"
+      ]
+    },
+    {
+      "op": "aggregate",
+      "measures": [
+        {
+          "field": "revenue",
+          "fn": "sum",
+          "as": "total_revenue"
+        }
+      ]
+    },
+    {
+      "op": "sort",
+      "by": [
+        {
+          "field": "month",
+          "order": "ascending"
+        }
+      ]
+    }
+  ],
+  "mark": "bar",
+  "encoding": {
+    "x": {
+      "field": "month",
+      "type": "ordinal"
+    },
+    "y": {
+      "field": "total_revenue",
+      "type": "quantitative"
+    }
+  }
+}

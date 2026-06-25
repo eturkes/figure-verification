@@ -1,0 +1,246 @@
+{
+  "vplot_version": "vplot-0.1",
+  "note": "M1.3 golden corpus. Good specs decode AND are semantically valid (M1.4/M1.5 goldens). Bad specs: decodes=false => rejected now at decode_spec; decodes=true => decodes now, blocked later at `check`. Layer/check taxonomy = VPlot_SEMANTICS.md.",
+  "datasets": [
+    {
+      "name": "sales.csv",
+      "manifest": "data/schemas/sales.json",
+      "hash": "sha256:76356bebaa43bc76ee98fd6a1f1aa29cd7f127408fd43de87adcb7ed5df0478f"
+    },
+    {
+      "name": "weather.csv",
+      "manifest": "data/schemas/weather.json",
+      "hash": "sha256:2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08"
+    },
+    {
+      "name": "deliberately_dirty.csv",
+      "manifest": "data/schemas/deliberately_dirty.json",
+      "hash": "sha256:d56cac50200b53d014ab42703abf5a6046c75084159833147ddc4fcd19c25b76"
+    }
+  ],
+  "good_specs": [
+    {
+      "file": "g01_total_revenue_by_month.json",
+      "intent": "Show total revenue by month.",
+      "dataset": "sales.csv",
+      "mark": "bar",
+      "summary": "group_by month -> sum revenue as total_revenue -> sort month asc"
+    },
+    {
+      "file": "g02_revenue_by_region.json",
+      "intent": "Compare revenue by region.",
+      "dataset": "sales.csv",
+      "mark": "bar",
+      "summary": "group_by region -> sum revenue as total_revenue -> sort total_revenue desc"
+    },
+    {
+      "file": "g03_order_count_by_month.json",
+      "intent": "Show order count by month.",
+      "dataset": "sales.csv",
+      "mark": "line",
+      "summary": "group_by month -> sum orders as total_orders -> sort month asc"
+    },
+    {
+      "file": "g04_revenue_vs_orders.json",
+      "intent": "Plot revenue versus orders.",
+      "dataset": "sales.csv",
+      "mark": "scatter",
+      "summary": "select revenue, orders -> raw points"
+    },
+    {
+      "file": "g05_avg_revenue_by_region.json",
+      "intent": "Show average revenue by region.",
+      "dataset": "sales.csv",
+      "mark": "bar",
+      "summary": "group_by region -> mean revenue as avg_revenue -> sort region asc"
+    },
+    {
+      "file": "g06_max_temp_by_city.json",
+      "intent": "Show maximum temperature by city.",
+      "dataset": "weather.csv",
+      "mark": "bar",
+      "summary": "group_by city -> max temp_c as max_temp -> sort max_temp desc"
+    },
+    {
+      "file": "g07_temp_over_time_by_city.json",
+      "intent": "Plot temperature over time for each city.",
+      "dataset": "weather.csv",
+      "mark": "line",
+      "summary": "select date, city, temp_c -> line with color=city"
+    },
+    {
+      "file": "g08_na_revenue_by_month.json",
+      "intent": "Show total revenue by month for the NA region.",
+      "dataset": "sales.csv",
+      "mark": "bar",
+      "summary": "filter region eq NA -> group_by month -> sum revenue -> sort month asc"
+    },
+    {
+      "file": "g09_min_revenue_by_month.json",
+      "intent": "Show minimum revenue by month.",
+      "dataset": "sales.csv",
+      "mark": "bar",
+      "summary": "group_by month -> min revenue as min_revenue -> sort month asc"
+    },
+    {
+      "file": "g10_temp_vs_precip.json",
+      "intent": "Plot temperature versus precipitation.",
+      "dataset": "weather.csv",
+      "mark": "scatter",
+      "summary": "select temp_c, precip_mm -> raw points"
+    }
+  ],
+  "bad_specs": [
+    {
+      "file": "b01_unknown_mark.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (Mark enum)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "mark 'pie' is not in {bar,line,scatter}"
+    },
+    {
+      "file": "b02_unknown_transform_op.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (transform tag)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "transform op 'pivot' is outside the allowlisted tagged union"
+    },
+    {
+      "file": "b03_unknown_agg_fn.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (AggFn enum)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "aggregate fn 'median' is not in {sum,mean,count,min,max}"
+    },
+    {
+      "file": "b04_float_filter_value.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (FilterValue int|str, strict)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "filter value 1.5 is a JSON float; strict decode rejects float tokens"
+    },
+    {
+      "file": "b05_unknown_channel_field.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (forbid_unknown_fields)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "channel carries unknown key 'title'; the model proposes no titles"
+    },
+    {
+      "file": "b06_wrong_version.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (version Literal)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "version 'vplot-0.2' is not the pinned literal 'vplot-0.1'"
+    },
+    {
+      "file": "b17_injection_encoding_aggregate.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (forbid_unknown_fields)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "Vega-Lite encoding-level 'aggregate' refused at decode (M1.6 injection vector)"
+    },
+    {
+      "file": "b18_injection_top_level_url.json",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (forbid_unknown_fields)",
+      "caught_by": "decode_spec (M1.2a)",
+      "reason": "Vega-Lite top-level 'url' loader refused at decode (M1.6 injection vector)"
+    },
+    {
+      "file": "b07_nonexistent_field.json",
+      "layer": "dataset-binding",
+      "decodes": true,
+      "check": "schema.fields_exist",
+      "caught_by": "M1.5",
+      "reason": "field 'profit' is absent from sales.csv"
+    },
+    {
+      "file": "b08_dataset_hash_mismatch.json",
+      "layer": "dataset-binding",
+      "decodes": true,
+      "check": "dataset.hash_matches_source",
+      "caught_by": "M1.5",
+      "reason": "declared dataset.hash does not match the sales.csv source bytes"
+    },
+    {
+      "file": "b09_sum_on_string_field.json",
+      "layer": "dataset-binding",
+      "decodes": true,
+      "check": "schema.field_types_match",
+      "caught_by": "M1.5 (input-type rule, semantics §4)",
+      "reason": "sum requires a numeric column; region is string"
+    },
+    {
+      "file": "b10_filter_int_vs_string.json",
+      "layer": "dataset-binding",
+      "decodes": true,
+      "check": "filter coercion (semantics §3)",
+      "caught_by": "M1.4 eval",
+      "reason": "int literal 5 cannot coerce to the string column region"
+    },
+    {
+      "file": "b11_axis_type_mismatch.json",
+      "layer": "encoding",
+      "decodes": true,
+      "check": "encoding.axis_types_match_fields",
+      "caught_by": "M1.5",
+      "reason": "y typed quantitative but region is a string column"
+    },
+    {
+      "file": "b12_encoding_field_absent.json",
+      "layer": "encoding",
+      "decodes": true,
+      "check": "encoding.fields_exist_in_plotted_table",
+      "caught_by": "M1.5",
+      "reason": "orders is dropped by the aggregate; not in the plotted table {month,total_revenue}"
+    },
+    {
+      "file": "b13_missing_y_unit.json",
+      "layer": "encoding",
+      "decodes": true,
+      "check": "label.quantitative_units_present",
+      "caught_by": "M1.5",
+      "reason": "aqi is quantitative but the weather manifest declares no unit for it"
+    },
+    {
+      "file": "b14_group_by_without_aggregate.json",
+      "layer": "transform",
+      "decodes": true,
+      "check": "group_by placement (semantics §4)",
+      "caught_by": "M1.4 eval",
+      "reason": "group_by is valid only immediately before an aggregate; here it precedes a sort"
+    },
+    {
+      "file": "b15_aggregate_as_collides_group_key.json",
+      "layer": "transform",
+      "decodes": true,
+      "check": "aggregate-output / group-key collision (semantics §5)",
+      "caught_by": "M1.4 eval",
+      "reason": "measure output 'region' collides with the group key 'region'"
+    },
+    {
+      "file": "b16_sort_fields_not_distinct.json",
+      "layer": "transform",
+      "decodes": true,
+      "check": "sort-field distinctness (semantics §5)",
+      "caught_by": "M1.4 eval",
+      "reason": "sort.by repeats the field 'month'"
+    }
+  ],
+  "enforced_by_construction": {
+    "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists (M1.5/M1.6) -> no bad-spec attack vector",
+    "transform.filters_declared": "every filter is a declared transform.filter op; the verifier recomputes from declared transforms only -> an undeclared filter is unrepresentable",
+    "scale.bar_y_zero": "the renderer sets the bar quantitative baseline to 0; the model proposes no scale (M1.6) -> a non-zero baseline is unrepresentable",
+    "encoding.legend_domain_matches_data": "the renderer derives the color legend domain from the recomputed data (M1.6)",
+    "derived_value_mismatch": "DROPPED (roadmap data-flow): the model supplies no plotted values, so a derived-value lie is impossible by construction"
+  }
+}

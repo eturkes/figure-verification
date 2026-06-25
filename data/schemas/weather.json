@@ -1,0 +1,36 @@
+{
+  "dataset": "weather.csv",
+  "columns": [
+    {
+      "name": "date",
+      "type": "temporal",
+      "granularity": "date",
+      "label": "Date"
+    },
+    {
+      "name": "city",
+      "type": "string",
+      "label": "City"
+    },
+    {
+      "name": "temp_c",
+      "type": "numeric",
+      "scale": 1,
+      "unit": "°C",
+      "label": "Temperature"
+    },
+    {
+      "name": "precip_mm",
+      "type": "numeric",
+      "scale": 1,
+      "unit": "mm",
+      "label": "Precipitation"
+    },
+    {
+      "name": "aqi",
+      "type": "numeric",
+      "scale": 0,
+      "label": "Air quality index"
+    }
+  ]
+}

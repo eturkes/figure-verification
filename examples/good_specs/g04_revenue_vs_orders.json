@@ -1,0 +1,27 @@
+{
+  "version": "vplot-0.1",
+  "dataset": {
+    "name": "sales.csv",
+    "hash": "sha256:76356bebaa43bc76ee98fd6a1f1aa29cd7f127408fd43de87adcb7ed5df0478f"
+  },
+  "transform": [
+    {
+      "op": "select",
+      "fields": [
+        "revenue",
+        "orders"
+      ]
+    }
+  ],
+  "mark": "scatter",
+  "encoding": {
+    "x": {
+      "field": "revenue",
+      "type": "quantitative"
+    },
+    "y": {
+      "field": "orders",
+      "type": "quantitative"
+    }
+  }
+}

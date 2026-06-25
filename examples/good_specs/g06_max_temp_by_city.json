@@ -1,0 +1,45 @@
+{
+  "version": "vplot-0.1",
+  "dataset": {
+    "name": "weather.csv",
+    "hash": "sha256:2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08"
+  },
+  "transform": [
+    {
+      "op": "group_by",
+      "keys": [
+        "city"
+      ]
+    },
+    {
+      "op": "aggregate",
+      "measures": [
+        {
+          "field": "temp_c",
+          "fn": "max",
+          "as": "max_temp"
+        }
+      ]
+    },
+    {
+      "op": "sort",
+      "by": [
+        {
+          "field": "max_temp",
+          "order": "descending"
+        }
+      ]
+    }
+  ],
+  "mark": "bar",
+  "encoding": {
+    "x": {
+      "field": "city",
+      "type": "nominal"
+    },
+    "y": {
+      "field": "max_temp",
+      "type": "quantitative"
+    }
+  }
+}
