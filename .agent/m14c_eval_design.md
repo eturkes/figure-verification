@@ -1,12 +1,19 @@
-# M1.4c/d eval design — pre-derived recipe (SCAFFOLDING → delete at M1 review)
+# M1.4d/e eval design — pre-derived recipe (SCAFFOLDING → delete at M1 review)
 
 Implement `verifier/eval.py` from THIS doc; do not re-derive. Goldens + branch map + refactor code below are
 hand-derived vs `VPlot_SEMANTICS.md` §3–6 and design-verified, NOT run-verified — the prior session overflowed
 before writing code. Run-verified THIS session: the goldens (re-checked arithmetically vs the CSVs) and the Step-0
-exponent guard (DoS + naive-equivalence); the eval recipe itself stays design-verified only. The M1.4e DuckDB
+exponent guard (DoS + naive-equivalence); the eval recipe itself stays design-verified only. The M1.4f DuckDB
 oracle WILL independently confirm the goldens → treat them as expected-values to implement toward, confirm each by
 running the gate. Skip a full LINEAR re-read of §3–6 — this doc distills it; still spot-check the cited § per helper
 against the contract as you implement, opening the specific § for any uncertainty.
+
+## Implement by transcription — not re-derivation (the documented overflow cause)
+This recipe IS the verified design; the evaluator unit (M1.4d) fits a 200K window only by transcribing it. Three M1.4 sessions overflowed — the last re-confirmed every golden against the CSVs, re-read `VPlot_SEMANTICS.md` §3–6 whole, and re-mapped every branch, all redundant. So:
+- The goldens below are `[VERIFIED]` → assert their listed rows verbatim; the independent re-check is the M1.4f DuckDB oracle, never this session. Skip the CSVs.
+- Apply the worked-out coverage + lint/type gotchas as written; do not re-map branches or re-discover rules.
+- Read only: this recipe + the (M1.4c-refactored) `ingest.py` primitive signatures + `schema.py` struct/enum names (grep, not full-read). This recipe supersedes `VPlot_SEMANTICS.md` for implementation; open a §ref only for a concrete ambiguity.
+- Order: transcribe `eval.py` → write the M1.4d tests → run the gate → fix only what it flags. Net work ≈ one module + its tests; it fits when transcribed, not derived.
 
 ## Reads (minimal — the overflow cause was over-reading)
 `src/verifier/`: `canon.py` (Cell/Column/Table + `_format_decimal`), `ingest.py` (`load_table`, `Manifest`,
@@ -15,9 +22,9 @@ against the contract as you implement, opening the specific § for any uncertain
 `canon.Table` asserts, NOT syrupy). `data/sales.csv` + `data/weather.csv` (confirm the weather goldens g06/g07/g10).
 `.agent/memory.md` eval-relevant invariants (already durable, do not restate in code): the `Column` kind-union +
 `Cell`/`_format_decimal` rules, deferred string-canonicalization, the PARSE-vs-VERIFY error layering
-(`VerificationError(msg, *, check=…)`), and the M1.4c filter-coercion entry.
+(`VerificationError(msg, *, check=…)`), and the M1.4d filter-coercion entry.
 
-## Step 0 — ingest refactor (do FIRST; then run existing ingest tests = cheap green check)
+## Step 0 — ingest refactor (= unit M1.4c; do FIRST; then run existing ingest tests = cheap green check)
 Split `_coerce_numeric` so eval's filter coercion reuses parse+precision WITHOUT the table magnitude bound
 (§3 bounds a filter LITERAL by parse+precision+format only — it is COMPARED, never stored). Design-verified
 coverage-safe with existing ingest tests (check names unchanged; tests assert `.check` only; precision-before-
@@ -132,7 +139,7 @@ Helpers:
   column TYPE via `isinstance(column, canon.NumericColumn/TemporalColumn/StringColumn)`, NOT `.kind ==`, so mypy
   narrows `.scale`/`.granularity`; the third arm is the `else` tail like `evaluate`'s Sort — exhaustive, reachable.
   INVARIANT — specs reaching `evaluate` are decode-origin (`schema.decode_spec`) and msgspec rejects `bool` for
-  `FilterValue = int | str` at the parse boundary, so `value` is a genuine `int | str` here; M1.4c filter-value
+  `FilterValue = int | str` at the parse boundary, so `value` is a genuine `int | str` here; M1.4d filter-value
   tests build specs via decode, NOT direct `Filter(value=…)` construction that would bypass it):
     - `isinstance(column, canon.NumericColumn)`: `isinstance(value,int)` (genuine int per the decode-origin invariant above, no bool) → `Decimal(value)`
       [exact, compares by value]; `isinstance(value,str)` → `ingest._decimal_at_scale(value, column.scale,
@@ -180,7 +187,7 @@ Helpers:
   start is REQUIRED: `sum`'s no-start overload types as `Decimal | Literal[0]` (mypy-strict-verified), failing BOTH
   the `Cell` return AND `mean_at_scale`'s `Decimal` arg; confining `sum` to the sum/mean arms keeps a string/temporal
   min/max off the Decimal `sum`.
-- `mean_at_scale(total: Decimal, count: int, scale: int) -> Decimal` (PUBLIC — M1.4e oracle reuses for parity;
+- `mean_at_scale(total: Decimal, count: int, scale: int) -> Decimal` (PUBLIC — M1.4f oracle reuses for parity;
   Decimal-exact, ONE HALF_EVEN rounding via Fraction → no float, no Decimal double-round):
 ```python
 rounded = round(Fraction(total) / count, scale)          # Fraction rounded to `scale` places, HALF_EVEN
@@ -208,7 +215,16 @@ Coverage gotchas (already worked out — honor to avoid gate cycles): NO bare al
 `cast` has no runtime branch; for-loops over always-non-empty iterables are coverage-safe; isinstance-`else`-Sort is
 reachable. Decimal context imports (Context/MAX_EMAX/MIN_EMIN/ROUND_HALF_EVEN/InvalidOperation) live in ingest, not eval.
 
-## Goldens (hand-derived vs §3–6; oracle confirms at M1.4e)
+## Anticipated lint/type friction (apply; the gate is the final arbiter)
+Surfaced while drafting `eval.py` (gate unrun then — heads-up, let ruff/mypy confirm):
+- `min`/`max` over one homogeneous column's cells type fine as `SupportsRichComparison`; if mypy balks at `Decimal | str`, narrow by the measure-output kind before the call.
+- `_sort_key` → `tuple[bool, Decimal | str]` with a NON-None slot-2 sentinel (`Decimal(0)` numeric, `""` temporal/string) so every key is orderable; never return `None`.
+- multi-pass stable sort: bind loop vars as lambda defaults `lambda row, i=index, col=column: ...` (ruff B023).
+- `sum(decimals, Decimal(0))` — pass the `Decimal(0)` start so the result stays `Decimal`.
+- import eval helpers BY NAME in the test (`from verifier.eval import evaluate, mean_at_scale, ...`); a bare `import eval` trips ruff A004 (builtin shadow) — the module file `eval.py` is fine.
+- EM101/EM102: bind the message to a `msg` local before `raise VerificationError(msg, check=...)`.
+
+## Goldens (hand-derived vs §3–6; oracle confirms at M1.4f)
 sales: month(str) region(str) revenue(num0) orders(num0); rows source order:
 (2026-01,NA,12000,80)(2026-01,EU,9000,61)(2026-02,NA,15000,93)(2026-02,EU,11000,70)(2026-03,NA,13000,88)(2026-03,EU,14000,86).
 weather: date(temporal/date) city(str) temp_c(num1) precip_mm(num1) aqi(num0); 8 rows — CONFIRM g06/g07/g10 vs data/weather.csv.
@@ -242,7 +258,7 @@ asc, month desc]). Eval-layer bad specs select via `decodes==true and "M1.4" in 
 M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-absent) b13(unit).
 
 ## Test allocation (each commit stays 100% branch coverage = code + its covering tests together)
-### M1.4c — eval.py + ingest refactor + 100% coverage
+### M1.4d — eval.py + 100% coverage
 - 6 eval-bad specs raise their check: b07 schema.fields_exist, b09 schema.field_types_match, b10 filter.value_type,
   b14 transform.group_by_placement, b15 aggregate.output_unique, b16 sort.fields_distinct.
 - 3 VERIFIED anchor goldens (sales-only, real correctness asserts — not "runs"): g01, g04, g05.
@@ -260,8 +276,8 @@ M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-ab
     `active_keys=[]`).
   - count fn (non-null count, scale 0); all-null group → count 0 + sum/mean/min/max null (zero non-nulls).
   - group_by with a NULL key cell → the null key forms its own group (emitted, not dropped; §5).
-  - min/max on NUMERIC, TEMPORAL, and STRING — ALL inline in M1.4c (g06/g09 land in M1.4d, so the numeric min/max
-    arm has NO M1.4c golden; cover numeric min AND max inline here).
+  - min/max on NUMERIC, TEMPORAL, and STRING — ALL inline in M1.4d (g06/g09 land in M1.4e, so the numeric min/max
+    arm has NO M1.4d golden; cover numeric min AND max inline here).
   - filter §3 coercion rows beyond b10's int→numeric error: int→numeric ok, string→numeric ok, string→numeric
     over-precise→raise, string→numeric unparsable→raise, string→temporal ok, string→temporal bad→raise,
     int→temporal→raise, int→string→raise, string→string verbatim.
@@ -277,7 +293,7 @@ M1.5-layer (eval SUCCEEDS — defer the failure): b08(hash) b11(axis) b12(enc-ab
   - mean HALF_EVEN-to-even (e.g. the 0.005@2→0.00 case) — direct `mean_at_scale` or a 2-row group.
 - Accept: 6 bad → specific check; g01/g04/g05 row-for-row; aggregation Decimal-exact (no float); gate green @100% branch.
 
-### M1.4d — golden-corpus completion + determinism anchor (test-only; code already 100% covered)
+### M1.4e — golden-corpus completion + determinism anchor (test-only; code already 100% covered)
 - remaining hand-verified goldens g02,g03,g06,g07,g08,g09,g10 (g06/g07/g10 confirm vs data/weather.csv).
 - b08/b11/b12/b13 → eval SUCCEEDS (eval never inspects encoding/hash; failure is M1.5).
 - no-op spec edit determinism: a semantically no-op edit (a sort superseded by a later sort, or a pre-aggregate
