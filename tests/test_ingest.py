@@ -130,6 +130,18 @@ def test_numeric_scale_38_min_value() -> None:
     assert ingest._coerce_numeric("1E-38", 38) == Decimal("1E-38")
 
 
+def test_coerce_numeric_zero_with_huge_exponent_does_not_crash() -> None:
+    # A zero carries the column's scale at any exponent; a hostile cell like "0E+999..." (whose
+    # adjusted() is the huge exponent in the C decimal impl, not 0) must coerce to the canonical
+    # at-scale zero, never drive the quantize context past MAX_PREC into an uncaught ValueError
+    # (a load_table DoS reachable from a 19-char CSV cell).
+    assert ingest._coerce_numeric("0E+999999999999999999", 0) == Decimal(0)
+    z38 = ingest._coerce_numeric("0E+999999999999999999", 38)
+    assert z38 == 0 and z38.as_tuple().exponent == -38
+    neg = ingest._coerce_numeric("-0E+999999999999999999", 2)
+    assert neg == 0 and not neg.is_signed()  # -0 still folds to +0
+
+
 def test_datetime_cell_canonical() -> None:
     manifest = Manifest(
         dataset="t.csv", columns=(TemporalColumnSpec(name="ts", granularity="datetime"),)

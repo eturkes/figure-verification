@@ -128,16 +128,20 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
         raise VerificationError(msg, check="data.numeric_value")
     # adjusted() is the most-significant digit's exponent; an integer part of d digits has
     # adjusted == d-1, so the DECIMAL(38, scale) integer width caps it at 37 - scale. The
-    # is_zero() guard admits 0 at any scale (its adjusted() is 0, which would fail at high scale).
+    # is_zero() guard admits 0 at any scale -- a zero is representable at every scale, and its
+    # adjusted() is its exponent (0 for "0", but huge for "0E+999..."), so short-circuiting on
+    # is_zero() both keeps that zero in-bounds and skips the adjusted() call here.
     if not (value.is_zero() or value.adjusted() <= _MAX_PRECISION - 1 - scale):
         msg = f"numeric value {text!r} exceeds DECIMAL({_MAX_PRECISION}, {scale}) magnitude"
         raise VerificationError(msg, check="data.numeric_value")
     # Excess-precision check, mirroring canon._format_decimal's widened context so quantize
     # stays total over every finite magnitude: a value with > scale places rounds away from
     # itself, so quantized != value flags it (exact-at-scale values, trailing zeros included,
-    # are unchanged).
+    # are unchanged). adjusted() is clamped to 0 for a zero -- the is_zero() exemption above lets
+    # a huge-exponent zero ("0E+999...") reach here, and its adjusted() exponent unclamped pushes
+    # precision past MAX_PREC, making Context() raise an uncaught ValueError (a load_table DoS).
     quantum = Decimal((0, (1,), -scale))
-    precision = max(value.adjusted() + scale + 2, 1)
+    precision = max((0 if value.is_zero() else value.adjusted()) + scale + 2, 1)
     context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
     quantized = value.quantize(quantum, context=context)
     if quantized != value:

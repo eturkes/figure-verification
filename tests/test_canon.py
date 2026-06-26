@@ -149,6 +149,13 @@ def test_format_decimal_total_over_extreme_finite_magnitude() -> None:
     assert rendered.startswith("[1") and rendered.endswith("0]")
     assert len(rendered) == 1_000_003  # "[" + "1" + 1e6 zeros + "]"
     assert set(rendered[2:-1]) == {"0"}  # the body is exactly 1e6 zeros
+    # A huge-exponent zero (whose adjusted() is the exponent, not 0) is the case that would
+    # else push the per-value precision past MAX_PREC; it folds to the canonical at-scale zero.
+    huge_zero = Table(
+        columns=(NumericColumn(name="v", scale=2),),
+        rows=((Decimal("0E+999999999999999999"),),),
+    )
+    assert serialize_table(huge_zero).splitlines()[1] == "[0.00]"
 
 
 def test_negative_zero_is_folded() -> None:

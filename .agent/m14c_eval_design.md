@@ -72,11 +72,12 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
         msg = f"numeric value {text!r} exceeds DECIMAL({_MAX_PRECISION}, {scale}) magnitude"
         raise VerificationError(msg, check="data.numeric_value")
     # canonical stored form: re-quantize to exactly `scale` places (value was proved exact at scale by
-    # _decimal_at_scale; the magnitude bound above — zero exempt — keeps this quantize bounded, no DoS).
-    # Restores the original at-scale stored-cell behavior (byte-identical, verified); the filter path skips
-    # this (a literal is only COMPARED).
+    # _decimal_at_scale). adjusted() is clamped to 0 for a zero: the magnitude bound above exempts zero, and
+    # a zero's adjusted() is its exponent (huge for "0E+999..."), which unclamped pushes precision past
+    # MAX_PREC -> Context() raises an uncaught ValueError (a load_table DoS). Restores the original at-scale
+    # stored-cell behavior (byte-identical, verified); the filter path skips this (a literal is only COMPARED).
     quantum = Decimal((0, (1,), -scale))
-    precision = max(value.adjusted() + scale + 2, 1)
+    precision = max((0 if value.is_zero() else value.adjusted()) + scale + 2, 1)
     context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
     normalized = value.quantize(quantum, context=context)
     return normalized.copy_abs() if normalized.is_zero() else normalized
