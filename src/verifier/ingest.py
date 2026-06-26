@@ -3,7 +3,7 @@
 
 The spec-independent layer between `canon` (value model + hashing) and `eval` (the
 transform pipeline). It turns the trusted per-column manifest plus the raw CSV bytes
-into a `canon.Table` of SOURCE rows in SOURCE order (the M1.4c evaluator applies the
+into a `canon.Table` of SOURCE rows in SOURCE order (the M1.4d evaluator applies the
 transforms and the total-sort closure), or raises on a data-integrity violation.
 Decimal-exact, no float. Implements VPlot_SEMANTICS.md sections 2-3 (data model +
 numeric/temporal parse).
@@ -16,7 +16,7 @@ Two layers, two failure types (VPlot_SEMANTICS.md section 9):
              VerificationError(check="data.*") on any data-integrity breach (charset,
              header, row width, un-coercible numeric/temporal cell).
 
-The numeric/temporal coercers are reused by the M1.4c evaluator for filter-value
+The numeric/temporal coercers are reused by the M1.4d evaluator for filter-value
 coercion (re-tagged filter.value_type there); they raise the data.* check here.
 """
 
@@ -34,7 +34,7 @@ from verifier import canon
 from verifier.errors import VerificationError
 from verifier.schema import DatasetName, FieldName, _Base, _reject_duplicate_keys
 
-# DECIMAL(38, scale) is the M1.4d DuckDB oracle's column type: 38 total significant
+# DECIMAL(38, scale) is the M1.4f DuckDB oracle's column type: 38 total significant
 # digits, `scale` of them fractional. The two numeric bounds below (magnitude + excess
 # precision) keep every source cell inside that domain so the dual engines never diverge.
 _MAX_PRECISION = 38
@@ -204,7 +204,7 @@ def load_table(csv_bytes: bytes, manifest: Manifest) -> canon.Table:
     The CSV decodes as UTF-8 (data.charset), its header must equal the manifest column
     names in order (data.header), and every row's field count must match (data.row_width);
     each cell coerces to its column type (data.numeric_value / data.temporal_value). The
-    rows are NOT yet total-sorted -- that closure is the M1.4c evaluator's."""
+    rows are NOT yet total-sorted -- that closure is the M1.4d evaluator's."""
     columns = tuple(_canon_column(c) for c in manifest.columns)
     try:
         text = csv_bytes.decode("utf-8")

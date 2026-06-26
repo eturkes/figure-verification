@@ -207,7 +207,7 @@ def test_column_kind_discriminator() -> None:
 def test_table_cells_are_byte_faithful() -> None:
     """Cells are hashed byte-faithfully (NO Unicode normalization): a precomposed vs a
     decomposed "cafe" — NFC-equivalent yet byte-different — must serialize and hash APART,
-    locking against a future encoder that normalizes cells (the M1.4c/M1.6 trap)."""
+    locking against a future encoder that normalizes cells (the M1.4d/M1.6 trap)."""
     assert unicodedata.normalize("NFC", _CAFE_DECOMPOSED) == _CAFE_COMPOSED  # same NFC class
     assert _CAFE_COMPOSED != _CAFE_DECOMPOSED  # different code points
     composed = Table(columns=(StringColumn(name="s"),), rows=((_CAFE_COMPOSED,),))

@@ -109,7 +109,7 @@ def test_numeric_grammar_is_decimal_string() -> None:
     # filter values), so the source grammar is deliberately Decimal's -- NOT a stricter canonical
     # form. Numerics canonicalize by VALUE (every form below collapses to one Decimal), unlike
     # temporals which canonicalize by TEXT and so must be canonical-strict. DuckDB's DECIMAL cast
-    # accepts these same forms (measured); the M1.4d oracle ingests already-coerced Decimals and
+    # accepts these same forms (measured); the M1.4f oracle ingests already-coerced Decimals and
     # never re-parses source text, so the lax grammar raises no dual-engine divergence.
     cases = [
         ("1_000", 0, Decimal(1000)),

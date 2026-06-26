@@ -1,4 +1,4 @@
-# M1.4d/e eval design — pre-derived recipe (SCAFFOLDING → delete at M1 review)
+# M1.4c/d/e eval design — pre-derived recipe (SCAFFOLDING → delete at M1 review)
 
 Implement `verifier/eval.py` from THIS doc; do not re-derive. Goldens + branch map + refactor code below are
 hand-derived vs `VPlot_SEMANTICS.md` §3–6 and design-verified, NOT run-verified — the prior session overflowed
@@ -10,9 +10,9 @@ against the contract as you implement, opening the specific § for any uncertain
 
 ## Implement by transcription — not re-derivation (the documented overflow cause)
 This recipe IS the verified design; the evaluator unit (M1.4d) fits a 200K window only by transcribing it. Three M1.4 sessions overflowed — the last re-confirmed every golden against the CSVs, re-read `VPlot_SEMANTICS.md` §3–6 whole, and re-mapped every branch, all redundant. So:
-- The goldens below are `[VERIFIED]` → assert their listed rows verbatim; the independent re-check is the M1.4f DuckDB oracle, never this session. Skip the CSVs.
+- The goldens below are `[VERIFIED]` → assert their listed rows verbatim; their independent re-check is the M1.4f DuckDB oracle, not this session — so you need not recompute them from the CSVs (redundant, not forbidden).
 - Apply the worked-out coverage + lint/type gotchas as written; do not re-map branches or re-discover rules.
-- Read only: this recipe + the (M1.4c-refactored) `ingest.py` primitive signatures + `schema.py` struct/enum names (grep, not full-read). This recipe supersedes `VPlot_SEMANTICS.md` for implementation; open a §ref only for a concrete ambiguity.
+- Read only: this recipe + the (M1.4c-refactored) `ingest.py` primitive signatures + `schema.py` struct/enum names (grep, not full-read). This recipe is the implementation guide; `VPlot_SEMANTICS.md` stays the meaning contract — on any conflict SEMANTICS wins and the recipe is the bug. Spot-check the cited § per helper as you transcribe; open the full §ref only for a concrete ambiguity.
 - Order: transcribe `eval.py` → write the M1.4d tests → run the gate → fix only what it flags. Net work ≈ one module + its tests; it fits when transcribed, not derived.
 
 ## Reads (minimal — the overflow cause was over-reading)
@@ -24,12 +24,11 @@ This recipe IS the verified design; the evaluator unit (M1.4d) fits a 200K windo
 `Cell`/`_format_decimal` rules, deferred string-canonicalization, the PARSE-vs-VERIFY error layering
 (`VerificationError(msg, *, check=…)`), and the M1.4d filter-coercion entry.
 
-## Step 0 — ingest refactor (= unit M1.4c; do FIRST; then run existing ingest tests = cheap green check)
+## Step 0 — ingest refactor (= unit M1.4c; do FIRST; then `uv run --locked pytest tests/test_ingest.py --no-cov` = cheap green check)
 Split `_coerce_numeric` so eval's filter coercion reuses parse+precision WITHOUT the table magnitude bound
-(§3 bounds a filter LITERAL by parse+precision+format only — it is COMPARED, never stored). Design-verified
-coverage-safe with existing ingest tests (check names unchanged; tests assert `.check` only; precision-before-
+(§3 bounds a filter LITERAL by parse+precision+format only — it is COMPARED, never stored). Behavior-preserving — the existing value-asserting ingest tests lock ingest output (check names unchanged; tests assert `.check` only; precision-before-
 magnitude reorder confirmed for `"9"*39`@scale1 → precision passes/magnitude fails → `data.numeric_value`, and
-`"0.5"`@scale0 → precision fails → `data.numeric_value`). CONFIRM by running `pytest tests/test_ingest.py`.
+`"0.5"`@scale0 → precision fails → `data.numeric_value`). CONFIRM by running `uv run --locked pytest tests/test_ingest.py --no-cov` (a test subset trips `fail_under=100` without `--no-cov`).
 The exponent guard (skip quantize when `exponent >= -scale`) is DoS prevention AND a VALUE no-op: a finite Decimal
 with `exponent >= -scale` already has <= scale fractional places, so quantize cannot change its VALUE. The guard
 matters because the UNGUARDED quantize crashes on a huge-exponent literal (e.g. `"1e999999999999999999"`, 20 chars,
