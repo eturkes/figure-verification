@@ -110,12 +110,10 @@ def _canon_column(column: ManifestColumn) -> canon.Column:
 
 
 # --- cell coercion (VPlot_SEMANTICS.md section 3) ----------------------------
-def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
-    """A numeric token -> a finite Decimal proved exact at `scale`, or raise `check`. Folds
-    -0 to +0 and does NOT bound magnitude -- the caller decides: a STORED cell adds the
-    DECIMAL(38, scale) magnitude bound in _coerce_numeric, but a filter LITERAL is only
-    COMPARED, so section 3 bounds it by parse + finiteness + precision alone. The evaluator
-    reuses this for string->numeric filter coercion, passing check="filter.value_type"."""
+def _parse_finite_decimal(text: str, *, check: str) -> Decimal:
+    """A numeric token -> a finite Decimal, or raise `check`. Parse + finiteness only, no scale
+    or magnitude bound -- the shared front half of the stored-cell coercer and the filter-literal
+    primitive, so each layers its own constraints in its own order on one parsed value."""
     try:
         value = Decimal(text)
     except InvalidOperation as exc:
@@ -124,14 +122,19 @@ def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
     if not value.is_finite():
         msg = f"numeric value {text!r} is not finite"
         raise VerificationError(msg, check=check)
-    # Excess-precision check, run ONLY when the value can carry excess places. A finite Decimal
-    # whose as_tuple().exponent >= -scale already has <= scale fractional places, so quantizing it
-    # is a value no-op -- and on a hostile huge-exponent literal ("1e999999999999999999", 20 chars
-    # within the filter max_length=128) the unguarded quantize is a DoS: Context(prec > MAX_PREC)
-    # raises when adjusted() == MAX_PREC, else materializes ~1e18 digits (MemoryError/hang).
-    # Guarding on the exponent skips both losslessly; only exponent < -scale carries (bounded, since
-    # a huge POSITIVE exponent lands in the skip arm) excess places worth quantizing to detect. The
-    # widened context mirrors canon._format_decimal so quantize stays total over every in-range mag.
+    return value
+
+
+def _reject_excess_precision(value: Decimal, text: str, scale: int, *, check: str) -> None:
+    """Raise `check` if finite `value` carries more than `scale` fractional places. Runs the test
+    ONLY when the value can carry excess places: a Decimal whose as_tuple().exponent >= -scale
+    already has <= scale places, so quantizing it is a value no-op -- and on a hostile huge-exponent
+    literal ("1e999999999999999999", 20 chars within the filter max_length=128) the unguarded
+    quantize is a DoS: Context(prec > MAX_PREC) raises when adjusted() == MAX_PREC, else builds
+    ~1e18 digits (MemoryError/hang). Guarding on the exponent skips both losslessly; only exponent <
+    -scale carries (bounded, since a huge POSITIVE exponent lands in the skip arm) excess places
+    worth quantizing to detect. The widened context mirrors canon._format_decimal so quantize stays
+    total over every in-range magnitude. Shared by both numeric coercers -- one DoS-safe guard."""
     exponent = cast(int, value.as_tuple().exponent)  # finite -> int, never the 'n'/'N'/'F' specials
     if exponent < -scale:
         quantum = Decimal((0, (1,), -scale))
@@ -140,20 +143,30 @@ def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
         if value.quantize(quantum, context=context) != value:
             msg = f"numeric value {text!r} has more than {scale} fractional place(s)"
             raise VerificationError(msg, check=check)
-    if value.is_zero():
-        return value.copy_abs()
-    return value
+
+
+def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
+    """A numeric token -> a finite Decimal proved exact at `scale`, or raise `check`. Folds
+    -0 to +0 and does NOT bound magnitude -- the caller decides: a STORED cell adds the
+    DECIMAL(38, scale) magnitude bound in _coerce_numeric, but a filter LITERAL is only
+    COMPARED, so section 3 bounds it by parse + finiteness + precision alone. The evaluator
+    reuses this for string->numeric filter coercion, passing check="filter.value_type"."""
+    value = _parse_finite_decimal(text, check=check)
+    _reject_excess_precision(value, text, scale, check=check)
+    return value.copy_abs() if value.is_zero() else value
 
 
 def _coerce_numeric(text: str, scale: int) -> Decimal:
     """A non-empty numeric CELL -> its canonical at-scale Decimal, or raise data.numeric_value.
 
-    Parse + finiteness + excess-precision come from _decimal_at_scale; a STORED cell adds two
-    more constraints a filter literal does not need: a magnitude bound (the value must fit
+    Parse + finiteness + excess-precision are the filter-literal primitive's checks; a STORED
+    cell adds two a filter literal does not need: a magnitude bound (the value must fit
     DECIMAL(38, scale), the M1.4f oracle's column type) and a re-quantize to exactly `scale`
-    fractional places (the canonical stored form -- _decimal_at_scale proves the value exact at
-    scale but leaves its incoming exponent untouched). -0 folds to 0."""
-    value = _decimal_at_scale(text, scale, check="data.numeric_value")
+    fractional places (the canonical stored form). Order matches the pre-split monolith --
+    parse+finite -> magnitude -> excess-precision -> canonicalize -- so a cell breaching both
+    magnitude and precision reports magnitude first (the filter primitive, reusing
+    _reject_excess_precision without the magnitude bound, reports precision). -0 folds to 0."""
+    value = _parse_finite_decimal(text, check="data.numeric_value")
     # adjusted() is the most-significant digit's exponent; an integer part of d digits has
     # adjusted == d-1, so the DECIMAL(38, scale) integer width caps it at 37 - scale. The
     # is_zero() guard admits 0 at any scale -- a zero is representable at every scale, and its
@@ -162,6 +175,7 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
     if not (value.is_zero() or value.adjusted() <= _MAX_PRECISION - 1 - scale):
         msg = f"numeric value {text!r} exceeds DECIMAL({_MAX_PRECISION}, {scale}) magnitude"
         raise VerificationError(msg, check="data.numeric_value")
+    _reject_excess_precision(value, text, scale, check="data.numeric_value")
     # Re-quantize to the canonical stored form (exactly `scale` places), mirroring
     # canon._format_decimal's widened context. adjusted() is clamped to 0 for a zero -- the
     # magnitude bound above exempts a zero, so a huge-exponent zero ("0E+999...") reaches here, and

@@ -142,6 +142,35 @@ def test_coerce_numeric_zero_with_huge_exponent_does_not_crash() -> None:
     assert neg == 0 and not neg.is_signed()  # -0 still folds to +0
 
 
+def test_stored_cell_reports_magnitude_before_precision_filter_reports_precision() -> None:
+    # A token breaching BOTH the DECIMAL(38, scale) magnitude bound AND the fractional-place limit:
+    # a STORED cell reports magnitude first (the pre-split monolith's order, preserved when M1.4c
+    # factored parse + excess-precision into shared helpers), while the filter-literal primitive --
+    # reusing the same excess-precision guard but bounding no magnitude, since a literal is COMPARED
+    # not stored -- reports precision and re-tags to filter.value_type. Locks the precedence the
+    # byte-identity differential missed (it compared check tags, not the messages).
+    both_bad = "9" * 39 + ".1"  # 39-digit integer part > scale-0 magnitude, plus 1 fractional place
+    with pytest.raises(VerificationError, match="magnitude") as stored:
+        ingest._coerce_numeric(both_bad, 0)
+    assert stored.value.check == "data.numeric_value"
+    with pytest.raises(VerificationError, match="fractional place") as literal:
+        ingest._decimal_at_scale(both_bad, 0, check="filter.value_type")
+    assert literal.value.check == "filter.value_type"
+
+
+def test_decimal_at_scale_filter_primitive_accepts_over_magnitude_and_folds_zero() -> None:
+    # The evaluator (M1.4d) reuses _decimal_at_scale for string filter literals. A literal is
+    # COMPARED, never stored, so it carries NO DECIMAL(38, scale) magnitude bound: a 39-digit value
+    # a stored cell rejects, a filter literal accepts. -0 folds to +0; finiteness still re-tags.
+    over_mag = "9" * 39  # rejected as a cell, accepted as a filter literal (no magnitude bound)
+    assert ingest._decimal_at_scale(over_mag, 0, check="filter.value_type") == Decimal(over_mag)
+    folded = ingest._decimal_at_scale("-0.00", 2, check="filter.value_type")
+    assert folded == 0 and not folded.is_signed()  # -0 -> +0
+    with pytest.raises(VerificationError) as excinfo:
+        ingest._decimal_at_scale("Infinity", 0, check="filter.value_type")
+    assert excinfo.value.check == "filter.value_type"  # re-tagged from the data.* default
+
+
 def test_datetime_cell_canonical() -> None:
     manifest = Manifest(
         dataset="t.csv", columns=(TemporalColumnSpec(name="ts", granularity="datetime"),)
