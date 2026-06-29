@@ -88,8 +88,8 @@ def _affirmations() -> list[CheckResult]:
         ),
         _pass(
             "transform.aggregates_match_recomputation",
-            "the model proposes no values; the renderer inlines only the recomputed "
-            "table, so no aggregate can diverge from the recomputation",
+            "the model proposes no values; verify recomputes the table and returns it as "
+            "plotted_table, so no model aggregate exists to diverge — M1.6 must inline this",
         ),
     ]
 
@@ -99,9 +99,13 @@ def _check_dataset_binding(spec: VPlotSpec, data_dir: Path) -> tuple[CheckResult
     """Resolve the spec's CSV under data_dir and verify its bytes hash to the declared
     dataset.hash. Returns (pass, source bytes) on success, (fail, None) otherwise.
 
-    Path confinement (VPlot_SEMANTICS.md section 8) lives here: a decoded DatasetName
-    forbids '/' and CR/LF, so a traversal NAME cannot decode -> the only escape is a
-    symlink inside data_dir pointing out, which resolve() exposes as a non-relative path.
+    Path confinement (VPlot_SEMANTICS.md section 8): resolve() + is_relative_to(root) is
+    the authoritative guard, rejecting any absolute, '..'-traversal, or symlink target that
+    resolves outside data_dir regardless of how the spec was built (pathlib discards root on
+    an absolute join). A decoded DatasetName also forbids '/' and CR/LF (defense in depth),
+    so a model-proposed traversal name cannot even decode. data_dir is trusted operator
+    config, so a concurrent resolve->read swap (TOCTOU) is out of scope; the read is on the
+    already-resolved real path.
     """
     check = "dataset.hash_matches_source"
     name = spec.dataset.name

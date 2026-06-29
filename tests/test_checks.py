@@ -14,7 +14,7 @@ import io
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import msgspec
 import pytest
@@ -22,7 +22,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from msgspec import DecodeError, ValidationError
 
-from verifier import canon, ingest
+from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
 from verifier.schema import decode_spec
@@ -44,6 +44,15 @@ _ENCODING_CHECKS = frozenset(
         "encoding.fields_exist_in_plotted_table",
         "encoding.axis_types_match_fields",
         "label.quantitative_units_present",
+    }
+)
+# The four AFFIRMED passes (true by construction) the spine records as the trust argument.
+_AFFIRMATIONS = frozenset(
+    {
+        "security.no_arbitrary_code",
+        "transform.ops_allowed",
+        "transform.filters_declared",
+        "transform.aggregates_match_recomputation",
     }
 )
 # decodes=false -> rejected at decode_spec; verify is never reached.
@@ -71,8 +80,10 @@ def test_a_handled_covers_binding_and_eval_surface() -> None:
 # --- decode layer: verify is never reached -----------------------------------
 @pytest.mark.parametrize("entry", _BAD_DECODE, ids=_ids(_BAD_DECODE))
 def test_decode_layer_specs_never_reach_verify(entry: dict[str, Any]) -> None:
-    # decode_spec is the sole VPlotSpec constructor, so a decode-layer rejection means no
-    # VPlotSpec ever reaches verify() — the trust gate's first line is the decoder.
+    # decode_spec is the sole accepted untrusted-input path: a decode-layer rejection means
+    # no model-proposed VPlotSpec reaches verify() — the trust gate's first line is the
+    # decoder. (Structs stay directly constructible; binding-gate path confinement holds
+    # regardless — see test_binding_rejects_absolute_name_even_when_target_readable.)
     raw = (_BAD_DIR / entry["file"]).read_bytes()
     with pytest.raises((ValidationError, DecodeError)):
         decode_spec(raw)
@@ -86,6 +97,9 @@ def test_a_handled_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
     report = verify(spec, manifest, data_dir=_DATA)
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {entry["check"]}  # a non-empty fail set also means not passed
+    assert report.plotted_table is None  # any block short-circuits -> no recomputed table
+    passing = {r.check for r in report.results if r.status == "pass"}
+    assert passing >= _AFFIRMATIONS  # affirmations are retained even on a failing report
 
 
 def test_no_false_accepts_over_a_handled_bad_specs() -> None:
@@ -111,6 +125,19 @@ def test_good_spec_passes_and_inlines_recomputation(entry: dict[str, Any]) -> No
     assert canon.hash_table(report.plotted_table) == canon.hash_table(expected)
 
 
+# --- report structure: the affirmations are recorded, not implicit ------------
+def test_report_records_all_affirmations_on_pass() -> None:
+    # The four AFFIRMED passes are part of the recorded trust argument; pin that a good
+    # spec's passing checks are exactly the affirmations plus the active binding gate, so
+    # dropping _affirmations() is caught (the pass/fail-name tests alone would not notice).
+    spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
+    manifest = _manifest_for(spec.dataset.name)
+    report = verify(spec, manifest, data_dir=_DATA)
+    passing = {r.check for r in report.results if r.status == "pass"}
+    assert passing == _AFFIRMATIONS | {"dataset.hash_matches_source"}
+    assert all(r.severity == "blocking" for r in report.results)
+
+
 # --- dataset-binding gate: escape + missing (mismatch is covered by b08) ------
 def test_binding_rejects_symlink_escape(tmp_path: Path) -> None:
     # A decoded DatasetName forbids '/', so the only path escape is a symlink inside
@@ -125,6 +152,7 @@ def test_binding_rejects_symlink_escape(tmp_path: Path) -> None:
     manifest = _manifest_for(spec.dataset.name)  # both bind sales.csv -> pairing OK
     report = verify(spec, manifest, data_dir=data_dir)
     assert not report.passed
+    assert report.plotted_table is None
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {"dataset.hash_matches_source"}
 
@@ -135,6 +163,55 @@ def test_binding_rejects_missing_source(tmp_path: Path) -> None:
     manifest = _manifest_for(spec.dataset.name)
     report = verify(spec, manifest, data_dir=tmp_path)
     assert not report.passed
+    assert report.plotted_table is None
+    failing = {r.check for r in report.results if r.status == "fail"}
+    assert failing == {"dataset.hash_matches_source"}
+
+
+def test_binding_failure_short_circuits_eval(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The trust spine must never compute on unauthenticated bytes: a binding failure must
+    # return before evaluate() is reached. Patch evaluate to a tripwire and prove it stays
+    # unreached when the bound source is missing.
+    def _no_eval(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "evaluate ran after a binding failure short-circuit"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
+    manifest = _manifest_for(spec.dataset.name)
+    report = verify(spec, manifest, data_dir=tmp_path)  # empty dir -> source missing
+    assert not report.passed
+    assert report.plotted_table is None
+    failing = {r.check for r in report.results if r.status == "fail"}
+    assert failing == {"dataset.hash_matches_source"}
+
+
+def test_binding_rejects_absolute_name_even_when_target_readable(tmp_path: Path) -> None:
+    # Defense in depth: confinement does not rely on the DatasetName pattern. A spec built
+    # OUTSIDE decode_spec (msgspec structs are directly constructible) with an absolute name
+    # to a real, hash-MATCHING file outside data_dir is still blocked — resolve() +
+    # is_relative_to rejects before the read, so a correct declared hash cannot smuggle
+    # outside bytes past the gate.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    payload = b"month,revenue\n2024-01,1.00\n"
+    secret = outside / "secret.csv"
+    secret.write_bytes(payload)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    base = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
+    evil = msgspec.structs.replace(
+        base,
+        dataset=msgspec.structs.replace(
+            base.dataset, name=str(secret), hash=canon.hash_dataset(payload)
+        ),
+    )
+    manifest = msgspec.structs.replace(_manifest_for(base.dataset.name), dataset=str(secret))
+    report = verify(evil, manifest, data_dir=data_dir)
+    assert not report.passed  # declared hash matches the outside file, yet confinement blocks
+    assert report.plotted_table is None
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {"dataset.hash_matches_source"}
 
