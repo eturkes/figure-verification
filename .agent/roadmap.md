@@ -40,7 +40,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.4e | Eval golden corpus + determinism anchor (`test_eval.py`) | DONE | 56% 112K/200K |
 | M1.4f | Dual-engine DuckDB oracle + parity (`tests/oracle.py`; recipe `.agent/m14f_oracle_design.md`) | DONE | 39% 78K/200K |
 | M1.4f-cr | Codex-review follow-up (↓ callout): r1 `git apply …m14f_codex_fixes.patch`; r2 recipe `.agent/m14f_cr2_design.md`; r3 in-session fix | r1 DONE `a6e0fb1` · r2 DONE `0114cd1` · r3 DONE | r1 30% 60K/200K · r2 68% 136K/200K · r3 75% 149K/200K |
-| M1.4g | Eval determinism properties (`tests/test_eval_properties.py`) | OPEN | — |
+| M1.4g | Eval determinism properties (`tests/test_eval_properties.py`) | DONE | 71% 143K/200K |
 | M1.5 | Verification checks v0 | OPEN | — |
 | M1.6 | VPlot → Vega-Lite → SVG/HTML compiler + badge | OPEN | — |
 
