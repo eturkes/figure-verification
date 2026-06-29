@@ -15,13 +15,18 @@ semantics, not eval.
 
 Scope = recompute a spec eval ACCEPTS. test_oracle_parity runs eval FIRST, so eval's validation gate
 (distinct/existing fields, group_by placement, sort-key survival, output collisions) rejects a bad
-spec before the oracle runs; the oracle is a faithful RECOMPUTE for valid specs, not a second
-validator. Exactness holds inside DuckDB's DECIMAL(38) domain, which bounds every ingest cell
-(ingest._coerce_numeric caps magnitude there) and the entire golden corpus; an aggregate exceeding
-38 digits raises LOUDLY when the oracle reinserts the result into its typed DECIMAL(38,scale) table
-(DuckDB's own SUM returns the over-precision value, so that typed round-trip is the guard — a
-ConversionException, never a silent divergence). eval's Fraction sum is unbounded there, outside
-this oracle's representable domain.
+spec before the oracle runs; the oracle is a faithful RECOMPUTE for valid specs whose values
+stay inside DuckDB's DECIMAL(38)/HUGEINT domain, not a second validator. That domain bounds
+every ingest cell (ingest._coerce_numeric caps magnitude there) and the whole golden corpus.
+Outside it the oracle raises LOUDLY (never silently diverges) on two eval-accepted edges. (1) A
+filter literal beyond the column's DECIMAL(38,scale) domain — a huge value, OR the literal 1 on a
+scale-38 column (DECIMAL(38,38) holds |x|<1 only) — raises via the coercer's magnitude bound. (2)
+An aggregate whose total leaves the domain raises at EITHER DuckDB's SUM (OutOfRangeException,
+HUGEINT overflow, |sum|>~1.7e38) OR the typed DECIMAL(38,scale) reinsert (ConversionException,
+DECIMAL(38,0)-max <|sum|<= HUGEINT-max; SUM returns the over-precision value there). Because mean
+is SQL SUM+COUNT then a Python division, an in-domain mean RESULT still raises when its
+intermediate SUM overflows HUGEINT. eval's Fraction sum is unbounded, outside this oracle's
+representable domain.
 
 Pipeline = the section 6 deferral: only sort sets the closure's primary keys (every other op is
 row-order-insensitive), so no op runs an intermediate ORDER BY — the single closing ORDER BY (the
@@ -121,15 +126,18 @@ def _to_cell(column: canon.Column, value: Any) -> canon.Cell:
 
 def _filter_clause(op: Filter, column: canon.Column) -> tuple[str, list[object]]:
     """A WHERE predicate + its bound parameter, coercing the spec literal to the column domain
-    (section 3) to match eval's filter coercion. numeric int|str -> a scale-pinned Decimal via
-    the shared ingest coercer: DuckDB's Python binder mishandles a POSITIVE-exponent Decimal (it
-    binds Decimal('1e2') as 1.00, not 100), so the literal must reach DuckDB with exponent <= 0 --
-    and eval (run first) already guarantees <= scale fractional places, so quantizing to the column
-    scale is exact. A literal beyond the oracle's DECIMAL(38,scale) domain raises LOUDLY here (eval
-    compares it symbolically, outside this oracle's domain) -- never a silent mis-bind. temporal ->
-    a native date/datetime (canonical-ISO compares chronologically = eval's lexical order); string
-    -> the literal verbatim. eval rejects an over-precision or noncanonical literal before the
-    oracle ever sees it."""
+    (section 3). numeric int|str -> a scale-pinned Decimal via the shared ingest coercer, so it
+    compares IDENTICALLY to eval's filter literal FOR IN-DOMAIN VALUES (eval's Decimal compare is
+    unbounded; this oracle's is DECIMAL(38,scale)-scoped). DuckDB's Python binder mishandles a
+    POSITIVE-exponent Decimal (it binds Decimal('1e2') as 1.00, not 100), so the literal must
+    reach DuckDB with exponent <= 0 -- and eval (run first) already guarantees <= scale
+    fractional places, so quantizing to the column scale is exact. A literal outside the column's
+    DECIMAL(38,scale) domain (a huge value, OR the literal 1 on a scale-38 column where |x|<1
+    only) raises LOUDLY here via the coercer's magnitude bound -- the oracle's filter domain is
+    genuinely NARROWER than eval's, never a silent mis-bind (pinned by the boundary tests).
+    temporal -> a native date/datetime (canonical-ISO compares chronologically = eval's lexical
+    order); string -> the literal verbatim. eval rejects an over-precision or noncanonical
+    literal before the oracle ever sees it."""
     pred = f"{_q(op.field)} {_CMP_SQL[op.cmp]} ?"
     if isinstance(column, canon.NumericColumn):
         return pred, [_coerce_numeric(str(op.value), column.scale)]

@@ -19,8 +19,10 @@ reaches the oracle, which recomputes only eval-validated specs (oracle module do
 import hashlib
 import json
 import pathlib
+from decimal import Decimal
 from typing import Any
 
+import duckdb
 import msgspec
 import pytest
 
@@ -68,6 +70,11 @@ def test_oracle_matches_eval(filename: str, stem: str) -> None:
 # Each manifest is a minimal per-column schema; the helpers build the transform compactly.
 _NUM = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":0,"label":"V"}]}'
 _NUM2 = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":2,"label":"V"}]}'
+# scale-38 numeric: DECIMAL(38,38) holds only |x| < 1, so even the literal 1 is out of domain.
+_S38 = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":38,"label":"V"}]}'
+# Over-domain aggregate fixtures (scale 0): sums leaving DuckDB's DECIMAL(38,0)/HUGEINT domain.
+_SUM_OVER_HUGEINT = b"v\n" + b"9" * 38 + b"\n" + b"9" * 38 + b"\n"  # 2*(10**38-1) > HUGEINT
+_SUM_OVER_DECIMAL38 = b"v\n" + (b"5" + b"0" * 37 + b"\n") * 3  # 1.5e38: fits HUGEINT, > DEC(38,0)
 _KV = (
     b'{"dataset":"t.csv","columns":['
     b'{"name":"k","type":"string","label":"K"},'
@@ -252,12 +259,54 @@ def test_oracle_matches_eval_synthetic(
     assert canon.hash_table(actual) == canon.hash_table(expected)
 
 
-def test_oracle_raises_loudly_on_over_domain_filter_literal() -> None:
-    """A numeric filter literal beyond DuckDB's DECIMAL(38) domain: eval compares it symbolically
-    (an empty result here), the oracle's exactness is DECIMAL(38)-scoped, so it raises LOUDLY
-    rather than silently mis-binding -- the filter analogue of the aggregate-overflow guard."""
-    csv = b"v\n1\n2\n"
-    spec, manifest = _spec_manifest(_NUM, csv, _flt("v", "gt", "1e40"))
-    evaluate(spec, manifest, csv)  # eval accepts an over-magnitude literal (no raise)
-    with pytest.raises(VerificationError):
+@pytest.mark.parametrize(
+    ("manifest_json", "csv", "transform"),
+    [
+        (_NUM, b"v\n1\n2\n", _flt("v", "lt", "1e38")),
+        (_S38, b"v\n0.5\n0.9\n", _flt("v", "lt", 1)),
+    ],
+    ids=["huge_literal_scale0", "small_literal_scale38"],
+)
+def test_oracle_raises_loudly_on_over_domain_filter_literal(
+    manifest_json: bytes, csv: bytes, transform: list[dict[str, Any]]
+) -> None:
+    """A filter literal outside the column's DECIMAL(38,scale) domain (a huge value on a scale-0
+    column, or the literal 1 on a scale-38 column where |x|<1 only): eval's Decimal compare is
+    unbounded so it KEEPS both rows, while the oracle raises LOUDLY via the coercer's magnitude
+    bound -- genuinely narrower than eval, never a silent mis-bind."""
+    spec, manifest = _spec_manifest(manifest_json, csv, transform)
+    assert len(evaluate(spec, manifest, csv).rows) == 2  # eval accepts; both rows survive
+    with pytest.raises(VerificationError, match="exceeds DECIMAL"):
+        recompute(spec, manifest, csv)
+
+
+@pytest.mark.parametrize(
+    ("csv", "eval_sum", "exc"),
+    [
+        (_SUM_OVER_HUGEINT, 2 * (10**38 - 1), duckdb.OutOfRangeException),
+        (_SUM_OVER_DECIMAL38, 3 * (5 * 10**37), duckdb.ConversionException),
+    ],
+    ids=["over_hugeint_at_sum", "over_decimal38_at_reinsert"],
+)
+def test_oracle_raises_loudly_on_over_domain_aggregate(
+    csv: bytes, eval_sum: int, exc: type[Exception]
+) -> None:
+    """A whole-table SUM leaving DuckDB's domain raises LOUDLY at its site -- OutOfRangeException
+    when the HUGEINT accumulator overflows (|sum|>~1.7e38), ConversionException at the typed
+    DECIMAL(38,scale) reinsert (DEC(38,0)-max <|sum|<= HUGEINT-max). eval's Fraction sum is exact
+    and unbounded, so it returns the value."""
+    spec, manifest = _spec_manifest(_NUM, csv, _grp_agg([], [("v", "sum", "s")]))
+    assert evaluate(spec, manifest, csv).rows == ((Decimal(eval_sum),),)
+    with pytest.raises(exc):
+        recompute(spec, manifest, csv)
+
+
+def test_oracle_mean_diverges_when_intermediate_sum_overflows() -> None:
+    """eval's mean materializes no raw sum (SUM+COUNT then an exact Python division), so a mean
+    whose RESULT is in-domain still raises in the oracle when its intermediate DuckDB SUM overflows
+    the HUGEINT accumulator."""
+    csv = _SUM_OVER_HUGEINT
+    spec, manifest = _spec_manifest(_NUM, csv, _grp_agg([], [("v", "mean", "m")]))
+    assert evaluate(spec, manifest, csv).rows == ((Decimal(10**38 - 1),),)
+    with pytest.raises(duckdb.OutOfRangeException):
         recompute(spec, manifest, csv)
