@@ -65,13 +65,15 @@ ban-relative-imports = "all"
 # import fails the gate instead of silently becoming Any under the global mypy override.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "jsonschema".msg = "test-only (golden assertion); do not import from src/"
+"duckdb".msg = "test-only (dual-engine oracle); do not import from src/"
 
 # --- types -------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.13"
 strict = true
 files = ["src", "tests"]
-mypy_path = "src"
+# tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
+mypy_path = ["src", "tests"]
 warn_unreachable = true
 enable_error_code = [
     "redundant-expr",
@@ -92,6 +94,7 @@ ignore_missing_imports = true
 minversion = "8.0"
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov --cov-report=term-missing"
 testpaths = ["tests"]
+pythonpath = ["tests"]  # so `import oracle` (the dev-only DuckDB oracle) resolves
 xfail_strict = true
 
 [tool.coverage.run]

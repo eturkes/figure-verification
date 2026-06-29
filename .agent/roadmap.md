@@ -38,7 +38,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.4c | Step-0 ingest refactor: shared `_decimal_at_scale` + `check`-param threading (`ingest.py`) | DONE | 61% 122K/200K |
 | M1.4d | Deterministic evaluator + index normalize + 100% coverage (`eval.py`) | DONE | overflow→compaction (impl+suite written; gate-finished next session: 44% 88K/200K) |
 | M1.4e | Eval golden corpus + determinism anchor (`test_eval.py`) | DONE | 56% 112K/200K |
-| M1.4f | Dual-engine DuckDB oracle + parity (`tests/oracle.py`; recipe `.agent/m14f_oracle_design.md`) | OPEN | — |
+| M1.4f | Dual-engine DuckDB oracle + parity (`tests/oracle.py`; recipe `.agent/m14f_oracle_design.md`) | DONE | 39% 78K/200K |
 | M1.4g | Eval determinism properties (`tests/test_eval_properties.py`) | OPEN | — |
 | M1.5 | Verification checks v0 | OPEN | — |
 | M1.6 | VPlot → Vega-Lite → SVG/HTML compiler + badge | OPEN | — |
