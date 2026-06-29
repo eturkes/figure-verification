@@ -3,7 +3,7 @@
 
 Three layers: (1) the M1.3 eval-bad specs each raise their specific semantic `check`;
 (2) verified anchor goldens (g01/g04/g05) reproduced row-for-row against the sales CSV by
-hand-verified explicit asserts (the M1.4f DuckDB oracle independently confirms these);
+hand-verified explicit asserts (the M1.4f DuckDB oracle will independently confirm these);
 (3) inline constructed-table fixtures driving every remaining branch (distinctness, group_by
 placement, whole-table + multi-measure aggregates, count/min/max/null semantics, filter
 coercion, and the section 6 closure's null-greatest ordering). M1.4e completes the good-spec
@@ -507,7 +507,7 @@ def test_aggregation_hash_is_row_permutation_invariant() -> None:
     assert len(hashes) == 1
 
 
-# --- M1.4e: remaining good-spec corpus, row-for-row (the M1.4f oracle confirms) ------
+# --- M1.4e: remaining good-spec corpus, row-for-row (the M1.4f oracle will confirm) ------
 def test_g02_revenue_by_region() -> None:
     # group_by region -> sum revenue -> sort total_revenue desc.
     table = _evaluate_example("good_specs", "g02_revenue_by_region.json", "sales")
@@ -609,20 +609,45 @@ def test_g10_temp_vs_precip() -> None:
 
 # --- M1.5-layer specs recompute cleanly; their defect is caught later (M1.5) --------
 @pytest.mark.parametrize(
-    ("filename", "dataset_stem", "n_rows"),
+    ("filename", "dataset_stem", "columns", "n_rows"),
     [
-        ("b08_dataset_hash_mismatch.json", "sales", 3),
-        ("b11_axis_type_mismatch.json", "sales", 6),
-        ("b12_encoding_field_absent.json", "sales", 3),
-        ("b13_missing_y_unit.json", "weather", 8),
+        (
+            "b08_dataset_hash_mismatch.json",
+            "sales",
+            (canon.StringColumn(name="month"), canon.NumericColumn(name="total_revenue", scale=0)),
+            3,
+        ),
+        (
+            "b11_axis_type_mismatch.json",
+            "sales",
+            (canon.StringColumn(name="region"), canon.NumericColumn(name="revenue", scale=0)),
+            6,
+        ),
+        (
+            "b12_encoding_field_absent.json",
+            "sales",
+            (canon.StringColumn(name="month"), canon.NumericColumn(name="total_revenue", scale=0)),
+            3,
+        ),
+        (
+            "b13_missing_y_unit.json",
+            "weather",
+            (
+                canon.TemporalColumn(name="date", granularity="date"),
+                canon.NumericColumn(name="aqi", scale=0),
+            ),
+            8,
+        ),
     ],
 )
 def test_m15_layer_spec_evaluates_without_error(
-    filename: str, dataset_stem: str, n_rows: int
+    filename: str, dataset_stem: str, columns: tuple[canon.Column, ...], n_rows: int
 ) -> None:
     # eval inspects neither dataset.hash nor encoding, so a hash/axis-type/absent-field/missing-
-    # unit defect passes straight through here and is rejected by the M1.5 checks instead.
+    # unit defect passes straight through here and is rejected by the M1.5 checks instead. Pinning
+    # the recomputed columns + row count stops a same-size table drift from passing silently.
     table = _evaluate_example("bad_specs", filename, dataset_stem)
+    assert table.columns == columns
     assert len(table.rows) == n_rows
 
 
@@ -655,8 +680,9 @@ def test_superseded_sort_edit_preserves_table_hash() -> None:
 
 
 def test_pre_aggregate_sort_edit_preserves_table_hash() -> None:
-    # A sort before the aggregate is discarded by the aggregate's active-key reset; the closure
-    # re-sorts identically, so again only the spec hash moves.
+    # A pre-aggregate sort only reorders rows; the aggregate consumes the same multiset (sum/min/
+    # max/count/mean are order-insensitive) and resets active_keys, so the sort changes neither the
+    # aggregated values nor the closure order — again only the spec hash moves.
     base, manifest, csv_bytes = _g01_anchor()
     variant = msgspec.structs.replace(
         base, transform=(_sort_op("revenue", "descending"), *base.transform)
