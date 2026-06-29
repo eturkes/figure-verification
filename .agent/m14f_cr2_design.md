@@ -9,10 +9,11 @@ application (same failure mode as round-1 → `b958acc`).
 Verdict: the oracle's loud-raise behavior is CORRECT for a DECIMAL(38) engine — the bug is
 OVERSTATED docstring/ledger claims + one weak boundary test. **Fix = docs + tests only. The
 oracle `_coerce_numeric` routing is RIGHT — change NO `tests/oracle.py` code, only its docstrings.**
-Rejected codex's alt "make the oracle support eval's unbounded compare" — infeasible (DuckDB
-DECIMAL(38) typing cannot represent it; the loud raise IS the correct guard).
+Rejected codex's alt "make the oracle support eval's unbounded compare" — out of scope for a DuckDB
+DECIMAL(38) oracle: a hybrid Python/bignum path is feasible but forfeits the engine independence that
+makes this a real cross-check, at more complexity. The loud raise IS the correct guard.
 
-## Verified DuckDB facts — do NOT re-probe (the §"new boundary tests" below re-confirm them every gate run)
+## Verified DuckDB facts — do NOT re-probe (codex-review r2 independently re-derived all of these; the §"new boundary tests" below re-pin the two overflow SITES each gate run, at representative magnitudes — not the exact boundaries)
 
 1. **Two-site aggregate overflow** (magnitude-dependent, both LOUD):
    - DuckDB `SUM` raises `duckdb.OutOfRangeException` when its HUGEINT/INT128 accumulator
@@ -74,8 +75,8 @@ single-site / full-match claims with prose conveying EXACTLY facts 1 & 2 above. 
 Imports: add `from decimal import Decimal` (stdlib block, after `pathlib`) and `import duckdb`
 (third-party block, before `msgspec`).
 
-Module-level constants (place near the existing `_NUM2`; reuse the file's scale-0 numeric manifest
-constant for the aggregate/scale-0 cases):
+Module-level constants (place near the existing `_NUM2`; the scale-0 aggregate/filter cases reuse the
+existing `_NUM` manifest):
 ```python
 # scale-38 numeric: DECIMAL(38,38) holds only |x| < 1, so even the literal 1 is out of domain.
 _S38 = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":38,"label":"V"}]}'
@@ -83,30 +84,36 @@ _S38 = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":38,"
 _SUM_OVER_HUGEINT = b"v\n" + b"9" * 38 + b"\n" + b"9" * 38 + b"\n"   # 2*(10**38-1) ~2e38 > HUGEINT
 _SUM_OVER_DECIMAL38 = b"v\n" + (b"5" + b"0" * 37 + b"\n") * 3        # 1.5e38: fits HUGEINT, > DEC(38,0)
 ```
-Build specs with the file's EXISTING adversarial-case helper (the one the 22 cases use: raw VPlot
-dict → `msgspec.json.encode` → `decode_spec`, `load_manifest`, csv bytes); import `evaluate` from
-`verifier.eval`, `recompute`/`serialize`-equivalent from `oracle`, `VerificationError` from
-`verifier.errors`. Three tests:
+Build each spec with the file's EXISTING helpers: `_spec_manifest(manifest_json, csv, transform)`
+(decodes spec + manifest; encoding is recompute-irrelevant) where `transform` =
+`_flt(field, cmp, value)` for a filter or `_grp_agg(keys, measures)` for an aggregate (`measures` =
+`[(field, fn, "as"), ...]`, `keys=[]` → whole-table). `evaluate` (`verifier.eval`), `recompute`
+(`oracle`'s ONLY export), and `VerificationError` (`verifier.errors`) are ALREADY imported; the new
+tests assert on `.rows` / `pytest.raises` and need NO serialization. Three tests:
 
 1. `test_oracle_raises_loudly_on_over_domain_filter_literal` — `pytest.mark.parametrize` ids
    `huge_literal_scale0` / `small_literal_scale38`:
-   - `huge_literal_scale0`: scale-0 numeric manifest + a small CSV (e.g. a couple of in-domain rows),
-     transform `filter v lt <literal with adjusted()>=38>` (e.g. value `10**38`). eval ACCEPTS:
-     `assert len(evaluate(spec, manifest, csv).rows) == <eval_rows>`. Oracle RAISES:
+   - `huge_literal_scale0`: `_NUM` (scale-0) manifest + csv `b"v\n1\n2\n"`, transform
+     `_flt("v", "lt", "1e38")`. The literal MUST be the STRING `"1e38"`, NOT int `10**38` — msgspec
+     caps a JSON filter int at int64, so `{"value": 10**38}` fails at DECODE (`ValidationError`), never
+     reaching the oracle bound. `Decimal("1e38").adjusted()==38 > 37` → the scale-0 magnitude bound
+     raises; eval's str filter path is unbounded → keeps both rows. eval ACCEPTS:
+     `assert len(evaluate(spec, manifest, csv).rows) == 2`. Oracle RAISES:
      `with pytest.raises(VerificationError, match="exceeds DECIMAL"): recompute(spec, manifest, csv)`.
-   - `small_literal_scale38`: `_S38` manifest + csv `b"v\n0.5\n0.9\n"`, transform `filter v lt 1`.
-     eval keeps both rows (`eval_rows == 2`); oracle raises (same `match="exceeds DECIMAL"`).
+   - `small_literal_scale38`: `_S38` manifest + csv `b"v\n0.5\n0.9\n"`, transform `_flt("v", "lt", 1)`
+     (int `1` is fine — within int64). eval keeps both rows (`len(...rows) == 2`); oracle raises (same
+     `match="exceeds DECIMAL"`).
 
 2. `test_oracle_raises_loudly_on_over_domain_aggregate` — parametrize ids
    `over_hugeint_at_sum` / `over_decimal38_at_reinsert`, tuple `(csv, eval_sum, exc)`:
    - `(_SUM_OVER_HUGEINT, 2 * (10**38 - 1), duckdb.OutOfRangeException)`
    - `(_SUM_OVER_DECIMAL38, 3 * (5 * 10**37), duckdb.ConversionException)`
-   Transform = `aggregate sum(v) as s` (whole-table, no group_by), scale-0 manifest. eval ACCEPTS:
+   Transform = `_grp_agg([], [("v", "sum", "s")])` (whole-table), `_NUM` (scale-0) manifest. eval ACCEPTS:
    `assert evaluate(spec, manifest, csv).rows == ((Decimal(eval_sum),),)`. Oracle RAISES at its site:
    `with pytest.raises(exc): recompute(spec, manifest, csv)`.
 
-3. `test_oracle_mean_diverges_when_intermediate_sum_overflows` — `csv = _SUM_OVER_HUGEINT`, scale-0
-   manifest, transform `aggregate mean(v) as m`. eval's mean RESULT is in-domain:
+3. `test_oracle_mean_diverges_when_intermediate_sum_overflows` — `csv = _SUM_OVER_HUGEINT`, `_NUM`
+   (scale-0) manifest, transform `_grp_agg([], [("v", "mean", "m")])`. eval's mean RESULT is in-domain:
    `assert evaluate(spec, manifest, csv).rows == ((Decimal(10**38 - 1),),)`. Oracle still raises on
    the intermediate SUM: `with pytest.raises(duckdb.OutOfRangeException): recompute(spec, manifest, csv)`.
 
