@@ -4,10 +4,11 @@ Pre-derived so the M1.4f session TRANSCRIBES, not re-derives. M1.4f overflowed o
 live fit one window (≈66%), but oracle + parity test + 3 Hypothesis properties + gate in ONE window did
 not → split f→f+g (THIS = f: oracle + parity test; g: determinism properties, separate window).
 
-The two code files below were VALIDATED END-TO-END during the M1.4-re-split codex-review: written to
-tests/, then ruff check + ruff format --check + mypy --strict + full pytest ALL GREEN (268 passed, 100%
-branch), parity PASSING on all 10 goldens (g08's filter + g05's mean included). They were reverted after
-(committing them IS M1.4f). So: TRANSCRIBE BOTH VERBATIM, apply the 3 pyproject edits, run the gate to
+The two code files below were VALIDATED END-TO-END across the M1.4-re-split codex reviews (the second
+hardened the aggregate result-mapping to POSITIONAL extraction — a user field named like an internal
+SUM/COUNT alias can no longer collide): written to tests/, then ruff check + ruff format --check + mypy
+--strict + full pytest ALL GREEN (268 passed, 100% branch), parity PASSING on all 10 goldens (g08's filter
++ g05's mean included). They were reverted after (committing them IS M1.4f). So: TRANSCRIBE BOTH VERBATIM, apply the 3 pyproject edits, run the gate to
 CONFIRM. The VERIFICATION POINTS at the end are now post-transcription confirmations, not open risks.
 
 ## Scope (M1.4f only)
@@ -39,7 +40,11 @@ SUM+COUNT in SQL, its division in PYTHON via eval.mean_at_scale) → ONE closing
 - EXACTNESS holds within DuckDB's DECIMAL(38) domain: SUM/COUNT are exact while the accumulator stays ≤38
   digits, which ingest._coerce_numeric guarantees for every cell + the whole golden corpus. A pathological
   >38-digit aggregate overflows DuckDB LOUDLY (a raised error, never a silent divergence); eval's Fraction
-  sum is unbounded, so on the in-domain corpus the two agree and the oracle never silently diverges.
+  sum is unbounded, so on the in-domain corpus the two agree and the oracle never silently diverges. The
+  same bound covers FILTER literals (M4): a native-bound literal compares exactly across DuckDB's full range
+  — probe-verified 1E40 and a 41-digit literal compare correctly, where a DECIMAL(38,scale) CAST would
+  overflow — and a pathological literal (an absurd exponent, or a 64-bit int overflowing a high-scale
+  column) raises LOUDLY, never silently diverging. No golden carries one.
 
 ## VERIFIED FACTS (probe-confirmed + review-validated — do NOT re-probe)
 - duckdb ships py.typed → NO mypy override needed; mypy --strict checks tests/ clean.
@@ -49,8 +54,11 @@ SUM+COUNT in SQL, its division in PYTHON via eval.mean_at_scale) → ONE closing
 - mean via SQL avg, or SUM/COUNT then divide, routes through DOUBLE → HALF-AWAY ≠ HALF_EVEN (mean(0.00,0.01)
   @2 → SQL 0.01 vs eval 0.00) → SUM+COUNT exact in SQL, the ONE division in Python via mean_at_scale.
 - ORDER BY ... ASC NULLS LAST / DESC NULLS FIRST = null-greatest (§6). Binary string collation = code-point
-  order (matches eval). GROUP BY over NULL = one group. COUNT(col) = non-null count; SUM/MIN/MAX over an
-  all-null group = NULL. All DuckDB defaults; the parity test asserts them.
+  order (matches eval: UTF-8 byte order = code-point order). GROUP BY over NULL = one group. COUNT(col) =
+  non-null count; SUM/MIN/MAX over an all-null group = NULL. All probe-confirmed DuckDB defaults; of these
+  the goldens exercise only sum/mean/min/max (g01-03/g08, g05, g06, g09) — count, null group keys, all-null
+  groups, and temporal/string min/max are NOT golden-covered (the oracle is out of coverage), resting on the
+  probe + shared §4/§6 semantics, not a passing parity row.
 - executemany inserts a list of tuples carrying Decimal / str / None / date / datetime params into a typed
   temp table (Decimal→DECIMAL(38,scale), datetime.date→DATE, datetime→TIMESTAMP).
 - ruff reports S608 on the f-string's PHYSICAL line → # noqa: S608 must sit on THAT line (a noqa on the
@@ -236,26 +244,23 @@ def _aggregate(  # noqa: PLR0913 — 6 irreducible args: con, cur, schema, keys,
 ) -> tuple[str, list[canon.Column]]:
     """Collapse `cur` to one row per group (or one row whole-table when keys is empty), then
     materialize the result — mean resolved in Python — into a typed temp table the pipeline
-    continues on. SQL emits exact SUM + COUNT for a mean; eval.mean_at_scale does the division."""
-    select_names: list[str] = list(keys)
+    continues on. SQL emits exact SUM + COUNT for a mean; eval.mean_at_scale does the division.
+    Output columns are read back BY POSITION, never by name: a measure's SUM/COUNT is unaliased,
+    so a user field/output named like an internal alias cannot collide in the result mapping."""
     select_exprs: list[str] = [_q(k) for k in keys]
-    # plan[i] = (output column, fn, (sum_alias, count_alias) | None)
-    plans: list[tuple[canon.Column, str, tuple[str, str] | None]] = []
-    for i, measure in enumerate(op.measures):
+    # plan entry = (output column, fn, sum/agg record index, count record index | None)
+    plans: list[tuple[canon.Column, str, int, int | None]] = []
+    col = len(keys)  # the record index just past the group-key columns
+    for measure in op.measures:
         out_col = _measure_column(_find(schema, measure.field), measure.fn, measure.output)
         if measure.fn == "mean":
-            sum_a, cnt_a = f"__sum_{step}_{i}", f"__cnt_{step}_{i}"
-            select_exprs += [
-                f"SUM({_q(measure.field)}) AS {_q(sum_a)}",
-                f"COUNT({_q(measure.field)}) AS {_q(cnt_a)}",
-            ]
-            select_names += [sum_a, cnt_a]
-            plans.append((out_col, "mean", (sum_a, cnt_a)))
+            select_exprs += [f"SUM({_q(measure.field)})", f"COUNT({_q(measure.field)})"]
+            plans.append((out_col, "mean", col, col + 1))
+            col += 2
         else:
-            agg = f"{_SQL_AGG[measure.fn]}({_q(measure.field)}) AS {_q(out_col.name)}"
-            select_exprs.append(agg)
-            select_names.append(out_col.name)
-            plans.append((out_col, measure.fn, None))
+            select_exprs.append(f"{_SQL_AGG[measure.fn]}({_q(measure.field)})")
+            plans.append((out_col, measure.fn, col, None))
+            col += 1
 
     sql = f"SELECT {', '.join(select_exprs)} FROM {cur}"  # noqa: S608 — identifiers only, validated
     if keys:
@@ -265,20 +270,19 @@ def _aggregate(  # noqa: PLR0913 — 6 irreducible args: con, cur, schema, keys,
     out_schema = [_find(schema, k) for k in keys] + [plan[0] for plan in plans]
     out_rows: list[tuple[object, ...]] = []
     for record in fetched:
-        cells = dict(zip(select_names, record, strict=True))
-        row: list[object] = [cells[k] for k in keys]
-        for out_col, fn, aliases in plans:
-            if fn == "mean" and aliases is not None:
-                total = cells[aliases[0]]
+        row: list[object] = list(record[: len(keys)])
+        for out_col, fn, idx, cnt_idx in plans:
+            if fn == "mean" and cnt_idx is not None:
+                total = record[idx]
                 if total is None:
                     row.append(None)
                 else:
                     assert isinstance(
                         out_col, canon.NumericColumn
                     )  # mean -> numeric (_measure_column)
-                    row.append(mean_at_scale(total, cells[aliases[1]], out_col.scale))
+                    row.append(mean_at_scale(total, record[cnt_idx], out_col.scale))
             else:
-                row.append(cells[out_col.name])
+                row.append(record[idx])
         out_rows.append(tuple(row))
 
     table = f"agg{step}"
@@ -426,8 +430,9 @@ def test_oracle_matches_eval(filename: str, stem: str) -> None:
 - canon exports NumericColumn / TemporalColumn / StringColumn / Cell / Table / serialize_table / hash_table.
 - every INSERT param is native (Decimal/str/None/date/datetime); temporal converted via _to_duckdb.
 - mypy --strict over the duckdb surface (DuckDBPyConnection, .execute(...).fetchall(), .executemany) is clean.
-- every f-string-SQL execute carries a same-line # noqa: S608 (identifiers are schema-validated field
-  names; the only bound values are ? params).
+- every Ruff-flagged f-string SQL build (SELECT / CTAS / projection / INSERT) carries a same-line # noqa:
+  S608; the CREATE TEMP TABLE (col_defs) f-strings are not flagged by S608 and carry none (identifiers are
+  schema-validated field names; the only bound values are ? params).
 - tests/oracle.py is OUT of coverage (source = ["verifier"]) → its defensive raises need not be exercised;
   the parity test covers the common paths.
 - gate: `export UV_PROJECT_ENVIRONMENT=.venv UV_LINK_MODE=copy` then `uv run --locked` { ruff check · ruff
