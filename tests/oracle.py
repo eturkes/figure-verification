@@ -21,12 +21,15 @@ every ingest cell (ingest._coerce_numeric caps magnitude there) and the whole go
 Outside it the oracle raises LOUDLY (never silently diverges) on two eval-accepted edges. (1) A
 filter literal beyond the column's DECIMAL(38,scale) domain — a huge value, OR the literal 1 on a
 scale-38 column (DECIMAL(38,38) holds |x|<1 only) — raises via the coercer's magnitude bound. (2)
-An aggregate whose total leaves the domain raises at EITHER DuckDB's SUM (OutOfRangeException,
-HUGEINT overflow, |sum|>~1.7e38) OR the typed DECIMAL(38,scale) reinsert (ConversionException,
-DECIMAL(38,0)-max <|sum|<= HUGEINT-max; SUM returns the over-precision value there). Because mean
-is SQL SUM+COUNT then a Python division, an in-domain mean RESULT still raises when its
-intermediate SUM overflows HUGEINT. eval's Fraction sum is unbounded, outside this oracle's
-representable domain.
+An aggregate raises at EITHER of two sites, never silently diverging. (a) DuckDB's SUM
+overflows its HUGEINT/INT128 accumulator on the running SCALED-integer total
+(|sum * 10^scale| > 2^127-1) — OutOfRangeException; the accumulation ORDER is unspecified, so
+this can fire on an intermediate partial sum even when the exact final total is in-domain. (b)
+The typed DECIMAL(38,scale) reinsert overflows when the final total exceeds DECIMAL(38,scale)
+yet the accumulator stayed within HUGEINT — ConversionException (SUM returns the over-precision
+value there). The oracle's mean (SQL SUM+COUNT then a Python division) is one (a) case: an
+in-domain mean RESULT still raises on the intermediate SUM overflow. eval's Fraction sum is exact
+and unbounded, so eval returns the value where the oracle raises.
 
 Pipeline = the section 6 deferral: only sort sets the closure's primary keys (every other op is
 row-order-insensitive), so no op runs an intermediate ORDER BY — the single closing ORDER BY (the

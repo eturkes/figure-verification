@@ -75,6 +75,13 @@ _S38 = b'{"dataset":"t.csv","columns":[{"name":"v","type":"numeric","scale":38,"
 # Over-domain aggregate fixtures (scale 0): sums leaving DuckDB's DECIMAL(38,0)/HUGEINT domain.
 _SUM_OVER_HUGEINT = b"v\n" + b"9" * 38 + b"\n" + b"9" * 38 + b"\n"  # 2*(10**38-1) > HUGEINT
 _SUM_OVER_DECIMAL38 = b"v\n" + (b"5" + b"0" * 37 + b"\n") * 3  # 1.5e38: fits HUGEINT, > DEC(38,0)
+# Cancelling fixtures: same multiset, exact final total in-domain (10**38-1). DuckDB SUM
+# accumulates in source order, so [max,max,-max] overflows the INT128 accumulator at the 2nd add
+# while [max,-max,max] never does -- the SUM-site raise tracks the intermediate accumulator, not
+# the final total (order-sensitive), and is never a silent divergence.
+_MAX38 = b"9" * 38  # 10**38 - 1, the largest in-domain scale-0 cell
+_CANCEL_OVERFLOW = b"v\n" + _MAX38 + b"\n" + _MAX38 + b"\n-" + _MAX38 + b"\n"
+_CANCEL_SAFE = b"v\n" + _MAX38 + b"\n-" + _MAX38 + b"\n" + _MAX38 + b"\n"
 _KV = (
     b'{"dataset":"t.csv","columns":['
     b'{"name":"k","type":"string","label":"K"},'
@@ -280,6 +287,26 @@ def test_oracle_raises_loudly_on_over_domain_filter_literal(
         recompute(spec, manifest, csv)
 
 
+def _raw_sum_raises(csv: bytes) -> bool:
+    """True if a raw DuckDB SUM over the fixture's scale-0 integer column overflows its INT128
+    accumulator (the SUM site); False if SUM succeeds and surfaces the over-precision value (so a
+    downstream raise can only be the typed reinsert). Pins WHICH of the two sites a fixture hits,
+    proving the parametrized id rather than merely asserting it."""
+    rows = [(Decimal(line),) for line in csv.decode().split("\n")[1:] if line]
+    con = duckdb.connect()
+    try:
+        con.execute("CREATE TEMP TABLE t (v DECIMAL(38,0))")
+        con.executemany("INSERT INTO t VALUES (?)", rows)
+        try:
+            con.execute("SELECT SUM(v) FROM t").fetchall()
+        except duckdb.OutOfRangeException:
+            return True
+        else:
+            return False
+    finally:
+        con.close()
+
+
 @pytest.mark.parametrize(
     ("csv", "eval_sum", "exc"),
     [
@@ -291,10 +318,14 @@ def test_oracle_raises_loudly_on_over_domain_filter_literal(
 def test_oracle_raises_loudly_on_over_domain_aggregate(
     csv: bytes, eval_sum: int, exc: type[Exception]
 ) -> None:
-    """A whole-table SUM leaving DuckDB's domain raises LOUDLY at its site -- OutOfRangeException
-    when the HUGEINT accumulator overflows (|sum|>~1.7e38), ConversionException at the typed
-    DECIMAL(38,scale) reinsert (DEC(38,0)-max <|sum|<= HUGEINT-max). eval's Fraction sum is exact
-    and unbounded, so it returns the value."""
+    """A whole-table SUM leaving DuckDB's domain raises LOUDLY at one of two DISTINCT sites:
+    OutOfRangeException when SUM overflows its INT128 accumulator (|sum*10^scale|>2^127-1), or
+    ConversionException at the typed DECIMAL(38,scale) reinsert when the final total exceeds
+    DECIMAL(38,scale) yet the accumulator held. _raw_sum_raises pins which site fires (so the ids
+    are proven, not just asserted): OutOfRangeException <=> SUM site, ConversionException <=> the
+    reinsert site, which requires SUM to SUCCEED first. eval's Fraction sum is unbounded, returning
+    the value."""
+    assert _raw_sum_raises(csv) is (exc is duckdb.OutOfRangeException)  # site <=> exception
     spec, manifest = _spec_manifest(_NUM, csv, _grp_agg([], [("v", "sum", "s")]))
     assert evaluate(spec, manifest, csv).rows == ((Decimal(eval_sum),),)
     with pytest.raises(exc):
@@ -310,3 +341,21 @@ def test_oracle_mean_diverges_when_intermediate_sum_overflows() -> None:
     assert evaluate(spec, manifest, csv).rows == ((Decimal(10**38 - 1),),)
     with pytest.raises(duckdb.OutOfRangeException):
         recompute(spec, manifest, csv)
+
+
+def test_oracle_sum_site_overflow_is_order_sensitive() -> None:
+    """A cancelling SUM whose exact final total is in-domain (10**38-1): eval's Fraction sum
+    returns it for BOTH row orders. The oracle accumulates in source order, so [max,max,-max]
+    overflows the INT128 accumulator at the 2nd add and raises LOUDLY, while [max,-max,max] never
+    overflows and AGREES exactly -- the SUM-site raise tracks the intermediate accumulator, not the
+    final total, and is never a silent divergence."""
+    in_domain = ((Decimal(10**38 - 1),),)
+    xform = _grp_agg([], [("v", "sum", "s")])
+    spec, manifest = _spec_manifest(_NUM, _CANCEL_OVERFLOW, xform)
+    assert evaluate(spec, manifest, _CANCEL_OVERFLOW).rows == in_domain
+    with pytest.raises(duckdb.OutOfRangeException):
+        recompute(spec, manifest, _CANCEL_OVERFLOW)
+    spec, manifest = _spec_manifest(_NUM, _CANCEL_SAFE, xform)
+    safe = evaluate(spec, manifest, _CANCEL_SAFE)
+    assert safe.rows == in_domain
+    assert canon.hash_table(recompute(spec, manifest, _CANCEL_SAFE)) == canon.hash_table(safe)
