@@ -237,6 +237,8 @@
     }
   ],
   "enforced_by_construction": {
+    "security.no_arbitrary_code": "the spec is data-only (msgspec structs, no expr/code/url field); no arbitrary-code path exists to execute -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
+    "transform.ops_allowed": "the transform tagged-union admits only {select,filter,group_by,aggregate,sort}; an unlisted op is unrepresentable at decode -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
     "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists (M1.5/M1.6) -> no bad-spec attack vector",
     "transform.filters_declared": "every filter is a declared transform.filter op; the verifier recomputes from declared transforms only -> an undeclared filter is unrepresentable",
     "scale.bar_quantitative_axis_zero": "the renderer sets the bar quantitative-axis baseline to 0 regardless of orientation (vertical or horizontal); the model proposes no scale (M1.6) -> a non-zero baseline is unrepresentable",

@@ -142,7 +142,8 @@ bytes, §8.)
   | nominal | string \| numeric |
 
 - `x`, `y` required; `color` optional = a third channel, same rules. The color legend domain =
-  the data's distinct values (`encoding.legend_domain_matches_data`, M1.5).
+  the data's distinct values (`encoding.legend_domain_matches_data`, M1.6 renderer — by
+  construction, derived from the recomputed data; not a `checks.py` check).
 - Axis title = manifest display label + manifest unit appended (M1.6); the title VALUE is
   manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
