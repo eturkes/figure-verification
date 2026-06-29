@@ -10,6 +10,7 @@ coercion, and the section 6 closure's null-greatest ordering). The full good-spe
 the determinism anchor land in M1.4e.
 """
 
+import itertools
 import pathlib
 from decimal import Decimal
 
@@ -463,3 +464,42 @@ def test_mean_at_scale_rounds_half_to_even() -> None:
 def test_mean_at_scale_handles_negative_total() -> None:
     # A negative mean exercises the _scaled_int_to_decimal sign branch (the corpus is all positive).
     assert mean_at_scale(Decimal(-1), 2, 1) == Decimal("-0.5")
+
+
+# --- exact aggregation over the DECIMAL(38) domain (codex-review M1.4d) -------
+# 1e28 is a 29-digit summand, one digit past the ambient decimal context (prec 28); a
+# context-bound `sum()` rounds mid-accumulation and so depends on source row order, whereas
+# section 3 mandates exact Sigma. These drive the real CSV -> coerce -> aggregate -> hash path
+# that mean_at_scale's direct tests above never reach -- the data-domain gap behind 100%
+# branch coverage. `_CANCELS` sums to exactly 3; a context-bound sum collapses it toward 0.
+_E28 = "10000000000000000000000000000"  # 1e28; adjusted 28 <= DECIMAL(38, 0) magnitude bound
+_CANCELS = (_E28, "3", "-" + _E28)
+_NUMS = (NumericColumnSpec(name="v", scale=0),)
+
+
+def _csv(order: tuple[str, ...]) -> bytes:
+    return ("v\n" + "\n".join(order) + "\n").encode()
+
+
+def _agg(fn: str, out: str) -> list[dict[str, object]]:
+    return [{"op": "aggregate", "measures": [{"field": "v", "fn": fn, "as": out}]}]
+
+
+def test_sum_is_exact_beyond_context_precision() -> None:
+    table = _evaluate(_agg("sum", "total"), _NUMS, _csv(_CANCELS))
+    assert table.rows == ((Decimal(3),),)  # exact Sigma keeps the +3; a rounded sum gives 0
+
+
+def test_mean_is_exact_beyond_context_precision() -> None:
+    table = _evaluate(_agg("mean", "avg"), _NUMS, _csv(_CANCELS))
+    assert table.rows == ((Decimal(1),),)  # 3 / 3 over an exact total; a rounded sum gives 0
+
+
+def test_aggregation_hash_is_row_permutation_invariant() -> None:
+    # The plotted-table hash must not depend on source row order: every permutation of a
+    # cancelling group must yield the same exact sum and so the same canon.hash_table.
+    hashes = {
+        canon.hash_table(_evaluate(_agg("sum", "total"), _NUMS, _csv(order)))
+        for order in itertools.permutations(_CANCELS)
+    }
+    assert len(hashes) == 1

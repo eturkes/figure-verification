@@ -222,6 +222,16 @@ def _measure_output_column(src_col: canon.Column, fn: AggFn, output: str) -> can
     return canon.StringColumn(name=output)
 
 
+def _exact_total(decimals: list[Decimal], scale: int) -> Decimal:
+    """Exact Σ of same-scale Decimals (section 3). `sum()`/`+` round to the ambient decimal
+    context (prec 28 < the DECIMAL(38) domain), dropping digits and making the result depend on
+    accumulation order — which would break exactness and the plotted-table hash's
+    permutation-invariance. Fraction sums losslessly and stays associative; each cell is a
+    multiple of 10**-scale, so scaling by 10**scale clears the denominator to an exact int."""
+    total = sum((Fraction(cell) for cell in decimals), Fraction(0))
+    return _scaled_int_to_decimal((total * 10**scale).numerator, scale)
+
+
 def _aggregate_one(fn: AggFn, cells: list[canon.Cell], scale: int) -> canon.Cell:
     """One group's aggregate over one column's cells (section 4). count = non-null count;
     sum/mean/min/max over zero non-nulls = null (SQL-matching). mean rounds once HALF_EVEN."""
@@ -234,9 +244,9 @@ def _aggregate_one(fn: AggFn, cells: list[canon.Cell], scale: int) -> canon.Cell
     # need the Decimal view. The cast is a no-op the min/max paths never read.
     decimals = cast(list[Decimal], non_null)
     if fn == "sum":
-        return sum(decimals, Decimal(0))
+        return _exact_total(decimals, scale)
     if fn == "mean":
-        return mean_at_scale(sum(decimals, Decimal(0)), len(non_null), scale)
+        return mean_at_scale(_exact_total(decimals, scale), len(non_null), scale)
     if fn == "min":
         return min(non_null)
     return max(non_null)
