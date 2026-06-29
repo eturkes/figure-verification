@@ -35,7 +35,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.3 | Synthetic datasets + golden good/bad specs | DONE | 72% 144K/200K |
 | M1.4a | Canonical forms + provenance hashing (`canon.py`) | DONE | 71% 141K/200K |
 | M1.4b | Typed ingest: manifest + CSV→`Table` (`ingest.py` + `errors.py`) | DONE | 68% 136K/200K |
-| M1.4c | Step-0 ingest refactor: shared `_decimal_at_scale` + `check`-param threading (`ingest.py`) | OPEN | — |
+| M1.4c | Step-0 ingest refactor: shared `_decimal_at_scale` + `check`-param threading (`ingest.py`) | DONE | 61% 122K/200K |
 | M1.4d | Deterministic evaluator + index normalize + 100% coverage (`eval.py`) | OPEN | — |
 | M1.4e | Eval golden corpus + determinism anchor (`test_eval.py`) | OPEN | — |
 | M1.4f | Dual-engine oracle + determinism properties | OPEN | — |

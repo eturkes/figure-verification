@@ -25,7 +25,7 @@ import io
 import json
 from datetime import date, datetime
 from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Context, Decimal, InvalidOperation
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 import msgspec
 from msgspec import Meta
@@ -110,22 +110,50 @@ def _canon_column(column: ManifestColumn) -> canon.Column:
 
 
 # --- cell coercion (VPlot_SEMANTICS.md section 3) ----------------------------
-def _coerce_numeric(text: str, scale: int) -> Decimal:
-    """A non-empty numeric cell -> an at-scale Decimal, or raise data.numeric_value.
-
-    Rejects: an unparsable token, a non-finite value (NaN/Infinity carry no scale), a
-    magnitude beyond DECIMAL(38, scale), and excess precision (> scale fractional places
-    -- source data is never silently rounded; only computed aggregates quantize). A value
-    exactly representable at `scale` (trailing zeros included) passes; -0 folds to 0.
-    Reused by the evaluator for string->numeric filter coercion (re-tagged there)."""
+def _decimal_at_scale(text: str, scale: int, *, check: str) -> Decimal:
+    """A numeric token -> a finite Decimal proved exact at `scale`, or raise `check`. Folds
+    -0 to +0 and does NOT bound magnitude -- the caller decides: a STORED cell adds the
+    DECIMAL(38, scale) magnitude bound in _coerce_numeric, but a filter LITERAL is only
+    COMPARED, so section 3 bounds it by parse + finiteness + precision alone. The evaluator
+    reuses this for string->numeric filter coercion, passing check="filter.value_type"."""
     try:
         value = Decimal(text)
     except InvalidOperation as exc:
         msg = f"numeric value {text!r} is not a valid decimal"
-        raise VerificationError(msg, check="data.numeric_value") from exc
+        raise VerificationError(msg, check=check) from exc
     if not value.is_finite():
         msg = f"numeric value {text!r} is not finite"
-        raise VerificationError(msg, check="data.numeric_value")
+        raise VerificationError(msg, check=check)
+    # Excess-precision check, run ONLY when the value can carry excess places. A finite Decimal
+    # whose as_tuple().exponent >= -scale already has <= scale fractional places, so quantizing it
+    # is a value no-op -- and on a hostile huge-exponent literal ("1e999999999999999999", 20 chars
+    # within the filter max_length=128) the unguarded quantize is a DoS: Context(prec > MAX_PREC)
+    # raises when adjusted() == MAX_PREC, else materializes ~1e18 digits (MemoryError/hang).
+    # Guarding on the exponent skips both losslessly; only exponent < -scale carries (bounded, since
+    # a huge POSITIVE exponent lands in the skip arm) excess places worth quantizing to detect. The
+    # widened context mirrors canon._format_decimal so quantize stays total over every in-range mag.
+    exponent = cast(int, value.as_tuple().exponent)  # finite -> int, never the 'n'/'N'/'F' specials
+    if exponent < -scale:
+        quantum = Decimal((0, (1,), -scale))
+        precision = max(value.adjusted() + scale + 2, 1)
+        context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
+        if value.quantize(quantum, context=context) != value:
+            msg = f"numeric value {text!r} has more than {scale} fractional place(s)"
+            raise VerificationError(msg, check=check)
+    if value.is_zero():
+        return value.copy_abs()
+    return value
+
+
+def _coerce_numeric(text: str, scale: int) -> Decimal:
+    """A non-empty numeric CELL -> its canonical at-scale Decimal, or raise data.numeric_value.
+
+    Parse + finiteness + excess-precision come from _decimal_at_scale; a STORED cell adds two
+    more constraints a filter literal does not need: a magnitude bound (the value must fit
+    DECIMAL(38, scale), the M1.4f oracle's column type) and a re-quantize to exactly `scale`
+    fractional places (the canonical stored form -- _decimal_at_scale proves the value exact at
+    scale but leaves its incoming exponent untouched). -0 folds to 0."""
+    value = _decimal_at_scale(text, scale, check="data.numeric_value")
     # adjusted() is the most-significant digit's exponent; an integer part of d digits has
     # adjusted == d-1, so the DECIMAL(38, scale) integer width caps it at 37 - scale. The
     # is_zero() guard admits 0 at any scale -- a zero is representable at every scale, and its
@@ -134,53 +162,51 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
     if not (value.is_zero() or value.adjusted() <= _MAX_PRECISION - 1 - scale):
         msg = f"numeric value {text!r} exceeds DECIMAL({_MAX_PRECISION}, {scale}) magnitude"
         raise VerificationError(msg, check="data.numeric_value")
-    # Excess-precision check, mirroring canon._format_decimal's widened context so quantize
-    # stays total over every finite magnitude: a value with > scale places rounds away from
-    # itself, so quantized != value flags it (exact-at-scale values, trailing zeros included,
-    # are unchanged). adjusted() is clamped to 0 for a zero -- the is_zero() exemption above lets
-    # a huge-exponent zero ("0E+999...") reach here, and its adjusted() exponent unclamped pushes
-    # precision past MAX_PREC, making Context() raise an uncaught ValueError (a load_table DoS).
+    # Re-quantize to the canonical stored form (exactly `scale` places), mirroring
+    # canon._format_decimal's widened context. adjusted() is clamped to 0 for a zero -- the
+    # magnitude bound above exempts a zero, so a huge-exponent zero ("0E+999...") reaches here, and
+    # its adjusted() exponent unclamped would push precision past MAX_PREC into an uncaught
+    # ValueError (a load_table DoS). The filter path skips this re-quantize (a literal is compared,
+    # never stored), which is why _decimal_at_scale returns the un-re-quantized value.
     quantum = Decimal((0, (1,), -scale))
     precision = max((0 if value.is_zero() else value.adjusted()) + scale + 2, 1)
     context = Context(prec=precision, Emax=MAX_EMAX, Emin=MIN_EMIN, rounding=ROUND_HALF_EVEN)
-    quantized = value.quantize(quantum, context=context)
-    if quantized != value:
-        msg = f"numeric value {text!r} has more than {scale} fractional place(s)"
-        raise VerificationError(msg, check="data.numeric_value")
-    if quantized.is_zero():
-        return quantized.copy_abs()
-    return quantized
+    normalized = value.quantize(quantum, context=context)
+    return normalized.copy_abs() if normalized.is_zero() else normalized
 
 
-def _coerce_temporal(text: str, granularity: Literal["date", "datetime"]) -> str:
-    """A non-empty temporal cell -> its canonical ISO-8601 text, or raise data.temporal_value.
+def _coerce_temporal(
+    text: str, granularity: Literal["date", "datetime"], *, check: str = "data.temporal_value"
+) -> str:
+    """A non-empty temporal cell -> its canonical ISO-8601 text, or raise `check`.
 
     Accepts ONLY the canonical zero-padded form (date YYYY-MM-DD or naive datetime
     YYYY-MM-DDThh:mm:ss[.ffffff]) by round-tripping through isoformat() == text: this
     rejects basic `20240101`, unpadded `2024-1-1`, missing-seconds, and non-canonical
     fractions (isoformat emits exactly 6 fractional digits or none). Datetimes carrying a
-    timezone are rejected (naive only, section 2). Reused by the evaluator for
-    string->temporal filter coercion (re-tagged there)."""
+    timezone are rejected (naive only, section 2). The default `check` tags an ingest
+    data-integrity failure (data.temporal_value); the evaluator reuses this for
+    string->temporal filter coercion, passing check="filter.value_type"."""
     if granularity == "date":
         try:
             parsed_date = date.fromisoformat(text)
         except ValueError as exc:
             msg = f"temporal value {text!r} is not an ISO-8601 date"
-            raise VerificationError(msg, check="data.temporal_value") from exc
+            raise VerificationError(msg, check=check) from exc
         canonical = parsed_date.isoformat()
     else:
         try:
             parsed_dt = datetime.fromisoformat(text)
         except ValueError as exc:
             msg = f"temporal value {text!r} is not an ISO-8601 datetime"
-            raise VerificationError(msg, check="data.temporal_value") from exc
+            raise VerificationError(msg, check=check) from exc
         if parsed_dt.tzinfo is not None:
             msg = f"temporal value {text!r} carries a timezone; naive datetimes only"
-            raise VerificationError(msg, check="data.temporal_value")
+            raise VerificationError(msg, check=check)
         canonical = parsed_dt.isoformat()
     if canonical != text:
         msg = f"temporal value {text!r} is not canonical ISO-8601 (canonical: {canonical!r})"
-        raise VerificationError(msg, check="data.temporal_value")
+        raise VerificationError(msg, check=check)
     return canonical
 
 
