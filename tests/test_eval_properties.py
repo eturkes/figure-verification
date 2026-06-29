@@ -10,11 +10,16 @@ evaluate -> canon.hash_table pipeline:
   - permutation-invariance: reordering the source rows leaves hash_table fixed (the section-6
     total-sort closure re-derives one plotted order), for both a group_by/aggregate and a
     select spec;
-  - dataset-order-sensitivity: a distinct row order is a distinct SOURCE identity
-    (hash_dataset moves) yet the same PLOTTED identity (hash_table fixed) -- row order is
-    source provenance, not plotted data;
-  - PYTHONHASHSEED-stability: the whole pipeline is byte-identical across two interpreter
-    processes seeded differently (no dict/set iteration order leaks into a hash).
+  - dataset-order-sensitivity: a single anchor witness -- a distinct row order is a distinct
+    SOURCE identity (hash_dataset moves on raw bytes) yet the same PLOTTED identity (hash_table
+    fixed); row order is source provenance, not plotted data. A concrete anchor, not a property,
+    on purpose: the hash_dataset-moves half is SHA-256 over distinct bytes (tautological), and the
+    hash_table-holds half is a special case of permutation-invariance above -- a randomized form
+    adds no falsifying power, one witness states the decoupling;
+  - PYTHONHASHSEED-stability: the evaluate -> hash_table pipeline is byte-identical across four
+    interpreter processes (seed 0 = randomization off, .. 3) over tie-heavy rows that force the
+    closure's tail tie-break -- the spot any dict/set iteration-order leak would reach the plotted
+    order; it samples for a leak, it does not prove absence.
 Rows go through csv.writer (CR-LF dialect), so an embedded comma / quote / CR-LF / NUL in a
 string field round-trips through ingest's csv.reader(strict=True) without hand-escaping
 (verified end-to-end against load_table).
@@ -29,7 +34,7 @@ from datetime import date
 from decimal import Decimal
 
 import msgspec
-from hypothesis import assume, given
+from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn, SearchStrategy
 
@@ -156,7 +161,10 @@ def test_row_permutation_preserves_table_hash(case: tuple[list[_Row], list[_Row]
 
 
 # --- dataset-order-sensitivity: source identity moves, plotted identity holds --
-def test_dataset_order_sensitivity_anchor() -> None:
+# One anchor, deliberately not a property: hash_dataset moving is SHA-256 over distinct bytes
+# (tautological), and hash_table holding is a special case of permutation-invariance -- so a
+# randomized form would add no falsifying power. This witness states the decoupling concretely.
+def test_dataset_order_sensitivity() -> None:
     """Two byte-distinct row orders: hash_dataset differs (raw-byte source identity) while every
     spec's hash_table is identical (the closure re-derives one plotted order)."""
     forward: list[_Row] = [("x", "1", "1.0", "2026-01-01"), ("y", "2", "2.0", "2026-01-02")]
@@ -165,18 +173,11 @@ def test_dataset_order_sensitivity_anchor() -> None:
     assert _table_hashes(forward) == _table_hashes(backward)
 
 
-@given(st.lists(_row(), min_size=2, max_size=6))
-def test_dataset_order_sensitivity(rows: list[_Row]) -> None:
-    reversed_rows = list(reversed(rows))
-    forward, backward = _csv(rows), _csv(reversed_rows)
-    assume(forward != backward)  # exclude all-duplicate / palindromic orders (raw bytes unchanged)
-    assert canon.hash_dataset(forward) != canon.hash_dataset(backward)
-    assert _table_hashes(rows) == _table_hashes(reversed_rows)
-
-
 # --- PYTHONHASHSEED-stability of the full evaluate -> hash_table pipeline -------
-# Multiple string-keyed groups, so a leak of dict/set iteration order into a hash would surface
-# as a seed-dependent digest. The closure's total sort is what defeats it -- this proves it.
+# Tie-heavy rows force the closure's tail tie-break in BOTH specs (duplicate sum_a across groups
+# p/q/r; duplicate d across rows) -- the spot a dict/set iteration-order leak would reach the
+# plotted order. Seeds 0 (randomization off) .. 3 must all agree; the closure's total sort is what
+# should defeat any leak -- this samples for one, it does not prove absence.
 _DETERMINISM_PROG = """
 import csv, io
 import msgspec
@@ -227,10 +228,11 @@ select_spec = spec([
 ])
 
 rows = [
-    ["gamma", "3", "3.0", "2026-01-03"],
-    ["alpha", "1", "1.0", "2026-01-01"],
-    ["beta", "2", "2.0", "2026-01-02"],
-    ["alpha", "5", "5.5", "2026-01-04"],
+    ["p", "2", "1.0", "2026-01-01"],
+    ["p", "4", "3.0", "2026-01-01"],
+    ["q", "6", "2.0", "2026-01-01"],
+    ["q", "0", "8.0", "2026-01-02"],
+    ["r", "6", "5.0", "2026-01-02"],
     ["", "", "", ""],
 ]
 buf = io.StringIO(newline="")
@@ -256,6 +258,6 @@ def _pipeline_hashes_under_seed(seed: str) -> str:
 
 
 def test_pipeline_hash_stable_across_pythonhashseed() -> None:
-    out = _pipeline_hashes_under_seed("0")
-    assert out == _pipeline_hashes_under_seed("1")
-    assert out.count("sha256:") == 2  # both specs emitted a plotted-table hash
+    outputs = [_pipeline_hashes_under_seed(str(seed)) for seed in range(4)]
+    assert len(set(outputs)) == 1  # byte-identical across seeds 0..3 -- no iteration-order leak
+    assert outputs[0].count("sha256:") == 2  # both specs emitted a plotted-table hash
