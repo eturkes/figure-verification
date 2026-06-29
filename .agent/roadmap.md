@@ -37,7 +37,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.4b | Typed ingest: manifest + CSV→`Table` (`ingest.py` + `errors.py`) | DONE | 68% 136K/200K |
 | M1.4c | Step-0 ingest refactor: shared `_decimal_at_scale` + `check`-param threading (`ingest.py`) | DONE | 61% 122K/200K |
 | M1.4d | Deterministic evaluator + index normalize + 100% coverage (`eval.py`) | DONE | overflow→compaction (impl+suite written; gate-finished next session: 44% 88K/200K) |
-| M1.4e | Eval golden corpus + determinism anchor (`test_eval.py`) | OPEN | — |
+| M1.4e | Eval golden corpus + determinism anchor (`test_eval.py`) | DONE | 56% 112K/200K |
 | M1.4f | Dual-engine oracle + determinism properties | OPEN | — |
 | M1.5 | Verification checks v0 | OPEN | — |
 | M1.6 | VPlot → Vega-Lite → SVG/HTML compiler + badge | OPEN | — |

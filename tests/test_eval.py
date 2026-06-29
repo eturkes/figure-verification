@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Tests for verifier.eval — the deterministic recompute pipeline (M1.4d).
+"""Tests for verifier.eval — the deterministic recompute pipeline (M1.4d/e).
 
 Three layers: (1) the M1.3 eval-bad specs each raise their specific semantic `check`;
 (2) verified anchor goldens (g01/g04/g05) reproduced row-for-row against the sales CSV by
 hand-verified explicit asserts (the M1.4f DuckDB oracle independently confirms these);
 (3) inline constructed-table fixtures driving every remaining branch (distinctness, group_by
 placement, whole-table + multi-measure aggregates, count/min/max/null semantics, filter
-coercion, and the section 6 closure's null-greatest ordering). The full good-spec corpus and
-the determinism anchor land in M1.4e.
+coercion, and the section 6 closure's null-greatest ordering). M1.4e completes the good-spec
+corpus row-for-row (g02/g03/g06-g10), passes the M1.5-layer specs (b08/b11/b12/b13) through eval
+without error, and anchors determinism: a semantically no-op spec edit leaves the plotted-table
+hash fixed while only the spec hash moves.
 """
 
 import itertools
@@ -28,7 +30,7 @@ from verifier.ingest import (
     TemporalColumnSpec,
     load_manifest,
 )
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import Transform, VPlotSpec, decode_spec
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -503,3 +505,163 @@ def test_aggregation_hash_is_row_permutation_invariant() -> None:
         for order in itertools.permutations(_CANCELS)
     }
     assert len(hashes) == 1
+
+
+# --- M1.4e: remaining good-spec corpus, row-for-row (the M1.4f oracle confirms) ------
+def test_g02_revenue_by_region() -> None:
+    # group_by region -> sum revenue -> sort total_revenue desc.
+    table = _evaluate_example("good_specs", "g02_revenue_by_region.json", "sales")
+    assert table.columns == (
+        canon.StringColumn(name="region"),
+        canon.NumericColumn(name="total_revenue", scale=0),
+    )
+    assert table.rows == (("NA", Decimal(40000)), ("EU", Decimal(34000)))
+
+
+def test_g03_order_count_by_month() -> None:
+    table = _evaluate_example("good_specs", "g03_order_count_by_month.json", "sales")
+    assert table.columns == (
+        canon.StringColumn(name="month"),
+        canon.NumericColumn(name="total_orders", scale=0),
+    )
+    assert table.rows == (
+        ("2026-01", Decimal(141)),
+        ("2026-02", Decimal(163)),
+        ("2026-03", Decimal(174)),
+    )
+
+
+def test_g06_max_temp_by_city() -> None:
+    # London max(4.5,5.1,3.8,6.0)=6.0; Cairo max(14.0,15.2,16.4,13.9)=16.4; sort max_temp desc.
+    table = _evaluate_example("good_specs", "g06_max_temp_by_city.json", "weather")
+    assert table.columns == (
+        canon.StringColumn(name="city"),
+        canon.NumericColumn(name="max_temp", scale=1),
+    )
+    assert table.rows == (("Cairo", Decimal("16.4")), ("London", Decimal("6.0")))
+
+
+def test_g07_temp_over_time_by_city() -> None:
+    # select date, city, temp_c -> closure date asc, city asc, temp_c asc (temporal cell = ISO str).
+    table = _evaluate_example("good_specs", "g07_temp_over_time_by_city.json", "weather")
+    assert table.columns == (
+        canon.TemporalColumn(name="date", granularity="date"),
+        canon.StringColumn(name="city"),
+        canon.NumericColumn(name="temp_c", scale=1),
+    )
+    assert table.rows == (
+        ("2026-01-01", "Cairo", Decimal("14.0")),
+        ("2026-01-01", "London", Decimal("4.5")),
+        ("2026-01-02", "Cairo", Decimal("15.2")),
+        ("2026-01-02", "London", Decimal("5.1")),
+        ("2026-01-03", "Cairo", Decimal("16.4")),
+        ("2026-01-03", "London", Decimal("3.8")),
+        ("2026-01-04", "Cairo", Decimal("13.9")),
+        ("2026-01-04", "London", Decimal("6.0")),
+    )
+
+
+def test_g08_na_revenue_by_month() -> None:
+    # filter region eq NA -> group_by month -> sum revenue -> sort month asc.
+    table = _evaluate_example("good_specs", "g08_na_revenue_by_month.json", "sales")
+    assert table.columns == (
+        canon.StringColumn(name="month"),
+        canon.NumericColumn(name="total_revenue", scale=0),
+    )
+    assert table.rows == (
+        ("2026-01", Decimal(12000)),
+        ("2026-02", Decimal(15000)),
+        ("2026-03", Decimal(13000)),
+    )
+
+
+def test_g09_min_revenue_by_month() -> None:
+    table = _evaluate_example("good_specs", "g09_min_revenue_by_month.json", "sales")
+    assert table.columns == (
+        canon.StringColumn(name="month"),
+        canon.NumericColumn(name="min_revenue", scale=0),
+    )
+    assert table.rows == (
+        ("2026-01", Decimal(9000)),
+        ("2026-02", Decimal(11000)),
+        ("2026-03", Decimal(13000)),
+    )
+
+
+def test_g10_temp_vs_precip() -> None:
+    # select temp_c, precip_mm -> closure temp_c asc, precip_mm asc (all temp_c distinct).
+    table = _evaluate_example("good_specs", "g10_temp_vs_precip.json", "weather")
+    assert table.columns == (
+        canon.NumericColumn(name="temp_c", scale=1),
+        canon.NumericColumn(name="precip_mm", scale=1),
+    )
+    assert table.rows == (
+        (Decimal("3.8"), Decimal("0.0")),
+        (Decimal("4.5"), Decimal("2.0")),
+        (Decimal("5.1"), Decimal("3.5")),
+        (Decimal("6.0"), Decimal("1.2")),
+        (Decimal("13.9"), Decimal("0.5")),
+        (Decimal("14.0"), Decimal("0.0")),
+        (Decimal("15.2"), Decimal("0.0")),
+        (Decimal("16.4"), Decimal("0.0")),
+    )
+
+
+# --- M1.5-layer specs recompute cleanly; their defect is caught later (M1.5) --------
+@pytest.mark.parametrize(
+    ("filename", "dataset_stem", "n_rows"),
+    [
+        ("b08_dataset_hash_mismatch.json", "sales", 3),
+        ("b11_axis_type_mismatch.json", "sales", 6),
+        ("b12_encoding_field_absent.json", "sales", 3),
+        ("b13_missing_y_unit.json", "weather", 8),
+    ],
+)
+def test_m15_layer_spec_evaluates_without_error(
+    filename: str, dataset_stem: str, n_rows: int
+) -> None:
+    # eval inspects neither dataset.hash nor encoding, so a hash/axis-type/absent-field/missing-
+    # unit defect passes straight through here and is rejected by the M1.5 checks instead.
+    table = _evaluate_example("bad_specs", filename, dataset_stem)
+    assert len(table.rows) == n_rows
+
+
+# --- determinism anchor: a semantically no-op spec edit moves only the spec hash ----
+def _sort_op(field: str, order: str) -> Transform:
+    """A standalone sort op, graftable into any spec via msgspec.structs.replace (the same frozen
+    Sort type a decoded spec carries)."""
+    return _spec([{"op": "sort", "by": [{"field": field, "order": order}]}]).transform[0]
+
+
+def _g01_anchor() -> tuple[VPlotSpec, Manifest, bytes]:
+    """The g01 spec + its sales inputs — the base every no-op-edit variant is replaced from."""
+    spec = decode_spec((EXAMPLES / "good_specs" / "g01_total_revenue_by_month.json").read_bytes())
+    manifest = load_manifest((DATA / "schemas" / "sales.json").read_bytes())
+    return spec, manifest, (DATA / "sales.csv").read_bytes()
+
+
+def test_superseded_sort_edit_preserves_table_hash() -> None:
+    # An extra sort before the trailing sort is overridden by it + the section-6 closure: the
+    # plotted table is byte-identical, so only the spec hash moves.
+    base, manifest, csv_bytes = _g01_anchor()
+    extra = _sort_op("total_revenue", "descending")
+    variant = msgspec.structs.replace(
+        base, transform=(base.transform[0], base.transform[1], extra, base.transform[2])
+    )
+    assert canon.hash_table(evaluate(base, manifest, csv_bytes)) == canon.hash_table(
+        evaluate(variant, manifest, csv_bytes)
+    )
+    assert canon.hash_spec(base) != canon.hash_spec(variant)
+
+
+def test_pre_aggregate_sort_edit_preserves_table_hash() -> None:
+    # A sort before the aggregate is discarded by the aggregate's active-key reset; the closure
+    # re-sorts identically, so again only the spec hash moves.
+    base, manifest, csv_bytes = _g01_anchor()
+    variant = msgspec.structs.replace(
+        base, transform=(_sort_op("revenue", "descending"), *base.transform)
+    )
+    assert canon.hash_table(evaluate(base, manifest, csv_bytes)) == canon.hash_table(
+        evaluate(variant, manifest, csv_bytes)
+    )
+    assert canon.hash_spec(base) != canon.hash_spec(variant)
