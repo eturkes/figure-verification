@@ -183,7 +183,7 @@
       "file": "b10_filter_int_vs_string.json",
       "layer": "dataset-binding",
       "decodes": true,
-      "check": "filter coercion (semantics §3)",
+      "check": "filter.value_type",
       "caught_by": "M1.4 eval",
       "reason": "int literal 5 cannot coerce to the string column region"
     },
@@ -215,7 +215,7 @@
       "file": "b14_group_by_without_aggregate.json",
       "layer": "transform",
       "decodes": true,
-      "check": "group_by placement (semantics §4)",
+      "check": "transform.group_by_placement",
       "caught_by": "M1.4 eval",
       "reason": "group_by is valid only immediately before an aggregate; here it precedes a sort"
     },
@@ -223,7 +223,7 @@
       "file": "b15_aggregate_as_collides_group_key.json",
       "layer": "transform",
       "decodes": true,
-      "check": "aggregate-output / group-key collision (semantics §5)",
+      "check": "aggregate.output_unique",
       "caught_by": "M1.4 eval",
       "reason": "measure output 'region' collides with the group key 'region'"
     },
@@ -231,7 +231,7 @@
       "file": "b16_sort_fields_not_distinct.json",
       "layer": "transform",
       "decodes": true,
-      "check": "sort-field distinctness (semantics §5)",
+      "check": "sort.fields_distinct",
       "caught_by": "M1.4 eval",
       "reason": "sort.by repeats the field 'month'"
     }
