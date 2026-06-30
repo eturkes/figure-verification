@@ -167,7 +167,7 @@ def _encoding_checks(spec: VPlotSpec, plotted_table: canon.Table) -> list[CheckR
     results.append(
         _fail(check, f"channel type does not match the plotted-column kind: {mismatched}")
         if mismatched
-        else _pass(check, "every channel type matches its plotted-column kind")
+        else _pass(check, "every present channel field's type matches its plotted-column kind")
     )
 
     return results

@@ -6,9 +6,11 @@ when report.passed. This suite drives it from the M1.3 corpus (examples/index.js
 decode-layer specs never reach verify; pre-table bad specs (binding + eval-surfaced) each
 fail with exactly their indexed check and carry no plotted_table; the structural-encoding
 bad specs (b11/b12) fail post-eval, so plotted_table stays populated; good specs pass and
-inline the recomputation. The quantitative-unit spec (b13) is M1.5c territory, excluded
-here. A Hypothesis property pins the spine invariant: verify inlines exactly what eval
-recomputes.
+inline the recomputation. The quantitative-unit spec (b13) still passes this stage — its
+sole defect is M1.5c's missing-unit check — so it is pinned passing, not scanned for a
+false-accept. A direct matrix test pins every VPlot_SEMANTICS.md section 7 channel-type ↔
+column-kind pair behaviorally (branch coverage cannot reach individual map entries). A
+Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
 """
 
 import csv
@@ -27,7 +29,7 @@ from msgspec import DecodeError, ValidationError
 from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
-from verifier.schema import decode_spec
+from verifier.schema import VPlotSpec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -69,6 +71,9 @@ _PRE_TABLE_BAD = [
 ]
 # Structural-encoding: blocked AFTER eval succeeds (b11/b12) -> plotted_table populated.
 _ENCODING_BAD = [b for b in _BAD if b["check"] in _STRUCTURAL_ENCODING_CHECKS]
+# Deferred to M1.5c: bad ONLY by a missing quantitative unit (b13), so it still PASSES the
+# M1.5b stage -> pinned passing below, not scanned for a false-accept.
+_DEFERRED_BAD = [b for b in _BAD if b["check"] in _DEFERRED_CHECKS]
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
@@ -84,7 +89,10 @@ def test_corpus_split_covers_each_layer() -> None:
     pre_table_checks = {b["check"] for b in _PRE_TABLE_BAD}
     assert "dataset.hash_matches_source" in pre_table_checks  # binding gate
     assert len(_PRE_TABLE_BAD) >= 7  # b08 binding + b07/b09/b10/b14/b15/b16 eval-surfaced
-    assert len(_ENCODING_BAD) == 2  # b11 axis-type + b12 field-absent
+    # BOTH narrowing arms must have a failing fixture (not two of the same check), one each.
+    assert {b["check"] for b in _ENCODING_BAD} == _STRUCTURAL_ENCODING_CHECKS
+    assert len(_ENCODING_BAD) == len(_STRUCTURAL_ENCODING_CHECKS)  # b11 axis-type + b12 absent
+    assert len(_DEFERRED_BAD) == 1  # b13: still passes M1.5b, its defect is M1.5c's
     assert _BAD_DECODE  # decode-layer specs exist to assert verify is unreached
 
 
@@ -129,6 +137,23 @@ def test_encoding_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
     assert report.plotted_table is not None  # eval succeeded -> table reflects the recompute
 
 
+# --- deferred unit spec: still passes the M1.5b stage (its defect is M1.5c's) ----
+@pytest.mark.parametrize("entry", _DEFERRED_BAD, ids=_ids(_DEFERRED_BAD))
+def test_deferred_unit_spec_passes_until_m15c(entry: dict[str, Any]) -> None:
+    # b13's sole defect is a missing quantitative unit, caught only by M1.5c's
+    # label.quantitative_units_present. Until then it MUST pass the M1.5b stage: pin the pass,
+    # the populated table, and the ABSENCE of the deferred check, so an early M1.5c
+    # implementation (which test_no_false_accepts_excluding_units excludes b13 from) trips
+    # HERE instead of sliding through green.
+    spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
+    manifest = _manifest_for(spec.dataset.name)
+    report = verify(spec, manifest, data_dir=_DATA)
+    assert report.passed
+    assert report.plotted_table is not None
+    present = {r.check for r in report.results}
+    assert present.isdisjoint(_DEFERRED_CHECKS)  # the unit check has not landed yet
+
+
 def test_no_false_accepts_excluding_units() -> None:
     # Every bad spec the M1.5b stage can catch (binding + eval-surface + structural encoding)
     # is blocked; b13 is excluded -> its only defect is a missing unit, checked in M1.5c.
@@ -139,6 +164,91 @@ def test_no_false_accepts_excluding_units() -> None:
         if verify(spec, manifest, data_dir=_DATA).passed:
             accepted += 1
     assert accepted == 0
+
+
+# --- §7 compatibility matrix: pin every channel-type x column-kind pair --------
+# _CHANNEL_COLUMN_COMPAT is a data table, and 100% BRANCH coverage cannot reach its entries
+# (a single `not in` branch covers the whole map), so one wrong entry — a verification bypass
+# or a false reject — would slip past the corpus tests, which sample only a few pairs and
+# never a FAILING color. Drive _encoding_checks directly over a synthetic one-column-per-kind
+# table, asserting the axis-type verdict for all twelve pairs against section 7 restated
+# independently here (not imported from checks, so the test is an external oracle).
+_COLUMN_OF_KIND: dict[str, canon.Column] = {
+    "numeric": canon.NumericColumn(name="n", scale=0),
+    "temporal": canon.TemporalColumn(name="t", granularity="date"),
+    "string": canon.StringColumn(name="s"),
+}
+_MATRIX_TABLE = canon.Table(columns=tuple(_COLUMN_OF_KIND.values()), rows=())
+# VPlot_SEMANTICS.md section 7, transcribed straight from the spec table.
+_SECTION7_ADMISSIBLE: dict[str, frozenset[str]] = {
+    "quantitative": frozenset({"numeric"}),
+    "temporal": frozenset({"temporal"}),
+    "ordinal": frozenset({"numeric", "string"}),
+    "nominal": frozenset({"string", "numeric"}),
+}
+
+
+def _spec_with_encoding(
+    x: tuple[str, str], y: tuple[str, str], color: tuple[str, str] | None = None
+) -> VPlotSpec:
+    # A minimally-decoding spec (empty transform; _encoding_checks never evaluates) whose
+    # encoding carries the channels under test, each given as (field, type).
+    enc: dict[str, Any] = {"x": {"field": x[0], "type": x[1]}, "y": {"field": y[0], "type": y[1]}}
+    if color is not None:
+        enc["color"] = {"field": color[0], "type": color[1]}
+    return decode_spec(
+        msgspec.json.encode(
+            {
+                "version": "vplot-0.1",
+                "dataset": {"name": "t.csv", "hash": "sha256:" + "0" * 64},
+                "transform": [],
+                "mark": "bar",
+                "encoding": enc,
+            }
+        )
+    )
+
+
+@pytest.mark.parametrize("ch_type", sorted(_SECTION7_ADMISSIBLE))
+@pytest.mark.parametrize("col_kind", sorted(_COLUMN_OF_KIND))
+def test_axis_type_matrix_pins_every_section7_pair(ch_type: str, col_kind: str) -> None:
+    # y carries the pair under test; x is held at an always-admissible pairing (nominal over
+    # the string column) so the axis-type verdict reflects y alone, and both fields exist so
+    # fields_exist passes and never masks the result.
+    col = _COLUMN_OF_KIND[col_kind]
+    spec = _spec_with_encoding(x=("s", "nominal"), y=(col.name, ch_type))
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    assert results["encoding.fields_exist_in_plotted_table"].status == "pass"
+    expected = "pass" if col_kind in _SECTION7_ADMISSIBLE[ch_type] else "fail"
+    assert results["encoding.axis_types_match_fields"].status == expected
+
+
+def test_color_channel_is_type_checked_not_merely_counted() -> None:
+    # color present and MISMATCHED (quantitative over the string column) must FAIL the
+    # axis-type check with the color field named, proving color is type-checked, not merely
+    # admitted by the `color is not None` branch. x/y are held valid.
+    spec = _spec_with_encoding(
+        x=("s", "nominal"), y=("n", "quantitative"), color=("s", "quantitative")
+    )
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    assert results["encoding.fields_exist_in_plotted_table"].status == "pass"
+    axis = results["encoding.axis_types_match_fields"]
+    assert axis.status == "fail"
+    assert "s" in axis.message  # the color field surfaces in the mismatch list
+
+
+def test_color_channel_absent_field_is_narrowed_out() -> None:
+    # color referencing a non-existent column folds into the fields-exist failure and is
+    # excluded from the axis-type check (the narrowing chain), so axis-type still passes on the
+    # valid x/y — the narrowing the corpus exercises for x/y, now pinned for color.
+    spec = _spec_with_encoding(
+        x=("s", "nominal"), y=("n", "quantitative"), color=("ghost", "nominal")
+    )
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    fields = results["encoding.fields_exist_in_plotted_table"]
+    assert fields.status == "fail"
+    assert "ghost" in fields.message
+    assert results["encoding.axis_types_match_fields"].status == "pass"
 
 
 # --- good specs: pass and inline the recomputation ---------------------------
