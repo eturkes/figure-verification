@@ -102,7 +102,11 @@ through each op. Empty list → the loaded table unchanged.
 
 - `select.fields` distinct; `group_by.keys` distinct; `sort.by` fields distinct.
 - aggregate `as` names: mutually unique AND disjoint from the group keys (no output-column
-  collision).
+  collision) — enforced PER AGGREGATE only (`aggregate.output_unique`). Each aggregate REBUILDS
+  the schema (group keys ++ measure outputs), so an output name MAY recur across separate
+  aggregate ops (e.g. `count(x) as v` then `sum(v) as v`). A backward unit-lineage walk (§7)
+  must therefore resolve POSITION-AWARE — latest producer first, each measure input against
+  STRICTLY EARLIER aggregates — else it mis-resolves a reused name or fails to terminate.
 - Every TRANSFORM-referenced field exists in the CURRENT schema at that pipeline step
   (`schema.fields_exist` — M1.4 eval ENFORCES it, raising during recompute; M1.5 `checks.py`
   SURFACES it as a structured result); encoding channels reference existing PLOTTED-table columns
@@ -149,7 +153,9 @@ bytes, §8.)
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
   in the manifest, M1.3 — presence is checked, not guaranteed by construction).
 - A DERIVED plotted column (an aggregate `as`) inherits manifest metadata through its measure to
-  the source field: `sum`/`mean`/`min`/`max` carry the source `unit` + `label`, so
+  the source field — RECURSIVELY and position-aware (§5: a reused output name resolves to its
+  LATEST producer, each measure input against strictly earlier aggregates, always terminating):
+  `sum`/`mean`/`min`/`max` carry the source `unit` + `label`, so
   `label.quantitative_units_present` resolves a derived quantitative channel through this lineage
   (`count` is dimensionless — no inherited unit). A group_by KEY keeps its source column's
   metadata; a derived column's numeric scale follows §3.
