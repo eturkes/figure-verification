@@ -162,6 +162,43 @@ def test_count_derived_channel_is_unit_exempt() -> None:
     assert unit.status == "pass"
 
 
+def test_count_sum_chain_channel_is_unit_exempt() -> None:
+    # A count->sum chain stays dimensionless: count(region) as c, then sum(c) as cc. The unit
+    # check must trace cc back THROUGH the sum to the count (not stop at c) and exempt it. Run
+    # end-to-end so the multi-aggregate backward walk fires inside verify, not only _unit_source.
+    csv_bytes = (_DATA / "sales.csv").read_bytes()
+    spec = decode_spec(
+        msgspec.json.encode(
+            {
+                "version": "vplot-0.1",
+                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(csv_bytes)},
+                "transform": [
+                    {"op": "group_by", "keys": ["month"]},
+                    {
+                        "op": "aggregate",
+                        "measures": [{"field": "region", "fn": "count", "as": "c"}],
+                    },
+                    {"op": "group_by", "keys": ["month"]},
+                    {
+                        "op": "aggregate",
+                        "measures": [{"field": "c", "fn": "sum", "as": "cc"}],
+                    },
+                ],
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "month", "type": "nominal"},
+                    "y": {"field": "cc", "type": "quantitative"},
+                },
+            }
+        )
+    )
+    manifest = _manifest_for("sales.csv")
+    report = verify(spec, manifest, data_dir=_DATA)
+    assert report.passed  # cc -> sum(c) -> count(region) -> None: exempt through the chain
+    unit = next(r for r in report.results if r.check == "label.quantitative_units_present")
+    assert unit.status == "pass"
+
+
 def test_no_false_accepts_over_full_bad_suite() -> None:
     # Every decodes=true bad spec (binding + eval-surface + encoding/label, b13 now included)
     # is blocked: not one reports passed.
@@ -334,12 +371,14 @@ _LINEAGE_ARMS: list[tuple[str, tuple[Aggregate, ...], str, str | None]] = [
         "v",
         None,
     ),
-    # producer at an EARLIER index (t survives as a later group key, not a measure) -> outer advance
+    # producer at an EARLIER index: agg0 outputs t; agg1 (count t) produces n, not t, so the
+    # latest-first walk finds no t-producer in agg1 and advances to agg0 -> recurse temp_c. The
+    # bare tuple is eval-valid: agg1 counts t, which agg0 produced (no destroyed field reference).
     (
         "earlier producer",
         (
             _agg(Measure(field="temp_c", fn="sum", output="t")),
-            _agg(Measure(field="city", fn="count", output="n")),
+            _agg(Measure(field="t", fn="count", output="n")),
         ),
         "t",
         "temp_c",
