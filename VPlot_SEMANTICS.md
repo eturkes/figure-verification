@@ -18,8 +18,10 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   ONLY that recomputed table → a model-supplied PLOTTED value cannot reach `data.values`
   (impossible by construction, not a check). Model-supplied spec PARAMETERS (filter literals,
   field names, channel types) shape the selection and are disclosed in the badge — never inlined
-  as mark data. `transform.aggregates_match_recomputation` (M1.5) asserts the inlined
-  `data.values` are byte-identical to the recomputation, backed by the oracle.
+  as mark data. `transform.aggregates_match_recomputation` (M1.5) is an AFFIRMATION (constant pass): `verify`
+  recomputes the table (correctness oracle-backed) and the M1.6 renderer inlines ONLY that
+  recomputation, so no model value can diverge -- true by construction, NOT an active
+  byte-comparison (no render-output gate exists until M1.6c).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or

@@ -7,7 +7,8 @@ builder copies NO model-supplied Vega-Lite key, so no dangerous data/JS/URL sink
 (positive allowlist by construction); (2) it EMITS its own narrow fixed safe set to pin
 determinism -- every channel sort:null, quantitative stack:null, line-mark order:null, bar
 scale.zero -- defeating Vega-Lite's implicit field-sort / line-vertex-sort / legend-domain
-sort / stacking so the displayed marks match the recomputed row order.
+sort / stacking so the displayed marks are intended to match the recomputed row order (M1.6b
+compile-confirms the effect).
 
 Axis titles are manifest-sourced via checks.unit_source lineage (count-derived -> the fixed
 "count", as a count is dimensionless and its output name is model-proposed). _dumps is the
@@ -39,7 +40,8 @@ _MARK_MAP: dict[str, str] = {"bar": "bar", "line": "line", "scatter": "point"}
 
 def _cell_to_json(value: object) -> str:
     """One scalar as its JSON token. Decimal -> raw fixed-point number at the cell's own scale
-    (data cells arrive pre-quantized to their column scale via _scaled_cell), -0 folded via
+    (builder data cells pre-quantized to scale >= 0 via _scaled_cell; a raw positive-exponent
+    Decimal is out of contract, it raises here), -0 folded via
     canon._format_decimal; str -> msgspec JSON string (escaping); None -> null; bool ->
     true/false. A float (or any other type) is forbidden at the JSON boundary -- the determinism
     guard keeping lossy floats out."""
@@ -72,8 +74,10 @@ def _scaled_cell(column: canon.Column, cell: canon.Cell) -> canon.Cell:
     whose JSON token EQUALS the hashed table's token (via canon._cell_token, the same fixed-point
     form hash_table uses), so the inlined number matches the certificate BY CONSTRUCTION -- not
     merely by the evaluate/ingest at-scale invariant. str/None pass through; a non-finite numeric
-    raises via canon. This makes build_vega_lite total over canon.Table, however the table was
-    built."""
+    raises via canon. This makes build_vega_lite total over a well-formed canon.Table (cells match
+    column types); a type-mismatched non-numeric cell or duplicate column names are NOT guarded
+    -- M1.6b hardens that (validate every pair via canon._cell_token + reject dup names) before
+    render() is wired at M1.6c."""
     if isinstance(column, canon.NumericColumn) and cell is not None:
         return Decimal(canon._cell_token(column, cell))
     return cell
