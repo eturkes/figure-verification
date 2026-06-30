@@ -20,10 +20,12 @@ consume -- stdlib json.dumps is never applied to builder output (it cannot seria
 Decimals build_vega_lite keeps in data.values).
 """
 
+import importlib.resources
 from decimal import Decimal
 from typing import Any, cast
 
 import msgspec
+import vl_convert
 
 from verifier import canon, checks, ingest
 from verifier.schema import Aggregate, Channel, VPlotSpec
@@ -31,8 +33,9 @@ from verifier.schema import Aggregate, Channel, VPlotSpec
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
 _VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
-# The font family name only; the font FILE + register_font_directory land at M1.6b.
-_FONT_FAMILY = "Inter"
+# The family name of the vendored font (the file + register_font_directory are below). Naming
+# it in every spec's config routes all text through these exact bytes for stable metrics.
+_FONT_FAMILY = "DejaVu Sans"
 _COUNT_AXIS_TITLE = "count"
 # Vega-Lite has no scatter mark; scatter -> point.
 _MARK_MAP: dict[str, str] = {"bar": "bar", "line": "line", "scatter": "point"}
@@ -70,16 +73,16 @@ def _dumps(obj: object) -> str:
 
 
 def _scaled_cell(column: canon.Column, cell: canon.Cell) -> canon.Cell:
-    """A data cell re-quantized to its column's canonical scale: a numeric cell becomes a Decimal
-    whose JSON token EQUALS the hashed table's token (via canon._cell_token, the same fixed-point
-    form hash_table uses), so the inlined number matches the certificate BY CONSTRUCTION -- not
-    merely by the evaluate/ingest at-scale invariant. str/None pass through; a non-finite numeric
-    raises via canon. This makes build_vega_lite total over a well-formed canon.Table (cells match
-    column types); a type-mismatched non-numeric cell or duplicate column names are NOT guarded
-    -- M1.6b hardens that (validate every pair via canon._cell_token + reject dup names) before
-    render() is wired at M1.6c."""
+    """A data cell validated and re-quantized to its column's canonical scale. canon._cell_token
+    is the authority: it raises on any (column, cell) type mismatch -- a Decimal in a string
+    column, a str in a numeric column, a non-finite numeric -- EXACTLY as the table hash does, so
+    the builder is total over a canon.Table iff hash_table is (no silent mis-serialization). A
+    numeric cell returns the Decimal of that token, whose JSON form EQUALS the hashed token BY
+    CONSTRUCTION (not merely by the evaluate/ingest at-scale invariant); str/None pass through
+    verbatim (their token re-derives identically in _cell_to_json)."""
+    token = canon._cell_token(column, cell)  # validates the pairing; raises on a type mismatch
     if isinstance(column, canon.NumericColumn) and cell is not None:
-        return Decimal(canon._cell_token(column, cell))
+        return Decimal(token)  # re-quantized to the column scale -> token == the hash token
     return cell
 
 
@@ -121,7 +124,13 @@ def build_vega_lite(
     """The Vega-Lite v5 spec dict inlining only the recomputed table. Carries Decimal cells in
     data.values (each re-quantized to its column scale via _scaled_cell, for structural/allowlist
     assertions; NOT stdlib-serializable) -- vega_lite_json is the serializable handoff. Emits only
-    allowlisted keys (copies no model Vega key)."""
+    allowlisted keys (copies no model Vega key). Total over a canon.Table iff hash_table is:
+    rejects duplicate column names (they would collapse in each row dict, silently dropping a
+    column) and -- via _scaled_cell -- every (column, cell) type mismatch the hash rejects."""
+    names = [column.name for column in table.columns]
+    if len(set(names)) != len(names):
+        msg = f"duplicate column names in the plotted table: {names!r}"
+        raise ValueError(msg)
     aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate))
     values = [
         {col.name: _scaled_cell(col, cell) for col, cell in zip(table.columns, row, strict=True)}
@@ -153,5 +162,29 @@ def build_vega_lite(
 
 def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest) -> str:
     """The authoritative Vega-Lite JSON string (raw Decimal tokens, floats rejected) -- the form
-    M1.6b's render_svg consumes."""
+    render_svg consumes."""
     return _dumps(build_vega_lite(spec, table, manifest))
+
+
+# --- SVG rendering (M1.6b: the vl-convert native dep) ------------------------
+# Two determinism levers: a pinned Vega-Lite version (one of get_vegalite_versions()) and the
+# vendored DejaVu Sans, registered below and named by _FONT_FAMILY in every spec's config. Within
+# one pinned vl-convert-python build the SVG bytes are reproducible across calls (same-process /
+# same-build; NOT a cross-machine guarantee -- the SVG is trusted TCB output, never hashed into
+# the cert). DejaVu Sans is the matplotlib-proven deterministic default and covers the corpus
+# glyphs (Latin plus the degree sign in "°C"). v5.21 matches the v5 $schema constant above.
+_VL_VERSION = "5.21"
+_FONT_DIR = importlib.resources.files("verifier") / "assets" / "fonts"
+
+# Register the vendored font directory ONCE at import: register_font_directory mutates vl-convert's
+# process-global font database, so this single call serves every later render_svg.
+vl_convert.register_font_directory(str(_FONT_DIR))
+
+
+def render_svg(vega_lite_json: str) -> str:
+    """A self-contained static SVG from the authoritative Vega-Lite JSON string (vega_lite_json's
+    output, never a stdlib-serialized dict). allowed_base_urls=[] hard-blocks every external
+    data/image fetch, so the SVG inlines only the verifier's recomputed table and references no
+    network resource. Text renders through the vendored DejaVu Sans (named in the spec config) for
+    byte-stable metrics, reproducible across calls within this pinned build."""
+    return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])

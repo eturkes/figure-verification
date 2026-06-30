@@ -46,7 +46,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.5c | Label-unit check + count-exempt position-aware lineage + full false-accept (`checks.py`; recipe `.agent/m15bc_checks_design.md`) | DONE | 88% 175K/200K |
 | M1.6a | `render.py` builder: canonical JSON + Vega-Lite positive allowlist + lineage rename (recipe `.agent/m16a_render_design.md`) | DONE | 67% 134K/200K |
 | M1.6a-cr | Codex-review follow-up (2 rounds): r1 mark-level line `order` (v5-schema blocker) + column-scale `_scaled_cell` + mark-validity regression + `unit_source` rename (`ded3dc6`); r2 claim-honesty — scope "total over canon.Table" + the M1.5 affirmation + the order-EFFECT to what M1.6a proves; builder-totality HARDENING (validate-all-pairs + dup-name guard + property test) deferred to M1.6b | DONE | 87% 173K/200K |
-| M1.6b | `render.py` SVG: vl-convert dep + vendored font + determinism/self-containment | OPEN | — |
+| M1.6b | `render.py` SVG: vl-convert dep + vendored font + determinism/self-containment | DONE | 88% 177K/200K |
 | M1.6c | `render.py` provenance: VCert v0.1 badge + render() gate + offline HTML | OPEN | — |
 
 ### M1.1 — Scaffold + tooling + scope doc

@@ -3,7 +3,8 @@
     "deny": [
       "Read(/.tokensave/**)",
       "Read(/LICENSE)",
-      "Read(/uv.lock)"
+      "Read(/uv.lock)",
+      "Read(**/*.ttf)"
     ]
   }
 }

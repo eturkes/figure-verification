@@ -13,7 +13,9 @@ license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # msgspec (NOT Pydantic): strict, fail-closed decode — float/bool/unknown-key tokens
 # are rejected at decode, so a valid spec is never partial or coerced. See memory Stack.
-dependencies = ["msgspec>=0.21,<1"]
+# vl-convert-python: the deterministic VPlot→Vega-Lite→SVG renderer (M1.6b). Ships py.typed
+# (no mypy override) and is a src dep (no TID251 ban, unlike the dev-only duckdb oracle).
+dependencies = ["msgspec>=0.21,<1", "vl-convert-python>=1.9,<2"]
 
 [dependency-groups]
 dev = [

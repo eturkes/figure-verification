@@ -14,14 +14,26 @@ manifest-sourced+escaped axis titles. A direct _axis_title matrix over a synthet
 pins every title branch (count-exempt, label present/absent, numeric+unit / numeric-no-unit /
 non-numeric). An allowlist scan over all three specs proves only the generated safe key set is
 emitted and no dangerous data/JS/URL key appears.
+
+M1.6b adds the vl-convert SVG layer and the totality hardening. _scaled_cell now routes EVERY
+(column, cell) pair through canon._cell_token, so the parity tests assert render's inlined token
+equals the hash token on every valid pair and raises the SAME type on every canon-rejected pair;
+build_vega_lite rejects duplicate column names. render_svg is exercised against the real native
+dep: all ten good specs compile (schema validity vl-convert alone can prove), the SVG is self-
+contained (no <script>, no http(s) in any href/src/url value) and byte-identical across calls,
+text routes through the vendored DejaVu Sans, and an external-data-url spec is hard-blocked. The
+compile-confirm inspects the COMPILED Vega: our sort:null/order:null leave no sort key anywhere,
+while a naive variant (nulling stripped) reintroduces the line-vertex and legend sorts.
 """
 
 import json
+import re
 from decimal import Decimal
 from pathlib import Path
 
 import msgspec
 import pytest
+import vl_convert
 
 from verifier import canon, ingest, render
 from verifier.eval import evaluate
@@ -35,6 +47,13 @@ _SCHEMAS = _DATA / "schemas"
 _G01 = "g01_total_revenue_by_month.json"  # bar, no color, ordinal x + quantitative y, sales
 _G07 = "g07_temp_over_time_by_city.json"  # line + nominal color, temporal x, weather
 _G10 = "g10_temp_vs_precip.json"  # scatter, two quantitative channels, weather
+_ALL_GOOD = [p.name for p in sorted(_GOOD.glob("*.json"))]  # the full verified-good corpus
+
+# Self-containment scan targets: the VALUES of fetch-bearing attributes + CSS url(). xmlns
+# namespace declarations and escaped data text also contain http(s) but are NOT fetches, so the
+# scan reads these values only, never the raw SVG string (memory M1.6 self-containment note).
+_HREF_RE = re.compile(r'(?:href|src|xlink:href)\s*=\s*"([^"]*)"')
+_URL_RE = re.compile(r"url\(([^)]*)\)")
 
 
 def _good(name: str) -> tuple[VPlotSpec, ingest.Manifest]:
@@ -44,10 +63,20 @@ def _good(name: str) -> tuple[VPlotSpec, ingest.Manifest]:
     return spec, manifest
 
 
-def _built(name: str) -> dict[str, object]:
+def _evaluated(name: str) -> tuple[VPlotSpec, ingest.Manifest, canon.Table]:
     spec, manifest = _good(name)
     table = evaluate(spec, manifest, (_DATA / spec.dataset.name).read_bytes())
+    return spec, manifest, table
+
+
+def _built(name: str) -> dict[str, object]:
+    spec, manifest, table = _evaluated(name)
     return render.build_vega_lite(spec, table, manifest)
+
+
+def _svg(name: str) -> str:
+    spec, manifest, table = _evaluated(name)
+    return render.render_svg(render.vega_lite_json(spec, table, manifest))
 
 
 # --- serializer: each cell kind -> its token ---------------------------------
@@ -119,6 +148,64 @@ def test_scaled_cell_normalizes_to_column_scale() -> None:
 def test_scaled_cell_rejects_non_finite() -> None:
     with pytest.raises(ValueError, match="non-finite"):
         render._scaled_cell(canon.NumericColumn(name="x", scale=2), Decimal("NaN"))
+
+
+# --- totality hardening: render's token == canon's hash token, reject-parity on mismatches -----
+# A type-mismatched cell (a Decimal in a string column) once slipped through _scaled_cell and was
+# serialized as a number where canon._cell_token RAISES (codex-review r2). The builder must be
+# total over a canon.Table iff the hash is: same token on every valid pair, same raise on every
+# rejected pair.
+_VALID_PAIRS: list[tuple[canon.Column, canon.Cell]] = [
+    (canon.NumericColumn(name="n", scale=2), Decimal("10.50")),
+    (canon.NumericColumn(name="n", scale=0), Decimal(5)),
+    (canon.NumericColumn(name="n", scale=2), Decimal(1)),  # re-quantize up to 1.00
+    (canon.NumericColumn(name="n", scale=2), Decimal("1.234")),  # re-quantize down to 1.23
+    (canon.NumericColumn(name="n", scale=2), Decimal("-0.00")),  # -0 folds to +0
+    (canon.NumericColumn(name="n", scale=2), None),
+    (canon.StringColumn(name="s"), "hi"),
+    (canon.StringColumn(name="s"), None),
+    (canon.TemporalColumn(name="t", granularity="date"), "2024-01-01"),
+    (canon.TemporalColumn(name="t", granularity="datetime"), None),
+]
+
+
+@pytest.mark.parametrize(("column", "cell"), _VALID_PAIRS)
+def test_scaled_cell_token_matches_canon(column: canon.Column, cell: canon.Cell) -> None:
+    # The inlined JSON token EQUALS canon's hash token for every valid (column, cell) pair, so the
+    # chart number matches the certificate's plotted-table hash by construction.
+    rendered = render._cell_to_json(render._scaled_cell(column, cell))
+    assert rendered == canon._cell_token(column, cell)
+
+
+_REJECTED_PAIRS: list[tuple[canon.Column, canon.Cell]] = [
+    (canon.NumericColumn(name="n", scale=2), "x"),  # str in a numeric column -> TypeError
+    (canon.NumericColumn(name="n", scale=2), Decimal("NaN")),  # non-finite -> ValueError
+    (canon.NumericColumn(name="n", scale=2), Decimal("Infinity")),
+    (canon.StringColumn(name="s"), Decimal(1)),  # Decimal in a string column -> TypeError
+    (canon.TemporalColumn(name="t", granularity="date"), Decimal(1)),  # Decimal in a temporal col
+]
+
+
+@pytest.mark.parametrize(("column", "cell"), _REJECTED_PAIRS)
+def test_scaled_cell_rejects_exactly_what_canon_rejects(
+    column: canon.Column, cell: canon.Cell
+) -> None:
+    # reject-parity: _scaled_cell raises the SAME exception type canon._cell_token raises.
+    with pytest.raises((TypeError, ValueError)) as canon_exc:
+        canon._cell_token(column, cell)
+    with pytest.raises(type(canon_exc.value)):
+        render._scaled_cell(column, cell)
+
+
+def test_build_rejects_duplicate_column_names() -> None:
+    # Duplicate names collapse in each row dict -> a column's data vanishes silently; reject first.
+    spec, manifest = _good(_G01)
+    table = canon.Table(
+        columns=(canon.NumericColumn(name="x", scale=0), canon.NumericColumn(name="x", scale=0)),
+        rows=((Decimal(1), Decimal(2)),),
+    )
+    with pytest.raises(ValueError, match="duplicate column"):
+        render.build_vega_lite(spec, table, manifest)
 
 
 # --- the authoritative string + build/stdlib boundary ------------------------
@@ -323,3 +410,84 @@ def test_allowlist_keys_only(name: str) -> None:
     keys = _structural_keys(_built(name))
     assert keys <= _ALLOWED_KEYS  # no key outside the generated safe set
     assert keys.isdisjoint(_DANGEROUS_KEYS)  # no data/JS/URL sink
+
+
+# --- render_svg: the vl-convert native dep (M1.6b) ----------------------------
+def test_vl_version_pin_is_available() -> None:
+    # The pin is the determinism lever: it must be a version vl-convert can actually select.
+    assert render._VL_VERSION in vl_convert.get_vegalite_versions()
+
+
+@pytest.mark.parametrize("name", _ALL_GOOD)
+def test_render_svg_compiles_and_is_self_contained(name: str) -> None:
+    # Every good spec must COMPILE (only vl-convert proves v5-schema validity -- the gap that let
+    # a line encoding.order:null ship past M1.6a's structural gate) and yield a self-contained SVG.
+    svg = _svg(name)
+    assert "<script" not in svg.lower()  # no JavaScript sink
+    for value in _HREF_RE.findall(svg) + _URL_RE.findall(svg):
+        assert "http://" not in value and "https://" not in value  # no external fetch
+
+
+def test_render_svg_is_byte_deterministic() -> None:
+    # Byte-identical across calls within this pinned vl-convert build (same-process/same-build).
+    spec, manifest, table = _evaluated(_G07)
+    vl_json = render.vega_lite_json(spec, table, manifest)
+    assert render.render_svg(vl_json) == render.render_svg(vl_json)
+
+
+def test_render_svg_routes_text_through_vendored_font() -> None:
+    svg = _svg(_G07)  # has axis titles + a legend -> text elements present
+    assert f'font-family="{render._FONT_FAMILY}"' in svg  # the vendored DejaVu Sans, not a fallback
+
+
+def test_render_svg_blocks_external_data_url() -> None:
+    # allowed_base_urls=[] hard-blocks any external fetch -- defense-in-depth behind the builder's
+    # positive allowlist (which never emits a data.url in the first place).
+    external = json.dumps(
+        {
+            "$schema": render._VEGA_LITE_SCHEMA,
+            "data": {"url": "https://example.com/x.csv"},
+            "mark": "point",
+        }
+    )
+    with pytest.raises(ValueError, match="External data url not allowed"):
+        render.render_svg(external)
+
+
+# --- compile-confirm: the structural nulling actually defeats Vega's implicit ordering ---------
+def _find_sorts(obj: object) -> list[object]:
+    """Every value under a key literally named 'sort', anywhere in a compiled-Vega tree."""
+    found: list[object] = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "sort":
+                found.append(value)
+            found.extend(_find_sorts(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            found.extend(_find_sorts(value))
+    return found
+
+
+@pytest.mark.parametrize("name", _ALL_GOOD)
+def test_compiled_vega_carries_no_implicit_ordering(name: str) -> None:
+    # b-side proof of a's sort:null / line order:null: the COMPILED Vega has no sort key anywhere,
+    # so no implicit line-vertex sort and no legend-domain sort survive -- the recomputed row order
+    # and data-order legend are authoritative.
+    spec, manifest, table = _evaluated(name)
+    vega = vl_convert.vegalite_to_vega(
+        render.vega_lite_json(spec, table, manifest), vl_version=render._VL_VERSION
+    )
+    assert _find_sorts(vega) == []
+
+
+def test_naive_spec_reintroduces_implicit_ordering() -> None:
+    # The differential proving the assertion above is NOT vacuous: strip our sort:null + line-mark
+    # order:null and Vega-Lite's implicit line-vertex sort and legend-domain sort reappear.
+    spec, manifest, table = _evaluated(_G07)
+    built = render.build_vega_lite(spec, table, manifest)
+    built["mark"] = "line"  # drop the mark-level order:null
+    for channel in built["encoding"].values():
+        channel.pop("sort", None)  # drop every sort:null
+    vega = vl_convert.vegalite_to_vega(render._dumps(built), vl_version=render._VL_VERSION)
+    assert _find_sorts(vega)  # the implicit sorts are back
