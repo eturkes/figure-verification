@@ -4,7 +4,7 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
 
 ## Conventions
 - License id: `Apache-2.0 WITH LLVM-exception`. Source files carry header `SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception` (language-appropriate comment). `LICENSE` = project-neutral Apache 2.0 body + LLVM exception only (LLVM banner / NCSA / third-party sections stripped).
-- Do-not-read set (currently `LICENSE` + `uv.lock`; mechanism → `CLAUDE.md`): sync both fronts as new not-worth-reading files land.
+- Do-not-read set (mechanism → `CLAUDE.md`): non-gitignored `LICENSE` + `uv.lock` → both fronts; gitignored regenerable `.tokensave/` → `permissions.deny` only. Sync as new not-worth-reading files land.
 - Git identity from global gitconfig (`Emir Turkes <eturkes@bu.edu>`); user drives remote.
 - Persisted blueprint recipes drift silently from their source spec (M1.4d filter recipe once contradicted `VPlot_SEMANTICS.md` §3 — raised on string→numeric/temporal that §3 coerces) → cross-check each recipe against its spec section verbatim before implementing, not from memory.
 

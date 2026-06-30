@@ -1,6 +1,7 @@
 {
   "permissions": {
     "deny": [
+      "Read(/.tokensave/**)",
       "Read(/LICENSE)",
       "Read(/uv.lock)"
     ]
