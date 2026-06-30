@@ -226,6 +226,6 @@ determinism), never a silent pass.
   decided once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting
   valid filters on legitimate control-char cells.
 - A dimensionless `count` on a quantitative channel vs `label.quantitative_units_present`: the
-  M1.5b `_unit_source` design treats `count` as unit-exempt (dimensionless — §7 lineage carries no
-  unit); RATIFIED into this contract when M1.5b lands + a `count` golden exercises it. No golden
-  uses `count` yet.
+  M1.5c `_unit_source` design treats `count` as unit-exempt (dimensionless — §7 lineage carries no
+  unit); RATIFIED into this contract when M1.5c lands + dedicated `test_checks.py` specs exercise it
+  (no good-spec corpus golden uses `count` — adding one would ripple into M1.4e/M1.4f).

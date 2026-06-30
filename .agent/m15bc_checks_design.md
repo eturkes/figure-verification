@@ -13,9 +13,9 @@ Baseline: `src/verifier/checks.py` is at M1.5a (`660ea05`). Confirmed symbols (n
 (`.field`,`.kind`); `schema.Encoding`(`.x`,`.y`,`.color: Channel|None`); `ingest.NumericColumnSpec`
 (`.name`,`.unit: str|None`); `ingest.Manifest.columns`; `canon.Table.columns` each `.name`/`.kind`
 ∈ {numeric,temporal,string}. Corpus: b11→axis_types (M1.5b), b12→fields_exist (M1.5b), b13→units
-(M1.5c; `aqi` is unit-less on purpose). No good spec uses `count` (count is dimensionless → would
-trip the unit check), so count-exemption is exercised by DEDICATED `test_checks.py` specs over the
-existing CSVs — do NOT add a corpus count golden (it would ripple into M1.4e/M1.4f "10 good specs").
+(M1.5c; `aqi` is unit-less on purpose). No good spec uses `count`: a `count`-derived channel is
+dimensionless and unit-EXEMPT (M1.5c), so the exemption is exercised by DEDICATED `test_checks.py`
+specs over the existing CSVs, not a corpus good-spec golden (which would ripple into M1.4e/M1.4f "10 good specs").
 
 ---
 
@@ -145,6 +145,9 @@ b11/b12 break that assert (eval succeeds → table populated). Reframe:
   (still EXCLUDE b13 — units not checked yet; rename to `_no_false_accepts_excluding_units`).
 - `test_a_handled_covers_binding_and_eval_surface` guard → update counts: `_PRE_TABLE_BAD` ≥7,
   `_ENCODING_BAD` == 2 (b11,b12), `_BAD_DECODE` non-empty.
+- `test_report_records_all_affirmations_on_pass` pins the EXACT passing set → it is NOT unchanged: a good
+  spec now also passes the two structural checks, so assert `passing == _AFFIRMATIONS | {"dataset.hash_matches_source",
+  "encoding.fields_exist_in_plotted_table", "encoding.axis_types_match_fields"}`.
 - Good-spec / property / binding / pairing tests are UNCHANGED (the property spec passes checks 1&2:
   x=k nominal-over-string ✓, y=total quantitative-over-numeric ✓, both fields exist ✓; the unit check
   that would fail it does not run until M1.5c).
@@ -277,9 +280,14 @@ M1.5c removes the "pending" qualifiers and ratifies count-exemption:
 - Open: mark the count carve-out item RESOLVED (cite M1.5c).
 
 ### tests (`test_checks.py`)
-- Remove the `_DEFERRED_CHECKS` exclusion: b13 now caught → `_ENCODING_BAD` includes b13 (assert
-  `failing == {"label.quantitative_units_present"}`, `plotted_table` populated). False-accept test →
-  full suite, rename to `test_no_false_accepts_over_full_bad_suite`, assert 0.
+- b13 now caught → extend `_ENCODING_BAD`'s filter set to all three checks
+  `{"encoding.fields_exist_in_plotted_table", "encoding.axis_types_match_fields", "label.quantitative_units_present"}`
+  (now b11/b12/b13; b13 asserts `failing == {"label.quantitative_units_present"}`, `plotted_table` populated);
+  bump the `test_a_handled_covers_binding_and_eval_surface` guard `_ENCODING_BAD == 2` → `== 3`; delete
+  `_DEFERRED_CHECKS` (no deferred check remains). `_PRE_TABLE_BAD` is unchanged (already excludes all three).
+- False-accept test → full suite, rename to `test_no_false_accepts_over_full_bad_suite`, assert 0.
+- `test_report_records_all_affirmations_on_pass`: add `label.quantitative_units_present` to the expected
+  passing set (g01's `revenue` channel resolves to a unit, so it passes the unit check too).
 - Fix `_PROP_MANIFEST`: add `"unit": "units"` to the `v` numeric column — else the property's `total`
   channel (sum of v) traces to unit-less v and check3 fails it. (At M1.5b check3 is off, so this is a
   M1.5c-only fix.)
