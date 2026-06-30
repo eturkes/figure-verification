@@ -54,19 +54,20 @@ _G10 = "g10_temp_vs_precip.json"  # scatter, two quantitative channels, weather
 _ALL_GOOD = [p.name for p in sorted(_GOOD.glob("*.json"))]  # the full verified-good corpus
 
 # Self-containment audit: collect every fetchable reference -- href/src attribute VALUES (any
-# namespace prefix, case-insensitive), CSS url(...) targets, @import targets -- and keep those that
-# are neither a same-document #fragment nor an inline data: URI. xmlns declarations and escaped
-# data text are NOT references (value-scoped, never the raw SVG string), so a URL-valued label cell
-# does not false-positive. Builder output carries none of these -> the audit is the regression
-# guard, proven non-vacuous (uppercase scheme / protocol-relative / CSS url) by
-# test_external_ref_audit_flags_a_leak.
-_REF_ATTR_RE = re.compile(r'(?i)\b(?:xlink:href|href|src)\s*=\s*"([^"]*)"')
+# namespace prefix, single- OR double-quoted, case-insensitive), CSS url(...) targets, @import
+# targets -- and keep those that are neither a same-document #fragment nor an inline data: URI.
+# xmlns declarations and escaped data text are NOT references (value-scoped, never the raw SVG
+# string), so a URL-valued label cell does not false-positive. Builder output carries none of these
+# -> the audit is the regression guard, proven non-vacuous (uppercase scheme / protocol-relative /
+# single-quoted attr / CSS url) by test_external_ref_audit_flags_a_leak.
+_REF_ATTR_RE = re.compile(r"""(?i)\b(?:xlink:href|href|src)\s*=\s*(["'])(.*?)\1""")
 _CSS_URL_RE = re.compile(r"(?i)\burl\(\s*['\"]?([^'\")]*)")
 _CSS_IMPORT_RE = re.compile(r"(?i)@import\s+(?:url\(\s*)?['\"]([^'\"]*)")
 
 
 def _external_refs(svg: str) -> list[str]:
-    refs = _REF_ATTR_RE.findall(svg) + _CSS_URL_RE.findall(svg) + _CSS_IMPORT_RE.findall(svg)
+    attr_values = [value for _quote, value in _REF_ATTR_RE.findall(svg)]
+    refs = attr_values + _CSS_URL_RE.findall(svg) + _CSS_IMPORT_RE.findall(svg)
     external: list[str] = []
     for ref in refs:
         value = ref.strip()
@@ -171,9 +172,9 @@ def test_scaled_cell_rejects_non_finite() -> None:
 
 # --- totality hardening: render's token == canon's hash token, reject-parity on mismatches -----
 # A type-mismatched cell (a Decimal in a string column) once slipped through _scaled_cell and was
-# serialized as a number where canon._cell_token RAISES (codex-review r2). The builder must be
-# total over a canon.Table iff the hash is: same token on every valid pair, same raise on every
-# rejected pair.
+# serialized as a number where canon._cell_token RAISES (codex-review r2). The builder must match
+# the hash CELL-FOR-CELL: same token on every valid pair, same raise on every rejected pair. It is
+# additionally STRICTER -- it also rejects duplicate column names (tested below).
 _VALID_PAIRS: list[tuple[canon.Column, canon.Cell]] = [
     (canon.NumericColumn(name="n", scale=2), Decimal("10.50")),
     (canon.NumericColumn(name="n", scale=0), Decimal(5)),
@@ -471,13 +472,15 @@ def test_render_svg_compiles_and_is_self_contained(name: str) -> None:
 
 def test_external_ref_audit_flags_a_leak() -> None:
     # The audit is non-vacuous: an external reference IS flagged, across the cases a raw http(s)
-    # substring scan missed -- an uppercase scheme, a protocol-relative //host, a CSS url(), and a
-    # CSS @import. render_svg's allowed_base_urls=[] blocks compile-time DATA fetches but does NOT
-    # strip an image mark's href, so this proves the AUDIT detects a leak; self-containment rests on
-    # the builder precondition, never on render_svg sanitizing arbitrary input (M1.6c gate's job).
+    # substring scan missed -- an uppercase scheme, a protocol-relative //host, a single-quoted
+    # attribute, a CSS url(), and a CSS @import. render_svg's allowed_base_urls=[] blocks a
+    # compile-time DATA fetch but does NOT strip an image mark's href, so this proves the AUDIT
+    # detects a leak; self-containment rests on the builder precondition, never on render_svg
+    # sanitizing arbitrary input (M1.6c gate's job).
     leak = (
         '<svg xmlns="http://www.w3.org/2000/svg">'
         '<image xlink:href="HTTPS://example.com/a.png"/>'
+        "<use href='https://single.example/q.png'/>"  # single-quoted attr value
         '<rect style="fill:URL(//cdn.example/x.png)"/>'
         "<style>@import 'http://evil.example/s.css';</style></svg>"
     )
@@ -485,9 +488,10 @@ def test_external_ref_audit_flags_a_leak() -> None:
         "//cdn.example/x.png",
         "HTTPS://example.com/a.png",
         "http://evil.example/s.css",
+        "https://single.example/q.png",
     ]
-    selfcontained = '<use xlink:href="#clip0"/><image href="data:image/png;base64,AAAA"/>'
-    assert _external_refs(selfcontained) == []  # #fragment + inline data: are self-contained
+    selfcontained = "<use xlink:href='#clip0'/><image href=\"data:image/png;base64,AAAA\"/>"
+    assert _external_refs(selfcontained) == []  # #fragment + inline data: (either quote style)
 
 
 def test_render_svg_is_byte_deterministic() -> None:
@@ -509,18 +513,21 @@ _FONT_SHA256 = "57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e
 
 
 def test_vendored_font_asset_present_and_pinned() -> None:
-    # The bytes render._FONT_DIR registers are present + uncorrupted in the package (a packaging /
-    # font-swap regression guard, and what makes the family-name claim mean OUR DejaVu 2.37). Read
-    # at runtime via importlib.resources -- the same path render.py loads -- not the Read tool (the
-    # .ttf is in the do-not-read set).
+    # The bytes render._FONT_DIR registers are present + uncorrupted in the package: a packaging /
+    # font-swap guard. Vendoring makes OUR DejaVu 2.37 bytes AVAILABLE so the named family resolves
+    # to them absent a same-named system font; byte SELECTION over such a font stays unproven (see
+    # the family-name test). Read at runtime via importlib.resources -- the same path render.py
+    # loads -- not the Read tool (the .ttf is in the do-not-read set).
     ttf = render._FONT_DIR / "DejaVuSans.ttf"
     assert ttf.is_file()
     assert hashlib.sha256(ttf.read_bytes()).hexdigest() == _FONT_SHA256
 
 
 def test_render_svg_blocks_external_data_url() -> None:
-    # allowed_base_urls=[] hard-blocks any external fetch -- defense-in-depth behind the builder's
-    # positive allowlist (which never emits a data.url in the first place).
+    # allowed_base_urls=[] hard-blocks an external DATA url at compile time -- defense-in-depth
+    # behind the builder's positive allowlist (which never emits a data.url in the first place). It
+    # does NOT strip an image-mark href -- output-reference auditing rests on the builder
+    # precondition + the M1.6c gate (the leak test exercises an unstripped href).
     external = json.dumps(
         {
             "$schema": render._VEGA_LITE_SCHEMA,
@@ -558,6 +565,7 @@ def test_compiled_vega_carries_no_implicit_ordering(name: str) -> None:
     vega = vl_convert.vegalite_to_vega(
         render.vega_lite_json(spec, table, manifest), vl_version=render._VL_VERSION
     )
+    assert isinstance(vega, dict)  # a non-dict compile result would make _find_sorts vacuously []
     assert _find_sorts(vega) == []
 
 

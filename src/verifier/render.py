@@ -33,8 +33,10 @@ from verifier.schema import Aggregate, Channel, VPlotSpec
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
 _VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
-# The family name of the vendored font (the file + register_font_directory are below). Naming
-# it in every spec's config routes all text through these exact bytes for stable metrics.
+# The family name of the vendored font (the file + register_font_directory are below). Naming it
+# in every spec's config REQUESTS this family for all text; the registered vendored file guarantees
+# it RESOLVES (availability), and on a host without a same-named system font these exact bytes are
+# laid out -- byte SELECTION over an existing system DejaVu is not proven (see render_svg).
 _FONT_FAMILY = "DejaVu Sans"
 _COUNT_AXIS_TITLE = "count"
 # Vega-Lite has no scatter mark; scatter -> point.
@@ -76,7 +78,9 @@ def _scaled_cell(column: canon.Column, cell: canon.Cell) -> canon.Cell:
     """A data cell validated and re-quantized to its column's canonical scale. canon._cell_token
     is the authority: it raises on any (column, cell) type mismatch -- a Decimal in a string
     column, a str in a numeric column, a non-finite numeric -- EXACTLY as the table hash does, so
-    the builder is total over a canon.Table iff hash_table is (no silent mis-serialization). A
+    cell validation MATCHES hash_table's (no silent mis-serialization). build_vega_lite is then
+    STRICTER -- it also rejects duplicate column names hash_table tolerates, so the builder accepts
+    hash_table's inputs MINUS dup-name tables, never a superset. A
     numeric cell returns the Decimal of that token, whose JSON form EQUALS the hashed token BY
     CONSTRUCTION (not merely by the evaluate/ingest at-scale invariant); str/None pass through
     verbatim (their token re-derives identically in _cell_to_json)."""
