@@ -28,7 +28,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   chart faithfully shows that selection, not that the selection is fair.
 - Axis titles + units = trusted manifest, never the spec (their VALUE is correct by
   construction). `label.quantitative_units_present` (M1.5) still ENFORCES that a unit is present
-  per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given.
+  per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given
+  (the `count`-derived carve-out is pending — see Open).
 
 ## 2. Data model
 
@@ -151,7 +152,8 @@ bytes, §8.)
 - Axis title = manifest display label + manifest unit appended (M1.6); the title VALUE is
   manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
-  in the manifest, M1.3 — presence is checked, not guaranteed by construction).
+  in the manifest, M1.3 — presence is checked, not guaranteed by construction; the `count`-derived
+  carve-out is pending — see Open).
 - A DERIVED plotted column (an aggregate `as`) inherits manifest metadata through its measure to
   the source field — RECURSIVELY and position-aware (§5: a reused output name resolves to its
   LATEST producer, each measure input against strictly earlier aggregates, always terminating):
@@ -223,5 +225,7 @@ determinism), never a silent pass.
   (NL/CR/TAB/NUL/U+2028). Canonical handling (forbid-pattern vs NFC + escape-on-disclosure) is
   decided once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting
   valid filters on legitimate control-char cells.
-- A dimensionless `count` on a quantitative channel vs `label.quantitative_units_present` (block
-  it, or treat `count` as unit-exempt) — decided when M1.5 lands; no golden uses `count`.
+- A dimensionless `count` on a quantitative channel vs `label.quantitative_units_present`: the
+  M1.5b `_unit_source` design treats `count` as unit-exempt (dimensionless — §7 lineage carries no
+  unit); RATIFIED into this contract when M1.5b lands + a `count` golden exercises it. No golden
+  uses `count` yet.
