@@ -124,9 +124,12 @@ def build_vega_lite(
     """The Vega-Lite v5 spec dict inlining only the recomputed table. Carries Decimal cells in
     data.values (each re-quantized to its column scale via _scaled_cell, for structural/allowlist
     assertions; NOT stdlib-serializable) -- vega_lite_json is the serializable handoff. Emits only
-    allowlisted keys (copies no model Vega key). Total over a canon.Table iff hash_table is:
-    rejects duplicate column names (they would collapse in each row dict, silently dropping a
-    column) and -- via _scaled_cell -- every (column, cell) type mismatch the hash rejects."""
+    allowlisted keys (copies no model Vega key). Accepts every (cell, row-width) hash_table accepts
+    -- each (column, cell) routed through canon._cell_token via _scaled_cell, the zip(strict=True)
+    row-width check -- so it never silently mis-serializes a cell the hash would reject; it adds ONE
+    render-specific rejection hash_table lacks: duplicate column names (they collapse in each row
+    dict, silently dropping a column, where canon's positional NDJSON tolerates them). So the
+    builder's domain is hash_table's minus duplicate-name tables, never a superset."""
     names = [column.name for column in table.columns]
     if len(set(names)) != len(names):
         msg = f"duplicate column names in the plotted table: {names!r}"
@@ -172,19 +175,30 @@ def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifes
 # one pinned vl-convert-python build the SVG bytes are reproducible across calls (same-process /
 # same-build; NOT a cross-machine guarantee -- the SVG is trusted TCB output, never hashed into
 # the cert). DejaVu Sans is the matplotlib-proven deterministic default and covers the corpus
-# glyphs (Latin plus the degree sign in "°C"). v5.21 matches the v5 $schema constant above.
+# glyphs (Latin plus the degree sign in "°C"). Vendoring + registration guarantee the family
+# RESOLVES regardless of the host's system fonts; on a host already carrying DejaVu Sans the
+# rendered metrics are identical either way (cross-machine identity is not claimed). v5.21 matches
+# the v5 $schema constant above.
 _VL_VERSION = "5.21"
 _FONT_DIR = importlib.resources.files("verifier") / "assets" / "fonts"
 
 # Register the vendored font directory ONCE at import: register_font_directory mutates vl-convert's
-# process-global font database, so this single call serves every later render_svg.
+# process-global font database, so this single call serves every later render_svg. It no-ops
+# silently on a missing dir, so the asset's presence + sha256 are pinned by a test rather than a
+# hard import-time raise (whose never-missing branch would be uncoverable under the 100% gate).
 vl_convert.register_font_directory(str(_FONT_DIR))
 
 
 def render_svg(vega_lite_json: str) -> str:
-    """A self-contained static SVG from the authoritative Vega-Lite JSON string (vega_lite_json's
-    output, never a stdlib-serialized dict). allowed_base_urls=[] hard-blocks every external
-    data/image fetch, so the SVG inlines only the verifier's recomputed table and references no
-    network resource. Text renders through the vendored DejaVu Sans (named in the spec config) for
-    byte-stable metrics, reproducible across calls within this pinned build."""
+    """A static SVG from a BUILDER-PRODUCED Vega-Lite JSON string (vega_lite_json's output, never a
+    stdlib-serialized dict). Self-containment rests on that input precondition -- the positive
+    allowlist emits no image/href/url/datasets sink -- PLUS allowed_base_urls=[], which hard-blocks
+    every external DATA url at COMPILE time (defense-in-depth). It does NOT sanitize arbitrary
+    input: a hand-rolled non-builder spec with an image mark keeps its external href in the output
+    (a general post-render output audit is the M1.6c render() gate's job); here the caller is always
+    the builder. Text is laid out as DejaVu Sans -- the vendored family named in the spec config,
+    its directory registered at import so the family RESOLVES regardless of the host's system fonts
+    (vendoring guarantees availability; it does not prove vl-convert chose our copy over a
+    same-named system font -- same-machine metrics are identical either way, and cross-machine SVG
+    identity is not claimed). SVG bytes are reproducible across calls within this pinned build."""
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
