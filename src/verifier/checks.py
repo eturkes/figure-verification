@@ -133,7 +133,7 @@ _CHANNEL_COLUMN_COMPAT: dict[ChannelType, frozenset[str]] = {
 }
 
 
-def _unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
+def unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
     """The manifest column whose unit a quantitative channel on plotted column `name` requires,
     or None when `name` traces back to a count (dimensionless -> unit-exempt).
 
@@ -158,7 +158,7 @@ def _unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
             if measure.output == name:
                 if measure.fn == "count":
                     return None
-                return _unit_source(measure.field, aggregates[:i])
+                return unit_source(measure.field, aggregates[:i])
     return name
 
 
@@ -214,7 +214,7 @@ def _encoding_checks(
             continue
         if columns[ch.field].kind != "numeric":
             continue
-        source = _unit_source(ch.field, aggregates)
+        source = unit_source(ch.field, aggregates)
         if source is None:
             continue  # count-derived -> dimensionless, unit-exempt
         if numeric_units[source] is None:

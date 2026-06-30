@@ -8,7 +8,7 @@ fail with exactly their indexed check and carry no plotted_table; the encoding/l
 specs (b11 axis-type, b12 field-absent, b13 missing-unit) fail post-eval, so plotted_table
 stays populated; good specs pass and inline the recomputation. A direct matrix test pins
 every VPlot_SEMANTICS.md section 7 channel-type ↔ column-kind pair behaviorally (branch
-coverage cannot reach individual map entries); direct _unit_source tests pin every arm of
+coverage cannot reach individual map entries); direct unit_source tests pin every arm of
 the count-exempt position-aware unit lineage (terminating + sound on reused output names). A
 Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
 """
@@ -165,7 +165,7 @@ def test_count_derived_channel_is_unit_exempt() -> None:
 def test_count_sum_chain_channel_is_unit_exempt() -> None:
     # A count->sum chain stays dimensionless: count(region) as c, then sum(c) as cc. The unit
     # check must trace cc back THROUGH the sum to the count (not stop at c) and exempt it. Run
-    # end-to-end so the multi-aggregate backward walk fires inside verify, not only _unit_source.
+    # end-to-end so the multi-aggregate backward walk fires inside verify, not only unit_source.
     csv_bytes = (_DATA / "sales.csv").read_bytes()
     spec = decode_spec(
         msgspec.json.encode(
@@ -310,7 +310,7 @@ def test_color_channel_absent_field_is_narrowed_out() -> None:
     assert results["encoding.axis_types_match_fields"].status == "pass"
 
 
-# --- _unit_source: position-aware reverse lineage, every arm ------------------
+# --- unit_source: position-aware reverse lineage, every arm ------------------
 # The count-exempt unit lineage (VPlot_SEMANTICS.md sections 5 + 7) must be position-aware: a
 # reused aggregate output name (legal -- output-uniqueness is per-aggregate) makes a global
 # last-wins scan non-terminating or unsound. Each arm constructs the aggregate ops directly
@@ -406,7 +406,7 @@ _LINEAGE_ARMS: list[tuple[str, tuple[Aggregate, ...], str, str | None]] = [
 def test_unit_source_lineage_arm(
     aggregates: tuple[Aggregate, ...], name: str, expected: str | None
 ) -> None:
-    assert checks._unit_source(name, aggregates) == expected
+    assert checks.unit_source(name, aggregates) == expected
 
 
 # --- good specs: pass and inline the recomputation ---------------------------
