@@ -45,14 +45,18 @@ trust-model rationale (already read at session start).
 
 ## Key decisions (already resolved — do not re-litigate)
 - The serializer keys Decimal scale off the cell's OWN exponent (`-value.as_tuple().exponent`),
-  NOT the column scale: every canon.Table numeric cell has exponent == -column.scale (ingest
-  re-quantize + eval `_scaled_int_to_decimal`), so this equals column-scale formatting AND the
+  NOT the column scale: every numeric cell in an evaluate-produced table has exponent ==
+  -column.scale (render's input contract — ingest re-quantize + eval `_scaled_int_to_decimal` —
+  NOT a `canon.Table` type guarantee), so this equals column-scale formatting AND the
   generic `_dumps` walk needs no per-cell column context. Reusing `_format_decimal` (vs
   `format(v,'f')`) is load-bearing: it folds -0, matching canon's NDJSON byte-for-byte.
 - A Decimal cannot live in a plain dict as a JSON NUMBER (stdlib `json` raises on Decimal;
   `default=str` would stringify; a float is lossy). So `_dumps` is the SOLE serializer and its
   STRING is the authoritative artifact M1.6b/c consume; `build_vega_lite` returns Decimals in
   `data.values` for structural/allowlist assertions only (deliberately not stdlib-serializable).
+  `_dumps` is canonical over builder output ALONE (fixed key insertion order + all-string keys);
+  it neither sorts keys nor guards non-string keys — the builder emits neither — so it is the
+  artifact's canonical form, NOT a general-purpose canonicalizer.
 - Float at the JSON boundary is FORBIDDEN (determinism guard) → `_cell_to_json` raises
   TypeError on float (and on int/anything non-{None,bool,str,Decimal} — none of which the
   builder emits; the raise is defensive, covered once by a float test).
