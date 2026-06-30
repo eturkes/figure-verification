@@ -8,8 +8,7 @@ report.passed. This is the M1.5 trust gate — meaning lives in VPlot_SEMANTICS.
 
 Check provenance — four deliberately distinct classes:
 - ACTIVE: computed here, one pass-or-fail result each — dataset.hash_matches_source (binding)
-  plus the structural encoding stage (fields exist, axis types match). The quantitative-unit
-  check joins in M1.5c.
+  plus the encoding/label stage (fields exist, axis types match, quantitative units present).
 - SURFACED: any VerificationError evaluate() raises — eval's semantic checks and,
   transitively (eval calls ingest.load_table), ingest's data.* checks — is wrapped as a
   fail under its own .check name. Check-agnostic: no eval-pass is enumerated here.
@@ -21,10 +20,9 @@ Check provenance — four deliberately distinct classes:
 
 Control flow (short-circuit gates): pairing precondition (caller bug -> ValueError) ->
 affirmations -> dataset-binding gate (fail -> return, no table) -> eval gate (raise ->
-surface + return, no table) -> structural encoding stage over the recomputed table. An
+surface + return, no table) -> encoding/label stage over the recomputed table. An
 encoding failure blocks report.passed but leaves plotted_table populated (eval succeeded),
-so M1.6 reads it only when passed. The quantitative-unit check joins this stage in M1.5c;
-until then a unit-missing spec may still report passed (the documented M1.5b partial state).
+so M1.6 reads it only when passed.
 """
 
 from pathlib import Path
@@ -33,7 +31,7 @@ from typing import Literal
 from verifier import canon, ingest
 from verifier.errors import VerificationError
 from verifier.eval import evaluate
-from verifier.schema import ChannelType, VPlotSpec, _Base
+from verifier.schema import Aggregate, ChannelType, VPlotSpec, _Base
 
 
 # --- structured verdict ------------------------------------------------------
@@ -135,14 +133,47 @@ _CHANNEL_COLUMN_COMPAT: dict[ChannelType, frozenset[str]] = {
 }
 
 
-def _encoding_checks(spec: VPlotSpec, plotted_table: canon.Table) -> list[CheckResult]:
-    """The structural encoding stage over the recomputed plotted table — two checks in a
+def _unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
+    """The manifest column whose unit a quantitative channel on plotted column `name` requires,
+    or None when `name` traces back to a count (dimensionless -> unit-exempt).
+
+    Position-aware reverse lineage over the spec's aggregate ops in pipeline order
+    (VPlot_SEMANTICS.md sections 5 + 7). Walk the LATEST aggregate first: the latest one carrying
+    a measure with output == name is `name`'s surviving producer, since each aggregate REBUILDS
+    the schema (output-uniqueness is per-aggregate, so an output name may recur across aggregates).
+    A count producer is dimensionless -> None. Any other producer's value derives from its input
+    field, so recurse on that field against STRICTLY EARLIER aggregates (the input references the
+    pre-aggregate schema). No measure matches anywhere -> `name` is a manifest column (a select /
+    group_by key / passthrough), returned as the unit source.
+
+    Terminates: the aggregate prefix strictly shrinks on each recursion (depth <= number of
+    aggregates <= 64). Sound on reused names: a global last-wins scan would mis-resolve a reused
+    output to its latest producer (false-accept) or cycle (non-terminating); keying on
+    (name, position) resolves each input against the schema that actually produced it. Because the
+    caller invokes this only for a numeric plotted channel, and count short-circuits before any
+    recursion, every recursion's `name` stays numeric, so a returned manifest column is numeric.
+    """
+    for i in range(len(aggregates) - 1, -1, -1):
+        for measure in aggregates[i].measures:
+            if measure.output == name:
+                if measure.fn == "count":
+                    return None
+                return _unit_source(measure.field, aggregates[:i])
+    return name
+
+
+def _encoding_checks(
+    spec: VPlotSpec, plotted_table: canon.Table, manifest: ingest.Manifest
+) -> list[CheckResult]:
+    """The encoding/label stage over the recomputed plotted table — three checks in a
     narrowing chain so each catches exactly its own failure (a field absent from the table is
-    excluded from the later type check, and from the M1.5c unit check). One pass-or-fail each.
+    excluded from the later type and unit checks). One pass-or-fail each.
 
     1. encoding.fields_exist_in_plotted_table — every channel field is a plotted column.
     2. encoding.axis_types_match_fields — over existing fields, the column kind admits the
        channel type (section 7).
+    3. label.quantitative_units_present — over quantitative channels on a numeric column, the
+       lineage source carries a manifest unit; a count-derived column is exempt (section 7).
     """
     channels = [spec.encoding.x, spec.encoding.y]
     if spec.encoding.color is not None:
@@ -170,6 +201,34 @@ def _encoding_checks(spec: VPlotSpec, plotted_table: canon.Table) -> list[CheckR
         else _pass(check, "every present channel field's type matches its plotted-column kind")
     )
 
+    check = "label.quantitative_units_present"
+    aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate))
+    numeric_units = {
+        c.name: c.unit for c in manifest.columns if isinstance(c, ingest.NumericColumnSpec)
+    }
+    unit_failure: str | None = None
+    for ch in channels:
+        if ch.kind != "quantitative":
+            continue
+        if ch.field not in columns:
+            continue
+        if columns[ch.field].kind != "numeric":
+            continue
+        source = _unit_source(ch.field, aggregates)
+        if source is None:
+            continue  # count-derived -> dimensionless, unit-exempt
+        if numeric_units[source] is None:
+            unit_failure = (
+                f"quantitative channel {ch.field!r} traces to manifest column "
+                f"{source!r}, which declares no unit"
+            )
+            break
+    results.append(
+        _fail(check, unit_failure)
+        if unit_failure is not None
+        else _pass(check, "every quantitative channel resolves to a unit or a count")
+    )
+
     return results
 
 
@@ -181,11 +240,9 @@ def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> Ver
     `data_dir` roots the CSV resolution. The manifest must pair with the spec's dataset —
     a mismatch is a caller bug (ValueError), not a verification outcome.
 
-    Pipeline: affirmations + binding gate + eval gate + structural encoding stage. On eval
+    Pipeline: affirmations + binding gate + eval gate + encoding/label stage. On eval
     success the recomputed table is returned as plotted_table regardless of the encoding
-    verdict; a structural encoding failure blocks report.passed but leaves the table populated.
-    The quantitative-unit check (M1.5c) is not yet applied, so a unit-missing spec may still
-    report passed here — closed in M1.5c.
+    verdict; an encoding/label failure blocks report.passed but leaves the table populated.
     """
     if manifest.dataset != spec.dataset.name:
         msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
@@ -200,5 +257,5 @@ def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> Ver
     except VerificationError as exc:  # eval semantic or (transitively) ingest data.* failure
         results.append(_fail(exc.check, str(exc)))
         return VerificationReport(results=tuple(results), plotted_table=None)
-    results.extend(_encoding_checks(spec, plotted))
+    results.extend(_encoding_checks(spec, plotted, manifest))
     return VerificationReport(results=tuple(results), plotted_table=plotted)

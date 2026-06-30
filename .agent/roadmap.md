@@ -43,7 +43,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.4g | Eval determinism properties (`tests/test_eval_properties.py`) | DONE | 71% 143K/200K |
 | M1.5a | Verifier spine: structured report + binding/eval-surface/affirmed checks (`checks.py`) | DONE | 77% 153K/200K |
 | M1.5b | Structural encoding checks: fields-exist + axis-types (`checks.py`; recipe `.agent/m15bc_checks_design.md`) | DONE | 60% 121K/200K |
-| M1.5c | Label-unit check + count-exempt position-aware lineage + full false-accept (`checks.py`; recipe `.agent/m15bc_checks_design.md`) | OPEN | — |
+| M1.5c | Label-unit check + count-exempt position-aware lineage + full false-accept (`checks.py`; recipe `.agent/m15bc_checks_design.md`) | DONE | 88% 175K/200K |
 | M1.6 | VPlot → Vega-Lite → SVG/HTML compiler + badge | OPEN | — |
 
 ### M1.1 — Scaffold + tooling + scope doc

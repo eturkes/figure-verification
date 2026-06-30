@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M1.5b verifier tests: structured report + binding + eval-surface + structural encoding.
+"""M1.5c verifier tests: structured report + binding + eval-surface + encoding/label stage.
 
 verify() recomputes the plotted data and emits a VerificationReport; M1.6 renders only
 when report.passed. This suite drives it from the M1.3 corpus (examples/index.json):
 decode-layer specs never reach verify; pre-table bad specs (binding + eval-surfaced) each
-fail with exactly their indexed check and carry no plotted_table; the structural-encoding
-bad specs (b11/b12) fail post-eval, so plotted_table stays populated; good specs pass and
-inline the recomputation. The quantitative-unit spec (b13) still passes this stage — its
-sole defect is M1.5c's missing-unit check — so it is pinned passing, not scanned for a
-false-accept. A direct matrix test pins every VPlot_SEMANTICS.md section 7 channel-type ↔
-column-kind pair behaviorally (branch coverage cannot reach individual map entries). A
+fail with exactly their indexed check and carry no plotted_table; the encoding/label bad
+specs (b11 axis-type, b12 field-absent, b13 missing-unit) fail post-eval, so plotted_table
+stays populated; good specs pass and inline the recomputation. A direct matrix test pins
+every VPlot_SEMANTICS.md section 7 channel-type ↔ column-kind pair behaviorally (branch
+coverage cannot reach individual map entries); direct _unit_source tests pin every arm of
+the count-exempt position-aware unit lineage (terminating + sound on reused output names). A
 Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
 """
 
@@ -29,7 +29,7 @@ from msgspec import DecodeError, ValidationError
 from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -42,15 +42,14 @@ _INDEX: dict[str, Any] = json.loads((_EXAMPLES / "index.json").read_text(encodin
 _GOOD: list[dict[str, Any]] = _INDEX["good_specs"]
 _BAD: list[dict[str, Any]] = _INDEX["bad_specs"]
 
-# Structural encoding checks the M1.5b stage now catches (b11 axis-type, b12 field-absent).
-_STRUCTURAL_ENCODING_CHECKS = frozenset(
+# Encoding/label checks the M1.5c stage catches (b11 axis-type, b12 field-absent, b13 unit).
+_ENCODING_CHECKS = frozenset(
     {
         "encoding.fields_exist_in_plotted_table",
         "encoding.axis_types_match_fields",
+        "label.quantitative_units_present",
     }
 )
-# Still deferred to M1.5c: the quantitative-unit check (b13 only).
-_DEFERRED_CHECKS = frozenset({"label.quantitative_units_present"})
 # The four AFFIRMED passes (true by construction) the spine records as the trust argument.
 _AFFIRMATIONS = frozenset(
     {
@@ -64,16 +63,9 @@ _AFFIRMATIONS = frozenset(
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
 # Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface) ->
 # plotted_table is None.
-_PRE_TABLE_BAD = [
-    b
-    for b in _BAD
-    if b["decodes"] and b["check"] not in _STRUCTURAL_ENCODING_CHECKS | _DEFERRED_CHECKS
-]
-# Structural-encoding: blocked AFTER eval succeeds (b11/b12) -> plotted_table populated.
-_ENCODING_BAD = [b for b in _BAD if b["check"] in _STRUCTURAL_ENCODING_CHECKS]
-# Deferred to M1.5c: bad ONLY by a missing quantitative unit (b13), so it still PASSES the
-# M1.5b stage -> pinned passing below, not scanned for a false-accept.
-_DEFERRED_BAD = [b for b in _BAD if b["check"] in _DEFERRED_CHECKS]
+_PRE_TABLE_BAD = [b for b in _BAD if b["decodes"] and b["check"] not in _ENCODING_CHECKS]
+# Encoding/label: blocked AFTER eval succeeds (b11/b12/b13) -> plotted_table populated.
+_ENCODING_BAD = [b for b in _BAD if b["check"] in _ENCODING_CHECKS]
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
@@ -89,10 +81,9 @@ def test_corpus_split_covers_each_layer() -> None:
     pre_table_checks = {b["check"] for b in _PRE_TABLE_BAD}
     assert "dataset.hash_matches_source" in pre_table_checks  # binding gate
     assert len(_PRE_TABLE_BAD) >= 7  # b08 binding + b07/b09/b10/b14/b15/b16 eval-surfaced
-    # BOTH narrowing arms must have a failing fixture (not two of the same check), one each.
-    assert {b["check"] for b in _ENCODING_BAD} == _STRUCTURAL_ENCODING_CHECKS
-    assert len(_ENCODING_BAD) == len(_STRUCTURAL_ENCODING_CHECKS)  # b11 axis-type + b12 absent
-    assert len(_DEFERRED_BAD) == 1  # b13: still passes M1.5b, its defect is M1.5c's
+    # All three narrowing arms must have a failing fixture (not duplicates), one each.
+    assert {b["check"] for b in _ENCODING_BAD} == _ENCODING_CHECKS
+    assert len(_ENCODING_BAD) == len(_ENCODING_CHECKS)  # b11 axis-type + b12 absent + b13 unit
     assert _BAD_DECODE  # decode-layer specs exist to assert verify is unreached
 
 
@@ -124,10 +115,11 @@ def test_pre_table_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
 # --- structural-encoding bad specs: fail post-eval, plotted table populated ----
 @pytest.mark.parametrize("entry", _ENCODING_BAD, ids=_ids(_ENCODING_BAD))
 def test_encoding_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
-    # b11/b12 fail in the structural encoding stage, which runs AFTER eval succeeds, so the
+    # b11/b12/b13 fail in the encoding/label stage, which runs AFTER eval succeeds, so the
     # recomputed plotted_table is populated even though report.passed is False (M1.6 reads it
     # only when passed). The narrowing chain makes each fail exactly its own check: b12's
-    # absent field is excluded from the axis-type check, so only fields_exist fails.
+    # absent field is excluded from the axis-type and unit checks, and b11's type-mismatched
+    # (non-numeric) field is excluded from the unit check, so each fails only its own check.
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
     manifest = _manifest_for(spec.dataset.name)
     report = verify(spec, manifest, data_dir=_DATA)
@@ -137,26 +129,42 @@ def test_encoding_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
     assert report.plotted_table is not None  # eval succeeded -> table reflects the recompute
 
 
-# --- deferred unit spec: still passes the M1.5b stage (its defect is M1.5c's) ----
-@pytest.mark.parametrize("entry", _DEFERRED_BAD, ids=_ids(_DEFERRED_BAD))
-def test_deferred_unit_spec_passes_until_m15c(entry: dict[str, Any]) -> None:
-    # b13's sole defect is a missing quantitative unit, caught only by M1.5c's
-    # label.quantitative_units_present. Until then it MUST pass the M1.5b stage: pin the pass,
-    # the populated table, and the ABSENCE of the deferred check, so an early M1.5c
-    # implementation (which test_no_false_accepts_excluding_units excludes b13 from) trips
-    # HERE instead of sliding through green.
-    spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
+# --- count-derived channel: dimensionless -> unit-exempt (end-to-end) ---------
+def test_count_derived_channel_is_unit_exempt() -> None:
+    # A count-derived quantitative channel is dimensionless, so the unit check exempts it even
+    # though its count source (region, a string) carries no unit. Run end-to-end over the real
+    # sales.csv so binding + recompute + the unit check's source-None arm all fire on a PASS.
+    csv_bytes = (_DATA / "sales.csv").read_bytes()
+    spec = decode_spec(
+        msgspec.json.encode(
+            {
+                "version": "vplot-0.1",
+                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(csv_bytes)},
+                "transform": [
+                    {"op": "group_by", "keys": ["month"]},
+                    {
+                        "op": "aggregate",
+                        "measures": [{"field": "region", "fn": "count", "as": "region_count"}],
+                    },
+                ],
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "month", "type": "nominal"},
+                    "y": {"field": "region_count", "type": "quantitative"},
+                },
+            }
+        )
+    )
+    manifest = _manifest_for("sales.csv")
     report = verify(spec, manifest, data_dir=_DATA)
-    assert report.passed
-    assert report.plotted_table is not None
-    present = {r.check for r in report.results}
-    assert present.isdisjoint(_DEFERRED_CHECKS)  # the unit check has not landed yet
+    assert report.passed  # count exemption -> the unit check passes despite a unitless source
+    unit = next(r for r in report.results if r.check == "label.quantitative_units_present")
+    assert unit.status == "pass"
 
 
-def test_no_false_accepts_excluding_units() -> None:
-    # Every bad spec the M1.5b stage can catch (binding + eval-surface + structural encoding)
-    # is blocked; b13 is excluded -> its only defect is a missing unit, checked in M1.5c.
+def test_no_false_accepts_over_full_bad_suite() -> None:
+    # Every decodes=true bad spec (binding + eval-surface + encoding/label, b13 now included)
+    # is blocked: not one reports passed.
     accepted = 0
     for entry in _PRE_TABLE_BAD + _ENCODING_BAD:
         spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
@@ -179,6 +187,20 @@ _COLUMN_OF_KIND: dict[str, canon.Column] = {
     "string": canon.StringColumn(name="s"),
 }
 _MATRIX_TABLE = canon.Table(columns=tuple(_COLUMN_OF_KIND.values()), rows=())
+# A manifest matching the matrix table so _encoding_checks' unit check can resolve the numeric
+# column; n carries a unit so that check never interferes with the axis-type assertions.
+_MATRIX_MANIFEST = ingest.load_manifest(
+    msgspec.json.encode(
+        {
+            "dataset": "t.csv",
+            "columns": [
+                {"type": "numeric", "name": "n", "scale": 0, "unit": "u"},
+                {"type": "temporal", "name": "t", "granularity": "date"},
+                {"type": "string", "name": "s"},
+            ],
+        }
+    )
+)
 # VPlot_SEMANTICS.md section 7, transcribed straight from the spec table.
 _SECTION7_ADMISSIBLE: dict[str, frozenset[str]] = {
     "quantitative": frozenset({"numeric"}),
@@ -217,7 +239,7 @@ def test_axis_type_matrix_pins_every_section7_pair(ch_type: str, col_kind: str) 
     # fields_exist passes and never masks the result.
     col = _COLUMN_OF_KIND[col_kind]
     spec = _spec_with_encoding(x=("s", "nominal"), y=(col.name, ch_type))
-    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE, _MATRIX_MANIFEST)}
     assert results["encoding.fields_exist_in_plotted_table"].status == "pass"
     expected = "pass" if col_kind in _SECTION7_ADMISSIBLE[ch_type] else "fail"
     assert results["encoding.axis_types_match_fields"].status == expected
@@ -230,7 +252,7 @@ def test_color_channel_is_type_checked_not_merely_counted() -> None:
     spec = _spec_with_encoding(
         x=("s", "nominal"), y=("n", "quantitative"), color=("s", "quantitative")
     )
-    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE, _MATRIX_MANIFEST)}
     assert results["encoding.fields_exist_in_plotted_table"].status == "pass"
     axis = results["encoding.axis_types_match_fields"]
     assert axis.status == "fail"
@@ -244,11 +266,108 @@ def test_color_channel_absent_field_is_narrowed_out() -> None:
     spec = _spec_with_encoding(
         x=("s", "nominal"), y=("n", "quantitative"), color=("ghost", "nominal")
     )
-    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE)}
+    results = {r.check: r for r in checks._encoding_checks(spec, _MATRIX_TABLE, _MATRIX_MANIFEST)}
     fields = results["encoding.fields_exist_in_plotted_table"]
     assert fields.status == "fail"
     assert "ghost" in fields.message
     assert results["encoding.axis_types_match_fields"].status == "pass"
+
+
+# --- _unit_source: position-aware reverse lineage, every arm ------------------
+# The count-exempt unit lineage (VPlot_SEMANTICS.md sections 5 + 7) must be position-aware: a
+# reused aggregate output name (legal -- output-uniqueness is per-aggregate) makes a global
+# last-wins scan non-terminating or unsound. Each arm constructs the aggregate ops directly
+# (the walk reads only .measures/.output/.field/.fn) and pins the resolved source: None =
+# count-derived (exempt), a string = the manifest column whose unit is required.
+def _agg(*measures: Measure) -> Aggregate:
+    return Aggregate(measures=measures)
+
+
+_LINEAGE_ARMS: list[tuple[str, tuple[Aggregate, ...], str, str | None]] = [
+    # no aggregate -> name is a manifest column (select / group_by key / passthrough)
+    ("manifest passthrough", (), "aqi", "aqi"),
+    # count producer -> dimensionless -> exempt
+    (
+        "count direct",
+        (_agg(Measure(field="region", fn="count", output="region_count")),),
+        "region_count",
+        None,
+    ),
+    # non-count terminus -> recurse once, bottom out at a manifest column
+    (
+        "non-count terminus",
+        (_agg(Measure(field="aqi", fn="max", output="max_aqi")),),
+        "max_aqi",
+        "aqi",
+    ),
+    # count at depth (count -> sum chain) -> exempt via the backward walk, not one-hop
+    (
+        "count at depth",
+        (
+            _agg(Measure(field="date", fn="count", output="c")),
+            _agg(Measure(field="c", fn="sum", output="cc")),
+        ),
+        "cc",
+        None,
+    ),
+    # reused output name FA-guard: w -> v(sum, earlier) -> aqi; a last-wins scan would bind v to
+    # the later count(v) and false-accept (exempt). Position-aware resolves v at its producer.
+    (
+        "surviving producer",
+        (
+            _agg(Measure(field="aqi", fn="sum", output="v")),
+            _agg(
+                Measure(field="v", fn="min", output="w"),
+                Measure(field="v", fn="count", output="v"),
+            ),
+        ),
+        "w",
+        "aqi",
+    ),
+    # reused output name NT-guard: v -> sum(v) -> count(v) terminates; a last-wins scan cycles v->v
+    (
+        "loop guard terminates",
+        (
+            _agg(Measure(field="date", fn="count", output="v")),
+            _agg(Measure(field="v", fn="sum", output="v")),
+        ),
+        "v",
+        None,
+    ),
+    # producer at an EARLIER index (t survives as a later group key, not a measure) -> outer advance
+    (
+        "earlier producer",
+        (
+            _agg(Measure(field="temp_c", fn="sum", output="t")),
+            _agg(Measure(field="city", fn="count", output="n")),
+        ),
+        "t",
+        "temp_c",
+    ),
+    # match is the 2nd measure of an aggregate -> exercises the inner-loop advance
+    (
+        "multi-measure inner advance",
+        (
+            _agg(
+                Measure(field="temp_c", fn="sum", output="total_temp"),
+                Measure(field="aqi", fn="max", output="max_aqi"),
+            ),
+        ),
+        "max_aqi",
+        "aqi",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("aggregates", "name", "expected"),
+    [(a[1], a[2], a[3]) for a in _LINEAGE_ARMS],
+    ids=[a[0] for a in _LINEAGE_ARMS],
+)
+def test_unit_source_lineage_arm(
+    aggregates: tuple[Aggregate, ...], name: str, expected: str | None
+) -> None:
+    assert checks._unit_source(name, aggregates) == expected
 
 
 # --- good specs: pass and inline the recomputation ---------------------------
@@ -278,6 +397,7 @@ def test_report_records_all_affirmations_on_pass() -> None:
         "dataset.hash_matches_source",
         "encoding.fields_exist_in_plotted_table",
         "encoding.axis_types_match_fields",
+        "label.quantitative_units_present",
     }
     assert all(r.severity == "blocking" for r in report.results)
 
@@ -379,7 +499,7 @@ _PROP_MANIFEST = ingest.load_manifest(
             "dataset": "t.csv",
             "columns": [
                 {"type": "string", "name": "k"},
-                {"type": "numeric", "name": "v", "scale": 2},
+                {"type": "numeric", "name": "v", "scale": 2, "unit": "units"},
             ],
         }
     )
