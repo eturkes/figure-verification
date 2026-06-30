@@ -7,8 +7,9 @@ trusted data directory, recomputes every plotted value from the declared transfo
 report.passed. This is the M1.5 trust gate — meaning lives in VPlot_SEMANTICS.md.
 
 Check provenance — four deliberately distinct classes:
-- ACTIVE: computed here, one pass-or-fail result each. M1.5a: dataset.hash_matches_source.
-  (Encoding/label checks join in M1.5b.)
+- ACTIVE: computed here, one pass-or-fail result each — dataset.hash_matches_source (binding)
+  plus the structural encoding stage (fields exist, axis types match). The quantitative-unit
+  check joins in M1.5c.
 - SURFACED: any VerificationError evaluate() raises — eval's semantic checks and,
   transitively (eval calls ingest.load_table), ingest's data.* checks — is wrapped as a
   fail under its own .check name. Check-agnostic: no eval-pass is enumerated here.
@@ -20,9 +21,10 @@ Check provenance — four deliberately distinct classes:
 
 Control flow (short-circuit gates): pairing precondition (caller bug -> ValueError) ->
 affirmations -> dataset-binding gate (fail -> return, no table) -> eval gate (raise ->
-surface + return, no table) -> report carrying the recomputed plotted table. The M1.5b
-encoding stage slots in after the eval gate; until then an encoding-invalid spec may
-still report passed (the documented M1.5a partial state).
+surface + return, no table) -> structural encoding stage over the recomputed table. An
+encoding failure blocks report.passed but leaves plotted_table populated (eval succeeded),
+so M1.6 reads it only when passed. The quantitative-unit check joins this stage in M1.5c;
+until then a unit-missing spec may still report passed (the documented M1.5b partial state).
 """
 
 from pathlib import Path
@@ -31,7 +33,7 @@ from typing import Literal
 from verifier import canon, ingest
 from verifier.errors import VerificationError
 from verifier.eval import evaluate
-from verifier.schema import VPlotSpec, _Base
+from verifier.schema import ChannelType, VPlotSpec, _Base
 
 
 # --- structured verdict ------------------------------------------------------
@@ -123,6 +125,54 @@ def _check_dataset_binding(spec: VPlotSpec, data_dir: Path) -> tuple[CheckResult
     return _pass(check, f"source bytes hash to the declared {spec.dataset.hash}"), raw
 
 
+# --- encoding / label checks -------------------------------------------------
+# VPlot_SEMANTICS.md section 7: the plotted-column kinds each channel type admits.
+_CHANNEL_COLUMN_COMPAT: dict[ChannelType, frozenset[str]] = {
+    "quantitative": frozenset({"numeric"}),
+    "temporal": frozenset({"temporal"}),
+    "ordinal": frozenset({"numeric", "string"}),
+    "nominal": frozenset({"string", "numeric"}),
+}
+
+
+def _encoding_checks(spec: VPlotSpec, plotted_table: canon.Table) -> list[CheckResult]:
+    """The structural encoding stage over the recomputed plotted table — two checks in a
+    narrowing chain so each catches exactly its own failure (a field absent from the table is
+    excluded from the later type check, and from the M1.5c unit check). One pass-or-fail each.
+
+    1. encoding.fields_exist_in_plotted_table — every channel field is a plotted column.
+    2. encoding.axis_types_match_fields — over existing fields, the column kind admits the
+       channel type (section 7).
+    """
+    channels = [spec.encoding.x, spec.encoding.y]
+    if spec.encoding.color is not None:
+        channels.append(spec.encoding.color)
+    columns = {c.name: c for c in plotted_table.columns}
+    results: list[CheckResult] = []
+
+    check = "encoding.fields_exist_in_plotted_table"
+    missing = [ch.field for ch in channels if ch.field not in columns]
+    results.append(
+        _fail(check, f"channel field(s) {missing} absent from plotted columns {sorted(columns)}")
+        if missing
+        else _pass(check, "every channel field exists in the plotted table")
+    )
+
+    check = "encoding.axis_types_match_fields"
+    mismatched = [
+        f"{ch.field} ({ch.kind} over {columns[ch.field].kind})"
+        for ch in channels
+        if ch.field in columns and columns[ch.field].kind not in _CHANNEL_COLUMN_COMPAT[ch.kind]
+    ]
+    results.append(
+        _fail(check, f"channel type does not match the plotted-column kind: {mismatched}")
+        if mismatched
+        else _pass(check, "every channel type matches its plotted-column kind")
+    )
+
+    return results
+
+
 # --- entry point -------------------------------------------------------------
 def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> VerificationReport:
     """Verify a decoded spec against its trusted manifest and data directory.
@@ -131,9 +181,11 @@ def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> Ver
     `data_dir` roots the CSV resolution. The manifest must pair with the spec's dataset —
     a mismatch is a caller bug (ValueError), not a verification outcome.
 
-    M1.5a spine: affirmations + binding + eval-surface, returning the recomputed table on
-    eval success. Encoding/label checks (M1.5b) are not yet applied, so an
-    encoding-invalid spec may still report passed here — closed in M1.5b.
+    Pipeline: affirmations + binding gate + eval gate + structural encoding stage. On eval
+    success the recomputed table is returned as plotted_table regardless of the encoding
+    verdict; a structural encoding failure blocks report.passed but leaves the table populated.
+    The quantitative-unit check (M1.5c) is not yet applied, so a unit-missing spec may still
+    report passed here — closed in M1.5c.
     """
     if manifest.dataset != spec.dataset.name:
         msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
@@ -148,5 +200,5 @@ def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> Ver
     except VerificationError as exc:  # eval semantic or (transitively) ingest data.* failure
         results.append(_fail(exc.check, str(exc)))
         return VerificationReport(results=tuple(results), plotted_table=None)
-    # M1.5b: _encoding_checks(spec, plotted, manifest) results extend here.
+    results.extend(_encoding_checks(spec, plotted))
     return VerificationReport(results=tuple(results), plotted_table=plotted)

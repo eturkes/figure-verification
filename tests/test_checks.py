@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M1.5a verifier-spine tests: structured report + binding + eval-surface + affirmations.
+"""M1.5b verifier tests: structured report + binding + eval-surface + structural encoding.
 
 verify() recomputes the plotted data and emits a VerificationReport; M1.6 renders only
 when report.passed. This suite drives it from the M1.3 corpus (examples/index.json):
-decode-layer specs never reach verify; the a-handled decodes=true bad specs (binding +
-eval-surfaced) each fail with exactly their indexed check; good specs pass and inline the
-recomputation. Encoding/label specs (b11-b13) are M1.5b territory, excluded here. A
-Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
+decode-layer specs never reach verify; pre-table bad specs (binding + eval-surfaced) each
+fail with exactly their indexed check and carry no plotted_table; the structural-encoding
+bad specs (b11/b12) fail post-eval, so plotted_table stays populated; good specs pass and
+inline the recomputation. The quantitative-unit spec (b13) is M1.5c territory, excluded
+here. A Hypothesis property pins the spine invariant: verify inlines exactly what eval
+recomputes.
 """
 
 import csv
@@ -38,14 +40,15 @@ _INDEX: dict[str, Any] = json.loads((_EXAMPLES / "index.json").read_text(encodin
 _GOOD: list[dict[str, Any]] = _INDEX["good_specs"]
 _BAD: list[dict[str, Any]] = _INDEX["bad_specs"]
 
-# M1.5b territory (encoding/label); the M1.5a spine does not yet catch these.
-_ENCODING_CHECKS = frozenset(
+# Structural encoding checks the M1.5b stage now catches (b11 axis-type, b12 field-absent).
+_STRUCTURAL_ENCODING_CHECKS = frozenset(
     {
         "encoding.fields_exist_in_plotted_table",
         "encoding.axis_types_match_fields",
-        "label.quantitative_units_present",
     }
 )
+# Still deferred to M1.5c: the quantitative-unit check (b13 only).
+_DEFERRED_CHECKS = frozenset({"label.quantitative_units_present"})
 # The four AFFIRMED passes (true by construction) the spine records as the trust argument.
 _AFFIRMATIONS = frozenset(
     {
@@ -57,8 +60,15 @@ _AFFIRMATIONS = frozenset(
 )
 # decodes=false -> rejected at decode_spec; verify is never reached.
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
-# a-handled: decodes=true bad specs the spine catches now (binding + eval-surface).
-_A_BAD = [b for b in _BAD if b["decodes"] and b["check"] not in _ENCODING_CHECKS]
+# Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface) ->
+# plotted_table is None.
+_PRE_TABLE_BAD = [
+    b
+    for b in _BAD
+    if b["decodes"] and b["check"] not in _STRUCTURAL_ENCODING_CHECKS | _DEFERRED_CHECKS
+]
+# Structural-encoding: blocked AFTER eval succeeds (b11/b12) -> plotted_table populated.
+_ENCODING_BAD = [b for b in _BAD if b["check"] in _STRUCTURAL_ENCODING_CHECKS]
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
@@ -70,10 +80,11 @@ def _manifest_for(name: str) -> ingest.Manifest:
 
 
 # --- corpus split guards (no silent vacuous parametrization) ------------------
-def test_a_handled_covers_binding_and_eval_surface() -> None:
-    checks = {b["check"] for b in _A_BAD}
-    assert "dataset.hash_matches_source" in checks  # binding gate
-    assert len(_A_BAD) >= 7  # b08 binding + b07/b09/b10/b14/b15/b16 eval-surfaced
+def test_corpus_split_covers_each_layer() -> None:
+    pre_table_checks = {b["check"] for b in _PRE_TABLE_BAD}
+    assert "dataset.hash_matches_source" in pre_table_checks  # binding gate
+    assert len(_PRE_TABLE_BAD) >= 7  # b08 binding + b07/b09/b10/b14/b15/b16 eval-surfaced
+    assert len(_ENCODING_BAD) == 2  # b11 axis-type + b12 field-absent
     assert _BAD_DECODE  # decode-layer specs exist to assert verify is unreached
 
 
@@ -89,22 +100,40 @@ def test_decode_layer_specs_never_reach_verify(entry: dict[str, Any]) -> None:
         decode_spec(raw)
 
 
-# --- a-handled bad specs: each fails with exactly its indexed check -----------
-@pytest.mark.parametrize("entry", _A_BAD, ids=_ids(_A_BAD))
-def test_a_handled_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
+# --- pre-table bad specs: each fails its indexed check, no plotted table -------
+@pytest.mark.parametrize("entry", _PRE_TABLE_BAD, ids=_ids(_PRE_TABLE_BAD))
+def test_pre_table_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
     manifest = _manifest_for(spec.dataset.name)
     report = verify(spec, manifest, data_dir=_DATA)
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {entry["check"]}  # a non-empty fail set also means not passed
-    assert report.plotted_table is None  # any block short-circuits -> no recomputed table
+    assert report.plotted_table is None  # binding/eval block short-circuits -> no table
     passing = {r.check for r in report.results if r.status == "pass"}
     assert passing >= _AFFIRMATIONS  # affirmations are retained even on a failing report
 
 
-def test_no_false_accepts_over_a_handled_bad_specs() -> None:
+# --- structural-encoding bad specs: fail post-eval, plotted table populated ----
+@pytest.mark.parametrize("entry", _ENCODING_BAD, ids=_ids(_ENCODING_BAD))
+def test_encoding_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
+    # b11/b12 fail in the structural encoding stage, which runs AFTER eval succeeds, so the
+    # recomputed plotted_table is populated even though report.passed is False (M1.6 reads it
+    # only when passed). The narrowing chain makes each fail exactly its own check: b12's
+    # absent field is excluded from the axis-type check, so only fields_exist fails.
+    spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
+    manifest = _manifest_for(spec.dataset.name)
+    report = verify(spec, manifest, data_dir=_DATA)
+    failing = {r.check for r in report.results if r.status == "fail"}
+    assert failing == {entry["check"]}
+    assert not report.passed
+    assert report.plotted_table is not None  # eval succeeded -> table reflects the recompute
+
+
+def test_no_false_accepts_excluding_units() -> None:
+    # Every bad spec the M1.5b stage can catch (binding + eval-surface + structural encoding)
+    # is blocked; b13 is excluded -> its only defect is a missing unit, checked in M1.5c.
     accepted = 0
-    for entry in _A_BAD:
+    for entry in _PRE_TABLE_BAD + _ENCODING_BAD:
         spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
         manifest = _manifest_for(spec.dataset.name)
         if verify(spec, manifest, data_dir=_DATA).passed:
@@ -128,13 +157,18 @@ def test_good_spec_passes_and_inlines_recomputation(entry: dict[str, Any]) -> No
 # --- report structure: the affirmations are recorded, not implicit ------------
 def test_report_records_all_affirmations_on_pass() -> None:
     # The four AFFIRMED passes are part of the recorded trust argument; pin that a good
-    # spec's passing checks are exactly the affirmations plus the active binding gate, so
-    # dropping _affirmations() is caught (the pass/fail-name tests alone would not notice).
+    # spec's passing checks are exactly the affirmations plus the active binding gate and the
+    # two structural encoding checks, so dropping _affirmations() is caught (the
+    # pass/fail-name tests alone would not notice).
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
     manifest = _manifest_for(spec.dataset.name)
     report = verify(spec, manifest, data_dir=_DATA)
     passing = {r.check for r in report.results if r.status == "pass"}
-    assert passing == _AFFIRMATIONS | {"dataset.hash_matches_source"}
+    assert passing == _AFFIRMATIONS | {
+        "dataset.hash_matches_source",
+        "encoding.fields_exist_in_plotted_table",
+        "encoding.axis_types_match_fields",
+    }
     assert all(r.severity == "blocking" for r in report.results)
 
 
