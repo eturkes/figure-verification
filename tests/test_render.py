@@ -3,10 +3,12 @@
 builder, fully unit-testable (no native dep).
 
 The serializer pins each cell kind to its token (Decimal -> raw fixed-point number, -0 folded;
-float rejected) and the raw-token/round-trip property. The builder is driven from good corpus
-specs (g01 bar/no-color over sales, g07 line+color over weather, g10 scatter over weather) so
-every branch fires: mark map (all 3, behaviorally -- a lookup table is invisible to branch
-coverage), every-channel sort:null, color present/absent, line order:null vs omitted,
+float rejected) and the raw-token/round-trip property; _scaled_cell re-quantizes a data cell to
+its column scale (so the inlined number equals canon's hash token). The builder is driven from
+good corpus specs (g01 bar/no-color over sales, g07 line+color over weather, g10 scatter over
+weather) so every branch fires: mark map (behaviorally -- a lookup table is invisible to branch
+coverage), every-channel sort:null, color present/absent, line-mark order:null vs a bare mark
+string,
 quantitative stack:null vs omitted, bar scale.zero vs omitted, the $schema/font constants, and
 manifest-sourced+escaped axis titles. A direct _axis_title matrix over a synthetic manifest
 pins every title branch (count-exempt, label present/absent, numeric+unit / numeric-no-unit /
@@ -21,7 +23,7 @@ from pathlib import Path
 import msgspec
 import pytest
 
-from verifier import ingest, render
+from verifier import canon, ingest, render
 from verifier.eval import evaluate
 from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec
 
@@ -104,6 +106,21 @@ def test_dumps_nested_round_trip() -> None:
     assert json.loads(out, parse_float=Decimal) == obj
 
 
+# --- _scaled_cell: data cells re-quantized to the column scale (matching canon's hash token) --
+def test_scaled_cell_normalizes_to_column_scale() -> None:
+    col2 = canon.NumericColumn(name="x", scale=2)
+    # off-scale cells render at the COLUMN scale (== canon's hash token), not the cell's own.
+    assert render._cell_to_json(render._scaled_cell(col2, Decimal(1))) == "1.00"
+    assert render._cell_to_json(render._scaled_cell(col2, Decimal("1.234"))) == "1.23"
+    assert render._scaled_cell(col2, None) is None  # numeric null passes through
+    assert render._scaled_cell(canon.StringColumn(name="s"), "hi") == "hi"  # non-numeric verbatim
+
+
+def test_scaled_cell_rejects_non_finite() -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        render._scaled_cell(canon.NumericColumn(name="x", scale=2), Decimal("NaN"))
+
+
 # --- the authoritative string + build/stdlib boundary ------------------------
 def test_vega_lite_json_inlines_decimal_as_raw_token() -> None:
     spec, manifest = _good(_G10)  # temp_c/precip_mm scale 1 -> tokens carry a decimal point
@@ -124,8 +141,9 @@ def test_build_keeps_raw_decimals_unserializable_by_stdlib() -> None:
 
 
 # --- mark map (behavioral: a lookup table is invisible to branch coverage) ----
-@pytest.mark.parametrize(("name", "mark"), [(_G01, "bar"), (_G07, "line"), (_G10, "point")])
+@pytest.mark.parametrize(("name", "mark"), [(_G01, "bar"), (_G10, "point")])
 def test_mark_map(name: str, mark: str) -> None:
+    # bar/scatter emit a bare mark string; line emits a mark OBJECT (test_line_mark_order_null).
     assert _built(name)["mark"] == mark
 
 
@@ -146,13 +164,19 @@ def test_color_absent() -> None:
     assert "color" not in _built(_G01)["encoding"]  # type: ignore[operator]
 
 
-def test_line_order_null() -> None:
-    assert _built(_G07)["encoding"]["order"] is None  # type: ignore[index]
+def test_line_mark_order_null() -> None:
+    # order:null is a MARK property -- a line spec with encoding.order:null FAILS the real v5
+    # schema (the order channel admits no null). Full schema validity is M1.6b's vl-convert compile.
+    built = _built(_G07)
+    assert built["mark"] == {"type": "line", "order": None}
+    assert "order" not in built["encoding"]  # type: ignore[operator]  # moved to the mark
 
 
 def test_non_line_omits_order() -> None:
     for name in (_G01, _G10):
-        assert "order" not in _built(name)["encoding"]  # type: ignore[operator]
+        built = _built(name)
+        assert isinstance(built["mark"], str)  # non-line: a bare mark string, no order anywhere
+        assert "order" not in built["encoding"]  # type: ignore[operator]
 
 
 def test_quantitative_channel_stack_null() -> None:

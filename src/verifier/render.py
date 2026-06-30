@@ -5,14 +5,15 @@ Turns an untrusted VPlotSpec plus the verifier's recomputed plotted table into a
 v5 spec dict that inlines ONLY that table. Two trust mechanisms, kept distinct: (1) the
 builder copies NO model-supplied Vega-Lite key, so no dangerous data/JS/URL sink can appear
 (positive allowlist by construction); (2) it EMITS its own narrow fixed safe set to pin
-determinism -- every channel sort:null, quantitative stack:null, line order:null, bar
+determinism -- every channel sort:null, quantitative stack:null, line-mark order:null, bar
 scale.zero -- defeating Vega-Lite's implicit field-sort / line-vertex-sort / legend-domain
 sort / stacking so the displayed marks match the recomputed row order.
 
 Axis titles are manifest-sourced via checks.unit_source lineage (count-derived -> the fixed
 "count", as a count is dimensionless and its output name is model-proposed). _dumps is the
-SOLE serializer: a Decimal cell becomes a RAW fixed-point JSON number token (canon's
-fixed-point form, -0 folded), so the same table yields byte-identical JSON; a Python float
+SOLE serializer: a Decimal cell becomes a RAW fixed-point JSON number token at its COLUMN
+scale (build re-quantizes each data cell via _scaled_cell, so the inlined number equals the
+hashed table's token), -0 folded, so the same table yields byte-identical JSON; a Python float
 is rejected at the boundary. The string _dumps returns is the authoritative artifact M1.6b/c
 consume -- stdlib json.dumps is never applied to builder output (it cannot serialize the
 Decimals build_vega_lite keeps in data.values).
@@ -38,9 +39,10 @@ _MARK_MAP: dict[str, str] = {"bar": "bar", "line": "line", "scatter": "point"}
 
 def _cell_to_json(value: object) -> str:
     """One scalar as its JSON token. Decimal -> raw fixed-point number at the cell's own scale
-    (== column scale by the at-scale invariant), -0 folded via canon._format_decimal; str ->
-    msgspec JSON string (escaping); None -> null; bool -> true/false. A float (or any other
-    type) is forbidden at the JSON boundary -- the determinism guard keeping lossy floats out."""
+    (data cells arrive pre-quantized to their column scale via _scaled_cell), -0 folded via
+    canon._format_decimal; str -> msgspec JSON string (escaping); None -> null; bool ->
+    true/false. A float (or any other type) is forbidden at the JSON boundary -- the determinism
+    guard keeping lossy floats out."""
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -63,6 +65,18 @@ def _dumps(obj: object) -> str:
     if isinstance(obj, list):
         return "[" + ",".join(_dumps(item) for item in obj) + "]"
     return _cell_to_json(obj)
+
+
+def _scaled_cell(column: canon.Column, cell: canon.Cell) -> canon.Cell:
+    """A data cell re-quantized to its column's canonical scale: a numeric cell becomes a Decimal
+    whose JSON token EQUALS the hashed table's token (via canon._cell_token, the same fixed-point
+    form hash_table uses), so the inlined number matches the certificate BY CONSTRUCTION -- not
+    merely by the evaluate/ingest at-scale invariant. str/None pass through; a non-finite numeric
+    raises via canon. This makes build_vega_lite total over canon.Table, however the table was
+    built."""
+    if isinstance(column, canon.NumericColumn) and cell is not None:
+        return Decimal(canon._cell_token(column, cell))
+    return cell
 
 
 def _manifest_column(manifest: ingest.Manifest, name: str) -> ingest.ManifestColumn:
@@ -101,11 +115,12 @@ def build_vega_lite(
     spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
 ) -> dict[str, Any]:
     """The Vega-Lite v5 spec dict inlining only the recomputed table. Carries Decimal cells in
-    data.values (for structural/allowlist assertions; NOT stdlib-serializable) -- vega_lite_json
-    is the serializable handoff. Emits only allowlisted keys (copies no model Vega key)."""
+    data.values (each re-quantized to its column scale via _scaled_cell, for structural/allowlist
+    assertions; NOT stdlib-serializable) -- vega_lite_json is the serializable handoff. Emits only
+    allowlisted keys (copies no model Vega key)."""
     aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate))
     values = [
-        {column.name: cell for column, cell in zip(table.columns, row, strict=True)}
+        {col.name: _scaled_cell(col, cell) for col, cell in zip(table.columns, row, strict=True)}
         for row in table.rows
     ]
     x = _channel(spec.encoding.x, aggregates, manifest)
@@ -118,12 +133,15 @@ def build_vega_lite(
     encoding: dict[str, Any] = {"x": x, "y": y}
     if spec.encoding.color is not None:
         encoding["color"] = _channel(spec.encoding.color, aggregates, manifest)
+    mark: dict[str, Any] | str = _MARK_MAP[spec.mark]
     if spec.mark == "line":
-        encoding["order"] = None  # data-order vertex connection (else Vega sorts by x)
+        # order:null is a MARK property -- the v5 `encoding.order` channel admits no null. Connect
+        # vertices in the recomputed row order (else Vega sorts line points by the x field).
+        mark = {"type": _MARK_MAP[spec.mark], "order": None}
     return {
         "$schema": _VEGA_LITE_SCHEMA,
         "data": {"values": values},
-        "mark": _MARK_MAP[spec.mark],
+        "mark": mark,
         "encoding": encoding,
         "config": {"font": _FONT_FAMILY},
     }

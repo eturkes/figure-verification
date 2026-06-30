@@ -229,7 +229,7 @@ determinism), never a silent pass.
   decided once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting
   valid filters on legitimate control-char cells.
 - RESOLVED (M1.5c): a dimensionless `count` on a quantitative channel is unit-exempt vs
-  `label.quantitative_units_present` — `_unit_source` (§5/§7) returns None for a count-derived
+  `label.quantitative_units_present` — `unit_source` (§5/§7) returns None for a count-derived
   column (the lineage carries no unit), now stated in §1/§7. Dedicated end-to-end `test_checks.py`
-  specs (a direct count and a count→sum chain) plus `_unit_source` lineage arms exercise it (no
+  specs (a direct count and a count→sum chain) plus `unit_source` lineage arms exercise it (no
   good-spec corpus golden uses `count`, which would ripple into M1.4e/M1.4f).
