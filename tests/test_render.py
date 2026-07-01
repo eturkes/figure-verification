@@ -39,9 +39,21 @@ import msgspec
 import pytest
 import vl_convert
 
-from verifier import canon, ingest, render
+from verifier import canon, checks, ingest, render
 from verifier.eval import evaluate
-from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec
+from verifier.schema import (
+    Aggregate,
+    Channel,
+    Dataset,
+    Encoding,
+    Filter,
+    Measure,
+    Select,
+    Sort,
+    SortKey,
+    VPlotSpec,
+    decode_spec,
+)
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "data"
@@ -81,6 +93,13 @@ def _good(name: str) -> tuple[VPlotSpec, ingest.Manifest]:
     stem = Path(spec.dataset.name).stem
     manifest = ingest.load_manifest((_SCHEMAS / f"{stem}.json").read_bytes())
     return spec, manifest
+
+
+def _manifest_bytes(name: str) -> bytes:
+    """The raw manifest bytes for a good spec's dataset (for the manifest hash)."""
+    spec = decode_spec((_GOOD / name).read_bytes())
+    stem = Path(spec.dataset.name).stem
+    return (_SCHEMAS / f"{stem}.json").read_bytes()
 
 
 def _evaluated(name: str) -> tuple[VPlotSpec, ingest.Manifest, canon.Table]:
@@ -581,3 +600,211 @@ def test_naive_spec_reintroduces_implicit_ordering() -> None:
     paths = _find_sorts(vega)
     assert any(re.search(r"\.marks\b", p) for p in paths), paths  # line-vertex sort
     assert any(p.endswith(".domain.sort") for p in paths), paths  # legend-domain sort
+
+
+# --- M1.6c: provenance certificate + render() gate ---------------------------
+def _render(name: str) -> render.RenderResult:
+    """render() on a good spec, asserted non-None (mypy narrowing + gate)."""
+    spec, _ = _good(name)
+    result = render.render(spec, _manifest_bytes(name), data_dir=_DATA)
+    assert result is not None
+    return result
+
+
+def test_render_good_spec_returns_svg_and_cert() -> None:
+    result = _render(_G01)
+    assert "<svg" in result.svg
+    assert isinstance(result.certificate, render.VCert)
+
+
+def test_render_failing_spec_returns_none() -> None:
+    # A hash-mismatch makes the binding gate fail -> verify not passed -> no chart.
+    spec, _ = _good(_G01)
+    broken = msgspec.structs.replace(
+        spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
+    )
+    assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
+
+
+def test_render_gate_skips_svg_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Tripwire: render_svg must NOT run for a failing spec (the gate short-circuits before it).
+    def _boom(_: str) -> str:
+        msg = "render_svg reached for a failing spec"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "render_svg", _boom)
+    spec, _ = _good(_G01)
+    broken = msgspec.structs.replace(
+        spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
+    )
+    assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
+
+
+def test_certificate_hashes_equal_canonical() -> None:
+    spec, _, table = _evaluated(_G01)
+    cert = _render(_G01).certificate
+    assert cert.version == "vcert-0.1"
+    assert cert.dataset_hash == spec.dataset.hash
+    assert cert.spec_hash == canon.hash_spec(spec)
+    assert cert.plotted_table_hash == canon.hash_table(table)
+    assert cert.manifest_hash == canon.hash_manifest(_manifest_bytes(_G01))
+
+
+def test_certificate_manifest_hash_flips_on_edit() -> None:
+    # A different manifest byte-string yields a different manifest hash in the cert.
+    cert = _render(_G01).certificate
+    assert cert.manifest_hash != canon.hash_manifest(_manifest_bytes(_G01) + b" ")
+
+
+def test_certificate_plotted_hash_flips_on_table_edit() -> None:
+    _, _, table = _evaluated(_G01)
+    edited = canon.Table(columns=table.columns, rows=table.rows[1:])
+    cert = _render(_G01).certificate
+    assert cert.plotted_table_hash != canon.hash_table(edited)
+
+
+def test_certificate_bar_zero_check_present_for_bar_absent_otherwise() -> None:
+    # g01 is a bar with no color; g07 is a line with color; g10 is a scatter with no color.
+    assert render._RENDERER_BAR_ZERO in _render(_G01).certificate.checks_passed
+    assert render._RENDERER_BAR_ZERO not in _render(_G07).certificate.checks_passed
+    assert render._RENDERER_BAR_ZERO not in _render(_G10).certificate.checks_passed
+
+
+def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None:
+    # A bar whose positional channels are both non-quantitative gets NO scale.zero from the
+    # builder, so the cert must not claim the bar-zero guarantee (that would be a false cert).
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(Select(fields=("a", "b")),),
+        mark="bar",
+        encoding=Encoding(
+            x=Channel(field="a", kind="nominal"),  # kind= (Python attr); JSON key is "type"
+            y=Channel(field="b", kind="ordinal"),
+        ),
+    )
+    table = canon.Table(columns=(), rows=())
+    report = checks.VerificationReport(results=(), plotted_table=table)
+    cert = render.build_certificate(spec, b"{}", table, report)
+    assert render._RENDERER_BAR_ZERO not in cert.checks_passed
+
+
+def test_certificate_legend_domain_check_present_only_with_color() -> None:
+    assert render._RENDERER_LEGEND_DOMAIN in _render(_G07).certificate.checks_passed
+    assert render._RENDERER_LEGEND_DOMAIN not in _render(_G01).certificate.checks_passed
+    assert render._RENDERER_LEGEND_DOMAIN not in _render(_G10).certificate.checks_passed
+
+
+def test_certificate_includes_verifier_passes() -> None:
+    passed = _render(_G01).certificate.checks_passed
+    assert "dataset.hash_matches_source" in passed
+    assert "security.no_arbitrary_code" in passed
+
+
+def test_certificate_tcb_stamps_build() -> None:
+    tcb = _render(_G01).certificate.tcb
+    assert tcb.canon_version == "canon-0.1"
+    assert tcb.vl_version == "5.21"
+    assert tcb.font_family == "DejaVu Sans"
+    assert tcb.vendored_font_sha256 == "sha256:" + _FONT_SHA256
+    assert tcb.vl_convert_python  # non-empty installed version string
+
+
+def test_build_certificate_discloses_filters_and_sorts() -> None:
+    # Direct build_certificate over a constructed spec that mixes Filter/Sort/Select ops, so
+    # both isinstance arms of each disclosure comprehension fire and the sort-key loop runs.
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(
+            Filter(field="a", cmp="gt", value="1"),
+            Sort(
+                by=(SortKey(field="a", order="ascending"), SortKey(field="b", order="descending"))
+            ),
+            Select(fields=("a", "b")),
+        ),
+        mark="line",
+        encoding=Encoding(
+            x=Channel(field="a", kind="quantitative"),  # kind= (Python attr); JSON key is "type"
+            y=Channel(field="b", kind="quantitative"),
+        ),
+    )
+    table = canon.Table(columns=(), rows=())
+    report = checks.VerificationReport(results=(), plotted_table=table)
+    cert = render.build_certificate(spec, b"{}", table, report)
+    assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
+    assert cert.sorts == (
+        render.DisclosedSort(field="a", order="ascending"),
+        render.DisclosedSort(field="b", order="descending"),
+    )
+
+
+def test_build_certificate_empty_filters_and_sorts() -> None:
+    # A spec with no Filter/Sort op -> empty disclosure tuples (the empty-comprehension arm).
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(Select(fields=("a",)),),
+        mark="line",
+        encoding=Encoding(
+            x=Channel(field="a", kind="quantitative"),  # kind= (Python attr); JSON key is "type"
+            y=Channel(field="a", kind="quantitative"),
+        ),
+    )
+    table = canon.Table(columns=(), rows=())
+    report = checks.VerificationReport(results=(), plotted_table=table)
+    cert = render.build_certificate(spec, b"{}", table, report)
+    assert cert.filters == ()
+    assert cert.sorts == ()
+
+
+def test_badge_html_renders_cert_fields() -> None:
+    cert = _render(_G01).certificate
+    badge = render.badge_html(cert)
+    assert "<script" not in badge
+    assert cert.spec_hash in badge
+    assert "dataset.hash_matches_source" in badge
+    assert render._FONT_FAMILY in badge
+
+
+def test_badge_html_with_filters_and_sorts() -> None:
+    # Non-empty filters + sorts -> the disclosure loops fire (covers the join comprehensions).
+    cert = render.VCert(
+        version="vcert-0.1",
+        dataset_hash="sha256:" + "0" * 64,
+        spec_hash="sha256:" + "1" * 64,
+        plotted_table_hash="sha256:" + "2" * 64,
+        manifest_hash="sha256:" + "3" * 64,
+        checks_passed=("security.no_arbitrary_code",),
+        filters=(render.DisclosedFilter(field="region", cmp="eq", value="EU"),),
+        sorts=(render.DisclosedSort(field="month", order="ascending"),),
+        tcb=render._tcb(),
+    )
+    badge = render.badge_html(cert)
+    assert "region" in badge
+    assert "month" in badge
+    assert "<script" not in badge
+
+
+def test_badge_html_escapes_adversarial_filter_value() -> None:
+    # A model-controlled filter value carrying markup + control chars is escaped to inert text.
+    # chr(0x2028) = U+2028 LINE SEPARATOR: inert in HTML text. Built via chr() rather than a
+    # unicode-escape literal so the source stays pure ASCII -> ruff RUF001 stays silent, and no
+    # Write/Edit JSON transport can decode an escape back into the raw char (which re-triggers it).
+    hostile = "</script><script>alert(1)</script><>&\"'\n" + chr(0x2028)
+    cert = render.VCert(
+        version="vcert-0.1",
+        dataset_hash="sha256:" + "0" * 64,
+        spec_hash="sha256:" + "1" * 64,
+        plotted_table_hash="sha256:" + "2" * 64,
+        manifest_hash="sha256:" + "3" * 64,
+        checks_passed=(),
+        filters=(render.DisclosedFilter(field="x", cmp="eq", value=hostile),),
+        sorts=(),
+        tcb=render._tcb(),
+    )
+    badge = render.badge_html(cert)
+    assert "<script>" not in badge
+    assert "</script>" not in badge
+    assert "&lt;script&gt;" in badge
+    assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge

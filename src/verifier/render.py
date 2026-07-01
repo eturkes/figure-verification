@@ -20,15 +20,19 @@ consume -- stdlib json.dumps is never applied to builder output (it cannot seria
 Decimals build_vega_lite keeps in data.values).
 """
 
+import hashlib
+import html
+import importlib.metadata
 import importlib.resources
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, cast
 
 import msgspec
 import vl_convert
 
 from verifier import canon, checks, ingest
-from verifier.schema import Aggregate, Channel, VPlotSpec
+from verifier.schema import Aggregate, Channel, Filter, Sort, VPlotSpec
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
@@ -206,3 +210,217 @@ def render_svg(vega_lite_json: str) -> str:
     same-named system font -- same-machine metrics are identical either way, and cross-machine SVG
     identity is not claimed). SVG bytes are reproducible across calls within this pinned build."""
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
+
+
+# --- provenance certificate (M1.6c: VCert v0.1 badge + render() gate) --------
+# VCert v0.1 is NON-REPLAYABLE (no nonce/signature; replay + signing are M5). It stamps the
+# four canonical hashes (dataset/spec/plotted-table/manifest), the passed-check names INCLUDING
+# the two the renderer enforces by construction, the disclosed applied filter/sort literals
+# (model-controlled -> badge_html escapes them), and the TCB it TRUSTS to render the verified
+# data faithfully (canon + interpreter versions, the vl-convert build, the pinned vl_version,
+# the vendored font family + sha256). The SVG bytes are never hashed into the cert; the TCB
+# DISCLOSES the toolchain for provenance, it does not prove byte-identity (the build + vendored
+# font narrow the toolchain beyond vl_version alone, cross-machine SVG identity is unclaimed).
+_VCERT_VERSION = "vcert-0.1"
+
+# The two checks the RENDERER enforces by construction (examples/index.json marks them
+# enforced_by_construction, NOT computed in checks.py): the builder sets a bar's quantitative-
+# axis scale.zero, and derives the color legend domain from the recomputed data (channel
+# sort:null). Disclosed in the cert only when the spec's mark/encoding makes them applicable,
+# so the cert records the full verified surface without claiming an inapplicable guarantee.
+_RENDERER_BAR_ZERO = "scale.bar_quantitative_axis_zero"
+_RENDERER_LEGEND_DOMAIN = "encoding.legend_domain_matches_data"
+
+# The vendored font ASSET's content hash, computed once from the bytes we ship + register (ties
+# the cert's font provenance to the real asset, not a hardcoded constant). It identifies the
+# REQUESTED/available typeface; vl-convert is not proven to lay out with THIS copy over a
+# same-named system font (render_svg documents the same scope) -- hence vendored_font_sha256.
+_FONT_SHA256 = "sha256:" + hashlib.sha256((_FONT_DIR / "DejaVuSans.ttf").read_bytes()).hexdigest()
+
+
+class Tcb(msgspec.Struct, frozen=True, kw_only=True):
+    """The trusted computing base disclosed for the rendered SVG's provenance, stamped into the
+    VCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed
+    into the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the
+    installed distribution version; vl_version the pinned Vega-Lite; font_family +
+    vendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not
+    proven to select it over a same-named system font -- render_svg documents the same scope)."""
+
+    canon_version: str
+    python: str
+    msgspec: str
+    unidata: str
+    vl_convert_python: str
+    vl_version: str
+    font_family: str
+    vendored_font_sha256: str
+
+
+class DisclosedFilter(msgspec.Struct, frozen=True, kw_only=True):
+    """One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary
+    text within FilterValue bounds) -> badge_html HTML-escapes it."""
+
+    field: str
+    cmp: str
+    value: int | str
+
+
+class DisclosedSort(msgspec.Struct, frozen=True, kw_only=True):
+    """One applied sort key, disclosed in the cert (flattened across all sort ops in order)."""
+
+    field: str
+    order: str
+
+
+class VCert(msgspec.Struct, frozen=True, kw_only=True):
+    """A VPlot v0.1 provenance certificate: the four canonical hashes, the passed checks, the
+    disclosed applied filters/sorts, and the disclosed render TCB. Non-replayable (M5 adds
+    signing/replay). Output record, never decoded from untrusted input."""
+
+    version: str
+    dataset_hash: str
+    spec_hash: str
+    plotted_table_hash: str
+    manifest_hash: str
+    checks_passed: tuple[str, ...]
+    filters: tuple[DisclosedFilter, ...]
+    sorts: tuple[DisclosedSort, ...]
+    tcb: Tcb
+
+
+class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
+    """A verified render: the self-contained SVG plus its provenance certificate."""
+
+    svg: str
+    certificate: VCert
+
+
+def _tcb() -> Tcb:
+    """The render TCB disclosed for the SVG's provenance (canon.runtime_versions + the vl-convert
+    build + vendored font); trusted to render faithfully, not proven to (see Tcb)."""
+    versions = canon.runtime_versions()
+    return Tcb(
+        canon_version=versions.canon_version,
+        python=versions.python,
+        msgspec=versions.msgspec,
+        unidata=versions.unidata,
+        vl_convert_python=importlib.metadata.version("vl-convert-python"),
+        vl_version=_VL_VERSION,
+        font_family=_FONT_FAMILY,
+        vendored_font_sha256=_FONT_SHA256,
+    )
+
+
+def build_certificate(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    table: canon.Table,
+    report: checks.VerificationReport,
+) -> VCert:
+    """The provenance certificate for a verified render. The dataset hash is spec.dataset.hash
+    (render runs only when report.passed, so the binding check already proved it equals the
+    source bytes' hash -- no CSV re-read); the other three hashes are recomputed here from the
+    validated spec, the recomputed table, and the raw manifest bytes. checks_passed is report's
+    passing check names PLUS the renderer-enforced checks that APPLY to this spec: bar-zero ONLY
+    for a bar mark with a quantitative positional axis (the builder emits scale.zero exactly
+    there -- claiming it for a bar with no quantitative x/y would be a false cert), legend-domain
+    when a color channel is present. Filters/sorts are disclosed from the transform pipeline
+    (model-controlled -> escaped at display). `table` is passed narrowed (render() casts
+    report.plotted_table once) so this stays total with no coverage-dead assert."""
+    checks_passed = [r.check for r in report.results if r.status == "pass"]
+    if spec.mark == "bar" and (
+        spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
+    ):
+        checks_passed.append(_RENDERER_BAR_ZERO)
+    if spec.encoding.color is not None:
+        checks_passed.append(_RENDERER_LEGEND_DOMAIN)
+    filters = tuple(
+        DisclosedFilter(field=t.field, cmp=t.cmp, value=t.value)
+        for t in spec.transform
+        if isinstance(t, Filter)
+    )
+    sorts = tuple(
+        DisclosedSort(field=key.field, order=key.order)
+        for t in spec.transform
+        if isinstance(t, Sort)
+        for key in t.by
+    )
+    return VCert(
+        version=_VCERT_VERSION,
+        dataset_hash=spec.dataset.hash,
+        spec_hash=canon.hash_spec(spec),
+        plotted_table_hash=canon.hash_table(table),
+        manifest_hash=canon.hash_manifest(manifest_bytes),
+        checks_passed=tuple(checks_passed),
+        filters=filters,
+        sorts=sorts,
+        tcb=_tcb(),
+    )
+
+
+def badge_html(cert: VCert) -> str:
+    """Render a VCert as a static, self-contained HTML fragment for human display. Every
+    model-controlled string (the disclosed filter values -- arbitrary text) is HTML-escaped via
+    html.escape(quote=True); the fragment has NO <script>, foreignObject, or other raw-HTML/JS
+    sink, so a control char or U+2028 in a filter value is inert text, never live markup. All
+    other fields (constrained field names, enum cmp/order, sha256 hashes, versions) are escaped
+    uniformly. Pure + deterministic. Non-replayable (signing is M5)."""
+
+    def esc(value: object) -> str:
+        return html.escape(str(value), quote=True)
+
+    checks_items = "".join(f"<li>{esc(name)}</li>" for name in cert.checks_passed)
+    filter_items = "".join(
+        f"<li>{esc(f.field)} {esc(f.cmp)} {esc(f.value)}</li>" for f in cert.filters
+    )
+    sort_items = "".join(f"<li>{esc(s.field)} {esc(s.order)}</li>" for s in cert.sorts)
+    tcb = cert.tcb
+    return (
+        '<div class="vcert">'
+        f"<h2>Verified Plot Certificate ({esc(cert.version)})</h2>"
+        '<dl class="vcert-hashes">'
+        f"<dt>dataset</dt><dd>{esc(cert.dataset_hash)}</dd>"
+        f"<dt>spec</dt><dd>{esc(cert.spec_hash)}</dd>"
+        f"<dt>plotted table</dt><dd>{esc(cert.plotted_table_hash)}</dd>"
+        f"<dt>manifest</dt><dd>{esc(cert.manifest_hash)}</dd>"
+        "</dl>"
+        f"<h3>Checks passed</h3><ul>{checks_items}</ul>"
+        f"<h3>Applied filters</h3><ul>{filter_items}</ul>"
+        f"<h3>Applied sorts</h3><ul>{sort_items}</ul>"
+        '<dl class="vcert-tcb">'
+        f"<dt>canon</dt><dd>{esc(tcb.canon_version)}</dd>"
+        f"<dt>python</dt><dd>{esc(tcb.python)}</dd>"
+        f"<dt>msgspec</dt><dd>{esc(tcb.msgspec)}</dd>"
+        f"<dt>unidata</dt><dd>{esc(tcb.unidata)}</dd>"
+        f"<dt>vl-convert-python</dt><dd>{esc(tcb.vl_convert_python)}</dd>"
+        f"<dt>vega-lite</dt><dd>{esc(tcb.vl_version)}</dd>"
+        f"<dt>font</dt><dd>{esc(tcb.font_family)} ({esc(tcb.vendored_font_sha256)})</dd>"
+        "</dl>"
+        "</div>"
+    )
+
+
+def render(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    *,
+    data_dir: Path,
+) -> RenderResult | None:
+    """The single public entry: verify the untrusted spec, and ONLY if every check passes,
+    render the self-contained SVG (inlining ONLY the recomputed plotted table) with its
+    provenance certificate. Returns None for any failing or blocked spec (no chart for
+    unverified data; eval may have been skipped). The manifest is decoded from its raw bytes
+    HERE, and those same bytes are hashed into the cert -- so verification, rendering, and the
+    manifest hash cannot disagree (a decoded Manifest cannot reproduce its raw bytes, so the
+    bytes are the single source threaded to both verify and the hash)."""
+    manifest = ingest.load_manifest(manifest_bytes)
+    report = checks.verify(spec, manifest, data_dir=data_dir)
+    if not report.passed:
+        return None
+    # report.passed implies the binding + eval gates passed, so plotted_table is populated;
+    # cast is the coverage-clean narrowing (an `assert ... is not None` would leave a
+    # never-taken branch that fails the 100% gate -- the M1.5a lesson).
+    table = cast(canon.Table, report.plotted_table)
+    svg = render_svg(vega_lite_json(spec, table, manifest))
+    certificate = build_certificate(spec, manifest_bytes, table, report)
+    return RenderResult(svg=svg, certificate=certificate)
