@@ -21,7 +21,7 @@ import pytest
 
 from verifier import canon
 from verifier.errors import VerificationError
-from verifier.eval import evaluate, mean_at_scale
+from verifier.eval import active_sort, evaluate, mean_at_scale
 from verifier.ingest import (
     Manifest,
     ManifestColumn,
@@ -30,7 +30,15 @@ from verifier.ingest import (
     TemporalColumnSpec,
     load_manifest,
 )
-from verifier.schema import Transform, VPlotSpec, decode_spec
+from verifier.schema import (
+    Aggregate,
+    Measure,
+    Sort,
+    SortKey,
+    Transform,
+    VPlotSpec,
+    decode_spec,
+)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -242,6 +250,20 @@ def test_pre_aggregate_sort_is_discarded() -> None:
         b"g,v\na,1\nb,2\n",
     )
     assert table.rows == (("a", Decimal(1)), ("b", Decimal(2)))
+
+
+def test_active_sort_selects_the_applied_sort() -> None:
+    # The shared rule behind both eval's closure seed and the cert's "Applied sorts" disclosure
+    # (section 6): the last sort with no later aggregate. A later sort supersedes an earlier one; an
+    # aggregate discards any earlier sort.
+    asc_a = Sort(by=(SortKey(field="a", order="ascending"),))
+    desc_b = Sort(by=(SortKey(field="b", order="descending"),))
+    count = Aggregate(measures=(Measure(field="a", fn="count", output="c"),))
+    assert active_sort(()) is None
+    assert active_sort((asc_a,)) is asc_a
+    assert active_sort((asc_a, desc_b)) is desc_b  # a later sort supersedes an earlier one
+    assert active_sort((asc_a, count)) is None  # an aggregate discards the earlier sort
+    assert active_sort((asc_a, count, desc_b)) is desc_b  # a sort after the aggregate survives
 
 
 def test_count_counts_non_null_and_empty_group_aggregates_to_null() -> None:

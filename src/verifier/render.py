@@ -32,7 +32,8 @@ import msgspec
 import vl_convert
 
 from verifier import canon, checks, ingest
-from verifier.schema import Aggregate, Channel, Filter, Sort, VPlotSpec
+from verifier.eval import active_sort
+from verifier.schema import Aggregate, Channel, Filter, VPlotSpec
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
@@ -311,22 +312,24 @@ def _tcb() -> Tcb:
     )
 
 
-def build_certificate(
+def _build_certificate(
     spec: VPlotSpec,
     manifest_bytes: bytes,
     table: canon.Table,
     report: checks.VerificationReport,
 ) -> VCert:
-    """The provenance certificate for a verified render. The dataset hash is spec.dataset.hash
-    (render runs only when report.passed, so the binding check already proved it equals the
-    source bytes' hash -- no CSV re-read); the other three hashes are recomputed here from the
-    validated spec, the recomputed table, and the raw manifest bytes. checks_passed is report's
-    passing check names PLUS the renderer-enforced checks that APPLY to this spec: bar-zero ONLY
-    for a bar mark with a quantitative positional axis (the builder emits scale.zero exactly
+    """Mint the provenance certificate. Internal: render() is the sole caller and runs this ONLY
+    after report.passed, so the binding check already proved spec.dataset.hash equals the source
+    bytes' hash (stamped as dataset_hash -- no CSV re-read); the other three hashes are recomputed
+    here from the validated spec, the recomputed table, and the raw manifest bytes. checks_passed is
+    report's passing check names PLUS the renderer-enforced checks that APPLY to this spec: bar-zero
+    ONLY for a bar mark with a quantitative positional axis (the builder emits scale.zero exactly
     there -- claiming it for a bar with no quantitative x/y would be a false cert), legend-domain
-    when a color channel is present. Filters/sorts are disclosed from the transform pipeline
-    (model-controlled -> escaped at display). `table` is passed narrowed (render() casts
-    report.plotted_table once) so this stays total with no coverage-dead assert."""
+    when a color channel is present. Filters are disclosed from every filter op; sorts disclose ONLY
+    the ACTIVE sort (eval.active_sort -- the badge heads them "Applied", so a superseded or
+    aggregate-discarded sort must not appear). Both are model-controlled -> escaped at display.
+    `table` is passed narrowed (render() casts report.plotted_table once) so this stays total with
+    no coverage-dead assert."""
     checks_passed = [r.check for r in report.results if r.status == "pass"]
     if spec.mark == "bar" and (
         spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
@@ -339,11 +342,11 @@ def build_certificate(
         for t in spec.transform
         if isinstance(t, Filter)
     )
-    sorts = tuple(
-        DisclosedSort(field=key.field, order=key.order)
-        for t in spec.transform
-        if isinstance(t, Sort)
-        for key in t.by
+    active = active_sort(spec.transform)
+    sorts = (
+        tuple(DisclosedSort(field=key.field, order=key.order) for key in active.by)
+        if active is not None
+        else ()
     )
     return VCert(
         version=_VCERT_VERSION,
@@ -422,5 +425,5 @@ def render(
     # never-taken branch that fails the 100% gate -- the M1.5a lesson).
     table = cast(canon.Table, report.plotted_table)
     svg = render_svg(vega_lite_json(spec, table, manifest))
-    certificate = build_certificate(spec, manifest_bytes, table, report)
+    certificate = _build_certificate(spec, manifest_bytes, table, report)
     return RenderResult(svg=svg, certificate=certificate)

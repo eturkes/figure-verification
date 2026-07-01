@@ -34,6 +34,7 @@ from verifier.schema import (
     Measure,
     Select,
     Sort,
+    Transform,
     VPlotSpec,
 )
 
@@ -60,7 +61,6 @@ def evaluate(spec: VPlotSpec, manifest: ingest.Manifest, csv_bytes: bytes) -> ca
     """
     table = ingest.load_table(csv_bytes, manifest)
     pending_keys: tuple[str, ...] | None = None  # group_by awaiting its aggregate
-    active_keys: list[tuple[str, str]] = []  # last sort with no later aggregate -> closure seed
     for op in spec.transform:
         if pending_keys is not None and not isinstance(op, Aggregate):
             msg = "group_by must be immediately followed by an aggregate"
@@ -77,14 +77,30 @@ def evaluate(spec: VPlotSpec, manifest: ingest.Manifest, csv_bytes: bytes) -> ca
         elif isinstance(op, Aggregate):
             table = _apply_aggregate(table, op, pending_keys)
             pending_keys = None
-            active_keys = []  # an aggregate rebuilds the table -> any earlier sort is discarded
         else:  # Sort (last union variant; reachable, so warn_unreachable stays satisfied)
-            _validate_sort(table, op)
-            active_keys = [(key.field, key.order) for key in op.by]
+            _validate_sort(table, op)  # every sort is validated; active_sort picks the applied one
     if pending_keys is not None:
         msg = "group_by must be immediately followed by an aggregate"
         raise VerificationError(msg, check="transform.group_by_placement")
+    active = active_sort(spec.transform)
+    active_keys: list[tuple[str, str]] = (
+        [(key.field, key.order) for key in active.by] if active is not None else []
+    )
     return _total_sort(table, active_keys)
+
+
+def active_sort(transform: tuple[Transform, ...]) -> Sort | None:
+    """The lone declared sort that survives into the plotted table (section 6): the last `sort`
+    op with no later `aggregate`. An aggregate rebuilds the table, discarding any earlier sort,
+    and a later sort supersedes an earlier one. `evaluate`'s closure seed and the certificate's
+    sort disclosure both read this, so "which sort applied" has ONE definition and cannot drift."""
+    active: Sort | None = None
+    for op in transform:
+        if isinstance(op, Aggregate):
+            active = None
+        elif isinstance(op, Sort):
+            active = op
+    return active
 
 
 # --- field / distinctness helpers --------------------------------------------

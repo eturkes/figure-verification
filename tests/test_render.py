@@ -51,6 +51,7 @@ from verifier.schema import (
     Select,
     Sort,
     SortKey,
+    Transform,
     VPlotSpec,
     decode_spec,
 )
@@ -685,7 +686,7 @@ def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None
     )
     table = canon.Table(columns=(), rows=())
     report = checks.VerificationReport(results=(), plotted_table=table)
-    cert = render.build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, b"{}", table, report)
     assert render._RENDERER_BAR_ZERO not in cert.checks_passed
 
 
@@ -711,8 +712,8 @@ def test_certificate_tcb_stamps_build() -> None:
 
 
 def test_build_certificate_discloses_filters_and_sorts() -> None:
-    # Direct build_certificate over a constructed spec that mixes Filter/Sort/Select ops, so
-    # both isinstance arms of each disclosure comprehension fire and the sort-key loop runs.
+    # Direct _build_certificate over a spec mixing Filter/Sort/Select: the Filter arm fires and the
+    # active sort's multi-key loop runs (supersession/discard is covered separately below).
     spec = VPlotSpec(
         version="vplot-0.1",
         dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
@@ -731,7 +732,7 @@ def test_build_certificate_discloses_filters_and_sorts() -> None:
     )
     table = canon.Table(columns=(), rows=())
     report = checks.VerificationReport(results=(), plotted_table=table)
-    cert = render.build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, b"{}", table, report)
     assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
     assert cert.sorts == (
         render.DisclosedSort(field="a", order="ascending"),
@@ -753,9 +754,60 @@ def test_build_certificate_empty_filters_and_sorts() -> None:
     )
     table = canon.Table(columns=(), rows=())
     report = checks.VerificationReport(results=(), plotted_table=table)
-    cert = render.build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, b"{}", table, report)
     assert cert.filters == ()
     assert cert.sorts == ()
+
+
+def test_build_certificate_discloses_only_the_active_sort() -> None:
+    # VPlot section 6: only the last sort with no later aggregate applies. The badge heads sorts
+    # "Applied", so the cert must disclose that ACTIVE sort alone -- never a superseded or discarded
+    # one, which would be a false "applied" claim.
+    table = canon.Table(columns=(), rows=())
+    report = checks.VerificationReport(results=(), plotted_table=table)
+
+    def _sorts(transform: tuple[Transform, ...]) -> tuple[render.DisclosedSort, ...]:
+        spec = VPlotSpec(
+            version="vplot-0.1",
+            dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+            transform=transform,
+            mark="bar",
+            encoding=Encoding(
+                x=Channel(field="a", kind="nominal"),
+                y=Channel(field="b", kind="ordinal"),
+            ),
+        )
+        return render._build_certificate(spec, b"{}", table, report).sorts
+
+    asc_a = Sort(by=(SortKey(field="a", order="ascending"),))
+    desc_b = Sort(by=(SortKey(field="b", order="descending"),))
+    count = Aggregate(measures=(Measure(field="a", fn="count", output="c"),))
+    disc_b = (render.DisclosedSort(field="b", order="descending"),)
+    assert _sorts((asc_a, desc_b)) == disc_b  # a later sort supersedes an earlier one
+    assert _sorts((asc_a, count)) == ()  # an aggregate discards the earlier sort
+    assert _sorts((asc_a, count, desc_b)) == disc_b  # a sort after the aggregate survives
+
+
+@pytest.mark.parametrize("name", [_G01, _G07, _G10])
+def test_certificate_bar_zero_disclosure_matches_builder(name: str) -> None:
+    # CERT-HONESTY binding: bar-zero is disclosed EXACTLY when the builder emits `scale.zero` on a
+    # positional channel -- tie the cert predicate to emitted Vega-Lite, catching any future drift.
+    enc = _built(name)["encoding"]
+    emits_zero = {"zero": True} in (
+        enc["x"].get("scale"),  # type: ignore[index]
+        enc["y"].get("scale"),  # type: ignore[index]
+    )
+    discloses = render._RENDERER_BAR_ZERO in _render(name).certificate.checks_passed
+    assert discloses == emits_zero
+
+
+@pytest.mark.parametrize("name", [_G01, _G07, _G10])
+def test_certificate_legend_domain_disclosure_matches_builder(name: str) -> None:
+    # CERT-HONESTY binding: legend-domain is disclosed EXACTLY when the builder emits a color
+    # channel (whose domain Vega-Lite derives from the inlined verified data) -- bound to output.
+    has_color = "color" in _built(name)["encoding"]  # type: ignore[operator]
+    discloses = render._RENDERER_LEGEND_DOMAIN in _render(name).certificate.checks_passed
+    assert discloses == has_color
 
 
 def test_badge_html_renders_cert_fields() -> None:
