@@ -1,10 +1,11 @@
 # M1.6c transcription recipe — VCert v0.1 badge + `render()` gate
 
-TRANSCRIBE, do NOT re-derive. Codex gate-validated this recipe's PRE-correction form (transcribe → 461
-tests / 100% branch green → reverted, same as the M1.6a recipe); the codex-review corrections below
-(bar-zero applicability, `manifest_bytes`-only signature, `vendored_font_sha256` rename + the new
-bar-no-quant-axis test) are reasoned gate-consistent but NOT re-run — so the transcribe → autofix → gate
-IS the definitive check: reach the gate early, salvage-continue. Read ONLY this doc +
+TRANSCRIBE, do NOT re-derive. This recipe's CORRECTED form (every codex-review fix below: bar-zero
+applicability, `manifest_bytes`-only signature, `vendored_font_sha256` rename + the new bar-no-quant-axis
+test) was transcribed to a scratch copy + gate-validated GREEN → 462 tests / 100% branch, render.py fully
+covered (141 stmt / 36 branch, 0 miss, 0 partial) → reverted (as the M1.6a recipe was). Autofix was a NO-OP
+(blocks are pre-formatted + import-sorted), so a faithful transcription reaches a clean gate directly; still
+run transcribe → autofix → gate + salvage-continue on any drift. Read ONLY this doc +
 `src/verifier/render.py` (to append after `render_svg`) + `tests/test_render.py` (to append). All external
 signatures are inlined + symbol-checked below. Delete this doc at M1 review.
 
