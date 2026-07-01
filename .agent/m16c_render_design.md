@@ -1,9 +1,12 @@
 # M1.6c transcription recipe — VCert v0.1 badge + `render()` gate
 
-TRANSCRIBE, do NOT re-derive. This recipe is gate-validated (transcribe → full gate green → reverted,
-same as the M1.6a recipe). Read ONLY this doc + `src/verifier/render.py` (to append after `render_svg`) +
-`tests/test_render.py` (to append). All external signatures are inlined + symbol-checked below. Reach the
-gate early, salvage-continue. Delete this doc at M1 review.
+TRANSCRIBE, do NOT re-derive. Codex gate-validated this recipe's PRE-correction form (transcribe → 461
+tests / 100% branch green → reverted, same as the M1.6a recipe); the codex-review corrections below
+(bar-zero applicability, `manifest_bytes`-only signature, `vendored_font_sha256` rename + the new
+bar-no-quant-axis test) are reasoned gate-consistent but NOT re-run — so the transcribe → autofix → gate
+IS the definitive check: reach the gate early, salvage-continue. Read ONLY this doc +
+`src/verifier/render.py` (to append after `render_svg`) + `tests/test_render.py` (to append). All external
+signatures are inlined + symbol-checked below. Delete this doc at M1 review.
 
 SCOPE = the REQUIRED M1.6c core only: provenance structs + `build_certificate` + `badge_html` + the public
 `render()` gate, all appended to the existing `render.py` (M1.6a builder + M1.6b `render_svg` already present).
@@ -13,7 +16,9 @@ NO HTML here. `render()` returns `RenderResult(svg, certificate)`; no `html` fie
 WHY this is low-overflow: every M1.6c-core surface is pure Python over signatures already in the tree — NO
 native-dep probe, and NO external-schema gap like M1.6a's `order:null` (badge HTML is human-display, validated
 by no external consumer; `html.escape` is stdlib). So the internal gate (lint/type/100%-branch + the assertions
-below) fully proves correctness. Expect a CLEAN pass.
+below) checks the intended LOCAL invariants; adversarial review still owns claim-correctness — the codex round
+that caught the bar-zero applicability bug is proof a green gate is necessary, not sufficient. Expect a clean
+gate pass after transcription; hold the claims honest.
 
 ---
 ## Inlined signatures (already in the tree — do NOT re-read to confirm)
@@ -31,6 +36,9 @@ below) fully proves correctness. Expect a CLEAN pass.
   `plotted_table:canon.Table|None`; `@property passed -> bool` (`all(r.status=="pass" for r in results)`).
 - `verify(spec:VPlotSpec, manifest:ingest.Manifest, *, data_dir:Path) -> VerificationReport`.
 
+`ingest.py`:
+- `load_manifest(manifest_bytes:bytes) -> Manifest` (render() decodes the raw manifest bytes with this).
+
 `schema.py`: `Filter(field:FieldName, cmp:CmpOp, value:FilterValue)` (`FilterValue = int | str`),
 `Sort(by:tuple[SortKey,...])`, `SortKey(field:FieldName, order:SortOrder)`, `VPlotSpec(version, dataset, transform, mark, encoding)`, `Dataset(name, hash)`, `Encoding(x, y, color:Channel|None)`.
 
@@ -44,11 +52,25 @@ color, weather), `_G10`="g10…json" (scatter, no color, weather), `_ALL_GOOD`, 
 `57f73e11f51999432bf7ab22ce55b6f945d5eca1bf824404cfa9ec2e3718c84e`, NO `sha256:` prefix in the test constant).
 
 ---
-## `render.py` — imports to ADD (let `ruff format`/`ruff check` reorder; expected)
+## `render.py` — imports (REPLACE the existing import block with this EXACT sorted block)
 
-At the top import block add: `import hashlib` · `import html` · `import importlib.metadata`
-(SEPARATE from the present `import importlib.resources` — submodules don't auto-import) · `from pathlib import Path`.
-Extend the schema import to: `from verifier.schema import Aggregate, Channel, Filter, Sort, VPlotSpec`.
+The gate enforces isort (ruff rule `I`) and runs `ruff check` WITHOUT `--fix`, so transcribe the imports already sorted — do not merely append. Adds `hashlib`, `html`, `importlib.metadata` (SEPARATE from `importlib.resources` — submodules don't auto-import), `pathlib.Path`, and extends the schema import with `Filter`, `Sort`:
+
+```python
+import hashlib
+import html
+import importlib.metadata
+import importlib.resources
+from decimal import Decimal
+from pathlib import Path
+from typing import Any, cast
+
+import msgspec
+import vl_convert
+
+from verifier import canon, checks, ingest
+from verifier.schema import Aggregate, Channel, Filter, Sort, VPlotSpec
+```
 
 ## `render.py` — APPEND after `render_svg` (verbatim)
 
@@ -57,9 +79,11 @@ Extend the schema import to: `from verifier.schema import Aggregate, Channel, Fi
 # VCert v0.1 is NON-REPLAYABLE (no nonce/signature; replay + signing are M5). It stamps the
 # four canonical hashes (dataset/spec/plotted-table/manifest), the passed-check names INCLUDING
 # the two the renderer enforces by construction, the disclosed applied filter/sort literals
-# (model-controlled -> badge_html escapes them), and the TCB that determines the SVG bytes
-# (canon + interpreter versions PLUS the vl-convert build, the pinned vl_version, and the
-# vendored font family + sha256 -- vl_version alone does not pin the SVG; the build + font do).
+# (model-controlled -> badge_html escapes them), and the TCB it TRUSTS to render the verified
+# data faithfully (canon + interpreter versions, the vl-convert build, the pinned vl_version,
+# the vendored font family + sha256). The SVG bytes are never hashed into the cert; the TCB
+# DISCLOSES the toolchain for provenance, it does not prove byte-identity (the build + vendored
+# font narrow the toolchain beyond vl_version alone, cross-machine SVG identity is unclaimed).
 _VCERT_VERSION = "vcert-0.1"
 
 # The two checks the RENDERER enforces by construction (examples/index.json marks them
@@ -70,16 +94,20 @@ _VCERT_VERSION = "vcert-0.1"
 _RENDERER_BAR_ZERO = "scale.bar_quantitative_axis_zero"
 _RENDERER_LEGEND_DOMAIN = "encoding.legend_domain_matches_data"
 
-# The vendored font's content hash, computed once from the actual bytes the SVG is laid out
-# with (ties the cert's font provenance to reality, not a hardcoded constant).
+# The vendored font ASSET's content hash, computed once from the bytes we ship + register (ties
+# the cert's font provenance to the real asset, not a hardcoded constant). It identifies the
+# REQUESTED/available typeface; vl-convert is not proven to lay out with THIS copy over a
+# same-named system font (render_svg documents the same scope) -- hence vendored_font_sha256.
 _FONT_SHA256 = "sha256:" + hashlib.sha256((_FONT_DIR / "DejaVuSans.ttf").read_bytes()).hexdigest()
 
 
 class Tcb(msgspec.Struct, frozen=True, kw_only=True):
-    """The trusted computing base that determines the rendered SVG bytes, stamped into the
-    VCert for provenance. Trusted to render the verified data faithfully, NOT proven to (the
-    SVG is never hashed into the cert). vl_convert_python is the installed distribution
-    version; vl_version the pinned Vega-Lite; font_family + font_sha256 the vendored typeface."""
+    """The trusted computing base disclosed for the rendered SVG's provenance, stamped into the
+    VCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed
+    into the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the
+    installed distribution version; vl_version the pinned Vega-Lite; font_family +
+    vendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not
+    proven to select it over a same-named system font -- render_svg documents the same scope)."""
 
     canon_version: str
     python: str
@@ -88,7 +116,7 @@ class Tcb(msgspec.Struct, frozen=True, kw_only=True):
     vl_convert_python: str
     vl_version: str
     font_family: str
-    font_sha256: str
+    vendored_font_sha256: str
 
 
 class DisclosedFilter(msgspec.Struct, frozen=True, kw_only=True):
@@ -109,7 +137,7 @@ class DisclosedSort(msgspec.Struct, frozen=True, kw_only=True):
 
 class VCert(msgspec.Struct, frozen=True, kw_only=True):
     """A VPlot v0.1 provenance certificate: the four canonical hashes, the passed checks, the
-    disclosed applied filters/sorts, and the SVG-determining TCB. Non-replayable (M5 adds
+    disclosed applied filters/sorts, and the disclosed render TCB. Non-replayable (M5 adds
     signing/replay). Output record, never decoded from untrusted input."""
 
     version: str
@@ -131,7 +159,8 @@ class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
 
 
 def _tcb() -> Tcb:
-    """The current SVG-determining TCB (canon.runtime_versions + the vl-convert build + font)."""
+    """The render TCB disclosed for the SVG's provenance (canon.runtime_versions + the vl-convert
+    build + vendored font); trusted to render faithfully, not proven to (see Tcb)."""
     versions = canon.runtime_versions()
     return Tcb(
         canon_version=versions.canon_version,
@@ -141,7 +170,7 @@ def _tcb() -> Tcb:
         vl_convert_python=importlib.metadata.version("vl-convert-python"),
         vl_version=_VL_VERSION,
         font_family=_FONT_FAMILY,
-        font_sha256=_FONT_SHA256,
+        vendored_font_sha256=_FONT_SHA256,
     )
 
 
@@ -155,12 +184,16 @@ def build_certificate(
     (render runs only when report.passed, so the binding check already proved it equals the
     source bytes' hash -- no CSV re-read); the other three hashes are recomputed here from the
     validated spec, the recomputed table, and the raw manifest bytes. checks_passed is report's
-    passing check names PLUS the renderer-enforced checks that APPLY to this spec (bar-zero for
-    a bar mark, legend-domain when a color channel is present). Filters/sorts are disclosed from
-    the transform pipeline (model-controlled -> escaped at display). `table` is passed narrowed
-    (render() casts report.plotted_table once) so this stays total with no coverage-dead assert."""
+    passing check names PLUS the renderer-enforced checks that APPLY to this spec: bar-zero ONLY
+    for a bar mark with a quantitative positional axis (the builder emits scale.zero exactly
+    there -- claiming it for a bar with no quantitative x/y would be a false cert), legend-domain
+    when a color channel is present. Filters/sorts are disclosed from the transform pipeline
+    (model-controlled -> escaped at display). `table` is passed narrowed (render() casts
+    report.plotted_table once) so this stays total with no coverage-dead assert."""
     checks_passed = [r.check for r in report.results if r.status == "pass"]
-    if spec.mark == "bar":
+    if spec.mark == "bar" and (
+        spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
+    ):
         checks_passed.append(_RENDERER_BAR_ZERO)
     if spec.encoding.color is not None:
         checks_passed.append(_RENDERER_LEGEND_DOMAIN)
@@ -224,7 +257,7 @@ def badge_html(cert: VCert) -> str:
         f"<dt>unidata</dt><dd>{esc(tcb.unidata)}</dd>"
         f"<dt>vl-convert-python</dt><dd>{esc(tcb.vl_convert_python)}</dd>"
         f"<dt>vega-lite</dt><dd>{esc(tcb.vl_version)}</dd>"
-        f"<dt>font</dt><dd>{esc(tcb.font_family)} ({esc(tcb.font_sha256)})</dd>"
+        f"<dt>font</dt><dd>{esc(tcb.font_family)} ({esc(tcb.vendored_font_sha256)})</dd>"
         "</dl>"
         "</div>"
     )
@@ -232,7 +265,6 @@ def badge_html(cert: VCert) -> str:
 
 def render(
     spec: VPlotSpec,
-    manifest: ingest.Manifest,
     manifest_bytes: bytes,
     *,
     data_dir: Path,
@@ -240,8 +272,11 @@ def render(
     """The single public entry: verify the untrusted spec, and ONLY if every check passes,
     render the self-contained SVG (inlining ONLY the recomputed plotted table) with its
     provenance certificate. Returns None for any failing or blocked spec (no chart for
-    unverified data; eval may have been skipped). manifest_bytes is threaded through for the
-    manifest hash (a decoded Manifest cannot reproduce its raw bytes)."""
+    unverified data; eval may have been skipped). The manifest is decoded from its raw bytes
+    HERE, and those same bytes are hashed into the cert -- so verification, rendering, and the
+    manifest hash cannot disagree (a decoded Manifest cannot reproduce its raw bytes, so the
+    bytes are the single source threaded to both verify and the hash)."""
+    manifest = ingest.load_manifest(manifest_bytes)
     report = checks.verify(spec, manifest, data_dir=data_dir)
     if not report.passed:
         return None
@@ -273,8 +308,8 @@ Then append the M1.6c test block:
 # --- M1.6c: provenance certificate + render() gate ---------------------------
 def _render(name: str) -> render.RenderResult:
     """render() on a good spec, asserted non-None (mypy narrowing + gate)."""
-    spec, manifest = _good(name)
-    result = render.render(spec, manifest, _manifest_bytes(name), data_dir=_DATA)
+    spec, _ = _good(name)
+    result = render.render(spec, _manifest_bytes(name), data_dir=_DATA)
     assert result is not None
     return result
 
@@ -287,11 +322,11 @@ def test_render_good_spec_returns_svg_and_cert() -> None:
 
 def test_render_failing_spec_returns_none() -> None:
     # A hash-mismatch makes the binding gate fail -> verify not passed -> no chart.
-    spec, manifest = _good(_G01)
+    spec, _ = _good(_G01)
     broken = msgspec.structs.replace(
         spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
     )
-    assert render.render(broken, manifest, _manifest_bytes(_G01), data_dir=_DATA) is None
+    assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
 
 
 def test_render_gate_skips_svg_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -301,11 +336,11 @@ def test_render_gate_skips_svg_on_failure(monkeypatch: pytest.MonkeyPatch) -> No
         raise AssertionError(msg)
 
     monkeypatch.setattr(render, "render_svg", _boom)
-    spec, manifest = _good(_G01)
+    spec, _ = _good(_G01)
     broken = msgspec.structs.replace(
         spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
     )
-    assert render.render(broken, manifest, _manifest_bytes(_G01), data_dir=_DATA) is None
+    assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
 
 
 def test_certificate_hashes_equal_canonical() -> None:
@@ -338,6 +373,25 @@ def test_certificate_bar_zero_check_present_for_bar_absent_otherwise() -> None:
     assert render._RENDERER_BAR_ZERO not in _render(_G10).certificate.checks_passed
 
 
+def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None:
+    # A bar whose positional channels are both non-quantitative gets NO scale.zero from the
+    # builder, so the cert must not claim the bar-zero guarantee (that would be a false cert).
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(Select(fields=("a", "b")),),
+        mark="bar",
+        encoding=Encoding(
+            x=Channel(field="a", kind="nominal"),  # kind= (Python attr); JSON key is "type"
+            y=Channel(field="b", kind="ordinal"),
+        ),
+    )
+    table = canon.Table(columns=(), rows=())
+    report = checks.VerificationReport(results=(), plotted_table=table)
+    cert = render.build_certificate(spec, b"{}", table, report)
+    assert render._RENDERER_BAR_ZERO not in cert.checks_passed
+
+
 def test_certificate_legend_domain_check_present_only_with_color() -> None:
     assert render._RENDERER_LEGEND_DOMAIN in _render(_G07).certificate.checks_passed
     assert render._RENDERER_LEGEND_DOMAIN not in _render(_G01).certificate.checks_passed
@@ -355,7 +409,7 @@ def test_certificate_tcb_stamps_build() -> None:
     assert tcb.canon_version == "canon-0.1"
     assert tcb.vl_version == "5.21"
     assert tcb.font_family == "DejaVu Sans"
-    assert tcb.font_sha256 == "sha256:" + _FONT_SHA256
+    assert tcb.vendored_font_sha256 == "sha256:" + _FONT_SHA256
     assert tcb.vl_convert_python  # non-empty installed version string
 
 
@@ -459,28 +513,47 @@ def test_badge_html_escapes_adversarial_filter_value() -> None:
     assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge
 ```
 
-Test imports to ADD:
-- `from verifier import canon, ingest, render` → add `checks`: `from verifier import canon, checks, ingest, render`
-  (`checks.VerificationReport` is constructed in the direct build_certificate tests).
-- `from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec` → add the structs the direct tests
-  construct: `Channel, Dataset, Encoding, Filter, Select, Sort, SortKey`. NOTE the aliased `Channel.kind`
-  attribute: construct with `kind=` (the Python attr), NOT `type=` (that is only the JSON key) — same as
-  `Measure(output=…)` elsewhere in the suite.
+Test imports (REPLACE the two matching lines with these EXACT sorted forms; the schema line exceeds 100 cols so ruff wraps it parenthesized, one name per line):
+
+```python
+from verifier import canon, checks, ingest, render
+```
+```python
+from verifier.schema import (
+    Aggregate,
+    Channel,
+    Dataset,
+    Encoding,
+    Filter,
+    Measure,
+    Select,
+    Sort,
+    SortKey,
+    VPlotSpec,
+    decode_spec,
+)
+```
+NOTE the aliased `Channel.kind`: construct with `kind=` (the Python attr), NOT `type=` (the JSON key only) — same as `Measure(output=…)` elsewhere in the suite. `checks.VerificationReport` is constructed in the direct build_certificate tests.
 
 ---
 ## Branch-coverage map (render.py new code)
 
-- `build_certificate`: `if spec.mark == "bar"` True (g01) / False (g07, g10); `if color is not None` True (g07) /
-  False (g01, g10); filter genexpr isinstance True+False + non-empty (constructed mix test) + empty (empty test);
-  sort genexpr isinstance True+False + inner key loop (2 keys) + empty. All covered by the tests above.
+- `build_certificate`: `if spec.mark == "bar" and (x|y quantitative)` True (g01: bar + quantitative y) / False
+  (g07, g10: non-bar), plus the bar-without-quantitative direct test drives the compound False through a bar;
+  `if color is not None` True (g07) / False (g01, g10); filter genexpr isinstance True+False + non-empty
+  (constructed mix test) + empty (empty test); sort genexpr isinstance True+False + inner key loop (2 keys) +
+  empty. All covered by the tests above.
 - `badge_html`: three join genexprs — a non-empty run covers both the yield + exhaust arcs (checks always ≥1;
   filters/sorts non-empty in `test_badge_html_with_filters_and_sorts`; empty case in the g01/adversarial certs).
-- `render`: `if not report.passed` True (broken spec) / False (g01). `cast` has no runtime branch.
+- `render`: `if not report.passed` True (broken spec) / False (g01). `ingest.load_manifest` + `cast` add no branch.
 - Module-level `_FONT_SHA256` executes at import (no branch).
 
 ## Close steps
 1. Append the render.py code + fix imports; append the test block + fix test imports.
-2. Gate: `UV_PROJECT_ENVIRONMENT=.venv UV_LINK_MODE=copy uv run --locked ruff format --check . && uv run --locked ruff check . && uv run --locked mypy && uv run --locked pytest`
-   (code is pre-formatted to ruff style — double-quoted, long `Sort(...)` pre-wrapped, `chr(0x2028)` keeps the U+2028 test source ASCII — so `--check` passes clean as-transcribed; on any stray reflow run `ruff format .` then re-check). Confirm 100% branch, render.py fully covered.
+2. Autofix, THEN gate. Appending code after an existing function needs blank-line normalization (ruff wants two blanks before a new top-level section) and the imports must be isort-sorted, and the read-only gate runs `ruff check` WITHOUT `--fix` — so run the fixers first:
+   `UV_PROJECT_ENVIRONMENT=.venv UV_LINK_MODE=copy uv run --locked ruff format . && uv run --locked ruff check --fix .`
+   then the read-only gate, which must be green with NO further changes:
+   `UV_PROJECT_ENVIRONMENT=.venv UV_LINK_MODE=copy uv run --locked ruff format --check . && uv run --locked ruff check . && uv run --locked mypy && uv run --locked pytest`
+   The code below is pre-formatted (double-quoted, long calls pre-wrapped, `chr(0x2028)` keeps the U+2028 test source ASCII), so the fixers touch only section blank lines / import order. Confirm 100% branch, render.py fully covered.
 3. Record ctx (`.agent/context.sh`) into the roadmap M1.6c row; set M1.6c DONE. M1 stays IN-PROGRESS (M1.6d OPTIONAL remains).
 4. Commit `render (M1.6c): VCert v0.1 badge + render() gate`. Delete this doc at M1 review.
