@@ -860,3 +860,99 @@ def test_badge_html_escapes_adversarial_filter_value() -> None:
     assert "</script>" not in badge
     assert "&lt;script&gt;" in badge
     assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge
+
+
+# --- M1.6d: OPTIONAL offline interactive HTML (off the cert hash chain) -------
+# External-fetch audit for the HTML page: a src/href attribute valued as an absolute http(s) URL
+# (a network load on page open). The inlined bundle carries none (proven below) and my template
+# adds none; scoped to http(s):// so an inert data string never false-positives.
+_HTML_FETCH_RE = re.compile(r"""(?i)\b(?:src|href)\s*=\s*(["'])https?://""")
+
+
+def _json_data_block(html_doc: str) -> str:
+    """The inert application/json spec payload from a render_html page, up to the first real
+    </script> (a neutralized close sequence in a breakout cell does not match, so it is skipped)."""
+    match = re.search(r'<script type="application/json"[^>]*>(.*?)</script>', html_doc, re.DOTALL)
+    assert match is not None
+    return match.group(1)
+
+
+def _html(name: str) -> str:
+    spec, manifest, table = _evaluated(name)
+    return render.render_html(render.vega_lite_json(spec, table, manifest))
+
+
+def test_embed_bundle_is_offline_and_deterministic() -> None:
+    # The inlined JS bundle adds no external fetch, carries no raw </script> that would break its
+    # inlining <script> wrapper, and is byte-stable across rebuilds for the pinned vl-convert build.
+    render._embed_bundle.cache_clear()
+    bundle = render._embed_bundle()
+    assert len(bundle) > 100_000  # vega + vega-lite + vega-embed inlined, not a stub
+    assert _HTML_FETCH_RE.search(bundle) is None  # no external src/href fetch
+    assert "</script" not in bundle.lower()  # a raw close would terminate the wrapper <script>
+    render._embed_bundle.cache_clear()  # drop the cache so the compare is a genuine rebuild
+    assert bundle == render._embed_bundle()
+
+
+def test_render_html_scaffold_is_self_contained() -> None:
+    # Strip the (separately audited) bundle; the surrounding template + inlined spec data reference
+    # nothing fetchable -- reuse the SVG suite's audit (proven non-vacuous by the leak test).
+    html_doc = _html(_G07)
+    scaffold = html_doc.replace(render._embed_bundle(), "[BUNDLE]")
+    assert _external_refs(scaffold) == []
+    assert _HTML_FETCH_RE.search(html_doc) is None  # static scan: no absolute http(s) src/href
+
+
+def test_render_html_is_menu_free_and_interactive() -> None:
+    html_doc = _html(_G01)
+    assert "vegaEmbed(" in html_doc  # an interactive embed, not a static image
+    assert '{actions: false, renderer: "svg"}' in html_doc  # no editor/actions menu
+
+
+def test_render_html_embeds_the_built_spec() -> None:
+    # The page shows the SAME recomputed data the SVG/cert are built from: the inert data block
+    # parses back to the builder JSON (lossless through the </script neutralization).
+    spec, manifest, table = _evaluated(_G01)
+    built_json = render.vega_lite_json(spec, table, manifest)
+    assert json.loads(_json_data_block(render.render_html(built_json))) == json.loads(built_json)
+
+
+def test_render_html_neutralizes_script_breakout() -> None:
+    # A string cell holding </script> + live markup cannot close the data block early; JSON.parse
+    # still recovers the exact value (the escape is lossless).
+    payload = '{"data":{"values":[{"a":"</script><svg onload=alert(1)>","b":1}]}}'
+    block = _json_data_block(render.render_html(payload))
+    assert "</script" not in block  # the breakout close sequence is neutralized in the data block
+    assert json.loads(block) == json.loads(payload)
+
+
+def test_render_html_is_deterministic() -> None:
+    render._embed_bundle.cache_clear()
+    first = _html(_G10)
+    render._embed_bundle.cache_clear()  # rebuild the bundle too, not just reuse the cached object
+    assert first == _html(_G10)
+
+
+def test_render_include_html_attaches_offline_view() -> None:
+    spec, manifest, table = _evaluated(_G01)
+    result = render.render(spec, _manifest_bytes(_G01), data_dir=_DATA, include_html=True)
+    assert result is not None
+    assert result.html is not None
+    assert result.html == render.render_html(render.vega_lite_json(spec, table, manifest))
+    assert result.html.startswith("<!doctype html>")
+
+
+def test_render_default_omits_html() -> None:
+    assert _render(_G01).html is None  # off by default -> no bundling cost unless requested
+
+
+def test_render_html_is_off_the_cert_hash_chain() -> None:
+    # Requesting the HTML view changes neither the SVG bytes nor the certificate.
+    spec, _ = _good(_G01)
+    mb = _manifest_bytes(_G01)
+    plain = render.render(spec, mb, data_dir=_DATA)
+    withhtml = render.render(spec, mb, data_dir=_DATA, include_html=True)
+    assert plain is not None and withhtml is not None
+    assert plain.svg == withhtml.svg
+    assert plain.certificate == withhtml.certificate
+    assert plain.html is None and withhtml.html is not None

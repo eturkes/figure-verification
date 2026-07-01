@@ -20,6 +20,7 @@ consume -- stdlib json.dumps is never applied to builder output (it cannot seria
 Decimals build_vega_lite keeps in data.values).
 """
 
+import functools
 import hashlib
 import html
 import importlib.metadata
@@ -213,6 +214,66 @@ def render_svg(vega_lite_json: str) -> str:
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
 
 
+# --- interactive HTML (M1.6d: OPTIONAL offline self-contained view, OFF the cert hash chain) -
+# A second, non-canonical rendering of the SAME builder JSON the SVG and cert consume: a fully
+# offline, self-contained interactive page (pan / zoom / hover). It is NEVER hashed into the VCert
+# -- the plotted-table hash stays the one canonical artifact, and this HTML is trusted output like
+# the SVG. Two levers keep it self-contained and menu-free:
+#   * javascript_bundle inlines vega + vega-lite + vega-embed (and their deps) into ONE <script>
+#     with no external fetch (only inert namespace URLs appear inside it), byte-deterministic for
+#     the lockfile-pinned vl-convert build + vl_version, and (asserted by a test) no raw </script>
+#     that would break its own wrapper. The snippet references the injected vegaEmbed window global.
+#   * the built spec is embedded as inert <script type="application/json"> DATA -- JSON.parse'd at
+#     runtime, never executed -- with the </script close sequence rewritten so a string cell that
+#     holds a literal </script> cannot terminate the data block early; vegaEmbed runs with
+#     actions:false, so NO editor/actions menu (hence no "open in Vega editor" external link) is
+#     shown. renderer:"svg" mirrors render_svg.
+# vl-convert's own vegalite_to_html is deliberately NOT used: it re-serializes the spec (which
+# undoes any pre-escape) and always ships the actions menu with no lever to disable it.
+_EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
+
+
+@functools.cache
+def _embed_bundle() -> str:
+    """The offline vega / vega-lite / vega-embed JavaScript bundle exposing vegaEmbed as a window
+    global. javascript_bundle injects the library names into the snippet's scope; the snippet
+    references vegaEmbed, so it (and its deps) are bundled. Byte-deterministic within the
+    lockfile-pinned vl-convert build (fixed vl_version) and self-contained (no external fetch;
+    only inert namespace URLs appear inside it). Cached: it is identical for every chart and
+    costs ~0.7s / ~0.9MB to build, so it is built at most once per process."""
+    return vl_convert.javascript_bundle(_EMBED_SNIPPET, vl_version=_VL_VERSION)
+
+
+def render_html(vega_lite_json: str) -> str:
+    """A self-contained, fully offline interactive HTML page (pan / zoom / hover) for a
+    BUILDER-PRODUCED Vega-Lite JSON string -- the same string render_svg consumes. No external
+    fetch (the vega bundle is inlined) and no editor/actions menu (actions:false). OFF the cert
+    hash chain: a convenience view, never hashed into the VCert. Self-containment also rests on
+    embedding the spec as inert application/json DATA (JSON.parse'd, never executed) with the
+    </script close sequence neutralized, so a string cell holding a literal </script> cannot break
+    out of the data block. Like render_svg it trusts its builder input rather than sanitizing an
+    arbitrary hand-rolled spec; in the pipeline every string byte is manifest- or
+    trusted-source-derived (untrusted-input hardening is M2+)."""
+    safe_spec = vega_lite_json.replace("</", r"<\/")
+    return (
+        "<!doctype html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Verified Plot</title>\n"
+        "</head>\n"
+        "<body>\n"
+        '<div id="vplot-chart"></div>\n'
+        f'<script type="application/json" id="vplot-spec">{safe_spec}</script>\n'
+        f"<script>{_embed_bundle()}</script>\n"
+        '<script>vegaEmbed("#vplot-chart", '
+        'JSON.parse(document.getElementById("vplot-spec").textContent), '
+        '{actions: false, renderer: "svg"}).catch(console.error);</script>\n'
+        "</body>\n"
+        "</html>\n"
+    )
+
+
 # --- provenance certificate (M1.6c: VCert v0.1 badge + render() gate) --------
 # VCert v0.1 is NON-REPLAYABLE (no nonce/signature; replay + signing are M5). It stamps the
 # four canonical hashes (dataset/spec/plotted-table/manifest), the passed-check names INCLUDING
@@ -290,10 +351,13 @@ class VCert(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
-    """A verified render: the self-contained SVG plus its provenance certificate."""
+    """A verified render: the self-contained SVG plus its provenance certificate, and -- only when
+    render(include_html=True) requests it -- an optional fully offline interactive HTML view (OFF
+    the cert hash chain; None otherwise)."""
 
     svg: str
     certificate: VCert
+    html: str | None = None
 
 
 def _tcb() -> Tcb:
@@ -408,6 +472,7 @@ def render(
     manifest_bytes: bytes,
     *,
     data_dir: Path,
+    include_html: bool = False,
 ) -> RenderResult | None:
     """The single public entry: verify the untrusted spec, and ONLY if every check passes,
     render the self-contained SVG (inlining ONLY the recomputed plotted table) with its
@@ -415,7 +480,10 @@ def render(
     unverified data; eval may have been skipped). The manifest is decoded from its raw bytes
     HERE, and those same bytes are hashed into the cert -- so verification, rendering, and the
     manifest hash cannot disagree (a decoded Manifest cannot reproduce its raw bytes, so the
-    bytes are the single source threaded to both verify and the hash)."""
+    bytes are the single source threaded to both verify and the hash). With include_html=True the
+    result also carries a self-contained offline interactive HTML view of the same built spec
+    (render_html) -- OFF the cert hash chain: the SVG bytes and the certificate are byte-identical
+    whether or not it is requested."""
     manifest = ingest.load_manifest(manifest_bytes)
     report = checks.verify(spec, manifest, data_dir=data_dir)
     if not report.passed:
@@ -424,6 +492,8 @@ def render(
     # cast is the coverage-clean narrowing (an `assert ... is not None` would leave a
     # never-taken branch that fails the 100% gate -- the M1.5a lesson).
     table = cast(canon.Table, report.plotted_table)
-    svg = render_svg(vega_lite_json(spec, table, manifest))
+    built_json = vega_lite_json(spec, table, manifest)
+    svg = render_svg(built_json)
     certificate = _build_certificate(spec, manifest_bytes, table, report)
-    return RenderResult(svg=svg, certificate=certificate)
+    interactive_html = render_html(built_json) if include_html else None
+    return RenderResult(svg=svg, certificate=certificate, html=interactive_html)
