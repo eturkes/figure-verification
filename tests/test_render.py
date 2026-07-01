@@ -862,16 +862,17 @@ def test_badge_html_escapes_adversarial_filter_value() -> None:
     assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge
 
 
-# --- M1.6d: OPTIONAL offline interactive HTML (off the cert hash chain) -------
+# --- M1.6d: OPTIONAL offline HTML view (off the cert hash chain) --------------
 # External-fetch audit for the HTML page: a src/href attribute valued as an absolute http(s) URL
-# (a network load on page open). The inlined bundle carries none (proven below) and my template
-# adds none; scoped to http(s):// so an inert data string never false-positives.
+# (a network load on page open). The inlined bundle carries none (regression-guarded below) and the
+# template adds none; scoped to http(s):// so an inert data string never false-positives, and to a
+# QUOTED attribute so a minified-JS fragment (an unquoted `.src=`) does not.
 _HTML_FETCH_RE = re.compile(r"""(?i)\b(?:src|href)\s*=\s*(["'])https?://""")
 
 
 def _json_data_block(html_doc: str) -> str:
     """The inert application/json spec payload from a render_html page, up to the first real
-    </script> (a neutralized close sequence in a breakout cell does not match, so it is skipped)."""
+    </script> (the payload's own "<" bytes are all escaped, so no </script> appears inside it)."""
     match = re.search(r'<script type="application/json"[^>]*>(.*?)</script>', html_doc, re.DOTALL)
     assert match is not None
     return match.group(1)
@@ -883,12 +884,16 @@ def _html(name: str) -> str:
 
 
 def test_embed_bundle_is_offline_and_deterministic() -> None:
-    # The inlined JS bundle adds no external fetch, carries no raw </script> that would break its
-    # inlining <script> wrapper, and is byte-stable across rebuilds for the pinned vl-convert build.
+    # Static regression guard over the pinned bundle (not a runtime proof): no quoted absolute
+    # http(s) src/href, no raw </script> that would break its inlining <script> wrapper, byte-stable
+    # across in-process rebuilds. The vega runtime's dormant URL code paths (an unquoted `.src=`,
+    # `new URL(...)`) stay inert -- render_svg's allowlist + allowed_base_urls=[] is the enforced
+    # offline boundary -- so the broad _external_refs audit is not run here (it false-positives on
+    # minified JS).
     render._embed_bundle.cache_clear()
     bundle = render._embed_bundle()
     assert len(bundle) > 100_000  # vega + vega-lite + vega-embed inlined, not a stub
-    assert _HTML_FETCH_RE.search(bundle) is None  # no external src/href fetch
+    assert _HTML_FETCH_RE.search(bundle) is None  # no quoted absolute http(s) src/href
     assert "</script" not in bundle.lower()  # a raw close would terminate the wrapper <script>
     render._embed_bundle.cache_clear()  # drop the cache so the compare is a genuine rebuild
     assert bundle == render._embed_bundle()
@@ -903,26 +908,34 @@ def test_render_html_scaffold_is_self_contained() -> None:
     assert _HTML_FETCH_RE.search(html_doc) is None  # static scan: no absolute http(s) src/href
 
 
-def test_render_html_is_menu_free_and_interactive() -> None:
+def test_render_html_is_menu_free_and_client_rendered() -> None:
     html_doc = _html(_G01)
-    assert "vegaEmbed(" in html_doc  # an interactive embed, not a static image
+    assert "vegaEmbed(" in html_doc  # a client-rendered vega-embed, not a pre-rasterized image
     assert '{actions: false, renderer: "svg"}' in html_doc  # no editor/actions menu
 
 
 def test_render_html_embeds_the_built_spec() -> None:
     # The page shows the SAME recomputed data the SVG/cert are built from: the inert data block
-    # parses back to the builder JSON (lossless through the </script neutralization).
+    # parses back to the builder JSON (lossless through the every-"<"-to-U+003C escape).
     spec, manifest, table = _evaluated(_G01)
     built_json = render.vega_lite_json(spec, table, manifest)
     assert json.loads(_json_data_block(render.render_html(built_json))) == json.loads(built_json)
 
 
-def test_render_html_neutralizes_script_breakout() -> None:
-    # A string cell holding </script> + live markup cannot close the data block early; JSON.parse
-    # still recovers the exact value (the escape is lossless).
-    payload = '{"data":{"values":[{"a":"</script><svg onload=alert(1)>","b":1}]}}'
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"data":{"values":[{"a":"</script><svg onload=alert(1)>","b":1}]}}',  # direct </script>
+        '{"data":{"values":[{"a":"<!--<script>alert(1)</script>-->","b":1}]}}',  # double-escape
+    ],
+)
+def test_render_html_neutralizes_script_breakout(payload: str) -> None:
+    # A data cell holding raw script-data markup -- a literal </script>, OR a <!--<script> pair that
+    # would drive the HTML5 tokenizer into its script-data-double-escaped state (where the block's
+    # own </script> no longer closes it) -- must not corrupt the page. Escaping EVERY "<" leaves no
+    # raw "<" in the data block, so no such markup can open; JSON.parse still recovers the value.
     block = _json_data_block(render.render_html(payload))
-    assert "</script" not in block  # the breakout close sequence is neutralized in the data block
+    assert "<" not in block  # no raw "<" -> no script-data markup can open (breakout-proof)
     assert json.loads(block) == json.loads(payload)
 
 

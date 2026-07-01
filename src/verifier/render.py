@@ -214,20 +214,25 @@ def render_svg(vega_lite_json: str) -> str:
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
 
 
-# --- interactive HTML (M1.6d: OPTIONAL offline self-contained view, OFF the cert hash chain) -
+# --- offline HTML view (M1.6d: OPTIONAL self-contained view, OFF the cert hash chain) ---------
 # A second, non-canonical rendering of the SAME builder JSON the SVG and cert consume: a fully
-# offline, self-contained interactive page (pan / zoom / hover). It is NEVER hashed into the VCert
-# -- the plotted-table hash stays the one canonical artifact, and this HTML is trusted output like
-# the SVG. Two levers keep it self-contained and menu-free:
+# self-contained page a browser renders CLIENT-SIDE from the inlined vega runtime. The emitted
+# builder specs carry no params / selection / tooltip, so it is the SAME chart as the SVG drawn by
+# JS rather than pre-rasterized -- not a richer pan/zoom/hover view. It is NEVER hashed into the
+# VCert -- the plotted-table hash stays the one canonical artifact, and this HTML is trusted output
+# like the SVG. Two levers keep it self-contained and menu-free:
 #   * javascript_bundle inlines vega + vega-lite + vega-embed (and their deps) into ONE <script>
-#     with no external fetch (only inert namespace URLs appear inside it), byte-deterministic for
-#     the lockfile-pinned vl-convert build + vl_version, and (asserted by a test) no raw </script>
-#     that would break its own wrapper. The snippet references the injected vegaEmbed window global.
+#     with no <script src> / CDN reference. The vega runtime still carries dormant data/image URL
+#     code paths, but the builder allowlist emits no external data URL (compile-time
+#     allowed_base_urls=[]) and no image mark, so a builder-produced page triggers no fetch; the
+#     tests are a static regression guard over the pinned bundle (no raw </script> breaking its own
+#     wrapper, no quoted absolute http(s) src/href), not a runtime/browser proof.
 #   * the built spec is embedded as inert <script type="application/json"> DATA -- JSON.parse'd at
-#     runtime, never executed -- with the </script close sequence rewritten so a string cell that
-#     holds a literal </script> cannot terminate the data block early; vegaEmbed runs with
-#     actions:false, so NO editor/actions menu (hence no "open in Vega editor" external link) is
-#     shown. renderer:"svg" mirrors render_svg.
+#     runtime, never executed -- with EVERY "<" rewritten to its JSON unicode escape (U+003C), so
+#     no data byte can open script-data markup (</script>, <!--, <script>) that would corrupt the
+#     page; the escape is lossless through JSON.parse. vegaEmbed runs with actions:false, so NO
+#     editor/actions menu (hence no "open in Vega editor" external link) is shown. renderer:"svg"
+#     mirrors render_svg.
 # vl-convert's own vegalite_to_html is deliberately NOT used: it re-serializes the spec (which
 # undoes any pre-escape) and always ships the actions menu with no lever to disable it.
 _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
@@ -237,24 +242,27 @@ _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 def _embed_bundle() -> str:
     """The offline vega / vega-lite / vega-embed JavaScript bundle exposing vegaEmbed as a window
     global. javascript_bundle injects the library names into the snippet's scope; the snippet
-    references vegaEmbed, so it (and its deps) are bundled. Byte-deterministic within the
-    lockfile-pinned vl-convert build (fixed vl_version) and self-contained (no external fetch;
-    only inert namespace URLs appear inside it). Cached: it is identical for every chart and
-    costs ~0.7s / ~0.9MB to build, so it is built at most once per process."""
+    references vegaEmbed, so it (and its deps) are bundled with no <script src> / CDN reference.
+    Byte-identical across in-process rebuilds for the lockfile-pinned vl-convert build (fixed
+    vl_version). The vega runtime carries dormant data/image URL code paths, but a builder-produced
+    spec (no external data URL, no image mark) triggers no fetch. Cached: it is identical for every
+    chart and costs ~0.7s / ~0.9MB to build, so it is built at most once per process."""
     return vl_convert.javascript_bundle(_EMBED_SNIPPET, vl_version=_VL_VERSION)
 
 
 def render_html(vega_lite_json: str) -> str:
-    """A self-contained, fully offline interactive HTML page (pan / zoom / hover) for a
-    BUILDER-PRODUCED Vega-Lite JSON string -- the same string render_svg consumes. No external
-    fetch (the vega bundle is inlined) and no editor/actions menu (actions:false). OFF the cert
-    hash chain: a convenience view, never hashed into the VCert. Self-containment also rests on
-    embedding the spec as inert application/json DATA (JSON.parse'd, never executed) with the
-    </script close sequence neutralized, so a string cell holding a literal </script> cannot break
-    out of the data block. Like render_svg it trusts its builder input rather than sanitizing an
-    arbitrary hand-rolled spec; in the pipeline every string byte is manifest- or
-    trusted-source-derived (untrusted-input hardening is M2+)."""
-    safe_spec = vega_lite_json.replace("</", r"<\/")
+    """A self-contained, fully offline HTML view of a BUILDER-PRODUCED Vega-Lite JSON string -- the
+    same string render_svg consumes, drawn CLIENT-SIDE by the inlined vega runtime (the same chart
+    as the SVG, not a richer interactive view: the builder emits no params / selection / tooltip).
+    No <script src> / CDN reference and no editor/actions menu (actions:false). OFF the cert hash
+    chain: a convenience view, never hashed into the VCert. Self-containment also rests on embedding
+    the spec as inert application/json DATA (JSON.parse'd, never executed) with EVERY "<" rewritten
+    to its JSON unicode escape (U+003C), so no data byte can open script-data markup (</script>,
+    <!--, <script>) and corrupt the page; the escape is lossless through JSON.parse. Like
+    render_svg it trusts its builder input rather than sanitizing an arbitrary hand-rolled
+    spec; in the pipeline every string byte is manifest- or trusted-source-derived
+    (untrusted-input hardening is M2+)."""
+    safe_spec = vega_lite_json.replace("<", "\\u003c")
     return (
         "<!doctype html>\n"
         '<html lang="en">\n'
@@ -352,8 +360,8 @@ class VCert(msgspec.Struct, frozen=True, kw_only=True):
 
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
     """A verified render: the self-contained SVG plus its provenance certificate, and -- only when
-    render(include_html=True) requests it -- an optional fully offline interactive HTML view (OFF
-    the cert hash chain; None otherwise)."""
+    render(include_html=True) requests it -- an optional fully offline HTML view (OFF the cert hash
+    chain; None otherwise)."""
 
     svg: str
     certificate: VCert
@@ -481,9 +489,9 @@ def render(
     HERE, and those same bytes are hashed into the cert -- so verification, rendering, and the
     manifest hash cannot disagree (a decoded Manifest cannot reproduce its raw bytes, so the
     bytes are the single source threaded to both verify and the hash). With include_html=True the
-    result also carries a self-contained offline interactive HTML view of the same built spec
-    (render_html) -- OFF the cert hash chain: the SVG bytes and the certificate are byte-identical
-    whether or not it is requested."""
+    result also carries a self-contained offline HTML view of the same built spec (render_html) --
+    OFF the cert hash chain: the SVG bytes and the certificate are byte-identical whether or not it
+    is requested."""
     manifest = ingest.load_manifest(manifest_bytes)
     report = checks.verify(spec, manifest, data_dir=data_dir)
     if not report.passed:
@@ -495,5 +503,5 @@ def render(
     built_json = vega_lite_json(spec, table, manifest)
     svg = render_svg(built_json)
     certificate = _build_certificate(spec, manifest_bytes, table, report)
-    interactive_html = render_html(built_json) if include_html else None
-    return RenderResult(svg=svg, certificate=certificate, html=interactive_html)
+    offline_html = render_html(built_json) if include_html else None
+    return RenderResult(svg=svg, certificate=certificate, html=offline_html)

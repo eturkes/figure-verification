@@ -50,7 +50,7 @@ Headless, fully gate-free: pure local Python over synthetic CSVs, exercised enti
 | M1.6a-cr | Codex-review follow-up (2 rounds): r1 mark-level line `order` (v5-schema blocker) + column-scale `_scaled_cell` + mark-validity regression + `unit_source` rename (`ded3dc6`); r2 claim-honesty — scope "total over canon.Table" + the M1.5 affirmation + the order-EFFECT to what M1.6a proves; builder-totality HARDENING (validate-all-pairs + dup-name guard + property test) deferred to M1.6b | DONE | 87% 173K/200K |
 | M1.6b | `render.py` SVG: vl-convert dep + vendored font + determinism/self-containment | DONE | 88% 177K/200K |
 | M1.6c | `render.py` provenance: VCert v0.1 badge + render() gate (recipe `.agent/m16c_render_design.md`) | DONE | 42% 83K/200K |
-| M1.6d | `render.py` OPTIONAL offline interactive HTML view off the cert hash chain (`render_html` + `include_html`; recipe `.agent/m16d_render_design.md`) | DONE | 53% 106K/200K |
+| M1.6d | `render.py` OPTIONAL offline HTML view off the cert hash chain (`render_html` + `include_html`; recipe `.agent/m16d_render_design.md`) | DONE | 53% 106K/200K |
 
 DONE-unit detail (M1.1–M1.6d: per-unit design + accept criteria) is realized in code + tests + `.agent/memory.md` lessons + git; recover the pre-implementation prose via `git log --grep "(M1[. ]"` / `git show <planning-commit>`. Every unit is DONE → M1 IMPLEMENTED; the git-held detail is fully available to the M1-review session (1M context), which reads every commit.
 
