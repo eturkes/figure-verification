@@ -12,7 +12,8 @@ re-probe vl-convert (inline probing is what overflowed the prior window).
 
 ## Confirmed lever (de-risked across isolated probes — trust, do not re-derive)
 - `vl_convert.javascript_bundle(snippet, vl_version="5.21")` bundles vega + vega-lite + vega-embed +
-  deps into ONE self-contained `<script>` (no external URL), byte-deterministic per `vl_version`,
+  deps into ONE self-contained `<script>` (no external fetch; only inert namespace URLs inside),
+  byte-deterministic within the lockfile-pinned `vl-convert-python` build (fixed `vl_version`),
   ~0.9MB. The snippet references the INJECTED library globals (`vegaEmbed` / `vegaLite` / `vega` /
   `lodashDebounce`) WITHOUT any `import`; `"window.vegaEmbed = vegaEmbed;"` re-exposes `vegaEmbed`
   as a window global. (An `import … from "vega-embed"` FAILS to resolve in the bundler; `""`
@@ -43,9 +44,9 @@ re-probe vl-convert (inline probing is what overflowed the prior window).
 # -- the plotted-table hash stays the one canonical artifact, and this HTML is trusted output like
 # the SVG. Two levers keep it self-contained and menu-free:
 #   * javascript_bundle inlines vega + vega-lite + vega-embed (and their deps) into ONE <script>
-#     with no external URL; it is byte-deterministic for a fixed vl_version and (per vl-convert)
-#     carries no </script> sequence that would break its own wrapper. The snippet references the
-#     injected vegaEmbed name, so it is bundled and re-exposed as a window global.
+#     with no external fetch (only inert namespace URLs appear inside it), byte-deterministic for
+#     the lockfile-pinned vl-convert build + vl_version, and (asserted by a test) no raw </script>
+#     that would break its own wrapper. The snippet references the injected vegaEmbed window global.
 #   * the built spec is embedded as inert <script type="application/json"> DATA -- JSON.parse'd at
 #     runtime, never executed -- with the </script close sequence rewritten so a string cell that
 #     holds a literal </script> cannot terminate the data block early; vegaEmbed runs with
@@ -60,8 +61,9 @@ _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 def _embed_bundle() -> str:
     """The offline vega / vega-lite / vega-embed JavaScript bundle exposing vegaEmbed as a window
     global. javascript_bundle injects the library names into the snippet's scope; the snippet
-    references vegaEmbed, so it (and its deps) are bundled. Byte-deterministic for the pinned
-    vl_version and self-contained (no external URL). Cached: it is identical for every chart and
+    references vegaEmbed, so it (and its deps) are bundled. Byte-deterministic within the
+    lockfile-pinned vl-convert build (fixed vl_version) and self-contained (no external fetch;
+    only inert namespace URLs appear inside it). Cached: it is identical for every chart and
     costs ~0.7s / ~0.9MB to build, so it is built at most once per process."""
     return vl_convert.javascript_bundle(_EMBED_SNIPPET, vl_version=_VL_VERSION)
 
@@ -163,10 +165,14 @@ def _html(name: str) -> str:
 
 
 def test_embed_bundle_is_offline_and_deterministic() -> None:
-    # The inlined JS bundle references no external URL and is byte-stable for the pinned vl_version.
+    # The inlined JS bundle adds no external fetch, carries no raw </script> that would break its
+    # inlining <script> wrapper, and is byte-stable across rebuilds for the pinned vl-convert build.
+    render._embed_bundle.cache_clear()
     bundle = render._embed_bundle()
     assert len(bundle) > 100_000  # vega + vega-lite + vega-embed inlined, not a stub
-    assert _HTML_FETCH_RE.search(bundle) is None
+    assert _HTML_FETCH_RE.search(bundle) is None  # no external src/href fetch
+    assert "</script" not in bundle.lower()  # a raw close would terminate the wrapper <script>
+    render._embed_bundle.cache_clear()  # drop the cache so the compare is a genuine rebuild
     assert bundle == render._embed_bundle()
 
 
@@ -176,7 +182,7 @@ def test_render_html_scaffold_is_self_contained() -> None:
     html_doc = _html(_G07)
     scaffold = html_doc.replace(render._embed_bundle(), "[BUNDLE]")
     assert _external_refs(scaffold) == []
-    assert _HTML_FETCH_RE.search(html_doc) is None  # whole page: no external fetch on open
+    assert _HTML_FETCH_RE.search(html_doc) is None  # static scan: no absolute http(s) src/href
 
 
 def test_render_html_is_menu_free_and_interactive() -> None:
@@ -203,7 +209,10 @@ def test_render_html_neutralizes_script_breakout() -> None:
 
 
 def test_render_html_is_deterministic() -> None:
-    assert _html(_G10) == _html(_G10)
+    render._embed_bundle.cache_clear()
+    first = _html(_G10)
+    render._embed_bundle.cache_clear()  # rebuild the bundle too, not just reuse the cached object
+    assert first == _html(_G10)
 
 
 def test_render_include_html_attaches_offline_view() -> None:
