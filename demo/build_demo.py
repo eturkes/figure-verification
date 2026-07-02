@@ -12,8 +12,9 @@ writes one self-contained offline page, demo/index.html:
 
 Demo UI chrome is bilingual EN+JA, stacked or side-by-side (deliberately no toggle).
 Verifier output (check ids, messages, JSON artifacts) is data, shown verbatim (EN).
-Deterministic: no timestamps; rebuild -> identical bytes for an unchanged repo.
-Fails loudly (SystemExit) if the corpus disagrees with index.json expectations.
+Deterministic: no timestamps; rebuild (uv run --locked) -> identical bytes for an
+unchanged repo in the same locked env. Fails loudly (SystemExit) when the corpus
+diverges from index.json expectations (decodes flag, mark/dataset, declared check).
 """
 
 import base64
@@ -21,6 +22,7 @@ import json
 import re
 from html import escape
 from pathlib import Path
+from typing import Any
 
 import msgspec
 
@@ -123,10 +125,13 @@ def manifest_bytes_for(dataset_name: str) -> bytes:
     return (DATA_DIR / "schemas" / (Path(dataset_name).stem + ".json")).read_bytes()
 
 
-def good_card(entry: dict[str, str]) -> str:
+def good_card(entry: dict[str, Any]) -> str:
     file = entry["file"]
     raw = (GOOD_DIR / file).read_bytes()
     spec = decode_spec(raw)
+    if entry["mark"] != spec.mark or entry["dataset"] != spec.dataset.name:
+        msg = f"corpus invariant broken: index mark/dataset diverge from spec: {file}"
+        raise SystemExit(msg)
     result = render.render(spec, manifest_bytes_for(spec.dataset.name), data_dir=DATA_DIR)
     if result is None:
         msg = f"corpus invariant broken: good spec blocked: {file}"
@@ -148,21 +153,27 @@ def good_card(entry: dict[str, str]) -> str:
   </div>
   <div class="well"><img width="{width}" src="data:image/svg+xml;base64,{svg64}" alt="{alt}"></div>
   {render.badge_html(cert)}
-  {details("Certificate as canonical JSON", "証明書(正規JSON)", cert_json)}
+  {details("Certificate JSON (pretty-printed)", "証明書JSON(整形表示)", cert_json)}
   {details("Proposed spec (pretty-printed)", "提案された仕様(整形表示)", pretty_json(raw))}
 </article>"""
 
 
-def bad_card(entry: dict[str, str]) -> str:
+def bad_card(entry: dict[str, Any]) -> str:
     file = entry["file"]
     raw = (BAD_DIR / file).read_bytes()
     try:
         spec = decode_spec(raw)
     except (msgspec.DecodeError, msgspec.ValidationError) as exc:
+        if entry["decodes"]:
+            msg = f"corpus invariant broken: index says decodes=true but decode failed: {file}"
+            raise SystemExit(msg) from exc
         verdict = f"decode_spec -> {type(exc).__name__}:\n{exc}"
         stage_en = "Blocked at decode — the spec never reaches the evaluator."
         stage_ja = "デコード時にブロック — 仕様は評価器に到達しません。"
     else:
+        if not entry["decodes"]:
+            msg = f"corpus invariant broken: index says decodes=false but spec decoded: {file}"
+            raise SystemExit(msg)
         report = checks.verify(
             spec, load_manifest(manifest_bytes_for(spec.dataset.name)), data_dir=DATA_DIR
         )
@@ -170,6 +181,9 @@ def bad_card(entry: dict[str, str]) -> str:
             msg = f"corpus invariant broken: bad spec verified: {file}"
             raise SystemExit(msg)
         fails = [r for r in report.results if r.status == "fail"]
+        if entry["check"] not in {r.check for r in fails}:
+            msg = f"corpus invariant broken: declared check not among failures: {file}"
+            raise SystemExit(msg)
         verdict = "\n".join(f"{r.check} [{r.severity}]\n  {r.message}" for r in fails)
         stage_en = "Blocked by checks — verified: false, no chart is rendered."
         stage_ja = "検査でブロック — verified: false、チャートは描画されません。"
@@ -183,7 +197,7 @@ def bad_card(entry: dict[str, str]) -> str:
   {bi_stack(entry["reason"], REASON_JA[file], "bi-stack reason")}
   <p class="stage"><span lang="en">{escape(stage_en)}</span><span lang="ja">{escape(stage_ja)}</span></p>
   <div class="nochart">{bi("No chart rendered", "チャートは描画されません")}</div>
-  {details("Verifier output (verbatim)", "検証器の出力(原文)", verdict)}
+  {details("Verifier messages (failing checks)", "検証器メッセージ(不合格の検査)", verdict)}
   {details("Proposed spec (pretty-printed)", "提案された仕様(整形表示)", pretty_json(raw))}
 </article>"""
 
@@ -210,7 +224,7 @@ body{margin:0 auto;max-width:1240px;padding:40px 24px 72px;background:var(--plan
 code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em}
 h1{font-size:2.2rem;margin:.15em 0 .25em;display:flex;gap:.55em;align-items:baseline;flex-wrap:wrap}
 h2{margin:52px 0 8px;font-size:1.3rem;display:flex;gap:.6em;align-items:baseline;flex-wrap:wrap}
-.kicker{margin:0;color:var(--muted);font-size:.85rem;letter-spacing:.04em;display:flex;gap:1.2em;flex-wrap:wrap}
+.kicker{margin:0;color:var(--ink2);font-size:.85rem;letter-spacing:.04em;display:flex;gap:1.2em;flex-wrap:wrap}
 .tag{margin:0;font-size:1.02rem;color:var(--ink2)}
 .bi{display:inline-flex;gap:.6em;align-items:baseline;flex-wrap:wrap}
 .bi-stack p{margin:0}
@@ -240,7 +254,7 @@ h2{margin:52px 0 8px;font-size:1.3rem;display:flex;gap:.6em;align-items:baseline
 .card{background:var(--surface);border:1px solid var(--hairline);border-radius:10px;
   padding:16px 16px 12px;display:flex;flex-direction:column;gap:11px}
 .cardhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between}
-.file{color:var(--muted);font-size:.78rem}
+.file{color:var(--ink2);font-size:.78rem}
 .intent span{display:block;font-weight:600}
 .badge{display:inline-flex;align-items:center;gap:.5em;border:1px solid;border-radius:999px;
   padding:1px 12px;font-size:.88rem;font-weight:600}
@@ -257,17 +271,17 @@ h2{margin:52px 0 8px;font-size:1.3rem;display:flex;gap:.6em;align-items:baseline
 .well img{max-width:100%;height:auto}
 .vcert{border:1px solid var(--hairline);border-radius:8px;padding:12px 14px;font-size:.8rem}
 .vcert h2{margin:0 0 8px;font-size:.92rem;display:block}
-.vcert h3{margin:10px 0 3px;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.vcert h3{margin:10px 0 3px;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
 .vcert ul{margin:0;padding-left:1.15em;columns:2;column-gap:18px;color:var(--ink2)}
 .vcert dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0}
-.vcert dt{color:var(--muted)}
+.vcert dt{color:var(--ink2)}
 .vcert dd{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:.7rem;word-break:break-all;color:var(--ink2)}
 .reason p{font-size:.92rem}
-.stage{margin:0;font-size:.84rem;color:var(--muted)}
+.stage{margin:0;font-size:.84rem;color:var(--ink2)}
 .stage span{display:block}
 .nochart{border:1px dashed var(--well-border);border-radius:8px;padding:14px;text-align:center;
-  color:var(--muted);font-size:.9rem;
+  color:var(--ink2);font-size:.9rem;
   background:repeating-linear-gradient(45deg,transparent 0 10px,var(--hatch) 10px 11px)}
 details{border-top:1px solid var(--hairline);padding-top:8px}
 details summary{cursor:pointer;color:var(--ink2);font-size:.88rem;font-weight:600}
@@ -334,7 +348,7 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
         [
             tile(str(n_good), "ok", "Verified & rendered", "検証済み・描画"),
             tile(str(n_bad), "no", "Blocked, no chart", "ブロック・チャートなし"),
-            tile("4", "", "Hashes per certificate", "証明書あたりのハッシュ数"),
+            tile("4", "", "Provenance hashes per certificate", "証明書あたりの来歴ハッシュ"),
             tile("0", "", "Model-supplied numbers plotted", "プロットされたモデル提供数値"),
         ]
     )
@@ -429,19 +443,35 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
             "Trusted but not formally verified: the vl-convert Vega runtime, SVG rasterization, "
             "the browser, the final pixels. The claim is about the data-and-spec layer, not the "
             "renderer. Chart SVGs and certificate badges appear verbatim as the trusted M1 "
-            "renderer produced them; this page only frames and styles them.",
+            "renderer produced them; this page only frames and styles them. One known "
+            "quantization inside that trusted zone: the JS/Vega runtime parses inlined JSON "
+            "numbers as IEEE-754 doubles, so a value beyond exact-double range can display "
+            "rounded even though the emitted JSON and the certified hashes carry it exactly "
+            "(no dataset on this page reaches that range).",
             "信頼するものの形式的には検証していない領域:vl-convert Vegaランタイム、SVGラスタライズ、"
             "ブラウザ、最終的なピクセル。この主張はデータと仕様の層に関するもので、レンダラーに"
             "関するものではありません。チャートSVGとそのバッジは信頼済みM1レンダラーの出力を"
-            "そのまま掲載しています。このページはそれを額装するだけです。",
+            "そのまま掲載しています。このページはその額装と体裁のみを担います。その信頼領域内には"
+            "既知の量子化が1つあります:JS/Vegaランタイムは埋め込みJSON数値をIEEE-754倍精度として"
+            "解析するため、倍精度で正確に表せる範囲を超える値は、出力JSONと認証済みハッシュが"
+            "正確な値を保持していても、表示上は丸められ得ます(本ページのデータセットはその範囲に"
+            "達しません)。",
+        )
+    }
+{
+        bi_stack(
+            "Verifier-produced artifacts — badge text, check ids, messages, JSON — appear "
+            "verbatim in English: they are data under verification, not page chrome.",
+            "検証器が生成する成果物(バッジ文言、検査ID、メッセージ、JSON)は原文の英語のまま"
+            "表示します。これらは検証対象のデータであり、ページのUIではありません。",
         )
     }
 {
         bi_stack(
             "This page is fully offline: no scripts, no external requests. Throwaway demo on "
-            "branch poc/bilingual-demo; rebuild with: uv run demo/build_demo.py",
+            "branch poc/bilingual-demo; rebuild with: uv run --locked demo/build_demo.py",
             "このページは完全オフラインです:スクリプトなし、外部リクエストなし。ブランチ "
-            "poc/bilingual-demo 上の使い捨てデモです。再生成: uv run demo/build_demo.py",
+            "poc/bilingual-demo 上の使い捨てデモです。再生成: uv run --locked demo/build_demo.py",
         )
     }
 </footer>
@@ -452,8 +482,8 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
 
 def main() -> None:
     index = json.loads((ROOT / "examples" / "index.json").read_text(encoding="utf-8"))
-    good_entries: list[dict[str, str]] = index["good_specs"]
-    bad_entries: list[dict[str, str]] = index["bad_specs"]
+    good_entries: list[dict[str, Any]] = index["good_specs"]
+    bad_entries: list[dict[str, Any]] = index["bad_specs"]
     if len(good_entries) != len(INTENT_JA) or len(bad_entries) != len(REASON_JA):
         msg = "index.json corpus size diverged from the JA translation tables"
         raise SystemExit(msg)
