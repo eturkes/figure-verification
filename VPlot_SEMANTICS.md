@@ -21,7 +21,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   as mark data. `transform.aggregates_match_recomputation` (M1.5) is an AFFIRMATION (constant pass): `verify`
   recomputes the table (correctness oracle-backed) and the M1.6 renderer inlines ONLY that
   recomputation, so no model value can diverge -- true by construction, NOT an active
-  byte-comparison (no render-output gate exists until M1.6c).
+  byte-comparison (`render()` — M1.6c — renders only a passing report and inlines only its
+  `plotted_table`).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
@@ -59,8 +60,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   order-independent → hash-stable; `mean` adds ONE final division + quantize (its inputs are
   order-independent, so the result is too — division itself is not associative). No float, no Kahan.
   - `sum` → exact Σ; output scale = input scale.
-  - `mean` → (exact Σ) / (non-null count), ONE division, quantize HALF_EVEN to the
-    manifest-declared output scale (M1.3; default = input scale).
+  - `mean` → (exact Σ) / (non-null count), ONE division, quantize HALF_EVEN to the output
+    scale = the input scale (v0.1 declares no separate output scale anywhere).
   - `min`/`max` → exact; output type = input type.
   - `count` → non-null count → integer (scale 0).
 - Filter-value coercion — the spec `value: int | string` is coerced to the field's column type
@@ -209,8 +210,10 @@ not rely on its defaults):
 - `group_by` NULL = single group; `COUNT(col)` = non-null; `SUM`/`MIN`/`MAX` over all-null =
   NULL — all match by default and are asserted, not assumed.
 
-Any op the oracle cannot match bit-for-bit → a logged tolerance cross-check (dual-engine
-determinism), never a silent pass.
+Every v0.1 op reproduces bit-for-bit (goldens + adversarial synthetic parity, M1.4f). Outside
+DuckDB's DECIMAL(38)/HUGEINT domain — where eval's unbounded exact arithmetic still succeeds —
+the oracle raises LOUDLY (filter-literal magnitude bound; SUM-accumulator or typed-reinsert
+overflow, both sites pinned by tests), never a silent divergence.
 
 ## 11. Divergences from the outline (`.agent/outline.md`)
 
@@ -226,10 +229,12 @@ determinism), never a silent pass.
 
 ## Open (resolve when the layer lands)
 
-- Filter-literal STRINGS are length-bound (≤ 128) only → they still admit control chars
-  (NL/CR/TAB/NUL/U+2028). Canonical handling (forbid-pattern vs NFC + escape-on-disclosure) is
-  decided once the M1.4 text model + M1.6 badge format exist; constraining now risks rejecting
-  valid filters on legitimate control-char cells.
+- RESOLVED (M1.6): filter-literal STRINGS stay length-bound (≤ 128) + byte-faithful — control
+  chars (NL/CR/TAB/NUL/U+2028) are admitted and handled at DISCLOSURE time (`badge_html`
+  `html.escape(quote=True)`; the offline HTML view escapes every `<` → U+003C). Forbid-pattern
+  and NFC both rejected: NFC-folding collides specs that select different rows (the M1.4a
+  reversal — hash must distinguish exactly what eval's verbatim compare distinguishes), and a
+  forbid-pattern would reject valid filters on legitimate control-char cells.
 - RESOLVED (M1.5c): a dimensionless `count` on a quantitative channel is unit-exempt vs
   `label.quantitative_units_present` — `unit_source` (§5/§7) returns None for a count-derived
   column (the lineage carries no unit), now stated in §1/§7. Dedicated end-to-end `test_checks.py`

@@ -22,22 +22,20 @@ evaluate -> canon.hash_table pipeline:
     order; it samples for a leak, it does not prove absence.
 Rows go through csv.writer (CR-LF dialect), so an embedded comma / quote / CR-LF / NUL in a
 string field round-trips through ingest's csv.reader(strict=True) without hand-escaping
-(verified end-to-end against load_table).
+(verified end-to-end against load_table). Cell strategies + the writer are the shared
+tests/corpus.py (M1-review consolidation with the M1.5a spine property).
 """
 
-import csv
-import io
 import os
 import subprocess
 import sys
-from datetime import date
-from decimal import Decimal
 
 import msgspec
 from hypothesis import given
 from hypothesis import strategies as st
-from hypothesis.strategies import DrawFn, SearchStrategy
+from hypothesis.strategies import DrawFn
 
+from corpus import csv_bytes, date_cell, numeric_cell, string_cell
 from verifier import canon
 from verifier.eval import evaluate
 from verifier.ingest import Manifest, NumericColumnSpec, StringColumnSpec, TemporalColumnSpec
@@ -97,54 +95,25 @@ _SELECT_SPEC = _spec(
 _SPECS = (_GROUP_SPEC, _SELECT_SPEC)
 
 
-# --- per-column cell strategies (every draw is an ingest-valid cell) ----------
-_SCALED_INT = st.integers(min_value=-(10**9), max_value=10**9)
-
-
-def _decimal_text(scaled: int, scale: int) -> str:
-    """Render `scaled * 10**-scale` as exact fixed-point text at `scale` places -- ingest accepts
-    it verbatim (finite, within DECIMAL(38, scale), no excess precision)."""
-    quantum = Decimal(1).scaleb(-scale)
-    return str(Decimal(scaled).scaleb(-scale).quantize(quantum))
-
-
-def _numeric_cell(scale: int) -> SearchStrategy[str]:
-    return st.just("") | st.builds(_decimal_text, _SCALED_INT, st.just(scale))
-
-
-def _date_cell() -> SearchStrategy[str]:
-    return st.just("") | st.dates().map(date.isoformat)
-
-
-def _string_cell() -> SearchStrategy[str]:
-    # Any UTF-8 text -- commas / quotes / CR-LF / NUL are quoted by csv.writer and round-trip;
-    # "" is the deliberate null. A lone surrogate is excluded by codec="utf-8".
-    return st.text(st.characters(codec="utf-8"), max_size=8)
-
-
+# --- per-column cell strategies (every draw is an ingest-valid cell; tests/corpus.py) ---
 @st.composite
 def _row(draw: DrawFn) -> _Row:
     return (
-        draw(_string_cell()),
-        draw(_numeric_cell(0)),
-        draw(_numeric_cell(1)),
-        draw(_date_cell()),
+        draw(string_cell()),
+        draw(numeric_cell(0)),
+        draw(numeric_cell(1)),
+        draw(date_cell()),
     )
 
 
 def _csv(rows: list[_Row]) -> bytes:
-    """Header + rows via csv.writer (CR-LF dialect), UTF-8 -- exactly what ingest reads back."""
-    buf = io.StringIO(newline="")
-    writer = csv.writer(buf)
-    writer.writerow(_HEADER)
-    writer.writerows(rows)
-    return buf.getvalue().encode("utf-8")
+    return csv_bytes(_HEADER, rows)
 
 
 def _table_hashes(rows: list[_Row]) -> tuple[str, ...]:
     """The plotted-table hash of each fixed spec over `rows`."""
-    csv_bytes = _csv(rows)
-    return tuple(canon.hash_table(evaluate(spec, _MANIFEST, csv_bytes)) for spec in _SPECS)
+    data = _csv(rows)  # `data`, not `csv_bytes`: the corpus import keeps that name
+    return tuple(canon.hash_table(evaluate(spec, _MANIFEST, data)) for spec in _SPECS)
 
 
 # --- permutation-invariance: row order does not move the plotted-table hash ---

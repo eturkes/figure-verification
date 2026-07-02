@@ -13,8 +13,6 @@ the count-exempt position-aware unit lineage (terminating + sound on reused outp
 Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
 """
 
-import csv
-import io
 import json
 import tempfile
 from pathlib import Path
@@ -26,6 +24,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from msgspec import DecodeError, ValidationError
 
+from corpus import csv_bytes, numeric_cell, string_cell
 from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
@@ -134,12 +133,12 @@ def test_count_derived_channel_is_unit_exempt() -> None:
     # A count-derived quantitative channel is dimensionless, so the unit check exempts it even
     # though its count source (region, a string) carries no unit. Run end-to-end over the real
     # sales.csv so binding + recompute + the unit check's source-None arm all fire on a PASS.
-    csv_bytes = (_DATA / "sales.csv").read_bytes()
+    raw = (_DATA / "sales.csv").read_bytes()  # `raw`, not `csv_bytes`: corpus keeps that name
     spec = decode_spec(
         msgspec.json.encode(
             {
                 "version": "vplot-0.1",
-                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(csv_bytes)},
+                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(raw)},
                 "transform": [
                     {"op": "group_by", "keys": ["month"]},
                     {
@@ -166,12 +165,12 @@ def test_count_sum_chain_channel_is_unit_exempt() -> None:
     # A count->sum chain stays dimensionless: count(region) as c, then sum(c) as cc. The unit
     # check must trace cc back THROUGH the sum to the count (not stop at c) and exempt it. Run
     # end-to-end so the multi-aggregate backward walk fires inside verify, not only unit_source.
-    csv_bytes = (_DATA / "sales.csv").read_bytes()
+    raw = (_DATA / "sales.csv").read_bytes()  # `raw`, not `csv_bytes`: corpus keeps that name
     spec = decode_spec(
         msgspec.json.encode(
             {
                 "version": "vplot-0.1",
-                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(csv_bytes)},
+                "dataset": {"name": "sales.csv", "hash": canon.hash_dataset(raw)},
                 "transform": [
                     {"op": "group_by", "keys": ["month"]},
                     {
@@ -563,40 +562,29 @@ _PROP_SPEC = decode_spec(
 )
 
 
-def _scale2(units: int) -> str:
-    # Exact scale-2 decimal text via integer arithmetic (no float); ingest coerces cleanly.
-    sign = "-" if units < 0 else ""
-    mag = abs(units)
-    return f"{sign}{mag // 100}.{mag % 100:02d}"
-
-
-_NUMERIC_OR_NULL = st.integers(min_value=-(10**10), max_value=10**10).map(_scale2) | st.just("")
+# Cell strategies + the CSV writer are the shared tests/corpus.py (every draw ingest-valid).
 _PROP_ROWS = st.lists(
-    st.tuples(st.text(st.characters(codec="utf-8"), max_size=4), _NUMERIC_OR_NULL),
+    st.tuples(string_cell(max_size=4), numeric_cell(2, magnitude=10**10)),
     max_size=6,
 )
 
 
 def _prop_csv(rows: list[tuple[str, str]]) -> bytes:
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(_PROP_HEADER)
-    writer.writerows(rows)
-    return buf.getvalue().encode("utf-8")
+    return csv_bytes(_PROP_HEADER, rows)
 
 
 @given(rows=_PROP_ROWS)
 def test_verify_inlines_exactly_the_recomputation(rows: list[tuple[str, str]]) -> None:
-    csv_bytes = _prop_csv(rows)
-    live_hash = canon.hash_dataset(csv_bytes)
+    raw = _prop_csv(rows)  # `raw`, not `csv_bytes`: the corpus import keeps that name
+    live_hash = canon.hash_dataset(raw)
     spec = msgspec.structs.replace(
         _PROP_SPEC, dataset=msgspec.structs.replace(_PROP_SPEC.dataset, hash=live_hash)
     )
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)
-        (data_dir / "t.csv").write_bytes(csv_bytes)
+        (data_dir / "t.csv").write_bytes(raw)
         report = verify(spec, _PROP_MANIFEST, data_dir=data_dir)
     assert report.passed
     assert report.plotted_table is not None
-    expected = evaluate(spec, _PROP_MANIFEST, csv_bytes)
+    expected = evaluate(spec, _PROP_MANIFEST, raw)
     assert canon.hash_table(report.plotted_table) == canon.hash_table(expected)
