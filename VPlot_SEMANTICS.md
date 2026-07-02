@@ -230,8 +230,10 @@ overflow, both sites pinned by tests), never a silent divergence.
 ## Open (resolve when the layer lands)
 
 - RESOLVED (M1.6): filter-literal STRINGS stay length-bound (≤ 128) + byte-faithful — control
-  chars (NL/CR/TAB/NUL/U+2028) are admitted and handled at DISCLOSURE time (`badge_html`
-  `html.escape(quote=True)`; the offline HTML view escapes every `<` → U+003C). Forbid-pattern
+  chars (NL/CR/TAB/NUL/U+2028) are admitted and handled at DISCLOSURE time (`badge_html` renders
+  each literal in a visible INJECTIVE form — int bare, string JSON-quoted ASCII-escaped, so
+  control/format/bidi chars display as `\uXXXX` and two distinct literals never render alike —
+  then `html.escape(quote=True)`; the offline HTML view escapes every `<` → U+003C). Forbid-pattern
   and NFC both rejected: NFC-folding collides specs that select different rows (the M1.4a
   reversal — hash must distinguish exactly what eval's verbatim compare distinguishes), and a
   forbid-pattern would reject valid filters on legitimate control-char cells.

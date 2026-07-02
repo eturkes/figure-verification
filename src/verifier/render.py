@@ -25,6 +25,7 @@ import hashlib
 import html
 import importlib.metadata
 import importlib.resources
+import json
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -210,7 +211,13 @@ def render_svg(vega_lite_json: str) -> str:
     its directory registered at import so the family RESOLVES regardless of the host's system fonts
     (vendoring guarantees availability; it does not prove vl-convert chose our copy over a
     same-named system font -- same-machine metrics are identical either way, and cross-machine SVG
-    identity is not claimed). SVG bytes are reproducible across calls within this pinned build."""
+    identity is not claimed). SVG bytes are reproducible across calls within this pinned build.
+
+    KNOWN TCB quantization (not merely unproven fidelity): the embedded JS runtime parses the
+    inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-double range (integer part
+    past 2**53, or more than ~16 significant digits -- DECIMAL(38) admits both) can DISPLAY
+    rounded; the emitted Vega-Lite JSON and the certified plotted-table hash carry it exactly
+    (POC_SCOPE TCB line; a Vega-safe-numeric render gate is a candidate M2+ hardening)."""
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
 
 
@@ -433,20 +440,35 @@ def _build_certificate(
     )
 
 
+def _literal(value: int | str) -> str:
+    """A disclosed filter literal in its unambiguous DISPLAY form: an int bare, a string
+    JSON-quoted with ASCII-only escaping (json.dumps default). Quoting exposes leading/trailing
+    whitespace and keeps int 5 distinct from string "5"; every control / format / bidi /
+    invisible code point (NUL, newline, TAB, U+2028, a U+202E direction override that would
+    visually reorder the badge, ...) renders as its visible \\uXXXX / \\n escape -- so two
+    distinct literals can never display identically and the disclosure stays AUDITABLE, not
+    merely inert. Display only: the VCert struct carries the raw value."""
+    if isinstance(value, int):
+        return str(value)
+    return json.dumps(value)
+
+
 def badge_html(cert: VCert) -> str:
     """Render a VCert as a static, self-contained HTML fragment for human display. Every
-    model-controlled string (the disclosed filter values -- arbitrary text) is HTML-escaped via
+    model-controlled string (the disclosed filter values -- arbitrary text) is rendered via
+    _literal (a visible, injective ASCII form -- control/format/bidi chars appear as \\uXXXX
+    escapes, so the disclosure is auditable) and then, like every other field, HTML-escaped via
     html.escape(quote=True); the fragment has NO <script>, foreignObject, or other raw-HTML/JS
-    sink, so a control char or U+2028 in a filter value is inert text, never live markup. All
-    other fields (constrained field names, enum cmp/order, sha256 hashes, versions) are escaped
-    uniformly. Pure + deterministic. Non-replayable (signing is M5)."""
+    sink, so no filter-value byte is ever live markup. All other fields (constrained field
+    names, enum cmp/order, sha256 hashes, versions) are escaped uniformly. Pure +
+    deterministic. Non-replayable (signing is M5)."""
 
     def esc(value: object) -> str:
         return html.escape(str(value), quote=True)
 
     checks_items = "".join(f"<li>{esc(name)}</li>" for name in cert.checks_passed)
     filter_items = "".join(
-        f"<li>{esc(f.field)} {esc(f.cmp)} {esc(f.value)}</li>" for f in cert.filters
+        f"<li>{esc(f.field)} {esc(f.cmp)} {esc(_literal(f.value))}</li>" for f in cert.filters
     )
     sort_items = "".join(f"<li>{esc(s.field)} {esc(s.order)}</li>" for s in cert.sorts)
     tcb = cert.tcb

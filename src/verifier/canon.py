@@ -22,7 +22,7 @@ to a library version. The hashes split by purpose:
 Only the table hash is permutation-invariant (M1.4d closes every plot with a total
 sort); the dataset hash deliberately is not. Display metadata (unit/label) lives in
 the manifest, never in a Column, so it never enters the table hash. See memory Stack
-(Hashing) + Determinism invariants; VPlot_SEMANTICS.md is the meaning these realize.
+(Hashing); VPlot_SEMANTICS.md is the meaning these realize.
 """
 
 import hashlib
@@ -49,7 +49,7 @@ _SPEC_ENCODER = msgspec.json.Encoder(order="deterministic")
 
 # --- value model -------------------------------------------------------------
 # A cell is a numeric (Decimal), a temporal/string canonical text (str), or the one
-# null token (None) — no NaN, no float, no bool (memory Determinism invariants).
+# null token (None) — no NaN, no float, no bool (VPlot_SEMANTICS.md section 2).
 type Cell = Decimal | str | None
 
 
@@ -99,8 +99,11 @@ def _format_decimal(value: Decimal, scale: int) -> str:
     """A numeric cell as a fixed-point JSON number token with exactly `scale` fractional
     places, ROUND_HALF_EVEN. The per-value context sets precision = (0 if zero else
     adjusted())+scale+2 AND widens the exponent range to the decimal-module max, so quantize
-    stays total over every finite magnitude (+2 covers a rounding carry; the default Emax/Emin
-    would reject a value whose adjusted exponent exceeds ~1e6, e.g. Decimal("1e1000000")). The
+    is total over every finite magnitude whose needed precision fits decimal.MAX_PREC (~1e18
+    on 64-bit; +2 covers a rounding carry; the default Emax/Emin would already reject ~1e6,
+    e.g. Decimal("1e1000000"), which formats fine here). Past that astronomic bound
+    Context(prec=...) raises a LOUD ValueError (test-pinned) -- unreachable through ingest/
+    eval, whose cells are DECIMAL(38)-bounded; never a silent wrong render. The
     zero clamp is load-bearing: the C decimal impl returns adjusted() == the exponent for a
     zero (not 0), so a "0E+999..." cell would else push precision past MAX_PREC -> Context()
     raises an uncaught ValueError. Negative zero folds to positive so 0 and -0 share a canonical

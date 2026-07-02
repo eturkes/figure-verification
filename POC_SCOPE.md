@@ -38,10 +38,11 @@ quantitative axis includes zero, a quantitative axis carries the unit the truste
 column manifest declares for its field, the declared dataset hash matches the source
 bytes, and only allowlisted ops ever reach the evaluator.
 
-The emitted Vega-Lite carries no data transforms of its own — no encoding-level
-aggregate, bin, stack, impute, or sort, no scale-domain override, no top-level
-`transform`, and implicit stacking and sorting switched off — so the marks show exactly
-the recomputed rows, nothing re-derived downstream.
+The emitted Vega-Lite carries no model-supplied data transforms — no encoding-level
+aggregate, bin, or impute, no scale-domain override, no top-level `transform`; the only
+`stack`/`sort`/`order` keys are the builder's own `null`s, emitted to switch Vega-Lite's
+implicit stacking and sorting OFF — so the marks show the recomputed rows, nothing
+re-derived downstream.
 
 What verification does NOT cover: representativeness or intent. A spec that filters to
 an unflattering-but-real subset, or picks a valid-but-misleading encoding, still passes
@@ -61,3 +62,9 @@ Trusted but NOT formally verified: `vl-convert` and the Vega runtime, SVG
 rasterization, the browser, and the final pixels — trusted to render verified data
 faithfully, not proven to. The claim is about the data-and-spec layer, not the renderer
 or what reaches the screen.
+
+One quantization inside that trusted zone is KNOWN, not merely unproven: the JS runtime
+parses the inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-double range
+(integer part past 2^53, or more than ~16 significant digits — the DECIMAL(38) data model
+admits both) can display rounded, even though the emitted Vega-Lite and the certified
+plotted-table hash carry it exactly.

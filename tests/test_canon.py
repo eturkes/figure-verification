@@ -10,6 +10,7 @@ the canonical bytes; and all four hashes are byte-identical across two PYTHONHAS
 subprocesses.
 """
 
+import decimal
 import hashlib
 import os
 import platform
@@ -141,9 +142,10 @@ def test_format_decimal_half_even_and_precision(value: Decimal, scale: int, rend
 
 
 def test_format_decimal_total_over_extreme_finite_magnitude() -> None:
-    """canon stays total over any finite Decimal: an astronomical magnitude formats without
-    raising InvalidOperation (the per-value context widens the exponent range past the default
-    ~1e6 Emax). Magnitude-bounding the trusted dataset is M1.4b's parse-boundary job."""
+    """canon formats any finite Decimal whose needed precision fits decimal.MAX_PREC: an
+    astronomical magnitude formats without raising InvalidOperation (the per-value context
+    widens the exponent range past the default ~1e6 Emax); past MAX_PREC it raises LOUDLY
+    (the companion test below). Magnitude-bounding the trusted dataset is M1.4b's job."""
     table = Table(columns=(NumericColumn(name="v", scale=0),), rows=((Decimal("1e1000000"),),))
     rendered = serialize_table(table).splitlines()[1]
     assert rendered.startswith("[1") and rendered.endswith("0]")
@@ -156,6 +158,19 @@ def test_format_decimal_total_over_extreme_finite_magnitude() -> None:
         rows=((Decimal("0E+999999999999999999"),),),
     )
     assert serialize_table(huge_zero).splitlines()[1] == "[0.00]"
+
+
+def test_format_decimal_raises_loudly_past_max_prec() -> None:
+    """The totality bound: a NONZERO magnitude whose needed precision (adjusted + scale + 2)
+    exceeds decimal.MAX_PREC (~1e18 on 64-bit) raises ValueError at Context construction —
+    LOUD, never a silent wrong render. Unreachable through ingest/eval, whose cells are
+    DECIMAL(38)-bounded; only a hand-built Table reaches it."""
+    table = Table(
+        columns=(NumericColumn(name="v", scale=0),),
+        rows=((Decimal(f"1E+{decimal.MAX_PREC}"),),),
+    )
+    with pytest.raises(ValueError, match="prec"):
+        serialize_table(table)
 
 
 def test_negative_zero_is_folded() -> None:

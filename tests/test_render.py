@@ -198,6 +198,9 @@ def test_scaled_cell_rejects_non_finite() -> None:
 _VALID_PAIRS: list[tuple[canon.Column, canon.Cell]] = [
     (canon.NumericColumn(name="n", scale=2), Decimal("10.50")),
     (canon.NumericColumn(name="n", scale=0), Decimal(5)),
+    # Past f64-exact range (2**53 + 1): the inlined JSON token stays EXACT (= the hash token);
+    # only the TCB's JS-double parse may display it rounded (disclosed -- POC_SCOPE TCB line).
+    (canon.NumericColumn(name="n", scale=0), Decimal(2**53 + 1)),
     (canon.NumericColumn(name="n", scale=2), Decimal(1)),  # re-quantize up to 1.00
     (canon.NumericColumn(name="n", scale=2), Decimal("1.234")),  # re-quantize down to 1.23
     (canon.NumericColumn(name="n", scale=2), Decimal("-0.00")),  # -0 folds to +0
@@ -838,28 +841,55 @@ def test_badge_html_with_filters_and_sorts() -> None:
     assert "<script" not in badge
 
 
-def test_badge_html_escapes_adversarial_filter_value() -> None:
-    # A model-controlled filter value carrying markup + control chars is escaped to inert text.
-    # chr(0x2028) = U+2028 LINE SEPARATOR: inert in HTML text. Built via chr() rather than a
-    # unicode-escape literal so the source stays pure ASCII -> ruff RUF001 stays silent, and no
-    # Write/Edit JSON transport can decode an escape back into the raw char (which re-triggers it).
-    hostile = "</script><script>alert(1)</script><>&\"'\n" + chr(0x2028)
-    cert = render.VCert(
+def _filter_cert(value: int | str) -> render.VCert:
+    """A minimal cert whose single disclosed filter carries `value` (the badge display tests)."""
+    return render.VCert(
         version="vcert-0.1",
         dataset_hash="sha256:" + "0" * 64,
         spec_hash="sha256:" + "1" * 64,
         plotted_table_hash="sha256:" + "2" * 64,
         manifest_hash="sha256:" + "3" * 64,
         checks_passed=(),
-        filters=(render.DisclosedFilter(field="x", cmp="eq", value=hostile),),
+        filters=(render.DisclosedFilter(field="x", cmp="eq", value=value),),
         sorts=(),
         tcb=render._tcb(),
     )
-    badge = render.badge_html(cert)
+
+
+def test_badge_html_escapes_adversarial_filter_value() -> None:
+    # A model-controlled filter value carrying markup + control chars is escaped to inert text.
+    # chr(0x2028) = U+2028 LINE SEPARATOR: inert in HTML text. Built via chr() rather than a
+    # unicode-escape literal so the source stays pure ASCII -> ruff RUF001 stays silent, and no
+    # Write/Edit JSON transport can decode an escape back into the raw char (which re-triggers it).
+    hostile = "</script><script>alert(1)</script><>&\"'\n" + chr(0x2028)
+    badge = render.badge_html(_filter_cert(hostile))
     assert "<script>" not in badge
     assert "</script>" not in badge
     assert "&lt;script&gt;" in badge
     assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge
+
+
+def test_badge_html_filter_literal_control_chars_visible() -> None:
+    # Disclosure must be AUDITABLE, not merely inert: control / format / bidi code points in a
+    # model-controlled literal (NUL, newline, tab, U+2028, U+202E RIGHT-TO-LEFT OVERRIDE -- which
+    # would visually reorder the badge text) render as visible \uXXXX / \n escapes inside a
+    # JSON-quoted literal, so two distinct literals can never display identically. The raw
+    # chars themselves never reach the HTML.
+    hostile = "a\x00b\nc\td" + chr(0x2028) + "e" + chr(0x202E) + "f"
+    badge = render.badge_html(_filter_cert(hostile))
+    for raw in ("\x00", "\n", "\t", chr(0x2028), chr(0x202E)):
+        assert raw not in badge  # the raw control/format char never reaches the HTML
+    backslash = chr(0x5C)  # built via chr() so this source line stays pure ASCII
+    for code in ("u0000", "n", "t", "u2028", "u202e"):
+        assert backslash + code in badge  # ...its visible backslash-escape does
+    assert "&quot;a" in badge  # JSON-quoted: the literal's bounds are explicit
+
+
+def test_badge_html_int_and_string_literals_display_distinctly() -> None:
+    # int 5 and string "5" are DIFFERENT filter literals (b10's defect class); the badge must
+    # display them distinctly: bare 5 vs JSON-quoted &quot;5&quot;.
+    assert "<li>x eq 5</li>" in render.badge_html(_filter_cert(5))
+    assert "<li>x eq &quot;5&quot;</li>" in render.badge_html(_filter_cert("5"))
 
 
 # --- M1.6d: OPTIONAL offline HTML view (off the cert hash chain) --------------
