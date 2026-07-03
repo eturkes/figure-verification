@@ -3,10 +3,13 @@
 
 create_app builds a fully configured Litestar app from a Settings container: routes
 registered, settings placed on app.state for handlers to read, and the framework body
-cap set from settings.max_body_bytes so oversize bodies are rejected at the edge (413)
-before any handler runs. /health is the liveness probe. Transport only — no
-verification trust lives here (POC_SCOPE service boundary). Every route carries an
-explicit operation_id + summary (M4 Open WebUI maps operationId to the tool name).
+cap set from settings.max_body_bytes. Litestar enforces that cap while the body is
+consumed, so an oversize body raises 413 the moment a handler reads it — M2.2 handlers
+read the raw body first, before any verifier work runs. Adds /health as a liveness
+probe. Transport only — no verification trust lives here (POC_SCOPE service boundary).
+The OpenAPI/schema surface is deliberately off here and owned by M2.4 (deterministic
+OpenAPIConfig + committed golden); the explicit operation_id + summary on each route are
+forward-prep for it (M4 Open WebUI maps operationId to the tool name).
 """
 
 from litestar import Litestar, get
@@ -33,4 +36,7 @@ def create_app(settings: Settings) -> Litestar:
         route_handlers=[health],
         state=State({"settings": settings}),
         request_max_body_size=settings.max_body_bytes,
+        # OpenAPI/schema routes (Swagger, Redoc, openapi.json) are owned by M2.4, which
+        # enables them with a deterministic config + golden; M2.1's surface stays /health.
+        openapi_config=None,
     )
