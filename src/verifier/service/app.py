@@ -7,8 +7,9 @@ settings.max_body_bytes. Transport only: no verification trust lives here (POC_S
 service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
-/certificate/{plot_id} + GET /spec/{spec_id} (M2.3). Both POST handlers read the RAW
-request body via request.body() before any verifier work, so decode_spec's strict decode
+/certificate/{plot_id} + GET /spec/{spec_id} (M2.3), GET /schema/openapi.json (M2.4). Both
+POST handlers read the RAW request body via request.body() before any verifier work, so
+decode_spec's strict decode
 stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, collapsing
 duplicate keys), and Litestar's body cap raises 413 the moment that read exceeds
 settings.max_body_bytes — keeping oversize input off the verifier. verify-and-render stores
@@ -26,9 +27,11 @@ returns None for a verified spec -> 500) answers RFC 9457 application/problem+js
 by the two exception handlers below. Every response carries X-Content-Type-Options: nosniff
 as an app default.
 
-OpenAPI/schema surface stays off here (owned by M2.4's deterministic OpenAPIConfig +
-committed golden); explicit operation_id + summary on each route forward-prep it (M4 Open
-WebUI maps operationId -> tool name).
+The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
+openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
+because it introspects RenderVerdict.verified: Literal[True] and crashes. Explicit
+operation_id + summary on each route feed that document (M4 Open WebUI maps operationId ->
+tool name, reads summary).
 """
 
 import re
@@ -50,6 +53,7 @@ from litestar.status_codes import (
 
 from verifier import __version__
 from verifier.service.models import Problem, RenderVerdict, Verdict
+from verifier.service.openapi import openapi_json_bytes
 from verifier.service.pipeline import verify_and_render, verify_only
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
@@ -158,6 +162,18 @@ def spec_route(spec_id: FromPath[str], state: State) -> Response[bytes]:
     return _fetch_artifact(spec_id, store.spec)
 
 
+@get(
+    "/schema/openapi.json",
+    operation_id="openapiSchema",
+    summary="Fetch the service's hand-authored OpenAPI 3.1 document",
+    sync_to_thread=False,
+)
+def openapi_route() -> Response[bytes]:
+    """Serve the hand-authored OpenAPI 3.1 document (its committed canonical bytes verbatim).
+    Litestar's auto-gen stays off — see create_app's openapi_config note."""
+    return Response(openapi_json_bytes(), media_type="application/json", status_code=HTTP_200_OK)
+
+
 def _problem_response(status: int, detail: str) -> Response[Problem]:
     """An RFC 9457 application/problem+json response (transport/server faults only). Carries the
     nosniff default explicitly — layered response_headers do not reach exception responses."""
@@ -201,14 +217,17 @@ def create_app(settings: Settings) -> Litestar:
             verify_and_render_route,
             certificate_route,
             spec_route,
+            openapi_route,
         ],
         state=State({"settings": settings, "store": store}),
         request_max_body_size=settings.max_body_bytes,
         # nosniff on every response: the GETs and render serve stored/JSON-embedded bytes, and
         # the M1 hardening note keeps nosniff on any served artifact (M4 will add CSP for HTML).
         response_headers=[_NOSNIFF],
-        # OpenAPI/schema routes (Swagger, Redoc, openapi.json) are owned by M2.4, which
-        # adds a deterministic config + golden; the surface here stays the routes above.
+        # Litestar's OpenAPI auto-gen stays OFF: it introspects response models via
+        # msgspec.inspect, which raises on RenderVerdict.verified: Literal[True] (the M2.3
+        # never-a-chart pin). The 3.1 document is hand-authored (service/openapi.py) and
+        # served verbatim by openapi_route above.
         openapi_config=None,
         exception_handlers={
             HTTPException: _http_exception_handler,

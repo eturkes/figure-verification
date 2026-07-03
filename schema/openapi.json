@@ -1,0 +1,877 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "verifier",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Liveness and version probe",
+        "responses": {
+          "200": {
+            "description": "The service is live; reports the running package version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify-only": {
+      "post": {
+        "operationId": "verifyOnly",
+        "summary": "Verify a VPlot spec and return a structured verdict",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VPlotSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The verification verdict (verified, decoded-but-failed, or a decode failure) — never a chart.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Verdict"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeded the configured size cap.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The verifier hit an internal operator-config fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify-and-render": {
+      "post": {
+        "operationId": "verifyAndRender",
+        "summary": "Verify a VPlot spec and, only if verified, render the certified chart",
+        "parameters": [
+          {
+            "name": "include_html",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VPlotSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A RenderVerdict with the certified chart on a passing verdict, or a plain Verdict on a failing one — never a chart on an unverified outcome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RenderVerdict"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Verdict"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeded the configured size cap.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The verifier hit an internal operator-config fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/certificate/{plot_id}": {
+      "get": {
+        "operationId": "getCertificate",
+        "summary": "Fetch a stored verified-plot certificate by plot_id",
+        "parameters": [
+          {
+            "name": "plot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stored provenance certificate's canonical bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VCert"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/spec/{spec_id}": {
+      "get": {
+        "operationId": "getSpec",
+        "summary": "Fetch a stored verified spec's canonical bytes by spec_id",
+        "parameters": [
+          {
+            "name": "spec_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stored verified spec's canonical bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VPlotSpec"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VPlotSpec": {
+        "title": "VPlotSpec",
+        "type": "object",
+        "properties": {
+          "version": {
+            "enum": [
+              "vplot-0.1"
+            ]
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Dataset"
+          },
+          "transform": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Select"
+                },
+                {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupBy"
+                },
+                {
+                  "$ref": "#/components/schemas/Aggregate"
+                },
+                {
+                  "$ref": "#/components/schemas/Sort"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "select": "#/components/schemas/Select",
+                  "filter": "#/components/schemas/Filter",
+                  "group_by": "#/components/schemas/GroupBy",
+                  "aggregate": "#/components/schemas/Aggregate",
+                  "sort": "#/components/schemas/Sort"
+                }
+              }
+            },
+            "maxItems": 64
+          },
+          "mark": {
+            "enum": [
+              "bar",
+              "line",
+              "scatter"
+            ]
+          },
+          "encoding": {
+            "$ref": "#/components/schemas/Encoding"
+          }
+        },
+        "required": [
+          "version",
+          "dataset",
+          "transform",
+          "mark",
+          "encoding"
+        ],
+        "additionalProperties": false
+      },
+      "Dataset": {
+        "title": "Dataset",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._-]*\\.csv$"
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^(?!.*[\\r\\n])sha256:[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "name",
+          "hash"
+        ],
+        "additionalProperties": false
+      },
+      "Select": {
+        "title": "Select",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "select"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "maxItems": 64,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "op",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "Filter": {
+        "title": "Filter",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "filter"
+            ]
+          },
+          "field": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "cmp": {
+            "enum": [
+              "eq",
+              "ge",
+              "gt",
+              "le",
+              "lt",
+              "ne"
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "maxLength": 128
+              }
+            ]
+          }
+        },
+        "required": [
+          "op",
+          "field",
+          "cmp",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "GroupBy": {
+        "title": "GroupBy",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "group_by"
+            ]
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "maxItems": 32,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "op",
+          "keys"
+        ],
+        "additionalProperties": false
+      },
+      "Aggregate": {
+        "title": "Aggregate",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "aggregate"
+            ]
+          },
+          "measures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Measure"
+            },
+            "maxItems": 32,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "op",
+          "measures"
+        ],
+        "additionalProperties": false
+      },
+      "Measure": {
+        "title": "Measure",
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "fn": {
+            "enum": [
+              "count",
+              "max",
+              "mean",
+              "min",
+              "sum"
+            ]
+          },
+          "as": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "required": [
+          "field",
+          "fn",
+          "as"
+        ],
+        "additionalProperties": false
+      },
+      "Sort": {
+        "title": "Sort",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "sort"
+            ]
+          },
+          "by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SortKey"
+            },
+            "maxItems": 32,
+            "minItems": 1
+          }
+        },
+        "required": [
+          "op",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "SortKey": {
+        "title": "SortKey",
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "order": {
+            "enum": [
+              "ascending",
+              "descending"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "order"
+        ],
+        "additionalProperties": false
+      },
+      "Encoding": {
+        "title": "Encoding",
+        "type": "object",
+        "properties": {
+          "x": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "y": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Channel"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      },
+      "Channel": {
+        "title": "Channel",
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "type": {
+            "enum": [
+              "nominal",
+              "ordinal",
+              "quantitative",
+              "temporal"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "CheckResult": {
+        "title": "CheckResult",
+        "description": "One blocking check's verdict. `check` is the dotted name; `severity` is a single\nreserved value (advisory tiers are future work), so `passed` consults `status` only.",
+        "type": "object",
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "fail",
+              "pass"
+            ]
+          },
+          "severity": {
+            "enum": [
+              "blocking"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "status",
+          "severity",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "DisclosedFilter": {
+        "title": "DisclosedFilter",
+        "description": "One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary\ntext within FilterValue bounds) -> badge_html HTML-escapes it.",
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "cmp": {
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "cmp",
+          "value"
+        ]
+      },
+      "DisclosedSort": {
+        "title": "DisclosedSort",
+        "description": "One applied sort key, disclosed in the cert (flattened across all sort ops in order).",
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "order": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "order"
+        ]
+      },
+      "Problem": {
+        "title": "Problem",
+        "description": "RFC 9457 problem detail for a transport or server-config fault.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "default": "about:blank"
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "detail"
+        ]
+      },
+      "Tcb": {
+        "title": "Tcb",
+        "description": "The trusted computing base disclosed for the rendered SVG's provenance, stamped into the\nVCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed\ninto the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the\ninstalled distribution version; vl_version the pinned Vega-Lite; font_family +\nvendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not\nproven to select it over a same-named system font -- render_svg documents the same scope).",
+        "type": "object",
+        "properties": {
+          "canon_version": {
+            "type": "string"
+          },
+          "python": {
+            "type": "string"
+          },
+          "msgspec": {
+            "type": "string"
+          },
+          "unidata": {
+            "type": "string"
+          },
+          "vl_convert_python": {
+            "type": "string"
+          },
+          "vl_version": {
+            "type": "string"
+          },
+          "font_family": {
+            "type": "string"
+          },
+          "vendored_font_sha256": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "canon_version",
+          "python",
+          "msgspec",
+          "unidata",
+          "vl_convert_python",
+          "vl_version",
+          "font_family",
+          "vendored_font_sha256"
+        ]
+      },
+      "VCert": {
+        "title": "VCert",
+        "description": "A VPlot v0.1 provenance certificate: the four canonical hashes, the passed checks, the\ndisclosed applied filters/sorts, and the disclosed render TCB. Non-replayable (M5 adds\nsigning/replay). Output record, never decoded from untrusted input.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "dataset_hash": {
+            "type": "string"
+          },
+          "spec_hash": {
+            "type": "string"
+          },
+          "plotted_table_hash": {
+            "type": "string"
+          },
+          "manifest_hash": {
+            "type": "string"
+          },
+          "checks_passed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisclosedFilter"
+            }
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisclosedSort"
+            }
+          },
+          "tcb": {
+            "$ref": "#/components/schemas/Tcb"
+          }
+        },
+        "required": [
+          "version",
+          "dataset_hash",
+          "spec_hash",
+          "plotted_table_hash",
+          "manifest_hash",
+          "checks_passed",
+          "filters",
+          "sorts",
+          "tcb"
+        ]
+      },
+      "Verdict": {
+        "title": "Verdict",
+        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, eval, encoding/label). `verified` is true only when\nevery result passed. Every field is always present, so no omit_defaults is needed.",
+        "type": "object",
+        "properties": {
+          "verified": {
+            "type": "boolean"
+          },
+          "layer": {
+            "enum": [
+              "decode",
+              "verify"
+            ]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckResult"
+            }
+          }
+        },
+        "required": [
+          "verified",
+          "layer",
+          "results"
+        ]
+      },
+      "RenderVerdict": {
+        "title": "RenderVerdict",
+        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, so a\nRenderVerdict cannot be constructed unverified: the never-a-chart pin is enforced by the\ntype system, not merely the pipeline path (a failing verify-and-render returns a plain\nVerdict, which structurally has no svg/html field). A DISTINCT struct rather than a Verdict\nsubclass, so the handler's Verdict | RenderVerdict return stays a real union for mypy and\nthe OpenAPI surface. `plot_id` = SHA-256 hexdigest\nof the certificate's canonical bytes (render.vcert_bytes); `spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex, so plot_id <-> spec_id is 1:1). The four *_hash fields are the\ncertificate's verbatim `sha256:`-prefixed digests. `html` (omitted when absent via\nomit_defaults) carries the offline view only under include_html=true.",
+        "type": "object",
+        "properties": {
+          "verified": {
+            "const": true
+          },
+          "layer": {
+            "enum": [
+              "decode",
+              "verify"
+            ]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckResult"
+            }
+          },
+          "plot_id": {
+            "type": "string"
+          },
+          "spec_id": {
+            "type": "string"
+          },
+          "dataset_hash": {
+            "type": "string"
+          },
+          "spec_hash": {
+            "type": "string"
+          },
+          "plotted_table_hash": {
+            "type": "string"
+          },
+          "manifest_hash": {
+            "type": "string"
+          },
+          "svg": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verified",
+          "layer",
+          "results",
+          "plot_id",
+          "spec_id",
+          "dataset_hash",
+          "spec_hash",
+          "plotted_table_hash",
+          "manifest_hash",
+          "svg"
+        ]
+      }
+    }
+  }
+}

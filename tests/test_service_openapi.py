@@ -1,0 +1,199 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""M2.4 tests: the hand-authored OpenAPI 3.1 document and its /schema/openapi.json route.
+
+The document is assembled from three sources (VPlot defs + introspectable response models +
+hand-derived RenderVerdict), so these tests pin the seams that could silently drift: the
+committed golden byte-for-byte, the version/info/servers surface, an operationId + summary on
+every op (Open WebUI M4 reads them), the documented operations against the app's live routes,
+every internal pointer resolving to a present component (which also proves the discriminator
+mapping was rebased, not just the $ref values), each component as a valid Draft 2020-12 schema,
+and RenderVerdict tracking its struct (with the const NOT bleeding into Verdict's own schema).
+The golden is a drift detector (a uv.lock bump shifting a generated schema, or a route/model
+change), NOT a cross-environment byte promise.
+"""
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+import msgspec
+import msgspec.structs
+import pytest
+from jsonschema import Draft202012Validator
+from litestar.routes import HTTPRoute
+from litestar.testing import TestClient
+
+from verifier import __version__
+from verifier.checks import CheckResult
+from verifier.service.app import create_app
+from verifier.service.models import RenderVerdict, Verdict
+from verifier.service.openapi import openapi_document, openapi_document_text
+from verifier.service.settings import Settings
+
+_DOC = openapi_document()
+_GOLDEN = Path(__file__).parents[1] / "schema" / "openapi.json"
+_HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
+_NOSNIFF = "nosniff"
+
+
+def _operations() -> list[tuple[str, str, dict[str, Any]]]:
+    """Every (path, method, operation) documented in the paths object."""
+    return [
+        (path, method, operation)
+        for path, item in _DOC["paths"].items()
+        for method, operation in item.items()
+        if method in _HTTP_METHODS
+    ]
+
+
+def _collect_pointers(node: Any) -> list[str]:
+    """Every `#/`-prefixed JSON pointer anywhere in node — $ref values AND the Transform
+    union's discriminator.mapping values (both are plain strings)."""
+    if isinstance(node, dict):
+        return [pointer for value in node.values() for pointer in _collect_pointers(value)]
+    if isinstance(node, list):
+        return [pointer for value in node for pointer in _collect_pointers(value)]
+    if isinstance(node, str) and node.startswith("#/"):
+        return [node]
+    return []
+
+
+def test_golden_matches_document() -> None:
+    # The committed golden must equal the freshly assembled document, byte for byte.
+    assert _GOLDEN.read_bytes() == openapi_document_text().encode("utf-8")
+
+
+def test_openapi_version_is_3_1() -> None:
+    assert re.fullmatch(r"3\.1\.\d+", _DOC["openapi"]) is not None
+
+
+def test_info_and_servers_exact() -> None:
+    assert _DOC["info"] == {"title": "verifier", "version": __version__}
+    assert _DOC["servers"] == [{"url": "http://127.0.0.1:8000"}]
+
+
+def test_every_operation_has_operation_id_and_summary() -> None:
+    for path, method, operation in _operations():
+        assert operation["operationId"], f"{method} {path} missing operationId"
+        assert operation["summary"], f"{method} {path} missing summary"
+
+
+def test_operation_ids_unique() -> None:
+    ids = [operation["operationId"] for _, _, operation in _operations()]
+    assert len(ids) == len(set(ids))
+
+
+def test_documented_operations_match_live_routes(tmp_path: Path) -> None:
+    # The paths object must track the app's real HTTP routes: strip Litestar's `:type` param
+    # suffix to OpenAPI form, drop the framework's OPTIONS/HEAD, and drop the self-describing
+    # /schema/openapi.json route (documented nowhere — it would reference itself).
+    app = create_app(Settings(data_dir=tmp_path))
+    live: set[tuple[str, str]] = set()
+    for route in app.routes:
+        if not isinstance(route, HTTPRoute):
+            continue
+        path = re.sub(r":\w+}", "}", route.path)
+        if path == "/schema/openapi.json":
+            continue
+        live |= {(method, path) for method in route.methods if method not in {"OPTIONS", "HEAD"}}
+    documented = {(method.upper(), path) for path, method, _ in _operations()}
+    assert documented == live
+
+
+def test_internal_pointers_resolve() -> None:
+    components = _DOC["components"]["schemas"]
+    pointers = _collect_pointers(_DOC)
+    assert pointers, "expected internal $ref/discriminator pointers"
+    for pointer in pointers:
+        assert pointer.startswith("#/components/schemas/"), pointer
+        assert pointer.removeprefix("#/components/schemas/") in components, pointer
+
+
+@pytest.mark.parametrize("name", sorted(_DOC["components"]["schemas"]))
+def test_component_schema_is_valid_draft_2020_12(name: str) -> None:
+    Draft202012Validator.check_schema(_DOC["components"]["schemas"][name])
+
+
+def test_render_verdict_tracks_struct() -> None:
+    fields = msgspec.structs.fields(RenderVerdict)
+    schema = _DOC["components"]["schemas"]["RenderVerdict"]
+    assert list(schema["properties"]) == [f.encode_name for f in fields]
+    assert schema["required"] == [f.encode_name for f in fields if f.required]
+    assert schema["properties"]["verified"] == {"const": True}
+    # The deepcopy must NOT have bled the const override into Verdict's own schema.
+    assert _DOC["components"]["schemas"]["Verdict"]["properties"]["verified"] == {"type": "boolean"}
+
+
+def test_post_bodies_reference_vplotspec() -> None:
+    for path in ("/verify-only", "/verify-and-render"):
+        body = _DOC["paths"][path]["post"]["requestBody"]
+        assert body["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/VPlotSpec"
+        }
+
+
+def _payload(instance: msgspec.Struct) -> Any:
+    """A response struct as its decoded-JSON form — the exact shape the service encodes."""
+    return json.loads(msgspec.json.encode(instance))
+
+
+def _validator(schema: dict[str, Any]) -> Draft202012Validator:
+    """A validator for `schema` with the document's components mounted at the schema root, so
+    every #/components/schemas/X pointer resolves inside the same document."""
+    return Draft202012Validator({**schema, "components": _DOC["components"]})
+
+
+def test_documented_response_schemas_accept_real_payloads() -> None:
+    # The M1 external-contract lesson: prove the service's REAL encoded structs satisfy the
+    # schemas the document advertises, not merely that those schemas are well-formed. This
+    # guards a silent break — e.g. Verdict gaining forbid_unknown_fields would make a render
+    # payload fail its own documented 200 (anyOf) schema — and it pins anyOf over oneOf, since a
+    # render payload validates against BOTH RenderVerdict and Verdict (oneOf would reject it).
+    fail_verdict = _payload(
+        Verdict(
+            verified=False,
+            layer="decode",
+            results=(
+                CheckResult(check="spec.decode", status="fail", severity="blocking", message="bad"),
+            ),
+        )
+    )
+    render_verdict = _payload(
+        RenderVerdict(
+            verified=True,
+            layer="verify",
+            results=(),
+            plot_id="a" * 64,
+            spec_id="b" * 64,
+            dataset_hash="sha256:" + "c" * 64,
+            spec_hash="sha256:" + "d" * 64,
+            plotted_table_hash="sha256:" + "e" * 64,
+            manifest_hash="sha256:" + "f" * 64,
+            svg="<svg/>",
+        )
+    )
+    paths = _DOC["paths"]
+    render_200 = _validator(
+        paths["/verify-and-render"]["post"]["responses"]["200"]["content"]["application/json"][
+            "schema"
+        ]
+    )
+    assert render_200.is_valid(render_verdict)
+    assert render_200.is_valid(fail_verdict)
+    verify_200 = _validator(
+        paths["/verify-only"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+    )
+    assert verify_200.is_valid(fail_verdict)
+    render_ref = _validator({"$ref": "#/components/schemas/RenderVerdict"})
+    assert render_ref.is_valid(render_verdict)
+    assert not render_ref.is_valid(fail_verdict)
+
+
+def test_served_via_test_client(tmp_path: Path) -> None:
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+        response = client.get("/schema/openapi.json")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    assert response.content == openapi_document_text().encode("utf-8")

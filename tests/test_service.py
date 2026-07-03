@@ -36,13 +36,6 @@ def test_health(tmp_path: Path) -> None:
     assert response.json() == {"status": "ok", "version": __version__}
 
 
-def test_schema_surface_disabled(tmp_path: Path) -> None:
-    # M2.1's surface is /health only; M2.4 turns the OpenAPI/schema routes on deliberately.
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
-        response = client.get("/schema/openapi.json")
-    assert response.status_code == 404
-
-
 def test_settings_defaults(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
     assert settings.host == "127.0.0.1"
