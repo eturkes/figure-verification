@@ -151,8 +151,11 @@ def _id_parameter(name: str) -> dict[str, Any]:
 
 def _paths() -> dict[str, Any]:
     """The five documented operations, each with an explicit operationId + summary (Open WebUI
-    M4 maps operationId -> tool name and reads summary). The self-describing
-    GET /schema/openapi.json route is intentionally NOT listed — the route-drift test drops it."""
+    M4 maps operationId -> tool name and reads summary). Intentionally outside the per-operation
+    contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
+    and framework method responses (405 for a wrong method, and OPTIONS/HEAD — a property of the
+    path, not an operation); an operation-specific validation failure like the 400 below, tied to
+    a documented parameter, IS listed."""
     problems_post = {
         "413": _problem_response("The request body exceeded the configured size cap."),
         "415": _problem_response("The Content-Type was not application/json."),
@@ -220,6 +223,12 @@ def _paths() -> dict[str, Any]:
                                 {"$ref": f"{_COMPONENTS}/Verdict"},
                             ]
                         },
+                    ),
+                    # 400 is this route's own — include_html is the only typed request param, so
+                    # only /verify-and-render can fail Litestar's query coercion. /verify-only
+                    # (raw body, no typed params) never emits it, so it stays out of problems_post.
+                    "400": _problem_response(
+                        "The include_html query parameter was not a valid boolean."
                     ),
                     **problems_post,
                 },

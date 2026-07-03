@@ -26,8 +26,10 @@ from litestar.testing import TestClient
 
 from verifier import __version__
 from verifier.checks import CheckResult
+from verifier.render import VCert
+from verifier.schema import json_schema
 from verifier.service.app import create_app
-from verifier.service.models import RenderVerdict, Verdict
+from verifier.service.models import Problem, RenderVerdict, Verdict
 from verifier.service.openapi import openapi_document, openapi_document_text
 from verifier.service.settings import Settings
 
@@ -110,6 +112,20 @@ def test_internal_pointers_resolve() -> None:
         assert pointer.removeprefix("#/components/schemas/") in components, pointer
 
 
+def test_component_namespaces_disjoint() -> None:
+    # _components() layers VPlot $defs, then the generated response models, then RenderVerdict,
+    # trusting the three name spaces not to collide — a collision would silently overwrite one
+    # (insertion is last-writer-wins), leaving a request/response ref bound to the wrong schema.
+    # Nothing in the assembly guards it, so pin disjointness: a future colliding name fails the
+    # gate instead of corrupting the document.
+    vplot = set(json_schema()["$defs"])
+    _, generated = msgspec.json.schema_components(
+        [Verdict, Problem, CheckResult, VCert], ref_template="#/components/schemas/{name}"
+    )
+    response_names = set(generated) | {"RenderVerdict"}
+    assert vplot.isdisjoint(response_names), vplot & response_names
+
+
 @pytest.mark.parametrize("name", sorted(_DOC["components"]["schemas"]))
 def test_component_schema_is_valid_draft_2020_12(name: str) -> None:
     Draft202012Validator.check_schema(_DOC["components"]["schemas"][name])
@@ -146,10 +162,12 @@ def _validator(schema: dict[str, Any]) -> Draft202012Validator:
 
 def test_documented_response_schemas_accept_real_payloads() -> None:
     # The M1 external-contract lesson: prove the service's REAL encoded structs satisfy the
-    # schemas the document advertises, not merely that those schemas are well-formed. This
-    # guards a silent break — e.g. Verdict gaining forbid_unknown_fields would make a render
-    # payload fail its own documented 200 (anyOf) schema — and it pins anyOf over oneOf, since a
-    # render payload validates against BOTH RenderVerdict and Verdict (oneOf would reject it).
+    # schemas the document advertises, not merely that those schemas are well-formed. It pins
+    # anyOf over oneOf (a render payload validates against BOTH RenderVerdict and Verdict, so
+    # oneOf would reject it) and guards the overlap the anyOf relies on — the
+    # verify_200.is_valid(render_verdict) check below is what fails if Verdict gains
+    # forbid_unknown_fields (additionalProperties:false). Validating the render payload against
+    # the anyOf-200 alone would NOT catch that: its RenderVerdict branch would still pass.
     fail_verdict = _payload(
         Verdict(
             verified=False,
@@ -185,9 +203,36 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
         paths["/verify-only"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
     )
     assert verify_200.is_valid(fail_verdict)
+    # A render payload ALSO satisfies the bare Verdict schema — the overlap the anyOf relies on,
+    # and precisely what breaks if Verdict gains forbid_unknown_fields (additionalProperties:false).
+    assert verify_200.is_valid(render_verdict)
     render_ref = _validator({"$ref": "#/components/schemas/RenderVerdict"})
     assert render_ref.is_valid(render_verdict)
     assert not render_ref.is_valid(fail_verdict)
+    # The hand-written /health 200 schema (the one response schema not msgspec-generated) must
+    # accept the real health body; test_health pins that body to the live route.
+    health_schema = _DOC["paths"]["/health"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert Draft202012Validator(health_schema).is_valid({"status": "ok", "version": __version__})
+
+
+def test_invalid_include_html_returns_documented_400(tmp_path: Path) -> None:
+    # /verify-and-render documents 400 (the only route with a typed query param); a non-boolean
+    # include_html trips Litestar's coercion. Prove the live response matches the documented
+    # status + Problem schema — a real error-body external-contract check.
+    problem_ref = {"$ref": "#/components/schemas/Problem"}
+    responses = _DOC["paths"]["/verify-and-render"]["post"]["responses"]
+    assert responses["400"]["content"]["application/problem+json"]["schema"] == problem_ref
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+        response = client.post(
+            "/verify-and-render?include_html=maybe",
+            content=b"{}",
+            headers={"content-type": "application/json"},
+        )
+    assert response.status_code == 400
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert _validator(problem_ref).is_valid(response.json())
 
 
 def test_served_via_test_client(tmp_path: Path) -> None:
