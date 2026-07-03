@@ -36,6 +36,7 @@ these route-level copies — openapi.py hand-authors the operationIds it serves 
 each handler self-describing and would feed auto-gen if it were ever re-enabled.
 """
 
+import logging
 import re
 from collections.abc import Callable
 from http import HTTPStatus
@@ -59,6 +60,8 @@ from verifier.service.openapi import openapi_json_bytes
 from verifier.service.pipeline import verify_and_render, verify_only
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
+
+_LOGGER = logging.getLogger(__name__)
 
 # A content-addressed artifact id: exactly 64 lowercase hex (a SHA-256 hexdigest). fullmatch
 # confines a path param to this shape, so a wrong-case, short, or traversal id never reaches
@@ -195,15 +198,17 @@ def _http_exception_handler(_request: Request[Any, Any, Any], exc: Exception) ->
 
 
 def _internal_exception_handler(
-    _request: Request[Any, Any, Any], _exc: Exception
+    _request: Request[Any, Any, Any], exc: Exception
 ) -> Response[Problem]:
-    """Render any uncaught exception as a generic 500 problem+json.
+    """Log any uncaught exception, then answer a generic 500 problem+json.
 
     Reached only by an operator-config fault escaping the pipeline (a broken, unreadable,
-    or mispaired trusted manifest); the cause is withheld from the untrusted
-    caller (it surfaces in the server log). The model cannot provoke this path — see the
-    pipeline error split.
+    or mispaired trusted manifest). The handler logs the cause and traceback itself —
+    Litestar does NOT log an exception a custom handler catches, so without this the fault
+    would vanish from every log — then withholds the cause from the untrusted caller. The
+    model cannot provoke this path — see the pipeline error split.
     """
+    _LOGGER.error("unhandled internal error serving a request", exc_info=exc)
     return _problem_response(
         HTTP_500_INTERNAL_SERVER_ERROR, "the verifier encountered an internal error"
     )

@@ -14,6 +14,7 @@ duplicate and the spec would verify).
 """
 
 import json
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -193,6 +194,43 @@ def test_broken_manifest_is_500_problem(tmp_path: Path) -> None:
     body: dict[str, Any] = response.json()
     assert body["status"] == 500
     assert "internal" in body["detail"].lower()  # generic, no internal detail leaked
+
+
+class _ListHandler(logging.Handler):
+    """Collect emitted records. caplog installs its handler on the root logger, but Litestar
+    replaces root's handlers with its own queue handler at startup, so a root-level capture
+    misses everything after the app boots — attach this to the named logger directly instead."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_500_logs_the_withheld_cause(tmp_path: Path) -> None:
+    # The cause is withheld from the caller but MUST reach the server log: Litestar does not
+    # log an exception a custom handler catches, so the handler logs it itself. Without that,
+    # an operator debugging a broken-manifest 500 would have no diagnostic anywhere.
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    (schemas / "sales.json").write_bytes(b"{ not valid json")
+    app = create_app(Settings(data_dir=tmp_path))
+    handler = _ListHandler()
+    logger = logging.getLogger("verifier.service.app")
+    with TestClient(app=app) as client:
+        logger.addHandler(handler)  # after Litestar's startup logging config has run
+        try:
+            raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+            response = client.post("/verify-only", content=raw, headers=_JSON)
+        finally:
+            logger.removeHandler(handler)
+    assert response.status_code == 500
+    assert "not valid json" not in response.text  # the cause never rides the response
+    assert handler.records, "the 500 cause was not logged"
+    assert handler.records[0].levelno == logging.ERROR
+    assert handler.records[0].exc_info is not None  # the traceback (the withheld cause) attached
 
 
 def test_mispaired_manifest_is_500_problem(tmp_path: Path) -> None:
