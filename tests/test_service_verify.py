@@ -63,6 +63,7 @@ def test_good_spec_verifies(client: TestClient[Litestar], entry: dict[str, Any])
     body: dict[str, Any] = response.json()
     assert body["verified"] is True
     assert body["layer"] == "verify"
+    assert body["results"]  # non-empty: the real check set passed through, not a vacuous all([])
     assert all(result["status"] == "pass" for result in body["results"])
 
 
@@ -208,3 +209,20 @@ def test_mispaired_manifest_is_500_problem(tmp_path: Path) -> None:
         response = client.post("/verify-only", content=raw, headers=_JSON)
     assert response.status_code == 500
     assert response.headers["content-type"] == _PROBLEM_JSON
+
+
+def test_manifest_path_not_a_file_is_500_problem(tmp_path: Path) -> None:
+    # A manifest PATH that is a directory (not a regular file) is broken operator config,
+    # not an absent manifest: read_bytes raises IsADirectoryError, which propagates uncaught
+    # to the generic 500 — only a genuine FileNotFoundError absence answers a 200 verdict.
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    (schemas / "sales.json").mkdir()  # a directory where the manifest file is expected
+    app = create_app(Settings(data_dir=tmp_path))
+    with TestClient(app=app) as client:
+        raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+        response = client.post("/verify-only", content=raw, headers=_JSON)
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 500

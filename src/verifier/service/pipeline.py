@@ -9,11 +9,13 @@ no single orchestrator for: decode_spec -> resolve the trusted manifest -> load_
 
 Error split (POC_SCOPE service boundary): every verification outcome is a 200 Verdict —
 including a spec that fails to decode (an expected model failure mode) or names a dataset
-with no manifest (dataset.manifest_available). A BROKEN trusted manifest, or one whose
-declared dataset mispairs with the spec, is operator misconfiguration: load_manifest /
-checks.verify raise, and the exception escapes to the app's 500 handler. The untrusted
-model controls only the spec, so it cannot provoke that 500 — a spec naming a missing
-manifest fails closed as a 200 Verdict, never a raise.
+with no manifest (dataset.manifest_available) — a genuine absence the read reports as
+FileNotFoundError. A trusted manifest that is PRESENT but unloadable (malformed JSON; a
+non-file path raising a directory/permission/symlink-loop error at the read; or one whose
+declared dataset mispairs with the spec) is operator misconfiguration: the read,
+load_manifest, or checks.verify raises, escaping to the app's 500 handler. The untrusted
+model controls only the dataset name, not what the trusted data_dir holds at that path, so
+it cannot provoke that 500 — a name with no manifest fails closed as a 200 Verdict.
 
 Outcome is internal, never serialized: on a passed stage it carries the decoded spec and
 the manifest bytes forward so M2.3's render path reuses them without re-deriving.
@@ -59,7 +61,12 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
     manifest_path = settings.data_dir / "schemas" / f"{Path(spec.dataset.name).stem}.json"
     try:
         manifest_bytes = manifest_path.read_bytes()
-    except OSError:
+    except FileNotFoundError:
+        # ENOENT = genuine absence (this dataset is simply not provisioned; a dangling
+        # symlink resolves here too) -> the 200 verdict the model expects. Any OTHER
+        # filesystem fault (a directory or regular-file collision, a permission or
+        # symlink-loop error) is broken operator config like a malformed manifest, so it
+        # propagates uncaught -> the app's generic 500.
         message = f"no trusted manifest for dataset {spec.dataset.name!r}"
         verdict = _single("dataset.manifest_available", message, layer="verify")
         return Outcome(verdict=verdict, spec=spec)

@@ -14,7 +14,8 @@ exceeds settings.max_body_bytes — keeping oversize input off the verifier.
 
 Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
 is a 200 Verdict; only transport misuse (wrong content-type -> 415, oversize -> 413,
-wrong method -> 405) or a server-config fault (a broken trusted manifest -> 500) answers
+wrong method -> 405) or a server-config fault (a broken or unreadable trusted manifest ->
+500) answers
 RFC 9457 application/problem+json, shaped by the two exception handlers below.
 
 OpenAPI/schema surface stays off here (owned by M2.4's deterministic OpenAPIConfig +
@@ -93,8 +94,8 @@ def _internal_exception_handler(
 ) -> Response[Problem]:
     """Render any uncaught exception as a generic 500 problem+json.
 
-    Reached only by an operator-config fault escaping the pipeline (a broken trusted
-    manifest, or one mispaired with the spec); the cause is withheld from the untrusted
+    Reached only by an operator-config fault escaping the pipeline (a broken, unreadable,
+    or mispaired trusted manifest); the cause is withheld from the untrusted
     caller (it surfaces in the server log). The model cannot provoke this path — see the
     pipeline error split.
     """
