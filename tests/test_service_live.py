@@ -70,12 +70,16 @@ def test_live_socket_health_and_verify(tmp_path: Path) -> None:
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
     stderr_path = tmp_path / "server.stderr"
+    # Inherit the parent environment but drop PYTHONPATH, so the child can resolve `verifier`
+    # only through the venv install -- a pass then proves cwd- AND path-independent resolution
+    # (an inherited src/ on PYTHONPATH could otherwise satisfy the import for the wrong reason).
     env = {
         **os.environ,
         "VERIFIER_DATA_DIR": str(_DATA),
         "VERIFIER_HOST": "127.0.0.1",
         "VERIFIER_PORT": str(port),
     }
+    env.pop("PYTHONPATH", None)
     with stderr_path.open("wb") as stderr_file:
         proc = subprocess.Popen(
             [sys.executable, "-m", "verifier.service"],
@@ -101,6 +105,13 @@ def test_live_socket_health_and_verify(tmp_path: Path) -> None:
             body = verdict.json()
             assert body["verified"] is True
             assert body["layer"] == "verify"
+            # Prove the trusted pipeline really ran over the socket, not a hardcoded 200:
+            # dataset.hash_matches_source passes only once the verifier has read and hashed the
+            # bound CSV, so its presence among the passing results certifies a real recompute.
+            results = body["results"]
+            assert results, "verify stage returned no checks"
+            assert all(result["status"] == "pass" for result in results)
+            assert "dataset.hash_matches_source" in {result["check"] for result in results}
         finally:
             proc.terminate()
             try:
