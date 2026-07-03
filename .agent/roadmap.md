@@ -23,7 +23,7 @@ Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, A
 
 ---
 
-## M2 — Verifier API service   (IN-PROGRESS)
+## M2 — Verifier API service   (IMPLEMENTED)
 
 Wrap the M1 library as a local HTTP service (seed 8 + seed 1's API slice): an untrusted caller submits a VPlot spec; the service runs the trusted pipeline and answers a structured verdict, rendering only on pass. Claim boundary UNCHANGED — the service is TRANSPORT around the verifier; POC_SCOPE's modest claim + TCB line hold verbatim; `data_dir` stays trusted operator config (checks.py TOCTOU precondition). Library seam (mapped): no verify-only orchestrator exists — service strings `decode_spec → resolve manifest → load_manifest → checks.verify` for structured detail; `render.render()` returns `None` on fail BY DESIGN (drops detail) → on a passed verdict the service calls `render()`, accepting its internal deterministic re-verify (defense in depth, small CSVs). Core modules stay import-free of the service subpackage (one-way dep).
 
@@ -37,7 +37,7 @@ Wrap the M1 library as a local HTTP service (seed 8 + seed 1's API slice): an un
 | M2.2 | Verdict models + pipeline + POST /verify-only (corpus-driven suite) | DONE | 86% 173K/200K |
 | M2.3 | POST /verify-and-render + bounded store + certificate/spec GETs | DONE | 87% 175K/200K |
 | M2.4 | Hand-authored OpenAPI 3.1 document + golden + tests | DONE | 77% 154K/200K |
-| M2.5 | Live-socket smoke + POC_SCOPE service section + M2 close-out | OPEN | |
+| M2.5 | Live-socket smoke + POC_SCOPE service section + M2 close-out | DONE | 52% 105K/200K |
 
 ### M2.1 — Service scaffold
 Smallest unit first = the dep probe (M1 lesson), though litestar/uvicorn are pure-Python → low risk.

@@ -68,3 +68,55 @@ parses the inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-dou
 (integer part past 2^53, or more than ~16 significant digits — the DECIMAL(38) data model
 admits both) can display rounded, even though the emitted Vega-Lite and the certified
 plotted-table hash carry it exactly.
+
+## Service boundary
+
+`verifier.service` (M2) wraps this same verifier in a local HTTP transport — one uvicorn
+worker on `127.0.0.1`. It adds no trust of its own: every request runs the pipeline above
+unchanged and the service only serializes the result, so the verification claim and the
+trusted-computing-base line both hold verbatim. `data_dir` stays trusted operator config,
+supplied through the environment before the process binds — never anything a caller sends.
+
+The transport reports two kinds of outcome and never confuses them:
+
+- A **verification outcome** — verified, decoded-but-failed a check, or failed to decode at
+  all — is a `200` carrying a structured verdict. A decode failure is an expected model
+  failure mode, not a transport error, so it rides the verdict envelope like any other
+  blocked spec; a chart is attached only when the verdict is verified, never otherwise.
+- **Transport misuse or a server-config fault** — a wrong `Content-Type` (415), an oversize
+  body (413), a wrong method (405), an unknown or malformed artifact id (404), or a broken
+  trusted manifest (500) — answers an RFC 9457 `application/problem+json` document. The model
+  cannot provoke the 500 path; it signals operator misconfiguration, and its cause stays in
+  the server log, never in the caller's response.
+
+Verified renders and their certificates live in a bounded in-memory store (oldest evicted
+first), addressable by the content-derived `plot_id` and `spec_id` the render returns;
+nothing is written to disk. Durable on-disk provenance and replay are deferred (M5).
+
+Endpoints, exercised with `curl` (defaults: loopback, port 8000):
+
+```sh
+# start the service (binds 127.0.0.1:8000)
+VERIFIER_DATA_DIR=data python -m verifier.service
+
+# liveness and running version
+curl -sS http://127.0.0.1:8000/health
+
+# verify a spec, get a structured verdict (never a chart)
+curl -sS http://127.0.0.1:8000/verify-only \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/good_specs/g01_total_revenue_by_month.json
+
+# verify and, only if verified, render the certified chart
+# (add ?include_html=true for the offline HTML view)
+curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/good_specs/g01_total_revenue_by_month.json
+
+# fetch a stored certificate / spec by the ids a render returned
+curl -sS http://127.0.0.1:8000/certificate/<plot_id>
+curl -sS http://127.0.0.1:8000/spec/<spec_id>
+
+# the hand-authored OpenAPI 3.1 document
+curl -sS http://127.0.0.1:8000/schema/openapi.json
+```
