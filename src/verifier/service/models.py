@@ -40,17 +40,19 @@ class Verdict(msgspec.Struct, frozen=True, kw_only=True):
 class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
     """A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.
 
-    Only ever answered when `verified` is true (a failing verify-and-render returns a plain
-    Verdict, so svg/html keys never appear on an unverified outcome — the never-a-chart pin).
-    A DISTINCT struct rather than a Verdict subclass, so the handler's Verdict | RenderVerdict
-    return stays a real union for mypy and the OpenAPI surface. `plot_id` = SHA-256 hexdigest
+    Only ever answered when `verified` is true — the field is typed `Literal[True]`, so a
+    RenderVerdict cannot be constructed unverified: the never-a-chart pin is enforced by the
+    type system, not merely the pipeline path (a failing verify-and-render returns a plain
+    Verdict, which structurally has no svg/html field). A DISTINCT struct rather than a Verdict
+    subclass, so the handler's Verdict | RenderVerdict return stays a real union for mypy and
+    the OpenAPI surface. `plot_id` = SHA-256 hexdigest
     of the certificate's canonical bytes (render.vcert_bytes); `spec_id` = `spec_hash` minus its
     `sha256:` prefix (bare 64-hex, so plot_id <-> spec_id is 1:1). The four *_hash fields are the
     certificate's verbatim `sha256:`-prefixed digests. `html` (omitted when absent via
     omit_defaults) carries the offline view only under include_html=true.
     """
 
-    verified: bool
+    verified: Literal[True]
     layer: Literal["decode", "verify"]
     results: tuple[CheckResult, ...]
     plot_id: str

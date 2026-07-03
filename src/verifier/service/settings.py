@@ -6,8 +6,9 @@ structs): the operator supplies it through the environment before the process bi
 data_dir stays trusted config — checks.py path confinement rests on it (the TOCTOU
 precondition documented there). Defaults bind loopback only and cap bodies far under
 the VPlot schema's real size, and __post_init__ rejects a non-positive max_body_bytes
-(which the framework would otherwise read as an unlimited body), so a bare or
-misconfigured deploy fails closed rather than exposing the verifier. The field defaults
+(which the framework would otherwise read as an unlimited body) or store_cap (which would
+make the artifact store drop every render at once or crash on its first eviction), so a
+bare or misconfigured deploy fails closed rather than exposing the verifier. The field defaults
 and the from_env fallbacks share one set of constants so the two construction paths
 cannot drift.
 """
@@ -42,6 +43,11 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         # here on every construction path (direct and from_env).
         if self.max_body_bytes < 1:
             msg = f"max_body_bytes must be >= 1, got {self.max_body_bytes}"
+            raise ValueError(msg)
+        # A non-positive store_cap makes the bounded artifact store drop every render at
+        # once (cap 0) or crash on its first eviction (cap < 0); reject it here too.
+        if self.store_cap < 1:
+            msg = f"store_cap must be >= 1, got {self.store_cap}"
             raise ValueError(msg)
 
     @classmethod

@@ -13,7 +13,9 @@ stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, c
 duplicate keys), and Litestar's body cap raises 413 the moment that read exceeds
 settings.max_body_bytes — keeping oversize input off the verifier. verify-and-render stores
 each verified render in the app's bounded ArtifactStore; the GETs serve the stored canonical
-bytes verbatim (404 problem+json for a malformed or absent id alike).
+bytes verbatim (a malformed or absent id both answer the same 404 problem+json at the store
+lookup — no leak of which ids were stored; a path that does not match the id route shape gets
+Litestar's own 404 instead, still problem+json, still disclosing nothing about the store).
 
 Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain

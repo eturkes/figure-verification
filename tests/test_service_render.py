@@ -215,6 +215,25 @@ def test_verify_and_render_wrong_content_type_415(client: TestClient[Litestar]) 
     assert response.headers["x-content-type-options"] == _NOSNIFF
 
 
+# --- a decodable spec for an unprovisioned dataset -> 200 Verdict, no chart --
+def test_verify_and_render_manifest_unavailable_is_verdict(tmp_path: Path) -> None:
+    # A decodable good spec whose dataset has no trusted manifest under data_dir fails closed as
+    # a 200 Verdict — never a chart — through verify-and-render's early return on an unverified
+    # outcome (a real data-domain path that 100% branch coverage does not otherwise pin here).
+    app = create_app(Settings(data_dir=tmp_path))
+    with TestClient(app=app) as no_manifest_client:
+        raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+        response = no_manifest_client.post("/verify-and-render", content=raw, headers=_JSON)
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    assert b'"svg"' not in response.content
+    assert b'"html"' not in response.content
+    body: dict[str, Any] = response.json()
+    assert body["verified"] is False
+    assert body["layer"] == "verify"
+    assert [result["check"] for result in body["results"]] == ["dataset.manifest_available"]
+
+
 # --- the render-None invariant break -> generic 500 --------------------------
 def test_render_none_after_verified_is_500(
     client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch

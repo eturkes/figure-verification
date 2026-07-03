@@ -66,6 +66,14 @@ def test_settings_rejects_nonpositive_body_cap(tmp_path: Path) -> None:
             Settings(data_dir=tmp_path, max_body_bytes=bad)
 
 
+def test_settings_rejects_nonpositive_store_cap(tmp_path: Path) -> None:
+    # A non-positive store_cap makes the artifact store drop every render (cap 0) or crash on
+    # its first eviction (cap < 0); __post_init__ rejects it like the body cap.
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="store_cap"):
+            Settings(data_dir=tmp_path, store_cap=bad)
+
+
 def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in _VERIFIER_ENV:
         monkeypatch.delenv(name, raising=False)
@@ -95,6 +103,16 @@ def test_from_env_rejects_nonpositive_body_cap(
     monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "0")
     with pytest.raises(ValueError, match="max_body_bytes"):
+        Settings.from_env()
+
+
+def test_from_env_rejects_nonpositive_store_cap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The store_cap guard fires through the env path too, not just direct construction.
+    monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VERIFIER_STORE_CAP", "0")
+    with pytest.raises(ValueError, match="store_cap"):
         Settings.from_env()
 
 
