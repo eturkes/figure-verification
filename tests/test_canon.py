@@ -36,6 +36,7 @@ from verifier.canon import (
     hash_table,
     runtime_versions,
     serialize_table,
+    spec_bytes,
 )
 from verifier.schema import VPlotSpec, decode_spec
 
@@ -269,6 +270,16 @@ def test_hash_spec_is_sha256_prefixed_and_stable_across_reencode() -> None:
 
 def test_hash_spec_flips_on_edit() -> None:
     assert hash_spec(_spec(mark="bar")) != hash_spec(_spec(mark="line"))
+
+
+def test_spec_bytes_is_deterministic_and_backs_hash_spec() -> None:
+    """spec_bytes is the public seam the service serves + hash_spec digests: byte-stable, a
+    lossless round-trip, and exactly what hash_spec tags-and-hashes (non-circular restatement)."""
+    encoded = spec_bytes(_spec())
+    assert spec_bytes(_spec()) == encoded  # byte-stable across a fresh decode+encode
+    assert decode_spec(encoded) == _spec()  # canonical bytes round-trip to an equal spec
+    tag = f"vplot-spec/{canon.CANON_VERSION}\n".encode()
+    assert hash_spec(_spec()) == "sha256:" + hashlib.sha256(tag + encoded).hexdigest()
 
 
 def test_hash_spec_distinguishes_nfc_variants() -> None:

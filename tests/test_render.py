@@ -654,6 +654,15 @@ def test_certificate_hashes_equal_canonical() -> None:
     assert cert.manifest_hash == canon.hash_manifest(_manifest_bytes(_G01))
 
 
+def test_vcert_bytes_is_deterministic_and_round_trips() -> None:
+    """vcert_bytes is the public seam the service content-addresses (plot_id) and serves: the
+    same VCert encodes byte-identically and the bytes decode back to an equal certificate."""
+    cert = _render(_G01).certificate
+    encoded = render.vcert_bytes(cert)
+    assert render.vcert_bytes(cert) == encoded  # byte-stable
+    assert msgspec.json.decode(encoded, type=render.VCert) == cert
+
+
 def test_certificate_manifest_hash_flips_on_edit() -> None:
     # A different manifest byte-string yields a different manifest hash in the cert.
     cert = _render(_G01).certificate

@@ -365,6 +365,20 @@ class VCert(msgspec.Struct, frozen=True, kw_only=True):
     tcb: Tcb
 
 
+# canon's determinism family (order="deterministic"): definition-order struct fields, sorted
+# dict/set keys (the cert has neither), no Unicode normalization. The VCert holds only str /
+# tuple / nested-struct fields (filter values are int | str, never float), so the encode is
+# total and deterministic in-process for the pinned build.
+_CERT_ENCODER = msgspec.json.Encoder(order="deterministic")
+
+
+def vcert_bytes(cert: VCert) -> bytes:
+    """The VCert's deterministic canonical bytes (_CERT_ENCODER, canon's family). The public
+    seam the service content-addresses: it hashes these bytes to the plot_id and serves them
+    verbatim as the certificate artifact. The same VCert yields byte-identical output."""
+    return _CERT_ENCODER.encode(cert)
+
+
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
     """A verified render: the self-contained SVG plus its provenance certificate, and -- only when
     render(include_html=True) requests it -- an optional fully offline HTML view (OFF the cert hash

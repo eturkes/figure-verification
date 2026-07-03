@@ -189,14 +189,23 @@ def hash_table(table: Table) -> str:
     return _digest("table", serialize_table(table).encode("utf-8"))
 
 
+def spec_bytes(spec: VPlotSpec) -> bytes:
+    """The validated spec's deterministic canonical bytes: a byte-faithful msgspec re-encode
+    (finding 8) that folds JSON surface noise (whitespace, key order, escaping) to one form
+    with NO Unicode normalization. The public seam over _SPEC_ENCODER — hash_spec digests
+    these bytes, and the service serves them verbatim as the canonical spec artifact
+    (content-addressed by hash_spec's digest), so both stay off the private encoder."""
+    return _SPEC_ENCODER.encode(spec)
+
+
 def hash_spec(spec: VPlotSpec) -> str:
-    """The validated spec's hash: a deterministic msgspec re-encode (finding 8), domain-tagged.
+    """The validated spec's hash: spec_bytes' deterministic re-encode (finding 8), domain-tagged.
     Byte-faithful (NO Unicode normalization): the evaluator + DuckDB oracle compare string
     filters verbatim by UTF-8 code-point order (VPlot_SEMANTICS sections 3/4/10), so the hash must
     distinguish exactly what they distinguish — folding combining-mark variants here would
     collide specs that select different rows. The re-encode still canonicalizes JSON surface
     noise (whitespace, key order, escaping) to one form."""
-    return _digest("spec", _SPEC_ENCODER.encode(spec))
+    return _digest("spec", spec_bytes(spec))
 
 
 def hash_manifest(manifest_bytes: bytes) -> str:

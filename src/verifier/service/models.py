@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Serialized response models for the verifier service (M2.2).
 
-Two shapes cross the transport boundary. Verdict is the verification-outcome envelope,
+Three shapes cross the transport boundary. Verdict is the verification-outcome envelope,
 answered HTTP 200 whether the spec verified, decoded but failed a check, or failed to
 decode (a decode failure is an expected model failure mode M3 meters, not transport
-misuse). Problem is the RFC 9457 application/problem+json body the app's exception
-handlers emit for transport misuse or a server-config fault (wrong content-type, oversize
-body, a broken trusted manifest) — never a verification outcome. CheckResult is reused
-verbatim from the trusted core (verifier.checks); the transport adds no verdict vocabulary
-of its own.
+misuse). RenderVerdict extends that envelope with the render artifacts POST
+/verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
+content-addressed ids, and the four cert-verbatim hashes); a FAILING verify-and-render
+answers a plain Verdict, so a chart never rides an unverified outcome. Problem is the RFC
+9457 application/problem+json body the app's exception handlers emit for transport misuse
+or a server-config fault (wrong content-type, oversize body, a broken trusted manifest) —
+never a verification outcome. CheckResult is reused verbatim from the trusted core
+(verifier.checks); the transport adds no verdict vocabulary of its own.
 """
 
 from typing import Literal
@@ -17,7 +20,7 @@ import msgspec
 
 from verifier.checks import CheckResult
 
-__all__ = ["Problem", "Verdict"]
+__all__ = ["Problem", "RenderVerdict", "Verdict"]
 
 
 class Verdict(msgspec.Struct, frozen=True, kw_only=True):
@@ -32,6 +35,32 @@ class Verdict(msgspec.Struct, frozen=True, kw_only=True):
     verified: bool
     layer: Literal["decode", "verify"]
     results: tuple[CheckResult, ...]
+
+
+class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
+    """A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.
+
+    Only ever answered when `verified` is true (a failing verify-and-render returns a plain
+    Verdict, so svg/html keys never appear on an unverified outcome — the never-a-chart pin).
+    A DISTINCT struct rather than a Verdict subclass, so the handler's Verdict | RenderVerdict
+    return stays a real union for mypy and the OpenAPI surface. `plot_id` = SHA-256 hexdigest
+    of the certificate's canonical bytes (render.vcert_bytes); `spec_id` = `spec_hash` minus its
+    `sha256:` prefix (bare 64-hex, so plot_id <-> spec_id is 1:1). The four *_hash fields are the
+    certificate's verbatim `sha256:`-prefixed digests. `html` (omitted when absent via
+    omit_defaults) carries the offline view only under include_html=true.
+    """
+
+    verified: bool
+    layer: Literal["decode", "verify"]
+    results: tuple[CheckResult, ...]
+    plot_id: str
+    spec_id: str
+    dataset_hash: str
+    spec_hash: str
+    plotted_table_hash: str
+    manifest_hash: str
+    svg: str
+    html: str | None = None
 
 
 class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):

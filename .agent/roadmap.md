@@ -35,7 +35,7 @@ Wrap the M1 library as a local HTTP service (seed 8 + seed 1's API slice): an un
 |------|-------------|--------|-----|
 | M2.1 | Service scaffold: deps + settings + app factory + /health + runner | DONE | 46% 92K/200K |
 | M2.2 | Verdict models + pipeline + POST /verify-only (corpus-driven suite) | DONE | 86% 173K/200K |
-| M2.3 | POST /verify-and-render + bounded store + certificate/spec GETs | OPEN | |
+| M2.3 | POST /verify-and-render + bounded store + certificate/spec GETs | DONE | 87% 175K/200K |
 | M2.4 | OpenAPI golden + live-socket smoke + POC_SCOPE service section | OPEN | |
 
 ### M2.1 — Service scaffold
