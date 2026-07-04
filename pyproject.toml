@@ -64,7 +64,9 @@ ignore = [
 "tests/**" = ["S101", "PLR2004", "TID251"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["verifier"]
+# model_backend is a repo-root package (the hardware-gated local model server, M3.1b), not
+# under src/ — declare it first-party so its imports sort with verifier's.
+known-first-party = ["verifier", "model_backend"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -79,7 +81,9 @@ ban-relative-imports = "all"
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src", "tests"]
+# model_backend = the repo-root hardware-gated local model server (M3.1b): type-checked
+# under --strict but shipped separately (coverage-excluded, not in the wheel).
+files = ["src", "tests", "model_backend"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
@@ -95,6 +99,15 @@ enable_error_code = [
 # rather than silently type-checking as Any here.
 [[tool.mypy.overrides]]
 module = "jsonschema.*"
+ignore_missing_imports = true
+
+# openvino_genai is the native OpenVINO GenAI runtime, resolved at RUNTIME via PYTHONPATH
+# (the intel-accel env), never pip-installed into the gate venv and shipping no stubs. The
+# model_backend server (hardware-gated, coverage-excluded, unshipped) is its only importer;
+# this override lets `mypy --strict` type-check model_backend portably (openvino_genai -> Any)
+# with the native package absent. The engine isolates the Any behind typed boundaries.
+[[tool.mypy.overrides]]
+module = ["openvino_genai", "openvino_genai.*"]
 ignore_missing_imports = true
 
 # --- tests / coverage --------------------------------------------------------

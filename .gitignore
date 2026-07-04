@@ -18,6 +18,8 @@ htmlcov/
 # uv virtualenvs (per-layer; see global CLAUDE.md)
 .venv/
 .venv-host/
+# Backend model server venv (M3; numpy + web stack, OpenVINO via PYTHONPATH; host-coupled)
+.venv-model/
 
 # Local model weights (M3; downloaded via huggingface_hub, host+container-coupled, large)
 models/
