@@ -32,10 +32,14 @@ __all__ = [
 
 
 class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
-    """One chat message. role in {system,user,assistant}; content is text (this PoC is
-    text-only — a structured/multimodal content array is out of scope)."""
+    """One chat message. role is the closed set {system, user, assistant}, enforced at decode
+    (an unknown role — e.g. a control-token string — is rejected 400, never rendered into the
+    chat template); content is text (this PoC is text-only, no multimodal content array). The
+    set matches this proposer's traffic (the M3.2 client sends system+user, the reply is
+    assistant); widen it if a tool/multimodal role is ever needed. Content-level control tokens
+    are NOT sanitized here — harmless, since the verifier re-decodes every reply strictly."""
 
-    role: str
+    role: Literal["system", "user", "assistant"]
     content: str
 
 
@@ -43,12 +47,15 @@ class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     """An OpenAI chat-completion request (unknown fields tolerated — see module docstring).
 
     messages is required and non-empty; model/temperature/max_tokens are optional (the server
-    supplies model_name, greedy temperature 0, and the configured max_tokens ceiling).
+    supplies model_name, greedy temperature 0, the configured max_tokens ceiling). temperature
+    is bounded to OpenAI's [0, 2] at decode (a negative would silently mean greedy, an absurd
+    value feeds the sampler garbage → both rejected 400); an out-of-range max_tokens is instead
+    clamped by the handler (a token bound has a sane in-range meaning).
     """
 
     messages: Annotated[tuple[ChatMessage, ...], msgspec.Meta(min_length=1)]
     model: str | None = None
-    temperature: float = 0.0
+    temperature: Annotated[float, msgspec.Meta(ge=0.0, le=2.0)] = 0.0
     max_tokens: int | None = None
 
 

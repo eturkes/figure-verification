@@ -12,8 +12,9 @@ the gate-validated recipe in .agent/m3_1_design.md — cross-check that doc, do 
   GenerationConfig() drops eos/stop tokens and defaults max_new_tokens to 2**64-1.
 - Greedy when temperature == 0 (the deterministic proposer path M3.2 uses); do_sample alone
   leaves temperature at 1.0, so set cfg.temperature only when sampling.
-- Enforce the response-byte ceiling so a generation cannot outgrow the configured bound
-  (over-cap -> BackendError, which the verifier client reads as an upstream fault).
+- Bound the emitted RESPONSE size: after generation, reject a decoded reply whose UTF-8 byte
+  length exceeds the ceiling (over-cap -> BackendError, read as an upstream fault). A
+  post-generation guard on response bytes; max_new_tokens (per call) bounds the work itself.
 """
 
 import threading
@@ -87,12 +88,17 @@ class Engine:
             metrics = result.perf_metrics
             prompt_tokens: int = metrics.get_num_input_tokens()
             completion_tokens: int = metrics.get_num_generated_tokens()
+            # Native per-sequence finish reason (authoritative). LENGTH iff the cap truncated
+            # the output; a natural EOS landing exactly on max_new_tokens reports STOP, which a
+            # completion_tokens>=max_tokens heuristic would mislabel "length". Extract the bool
+            # at the boundary (result.finish_reasons is Any from the native module).
+            hit_cap: bool = result.finish_reasons[0] == ov_genai.GenerationFinishReason.LENGTH
         if len(text.encode("utf-8")) > self._max_response_bytes:
             msg = f"generated response exceeded the {self._max_response_bytes}-byte ceiling"
             raise BackendError(msg, status=500, error_type="response_too_large")
-        finish_reason: Literal["stop", "length"] = (
-            "length" if completion_tokens >= max_tokens else "stop"
-        )
+        # Only LENGTH means the cap cut the reply; STOP/NONE/TOOL_CALL all end on the model's
+        # own accord -> "stop" (this backend surfaces text only, no tool-call handling).
+        finish_reason: Literal["stop", "length"] = "length" if hit_cap else "stop"
         return GenResult(
             text=text,
             prompt_tokens=prompt_tokens,
