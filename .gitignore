@@ -19,6 +19,9 @@ htmlcov/
 .venv/
 .venv-host/
 
+# Local model weights (M3; downloaded via huggingface_hub, host+container-coupled, large)
+models/
+
 # Secrets / local env
 .env
 .env.*
