@@ -3,8 +3,9 @@
 
 The document is assembled from three sources (VPlot defs + introspectable response models +
 hand-derived RenderVerdict), so these tests pin the seams that could silently drift: the
-committed golden byte-for-byte, the version/info/servers surface, an operationId + summary on
-every op (Open WebUI M4 reads them), the documented operations against the app's live routes,
+committed golden byte-for-byte, the version/info surface (servers deliberately omitted), an
+operationId + summary on every op (Open WebUI M4 reads them), the documented operations against
+the app's live routes,
 every internal pointer resolving to a present component (which also proves the discriminator
 mapping was rebased, not just the $ref values), each component as a valid Draft 2020-12 schema,
 and RenderVerdict tracking its struct (with the const NOT bleeding into Verdict's own schema).
@@ -70,9 +71,12 @@ def test_openapi_version_is_3_1() -> None:
     assert re.fullmatch(r"3\.1\.\d+", _DOC["openapi"]) is not None
 
 
-def test_info_and_servers_exact() -> None:
+def test_info_exact_and_servers_omitted() -> None:
     assert _DOC["info"] == {"title": "verifier", "version": __version__}
-    assert _DOC["servers"] == [{"url": "http://127.0.0.1:8000"}]
+    # No `servers` block: the doc is served by the running instance, so OpenAPI 3.1's
+    # origin-relative default names the right server under any VERIFIER_HOST/PORT bind (a
+    # hardcoded URL would misdescribe a reconfigured deploy).
+    assert "servers" not in _DOC
 
 
 def test_every_operation_has_operation_id_and_summary() -> None:

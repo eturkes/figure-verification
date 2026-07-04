@@ -26,7 +26,7 @@ Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, A
 ## M2 — Verifier API service   (REVIEWED — closed)
 
 Delivered `verifier.service` — the M1 library wrapped in a local Litestar + uvicorn HTTP
-transport (one worker, 127.0.0.1), adding no verification trust of its own (one-way dep:
+transport (one worker, 127.0.0.1 by default), adding no verification trust of its own (one-way dep:
 the core never imports the service). Pieces: `settings.py` (frozen operator config from
 `VERIFIER_*` env, fail-closed bound guards) → `app.py` (factory + 6 routes, raw-body-first
 POSTs so `decode_spec` stays authoritative, nosniff app default, two problem+json exception

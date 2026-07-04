@@ -4,11 +4,6 @@
     "title": "verifier",
     "version": "0.1.0"
   },
-  "servers": [
-    {
-      "url": "http://127.0.0.1:8000"
-    }
-  ],
   "paths": {
     "/health": {
       "get": {
@@ -826,7 +821,7 @@
       },
       "RenderVerdict": {
         "title": "RenderVerdict",
-        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex, so plot_id <-> spec_id is 1:1). The four *_hash fields are the\ncertificate's verbatim `sha256:`-prefixed digests. `html` (omitted when absent via\nomit_defaults) carries the offline view only under include_html=true.",
+        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nmutating the trusted manifest between two renders of one spec keeps spec_id but changes\nmanifest_hash, hence plot_id, so several plot_ids can share a spec_id (store.py refcounts\nthem). The four *_hash fields are the certificate's verbatim `sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
         "type": "object",
         "properties": {
           "verified": {

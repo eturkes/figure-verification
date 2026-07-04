@@ -44,7 +44,6 @@ from verifier.service.models import Problem, RenderVerdict, Verdict
 __all__ = ["openapi_document", "openapi_document_text", "openapi_json_bytes"]
 
 _OPENAPI_VERSION = "3.1.0"
-_SERVER_URL = "http://127.0.0.1:8000"
 _COMPONENTS = "#/components/schemas"
 # A 64-hex artifact id (the fullmatch app.py enforces on the path param, in OpenAPI form).
 _ID_PATTERN = "^[0-9a-f]{64}$"
@@ -271,7 +270,9 @@ def openapi_document() -> dict[str, Any]:
     return {
         "openapi": _OPENAPI_VERSION,
         "info": {"title": "verifier", "version": __version__},
-        "servers": [{"url": _SERVER_URL}],
+        # No `servers`: the document is served by the running instance, so OpenAPI 3.1's
+        # origin-relative default ("/") already names the correct server under any bind — a
+        # hardcoded URL would misdescribe a VERIFIER_HOST/PORT-overridden deploy.
         "paths": _paths(),
         "components": {"schemas": _components()},
     }

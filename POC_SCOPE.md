@@ -73,9 +73,10 @@ plotted-table hash carry it exactly.
 
 `verifier.service` (M2) wraps this same verifier in a local HTTP transport — one uvicorn
 worker, bound to `127.0.0.1` by default. It adds no trust of its own: a verify request runs
-the pipeline above unchanged and the service only serializes the result (the metadata and
-artifact GETs serve what a prior verified render already produced), so the verification claim
-and the trusted-computing-base line both hold verbatim. `data_dir` stays trusted operator config,
+the pipeline above unchanged and the service serializes the result, mapping a decode failure
+or an unprovisioned manifest to its own fail-closed verdict that can never falsely verify. The
+metadata and artifact GETs serve what a prior verified render already produced, so the
+verification claim and the trusted-computing-base line both hold verbatim. `data_dir` stays trusted operator config,
 supplied through the environment before the process binds — never anything a caller sends.
 
 The transport reports two kinds of outcome and never confuses them:

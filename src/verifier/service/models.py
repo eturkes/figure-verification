@@ -11,7 +11,11 @@ answers a plain Verdict, so a chart never rides an unverified outcome. Problem i
 9457 application/problem+json body the app's exception handlers emit for transport misuse
 or a server-config fault (wrong content-type, oversize body, a broken trusted manifest) —
 never a verification outcome. CheckResult is reused verbatim from the trusted core
-(verifier.checks); the transport adds no verdict vocabulary of its own.
+(verifier.checks) — the transport adds no result struct or status/severity of its own. It
+does mint two fail-closed check tags the core never emits — `spec.decode` (the raw body
+would not decode) and `dataset.manifest_available` (no trusted manifest for the named
+dataset) — each a blocking pre-pipeline verdict (see pipeline.py) that can only fail closed,
+never falsely verify.
 """
 
 from typing import Literal
@@ -49,9 +53,12 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     Verdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.
     `plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);
     `spec_id` = `spec_hash` minus its
-    `sha256:` prefix (bare 64-hex, so plot_id <-> spec_id is 1:1). The four *_hash fields are the
-    certificate's verbatim `sha256:`-prefixed digests. `html` (omitted when absent via
-    omit_defaults) carries the offline view only under include_html=true.
+    `sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;
+    mutating the trusted manifest between two renders of one spec keeps spec_id but changes
+    manifest_hash, hence plot_id, so several plot_ids can share a spec_id (store.py refcounts
+    them). The four *_hash fields are the certificate's verbatim `sha256:`-prefixed digests.
+    `html` (omitted when absent via omit_defaults) carries the offline view only under
+    include_html=true.
     """
 
     verified: Literal[True]
