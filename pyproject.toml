@@ -17,11 +17,14 @@ authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # (no mypy override) and is a src dep (no TID251 ban, unlike the dev-only duckdb oracle).
 # litestar + uvicorn (M2): the local HTTP transport wrapping the verifier — msgspec-native
 # serialization, built-in body cap, single-worker 127.0.0.1. Both ship py.typed. See memory Stack.
+# httpx (M3.2b): the async client the model-proposer client POSTs the local backend with. Ships
+# py.typed; today transitive via litestar's TestClient, now declared as a direct runtime dep.
 dependencies = [
     "msgspec>=0.21,<1",
     "vl-convert-python>=1.9,<2",
     "litestar>=2.24,<3",
     "uvicorn>=0.49,<1",
+    "httpx>=0.28,<1",
 ]
 
 [dependency-groups]
