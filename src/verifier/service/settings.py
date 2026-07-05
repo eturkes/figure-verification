@@ -11,6 +11,11 @@ make the artifact store drop every render at once or crash on its first eviction
 bare or misconfigured deploy fails closed rather than exposing the verifier. The field defaults
 and the from_env fallbacks share one set of constants so the two construction paths
 cannot drift.
+
+M3.2a adds the model-proposer config (base URL / name / timeout / sample rows / max tokens):
+the operator points the verifier at the local backend, and these stay trusted config too —
+the untrusted model never supplies them. __post_init__ bounds them fail-closed alongside the
+caps above (see the inline notes for each rejection's downstream failure mode).
 """
 
 import os
@@ -26,6 +31,15 @@ _DEFAULT_PORT = 8000
 # oversize body is read (M2.2 reads the raw body before any verifier work).
 _DEFAULT_MAX_BODY_BYTES = 65536
 _DEFAULT_STORE_CAP = 256
+# Model proposer (M3.2a): the local backend's OpenAI /v1 base (M3.1b binds port 8001; the
+# client appends /chat/completions), the single served model name copied into requests,
+# a generation timeout with slow-iGPU headroom, the sample-row count handed to the prompt,
+# and the new-token ceiling (matches the backend default, bounds how long the GPU lock is held).
+_DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:8001/v1"
+_DEFAULT_MODEL_NAME = "OpenVINO/Qwen2-0.5B-Instruct-int4-ov"
+_DEFAULT_MODEL_TIMEOUT = 120.0
+_DEFAULT_MODEL_SAMPLE_ROWS = 5
+_DEFAULT_MODEL_MAX_TOKENS = 512
 
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
@@ -36,6 +50,11 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     port: int = _DEFAULT_PORT
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     store_cap: int = _DEFAULT_STORE_CAP
+    model_base_url: str = _DEFAULT_MODEL_BASE_URL
+    model_name: str = _DEFAULT_MODEL_NAME
+    model_timeout: float = _DEFAULT_MODEL_TIMEOUT
+    model_sample_rows: int = _DEFAULT_MODEL_SAMPLE_ROWS
+    model_max_tokens: int = _DEFAULT_MODEL_MAX_TOKENS
 
     def __post_init__(self) -> None:
         # A non-positive cap is falsy, so Litestar reads it as an unlimited body
@@ -49,6 +68,21 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         if self.store_cap < 1:
             msg = f"store_cap must be >= 1, got {self.store_cap}"
             raise ValueError(msg)
+        # Model-proposer bounds, fail-closed like the caps above. httpx does not validate its
+        # timeout and only None disables it: a value of 0 makes every request time out
+        # immediately and a negative value is an undefined deadline, so both ship an unusable
+        # client instead of the intended bounded wait -- require > 0. A negative sample-row
+        # count is nonsensical for the prompt slice, and a max_tokens below 1 emits an empty
+        # generation.
+        if self.model_timeout <= 0:
+            msg = f"model_timeout must be > 0, got {self.model_timeout}"
+            raise ValueError(msg)
+        if self.model_sample_rows < 0:
+            msg = f"model_sample_rows must be >= 0, got {self.model_sample_rows}"
+            raise ValueError(msg)
+        if self.model_max_tokens < 1:
+            msg = f"model_max_tokens must be >= 1, got {self.model_max_tokens}"
+            raise ValueError(msg)
 
     @classmethod
     def from_env(cls) -> Self:
@@ -60,4 +94,13 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             port=int(env.get("VERIFIER_PORT", str(_DEFAULT_PORT))),
             max_body_bytes=int(env.get("VERIFIER_MAX_BODY_BYTES", str(_DEFAULT_MAX_BODY_BYTES))),
             store_cap=int(env.get("VERIFIER_STORE_CAP", str(_DEFAULT_STORE_CAP))),
+            model_base_url=env.get("VERIFIER_MODEL_BASE_URL", _DEFAULT_MODEL_BASE_URL),
+            model_name=env.get("VERIFIER_MODEL_NAME", _DEFAULT_MODEL_NAME),
+            model_timeout=float(env.get("VERIFIER_MODEL_TIMEOUT", str(_DEFAULT_MODEL_TIMEOUT))),
+            model_sample_rows=int(
+                env.get("VERIFIER_MODEL_SAMPLE_ROWS", str(_DEFAULT_MODEL_SAMPLE_ROWS))
+            ),
+            model_max_tokens=int(
+                env.get("VERIFIER_MODEL_MAX_TOKENS", str(_DEFAULT_MODEL_MAX_TOKENS))
+            ),
         )

@@ -26,6 +26,11 @@ _VERIFIER_ENV = (
     "VERIFIER_PORT",
     "VERIFIER_MAX_BODY_BYTES",
     "VERIFIER_STORE_CAP",
+    "VERIFIER_MODEL_BASE_URL",
+    "VERIFIER_MODEL_NAME",
+    "VERIFIER_MODEL_TIMEOUT",
+    "VERIFIER_MODEL_SAMPLE_ROWS",
+    "VERIFIER_MODEL_MAX_TOKENS",
 )
 
 
@@ -42,6 +47,11 @@ def test_settings_defaults(tmp_path: Path) -> None:
     assert settings.port == 8000
     assert settings.max_body_bytes == 65536
     assert settings.store_cap == 256
+    assert settings.model_base_url == "http://127.0.0.1:8001/v1"
+    assert settings.model_name == "OpenVINO/Qwen2-0.5B-Instruct-int4-ov"
+    assert settings.model_timeout == 120.0
+    assert settings.model_sample_rows == 5
+    assert settings.model_max_tokens == 512
 
 
 def test_settings_frozen(tmp_path: Path) -> None:
@@ -67,6 +77,28 @@ def test_settings_rejects_nonpositive_store_cap(tmp_path: Path) -> None:
             Settings(data_dir=tmp_path, store_cap=bad)
 
 
+def test_settings_rejects_nonpositive_model_timeout(tmp_path: Path) -> None:
+    # httpx does not validate its timeout (only None disables it): 0 times out every request
+    # immediately and a negative value is an undefined deadline, so require > 0. Both fail closed.
+    for bad in (0.0, -1.0):
+        with pytest.raises(ValueError, match="model_timeout"):
+            Settings(data_dir=tmp_path, model_timeout=bad)
+
+
+def test_settings_rejects_negative_model_sample_rows(tmp_path: Path) -> None:
+    # sample_rows >= 0 accepts 0 (an empty prompt slice), so only negatives are rejected.
+    for bad in (-1,):
+        with pytest.raises(ValueError, match="model_sample_rows"):
+            Settings(data_dir=tmp_path, model_sample_rows=bad)
+
+
+def test_settings_rejects_nonpositive_model_max_tokens(tmp_path: Path) -> None:
+    # max_tokens < 1 would emit an empty generation; reject 0 and negatives like the caps above.
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="model_max_tokens"):
+            Settings(data_dir=tmp_path, model_max_tokens=bad)
+
+
 def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in _VERIFIER_ENV:
         monkeypatch.delenv(name, raising=False)
@@ -80,12 +112,22 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("VERIFIER_PORT", "9001")
     monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "1024")
     monkeypatch.setenv("VERIFIER_STORE_CAP", "8")
+    monkeypatch.setenv("VERIFIER_MODEL_BASE_URL", "http://192.0.2.1:9100/v1")
+    monkeypatch.setenv("VERIFIER_MODEL_NAME", "test-model")
+    monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", "30.5")  # non-integer float exercises the parse
+    monkeypatch.setenv("VERIFIER_MODEL_SAMPLE_ROWS", "3")
+    monkeypatch.setenv("VERIFIER_MODEL_MAX_TOKENS", "256")
     assert Settings.from_env() == Settings(
         data_dir=tmp_path,
         host="192.0.2.1",
         port=9001,
         max_body_bytes=1024,
         store_cap=8,
+        model_base_url="http://192.0.2.1:9100/v1",
+        model_name="test-model",
+        model_timeout=30.5,
+        model_sample_rows=3,
+        model_max_tokens=256,
     )
 
 
