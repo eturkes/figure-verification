@@ -12,22 +12,26 @@ meters), exactly mirroring the pipeline's raw-body discipline.
 Dataset binding (removes a guaranteed-fail noise mode from the eval): the prompt hands the
 model json.dumps({"name", "hash"}) with hash = canon.hash_dataset(csv_bytes) to copy
 VERBATIM into spec.dataset. The verifier re-checks that hash against the real bytes, so a
-corrupted copy fails closed. The model controls only the dataset NAME, never the trusted
-files. The name resolves under settings.data_dir with the checks.py confinement (resolve()
-+ is_relative_to), authoritative here because the whole name builds the CSV path (unlike
+copy that corrupts the hash fails closed. The re-check binds faithfulness to the spec's OWN
+declared dataset, NOT to the request -- pinning spec.dataset.name to the requested name is
+M3.3's endpoint check. The model controls only the dataset NAME, never the trusted files.
+The name resolves under settings.data_dir with the checks.py confinement (resolve() +
+is_relative_to), authoritative here because the whole name builds the CSV path (unlike
 the manifest path, which .stem collapses to a flat component, safe by construction).
 
 Error split (POC_SCOPE service boundary), each branch a distinct fault the caller (M3.3)
 maps without a 200:
-  - DatasetNotFoundError: the named CSV+manifest is absent OR the name escapes data_dir
-    (the same answer either way -> M3.3 404, no store-probe leak).
+  - DatasetNotFoundError: the named CSV+manifest is not a readable file (absent, or the name
+    denotes a directory / a path through one) OR the name escapes data_dir (the same answer
+    either way -> M3.3 404, no store-probe leak).
   - ModelUpstreamError(status=503): httpx.RequestError -- the backend is unreachable, or
     connect/read timed out (the wedged-backend hang model_timeout bounds).
   - ModelUpstreamError(status=502): the backend answered but unusably -- a non-2xx status,
     a response body that is not a chat-completion envelope (decode/validation failure), no
     choices, or empty content. An envelope-decode failure is an UPSTREAM fault, never a 200.
-A malformed trusted manifest is operator misconfiguration: load_manifest raises and the
-error PROPAGATES (M3.3 500), the model cannot provoke it (it names only the dataset).
+A malformed trusted manifest (load_manifest raises), or a permission/OS fault reading a
+present file, is operator misconfiguration: the error PROPAGATES (M3.3 500), the model
+cannot provoke it (it names only the dataset).
 """
 
 import csv
@@ -106,7 +110,8 @@ _SYSTEM_PROMPT = "\n".join(
         "transform is an ordered list, possibly empty, of step objects; each has an op key.",
         'select step: {"op": "select", "fields": [column names]}.',
         'filter step: {"op": "filter", "field": column, "cmp": comparison, "value": literal}.',
-        "A comparison is one of: eq, ne, lt, le, gt, ge; a value is a number or a string.",
+        "A comparison is one of: eq, ne, lt, le, gt, ge; a value is an integer or a string.",
+        "Write a fractional or very large filter value as a string, not a bare number.",
         'group_by step: {"op": "group_by", "keys": [column names]}.',
         'aggregate step: {"op": "aggregate", "measures": [measure objects]}.',
         'A measure is {"field": column, "fn": function, "as": output name}.',
@@ -186,8 +191,11 @@ def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest
     is_relative_to is the authoritative confinement (a traversal name that slipped past M3.3's
     DatasetName guard resolves outside the root -> not found). The manifest path uses Path.stem,
     which collapses any directory to a flat component, so it needs no runtime confinement branch
-    (the pipeline precedent). A genuinely absent file (FileNotFoundError) is not-found; a
-    malformed manifest propagates from load_manifest as operator misconfiguration."""
+    (the pipeline precedent). A name that denotes no readable regular file -- absent
+    (FileNotFoundError), a directory (IsADirectoryError), or a path through a non-directory
+    (NotADirectoryError) -- is not-found, since the untrusted caller picked the name; a
+    permission or other OS read fault, and a malformed manifest (load_manifest raises),
+    propagate as operator misconfiguration."""
     root = settings.data_dir.resolve()
     csv_path = (root / dataset_name).resolve()
     if not csv_path.is_relative_to(root):
@@ -196,7 +204,7 @@ def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest
     try:
         csv_bytes = csv_path.read_bytes()
         manifest_bytes = manifest_path.read_bytes()
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
         raise DatasetNotFoundError(dataset_name) from exc
     return ingest.load_manifest(manifest_bytes), csv_bytes
 

@@ -118,6 +118,7 @@ def test_propose_spec_unreachable_raises_503(monkeypatch: pytest.MonkeyPatch) ->
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 503
+    assert "unreachable" in str(exc_info.value)
 
 
 def test_propose_spec_non_2xx_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,6 +126,7 @@ def test_propose_spec_non_2xx_raises_502(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert "HTTP 500" in str(exc_info.value)
 
 
 def test_propose_spec_non_json_body_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -132,6 +134,7 @@ def test_propose_spec_non_json_body_raises_502(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert "not a chat-completion envelope" in str(exc_info.value)
 
 
 def test_propose_spec_invalid_envelope_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,6 +145,7 @@ def test_propose_spec_invalid_envelope_raises_502(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert "not a chat-completion envelope" in str(exc_info.value)
 
 
 def test_propose_spec_no_choices_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -149,6 +153,7 @@ def test_propose_spec_no_choices_raises_502(monkeypatch: pytest.MonkeyPatch) -> 
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert "no choices" in str(exc_info.value)
 
 
 def test_propose_spec_empty_content_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -157,6 +162,7 @@ def test_propose_spec_empty_content_raises_502(monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert "content is empty" in str(exc_info.value)
 
 
 def test_propose_spec_absent_dataset_raises_not_found() -> None:
@@ -171,6 +177,24 @@ def test_propose_spec_traversal_dataset_raises_not_found() -> None:
     # defense-in-depth confinement branch): resolves outside the root -> not found.
     with pytest.raises(DatasetNotFoundError):
         asyncio.run(propose_spec("req", "../weather.csv", _settings()))
+
+
+def test_propose_spec_directory_name_raises_not_found() -> None:
+    # A name resolving to a directory inside data_dir (here the real schemas/ dir) clears
+    # confinement but is not a readable file: read_bytes raises IsADirectoryError, mapped to
+    # not-found rather than an uncaught 500. The same branch fires for a *.csv-named directory
+    # -- the case M3.3's DatasetName cannot exclude.
+    with pytest.raises(DatasetNotFoundError):
+        asyncio.run(propose_spec("req", "schemas", _settings()))
+
+
+def test_propose_spec_manifest_missing_raises_not_found(tmp_path: Path) -> None:
+    # CSV present but its manifest absent: the manifest read (the second read) raises
+    # FileNotFoundError, still mapped to not-found -- locks the csv-present/manifest-missing
+    # arm distinctly from the both-absent case.
+    (tmp_path / "orphan.csv").write_bytes(b"a,b\n1,2\n")
+    with pytest.raises(DatasetNotFoundError):
+        asyncio.run(propose_spec("req", "orphan.csv", Settings(data_dir=tmp_path)))
 
 
 def test_build_async_client_applies_timeout() -> None:
