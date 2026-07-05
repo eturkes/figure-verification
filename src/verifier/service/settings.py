@@ -37,7 +37,7 @@ _DEFAULT_STORE_CAP = 256
 # a generation timeout with slow-iGPU headroom, the sample-row count handed to the prompt,
 # and the new-token ceiling (matches the backend default, bounds how long the GPU lock is held).
 _DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:8001/v1"
-_DEFAULT_MODEL_NAME = "OpenVINO/Qwen2-0.5B-Instruct-int4-ov"
+_DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_TIMEOUT = 120.0
 _DEFAULT_MODEL_SAMPLE_ROWS = 5
 _DEFAULT_MODEL_MAX_TOKENS = 512

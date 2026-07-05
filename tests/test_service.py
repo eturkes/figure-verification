@@ -49,7 +49,7 @@ def test_settings_defaults(tmp_path: Path) -> None:
     assert settings.max_body_bytes == 65536
     assert settings.store_cap == 256
     assert settings.model_base_url == "http://127.0.0.1:8001/v1"
-    assert settings.model_name == "OpenVINO/Qwen2-0.5B-Instruct-int4-ov"
+    assert settings.model_name == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert settings.model_timeout == 120.0
     assert settings.model_sample_rows == 5
     assert settings.model_max_tokens == 512

@@ -3,8 +3,9 @@
 
 Isolates the one untyped native import (openvino_genai; a mypy override in pyproject makes it
 resolve to Any so `mypy --strict` type-checks this package without the native runtime present)
-and serializes generation behind a single lock: one compiled LLMPipeline, one iGPU. Transcribes
-the gate-validated recipe in .agent/m3_1_design.md — cross-check that doc, do not re-derive:
+and serializes generation behind a single lock: one compiled LLMPipeline, one accelerator (the
+NPU by default). Transcribes the gate-validated recipe in .agent/m3_1_design.md — cross-check
+that doc, do not re-derive:
 
 - Chat is STATELESS: apply the chat template to the full messages array each call (never
   start_chat/finish_chat, which keep server-side history — wrong for OpenAI /v1).
@@ -12,6 +13,10 @@ the gate-validated recipe in .agent/m3_1_design.md — cross-check that doc, do 
   GenerationConfig() drops eos/stop tokens and defaults max_new_tokens to 2**64-1.
 - Greedy when temperature == 0 (the deterministic proposer path M3.2 uses); do_sample alone
   leaves temperature at 1.0, so set cfg.temperature only when sampling.
+- The NPU compiles to static shapes: Engine.load passes MAX_PROMPT_LEN for an NPU device, so a
+  prompt longer than max_prompt_len raises at generate() (the client reads the non-2xx as an
+  upstream fault). The proposer path is greedy (temperature 0); a nonzero temperature is not
+  exercised on the NPU.
 - Bound the emitted RESPONSE size: after generation, reject a decoded reply whose UTF-8 byte
   length exceeds the ceiling (over-cap -> BackendError, read as an upstream fault). A
   post-generation guard on response bytes; max_new_tokens (per call) bounds the work itself.
@@ -54,15 +59,23 @@ class Engine:
         self._pipe = pipe
         self._tok = tokenizer
         self._max_response_bytes = max_response_bytes
-        # One compiled pipeline on one GPU: serialize generation. Re-entrancy was not probed
-        # (see memory M3); the lock is the safe default.
+        # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
+        # probed (see memory M3); the lock is the safe default.
         self._lock = threading.Lock()
 
     @classmethod
     def load(cls, settings: Settings) -> Self:
-        """Compile the model onto settings.device (blocking; ~seconds, slower on a cold GPU
-        kernel cache). Raises loudly if the model path or device is unusable."""
-        pipe = ov_genai.LLMPipeline(str(settings.model_dir), settings.device)
+        """Compile the model onto settings.device (blocking; ~seconds, slower on a cold kernel
+        cache). Raises loudly if the model path or device is unusable.
+
+        An NPU device compiles to static shapes, so it gets MAX_PROMPT_LEN = max_prompt_len
+        (the largest prompt the pipeline accepts; a longer one raises at generate()). GPU/CPU
+        use dynamic shapes and reject that property, so it is passed only for an NPU device.
+        """
+        pipeline_config: dict[str, int] = {}
+        if "NPU" in settings.device:
+            pipeline_config["MAX_PROMPT_LEN"] = settings.max_prompt_len
+        pipe = ov_genai.LLMPipeline(str(settings.model_dir), settings.device, **pipeline_config)
         tokenizer = pipe.get_tokenizer()
         return cls(pipe, tokenizer, max_response_bytes=settings.max_response_bytes)
 
@@ -71,7 +84,7 @@ class Engine:
     ) -> GenResult:
         """Generate one completion for the full messages array (stateless chat template).
 
-        Serialized behind the lock (one pipeline, one GPU). Greedy when temperature == 0.
+        Serialized behind the lock (one pipeline, one accelerator). Greedy when temperature == 0.
         Raises BackendError if the decoded text exceeds the response-byte ceiling.
         """
         with self._lock:

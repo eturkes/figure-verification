@@ -81,7 +81,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     request = captured["request"]
     assert str(request.url) == "http://127.0.0.1:8001/v1/chat/completions"
     sent = json.loads(request.content)
-    assert sent["model"] == "OpenVINO/Qwen2-0.5B-Instruct-int4-ov"
+    assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert sent["temperature"] == 0
     assert sent["max_tokens"] == 512
 
