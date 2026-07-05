@@ -8,6 +8,7 @@ by monkeypatching uvicorn.run, so no socket binds during the unit suite.
 """
 
 import ast
+import math
 from pathlib import Path
 
 import pytest
@@ -77,23 +78,25 @@ def test_settings_rejects_nonpositive_store_cap(tmp_path: Path) -> None:
             Settings(data_dir=tmp_path, store_cap=bad)
 
 
-def test_settings_rejects_nonpositive_model_timeout(tmp_path: Path) -> None:
-    # httpx does not validate its timeout (only None disables it): 0 times out every request
-    # immediately and a negative value is an undefined deadline, so require > 0. Both fail closed.
-    for bad in (0.0, -1.0):
+def test_settings_rejects_nonfinite_or_nonpositive_model_timeout(tmp_path: Path) -> None:
+    # httpx does not validate its timeout, and not every non-None value is bounded: 0 times out
+    # every request immediately, a negative is an undefined deadline, inf runs unbounded, and nan
+    # crashes the asyncio deadline at request time -- none is a real bounded wait, and a bare
+    # `<= 0` misses inf/nan. Require a finite value > 0; all of these fail closed.
+    for bad in (0.0, -1.0, math.inf, -math.inf, math.nan):
         with pytest.raises(ValueError, match="model_timeout"):
             Settings(data_dir=tmp_path, model_timeout=bad)
 
 
 def test_settings_rejects_negative_model_sample_rows(tmp_path: Path) -> None:
-    # sample_rows >= 0 accepts 0 (an empty prompt slice), so only negatives are rejected.
+    # sample_rows >= 0 accepts 0 (header only, no data rows sampled), so only negatives reject.
     for bad in (-1,):
         with pytest.raises(ValueError, match="model_sample_rows"):
             Settings(data_dir=tmp_path, model_sample_rows=bad)
 
 
 def test_settings_rejects_nonpositive_model_max_tokens(tmp_path: Path) -> None:
-    # max_tokens < 1 would emit an empty generation; reject 0 and negatives like the caps above.
+    # max_tokens < 1 is not a valid generation ceiling; reject 0 and negatives like the caps above.
     for bad in (0, -1):
         with pytest.raises(ValueError, match="model_max_tokens"):
             Settings(data_dir=tmp_path, model_max_tokens=bad)
@@ -149,6 +152,18 @@ def test_from_env_rejects_nonpositive_store_cap(
     monkeypatch.setenv("VERIFIER_STORE_CAP", "0")
     with pytest.raises(ValueError, match="store_cap"):
         Settings.from_env()
+
+
+def test_from_env_rejects_nonfinite_model_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # float() parses "inf"/"nan", so the finite-value guard must fire through the env path too --
+    # this is the realistic vector for a non-finite deadline reaching the client.
+    monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
+    for bad in ("inf", "-inf", "nan"):
+        monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", bad)
+        with pytest.raises(ValueError, match="model_timeout"):
+            Settings.from_env()
 
 
 def test_main_serves_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

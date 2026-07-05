@@ -18,6 +18,7 @@ the untrusted model never supplies them. __post_init__ bounds them fail-closed a
 caps above (see the inline notes for each rejection's downstream failure mode).
 """
 
+import math
 import os
 from pathlib import Path
 from typing import Self
@@ -68,14 +69,17 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         if self.store_cap < 1:
             msg = f"store_cap must be >= 1, got {self.store_cap}"
             raise ValueError(msg)
-        # Model-proposer bounds, fail-closed like the caps above. httpx does not validate its
-        # timeout and only None disables it: a value of 0 makes every request time out
-        # immediately and a negative value is an undefined deadline, so both ship an unusable
-        # client instead of the intended bounded wait -- require > 0. A negative sample-row
-        # count is nonsensical for the prompt slice, and a max_tokens below 1 emits an empty
-        # generation.
-        if self.model_timeout <= 0:
-            msg = f"model_timeout must be > 0, got {self.model_timeout}"
+        # Model-proposer bounds, fail-closed like the caps above. httpx does not validate
+        # its timeout, and not every non-None value is bounded, so guard the value itself.
+        # A value of 0 times out every request immediately; a negative is an undefined
+        # deadline; inf runs unbounded (the wedged-backend hang the timeout prevents); nan
+        # poisons the asyncio deadline (ValueError at request time) and slips a bare `<= 0`
+        # check. float() parses "inf"/"nan" from the env, so require a finite value > 0. A
+        # negative sample-row count is nonsensical for the header+rows prompt slice, and a
+        # max_tokens below 1 is not a valid ceiling (the swappable backend clamps to >= 1,
+        # but the verifier fails closed itself rather than lean on that).
+        if not math.isfinite(self.model_timeout) or self.model_timeout <= 0:
+            msg = f"model_timeout must be a finite value > 0, got {self.model_timeout}"
             raise ValueError(msg)
         if self.model_sample_rows < 0:
             msg = f"model_sample_rows must be >= 0, got {self.model_sample_rows}"
