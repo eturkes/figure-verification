@@ -14,5 +14,6 @@ be conflated:
   These do NOT bound the verifier; a weak model failing most prompts is the expected outcome.
 
 Repo-root and coverage-excluded (not under src/ or tests/; coverage source is ["verifier"]): a
-runnable harness, not a test, and not part of the shipped wheel. See .agent/m3_4_design.md.
+runnable harness, not a test, and not part of the shipped wheel. See bench/README.md for the run
+recipe and the guarantee-versus-observations split.
 """

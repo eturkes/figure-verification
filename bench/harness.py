@@ -21,7 +21,9 @@ would raise. These structs read only the fields the report needs and ignore the 
 ignores unknown keys by default).
 """
 
+import hashlib
 import logging
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -60,6 +62,15 @@ _BUCKET_HARNESS_ERROR = "harness_error"
 # (security.no_arbitrary_code is a pass-only affirmation; scale.* is a certificate string), but
 # keeping all three is correct by construction -- a future failing policy check buckets right.
 _POLICY_FAMILIES = frozenset({"label", "security", "scale"})
+
+# Reply-shape taxonomy over a 200 model reply -- WHY the strict decode gate fails (codex-review
+# M3.4b F2). Reproducible per (device, config) from the persisted replies; de-fence rule below.
+_SHAPE_FENCED = "fenced"  # the reply carries a ``` fence (a markdown code block)
+_SHAPE_BARE_OBJECT = "bare_object"  # no fence; the stripped reply opens with {
+_SHAPE_EMPTY = "empty"  # the stripped reply is ""
+_SHAPE_OTHER = "other"  # none of the above (prose, a list, a truncated fragment, ...)
+# Pulls the first ```-fenced block's body so a fence-wrapped spec can be re-parsed.
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
 # --- loose decode structs (subset of each service payload; unknown keys ignored) ------------
@@ -110,9 +121,15 @@ class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """The deterministic bound: the 18 bad goldens must all be blocked (false_accept == 0)."""
+    """The deterministic bound: the 18 bad goldens must all be blocked (false_accept == 0).
+
+    bad_corpus_digest pins the corpus IDENTITY (SHA-256 over the sorted filename + content-hash
+    pairs), so __main__ rejects a run whose --examples-dir is not the real M1 goldens even when it
+    happens to hold 18 other invalid specs (codex-review M3.4b F1).
+    """
 
     bad_corpus_size: int
+    bad_corpus_digest: str
     bad_corpus_false_accept_count: int
     bad_corpus_transport_errors: int
 
@@ -145,12 +162,30 @@ class FailureMode(msgspec.Struct, frozen=True, kw_only=True):
     count: int
 
 
+class ReplyShapeBlock(msgspec.Struct, frozen=True, kw_only=True):
+    """Reply-shape taxonomy over the n 200-responses -- why the strict decode gate fails.
+
+    Partitions each 200 reply by surface form (fenced / bare_object / empty / other) and counts
+    defenced_json_valid: replies that parse as JSON AFTER the first ```-fence is stripped. It
+    isolates fence-wrapping (syntactic) from deeper malformation. Reproducible per (device, config)
+    from the replies in details.jsonl via the de-fence rule in bench/README.md.
+    """
+
+    n: int
+    fenced: int
+    bare_object: int
+    empty: int
+    other: int
+    defenced_json_valid: int
+
+
 class ObservationsBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """The statistical picture: overall + per-category rates, and the top failing checks."""
+    """The statistical picture: overall + per-category rates, top failing checks, reply shape."""
 
     overall: RateBlock
     by_category: dict[str, RateBlock]
     top_failure_modes: tuple[FailureMode, ...]
+    reply_shape: ReplyShapeBlock
 
 
 class Report(msgspec.Struct, frozen=True, kw_only=True):
@@ -189,6 +224,11 @@ class _Tally(msgspec.Struct):
     off_request: int = 0
     upstream_fault: int = 0
     harness_error: int = 0
+    fenced: int = 0
+    bare_object: int = 0
+    empty: int = 0
+    other: int = 0
+    defenced_json_valid: int = 0
 
 
 # --- classification -------------------------------------------------------------------------
@@ -234,22 +274,65 @@ def _json_shape(reply: str) -> tuple[bool, bool]:
     return (True, isinstance(parsed, dict))
 
 
+def _reply_shape(reply: str) -> str:
+    """Classify a model reply's surface form (see ReplyShapeBlock)."""
+    stripped = reply.strip()
+    if not stripped:
+        return _SHAPE_EMPTY
+    if "```" in reply:
+        return _SHAPE_FENCED
+    if stripped.startswith("{"):
+        return _SHAPE_BARE_OBJECT
+    return _SHAPE_OTHER
+
+
+def _defenced_json_valid(reply: str) -> bool:
+    """True if the reply parses as JSON after its first ```-fence (if any) is stripped."""
+    match = _FENCE_RE.search(reply)
+    inner = (match.group(1) if match else reply).strip()
+    try:
+        msgspec.json.decode(inner.encode("utf-8"))
+    except (msgspec.DecodeError, ValueError):
+        return False
+    return True
+
+
 # --- tallying + rates -----------------------------------------------------------------------
-def _tally_200(tally: _Tally, bucket: str, *, valid_json: bool, is_object: bool) -> None:
+class _Sample(msgspec.Struct, frozen=True):
+    """One 200 response's derived classification, tallied into both the overall and cat scopes."""
+
+    bucket: str
+    valid_json: bool
+    is_object: bool
+    shape: str
+    defenced_valid: bool
+
+
+def _tally_200(tally: _Tally, sample: _Sample) -> None:
     """Record one 200 response into a scope's counters."""
     tally.n += 1
-    if valid_json:
+    if sample.valid_json:
         tally.json_valid += 1
-    if is_object:
+    if sample.is_object:
         tally.tool_call += 1
-    if bucket == _BUCKET_VERIFIED:
+    if sample.bucket == _BUCKET_VERIFIED:
         tally.verified += 1
-    elif bucket == _BUCKET_SCHEMA:
+    elif sample.bucket == _BUCKET_SCHEMA:
         tally.schema += 1
-    elif bucket == _BUCKET_SEMANTIC:
+    elif sample.bucket == _BUCKET_SEMANTIC:
         tally.semantic += 1
-    elif bucket == _BUCKET_POLICY:
+    elif sample.bucket == _BUCKET_POLICY:
         tally.policy += 1
+    if sample.shape == _SHAPE_FENCED:
+        tally.fenced += 1
+    elif sample.shape == _SHAPE_BARE_OBJECT:
+        tally.bare_object += 1
+    elif sample.shape == _SHAPE_EMPTY:
+        tally.empty += 1
+    else:
+        tally.other += 1
+    if sample.defenced_valid:
+        tally.defenced_json_valid += 1
 
 
 def _tally_fault(tally: _Tally, bucket: str) -> None:
@@ -283,7 +366,36 @@ def _rate_block(tally: _Tally) -> RateBlock:
     )
 
 
+def _shape_block(tally: _Tally) -> ReplyShapeBlock:
+    """Finalize a scope's reply-shape counters into an immutable ReplyShapeBlock."""
+    return ReplyShapeBlock(
+        n=tally.n,
+        fenced=tally.fenced,
+        bare_object=tally.bare_object,
+        empty=tally.empty,
+        other=tally.other,
+        defenced_json_valid=tally.defenced_json_valid,
+    )
+
+
 # --- the guarantee: re-block the bad corpus through /verify-only ----------------------------
+def _corpus_digest(examples_dir: Path, bad_files: tuple[str, ...]) -> str:
+    """SHA-256 over the sorted (filename, content-hash) pairs of the bad corpus.
+
+    Pins the corpus IDENTITY, not just its size, so a wrong --examples-dir holding a different set
+    of 18 invalid specs yields a different digest -- the guarantee cannot pass vacuously against a
+    corpus that is not the real M1 goldens (codex-review M3.4b F1).
+    """
+    digest = hashlib.sha256()
+    for name in sorted(bad_files):
+        content = (examples_dir / "bad_specs" / name).read_bytes()
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(hashlib.sha256(content).hexdigest().encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _run_bad_corpus(
     client: httpx.Client, verifier_base_url: str, examples_dir: Path
 ) -> GuaranteeBlock:
@@ -293,6 +405,7 @@ def _run_bad_corpus(
     accept. false_accept MUST be 0; a non-zero value is a real verifier regression.
     """
     index = msgspec.json.decode((examples_dir / "index.json").read_bytes(), type=_Index)
+    bad_files = tuple(entry.file for entry in index.bad_specs)
     false_accept = 0
     transport_errors = 0
     for entry in index.bad_specs:
@@ -316,6 +429,7 @@ def _run_bad_corpus(
             false_accept += 1
     return GuaranteeBlock(
         bad_corpus_size=len(index.bad_specs),
+        bad_corpus_digest=_corpus_digest(examples_dir, bad_files),
         bad_corpus_false_accept_count=false_accept,
         bad_corpus_transport_errors=transport_errors,
     )
@@ -374,8 +488,15 @@ def run_eval(
             result = msgspec.json.decode(response.content, type=_RespProposeResult)
             bucket = _classify(result.verdict)
             valid_json, is_object = _json_shape(result.model_reply)
-            _tally_200(overall, bucket, valid_json=valid_json, is_object=is_object)
-            _tally_200(cat, bucket, valid_json=valid_json, is_object=is_object)
+            sample = _Sample(
+                bucket=bucket,
+                valid_json=valid_json,
+                is_object=is_object,
+                shape=_reply_shape(result.model_reply),
+                defenced_valid=_defenced_json_valid(result.model_reply),
+            )
+            _tally_200(overall, sample)
+            _tally_200(cat, sample)
             failing_checks.update(r.check for r in result.verdict.results if r.status == "fail")
             reply = result.model_reply
         else:
@@ -401,6 +522,7 @@ def run_eval(
         overall=_rate_block(overall),
         by_category={category: _rate_block(cat_tallies[category]) for category in CATEGORIES},
         top_failure_modes=top,
+        reply_shape=_shape_block(overall),
     )
     meta = MetaBlock(
         served_model=served_model,

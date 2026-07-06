@@ -7,8 +7,11 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
 ## What it measures — two things, never conflated
 - **GUARANTEE** (deterministic, the ONLY bound): re-POST the 18 M1 bad goldens to `/verify-only`
   → `bad_corpus_false_accept_count` MUST = 0. A nonzero value = a real verifier regression → the
-  run is INVALID (exit 1). Pinned to `bad_corpus_size = 18` so a short/empty/wrong-dir corpus
-  fails LOUD (never a vacuous pass).
+  run is INVALID (exit 1). Pinned two ways — `bad_corpus_size = 18` AND `bad_corpus_digest`, a
+  SHA-256 over the sorted (filename, content-hash) pairs — so a short/empty corpus OR a wrong
+  `--examples-dir` (even one holding 18 OTHER invalid specs, which size alone cannot catch) fails
+  LOUD (never a vacuous pass). Recompute `_EXPECTED_BAD_CORPUS_DIGEST` (`bench/__main__.py`) after
+  any deliberate corpus edit.
 - **OBSERVATIONS** (statistical, characterize the model — NOT a bound): over the `n` HTTP-200
   `/propose-spec` verdicts → tool_call / json_validity / schema|semantic|policy_failure /
   verified_render rates + top-5 failing checks, overall + per category (normal · ambiguous ·
@@ -21,6 +24,18 @@ MODEL failure) · `upstream_fault` (any other 5xx = backend infra) · `harness_e
 harness bug, expect 0). Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
 `schema.*`/`dataset.*`/`encoding.*`/`transform.*` check families all bucket SEMANTIC; only
 `label`/`security`/`scale` = POLICY.
+
+**Reply shape** (`reply_shape` block — a first-class classifier over the same `n` replies)
+partitions each by SURFACE FORM — `fenced` (carries a markdown code fence) · `bare_object` (no
+fence; the stripped reply opens with `{`) · `empty` · `other` (prose / a truncated fragment) —
+plus `defenced_json_valid` = how many parse as JSON once de-fenced. De-fence = the first fence
+match's inner text (else the whole reply), stripped, then `msgspec.json.decode`; fence pattern
+(indented so the backticks read literally):
+
+    ```(?:json)?\s*(.*?)```
+
+This isolates the SYNTACTIC failure (fence-wrapping, which `decode_spec` rejects) from deeper
+malformation — e.g. the live run's `fenced=97 defenced_json_valid=24`.
 
 ## Run recipe (hardware-gated — needs both servers up)
 Backend :8001 (NPU; accel env + OpenVINO `PYTHONPATH`, call the venv python DIRECTLY — never
@@ -46,10 +61,12 @@ Eval:
 `VERIFIER_DATA_DIR` (default `data/`) — the prompts reference `sales.csv` + `weather.csv`.
 
 ## Outputs (`bench/reports/`, gitignored — host+model-coupled)
-- `report.json` — `meta` + `guarantee` + `observations{overall, by_category, top_failure_modes}`.
+- `report.json` — `meta` + `guarantee` (incl. `bad_corpus_digest`) + `observations{overall,
+  by_category, top_failure_modes, reply_shape}`.
 - `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
   `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
 
 Headline numbers live in `.agent/roadmap.md` (M3 close-out) as durable evidence — reports/ is not
 committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
-= INVALID run only (guarantee broken/not-exercised, `harness_error > 0`, or `n == 0` void).
+= INVALID run only: the guarantee broken (`false_accept > 0` or transport errors) or NOT exercised
+(`bad_corpus_size ≠ 18` OR the identity digest mismatches), `harness_error > 0`, or `n == 0` void.
