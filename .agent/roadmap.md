@@ -15,11 +15,81 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M1 | Trusted verifier core (headless) | 0,1·scaffold,2,3,4,5,6 | none — toolchain confirmed | REVIEWED |
 | M2 | Verifier API service (Litestar) | 1·api,8 | none | REVIEWED |
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
-| **M4** | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running | **UNPLANNED** |
+| **M4** | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | **IN-PROGRESS** |
 | M5 | Formal + provenance hardening | 13,14 | none | UNPLANNED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn, deny-listed inputs off-limits.
+
+---
+
+## M4 — Open WebUI integration   (IN-PROGRESS)
+
+**Gate CONFIRMED at planning (functional)**: open-webui 0.10.2 installed project-local (`.venv-webui`,
+py3.12 — 3.13 refused upstream) + served on 127.0.0.1:8080 → `/health` `{"status":true}`, first-signup
+→ admin JWT, authed `GET /api/v1/configs/tool_servers` round-trip. Current `.webui-data/` = throwaway
+gate-confirmation state; M4.3 wipes + re-provisions under the canonical env. All integration mechanics
+re-verified against v0.10.2 SOURCE at planning (5-agent workflow + web) → facts/recipes = memory "## M4"
+(several M2-era notes were stale: native FC now default, description-over-summary, ENABLE_API_KEYS rename,
+persistent-config env trap). Plan-time probes stayed off the model backend (still down; M4.5 gates on it).
+
+Design (seed steps 9/10/11 adapted to 0.10.2 reality; claim boundary UNCHANGED — Open WebUI + browser
+join the trusted DISPLAY layer, the verifier stays sole authority; filter = heuristic guardrail, NOT a bound):
+- GLOBAL (admin-registered, backend-called) tool server: headless-scriptable (`tool_ids:["server:<id>"]`),
+  zero CORS (verifier stays CORS-free; browser-called user-level path REJECTED — never works headless,
+  needs CORS + expose-headers + ~1MB socket cap). Tool surface allowlisted to proposeSpec via
+  `function_name_filter_list`. (Overrides seed-9's user-level "Settings → Tools" suggestion.)
+- Chart-in-chat = URL-embed (seed 10's HTMLResponse pattern, current form): verified chart HTML stored
+  per plot_id, served by new `GET /chart/{plot_id}` (text/html + nosniff + `CSP: sandbox` headers), tool
+  response adds `Content-Disposition: inline` + absolute `Location` on verified success → sandboxed iframe
+  loads straight from the verifier (bare-metal loopback deployment assumption, POC_SCOPE will record it);
+  JSON verdict body stays the model's context. Beats srcdoc-inline (our offline HTML inlines the whole
+  Vega bundle — MBs per message). Fallback if the M4.2 probe degrades model context: dedicated
+  HTML-success/JSON-failure op.
+- Weak-model tool calling = LEGACY FC (`DEFAULT_MODEL_PARAMS='{"function_calling":"legacy"}'`; native =
+  the 0.10 default but needs backend `tools` support and never executes headless; task model = the same
+  weak model). The 0.5B's tool-selection reliability = an OBSERVATION, claim discipline applies.
+- Enforcement filter (seed 11) = repo-authored pure classifier + Filter outlet, REST-installed; outlet
+  cannot rewrite API HTTP responses → enforcement asserted via `/api/chat/completed` + persisted-chat flow.
+
+Units (M3 landed at 45–81% of 200K — comparable sizing):
+- **M4.1 — verifier chart surface** (OPEN): store rendered HTML per plot_id in ArtifactStore under its own
+  small bound (`VERIFIER_HTML_CAP`-style setting — MB-scale entries; the 256-cap cert store would balloon),
+  wired at the render_outcome seam (both verify-and-render AND propose paths; `include_html` response flag
+  + bench JSON bodies untouched); `GET /chart/{plot_id}` — text/html + nosniff + `Content-Security-Policy:
+  sandbox` (headers on the 200 only; 404 stays uniform problem+json via the _fetch_artifact/_HEX64 pattern);
+  iframe:height postMessage self-reporter added to the offline-HTML template (trusted template, off the
+  hash chain; output-scan tests extended); OpenAPI paths entry + golden regen + external-contract test.
+  Acceptance: gate green; propose→`GET /chart` curl round-trip serves the stored page verbatim with the
+  three headers; evicted/unknown/malformed plot_id → uniform 404.
+- **M4.2 — tool-facing response headers + surface tuning** (OPEN): scratch fake-tool-server probe against
+  the live Open WebUI → settle the Location-variant (model context + embed persistence; fallback decision
+  lands here); `Settings.public_base_url` (`VERIFIER_PUBLIC_BASE_URL`, default derived `http://127.0.0.1:
+  {port}`, validated in `__post_init__`); proposeSpec verified-success responses gain `Content-Disposition:
+  inline` + absolute `Location`; op summary/description tuned for the model (description wins; concrete
+  dataset examples); OpenAPI golden regen. Acceptance: gate green; probe verdict session-logged + header
+  wiring pinned by tests; response BODIES byte-unchanged (existing suites prove it).
+- **M4.3 — webui/ provisioning package** (OPEN): repo-root out-of-tree pkg wired like bench/model_backend
+  (mypy files + isort first-party, coverage-excluded, unshipped); canonical env set + launcher + IDEMPOTENT
+  bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first, REST
+  fallback; legacy-FC default + task model; `function_name_filter_list=["proposeSpec"]`); smoke = `/ready`
+  + model enumerated from model_backend stub-or-live + tool ops fetched into the registry; README (three-
+  service run recipe, bench/README pattern); `.webui-data` wiped + re-provisioned under the canonical env.
+  Acceptance: gate green; bootstrap re-runnable (second run = no-op) from a clean `.webui-data`; smoke passes.
+- **M4.4 — enforcement filter** (OPEN): `webui/` filter module — pure chart-like classifier (matplotlib/
+  plotly/altair/seaborn fences, `<svg`, vega-lite JSON, mermaid, data-URI images ↔ prose + verified-embed
+  negatives) + Filter class (outlet rewrites unverified chart-like assistant output, logs what it blocked);
+  bootstrap installs+activates globally; `tests/test_webui_*.py` on the bench-harness pattern (pure logic,
+  REST-shape pins); headless outlet assertion via `/api/chat/completed`; POC_SCOPE gains the Open WebUI
+  section (trusted display, heuristic filter, global-server no-CORS posture, loopback deployment).
+  Acceptance: gate green; classifier corpus fully pinned; one live `/api/chat/completed` round-trip blocks
+  a chart-like reply and passes a prose reply.
+- **M4.5 — live E2E + evidence** (OPEN; GATED: NPU model_backend live — M3 recipe, confirm functionally):
+  full three-service stack; headless legacy-FC chat with `tool_ids` → tool executed (verifier artifacts
+  exist + verdict context in the reply); persisted-chat flow → embed recorded; chromiumfish capture of the
+  chat showing the sandboxed verified chart; filter on/off differential on a direct-chart prompt; record
+  observations (task-model tool-selection rate, embed behavior) with claim discipline; close M4 →
+  IMPLEMENTED. Acceptance: every seed-9/10/11 exit criterion demonstrated or its miss recorded honestly.
 
 ---
 
