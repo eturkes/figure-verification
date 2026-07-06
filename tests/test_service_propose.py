@@ -147,8 +147,9 @@ def test_propose_dataset_mismatch_is_502(
     # The model proposes a spec for weather.csv (a valid, provisioned dataset whose own name +
     # hash verify honestly) though sales.csv was requested. checks._check_dataset_binding hashes
     # the file NAMED IN THE SPEC, so absent the pin this would verify, render, and store an
-    # off-request chart; the pin refuses it 502 after verify_only, before render/store — never a
-    # 200. The other dataset's name never enters the response.
+    # off-request chart; the pin refuses it 502 right after decode_stage, before
+    # verify_decoded/render/store — never a 200. The other dataset's name never enters the
+    # response.
     reply = _spec_text("g06_max_temp_by_city.json")  # names weather.csv, would verify + render
     _install_reply(monkeypatch, reply)
     response = _propose(client, "Plot max temperature by city", "sales.csv")

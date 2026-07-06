@@ -40,7 +40,7 @@ failure = the metered model failure); 404 unknown dataset / 503 unreachable / 50
 OR off-request pin / 400/415/405 transport misuse = problem+json; a broken trusted manifest = the
 500 the model cannot provoke. Backend pick (OpenVINO over the seed's "Ollama", user-confirmed),
 device/model/run facts + rejected-finding rationale: memory M3 + `bench/README.md`.
-677 tests / 100% branch. Unit trail + per-unit context-usage + codex-review follow-ups:
+680 tests / 100% branch. Unit trail + per-unit context-usage + codex-review follow-ups:
 `git log --grep "(M3[. ]"` (+ `babe6da`/`f53bd0c`/`5936cad`, the NPU switch). Units landed at
 45–81% of 200K.
 
@@ -55,10 +55,11 @@ size+identity-digest pinned. **Observations** (n=100 HTTP-200 verdicts; NOT a bo
 faults `off_request=0 upstream_fault=0 harness_error=0`; top failing check `spec.decode` (100).
 Reply shape isolates WHY: `fenced=97 bare_object=2 other=1 empty=0`, de-fenced only 24/100 parse
 as JSON — the weak proposer is 100% unreliable at strict VPlot JSON, the dominant failure
-SYNTACTIC (markdown fence). The review re-run REPRODUCED every model-side number exactly
-(independent server processes, same device+config) — the per-(device,config) determinism claim,
-now observed at n=100. So the untrusted model EXERCISES the pipeline without weakening it — the
-deterministic verifier bound is untouched by a fully-failing proposer.
+SYNTACTIC (markdown fence). The review re-run's summary reported an exact repeat of every
+model-side number (independent server processes, same device+config — consistent with the
+per-(device,config) determinism design; session-logged only, like all eval numbers here). So the
+untrusted model EXERCISES the pipeline without weakening it — the deterministic verifier bound
+is untouched by a fully-failing proposer.
 
 ---
 

@@ -51,7 +51,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--verifier-url", default=_DEFAULT_VERIFIER_URL, help="verifier base URL")
     parser.add_argument("--model-url", default=_DEFAULT_MODEL_URL, help="model backend /v1 URL")
-    parser.add_argument("--examples-dir", default=_DEFAULT_EXAMPLES_DIR, help="bad-corpus dir")
+    parser.add_argument(
+        "--examples-dir", default=_DEFAULT_EXAMPLES_DIR, help="golden-corpora root (bad + good)"
+    )
     parser.add_argument("--out", default=_DEFAULT_OUT, help="report.json output path")
     parser.add_argument("--details", default=_DEFAULT_DETAILS, help="details.jsonl output path")
     parser.add_argument("--timeout", type=float, default=_DEFAULT_TIMEOUT, help="HTTP timeout (s)")

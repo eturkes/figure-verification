@@ -13,11 +13,15 @@ M3.4a synthetic-payload exercise was a one-off script, never committed). Locked 
 - the reply-shape taxonomy + de-fence rule the headline numbers rest on;
 - both corpus identity pins re-derived from the live tree (a corpus edit fails this portable
   gate, not just the next hardware-gated live run);
+- the guarantee runner itself over a MockTransport mini-corpus (per-corpus regression counting
+  and the transport-fault arms — codex-review: a swapped regression_verdict or broken None
+  handling must fail HERE, not only on the next live run);
 - the exit-code validity matrix (every single violation flips a valid run to exit 1).
 """
 
 from pathlib import Path
 
+import httpx
 import msgspec
 import pytest
 
@@ -43,6 +47,7 @@ from bench.harness import (
     _reply_shape,
     _RespCheck,
     _RespVerdict,
+    _run_guarantee,
 )
 from verifier.service.app import _PIN_MISMATCH_DETAIL
 
@@ -151,9 +156,81 @@ def test_corpus_digest_is_content_and_name_sensitive(tmp_path: Path) -> None:
     (tmp_path / "b.json").write_bytes(b"{}")
     base = _corpus_digest(tmp_path, ("a.json", "b.json"))
     assert _corpus_digest(tmp_path, ("b.json", "a.json")) == base  # order-insensitive (sorted)
+    # Same cardinality, same bytes, one file RENAMED -> different digest (names are hashed).
+    (tmp_path / "c.json").write_bytes(b"{}")
+    assert _corpus_digest(tmp_path, ("b.json", "c.json")) != base  # name-sensitive
     (tmp_path / "a.json").write_bytes(b"{ }")
     assert _corpus_digest(tmp_path, ("a.json", "b.json")) != base  # content-sensitive
     assert _corpus_digest(tmp_path, ("a.json",)) != base  # membership-sensitive
+
+
+# --- the guarantee runner over a MockTransport mini-corpus ----------------------
+def _mini_corpus(root: Path) -> None:
+    """One bad + one good golden with an index shaped like examples/index.json."""
+    (root / "bad_specs").mkdir()
+    (root / "good_specs").mkdir()
+    (root / "bad_specs" / "b1.json").write_bytes(b'{"marker": "bad"}')
+    (root / "good_specs" / "g1.json").write_bytes(b'{"marker": "good"}')
+    index = {"bad_specs": [{"file": "b1.json"}], "good_specs": [{"file": "g1.json"}]}
+    (root / "index.json").write_bytes(msgspec.json.encode(index))
+
+
+def _verdict_response(*, verified: bool) -> httpx.Response:
+    return httpx.Response(200, json={"verified": verified, "layer": "verify", "results": []})
+
+
+def test_run_guarantee_healthy_verifier_counts_zero(tmp_path: Path) -> None:
+    _mini_corpus(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # A healthy verifier: the bad golden fails, the good golden verifies.
+        return _verdict_response(verified=b'"good"' in request.content)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+    assert block.bad_corpus_false_accept_count == 0
+    assert block.good_corpus_false_reject_count == 0
+    assert block.bad_corpus_transport_errors == 0
+    assert block.good_corpus_transport_errors == 0
+    assert block.bad_corpus_size == 1
+    assert block.good_corpus_size == 1
+    assert block.bad_corpus_digest == _corpus_digest(tmp_path / "bad_specs", ("b1.json",))
+    assert block.good_corpus_digest == _corpus_digest(tmp_path / "good_specs", ("g1.json",))
+
+
+def test_run_guarantee_counts_regressions_per_corpus(tmp_path: Path) -> None:
+    # A regression in BOTH directions: the bad golden verifies (false accept) and the good
+    # golden fails (false reject) — a swapped regression_verdict mutant fails both asserts.
+    _mini_corpus(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _verdict_response(verified=b'"bad"' in request.content)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+    assert block.bad_corpus_false_accept_count == 1
+    assert block.good_corpus_false_reject_count == 1
+    assert block.bad_corpus_transport_errors == 0
+    assert block.good_corpus_transport_errors == 0
+
+
+def test_run_guarantee_transport_faults_never_count_as_verdicts(tmp_path: Path) -> None:
+    # A non-200 (bad corpus) and a connect error (good corpus) both land in the per-corpus
+    # transport counters — never a false accept/reject; the invalid-run signal is transport>0.
+    _mini_corpus(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if b'"bad"' in request.content:
+            return httpx.Response(500, json={"detail": "boom"})
+        msg = "connection refused"
+        raise httpx.ConnectError(msg)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+    assert block.bad_corpus_transport_errors == 1
+    assert block.good_corpus_transport_errors == 1
+    assert block.bad_corpus_false_accept_count == 0
+    assert block.good_corpus_false_reject_count == 0
 
 
 # --- exit-code validity matrix --------------------------------------------------

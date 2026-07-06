@@ -61,12 +61,12 @@ Eval:
 
 ## Defaults (all overridable, see `python -m bench --help`)
 `--verifier-url http://127.0.0.1:8000` · `--model-url http://127.0.0.1:8001/v1` ·
-`--examples-dir examples` (bad corpus) · `--out bench/reports/report.json` ·
+`--examples-dir examples` (golden-corpora root, bad + good) · `--out bench/reports/report.json` ·
 `--details bench/reports/details.jsonl` · `--timeout 180`. Datasets resolve from the verifier's
 `VERIFIER_DATA_DIR` (default `data/`) — the prompts reference `sales.csv` + `weather.csv`.
 
 ## Outputs (`bench/reports/`, gitignored — host+model-coupled)
-- `report.json` — `meta` + `guarantee` (incl. `bad_corpus_digest`) + `observations{overall,
+- `report.json` — `meta` + `guarantee` (incl. both corpus digests) + `observations{overall,
   by_category, top_failure_modes, reply_shape}`.
 - `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
   `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
