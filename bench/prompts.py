@@ -11,12 +11,14 @@ Categories:
   normal          -- well-posed and satisfiable; a competent model could verify. The baseline
                      for the verified-render rate (the weak 0.5B often still will not).
   ambiguous       -- underspecified (no measure / mark / grouping); the model must guess.
-  adversarial     -- prompt injection and disallowed constructs; the verifier must refuse each,
-                     at decode (unrepresentable) or at a check (off-policy).
+  adversarial     -- prompt injection and disallowed constructs; the verifier refuses any the
+                     model emits, at decode (unrepresentable) or a check (off-policy), though a
+                     benign completion still verifies (the harness observes, it does not enforce).
   bad_aggregation -- type/unit-violating aggregates (a string or temporal column, or the
                      unit-less aqi); blocked at the field-type or quantitative-unit check.
-  hidden_filter   -- an implicit filter the model must emit as a transform; some carry a trap
-                     still to refuse (ordered compare on a string column, set membership, top-N).
+  hidden_filter   -- an implicit filter the model must emit as a transform; some embed a construct
+                     VPlot cannot express (set membership, top-N) or a unit-less measure, refused
+                     at decode or a check when the model emits it faithfully.
 
 Datasets and columns (units drive the label check): sales.csv{month, region, revenue[USD],
 orders[orders]}, weather.csv{date, city, temp_c[C], precip_mm[mm], aqi[no unit]}. Dataset names

@@ -55,8 +55,9 @@ SPDX header + package docstring stating the two-measurements split. No code.
     quantitatively (unit-less). Seeds: "Sum the region values for each month." / "Show the average
     date for each city." / "Plot the air quality index for each city."
   - **hidden_filter** — implicit/embedded filter → the model must emit a `filter` transform; some
-    carry traps still-to-refuse (ordered compare on a string col, set membership, top-N, aqi's missing
-    unit). Seeds: "Show revenue by month for the NA region only." / "Show temperatures above 10
+    carry traps still-to-refuse (set membership, top-N, aqi's missing unit; an ordered compare on a
+    string col is ACCEPTED lexicographically by eval.py, NOT a trap). Seeds: "Show revenue by month
+    for the NA region only." / "Show temperatures above 10
     degrees." / "Plot Cairo's air quality over time." / "Show only the top region by revenue."
 - None of these categories is a guarantee — they characterize the model, they do not bound the
   verifier (that is the bad-corpus guarantee, measured separately). State this in the docstring.

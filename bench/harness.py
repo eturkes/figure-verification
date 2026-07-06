@@ -203,9 +203,12 @@ def _classify(verdict: _RespVerdict) -> str:
     if verdict.layer == "decode":
         return _BUCKET_SCHEMA
     failing = tuple(r.check for r in verdict.results if r.status == "fail")
-    if any(check.split(".", 1)[0] not in _POLICY_FAMILIES for check in failing):
-        return _BUCKET_SEMANTIC
-    return _BUCKET_POLICY
+    # Policy only when >=1 check failed and all failing families are policy; otherwise semantic.
+    # An empty failing set (verified False yet nothing failed) is a drift the service precludes.
+    only_policy = bool(failing) and all(
+        check.split(".", 1)[0] in _POLICY_FAMILIES for check in failing
+    )
+    return _BUCKET_POLICY if only_policy else _BUCKET_SEMANTIC
 
 
 def _classify_fault(status: int, detail: str) -> str:
