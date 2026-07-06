@@ -144,8 +144,8 @@ decode failure (the model's most common failure mode). Only a fault outside that
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
 timed-out backend (`503`), a backend reply that is not a usable chat completion (`502`), or a
 malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
-controls only the dataset name — never the trusted files at that path — so it cannot provoke
-the operator-config `500`.
+proposes the whole spec, but of the verifier's trusted inputs it names only the dataset — never
+the trusted files at that path — so it cannot provoke the operator-config `500`.
 
 ```sh
 # propose a spec with the local model, then verify and render it

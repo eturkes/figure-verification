@@ -187,15 +187,18 @@ def _build_messages(
 
 def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest.Manifest, bytes]:
     """Resolve and read the named dataset's CSV bytes + parsed manifest under data_dir, or
-    raise DatasetNotFoundError. The CSV path is built from the whole name, so resolve() +
+    raise DatasetNotFoundError (a 404). The CSV path is built from the whole name, so resolve() +
     is_relative_to is the authoritative confinement (a traversal name that slipped past M3.3's
     DatasetName guard resolves outside the root -> not found). The manifest path uses Path.stem,
     which collapses any directory to a flat component, so it needs no runtime confinement branch
-    (the pipeline precedent). A name that denotes no readable regular file -- absent
-    (FileNotFoundError), a directory (IsADirectoryError), or a path through a non-directory
-    (NotADirectoryError) -- is not-found, since the untrusted caller picked the name; a
-    permission or other OS read fault, and a malformed manifest (load_manifest raises),
-    propagate as operator misconfiguration."""
+    (the pipeline precedent). The CSV name is wholly caller-picked, so a name denoting no readable
+    CSV -- absent (FileNotFoundError), a directory (IsADirectoryError), or a path through a
+    non-directory (NotADirectoryError) -- is not-found. The manifest instead lives under the
+    trusted schemas/ dir, so it mirrors the pipeline's verify_only: a genuine absence
+    (FileNotFoundError) is the not-provisioned 404, but any OTHER OS read fault (a directory or
+    regular-file collision, a permission or symlink-loop error) -- like a malformed manifest
+    (load_manifest raises) -- is operator misconfiguration and propagates -> the app's 500, which
+    the untrusted caller (naming only the dataset) cannot provoke."""
     root = settings.data_dir.resolve()
     csv_path = (root / dataset_name).resolve()
     if not csv_path.is_relative_to(root):
@@ -203,8 +206,11 @@ def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest
     manifest_path = root / "schemas" / f"{Path(dataset_name).stem}.json"
     try:
         csv_bytes = csv_path.read_bytes()
-        manifest_bytes = manifest_path.read_bytes()
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
+        raise DatasetNotFoundError(dataset_name) from exc
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+    except FileNotFoundError as exc:
         raise DatasetNotFoundError(dataset_name) from exc
     return ingest.load_manifest(manifest_bytes), csv_bytes
 
@@ -217,12 +223,14 @@ def _build_async_client(settings: Settings) -> httpx.AsyncClient:
 
 def _extract_content(response: httpx.Response) -> bytes:
     """The chat-completion reply -> choices[0].message.content as raw UTF-8 bytes, or raise
-    ModelUpstreamError(502). A body that is not a valid envelope, no choices, or empty content
-    are all unusable upstream responses. NEVER decodes the content as VPlot -- that stays
-    downstream, so a malformed-but-present spec flows to a 200 verdict."""
+    ModelUpstreamError(502). A body that is not valid UTF-8 (msgspec raises the builtin
+    UnicodeDecodeError, not its own DecodeError) or not a valid envelope, no choices, or empty
+    content are all unusable upstream responses -- a 502, never the operator-config 500. NEVER
+    decodes the content as VPlot -- that stays downstream, so a malformed-but-present spec flows
+    to a 200 verdict."""
     try:
         envelope = _ENVELOPE_DECODER.decode(response.content)
-    except (msgspec.DecodeError, msgspec.ValidationError) as exc:
+    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
         msg = f"model reply is not a chat-completion envelope: {exc}"
         raise ModelUpstreamError(msg, status=502) from exc
     if not envelope.choices:

@@ -255,7 +255,7 @@
             }
           },
           "502": {
-            "description": "The model backend returned no usable proposal, or proposed a specification for a different dataset than requested.",
+            "description": "The model backend replied, but not with a usable chat completion (a non-success status, a malformed body, or no usable message content).",
             "content": {
               "application/problem+json": {
                 "schema": {

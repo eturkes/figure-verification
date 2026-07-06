@@ -174,6 +174,23 @@ def test_propose_backend_unusable_reply_is_502(
     assert response.json()["status"] == 502
 
 
+def test_propose_invalid_utf8_reply_is_502(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A 200 body whose JSON string content carries invalid UTF-8 is not a usable chat completion:
+    # msgspec raises the builtin UnicodeDecodeError (not its own DecodeError), which
+    # _extract_content maps to a 502 upstream fault — never the operator-config 500 the model
+    # must not be able to provoke.
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'{"choices":[{"message":{"content":"\xed\xa0\x80"}}]}')
+
+    _install_handler(monkeypatch, handler)
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 502
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 502
+
+
 # --- transport misuse on the new route ---------------------------------------
 @pytest.mark.parametrize(
     "body",
@@ -213,3 +230,35 @@ def test_propose_wrong_method_is_405(client: TestClient[Litestar]) -> None:
     assert response.status_code == 405
     assert response.headers["content-type"] == _PROBLEM_JSON
     assert response.json()["status"] == 405
+
+
+# --- dataset resolution: a genuine absence (404) vs. a broken manifest (500) --
+# The proposer reads the CSV + trusted manifest to build its prompt. Absence is a caller-facing
+# 404 (the dataset simply is not provisioned); a manifest PATH that is present-but-wrong-shape
+# (a directory) is operator misconfiguration, so it propagates to the generic 500 exactly as the
+# verify pipeline does — the model, naming only the dataset, cannot provoke that 500.
+def test_propose_csv_without_manifest_is_404(tmp_path: Path) -> None:
+    # A half-provisioned dataset (CSV present, trusted manifest genuinely absent) stays a 404:
+    # the manifest FileNotFoundError is not-provisioned, distinct from a shape fault's 500. This
+    # locks the split CSV/manifest reads — the absence case must not become a 500.
+    (tmp_path / "sales.csv").write_bytes(b"date,revenue\n2021-01,100\n")
+    (tmp_path / "schemas").mkdir()
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+        response = _propose(scoped, "anything", "sales.csv")
+    assert response.status_code == 404
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 404
+
+
+def test_propose_manifest_is_directory_is_500(tmp_path: Path) -> None:
+    # A provisioned CSV whose trusted manifest path is a DIRECTORY is broken operator config:
+    # _load_dataset_context lets the IsADirectoryError propagate (mirroring the verify pipeline)
+    # -> a generic 500 problem+json, not the caller-facing 404. The model never runs (no
+    # transport installed); the fault fires while the proposer reads the manifest.
+    (tmp_path / "sales.csv").write_bytes(b"date,revenue\n2021-01,100\n")
+    (tmp_path / "schemas" / "sales.json").mkdir(parents=True)
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+        response = _propose(scoped, "anything", "sales.csv")
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 500

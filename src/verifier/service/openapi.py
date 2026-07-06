@@ -282,12 +282,9 @@ def _paths() -> dict[str, Any]:
                     ),
                     "404": _problem_response("No dataset with the requested name is provisioned."),
                     **problems_post,
-                    # 502 is worded to cover BOTH an unusable backend reply AND the M3.3b
-                    # request-binding pin (a spec proposed for a different dataset), so M3.3b
-                    # adds that check with no change to this document.
                     "502": _problem_response(
-                        "The model backend returned no usable proposal, or proposed a "
-                        "specification for a different dataset than requested."
+                        "The model backend replied, but not with a usable chat completion "
+                        "(a non-success status, a malformed body, or no usable message content)."
                     ),
                     "503": _problem_response("The model backend was unreachable or timed out."),
                 },
