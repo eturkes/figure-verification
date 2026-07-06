@@ -69,8 +69,9 @@ class Engine:
         cache). Raises loudly if the model path or device is unusable.
 
         An NPU device compiles to static shapes, so it gets MAX_PROMPT_LEN = max_prompt_len
-        (the largest prompt the pipeline accepts; a longer one raises at generate()). GPU/CPU
-        use dynamic shapes and reject that property, so it is passed only for an NPU device.
+        (the largest prompt the pipeline accepts; a longer one raises at generate() — a
+        static-shape contract, not exercised this session). GPU/CPU use dynamic shapes and
+        reject that property, so it is passed only for an NPU device.
         """
         pipeline_config: dict[str, int] = {}
         if "NPU" in settings.device:

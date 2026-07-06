@@ -34,8 +34,8 @@ _DEFAULT_MAX_BODY_BYTES = 65536
 _DEFAULT_STORE_CAP = 256
 # Model proposer (M3.2a): the local backend's OpenAI /v1 base (M3.1b binds port 8001; the
 # client appends /chat/completions), the single served model name copied into requests,
-# a generation timeout with slow-iGPU headroom, the sample-row count handed to the prompt,
-# and the new-token ceiling (matches the backend default, bounds how long the GPU lock is held).
+# a generation timeout with slow-accelerator headroom, the sample-row count handed to the prompt,
+# and the new-token ceiling (matches the backend default, bounds the backend's lock-hold time).
 _DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:8001/v1"
 _DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_TIMEOUT = 120.0

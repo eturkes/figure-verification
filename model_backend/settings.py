@@ -7,9 +7,10 @@ __post_init__ rejects a non-positive generation bound so a misconfigured deploy 
 This server is the UNTRUSTED proposer, not the trusted verifier, so these bounds guard the
 single compiled pipeline / lock (throughput and response size), never a verification claim.
 Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target the
-NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: the NPU compiler requires
-symmetric weights (the stock asymmetric -int4-ov IR fails it) and compiles to static shapes,
-so max_prompt_len caps the prompt the pipeline accepts (see .agent/m3_1_design.md).
+NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: OpenVINO's NPU LLM path
+wants symmetric int4 (the stock asymmetric -int4-ov IR fails the NPU VCL compiler — the
+leading, not isolated, reason; see .agent/m3_1_design.md) and compiles to static shapes, so
+max_prompt_len caps the prompt the pipeline accepts.
 """
 
 import os
@@ -24,8 +25,9 @@ _DEFAULT_DEVICE = "NPU"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8001
 # The NPU compiles to static shapes: max_prompt_len is the largest prompt (in tokens) the
-# pipeline accepts; a longer prompt raises at generate() -> the client reads the non-2xx as a
-# 502 upstream fault. 1536 clears the ~770-token proposer prompt with wide headroom while
+# pipeline accepts; a longer prompt raises at generate() (OpenVINO static-shape contract; the
+# over-length branch is not exercised) -> the client reads the non-2xx as a 502 upstream fault.
+# 1536 clears the ~770-token proposer prompt with wide headroom while
 # keeping the static allocation small. Passed only for an NPU device (GPU/CPU use dynamic
 # shapes and reject the property); raise it if a wider dataset or longer request overflows.
 _DEFAULT_MAX_PROMPT_LEN = 1536
@@ -33,7 +35,7 @@ _DEFAULT_MAX_PROMPT_LEN = 1536
 # ceiling and as the fallback when a caller omits max_tokens (the engine always sets
 # max_new_tokens — a fresh GenerationConfig would otherwise generate up to 2**64-1 tokens).
 _DEFAULT_MAX_TOKENS = 512
-# The response-byte ceiling: a belt over the token cap, guarding the single GPU/lock against
+# The response-byte ceiling: a belt over the token cap, guarding the single accelerator/lock against
 # a generation that outgrows the configured bound (over-cap -> upstream fault at the client).
 _DEFAULT_MAX_RESPONSE_BYTES = 65536
 

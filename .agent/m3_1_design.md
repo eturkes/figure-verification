@@ -7,8 +7,11 @@ runs on the AI Boost **NPU** (default) and the Arc iGPU (fallback).
 
 UPDATE (post-M3.3, direct task "change the local LLM model to an NPU model"): the default device
 is now the **NPU**, serving a LOCALLY re-quantized SYMMETRIC-int4 export of Qwen2-0.5B. This
-supersedes M3.1a's `AUTO:GPU,CPU` decision — the M3.1a "NPU EXCLUDED" root cause is now ESTABLISHED:
-the stock `-int4-ov` IR is INT4_**ASYM**metric and the NPU VCL compiler requires SYMMETRIC weights.
+supersedes M3.1a's `AUTO:GPU,CPU` decision — M3.1a's "NPU EXCLUDED" is now RESOLVED empirically:
+a local INT4_**SYM** re-export loads+runs on the NPU where the stock **ASYM** `-int4-ov` IR failed
+VCL. Symmetric int4 (what OpenVINO's NPU LLM path calls for) is the LEADING cause, not isolated —
+the re-export also rebuilt the graph (the VCL error was a duplicate-names defect); one before/after,
+not an ablation.
 GPU/CPU still run (dynamic shapes) and stay a documented fallback via `MODEL_BACKEND_DEVICE`.
 
 ## Gate acceptance — MET
@@ -38,8 +41,9 @@ iGPU (M3.1a original — still valid as fallback; gpu.log / auto_verify.log):
   harmless but redundant). Python MUST ∈ {3.10–3.13} (compiled `_pyopenvino` cpython tag).
 - Run = call the venv python DIRECTLY (`.venv-model/bin/python`), never isolated (`-E`/`-I`/some
   `uv run` modes strip `PYTHONPATH` → OpenVINO vanishes).
-- Re-export needs `nncf` + `openvino` (a throwaway scratch venv: `uv venv --python 3.13` +
-  `numpy nncf`, openvino via the same `PYTHONPATH`); one-off, off the backend's runtime deps.
+- Re-export needs `nncf` + `huggingface_hub` + `openvino` (a throwaway scratch venv:
+  `uv venv --python 3.13` + `numpy nncf huggingface_hub`, openvino via the same `PYTHONPATH`);
+  one-off, off the backend's runtime deps.
 
 ## Model — a symmetric-int4 export for the NPU
 - Served model (gitignored `models/`, host+container-coupled): `models/Qwen2-0.5B-Instruct-int4-sym-ov`,
@@ -48,8 +52,10 @@ iGPU (M3.1a original — still valid as fallback; gpu.log / auto_verify.log):
 - WHY re-quantize: the NPU VCL compiler REJECTS the stock ASYMMETRIC `OpenVINO/Qwen2-0.5B-Instruct-
   int4-ov` — `LLMPipeline(model, "NPU")` → `RuntimeError … [NPU_VCL] Compilation failed`
   (`vclAllocatedExecutableCreate3 0x78000004`; `StopLocationVerifierPass … Found 73 duplicated
-  names`, dev.log). NPU int4 must be SYMMETRIC. This is the now-ESTABLISHED cause of M3.1a's
-  NPU-EXCLUDED finding (then only a hypothesis).
+  names`, dev.log). OpenVINO's NPU LLM path calls for SYMMETRIC int4, and the INT4_SYM re-export
+  loads+runs (npu_perf.log) — the LEADING explanation for M3.1a's NPU-EXCLUDED (then a bare
+  hypothesis). NOT isolated: the re-export also rebuilt the graph (that VCL error is a
+  duplicate-names defect), so symmetry-vs-graph isn't teased apart — one before/after, no ablation.
 - Re-export recipe (gate-validated; no torch/optimum — pure OpenVINO + nncf, see scratch compress.py):
   1. Fetch an FP16 OV IR: `huggingface_hub.snapshot_download("OpenVINO/qwen2-0.5b-instruct-fp16-ov",
      local_dir=…)` → `openvino_model.{xml,bin}` (~942 MiB bin) + tokenizer/detokenizer/config/
@@ -73,8 +79,9 @@ iGPU (M3.1a original — still valid as fallback; gpu.log / auto_verify.log):
   APPLIES to this symmetric export, unlike the asymmetric model M3.1a excluded).
 - NPU compiles to STATIC shapes → pass `MAX_PROMPT_LEN` at load (largest prompt in tokens the
   pipeline accepts). A prompt longer than it raises at `generate()` → backend 500 → the M3.2 client
-  reads the non-2xx as a 502 upstream fault (the input-size budget is deferred to M5). `Engine.load`
-  passes `MAX_PROMPT_LEN` ONLY for an NPU device.
+  reads the non-2xx as a 502 upstream fault (OpenVINO static-shape contract; this over-length→raise
+  branch was NOT exercised this session — the smoke prompt was ~770 tok, under the cap. The
+  input-size budget is deferred to M5). `Engine.load` passes `MAX_PROMPT_LEN` ONLY for an NPU device.
 - GPU (Arc 140V iGPU) / CPU = documented fallback: DYNAMIC shapes, which REJECT `MAX_PROMPT_LEN`, so
   it is omitted for them. Set `MODEL_BACKEND_DEVICE=AUTO:GPU,CPU` (GPU primary, CPU correctness).
 
@@ -117,7 +124,8 @@ completion_tokens = pm.get_num_generated_tokens()   # usage.completion_tokens; t
 
 - **Caps (three, distinct)**: `max_new_tokens` bounds TOKENS generated; the wrapper ALSO enforces a
   response-BYTE ceiling (over-cap → the client treats it as an upstream fault); on the NPU,
-  `MAX_PROMPT_LEN` bounds the INPUT (over-length → generate() raises → 502). All guard the single
+  `MAX_PROMPT_LEN` bounds the INPUT (over-length → generate() raises → 502; static-shape contract,
+  unexercised). All guard the single
   backend lock/accelerator. (`max_body_bytes` is the SEPARATE inbound-caller cap in the verifier
   service, not here.)
 - **Concurrency**: serialize conservatively — `generate()` runs under `sync_to_thread` + one lock
@@ -138,8 +146,9 @@ completion_tokens = pm.get_num_generated_tokens()   # usage.completion_tokens; t
   quantization); the text varies with config (e.g. `repetition_penalty`) and with quantization.
 
 ## Behavioral characterization — validates the "weak proposer" premise (informs M3.2 prompt, M3.4)
-- The 0.5B stays a WEAK proposer under the symmetric NPU export: end-to-end `propose_spec` returns a
-  malformed VPlot reply that strict `decode_spec` REJECTS — the failure signal M3.4 meters is intact.
+- One end-to-end smoke on the symmetric NPU export still returned a malformed VPlot reply that strict
+  `decode_spec` REJECTS — a single observation that the failure signal M3.4 meters survives the quant
+  swap (the failure TAXONOMY/RATE is re-characterized at M3.4, below).
 - OBSERVED on the ASYMMETRIC model (M3.1a json.log; 3 requests, fresh greedy config): SYNTACTICALLY
   valid JSON (all parse) but SEMANTICALLY wrong — enum PLACEHOLDERS echoed verbatim
   (`"mark":"bar|line|point"`, `"aggregate":"sum|mean|count|none"`) + field names absent from the

@@ -5,7 +5,7 @@ Two routes the verifier client (M3.2) and Open WebUI (M4) use — POST /v1/chat/
 (one non-streaming completion) and GET /v1/models (the single served model) — plus /health.
 The model compiles once at create_app time (Engine.load, blocking); each generation runs off
 the event loop in a worker thread behind the engine lock (asyncio.to_thread — one pipeline,
-one GPU). This is the UNTRUSTED proposer: request parsing is lenient (OpenAI-compat via the
+one accelerator). This is the UNTRUSTED proposer: request parsing is lenient (OpenAI-compat via the
 typed msgspec body, unknown fields tolerated), and the verifier re-decodes every reply
 strictly (POC_SCOPE). A BackendError (e.g. a reply over the response-byte ceiling) renders as
 an OpenAI-style error body via the handler below; the verifier client reads any non-2xx as an
@@ -49,7 +49,7 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
     """Generate one non-streaming chat completion from the local model.
 
     The requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
-    single GPU/lock against a caller inducing an unbounded generation, and the floor keeps a
+    single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
     zero/omitted value from starving the reply (an omitted max_tokens uses the ceiling). The
     response reports settings.model_name (the one served model), never the caller's requested
     `model` — echoing an arbitrary name would misreport which model produced the spec.
