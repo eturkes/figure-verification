@@ -77,7 +77,13 @@ from verifier.service.model_client import (
 )
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 from verifier.service.openapi import openapi_json_bytes
-from verifier.service.pipeline import render_outcome, verify_and_render, verify_only
+from verifier.service.pipeline import (
+    decode_stage,
+    render_outcome,
+    verify_and_render,
+    verify_decoded,
+    verify_only,
+)
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -169,24 +175,30 @@ def _decode_propose_request(raw: bytes) -> ProposeRequest:
 
 # checks._check_dataset_binding hashes the file NAMED IN THE SPEC, so absent this pin the model
 # could propose a spec for a DIFFERENT provisioned dataset (its own valid name + hash) and verify
-# honestly-but-off-request. The pin refuses that 502, after verify_only (read-only) and BEFORE
-# render/store, so no off-request artifact is produced. The other dataset's name never leaks.
+# honestly-but-off-request. The pin refuses that 502 right after decode, BEFORE verify_decoded
+# reads the off-request dataset's trusted manifest — so an off-request name never triggers a
+# manifest load (no 500 path, no present/broken/absent oracle) and no artifact is stored. The
+# other dataset's name never leaks (a fixed detail).
 _PIN_MISMATCH_DETAIL = "the model proposed a specification for a different dataset than requested"
 
 
 def _verify_render_pinned(
     raw: bytes, dataset_name: str, settings: Settings, store: ArtifactStore
 ) -> Verdict | RenderVerdict:
-    """Verify the model's proposed spec bytes, refuse (502) a spec that names a dataset other than
-    requested, then render + store on a passing verdict. Pinning between verify_only and
-    render_outcome keeps the request notion out of the trusted pipeline; a decode failure leaves
-    spec None, so the pin is skipped and the 200 decode verdict flows (the metered failure mode).
+    """Decode the model's proposed spec, refuse (502) a spec that names a dataset other than
+    requested, then verify + render + store on the requested dataset. Pinning on the decoded name
+    between decode_stage and verify_decoded keeps the request notion out of the trusted pipeline
+    and refuses an off-request name BEFORE any trusted dataset I/O: a decode failure has no name to
+    pin, so the 200 decode verdict flows (the metered failure mode); any other off-request name
+    (its manifest present, broken, or absent alike) is a uniform 502, never a 500 or a store.
     CPU-bound + synchronous (the route offloads it via sync_to_thread); the 502 HTTPException
     rides the plain HTTPException handler, so its detail names no dataset."""
-    outcome = verify_only(raw, settings)
-    if outcome.spec is not None and outcome.spec.dataset.name != dataset_name:
+    decoded = decode_stage(raw)
+    if isinstance(decoded, Verdict):
+        return decoded
+    if decoded.dataset.name != dataset_name:
         raise HTTPException(detail=_PIN_MISMATCH_DETAIL, status_code=HTTP_502_BAD_GATEWAY)
-    return render_outcome(outcome, settings, store, include_html=False)
+    return render_outcome(verify_decoded(decoded, settings), settings, store, include_html=False)
 
 
 @post(
@@ -197,11 +209,13 @@ def _verify_render_pinned(
 )
 async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> ProposeResult:
     """Ask the untrusted local model to propose a VPlot spec for the request over the named
-    dataset, then run that proposal through verify-and-render unchanged. The model supplies only
-    a spec, never plotted values, so the claim boundary is unmoved: a malformed proposal rides a
-    failing verdict (a 200), and only a fault outside that flow (unknown dataset, an unreachable
-    or unusable backend, a malformed body) answers problem+json. The model call is async; the
-    CPU-bound verify+render runs off the event loop via sync_to_thread.
+    dataset, then verify + render that proposal pinned to the requested dataset name
+    (_verify_render_pinned). The model supplies only a spec, never plotted values, so the claim
+    boundary is unmoved: a malformed proposal rides a failing verdict (a 200), a proposal naming a
+    DIFFERENT dataset than requested is refused 502 (never a verified 200 for an off-request
+    chart), and a fault outside that flow (unknown dataset, an unreachable or unusable backend, a
+    malformed body) answers problem+json. The model call is async; the CPU-bound verify+render
+    runs off the event loop via sync_to_thread.
     """
     _require_json(request)
     raw = await request.body()

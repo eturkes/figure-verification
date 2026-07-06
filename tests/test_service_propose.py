@@ -10,10 +10,12 @@ model-failure mode, carried alongside the model's raw reply. The proposer error 
 problem+json: an unknown dataset -> 404 (the name never echoed), an unreachable backend -> 503,
 an unusable reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong
 method -> 405. A proposal that decodes but names a DIFFERENT dataset than requested is refused
-502 by the M3.3b dataset-name pin, after verify and before render/store — no off-request chart.
+502 by the M3.3b dataset-name pin, right after decode — before any verify or render, so even a
+broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart.
 """
 
 import json
+import shutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -161,6 +163,31 @@ def test_propose_dataset_mismatch_is_502(
     # locks pin-before-store, not merely the status.
     spec_id = canon.hash_spec(decode_spec(reply)).removeprefix("sha256:")
     assert client.get(f"/spec/{spec_id}").status_code == 404
+
+
+def test_propose_offrequest_broken_manifest_is_502(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The requested sales.csv is validly provisioned (so the model runs), but the model proposes a
+    # spec for a DIFFERENT dataset whose trusted manifest is PRESENT but malformed. The pin refuses
+    # the off-request name 502 right after decode — before verify_decoded loads that manifest — so
+    # a broken off-request manifest is a uniform 502, never the operator-config 500 it would raise
+    # were verification to run on it (nor a present/broken/absent status oracle over the data dir).
+    shutil.copy(_DATA / "sales.csv", tmp_path / "sales.csv")
+    (tmp_path / "schemas").mkdir()
+    shutil.copy(_DATA / "schemas" / "sales.json", tmp_path / "schemas" / "sales.json")
+    (tmp_path / "schemas" / "trap.json").write_bytes(b"{ not valid json")
+    spec = json.loads(_spec_text(_SALES_GOOD))
+    spec["dataset"]["name"] = "trap.csv"  # a decodable spec naming the broken-manifest dataset
+    _install_reply(monkeypatch, json.dumps(spec).encode("utf-8"))
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+        response = _propose(scoped, "anything", "sales.csv")
+    assert response.status_code == 502
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 502
+    assert "trap" not in json.dumps(body)  # the off-request name never leaks
 
 
 # --- the model as an upstream dependency: faults answer problem+json ---------

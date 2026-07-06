@@ -4,8 +4,9 @@
 The transport hands raw request bytes straight here (never a framework-parsed object), so
 schema.decode_spec's strict, fail-closed decode — its duplicate-key rescan included —
 stays authoritative. verify_only strings the trusted M1 stages the core otherwise offers
-no single orchestrator for: decode_spec -> resolve the trusted manifest -> load_manifest
--> checks.verify, mapping each result onto a Verdict.
+no single orchestrator for, as two composable halves: decode_stage (decode_spec) then
+verify_decoded (resolve the trusted manifest -> load_manifest -> checks.verify), mapping
+each result onto a Verdict.
 
 Error split (POC_SCOPE service boundary): every verification outcome is a 200 Verdict —
 including a spec that fails to decode (an expected model failure mode) or names a dataset
@@ -27,8 +28,10 @@ RenderVerdict; a failing verdict returns the plain Verdict with no chart. render
 internally (defense in depth); since verify_only already passed the same gates, a None return
 is a broken invariant, not a caller outcome, so it raises -> the app's generic 500 (the model
 cannot provoke it). verify_and_render (M2.3) is the thin verify_only -> render_outcome
-composition; app.py's proposer reuses render_outcome to pin the requested dataset name between
-verify and render, refusing an off-request proposal before any artifact is produced.
+composition; app.py's proposer reuses these seams — decode_stage, then pin the requested
+dataset name, then verify_decoded -> render_outcome — so an off-request name is refused right
+after decode, before verify_decoded touches the wrong dataset's trusted files (no manifest
+read, no 500, no store).
 """
 
 import hashlib
@@ -59,13 +62,23 @@ def _single(check: str, message: str, *, layer: Literal["decode", "verify"]) -> 
     return Verdict(verified=False, layer=layer, results=(result,))
 
 
-def verify_only(raw: bytes, settings: Settings) -> Outcome:
-    """Run the trusted verify-only pipeline over raw spec bytes (see the module docstring)."""
+def decode_stage(raw: bytes) -> VPlotSpec | Verdict:
+    """Strictly decode raw spec bytes: the decoded VPlotSpec, or a 200 layer="decode" Verdict on
+    a decode failure (an expected model failure mode). The first pipeline stage, split out so
+    app.py's proposer pins the requested dataset name on the decoded spec BEFORE any trusted
+    dataset I/O — an off-request name is refused without touching the wrong dataset's files."""
     try:
-        spec = decode_spec(raw)
+        return decode_spec(raw)
     except (msgspec.ValidationError, msgspec.DecodeError) as exc:
-        return Outcome(verdict=_single("spec.decode", str(exc), layer="decode"))
+        return _single("spec.decode", str(exc), layer="decode")
 
+
+def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
+    """Verify an already-decoded spec: resolve + load the trusted manifest, run checks, map the
+    report onto an Outcome. A dataset with no manifest fails closed as a 200 Verdict; a PRESENT
+    but unloadable manifest (or a checks mispair) raises -> the app's 500 (see the module
+    docstring). Split from verify_only (M3.3b) so the proposer pins the name between decode_stage
+    and this stage, keeping an off-request name off this dataset I/O entirely."""
     # The manifest's filename is Path(name).stem + ".json"; .stem collapses any directory
     # or traversal in the decode-validated, .csv-suffixed name to a flat component, so the
     # path stays under data_dir/schemas by construction (no runtime confinement branch is
@@ -87,6 +100,16 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
     report = checks.verify(spec, manifest, data_dir=settings.data_dir)  # mispair -> raise -> 500
     verdict = Verdict(verified=report.passed, layer="verify", results=report.results)
     return Outcome(verdict=verdict, spec=spec, manifest_bytes=manifest_bytes)
+
+
+def verify_only(raw: bytes, settings: Settings) -> Outcome:
+    """Run the trusted verify-only pipeline over raw spec bytes: decode_stage -> verify_decoded
+    (see the module docstring). A decode failure is a 200 decode Verdict; otherwise the decoded
+    spec is verified against its trusted manifest."""
+    decoded = decode_stage(raw)
+    if isinstance(decoded, Verdict):
+        return Outcome(verdict=decoded)
+    return verify_decoded(decoded, settings)
 
 
 def render_outcome(
