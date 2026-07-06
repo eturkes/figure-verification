@@ -43,7 +43,8 @@ The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbat
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
 because it introspects RenderVerdict.verified: Literal[True] and crashes. Each route still
 carries an explicit operation_id + summary that MIRROR the document's hand-authored values (M4
-Open WebUI maps operationId -> tool name, reads summary); with auto-gen off nothing consumes
+Open WebUI maps operationId -> tool name; model-visible text = description, else summary); with
+auto-gen off nothing consumes
 these route-level copies — openapi.py hand-authors the operationIds it serves — but they keep
 each handler self-describing and would feed auto-gen if it were ever re-enabled.
 """

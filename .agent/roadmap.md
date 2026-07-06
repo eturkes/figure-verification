@@ -40,12 +40,16 @@ join the trusted DISPLAY layer, the verifier stays sole authority; filter = heur
   needs CORS + expose-headers + ~1MB socket cap). Tool surface allowlisted to proposeSpec via
   `function_name_filter_list`. (Overrides seed-9's user-level "Settings → Tools" suggestion.)
 - Chart-in-chat = URL-embed (seed 10's HTMLResponse pattern, current form): verified chart HTML stored
-  per plot_id, served by new `GET /chart/{plot_id}` (text/html + nosniff + `CSP: sandbox` headers), tool
-  response adds `Content-Disposition: inline` + absolute `Location` on verified success → sandboxed iframe
-  loads straight from the verifier (bare-metal loopback deployment assumption, POC_SCOPE will record it);
-  JSON verdict body stays the model's context. Beats srcdoc-inline (our offline HTML inlines the whole
-  Vega bundle — MBs per message). Fallback if the M4.2 probe degrades model context: dedicated
-  HTML-success/JSON-failure op.
+  per plot_id, served by new `GET /chart/{plot_id}` (text/html + nosniff + `Content-Security-Policy:
+  sandbox allow-scripts` — bare `sandbox` blocks the page's own Vega/height JS; the embedding iframe adds
+  its own attr sandbox, no allow-same-origin), tool response adds `Content-Disposition: inline` + absolute
+  `Location` on verified success → sandboxed iframe loads straight from the verifier (bare-metal loopback
+  deployment assumption, POC_SCOPE will record it). Model context (source-settled, middleware.py:917):
+  the Location variant REPLACES tool_result with a generic ui_component message UNLESS the body is a
+  2-list `[_, context]` → M4.2 decides: wrapper `[null, verdict]` on verified success (model keeps the
+  verdict; body shape changes, goldens/bench follow) vs plain body + generic context. Beats srcdoc-inline
+  (our offline HTML inlines the whole Vega bundle — MBs per message). Fallback if the live probe sours on
+  embeds: dedicated HTML-success/JSON-failure op.
 - Weak-model tool calling = LEGACY FC (`DEFAULT_MODEL_PARAMS='{"function_calling":"legacy"}'`; native =
   the 0.10 default but needs backend `tools` support and never executes headless; task model = the same
   weak model). The 0.5B's tool-selection reliability = an OBSERVATION, claim discipline applies.
@@ -54,25 +58,30 @@ join the trusted DISPLAY layer, the verifier stays sole authority; filter = heur
 
 Units (M3 landed at 45–81% of 200K — comparable sizing):
 - **M4.1 — verifier chart surface** (OPEN): store rendered HTML per plot_id in ArtifactStore under its own
-  small bound (`VERIFIER_HTML_CAP`-style setting — MB-scale entries; the 256-cap cert store would balloon),
-  wired at the render_outcome seam (both verify-and-render AND propose paths; `include_html` response flag
-  + bench JSON bodies untouched); `GET /chart/{plot_id}` — text/html + nosniff + `Content-Security-Policy:
-  sandbox` (headers on the 200 only; 404 stays uniform problem+json via the _fetch_artifact/_HEX64 pattern);
-  iframe:height postMessage self-reporter added to the offline-HTML template (trusted template, off the
-  hash chain; output-scan tests extended); OpenAPI paths entry + golden regen + external-contract test.
-  Acceptance: gate green; propose→`GET /chart` curl round-trip serves the stored page verbatim with the
-  three headers; evicted/unknown/malformed plot_id → uniform 404.
+  small bound (`VERIFIER_HTML_CAP`-style setting — MB-scale entries; the 256-cap cert store would balloon;
+  chart HTML MAY evict before its cert — accepted invariant: cert stays authoritative, evicted chart =
+  uniform 404), wired at the render_outcome seam (both verify-and-render AND propose paths; `include_html`
+  response flag + bench JSON bodies untouched); `GET /chart/{plot_id}` — text/html + nosniff +
+  `Content-Security-Policy: sandbox allow-scripts` (headers on the 200 only; 404 stays uniform problem+json
+  via the _fetch_artifact/_HEX64 pattern); iframe:height postMessage self-reporter added to the offline-HTML
+  template (trusted template, off the hash chain; output-scan tests extended); OpenAPI paths entry + golden
+  regen + external-contract test. Acceptance: gate green; propose→`GET /chart` curl round-trip serves the
+  stored page verbatim with the three headers; evicted/unknown/malformed plot_id → uniform 404, incl. the
+  cert-alive/chart-evicted mixed state (pinned by test).
 - **M4.2 — tool-facing response headers + surface tuning** (OPEN): scratch fake-tool-server probe against
   the live Open WebUI → settle the Location-variant (model context + embed persistence; fallback decision
   lands here); `Settings.public_base_url` (`VERIFIER_PUBLIC_BASE_URL`, default derived `http://127.0.0.1:
   {port}`, validated in `__post_init__`); proposeSpec verified-success responses gain `Content-Disposition:
-  inline` + absolute `Location`; op summary/description tuned for the model (description wins; concrete
-  dataset examples); OpenAPI golden regen. Acceptance: gate green; probe verdict session-logged + header
-  wiring pinned by tests; response BODIES byte-unchanged (existing suites prove it).
+  inline` + absolute `Location`; wrapper decision EXECUTED (2-list `[null, verdict]` on verified success —
+  or plain body if the probe favors generic context); op summary/description tuned for the model
+  (description wins; concrete dataset examples); OpenAPI golden regen. Acceptance: gate green; probe
+  verdict session-logged + header wiring pinned by tests; body shape change (if any) confined to
+  verified-success responses — all other bodies byte-unchanged (existing suites prove it).
 - **M4.3 — webui/ provisioning package** (OPEN): repo-root out-of-tree pkg wired like bench/model_backend
   (mypy files + isort first-party, coverage-excluded, unshipped); canonical env set + launcher + IDEMPOTENT
-  bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first, REST
-  fallback; legacy-FC default + task model; `function_name_filter_list=["proposeSpec"]`); smoke = `/ready`
+  bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first; REST
+  fallback = re-POST each boot OR persistent-config ON, since config REST writes don't survive restart
+  under persistent-config-off; legacy-FC default + task model; `function_name_filter_list=["proposeSpec"]`); smoke = `/ready`
   + model enumerated from model_backend stub-or-live + tool ops fetched into the registry; README (three-
   service run recipe, bench/README pattern); `.webui-data` wiped + re-provisioned under the canonical env.
   Acceptance: gate green; bootstrap re-runnable (second run = no-op) from a clean `.webui-data`; smoke passes.

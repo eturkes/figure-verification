@@ -178,7 +178,8 @@ def _id_parameter(name: str) -> dict[str, Any]:
 
 def _paths() -> dict[str, Any]:
     """The five documented operations, each with an explicit operationId + summary (Open WebUI
-    M4 maps operationId -> tool name and reads summary). Intentionally outside the per-operation
+    M4 maps operationId -> tool name; model sees description, else summary — M4.2 adds
+    descriptions). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
     and framework method responses (405 for a wrong method, and OPTIONS/HEAD — a property of the
     path, not an operation); an operation-specific validation failure like the 400 below, tied to
