@@ -9,7 +9,8 @@ stored, while a proposed malformed or check-failing spec rides a 200 verdict —
 model-failure mode, carried alongside the model's raw reply. The proposer error split maps to
 problem+json: an unknown dataset -> 404 (the name never echoed), an unreachable backend -> 503,
 an unusable reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong
-method -> 405. No dataset-name pin yet (M3.3b), so the cross-dataset case is out of scope here.
+method -> 405. A proposal that decodes but names a DIFFERENT dataset than requested is refused
+502 by the M3.3b dataset-name pin, after verify and before render/store — no off-request chart.
 """
 
 import json
@@ -23,6 +24,8 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from verifier import canon
+from verifier.schema import decode_spec
 from verifier.service import model_client
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
@@ -133,6 +136,31 @@ def test_propose_failing_check_is_verify_verdict(
     assert verdict["verified"] is False
     assert verdict["layer"] == "verify"
     assert "svg" not in verdict
+
+
+# --- the M3.3b dataset-name pin: an off-request proposal is refused, not verified ---
+def test_propose_dataset_mismatch_is_502(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The model proposes a spec for weather.csv (a valid, provisioned dataset whose own name +
+    # hash verify honestly) though sales.csv was requested. checks._check_dataset_binding hashes
+    # the file NAMED IN THE SPEC, so absent the pin this would verify, render, and store an
+    # off-request chart; the pin refuses it 502 after verify_only, before render/store — never a
+    # 200. The other dataset's name never enters the response.
+    reply = _spec_text("g06_max_temp_by_city.json")  # names weather.csv, would verify + render
+    _install_reply(monkeypatch, reply)
+    response = _propose(client, "Plot max temperature by city", "sales.csv")
+    assert response.status_code == 502
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 502
+    assert "weather" not in json.dumps(body)  # the off-request name never leaks
+    # The pin fires BEFORE render/store: the spec the reply WOULD have hashed to (spec_id =
+    # cert.spec_hash = canon.hash_spec(spec)) was never stored -> a 404 at the spec GET, so this
+    # locks pin-before-store, not merely the status.
+    spec_id = canon.hash_spec(decode_spec(reply)).removeprefix("sha256:")
+    assert client.get(f"/spec/{spec_id}").status_code == 404
 
 
 # --- the model as an upstream dependency: faults answer problem+json ---------

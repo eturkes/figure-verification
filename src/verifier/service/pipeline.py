@@ -18,14 +18,17 @@ model controls only the dataset name, not what the trusted data_dir holds at tha
 it cannot provoke that 500 — a name with no manifest fails closed as a 200 Verdict.
 
 Outcome is internal, never serialized: on a passed stage it carries the decoded spec and
-the manifest bytes forward so verify_and_render reuses them without re-deriving.
+the manifest bytes forward so render_outcome reuses them without re-deriving.
 
-verify_and_render (M2.3) runs verify_only, then on a PASSING verdict renders the verified
-chart, content-addresses the artifacts (plot_id = SHA-256 of the certificate bytes, spec_id
-= the certificate's spec_hash), stores them, and answers a RenderVerdict. A failing verdict
-returns the plain Verdict with no chart. render() re-verifies internally (defense in depth);
-since verify_only already passed the same gates, a None return is a broken invariant, not a
-caller outcome, so it raises -> the app's generic 500 (the model cannot provoke it).
+render_outcome (split from verify_and_render at M3.3b) is the render half: on a PASSING
+verdict it renders the verified chart, content-addresses the artifacts (plot_id = SHA-256 of
+the certificate bytes, spec_id = the certificate's spec_hash), stores them, and answers a
+RenderVerdict; a failing verdict returns the plain Verdict with no chart. render() re-verifies
+internally (defense in depth); since verify_only already passed the same gates, a None return
+is a broken invariant, not a caller outcome, so it raises -> the app's generic 500 (the model
+cannot provoke it). verify_and_render (M2.3) is the thin verify_only -> render_outcome
+composition; app.py's proposer reuses render_outcome to pin the requested dataset name between
+verify and render, refusing an off-request proposal before any artifact is produced.
 """
 
 import hashlib
@@ -86,14 +89,14 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
     return Outcome(verdict=verdict, spec=spec, manifest_bytes=manifest_bytes)
 
 
-def verify_and_render(
-    raw: bytes, settings: Settings, store: ArtifactStore, *, include_html: bool
+def render_outcome(
+    outcome: Outcome, settings: Settings, store: ArtifactStore, *, include_html: bool
 ) -> Verdict | RenderVerdict:
-    """Verify raw spec bytes; on a passing verdict render the verified chart, store the artifacts
-    content-addressed, and answer a RenderVerdict. A failing verdict answers the plain Verdict —
-    never a chart on an unverified outcome. CPU-bound + synchronous (the handler offloads it via
-    sync_to_thread); see the module docstring for the render-None invariant."""
-    outcome = verify_only(raw, settings)
+    """Render the verified chart for a passing Outcome, store the artifacts content-addressed, and
+    answer a RenderVerdict. A failing verdict answers the plain Verdict — never a chart on an
+    unverified outcome. CPU-bound + synchronous (the handler offloads it via sync_to_thread); see
+    the module docstring for the render-None invariant. Split from verify_and_render (M3.3b) so
+    app.py's proposer can pin the requested dataset name between verify_only and this render."""
     if not outcome.verdict.verified:
         return outcome.verdict
     # verified => the verify stage ran and passed, so spec and manifest_bytes are populated
@@ -126,3 +129,12 @@ def verify_and_render(
         svg=result.svg,
         html=result.html,
     )
+
+
+def verify_and_render(
+    raw: bytes, settings: Settings, store: ArtifactStore, *, include_html: bool
+) -> Verdict | RenderVerdict:
+    """Verify raw spec bytes, then render + store on a passing verdict (verify_only ->
+    render_outcome). A failing verdict answers the plain Verdict — never a chart. CPU-bound +
+    synchronous (the handler offloads it via sync_to_thread)."""
+    return render_outcome(verify_only(raw, settings), settings, store, include_html=include_html)

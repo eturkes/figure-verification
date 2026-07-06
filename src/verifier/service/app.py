@@ -20,8 +20,9 @@ lookup — no leak of which ids were stored; a path that does not match the id r
 Litestar's own 404 instead, still problem+json, still disclosing nothing about the store).
 /propose-spec instead decodes a small typed {user_request, dataset_name} JSON body, runs the
 untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
-— not the caller's body — through verify-and-render; the model supplies only a spec, never
-plotted values, so the verification claim is unmoved.
+— not the caller's body — through verify-and-render, pinned to the requested dataset name
+(_verify_render_pinned); the model supplies only a spec (never plotted values) and cannot
+redirect the verdict onto a different dataset than asked, so the verification claim is unmoved.
 
 Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
@@ -33,8 +34,10 @@ application/problem+json, shaped by the exception handlers below. /propose-spec 
 problem+json outcomes over the model as an upstream dependency — an unknown dataset name -> 404
 (the name never echoed), and a backend that is unreachable (503) or returned an unusable reply
 (502) — mapped by _dataset_not_found_handler and _model_upstream_handler, both registered
-ahead of the generic Exception handler (Litestar routes by the exception's MRO). Every response
-carries X-Content-Type-Options: nosniff as an app default.
+ahead of the generic Exception handler (Litestar routes by the exception's MRO). A proposal that
+decodes but names a DIFFERENT dataset than requested is refused 502 too, by the dataset-name pin
+(_verify_render_pinned) via the plain HTTPException handler — never a verified 200 for an
+off-request chart. Every response carries X-Content-Type-Options: nosniff as an app default.
 
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
@@ -63,6 +66,7 @@ from litestar.status_codes import (
     HTTP_404_NOT_FOUND,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_502_BAD_GATEWAY,
 )
 
 from verifier import __version__
@@ -73,7 +77,7 @@ from verifier.service.model_client import (
 )
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 from verifier.service.openapi import openapi_json_bytes
-from verifier.service.pipeline import verify_and_render, verify_only
+from verifier.service.pipeline import render_outcome, verify_and_render, verify_only
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -163,6 +167,28 @@ def _decode_propose_request(raw: bytes) -> ProposeRequest:
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
 
+# checks._check_dataset_binding hashes the file NAMED IN THE SPEC, so absent this pin the model
+# could propose a spec for a DIFFERENT provisioned dataset (its own valid name + hash) and verify
+# honestly-but-off-request. The pin refuses that 502, after verify_only (read-only) and BEFORE
+# render/store, so no off-request artifact is produced. The other dataset's name never leaks.
+_PIN_MISMATCH_DETAIL = "the model proposed a specification for a different dataset than requested"
+
+
+def _verify_render_pinned(
+    raw: bytes, dataset_name: str, settings: Settings, store: ArtifactStore
+) -> Verdict | RenderVerdict:
+    """Verify the model's proposed spec bytes, refuse (502) a spec that names a dataset other than
+    requested, then render + store on a passing verdict. Pinning between verify_only and
+    render_outcome keeps the request notion out of the trusted pipeline; a decode failure leaves
+    spec None, so the pin is skipped and the 200 decode verdict flows (the metered failure mode).
+    CPU-bound + synchronous (the route offloads it via sync_to_thread); the 502 HTTPException
+    rides the plain HTTPException handler, so its detail names no dataset."""
+    outcome = verify_only(raw, settings)
+    if outcome.spec is not None and outcome.spec.dataset.name != dataset_name:
+        raise HTTPException(detail=_PIN_MISMATCH_DETAIL, status_code=HTTP_502_BAD_GATEWAY)
+    return render_outcome(outcome, settings, store, include_html=False)
+
+
 @post(
     "/propose-spec",
     operation_id="proposeSpec",
@@ -183,7 +209,9 @@ async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> P
     store = cast("ArtifactStore", state["store"])
     req = _decode_propose_request(raw)
     content = await propose_spec(req.user_request, req.dataset_name, settings)
-    verdict = await sync_to_thread(verify_and_render, content, settings, store, include_html=False)
+    verdict = await sync_to_thread(
+        _verify_render_pinned, content, req.dataset_name, settings, store
+    )
     return ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
 
 
