@@ -6,8 +6,9 @@ An out-of-tree observer of the verifier service: it drives only the public HTTP 
 internals, so it adds no trust of its own. The report separates two measurements that must never
 be conflated:
 
-  GUARANTEE (deterministic, the only bound) -- the trusted verifier blocks all 18 M1 bad
-  goldens (bad_corpus_false_accept_count == 0). A non-zero value is a real regression.
+  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks all 18 M1 bad
+  goldens (bad_corpus_false_accept_count == 0) AND accepts all 10 good ones
+  (good_corpus_false_reject_count == 0). Either non-zero is a real regression.
 
   OBSERVATIONS (statistical) -- rates that characterize the weak NPU proposer (tool-call,
   json-validity, schema/semantic/policy failure, verified-render) plus its top failing checks.

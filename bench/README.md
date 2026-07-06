@@ -5,13 +5,18 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
 `httpx.Client`, RNG-free, fixed ordered prompts → byte-reproducible per (device, config).
 
 ## What it measures — two things, never conflated
-- **GUARANTEE** (deterministic, the ONLY bound): re-POST the 18 M1 bad goldens to `/verify-only`
-  → `bad_corpus_false_accept_count` MUST = 0. A nonzero value = a real verifier regression → the
-  run is INVALID (exit 1). Pinned two ways — `bad_corpus_size = 18` AND `bad_corpus_digest`, a
-  SHA-256 over the sorted (filename, content-hash) pairs — so a short/empty corpus OR a wrong
-  `--examples-dir` (even one holding 18 OTHER invalid specs, which size alone cannot catch) fails
-  LOUD (never a vacuous pass). Recompute `_EXPECTED_BAD_CORPUS_DIGEST` (`bench/__main__.py`) after
-  any deliberate corpus edit.
+- **GUARANTEE** (deterministic, the ONLY bounds): re-POST the 18 M1 bad goldens AND the 10 good
+  ones to `/verify-only` → `bad_corpus_false_accept_count` MUST = 0 AND
+  `good_corpus_false_reject_count` MUST = 0. Either nonzero = a real verifier regression → the
+  run is INVALID (exit 1). The good leg closes the reject-everything vacuity: without it a
+  verifier that blocked ALL specs would satisfy the bad bound trivially. Each corpus is pinned
+  two ways — size (18/10) AND an identity digest, a SHA-256 over the sorted (filename,
+  content-hash) pairs — so a short/empty corpus OR a wrong `--examples-dir` (even one holding
+  same-sized sets of OTHER specs, which size alone cannot catch) fails LOUD (never a vacuous
+  pass). Recompute `_EXPECTED_*_CORPUS_DIGEST` (`bench/__main__.py`) after any deliberate corpus
+  edit; `tests/test_bench_harness.py` re-derives both from the tree, so drift also fails the
+  portable gate. The good goldens bake `data/`'s live CSV hashes → the verifier under eval must
+  serve the repo's own `VERIFIER_DATA_DIR=data`.
 - **OBSERVATIONS** (statistical, characterize the model — NOT a bound): over the `n` HTTP-200
   `/propose-spec` verdicts → tool_call / json_validity / schema|semantic|policy_failure /
   verified_render rates + top-5 failing checks, overall + per category (normal · ambiguous ·
@@ -68,5 +73,6 @@ Eval:
 
 Headline numbers live in `.agent/roadmap.md` (M3 close-out) as durable evidence — reports/ is not
 committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
-= INVALID run only: the guarantee broken (`false_accept > 0` or transport errors) or NOT exercised
-(`bad_corpus_size ≠ 18` OR the identity digest mismatches), `harness_error > 0`, or `n == 0` void.
+= INVALID run only: the guarantee broken (`false_accept > 0`, `false_reject > 0`, or transport
+errors) or NOT exercised (either corpus size or identity digest mismatches), `harness_error > 0`,
+or `n == 0` void.

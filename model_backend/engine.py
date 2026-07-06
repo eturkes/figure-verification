@@ -4,8 +4,8 @@
 Isolates the one untyped native import (openvino_genai; a mypy override in pyproject makes it
 resolve to Any so `mypy --strict` type-checks this package without the native runtime present)
 and serializes generation behind a single lock: one compiled LLMPipeline, one accelerator (the
-NPU by default). Transcribes the gate-validated recipe in .agent/m3_1_design.md — cross-check
-that doc, do not re-derive:
+NPU by default). Probe-validated OpenVINO facts this module encodes (durable copies:
+.agent/memory.md M3; probe provenance: the consumed .agent/m3_1_design.md in git history):
 
 - Chat is STATELESS: apply the chat template to the full messages array each call (never
   start_chat/finish_chat, which keep server-side history — wrong for OpenAI /v1).

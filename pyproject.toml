@@ -120,7 +120,10 @@ ignore_missing_imports = true
 minversion = "8.0"
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov --cov-report=term-missing"
 testpaths = ["tests"]
-pythonpath = ["tests"]  # so `import oracle` (the dev-only DuckDB oracle) resolves
+# tests/ so `import oracle` (the dev-only DuckDB oracle) resolves; the repo root so
+# `import bench` resolves (the uninstalled repo-root harness whose pure classifiers
+# tests/test_bench_harness.py locks -- bench itself stays coverage-excluded).
+pythonpath = ["tests", "."]
 xfail_strict = true
 
 [tool.coverage.run]

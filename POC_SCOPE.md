@@ -88,8 +88,8 @@ The transport reports two kinds of outcome and never confuses them:
 - **Transport misuse or a server-config fault** — a wrong `Content-Type` (415), an oversize
   body (413), a wrong method (405), an uncoercible query parameter like a non-boolean
   `include_html` (400), an unknown or malformed artifact id (404), or a broken trusted
-  manifest (500) — answers an RFC 9457 `application/problem+json` document. The model controls
-  only the dataset name, never the trusted bytes at that path, so over a correctly provisioned
+  manifest (500) — answers an RFC 9457 `application/problem+json` document. A request names
+  only the dataset, never the trusted bytes at that path, so over a correctly provisioned
   deploy no request reaches the 500 path; it signals operator misconfiguration — a
   present-but-broken manifest — whose cause stays in the server log, never in the caller's
   response.
@@ -132,18 +132,22 @@ curl -sS http://127.0.0.1:8000/schema/openapi.json
 `verifier.service` (M3) puts a weak local model in front of that same verifier through one more
 endpoint, `POST /propose-spec`. The request is a small `{user_request, dataset_name}` object;
 the service builds the VPlot proposer prompt, asks the local backend for a spec, and feeds
-whatever it returns straight through `verify-and-render` above. The claim boundary does not
-move: the model proposes only a spec, never plotted values, and the verifier recomputes the
-whole plotted table and re-binds the source CSV by hash exactly as before — so the model earns
-no new trust, and a chart still rides only a verified outcome.
+whatever it returns through `verify-and-render` above, pinned to the requested dataset: a
+proposal that decodes but names a different dataset than the request is refused (`502`) right
+after decode — before any of that dataset's trusted files are read, so it is never verified,
+rendered, or stored, and an off-request chart cannot ride an honest hash. The claim boundary
+does not move: the model proposes only a spec, never plotted values, and the verifier recomputes
+the whole plotted table and re-binds the source CSV by hash exactly as before — so the model
+earns no new trust, and a chart still rides only a verified, on-request outcome.
 
 The error split extends the service boundary's rule to the model as an upstream dependency.
 Once the backend returns a reply with extractable content, that content is a spec proposal —
 however malformed — so it rides a `200` verdict just like a spec posted directly, including a
 decode failure (the model's most common failure mode). Only a fault outside that flow answers
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
-timed-out backend (`503`), a backend reply that is not a usable chat completion (`502`), or a
-malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
+timed-out backend (`503`), a backend reply that is not a usable chat completion (`502`), a
+decoded proposal naming a different dataset than requested (`502`, the dataset-name pin above),
+or a malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
 proposes the whole spec, but of the verifier's trusted inputs it names only the dataset — never
 the trusted files at that path — so it cannot provoke the operator-config `500`.
 

@@ -2,12 +2,15 @@
 """Eval driver, classification, and report encoding for the failure eval (M3.4a).
 
 An out-of-tree observer: a synchronous httpx client (deterministic) driving ONLY the verifier's
-public HTTP surface -- /propose-spec for the model path and /verify-only for the bad-corpus
+public HTTP surface -- /propose-spec for the model path and /verify-only for the corpus
 guarantee. It never imports verifier internals, so it adds no trust; it measures the existing
 service. Two measurements, never conflated:
 
-  GUARANTEE (deterministic, the only bound) -- the trusted verifier blocks all 18 M1 bad
-  goldens. bad_corpus_false_accept_count MUST be 0; a non-zero value is a real regression.
+  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks all 18 M1 bad
+  goldens (bad_corpus_false_accept_count MUST be 0) AND accepts all 10 good ones
+  (good_corpus_false_reject_count MUST be 0). Either non-zero is a real verifier regression;
+  without the good leg, a verifier that rejected EVERYTHING would satisfy the bad-corpus
+  bound vacuously and the run would still exit 0 (M3-review finding).
 
   OBSERVATIONS (statistical, characterize the weak proposer) -- tool-call / json-validity /
   schema|semantic|policy failure / verified-render rates plus the top failing checks. NOT a
@@ -45,7 +48,10 @@ _PIN_MISMATCH_DETAIL = "the model proposed a specification for a different datas
 
 _NDIGITS = 4  # rate rounding
 _TOP_MODES = 5  # how many top failing checks the report keeps
-_REPRODUCIBILITY = "greedy decode (temperature 0), fixed ordered prompts, model backend device NPU"
+# Config-scoped only: the harness observes neither the backend device nor its sampling mode
+# (greedy temperature 0 is the verifier client's fixed request), so the note asserts no
+# device fact -- runs are byte-reproducible per backend (device, config).
+_REPRODUCIBILITY = "fixed ordered prompts, greedy client; per backend (device, config)"
 
 # Verdict buckets for a 200 response.
 _BUCKET_VERIFIED = "verified"
@@ -94,12 +100,13 @@ class _RespProblem(msgspec.Struct):
     detail: str
 
 
-class _BadEntry(msgspec.Struct):
+class _SpecEntry(msgspec.Struct):
     file: str
 
 
 class _Index(msgspec.Struct):
-    bad_specs: tuple[_BadEntry, ...]
+    bad_specs: tuple[_SpecEntry, ...]
+    good_specs: tuple[_SpecEntry, ...]
 
 
 class _Models(msgspec.Struct):
@@ -121,17 +128,23 @@ class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """The deterministic bound: the 18 bad goldens must all be blocked (false_accept == 0).
+    """The deterministic bounds: all 18 bad goldens blocked (false_accept == 0) AND all 10 good
+    goldens accepted (false_reject == 0) -- the good leg keeps a reject-everything verifier from
+    satisfying the bad bound vacuously (M3-review).
 
-    bad_corpus_digest pins the corpus IDENTITY (SHA-256 over the sorted filename + content-hash
-    pairs), so __main__ rejects a run whose --examples-dir is not the real M1 goldens even when it
-    happens to hold 18 other invalid specs (codex-review M3.4b F1).
+    Each corpus digest pins its IDENTITY (SHA-256 over the sorted filename + content-hash pairs),
+    so __main__ rejects a run whose --examples-dir is not the real M1 goldens even when it
+    happens to hold same-sized sets of other specs (codex-review M3.4b F1).
     """
 
     bad_corpus_size: int
     bad_corpus_digest: str
     bad_corpus_false_accept_count: int
     bad_corpus_transport_errors: int
+    good_corpus_size: int
+    good_corpus_digest: str
+    good_corpus_false_reject_count: int
+    good_corpus_transport_errors: int
 
 
 class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
@@ -378,17 +391,17 @@ def _shape_block(tally: _Tally) -> ReplyShapeBlock:
     )
 
 
-# --- the guarantee: re-block the bad corpus through /verify-only ----------------------------
-def _corpus_digest(examples_dir: Path, bad_files: tuple[str, ...]) -> str:
-    """SHA-256 over the sorted (filename, content-hash) pairs of the bad corpus.
+# --- the guarantee: re-judge both golden corpora through /verify-only -----------------------
+def _corpus_digest(spec_dir: Path, files: tuple[str, ...]) -> str:
+    """SHA-256 over the sorted (filename, content-hash) pairs of one golden corpus.
 
-    Pins the corpus IDENTITY, not just its size, so a wrong --examples-dir holding a different set
-    of 18 invalid specs yields a different digest -- the guarantee cannot pass vacuously against a
+    Pins the corpus IDENTITY, not just its size, so a wrong --examples-dir holding a same-sized
+    set of other specs yields a different digest -- the guarantee cannot pass vacuously against a
     corpus that is not the real M1 goldens (codex-review M3.4b F1).
     """
     digest = hashlib.sha256()
-    for name in sorted(bad_files):
-        content = (examples_dir / "bad_specs" / name).read_bytes()
+    for name in sorted(files):
+        content = (spec_dir / name).read_bytes()
         digest.update(name.encode("utf-8"))
         digest.update(b"\x00")
         digest.update(hashlib.sha256(content).hexdigest().encode("ascii"))
@@ -396,42 +409,63 @@ def _corpus_digest(examples_dir: Path, bad_files: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
-def _run_bad_corpus(
+def _verify_only_verdict(client: httpx.Client, verifier_base_url: str, spec: bytes) -> bool | None:
+    """POST one golden to /verify-only: its verified bool, or None on a transport fault/non-200
+    (a golden can never be transport misuse, so a non-200 is infra, not a verdict)."""
+    try:
+        response = client.post(
+            f"{verifier_base_url}/verify-only",
+            content=spec,
+            headers={"content-type": "application/json"},
+        )
+    except httpx.HTTPError:
+        return None
+    if response.status_code != _HTTP_OK:
+        _LOGGER.warning("corpus verify-only answered non-200 (%d)", response.status_code)
+        return None
+    return msgspec.json.decode(response.content, type=_RespVerdict).verified
+
+
+def _run_guarantee(
     client: httpx.Client, verifier_base_url: str, examples_dir: Path
 ) -> GuaranteeBlock:
-    """POST each of the 18 bad goldens to /verify-only and count any that falsely verify.
+    """Re-judge both golden corpora through /verify-only: count bad goldens that falsely verify
+    and good goldens that falsely fail (see GuaranteeBlock -- the good leg needs the verifier's
+    data_dir provisioned with the corpus datasets, which the goldens' baked hashes bind to).
 
-    A transport error or non-200 is logged and counted as a transport error, never a false
-    accept. false_accept MUST be 0; a non-zero value is a real verifier regression.
+    A transport error or non-200 is logged and counted per corpus as a transport error, never
+    as a false accept/reject. Both false counts MUST be 0; either non-zero is a real regression.
     """
     index = msgspec.json.decode((examples_dir / "index.json").read_bytes(), type=_Index)
-    bad_files = tuple(entry.file for entry in index.bad_specs)
-    false_accept = 0
-    transport_errors = 0
-    for entry in index.bad_specs:
-        spec_bytes = (examples_dir / "bad_specs" / entry.file).read_bytes()
-        try:
-            response = client.post(
-                f"{verifier_base_url}/verify-only",
-                content=spec_bytes,
-                headers={"content-type": "application/json"},
-            )
-        except httpx.HTTPError:
-            _LOGGER.warning("bad-corpus transport error for %s", entry.file)
-            transport_errors += 1
-            continue
-        if response.status_code != _HTTP_OK:
-            _LOGGER.warning("bad-corpus non-200 (%d) for %s", response.status_code, entry.file)
-            transport_errors += 1
-            continue
-        verdict = msgspec.json.decode(response.content, type=_RespVerdict)
-        if verdict.verified:
-            false_accept += 1
+    counts = {"bad_specs": 0, "good_specs": 0}
+    transport = {"bad_specs": 0, "good_specs": 0}
+    # regression_verdict = the verdict that counts AGAINST the bound: a bad golden verifying
+    # (false accept) or a good golden failing (false reject).
+    for subdir, entries, regression_verdict in (
+        ("bad_specs", index.bad_specs, True),
+        ("good_specs", index.good_specs, False),
+    ):
+        for entry in entries:
+            spec_bytes = (examples_dir / subdir / entry.file).read_bytes()
+            verified = _verify_only_verdict(client, verifier_base_url, spec_bytes)
+            if verified is None:
+                _LOGGER.warning("%s transport error for %s", subdir, entry.file)
+                transport[subdir] += 1
+            elif verified is regression_verdict:
+                counts[subdir] += 1
     return GuaranteeBlock(
         bad_corpus_size=len(index.bad_specs),
-        bad_corpus_digest=_corpus_digest(examples_dir, bad_files),
-        bad_corpus_false_accept_count=false_accept,
-        bad_corpus_transport_errors=transport_errors,
+        bad_corpus_digest=_corpus_digest(
+            examples_dir / "bad_specs", tuple(e.file for e in index.bad_specs)
+        ),
+        bad_corpus_false_accept_count=counts["bad_specs"],
+        bad_corpus_transport_errors=transport["bad_specs"],
+        good_corpus_size=len(index.good_specs),
+        good_corpus_digest=_corpus_digest(
+            examples_dir / "good_specs", tuple(e.file for e in index.good_specs)
+        ),
+        good_corpus_false_reject_count=counts["good_specs"],
+        good_corpus_transport_errors=transport["good_specs"],
     )
 
 
@@ -466,13 +500,14 @@ def run_eval(
     served_model: str | None,
     prompts: tuple[Prompt, ...],
 ) -> tuple[Report, tuple[PromptRecord, ...]]:
-    """Run the guarantee then every prompt through /propose-spec; return the report + JSONL rows.
+    """Run the guarantee (both corpora) then every prompt through /propose-spec; return the
+    report + JSONL rows.
 
     Each prompt is POSTed to /propose-spec. A 200 decodes to a loose ProposeResult and buckets by
     verdict; a non-200 decodes the problem detail (best-effort) and buckets as a fault. Rates are
     over the 200-response count per scope; the top failing checks span all 200 verdicts.
     """
-    guarantee = _run_bad_corpus(client, verifier_base_url, examples_dir)
+    guarantee = _run_guarantee(client, verifier_base_url, examples_dir)
     overall = _Tally()
     cat_tallies: dict[str, _Tally] = {category: _Tally() for category in CATEGORIES}
     failing_checks: Counter[str] = Counter()

@@ -4,8 +4,9 @@
 Drives the running verifier (and, for provenance, the model backend's /models) over HTTP and
 writes two artifacts: a report.json (the guarantee block plus observational rates) and a
 details.jsonl (one row per prompt). Exits non-zero only on an INVALID run -- the guarantee
-violated or NOT exercised (a short/empty bad corpus), a harness-side bad request, or no judgeable
-reply collected -- never because the weak model failed prompts (that is the expected observation).
+violated (a bad golden accepted, a good golden rejected, or transport errors) or NOT exercised
+(either corpus short or off-identity), a harness-side bad request, or no judgeable reply
+collected -- never because the weak model failed prompts (that is the expected observation).
 Gate-dependent: it needs both servers up (see bench/README.md for the run recipe); the harness
 build itself is gate-free.
 """
@@ -28,15 +29,18 @@ _DEFAULT_OUT = "bench/reports/report.json"
 _DEFAULT_DETAILS = "bench/reports/details.jsonl"
 _DEFAULT_TIMEOUT = 180.0
 
-# The M1 bad-corpus is exactly 18 goldens (examples/index.json bad_specs). Pinning the count makes
-# the guarantee fail LOUD on a missing or truncated corpus, so a short corpus is never mistaken
-# for "all bad goldens blocked". Grows only by a conscious edit here.
+# The M1 corpora are exactly 18 bad + 10 good goldens (examples/index.json). Pinning each count
+# makes the guarantee fail LOUD on a missing or truncated corpus, so a short corpus is never
+# mistaken for "all goldens judged". Grows only by a conscious edit here.
 _EXPECTED_BAD_CORPUS_SIZE = 18
-# The SHA-256 IDENTITY of those 18 goldens (sorted filename + content-hash pairs; see bench's
-# _corpus_digest). Pinning identity, not just size, stops the guarantee passing vacuously against a
-# wrong --examples-dir that happens to hold 18 other invalid specs (codex-review M3.4b F1).
-# Recompute here after any deliberate bad-corpus edit.
+_EXPECTED_GOOD_CORPUS_SIZE = 10
+# The SHA-256 IDENTITY of each corpus (sorted filename + content-hash pairs; see bench's
+# _corpus_digest). Pinning identity, not just size, stops the guarantee passing vacuously against
+# a wrong --examples-dir that happens to hold same-sized sets of other specs (codex-review M3.4b
+# F1). Recompute here after any deliberate corpus edit (tests/test_bench_harness.py re-derives
+# both from the tree, so a drift fails the portable gate too).
 _EXPECTED_BAD_CORPUS_DIGEST = "063cbc7bc11c2c6913b7da6a164a45268cf22e6a59b2d0325f9a3f3a79afca4e"
+_EXPECTED_GOOD_CORPUS_DIGEST = "50c404c06f913507324a214ef4580376396cbceb1195f5ee71bed442039e98d0"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -64,16 +68,40 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
         guarantee.bad_corpus_false_accept_count,
         guarantee.bad_corpus_transport_errors,
     )
-    if guarantee.bad_corpus_size != _EXPECTED_BAD_CORPUS_SIZE:
-        _LOGGER.warning(
-            "GUARANTEE NOT EXERCISED: bad-corpus size %d != expected %d (invalid run)",
+    _LOGGER.info(
+        "GUARANTEE good_corpus size=%d false_reject=%d transport_errors=%d",
+        guarantee.good_corpus_size,
+        guarantee.good_corpus_false_reject_count,
+        guarantee.good_corpus_transport_errors,
+    )
+    for label, size, expected_size, digest, expected_digest in (
+        (
+            "bad",
             guarantee.bad_corpus_size,
             _EXPECTED_BAD_CORPUS_SIZE,
-        )
-    if guarantee.bad_corpus_digest != _EXPECTED_BAD_CORPUS_DIGEST:
-        _LOGGER.warning(
-            "GUARANTEE NOT EXERCISED: bad-corpus digest mismatch (wrong corpus; invalid run)",
-        )
+            guarantee.bad_corpus_digest,
+            _EXPECTED_BAD_CORPUS_DIGEST,
+        ),
+        (
+            "good",
+            guarantee.good_corpus_size,
+            _EXPECTED_GOOD_CORPUS_SIZE,
+            guarantee.good_corpus_digest,
+            _EXPECTED_GOOD_CORPUS_DIGEST,
+        ),
+    ):
+        if size != expected_size:
+            _LOGGER.warning(
+                "GUARANTEE NOT EXERCISED: %s-corpus size %d != expected %d (invalid run)",
+                label,
+                size,
+                expected_size,
+            )
+        if digest != expected_digest:
+            _LOGGER.warning(
+                "GUARANTEE NOT EXERCISED: %s-corpus digest mismatch (wrong corpus; invalid run)",
+                label,
+            )
     _LOGGER.info(
         "OBSERVATIONS n=%d tool_call=%.4f json_validity=%.4f verified_render=%.4f",
         overall.n,
@@ -110,10 +138,11 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
 def _exit_code(report: Report) -> int:
     """1 on an invalid run: guarantee broken or NOT exercised, a harness bad request, or no 200.
 
-    "Not exercised" = the bad-corpus size is not 18 OR its identity digest does not match the real
-    M1 goldens, so a vacuous guarantee (an empty/truncated corpus, or a wrong --examples-dir -- even
-    one holding 18 other invalid specs) never passes as satisfied. A weak model merely failing
-    prompts stays a valid run (exit 0).
+    Broken = a bad golden verified (false accept) OR a good golden failed (false reject) OR
+    transport errors kept a golden unjudged. "Not exercised" = either corpus size or identity
+    digest does not match the real M1 goldens, so a vacuous guarantee (an empty/truncated corpus,
+    or a wrong --examples-dir -- even one holding same-sized sets of other specs) never passes as
+    satisfied. A weak model merely failing prompts stays a valid run (exit 0).
     """
     guarantee = report.guarantee
     overall = report.observations.overall
@@ -122,6 +151,10 @@ def _exit_code(report: Report) -> int:
         or guarantee.bad_corpus_digest != _EXPECTED_BAD_CORPUS_DIGEST
         or guarantee.bad_corpus_false_accept_count > 0
         or guarantee.bad_corpus_transport_errors > 0
+        or guarantee.good_corpus_size != _EXPECTED_GOOD_CORPUS_SIZE
+        or guarantee.good_corpus_digest != _EXPECTED_GOOD_CORPUS_DIGEST
+        or guarantee.good_corpus_false_reject_count > 0
+        or guarantee.good_corpus_transport_errors > 0
         or overall.harness_error_count > 0
         or overall.n == 0
     )
