@@ -24,6 +24,9 @@ htmlcov/
 # Local model weights (M3; downloaded via huggingface_hub, host+container-coupled, large)
 models/
 
+# Failure-eval harness output (M3.4; host+model-coupled; headline numbers live in the roadmap)
+bench/reports/
+
 # Secrets / local env
 .env
 .env.*

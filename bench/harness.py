@@ -1,0 +1,417 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Eval driver, classification, and report encoding for the failure eval (M3.4a).
+
+An out-of-tree observer: a synchronous httpx client (deterministic) driving ONLY the verifier's
+public HTTP surface -- /propose-spec for the model path and /verify-only for the bad-corpus
+guarantee. It never imports verifier internals, so it adds no trust; it measures the existing
+service. Two measurements, never conflated:
+
+  GUARANTEE (deterministic, the only bound) -- the trusted verifier blocks all 18 M1 bad
+  goldens. bad_corpus_false_accept_count MUST be 0; a non-zero value is a real regression.
+
+  OBSERVATIONS (statistical, characterize the weak proposer) -- tool-call / json-validity /
+  schema|semantic|policy failure / verified-render rates plus the top failing checks. NOT a
+  bound: a weak model failing most prompts is the expected outcome. There is no automatic model
+  false-accept number -- a chart verified for an unfair-but-real request sits outside the
+  verifier claim and needs manual labels (out of scope, POC_SCOPE).
+
+Response bodies decode into LOOSE local structs, never the service models: RenderVerdict.verified
+is Literal[True], which msgspec rejects at decode, so decoding a real 200 into the service model
+would raise. These structs read only the fields the report needs and ignore the rest (msgspec
+ignores unknown keys by default).
+"""
+
+import logging
+from collections import Counter
+from pathlib import Path
+
+import httpx
+import msgspec
+
+from bench.prompts import CATEGORIES, Prompt
+
+_LOGGER = logging.getLogger(__name__)
+
+# HTTP status the verifier answers verification outcomes with (a Verdict rides a 200).
+_HTTP_OK = 200
+# The pin-refusal status: the model proposed a spec for a different dataset than requested.
+_HTTP_PIN_MISMATCH = 502
+# Any status at or above this is a server/upstream fault (502/503 backend, or a verifier 500).
+_HTTP_SERVER_ERR = 500
+# app.py's exact pin-mismatch detail string; the only 502 that is a model off-request behavior.
+_PIN_MISMATCH_DETAIL = "the model proposed a specification for a different dataset than requested"
+
+_NDIGITS = 4  # rate rounding
+_TOP_MODES = 5  # how many top failing checks the report keeps
+_REPRODUCIBILITY = "greedy decode (temperature 0), fixed ordered prompts, model backend device NPU"
+
+# Verdict buckets for a 200 response.
+_BUCKET_VERIFIED = "verified"
+_BUCKET_SCHEMA = "schema"
+_BUCKET_SEMANTIC = "semantic"
+_BUCKET_POLICY = "policy"
+# Fault buckets for a non-200 response.
+_BUCKET_OFF_REQUEST = "off_request"
+_BUCKET_UPSTREAM_FAULT = "upstream_fault"
+_BUCKET_HARNESS_ERROR = "harness_error"
+
+# Policy check families: units, arbitrary-code, and bar-baseline concerns. Every other verify
+# check family is semantic. Today only label.quantitative_units_present can FAIL among these
+# (security.no_arbitrary_code is a pass-only affirmation; scale.* is a certificate string), but
+# keeping all three is correct by construction -- a future failing policy check buckets right.
+_POLICY_FAMILIES = frozenset({"label", "security", "scale"})
+
+
+# --- loose decode structs (subset of each service payload; unknown keys ignored) ------------
+class _RespCheck(msgspec.Struct):
+    check: str
+    status: str
+
+
+class _RespVerdict(msgspec.Struct):
+    verified: bool
+    layer: str
+    results: tuple[_RespCheck, ...]
+
+
+class _RespProposeResult(msgspec.Struct):
+    model_reply: str
+    verdict: _RespVerdict
+
+
+class _RespProblem(msgspec.Struct):
+    detail: str
+
+
+class _BadEntry(msgspec.Struct):
+    file: str
+
+
+class _Index(msgspec.Struct):
+    bad_specs: tuple[_BadEntry, ...]
+
+
+class _Models(msgspec.Struct):
+    id: str
+
+
+class _ModelList(msgspec.Struct):
+    data: tuple[_Models, ...]
+
+
+# --- report structs (encoded to report.json; all frozen + kw_only) --------------------------
+class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
+    """Provenance for the run: the served model, prompt count, categories, reproducibility note."""
+
+    served_model: str | None
+    prompt_count: int
+    categories: tuple[str, ...]
+    reproducibility: str
+
+
+class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
+    """The deterministic bound: the 18 bad goldens must all be blocked (false_accept == 0)."""
+
+    bad_corpus_size: int
+    bad_corpus_false_accept_count: int
+    bad_corpus_transport_errors: int
+
+
+class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
+    """Observational rates over the n 200-responses, plus the three non-200 fault counts.
+
+    n = number of 200 responses in this scope; every rate is a count / n. The fault counts are
+    non-200 outcomes NOT in n: off_request (a model naming a different dataset -- a model failure
+    mode), upstream_fault (backend/verifier infra), harness_error (the harness sent a bad request,
+    expected to be 0). n + the three fault counts = the scope's prompt count.
+    """
+
+    n: int
+    tool_call_rate: float
+    json_validity_rate: float
+    schema_failure_rate: float
+    semantic_failure_rate: float
+    policy_failure_rate: float
+    verified_render_rate: float
+    off_request_count: int
+    upstream_fault_count: int
+    harness_error_count: int
+
+
+class FailureMode(msgspec.Struct, frozen=True, kw_only=True):
+    """One failing check name and how many 200-verdicts it appeared in."""
+
+    check: str
+    count: int
+
+
+class ObservationsBlock(msgspec.Struct, frozen=True, kw_only=True):
+    """The statistical picture: overall + per-category rates, and the top failing checks."""
+
+    overall: RateBlock
+    by_category: dict[str, RateBlock]
+    top_failure_modes: tuple[FailureMode, ...]
+
+
+class Report(msgspec.Struct, frozen=True, kw_only=True):
+    """The full eval report: provenance, the guarantee bound, and the observations."""
+
+    meta: MetaBlock
+    guarantee: GuaranteeBlock
+    observations: ObservationsBlock
+
+
+class PromptRecord(msgspec.Struct, frozen=True, kw_only=True):
+    """One JSONL detail row: the prompt, the HTTP status, its bucket, and the model reply.
+
+    For a 200 response model_reply is the model's verbatim content; for a non-200 fault it is the
+    problem detail (best-effort, "" if it did not decode).
+    """
+
+    category: str
+    dataset_name: str
+    user_request: str
+    http_status: int
+    bucket: str
+    model_reply: str
+
+
+class _Tally(msgspec.Struct):
+    """Mutable per-scope counters, finalized into a RateBlock by _rate_block."""
+
+    n: int = 0
+    verified: int = 0
+    schema: int = 0
+    semantic: int = 0
+    policy: int = 0
+    tool_call: int = 0
+    json_valid: int = 0
+    off_request: int = 0
+    upstream_fault: int = 0
+    harness_error: int = 0
+
+
+# --- classification -------------------------------------------------------------------------
+def _classify(verdict: _RespVerdict) -> str:
+    """Bucket a 200-response verdict: verified, schema (decode-layer), semantic, or policy.
+
+    NAMING TRAP: the schema bucket is a decode-LAYER failure. The schema.* check FAMILY is a
+    verify-layer check, so it buckets as semantic. Bucket is not family.
+    """
+    if verdict.verified:
+        return _BUCKET_VERIFIED
+    if verdict.layer == "decode":
+        return _BUCKET_SCHEMA
+    failing = tuple(r.check for r in verdict.results if r.status == "fail")
+    if any(check.split(".", 1)[0] not in _POLICY_FAMILIES for check in failing):
+        return _BUCKET_SEMANTIC
+    return _BUCKET_POLICY
+
+
+def _classify_fault(status: int, detail: str) -> str:
+    """Bucket a non-200 fault: off_request (model), upstream_fault (infra), or harness_error.
+
+    A 502 with the pin-mismatch detail is a model off-request behavior (a successful dataset
+    redirect), NOT infra -- it stays out of upstream_fault. Every other 5xx is infra; a 4xx means
+    the harness sent a bad request (expected to be 0).
+    """
+    if status == _HTTP_PIN_MISMATCH and detail == _PIN_MISMATCH_DETAIL:
+        return _BUCKET_OFF_REQUEST
+    if status >= _HTTP_SERVER_ERR:
+        return _BUCKET_UPSTREAM_FAULT
+    return _BUCKET_HARNESS_ERROR
+
+
+def _json_shape(reply: str) -> tuple[bool, bool]:
+    """(valid_json, is_object) for a model reply. is_object implies valid_json."""
+    try:
+        parsed = msgspec.json.decode(reply.encode("utf-8"))
+    except (msgspec.DecodeError, ValueError):
+        return (False, False)
+    return (True, isinstance(parsed, dict))
+
+
+# --- tallying + rates -----------------------------------------------------------------------
+def _tally_200(tally: _Tally, bucket: str, *, valid_json: bool, is_object: bool) -> None:
+    """Record one 200 response into a scope's counters."""
+    tally.n += 1
+    if valid_json:
+        tally.json_valid += 1
+    if is_object:
+        tally.tool_call += 1
+    if bucket == _BUCKET_VERIFIED:
+        tally.verified += 1
+    elif bucket == _BUCKET_SCHEMA:
+        tally.schema += 1
+    elif bucket == _BUCKET_SEMANTIC:
+        tally.semantic += 1
+    elif bucket == _BUCKET_POLICY:
+        tally.policy += 1
+
+
+def _tally_fault(tally: _Tally, bucket: str) -> None:
+    """Record one non-200 fault into a scope's counters."""
+    if bucket == _BUCKET_OFF_REQUEST:
+        tally.off_request += 1
+    elif bucket == _BUCKET_UPSTREAM_FAULT:
+        tally.upstream_fault += 1
+    elif bucket == _BUCKET_HARNESS_ERROR:
+        tally.harness_error += 1
+
+
+def _rate(count: int, n: int) -> float:
+    """count / n rounded to _NDIGITS, or 0.0 when the scope collected no 200 responses."""
+    return round(count / n, _NDIGITS) if n else 0.0
+
+
+def _rate_block(tally: _Tally) -> RateBlock:
+    """Finalize a scope's counters into an immutable RateBlock."""
+    return RateBlock(
+        n=tally.n,
+        tool_call_rate=_rate(tally.tool_call, tally.n),
+        json_validity_rate=_rate(tally.json_valid, tally.n),
+        schema_failure_rate=_rate(tally.schema, tally.n),
+        semantic_failure_rate=_rate(tally.semantic, tally.n),
+        policy_failure_rate=_rate(tally.policy, tally.n),
+        verified_render_rate=_rate(tally.verified, tally.n),
+        off_request_count=tally.off_request,
+        upstream_fault_count=tally.upstream_fault,
+        harness_error_count=tally.harness_error,
+    )
+
+
+# --- the guarantee: re-block the bad corpus through /verify-only ----------------------------
+def _run_bad_corpus(
+    client: httpx.Client, verifier_base_url: str, examples_dir: Path
+) -> GuaranteeBlock:
+    """POST each of the 18 bad goldens to /verify-only and count any that falsely verify.
+
+    A transport error or non-200 is logged and counted as a transport error, never a false
+    accept. false_accept MUST be 0; a non-zero value is a real verifier regression.
+    """
+    index = msgspec.json.decode((examples_dir / "index.json").read_bytes(), type=_Index)
+    false_accept = 0
+    transport_errors = 0
+    for entry in index.bad_specs:
+        spec_bytes = (examples_dir / "bad_specs" / entry.file).read_bytes()
+        try:
+            response = client.post(
+                f"{verifier_base_url}/verify-only",
+                content=spec_bytes,
+                headers={"content-type": "application/json"},
+            )
+        except httpx.HTTPError:
+            _LOGGER.warning("bad-corpus transport error for %s", entry.file)
+            transport_errors += 1
+            continue
+        if response.status_code != _HTTP_OK:
+            _LOGGER.warning("bad-corpus non-200 (%d) for %s", response.status_code, entry.file)
+            transport_errors += 1
+            continue
+        verdict = msgspec.json.decode(response.content, type=_RespVerdict)
+        if verdict.verified:
+            false_accept += 1
+    return GuaranteeBlock(
+        bad_corpus_size=len(index.bad_specs),
+        bad_corpus_false_accept_count=false_accept,
+        bad_corpus_transport_errors=transport_errors,
+    )
+
+
+# --- encode + provenance --------------------------------------------------------------------
+def encode_report(report: Report) -> bytes:
+    """Pretty-print the report as indented JSON with a trailing newline."""
+    return msgspec.json.format(msgspec.json.encode(report), indent=2) + b"\n"
+
+
+def encode_details(records: tuple[PromptRecord, ...]) -> bytes:
+    """Encode the prompt records as JSONL (one compact object per line, trailing newline each)."""
+    return b"".join(msgspec.json.encode(record) + b"\n" for record in records)
+
+
+def fetch_model_name(client: httpx.Client, model_base_url: str) -> str | None:
+    """GET {model_base_url}/models and return the first served model id, or None on any failure."""
+    try:
+        response = client.get(f"{model_base_url}/models")
+        models = msgspec.json.decode(response.content, type=_ModelList)
+    except (httpx.HTTPError, msgspec.DecodeError, ValueError):
+        return None
+    if not models.data:
+        return None
+    return models.data[0].id
+
+
+# --- the driver -----------------------------------------------------------------------------
+def run_eval(
+    client: httpx.Client,
+    verifier_base_url: str,
+    examples_dir: Path,
+    served_model: str | None,
+    prompts: tuple[Prompt, ...],
+) -> tuple[Report, tuple[PromptRecord, ...]]:
+    """Run the guarantee then every prompt through /propose-spec; return the report + JSONL rows.
+
+    Each prompt is POSTed to /propose-spec. A 200 decodes to a loose ProposeResult and buckets by
+    verdict; a non-200 decodes the problem detail (best-effort) and buckets as a fault. Rates are
+    over the 200-response count per scope; the top failing checks span all 200 verdicts.
+    """
+    guarantee = _run_bad_corpus(client, verifier_base_url, examples_dir)
+    overall = _Tally()
+    cat_tallies: dict[str, _Tally] = {category: _Tally() for category in CATEGORIES}
+    failing_checks: Counter[str] = Counter()
+    records: list[PromptRecord] = []
+    for prompt in prompts:
+        cat = cat_tallies[prompt.category]
+        response = client.post(
+            f"{verifier_base_url}/propose-spec",
+            json={"dataset_name": prompt.dataset_name, "user_request": prompt.user_request},
+        )
+        status = response.status_code
+        if status == _HTTP_OK:
+            result = msgspec.json.decode(response.content, type=_RespProposeResult)
+            bucket = _classify(result.verdict)
+            valid_json, is_object = _json_shape(result.model_reply)
+            _tally_200(overall, bucket, valid_json=valid_json, is_object=is_object)
+            _tally_200(cat, bucket, valid_json=valid_json, is_object=is_object)
+            failing_checks.update(r.check for r in result.verdict.results if r.status == "fail")
+            reply = result.model_reply
+        else:
+            reply = _fault_detail(response)
+            bucket = _classify_fault(status, reply)
+            _tally_fault(overall, bucket)
+            _tally_fault(cat, bucket)
+        records.append(
+            PromptRecord(
+                category=prompt.category,
+                dataset_name=prompt.dataset_name,
+                user_request=prompt.user_request,
+                http_status=status,
+                bucket=bucket,
+                model_reply=reply,
+            )
+        )
+    top = tuple(
+        FailureMode(check=check, count=count)
+        for check, count in failing_checks.most_common(_TOP_MODES)
+    )
+    observations = ObservationsBlock(
+        overall=_rate_block(overall),
+        by_category={category: _rate_block(cat_tallies[category]) for category in CATEGORIES},
+        top_failure_modes=top,
+    )
+    meta = MetaBlock(
+        served_model=served_model,
+        prompt_count=len(prompts),
+        categories=CATEGORIES,
+        reproducibility=_REPRODUCIBILITY,
+    )
+    return Report(meta=meta, guarantee=guarantee, observations=observations), tuple(records)
+
+
+def _fault_detail(response: httpx.Response) -> str:
+    """The problem detail of a non-200 response, best-effort ("" if the body did not decode)."""
+    try:
+        problem = msgspec.json.decode(response.content, type=_RespProblem)
+    except (msgspec.DecodeError, ValueError):
+        return ""
+    return problem.detail
