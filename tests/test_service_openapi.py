@@ -30,7 +30,13 @@ from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.schema import json_schema
 from verifier.service.app import create_app
-from verifier.service.models import Problem, RenderVerdict, Verdict
+from verifier.service.models import (
+    Problem,
+    ProposeRequest,
+    ProposeResult,
+    RenderVerdict,
+    Verdict,
+)
 from verifier.service.openapi import openapi_document, openapi_document_text
 from verifier.service.settings import Settings
 
@@ -124,9 +130,10 @@ def test_component_namespaces_disjoint() -> None:
     # gate instead of corrupting the document.
     vplot = set(json_schema()["$defs"])
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert], ref_template="#/components/schemas/{name}"
+        [Verdict, Problem, CheckResult, VCert, ProposeRequest],
+        ref_template="#/components/schemas/{name}",
     )
-    response_names = set(generated) | {"RenderVerdict"}
+    response_names = set(generated) | {"RenderVerdict", "ProposeResult"}
     assert vplot.isdisjoint(response_names), vplot & response_names
 
 
@@ -219,6 +226,40 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
         "application/json"
     ]["schema"]
     assert Draft202012Validator(health_schema).is_valid({"status": "ok", "version": __version__})
+
+
+def test_propose_payloads_match_schemas() -> None:
+    # The /propose-spec contract: a real ProposeRequest validates against its request-body schema,
+    # and a real ProposeResult with EITHER verdict arm — a plain Verdict and a RenderVerdict —
+    # validates against the ProposeResult 200 schema (the anyOf(RenderVerdict, Verdict) union the
+    # hand-derived schema declares, since msgspec cannot introspect the Literal[True] arm).
+    fail_verdict = Verdict(
+        verified=False,
+        layer="decode",
+        results=(
+            CheckResult(check="spec.decode", status="fail", severity="blocking", message="bad"),
+        ),
+    )
+    render_verdict = RenderVerdict(
+        verified=True,
+        layer="verify",
+        results=(),
+        plot_id="a" * 64,
+        spec_id="b" * 64,
+        dataset_hash="sha256:" + "c" * 64,
+        spec_hash="sha256:" + "d" * 64,
+        plotted_table_hash="sha256:" + "e" * 64,
+        manifest_hash="sha256:" + "f" * 64,
+        svg="<svg/>",
+    )
+    post = _DOC["paths"]["/propose-spec"]["post"]
+    result_200 = _validator(post["responses"]["200"]["content"]["application/json"]["schema"])
+    assert result_200.is_valid(_payload(ProposeResult(model_reply="{}", verdict=fail_verdict)))
+    assert result_200.is_valid(_payload(ProposeResult(model_reply="{}", verdict=render_verdict)))
+    request_schema = _validator(post["requestBody"]["content"]["application/json"]["schema"])
+    assert request_schema.is_valid(
+        _payload(ProposeRequest(user_request="plot it", dataset_name="sales.csv"))
+    )
 
 
 def test_invalid_include_html_returns_documented_400(tmp_path: Path) -> None:

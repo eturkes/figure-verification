@@ -179,6 +179,104 @@
         }
       }
     },
+    "/propose-spec": {
+      "post": {
+        "operationId": "proposeSpec",
+        "summary": "Propose a VPlot spec with the local model, then verify and render it",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The model's raw reply paired with the verify-and-render verdict on it — a certified chart when the proposal verified, else a plain verdict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The propose request body was malformed or failed validation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dataset with the requested name is provisioned.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeded the configured size cap.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The verifier hit an internal operator-config fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The model backend returned no usable proposal, or proposed a specification for a different dataset than requested.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The model backend was unreachable or timed out.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certificate/{plot_id}": {
       "get": {
         "operationId": "getCertificate",
@@ -697,6 +795,26 @@
           "detail"
         ]
       },
+      "ProposeRequest": {
+        "title": "ProposeRequest",
+        "description": "A /propose-spec request: the free-text ask plus the dataset to plot.\n\n`dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a\nnon-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data\ndirectory through it. forbid_unknown_fields rejects any extra key at decode (a 400), like\nevery decoded request the service accepts.",
+        "type": "object",
+        "properties": {
+          "user_request": {
+            "type": "string"
+          },
+          "dataset_name": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z0-9][A-Za-z0-9._-]*\\.csv$"
+          }
+        },
+        "required": [
+          "user_request",
+          "dataset_name"
+        ],
+        "additionalProperties": false
+      },
       "Tcb": {
         "title": "Tcb",
         "description": "The trusted computing base disclosed for the rendered SVG's provenance, stamped into the\nVCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed\ninto the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the\ninstalled distribution version; vl_version the pinned Vega-Lite; font_family +\nvendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not\nproven to select it over a same-named system font -- render_svg documents the same scope).",
@@ -875,6 +993,30 @@
           "plotted_table_hash",
           "manifest_hash",
           "svg"
+        ]
+      },
+      "ProposeResult": {
+        "title": "ProposeResult",
+        "description": "A /propose-spec outcome: the model's raw reply plus the verifier's verdict on it.\n\n`model_reply` is the backend's reply content verbatim (the proposed spec text, decoded to a\nstring but never re-encoded), carried so a caller sees exactly what the untrusted model\nproduced — including a malformed proposal that decoded to a failing verdict. `verdict` is the\nsame Verdict | RenderVerdict the verify-and-render pipeline returns: a RenderVerdict with the\ncertified chart when the proposal verified, a plain Verdict otherwise (never a chart on an\nunverified outcome). Response-only, so no forbid_unknown_fields; it rides Litestar's encoder\nlike RenderVerdict (the Literal[True] pin blocks decode/inspect, not encode), so openapi.py\nhand-derives its schema for the same reason.",
+        "type": "object",
+        "properties": {
+          "model_reply": {
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RenderVerdict"
+              },
+              {
+                "$ref": "#/components/schemas/Verdict"
+              }
+            ]
+          }
+        },
+        "required": [
+          "model_reply",
+          "verdict"
         ]
       }
     }

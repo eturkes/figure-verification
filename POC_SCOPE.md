@@ -126,3 +126,30 @@ curl -sS "http://127.0.0.1:8000/spec/${spec_id}"
 # the hand-authored OpenAPI 3.1 document
 curl -sS http://127.0.0.1:8000/schema/openapi.json
 ```
+
+## Model proposer
+
+`verifier.service` (M3) puts a weak local model in front of that same verifier through one more
+endpoint, `POST /propose-spec`. The request is a small `{user_request, dataset_name}` object;
+the service builds the VPlot proposer prompt, asks the local backend for a spec, and feeds
+whatever it returns straight through `verify-and-render` above. The claim boundary does not
+move: the model proposes only a spec, never plotted values, and the verifier recomputes the
+whole plotted table and re-binds the source CSV by hash exactly as before — so the model earns
+no new trust, and a chart still rides only a verified outcome.
+
+The error split extends the service boundary's rule to the model as an upstream dependency.
+Once the backend returns a reply with extractable content, that content is a spec proposal —
+however malformed — so it rides a `200` verdict just like a spec posted directly, including a
+decode failure (the model's most common failure mode). Only a fault outside that flow answers
+problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
+timed-out backend (`503`), a backend reply that is not a usable chat completion (`502`), or a
+malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
+controls only the dataset name — never the trusted files at that path — so it cannot provoke
+the operator-config `500`.
+
+```sh
+# propose a spec with the local model, then verify and render it
+curl -sS http://127.0.0.1:8000/propose-spec \
+  -H 'Content-Type: application/json' \
+  --data-binary '{"user_request": "total revenue by month", "dataset_name": "sales.csv"}'
+```

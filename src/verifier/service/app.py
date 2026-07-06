@@ -7,8 +7,9 @@ settings.max_body_bytes. Transport only: no verification trust lives here (POC_S
 service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
-/certificate/{plot_id} + GET /spec/{spec_id} (M2.3), GET /schema/openapi.json (M2.4). Both
-POST handlers read the RAW request body via request.body() before any verifier work, so
+/certificate/{plot_id} + GET /spec/{spec_id} (M2.3), POST /propose-spec (M3.3a), GET
+/schema/openapi.json (M2.4). The verify POST handlers read the RAW request body via
+request.body() before any verifier work, so
 decode_spec's strict decode
 stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, collapsing
 duplicate keys), and Litestar's body cap raises 413 the moment that read exceeds
@@ -17,15 +18,23 @@ each verified render in the app's bounded ArtifactStore; the GETs serve the stor
 bytes verbatim (a malformed or absent id both answer the same 404 problem+json at the store
 lookup — no leak of which ids were stored; a path that does not match the id route shape gets
 Litestar's own 404 instead, still problem+json, still disclosing nothing about the store).
+/propose-spec instead decodes a small typed {user_request, dataset_name} JSON body, runs the
+untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
+— not the caller's body — through verify-and-render; the model supplies only a spec, never
+plotted values, so the verification claim is unmoved.
 
 Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
 Verdict, so a chart never rides an unverified outcome); only transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
-404) or a server-config fault (a broken or unreadable trusted manifest, or a render that
-returns None for a verified spec -> 500) answers RFC 9457 application/problem+json, shaped
-by the two exception handlers below. Every response carries X-Content-Type-Options: nosniff
-as an app default.
+404, a malformed /propose-spec body -> 400) or a server-config fault (a broken or unreadable
+trusted manifest, or a render that returns None for a verified spec -> 500) answers RFC 9457
+application/problem+json, shaped by the exception handlers below. /propose-spec adds two more
+problem+json outcomes over the model as an upstream dependency — an unknown dataset name -> 404
+(the name never echoed), and a backend that is unreachable (503) or returned an unusable reply
+(502) — mapped by _dataset_not_found_handler and _model_upstream_handler, both registered
+ahead of the generic Exception handler (Litestar routes by the exception's MRO). Every response
+carries X-Content-Type-Options: nosniff as an app default.
 
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
@@ -42,6 +51,7 @@ from collections.abc import Callable
 from http import HTTPStatus
 from typing import Any, cast
 
+import msgspec
 from litestar import Litestar, Request, Response, get, post
 from litestar.concurrency import sync_to_thread
 from litestar.datastructures import ResponseHeader, State
@@ -49,13 +59,19 @@ from litestar.exceptions import HTTPException
 from litestar.params import FromPath, FromQuery
 from litestar.status_codes import (
     HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
 from verifier import __version__
-from verifier.service.models import Problem, RenderVerdict, Verdict
+from verifier.service.model_client import (
+    DatasetNotFoundError,
+    ModelUpstreamError,
+    propose_spec,
+)
+from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 from verifier.service.openapi import openapi_json_bytes
 from verifier.service.pipeline import verify_and_render, verify_only
 from verifier.service.settings import Settings
@@ -129,6 +145,46 @@ async def verify_and_render_route(
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
     return await sync_to_thread(verify_and_render, raw, settings, store, include_html=include_html)
+
+
+# The /propose-spec request body is a small typed JSON object (unlike the raw-body POSTs, whose
+# body IS the untrusted spec decode_spec must own). Decode it strictly here — an unknown field,
+# a missing field, or a traversal/non-.csv dataset name is transport misuse, not a spec proposal.
+_PROPOSE_DECODER = msgspec.json.Decoder(ProposeRequest)
+
+
+def _decode_propose_request(raw: bytes) -> ProposeRequest:
+    """Strictly decode a /propose-spec body; a malformed or invalid body is a 400 (transport
+    misuse), never a spec proposal — the model has not run yet, so there is no verdict to ride."""
+    try:
+        return _PROPOSE_DECODER.decode(raw)
+    except (msgspec.DecodeError, msgspec.ValidationError) as exc:
+        msg = f"malformed propose request body: {exc}"
+        raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
+
+
+@post(
+    "/propose-spec",
+    operation_id="proposeSpec",
+    summary="Propose a VPlot spec with the local model, then verify and render it",
+    status_code=HTTP_200_OK,
+)
+async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> ProposeResult:
+    """Ask the untrusted local model to propose a VPlot spec for the request over the named
+    dataset, then run that proposal through verify-and-render unchanged. The model supplies only
+    a spec, never plotted values, so the claim boundary is unmoved: a malformed proposal rides a
+    failing verdict (a 200), and only a fault outside that flow (unknown dataset, an unreachable
+    or unusable backend, a malformed body) answers problem+json. The model call is async; the
+    CPU-bound verify+render runs off the event loop via sync_to_thread.
+    """
+    _require_json(request)
+    raw = await request.body()
+    settings = cast("Settings", state["settings"])
+    store = cast("ArtifactStore", state["store"])
+    req = _decode_propose_request(raw)
+    content = await propose_spec(req.user_request, req.dataset_name, settings)
+    verdict = await sync_to_thread(verify_and_render, content, settings, store, include_html=False)
+    return ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
 
 
 def _fetch_artifact(artifact_id: str, fetch: Callable[[str], bytes | None]) -> Response[bytes]:
@@ -214,6 +270,28 @@ def _internal_exception_handler(
     )
 
 
+def _dataset_not_found_handler(
+    _request: Request[Any, Any, Any], exc: Exception
+) -> Response[Problem]:
+    """Map a /propose-spec DatasetNotFoundError to a 404 problem+json. Registered ahead of the
+    generic Exception handler (Litestar routes by the exception's MRO), so an unknown/escaping
+    dataset name gets a 404, not the generic 500. The name is logged, never echoed — absent and
+    out-of-root answer alike, so a caller learns nothing about what the data directory holds."""
+    not_found = cast("DatasetNotFoundError", exc)
+    _LOGGER.info("propose-spec named an unknown dataset: %r", not_found.dataset_name)
+    return _problem_response(HTTP_404_NOT_FOUND, "no such dataset")
+
+
+def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
+    """Map a /propose-spec ModelUpstreamError to its carried status (503 unreachable / 502
+    unusable reply) problem+json. Registered ahead of the generic Exception handler. The cause is
+    logged and withheld from the untrusted caller — a backend fault, never a verification
+    outcome, so no verdict rides it."""
+    upstream = cast("ModelUpstreamError", exc)
+    _LOGGER.warning("model backend upstream fault serving /propose-spec: %s", upstream)
+    return _problem_response(upstream.status, "the model backend did not return a usable proposal")
+
+
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
     store = ArtifactStore(settings.store_cap)
@@ -222,6 +300,7 @@ def create_app(settings: Settings) -> Litestar:
             health,
             verify_only_route,
             verify_and_render_route,
+            propose_spec_route,
             certificate_route,
             spec_route,
             openapi_route,
@@ -237,6 +316,8 @@ def create_app(settings: Settings) -> Litestar:
         # served verbatim by openapi_route above.
         openapi_config=None,
         exception_handlers={
+            DatasetNotFoundError: _dataset_not_found_handler,
+            ModelUpstreamError: _model_upstream_handler,
             HTTPException: _http_exception_handler,
             Exception: _internal_exception_handler,
         },

@@ -16,6 +16,12 @@ does mint two fail-closed check tags the core never emits — `spec.decode` (the
 would not decode) and `dataset.manifest_available` (no trusted manifest for the named
 dataset) — each a blocking pre-pipeline verdict (see pipeline.py) that can only fail closed,
 never falsely verify.
+
+ProposeRequest and ProposeResult (M3.3a) frame the /propose-spec endpoint that runs the
+untrusted local model in front of this same pipeline: the request carries the user's ask plus
+the dataset name to plot; the result pairs the model's raw reply with the verify-and-render
+verdict on it. The model proposes only a spec, never plotted values, so the claim boundary is
+unchanged — a malformed proposal simply rides a failing verdict like any other blocked spec.
 """
 
 from typing import Literal
@@ -23,8 +29,9 @@ from typing import Literal
 import msgspec
 
 from verifier.checks import CheckResult
+from verifier.schema import DatasetName
 
-__all__ = ["Problem", "RenderVerdict", "Verdict"]
+__all__ = ["Problem", "ProposeRequest", "ProposeResult", "RenderVerdict", "Verdict"]
 
 
 class Verdict(msgspec.Struct, frozen=True, kw_only=True):
@@ -86,3 +93,33 @@ class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
     status: int
     detail: str
     type: str = "about:blank"
+
+
+class ProposeRequest(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
+    """A /propose-spec request: the free-text ask plus the dataset to plot.
+
+    `dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a
+    non-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data
+    directory through it. forbid_unknown_fields rejects any extra key at decode (a 400), like
+    every decoded request the service accepts.
+    """
+
+    user_request: str
+    dataset_name: DatasetName
+
+
+class ProposeResult(msgspec.Struct, frozen=True, kw_only=True):
+    """A /propose-spec outcome: the model's raw reply plus the verifier's verdict on it.
+
+    `model_reply` is the backend's reply content verbatim (the proposed spec text, decoded to a
+    string but never re-encoded), carried so a caller sees exactly what the untrusted model
+    produced — including a malformed proposal that decoded to a failing verdict. `verdict` is the
+    same Verdict | RenderVerdict the verify-and-render pipeline returns: a RenderVerdict with the
+    certified chart when the proposal verified, a plain Verdict otherwise (never a chart on an
+    unverified outcome). Response-only, so no forbid_unknown_fields; it rides Litestar's encoder
+    like RenderVerdict (the Literal[True] pin blocks decode/inspect, not encode), so openapi.py
+    hand-derives its schema for the same reason.
+    """
+
+    model_reply: str
+    verdict: Verdict | RenderVerdict

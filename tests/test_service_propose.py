@@ -1,0 +1,215 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""M3.3a POST /propose-spec tests: propose -> verify_and_render end to end, error split.
+
+Drives the whole app through TestClient, injecting the model backend by patching
+model_client._build_async_client with an httpx.AsyncClient over a MockTransport (the
+test_service_model_client pattern), so no socket binds and the reply is deterministic. The
+client runs over the real data_dir (data/), so a proposed good spec verifies, renders, and is
+stored, while a proposed malformed or check-failing spec rides a 200 verdict — the metered
+model-failure mode, carried alongside the model's raw reply. The proposer error split maps to
+problem+json: an unknown dataset -> 404 (the name never echoed), an unreachable backend -> 503,
+an unusable reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong
+method -> 405. No dataset-name pin yet (M3.3b), so the cross-dataset case is out of scope here.
+"""
+
+import json
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+
+import httpx
+import msgspec
+import pytest
+from litestar import Litestar
+from litestar.testing import TestClient
+
+from verifier.service import model_client
+from verifier.service.app import create_app
+from verifier.service.settings import Settings
+
+_ROOT = Path(__file__).resolve().parent.parent
+_DATA = _ROOT / "data"
+_GOOD_DIR = _ROOT / "examples" / "good_specs"
+_JSON = {"content-type": "application/json"}
+_PROBLEM_JSON = "application/problem+json"
+_NOSNIFF = "nosniff"
+# A good sales spec, used verbatim as the model's reply for the verified path.
+_SALES_GOOD = "g01_total_revenue_by_month.json"
+
+
+def _install_handler(
+    monkeypatch: pytest.MonkeyPatch, handler: Callable[[httpx.Request], httpx.Response]
+) -> None:
+    """Point model_client._build_async_client at a MockTransport-backed client running handler,
+    so the proposer's HTTP call is served in-process with no socket."""
+
+    def build(settings: Settings) -> httpx.AsyncClient:
+        # Mirror the real factory's timeout wiring (harmless under MockTransport).
+        return httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), timeout=settings.model_timeout
+        )
+
+    monkeypatch.setattr(model_client, "_build_async_client", build)
+
+
+def _install_reply(monkeypatch: pytest.MonkeyPatch, content: bytes) -> None:
+    """Install a backend that answers 200 with a chat-completion envelope carrying `content` as
+    the sole choice's message content."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        envelope = {"choices": [{"message": {"content": content.decode("utf-8")}}]}
+        return httpx.Response(200, json=envelope)
+
+    _install_handler(monkeypatch, handler)
+
+
+def _spec_text(name: str) -> bytes:
+    """A good-spec fixture's raw bytes, used as a canned model reply."""
+    return (_GOOD_DIR / name).read_bytes()
+
+
+@pytest.fixture
+def client() -> Iterator[TestClient[Litestar]]:
+    """A client over the real data_dir (the golden corpus binds to it)."""
+    with TestClient(app=create_app(Settings(data_dir=_DATA))) as test_client:
+        yield test_client
+
+
+def _propose(client: TestClient[Litestar], user_request: str, dataset_name: str) -> httpx.Response:
+    """POST a well-formed propose request."""
+    body = msgspec.json.encode({"user_request": user_request, "dataset_name": dataset_name})
+    return client.post("/propose-spec", content=body, headers=_JSON)
+
+
+# --- the verification outcomes: every proposal rides a 200 verdict -----------
+def test_propose_verified_spec_renders_and_stores(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A proposed good spec verifies and renders: a 200 RenderVerdict carrying the certified
+    # chart, the raw reply echoed verbatim, and the artifacts stored (cert + spec round-trip).
+    _install_reply(monkeypatch, _spec_text(_SALES_GOOD))
+    response = _propose(client, "Plot total revenue by month", "sales.csv")
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    body: dict[str, Any] = response.json()
+    assert body["model_reply"] == _spec_text(_SALES_GOOD).decode("utf-8")
+    verdict = body["verdict"]
+    assert verdict["verified"] is True
+    assert "svg" in verdict
+    assert client.get(f"/certificate/{verdict['plot_id']}").status_code == 200
+    assert client.get(f"/spec/{verdict['spec_id']}").status_code == 200
+
+
+def test_propose_malformed_spec_is_decode_verdict(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reply that parses as JSON but is not a valid VPlot spec (the weak model's placeholder
+    # echo) fails decode -> a 200 layer="decode" verdict, never a chart, the raw reply carried.
+    reply = b'{"version": "vplot-0.1", "mark": "bar|line"}'
+    _install_reply(monkeypatch, reply)
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    assert body["model_reply"] == reply.decode("utf-8")
+    verdict = body["verdict"]
+    assert verdict["verified"] is False
+    assert verdict["layer"] == "decode"
+    assert "svg" not in verdict
+
+
+def test_propose_failing_check_is_verify_verdict(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A reply that decodes cleanly but declares a wrong dataset hash fails the binding check ->
+    # a 200 layer="verify" verdict, never a chart (a decoded-but-failed outcome, not a decode
+    # failure). The name still matches the requested dataset, so no M3.3b pin is involved.
+    spec = json.loads(_spec_text(_SALES_GOOD))
+    spec["dataset"]["hash"] = "sha256:" + "0" * 64  # valid shape, wrong value
+    reply = json.dumps(spec).encode("utf-8")
+    _install_reply(monkeypatch, reply)
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 200
+    verdict = response.json()["verdict"]
+    assert verdict["verified"] is False
+    assert verdict["layer"] == "verify"
+    assert "svg" not in verdict
+
+
+# --- the model as an upstream dependency: faults answer problem+json ---------
+def test_propose_unknown_dataset_is_404(client: TestClient[Litestar]) -> None:
+    # An unprovisioned (but path-safe) name resolves to nothing under data_dir -> 404 before any
+    # HTTP call (no transport installed). The name is never echoed back to the caller.
+    response = _propose(client, "anything", "nonexistent.csv")
+    assert response.status_code == 404
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 404
+    assert "nonexistent" not in json.dumps(body)
+
+
+def test_propose_backend_unreachable_is_503(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        msg = "connection refused"
+        raise httpx.ConnectError(msg)
+
+    _install_handler(monkeypatch, handler)
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 503
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 503
+    assert "refused" not in json.dumps(body)  # the cause is logged, never leaked
+
+
+def test_propose_backend_unusable_reply_is_502(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _install_handler(monkeypatch, lambda _request: httpx.Response(500, json={"error": "boom"}))
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 502
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 502
+
+
+# --- transport misuse on the new route ---------------------------------------
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"dataset_name": "sales.csv"}',
+        b'{"user_request": "x"}',
+        b'{"user_request": "x", "dataset_name": "sales.csv", "extra": 1}',
+        b'{"user_request": "x", "dataset_name": "../sales.csv"}',
+        b'{"user_request": "x", "dataset_name": "sales.txt"}',
+    ],
+    ids=["missing-request", "missing-dataset", "unknown-field", "traversal-name", "non-csv-name"],
+)
+def test_propose_malformed_body_is_400(client: TestClient[Litestar], body: bytes) -> None:
+    # A missing field, an unknown field, or a name that fails the path-safe DatasetName pattern
+    # (a traversal or non-.csv name cannot decode) is transport misuse, not a spec proposal.
+    response = client.post("/propose-spec", content=body, headers=_JSON)
+    assert response.status_code == 400
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 400
+
+
+def test_propose_non_json_body_is_400(client: TestClient[Litestar]) -> None:
+    response = client.post("/propose-spec", content=b"not json {", headers=_JSON)
+    assert response.status_code == 400
+    assert response.json()["status"] == 400
+
+
+def test_propose_wrong_content_type_is_415(client: TestClient[Litestar]) -> None:
+    body = msgspec.json.encode({"user_request": "x", "dataset_name": "sales.csv"})
+    response = client.post("/propose-spec", content=body, headers={"content-type": "text/plain"})
+    assert response.status_code == 415
+    assert response.headers["content-type"] == _PROBLEM_JSON
+
+
+def test_propose_wrong_method_is_405(client: TestClient[Litestar]) -> None:
+    response = client.get("/propose-spec")
+    assert response.status_code == 405
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json()["status"] == 405

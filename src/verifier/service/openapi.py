@@ -16,10 +16,13 @@ Components come from three sources, zero hand-drift beyond RenderVerdict:
      rebased #/$defs/X -> #/components/schemas/X by string VALUE (msgspec emits the pointer
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
-  2. the introspectable response models (Verdict, Problem, CheckResult, VCert + the
-     Disclosed*/Tcb they nest transitively), via msgspec.json.schema_components;
-  3. RenderVerdict, hand-derived from Verdict's generated schema (a deepcopy of its
-     properties, so the const override never bleeds into Verdict's own `verified`).
+  2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert, and the
+     M3.3a ProposeRequest, plus the Disclosed*/Tcb they nest transitively), via
+     msgspec.json.schema_components;
+  3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
+     hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
+     override never bleeds into Verdict's own `verified`); and the M3.3a ProposeResult, whose
+     `verdict` field is the Verdict | RenderVerdict union.
 
 openapi_json_bytes() serves the deterministic, newline-terminated text verbatim at
 GET /schema/openapi.json; schema/openapi.json commits the same bytes as a drift detector
@@ -39,7 +42,7 @@ from verifier import __version__
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.schema import json_schema
-from verifier.service.models import Problem, RenderVerdict, Verdict
+from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 
 __all__ = ["openapi_document", "openapi_document_text", "openapi_json_bytes"]
 
@@ -100,20 +103,45 @@ def _render_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _propose_result_schema() -> dict[str, Any]:
+    """ProposeResult's schema, hand-derived for the same reason as RenderVerdict — its `verdict`
+    field is the Verdict | RenderVerdict union, and RenderVerdict cannot be introspected
+    (Literal[True]). `model_reply` is the raw model reply string; `verdict` is anyOf
+    RenderVerdict|Verdict (a RenderVerdict payload also satisfies Verdict — anyOf, not oneOf,
+    the /verify-and-render 200 precedent). Both fields are required."""
+    return {
+        "title": "ProposeResult",
+        "description": inspect.getdoc(ProposeResult),
+        "type": "object",
+        "properties": {
+            "model_reply": {"type": "string"},
+            "verdict": {
+                "anyOf": [
+                    {"$ref": f"{_COMPONENTS}/RenderVerdict"},
+                    {"$ref": f"{_COMPONENTS}/Verdict"},
+                ]
+            },
+        },
+        "required": ["model_reply", "verdict"],
+    }
+
+
 def _components() -> dict[str, Any]:
     """The components/schemas block: VPlot request-body defs (pointers rebased) + the
-    introspectable response models (sorted) + hand-derived RenderVerdict. The three key spaces
-    are disjoint, so insertion never collides."""
+    introspectable response/request models (sorted, ProposeRequest among them) + hand-derived
+    RenderVerdict and ProposeResult. The three key spaces are disjoint, so insertion never
+    collides."""
     schemas: dict[str, Any] = {
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert],
+        [Verdict, Problem, CheckResult, VCert, ProposeRequest],
         ref_template=f"{_COMPONENTS}/{{name}}",
     )
     for name in sorted(generated):
         schemas[name] = generated[name]
     schemas["RenderVerdict"] = _render_verdict_schema(generated["Verdict"])
+    schemas["ProposeResult"] = _propose_result_schema()
     return schemas
 
 
@@ -230,6 +258,38 @@ def _paths() -> dict[str, Any]:
                         "The include_html query parameter was not a valid boolean."
                     ),
                     **problems_post,
+                },
+            }
+        },
+        "/propose-spec": {
+            "post": {
+                "operationId": "proposeSpec",
+                "summary": "Propose a VPlot spec with the local model, then verify and render it",
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {"schema": {"$ref": f"{_COMPONENTS}/ProposeRequest"}}
+                    },
+                },
+                "responses": {
+                    "200": _json_response(
+                        "The model's raw reply paired with the verify-and-render verdict on it — a "
+                        "certified chart when the proposal verified, else a plain verdict.",
+                        {"$ref": f"{_COMPONENTS}/ProposeResult"},
+                    ),
+                    "400": _problem_response(
+                        "The propose request body was malformed or failed validation."
+                    ),
+                    "404": _problem_response("No dataset with the requested name is provisioned."),
+                    **problems_post,
+                    # 502 is worded to cover BOTH an unusable backend reply AND the M3.3b
+                    # request-binding pin (a spec proposed for a different dataset), so M3.3b
+                    # adds that check with no change to this document.
+                    "502": _problem_response(
+                        "The model backend returned no usable proposal, or proposed a "
+                        "specification for a different dataset than requested."
+                    ),
+                    "503": _problem_response("The model backend was unreachable or timed out."),
                 },
             }
         },
