@@ -70,8 +70,9 @@ read; do NOT set `forbid_unknown_fields`). Verify field names against `service/m
 
 Loose decode structs:
 - `_RespCheck{check:str, status:str}` — one entry of the verdict's `results` array.
-- `_RespVerdict{verified:bool, layer:str, results:tuple[_RespCheck,...]}` — `layer=="decode"` marks a
-  decode failure; a verify failure names its failing layer. `verified:bool` (NOT Literal).
+- `_RespVerdict{verified:bool, layer:str, results:tuple[_RespCheck,...]}` — `layer` is only
+  `"decode"`|`"verify"`: `"decode"` marks a decode failure, `"verify"` ANY post-decode outcome (the
+  failing check names live in `results[].check`, not in `layer`). `verified:bool` (NOT Literal).
 - `_RespProposeResult{model_reply:str, verdict:_RespVerdict}` — the `/propose-spec` 200 body.
 - `_RespProblem{detail:str}` — RFC-9457 problem+json (non-200 fault body).
 - `_BadEntry{file:str}` + `_Index{bad_specs:tuple[_BadEntry,...]}` — `examples/index.json` (only reads
@@ -92,10 +93,30 @@ def _classify(verdict: _RespVerdict) -> str:
 - NAMING TRAP: the `schema_failure` BUCKET = decode-LAYER failure. The `schema.*` check FAMILY (e.g.
   `schema.fields_exist`) is a VERIFY-layer check → lands in `semantic_failure`. Bucket ≠ family.
 - Policy families = `label` (quantitative units), `security` (no arbitrary code), `scale` (bar
-  baseline). Every other verify check family (`schema` `dataset` `filter` `encoding` `transform`
-  `aggregate` `sort` `select` `data` `hash`…) → semantic. Semantic dominates policy when both fail.
+  baseline). Every other verify check family → semantic (`schema` `dataset` `encoding` `transform`
+  `aggregate` `sort` `select` `filter` `group_by` `data`). Semantic dominates policy when both fail.
+- Policy-set reality (confirm against `checks.py`): TODAY only `label.quantitative_units_present` can
+  FAIL among the policy set — `security.no_arbitrary_code` is a pass-only affirmation (`_affirmations`)
+  and `scale.bar_quantitative_axis_zero` is a renderer/certificate string (render.py), never a failing
+  `CheckResult`. Keep both in `_POLICY_FAMILIES` as correct-by-construction policy concerns (a future
+  verify check buckets right); in practice `policy_failure` ≈ `label`-unit failures.
 - Partition over the 200-verdict denominator: `verified + schema + semantic + policy = 1.0`, exactly
   one bucket per 200 response.
+
+Non-200 fault classification — `_classify_fault(status, detail) -> bucket` (exact; transcribe):
+```python
+_PIN_MISMATCH_DETAIL = "the model proposed a specification for a different dataset than requested"
+def _classify_fault(status: int, detail: str) -> str:
+    if status == _HTTP_PIN_MISMATCH and detail == _PIN_MISMATCH_DETAIL:
+        return _BUCKET_OFF_REQUEST   # model proposed a DIFFERENT dataset (model failure mode)
+    if status >= _HTTP_SERVER_ERR:   # 5xx: backend unreachable(503) / unusable(502) / verifier 500
+        return _BUCKET_UPSTREAM_FAULT
+    return _BUCKET_HARNESS_ERROR     # 4xx (400/404/415/405): harness sent a bad request (expect 0)
+```
+- `_PIN_MISMATCH_DETAIL` = app.py's exact constant (a stable contract string). A 502 pin-refusal is a
+  MODEL off-request behavior, NOT infra → keep it OUT of `upstream_fault` (a successful dataset-redirect
+  injection must read as a model failure, not a backend hiccup). The two 502 causes (pin-mismatch vs
+  unusable backend reply) split ONLY on this detail; every other 5xx → `upstream_fault`.
 
 `_json_shape(reply) -> (valid_json: bool, is_object: bool)`:
 ```python
@@ -116,9 +137,11 @@ bytes → `POST {verifier}/verify-only` (content-type application/json, raw spec
 1. `guarantee = _run_bad_corpus(...)`.
 2. Per prompt: `POST {verifier}/propose-spec` json `{dataset_name, user_request}`. On 200 → decode
    `_RespProposeResult`; `bucket=_classify(verdict)`, `(vj,obj)=_json_shape(model_reply)`; tally per
-   category + overall; append `PromptRecord`. On non-200 → decode `_RespProblem` (best-effort);
-   `upstream_fault_count += 1`; record `bucket="upstream_fault"`, `model_reply=detail`; NOT in the
-   rate denominator.
+   category + overall (in the `n` denominator); append `PromptRecord`. On non-200 → decode
+   `_RespProblem` (best-effort; `detail=""` on decode failure); `bucket=_classify_fault(status,
+   detail)`; bump that fault's per-category + overall counter (`off_request_count` |
+   `upstream_fault_count` | `harness_error_count`); record `PromptRecord(bucket, model_reply=detail)`;
+   NOT in the rate denominator `n`.
 3. Rates over the 200 denominator per RateBlock; top-5 failing checks across ALL 200 verdicts →
    `FailureMode` list (Counter over failed-check names, most-common `_TOP_MODES`).
 
@@ -128,7 +151,9 @@ Report structs (all `msgspec.Struct, frozen=True, kw_only=True`):
 - `GuaranteeBlock{bad_corpus_size:int, bad_corpus_false_accept_count:int, bad_corpus_transport_errors:int}`.
 - `RateBlock{n:int, tool_call_rate:float, json_validity_rate:float, schema_failure_rate:float,
   semantic_failure_rate:float, policy_failure_rate:float, verified_render_rate:float,
-  upstream_fault_count:int}` (n = # of 200 responses; every rate / n; faults counted, not in n).
+  off_request_count:int, upstream_fault_count:int, harness_error_count:int}` (n = # of 200 responses;
+  every rate / n; the three fault counts are non-200, tallied but NOT in n — `off_request` = a model
+  failure mode, `upstream_fault` = backend infra, `harness_error` = a harness bug).
 - `FailureMode{check:str, count:int}`.
 - `ObservationsBlock{overall:RateBlock, by_category:dict[str,RateBlock], top_failure_modes:tuple[FailureMode,...]}`.
 - `Report{meta:MetaBlock, guarantee:GuaranteeBlock, observations:ObservationsBlock}`.
@@ -139,7 +164,9 @@ Encode + provenance:
 - `encode_details(records) -> bytes` = one `msgspec.json.encode(rec)` per line, `b"\n"`-joined + trailing newline (JSONL).
 - `fetch_model_name(client, model_base_url) -> str|None` = `GET model_base_url + "/models"` → decode
   `_ModelList` → `data[0].id`; return None on ANY failure (best-effort provenance, never fatal).
-- Constants: `_HTTP_OK = 200`, `_NDIGITS = 4` (round rates), `_TOP_MODES = 5`, bucket consts.
+- Constants: `_HTTP_OK = 200`, `_HTTP_PIN_MISMATCH = 502`, `_HTTP_SERVER_ERR = 500`, `_NDIGITS = 4`
+  (round rates), `_TOP_MODES = 5`; bucket consts
+  (`_BUCKET_VERIFIED/_SCHEMA/_SEMANTIC/_POLICY/_OFF_REQUEST/_UPSTREAM_FAULT/_HARNESS_ERROR`).
 
 ### `bench/__main__.py` — `python -m bench`
 argparse; `logging` NOT print (T20 bans print). Args (all with defaults): `--verifier-url`
@@ -148,9 +175,12 @@ argparse; `logging` NOT print (T20 bans print). Args (all with defaults): `--ver
 180.0). `main() -> int`: `logging.basicConfig(INFO)`; open sync `httpx.Client(timeout=...)`;
 `served_model = fetch_model_name(...)`; `report, records = run_eval(...)`; `mkdir(parents=True,
 exist_ok=True)` for out+details parents; write both byte payloads; log the GUARANTEE line + headline
-rates + top modes + written paths; return `1` IFF the guarantee is violated
-(`bad_corpus_false_accept_count` or `bad_corpus_transport_errors`), else `0` — a weak model failing
-most prompts is the EXPECTED success, not an error. `raise SystemExit(main())` under `__main__`.
+rates + top modes + written paths; return `1` IFF ANY of: the guarantee is violated
+(`bad_corpus_false_accept_count` or `bad_corpus_transport_errors`) · `overall.harness_error_count > 0`
+(the harness sent a bad request → invalid run) · `overall.n == 0` (no 200 verdict collected → the
+backend never yielded a judgeable reply → void run). Else `0` — a weak model failing most prompts (200
+decode/verify failures) or going off-request is the EXPECTED success, not an error. `raise
+SystemExit(main())` under `__main__`.
 
 ### Wiring
 - `pyproject.toml`: add `"bench"` to `[tool.ruff.lint.isort] known-first-party` (beside verifier,
@@ -181,8 +211,10 @@ Shape:
 2. Verifier :8000 — `.venv/bin/python -m verifier.service` (defaults already point
    `VERIFIER_MODEL_BASE_URL` at :8001/v1; verifier does NOT import openvino).
 3. Run — `.venv/bin/python -m bench` (defaults hit :8000/:8001, `examples/`).
-4. CONFIRM `bad_corpus_false_accept_count=0` (and `bad_corpus_transport_errors=0`). Non-zero → STOP,
-   real bug, do not record success.
+4. CONFIRM the run exited 0 — it encodes the STOP conditions: `bad_corpus_false_accept_count=0` +
+   `bad_corpus_transport_errors=0` (the guarantee), `overall.harness_error_count=0` (no harness bug),
+   `overall.n>0` (the model was exercised). A nonzero exit → STOP, real bug / void run, do not record
+   success. Then inspect `off_request_count` / `upstream_fault_count` as model / infra observations.
 5. Inspect `bench/reports/report.json`; record the headline numbers (guarantee + overall RateBlock +
    top-5 modes) into the roadmap M3 close-out + one durable `.agent/memory.md` line (reports/ stays
    gitignored — numbers live in the roadmap as durable evidence).
