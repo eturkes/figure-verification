@@ -65,7 +65,7 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
 
 ## M1 lessons (forward; unit blow-by-blow lives in git — `git log --grep "(M1[. ]"`)
 Process / right-sizing (rule itself → roadmap; it binds M2+ planning):
-- Overflow modes seen, with remedies: design-too-wide → split at a coverage-safe seam; re-derivation despite a complete recipe → TRANSCRIBE, don't re-derive (trust verified goldens); probing a native dep in the implementing window → isolate probes to scratch sessions and pre-bake a gate-validated recipe.
+- Overflow modes seen, with remedies: design-too-wide → split at a coverage-safe seam; re-derivation despite a complete recipe → TRANSCRIBE, don't re-derive (trust verified goldens); probing a native dep in the implementing window → isolate probes to scratch sessions and pre-bake a gate-validated recipe; TOO-MANY-modules/layers in one unit (M4.1 chart surface: 6 src + 6 test files spanning storage+production+serving, design derived from scratch, overflowed mid-tests) → the ~one-module rule binds cross-LAYER; split by layer (store / capture-wire / serve), front-load the subtle module (the LRU) alone in its own window, and pre-bake each sub-unit's transcription recipe in the roadmap so the re-plan cost is paid once. A separate additive method (put_chart, leaving put() intact) decouples a store extension from its pipeline caller, enabling that isolation cleanly.
 - An investigation-heavy codex-review can overflow while the fix stays small → capture the verified fix as a re-appliable patch/recipe + verdict, splitting investigation from application.
 - A claim-narrowing fix must SWEEP every restatement of the phrase across src+tests+memory — one narrowed line beside stale twins reads fixed but isn't.
 Test design:
