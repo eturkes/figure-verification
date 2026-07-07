@@ -62,7 +62,7 @@ right-sizing rule binds cross-LAYER too. Each sub-unit's recipe below is pre-der
 TRANSCRIBE it (exact signatures/constants given), don't re-derive; read only the named files + memory's
 cited notes. Land a→b→c in order (b's store + c's route/capture depend leftward); each leaves the gate green.
 - **M4.1a — offline-page height self-reporter** (OPEN; `render.py` + `tests/test_render.py`; leaf, isolated):
-  add a module const `_HEIGHT_REPORTER` by `_EMBED_SNIPPET` (~render.py:245) = memory "## M4" embed rule as a
+  add a module const `_HEIGHT_REPORTER` by `_EMBED_SNIPPET` = memory "## M4" embed rule as a
   fn, JS verbatim — `function vplotReportHeight(){parent.postMessage({type:"iframe:height",height:document.documentElement.scrollHeight},"*");}window.addEventListener("load",vplotReportHeight);new ResizeObserver(vplotReportHeight).observe(document.documentElement);`
   (Python str, assembled per ruff ≤100-col wrap); inject `f"<script>{_HEIGHT_REPORTER}</script>\n"` in
   `render_html` AFTER the `vegaEmbed(...)` script line, BEFORE `"</body>\n"`; docstring notes the self-report
@@ -76,12 +76,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   own small bound), field `html_cap: int = _DEFAULT_HTML_CAP`, a `__post_init__` guard `html_cap < 1` →
   `"html_cap must be >= 1, got …"` (mirror store_cap), from_env
   `html_cap=int(env.get("VERIFIER_HTML_CAP", str(_DEFAULT_HTML_CAP)))`, extend the fail-closed-caps docstring.
-  store.py: `__init__(self, cap, *, html_cap)` + html_cap guard + `self._html_cap` +
+  store.py: `__init__(self, cap: int, *, html_cap: int) -> None` + html_cap guard + `self._html_cap` +
   `self._charts: OrderedDict[str, bytes]`; ADD (additive — leave put/certificate/spec + the refcount intact,
-  NO _put_render refactor) `put_chart(plot_id, chart_html: bytes)` (lock: set, move_to_end, evict oldest while
-  `len(_charts) > _html_cap`) + `chart(plot_id) -> bytes | None` (lock: get + move_to_end on hit); rewrite the
-  docstring for THREE blobs (cert, spec, chart) + the SEPARATE chart LRU evicting independently (a chart MAY
-  404 while its cert lives — cert authoritative, the accepted mixed state). app.py: `create_app` →
+  NO _put_render refactor) `put_chart(self, plot_id: str, chart_html: bytes) -> None` (lock: set, move_to_end,
+  evict oldest while `len(_charts) > _html_cap`) + `chart(self, plot_id: str) -> bytes | None` (lock: get +
+  move_to_end on hit — reads `_charts` ONLY, never `_renders`); rewrite the docstring for THREE blobs (cert,
+  spec, chart) + the SEPARATE chart LRU (html_cap) evicting INDEPENDENTLY of the render LRU → BOTH mixed states
+  reachable + accepted: a chart 404s while its cert lives (common case, html_cap << store_cap) AND, under
+  chart-only access, a cert 404s while its chart lives (chart() refreshes only `_charts`). A served chart was
+  verified at render time (immutable bytes) so needs no live cert; the cert stays the canonical provenance
+  artifact, NOT a liveness gate. app.py: `create_app` →
   `ArtifactStore(settings.store_cap, html_cap=settings.html_cap)` (only that line). test_service.py: add
   `VERIFIER_HTML_CAP` to `_VERIFIER_ENV`, `html_cap == 16` default, direct + from_env non-positive-html_cap
   rejects (match `"html_cap"`), html_cap in the from_env override. test_store.py: thread `html_cap=` through
@@ -97,11 +101,13 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `tests/test_service_propose.py`; mechanical wiring over a/b — all primitives exist). pipeline.py
   `render_outcome`: build HTML ALWAYS (`render.render(…, include_html=True)`), `chart_html = cast("str",
   result.html)`, after the existing `store.put(...)` add `store.put_chart(plot_id, chart_html.encode("utf-8"))`,
-  return `html=chart_html if include_html else None`; docstring — HTML built+stored on EVERY verified render so
-  GET /chart works from any path (propose incl.), `include_html` now governs ONLY the JSON-body copy
-  (render.render(include_html=False) stays covered by test_render.py — verify). app.py: parameterize
-  `_fetch_artifact(artifact_id, fetch, *, media_type="application/json", headers=None)` →
-  `Response(payload, media_type=media_type, status_code=HTTP_200_OK, headers=headers)` (404 path unchanged →
+  return `html=chart_html if include_html else None`; docstring — HTML built+stored on EVERY verified render at
+  this shared render_outcome seam (the single store path BOTH verify-and-render and propose route through), so
+  GET /chart resolves regardless of entry route; `include_html` now governs ONLY the JSON-body copy
+  (render.render(include_html=False) STAYS covered by test_render.py's default-include_html render() calls —
+  confirmed at re-plan). app.py: parameterize
+  `_fetch_artifact(artifact_id: str, fetch: Callable[[str], bytes | None], *, media_type: str = "application/json", headers: dict[str, str] | None = None) -> Response[bytes]`
+  → `Response(payload, media_type=media_type, status_code=HTTP_200_OK, headers=headers)` (404 path unchanged →
   malformed/miss both stay uniform problem+json, NO CSP/html on 404); add
   `_CHART_HEADERS = {"content-security-policy": "sandbox allow-scripts"}` (bare `sandbox` blocks the page's own
   Vega + height JS; allow-scripts re-enables them; never allow-same-origin — memory "## M4"); add `chart_route`
@@ -109,7 +115,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `_fetch_artifact(plot_id, store.chart, media_type="text/html", headers=_CHART_HEADERS)`; register after
   `spec_route`; update the routes docstring + the `response_headers` comment (nosniff still rides the app
   default → the 200 carries text/html + nosniff + CSP = the three headers). openapi.py: add
-  `_html_response(description)` (`content:{"text/html":{"schema":{"type":"string"}}}`), a `/chart/{plot_id}`
+  `_html_response(description: str) -> dict[str, Any]` (`content:{"text/html":{"schema":{"type":"string"}}}`), a `/chart/{plot_id}`
   path (getChart, `_id_parameter("plot_id")`, `{"200": _html_response(…), **not_found}`), fix the stale
   `_paths()` docstring ("The five documented operations" → "The documented operations"; already 6 pre-/chart);
   regen the golden (`openapi_document_text()` → `schema/openapi.json`). test_service_render.py: (1) round-trip
@@ -121,8 +127,9 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   shape assert (200 text/html string; 404 → Problem). Optional test_service_propose.py: one assert — a
   successful propose's plot_id serves at `GET /chart` (the literal propose→chart acceptance; the
   verify-and-render round-trip already proves the mechanism). Acceptance: gate green; an include_html=false
-  render still serves its page verbatim at `GET /chart/{plot_id}` with the three success headers; evicted
-  (cert-alive mixed state) / unknown / malformed plot_id → uniform 404 problem+json without them; the OpenAPI
+  render still serves its page verbatim at `GET /chart/{plot_id}` with the three success headers; evicted /
+  unknown / malformed plot_id → uniform 404 problem+json WITHOUT the CSP or text/html (nosniff still rides the
+  app default); the OpenAPI
   doc + golden document `/chart` and the route-drift test passes.
 - **M4.2 — tool-facing response headers + surface tuning** (OPEN): scratch fake-tool-server probe against
   the live Open WebUI → settle the Location-variant (model context + embed persistence; fallback decision
