@@ -8,8 +8,10 @@ two distinct plot_ids — what an operator manifest change between two renders o
 (the certificate's manifest_hash differs, its spec_hash does not) — survives under a live-reference
 count until its LAST referencing render evicts; and the chart LRU (html_cap, M4.1b — its GET route
 lands M4.1c) evicts independently of the render LRU in BOTH directions, so a chart can 404 while its
-certificate lives and a certificate can 404 while its chart lives. Retrieval stays consistent
-without resting on the 1:1 plot<->spec precondition.
+certificate lives and a certificate can 404 while its chart lives. put_chart and chart each
+refresh chart-LRU recency (a re-put of a PRESENT key, or a read, moves its entry to newest) —
+pinned here against silent removal of that refresh, which count-only eviction tests miss.
+Retrieval stays consistent without resting on the 1:1 plot<->spec precondition.
 """
 
 import pytest
@@ -80,3 +82,32 @@ def test_cert_lru_evicts_independently_of_chart_lru() -> None:
     assert store.certificate(_A) is None  # certificate evicted...
     assert store.chart(_A) == b"<html>A</html>"  # ...while its chart still lives (html_cap 8)
     assert store.certificate(_B) == b"CB"
+
+
+def test_put_chart_refreshes_recency_of_present_key() -> None:
+    # Re-putting a chart already in the LRU moves it to newest; without put_chart's move_to_end the
+    # stale A would evict before B. The independent-eviction tests only ever re-put an ALREADY
+    # EVICTED key (a fresh insert), so they leave this refresh unpinned -- deleting the move_to_end
+    # would still pass them. html_cap 2 lets A and B coexist before the recency-deciding insert.
+    store = ArtifactStore(cap=8, html_cap=2)
+    store.put_chart(_A, b"<html>A</html>")
+    store.put_chart(_B, b"<html>B</html>")
+    store.put_chart(_A, b"<html>A</html>")  # A PRESENT -> refresh recency (A now newest, B oldest)
+    store.put_chart(_C, b"<html>C</html>")  # evicts the oldest, B -- not the refreshed A
+    assert store.chart(_B) is None  # fails if put_chart skips move_to_end (A would evict instead)
+    assert store.chart(_A) == b"<html>A</html>"
+    assert store.chart(_C) == b"<html>C</html>"
+
+
+def test_chart_read_refreshes_recency() -> None:
+    # A chart() hit moves its entry to newest; without chart's move_to_end the read leaves A oldest
+    # and the next insert evicts it. No other test asserts a READ reorders eviction, so this pins
+    # chart()'s recency refresh against silent removal. html_cap 2.
+    store = ArtifactStore(cap=8, html_cap=2)
+    store.put_chart(_A, b"<html>A</html>")
+    store.put_chart(_B, b"<html>B</html>")
+    assert store.chart(_A) == b"<html>A</html>"  # READ refreshes A -> B is now oldest
+    store.put_chart(_C, b"<html>C</html>")  # evicts the oldest, B -- not the just-read A
+    assert store.chart(_B) is None  # fails if chart() skips move_to_end (A would evict instead)
+    assert store.chart(_A) == b"<html>A</html>"
+    assert store.chart(_C) == b"<html>C</html>"
