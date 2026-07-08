@@ -244,6 +244,20 @@ def render_svg(vega_lite_json: str) -> str:
 # undoes any pre-escape) and always ships the actions menu with no lever to disable it.
 _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 
+# A trusted-template height self-reporter appended as the page's LAST <script> (render_html). When
+# Open WebUI embeds this page (M4) it loads inside a sandboxed iframe, which has no intrinsic height
+# -- absent a self-report the frame collapses and the chart renders tiny. So the page posts its own
+# scrollHeight to the parent, which listens for a {type:"iframe:height",...} message and sizes the
+# frame. Fixed self-contained JS reading only its OWN document (no external ref, no model byte) --
+# off the cert hash chain like the rest of this view. It fires once on load AND on every
+# ResizeObserver tick, since the async vega render grows the DOM only after the load event.
+_HEIGHT_REPORTER = (
+    "function vplotReportHeight(){parent.postMessage("
+    '{type:"iframe:height",height:document.documentElement.scrollHeight},"*");}'
+    'window.addEventListener("load",vplotReportHeight);'
+    "new ResizeObserver(vplotReportHeight).observe(document.documentElement);"
+)
+
 
 @functools.cache
 def _embed_bundle() -> str:
@@ -261,7 +275,10 @@ def render_html(vega_lite_json: str) -> str:
     """A self-contained, fully offline HTML view of a BUILDER-PRODUCED Vega-Lite JSON string -- the
     same string render_svg consumes, drawn CLIENT-SIDE by the inlined vega runtime (the same chart
     as the SVG, not a richer interactive view: the builder emits no params / selection / tooltip).
-    No <script src> / CDN reference and no editor/actions menu (actions:false). OFF the cert hash
+    No <script src> / CDN reference and no editor/actions menu (actions:false). A trailing
+    trusted-template <script> (_HEIGHT_REPORTER) self-reports the page scrollHeight to a parent
+    frame (postMessage on load + ResizeObserver), so an M4 sandboxed-iframe embed sizes to content
+    instead of rendering tiny -- fixed self-contained JS adding no external ref. OFF the cert hash
     chain: a convenience view, never hashed into the VCert. Self-containment also rests on embedding
     the spec as inert application/json DATA (JSON.parse'd, never executed) with EVERY "<" rewritten
     to its JSON unicode escape (U+003C), so no data byte can open script-data markup (</script>,
@@ -284,6 +301,7 @@ def render_html(vega_lite_json: str) -> str:
         '<script>vegaEmbed("#vplot-chart", '
         'JSON.parse(document.getElementById("vplot-spec").textContent), '
         '{actions: false, renderer: "svg"}).catch(console.error);</script>\n'
+        f"<script>{_HEIGHT_REPORTER}</script>\n"
         "</body>\n"
         "</html>\n"
     )

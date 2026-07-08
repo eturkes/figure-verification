@@ -61,15 +61,10 @@ modules + 6 test files, design derived from scratch) overflowed one 200K window 
 right-sizing rule binds cross-LAYER too. Each sub-unit's recipe below is pre-derived from that overflow →
 TRANSCRIBE it (exact signatures/constants given), don't re-derive; read only the named files + memory's
 cited notes. Land a→b→c in order (b's store + c's route/capture depend leftward); each leaves the gate green.
-- **M4.1a — offline-page height self-reporter** (OPEN; `render.py` + `tests/test_render.py`; leaf, isolated):
-  add a module const `_HEIGHT_REPORTER` by `_EMBED_SNIPPET` = memory "## M4" embed rule as a
-  fn, JS verbatim — `function vplotReportHeight(){parent.postMessage({type:"iframe:height",height:document.documentElement.scrollHeight},"*");}window.addEventListener("load",vplotReportHeight);new ResizeObserver(vplotReportHeight).observe(document.documentElement);`
-  (Python str, assembled per ruff ≤100-col wrap); inject `f"<script>{_HEIGHT_REPORTER}</script>\n"` in
-  `render_html` AFTER the `vegaEmbed(...)` script line, BEFORE `"</body>\n"`; docstring notes the self-report
-  (trusted-template JS, off the cert hash chain, page stays self-contained). test_render.py: extend the HTML
-  output-scan — reporter present (`iframe:height` + `ResizeObserver`) AND still self-contained (no
-  `<script src` / external fetchable ref). Acceptance: gate green; offline HTML embeds the load +
-  ResizeObserver height reporter posting `{type:"iframe:height",…}` and stays fully self-contained.
+- **M4.1a — offline-page height self-reporter** (DONE, 59% 200K): `render.py` `_HEIGHT_REPORTER`
+  trusted-template JS (`postMessage {type:"iframe:height",…}` on load + ResizeObserver) appended as
+  `render_html`'s LAST `<script>`, off the cert hash chain; presence + self-containment pinned in
+  `tests/test_render.py`. Recipe consumed → git (`git log --grep "(M4.1a"`).
 - **M4.1b — chart store + operator bound** (OPEN; `settings.py` + `store.py` + `app.py`[1 line] +
   `tests/test_service.py` + `tests/test_store.py`; the subtle LRU, isolated in its own window; pipeline
   UNTOUCHED). settings.py: add `_DEFAULT_HTML_CAP = 16` (chart pages ~MB; the 256 store_cap would balloon →

@@ -947,6 +947,19 @@ def test_render_html_scaffold_is_self_contained() -> None:
     assert _HTML_FETCH_RE.search(html_doc) is None  # static scan: no absolute http(s) src/href
 
 
+def test_render_html_self_reports_height_for_iframe_embed() -> None:
+    # An M4 sandboxed-iframe embed has no intrinsic height -> the page must self-report or render
+    # tiny. The trusted-template reporter posts {type:"iframe:height",...} to the parent on load AND
+    # on every ResizeObserver tick (the async vega render grows the DOM after load). Fixed
+    # self-contained JS, off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).
+    html_doc = _html(_G01)
+    assert render._HEIGHT_REPORTER in html_doc  # the exact trusted-template reporter is embedded
+    assert 'type:"iframe:height"' in html_doc  # the height message the embed host listens for
+    assert "ResizeObserver" in html_doc  # re-posts on content resize, not only the initial load
+    scaffold = html_doc.replace(render._embed_bundle(), "[BUNDLE]")
+    assert _external_refs(scaffold) == []  # the reporter introduces no external/fetchable ref
+
+
 def test_render_html_is_menu_free_and_client_rendered() -> None:
     html_doc = _html(_G01)
     assert "vegaEmbed(" in html_doc  # a client-rendered vega-embed, not a pre-rasterized image
