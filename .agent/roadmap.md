@@ -88,29 +88,18 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   decision) → NO re-probe; TRANSCRIBE the recipes below, read only the named files + the cited memory
   notes. Land a→b→c in order (b's Location header needs a's `public_base_url`; c documents b's body shape);
   each leaves the gate green. Live confirmation of the embed rides M4.5's E2E, not here.
-- **M4.2a — `Settings.public_base_url` operator knob** (DONE, 57% 200K): add
-  `public_base_url: str | None = None` after `port`; import `urlparse` from `urllib.parse`. In
-  `__post_init__`, FIRST guard (before the max_body_bytes check): if None, derive
-  `f"http://{_DEFAULT_HOST}:{self.port}"` via `object.__setattr__` (frozen-struct derivation — VERIFIED
-  to work in a msgspec `__post_init__`: sets the slot, `hash()` + frozen-ness intact; used nowhere else
-  yet), then `parsed = urlparse(base)` and reject (`ValueError` whose message contains `public_base_url`)
-  unless it is a CLEAN http(s) origin: `parsed.scheme in {"http","https"}` AND `parsed.netloc` AND `not
-  any(ch.isspace() for ch in base)` AND `base == f"{parsed.scheme}://{parsed.netloc}"` (this exact-origin
-  roundtrip rejects any path/query/fragment/trailing-slash in one clause; the isspace guard rejects
-  embedded/trailing whitespace urlparse otherwise keeps in netloc) AND the port parses (read
-  `parsed.port` in `try/except ValueError` → a non-numeric `http://host:bad` fails closed). So
-  `f"{base}/chart/{id}"` appends exactly one clean segment. `from_env`:
-  `public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL")` (absent→None→derive; present-empty→""→rejected,
-  fail-closed). Docstring: one M4.2 paragraph (absolute browser-facing origin, separate from `host` the
-  bind address; loopback-literal default on the configured port; override via the env var). Tests
-  (`tests/test_service.py`): add `"VERIFIER_PUBLIC_BASE_URL"` to `_VERIFIER_ENV` after PORT; in
-  test_settings_defaults assert `public_base_url == "http://127.0.0.1:8000"`; 3 new tests —
-  derives-from-port (`port=9000`→`…:9000`), accepts-explicit (`https://verify.example.org:8443`),
-  rejects-malformed over `("", "ftp://host", "not a url", "http://", "http://host:8000/", "http://host?x",
-  "http://host#frag", "http://host/base", "http://host:bad", "http://host ")` (path/query/fragment/slash/
-  bad-port/whitespace all fail closed — this exact predicate + list is gate-validated); extend
-  test_from_env_overrides with the env set + the RHS field. Acceptance: gate green; knob validated on
-  BOTH construction paths.
+- **M4.2a — `Settings.public_base_url` operator knob** (DONE, 57% 200K): `public_base_url: str | None`
+  (env `VERIFIER_PUBLIC_BASE_URL`) = the absolute browser-facing chart-Location origin (M4.2b), separate
+  from `host` the bind address; unset → derive `f"http://127.0.0.1:{port}"` via `object.__setattr__`
+  (frozen-struct init derivation — VERIFIED in a msgspec `__post_init__`: sets the slot, `hash()` +
+  frozen-ness intact). `__post_init__` (first guard) requires a CLEAN origin `scheme://host[:port]` on
+  both construction paths — http(s) scheme, present host, ASCII authority allowlist, exact-origin
+  roundtrip, parseable port — all inside one `try/except` wrapping `urlparse` for a uniform fail-closed
+  `public_base_url` message. Codex-review HARDENED the initial roundtrip-only validator (added the
+  allowlist + `parsed.hostname` + the urlparse-wrap, dropped the redundant `isspace` scan) to close the
+  urlparse-vs-WHATWG-browser gaps — `\` path-injection, userinfo host-confusion, empty-host, control/
+  percent/unicode authority bytes; the reusable lesson + kept-benign cases live in `.agent/memory.md`.
+  Recipe + hardening consumed → git (`git log --grep "(M4.2a"`).
 - **M4.2b — proposeSpec verified-success embed wrapper** (OPEN): `app.py` `propose_spec_route` — after
   `verdict = await sync_to_thread(_verify_render_pinned, …)`, build
   `result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)`; on

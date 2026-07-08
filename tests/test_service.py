@@ -66,17 +66,32 @@ def test_settings_public_base_url_derives_from_port(tmp_path: Path) -> None:
     assert settings.public_base_url == "http://127.0.0.1:9000"
 
 
-def test_settings_public_base_url_accepts_explicit_origin(tmp_path: Path) -> None:
-    # A clean explicit http(s) origin (an operator behind a reverse proxy) is preserved verbatim.
-    settings = Settings(data_dir=tmp_path, public_base_url="https://verify.example.org:8443")
-    assert settings.public_base_url == "https://verify.example.org:8443"
+def test_settings_public_base_url_accepts_clean_origins(tmp_path: Path) -> None:
+    # Clean explicit origins (an operator behind a reverse proxy) are preserved verbatim: https
+    # with a port, a bare host with an implicit port (the common proxy case), IPv6 with and without
+    # a port, and a bare loopback name. The authority allowlist must not over-reject these.
+    clean = (
+        "https://verify.example.org:8443",
+        "https://verify.example.org",
+        "http://[::1]:8000",
+        "http://[2001:db8::1]:8443",
+        "http://[::1]",
+        "http://localhost",
+    )
+    for good in clean:
+        settings = Settings(data_dir=tmp_path, public_base_url=good)
+        assert settings.public_base_url == good
 
 
 def test_settings_rejects_malformed_public_base_url(tmp_path: Path) -> None:
-    # Only a clean origin (scheme://netloc, numeric port, no path/query/fragment/trailing-slash/
-    # whitespace) is accepted, so f"{base}/chart/{id}" appends exactly one clean segment. Every
-    # other shape corrupts that browser-facing URL, so it fails closed on both construction paths.
+    # Only a clean origin scheme://host[:port] is accepted, so f"{base}/chart/{id}" appends exactly
+    # one clean segment toward the browser. Every other shape -- a path/query/fragment/trailing
+    # slash, whitespace, a missing or userinfo-shadowed host, a backslash a browser reads as '/', a
+    # percent-escape or control byte or forbidden char in the authority, a raw-unicode/IDN host, an
+    # uppercase (non-canonical) scheme, or a port urlparse cannot parse -- corrupts that browser-
+    # facing URL, so it fails closed with the one uniform message on both construction paths.
     malformed = (
+        # path / query / fragment / trailing slash / whitespace / wrong scheme / garbage
         "",
         "ftp://host",
         "not a url",
@@ -85,8 +100,33 @@ def test_settings_rejects_malformed_public_base_url(tmp_path: Path) -> None:
         "http://host?x",
         "http://host#frag",
         "http://host/base",
-        "http://host:bad",
         "http://host ",
+        "http://ho\tst",
+        # missing host (netloc truthy but no hostname) + userinfo host-confusion
+        "http://:8000",
+        "http://@host",
+        "https://trusted.example@evil.example",
+        "http://user:pass@host:8000",
+        # backslash path-injection -- a browser normalizes '\' to '/'
+        "http://host\\evil",
+        "http://good.example\\@evil.example",
+        # forbidden authority bytes: percent-escape, pipe, C0 NUL, ESC, DEL
+        "http://host%2f.evil",
+        "http://host|evil:8000",
+        "http://host\x00evil",
+        "http://host\x1bevil",
+        "http://host\x7fevil",
+        # raw-unicode / IDN host (requires punycode) -- built via chr() to keep the source ASCII
+        f"http://ex{chr(0xE4)}mple.org",
+        f"http://{chr(0x4F8B)}.test:8443",
+        # uppercase (non-canonical) scheme, kept lowercase-only by design
+        "HTTP://example.org:8443",
+        # a port urlparse rejects (non-numeric, out of range) or a malformed double-colon authority
+        "http://host:bad",
+        "http://host:99999",
+        "http://host:80:80",
+        # unbalanced IPv6 bracket -- urlparse raises ValueError, caught into the uniform message
+        "http://[::1",
     )
     for bad in malformed:
         with pytest.raises(ValueError, match="public_base_url"):

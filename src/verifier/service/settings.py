@@ -20,13 +20,18 @@ caps above (see the inline notes for each rejection's downstream failure mode).
 M4.2 adds public_base_url — the absolute, browser-facing origin the proposer embeds in a chart
 Location header (M4.2b), distinct from host, the bind address. Left unset it derives the loopback
 literal on the configured port; an operator behind a reverse proxy overrides it via
-VERIFIER_PUBLIC_BASE_URL. __post_init__ requires a clean http(s) origin (scheme://netloc, no path,
-query, fragment, trailing slash, whitespace, or non-numeric port) so f"{base}/chart/{id}" appends
-exactly one clean segment toward the browser — the one config value that crosses toward a client.
+VERIFIER_PUBLIC_BASE_URL. __post_init__ requires a clean origin scheme://host[:port] — http(s)
+scheme, present host, ASCII host+port authority (no userinfo, backslash, percent-escape, control
+byte, whitespace, or raw-unicode/IDN host), no path/query/fragment/trailing slash — so
+f"{base}/chart/{id}" appends exactly one clean segment toward the browser. It is the one config
+value a client parses, so it fails closed on any shape a browser would reinterpret (a '\' read as
+'/', userinfo host-confusion, a hostless or non-ASCII Location) rather than trust a hand-written
+origin.
 """
 
 import math
 import os
+import re
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
@@ -52,6 +57,11 @@ _DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_TIMEOUT = 120.0
 _DEFAULT_MODEL_SAMPLE_ROWS = 5
 _DEFAULT_MODEL_MAX_TOKENS = 512
+# public_base_url (M4.2) clean-origin authority allowlist: ASCII host+port only -- letters,
+# digits, dot, hyphen, underscore, colon (port / IPv6), brackets (IPv6). Excludes userinfo '@',
+# backslash, percent-escape, control bytes, whitespace, and raw-unicode/IDN hosts, each of which
+# would corrupt the chart Location the proposer embeds from this value.
+_CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
 
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
@@ -71,30 +81,31 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     model_max_tokens: int = _DEFAULT_MODEL_MAX_TOKENS
 
     def __post_init__(self) -> None:
-        # public_base_url (M4.2) is the absolute browser-facing origin the proposer embeds in a
-        # chart Location header. Left unset, derive the loopback default from the configured port
-        # via object.__setattr__ (frozen-struct init derivation -- sets the slot, hash + frozen-ness
-        # intact); then require a clean http(s) origin on every path, so f"{base}/chart/{id}"
-        # appends exactly one clean segment. The exact-origin roundtrip rejects any path, query,
-        # fragment, or trailing slash in one clause; the isspace guard rejects whitespace urlparse
-        # otherwise keeps in netloc; and reading parsed.port rejects a non-numeric port -- each
-        # would otherwise corrupt that URL toward the browser.
+        # public_base_url (M4.2): the absolute browser-facing origin the proposer embeds in a chart
+        # Location header. Unset -> derive the loopback default from the port via object.__setattr__
+        # (frozen-struct init derivation: sets the slot, hash + frozen-ness intact). Then require a
+        # clean origin scheme://host[:port] on every construction path (see the module docstring for
+        # the shape and why each rejected form -- '\' path-injection, userinfo host-confusion, a
+        # hostless or non-ASCII Location -- would corrupt f"{base}/chart/{id}" toward the browser).
+        # urlparse raises ValueError on some malformed input (unbalanced IPv6 brackets, a
+        # non-numeric or out-of-range port); catch it so every bad value fails closed uniformly.
         base = self.public_base_url
         if base is None:
             base = f"http://{_DEFAULT_HOST}:{self.port}"
             object.__setattr__(self, "public_base_url", base)
-        parsed = urlparse(base)
         try:
-            _ = parsed.port  # property parse raises ValueError on a non-numeric port
+            parsed = urlparse(base)
+            _ = parsed.port  # property parse raises ValueError on a non-numeric / out-of-range port
         except ValueError:
-            port_ok = False
+            origin_ok = False
         else:
-            port_ok = True
-        scheme_ok = parsed.scheme in {"http", "https"}
-        netloc_ok = bool(parsed.netloc)
-        no_space = not any(ch.isspace() for ch in base)
-        origin_ok = base == f"{parsed.scheme}://{parsed.netloc}"
-        if not (scheme_ok and netloc_ok and no_space and origin_ok and port_ok):
+            origin_ok = (
+                parsed.scheme in {"http", "https"}
+                and bool(parsed.hostname)
+                and _CLEAN_AUTHORITY.fullmatch(parsed.netloc) is not None
+                and base == f"{parsed.scheme}://{parsed.netloc}"
+            )
+        if not origin_ok:
             msg = f"public_base_url must be a clean http(s) origin, got {base!r}"
             raise ValueError(msg)
         # A non-positive cap is falsy, so Litestar reads it as an unlimited body
