@@ -155,23 +155,23 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   unpinned axis), corrected the launch_env purity + hermetic docstrings; closed runtime type-strictness by documenting
   `from_env` as the coercion boundary in the Settings docstring (rejected the add-type-guards option —
   msgspec skips runtime type checks, sibling model_backend convention). Recipe + review consumed → git (`git log --grep "(M4.3a"`).
-- **M4.3b — `webui/client.py` REST client + `webui/bootstrap.py` smoke** (OPEN): the provisioning logic over
-  a's Settings (behavior = memory Provisioning-SETTLED-LIVE — TRANSCRIBE, no re-probe). client.py:
-  `WebUIProvisionError(RuntimeError)`; `WebUIClient(http: httpx.Client, settings)` holding `_token: str|None`
-  — `wait_ready()` polls `GET /ready` every `_READY_POLL_INTERVAL=1.0`s until `httpx.codes.OK` or the
-  `ready_timeout` deadline (`time.monotonic`; catch `httpx.HTTPError` as still-booting; raise on timeout);
-  `authenticate()` POSTs `/api/v1/auths/signup {name,email,password}`, and on ANY non-200 falls back to
-  `/api/v1/auths/signin {email,password}` (both non-200 → raise; empty token → raise; store + return);
-  `model_ids()` GET `/api/models` authed → `data[].id` (a `{data:[…]}` envelope); `tool_server_ids()` GET
-  `/api/v1/tools/` authed → a BARE JSON array `[{id,name,…}]` (`list[ToolUserResponse]`, NOT a `data` envelope —
-  routers/tools.py:66), each element's `.id`, kept where prefixed `_TOOL_SERVER_ID_PREFIX="server:"`. bootstrap.py: `SmokeResult(msgspec.Struct, frozen,
-  kw_only)` (model_ids, tool_server_ids, model_enumerated, tool_registered; `ok` = both bools);
-  `smoke(client, settings)` sets model_enumerated = `settings.model_id in model_ids`, tool_registered =
-  `f"server:{settings.tool_server_id}" in tool_server_ids`; `run_bootstrap(client, settings)` = wait_ready +
-  authenticate + smoke. Tests `tests/test_webui_client.py` (+ bootstrap) via `httpx.MockTransport`: signup-200
-  path, signup-non-200→signin fallback, signin-fail→raise, no-token→raise, wait_ready 200-vs-timeout,
-  model_ids parse (`data[]` envelope) + tool_server_ids parse (BARE array) + `server:` filter; bootstrap ok / not-ok + idempotency via a fake client.
-  Acceptance: gate green; request-shaping + signup-or-signin fallback + smoke logic pinned.
+- **M4.3b — `webui/client.py` REST client + `webui/bootstrap.py` smoke** (DONE, 77% 200K):
+  `WebUIProvisionError(RuntimeError)` + `WebUIClient(http: httpx.Client, settings)` over the
+  Provisioning-SETTLED-LIVE surface — `wait_ready` (poll `/ready` to `httpx.codes.OK` or the
+  `ready_timeout` `time.monotonic` deadline, `httpx.HTTPError` = still-booting, raise on timeout),
+  `authenticate` (signup→signin fallback on ANY non-200, both-non-200 / empty-token fail-closed,
+  stores + returns the JWT), `model_ids` (`{data:[…]}` envelope), `tool_server_ids` (BARE
+  `list[ToolUserResponse]`, `server:`-filtered); readbacks decode LOUD via loose msgspec structs (no
+  swallow, so a live shape drift surfaces). bootstrap.py: `SmokeResult` (frozen/kw_only, `ok` =
+  model_enumerated ∧ tool_registered), `smoke`/`run_bootstrap` over a structural `_Provisioner`
+  Protocol. `tests/test_webui_client.py` (20 tests, coverage-excluded): `httpx.MockTransport` pins
+  the wire shapes (signup-200/signin-fallback/both-fail/empty-token, wait_ready 200/retry/timeout,
+  the `data[]` vs BARE-array parse + `server:` filter, bearer wiring) + a pure `_Provisioner` fake
+  pins the wait→auth→smoke order, ok truth table, and idempotency. Deliberate vs recipe: `_auth_headers`
+  guards authed calls (raise before authenticate); the `_Provisioner` Protocol types the recipe's
+  "fake client" under mypy --strict; `wait_ready` timeout test monkeypatches the shared `time` module
+  for a real-time-free deterministic timeout; `_TOOL_SERVER_ID_PREFIX="server:"` single-sourced in
+  client.py (bootstrap imports it). Recipe consumed → git (`git log --grep "(M4.3b"`).
 - **M4.3c — `webui/model_stub.py` + `webui/__main__.py` + `webui/__init__.py` + README** (OPEN):
   the CLI wiring + the hardware-free stub (live confirmation = M4.3d). model_stub.py: `create_app(model_id) ->
   Litestar` — `@get("/v1/models")` → `{data:[{id:model_id,object:"model",…}]}` (the smoke's load-bearing
