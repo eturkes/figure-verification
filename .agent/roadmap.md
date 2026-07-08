@@ -145,7 +145,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `env.py:216` resolves a relative one vs ITS own cwd, so absolute keeps state in `.webui-data` regardless of
   exec cwd; `.resolve()` reads cwd not os.environ, so launch_env stays assertable via a recomputed resolve);
   minimal `webui/__init__.py` package marker landed HERE (regular pkg like model_backend/bench, needed for
-  mypy+import gate-green) → c enriches it with CLI exports. Recipe consumed → git (`git log --grep "(M4.3a"`).
+  mypy+import gate-green) → c enriches it with CLI exports. Codex-review (xhigh) HARDENED (all verified at
+  0.10.2 source): pinned the auth/bootstrap surface in `_FIXED_ENV` (`WEBUI_AUTH`/`ENABLE_LOGIN_FORM`/
+  `ENABLE_PASSWORD_AUTH` on, `ENABLE_SIGNUP` off, `WEBUI_ADMIN_EMAIL`+`WEBUI_AUTH_TRUSTED_EMAIL_HEADER` empty
+  — else ambient seizes the boot admin (main.py:326) or disables auth); validated emitted URLs http(s)+host
+  (empty `model_backend_url` ⇒ api.openai.com fallback config.py:335, empty `verifier_url` ⇒ dropped tool
+  server — both fail OPEN); added `child_env()` = curated base-env passthrough + `launch_env()` = the real
+  hermetic boundary (a bare `{**os.environ,**launch_env()}` leaks `HTTP_PROXY` via aiohttp trust_env + any
+  unpinned axis), corrected the launch_env purity + hermetic docstrings; closed runtime type-strictness by documenting
+  `from_env` as the coercion boundary in the Settings docstring (rejected the add-type-guards option —
+  msgspec skips runtime type checks, sibling model_backend convention). Recipe + review consumed → git (`git log --grep "(M4.3a"`).
 - **M4.3b — `webui/client.py` REST client + `webui/bootstrap.py` smoke** (OPEN): the provisioning logic over
   a's Settings (behavior = memory Provisioning-SETTLED-LIVE — TRANSCRIBE, no re-probe). client.py:
   `WebUIProvisionError(RuntimeError)`; `WebUIClient(http: httpx.Client, settings)` holding `_token: str|None`
@@ -169,7 +178,8 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   endpoint) + `@post("/v1/chat/completions")` → an OpenAI chat envelope with a fixed `_STUB_REPLY` (for
   M4.5, unexercised by the smoke); `main()` builds `Settings.from_env()`, `urlparse(model_backend_url)` for
   host/port, `uvicorn.run`. __main__.py: `_serve(settings) -> NoReturn` (binary-exists check else
-  SystemExit(1); `os.execve(bin, argv, {**os.environ, **launch_env()})` — `# noqa: S606`, shell-free),
+  SystemExit(1); `os.execve(bin, argv, settings.child_env())` — `# noqa: S606`, shell-free; child_env =
+  curated base + launch_env = the hermetic boundary, landed M4.3a-Codex),
   `_bootstrap(settings) -> int` (`httpx.Client(base_url, timeout)` → `run_bootstrap` → 0 iff `result.ok`,
   WebUIProvisionError → 1), `_parse_args` (argparse choices serve/bootstrap/stub), `main() -> int`
   (basicConfig, Settings.from_env, dispatch; serve never returns, stub blocks→0), `raise SystemExit(main())`.

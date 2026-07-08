@@ -8,11 +8,16 @@ drift), and __post_init__ rejects out-of-range bounds so a misconfigured deploy 
 Two env namespaces meet here, kept strictly apart:
   - WEBUI_PROVISION_* is the INPUT this container reads (from_env) -- how the operator points the
     harness at the verifier, the model backend, and the OWUI binary, plus the admin bootstrap.
-  - launch_env() is the OUTPUT this container EMITS: the canonical Open WebUI environment the
-    launcher execs open-webui with. The launcher merges it OVERRIDE-ONLY as {**os.environ,
-    **launch_env()}, so every OWUI-read axis must be pinned here (in _FIXED_ENV or a derived key)
-    or an ambient value leaks into the deterministic harness. launch_env() reads no os.environ, so
-    its whole output is a pure function of this Settings -- fully assertable in a test.
+  - launch_env() is the Open WebUI config the harness intends -- determinism toggles, backend
+    wiring, and the auth / bootstrap login model. It reads no os.environ (DATA_DIR resolves against
+    the process cwd, not the environment), so it is a pure function of this Settings and the cwd --
+    fully assertable (a test recomputes the same resolve). Every axis the harness has intent about
+    is pinned here (in _FIXED_ENV or a derived key), so the config is complete on its own.
+  - child_env() is what the launcher actually execs: launch_env() overlaid on a CURATED minimal base
+    (only the process vars the child needs -- PATH / HOME / locale), everything else in os.environ
+    DROPPED. This is the hermetic boundary -- a bare {**os.environ, **launch_env()} would leak any
+    axis launch_env does not pin (aiohttp reads HTTP_PROXY via trust_env; transport / SSL knobs are
+    unbounded). The launcher (webui/__main__.py, M4.3c) execs os.execve(bin, argv, child_env()).
 
 Persistent-config is OFF (env-over-DB every boot), so config lives in env, never the OWUI DB: the
 one DB-persisted provisioning act is the admin signup (bootstrap, M4.3b). Defaults bind loopback
@@ -27,6 +32,7 @@ import math
 import os
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlparse
 
 import msgspec
 
@@ -100,6 +106,21 @@ _FIXED_ENV: dict[str, str] = {
     "ENABLE_EVALUATION_ARENA_MODELS": "false",
     "ENABLE_COMMUNITY_SHARING": "false",
     "ENABLE_MESSAGE_RATING": "false",
+    # Auth + bootstrap login model pinned so the override-only merge cannot let ambient rewrite the
+    # signup / signin path M4.3b depends on. WEBUI_AUTH on (ambient off disables auth);
+    # login form + password auth on (each gates signup and signin, routers/auths.py); public signup
+    # off (the first admin auto-registers regardless -- auths.py first-user get_num_users==1 -- so
+    # this only shuts LATER signups). WEBUI_ADMIN_EMAIL empty defuses the boot-time auto-admin
+    # (main.py runs create_admin_user only when WEBUI_ADMIN_EMAIL *and* WEBUI_ADMIN_PASSWORD are
+    # set, so the empty email alone short-circuits it -- else ambient seizes the first-admin slot
+    # before bootstrap). The trusted-email header empty keeps header-trust auth off (the name header
+    # is read only alongside it), so signin stays password-based.
+    "WEBUI_AUTH": "true",
+    "ENABLE_LOGIN_FORM": "true",
+    "ENABLE_PASSWORD_AUTH": "true",
+    "ENABLE_SIGNUP": "false",
+    "WEBUI_ADMIN_EMAIL": "",
+    "WEBUI_AUTH_TRUSTED_EMAIL_HEADER": "",
     # Legacy (prompt-template) function calling: the weak model's tool selection runs inline in the
     # chat request. Native FC is gated on the UI event emitter and does not execute headless
     # (memory M4), so the one-shot headless flow needs legacy.
@@ -107,8 +128,38 @@ _FIXED_ENV: dict[str, str] = {
 }
 
 
+# The process-level vars the OWUI child legitimately inherits (child_env passthrough allowlist):
+# enough to find the interpreter / libraries and localize, nothing that steers OWUI config,
+# networking, or auth. Everything else in os.environ is dropped so no unpinned axis leaks past
+# launch_env(). Extend only if the M4.3d live smoke proves a var is genuinely needed.
+_BASE_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ")
+
+
+def _require_http_url(name: str, value: str) -> None:
+    """Fail closed unless value is a non-empty http(s) URL carrying a host.
+
+    verifier_url and model_backend_url are emitted into the OWUI env / tool-server JSON, where a
+    blank or scheme-less value fails OPEN not loud: OWUI rewrites an empty OpenAI base-url to
+    https://api.openai.com/v1 (config.py) and silently drops a tool server whose url will not
+    url-join, so a misconfigured deploy must raise here instead of surfacing at first request.
+    """
+    try:
+        parsed = urlparse(value)
+    except ValueError as exc:  # malformed authority (bad IPv6 literal / port)
+        msg = f"{name} must be an http(s) URL, got {value!r}"
+        raise ValueError(msg) from exc
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        msg = f"{name} must be an http(s) URL with a host, got {value!r}"
+        raise ValueError(msg)
+
+
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
-    """Immutable provisioner configuration. See the module docstring for the trust note."""
+    """Immutable provisioner configuration. See the module docstring for the trust note.
+
+    from_env() is the runtime type boundary: it coerces port / timeouts / paths out of str, so
+    __post_init__ guards values, not types. Direct construction trusts caller types (msgspec does
+    not check them at runtime), matching the model_backend / verifier Settings convention.
+    """
 
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
@@ -151,6 +202,13 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             if not math.isfinite(seconds) or seconds <= 0:
                 msg = f"{name} must be a finite value > 0, got {seconds}"
                 raise ValueError(msg)
+        # verifier_url / model_backend_url reach OWUI; host backs base_url -- validate each so an
+        # empty or malformed value fails closed here, not open downstream (see the helper).
+        _require_http_url("verifier_url", self.verifier_url)
+        _require_http_url("model_backend_url", self.model_backend_url)
+        if not self.host or "/" in self.host:
+            msg = f"host must be a bare host without scheme or path, got {self.host!r}"
+            raise ValueError(msg)
 
     @property
     def base_url(self) -> str:
@@ -188,12 +246,13 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         return json.dumps([connection])
 
     def launch_env(self) -> dict[str, str]:
-        """The canonical Open WebUI env to exec open-webui with (override-only over os.environ).
+        """The Open WebUI config env to exec open-webui with (layered over the launcher base env).
 
-        Pure: reads no os.environ, so the whole dict is a function of this Settings. The five
-        derived keys complete _FIXED_ENV per-instance -- an absolute DATA_DIR (OWUI resolves a
-        relative one against its own cwd, so absolute keeps state in .webui-data regardless of
-        exec cwd), the secret, both OpenAI base-url forms, and the tool-server registration.
+        Reads no os.environ; DATA_DIR resolves against the process cwd, so the dict is a function of
+        this Settings and the cwd (a test recomputes the same resolve). The five derived keys
+        complete _FIXED_ENV per-instance -- an absolute DATA_DIR (OWUI resolves a relative one
+        against its own cwd, so absolute keeps state in .webui-data regardless of exec cwd), the
+        secret, both OpenAI base-url forms, and the tool-server registration.
         """
         return {
             **_FIXED_ENV,
@@ -203,6 +262,18 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             "OPENAI_API_BASE_URLS": self.model_backend_url,
             "TOOL_SERVER_CONNECTIONS": self.tool_server_connections(),
         }
+
+    def child_env(self) -> dict[str, str]:
+        """The full hermetic environment to exec open-webui with: a curated base + launch_env().
+
+        Unlike launch_env() (pure OWUI config), this reads os.environ -- but ONLY the process vars
+        the child needs (_BASE_ENV_PASSTHROUGH: PATH / HOME / locale / TMPDIR / TZ) -- then overlays
+        launch_env(). Every ambient var outside that allowlist is DROPPED, so nothing the harness
+        did not choose (a stray HTTP_PROXY, a WEBUI_* / OPENAI_* leftover) reaches OWUI. The
+        launcher execs os.execve(bin, argv, settings.child_env()).
+        """
+        base = {k: os.environ[k] for k in _BASE_ENV_PASSTHROUGH if k in os.environ}
+        return {**base, **self.launch_env()}
 
     @classmethod
     def from_env(cls) -> Self:

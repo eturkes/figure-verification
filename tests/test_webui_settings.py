@@ -5,12 +5,13 @@ webui/ is a coverage-excluded harness, not part of the verifier claim, so these 
 regression net rather than a 100%-branch gate. Locked here:
 
 - every fail-closed bound (__post_init__): port range, non-empty secret / admin email / password,
-  finite-positive request and ready timeouts;
+  finite-positive request and ready timeouts, http(s) verifier / model-backend URLs, bare host;
 - launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the five
   per-instance derived keys, and stays independent of ambient os.environ (the launcher's
   override-only merge is only sound if launch_env pins each axis regardless of the environment);
 - the load-bearing _FIXED_ENV values (persistent-config off, empty task model, legacy FC, every
-  background-generation toggle off) pinned directly, so flipping one in the source fails here;
+  background-generation toggle off, plus the auth / bootstrap login model -- auth on, password
+  login, public signup off, no boot auto-admin, no trusted-header) pinned directly, so a flip fails;
 - tool_server_connections() as the settled-live one-element verifier registration;
 - from_env() default and WEBUI_PROVISION_* override across int / str / Path / float fields.
 """
@@ -66,6 +67,12 @@ _BAD_CONFIGS: list[tuple[Callable[[], Settings], str]] = [
     (lambda: Settings(ready_timeout=0.0), "ready_timeout"),
     (lambda: Settings(ready_timeout=math.inf), "ready_timeout"),
     (lambda: Settings(ready_timeout=math.nan), "ready_timeout"),
+    (lambda: Settings(verifier_url=""), "verifier_url"),
+    (lambda: Settings(verifier_url="ftp://127.0.0.1"), "verifier_url"),
+    (lambda: Settings(model_backend_url=""), "model_backend_url"),
+    (lambda: Settings(model_backend_url="http://"), "model_backend_url"),
+    (lambda: Settings(host=""), "host"),
+    (lambda: Settings(host="http://127.0.0.1"), "host"),
 ]
 
 
@@ -121,19 +128,51 @@ def test_fixed_env_pins_load_bearing_toggles() -> None:
         "ENABLE_SEARCH_QUERY_GENERATION",
     ):
         assert _FIXED_ENV[key] == "false"
+    # Auth + bootstrap login model pinned so ambient cannot rewrite the signup / signin path.
+    assert _FIXED_ENV["WEBUI_AUTH"] == "true"
+    assert _FIXED_ENV["ENABLE_LOGIN_FORM"] == "true"
+    assert _FIXED_ENV["ENABLE_PASSWORD_AUTH"] == "true"  # noqa: S105 (config toggle value)
+    assert _FIXED_ENV["ENABLE_SIGNUP"] == "false"
+    assert _FIXED_ENV["WEBUI_ADMIN_EMAIL"] == ""
+    assert _FIXED_ENV["WEBUI_AUTH_TRUSTED_EMAIL_HEADER"] == ""
 
 
 def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The launcher merges launch_env() OVERRIDE-ONLY over os.environ, so launch_env must emit each
-    # axis regardless of ambient. Set hostile ambient values; launch_env still returns the pins.
+    # launch_env() layers over the launcher base env, so it must emit each axis it pins regardless
+    # of ambient. Set hostile ambient across config AND auth; launch_env still returns the pins.
     monkeypatch.setenv("ENABLE_PERSISTENT_CONFIG", "true")
     monkeypatch.setenv("TASK_MODEL", "ambient-task-model")
     monkeypatch.setenv("OPENAI_API_BASE_URL", "http://ambient.example/v1")
+    monkeypatch.setenv("WEBUI_AUTH", "false")
+    monkeypatch.setenv("ENABLE_PASSWORD_AUTH", "false")
+    monkeypatch.setenv("WEBUI_ADMIN_EMAIL", "attacker@evil.test")
+    monkeypatch.setenv("WEBUI_AUTH_TRUSTED_EMAIL_HEADER", "X-Trusted-Email")
     settings = Settings()
     env = settings.launch_env()
     assert env["ENABLE_PERSISTENT_CONFIG"] == "false"
     assert env["TASK_MODEL"] == ""
     assert env["OPENAI_API_BASE_URL"] == settings.model_backend_url
+    # The auth pins hold against a hostile ambient (no auth-off, no auto-admin, no header-trust).
+    assert env["WEBUI_AUTH"] == "true"
+    assert env["ENABLE_PASSWORD_AUTH"] == "true"  # noqa: S105 (config toggle value)
+    assert env["WEBUI_ADMIN_EMAIL"] == ""
+    assert env["WEBUI_AUTH_TRUSTED_EMAIL_HEADER"] == ""
+
+
+def test_child_env_drops_ambient_keeps_base(monkeypatch: pytest.MonkeyPatch) -> None:
+    # child_env() is the hermetic exec env: launch_env() over a curated base. A passthrough var is
+    # carried through; an unpinned / hostile ambient var is dropped, never reaching OWUI.
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("HTTP_PROXY", "http://attacker.example:3128")
+    monkeypatch.setenv("WEBUI_AUTH", "false")
+    settings = Settings()
+    env = settings.child_env()
+    # launch_env() is fully present and its pins win over ambient.
+    for key, value in settings.launch_env().items():
+        assert env[key] == value
+    assert env["PATH"] == "/usr/bin:/bin"  # base passthrough carried
+    assert "HTTP_PROXY" not in env  # unpinned ambient dropped (no aiohttp trust_env proxy leak)
+    assert env["WEBUI_AUTH"] == "true"  # launch_env pin, not the ambient "false"
 
 
 def test_tool_server_connections_shape() -> None:
@@ -159,6 +198,8 @@ def test_from_env_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    for var in _PROVISION_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("WEBUI_PROVISION_PORT", "9999")
     monkeypatch.setenv("WEBUI_PROVISION_SECRET_KEY", "override-secret")
     monkeypatch.setenv("WEBUI_PROVISION_DATA_DIR", "custom-data")
