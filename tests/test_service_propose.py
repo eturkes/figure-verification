@@ -106,7 +106,7 @@ def test_propose_verified_spec_renders_and_stores(monkeypatch: pytest.MonkeyPatc
         assert response.status_code == 200
         assert response.headers["x-content-type-options"] == _NOSNIFF
         assert response.headers["content-disposition"] == "inline"
-        assert response.headers["content-type"].startswith("application/json")
+        assert response.headers["content-type"].split(";", 1)[0] == "application/json"
         payload = response.json()
         assert isinstance(payload, list)
         result, summary = payload
@@ -116,8 +116,8 @@ def test_propose_verified_spec_renders_and_stores(monkeypatch: pytest.MonkeyPatc
         assert "svg" in verdict
         assert response.headers["location"] == f"{base}/chart/{verdict['plot_id']}"
         assert isinstance(summary, str)
-        assert "sales.csv" in summary
-        assert str(len(verdict["results"])) in summary
+        expected = f"Verified chart for sales.csv: all {len(verdict['results'])} checks passed."
+        assert summary == expected
         assert scoped.get(f"/certificate/{verdict['plot_id']}").status_code == 200
         assert scoped.get(f"/spec/{verdict['spec_id']}").status_code == 200
         chart = scoped.get(f"/chart/{verdict['plot_id']}")
