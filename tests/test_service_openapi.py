@@ -268,9 +268,11 @@ def test_propose_payloads_match_schemas() -> None:
         )
     )
     assert result_200.is_valid(embed_body)
-    # Non-vacuity: the array arm is a bounded two-tuple, not a permissive `type: array`. A third
-    # element trips maxItems, and a non-string element1 trips prefixItems[1] — both fail the whole
-    # anyOf (an array satisfies neither the object arm nor a violated tuple arm).
+    # Non-vacuity: the array arm is a bounded two-tuple, not a permissive `type: array` — each of
+    # its three length/type bounds must bite. A one-element array trips minItems, a third element
+    # trips maxItems, and a non-string element1 trips prefixItems[1]; all fail the whole anyOf (an
+    # array satisfies neither the object arm nor a violated tuple arm).
+    assert not result_200.is_valid([embed_body[0]])
     assert not result_200.is_valid([*embed_body, "extra"])
     assert not result_200.is_valid([embed_body[0], 123])
     request_schema = _validator(post["requestBody"]["content"]["application/json"]["schema"])
