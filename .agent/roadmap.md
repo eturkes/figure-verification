@@ -120,14 +120,81 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   negatives (a 3rd element trips maxItems, a non-string element1 trips prefixItems[1]) pinning the tuple
   bounds. Description scoped to `openapi.py` only — the app.py route-level summary is an inert mirror under
   `openapi_config=None`. Recipe consumed → git (`git log --grep "(M4.2c"`).
-- **M4.3 — webui/ provisioning package** (OPEN): repo-root out-of-tree pkg wired like bench/model_backend
-  (mypy files + isort first-party, coverage-excluded, unshipped); canonical env set + launcher + IDEMPOTENT
-  bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first; REST
-  fallback = re-POST each boot OR persistent-config ON, since config REST writes don't survive restart
-  under persistent-config-off; legacy-FC default + task model; `function_name_filter_list=["proposeSpec"]`); smoke = `/ready`
-  + model enumerated from model_backend stub-or-live + tool ops fetched into the registry; README (three-
-  service run recipe, bench/README pattern); `.webui-data` wiped + re-provisioned under the canonical env.
-  Acceptance: gate green; bootstrap re-runnable (second run = no-op) from a clean `.webui-data`; smoke passes.
+- **M4.3 — webui/ provisioning package** is SPLIT a→b→c: its single-unit form (6 modules — settings +
+  client + bootstrap + model_stub + __main__ + __init__ — plus tests + README + a live 3-service smoke,
+  atop a live OWUI-behavior probe) overflowed one 200K window — the cross-LAYER one-module rule again, the
+  probe compounding it. The probe is now SETTLED LIVE (memory "## M4" Provisioning-SETTLED-LIVE bullet =
+  the 0.10.2 verdict: `Config.get` env-over-DB, TOOL_SERVER_CONNECTIONS registration, signup-or-signin
+  idempotency, `/ready` + `/api/models` + `/api/v1/tools/` readback) → NO re-probe; TRANSCRIBE the recipes
+  below, read only the named files + the cited memory notes (M4 "Launch env" + "Provisioning-SETTLED-LIVE"
+  carry every env var, the connection-JSON shape, and each endpoint). webui/ = repo-root out-of-tree pkg
+  (mypy `files` + isort first-party = a's one-line pyproject wiring; coverage-excluded, so its tests are a
+  bench-style feedback loop NOT a 100% gate; unshipped); provisioner knobs = `WEBUI_PROVISION_*` env,
+  distinct from the OWUI env it EMITS. All code imports only gate-venv deps (msgspec/httpx/litestar/uvicorn)
+  → the pkg gate-checks hardware-free; the `.venv-webui` open-webui binary is EXEC'd, never imported. Land
+  a→b→c in order (b imports a's Settings; c's CLI wires a+b); each leaves the gate green. Live embed/E2E
+  stays M4.5.
+- **M4.3a — `webui/settings.py` canonical-env container + wiring** (OPEN): the config every other module
+  imports (front-load it alone, the M4.1b LRU precedent). `Settings(msgspec.Struct, frozen=True,
+  kw_only=True)` mirroring verifier/model_backend Settings — fields host/port(int)/data_dir(Path)/secret_key/
+  admin_name/admin_email/admin_password/verifier_url/model_backend_url/model_id/webui_bin(Path)/
+  request_timeout(float)/ready_timeout(float), each a module `_DEFAULT_*` const (port 8080, data_dir
+  `.webui-data`, verifier_url `http://127.0.0.1:8000`, model_backend_url `http://127.0.0.1:8001/v1`,
+  model_id `Qwen2-0.5B-Instruct-int4-sym-ov`, webui_bin `.venv-webui/bin/open-webui`, timeouts 30/60,
+  admin_email `operator@localhost`; loopback dev secret_key/admin_password each `# noqa: S105` +
+  "loopback dev default, overridable"). `__post_init__`: port 1..`_MAX_PORT`(=65535 const, dodges PLR2004);
+  non-empty (secret_key, admin_email, admin_password); finite-positive (request_timeout, ready_timeout via
+  `math.isfinite`). MYPY LANDMINE: the two validation for-loops need DISTINCT item names (str loop `text`,
+  float loop `seconds`) — a shared `value` unifies mypy to `str`, breaking `math.isfinite(value)`.
+  `base_url` property (`http://{host}:{port}`); `tool_server_id` property (`_TOOL_SERVER_ID="verifier"`);
+  `tool_server_connections()` → `json.dumps` of the one-element array (shape = memory Provisioning-SETTLED-
+  LIVE verbatim: `{url,path,type:"openapi",auth_type:"none",key:"",config:{enable:True,
+  function_name_filter_list:["proposeSpec"]},info:{id,name,description}}`); `launch_env()` →
+  `{**_FIXED_ENV, DATA_DIR, WEBUI_SECRET_KEY, OPENAI_API_BASE_URL, TOOL_SERVER_CONNECTIONS}` (pure — no
+  os.environ read, so the full env is assertable; `_FIXED_ENV` = memory "Launch env" toggles verbatim,
+  incl. legacy-FC `DEFAULT_MODEL_PARAMS`); `from_env()` reads `WEBUI_PROVISION_*` else the `_DEFAULT_*`.
+  Wire pyproject: add "webui" to `[tool.ruff.lint.isort] known-first-party` + `[tool.mypy] files`. Tests
+  `tests/test_webui_settings.py` (bench pattern): each bound (port 0/65536, empty secret/email/pw,
+  non-finite timeout) raises ValueError with a `match=`; launch_env carries every `_FIXED_ENV` key + the 4
+  derived; tool_server_connections round-trips to the one-element proposeSpec-allowlist shape; from_env
+  override + default. Acceptance: gate green; Settings validates + emits the canonical env.
+- **M4.3b — `webui/client.py` REST client + `webui/bootstrap.py` smoke** (OPEN): the provisioning logic over
+  a's Settings (behavior = memory Provisioning-SETTLED-LIVE — TRANSCRIBE, no re-probe). client.py:
+  `WebUIProvisionError(RuntimeError)`; `WebUIClient(http: httpx.Client, settings)` holding `_token: str|None`
+  — `wait_ready()` polls `GET /ready` every `_READY_POLL_INTERVAL=1.0`s until `httpx.codes.OK` or the
+  `ready_timeout` deadline (`time.monotonic`; catch `httpx.HTTPError` as still-booting; raise on timeout);
+  `authenticate()` POSTs `/api/v1/auths/signup {name,email,password}`, and on ANY non-200 falls back to
+  `/api/v1/auths/signin {email,password}` (both non-200 → raise; empty token → raise; store + return);
+  `model_ids()` GET `/api/models` authed → `data[].id`; `tool_server_ids()` GET `/api/v1/tools/` authed →
+  ids filtered to `_TOOL_SERVER_ID_PREFIX="server:"`. bootstrap.py: `SmokeResult(msgspec.Struct, frozen,
+  kw_only)` (model_ids, tool_server_ids, model_enumerated, tool_registered; `ok` = both bools);
+  `smoke(client, settings)` sets model_enumerated = `settings.model_id in model_ids`, tool_registered =
+  `f"server:{settings.tool_server_id}" in tool_server_ids`; `run_bootstrap(client, settings)` = wait_ready +
+  authenticate + smoke. Tests `tests/test_webui_client.py` (+ bootstrap) via `httpx.MockTransport`: signup-200
+  path, signup-non-200→signin fallback, signin-fail→raise, no-token→raise, wait_ready 200-vs-timeout,
+  model_ids/tool_server_ids parse + `server:` filter; bootstrap ok / not-ok + idempotency via a fake client.
+  Acceptance: gate green; request-shaping + signup-or-signin fallback + smoke logic pinned.
+- **M4.3c — `webui/model_stub.py` + `webui/__main__.py` + `webui/__init__.py` + README + LIVE smoke** (OPEN):
+  the CLI wiring + the hardware-free stub + the live confirmation. model_stub.py: `create_app(model_id) ->
+  Litestar` — `@get("/v1/models")` → `{data:[{id:model_id,object:"model",…}]}` (the smoke's load-bearing
+  endpoint) + `@post("/v1/chat/completions")` → an OpenAI chat envelope with a fixed `_STUB_REPLY` (for
+  M4.5, unexercised by the smoke); `main()` builds `Settings.from_env()`, `urlparse(model_backend_url)` for
+  host/port, `uvicorn.run`. __main__.py: `_serve(settings) -> NoReturn` (binary-exists check else
+  SystemExit(1); `os.execve(bin, argv, {**os.environ, **launch_env()})` — `# noqa: S606`, shell-free),
+  `_bootstrap(settings) -> int` (`httpx.Client(base_url, timeout)` → `run_bootstrap` → 0 iff `result.ok`,
+  WebUIProvisionError → 1), `_parse_args` (argparse choices serve/bootstrap/stub), `main() -> int`
+  (basicConfig, Settings.from_env, dispatch; serve never returns, stub blocks→0), `raise SystemExit(main())`.
+  __init__.py = package docstring. README.md = three-service recipe (bench/README pattern): verifier :8000
+  (`.venv`), stub :8001 (`python -m webui stub`) or live model_backend, OWUI :8080 (`python -m webui serve`,
+  `.venv-webui`) → `python -m webui bootstrap` (signup + smoke); document the `WEBUI_PROVISION_*` knobs +
+  coverage-excluded/unshipped. Tests: stub via Litestar `TestClient` (/v1/models + /v1/chat/completions
+  shapes); CLI arg-parse/dispatch where testable (execve/uvicorn are coverage-exempt). LIVE confirmation
+  (hardware-free — the stub stands in for the NPU; smoke asserts model-enumeration + tool-registration, NOT
+  a chat round-trip, which is M4.5): wipe `.webui-data`, launch verifier + stub + OWUI-via-launcher,
+  `python -m webui bootstrap` → smoke passes, run bootstrap AGAIN → idempotent no-op (signin path, smoke
+  still green); then kill the services + wipe scratch. Acceptance: gate green; bootstrap re-runnable (second
+  run = no-op) from a clean `.webui-data`; live smoke passes. (If the gate work fills the window, the live
+  smoke salvage-continues into a follow-up.)
 - **M4.4 — enforcement filter** (OPEN): `webui/` filter module — pure chart-like classifier (matplotlib/
   plotly/altair/seaborn fences, `<svg`, vega-lite JSON, mermaid, data-URI images ↔ prose + verified-embed
   negatives) + Filter class (outlet rewrites unverified chart-like assistant output, logs what it blocked);
