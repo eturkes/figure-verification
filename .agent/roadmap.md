@@ -120,7 +120,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   negatives (a 3rd element trips maxItems, a non-string element1 trips prefixItems[1]) pinning the tuple
   bounds. Description scoped to `openapi.py` only — the app.py route-level summary is an inert mirror under
   `openapi_config=None`. Recipe consumed → git (`git log --grep "(M4.2c"`).
-- **M4.3 — webui/ provisioning package** is SPLIT a→b→c→d: its single-unit form (6 modules — settings +
+- **M4.3 — webui/ provisioning package** is SPLIT a→b→c→d→e: its single-unit form (6 modules — settings +
   client + bootstrap + model_stub + __main__ + __init__ — plus tests + README + a live 3-service smoke,
   atop a live OWUI-behavior probe) overflowed one 200K window — the cross-LAYER one-module rule again, the
   probe compounding it. The probe is now SETTLED LIVE (memory "## M4" Provisioning-SETTLED-LIVE bullet =
@@ -132,8 +132,11 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   bench-style feedback loop NOT a 100% gate; unshipped); provisioner knobs = `WEBUI_PROVISION_*` env,
   distinct from the OWUI env it EMITS. All code imports only gate-venv deps (msgspec/httpx/litestar/uvicorn)
   → the pkg gate-checks hardware-free; the `.venv-webui` open-webui binary is EXEC'd, never imported. Land
-  a→b→c→d in order (b imports a's Settings; c's CLI wires a+b; d live-smokes a+b+c); a–c each leave the
-  gate green, d adds the live evidence. Live embed/E2E stays M4.5.
+  a→b→c→d→e in order (b imports a's Settings; c = the hardware-free stub; d's CLI wires a+b+c; e
+  live-smokes a+b+c+d); a–d each leave the gate green, e adds the live evidence. Live embed/E2E stays M4.5.
+  c was RE-SPLIT from a former single c (stub + __main__ CLI + README, 2 modules): it went green but
+  overflowed at CLOSE — webui units run context-HOT (a/b each ONE module landed 75-77%; the dense
+  OWUI-behavior memory notes + dep-file reads inflate them), so a webui unit = STRICTLY one module + its tests.
 - **M4.3a — `webui/settings.py` canonical-env container + wiring** (DONE, 75% 200K): frozen `Settings`
   (WEBUI_PROVISION_* `from_env`, `__post_init__` bounds port 1..65535 / non-empty secret+email+pw /
   finite-positive timeouts — two loops, distinct `text`/`seconds` names per the mypy landmine) emitting the
@@ -172,27 +175,58 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   "fake client" under mypy --strict; `wait_ready` timeout test monkeypatches the shared `time` module
   for a real-time-free deterministic timeout; `_TOOL_SERVER_ID_PREFIX="server:"` single-sourced in
   client.py (bootstrap imports it). Recipe consumed → git (`git log --grep "(M4.3b"`).
-- **M4.3c — `webui/model_stub.py` + `webui/__main__.py` + `webui/__init__.py` + README** (OPEN):
-  the CLI wiring + the hardware-free stub (live confirmation = M4.3d). model_stub.py: `create_app(model_id) ->
-  Litestar` — `@get("/v1/models")` → `{data:[{id:model_id,object:"model",…}]}` (the smoke's load-bearing
-  endpoint) + `@post("/v1/chat/completions")` → an OpenAI chat envelope with a fixed `_STUB_REPLY` (for
-  M4.5, unexercised by the smoke); `main()` builds `Settings.from_env()`, `urlparse(model_backend_url)` for
-  host/port, `uvicorn.run`. __main__.py: `_serve(settings) -> NoReturn` (binary-exists check else
-  SystemExit(1); `os.execve(bin, argv, settings.child_env())` — `# noqa: S606`, shell-free; child_env =
-  curated base + launch_env = the hermetic boundary, landed M4.3a-Codex),
-  `_bootstrap(settings) -> int` (`httpx.Client(base_url, timeout)` → `run_bootstrap` → 0 iff `result.ok`,
-  WebUIProvisionError → 1), `_parse_args` (argparse choices serve/bootstrap/stub), `main() -> int`
-  (basicConfig, Settings.from_env, dispatch; serve never returns, stub blocks→0), `raise SystemExit(main())`.
-  __init__.py = package docstring (ALREADY LANDED in a — leave as is unless CLI exports help). README.md = three-service recipe (bench/README pattern): verifier :8000
-  (`.venv`), stub :8001 (`python -m webui stub`) or live model_backend, OWUI :8080 (`python -m webui serve`,
-  `.venv-webui`) → `python -m webui bootstrap` (signup + smoke); document the `WEBUI_PROVISION_*` knobs +
-  coverage-excluded/unshipped. Tests: stub via Litestar `TestClient` (/v1/models + /v1/chat/completions
-  shapes); CLI arg-parse/dispatch where testable (execve/uvicorn are coverage-exempt). Acceptance: gate
-  green; stub + CLI + README complete; mock/unit tests pin the `/v1` + CLI-dispatch shapes. (The live 3-service
-  smoke is M4.3d — isolating the budget-variable service orchestration into its own window per the front-load-
-  the-risky-part doctrine; no salvage hedge.)
-- **M4.3d — live 3-service provisioning smoke + evidence** (OPEN): the hardware-free live confirmation of
-  a+b+c (the stub stands in for the NPU; asserts model-enumeration + tool-registration + idempotency, NOT a
+- **M4.3c — `webui/model_stub.py` hardware-free OpenAI /v1 stub** (OPEN): the stand-in the M4.3e smoke
+  runs against with NO NPU. REUSE `model_backend.models` (ChatCompletionRequest/Response, ChatMessage,
+  Choice, ModelCard, ModelList, Usage) ⇒ OWUI sees a BYTE-IDENTICAL wire contract vs the live backend;
+  hardware-free (msgspec only, no openvino; imports resolve from repo root). `create_app(model_id) ->
+  Litestar(route_handlers=[list_models, chat_completions], state=State({"model_id": model_id}),
+  openapi_config=None)` (OpenAPI off like model_backend; handlers read `cast("str", state["model_id"])`).
+  `list_models(state) -> ModelList` `@get("/v1/models", sync_to_thread=False)` → `ModelList(data=(ModelCard(
+  id=model_id, created=int(time.time())),))` — the smoke's LOAD-BEARING endpoint (OWUI enumerates it into
+  /api/models). `chat_completions(data: ChatCompletionRequest, state) -> ChatCompletionResponse`
+  `@post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)` → one Choice(index=0,
+  role=assistant, content=`_STUB_REPLY` (module const), finish_reason="stop"); id=`chatcmpl-{uuid4().hex}`,
+  usage = a synthetic WORD-COUNT proxy (prompt=Σ len(m.content.split()) over data.messages, completion=
+  len(_STUB_REPLY.split())); no model runs, `_STUB_REPLY` INERT until M4.5 settles it. `serve(settings) ->
+  None` = `urlparse(settings.model_backend_url)` → host/port; a None host|port ⇒ `raise ValueError` (msg
+  names "host and port"; the port is OPTIONAL in Settings — a bare origin is a valid OPENAI_API_BASE_URL —
+  so a missing one can't pick a bind → fail loud) else `uvicorn.run(create_app(settings.model_id), host=host,
+  port=port, workers=1)`. NO own `main()` — d's __main__ owns the single `Settings.from_env()` + dispatch.
+  Tests (`tests/test_webui_model_stub.py`, coverage-excluded net, Litestar `TestClient(app=create_app(…))`,
+  no socket): /v1/models lists only the id (object "list"/"model"); chat returns `_STUB_REPLY` in an OpenAI
+  envelope (object "chat.completion", finish "stop", usage.total ≥ 1); serve binds the default url →
+  127.0.0.1:8001 workers 1 (monkeypatch the SHARED `uvicorn` module, assert a Litestar app passed); serve
+  rejects a portless url (`raises(ValueError, match="host and port")`, uvicorn unreached). Acceptance: gate
+  green; stub + tests complete; the /v1 shapes pinned.
+- **M4.3d — `webui/__main__.py` CLI dispatch + `webui/README.md`** (OPEN): wires a+b+c into runnable
+  services (live confirmation = M4.3e). `_serve(settings) -> NoReturn`: `binary = settings.webui_bin`; not
+  `binary.is_file()` ⇒ log + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =
+  [str(binary), "serve", "--host", settings.host, "--port", str(settings.port)]`; `os.execve(str(binary),
+  argv, settings.child_env())  # noqa: S606` (shell-free; child_env = the M4.3a hermetic boundary; execve is
+  typed NoReturn in typeshed ⇒ `_serve -> NoReturn` type-checks — the process is REPLACED). `_bootstrap(
+  settings) -> int`: `with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as
+  http: run_bootstrap(WebUIClient(http, settings), settings)`; `except WebUIProvisionError` ⇒ log + 1;
+  `not result.ok` ⇒ log + 1; else log + 0. `_parse_args(argv: Sequence[str] | None) -> str` = argparse, one
+  positional `command` choices=("serve","bootstrap","stub"). `main(argv=None) -> int`: basicConfig(INFO) →
+  `_parse_args` → `Settings.from_env()` → dispatch (serve→`_serve` NoReturn; stub→`serve_stub(settings)`
+  [imported `from webui.model_stub import serve as serve_stub`] then return 0; else `_bootstrap`). `raise
+  SystemExit(main())`. __init__.py UNTOUCHED (landed M4.3a; no CLI exports needed). Tests
+  (`tests/test_webui_cli.py`, coverage-excluded net; execve/uvicorn monkeypatched, never run): `_parse_args`
+  (3 commands + unknown ⇒ SystemExit); main dispatch via a `_SENTINEL = Settings()` that `from_env` returns —
+  assert the SAME object reaches each helper; serve dispatch + execve observed through custom
+  `_ServeCalledError`/`_ExecedError` (N818: Error suffix); _serve execs with a HERMETIC env (fake binary file
+  + setenv a leak var ⇒ env has OFFLINE_MODE/PATH, LACKS the leak var), missing binary ⇒ exit 1; _bootstrap
+  parametrized (ok→0, not-ok→1, WebUIProvisionError→1). LANDMINE (no_implicit_reexport): patch the Settings
+  CLASS — `monkeypatch.setattr(Settings, "from_env", staticmethod(_fixed_from_env))` (Settings imported by
+  name), NOT `cli.Settings` (⇒ attr-defined); a string `setattr(cli, "serve_stub"|"_serve"|"_bootstrap"|
+  "run_bootstrap", …)` is fine. README.md = dense three-service recipe (bench/README style): topology
+  (verifier :8000 `.venv` `python -m verifier.service`; OpenAI backend :8001 = stub `python -m webui stub`
+  OR live model_backend; OWUI :8080 `python -m webui serve` execs `.venv-webui/bin/open-webui`) →
+  readiness-ordered launch (verifier + stub READY before OWUI, else `/api/v1/tools/` drops the verifier) →
+  `python -m webui bootstrap`; the `WEBUI_PROVISION_*` knobs; coverage-excluded/unshipped. Acceptance: gate
+  green; CLI + README complete; arg-parse/dispatch + hermetic-exec + return-code shapes pinned.
+- **M4.3e — live 3-service provisioning smoke + evidence** (OPEN): the hardware-free live confirmation of
+  a+b+c+d (the stub stands in for the NPU; asserts model-enumeration + tool-registration + idempotency, NOT a
   chat round-trip — that is M4.5). Recipe: wipe `.webui-data`; launch verifier :8000 + stub :8001 and WAIT for
   each ready (verifier `/health` or `/schema/openapi.json` 200, stub `/v1/models` 200) BEFORE launching OWUI —
   `/api/v1/tools/` live-re-fetches and DROPS a server whose OpenAPI fetch fails (utils/tools.py), so the
