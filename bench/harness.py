@@ -492,6 +492,23 @@ def fetch_model_name(client: httpx.Client, model_base_url: str) -> str | None:
     return models.data[0].id
 
 
+def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
+    """Decode a /propose-spec 200 body into the loose ProposeResult the report tallies.
+
+    A verified-success 200 is the Open WebUI Location-variant embed (app.py propose_spec_route): a
+    [ProposeResult, summary] JSON array marked by a Location header -> take element0, the full
+    structured result. A non-verified 200 (any failing verdict) carries the bare ProposeResult
+    object. The weak local model never reaches verified success live, but the shape must decode so
+    a stronger model's verified chart still tallies here.
+    """
+    if "location" in response.headers:
+        wrapped: tuple[_RespProposeResult, str] = msgspec.json.decode(
+            response.content, type=tuple[_RespProposeResult, str]
+        )
+        return wrapped[0]
+    return msgspec.json.decode(response.content, type=_RespProposeResult)
+
+
 # --- the driver -----------------------------------------------------------------------------
 def run_eval(
     client: httpx.Client,
@@ -520,7 +537,7 @@ def run_eval(
         )
         status = response.status_code
         if status == _HTTP_OK:
-            result = msgspec.json.decode(response.content, type=_RespProposeResult)
+            result = _decode_propose_result(response)
             bucket = _classify(result.verdict)
             valid_json, is_object = _json_shape(result.model_reply)
             sample = _Sample(

@@ -100,26 +100,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   urlparse-vs-WHATWG-browser gaps — `\` path-injection, userinfo host-confusion, empty-host, control/
   percent/unicode authority bytes; the reusable lesson + kept-benign cases live in `.agent/memory.md`.
   Recipe + hardening consumed → git (`git log --grep "(M4.2a"`).
-- **M4.2b — proposeSpec verified-success embed wrapper** (OPEN): `app.py` `propose_spec_route` — after
-  `verdict = await sync_to_thread(_verify_render_pinned, …)`, build
-  `result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)`; on
-  `isinstance(verdict, RenderVerdict)` return `Response(msgspec.json.encode([result, summary]),
-  media_type="application/json", headers={"content-disposition": "inline",
-  "location": f"{base}/chart/{verdict.plot_id}"})` with `base = cast("str", settings.public_base_url)`;
-  ELSE `return result` unchanged. Return type → `ProposeResult | Response[bytes]`; app-default nosniff
-  rides the Response (the `_fetch_artifact`/chart precedent — do NOT re-add it); `Response` is imported
-  (M4.1c), add `msgspec` if absent. `summary` = a lean human string (inline or a small helper) over
-  `req.dataset_name` + `len(verdict.results)` — `element[1]` is `str()`-ified to the model (memory M4
-  Location-variant), so a STRING, never a dict. `bench/harness.py` (~L523, propose 200 decode): verified
-  success is uniquely marked by the `location` response header → when present decode
-  `tuple[_RespProposeResult, str]` and take `element[0]`, else decode `_RespProposeResult` as today;
-  downstream (`_classify`, `model_reply`, `verdict.results`) unchanged (the weak model never reaches
-  verified success live, but the shape must follow). Tests: update
-  `tests/test_service_propose.py::test_propose_verified_spec_renders_and_stores` for the
-  `[ProposeResult, summary]` body + the two headers; add a verified-success `location`-header + array
-  case to `tests/test_bench_harness.py`; every failing/4xx/5xx propose + bench test stays byte-unchanged.
-  Acceptance: gate green; body-shape change confined to verified-success (all other bodies byte-identical,
-  existing suites prove it); headers + bench branch pinned.
+- **M4.2b — proposeSpec verified-success embed wrapper** (DONE, 61% 200K): `propose_spec_route` →
+  `ProposeResult | Response[bytes]`; a verified render answers the OWUI Location-variant embed —
+  `msgspec.json.encode([ProposeResult, summary])` under `content-disposition: inline` +
+  `location: {public_base_url}/chart/{plot_id}` (app-default nosniff rides the Response, not re-added);
+  `summary = f"Verified chart for {dataset}: all {N} checks passed."` (clean STRING = the model's
+  context). Non-verified/4xx/5xx bodies byte-identical (`return result` unchanged, existing suites prove
+  it). `bench/harness.py` `_decode_propose_result` discriminates the embed among 200s by the `location`
+  header → `tuple[_RespProposeResult, str][0]`, else the bare object (downstream tally unchanged). Test
+  proves the `public_base_url` knob drives the Location via a custom-base scoped client. `openapi.py`
+  untouched — the doc regen for the new 200 shape is M4.2c. Recipe consumed → git (`git log --grep "(M4.2b"`).
 - **M4.2c — OpenAPI tuning + golden regen** (OPEN): `openapi.py` — give proposeSpec a model-facing
   `description` (description-over-summary is the 0.10.x rule; concrete dataset examples, e.g.
   sales.csv/weather.csv) and extend its verified-success 200 to `anyOf`: the `ProposeResult` object OR a

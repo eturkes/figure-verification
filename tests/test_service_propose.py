@@ -89,27 +89,40 @@ def _propose(client: TestClient[Litestar], user_request: str, dataset_name: str)
 
 
 # --- the verification outcomes: every proposal rides a 200 verdict -----------
-def test_propose_verified_spec_renders_and_stores(
-    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # A proposed good spec verifies and renders: a 200 RenderVerdict carrying the certified
-    # chart, the raw reply echoed verbatim, and the artifacts stored (cert + spec + chart page
-    # round-trip). The chart GET proves the offline page is populated through the proposer entry
-    # route too, not only verify-and-render — both reach the store through the shared seam.
+def test_propose_verified_spec_renders_and_stores(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A proposed good spec verifies and renders: the verified-success 200 is the Open WebUI
+    # Location-variant embed — a [ProposeResult, summary] JSON array under Content-Disposition:
+    # inline plus a Location header at GET /chart/{plot_id} on the operator's public origin
+    # (settings.public_base_url, a custom non-default base here, so a hardcoded localhost would
+    # fail this). element0 carries the full structured result (raw reply echoed verbatim + the
+    # RenderVerdict); element1 is a lean human summary string (dataset + passed-check count) — the
+    # model's clean tool-result context, a STRING never a dict. The artifacts are stored (cert +
+    # spec + chart page round-trip), proving the proposer entry route populates the store just as
+    # verify-and-render does — both reach it through the shared render seam.
     _install_reply(monkeypatch, _spec_text(_SALES_GOOD))
-    response = _propose(client, "Plot total revenue by month", "sales.csv")
-    assert response.status_code == 200
-    assert response.headers["x-content-type-options"] == _NOSNIFF
-    body: dict[str, Any] = response.json()
-    assert body["model_reply"] == _spec_text(_SALES_GOOD).decode("utf-8")
-    verdict = body["verdict"]
-    assert verdict["verified"] is True
-    assert "svg" in verdict
-    assert client.get(f"/certificate/{verdict['plot_id']}").status_code == 200
-    assert client.get(f"/spec/{verdict['spec_id']}").status_code == 200
-    chart = client.get(f"/chart/{verdict['plot_id']}")
-    assert chart.status_code == 200
-    assert chart.headers["content-security-policy"] == "sandbox allow-scripts"
+    base = "https://charts.example"
+    with TestClient(app=create_app(Settings(data_dir=_DATA, public_base_url=base))) as scoped:
+        response = _propose(scoped, "Plot total revenue by month", "sales.csv")
+        assert response.status_code == 200
+        assert response.headers["x-content-type-options"] == _NOSNIFF
+        assert response.headers["content-disposition"] == "inline"
+        assert response.headers["content-type"].startswith("application/json")
+        payload = response.json()
+        assert isinstance(payload, list)
+        result, summary = payload
+        assert result["model_reply"] == _spec_text(_SALES_GOOD).decode("utf-8")
+        verdict = result["verdict"]
+        assert verdict["verified"] is True
+        assert "svg" in verdict
+        assert response.headers["location"] == f"{base}/chart/{verdict['plot_id']}"
+        assert isinstance(summary, str)
+        assert "sales.csv" in summary
+        assert str(len(verdict["results"])) in summary
+        assert scoped.get(f"/certificate/{verdict['plot_id']}").status_code == 200
+        assert scoped.get(f"/spec/{verdict['spec_id']}").status_code == 200
+        chart = scoped.get(f"/chart/{verdict['plot_id']}")
+        assert chart.status_code == 200
+        assert chart.headers["content-security-policy"] == "sandbox allow-scripts"
 
 
 def test_propose_malformed_spec_is_decode_verdict(

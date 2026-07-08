@@ -27,7 +27,10 @@ here regardless of the entry route (verify-and-render or the proposer).
 untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
 — not the caller's body — through verify-and-render, pinned to the requested dataset name
 (_verify_render_pinned); the model supplies only a spec (never plotted values) and cannot
-redirect the verdict onto a different dataset than asked, so the verification claim is unmoved.
+redirect the verdict onto a different dataset than asked, so the verification claim is unmoved. A
+VERIFIED proposal is returned as the Open WebUI Location-variant chart embed (a [ProposeResult,
+summary] array under Content-Disposition: inline + a Location at GET /chart/{plot_id}; see
+propose_spec_route); every non-verified outcome keeps its prior body byte-for-byte.
 
 Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
@@ -213,15 +216,22 @@ def _verify_render_pinned(
     summary="Propose a VPlot spec with the local model, then verify and render it",
     status_code=HTTP_200_OK,
 )
-async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> ProposeResult:
+async def propose_spec_route(
+    request: Request[Any, Any, Any], state: State
+) -> ProposeResult | Response[bytes]:
     """Ask the untrusted local model to propose a VPlot spec for the request over the named
     dataset, then verify + render that proposal pinned to the requested dataset name
     (_verify_render_pinned). The model supplies only a spec, never plotted values, so the claim
     boundary is unmoved: a malformed proposal rides a failing verdict (a 200), a proposal naming a
     DIFFERENT dataset than requested is refused 502 (never a verified 200 for an off-request
     chart), and a fault outside that flow (unknown dataset, an unreachable or unusable backend, a
-    malformed body) answers problem+json. The model call is async; the CPU-bound verify+render
-    runs off the event loop via sync_to_thread.
+    malformed body) answers problem+json. A VERIFIED proposal answers the Open WebUI
+    Location-variant embed instead of a bare ProposeResult: a [ProposeResult, summary] JSON array
+    under Content-Disposition: inline plus a Location header at GET /chart/{plot_id} on
+    settings.public_base_url, so the chat UI renders the certified chart in a sandboxed iframe
+    while the model sees only the lean summary string; every non-verified outcome keeps its prior
+    body byte-for-byte. The model call is async; the CPU-bound verify+render runs off the event
+    loop via sync_to_thread.
     """
     _require_json(request)
     raw = await request.body()
@@ -232,7 +242,27 @@ async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> P
     verdict = await sync_to_thread(
         _verify_render_pinned, content, req.dataset_name, settings, store
     )
-    return ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
+    result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
+    if not isinstance(verdict, RenderVerdict):
+        return result
+    # Verified success -> the Open WebUI Location-variant embed. The body is a [ProposeResult,
+    # summary] JSON array: element0 is the full structured result (raw reply + verdict), read by
+    # direct and bench clients; element1 is a lean human summary string. Open WebUI discards
+    # element0, str()-ifies element1 into the model's tool-result context (so it MUST stay a clean
+    # string, never a dict/list), and renders the Location as a sandboxed chart iframe.
+    # Content-Disposition: inline + Location is the embed trigger; the app-default nosniff already
+    # rides the Response (the _fetch_artifact/chart precedent). Only verified-success bodies take
+    # this shape — every failing/refused/faulting outcome keeps its prior body byte-for-byte.
+    base = cast("str", settings.public_base_url)
+    summary = f"Verified chart for {req.dataset_name}: all {len(verdict.results)} checks passed."
+    return Response(
+        msgspec.json.encode([result, summary]),
+        media_type="application/json",
+        headers={
+            "content-disposition": "inline",
+            "location": f"{base}/chart/{verdict.plot_id}",
+        },
+    )
 
 
 def _fetch_artifact(
