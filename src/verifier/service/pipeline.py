@@ -122,10 +122,11 @@ def render_outcome(
     app.py's proposer can pin the requested dataset name between verify_only and this render.
 
     The offline HTML page is built + stored on EVERY verified render (render(include_html=True)
-    unconditionally, then store.put_chart under plot_id), so GET /chart/{plot_id} resolves for a
-    verified render regardless of entry route — verify-and-render and the proposer both reach the
-    chart store through this one seam. include_html now governs ONLY the JSON-body html copy (the
-    large inline view the caller opts into); the retrievable page is always present."""
+    unconditionally, then store.put_chart under plot_id), so both entry routes — verify-and-render
+    and the proposer — populate the chart store through this one seam; GET /chart/{plot_id} then
+    serves that page until chart-LRU eviction (a verified chart can 404 while its certificate
+    still lives — see store.py's mixed-state note). include_html now governs ONLY the JSON-body
+    html copy (the large inline view the caller opts into); the stored page is not gated by it."""
     if not outcome.verdict.verified:
         return outcome.verdict
     # verified => the verify stage ran and passed, so spec and manifest_bytes are populated

@@ -294,8 +294,9 @@ _CHART_HEADERS = {"content-security-policy": "sandbox allow-scripts"}
 )
 def chart_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
     """Serve the stored offline chart HTML page for plot_id (its bytes verbatim, as text/html
-    under the sandbox CSP). Built + stored on every verified render, so a verified plot_id
-    resolves here regardless of the entry route (verify-and-render or the proposer)."""
+    under the sandbox CSP). Built + stored on every verified render regardless of the entry route
+    (verify-and-render or the proposer), then served until chart-LRU eviction — a verified chart
+    can 404 here while its certificate still lives (see store.py's mixed-state note)."""
     store = cast("ArtifactStore", state["store"])
     return _fetch_artifact(plot_id, store.chart, media_type="text/html", headers=_CHART_HEADERS)
 

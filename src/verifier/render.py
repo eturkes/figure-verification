@@ -291,8 +291,10 @@ def render_html(vega_lite_json: str) -> str:
     to its JSON unicode escape (U+003C), so no data byte can open script-data markup (</script>,
     <!--, <script>) and corrupt the page; the escape is lossless through JSON.parse. Like
     render_svg it trusts its builder input rather than sanitizing an arbitrary hand-rolled
-    spec; in the pipeline every string byte is manifest- or trusted-source-derived
-    (untrusted-input hardening is M2+)."""
+    spec; in the pipeline every string byte is either a trusted-source/manifest value or a
+    schema-constrained field identifier (model-selected field + aggregate-output names, bound by
+    the FieldName regex to [A-Za-z_][A-Za-z0-9_]* — no markup bytes), and the "<"-escape above
+    holds regardless of provenance (untrusted-input hardening is M2+)."""
     safe_spec = vega_lite_json.replace("<", "\\u003c")
     return (
         "<!doctype html>\n"

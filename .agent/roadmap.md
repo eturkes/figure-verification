@@ -77,8 +77,9 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   JSON-body copy; `_fetch_artifact` parameterized (`media_type` + `headers`) as the one seam serving the JSON
   artifacts AND the `GET /chart/{plot_id}` text/html page under `_CHART_HEADERS` (CSP `sandbox allow-scripts`;
   a 404 carries neither CSP nor html — app-default nosniff rides it); openapi.py `_html_response` + `/chart`
-  path + golden regen. The chart resolves regardless of entry route (verify-and-render OR propose — the
-  shared seam). Recipe consumed → git (`git log --grep "(M4.1c"`).
+  path + golden regen. The chart is stored on every verified render regardless of entry route
+  (verify-and-render OR propose — the shared seam), served until chart-LRU eviction. Recipe
+  consumed → git (`git log --grep "(M4.1c"`).
 - **M4.2 — tool-facing response headers + surface tuning** (OPEN): scratch fake-tool-server probe against
   the live Open WebUI → settle the Location-variant (model context + embed persistence; fallback decision
   lands here); `Settings.public_base_url` (`VERIFIER_PUBLIC_BASE_URL`, default derived `http://127.0.0.1:
