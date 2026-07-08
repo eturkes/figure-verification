@@ -16,12 +16,20 @@ M3.2a adds the model-proposer config (base URL / name / timeout / sample rows / 
 the operator points the verifier at the local backend, and these stay trusted config too —
 the untrusted model never supplies them. __post_init__ bounds them fail-closed alongside the
 caps above (see the inline notes for each rejection's downstream failure mode).
+
+M4.2 adds public_base_url — the absolute, browser-facing origin the proposer embeds in a chart
+Location header (M4.2b), distinct from host, the bind address. Left unset it derives the loopback
+literal on the configured port; an operator behind a reverse proxy overrides it via
+VERIFIER_PUBLIC_BASE_URL. __post_init__ requires a clean http(s) origin (scheme://netloc, no path,
+query, fragment, trailing slash, whitespace, or non-numeric port) so f"{base}/chart/{id}" appends
+exactly one clean segment toward the browser — the one config value that crosses toward a client.
 """
 
 import math
 import os
 from pathlib import Path
 from typing import Self
+from urllib.parse import urlparse
 
 import msgspec
 
@@ -52,6 +60,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     data_dir: Path
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
+    public_base_url: str | None = None
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     store_cap: int = _DEFAULT_STORE_CAP
     html_cap: int = _DEFAULT_HTML_CAP
@@ -62,6 +71,32 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     model_max_tokens: int = _DEFAULT_MODEL_MAX_TOKENS
 
     def __post_init__(self) -> None:
+        # public_base_url (M4.2) is the absolute browser-facing origin the proposer embeds in a
+        # chart Location header. Left unset, derive the loopback default from the configured port
+        # via object.__setattr__ (frozen-struct init derivation -- sets the slot, hash + frozen-ness
+        # intact); then require a clean http(s) origin on every path, so f"{base}/chart/{id}"
+        # appends exactly one clean segment. The exact-origin roundtrip rejects any path, query,
+        # fragment, or trailing slash in one clause; the isspace guard rejects whitespace urlparse
+        # otherwise keeps in netloc; and reading parsed.port rejects a non-numeric port -- each
+        # would otherwise corrupt that URL toward the browser.
+        base = self.public_base_url
+        if base is None:
+            base = f"http://{_DEFAULT_HOST}:{self.port}"
+            object.__setattr__(self, "public_base_url", base)
+        parsed = urlparse(base)
+        try:
+            _ = parsed.port  # property parse raises ValueError on a non-numeric port
+        except ValueError:
+            port_ok = False
+        else:
+            port_ok = True
+        scheme_ok = parsed.scheme in {"http", "https"}
+        netloc_ok = bool(parsed.netloc)
+        no_space = not any(ch.isspace() for ch in base)
+        origin_ok = base == f"{parsed.scheme}://{parsed.netloc}"
+        if not (scheme_ok and netloc_ok and no_space and origin_ok and port_ok):
+            msg = f"public_base_url must be a clean http(s) origin, got {base!r}"
+            raise ValueError(msg)
         # A non-positive cap is falsy, so Litestar reads it as an unlimited body
         # (`... or math.inf`) and the fail-closed guard silently vanishes; reject it
         # here on every construction path (direct and from_env).
@@ -105,6 +140,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             data_dir=Path(env.get("VERIFIER_DATA_DIR", _DEFAULT_DATA_DIR)),
             host=env.get("VERIFIER_HOST", _DEFAULT_HOST),
             port=int(env.get("VERIFIER_PORT", str(_DEFAULT_PORT))),
+            public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL"),
             max_body_bytes=int(env.get("VERIFIER_MAX_BODY_BYTES", str(_DEFAULT_MAX_BODY_BYTES))),
             store_cap=int(env.get("VERIFIER_STORE_CAP", str(_DEFAULT_STORE_CAP))),
             html_cap=int(env.get("VERIFIER_HTML_CAP", str(_DEFAULT_HTML_CAP))),

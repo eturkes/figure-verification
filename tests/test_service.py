@@ -25,6 +25,7 @@ _VERIFIER_ENV = (
     "VERIFIER_DATA_DIR",
     "VERIFIER_HOST",
     "VERIFIER_PORT",
+    "VERIFIER_PUBLIC_BASE_URL",
     "VERIFIER_MAX_BODY_BYTES",
     "VERIFIER_STORE_CAP",
     "VERIFIER_HTML_CAP",
@@ -47,6 +48,7 @@ def test_settings_defaults(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
     assert settings.host == "127.0.0.1"
     assert settings.port == 8000
+    assert settings.public_base_url == "http://127.0.0.1:8000"
     assert settings.max_body_bytes == 65536
     assert settings.store_cap == 256
     assert settings.html_cap == 16
@@ -55,6 +57,40 @@ def test_settings_defaults(tmp_path: Path) -> None:
     assert settings.model_timeout == 120.0
     assert settings.model_sample_rows == 5
     assert settings.model_max_tokens == 512
+
+
+def test_settings_public_base_url_derives_from_port(tmp_path: Path) -> None:
+    # Left unset, the browser-facing origin derives from the loopback literal + the configured
+    # port (separate from host, the bind address), so a non-default port flows through.
+    settings = Settings(data_dir=tmp_path, port=9000)
+    assert settings.public_base_url == "http://127.0.0.1:9000"
+
+
+def test_settings_public_base_url_accepts_explicit_origin(tmp_path: Path) -> None:
+    # A clean explicit http(s) origin (an operator behind a reverse proxy) is preserved verbatim.
+    settings = Settings(data_dir=tmp_path, public_base_url="https://verify.example.org:8443")
+    assert settings.public_base_url == "https://verify.example.org:8443"
+
+
+def test_settings_rejects_malformed_public_base_url(tmp_path: Path) -> None:
+    # Only a clean origin (scheme://netloc, numeric port, no path/query/fragment/trailing-slash/
+    # whitespace) is accepted, so f"{base}/chart/{id}" appends exactly one clean segment. Every
+    # other shape corrupts that browser-facing URL, so it fails closed on both construction paths.
+    malformed = (
+        "",
+        "ftp://host",
+        "not a url",
+        "http://",
+        "http://host:8000/",
+        "http://host?x",
+        "http://host#frag",
+        "http://host/base",
+        "http://host:bad",
+        "http://host ",
+    )
+    for bad in malformed:
+        with pytest.raises(ValueError, match="public_base_url"):
+            Settings(data_dir=tmp_path, public_base_url=bad)
 
 
 def test_settings_frozen(tmp_path: Path) -> None:
@@ -123,6 +159,7 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VERIFIER_HOST", "192.0.2.1")
     monkeypatch.setenv("VERIFIER_PORT", "9001")
+    monkeypatch.setenv("VERIFIER_PUBLIC_BASE_URL", "https://verify.example.org:8443")
     monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "1024")
     monkeypatch.setenv("VERIFIER_STORE_CAP", "8")
     monkeypatch.setenv("VERIFIER_HTML_CAP", "4")
@@ -135,6 +172,7 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         data_dir=tmp_path,
         host="192.0.2.1",
         port=9001,
+        public_base_url="https://verify.example.org:8443",
         max_body_bytes=1024,
         store_cap=8,
         html_cap=4,

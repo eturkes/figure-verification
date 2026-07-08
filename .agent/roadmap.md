@@ -88,7 +88,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   decision) → NO re-probe; TRANSCRIBE the recipes below, read only the named files + the cited memory
   notes. Land a→b→c in order (b's Location header needs a's `public_base_url`; c documents b's body shape);
   each leaves the gate green. Live confirmation of the embed rides M4.5's E2E, not here.
-- **M4.2a — `Settings.public_base_url` operator knob** (OPEN; gate-validated recipe — transcribe): add
+- **M4.2a — `Settings.public_base_url` operator knob** (DONE, 57% 200K): add
   `public_base_url: str | None = None` after `port`; import `urlparse` from `urllib.parse`. In
   `__post_init__`, FIRST guard (before the max_body_bytes check): if None, derive
   `f"http://{_DEFAULT_HOST}:{self.port}"` via `object.__setattr__` (frozen-struct derivation — VERIFIED
