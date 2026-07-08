@@ -110,14 +110,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   header → `tuple[_RespProposeResult, str][0]`, else the bare object (downstream tally unchanged). Test
   proves the `public_base_url` knob drives the Location via a custom-base scoped client. `openapi.py`
   untouched — the doc regen for the new 200 shape is M4.2c. Recipe consumed → git (`git log --grep "(M4.2b"`).
-- **M4.2c — OpenAPI tuning + golden regen** (OPEN): `openapi.py` — give proposeSpec a model-facing
-  `description` (description-over-summary is the 0.10.x rule; concrete dataset examples, e.g.
-  sales.csv/weather.csv) and extend its verified-success 200 to `anyOf`: the `ProposeResult` object OR a
-  2-tuple `{type:"array", prefixItems:[<ProposeResult $ref>, {type:"string"}], minItems:2, maxItems:2}`
-  (reuse the anyOf-not-oneOf + hand-derivation precedents, memory Stack M2.4); regen the golden
-  `schema/openapi.json` (the `@functools.cache`d bytes; serialize per the M2.4 recipe). Extend the
-  external-contract test so a real `[ProposeResult, summary]` payload validates against the 200 anyOf.
-  Acceptance: gate green; golden matches the regen; the new 200 shape covered.
+- **M4.2c — OpenAPI tuning + golden regen** (DONE, 48% 200K): `openapi.py` — proposeSpec gained a
+  model-facing `description` (0.10.x description-over-summary; names `user_request`/`dataset_name`, with
+  concrete sales.csv/weather.csv examples), and its verified-success 200 widened to
+  `anyOf[ProposeResult object, bounded [ProposeResult, string] 2-tuple (prefixItems + min/maxItems 2)]`
+  (anyOf-not-oneOf house style; the array arm = the M4.2b `[result, summary]` embed body). Golden
+  `schema/openapi.json` regenerated (byte-match test green). External-contract test extended: the real
+  `[ProposeResult, summary]` array validates against the 200 anyOf, plus two mutation-verified non-vacuity
+  negatives (a 3rd element trips maxItems, a non-string element1 trips prefixItems[1]) pinning the tuple
+  bounds. Description scoped to `openapi.py` only — the app.py route-level summary is an inert mirror under
+  `openapi_config=None`. Recipe consumed → git (`git log --grep "(M4.2c"`).
 - **M4.3 — webui/ provisioning package** (OPEN): repo-root out-of-tree pkg wired like bench/model_backend
   (mypy files + isort first-party, coverage-excluded, unshipped); canonical env set + launcher + IDEMPOTENT
   bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first; REST

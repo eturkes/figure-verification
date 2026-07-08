@@ -231,8 +231,11 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
 def test_propose_payloads_match_schemas() -> None:
     # The /propose-spec contract: a real ProposeRequest validates against its request-body schema,
     # and a real ProposeResult with EITHER verdict arm — a plain Verdict and a RenderVerdict —
-    # validates against the ProposeResult 200 schema (the anyOf(RenderVerdict, Verdict) union the
-    # hand-derived schema declares, since msgspec cannot introspect the Literal[True] arm).
+    # validates against the 200 schema (whose ProposeResult component is itself an
+    # anyOf(RenderVerdict, Verdict) union the hand-derived schema declares, since msgspec cannot
+    # introspect the Literal[True] arm). The 200 is an anyOf of the bare ProposeResult object and
+    # the verified-success embed body — a bounded [ProposeResult, summary] two-tuple — so a real
+    # embed array must validate too, and its arity/string bounds must actually bite.
     fail_verdict = Verdict(
         verified=False,
         layer="decode",
@@ -256,6 +259,20 @@ def test_propose_payloads_match_schemas() -> None:
     result_200 = _validator(post["responses"]["200"]["content"]["application/json"]["schema"])
     assert result_200.is_valid(_payload(ProposeResult(model_reply="{}", verdict=fail_verdict)))
     assert result_200.is_valid(_payload(ProposeResult(model_reply="{}", verdict=render_verdict)))
+    # The verified-success embed body — the exact [ProposeResult, summary] array app.py encodes —
+    # validates against the anyOf array arm (element0 the full result, element1 the summary
+    # string).
+    embed_body = json.loads(
+        msgspec.json.encode(
+            [ProposeResult(model_reply="{}", verdict=render_verdict), "Verified chart: passed."]
+        )
+    )
+    assert result_200.is_valid(embed_body)
+    # Non-vacuity: the array arm is a bounded two-tuple, not a permissive `type: array`. A third
+    # element trips maxItems, and a non-string element1 trips prefixItems[1] — both fail the whole
+    # anyOf (an array satisfies neither the object arm nor a violated tuple arm).
+    assert not result_200.is_valid([*embed_body, "extra"])
+    assert not result_200.is_valid([embed_body[0], 123])
     request_schema = _validator(post["requestBody"]["content"]["application/json"]["schema"])
     assert request_schema.is_valid(
         _payload(ProposeRequest(user_request="plot it", dataset_name="sales.csv"))

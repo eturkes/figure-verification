@@ -184,8 +184,8 @@ def _id_parameter(name: str) -> dict[str, Any]:
 
 def _paths() -> dict[str, Any]:
     """The seven documented operations, each with an explicit operationId + summary (Open WebUI
-    M4 maps operationId -> tool name; model sees description, else summary — M4.2 adds
-    descriptions). Intentionally outside the per-operation
+    maps operationId -> tool name; the model reads description, else summary — proposeSpec, the
+    model-invoked proposal tool, carries the description). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
     and framework method responses (405 for a wrong method, and OPTIONS/HEAD — a property of the
     path, not an operation); an operation-specific validation failure like the 400 below, tied to
@@ -272,6 +272,19 @@ def _paths() -> dict[str, Any]:
             "post": {
                 "operationId": "proposeSpec",
                 "summary": "Propose a VPlot spec with the local model, then verify and render it",
+                # The model-visible tool text (Open WebUI reads description, else summary — the
+                # 0.10.x rule). Names the two request fields and concrete provisioned datasets, so
+                # the weak local model gets a grounded, example-led prompt.
+                "description": (
+                    "Draft and verify a chart for a provisioned dataset. Given a natural-language "
+                    "chart request and a dataset name, the local model proposes a VPlot chart "
+                    "specification, which the verifier independently checks and — only if it "
+                    "passes every check — renders as a certified chart. Provide `user_request` "
+                    '(what to plot, for example "monthly revenue by region") and `dataset_name`, '
+                    "one of the provisioned CSV datasets (for example sales.csv or weather.csv). A "
+                    "verified proposal returns the certified chart to display; an unverifiable one "
+                    "returns the failing verdict instead."
+                ),
                 "requestBody": {
                     "required": True,
                     "content": {
@@ -280,9 +293,29 @@ def _paths() -> dict[str, Any]:
                 },
                 "responses": {
                     "200": _json_response(
-                        "The model's raw reply paired with the verify-and-render verdict on it — a "
-                        "certified chart when the proposal verified, else a plain verdict.",
-                        {"$ref": f"{_COMPONENTS}/ProposeResult"},
+                        "On a verified proposal, a [result, summary] array carrying the certified "
+                        "chart as an Open WebUI embed; on any other outcome, the bare result — the "
+                        "model's raw reply paired with the verify-and-render verdict (a plain "
+                        "verdict when unverified).",
+                        # anyOf: the bare ProposeResult object (every non-verified outcome), OR the
+                        # verified-success embed body — a two-element [ProposeResult, summary]
+                        # array (element0 that same ProposeResult, element1 a human summary
+                        # string). The arms are type-disjoint (object vs array); anyOf follows the
+                        # union-200 house style (the /verify-and-render precedent).
+                        {
+                            "anyOf": [
+                                {"$ref": f"{_COMPONENTS}/ProposeResult"},
+                                {
+                                    "type": "array",
+                                    "prefixItems": [
+                                        {"$ref": f"{_COMPONENTS}/ProposeResult"},
+                                        {"type": "string"},
+                                    ],
+                                    "minItems": 2,
+                                    "maxItems": 2,
+                                },
+                            ]
+                        },
                     ),
                     "400": _problem_response(
                         "The propose request body was malformed or failed validation."

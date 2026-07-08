@@ -183,6 +183,7 @@
       "post": {
         "operationId": "proposeSpec",
         "summary": "Propose a VPlot spec with the local model, then verify and render it",
+        "description": "Draft and verify a chart for a provisioned dataset. Given a natural-language chart request and a dataset name, the local model proposes a VPlot chart specification, which the verifier independently checks and — only if it passes every check — renders as a certified chart. Provide `user_request` (what to plot, for example \"monthly revenue by region\") and `dataset_name`, one of the provisioned CSV datasets (for example sales.csv or weather.csv). A verified proposal returns the certified chart to display; an unverifiable one returns the failing verdict instead.",
         "requestBody": {
           "required": true,
           "content": {
@@ -195,11 +196,28 @@
         },
         "responses": {
           "200": {
-            "description": "The model's raw reply paired with the verify-and-render verdict on it — a certified chart when the proposal verified, else a plain verdict.",
+            "description": "On a verified proposal, a [result, summary] array carrying the certified chart as an Open WebUI embed; on any other outcome, the bare result — the model's raw reply paired with the verify-and-render verdict (a plain verdict when unverified).",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProposeResult"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ProposeResult"
+                    },
+                    {
+                      "type": "array",
+                      "prefixItems": [
+                        {
+                          "$ref": "#/components/schemas/ProposeResult"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "minItems": 2,
+                      "maxItems": 2
+                    }
+                  ]
                 }
               }
             }
