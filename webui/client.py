@@ -102,7 +102,8 @@ class WebUIClient:
                 "password": self._settings.admin_password,
             },
         )
-        if response.status_code != httpx.codes.OK:
+        signup_status = response.status_code
+        if signup_status != httpx.codes.OK:
             response = self._http.post(
                 "/api/v1/auths/signin",
                 json={
@@ -111,7 +112,10 @@ class WebUIClient:
                 },
             )
         if response.status_code != httpx.codes.OK:
-            msg = f"authentication failed: signup and signin returned HTTP {response.status_code}"
+            msg = (
+                f"authentication failed: signup HTTP {signup_status}, "
+                f"signin HTTP {response.status_code}"
+            )
             raise WebUIProvisionError(msg)
         token = msgspec.json.decode(response.content, type=_AuthResponse).token
         if not token:
@@ -122,8 +126,8 @@ class WebUIClient:
 
     def model_ids(self) -> list[str]:
         """Authed GET /api/models -> the served model ids (the `{data: [...]}` envelope's ids)."""
-        response = self._http.get("/api/models", headers=self._auth_headers())
-        envelope = msgspec.json.decode(response.content, type=_ModelsEnvelope)
+        body = self._authed_get("/api/models")
+        envelope = msgspec.json.decode(body, type=_ModelsEnvelope)
         return [model.id for model in envelope.data]
 
     def tool_server_ids(self) -> list[str]:
@@ -132,9 +136,24 @@ class WebUIClient:
         The body is a BARE `list[ToolUserResponse]` (routers/tools.py), NOT a `data` envelope; keep
         only `server:`-prefixed ids so a python-function tool never counts as a registered server.
         """
-        response = self._http.get("/api/v1/tools/", headers=self._auth_headers())
-        tools = msgspec.json.decode(response.content, type=tuple[_ToolServer, ...])
+        body = self._authed_get("/api/v1/tools/")
+        tools = msgspec.json.decode(body, type=tuple[_ToolServer, ...])
         return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
+
+    def _authed_get(self, path: str) -> bytes:
+        """Authed GET that fails closed on non-200 -> the raw body for the caller to decode.
+
+        Gates the readbacks the way authenticate() gates auth: a non-200 (401 on a stale/rejected
+        token, 5xx upstream) raises WebUIProvisionError with path + status, so a broken readback
+        surfaces LOUD instead of decoding an error body to an empty list (a silent ok=False). The
+        readback endpoints are verified-user-gated (routers/tools.py, main.py get_verified_user), so
+        a wrong/unverified principal lands here as a 401 rather than as filtered-empty data.
+        """
+        response = self._http.get(path, headers=self._auth_headers())
+        if response.status_code != httpx.codes.OK:
+            msg = f"GET {path} returned HTTP {response.status_code}"
+            raise WebUIProvisionError(msg)
+        return response.content
 
     def _auth_headers(self) -> dict[str, str]:
         """The Bearer header for an authed request; raise if authenticate() has not run."""

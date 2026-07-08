@@ -10,10 +10,10 @@ bootstrap orchestration. Locked:
 - wait_ready: returns on the first 200, retries through transport errors, raises on timeout;
 - authenticate: signup-200 stores the JWT; a non-200 signup falls back to signin; both non-200 or an
   empty token raise; the stored token rides authed reads as a Bearer header;
-- model_ids / tool_server_ids: the `{data: [...]}` envelope vs the BARE array, and the `server:`
-  filter that drops a python-function tool;
+- model_ids / tool_server_ids: the `{data: [...]}` envelope vs the BARE array, the `server:` filter
+  that drops a python-function tool, the Bearer wiring, and a non-200 readback raising LOUD;
 - smoke / run_bootstrap: the membership derivation, the ok truth table, the wait->auth->smoke order,
-  and idempotency across repeated runs.
+  and restart-idempotency (a re-run's closed signup falls back to signin over a stateful transport).
 """
 
 import itertools
@@ -132,13 +132,16 @@ def test_authenticate_falls_back_to_signin_on_non_200_signup() -> None:
         assert client.authenticate() == "jwt-signin"
 
 
-def test_authenticate_raises_when_signup_and_signin_both_fail() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
+def test_authenticate_raises_reporting_both_signup_and_signin_status() -> None:
+    # Distinct statuses (signup 500, signin 400) pin that the error reports BOTH, not just signin's.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(500, json={"detail": "boom"})
         return httpx.Response(400, json={"detail": "nope"})
 
     with (
         _webui_client(handler) as client,
-        pytest.raises(WebUIProvisionError, match="signup and signin"),
+        pytest.raises(WebUIProvisionError, match="signup HTTP 500, signin HTTP 400"),
     ):
         client.authenticate()
 
@@ -166,7 +169,8 @@ def test_model_ids_parses_data_envelope_with_bearer() -> None:
 
 
 def test_tool_server_ids_parses_bare_array_and_filters_non_server() -> None:
-    def handler(_request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer tok"
         return httpx.Response(
             200,
             json=[
@@ -181,7 +185,8 @@ def test_tool_server_ids_parses_bare_array_and_filters_non_server() -> None:
         assert client.tool_server_ids() == ["server:verifier", "server:other"]
 
 
-def test_authed_read_before_authenticate_raises() -> None:
+@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+def test_authed_read_before_authenticate_raises(readback: str) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         pytest.fail("no request should be sent before authenticate")
 
@@ -189,7 +194,19 @@ def test_authed_read_before_authenticate_raises() -> None:
         _webui_client(handler) as client,
         pytest.raises(WebUIProvisionError, match="authenticate"),
     ):
-        client.model_ids()
+        getattr(client, readback)()
+
+
+@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+def test_authed_read_raises_loud_on_non_200(readback: str) -> None:
+    # A non-200 readback (401 rejected token) must raise, not decode an error body to [].
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": "Not authenticated"})
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        with pytest.raises(WebUIProvisionError, match="HTTP 401"):
+            getattr(client, readback)()
 
 
 # --- smoke / run_bootstrap ------------------------------------------------------------------
@@ -248,16 +265,35 @@ def test_run_bootstrap_not_ok_when_either_missing(
     assert not result.ok
 
 
-def test_run_bootstrap_is_idempotent() -> None:
+def test_run_bootstrap_idempotent_across_restart_via_signin() -> None:
+    # The real restart-idempotency: the first run signs up (200); a second run over the same OWUI
+    # hits a closed signup (403) and falls back to signin (200). Both runs provision-OK and equal.
     settings = Settings()
-    fake = _FakeClient(
-        model_ids=[settings.model_id],
-        tool_server_ids=[f"server:{settings.tool_server_id}"],
-    )
-    first = run_bootstrap(fake, settings)
-    second = run_bootstrap(fake, settings)
+    signups = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/ready":
+            return httpx.Response(200)
+        if path == "/api/v1/auths/signup":
+            signups["n"] += 1
+            if signups["n"] == 1:
+                return httpx.Response(200, json={"token": "jwt-signup"})
+            return httpx.Response(403, json={"detail": "signup closed"})
+        if path == "/api/v1/auths/signin":
+            return httpx.Response(200, json={"token": "jwt-signin"})
+        if path == "/api/models":
+            return httpx.Response(200, json={"data": [{"id": settings.model_id}]})
+        if path == "/api/v1/tools/":
+            return httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
+        pytest.fail(f"unexpected path {path}")
+
+    with _webui_client(handler, settings) as client:
+        first = run_bootstrap(client, settings)
+        second = run_bootstrap(client, settings)
     assert first == second
     assert first.ok
+    assert signups["n"] == 2  # both runs attempted signup; the re-run fell back to signin
 
 
 def test_run_bootstrap_end_to_end_over_mock_transport() -> None:
