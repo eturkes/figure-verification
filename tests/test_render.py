@@ -949,13 +949,20 @@ def test_render_html_scaffold_is_self_contained() -> None:
 
 def test_render_html_self_reports_height_for_iframe_embed() -> None:
     # An M4 sandboxed-iframe embed has no intrinsic height -> the page must self-report or render
-    # tiny. The trusted-template reporter posts {type:"iframe:height",...} to the parent on load AND
-    # on every ResizeObserver tick (the async vega render grows the DOM after load). Fixed
-    # self-contained JS, off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).
+    # tiny. The trusted-template reporter posts {type:"iframe:height",height} to the parent on load
+    # AND on every ResizeObserver tick (async vega render grows the DOM after load). Open WebUI's
+    # listener applies our height VERBATIM (memory "## M4"), so it must be the viewport-INDEPENDENT
+    # content box (getBoundingClientRect), never the frame-viewport-floored scrollHeight -- else a
+    # chart shorter than its frame reports inflated and can never shrink. Fixed self-contained JS,
+    # off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).
     html_doc = _html(_G01)
     assert render._HEIGHT_REPORTER in html_doc  # the exact trusted-template reporter is embedded
-    assert 'type:"iframe:height"' in html_doc  # the height message the embed host listens for
+    assert 'type:"iframe:height"' in html_doc  # Open WebUI's own message key (keep verbatim)
     assert "ResizeObserver" in html_doc  # re-posts on content resize, not only the initial load
+    assert "getBoundingClientRect" in render._HEIGHT_REPORTER  # viewport-independent content box
+    assert "scrollHeight" not in render._HEIGHT_REPORTER  # not the viewport-floored measure
+    # the reporter is the page's LAST <script> (fires after the vega-embed script it follows)
+    assert html_doc.endswith(f"<script>{render._HEIGHT_REPORTER}</script>\n</body>\n</html>\n")
     scaffold = html_doc.replace(render._embed_bundle(), "[BUNDLE]")
     assert _external_refs(scaffold) == []  # the reporter introduces no external/fetchable ref
 

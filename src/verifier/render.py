@@ -244,16 +244,23 @@ def render_svg(vega_lite_json: str) -> str:
 # undoes any pre-escape) and always ships the actions menu with no lever to disable it.
 _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 
-# A trusted-template height self-reporter appended as the page's LAST <script> (render_html). When
-# Open WebUI embeds this page (M4) it loads inside a sandboxed iframe, which has no intrinsic height
-# -- absent a self-report the frame collapses and the chart renders tiny. So the page posts its own
-# scrollHeight to the parent, which listens for a {type:"iframe:height",...} message and sizes the
-# frame. Fixed self-contained JS reading only its OWN document (no external ref, no model byte) --
-# off the cert hash chain like the rest of this view. It fires once on load AND on every
-# ResizeObserver tick, since the async vega render grows the DOM only after the load event.
+# A trusted-template height self-reporter appended as the page's LAST <script> (render_html). Open
+# WebUI embeds this page (M4) in a sandboxed iframe (allow-scripts, no allow-same-origin) with no
+# intrinsic height -- absent a self-report the frame collapses and the chart renders tiny (Open
+# WebUI's same-origin auto-measure throws on a no-same-origin child -> self-report is mandatory). So
+# the page posts its rendered CONTENT height; Open WebUI sizes the frame on the
+# {type:"iframe:height",height} message (its listener source-matches the frame + applies height
+# VERBATIM -> the value must be right; memory "## M4" pins the verified contract). Height =
+# ceil(documentElement.getBoundingClientRect().height) = the viewport-INDEPENDENT content box;
+# scrollHeight is WRONG (floors at the frame's viewport -> a chart shorter than its frame reports
+# inflated + can never shrink; verified headless). Fires on load AND every ResizeObserver tick (the
+# async vega render grows the DOM only after load). Fixed self-contained JS reading only its OWN
+# document: no external ref, no model byte -- off the cert hash chain like the rest of this view.
 _HEIGHT_REPORTER = (
     "function vplotReportHeight(){parent.postMessage("
-    '{type:"iframe:height",height:document.documentElement.scrollHeight},"*");}'
+    '{type:"iframe:height",'
+    "height:Math.ceil(document.documentElement.getBoundingClientRect().height)},"
+    '"*");}'
     'window.addEventListener("load",vplotReportHeight);'
     "new ResizeObserver(vplotReportHeight).observe(document.documentElement);"
 )
@@ -276,7 +283,7 @@ def render_html(vega_lite_json: str) -> str:
     same string render_svg consumes, drawn CLIENT-SIDE by the inlined vega runtime (the same chart
     as the SVG, not a richer interactive view: the builder emits no params / selection / tooltip).
     No <script src> / CDN reference and no editor/actions menu (actions:false). A trailing
-    trusted-template <script> (_HEIGHT_REPORTER) self-reports the page scrollHeight to a parent
+    trusted-template <script> (_HEIGHT_REPORTER) self-reports its content height to a parent
     frame (postMessage on load + ResizeObserver), so an M4 sandboxed-iframe embed sizes to content
     instead of rendering tiny -- fixed self-contained JS adding no external ref. OFF the cert hash
     chain: a convenience view, never hashed into the VCert. Self-containment also rests on embedding
