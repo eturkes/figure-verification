@@ -11,7 +11,9 @@ problem+json: an unknown dataset -> 404 (the name never echoed), an unreachable 
 an unusable reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong
 method -> 405. A proposal that decodes but names a DIFFERENT dataset than requested is refused
 502 by the M3.3b dataset-name pin, right after decode — before any verify or render, so even a
-broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart.
+broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart. A
+verified proposal also populates the chart store through the shared render_outcome seam, so GET
+/chart/{plot_id} resolves for a proposed chart just as for verify-and-render (M4.1c).
 """
 
 import json
@@ -91,7 +93,9 @@ def test_propose_verified_spec_renders_and_stores(
     client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A proposed good spec verifies and renders: a 200 RenderVerdict carrying the certified
-    # chart, the raw reply echoed verbatim, and the artifacts stored (cert + spec round-trip).
+    # chart, the raw reply echoed verbatim, and the artifacts stored (cert + spec + chart page
+    # round-trip). The chart GET proves the offline page is populated through the proposer entry
+    # route too, not only verify-and-render — both reach the store through the shared seam.
     _install_reply(monkeypatch, _spec_text(_SALES_GOOD))
     response = _propose(client, "Plot total revenue by month", "sales.csv")
     assert response.status_code == 200
@@ -103,6 +107,9 @@ def test_propose_verified_spec_renders_and_stores(
     assert "svg" in verdict
     assert client.get(f"/certificate/{verdict['plot_id']}").status_code == 200
     assert client.get(f"/spec/{verdict['spec_id']}").status_code == 200
+    chart = client.get(f"/chart/{verdict['plot_id']}")
+    assert chart.status_code == 200
+    assert chart.headers["content-security-policy"] == "sandbox allow-scripts"
 
 
 def test_propose_malformed_spec_is_decode_verdict(

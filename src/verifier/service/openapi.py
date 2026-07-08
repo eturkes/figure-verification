@@ -158,6 +158,12 @@ def _problem_response(description: str) -> dict[str, Any]:
     }
 
 
+def _html_response(description: str) -> dict[str, Any]:
+    """A text/html response object — the chart page is an opaque HTML string (its inner structure
+    is the trusted render's, not part of this contract)."""
+    return {"description": description, "content": {"text/html": {"schema": {"type": "string"}}}}
+
+
 def _spec_request_body() -> dict[str, Any]:
     """The required VPlot-spec JSON request body shared by both POST routes."""
     return {
@@ -177,7 +183,7 @@ def _id_parameter(name: str) -> dict[str, Any]:
 
 
 def _paths() -> dict[str, Any]:
-    """The five documented operations, each with an explicit operationId + summary (Open WebUI
+    """The seven documented operations, each with an explicit operationId + summary (Open WebUI
     M4 maps operationId -> tool name; model sees description, else summary — M4.2 adds
     descriptions). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
@@ -315,6 +321,19 @@ def _paths() -> dict[str, Any]:
                     "200": _json_response(
                         "The stored verified spec's canonical bytes.",
                         {"$ref": f"{_COMPONENTS}/VPlotSpec"},
+                    ),
+                    **not_found,
+                },
+            }
+        },
+        "/chart/{plot_id}": {
+            "get": {
+                "operationId": "getChart",
+                "summary": "Fetch a stored verified chart page by plot_id",
+                "parameters": [_id_parameter("plot_id")],
+                "responses": {
+                    "200": _html_response(
+                        "The stored offline chart HTML page (served text/html under a sandbox CSP)."
                     ),
                     **not_found,
                 },

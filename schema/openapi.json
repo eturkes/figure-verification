@@ -354,6 +354,45 @@
           }
         }
       }
+    },
+    "/chart/{plot_id}": {
+      "get": {
+        "operationId": "getChart",
+        "summary": "Fetch a stored verified chart page by plot_id",
+        "parameters": [
+          {
+            "name": "plot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The stored offline chart HTML page (served text/html under a sandbox CSP).",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

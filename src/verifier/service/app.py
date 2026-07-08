@@ -7,8 +7,9 @@ settings.max_body_bytes. Transport only: no verification trust lives here (POC_S
 service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
-/certificate/{plot_id} + GET /spec/{spec_id} (M2.3), POST /propose-spec (M3.3a), GET
-/schema/openapi.json (M2.4). The verify POST handlers read the RAW request body via
+/certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
+/propose-spec (M3.3a), GET /schema/openapi.json (M2.4). The verify POST handlers read the RAW
+request body via
 request.body() before any verifier work, so
 decode_spec's strict decode
 stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, collapsing
@@ -17,7 +18,11 @@ settings.max_body_bytes — keeping oversize input off the verifier. verify-and-
 each verified render in the app's bounded ArtifactStore; the GETs serve the stored canonical
 bytes verbatim (a malformed or absent id both answer the same 404 problem+json at the store
 lookup — no leak of which ids were stored; a path that does not match the id route shape gets
-Litestar's own 404 instead, still problem+json, still disclosing nothing about the store).
+Litestar's own 404 instead, still problem+json, still disclosing nothing about the store). GET
+/chart/{plot_id} serves the stored offline HTML page as text/html under a Content-Security-Policy:
+sandbox allow-scripts (its 404 carries neither the CSP nor text/html, only the app-default
+nosniff); the page is built + stored on every verified render, so a verified plot_id resolves
+here regardless of the entry route (verify-and-render or the proposer).
 /propose-spec instead decodes a small typed {user_request, dataset_name} JSON body, runs the
 untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
 — not the caller's body — through verify-and-render, pinned to the requested dataset name
@@ -230,16 +235,24 @@ async def propose_spec_route(request: Request[Any, Any, Any], state: State) -> P
     return ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
 
 
-def _fetch_artifact(artifact_id: str, fetch: Callable[[str], bytes | None]) -> Response[bytes]:
-    """Serve a stored artifact's canonical bytes verbatim as application/json. A malformed id
-    (not 64 lowercase hex) or a store miss both raise 404 problem+json — the same answer, so a
-    caller learns nothing about which ids ever existed."""
+def _fetch_artifact(
+    artifact_id: str,
+    fetch: Callable[[str], bytes | None],
+    *,
+    media_type: str = "application/json",
+    headers: dict[str, str] | None = None,
+) -> Response[bytes]:
+    """Serve a stored artifact's canonical bytes verbatim (media_type + optional response headers
+    let one seam serve the JSON artifacts or the text/html chart page with its sandbox CSP). A
+    malformed id (not 64 lowercase hex) or a store miss both raise 404 problem+json — the same
+    answer, so a caller learns nothing about which ids ever existed; the 404 carries neither
+    media_type nor headers (the app-default nosniff still rides it via the exception handler)."""
     if _HEX64.fullmatch(artifact_id) is None:
         raise HTTPException(detail="no such artifact", status_code=HTTP_404_NOT_FOUND)
     payload = fetch(artifact_id)
     if payload is None:
         raise HTTPException(detail="no such artifact", status_code=HTTP_404_NOT_FOUND)
-    return Response(payload, media_type="application/json", status_code=HTTP_200_OK)
+    return Response(payload, media_type=media_type, status_code=HTTP_200_OK, headers=headers)
 
 
 @get(
@@ -264,6 +277,27 @@ def spec_route(spec_id: FromPath[str], state: State) -> Response[bytes]:
     """Serve the stored canonical spec bytes for spec_id (verbatim, as first hashed)."""
     store = cast("ArtifactStore", state["store"])
     return _fetch_artifact(spec_id, store.spec)
+
+
+# The chart page ships Content-Security-Policy: sandbox allow-scripts. A bare `sandbox` blocks the
+# page's own inlined Vega + height-reporter JS; allow-scripts re-enables them; allow-same-origin
+# is deliberately withheld so the embedded page stays a null origin. The app-default nosniff rides
+# it too; a 404 (malformed or missing id) carries neither this CSP nor the text/html content-type.
+_CHART_HEADERS = {"content-security-policy": "sandbox allow-scripts"}
+
+
+@get(
+    "/chart/{plot_id:str}",
+    operation_id="getChart",
+    summary="Fetch a stored verified chart page by plot_id",
+    sync_to_thread=False,
+)
+def chart_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
+    """Serve the stored offline chart HTML page for plot_id (its bytes verbatim, as text/html
+    under the sandbox CSP). Built + stored on every verified render, so a verified plot_id
+    resolves here regardless of the entry route (verify-and-render or the proposer)."""
+    store = cast("ArtifactStore", state["store"])
+    return _fetch_artifact(plot_id, store.chart, media_type="text/html", headers=_CHART_HEADERS)
 
 
 @get(
@@ -346,12 +380,14 @@ def create_app(settings: Settings) -> Litestar:
             propose_spec_route,
             certificate_route,
             spec_route,
+            chart_route,
             openapi_route,
         ],
         state=State({"settings": settings, "store": store}),
         request_max_body_size=settings.max_body_bytes,
         # nosniff on every response: the GETs and render serve stored/JSON-embedded bytes, and
-        # the M1 hardening note keeps nosniff on any served artifact (M4 will add CSP for HTML).
+        # the M1 hardening note keeps nosniff on any served artifact; the chart route layers a
+        # sandbox CSP on top of it for its HTML page (_CHART_HEADERS).
         response_headers=[_NOSNIFF],
         # Litestar's OpenAPI auto-gen stays OFF: it introspects response models via
         # msgspec.inspect, which raises on RenderVerdict.verified: Literal[True] (the M2.3

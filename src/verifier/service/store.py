@@ -3,8 +3,8 @@
 
 A verified render contributes three canonical byte blobs: the certificate (keyed by its
 content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served verbatim by
-a retrieval GET today; the offline chart HTML page (keyed by plot_id) is stored here for the GET
-route that lands M4.1c. In-memory only: provenance/replay to disk is M5.
+a retrieval GET, as is the offline chart HTML page (keyed by plot_id) at GET /chart/{plot_id}
+(M4.1c). In-memory only: provenance/replay to disk is M5.
 
 TWO independent bounded LRUs, each with its own cap:
 
@@ -119,7 +119,7 @@ class ArtifactStore:
         a live render/certificate for plot_id (a chart may outlive its certificate — see the
         module docstring's mixed-state note). A repeat plot_id refreshes its recency and replaces
         the (content-addressed, identical) bytes; while over html_cap, the oldest chart page pops.
-        Wired into the render pipeline at M4.1c; exercised directly here.
+        Wired into the render pipeline (render_outcome) at M4.1c, and exercised directly here.
         """
         with self._lock:
             self._charts[plot_id] = chart_html

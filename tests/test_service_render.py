@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M2.3 POST /verify-and-render + retrieval GETs — verified renders through the transport.
+"""M2.3 POST /verify-and-render + retrieval GETs + GET /chart (M4.1c) — renders through the wire.
 
 The good corpus renders through the service byte-for-byte as a direct render.render (the SVG,
 the four cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
@@ -10,6 +10,12 @@ store is bounded (an evicted render 404s on both its cert and spec GET); a malfo
 id 404s alike (no validity leak); and a render that returns None for a verified spec is a
 broken invariant answered as a generic 500. X-Content-Type-Options: nosniff rides every
 response, success and problem alike.
+
+GET /chart/{plot_id} serves the offline HTML page built + stored on EVERY verified render, so it
+resolves even when the JSON body omitted the inline copy (include_html=false), as text/html under
+a Content-Security-Policy: sandbox allow-scripts. Its chart LRU (html_cap) evicts independently of
+the render LRU (store_cap) — a certificate can outlive its chart page — and an absent or malformed
+plot_id 404s as problem+json carrying neither the CSP nor text/html (only the app-default nosniff).
 """
 
 import hashlib
@@ -155,6 +161,61 @@ def test_include_html_attaches_view(client: TestClient[Litestar]) -> None:
     direct = _direct_render(raw, include_html=True)
     assert body["html"] == direct.html
     assert body["svg"] == direct.svg
+
+
+# --- GET /chart serves the page built on every verified render (even include_html=false) -----
+def test_chart_get_serves_page_without_inline_copy(client: TestClient[Litestar]) -> None:
+    # The offline page is built + stored on every verified render, so GET /chart resolves even
+    # when the JSON body omitted the inline copy (include_html=false). The served bytes are a
+    # direct render's HTML verbatim, as text/html under the sandbox CSP (+ the app nosniff).
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    posted: dict[str, Any] = client.post(
+        "/verify-and-render", content=raw, headers=_JSON, params={"include_html": "false"}
+    ).json()
+    assert "html" not in posted  # the JSON body still omits the inline view
+    response = client.get(f"/chart/{posted['plot_id']}")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert response.headers["content-security-policy"] == "sandbox allow-scripts"
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    direct = _direct_render(raw, include_html=True)
+    assert direct.html is not None
+    assert response.content == direct.html.encode("utf-8")  # the page bytes verbatim
+
+
+# --- the chart LRU (html_cap) evicts independently of the render LRU (store_cap) -------------
+def test_chart_lru_evicts_independently_of_certificate() -> None:
+    # store_cap=2, html_cap=1: two renders both keep their certificate, but only the newest keeps
+    # its chart page — the reachable mixed state (a certificate outlives its chart page), pinning
+    # that the two LRUs evict on their OWN recency, through the transport.
+    app = create_app(Settings(data_dir=_DATA, store_cap=2, html_cap=1))
+    with TestClient(app=app) as client:
+        a: dict[str, Any] = client.post(
+            "/verify-and-render", content=(_GOOD_DIR / _GOOD[0]["file"]).read_bytes(), headers=_JSON
+        ).json()
+        b: dict[str, Any] = client.post(
+            "/verify-and-render", content=(_GOOD_DIR / _GOOD[1]["file"]).read_bytes(), headers=_JSON
+        ).json()
+        assert a["plot_id"] != b["plot_id"]
+        # Both renders sit within store_cap=2 -> both certificates live.
+        assert client.get(f"/certificate/{a['plot_id']}").status_code == 200
+        assert client.get(f"/certificate/{b['plot_id']}").status_code == 200
+        # But html_cap=1: A's chart page evicted when B's landed, while B's chart page lives.
+        assert client.get(f"/chart/{a['plot_id']}").status_code == 404
+        assert client.get(f"/chart/{b['plot_id']}").status_code == 200
+
+
+# --- an absent or malformed chart id 404s without the CSP (uniform with the other GETs) ------
+def test_chart_absent_or_malformed_404_without_csp(client: TestClient[Litestar]) -> None:
+    # A never-stored valid-shape id and a malformed id both 404 as problem+json — the same uniform
+    # answer the other retrieval GETs give — carrying NEITHER the chart CSP nor a text/html
+    # content-type; only the app-default nosniff rides the problem response.
+    for bad_id in ("0" * 64, "abc", "g" * 64):
+        response = client.get(f"/chart/{bad_id}")
+        assert response.status_code == 404
+        assert response.headers["content-type"] == _PROBLEM_JSON
+        assert "content-security-policy" not in response.headers
+        assert response.headers["x-content-type-options"] == _NOSNIFF
 
 
 # --- the store is bounded: the oldest render evicts, cert AND spec together --

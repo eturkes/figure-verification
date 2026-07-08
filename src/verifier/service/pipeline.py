@@ -119,19 +119,25 @@ def render_outcome(
     answer a RenderVerdict. A failing verdict answers the plain Verdict — never a chart on an
     unverified outcome. CPU-bound + synchronous (the handler offloads it via sync_to_thread); see
     the module docstring for the render-None invariant. Split from verify_and_render (M3.3b) so
-    app.py's proposer can pin the requested dataset name between verify_only and this render."""
+    app.py's proposer can pin the requested dataset name between verify_only and this render.
+
+    The offline HTML page is built + stored on EVERY verified render (render(include_html=True)
+    unconditionally, then store.put_chart under plot_id), so GET /chart/{plot_id} resolves for a
+    verified render regardless of entry route — verify-and-render and the proposer both reach the
+    chart store through this one seam. include_html now governs ONLY the JSON-body html copy (the
+    large inline view the caller opts into); the retrievable page is always present."""
     if not outcome.verdict.verified:
         return outcome.verdict
     # verified => the verify stage ran and passed, so spec and manifest_bytes are populated
     # (cast, not assert: an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
     spec = cast("VPlotSpec", outcome.spec)
     manifest_bytes = cast("bytes", outcome.manifest_bytes)
-    result = render.render(
-        spec, manifest_bytes, data_dir=settings.data_dir, include_html=include_html
-    )
+    result = render.render(spec, manifest_bytes, data_dir=settings.data_dir, include_html=True)
     if result is None:
         msg = "render returned None for a verified spec"
         raise RuntimeError(msg)  # broken invariant -> app 500 (the model cannot reach here)
+    # include_html=True => the offline page is always built; cast, not assert (the M1.5a lesson).
+    chart_html = cast("str", result.html)
     cert = result.certificate
     cert_bytes = render.vcert_bytes(cert)
     plot_id = hashlib.sha256(cert_bytes).hexdigest()
@@ -139,6 +145,7 @@ def render_outcome(
     store.put(
         plot_id=plot_id, cert_bytes=cert_bytes, spec_id=spec_id, spec_bytes=canon.spec_bytes(spec)
     )
+    store.put_chart(plot_id, chart_html.encode("utf-8"))
     return RenderVerdict(
         verified=True,
         layer=outcome.verdict.layer,
@@ -150,7 +157,7 @@ def render_outcome(
         plotted_table_hash=cert.plotted_table_hash,
         manifest_hash=cert.manifest_hash,
         svg=result.svg,
-        html=result.html,
+        html=chart_html if include_html else None,
     )
 
 
