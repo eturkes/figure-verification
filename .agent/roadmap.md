@@ -65,32 +65,13 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   trusted-template JS (`postMessage {type:"iframe:height",…}` on load + ResizeObserver) appended as
   `render_html`'s LAST `<script>`, off the cert hash chain; presence + self-containment pinned in
   `tests/test_render.py`. Recipe consumed → git (`git log --grep "(M4.1a"`).
-- **M4.1b — chart store + operator bound** (OPEN; `settings.py` + `store.py` + `app.py`[1 line] +
-  `tests/test_service.py` + `tests/test_store.py`; the subtle LRU, isolated in its own window; pipeline
-  UNTOUCHED). settings.py: add `_DEFAULT_HTML_CAP = 16` (chart pages ~MB; the 256 store_cap would balloon →
-  own small bound), field `html_cap: int = _DEFAULT_HTML_CAP`, a `__post_init__` guard `html_cap < 1` →
-  `"html_cap must be >= 1, got …"` (mirror store_cap), from_env
-  `html_cap=int(env.get("VERIFIER_HTML_CAP", str(_DEFAULT_HTML_CAP)))`, extend the fail-closed-caps docstring.
-  store.py: `__init__(self, cap: int, *, html_cap: int) -> None` + html_cap guard + `self._html_cap` +
-  `self._charts: OrderedDict[str, bytes]`; ADD (additive — leave put/certificate/spec + the refcount intact,
-  NO _put_render refactor) `put_chart(self, plot_id: str, chart_html: bytes) -> None` (lock: set, move_to_end,
-  evict oldest while `len(_charts) > _html_cap`) + `chart(self, plot_id: str) -> bytes | None` (lock: get +
-  move_to_end on hit — reads `_charts` ONLY, never `_renders`); rewrite the docstring for THREE blobs (cert,
-  spec, chart) + the SEPARATE chart LRU (html_cap) evicting INDEPENDENTLY of the render LRU → BOTH mixed states
-  reachable + accepted: a chart 404s while its cert lives (common case, html_cap << store_cap) AND, under
-  chart-only access, a cert 404s while its chart lives (chart() refreshes only `_charts`). A served chart was
-  verified at render time (immutable bytes) so needs no live cert; the cert stays the canonical provenance
-  artifact, NOT a liveness gate. app.py: `create_app` →
-  `ArtifactStore(settings.store_cap, html_cap=settings.html_cap)` (only that line). test_service.py: add
-  `VERIFIER_HTML_CAP` to `_VERIFIER_ENV`, `html_cap == 16` default, direct + from_env non-positive-html_cap
-  rejects (match `"html_cap"`), html_cap in the from_env override. test_store.py: thread `html_cap=` through
-  every `ArtifactStore(...)`; `test_rejects_nonpositive_html_cap` (`ArtifactStore(1, html_cap=bad)`, match
-  `"html_cap must"`; disambiguate the existing cap test to match `"cap must"`); independent-eviction test
-  (cap 8, html_cap 1: put A then B → `chart(A) is None` while `certificate(A)` lives, B present); re-put-A test
-  (chart(A) restored, chart(B) now the evicted one). put_chart/chart are covered directly here (no
-  route/producer yet — wired in M4.1c). Acceptance: gate green; store holds/serves chart bytes under html_cap,
-  evicting independently of the cert LRU (mixed state + re-put pinned); non-positive html_cap rejected at
-  store, Settings, and from_env.
+- **M4.1b — chart store + operator bound** (DONE, 54% 200K): `Settings.html_cap` (`VERIFIER_HTML_CAP`,
+  default 16, fail-closed `>= 1` guard mirroring store_cap, both construction paths) + `ArtifactStore` second
+  LRU — `put_chart`/`chart` over a `_charts` OrderedDict capped at html_cap, evicting INDEPENDENTLY of the
+  render/cert LRU (BOTH mixed states pinned by direct tests: chart-gone-cert-lives AND cert-gone-chart-lives,
+  the latter added beyond the recipe to back the "both mixed states" docstring claim; + re-put recency cycle).
+  `create_app` threads `html_cap=`; pipeline UNTOUCHED (chart producer + GET route = M4.1c). Recipe consumed →
+  git (`git log --grep "(M4.1b"`).
 - **M4.1c — chart capture + HTTP surface** (OPEN; `pipeline.py` + `app.py` + `openapi.py` +
   `schema/openapi.json` + `tests/test_service_render.py` + `tests/test_service_openapi.py` + optional
   `tests/test_service_propose.py`; mechanical wiring over a/b — all primitives exist). pipeline.py

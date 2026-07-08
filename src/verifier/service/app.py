@@ -337,7 +337,7 @@ def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) ->
 
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
-    store = ArtifactStore(settings.store_cap)
+    store = ArtifactStore(settings.store_cap, html_cap=settings.html_cap)
     return Litestar(
         route_handlers=[
             health,

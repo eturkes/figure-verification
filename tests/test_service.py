@@ -27,6 +27,7 @@ _VERIFIER_ENV = (
     "VERIFIER_PORT",
     "VERIFIER_MAX_BODY_BYTES",
     "VERIFIER_STORE_CAP",
+    "VERIFIER_HTML_CAP",
     "VERIFIER_MODEL_BASE_URL",
     "VERIFIER_MODEL_NAME",
     "VERIFIER_MODEL_TIMEOUT",
@@ -48,6 +49,7 @@ def test_settings_defaults(tmp_path: Path) -> None:
     assert settings.port == 8000
     assert settings.max_body_bytes == 65536
     assert settings.store_cap == 256
+    assert settings.html_cap == 16
     assert settings.model_base_url == "http://127.0.0.1:8001/v1"
     assert settings.model_name == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert settings.model_timeout == 120.0
@@ -76,6 +78,14 @@ def test_settings_rejects_nonpositive_store_cap(tmp_path: Path) -> None:
     for bad in (0, -1):
         with pytest.raises(ValueError, match="store_cap"):
             Settings(data_dir=tmp_path, store_cap=bad)
+
+
+def test_settings_rejects_nonpositive_html_cap(tmp_path: Path) -> None:
+    # The chart LRU has the same non-positive failure modes as the render LRU; __post_init__
+    # rejects it like store_cap, on every construction path.
+    for bad in (0, -1):
+        with pytest.raises(ValueError, match="html_cap"):
+            Settings(data_dir=tmp_path, html_cap=bad)
 
 
 def test_settings_rejects_nonfinite_or_nonpositive_model_timeout(tmp_path: Path) -> None:
@@ -115,6 +125,7 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("VERIFIER_PORT", "9001")
     monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "1024")
     monkeypatch.setenv("VERIFIER_STORE_CAP", "8")
+    monkeypatch.setenv("VERIFIER_HTML_CAP", "4")
     monkeypatch.setenv("VERIFIER_MODEL_BASE_URL", "http://192.0.2.1:9100/v1")
     monkeypatch.setenv("VERIFIER_MODEL_NAME", "test-model")
     monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", "30.5")  # non-integer float exercises the parse
@@ -126,6 +137,7 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         port=9001,
         max_body_bytes=1024,
         store_cap=8,
+        html_cap=4,
         model_base_url="http://192.0.2.1:9100/v1",
         model_name="test-model",
         model_timeout=30.5,
@@ -151,6 +163,16 @@ def test_from_env_rejects_nonpositive_store_cap(
     monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("VERIFIER_STORE_CAP", "0")
     with pytest.raises(ValueError, match="store_cap"):
+        Settings.from_env()
+
+
+def test_from_env_rejects_nonpositive_html_cap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The html_cap guard fires through the env path too, not just direct construction.
+    monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VERIFIER_HTML_CAP", "0")
+    with pytest.raises(ValueError, match="html_cap"):
         Settings.from_env()
 
 

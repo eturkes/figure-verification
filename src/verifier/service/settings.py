@@ -6,11 +6,11 @@ structs): the operator supplies it through the environment before the process bi
 data_dir stays trusted config — checks.py path confinement rests on it (the TOCTOU
 precondition documented there). Defaults bind loopback only and cap bodies far under
 the VPlot schema's real size, and __post_init__ rejects a non-positive max_body_bytes
-(which the framework would otherwise read as an unlimited body) or store_cap (which would
-make the artifact store drop every render at once or crash on its first eviction), so a
-bare or misconfigured deploy fails closed rather than exposing the verifier. The field defaults
-and the from_env fallbacks share one set of constants so the two construction paths
-cannot drift.
+(which the framework would otherwise read as an unlimited body), store_cap, or html_cap
+(a non-positive cap makes the matching artifact store drop everything at once or crash on
+its first eviction), so a bare or misconfigured deploy fails closed rather than exposing the
+verifier. The field defaults and the from_env fallbacks share one set of constants so the two
+construction paths cannot drift.
 
 M3.2a adds the model-proposer config (base URL / name / timeout / sample rows / max tokens):
 the operator points the verifier at the local backend, and these stay trusted config too —
@@ -32,6 +32,9 @@ _DEFAULT_PORT = 8000
 # oversize body is read (M2.2 reads the raw body before any verifier work).
 _DEFAULT_MAX_BODY_BYTES = 65536
 _DEFAULT_STORE_CAP = 256
+# Offline chart HTML pages inline the whole Vega bundle (~MB each), so they ride their own
+# small LRU (store.py) instead of store_cap's 256 — 256 chart pages would balloon memory.
+_DEFAULT_HTML_CAP = 16
 # Model proposer (M3.2a): the local backend's OpenAI /v1 base (M3.1b binds port 8001; the
 # client appends /chat/completions), the single served model name copied into requests,
 # a generation timeout with slow-accelerator headroom, the sample-row count handed to the prompt,
@@ -51,6 +54,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     port: int = _DEFAULT_PORT
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     store_cap: int = _DEFAULT_STORE_CAP
+    html_cap: int = _DEFAULT_HTML_CAP
     model_base_url: str = _DEFAULT_MODEL_BASE_URL
     model_name: str = _DEFAULT_MODEL_NAME
     model_timeout: float = _DEFAULT_MODEL_TIMEOUT
@@ -68,6 +72,11 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         # once (cap 0) or crash on its first eviction (cap < 0); reject it here too.
         if self.store_cap < 1:
             msg = f"store_cap must be >= 1, got {self.store_cap}"
+            raise ValueError(msg)
+        # A non-positive html_cap breaks the chart LRU the same way store_cap breaks the render
+        # LRU (drop-everything at 0, crash-on-evict below 0); reject it here too.
+        if self.html_cap < 1:
+            msg = f"html_cap must be >= 1, got {self.html_cap}"
             raise ValueError(msg)
         # Model-proposer bounds, fail-closed like the caps above. httpx does not validate
         # its timeout, and not every non-None value is bounded, so guard the value itself.
@@ -98,6 +107,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             port=int(env.get("VERIFIER_PORT", str(_DEFAULT_PORT))),
             max_body_bytes=int(env.get("VERIFIER_MAX_BODY_BYTES", str(_DEFAULT_MAX_BODY_BYTES))),
             store_cap=int(env.get("VERIFIER_STORE_CAP", str(_DEFAULT_STORE_CAP))),
+            html_cap=int(env.get("VERIFIER_HTML_CAP", str(_DEFAULT_HTML_CAP))),
             model_base_url=env.get("VERIFIER_MODEL_BASE_URL", _DEFAULT_MODEL_BASE_URL),
             model_name=env.get("VERIFIER_MODEL_NAME", _DEFAULT_MODEL_NAME),
             model_timeout=float(env.get("VERIFIER_MODEL_TIMEOUT", str(_DEFAULT_MODEL_TIMEOUT))),
