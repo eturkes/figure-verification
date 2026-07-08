@@ -134,33 +134,18 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   → the pkg gate-checks hardware-free; the `.venv-webui` open-webui binary is EXEC'd, never imported. Land
   a→b→c→d in order (b imports a's Settings; c's CLI wires a+b; d live-smokes a+b+c); a–c each leave the
   gate green, d adds the live evidence. Live embed/E2E stays M4.5.
-- **M4.3a — `webui/settings.py` canonical-env container + wiring** (OPEN): the config every other module
-  imports (front-load it alone, the M4.1b LRU precedent). `Settings(msgspec.Struct, frozen=True,
-  kw_only=True)` mirroring verifier/model_backend Settings — fields host/port(int)/data_dir(Path)/secret_key/
-  admin_name/admin_email/admin_password/verifier_url/model_backend_url/model_id/webui_bin(Path)/
-  request_timeout(float)/ready_timeout(float), each a module `_DEFAULT_*` const (port 8080, data_dir
-  `.webui-data`, verifier_url `http://127.0.0.1:8000`, model_backend_url `http://127.0.0.1:8001/v1`,
-  model_id `Qwen2-0.5B-Instruct-int4-sym-ov`, webui_bin `.venv-webui/bin/open-webui`, timeouts 30/60,
-  admin_email `operator@localhost`; loopback dev secret_key/admin_password each `# noqa: S105` +
-  "loopback dev default, overridable"). `__post_init__`: port 1..`_MAX_PORT`(=65535 const, dodges PLR2004);
-  non-empty (secret_key, admin_email, admin_password); finite-positive (request_timeout, ready_timeout via
-  `math.isfinite`). MYPY LANDMINE: the two validation for-loops need DISTINCT item names (str loop `text`,
-  float loop `seconds`) — a shared `value` unifies mypy to `str`, breaking `math.isfinite(value)`.
-  `base_url` property (`http://{host}:{port}`); `tool_server_id` property (`_TOOL_SERVER_ID="verifier"`);
-  `tool_server_connections()` → `json.dumps` of the one-element array (shape = memory Provisioning-SETTLED-
-  LIVE verbatim: `{url,path,type:"openapi",auth_type:"none",key:"",config:{enable:True,
-  function_name_filter_list:["proposeSpec"]},info:{id,name,description}}`); `launch_env()` →
-  `{**_FIXED_ENV, DATA_DIR, WEBUI_SECRET_KEY, OPENAI_API_BASE_URL, OPENAI_API_BASE_URLS, TOOL_SERVER_CONNECTIONS}`
-  (pure — no os.environ read, so the full env is assertable — but `_serve` merges `{**os.environ, **launch_env()}`
-  OVERRIDE-ONLY, so launch_env must pin EVERY OWUI-read axis or ambient leaks: derive BOTH OpenAI base-url forms
-  from model_backend_url, and `_FIXED_ENV` = memory "Launch env" toggles verbatim incl. the hermetic OpenAI
-  plural/config + empty task-model pins + legacy-FC `DEFAULT_MODEL_PARAMS`); `from_env()` reads
-  `WEBUI_PROVISION_*` else the `_DEFAULT_*`.
-  Wire pyproject: add "webui" to `[tool.ruff.lint.isort] known-first-party` + `[tool.mypy] files`. Tests
-  `tests/test_webui_settings.py` (bench pattern): each bound (port 0/65536, empty secret/email/pw,
-  non-finite timeout) raises ValueError with a `match=`; launch_env carries every `_FIXED_ENV` key + the 5 derived (both
-  OpenAI base-url forms) + the hermetic OpenAI/task-model pins (ambient can't override them); tool_server_connections round-trips to the one-element proposeSpec-allowlist shape; from_env
-  override + default. Acceptance: gate green; Settings validates + emits the canonical env.
+- **M4.3a — `webui/settings.py` canonical-env container + wiring** (DONE, 75% 200K): frozen `Settings`
+  (WEBUI_PROVISION_* `from_env`, `__post_init__` bounds port 1..65535 / non-empty secret+email+pw /
+  finite-positive timeouts — two loops, distinct `text`/`seconds` names per the mypy landmine) emitting the
+  hermetic OWUI `launch_env()` (`_FIXED_ENV` static toggles + 5 derived keys) + `tool_server_connections()`;
+  pyproject wired (`webui` → isort known-first-party + mypy files); `tests/test_webui_settings.py` (20 tests,
+  coverage-excluded bench-style loop). Deliberate refinements vs recipe (both verified at open-webui 0.10.2
+  source, not a behavior re-probe): all 5 generation toggles default-True → pinned off incl.
+  `SEARCH_QUERY_GENERATION` (memory listed 4); `DATA_DIR` emitted ABSOLUTE (`str(data_dir.resolve())` — OWUI
+  `env.py:216` resolves a relative one vs ITS own cwd, so absolute keeps state in `.webui-data` regardless of
+  exec cwd; `.resolve()` reads cwd not os.environ, so launch_env stays assertable via a recomputed resolve);
+  minimal `webui/__init__.py` package marker landed HERE (regular pkg like model_backend/bench, needed for
+  mypy+import gate-green) → c enriches it with CLI exports. Recipe consumed → git (`git log --grep "(M4.3a"`).
 - **M4.3b — `webui/client.py` REST client + `webui/bootstrap.py` smoke** (OPEN): the provisioning logic over
   a's Settings (behavior = memory Provisioning-SETTLED-LIVE — TRANSCRIBE, no re-probe). client.py:
   `WebUIProvisionError(RuntimeError)`; `WebUIClient(http: httpx.Client, settings)` holding `_token: str|None`
@@ -188,7 +173,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `_bootstrap(settings) -> int` (`httpx.Client(base_url, timeout)` → `run_bootstrap` → 0 iff `result.ok`,
   WebUIProvisionError → 1), `_parse_args` (argparse choices serve/bootstrap/stub), `main() -> int`
   (basicConfig, Settings.from_env, dispatch; serve never returns, stub blocks→0), `raise SystemExit(main())`.
-  __init__.py = package docstring. README.md = three-service recipe (bench/README pattern): verifier :8000
+  __init__.py = package docstring (ALREADY LANDED in a — leave as is unless CLI exports help). README.md = three-service recipe (bench/README pattern): verifier :8000
   (`.venv`), stub :8001 (`python -m webui stub`) or live model_backend, OWUI :8080 (`python -m webui serve`,
   `.venv-webui`) → `python -m webui bootstrap` (signup + smoke); document the `WEBUI_PROVISION_*` knobs +
   coverage-excluded/unshipped. Tests: stub via Litestar `TestClient` (/v1/models + /v1/chat/completions

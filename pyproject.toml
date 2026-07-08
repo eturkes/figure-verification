@@ -67,10 +67,10 @@ ignore = [
 "tests/**" = ["S101", "PLR2004", "TID251"]
 
 [tool.ruff.lint.isort]
-# model_backend (the hardware-gated local model server, M3.1b) and bench (the failure-eval
-# harness, M3.4a) are repo-root packages, not under src/ — declare them first-party so their
-# imports sort with verifier's.
-known-first-party = ["verifier", "model_backend", "bench"]
+# model_backend (the hardware-gated local model server, M3.1b), bench (the failure-eval
+# harness, M3.4a), and webui (the Open WebUI integration harness, M4.3) are repo-root packages,
+# not under src/ — declare them first-party so their imports sort with verifier's.
+known-first-party = ["verifier", "model_backend", "bench", "webui"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -86,9 +86,9 @@ ban-relative-imports = "all"
 python_version = "3.13"
 strict = true
 # model_backend = the repo-root hardware-gated local model server (M3.1b); bench = the
-# repo-root failure-eval harness (M3.4a). Both type-checked under --strict but shipped
-# separately (coverage-excluded, not in the wheel).
-files = ["src", "tests", "model_backend", "bench"]
+# repo-root failure-eval harness (M3.4a); webui = the repo-root Open WebUI integration harness
+# (M4.3). All type-checked under --strict but shipped separately (coverage-excluded, not in the wheel).
+files = ["src", "tests", "model_backend", "bench", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
