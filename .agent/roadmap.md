@@ -44,12 +44,13 @@ join the trusted DISPLAY layer, the verifier stays sole authority; filter = heur
   sandbox allow-scripts` — bare `sandbox` blocks the page's own Vega/height JS; the embedding iframe adds
   its own attr sandbox, no allow-same-origin), tool response adds `Content-Disposition: inline` + absolute
   `Location` on verified success → sandboxed iframe loads straight from the verifier (bare-metal loopback
-  deployment assumption, POC_SCOPE will record it). Model context (source-settled, middleware.py:917):
+  deployment assumption, POC_SCOPE will record it). Model context (source-SETTLED, middleware.py:917-931):
   the Location variant REPLACES tool_result with a generic ui_component message UNLESS the body is a
-  2-list `[_, context]` → M4.2 decides: wrapper `[null, verdict]` on verified success (model keeps the
-  verdict; body shape changes, goldens/bench follow) vs plain body + generic context. Beats srcdoc-inline
-  (our offline HTML inlines the whole Vega bundle — MBs per message). Fallback if the live probe sours on
-  embeds: dedicated HTML-success/JSON-failure op.
+  2-list `[_, context]`, `str()`-ified to the model → DECIDED (memory "## M4" Location-variant embed):
+  verified-success body = `[ProposeResult, summary_str]` — the model reads the lean summary string,
+  direct/bench clients read `body[0]`, goldens/bench follow. Beats srcdoc-inline (our offline HTML inlines
+  the whole Vega bundle — MBs per message); the HTML rides the Location URL GET /chart serves, never the
+  body. Live confirmation of the embed rides M4.5's E2E.
 - Weak-model tool calling = LEGACY FC (`DEFAULT_MODEL_PARAMS='{"function_calling":"legacy"}'`; native =
   the 0.10 default but needs backend `tools` support and never executes headless; task model = the same
   weak model). The 0.5B's tool-selection reliability = an OBSERVATION, claim discipline applies.
@@ -80,15 +81,57 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   path + golden regen. The chart is stored on every verified render regardless of entry route
   (verify-and-render OR propose — the shared seam), served until chart-LRU eviction. Recipe
   consumed → git (`git log --grep "(M4.1c"`).
-- **M4.2 — tool-facing response headers + surface tuning** (OPEN): scratch fake-tool-server probe against
-  the live Open WebUI → settle the Location-variant (model context + embed persistence; fallback decision
-  lands here); `Settings.public_base_url` (`VERIFIER_PUBLIC_BASE_URL`, default derived `http://127.0.0.1:
-  {port}`, validated in `__post_init__`); proposeSpec verified-success responses gain `Content-Disposition:
-  inline` + absolute `Location`; wrapper decision EXECUTED (2-list `[null, verdict]` on verified success —
-  or plain body if the probe favors generic context); op summary/description tuned for the model
-  (description wins; concrete dataset examples); OpenAPI golden regen. Acceptance: gate green; probe
-  verdict session-logged + header wiring pinned by tests; body shape change (if any) confined to
-  verified-success responses — all other bodies byte-unchanged (existing suites prove it).
+- **M4.2 — proposeSpec tool-facing response + surface tuning** is SPLIT a→b→c: its single-unit form
+  (settings knob + app wrapper + propose/bench test ripples + OpenAPI + golden, atop an OWUI source recon)
+  overflowed one 200K window — the one-module right-sizing rule again, the recon compounding it. The
+  Location-variant is SETTLED from source (memory "## M4" Location-variant embed bullet = verdict + wrapper
+  decision) → NO re-probe; TRANSCRIBE the recipes below, read only the named files + the cited memory
+  notes. Land a→b→c in order (b's Location header needs a's `public_base_url`; c documents b's body shape);
+  each leaves the gate green. Live confirmation of the embed rides M4.5's E2E, not here.
+- **M4.2a — `Settings.public_base_url` operator knob** (OPEN; gate-validated recipe — transcribe): add
+  `public_base_url: str | None = None` after `port`; import `urlparse` from `urllib.parse`. In
+  `__post_init__`, FIRST guard (before the max_body_bytes check): if None, derive
+  `f"http://{_DEFAULT_HOST}:{self.port}"` via `object.__setattr__` (the frozen-derivation idiom), then
+  `parsed = urlparse(base)` and reject (`ValueError` whose message contains `public_base_url`) unless
+  `parsed.scheme in {"http","https"}` AND `parsed.netloc` AND not `base.endswith("/")` (so
+  `f"{base}/chart/{id}"` keeps one clean slash). `from_env`:
+  `public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL")` (absent→None→derive; present-empty→""→rejected,
+  fail-closed). Docstring: one M4.2 paragraph (absolute browser-facing origin, separate from `host` the
+  bind address; loopback-literal default on the configured port; override via the env var). Tests
+  (`tests/test_service.py`): add `"VERIFIER_PUBLIC_BASE_URL"` to `_VERIFIER_ENV` after PORT; in
+  test_settings_defaults assert `public_base_url == "http://127.0.0.1:8000"`; 3 new tests —
+  derives-from-port (`port=9000`→`…:9000`), accepts-explicit (`https://verify.example.org:8443`),
+  rejects-malformed over `("", "ftp://host", "not a url", "http://", "http://host:8000/")`; extend
+  test_from_env_overrides with the env set + the RHS field. Acceptance: gate green; knob validated on
+  BOTH construction paths.
+- **M4.2b — proposeSpec verified-success embed wrapper** (OPEN): `app.py` `propose_spec_route` — after
+  `verdict = await sync_to_thread(_verify_render_pinned, …)`, build
+  `result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)`; on
+  `isinstance(verdict, RenderVerdict)` return `Response(msgspec.json.encode([result, summary]),
+  media_type="application/json", headers={"content-disposition": "inline",
+  "location": f"{base}/chart/{verdict.plot_id}"})` with `base = cast("str", settings.public_base_url)`;
+  ELSE `return result` unchanged. Return type → `ProposeResult | Response[bytes]`; app-default nosniff
+  rides the Response (the `_fetch_artifact`/chart precedent — do NOT re-add it); `Response` is imported
+  (M4.1c), add `msgspec` if absent. `summary` = a lean human string (inline or a small helper) over
+  `req.dataset_name` + `len(verdict.results)` — `element[1]` is `str()`-ified to the model (memory M4
+  Location-variant), so a STRING, never a dict. `bench/harness.py` (~L523, propose 200 decode): verified
+  success is uniquely marked by the `location` response header → when present decode
+  `tuple[_RespProposeResult, str]` and take `element[0]`, else decode `_RespProposeResult` as today;
+  downstream (`_classify`, `model_reply`, `verdict.results`) unchanged (the weak model never reaches
+  verified success live, but the shape must follow). Tests: update
+  `tests/test_service_propose.py::test_propose_verified_spec_renders_and_stores` for the
+  `[ProposeResult, summary]` body + the two headers; add a verified-success `location`-header + array
+  case to `tests/test_bench_harness.py`; every failing/4xx/5xx propose + bench test stays byte-unchanged.
+  Acceptance: gate green; body-shape change confined to verified-success (all other bodies byte-identical,
+  existing suites prove it); headers + bench branch pinned.
+- **M4.2c — OpenAPI tuning + golden regen** (OPEN): `openapi.py` — give proposeSpec a model-facing
+  `description` (description-over-summary is the 0.10.x rule; concrete dataset examples, e.g.
+  sales.csv/weather.csv) and extend its verified-success 200 to `anyOf`: the `ProposeResult` object OR a
+  2-tuple `{type:"array", prefixItems:[<ProposeResult $ref>, {type:"string"}], minItems:2, maxItems:2}`
+  (reuse the anyOf-not-oneOf + hand-derivation precedents, memory Stack M2.4); regen the golden
+  `schema/openapi.json` (the `@functools.cache`d bytes; serialize per the M2.4 recipe). Extend the
+  external-contract test so a real `[ProposeResult, summary]` payload validates against the 200 anyOf.
+  Acceptance: gate green; golden matches the regen; the new 200 shape covered.
 - **M4.3 — webui/ provisioning package** (OPEN): repo-root out-of-tree pkg wired like bench/model_backend
   (mypy files + isort first-party, coverage-excluded, unshipped); canonical env set + launcher + IDEMPOTENT
   bootstrap script (signup→JWT; tool-server registration — TOOL_SERVER_CONNECTIONS env probe first; REST
