@@ -17,7 +17,7 @@ Two env namespaces meet here, kept strictly apart:
     (only the process vars the child needs -- PATH / HOME / locale), everything else in os.environ
     DROPPED. This is the hermetic boundary -- a bare {**os.environ, **launch_env()} would leak any
     axis launch_env does not pin (aiohttp reads HTTP_PROXY via trust_env; transport / SSL knobs are
-    unbounded). The launcher (webui/__main__.py, M4.3c) execs os.execve(bin, argv, child_env()).
+    unbounded). The launcher (webui/__main__.py, M4.3d) execs os.execve(bin, argv, child_env()).
 
 Persistent-config is OFF (env-over-DB every boot), so config lives in env, never the OWUI DB: the
 one DB-persisted provisioning act is the admin signup (bootstrap, M4.3b). Defaults bind loopback
@@ -131,7 +131,7 @@ _FIXED_ENV: dict[str, str] = {
 # The process-level vars the OWUI child legitimately inherits (child_env passthrough allowlist):
 # enough to find the interpreter / libraries and localize, nothing that steers OWUI config,
 # networking, or auth. Everything else in os.environ is dropped so no unpinned axis leaks past
-# launch_env(). Extend only if the M4.3d live smoke proves a var is genuinely needed.
+# launch_env(). Extend only if the M4.3e live smoke proves a var is genuinely needed.
 _BASE_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ")
 
 

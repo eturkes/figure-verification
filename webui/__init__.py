@@ -9,5 +9,5 @@ mypy --strict but excluded from coverage and the wheel, importing only gate-venv
 .venv-webui open-webui binary is exec'd, never imported).
 
 settings.py (M4.3a) lands first: the frozen config every other module imports. The REST client,
-bootstrap, model stub, and CLI arrive in M4.3b-c.
+bootstrap, model stub, and CLI arrive in M4.3b-d.
 """

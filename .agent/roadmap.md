@@ -148,7 +148,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `env.py:216` resolves a relative one vs ITS own cwd, so absolute keeps state in `.webui-data` regardless of
   exec cwd; `.resolve()` reads cwd not os.environ, so launch_env stays assertable via a recomputed resolve);
   minimal `webui/__init__.py` package marker landed HERE (regular pkg like model_backend/bench, needed for
-  mypy+import gate-green) → c enriches it with CLI exports. Codex-review (xhigh) HARDENED (all verified at
+  mypy+import gate-green) → stays as-is (d's __main__ is the entry point; no CLI exports needed). Codex-review (xhigh) HARDENED (all verified at
   0.10.2 source): pinned the auth/bootstrap surface in `_FIXED_ENV` (`WEBUI_AUTH`/`ENABLE_LOGIN_FORM`/
   `ENABLE_PASSWORD_AUTH` on, `ENABLE_SIGNUP` off, `WEBUI_ADMIN_EMAIL`+`WEBUI_AUTH_TRUSTED_EMAIL_HEADER` empty
   — else ambient seizes the boot admin (main.py:326) or disables auth); validated emitted URLs http(s)+host
@@ -178,36 +178,39 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
 - **M4.3c — `webui/model_stub.py` hardware-free OpenAI /v1 stub** (OPEN): the stand-in the M4.3e smoke
   runs against with NO NPU. REUSE `model_backend.models` (ChatCompletionRequest/Response, ChatMessage,
   Choice, ModelCard, ModelList, Usage) ⇒ OWUI sees a BYTE-IDENTICAL wire contract vs the live backend;
-  hardware-free (msgspec only, no openvino; imports resolve from repo root). `create_app(model_id) ->
+  hardware-free (msgspec only, no openvino; imports resolve from repo root). `create_app(model_id: str) ->
   Litestar(route_handlers=[list_models, chat_completions], state=State({"model_id": model_id}),
   openapi_config=None)` (OpenAPI off like model_backend; handlers read `cast("str", state["model_id"])`).
-  `list_models(state) -> ModelList` `@get("/v1/models", sync_to_thread=False)` → `ModelList(data=(ModelCard(
+  `list_models(state: State) -> ModelList` `@get("/v1/models", sync_to_thread=False)` → `ModelList(data=(ModelCard(
   id=model_id, created=int(time.time())),))` — the smoke's LOAD-BEARING endpoint (OWUI enumerates it into
-  /api/models). `chat_completions(data: ChatCompletionRequest, state) -> ChatCompletionResponse`
-  `@post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)` → one Choice(index=0,
-  role=assistant, content=`_STUB_REPLY` (module const), finish_reason="stop"); id=`chatcmpl-{uuid4().hex}`,
-  usage = a synthetic WORD-COUNT proxy (prompt=Σ len(m.content.split()) over data.messages, completion=
-  len(_STUB_REPLY.split())); no model runs, `_STUB_REPLY` INERT until M4.5 settles it. `serve(settings) ->
+  /api/models). `chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse`
+  `@post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)` → MIRROR
+  model_backend/app.py's EXACT constructor, stub reply for engine output (Choice wraps a ChatMessage,
+  every field required): `ChatCompletionResponse(id=f"chatcmpl-{uuid4().hex}", created=int(time.time()),
+  model=model_id, choices=(Choice(index=0, message=ChatMessage(role="assistant", content=_STUB_REPLY),
+  finish_reason="stop"),), usage=Usage(prompt_tokens=p, completion_tokens=c, total_tokens=p+c))` —
+  p=Σ len(m.content.split()) over data.messages, c=len(_STUB_REPLY.split()) (synthetic WORD-COUNT proxy);
+  `_STUB_REPLY` (module const) INERT until M4.5 settles it. `serve(settings: Settings) ->
   None` = `urlparse(settings.model_backend_url)` → host/port; a None host|port ⇒ `raise ValueError` (msg
-  names "host and port"; the port is OPTIONAL in Settings — a bare origin is a valid OPENAI_API_BASE_URL —
+  names "host and port"; `_require_http_url` validates scheme+host only, NOT a port —
   so a missing one can't pick a bind → fail loud) else `uvicorn.run(create_app(settings.model_id), host=host,
   port=port, workers=1)`. NO own `main()` — d's __main__ owns the single `Settings.from_env()` + dispatch.
   Tests (`tests/test_webui_model_stub.py`, coverage-excluded net, Litestar `TestClient(app=create_app(…))`,
   no socket): /v1/models lists only the id (object "list"/"model"); chat returns `_STUB_REPLY` in an OpenAI
-  envelope (object "chat.completion", finish "stop", usage.total ≥ 1); serve binds the default url →
+  envelope (object "chat.completion", finish "stop", usage.total_tokens ≥ 1); serve binds the default url →
   127.0.0.1:8001 workers 1 (monkeypatch the SHARED `uvicorn` module, assert a Litestar app passed); serve
   rejects a portless url (`raises(ValueError, match="host and port")`, uvicorn unreached). Acceptance: gate
   green; stub + tests complete; the /v1 shapes pinned.
 - **M4.3d — `webui/__main__.py` CLI dispatch + `webui/README.md`** (OPEN): wires a+b+c into runnable
-  services (live confirmation = M4.3e). `_serve(settings) -> NoReturn`: `binary = settings.webui_bin`; not
+  services (live confirmation = M4.3e). `_serve(settings: Settings) -> NoReturn`: `binary = settings.webui_bin`; not
   `binary.is_file()` ⇒ log + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =
   [str(binary), "serve", "--host", settings.host, "--port", str(settings.port)]`; `os.execve(str(binary),
   argv, settings.child_env())  # noqa: S606` (shell-free; child_env = the M4.3a hermetic boundary; execve is
   typed NoReturn in typeshed ⇒ `_serve -> NoReturn` type-checks — the process is REPLACED). `_bootstrap(
-  settings) -> int`: `with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as
+  settings: Settings) -> int`: `with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as
   http: run_bootstrap(WebUIClient(http, settings), settings)`; `except WebUIProvisionError` ⇒ log + 1;
   `not result.ok` ⇒ log + 1; else log + 0. `_parse_args(argv: Sequence[str] | None) -> str` = argparse, one
-  positional `command` choices=("serve","bootstrap","stub"). `main(argv=None) -> int`: basicConfig(INFO) →
+  positional `command` choices=("serve","bootstrap","stub"), `return cast("str", args.command)` (argparse Namespace attrs are Any → no-any-return under --strict). `main(argv: Sequence[str] | None = None) -> int`: basicConfig(INFO) →
   `_parse_args` → `Settings.from_env()` → dispatch (serve→`_serve` NoReturn; stub→`serve_stub(settings)`
   [imported `from webui.model_stub import serve as serve_stub`] then return 0; else `_bootstrap`). `raise
   SystemExit(main())`. __init__.py UNTOUCHED (landed M4.3a; no CLI exports needed). Tests

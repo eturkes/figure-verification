@@ -6,7 +6,7 @@ request shapes + fallbacks settled live against 0.10.2 (memory M4 Provisioning-S
 TRANSCRIBED here, not re-probed. Every step fails closed via WebUIProvisionError so a misconfigured
 deploy raises loud rather than leaving a half-provisioned, silently-unauthenticated client.
 
-The client is injected an httpx.Client (base_url + request_timeout wired by the launcher, M4.3c; a
+The client is injected an httpx.Client (base_url + request_timeout wired by the launcher, M4.3d; a
 test injects a MockTransport-backed one), and holds the admin JWT after authenticate(). Responses
 decode through loose msgspec structs (unknown OWUI keys ignored) -- only the load-bearing fields
 (token, model id, tool-server id) are modelled, matching the bench consumer-struct convention.
