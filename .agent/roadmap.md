@@ -175,32 +175,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   "fake client" under mypy --strict; `wait_ready` timeout test monkeypatches the shared `time` module
   for a real-time-free deterministic timeout; `_TOOL_SERVER_ID_PREFIX="server:"` single-sourced in
   client.py (bootstrap imports it). Recipe consumed → git (`git log --grep "(M4.3b"`).
-- **M4.3c — `webui/model_stub.py` hardware-free OpenAI /v1 stub** (OPEN): the stand-in the M4.3e smoke
-  runs against with NO NPU. REUSE `model_backend.models` (ChatCompletionRequest/Response, ChatMessage,
-  Choice, ModelCard, ModelList, Usage) ⇒ OWUI sees a BYTE-IDENTICAL wire contract vs the live backend;
-  hardware-free (msgspec only, no openvino; imports resolve from repo root). `create_app(model_id: str) ->
-  Litestar(route_handlers=[list_models, chat_completions], state=State({"model_id": model_id}),
-  openapi_config=None)` (OpenAPI off like model_backend; handlers read `cast("str", state["model_id"])`).
-  `list_models(state: State) -> ModelList` `@get("/v1/models", sync_to_thread=False)` → `ModelList(data=(ModelCard(
-  id=model_id, created=int(time.time())),))` — the smoke's LOAD-BEARING endpoint (OWUI enumerates it into
-  /api/models). `chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse`
-  `@post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)` → MIRROR
-  model_backend/app.py's EXACT constructor, stub reply for engine output (Choice wraps a ChatMessage,
-  every field required): `ChatCompletionResponse(id=f"chatcmpl-{uuid4().hex}", created=int(time.time()),
-  model=model_id, choices=(Choice(index=0, message=ChatMessage(role="assistant", content=_STUB_REPLY),
-  finish_reason="stop"),), usage=Usage(prompt_tokens=p, completion_tokens=c, total_tokens=p+c))` —
-  p=Σ len(m.content.split()) over data.messages, c=len(_STUB_REPLY.split()) (synthetic WORD-COUNT proxy);
-  `_STUB_REPLY` (module const) INERT until M4.5 settles it. `serve(settings: Settings) ->
-  None` = `urlparse(settings.model_backend_url)` → host/port; a None host|port ⇒ `raise ValueError` (msg
-  names "host and port"; `_require_http_url` validates scheme+host only, NOT a port —
-  so a missing one can't pick a bind → fail loud) else `uvicorn.run(create_app(settings.model_id), host=host,
-  port=port, workers=1)`. NO own `main()` — d's __main__ owns the single `Settings.from_env()` + dispatch.
-  Tests (`tests/test_webui_model_stub.py`, coverage-excluded net, Litestar `TestClient(app=create_app(…))`,
-  no socket): /v1/models lists only the id (object "list"/"model"); chat returns `_STUB_REPLY` in an OpenAI
-  envelope (object "chat.completion", finish "stop", usage.total_tokens ≥ 1); serve binds the default url →
-  127.0.0.1:8001 workers 1 (monkeypatch the SHARED `uvicorn` module, assert a Litestar app passed); serve
-  rejects a portless url (`raises(ValueError, match="host and port")`, uvicorn unreached). Acceptance: gate
-  green; stub + tests complete; the /v1 shapes pinned.
+- **M4.3c — `webui/model_stub.py` hardware-free OpenAI /v1 stub** (DONE, 62% 200K): the M4.3e-smoke
+  stand-in with NO NPU. `create_app(model_id)`/`list_models`/`chat_completions` REUSE
+  `model_backend.models` (msgspec only, no openvino — imports resolve repo-root; gate ran it hardware-free)
+  ⇒ OWUI sees a BYTE-IDENTICAL wire contract vs the live backend; chat MIRRORS model_backend/app.py's
+  response constructor with a fixed `_STUB_REPLY` (INERT until M4.5) + synthetic word-count usage.
+  `serve(settings)` = urlparse `model_backend_url` → host/port, None either ⇒ `ValueError("…host and
+  port…")` (Settings validates scheme+host, NOT port → fail loud), else `uvicorn.run(create_app(model_id),
+  workers=1)`. NO own `main()` (d's __main__ dispatches). Tests (`tests/test_webui_model_stub.py`,
+  coverage-excluded, Litestar `TestClient`, no socket) pin the /v1 shapes + serve default-bind +
+  portless-reject (monkeypatch the SHARED `uvicorn`). Recipe consumed → git (`git log --grep "(M4.3c"`).
 - **M4.3d — `webui/__main__.py` CLI dispatch + `webui/README.md`** (OPEN): wires a+b+c into runnable
   services (live confirmation = M4.3e). `_serve(settings: Settings) -> NoReturn`: `binary = settings.webui_bin`; not
   `binary.is_file()` ⇒ log + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =
