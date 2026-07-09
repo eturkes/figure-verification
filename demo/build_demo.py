@@ -154,7 +154,7 @@ def good_card(entry: dict[str, Any]) -> str:
   <div class="well"><img width="{width}" src="data:image/svg+xml;base64,{svg64}" alt="{alt}"></div>
   {render.badge_html(cert)}
   {details("Certificate JSON (pretty-printed)", "証明書JSON(整形表示)", cert_json)}
-  {details("Proposed spec (pretty-printed)", "提案された仕様(整形表示)", pretty_json(raw))}
+  {details("VPlot DSL object (JSON-like)", "VPlot DSLオブジェクト(JSON風)", pretty_json(raw))}
 </article>"""
 
 
@@ -198,7 +198,7 @@ def bad_card(entry: dict[str, Any]) -> str:
   <p class="stage"><span lang="en">{escape(stage_en)}</span><span lang="ja">{escape(stage_ja)}</span></p>
   <div class="nochart">{bi("No chart rendered", "チャートは描画されません")}</div>
   {details("Verifier messages (failing checks)", "検証器メッセージ(不合格の検査)", verdict)}
-  {details("Proposed spec (pretty-printed)", "提案された仕様(整形表示)", pretty_json(raw))}
+  {details("VPlot DSL object (JSON-like)", "VPlot DSLオブジェクト(JSON風)", pretty_json(raw))}
 </article>"""
 
 
@@ -231,6 +231,9 @@ h2{margin:52px 0 8px;font-size:1.3rem;display:flex;gap:.6em;align-items:baseline
 .bi-stack p+p{margin-top:2px}
 .lede{margin:14px 0 0;max-width:75ch}
 .lede p{color:var(--ink2);font-size:.95rem}
+.dsl-note{margin-top:16px;border-left:4px solid var(--ink);padding:8px 0 8px 14px;max-width:82ch}
+.dsl-note p{margin:0;color:var(--ink2);font-size:.9rem}
+.dsl-note code{color:var(--ink)}
 .count{font-size:.85rem;font-weight:600;color:var(--ink2);border:1px solid var(--hairline);
   border-radius:999px;padding:1px 10px}
 .intro{margin:0 0 16px;max-width:75ch}
@@ -318,10 +321,12 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
                 1,
                 "Propose",
                 "提案",
-                "An untrusted model emits a VPlot spec: pure JSON data — transforms, encoding, "
-                "a declared dataset hash. Never plotted values, never code.",
-                "信頼されていないモデルがVPlot仕様を出力します。変換・エンコーディング・宣言された"
-                "データセットハッシュからなる純粋なJSONデータです。プロット値もコードも一切含みません。",
+                "An untrusted model emits one VPlot object. VPlot is this project's small "
+                "JSON-like DSL: transforms, encoding, and a declared dataset hash. It is not "
+                "Vega-Lite, arbitrary JSON, plotted values, or code.",
+                "信頼されていないモデルはVPlotオブジェクトを1つ出力します。VPlotはこのプロジェクトの"
+                "小さなJSON風DSLです。変換、エンコーディング、宣言されたデータセットハッシュだけを"
+                "持ち、Vega-Liteでも任意JSONでもプロット値でもコードでもありません。",
             ),
             step(
                 2,
@@ -368,14 +373,23 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
   <p class="tag" lang="ja">すべての検査に合格したチャートだけが描画されます。</p>
   <div class="lede">{
         bi_stack(
-            "A weak local LLM only proposes a restricted JSON chart spec (VPlot). A separate "
-            "trusted verifier deterministically recomputes the plotted data from the source CSV, "
-            "runs structured checks, blocks any spec that fails, and renders only verified "
-            "charts — each carrying a provenance certificate.",
-            "非力なローカルLLMは、制限付きJSONチャート仕様(VPlot)を提案するだけです。独立した"
-            "信頼済み検証器がソースCSVからプロットデータを決定論的に再計算し、構造化された検査を"
-            "実行して、不合格の仕様をブロックし、検証済みチャートのみを描画します。各チャートには"
-            "来歴証明書が付属します。",
+            "A weak local LLM only proposes VPlot: a restricted, JSON-like, project-specific "
+            "DSL for chart intent. A separate trusted verifier deterministically recomputes "
+            "the plotted data from the source CSV, runs structured checks, blocks any DSL "
+            "object that fails, and renders only verified charts — each carrying a provenance "
+            "certificate.",
+            "非力なローカルLLMは、VPlotだけを提案します。VPlotはチャート意図を表す、制限付きの"
+            "JSON風・プロジェクト固有DSLです。独立した信頼済み検証器がソースCSVからプロット"
+            "データを決定論的に再計算し、構造化された検査を実行して、不合格のDSLオブジェクトを"
+            "ブロックし、検証済みチャートのみを描画します。各チャートには来歴証明書が付属します。",
+        )
+    }</div>
+  <div class="dsl-note">{
+        bi_stack(
+            "Read the expanded spec panels as VPlot DSL objects serialized in JSON syntax: "
+            "the keys are this verifier's vocabulary, not generic Vega-Lite options.",
+            "展開された仕様パネルは、JSON構文で直列化されたVPlot DSLオブジェクトとして読んでください。"
+            "キーはこの検証器の語彙であり、汎用Vega-Liteオプションではありません。",
         )
     }</div>
   <div class="tiles">{tiles}</div>
@@ -417,14 +431,14 @@ def build_page(good_cards: list[str], bad_cards: list[str]) -> str:
 {
         bi_stack(
             "“Verified” means four artifacts are mutually consistent and every check passed: the "
-            "spec validated against the VPlot v0.1 DSL; the plotted table the verifier recomputed "
-            "independently from the source CSV; the emitted Vega-Lite, which inlines only that "
-            "recomputed table; and the provenance badge (dataset hash, spec hash, plotted-table "
-            "hash, passed checks).",
+            "VPlot v0.1 DSL object validated as this project's JSON-like vocabulary; the plotted "
+            "table the verifier recomputed independently from the source CSV; the emitted "
+            "Vega-Lite, which inlines only that recomputed table; and the provenance badge "
+            "(dataset hash, spec hash, plotted-table hash, passed checks).",
             "「検証済み」とは、4つの成果物が相互に整合し、すべての検査に合格したことを意味します:"
-            "VPlot v0.1 DSLとして検証された仕様、検証器がソースCSVから独立に再計算したプロット表、"
-            "その再計算された表のみを埋め込むVega-Lite出力、そして来歴バッジ(データセットハッシュ、"
-            "仕様ハッシュ、プロット表ハッシュ、合格した検査)です。",
+            "このプロジェクトのJSON風語彙として検証されたVPlot v0.1 DSLオブジェクト、検証器が"
+            "ソースCSVから独立に再計算したプロット表、その再計算された表のみを埋め込むVega-Lite出力、"
+            "そして来歴バッジ(データセットハッシュ、仕様ハッシュ、プロット表ハッシュ、合格した検査)です。",
         )
     }
 {
