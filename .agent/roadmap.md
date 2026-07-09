@@ -178,13 +178,15 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
 - **M4.3c — `webui/model_stub.py` hardware-free OpenAI /v1 stub** (DONE, 62% 200K): the M4.3e-smoke
   stand-in with NO NPU. `create_app(model_id)`/`list_models`/`chat_completions` REUSE
   `model_backend.models` (msgspec only, no openvino — imports resolve repo-root; gate ran it hardware-free)
-  ⇒ OWUI sees a BYTE-IDENTICAL wire contract vs the live backend; chat MIRRORS model_backend/app.py's
-  response constructor with a fixed `_STUB_REPLY` (INERT until M4.5) + synthetic word-count usage.
-  `serve(settings)` = urlparse `model_backend_url` → host/port, None either ⇒ `ValueError("…host and
-  port…")` (Settings validates scheme+host, NOT port → fail loud), else `uvicorn.run(create_app(model_id),
-  workers=1)`. NO own `main()` (d's __main__ dispatches). Tests (`tests/test_webui_model_stub.py`,
-  coverage-excluded, Litestar `TestClient`, no socket) pin the /v1 shapes + serve default-bind +
-  portless-reject (monkeypatch the SHARED `uvicorn`). Recipe consumed → git (`git log --grep "(M4.3c"`).
+  ⇒ OWUI sees the SAME /v1 wire SHAPE as the live backend (routes, status, object literals, msgspec
+  field order); chat builds the same response STRUCT with synthetic VALUES (fixed `_STUB_REPLY` INERT
+  until M4.5, word-count usage, always finish `stop`). `serve(settings)` = urlparse `model_backend_url`,
+  fail loud unless it is `http://<host>:<port>/v1` the stub can bind+serve (rejects non-http, non-`/v1`
+  path, missing/non-numeric port — Settings only checks scheme+host), else `uvicorn.run(…, workers=1)`.
+  NO own `main()` (d's __main__ dispatches). Tests (`tests/test_webui_model_stub.py`, coverage-excluded,
+  Litestar `TestClient`, no socket) pin the full /v1 key-sets + OWUI extra-field tolerance + serve
+  default-bind + unservable-URL rejects (monkeypatch the SHARED `uvicorn`). Recipe consumed → git
+  (`git log --grep "(M4.3c"`).
 - **M4.3d — `webui/__main__.py` CLI dispatch + `webui/README.md`** (OPEN): wires a+b+c into runnable
   services (live confirmation = M4.3e). `_serve(settings: Settings) -> NoReturn`: `binary = settings.webui_bin`; not
   `binary.is_file()` ⇒ log + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =

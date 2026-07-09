@@ -5,10 +5,11 @@ The three-service smoke needs an OpenAI-compatible backend on :8001, but the liv
 NPU-gated (OpenVINO resolves via PYTHONPATH, the intel-accel env sourced). This stub serves the two
 routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it into /api/models)
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
-structs only, no openvino import), so OWUI sees a BYTE-IDENTICAL wire contract versus the live
-backend, and returns a fixed reply instead of generating one. It proposes no real spec, so the smoke
-exercises provisioning + model enumeration + tool registration, never the verify path; M4.5 runs
-that against the live backend.
+structs only, no openvino import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
+routes, status codes, object literals, and msgspec field order), and returns a fixed reply instead
+of generating one -- the response VALUES are synthetic (see chat_completions). It proposes no real
+spec, so the smoke exercises provisioning + model enumeration + tool registration, never the verify
+path; M4.5 runs that against the live backend.
 
 Not the trusted verifier and not even the real proposer -- a test fixture. Like the rest of webui/
 it is coverage-excluded and unshipped, importing only gate-venv deps (msgspec / litestar / uvicorn),
@@ -53,10 +54,11 @@ def list_models(state: State) -> ModelList:
 def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
     """Return the fixed stub reply in an OpenAI chat-completion envelope.
 
-    Mirrors model_backend/app.py's response constructor exactly (Choice wraps a ChatMessage, every
-    field required) so the wire contract is byte-identical, but skips generation: the content is the
-    static _STUB_REPLY and usage is a synthetic word-count proxy (prompt = summed message words,
-    completion = reply words). Generation params (temperature / max_tokens) are ignored.
+    Builds the same ChatCompletionResponse SHAPE as model_backend/app.py (Choice wraps a
+    ChatMessage, every field required) so the wire schema and field order match, but the VALUES are
+    synthetic: static _STUB_REPLY content, always finish_reason "stop" (the live backend may also
+    emit "length"), and a word-count usage proxy (prompt = summed message words, completion = reply
+    words). Generation params (temperature / max_tokens) are ignored.
     """
     model_id = cast("str", state["model_id"])
     prompt_tokens = sum(len(m.content.split()) for m in data.messages)
@@ -94,15 +96,32 @@ def create_app(model_id: str) -> Litestar:
 
 
 def serve(settings: Settings) -> None:
-    """Serve the stub on the host/port parsed from settings.model_backend_url (one uvicorn worker).
+    """Serve the stub on the host/port from settings.model_backend_url (one uvicorn worker).
 
-    _require_http_url (Settings.__post_init__) validates the url's scheme + host but NOT a port, so
-    a port-less base-url passes construction yet cannot pick a bind target -- fail loud here rather
-    than letting uvicorn default to an unintended port. One worker matches model_backend's serve.
+    Settings validates model_backend_url as an http(s) URL with a host, but not that the stub can
+    actually bind and serve it: the stub mounts plain-HTTP routes under a fixed /v1, so only
+    http://<host>:<port>/v1 is honorable. A base-url OWUI would be handed but the stub cannot serve
+    (https, a non-/v1 path, a missing or non-numeric port) passes construction yet would surface as
+    a TLS error or a 404 deep in the smoke -- fail loud here instead. .port raises on a non-numeric
+    port, so read it defensively. One worker matches model_backend's serve.
     """
     parsed = urlparse(settings.model_backend_url)
-    host, port = parsed.hostname, parsed.port
-    if host is None or port is None:
-        msg = f"model_backend_url must include a host and port, got {settings.model_backend_url!r}"
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    host = parsed.hostname
+    if (
+        parsed.scheme != "http"
+        or host is None
+        or port is None
+        or parsed.path.rstrip("/") != "/v1"
+        or parsed.query
+        or parsed.fragment
+    ):
+        msg = (
+            "model_backend_url must be http://<host>:<port>/v1 for the stub to bind and serve it, "
+            f"got {settings.model_backend_url!r}"
+        )
         raise ValueError(msg)
     uvicorn.run(create_app(settings.model_id), host=host, port=port, workers=1)
