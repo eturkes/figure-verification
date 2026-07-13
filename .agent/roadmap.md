@@ -202,13 +202,17 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   returning int for the exit code. No `from __future__` (py3.13 PEP-604; siblings omit it). Log paths
   + status, never secrets. __init__.py UNTOUCHED (landed M4.3a).
 
-  CONSUMED SURFACE (exact — do not open the modules):
+  CONSUMED SURFACE (source-VERIFIED, drift-check DISCHARGED — these 4 modules are UNCHANGED since
+  M4.3a/b/c; confirm with one `git log --oneline -1 -- webui/settings.py webui/client.py
+  webui/bootstrap.py webui/model_stub.py` (newest touch = the M4.3c commit; anything newer = drift →
+  re-verify that module) instead of re-opening them):
   · `from webui.settings import Settings` — frozen msgspec Struct, EVERY field defaulted ⇒ `Settings()`
     bare-constructs (post_init passes on defaults). Reads `.webui_bin: Path`, `.host: str`, `.port:
     int`, `.base_url: str` (property), `.request_timeout: float`, `.child_env() -> dict[str,str]`
     (hermetic exec env = an 8-key PATH/HOME/locale passthrough from os.environ overlaid with
     launch_env ⇒ ALWAYS carries `OFFLINE_MODE="true"`, carries `PATH` iff in os.environ, DROPS every
-    os.environ key outside the allowlist). `Settings.from_env() -> Settings` (@classmethod, no args).
+    os.environ key outside the allowlist). `Settings.from_env() -> Settings` (@classmethod, annotated
+    `-> Self`, no args — the caller receives a `Settings`).
   · `from webui.client import WebUIClient, WebUIProvisionError` — `WebUIClient(http: httpx.Client,
     settings: Settings)`; `WebUIProvisionError(RuntimeError)`.
   · `from webui.bootstrap import run_bootstrap, SmokeResult` — `run_bootstrap(client, settings) ->
@@ -227,7 +231,8 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
     M4.3a hermetic boundary; execve is typed NoReturn in typeshed ⇒ `-> NoReturn` type-checks).
   · `_bootstrap(settings) -> int`: `try:` `with httpx.Client(base_url=settings.base_url,
     timeout=settings.request_timeout) as http:` `result = run_bootstrap(WebUIClient(http, settings),
-    settings)` / `except WebUIProvisionError:` `_LOGGER.error` + `return 1`; then `if not result.ok:`
+    settings)` / `except WebUIProvisionError:` `_LOGGER.exception` (TRY400 — `.exception`, NOT `.error`,
+    inside an except arm) + `return 1`; then `if not result.ok:`
     `_LOGGER.error` + `return 1`; else `_LOGGER.info` + `return 0`. (mypy: `result` is bound past the
     except because that arm returns.)
   · `_parse_args(argv: Sequence[str] | None) -> str`: `argparse.ArgumentParser`, one positional
@@ -235,7 +240,9 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
     parser.parse_args(argv).command)` (Namespace attrs are Any → cast dodges no-any-return).
   · `main(argv: Sequence[str] | None = None) -> int`: `logging.basicConfig(level=logging.INFO)`;
     `command = _parse_args(argv)`; `settings = Settings.from_env()`; then if/elif/ELSE (else keeps
-    mypy return-exhaustive): `if command == "serve": _serve(settings)` (NoReturn) `elif command ==
+    mypy return-exhaustive; RET503 does NOT fire — the NoReturn `_serve` branch satisfies ruff's
+    implicit-return check, no trailing `return` needed): `if command == "serve": _serve(settings)`
+    (NoReturn) `elif command ==
     "stub": serve_stub(settings); return 0` `else: return _bootstrap(settings)`.
 
   Tests `tests/test_webui_cli.py` (SPDX + docstring; webui is coverage-excluded ⇒ a bench-style loop,
@@ -243,7 +250,8 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   as cli`, `from webui.settings import Settings`, `from webui.bootstrap import SmokeResult`, `from
   webui.client import WebUIProvisionError`, `import os`, `import pytest`. Custom test exceptions take
   the N818 `Error` suffix (`tests/**` ignores S101/PLR2004/TID251, NOT N818). Type every fake (mypy
-  --strict spans tests): execve fake `(path: str, argv: list[str], env: dict[str, str]) -> NoReturn`;
+  --strict spans tests): execve fake `(_path: str, argv: list[str], env: dict[str, str]) -> NoReturn`
+  (leading `_` on the unused `path` dodges ARG001 — `tests/**` does NOT ignore ARG);
   dispatch stubs `(settings: Settings) -> …` (the `_serve` stub `-> NoReturn`, it records then raises;
   `serve_stub` `-> None`; `_bootstrap` `-> int`); run_bootstrap fake `(client: object, settings:
   Settings) -> SmokeResult`.
@@ -258,7 +266,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
     ["bootstrap"]) == 0`; recorded is _SENTINEL.
   · `_serve` hermetic exec: `binary = tmp_path/"open-webui"; binary.touch()`; `settings =
     Settings(webui_bin=binary)`; `monkeypatch.setenv("PATH", "/usr/bin")`;
-    `monkeypatch.setenv("WEBUI_PROVISION_LEAK", "x")`; `fake_execve(path, argv, env)` captures env
+    `monkeypatch.setenv("WEBUI_PROVISION_LEAK", "x")`; `fake_execve(_path, argv, env)` captures env
     then raises `_ExecedError`; `monkeypatch.setattr(os, "execve", fake_execve)` (shared os
     singleton); `pytest.raises(_ExecedError, cli._serve, settings)`; assert `env["OFFLINE_MODE"] ==
     "true"`, `env["PATH"] == "/usr/bin"`, `"WEBUI_PROVISION_LEAK" not in env`. Missing binary:
