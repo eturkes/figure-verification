@@ -137,6 +137,10 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   c was RE-SPLIT from a former single c (stub + __main__ CLI + README, 2 modules): it went green but
   overflowed at CLOSE — webui units run context-HOT (a/b each ONE module landed 75-77%; the dense
   OWUI-behavior memory notes + dep-file reads inflate them), so a webui unit = STRICTLY one module + its tests.
+  d then overflowed too (reads to 56% — its recipe named ~10 source files — then writing 3 deliverables +
+  gate iterations tipped the window) → d's recipe is now SELF-CONTAINED (a consumed-surface card inline, opens
+  NO webui source) and its README moved to e (authored against the verified live launch). The lesson binds
+  every remaining webui unit: bake the consumed surface INTO the recipe so the unit opens no source.
 - **M4.3a — `webui/settings.py` canonical-env container + wiring** (DONE, 75% 200K): frozen `Settings`
   (WEBUI_PROVISION_* `from_env`, `__post_init__` bounds port 1..65535 / non-empty secret+email+pw /
   finite-positive timeouts — two loops, distinct `text`/`seconds` names per the mypy landmine) emitting the
@@ -187,33 +191,85 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   Litestar `TestClient`, no socket) pin the full /v1 key-sets + OWUI extra-field tolerance + serve
   default-bind + unservable-URL rejects (monkeypatch the SHARED `uvicorn`). Recipe consumed → git
   (`git log --grep "(M4.3c"`).
-- **M4.3d — `webui/__main__.py` CLI dispatch + `webui/README.md`** (OPEN): wires a+b+c into runnable
-  services (live confirmation = M4.3e). `_serve(settings: Settings) -> NoReturn`: `binary = settings.webui_bin`; not
-  `binary.is_file()` ⇒ log + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =
-  [str(binary), "serve", "--host", settings.host, "--port", str(settings.port)]`; `os.execve(str(binary),
-  argv, settings.child_env())  # noqa: S606` (shell-free; child_env = the M4.3a hermetic boundary; execve is
-  typed NoReturn in typeshed ⇒ `_serve -> NoReturn` type-checks — the process is REPLACED). `_bootstrap(
-  settings: Settings) -> int`: `with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as
-  http: run_bootstrap(WebUIClient(http, settings), settings)`; `except WebUIProvisionError` ⇒ log + 1;
-  `not result.ok` ⇒ log + 1; else log + 0. `_parse_args(argv: Sequence[str] | None) -> str` = argparse, one
-  positional `command` choices=("serve","bootstrap","stub"), `return cast("str", args.command)` (argparse Namespace attrs are Any → no-any-return under --strict). `main(argv: Sequence[str] | None = None) -> int`: basicConfig(INFO) →
-  `_parse_args` → `Settings.from_env()` → dispatch (serve→`_serve` NoReturn; stub→`serve_stub(settings)`
-  [imported `from webui.model_stub import serve as serve_stub`] then return 0; else `_bootstrap`). `raise
-  SystemExit(main())`. __init__.py UNTOUCHED (landed M4.3a; no CLI exports needed). Tests
-  (`tests/test_webui_cli.py`, coverage-excluded net; execve/uvicorn monkeypatched, never run): `_parse_args`
-  (3 commands + unknown ⇒ SystemExit); main dispatch via a `_SENTINEL = Settings()` that `from_env` returns —
-  assert the SAME object reaches each helper; serve dispatch + execve observed through custom
-  `_ServeCalledError`/`_ExecedError` (N818: Error suffix); _serve execs with a HERMETIC env (fake binary file
-  + setenv a leak var ⇒ env has OFFLINE_MODE/PATH, LACKS the leak var), missing binary ⇒ exit 1; _bootstrap
-  parametrized (ok→0, not-ok→1, WebUIProvisionError→1). LANDMINE (no_implicit_reexport): patch the Settings
-  CLASS — `monkeypatch.setattr(Settings, "from_env", staticmethod(_fixed_from_env))` (Settings imported by
-  name), NOT `cli.Settings` (⇒ attr-defined); a string `setattr(cli, "serve_stub"|"_serve"|"_bootstrap"|
-  "run_bootstrap", …)` is fine. README.md = dense three-service recipe (bench/README style): topology
-  (verifier :8000 `.venv` `python -m verifier.service`; OpenAI backend :8001 = stub `python -m webui stub`
-  OR live model_backend; OWUI :8080 `python -m webui serve` execs `.venv-webui/bin/open-webui`) →
-  readiness-ordered launch (verifier + stub READY before OWUI, else `/api/v1/tools/` drops the verifier) →
-  `python -m webui bootstrap`; the `WEBUI_PROVISION_*` knobs; coverage-excluded/unshipped. Acceptance: gate
-  green; CLI + README complete; arg-parse/dispatch + hermetic-exec + return-code shapes pinned.
+- **M4.3d — `webui/__main__.py` CLI dispatch** (OPEN): wires a+b+c into runnable services (live
+  confirmation + README = M4.3e). SELF-CONTAINED — transcribe the CONSUMED SURFACE + helpers below,
+  the test landmines are inline; open NO webui source. File = SPDX header
+  (`# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception`) + module docstring (the harness entry
+  point: `serve` execs OWUI hermetically, `bootstrap` provisions it, `stub` serves the hardware-free
+  backend) + `_LOGGER = logging.getLogger(__name__)` + the helpers + module tail
+  `if __name__ == "__main__":` / `raise SystemExit(main())`. The GUARD is REQUIRED — an unconditional
+  tail runs main() on `import webui.__main__`, which the tests do; mirrors model_backend/__main__.py,
+  returning int for the exit code. No `from __future__` (py3.13 PEP-604; siblings omit it). Log paths
+  + status, never secrets. __init__.py UNTOUCHED (landed M4.3a).
+
+  CONSUMED SURFACE (exact — do not open the modules):
+  · `from webui.settings import Settings` — frozen msgspec Struct, EVERY field defaulted ⇒ `Settings()`
+    bare-constructs (post_init passes on defaults). Reads `.webui_bin: Path`, `.host: str`, `.port:
+    int`, `.base_url: str` (property), `.request_timeout: float`, `.child_env() -> dict[str,str]`
+    (hermetic exec env = an 8-key PATH/HOME/locale passthrough from os.environ overlaid with
+    launch_env ⇒ ALWAYS carries `OFFLINE_MODE="true"`, carries `PATH` iff in os.environ, DROPS every
+    os.environ key outside the allowlist). `Settings.from_env() -> Settings` (@classmethod, no args).
+  · `from webui.client import WebUIClient, WebUIProvisionError` — `WebUIClient(http: httpx.Client,
+    settings: Settings)`; `WebUIProvisionError(RuntimeError)`.
+  · `from webui.bootstrap import run_bootstrap, SmokeResult` — `run_bootstrap(client, settings) ->
+    SmokeResult`; `SmokeResult` (frozen kw_only) fields `model_ids: tuple[str,...]`,
+    `tool_server_ids: tuple[str,...]`, `model_enumerated: bool`, `tool_registered: bool`; `.ok =
+    model_enumerated and tool_registered`.
+  · `from webui.model_stub import serve as serve_stub` — `serve_stub(settings) -> None`.
+  · stdlib/deps: `argparse`, `logging`, `os`, `httpx`, `collections.abc.Sequence`, `typing.NoReturn`,
+    `typing.cast`.
+
+  Helpers:
+  · `_serve(settings) -> NoReturn`: `binary = settings.webui_bin`; not `binary.is_file()` ⇒
+    `_LOGGER.error` + `raise SystemExit(1)` (loud, vs a raw execve FileNotFoundError); else `argv =
+    [str(binary), "serve", "--host", settings.host, "--port", str(settings.port)]`;
+    `os.execve(str(binary), argv, settings.child_env())  # noqa: S606` (shell-free; child_env = the
+    M4.3a hermetic boundary; execve is typed NoReturn in typeshed ⇒ `-> NoReturn` type-checks).
+  · `_bootstrap(settings) -> int`: `try:` `with httpx.Client(base_url=settings.base_url,
+    timeout=settings.request_timeout) as http:` `result = run_bootstrap(WebUIClient(http, settings),
+    settings)` / `except WebUIProvisionError:` `_LOGGER.error` + `return 1`; then `if not result.ok:`
+    `_LOGGER.error` + `return 1`; else `_LOGGER.info` + `return 0`. (mypy: `result` is bound past the
+    except because that arm returns.)
+  · `_parse_args(argv: Sequence[str] | None) -> str`: `argparse.ArgumentParser`, one positional
+    `command` `choices=("serve","bootstrap","stub")`; `return cast("str",
+    parser.parse_args(argv).command)` (Namespace attrs are Any → cast dodges no-any-return).
+  · `main(argv: Sequence[str] | None = None) -> int`: `logging.basicConfig(level=logging.INFO)`;
+    `command = _parse_args(argv)`; `settings = Settings.from_env()`; then if/elif/ELSE (else keeps
+    mypy return-exhaustive): `if command == "serve": _serve(settings)` (NoReturn) `elif command ==
+    "stub": serve_stub(settings); return 0` `else: return _bootstrap(settings)`.
+
+  Tests `tests/test_webui_cli.py` (SPDX + docstring; webui is coverage-excluded ⇒ a bench-style loop,
+  NOT a branch gate; execve/uvicorn monkeypatched so nothing runs). Imports: `import webui.__main__
+  as cli`, `from webui.settings import Settings`, `from webui.bootstrap import SmokeResult`, `from
+  webui.client import WebUIProvisionError`, `import os`, `import pytest`. Custom test exceptions take
+  the N818 `Error` suffix (`tests/**` ignores S101/PLR2004/TID251, NOT N818). Type every fake (mypy
+  --strict spans tests): execve fake `(path: str, argv: list[str], env: dict[str, str]) -> NoReturn`;
+  dispatch stubs `(settings: Settings) -> …` (the `_serve` stub `-> NoReturn`, it records then raises;
+  `serve_stub` `-> None`; `_bootstrap` `-> int`); run_bootstrap fake `(client: object, settings:
+  Settings) -> SmokeResult`.
+  · `_parse_args`: each of the 3 commands returns its string; unknown ⇒ `pytest.raises(SystemExit)`.
+  · dispatch threads ONE Settings: `_SENTINEL = Settings()`; LANDMINE (no_implicit_reexport) — patch
+    the imported CLASS `monkeypatch.setattr(Settings, "from_env", staticmethod(lambda: _SENTINEL))`,
+    NOT `cli.Settings` (⇒ attr-defined); a string `setattr(cli, "_serve"|"serve_stub"|"_bootstrap"|
+    "run_bootstrap", …)` is unaffected. serve: stub `cli._serve` to record its arg then raise
+    `_ServeCalledError`; `pytest.raises(_ServeCalledError, cli.main, ["serve"])`; recorded arg is
+    _SENTINEL. stub: stub `cli.serve_stub` to record + return None; `cli.main(["stub"]) == 0`;
+    recorded is _SENTINEL. bootstrap: stub `cli._bootstrap` to record + return 0; `cli.main(
+    ["bootstrap"]) == 0`; recorded is _SENTINEL.
+  · `_serve` hermetic exec: `binary = tmp_path/"open-webui"; binary.touch()`; `settings =
+    Settings(webui_bin=binary)`; `monkeypatch.setenv("PATH", "/usr/bin")`;
+    `monkeypatch.setenv("WEBUI_PROVISION_LEAK", "x")`; `fake_execve(path, argv, env)` captures env
+    then raises `_ExecedError`; `monkeypatch.setattr(os, "execve", fake_execve)` (shared os
+    singleton); `pytest.raises(_ExecedError, cli._serve, settings)`; assert `env["OFFLINE_MODE"] ==
+    "true"`, `env["PATH"] == "/usr/bin"`, `"WEBUI_PROVISION_LEAK" not in env`. Missing binary:
+    `Settings(webui_bin=tmp_path/"absent")` ⇒ raises `SystemExit` with `.code == 1`.
+  · `_bootstrap` return codes: `setattr(cli, "run_bootstrap", fake)`, fake returns
+    `SmokeResult(model_ids=(), tool_server_ids=(), model_enumerated=b, tool_registered=b)` — b True⇒0,
+    b False⇒1 — or raises `WebUIProvisionError`⇒1. (httpx.Client + WebUIClient construct without I/O;
+    only run_bootstrap is faked.)
+
+  Acceptance: gate green (`uv run --locked` ruff format --check . · ruff check . · mypy · pytest);
+  arg-parse / dispatch / hermetic-exec / return-code shapes pinned.
 - **M4.3e — live 3-service provisioning smoke + evidence** (OPEN): the hardware-free live confirmation of
   a+b+c+d (the stub stands in for the NPU; asserts model-enumeration + tool-registration + idempotency, NOT a
   chat round-trip — that is M4.5). Recipe: wipe `.webui-data`; launch verifier :8000 + stub :8001 and WAIT for
@@ -222,8 +278,14 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   verifier must answer by the readback; then launch OWUI-via-launcher + `python -m webui bootstrap` → smoke
   passes (model_id enumerated, `server:verifier` registered). Re-run bootstrap against the still-running OWUI
   → idempotent PASS via the signin fallback (signup returns 403 same-process; no new DB/config writes), smoke
-  still green. Record the evidence + fix any surfaced gap; then kill the services + wipe scratch. Acceptance:
-  both bootstrap runs green from a clean `.webui-data`; readiness-ordered launch; evidence recorded.
+  still green. Then author `webui/README.md` from THIS verified launch (dense, bench/README style): the
+  three-service topology (verifier :8000 `python -m verifier.service`; OpenAI backend :8001 = the stub
+  `python -m webui stub` OR the live NPU model_backend; OWUI :8080 `python -m webui serve` → execs
+  `.venv-webui/bin/open-webui` hermetically) → readiness-ordered launch (verifier + backend READY before
+  OWUI, else `/api/v1/tools/` drops the verifier) → `python -m webui bootstrap`; the `WEBUI_PROVISION_*`
+  knobs; coverage-excluded + unshipped. Record the evidence + fix any surfaced gap; then kill the services +
+  wipe scratch. Acceptance: both bootstrap runs green from a clean `.webui-data`; readiness-ordered launch;
+  README documents the verified recipe; evidence recorded.
 - **M4.4 — enforcement filter** (OPEN): `webui/` filter module — pure chart-like classifier (matplotlib/
   plotly/altair/seaborn fences, `<svg`, vega-lite JSON, mermaid, data-URI images ↔ prose + verified-embed
   negatives) + Filter class (outlet rewrites unverified chart-like assistant output, logs what it blocked);
