@@ -200,22 +200,17 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   instance, exact exec path/vector/hermetic env, missing-binary failure, and bootstrap codes; module
   import + `python -m webui --help` exit cleanly. Live confirmation + README remain M4.3e. Recipe
   consumed → git (`git log --grep "(M4.3d"`).
-- **M4.3e — live 3-service provisioning smoke + evidence** (OPEN): the hardware-free live confirmation of
-  a+b+c+d (the stub stands in for the NPU; asserts model-enumeration + tool-registration + idempotency, NOT a
-  chat round-trip — that is M4.5). Recipe: wipe `.webui-data`; launch verifier :8000 + stub :8001 and WAIT for
-  each ready (verifier `/health` or `/schema/openapi.json` 200, stub `/v1/models` 200) BEFORE launching OWUI —
-  `/api/v1/tools/` live-re-fetches and DROPS a server whose OpenAPI fetch fails (utils/tools.py), so the
-  verifier must answer by the readback; then launch OWUI-via-launcher + `python -m webui bootstrap` → smoke
-  passes (model_id enumerated, `server:verifier` registered). Re-run bootstrap against the still-running OWUI
-  → idempotent PASS via the signin fallback (signup returns 403 same-process; no new DB/config writes), smoke
-  still green. Then author `webui/README.md` from THIS verified launch (dense, bench/README style): the
-  three-service topology (verifier :8000 `python -m verifier.service`; OpenAI backend :8001 = the stub
-  `python -m webui stub` OR the live NPU model_backend; OWUI :8080 `python -m webui serve` → execs
-  `.venv-webui/bin/open-webui` hermetically) → readiness-ordered launch (verifier + backend READY before
-  OWUI, else `/api/v1/tools/` drops the verifier) → `python -m webui bootstrap`; the `WEBUI_PROVISION_*`
-  knobs; coverage-excluded + unshipped. Record the evidence + fix any surfaced gap; then kill the services +
-  wipe scratch. Acceptance: both bootstrap runs green from a clean `.webui-data`; readiness-ordered launch;
-  README documents the verified recipe; evidence recorded.
+- **M4.3e — live 3-service provisioning smoke + evidence** (DONE): from a wiped `.webui-data`,
+  verifier :8000 + hardware-free OpenAI stub :8001 answered before the hermetic launcher started Open
+  WebUI :8080. Open WebUI initialized one tool server; startup + both `/api/v1/tools/` readbacks fetched
+  `/schema/openapi.json`, and both `/api/models` readbacks fetched `/v1/models`. Bootstrap 1 passed with
+  signup 200; bootstrap 2 passed idempotently through signup 403 → signin 200; each found the configured
+  model + `server:verifier` and exited 0. This proves provisioning, NOT chat/tool execution (M4.5).
+  Boot logs exposed a real config gap: the 23-byte dev JWT secret tripped PyJWT's HS256 minimum warning →
+  `Settings` now enforces ≥32 UTF-8 bytes for defaults + overrides, its regression net pins the bound, and
+  the final clean rerun was warning-free on that axis. `webui/README.md` records the exact setup, topology,
+  readiness order, stub/NPU alternatives, bootstrap semantics, limits, and every `WEBUI_PROVISION_*` knob.
+  All services stopped + scratch wiped; gate green (769 tests, 100% verifier branch coverage).
 - **M4.4 — enforcement filter** (OPEN): `webui/` filter module — pure chart-like classifier (matplotlib/
   plotly/altair/seaborn fences, `<svg`, vega-lite JSON, mermaid, data-URI images ↔ prose + verified-embed
   negatives) + Filter class (outlet rewrites unverified chart-like assistant output, logs what it blocked);

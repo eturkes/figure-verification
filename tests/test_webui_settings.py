@@ -4,11 +4,12 @@
 webui/ is a coverage-excluded harness, not part of the verifier claim, so these are a bench-style
 regression net rather than a 100%-branch gate. Locked here:
 
-- every fail-closed bound (__post_init__): port range, non-empty secret / admin email / password,
-  finite-positive request and ready timeouts, http(s) verifier / model-backend URLs, bare host;
+- every fail-closed bound (__post_init__): port range, >=32-byte secret, non-empty admin email /
+  password, finite-positive request and ready timeouts, http(s) verifier / model-backend URLs,
+  bare host;
 - launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the five
-  per-instance derived keys, and stays independent of ambient os.environ (the launcher's
-  override-only merge is only sound if launch_env pins each axis regardless of the environment);
+  per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
+  only the curated process base;
 - the load-bearing _FIXED_ENV values (persistent-config off, empty task model, legacy FC, every
   background-generation toggle off, plus the auth / bootstrap login model -- auth on, password
   login, public signup off, no boot auto-admin, no trusted-header) pinned directly, so a flip fails;
@@ -58,6 +59,7 @@ _BAD_CONFIGS: list[tuple[Callable[[], Settings], str]] = [
     (lambda: Settings(port=0), "port"),
     (lambda: Settings(port=65536), "port"),
     (lambda: Settings(secret_key=""), "secret_key"),
+    (lambda: Settings(secret_key="x" * 31), "secret_key"),
     (lambda: Settings(admin_email=""), "admin_email"),
     (lambda: Settings(admin_password=""), "admin_password"),
     (lambda: Settings(request_timeout=0.0), "request_timeout"),
@@ -86,6 +88,11 @@ def test_defaults_construct() -> None:
     settings = Settings()
     assert settings.base_url == "http://127.0.0.1:8080"
     assert settings.tool_server_id == "verifier"
+
+
+def test_secret_key_bound_counts_utf8_bytes() -> None:
+    settings = Settings(secret_key="é" * 16)
+    assert len(settings.secret_key.encode()) == 32
 
 
 def test_frozen() -> None:
@@ -201,11 +208,12 @@ def test_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _PROVISION_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("WEBUI_PROVISION_PORT", "9999")
-    monkeypatch.setenv("WEBUI_PROVISION_SECRET_KEY", "override-secret")
+    override_secret = "override-secret-at-least-thirty-two-bytes"  # noqa: S105
+    monkeypatch.setenv("WEBUI_PROVISION_SECRET_KEY", override_secret)
     monkeypatch.setenv("WEBUI_PROVISION_DATA_DIR", "custom-data")
     monkeypatch.setenv("WEBUI_PROVISION_READY_TIMEOUT", "5.5")
     settings = Settings.from_env()
     assert settings.port == 9999
-    assert settings.secret_key == "override-secret"  # noqa: S105 (test literal, not a real secret)
+    assert settings.secret_key == override_secret
     assert settings.data_dir == Path("custom-data")
     assert settings.ready_timeout == 5.5

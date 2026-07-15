@@ -41,7 +41,9 @@ _DEFAULT_PORT = 8080
 _DEFAULT_DATA_DIR = ".webui-data"
 # Loopback dev defaults, overridable via WEBUI_PROVISION_*: the whole stack binds loopback, so a
 # fixed secret / password is acceptable for the PoC harness (S105 flags the literal, not a leak).
-_DEFAULT_SECRET_KEY = "loopback-dev-secret-key"  # noqa: S105
+# Keep the secret >= 32 UTF-8 bytes: RFC 7518 requires an HS256 key at least as wide as its
+# 256-bit hash, and PyJWT warns on every encode/decode when given a shorter value.
+_DEFAULT_SECRET_KEY = "loopback-dev-secret-key-for-local-poc"  # noqa: S105
 _DEFAULT_ADMIN_NAME = "operator"
 _DEFAULT_ADMIN_EMAIL = "operator@localhost"
 _DEFAULT_ADMIN_PASSWORD = "loopback-dev-password"  # noqa: S105
@@ -55,6 +57,7 @@ _DEFAULT_REQUEST_TIMEOUT = 30.0
 _DEFAULT_READY_TIMEOUT = 60.0
 # Named to dodge PLR2004 (magic-value comparison) in the port bound.
 _MAX_PORT = 65535
+_MIN_SECRET_KEY_BYTES = 32
 
 # The verifier tool-server registration OWUI reads from TOOL_SERVER_CONNECTIONS. The id becomes the
 # OWUI tool group "server:<id>"; the name is the readback label (memory M4 Provisioning-SETTLED-
@@ -69,8 +72,8 @@ _PROPOSE_OPERATION_ID = "proposeSpec"
 
 # The Open WebUI environment launch_env() emits verbatim, independent of any Settings field. OWUI
 # compares booleans as os.getenv(...).lower() == "true" (config.py / env.py), so "false" disables
-# and "true" enables regardless of case. Every axis is pinned because the launcher merges this
-# override-only over os.environ -- an unpinned key would let an ambient value leak in.
+# and "true" enables regardless of case. child_env() layers these pins over a curated process base;
+# ambient Open WebUI config never enters the child.
 _FIXED_ENV: dict[str, str] = {
     # Config lives in env, never the DB: with persistent-config off, every boot reads these env
     # values and UI/REST config edits do not stick (the whole provisioning model, memory M4).
@@ -182,10 +185,13 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         if not 1 <= self.port <= _MAX_PORT:
             msg = f"port must be in 1..{_MAX_PORT}, got {self.port}"
             raise ValueError(msg)
-        # Each hard-breaks OWUI when empty: an empty WEBUI_SECRET_KEY is fatal under auth (env.py),
-        # and an empty admin email / password breaks signup and signin (bootstrap).
+        # PyJWT warns below the RFC 7518 HS256 key minimum; enforce it at the operator boundary
+        # rather than admitting a boot that only reports the defect in logs.
+        if len(self.secret_key.encode()) < _MIN_SECRET_KEY_BYTES:
+            msg = f"secret_key must be at least {_MIN_SECRET_KEY_BYTES} UTF-8 bytes"
+            raise ValueError(msg)
+        # Each hard-breaks bootstrap when empty: admin email / password feed signup and signin.
         for name, text in (
-            ("secret_key", self.secret_key),
             ("admin_email", self.admin_email),
             ("admin_password", self.admin_password),
         ):
