@@ -29,6 +29,7 @@ import logging
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import msgspec
@@ -66,10 +67,10 @@ _BUCKET_PROMPT_POLICY = "prompt_policy"
 _BUCKET_UPSTREAM_FAULT = "upstream_fault"
 _BUCKET_HARNESS_ERROR = "harness_error"
 
-# Policy check families: units, arbitrary-code, and bar-baseline concerns. Every other verify
-# check family is semantic. Today only label.quantitative_units_present can FAIL among these
-# (security.no_arbitrary_code is a pass-only affirmation; scale.* is a certificate string), but
-# keeping all three is correct by construction -- a future failing policy check buckets right.
+# Policy check families: units, arbitrary-code, and bar-baseline concerns. Resource-policy method
+# failures are also policy regardless of dotted family. Every other verify check is semantic.
+# Today only label.quantitative_units_present can FAIL among these families
+# (security.no_arbitrary_code is a pass-only affirmation; scale.* is a certificate string).
 _POLICY_FAMILIES = frozenset({"label", "security", "scale"})
 
 # Reply-shape taxonomy over a 200 model reply -- WHY the strict decode gate fails (codex-review
@@ -81,10 +82,19 @@ _SHAPE_OTHER = "other"  # none of the above (prose, a list, a truncated fragment
 # Pulls the first ```-fenced block's body so a fence-wrapped spec can be re-parsed.
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
+_RespMethod = Literal[
+    "schema_validation",
+    "resource_policy",
+    "deterministic_recompute",
+    "construction",
+    "z3_smt",
+]
+
 
 # --- loose decode structs (subset of each service payload; unknown keys ignored) ------------
 class _RespCheck(msgspec.Struct):
     check: str
+    method: _RespMethod
     status: str
 
 
@@ -261,11 +271,14 @@ def _classify(verdict: _RespVerdict) -> str:
         return _BUCKET_VERIFIED
     if verdict.layer == "decode":
         return _BUCKET_SCHEMA
-    failing = tuple(r.check for r in verdict.results if r.status == "fail")
-    # Policy only when >=1 check failed and all failing families are policy; otherwise semantic.
+    failing = tuple(r for r in verdict.results if r.status == "fail")
+    # Policy only when >=1 check failed and every failure is either a resource-policy result or
+    # belongs to a policy concern family; otherwise semantic. Method is required on the loose
+    # response struct, so an old pre-0.2 response cannot be silently misclassified.
     # An empty failing set (verified False yet nothing failed) is a drift the service precludes.
     only_policy = bool(failing) and all(
-        check.split(".", 1)[0] in _POLICY_FAMILIES for check in failing
+        result.method == "resource_policy" or result.check.split(".", 1)[0] in _POLICY_FAMILIES
+        for result in failing
     )
     return _BUCKET_POLICY if only_policy else _BUCKET_SEMANTIC
 

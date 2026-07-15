@@ -39,16 +39,97 @@ from verifier.eval import EvaluationError, evaluate_run
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
 from verifier.schema import Aggregate, ChannelType, VPlotSpec, _Base
 
-
 # --- structured verdict ------------------------------------------------------
+CheckMethod = Literal[
+    "schema_validation",
+    "resource_policy",
+    "deterministic_recompute",
+    "construction",
+    "z3_smt",
+]
+
+
 class CheckResult(_Base, frozen=True, kw_only=True):
-    """One blocking check's verdict. `check` is the dotted name; `severity` is a single
-    reserved value (advisory tiers are future work), so `passed` consults `status` only."""
+    """One blocking check's verdict and the method that established it.
+
+    ``method`` is closed and orthogonal to the dotted ``check`` family: evaluator failures named
+    ``schema.*`` still arise from deterministic recomputation, while ``spec.decode`` is schema
+    validation. ``severity`` has one reserved value (advisory tiers are future work), so
+    :attr:`VerificationReport.passed` consults ``status`` only.
+    """
 
     check: str
+    method: CheckMethod
     status: Literal["pass", "fail"]
     severity: Literal["blocking"]
     message: str
+
+
+# Exact registry = one internal source of method provenance. Dynamic VerificationError tags are
+# admitted only through this table: a new check must make its method choice explicit before it can
+# become a public result. ``z3_smt`` is already in CheckMethod for M5.2b, but has no result ID yet.
+_CHECK_METHODS: dict[str, CheckMethod] = {
+    # Service-only schema prerequisites.
+    "spec.decode": "schema_validation",
+    "dataset.manifest_available": "schema_validation",
+    # Logical resource ceilings across core verification and rendering.
+    "resource.file_bytes": "resource_policy",
+    "resource.manifest_columns": "resource_policy",
+    "resource.source_rows": "resource_policy",
+    "resource.source_cells": "resource_policy",
+    "resource.eval_work": "resource_policy",
+    "resource.plotted_cells": "resource_policy",
+    "resource.render_rows": "resource_policy",
+    "resource.vega_bytes": "resource_policy",
+    "resource.attestation_bytes": "resource_policy",
+    "resource.svg_bytes": "resource_policy",
+    "resource.html_bytes": "resource_policy",
+    # Active binding, data-integrity, evaluator, encoding, and label checks.
+    "dataset.hash_matches_source": "deterministic_recompute",
+    "data.charset": "deterministic_recompute",
+    "data.csv_syntax": "deterministic_recompute",
+    "data.header": "deterministic_recompute",
+    "data.row_width": "deterministic_recompute",
+    "data.numeric_value": "deterministic_recompute",
+    "data.temporal_value": "deterministic_recompute",
+    "transform.group_by_placement": "deterministic_recompute",
+    "group_by.keys_distinct": "deterministic_recompute",
+    "select.fields_distinct": "deterministic_recompute",
+    "schema.fields_exist": "deterministic_recompute",
+    "filter.value_type": "deterministic_recompute",
+    "sort.fields_distinct": "deterministic_recompute",
+    "aggregate.output_unique": "deterministic_recompute",
+    "schema.field_types_match": "deterministic_recompute",
+    "sort.field_in_plotted_table": "deterministic_recompute",
+    "encoding.fields_exist_in_plotted_table": "deterministic_recompute",
+    "encoding.axis_types_match_fields": "deterministic_recompute",
+    "label.quantitative_units_present": "deterministic_recompute",
+    # Constant trust-spine affirmations whose truth follows from the architecture.
+    "security.no_arbitrary_code": "construction",
+    "transform.ops_allowed": "construction",
+    "transform.filters_declared": "construction",
+    "transform.aggregates_match_recomputation": "construction",
+}
+
+
+def make_result(check: str, *, status: Literal["pass", "fail"], message: str) -> CheckResult:
+    """Build one internally emitted result from the exact check/method registry.
+
+    Unknown IDs are implementation drift, not an extensibility hook: fail before serializing a
+    result whose provenance method was never chosen.
+    """
+    try:
+        method = _CHECK_METHODS[check]
+    except KeyError:
+        msg = f"check {check!r} has no registered verification method"
+        raise ValueError(msg) from None
+    return CheckResult(
+        check=check,
+        method=method,
+        status=status,
+        severity="blocking",
+        message=message,
+    )
 
 
 class VerificationReport(_Base, frozen=True, kw_only=True):
@@ -107,11 +188,11 @@ class VerificationRun:
 
 
 def _pass(check: str, message: str) -> CheckResult:
-    return CheckResult(check=check, status="pass", severity="blocking", message=message)
+    return make_result(check, status="pass", message=message)
 
 
 def _fail(check: str, message: str) -> CheckResult:
-    return CheckResult(check=check, status="fail", severity="blocking", message=message)
+    return make_result(check, status="fail", message=message)
 
 
 # --- affirmations (true by construction; the documented trust argument) ------

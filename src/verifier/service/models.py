@@ -12,7 +12,7 @@ answers a plain Verdict, so a chart never rides an unverified outcome. Problem i
 process-local admission refusal, or a server-config fault (wrong content-type, oversize body,
 work gate exhausted, a broken trusted manifest) —
 never a verification outcome. CheckResult is reused verbatim from the trusted core
-(verifier.checks) — the transport adds no result struct or status/severity of its own. It
+(verifier.checks) — the transport adds no result struct or status/severity/method of its own. It
 does mint two fail-closed check tags the core never emits — `spec.decode` (the raw body
 would not decode) and `dataset.manifest_available` (no trusted manifest for the named
 dataset) — each a blocking pre-pipeline verdict (see pipeline.py) that can only fail closed,

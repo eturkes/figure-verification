@@ -152,6 +152,20 @@ def test_render_verdict_tracks_struct() -> None:
     assert _DOC["components"]["schemas"]["Verdict"]["properties"]["verified"] == {"type": "boolean"}
 
 
+def test_check_result_requires_closed_method_vocabulary() -> None:
+    schema = _DOC["components"]["schemas"]["CheckResult"]
+    assert "method" in schema["required"]
+    assert schema["properties"]["method"] == {
+        "enum": [
+            "construction",
+            "deterministic_recompute",
+            "resource_policy",
+            "schema_validation",
+            "z3_smt",
+        ]
+    }
+
+
 def test_post_bodies_reference_vplotspec() -> None:
     for path in ("/verify-only", "/verify-and-render"):
         body = _DOC["paths"][path]["post"]["requestBody"]
@@ -207,7 +221,13 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
             verified=False,
             layer="decode",
             results=(
-                CheckResult(check="spec.decode", status="fail", severity="blocking", message="bad"),
+                CheckResult(
+                    check="spec.decode",
+                    method="schema_validation",
+                    status="fail",
+                    severity="blocking",
+                    message="bad",
+                ),
             ),
         )
     )
@@ -263,7 +283,13 @@ def test_propose_payloads_match_schemas() -> None:
         verified=False,
         layer="decode",
         results=(
-            CheckResult(check="spec.decode", status="fail", severity="blocking", message="bad"),
+            CheckResult(
+                check="spec.decode",
+                method="schema_validation",
+                status="fail",
+                severity="blocking",
+                message="bad",
+            ),
         ),
     )
     render_verdict = RenderVerdict(

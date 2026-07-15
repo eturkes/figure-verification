@@ -70,6 +70,14 @@ def test_good_spec_verifies(client: TestClient[Litestar], entry: dict[str, Any])
     assert body["layer"] == "verify"
     assert body["results"]  # non-empty: the real check set passed through, not a vacuous all([])
     assert all(result["status"] == "pass" for result in body["results"])
+    assert all(
+        set(result) == {"check", "method", "status", "severity", "message"}
+        for result in body["results"]
+    )
+    assert {result["method"] for result in body["results"]} == {
+        "construction",
+        "deterministic_recompute",
+    }
 
 
 def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
@@ -110,6 +118,7 @@ def test_bad_spec_decode_layer(client: TestClient[Litestar], entry: dict[str, An
     assert body["layer"] == "decode"
     assert [result["check"] for result in body["results"]] == ["spec.decode"]
     assert body["results"][0]["status"] == "fail"
+    assert body["results"][0]["method"] == "schema_validation"
 
 
 # --- bad specs, semantic layer: index check among the failures ---------------
@@ -123,6 +132,9 @@ def test_bad_spec_semantic_layer(client: TestClient[Litestar], entry: dict[str, 
     assert body["layer"] == "verify"
     failed = {result["check"] for result in body["results"] if result["status"] == "fail"}
     assert entry["check"] in failed
+    assert {result["method"] for result in body["results"] if result["status"] == "fail"} == {
+        "deterministic_recompute"
+    }
 
 
 # --- the fail-closed pin: a duplicate-key body must decode-fail --------------
@@ -208,6 +220,7 @@ def test_manifest_unavailable_is_verdict_fail(tmp_path: Path) -> None:
     assert body["verified"] is False
     assert body["layer"] == "verify"
     assert [result["check"] for result in body["results"]] == ["dataset.manifest_available"]
+    assert body["results"][0]["method"] == "schema_validation"
 
 
 def test_oversized_manifest_is_resource_verdict(tmp_path: Path) -> None:
@@ -225,6 +238,7 @@ def test_oversized_manifest_is_resource_verdict(tmp_path: Path) -> None:
     assert body["verified"] is False
     assert body["layer"] == "verify"
     assert [result["check"] for result in body["results"]] == ["resource.file_bytes"]
+    assert body["results"][0]["method"] == "resource_policy"
     assert "evidence" not in body
     assert "trace" not in body
 

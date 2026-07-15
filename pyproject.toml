@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 [project]
 name = "verifier"
-version = "0.1.0"
+version = "0.2.0"
 description = "Trusted core for the verified-plot PoC: independently recompute and verify chart specs before render."
 # Pinned to the 3.13.x line for reproducibility: msgspec ships per-interpreter compiled
 # wheels and stdlib behavior can drift across minors, so a wider floor would admit an

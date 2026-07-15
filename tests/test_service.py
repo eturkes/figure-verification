@@ -77,6 +77,7 @@ def _settings_with(data_dir: Path, **changes: object) -> Settings:
 
 
 def test_health(tmp_path: Path) -> None:
+    assert __version__ == "0.2.0"
     with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
         response = client.get("/health")
     assert response.status_code == 200

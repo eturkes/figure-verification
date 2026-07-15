@@ -60,6 +60,49 @@ _AFFIRMATIONS = frozenset(
         "transform.aggregates_match_recomputation",
     }
 )
+_EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
+    "schema_validation": frozenset({"spec.decode", "dataset.manifest_available"}),
+    "resource_policy": frozenset(
+        {
+            "resource.file_bytes",
+            "resource.manifest_columns",
+            "resource.source_rows",
+            "resource.source_cells",
+            "resource.eval_work",
+            "resource.plotted_cells",
+            "resource.render_rows",
+            "resource.vega_bytes",
+            "resource.attestation_bytes",
+            "resource.svg_bytes",
+            "resource.html_bytes",
+        }
+    ),
+    "deterministic_recompute": frozenset(
+        {
+            "dataset.hash_matches_source",
+            "data.charset",
+            "data.csv_syntax",
+            "data.header",
+            "data.row_width",
+            "data.numeric_value",
+            "data.temporal_value",
+            "transform.group_by_placement",
+            "group_by.keys_distinct",
+            "select.fields_distinct",
+            "schema.fields_exist",
+            "filter.value_type",
+            "sort.fields_distinct",
+            "aggregate.output_unique",
+            "schema.field_types_match",
+            "sort.field_in_plotted_table",
+            "encoding.fields_exist_in_plotted_table",
+            "encoding.axis_types_match_fields",
+            "label.quantitative_units_present",
+        }
+    ),
+    "construction": _AFFIRMATIONS,
+    "z3_smt": frozenset(),
+}
 # decodes=false -> rejected at decode_spec; verify is never reached.
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
 # Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface).
@@ -206,6 +249,7 @@ def test_public_verify_serializes_results_only(tmp_path: Path) -> None:
     built = msgspec.to_builtins(report)
     assert isinstance(built, dict)
     assert set(built) == {"results"}
+    assert set(built["results"][0]) == {"check", "method", "status", "severity", "message"}
     encoded = msgspec.json.encode(report)
     assert b'"trace":' not in encoded
     assert b'"evidence":' not in encoded
@@ -723,6 +767,23 @@ def test_good_spec_passes_and_inlines_recomputation(entry: dict[str, Any]) -> No
 
 
 # --- report structure: the affirmations are recorded, not implicit ------------
+def test_check_id_method_matrix_is_exhaustive_and_closed() -> None:
+    # Independent exact inventory: every currently emitted/surfaced core, render, or service ID
+    # has one method; z3_smt is in the public vocabulary but intentionally empty until M5.2b.
+    expected = {
+        check: method
+        for method, method_checks in _EXPECTED_CHECKS_BY_METHOD.items()
+        for check in method_checks
+    }
+    assert expected == checks._CHECK_METHODS
+    for check, method in expected.items():
+        result = checks.make_result(check, status="pass", message="matrix")
+        assert result.method == method
+        assert result.severity == "blocking"
+    with pytest.raises(ValueError, match="no registered verification method"):
+        checks.make_result("future.unclassified", status="fail", message="drift")
+
+
 def test_report_records_all_affirmations_on_pass() -> None:
     # The four AFFIRMED passes are part of the recorded trust argument; pin that a good
     # spec's passing checks are exactly the affirmations plus the active binding gate and the
@@ -738,6 +799,10 @@ def test_report_records_all_affirmations_on_pass() -> None:
         "label.quantitative_units_present",
     }
     assert all(r.severity == "blocking" for r in report.results)
+    assert {r.method for r in report.results if r.check in _AFFIRMATIONS} == {"construction"}
+    assert {r.method for r in report.results if r.check not in _AFFIRMATIONS} == {
+        "deterministic_recompute"
+    }
 
 
 # --- dataset-binding gate: escape + missing (mismatch is covered by b08) ------

@@ -49,6 +49,7 @@ from bench.harness import (
     _rate_block,
     _reply_shape,
     _RespCheck,
+    _RespMethod,
     _RespVerdict,
     _run_guarantee,
     _Tally,
@@ -59,8 +60,12 @@ from verifier.service.app import _PIN_MISMATCH_DETAIL
 _EXAMPLES = Path(__file__).parents[1] / "examples"
 
 
-def _verdict(*, verified: bool, layer: str, failing: tuple[str, ...] = ()) -> _RespVerdict:
-    results = tuple(_RespCheck(check=check, status="fail") for check in failing)
+def _verdict(
+    *, verified: bool, layer: str, failing: tuple[tuple[str, _RespMethod], ...] = ()
+) -> _RespVerdict:
+    results = tuple(
+        _RespCheck(check=check, method=method, status="fail") for check, method in failing
+    )
     return _RespVerdict(verified=verified, layer=layer, results=results)
 
 
@@ -71,12 +76,23 @@ def test_classify_verified() -> None:
 
 def test_classify_decode_layer_is_schema_bucket() -> None:
     # Bucket != check family: the schema BUCKET is the decode LAYER.
-    assert _classify(_verdict(verified=False, layer="decode", failing=("spec.decode",))) == "schema"
+    assert (
+        _classify(
+            _verdict(
+                verified=False,
+                layer="decode",
+                failing=(("spec.decode", "schema_validation"),),
+            )
+        )
+        == "schema"
+    )
 
 
 def test_classify_policy_only_when_all_failing_families_policy() -> None:
     verdict = _verdict(
-        verified=False, layer="verify", failing=("label.quantitative_units_present",)
+        verified=False,
+        layer="verify",
+        failing=(("label.quantitative_units_present", "deterministic_recompute"),),
     )
     assert _classify(verdict) == "policy"
 
@@ -86,7 +102,10 @@ def test_classify_mixed_families_is_semantic() -> None:
     verdict = _verdict(
         verified=False,
         layer="verify",
-        failing=("label.quantitative_units_present", "encoding.fields_exist_in_plotted_table"),
+        failing=(
+            ("label.quantitative_units_present", "deterministic_recompute"),
+            ("encoding.fields_exist_in_plotted_table", "deterministic_recompute"),
+        ),
     )
     assert _classify(verdict) == "semantic"
 
@@ -94,9 +113,24 @@ def test_classify_mixed_families_is_semantic() -> None:
 def test_classify_verify_family_named_schema_is_semantic() -> None:
     # The schema.* check FAMILY is a verify-layer failure -> semantic, never the schema bucket.
     assert (
-        _classify(_verdict(verified=False, layer="verify", failing=("schema.fields_exist",)))
+        _classify(
+            _verdict(
+                verified=False,
+                layer="verify",
+                failing=(("schema.fields_exist", "deterministic_recompute"),),
+            )
+        )
         == "semantic"
     )
+
+
+def test_classify_resource_method_as_policy() -> None:
+    verdict = _verdict(
+        verified=False,
+        layer="verify",
+        failing=(("resource.file_bytes", "resource_policy"),),
+    )
+    assert _classify(verdict) == "policy"
 
 
 def test_classify_empty_failing_set_is_semantic() -> None:
@@ -172,6 +206,20 @@ def test_decode_propose_result_reads_embed_and_bare() -> None:
     from_bare = _decode_propose_result(httpx.Response(200, content=bare))
     assert from_bare.model_reply == "```json\n{}\n```"
     assert from_bare.verdict.verified is False
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"check": "data.header", "status": "fail"},
+        {"check": "data.header", "method": "unknown", "status": "fail"},
+    ],
+    ids=["missing", "outside-closed-vocabulary"],
+)
+def test_response_consumer_requires_closed_check_method(result: dict[str, str]) -> None:
+    payload = msgspec.json.encode({"verified": False, "layer": "verify", "results": [result]})
+    with pytest.raises(msgspec.ValidationError, match="method"):
+        msgspec.json.decode(payload, type=_RespVerdict)
 
 
 # --- corpus identity pins re-derived from the tree -----------------------------

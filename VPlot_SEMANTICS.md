@@ -201,8 +201,10 @@ bytes, §8.)
   logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
-  baseline, units present. Outcome: structured `{check, status, message, severity}`; any blocking
-  failure → no render.
+  baseline, units present. Outcome: structured `{check, method, status, severity, message}`; any
+  blocking failure → no render. Each result carries the closed verification method that established
+  it: `schema_validation`, `resource_policy`, `deterministic_recompute`, `construction`, or
+  `z3_smt`.
 
 A spec can pass DECODE yet fail RESOURCE POLICY or SEMANTIC.
 

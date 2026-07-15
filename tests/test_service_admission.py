@@ -51,7 +51,11 @@ def _take_and_release(admission: AdmissionController) -> bool:
 
 def _failed_outcome() -> Outcome:
     result = CheckResult(
-        check="spec.decode", status="fail", severity="blocking", message="test refusal"
+        check="spec.decode",
+        method="schema_validation",
+        status="fail",
+        severity="blocking",
+        message="test refusal",
     )
     return Outcome(verdict=Verdict(verified=False, layer="decode", results=(result,)))
 

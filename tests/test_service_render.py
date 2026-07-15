@@ -422,6 +422,7 @@ def test_render_resource_failure_is_verdict_without_store(
     assert body["layer"] == "verify"
     assert body["results"][-1] == {
         "check": "resource.vega_bytes",
+        "method": "resource_policy",
         "status": "fail",
         "severity": "blocking",
         "message": "artifact exceeds test limit",

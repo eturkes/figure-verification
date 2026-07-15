@@ -186,13 +186,15 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   fails a focused mutation witness. Exact payload bound only - Python/container overhead remains
   outside the claim; gate green.
 
-- **M5.2a — method-aware result contract** (OPEN): extend `CheckResult` with a closed
-  method vocabulary (`schema_validation`, `resource_policy`, `deterministic_recompute`,
-  `construction`, `z3_smt`) and tag every existing/synthetic result honestly, including surfaced
-  limit/evaluator errors and the two service-only failures. Update Verdict/OpenAPI/bench consumers;
-  no compatibility field that can disagree; bump project/package version to 0.2.0 with this public
-  contract. Acceptance: an exhaustive check-ID/method matrix pins current results and each public
-  failure layer; response consumers see the new required field + version; gate green.
+- **M5.2a — method-aware result contract** (DONE): `CheckResult` requires one closed method from
+  `schema_validation`/`resource_policy`/`deterministic_recompute`/`construction`/`z3_smt`.
+  One exact internal check-ID registry derives every core/render/service result method and rejects
+  unmapped IDs before serialization; service schema prerequisites, every resource/evaluator
+  surface, active deterministic checks, and construction affirmations are classified explicitly.
+  The package/service is 0.2.0; OpenAPI requires the five-value enum, and bench independently
+  requires the same closed wire vocabulary while recognizing resource-policy verdicts. An
+  exhaustive ID/method inventory plus decode/verify/resource/render/OpenAPI/version consumer
+  regressions pass; no compatibility field can disagree; gate green.
 - **M5.2b — finite SMT obligation engine** (OPEN): add current `z3-solver>=4.16,<5` runtime dep +
   lock; isolate its untyped API behind `verifier.formal` typed facts/results. Encode three
   quantifier-free obligations over bounded integer/rational/category ranks: canonical row order;

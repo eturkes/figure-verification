@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "verifier",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
     "/health": {
@@ -793,11 +793,20 @@
       },
       "CheckResult": {
         "title": "CheckResult",
-        "description": "One blocking check's verdict. `check` is the dotted name; `severity` is a single\nreserved value (advisory tiers are future work), so `passed` consults `status` only.",
+        "description": "One blocking check's verdict and the method that established it.\n\n``method`` is closed and orthogonal to the dotted ``check`` family: evaluator failures named\n``schema.*`` still arise from deterministic recomputation, while ``spec.decode`` is schema\nvalidation. ``severity`` has one reserved value (advisory tiers are future work), so\n:attr:`VerificationReport.passed` consults ``status`` only.",
         "type": "object",
         "properties": {
           "check": {
             "type": "string"
+          },
+          "method": {
+            "enum": [
+              "construction",
+              "deterministic_recompute",
+              "resource_policy",
+              "schema_validation",
+              "z3_smt"
+            ]
           },
           "status": {
             "enum": [
@@ -816,6 +825,7 @@
         },
         "required": [
           "check",
+          "method",
           "status",
           "severity",
           "message"

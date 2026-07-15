@@ -30,7 +30,9 @@ MODEL failure) · `prompt_policy` (a 422 context or pre-generation token-policy 
 expect 0).
 Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
 `schema.*`/`dataset.*`/`encoding.*`/`transform.*` check families all bucket SEMANTIC; only
-`label`/`security`/`scale` = POLICY.
+`label`/`security`/`scale` or a result whose method is `resource_policy` = POLICY. Every result
+must carry one method from the 0.2 wire vocabulary; a missing/unknown method invalidates decode
+instead of silently misclassifying an older response.
 
 **Reply shape** (`reply_shape` block — a first-class classifier over the same `n` replies)
 partitions each by SURFACE FORM — `fenced` (carries a markdown code fence) · `bare_object` (no

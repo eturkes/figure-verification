@@ -64,7 +64,7 @@ class Outcome:
 
 def _single(check: str, message: str, *, layer: Literal["decode", "verify"]) -> Verdict:
     """A blocking Verdict carrying one synthetic fail result at `layer`."""
-    result = checks.CheckResult(check=check, status="fail", severity="blocking", message=message)
+    result = checks.make_result(check, status="fail", message=message)
     return Verdict(verified=False, layer=layer, results=(result,))
 
 
@@ -148,12 +148,7 @@ def render_outcome(
         prepared = render.prepare_render(spec, evidence, limits=settings.limits)
         result = render.render_prepared(prepared, include_html=True, limits=settings.limits)
     except VerificationError as exc:
-        resource_failure = checks.CheckResult(
-            check=exc.check,
-            status="fail",
-            severity="blocking",
-            message=str(exc),
-        )
+        resource_failure = checks.make_result(exc.check, status="fail", message=str(exc))
         return Verdict(
             verified=False,
             layer=outcome.verdict.layer,

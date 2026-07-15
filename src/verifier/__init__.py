@@ -7,4 +7,4 @@ source data, runs the verification checks, and emits only verified output with a
 provenance badge. See POC_SCOPE.md for the boundary and the claim this PoC makes.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
