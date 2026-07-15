@@ -71,6 +71,7 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "resource.eval_work",
             "resource.plotted_cells",
             "resource.render_rows",
+            "resource.smt_terms",
             "resource.vega_bytes",
             "resource.attestation_bytes",
             "resource.svg_bytes",
@@ -101,7 +102,14 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
         }
     ),
     "construction": _AFFIRMATIONS,
-    "z3_smt": frozenset(),
+    "z3_smt": frozenset(
+        {
+            "sort.canonical_order",
+            "scale.bar_zero",
+            "encoding.legend_domain_exact",
+            "formal.solver_completed",
+        }
+    ),
 }
 # decodes=false -> rejected at decode_spec; verify is never reached.
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
@@ -769,7 +777,7 @@ def test_good_spec_passes_and_inlines_recomputation(entry: dict[str, Any]) -> No
 # --- report structure: the affirmations are recorded, not implicit ------------
 def test_check_id_method_matrix_is_exhaustive_and_closed() -> None:
     # Independent exact inventory: every currently emitted/surfaced core, render, or service ID
-    # has one method; z3_smt is in the public vocabulary but intentionally empty until M5.2b.
+    # has one method, including every finite-SMT obligation and its completion failure gate.
     expected = {
         check: method
         for method, method_checks in _EXPECTED_CHECKS_BY_METHOD.items()

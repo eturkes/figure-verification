@@ -19,12 +19,15 @@ authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # serialization, built-in body cap, single-worker 127.0.0.1. Both ship py.typed. See memory Stack.
 # httpx (M3.2b): the async client the model-proposer client POSTs the local backend with. Ships
 # py.typed; today transitive via litestar's TestClient, now declared as a direct runtime dep.
+# z3-solver (M5.2b): finite concrete obligations behind verifier.formal's typed boundary. Its
+# dynamic API has no PEP-561 marker, so direct imports outside that module are lint-blocked below.
 dependencies = [
     "msgspec>=0.21,<1",
     "vl-convert-python>=1.9,<2",
     "litestar>=2.24,<3",
     "uvicorn>=0.49,<1",
     "httpx>=0.28,<1",
+    "z3-solver>=4.16,<5",
 ]
 
 [dependency-groups]
@@ -65,6 +68,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # asserts + bare magic values are idiomatic in tests; TID251 lets tests import jsonschema.
 "tests/**" = ["S101", "PLR2004", "TID251"]
+# The sole production boundary around z3-solver's dynamic API.
+"src/verifier/formal.py" = ["TID251"]
 
 [tool.ruff.lint.isort]
 # model_backend (the hardware-gated local model server, M3.1b), bench (the failure-eval
@@ -80,6 +85,7 @@ ban-relative-imports = "all"
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "jsonschema".msg = "test-only (golden assertion); do not import from src/"
 "duckdb".msg = "test-only (dual-engine oracle); do not import from src/"
+"z3".msg = "dynamic runtime boundary; import only from verifier.formal"
 
 # --- types -------------------------------------------------------------------
 [tool.mypy]
@@ -113,6 +119,12 @@ ignore_missing_imports = true
 # with the native package absent. The engine isolates the Any behind typed boundaries.
 [[tool.mypy.overrides]]
 module = ["openvino_genai", "openvino_genai.*"]
+ignore_missing_imports = true
+
+# z3-solver is a typed-runtime boundary without PEP-561 metadata. verifier.formal is its only
+# production importer and projects the dynamic AST/model API into closed typed facts/results.
+[[tool.mypy.overrides]]
+module = ["z3", "z3.*"]
 ignore_missing_imports = true
 
 # --- tests / coverage --------------------------------------------------------

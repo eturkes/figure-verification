@@ -195,20 +195,21 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   requires the same closed wire vocabulary while recognizing resource-policy verdicts. An
   exhaustive ID/method inventory plus decode/verify/resource/render/OpenAPI/version consumer
   regressions pass; no compatibility field can disagree; gate green.
-- **M5.2b — finite SMT obligation engine** (OPEN): add current `z3-solver>=4.16,<5` runtime dep +
-  lock; isolate its untyped API behind `verifier.formal` typed facts/results. Encode three
-  quantifier-free obligations over bounded integer/rational/category ranks: canonical row order;
-  bar quantitative-axis zero; discrete legend-domain set equality. Each solver gets a local
-  timeout + single-thread setting (no global params), and every invocation creates + wholly owns
-  an explicit Z3 `Context` because contexts are not thread-safe; no AST/context crosses worker
-  calls. Pre-count terms and fail `resource.smt_terms` before constructing an over-limit AST;
-  constrain a unique lowest row/channel/category witness so SAT messages are stable; UNSAT=pass,
-  SAT=model-derived witness=fail, UNKNOWN/exception=`formal.solver_completed` fail. Construct typed
-  ASTs only - no SMT-LIB/model string parser crosses the API. Return an internal bounded
-  `FormalTrace` (obligation, term count, result class), never raw model text.
-  Acceptance: official version smoke + one mutation per obligation yields stable human messages;
-  forced unknown/timeout fails closed; two concurrent worker calls use distinct contexts and
-  agree; gate green.
+- **M5.2b — finite SMT obligation engine** (DONE): locked `z3-solver` 4.16 behind the sole,
+  lint-enforced production import `verifier.formal`. Immutable ranked-row/bar/legend facts enter;
+  structured method-aware results + bounded `(obligation, term_count, result_class)` traces leave;
+  Z3 Context/AST/solver/model/text never cross the boundary. Three concrete quantifier-free
+  negated obligations cover adjacent lexicographic canonical order (exact rationals + category
+  ranks + direction/null policy), quantitative bar zero, and discrete legend set equality.
+  One explicit Context belongs to each call; one solver per applicable obligation gets local
+  timeout + `threads=1`, with no global parameters or SMT-LIB parser. Constructor-count upper
+  bounds are summed before Context/AST creation; excess raises registered `resource.smt_terms`.
+  UNSAT passes, SAT reports a model-derived uniquely lowest row/channel/category, and
+  UNKNOWN/timeout/native exception returns registered `formal.solver_completed` failure without
+  leaking native detail; trusted registry drift stays loud. Official-version, exact-boundary,
+  empty/inapplicable, rational/null/direction, forced uncertainty/exception, solver-setting, and
+  truly concurrent distinct-context tests pass. Disabling each obligation formula makes its
+  focused counterexample regression fail; gate green at 1,237 tests/100% branch coverage.
 - **M5.2c — independent SMT differential** (OPEN): a separate direct oracle consumes raw generated
   cases, sharing neither Z3 expressions nor formal-fact builders/helpers, and exhausts a small
   finite table/sort/channel/domain microdomain; Hypothesis samples

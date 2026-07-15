@@ -80,6 +80,7 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "resource.eval_work": "resource_policy",
     "resource.plotted_cells": "resource_policy",
     "resource.render_rows": "resource_policy",
+    "resource.smt_terms": "resource_policy",
     "resource.vega_bytes": "resource_policy",
     "resource.attestation_bytes": "resource_policy",
     "resource.svg_bytes": "resource_policy",
@@ -109,6 +110,11 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "transform.ops_allowed": "construction",
     "transform.filters_declared": "construction",
     "transform.aggregates_match_recomputation": "construction",
+    # Bounded finite-SMT obligations + fail-closed solver completion gate.
+    "sort.canonical_order": "z3_smt",
+    "scale.bar_zero": "z3_smt",
+    "encoding.legend_domain_exact": "z3_smt",
+    "formal.solver_completed": "z3_smt",
 }
 
 
