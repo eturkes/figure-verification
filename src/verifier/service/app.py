@@ -457,7 +457,12 @@ def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -
 
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
-    store = ArtifactStore(settings.store_cap, html_cap=settings.html_cap)
+    store = ArtifactStore(
+        settings.store_cap,
+        html_cap=settings.html_cap,
+        render_cache_bytes=settings.render_cache_bytes,
+        chart_cache_bytes=settings.chart_cache_bytes,
+    )
     admission = AdmissionController(
         settings.max_active_jobs, settings.work_rate_per_minute, settings.work_burst
     )

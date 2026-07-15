@@ -175,15 +175,16 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Exact/cumulative/many-sort/group-heavy matrices, all-six-boundary no-start tripwires,
   filter-reduction differential, service trace propagation, and the full corpus pin pass; gate
   green.
-- **M5.1j — payload-byte-bounded artifact LRUs** (OPEN): extend `ArtifactStore`'s existing count
-  caps with independent exact payload-byte ceilings for render/spec and chart LRUs (defaults 32
-  MiB + 128 MiB); shared specs count once, replacements adjust totals, and oldest entries evict
-  until BOTH count + byte invariants hold. An entry larger than its whole budget is rejected before
-  mutation; `Settings` validates positive budgets and compatibility with declared per-item limits
-  so the production pipeline cannot reach that branch. Acceptance: byte boundary, shared-spec,
-  replacement, mixed count/byte eviction, read/re-put recency, and oversize atomicity matrices;
-  deleting either accounting update fails a mutation witness; resident payload never exceeds its
-  configured logical bound (Python/container overhead remains outside the claim); gate green.
+- **M5.1j — payload-byte-bounded artifact LRUs** (DONE): `ArtifactStore` enforces independent
+  count + exact logical-payload ceilings for render/spec and chart LRUs. Render usage is every
+  certificate plus each live shared spec once; chart usage is resident HTML bytes. Replacements
+  refresh recency and adjust both accounting directions; oldest entries evict until both
+  invariants hold. A standalone render pair/chart over its whole budget rejects before lock/mutation.
+  `create_app` threads the already positive/cross-compatible `Settings` budgets, making that branch
+  unreachable for policy-conforming outputs. Boundary/shared-spec/replacement/mixed-eviction/
+  read-re-put/atomicity matrices pass; removing each certificate/spec/chart add or release update
+  fails a focused mutation witness. Exact payload bound only - Python/container overhead remains
+  outside the claim; gate green.
 
 - **M5.2a — method-aware result contract** (OPEN): extend `CheckResult` with a closed
   method vocabulary (`schema_validation`, `resource_policy`, `deterministic_recompute`,

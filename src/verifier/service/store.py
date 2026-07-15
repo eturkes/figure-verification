@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Bounded in-memory artifact store for verified renders (M2.3; chart pages M4.1b).
+"""Count- and payload-byte-bounded artifact store (M2.3, M4.1b, M5.1j).
 
 A verified render contributes three canonical byte blobs: the certificate (keyed by its
 content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served verbatim by
 a retrieval GET, as is the offline chart HTML page (keyed by plot_id) at GET /chart/{plot_id}
 (M4.1c). In-memory only: provenance/replay to disk is M5.
 
-TWO independent bounded LRUs, each with its own cap:
+TWO independent bounded LRUs, each with count + exact logical-payload ceilings:
 
-- RENDERS (store_cap), keyed by plot_id, holds the certificate bytes + the spec_id each render
-  references; the oldest render evicts on overflow. plot_id <-> spec_id is 1:1 under stable
+- RENDERS (store_cap + render_cache_bytes), keyed by plot_id, holds the certificate bytes + the
+  spec_id each render references. Its payload total is every certificate plus each live canonical
+  spec blob ONCE, regardless of reference count; the oldest render evicts until both ceilings hold.
+  plot_id <-> spec_id is 1:1 under stable
   trusted config — a fixed spec under a fixed data_dir + manifest + TCB determines every
   certificate field, hence a single plot_id. Two plot_ids share one spec_id only when an
   operator mutates the trusted manifest between two renders of the same spec (the certificate's
@@ -17,9 +19,14 @@ TWO independent bounded LRUs, each with its own cap:
   live-reference count and drop only when the LAST render referencing them evicts. A stored
   render's spec GET thus always resolves — retrieval consistency holds unconditionally, not
   merely under the 1:1 precondition checks.py rests on.
-- CHARTS (html_cap), keyed by plot_id, holds the offline chart HTML pages. Each inlines the
-  whole Vega bundle (~MB), so this LRU is bounded far tighter than the render LRU (html_cap <<
-  store_cap by default) and evicts on its OWN recency.
+- CHARTS (html_cap + chart_cache_bytes), keyed by plot_id, holds the offline chart HTML pages.
+  Each inlines the whole Vega bundle (~MB), so this LRU is count-bounded far tighter than the
+  render LRU (html_cap << store_cap by default) and evicts on its OWN recency.
+
+Replacement refreshes recency and adjusts payload totals before eviction. A single render pair
+(certificate + spec) or chart larger than its entire byte ceiling is rejected before mutation;
+service ``Settings`` makes those branches unreachable for policy-conforming pipeline outputs.
+These are exact resident ``bytes`` payload totals, not Python-container/process-memory bounds.
 
 The two LRUs evict independently, so BOTH mixed states are reachable and accepted: a chart 404s
 while its certificate still lives (the common case, html_cap << store_cap), and — under
@@ -47,10 +54,16 @@ class _Entry(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class ArtifactStore:
-    """Thread-safe bounded LRUs over verified-render artifacts (store_cap + html_cap). See the
-    module docstring."""
+    """Thread-safe count + logical-payload-bounded verified-artifact LRUs."""
 
-    def __init__(self, cap: int, *, html_cap: int) -> None:
+    def __init__(
+        self,
+        cap: int,
+        *,
+        html_cap: int,
+        render_cache_bytes: int,
+        chart_cache_bytes: int,
+    ) -> None:
         if cap < 1:
             # The store's own precondition (Settings guards store_cap too): a non-positive
             # cap would drop every render at once or crash on the first eviction.
@@ -60,8 +73,18 @@ class ArtifactStore:
             # Same failure modes for the chart LRU (Settings guards html_cap too).
             msg = f"html_cap must be >= 1, got {html_cap}"
             raise ValueError(msg)
+        if render_cache_bytes < 1:
+            msg = f"render_cache_bytes must be >= 1, got {render_cache_bytes}"
+            raise ValueError(msg)
+        if chart_cache_bytes < 1:
+            msg = f"chart_cache_bytes must be >= 1, got {chart_cache_bytes}"
+            raise ValueError(msg)
         self._cap = cap
         self._html_cap = html_cap
+        self._render_cache_bytes = render_cache_bytes
+        self._chart_cache_bytes = chart_cache_bytes
+        self._render_bytes = 0
+        self._chart_bytes = 0
         self._lock = threading.Lock()
         self._renders: OrderedDict[str, _Entry] = OrderedDict()
         # plot_id -> offline chart HTML bytes, on its own LRU (html_cap) that evicts
@@ -73,28 +96,46 @@ class ArtifactStore:
         self._spec_refs: dict[str, int] = {}
 
     def put(self, *, plot_id: str, cert_bytes: bytes, spec_id: str, spec_bytes: bytes) -> None:
-        """Store a verified render's artifacts, evicting the oldest render past store_cap.
+        """Store/replace a render; evict oldest entries until both render ceilings hold.
 
-        Idempotent: a repeat plot_id (the render is content-addressed, so the bytes are
-        identical) only refreshes LRU recency. On a fresh insert the spec mapping is added and a
-        spec reference taken; while over cap, the oldest render pops and its spec mapping drops
-        once no live render still references it.
+        A repeat ``plot_id`` replaces its payload and refreshes recency (content-addressed service
+        calls are byte-identical). ``spec_id`` remains the canonical secondary identity: if a
+        caller bends that precondition and supplies new bytes for a live ID, the one shared blob is
+        replaced and its size delta is accounted once.
         """
+        item_bytes = len(cert_bytes) + len(spec_bytes)
+        if item_bytes > self._render_cache_bytes:
+            msg = (
+                f"render payload bytes {item_bytes} exceed cache budget {self._render_cache_bytes}"
+            )
+            raise ValueError(msg)
         with self._lock:
-            if plot_id in self._renders:
-                self._renders.move_to_end(plot_id)
-                return
+            replaced = self._renders.pop(plot_id, None)
+            if replaced is not None:
+                self._release_render(replaced)
+
+            old_spec = self._specs.get(spec_id)
+            if old_spec is None:
+                self._render_bytes += len(spec_bytes)
+            else:
+                self._render_bytes += len(spec_bytes) - len(old_spec)
             self._renders[plot_id] = _Entry(cert_bytes=cert_bytes, spec_id=spec_id)
             self._specs[spec_id] = spec_bytes
             self._spec_refs[spec_id] = self._spec_refs.get(spec_id, 0) + 1
-            while len(self._renders) > self._cap:
+            self._render_bytes += len(cert_bytes)
+            while len(self._renders) > self._cap or self._render_bytes > self._render_cache_bytes:
                 _, evicted = self._renders.popitem(last=False)
-                sid = evicted.spec_id
-                if self._spec_refs[sid] > 1:
-                    self._spec_refs[sid] -= 1  # another live render still needs this spec
-                else:
-                    del self._spec_refs[sid]
-                    del self._specs[sid]
+                self._release_render(evicted)
+
+    def _release_render(self, entry: _Entry) -> None:
+        """Release one already-removed render and its last-reference spec payload."""
+        self._render_bytes -= len(entry.cert_bytes)
+        sid = entry.spec_id
+        if self._spec_refs[sid] > 1:
+            self._spec_refs[sid] -= 1
+        else:
+            del self._spec_refs[sid]
+            self._render_bytes -= len(self._specs.pop(sid))
 
     def certificate(self, plot_id: str) -> bytes | None:
         """The stored certificate bytes for plot_id (refreshing its LRU recency), or None."""
@@ -112,7 +153,7 @@ class ArtifactStore:
             return self._specs.get(spec_id)
 
     def put_chart(self, plot_id: str, chart_html: bytes) -> None:
-        """Store a verified render's offline chart page, evicting the oldest past html_cap.
+        """Store/replace a chart; evict oldest entries until both chart ceilings hold.
 
         Chart LRU only — never touches the render/spec maps. Like put(), the store trusts its
         caller: the render pipeline verifies before calling, so put_chart does not itself require
@@ -121,11 +162,19 @@ class ArtifactStore:
         the (content-addressed, identical) bytes; while over html_cap, the oldest chart page pops.
         Wired into the render pipeline (render_outcome) at M4.1c, and exercised directly here.
         """
+        item_bytes = len(chart_html)
+        if item_bytes > self._chart_cache_bytes:
+            msg = f"chart payload bytes {item_bytes} exceed cache budget {self._chart_cache_bytes}"
+            raise ValueError(msg)
         with self._lock:
+            replaced = self._charts.pop(plot_id, None)
+            if replaced is not None:
+                self._chart_bytes -= len(replaced)
             self._charts[plot_id] = chart_html
-            self._charts.move_to_end(plot_id)
-            while len(self._charts) > self._html_cap:
-                self._charts.popitem(last=False)
+            self._chart_bytes += item_bytes
+            while len(self._charts) > self._html_cap or self._chart_bytes > self._chart_cache_bytes:
+                _, evicted = self._charts.popitem(last=False)
+                self._chart_bytes -= len(evicted)
 
     def chart(self, plot_id: str) -> bytes | None:
         """The stored offline chart HTML bytes for plot_id (refreshing its chart-LRU recency),
