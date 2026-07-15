@@ -448,8 +448,8 @@ def _build_certificate(
     when a color channel is present. Filters are disclosed from every filter op; sorts disclose ONLY
     the ACTIVE sort (eval.active_sort -- the badge heads them "Applied", so a superseded or
     aggregate-discarded sort must not appear). Both are model-controlled -> escaped at display.
-    `table` is passed narrowed (render() casts report.plotted_table once) so this stays total with
-    no coverage-dead assert."""
+    `table` comes from the same passed ``RecomputedEvidence`` as ``report``, so this stays total
+    with no coverage-dead assert."""
     checks_passed = [r.check for r in report.results if r.status == "pass"]
     if spec.mark == "bar" and (
         spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
@@ -555,14 +555,15 @@ def render(
     result also carries a self-contained offline HTML view of the same built spec (render_html) --
     OFF the cert hash chain: the SVG bytes and the certificate are byte-identical whether or not it
     is requested."""
-    manifest = ingest.load_manifest(manifest_bytes)
-    report = checks.verify(spec, manifest, data_dir=data_dir)
+    run = checks.verify_run(spec, manifest_bytes, data_dir=data_dir)
+    report = run.report
     if not report.passed:
         return None
-    # report.passed implies the binding + eval gates passed, so plotted_table is populated;
-    # cast is the coverage-clean narrowing (an `assert ... is not None` would leave a
-    # never-taken branch that fails the 100% gate -- the M1.5a lesson).
-    table = cast(canon.Table, report.plotted_table)
+    # report.passed implies every checks gate passed, so evidence is populated; cast is the
+    # coverage-clean narrowing (an assert's never-taken branch fails the 100% gate).
+    evidence = cast("checks.RecomputedEvidence", run.evidence)
+    manifest = evidence.manifest
+    table = evidence.plotted_table
     built_json = vega_lite_json(spec, table, manifest)
     svg = render_svg(built_json)
     certificate = _build_certificate(spec, manifest_bytes, table, report)

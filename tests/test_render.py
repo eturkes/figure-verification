@@ -697,7 +697,7 @@ def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=(), plotted_table=table)
+    report = checks.VerificationReport(results=())
     cert = render._build_certificate(spec, b"{}", table, report)
     assert render._RENDERER_BAR_ZERO not in cert.checks_passed
 
@@ -743,7 +743,7 @@ def test_build_certificate_discloses_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=(), plotted_table=table)
+    report = checks.VerificationReport(results=())
     cert = render._build_certificate(spec, b"{}", table, report)
     assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
     assert cert.sorts == (
@@ -765,7 +765,7 @@ def test_build_certificate_empty_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=(), plotted_table=table)
+    report = checks.VerificationReport(results=())
     cert = render._build_certificate(spec, b"{}", table, report)
     assert cert.filters == ()
     assert cert.sorts == ()
@@ -776,7 +776,7 @@ def test_build_certificate_discloses_only_the_active_sort() -> None:
     # "Applied", so the cert must disclose that ACTIVE sort alone -- never a superseded or discarded
     # one, which would be a false "applied" claim.
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=(), plotted_table=table)
+    report = checks.VerificationReport(results=())
 
     def _sorts(transform: tuple[Transform, ...]) -> tuple[render.DisclosedSort, ...]:
         spec = VPlotSpec(

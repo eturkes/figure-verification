@@ -93,7 +93,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   are one row). Use stable `resource.*` `VerificationError` tags and
   boundary-1/boundary/boundary+1 + hostile quoted-row tests. Acceptance: no over-limit source is
   fully allocated/parsed; corpus unchanged; gate green.
-- **M5.1b — bounded verification evidence** (OPEN): internal `checks.verify_run` accepts core limits
+- **M5.1b — bounded verification evidence** (DONE): internal `checks.verify_run` accepts core limits
   and returns public results + `VerificationTrace` (exact bounded source/manifest bytes as each is
   read, including hash/semantic failures) + `RecomputedEvidence` only after every `checks` gate
   (decoded manifest, exact bytes, hashes, and recomputed table included). The type means eligible

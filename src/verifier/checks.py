@@ -1,36 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Verification spine — recompute the plotted data and emit a structured verdict.
+"""Verification spine — recompute plotted data, retain bounded evidence, emit a verdict.
 
-The untrusted model proposes only a VPlotSpec. verify() resolves the bound CSV under a
-trusted data directory, recomputes every plotted value from the declared transforms
-(verifier.eval), and reports per-check pass/fail results; M1.6 renders a spec only when
-report.passed. This is the M1.5 trust gate — meaning lives in VPlot_SEMANTICS.md.
+The untrusted model proposes only a VPlotSpec. ``verify_run`` admits the exact trusted
+manifest bytes, bounded-reads the bound CSV under ``data_dir``, recomputes every plotted
+value from the declared transforms (verifier.eval), and returns three deliberately split
+views: a public results-only ``VerificationReport``; an internal ``VerificationTrace`` of
+successfully admitted raw inputs; and ``RecomputedEvidence`` only after every check passes.
+``verify`` is the public report-only projection. This is the trust gate — meaning lives in
+VPlot_SEMANTICS.md.
 
 Check provenance — four deliberately distinct classes:
 - ACTIVE: computed here, one pass-or-fail result each — dataset.hash_matches_source (binding)
   plus the encoding/label stage (fields exist, axis types match, quantitative units present).
-- SURFACED: any VerificationError evaluate() raises — eval's semantic checks and,
-  transitively (eval calls ingest.load_table), ingest's resource.* / data.* checks — is
-  wrapped as a fail under its own .check name. Check-agnostic: no eval-pass is enumerated here.
+- SURFACED: any VerificationError from manifest admission/evaluate plus the plotted-cell
+  ceiling is wrapped as a fail under its own .check name. Check-agnostic: no eval-pass is
+  enumerated here.
 - AFFIRMED: true by construction (the trust argument), emitted as constant passes —
   security.no_arbitrary_code, transform.ops_allowed, transform.filters_declared,
   transform.aggregates_match_recomputation.
 - M1.6 renderer: enforced-by-construction at render time (bar baseline, legend domain),
   not in this module.
 
-Control flow (short-circuit gates): pairing precondition (caller bug -> ValueError) ->
-affirmations -> dataset-binding gate (fail -> return, no table) -> eval gate (raise ->
-surface + return, no table) -> encoding/label stage over the recomputed table. An
-encoding failure blocks report.passed but leaves plotted_table populated (eval succeeded),
-so M1.6 reads it only when passed.
+Control flow (short-circuit gates): manifest byte/shape policy -> pairing precondition
+(caller bug -> ValueError) -> affirmations -> dataset-binding/read gate -> eval gate ->
+plotted-cell gate -> encoding/label stage. Every failure returns immediately with no
+evidence; a successfully admitted input remains in the trace even when a later hash or
+semantic gate fails. Hashes and recomputed data cross the renderer boundary only through
+``RecomputedEvidence``.
 """
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
 from verifier.eval import evaluate
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
 from verifier.schema import Aggregate, ChannelType, VPlotSpec, _Base
 
 
@@ -46,16 +52,55 @@ class CheckResult(_Base, frozen=True, kw_only=True):
 
 
 class VerificationReport(_Base, frozen=True, kw_only=True):
-    """The full verdict for one spec. `plotted_table` is the verifier-recomputed table on
-    eval success, else None; M1.6 reads it only when `passed`."""
+    """Public verdict for one spec. Internal inputs/recomputation never serialize here."""
 
     results: tuple[CheckResult, ...]
-    plotted_table: canon.Table | None
 
     @property
     def passed(self) -> bool:
         """Every check passed -> the spec may render. Blocking is the only severity."""
         return all(r.status == "pass" for r in self.results)
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationTrace:
+    """Successfully admitted exact inputs, retained incrementally for local audit only.
+
+    ``None`` means that input never crossed its byte/read gate. Raw bytes stay out of reprs
+    because source/manifest content may be sensitive; the service never serializes this type.
+    """
+
+    manifest_bytes: bytes | None = field(repr=False)
+    source_bytes: bytes | None = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class RecomputedEvidence:
+    """A check-passed recomputation eligible for later builder/formal gates.
+
+    This is evidence of core verification only: it is not a rendered or certified artifact.
+    Exact bytes, their canonical hashes, the decoded manifest, table, and passed results travel
+    together so downstream code cannot silently rebind one component to mutable live files.
+    """
+
+    manifest: ingest.Manifest = field(repr=False)
+    manifest_bytes: bytes = field(repr=False)
+    source_bytes: bytes = field(repr=False)
+    dataset_hash: str
+    manifest_hash: str
+    spec_hash: str
+    plotted_table: canon.Table = field(repr=False)
+    plotted_table_hash: str
+    results: tuple[CheckResult, ...] = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationRun:
+    """Internal verification result: public report + incremental trace + optional evidence."""
+
+    report: VerificationReport
+    trace: VerificationTrace
+    evidence: RecomputedEvidence | None = field(repr=False)
 
 
 def _pass(check: str, message: str) -> CheckResult:
@@ -88,16 +133,21 @@ def _affirmations() -> list[CheckResult]:
         ),
         _pass(
             "transform.aggregates_match_recomputation",
-            "the model proposes no values; verify recomputes the table and returns it as "
-            "plotted_table, so no model aggregate exists to diverge — M1.6 must inline this",
+            "the model proposes no values; verify recomputes the table into internal evidence, "
+            "so no model aggregate exists to diverge — the renderer must inline this evidence",
         ),
     ]
 
 
 # --- dataset binding ---------------------------------------------------------
-def _check_dataset_binding(spec: VPlotSpec, data_dir: Path) -> tuple[CheckResult, bytes | None]:
+def _check_dataset_binding(
+    spec: VPlotSpec, data_dir: Path, limits: VerificationLimits
+) -> tuple[CheckResult, bytes | None, str | None]:
     """Resolve the spec's CSV under data_dir and verify its bytes hash to the declared
-    dataset.hash. Returns (pass, source bytes) on success, (fail, None) otherwise.
+    dataset.hash. Returns the exact bounded source bytes after any successful read, including
+    a hash mismatch, so the caller can retain them in ``VerificationTrace``. Confinement or
+    genuine absence returns no bytes; an over-limit read surfaces its own ``resource.*`` tag;
+    any other filesystem fault is broken trusted config and propagates.
 
     Path confinement (VPlot_SEMANTICS.md section 8): resolve() + is_relative_to(root) is
     the authoritative guard, rejecting any absolute, '..'-traversal, or symlink target that
@@ -112,15 +162,21 @@ def _check_dataset_binding(spec: VPlotSpec, data_dir: Path) -> tuple[CheckResult
     root = data_dir.resolve()
     source = (root / name).resolve()
     if not source.is_relative_to(root):
-        return _fail(check, f"dataset {name!r} resolves outside the data directory"), None
+        result = _fail(check, f"dataset {name!r} resolves outside the data directory")
+        return result, None, None
     try:
-        raw = source.read_bytes()
-    except OSError:
-        return _fail(check, f"dataset {name!r} could not be read under the data directory"), None
+        raw = read_bounded(source, limits.max_csv_bytes)
+    except VerificationError as exc:
+        return _fail(exc.check, str(exc)), None, None
+    except FileNotFoundError:
+        result = _fail(check, f"dataset {name!r} could not be read under the data directory")
+        return result, None, None
     actual = canon.hash_dataset(raw)
     if actual != spec.dataset.hash:
-        return _fail(check, f"declared {spec.dataset.hash} != source {actual}"), None
-    return _pass(check, f"source bytes hash to the declared {spec.dataset.hash}"), raw
+        result = _fail(check, f"declared {spec.dataset.hash} != source {actual}")
+        return result, raw, actual
+    result = _pass(check, f"source bytes hash to the declared {spec.dataset.hash}")
+    return result, raw, actual
 
 
 # --- encoding / label checks -------------------------------------------------
@@ -232,30 +288,105 @@ def _encoding_checks(
     return results
 
 
-# --- entry point -------------------------------------------------------------
-def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> VerificationReport:
-    """Verify a decoded spec against its trusted manifest and data directory.
+# --- entry points ------------------------------------------------------------
+def _failed_run(results: list[CheckResult], trace: VerificationTrace) -> VerificationRun:
+    """Freeze one short-circuited failure; failed runs never carry recomputed evidence."""
+    report = VerificationReport(results=tuple(results))
+    return VerificationRun(report=report, trace=trace, evidence=None)
 
-    `spec` is untrusted (model-proposed); `manifest` is caller-resolved trusted config;
-    `data_dir` roots the CSV resolution. The manifest must pair with the spec's dataset —
-    a mismatch is a caller bug (ValueError), not a verification outcome.
 
-    Pipeline: affirmations + binding gate + eval gate + encoding/label stage. On eval
-    success the recomputed table is returned as plotted_table regardless of the encoding
-    verdict; an encoding/label failure blocks report.passed but leaves the table populated.
+def _admit_manifest(
+    manifest_bytes: bytes, limits: VerificationLimits
+) -> ingest.Manifest | VerificationRun:
+    """Byte-admit + decode a manifest, or return its structured resource failure."""
+    empty_trace = VerificationTrace(manifest_bytes=None, source_bytes=None)
+    if len(manifest_bytes) > limits.max_manifest_bytes:
+        message = f"file exceeds byte limit of {limits.max_manifest_bytes}"
+        return _failed_run([_fail("resource.file_bytes", message)], empty_trace)
+
+    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
+    try:
+        return ingest.load_manifest(manifest_bytes, limits=limits)
+    except VerificationError as exc:
+        return _failed_run([_fail(exc.check, str(exc))], trace)
+
+
+def verify_run(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    *,
+    data_dir: Path,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> VerificationRun:
+    """Verify a decoded spec and retain bounded internal trace/evidence.
+
+    ``manifest_bytes`` is the trusted caller's exact manifest snapshot. Its size is admitted
+    before decode; filesystem callers use ``read_bounded`` before invoking this entry (the
+    service adapter is wired in M5.1d). ``data_dir`` roots the independently bounded CSV read.
+    A trusted manifest parse/mispair fault remains an exception; resource, binding, data, eval,
+    plotted-size, and encoding failures become structured reports under their own check tags.
+
+    Inputs enter ``VerificationTrace`` only after their byte/read gate succeeds. Evidence is
+    minted only after every gate passes and carries all four current canonical hashes alongside
+    the exact snapshots and recomputation. It means eligible for later builder/formal checks,
+    never already rendered or certified.
     """
+    admitted = _admit_manifest(manifest_bytes, limits)
+    if isinstance(admitted, VerificationRun):
+        return admitted
+    manifest = admitted
+    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
     if manifest.dataset != spec.dataset.name:
         msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
         raise ValueError(msg)
+
     results = _affirmations()
-    binding, raw = _check_dataset_binding(spec, data_dir)
+    binding, raw, dataset_hash = _check_dataset_binding(spec, data_dir, limits)
     results.append(binding)
-    if raw is None:  # raw is None exactly when binding failed -> block, no table
-        return VerificationReport(results=tuple(results), plotted_table=None)
+    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=raw)
+    if binding.status == "fail":
+        return _failed_run(results, trace)
+
+    # A passing binding result is constructed only with admitted raw bytes + its exact hash.
+    source_bytes = cast("bytes", raw)
+    admitted_dataset_hash = cast("str", dataset_hash)
     try:
-        plotted = evaluate(spec, manifest, raw)
-    except VerificationError as exc:  # eval semantic or transitive ingest resource.*/data.*
+        plotted = evaluate(spec, manifest, source_bytes, limits=limits)
+    except VerificationError as exc:
         results.append(_fail(exc.check, str(exc)))
-        return VerificationReport(results=tuple(results), plotted_table=None)
+        return _failed_run(results, trace)
+
+    plotted_cells = len(plotted.columns) * len(plotted.rows)
+    if plotted_cells > limits.max_plotted_cells:
+        message = f"plotted table has {plotted_cells} cells; limit is {limits.max_plotted_cells}"
+        results.append(_fail("resource.plotted_cells", message))
+        return _failed_run(results, trace)
+
     results.extend(_encoding_checks(spec, plotted, manifest))
-    return VerificationReport(results=tuple(results), plotted_table=plotted)
+    report = VerificationReport(results=tuple(results))
+    if not report.passed:
+        return VerificationRun(report=report, trace=trace, evidence=None)
+
+    evidence = RecomputedEvidence(
+        manifest=manifest,
+        manifest_bytes=manifest_bytes,
+        source_bytes=source_bytes,
+        dataset_hash=admitted_dataset_hash,
+        manifest_hash=canon.hash_manifest(manifest_bytes),
+        spec_hash=canon.hash_spec(spec),
+        plotted_table=plotted,
+        plotted_table_hash=canon.hash_table(plotted),
+        results=report.results,
+    )
+    return VerificationRun(report=report, trace=trace, evidence=evidence)
+
+
+def verify(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    *,
+    data_dir: Path,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> VerificationReport:
+    """Public results-only projection of :func:`verify_run`; raw trace/evidence stay internal."""
+    return verify_run(spec, manifest_bytes, data_dir=data_dir, limits=limits).report

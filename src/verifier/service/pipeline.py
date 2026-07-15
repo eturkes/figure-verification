@@ -40,7 +40,7 @@ from typing import Literal, cast
 
 import msgspec
 
-from verifier import canon, checks, ingest, render
+from verifier import canon, checks, render
 from verifier.schema import VPlotSpec, decode_spec
 from verifier.service.models import RenderVerdict, Verdict
 from verifier.service.settings import Settings
@@ -96,8 +96,8 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
         verdict = _single("dataset.manifest_available", message, layer="verify")
         return Outcome(verdict=verdict, spec=spec)
 
-    manifest = ingest.load_manifest(manifest_bytes)  # broken manifest -> raise -> 500
-    report = checks.verify(spec, manifest, data_dir=settings.data_dir)  # mispair -> raise -> 500
+    # verify admits/decodes this exact snapshot; broken manifest/mispair -> raise -> 500.
+    report = checks.verify(spec, manifest_bytes, data_dir=settings.data_dir)
     verdict = Verdict(verified=report.passed, layer="verify", results=report.results)
     return Outcome(verdict=verdict, spec=spec, manifest_bytes=manifest_bytes)
 

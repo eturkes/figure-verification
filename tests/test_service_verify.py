@@ -264,3 +264,20 @@ def test_manifest_path_not_a_file_is_500_problem(tmp_path: Path) -> None:
     assert response.headers["content-type"] == _PROBLEM_JSON
     body: dict[str, Any] = response.json()
     assert body["status"] == 500
+
+
+def test_source_path_not_a_file_is_500_problem(tmp_path: Path) -> None:
+    # Same trusted-file split at the CSV boundary: a present directory collision propagates as
+    # operator misconfiguration; only genuine absence becomes dataset.hash_matches_source.
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    (schemas / "sales.json").write_bytes((_DATA / "schemas" / "sales.json").read_bytes())
+    (tmp_path / "sales.csv").mkdir()
+    app = create_app(Settings(data_dir=tmp_path))
+    with TestClient(app=app) as client:
+        raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+        response = client.post("/verify-only", content=raw, headers=_JSON)
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    body: dict[str, Any] = response.json()
+    assert body["status"] == 500

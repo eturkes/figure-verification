@@ -25,6 +25,7 @@ from typing import Any, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import (
     AggFn,
     Aggregate,
@@ -51,7 +52,13 @@ _CMP: dict[CmpOp, Callable[[Any, Any], bool]] = {
 }
 
 
-def evaluate(spec: VPlotSpec, manifest: ingest.Manifest, csv_bytes: bytes) -> canon.Table:
+def evaluate(
+    spec: VPlotSpec,
+    manifest: ingest.Manifest,
+    csv_bytes: bytes,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> canon.Table:
     """Recompute the plotted table from trusted inputs, or raise VerificationError.
 
     Loads the source table (ingest), folds the transform ops in declared order, then applies
@@ -59,7 +66,7 @@ def evaluate(spec: VPlotSpec, manifest: ingest.Manifest, csv_bytes: bytes) -> ca
     (it stages keys in `pending_keys`); the most recent sort with no later aggregate seeds the
     closure ordering (`active_keys`), which an aggregate resets (it rebuilds the table).
     """
-    table = ingest.load_table(csv_bytes, manifest)
+    table = ingest.load_table(csv_bytes, manifest, limits=limits)
     pending_keys: tuple[str, ...] | None = None  # group_by awaiting its aggregate
     for op in spec.transform:
         if pending_keys is not None and not isinstance(op, Aggregate):

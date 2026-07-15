@@ -21,8 +21,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   as mark data. `transform.aggregates_match_recomputation` (M1.5) is an AFFIRMATION (constant pass): `verify`
   recomputes the table (correctness oracle-backed) and the M1.6 renderer inlines ONLY that
   recomputation, so no model value can diverge -- true by construction, NOT an active
-  byte-comparison (`render()` — M1.6c — renders only a passing report and inlines only its
-  `plotted_table`).
+  byte-comparison (`verify_run()` retains the recomputation only in check-passed internal
+  evidence; `render()` inlines only that evidence's `plotted_table`).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
@@ -190,10 +190,11 @@ bytes, §8.)
   `msgspec.ValidationError` / `msgspec.DecodeError` — never a partial or coerced object. (A
   non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
 - RESOURCE POLICY (M5, `resource.*`) = inclusive logical ceilings over trusted inputs and later
-  work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation raises a
-  tagged `VerificationError` before later work at that boundary. Ingest currently covers manifest
-  columns plus source logical rows/cells; later M5 units apply the same vocabulary to bytes,
-  recomputation, formal checks, render artifacts, transport admission, and provenance.
+  work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation surfaces its
+  tagged failure before later work at that boundary. Core verification currently covers raw
+  manifest/CSV bytes, manifest columns, source logical rows/cells, and final plotted cells. Later
+  M5 units extend the same vocabulary to evaluator work, formal checks, render artifacts,
+  transport admission, and provenance.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
   baseline, units present. Outcome: structured `{check, status, message, severity}`; any blocking

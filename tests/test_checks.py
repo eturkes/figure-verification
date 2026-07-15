@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M1.5c verifier tests: structured report + binding + eval-surface + encoding/label stage.
+"""Verifier spine: public reports, bounded trace/evidence, and semantic checks.
 
-verify() recomputes the plotted data and emits a VerificationReport; M1.6 renders only
-when report.passed. This suite drives it from the M1.3 corpus (examples/index.json):
-decode-layer specs never reach verify; pre-table bad specs (binding + eval-surfaced) each
-fail with exactly their indexed check and carry no plotted_table; the encoding/label bad
-specs (b11 axis-type, b12 field-absent, b13 missing-unit) fail post-eval, so plotted_table
-stays populated; good specs pass and inline the recomputation. A direct matrix test pins
+verify() exposes only a VerificationReport; verify_run() retains exact internal inputs and
+mints recomputation evidence only after every gate. This suite drives the M1.3 corpus
+(examples/index.json): decode-layer specs never reach verify; every bad spec fails at its
+indexed gate with no evidence; good specs bind evidence to the exact recomputation. A direct
+matrix test pins
 every VPlot_SEMANTICS.md section 7 channel-type ↔ column-kind pair behaviorally (branch
 coverage cannot reach individual map entries); direct unit_source tests pin every arm of
 the count-exempt position-aware unit lineage (terminating + sound on reused output names). A
-Hypothesis property pins the spine invariant: verify inlines exactly what eval recomputes.
+Hypothesis property pins the spine invariant: successful evidence equals eval's recomputation.
 """
 
 import json
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -28,6 +28,7 @@ from corpus import csv_bytes, numeric_cell, string_cell
 from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
+from verifier.limits import VerificationLimits
 from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -60,10 +61,9 @@ _AFFIRMATIONS = frozenset(
 )
 # decodes=false -> rejected at decode_spec; verify is never reached.
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
-# Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface) ->
-# plotted_table is None.
+# Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface).
 _PRE_TABLE_BAD = [b for b in _BAD if b["decodes"] and b["check"] not in _ENCODING_CHECKS]
-# Encoding/label: blocked AFTER eval succeeds (b11/b12/b13) -> plotted_table populated.
+# Encoding/label: blocked AFTER eval succeeds but before evidence is minted.
 _ENCODING_BAD = [b for b in _BAD if b["check"] in _ENCODING_CHECKS]
 
 
@@ -75,6 +75,61 @@ def _manifest_for(name: str) -> ingest.Manifest:
     return ingest.load_manifest((_SCHEMAS / f"{Path(name).stem}.json").read_bytes())
 
 
+def _manifest_bytes_for(name: str) -> bytes:
+    return (_SCHEMAS / f"{Path(name).stem}.json").read_bytes()
+
+
+_RESOURCE_MANIFEST_BYTES = msgspec.json.encode(
+    {
+        "dataset": "t.csv",
+        "columns": [
+            {"type": "string", "name": "k"},
+            {"type": "numeric", "name": "v", "scale": 0, "unit": "items"},
+        ],
+    }
+)
+_RESOURCE_CSV_BYTES = b"k,v\na,1\nb,2\n"
+_LIMIT_FACTORIES: dict[str, Callable[[int], VerificationLimits]] = {
+    "manifest-bytes": lambda value: VerificationLimits(max_manifest_bytes=value),
+    "csv-bytes": lambda value: VerificationLimits(max_csv_bytes=value),
+    "source-rows": lambda value: VerificationLimits(max_source_rows=value),
+    "source-cells": lambda value: VerificationLimits(max_source_cells=value),
+    "plotted-cells": lambda value: VerificationLimits(max_plotted_cells=value),
+}
+_RESOURCE_BOUNDARIES = [
+    ("manifest-bytes", len(_RESOURCE_MANIFEST_BYTES), "resource.file_bytes", "none"),
+    ("csv-bytes", len(_RESOURCE_CSV_BYTES), "resource.file_bytes", "manifest"),
+    ("source-rows", 2, "resource.source_rows", "both"),
+    ("source-cells", 4, "resource.source_cells", "both"),
+    ("plotted-cells", 4, "resource.plotted_cells", "both"),
+]
+
+
+def _resource_case(tmp_path: Path) -> tuple[VPlotSpec, bytes]:
+    """Two rows x two columns -> source/plotted cell boundary = 4."""
+    raw = _RESOURCE_CSV_BYTES
+    (tmp_path / "t.csv").write_bytes(raw)
+    spec = decode_spec(
+        msgspec.json.encode(
+            {
+                "version": "vplot-0.1",
+                "dataset": {"name": "t.csv", "hash": canon.hash_dataset(raw)},
+                "transform": [],
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "k", "type": "nominal"},
+                    "y": {"field": "v", "type": "quantitative"},
+                },
+            }
+        )
+    )
+    return spec, raw
+
+
+def _failing_checks(run: checks.VerificationRun) -> set[str]:
+    return {result.check for result in run.report.results if result.status == "fail"}
+
+
 # --- corpus split guards (no silent vacuous parametrization) ------------------
 def test_corpus_split_covers_each_layer() -> None:
     pre_table_checks = {b["check"] for b in _PRE_TABLE_BAD}
@@ -84,6 +139,218 @@ def test_corpus_split_covers_each_layer() -> None:
     assert {b["check"] for b in _ENCODING_BAD} == _ENCODING_CHECKS
     assert len(_ENCODING_BAD) == len(_ENCODING_CHECKS)  # b11 axis-type + b12 absent + b13 unit
     assert _BAD_DECODE  # decode-layer specs exist to assert verify is unreached
+
+
+# --- M5.1b resource boundaries + evidence lifecycle -------------------------
+@pytest.mark.parametrize(
+    "case",
+    _RESOURCE_BOUNDARIES,
+    ids=[row[0] for row in _RESOURCE_BOUNDARIES],
+)
+@pytest.mark.parametrize(
+    ("limit_delta", "admission"),
+    [(1, "pass"), (0, "pass"), (-1, "fail")],
+    ids=["boundary-minus-one", "boundary", "boundary-plus-one"],
+)
+def test_verification_resource_limit_boundary(
+    tmp_path: Path,
+    case: tuple[str, int, str, str],
+    limit_delta: int,
+    admission: str,
+) -> None:
+    resource, boundary, failure_check, failure_trace = case
+    spec, raw = _resource_case(tmp_path)
+    limits = _LIMIT_FACTORIES[resource](boundary + limit_delta)
+    run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path, limits=limits)
+    if admission == "fail":
+        assert _failing_checks(run) == {failure_check}
+        expected_manifest = None if failure_trace == "none" else _RESOURCE_MANIFEST_BYTES
+        expected_source = raw if failure_trace == "both" else None
+        assert run.trace.manifest_bytes == expected_manifest
+        assert run.trace.source_bytes == expected_source
+        assert run.evidence is None
+    else:
+        assert run.report.passed
+        assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+        assert run.trace.source_bytes == raw
+        assert run.evidence is not None
+
+
+def test_success_evidence_binds_exact_inputs_hashes_and_results(tmp_path: Path) -> None:
+    spec, raw = _resource_case(tmp_path)
+    run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    evidence = run.evidence
+    assert evidence is not None
+    assert evidence.manifest == ingest.load_manifest(_RESOURCE_MANIFEST_BYTES)
+    assert evidence.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert evidence.source_bytes == raw
+    assert evidence.dataset_hash == canon.hash_dataset(raw) == spec.dataset.hash
+    assert evidence.manifest_hash == canon.hash_manifest(_RESOURCE_MANIFEST_BYTES)
+    assert evidence.spec_hash == canon.hash_spec(spec)
+    assert evidence.plotted_table_hash == canon.hash_table(evidence.plotted_table)
+    assert evidence.results == run.report.results
+    assert raw.decode() not in repr(run)  # sensitive snapshots are repr-suppressed
+
+
+def test_public_verify_serializes_results_only(tmp_path: Path) -> None:
+    spec, _raw = _resource_case(tmp_path)
+    run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    report = verify(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    assert report == run.report
+    built = msgspec.to_builtins(report)
+    assert isinstance(built, dict)
+    assert set(built) == {"results"}
+    encoded = msgspec.json.encode(report)
+    assert b'"trace":' not in encoded
+    assert b'"evidence":' not in encoded
+    assert b'"source_bytes":' not in encoded
+    assert b'"manifest_bytes":' not in encoded
+
+
+def test_manifest_byte_failure_stops_before_decode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, _raw = _resource_case(tmp_path)
+
+    def _no_decode(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "manifest decode ran after its byte gate failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(ingest, "load_manifest", _no_decode)
+    limits = VerificationLimits(max_manifest_bytes=len(_RESOURCE_MANIFEST_BYTES) - 1)
+    run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path, limits=limits)
+    assert _failing_checks(run) == {"resource.file_bytes"}
+    assert run.trace.manifest_bytes is None
+    assert run.trace.source_bytes is None
+    assert run.evidence is None
+
+
+def test_manifest_shape_resource_failure_stops_before_dataset_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, _raw = _resource_case(tmp_path)
+
+    def _no_binding(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "dataset binding ran after manifest resource admission failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "_check_dataset_binding", _no_binding)
+    run = checks.verify_run(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        data_dir=tmp_path,
+        limits=VerificationLimits(max_manifest_columns=1),
+    )
+    assert _failing_checks(run) == {"resource.manifest_columns"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes is None
+    assert run.evidence is None
+
+
+def test_csv_byte_failure_stops_before_evaluate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, raw = _resource_case(tmp_path)
+
+    def _no_eval(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "evaluate ran after the CSV byte gate failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    run = checks.verify_run(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        data_dir=tmp_path,
+        limits=VerificationLimits(max_csv_bytes=len(raw) - 1),
+    )
+    assert _failing_checks(run) == {"resource.file_bytes"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes is None
+    assert run.evidence is None
+
+
+def test_hash_failure_retains_both_inputs_and_stops_before_evaluate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, raw = _resource_case(tmp_path)
+    mismatched = msgspec.structs.replace(
+        spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
+    )
+
+    def _no_eval(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "evaluate ran after dataset binding failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    run = checks.verify_run(mismatched, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    assert _failing_checks(run) == {"dataset.hash_matches_source"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes == raw
+    assert run.evidence is None
+
+
+def test_semantic_failure_retains_both_inputs_and_stops_before_encoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = next(item for item in _PRE_TABLE_BAD if item["check"] == "schema.fields_exist")
+    spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
+
+    def _no_encoding(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "encoding checks ran after evaluate failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "_encoding_checks", _no_encoding)
+    manifest_bytes = _manifest_bytes_for(spec.dataset.name)
+    source_bytes = (_DATA / spec.dataset.name).read_bytes()
+    run = checks.verify_run(spec, manifest_bytes, data_dir=_DATA)
+    assert _failing_checks(run) == {"schema.fields_exist"}
+    assert run.trace.manifest_bytes == manifest_bytes
+    assert run.trace.source_bytes == source_bytes
+    assert run.evidence is None
+
+
+def test_plotted_cell_failure_stops_before_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, raw = _resource_case(tmp_path)
+
+    def _no_encoding(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "encoding checks ran after plotted-cell admission failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "_encoding_checks", _no_encoding)
+    run = checks.verify_run(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        data_dir=tmp_path,
+        limits=VerificationLimits(max_plotted_cells=3),
+    )
+    assert _failing_checks(run) == {"resource.plotted_cells"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes == raw
+    assert run.evidence is None
+
+
+def test_encoding_failure_stops_before_evidence_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = next(
+        item for item in _ENCODING_BAD if item["check"] == "encoding.axis_types_match_fields"
+    )
+    spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
+
+    def _no_table_hash(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "evidence hashing ran after encoding failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(canon, "hash_table", _no_table_hash)
+    manifest_bytes = _manifest_bytes_for(spec.dataset.name)
+    source_bytes = (_DATA / spec.dataset.name).read_bytes()
+    run = checks.verify_run(spec, manifest_bytes, data_dir=_DATA)
+    assert _failing_checks(run) == {"encoding.axis_types_match_fields"}
+    assert run.trace.manifest_bytes == manifest_bytes
+    assert run.trace.source_bytes == source_bytes
+    assert run.evidence is None
 
 
 # --- decode layer: verify is never reached -----------------------------------
@@ -102,30 +369,31 @@ def test_decode_layer_specs_never_reach_verify(entry: dict[str, Any]) -> None:
 @pytest.mark.parametrize("entry", _PRE_TABLE_BAD, ids=_ids(_PRE_TABLE_BAD))
 def test_pre_table_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=_DATA)
+    run = checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA)
+    report = run.report
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {entry["check"]}  # a non-empty fail set also means not passed
-    assert report.plotted_table is None  # binding/eval block short-circuits -> no table
+    assert run.evidence is None
     passing = {r.check for r in report.results if r.status == "pass"}
     assert passing >= _AFFIRMATIONS  # affirmations are retained even on a failing report
 
 
-# --- structural-encoding bad specs: fail post-eval, plotted table populated ----
+# --- structural-encoding bad specs: fail post-eval, evidence withheld --------
 @pytest.mark.parametrize("entry", _ENCODING_BAD, ids=_ids(_ENCODING_BAD))
 def test_encoding_bad_spec_fails_its_check(entry: dict[str, Any]) -> None:
-    # b11/b12/b13 fail in the encoding/label stage, which runs AFTER eval succeeds, so the
-    # recomputed plotted_table is populated even though report.passed is False (M1.6 reads it
-    # only when passed). The narrowing chain makes each fail exactly its own check: b12's
+    # b11/b12/b13 fail in the encoding/label stage, which runs AFTER eval succeeds but BEFORE
+    # evidence is minted. The narrowing chain makes each fail exactly its own check: b12's
     # absent field is excluded from the axis-type and unit checks, and b11's type-mismatched
     # (non-numeric) field is excluded from the unit check, so each fails only its own check.
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=_DATA)
+    run = checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA)
+    report = run.report
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {entry["check"]}
     assert not report.passed
-    assert report.plotted_table is not None  # eval succeeded -> table reflects the recompute
+    assert run.evidence is None
+    assert run.trace.manifest_bytes == _manifest_bytes_for(spec.dataset.name)
+    assert run.trace.source_bytes == (_DATA / spec.dataset.name).read_bytes()
 
 
 # --- count-derived channel: dimensionless -> unit-exempt (end-to-end) ---------
@@ -154,8 +422,7 @@ def test_count_derived_channel_is_unit_exempt() -> None:
             }
         )
     )
-    manifest = _manifest_for("sales.csv")
-    report = verify(spec, manifest, data_dir=_DATA)
+    report = verify(spec, _manifest_bytes_for("sales.csv"), data_dir=_DATA)
     assert report.passed  # count exemption -> the unit check passes despite a unitless source
     unit = next(r for r in report.results if r.check == "label.quantitative_units_present")
     assert unit.status == "pass"
@@ -191,8 +458,7 @@ def test_count_sum_chain_channel_is_unit_exempt() -> None:
             }
         )
     )
-    manifest = _manifest_for("sales.csv")
-    report = verify(spec, manifest, data_dir=_DATA)
+    report = verify(spec, _manifest_bytes_for("sales.csv"), data_dir=_DATA)
     assert report.passed  # cc -> sum(c) -> count(region) -> None: exempt through the chain
     unit = next(r for r in report.results if r.check == "label.quantitative_units_present")
     assert unit.status == "pass"
@@ -204,8 +470,7 @@ def test_no_false_accepts_over_full_bad_suite() -> None:
     accepted = 0
     for entry in _PRE_TABLE_BAD + _ENCODING_BAD:
         spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
-        manifest = _manifest_for(spec.dataset.name)
-        if verify(spec, manifest, data_dir=_DATA).passed:
+        if verify(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA).passed:
             accepted += 1
     assert accepted == 0
 
@@ -413,12 +678,13 @@ def test_unit_source_lineage_arm(
 def test_good_spec_passes_and_inlines_recomputation(entry: dict[str, Any]) -> None:
     spec = decode_spec((_GOOD_DIR / entry["file"]).read_bytes())
     manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=_DATA)
-    assert report.passed
-    assert report.plotted_table is not None  # narrow Table | None for the hash compare
+    run = checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA)
+    assert run.report.passed
+    evidence = run.evidence
+    assert evidence is not None
     csv_bytes = (_DATA / spec.dataset.name).read_bytes()
     expected = evaluate(spec, manifest, csv_bytes)
-    assert canon.hash_table(report.plotted_table) == canon.hash_table(expected)
+    assert evidence.plotted_table_hash == canon.hash_table(expected)
 
 
 # --- report structure: the affirmations are recorded, not implicit ------------
@@ -428,8 +694,7 @@ def test_report_records_all_affirmations_on_pass() -> None:
     # two structural encoding checks, so dropping _affirmations() is caught (the
     # pass/fail-name tests alone would not notice).
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=_DATA)
+    report = verify(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA)
     passing = {r.check for r in report.results if r.status == "pass"}
     assert passing == _AFFIRMATIONS | {
         "dataset.hash_matches_source",
@@ -451,10 +716,12 @@ def test_binding_rejects_symlink_escape(tmp_path: Path) -> None:
     data_dir.mkdir()
     (data_dir / "sales.csv").symlink_to(outside / "secret.csv")
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
-    manifest = _manifest_for(spec.dataset.name)  # both bind sales.csv -> pairing OK
-    report = verify(spec, manifest, data_dir=data_dir)
+    run = checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=data_dir)
+    report = run.report
     assert not report.passed
-    assert report.plotted_table is None
+    assert run.evidence is None
+    assert run.trace.manifest_bytes == _manifest_bytes_for(spec.dataset.name)
+    assert run.trace.source_bytes is None
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {"dataset.hash_matches_source"}
 
@@ -462,12 +729,23 @@ def test_binding_rejects_symlink_escape(tmp_path: Path) -> None:
 def test_binding_rejects_missing_source(tmp_path: Path) -> None:
     # An empty data_dir: the bound name resolves inside it (no escape) but cannot be read.
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=tmp_path)
+    run = checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=tmp_path)
+    report = run.report
     assert not report.passed
-    assert report.plotted_table is None
+    assert run.evidence is None
+    assert run.trace.manifest_bytes == _manifest_bytes_for(spec.dataset.name)
+    assert run.trace.source_bytes is None
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {"dataset.hash_matches_source"}
+
+
+def test_binding_propagates_present_source_shape_fault(tmp_path: Path) -> None:
+    # A directory collision is broken trusted config, not genuine dataset absence and not a
+    # model-provoked verification outcome. Preserve IsADirectoryError for the service's 500 path.
+    (tmp_path / "sales.csv").mkdir()
+    spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
+    with pytest.raises(IsADirectoryError):
+        checks.verify_run(spec, _manifest_bytes_for(spec.dataset.name), data_dir=tmp_path)
 
 
 def test_binding_failure_short_circuits_eval(
@@ -482,20 +760,24 @@ def test_binding_failure_short_circuits_eval(
 
     monkeypatch.setattr(checks, "evaluate", _no_eval)
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
-    manifest = _manifest_for(spec.dataset.name)
-    report = verify(spec, manifest, data_dir=tmp_path)  # empty dir -> source missing
+    run = checks.verify_run(
+        spec, _manifest_bytes_for(spec.dataset.name), data_dir=tmp_path
+    )  # empty dir -> source missing
+    report = run.report
     assert not report.passed
-    assert report.plotted_table is None
+    assert run.evidence is None
+    assert run.trace.manifest_bytes == _manifest_bytes_for(spec.dataset.name)
+    assert run.trace.source_bytes is None
     failing = {r.check for r in report.results if r.status == "fail"}
     assert failing == {"dataset.hash_matches_source"}
 
 
 def test_binding_rejects_absolute_name_even_when_target_readable(tmp_path: Path) -> None:
-    # Defense in depth: confinement does not rely on the DatasetName pattern. A spec built
-    # OUTSIDE decode_spec (msgspec structs are directly constructible) with an absolute name
-    # to a real, hash-MATCHING file outside data_dir is still blocked — resolve() +
-    # is_relative_to rejects before the read, so a correct declared hash cannot smuggle
-    # outside bytes past the gate.
+    # Defense in depth at the authoritative binding helper: confinement does not rely on the
+    # DatasetName pattern. A spec built OUTSIDE decode_spec (msgspec structs are directly
+    # constructible) with an absolute name to a real, hash-MATCHING file outside data_dir is
+    # blocked before read. Public verify_run additionally strict-decodes a paired manifest, whose
+    # DatasetName rejects this direct-construction state before binding.
     outside = tmp_path / "outside"
     outside.mkdir()
     payload = b"month,revenue\n2024-01,1.00\n"
@@ -510,12 +792,11 @@ def test_binding_rejects_absolute_name_even_when_target_readable(tmp_path: Path)
             base.dataset, name=str(secret), hash=canon.hash_dataset(payload)
         ),
     )
-    manifest = msgspec.structs.replace(_manifest_for(base.dataset.name), dataset=str(secret))
-    report = verify(evil, manifest, data_dir=data_dir)
-    assert not report.passed  # declared hash matches the outside file, yet confinement blocks
-    assert report.plotted_table is None
-    failing = {r.check for r in report.results if r.status == "fail"}
-    assert failing == {"dataset.hash_matches_source"}
+    binding, raw, actual = checks._check_dataset_binding(evil, data_dir, VerificationLimits())
+    assert binding.status == "fail"  # matching outside bytes never cross the confinement gate
+    assert binding.check == "dataset.hash_matches_source"
+    assert raw is None
+    assert actual is None
 
 
 # --- pairing precondition: a caller bug, not a verification outcome -----------
@@ -524,24 +805,23 @@ def test_pairing_mismatch_raises_value_error() -> None:
     paired = _manifest_for(spec.dataset.name)
     mispaired = msgspec.structs.replace(paired, dataset="other.csv")
     with pytest.raises(ValueError):
-        verify(spec, mispaired, data_dir=_DATA)
+        verify(spec, msgspec.json.encode(mispaired), data_dir=_DATA)
 
 
-# --- spine property: verify inlines exactly what eval recomputes --------------
+# --- spine property: evidence equals eval's recomputation --------------------
 # A fixed string-key + scale-2-numeric manifest with a group_by/sum/sort pipeline;
 # Hypothesis varies only the rows (so no valid-spec generation is needed).
 _PROP_HEADER = ["k", "v"]
-_PROP_MANIFEST = ingest.load_manifest(
-    msgspec.json.encode(
-        {
-            "dataset": "t.csv",
-            "columns": [
-                {"type": "string", "name": "k"},
-                {"type": "numeric", "name": "v", "scale": 2, "unit": "units"},
-            ],
-        }
-    )
+_PROP_MANIFEST_BYTES = msgspec.json.encode(
+    {
+        "dataset": "t.csv",
+        "columns": [
+            {"type": "string", "name": "k"},
+            {"type": "numeric", "name": "v", "scale": 2, "unit": "units"},
+        ],
+    }
 )
+_PROP_MANIFEST = ingest.load_manifest(_PROP_MANIFEST_BYTES)
 _PROP_SPEC = decode_spec(
     msgspec.json.encode(
         {
@@ -574,7 +854,7 @@ def _prop_csv(rows: list[tuple[str, str]]) -> bytes:
 
 
 @given(rows=_PROP_ROWS)
-def test_verify_inlines_exactly_the_recomputation(rows: list[tuple[str, str]]) -> None:
+def test_verify_evidence_equals_the_recomputation(rows: list[tuple[str, str]]) -> None:
     raw = _prop_csv(rows)  # `raw`, not `csv_bytes`: the corpus import keeps that name
     live_hash = canon.hash_dataset(raw)
     spec = msgspec.structs.replace(
@@ -583,8 +863,9 @@ def test_verify_inlines_exactly_the_recomputation(rows: list[tuple[str, str]]) -
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)
         (data_dir / "t.csv").write_bytes(raw)
-        report = verify(spec, _PROP_MANIFEST, data_dir=data_dir)
-    assert report.passed
-    assert report.plotted_table is not None
+        run = checks.verify_run(spec, _PROP_MANIFEST_BYTES, data_dir=data_dir)
+    assert run.report.passed
+    evidence = run.evidence
+    assert evidence is not None
     expected = evaluate(spec, _PROP_MANIFEST, raw)
-    assert canon.hash_table(report.plotted_table) == canon.hash_table(expected)
+    assert evidence.plotted_table_hash == canon.hash_table(expected)
