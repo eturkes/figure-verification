@@ -83,10 +83,11 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
 
 
 class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
-    """RFC 9457 detail for transport misuse, admission refusal, or a server-config fault.
+    """RFC 9457 detail for a non-verification HTTP outcome.
 
     `type` defaults to the RFC's "about:blank" (omitted when default), `title` is the HTTP
-    status reason phrase, `status` the code, `detail` the occurrence-specific message. A
+    status reason phrase, `status` the code, `detail` the occurrence-specific message. Transport
+    misuse, work/prompt-policy refusal, upstream failure, and server faults use this shape. A
     verification outcome never travels as a Problem — it is always a 200 Verdict.
     """
 
@@ -98,6 +99,10 @@ class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
 
 class ProposeRequest(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
     """A /propose-spec request: the free-text ask plus the dataset to plot.
+
+    `user_request` is admitted by its UTF-8 encoding (4 KiB by default, operator-configurable),
+    not JSON Schema's code-point `maxLength`; an over-policy request receives 422 before any model
+    call. The complete system + user message content has its own independent byte ceiling.
 
     `dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a
     non-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data

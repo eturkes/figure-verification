@@ -25,8 +25,9 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
 
 Buckets partition the 200 denominator (`verified + schema + semantic + policy = 1.0`). Non-200
 faults sit OUTSIDE `n`: `off_request` (a 502 pin-mismatch = model named a different dataset, a
-MODEL failure) · `upstream_fault` (any other 5xx = backend infra) · `harness_error` (4xx = a
-harness bug, expect 0). Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
+MODEL failure) · `prompt_policy` (a 422 pre-model context/resource refusal) · `upstream_fault`
+(any other 5xx = backend infra) · `harness_error` (remaining 4xx = a harness bug, expect 0).
+Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
 `schema.*`/`dataset.*`/`encoding.*`/`transform.*` check families all bucket SEMANTIC; only
 `label`/`security`/`scale` = POLICY.
 
@@ -107,5 +108,5 @@ Eval:
 Headline numbers live in `.agent/roadmap.md` (M3 close-out) as durable evidence — reports/ is not
 committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
 = INVALID run only: the guarantee broken (`false_accept > 0`, `false_reject > 0`, or transport
-errors) or NOT exercised (either corpus size or identity digest mismatches), `harness_error > 0`,
-or `n == 0` void.
+errors) or NOT exercised (either corpus size or identity digest mismatches),
+`prompt_policy > 0`, `harness_error > 0`, or `n == 0` void.

@@ -7,7 +7,8 @@ M3.4a synthetic-payload exercise was a one-off script, never committed). Locked 
 
 - the verdict buckets (verified / schema=decode-layer / semantic / policy) incl. the
   policy-requires-policy-family rule and the empty-failing-set drift arm;
-- the fault split, incl. the pin-mismatch detail string staying byte-equal to app.py's (the
+- the fault split, incl. dedicated prompt-policy 422 and the pin-mismatch detail string staying
+  byte-equal to app.py's (the
   harness duplicates it by design — an out-of-tree observer imports no verifier internals — so
   THIS test is the drift guard);
 - the reply-shape taxonomy + de-fence rule the headline numbers rest on;
@@ -45,10 +46,13 @@ from bench.harness import (
     _decode_propose_result,
     _defenced_json_valid,
     _Index,
+    _rate_block,
     _reply_shape,
     _RespCheck,
     _RespVerdict,
     _run_guarantee,
+    _Tally,
+    _tally_fault,
 )
 from verifier.service.app import _PIN_MISMATCH_DETAIL
 
@@ -113,6 +117,17 @@ def test_fault_other_5xx_is_upstream() -> None:
     assert _classify_fault(502, "model backend returned HTTP 500") == "upstream_fault"
     assert _classify_fault(503, "") == "upstream_fault"
     assert _classify_fault(500, "the verifier encountered an internal error") == "upstream_fault"
+
+
+def test_fault_422_is_prompt_policy_not_harness_error() -> None:
+    bucket = _classify_fault(422, "the proposer input exceeds policy")
+    assert bucket == "prompt_policy"
+    tally = _Tally()
+    _tally_fault(tally, bucket)
+    rates = _rate_block(tally)
+    assert rates.prompt_policy_count == 1
+    assert rates.harness_error_count == 0
+    assert rates.upstream_fault_count == 0
 
 
 def test_fault_4xx_is_harness_error() -> None:
@@ -277,6 +292,7 @@ def _valid_report(**guarantee_overrides: int | str) -> Report:
         policy_failure_rate=0.0,
         verified_render_rate=0.0,
         off_request_count=0,
+        prompt_policy_count=0,
         upstream_fault_count=0,
         harness_error_count=0,
     )
@@ -326,8 +342,11 @@ def test_exit_code_guarantee_violations_are_invalid(override: dict[str, int | st
     assert _exit_code(_valid_report(**override)) == 1
 
 
-def test_exit_code_harness_error_and_void_run_are_invalid() -> None:
+def test_exit_code_prompt_policy_harness_error_and_void_run_are_invalid() -> None:
     report = _valid_report()
+    prompt_policy = msgspec.structs.replace(report.observations.overall, prompt_policy_count=1)
+    observations = msgspec.structs.replace(report.observations, overall=prompt_policy)
+    assert _exit_code(msgspec.structs.replace(report, observations=observations)) == 1
     overall = msgspec.structs.replace(report.observations.overall, harness_error_count=1)
     observations = msgspec.structs.replace(report.observations, overall=overall)
     assert _exit_code(msgspec.structs.replace(report, observations=observations)) == 1

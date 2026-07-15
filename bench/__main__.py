@@ -5,8 +5,8 @@ Drives the running verifier (and, for provenance, the model backend's /models) o
 writes two artifacts: a report.json (the guarantee block plus observational rates) and a
 details.jsonl (one row per prompt). Exits non-zero only on an INVALID run -- the guarantee
 violated (a bad golden accepted, a good golden rejected, or transport errors) or NOT exercised
-(either corpus short or off-identity), a harness-side bad request, or no judgeable reply
-collected -- never because the weak model failed prompts (that is the expected observation).
+(either corpus short or off-identity), a prompt-policy refusal, a harness-side bad request, or no
+judgeable reply collected -- never because the weak model failed prompts (that is expected).
 Gate-dependent: it needs both servers up (see bench/README.md for the run recipe); the harness
 build itself is gate-free.
 """
@@ -118,8 +118,9 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
         overall.policy_failure_rate,
     )
     _LOGGER.info(
-        "faults off_request=%d upstream_fault=%d harness_error=%d",
+        "faults off_request=%d prompt_policy=%d upstream_fault=%d harness_error=%d",
         overall.off_request_count,
+        overall.prompt_policy_count,
         overall.upstream_fault_count,
         overall.harness_error_count,
     )
@@ -138,7 +139,7 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
 
 
 def _exit_code(report: Report) -> int:
-    """1 on an invalid run: guarantee broken or NOT exercised, a harness bad request, or no 200.
+    """1: guarantee broken/unexercised, pre-model refusal, harness error, or no 200.
 
     Broken = a bad golden verified (false accept) OR a good golden failed (false reject) OR
     transport errors kept a golden unjudged. "Not exercised" = either corpus size or identity
@@ -157,6 +158,7 @@ def _exit_code(report: Report) -> int:
         or guarantee.good_corpus_digest != _EXPECTED_GOOD_CORPUS_DIGEST
         or guarantee.good_corpus_false_reject_count > 0
         or guarantee.good_corpus_transport_errors > 0
+        or overall.prompt_policy_count > 0
         or overall.harness_error_count > 0
         or overall.n == 0
     )

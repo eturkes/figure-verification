@@ -262,6 +262,16 @@
               }
             }
           },
+          "422": {
+            "description": "The user request, bounded dataset context, or assembled prompt exceeded the configured proposer resource policy. No model call or verification occurred. Limits are inclusive UTF-8/file byte ceilings, not token counts.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "413": {
             "description": "The request body exceeded the configured size cap.",
             "content": {
@@ -303,7 +313,7 @@
             }
           },
           "502": {
-            "description": "The model backend replied, but not with a usable chat completion (a non-success status, a malformed body, or no usable message content), or it proposed a specification for a different dataset than requested.",
+            "description": "The model backend replied, but not with a usable chat completion (a non-success status, an oversized or malformed body, or no usable message content), or it proposed a specification for a different dataset than requested.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -859,7 +869,7 @@
       },
       "Problem": {
         "title": "Problem",
-        "description": "RFC 9457 detail for transport misuse, admission refusal, or a server-config fault.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
+        "description": "RFC 9457 detail for a non-verification HTTP outcome.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. Transport\nmisuse, work/prompt-policy refusal, upstream failure, and server faults use this shape. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
         "type": "object",
         "properties": {
           "title": {
@@ -884,7 +894,7 @@
       },
       "ProposeRequest": {
         "title": "ProposeRequest",
-        "description": "A /propose-spec request: the free-text ask plus the dataset to plot.\n\n`dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a\nnon-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data\ndirectory through it. forbid_unknown_fields rejects any extra key at decode (a 400), like\nevery decoded request the service accepts.",
+        "description": "A /propose-spec request: the free-text ask plus the dataset to plot.\n\n`user_request` is admitted by its UTF-8 encoding (4 KiB by default, operator-configurable),\nnot JSON Schema's code-point `maxLength`; an over-policy request receives 422 before any model\ncall. The complete system + user message content has its own independent byte ceiling.\n\n`dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a\nnon-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data\ndirectory through it. forbid_unknown_fields rejects any extra key at decode (a 400), like\nevery decoded request the service accepts.",
         "type": "object",
         "properties": {
           "user_request": {

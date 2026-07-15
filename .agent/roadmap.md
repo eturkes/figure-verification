@@ -139,7 +139,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   HOLDS its permit until the uncancellable thread actually completes; injected-clock burst/refill
   exactness; bench/live recipes override rate explicitly when needed; no leaked/early-released
   permits; process-local scope + OpenAPI documented; gate green.
-- **M5.1g — bounded proposer context** (OPEN): reuse bounded CSV/manifest reads in
+- **M5.1g — bounded proposer context** (DONE): reuse bounded CSV/manifest reads in
   `model_client`; bound `ProposeRequest.user_request` by UTF-8 bytes (4 KiB) and the fully assembled
   prompt (32 KiB) DURING assembly before concatenating an over-limit sample - byte/memory bounds,
   not a token-count claim. An operator-provisioned dataset/prompt over policy answers a dedicated

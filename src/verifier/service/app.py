@@ -36,14 +36,16 @@ Error split: a verification outcome (verified, semantic/resource-failed, or deco
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
 Verdict, so a chart never rides an unverified outcome); transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
-404, a malformed /propose-spec body -> 400), process-local admission refusal (429), or a trusted
-config / implementation fault (a broken manifest or invariant/native render fault -> 500)
+404, a malformed /propose-spec body -> 400), proposer-context policy refusal (422), process-local
+admission refusal (429), or a trusted config / implementation fault (a broken manifest or
+invariant/native render fault -> 500)
 answers RFC 9457 application/problem+json, shaped by the exception handlers below. /propose-spec
 adds two more
-problem+json outcomes over the model as an upstream dependency — an unknown dataset name -> 404
-(the name never echoed), and a backend that is unreachable (503) or returned an unusable reply
-(502) — mapped by _dataset_not_found_handler and _model_upstream_handler, both registered
-ahead of the generic Exception handler (Litestar routes by the exception's MRO). A proposal that
+problem+json outcomes over the model boundary — an unknown dataset name -> 404 (the name never
+echoed), a caller/dataset/prompt context over resource policy -> 422 before the model call, and a
+backend that is unreachable (503) or returned an unusable/oversized reply (502) — mapped by typed
+handlers registered ahead of the generic Exception handler (Litestar routes by the exception's
+MRO). A proposal that
 decodes but names a DIFFERENT dataset than requested is refused 502 too, by the dataset-name pin
 (_verify_render_pinned) via the plain HTTPException handler — never a verified 200 for an
 off-request chart. Every response carries X-Content-Type-Options: nosniff as an app default.
@@ -82,6 +84,7 @@ from litestar.status_codes import (
     HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_502_BAD_GATEWAY,
@@ -92,6 +95,7 @@ from verifier.service.admission import AdmissionController, JobPermit
 from verifier.service.model_client import (
     DatasetNotFoundError,
     ModelUpstreamError,
+    ProposerPolicyError,
     propose_spec,
 )
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
@@ -119,6 +123,7 @@ _HEX64 = re.compile(r"[0-9a-f]{64}")
 _NOSNIFF = ResponseHeader(name="x-content-type-options", value="nosniff")
 
 _ADMISSION_REFUSAL_DETAIL = "the process-local verifier work limit is currently exhausted"
+_PROPOSER_POLICY_DETAIL = "the proposer input exceeds the configured resource policy"
 
 
 @get("/health", operation_id="health", summary="Liveness and version probe", sync_to_thread=False)
@@ -208,7 +213,7 @@ def _decode_propose_request(raw: bytes) -> ProposeRequest:
     misuse), never a spec proposal — the model has not run yet, so there is no verdict to ride."""
     try:
         return _PROPOSE_DECODER.decode(raw)
-    except (msgspec.DecodeError, msgspec.ValidationError) as exc:
+    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
         msg = f"malformed propose request body: {exc}"
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
@@ -437,6 +442,17 @@ def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) ->
     return _problem_response(upstream.status, "the model backend did not return a usable proposal")
 
 
+def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
+    """Map a pre-model ProposerPolicyError to 422, never a verification verdict.
+
+    The operator log retains the exact resource/reason; the fixed caller detail discloses neither
+    provisioned dataset dimensions nor configured ceilings. No backend call occurred.
+    """
+    policy = cast("ProposerPolicyError", exc)
+    _LOGGER.info("proposer resource policy refusal (%s): %s", policy.resource, policy)
+    return _problem_response(HTTP_422_UNPROCESSABLE_ENTITY, _PROPOSER_POLICY_DETAIL)
+
+
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
     store = ArtifactStore(settings.store_cap, html_cap=settings.html_cap)
@@ -468,6 +484,7 @@ def create_app(settings: Settings) -> Litestar:
         exception_handlers={
             DatasetNotFoundError: _dataset_not_found_handler,
             ModelUpstreamError: _model_upstream_handler,
+            ProposerPolicyError: _proposer_policy_handler,
             HTTPException: _http_exception_handler,
             Exception: _internal_exception_handler,
         },

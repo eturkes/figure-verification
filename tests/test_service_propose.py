@@ -7,9 +7,10 @@ test_service_model_client pattern), so no socket binds and the reply is determin
 client runs over the real data_dir (data/), so a proposed good spec verifies, renders, and is
 stored, while a proposed malformed or check-failing spec rides a 200 verdict — the metered
 model-failure mode, carried alongside the model's raw reply. The proposer error split maps to
-problem+json: an unknown dataset -> 404 (the name never echoed), an unreachable backend -> 503,
-an unusable reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong
-method -> 405. A proposal that decodes but names a DIFFERENT dataset than requested is refused
+problem+json: an unknown dataset -> 404 (the name never echoed), an over-policy caller/dataset/
+prompt context -> 422 before the backend, an unreachable backend -> 503, an unusable or oversized
+reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong method -> 405.
+A proposal that decodes but names a DIFFERENT dataset than requested is refused
 502 by the M3.3b dataset-name pin, right after decode — before any verify or render, so even a
 broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart. A
 verified proposal also populates the chart store through the shared render_outcome seam, so GET
@@ -18,7 +19,7 @@ verified proposal also populates the chart store through the shared render_outco
 
 import json
 import shutil
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -50,10 +51,27 @@ def _install_handler(
     """Point model_client._build_async_client at a MockTransport-backed client running handler,
     so the proposer's HTTP call is served in-process with no socket."""
 
+    class Stream(httpx.AsyncByteStream):
+        def __init__(self, content: bytes) -> None:
+            self._content = content
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield self._content
+
+    def stream_handler(request: httpx.Request) -> httpx.Response:
+        response = handler(request)
+        if not response.is_stream_consumed:
+            return response
+        return httpx.Response(
+            response.status_code,
+            headers=response.headers,
+            stream=Stream(response.content),
+        )
+
     def build(settings: Settings) -> httpx.AsyncClient:
         # Mirror the real factory's timeout wiring (harmless under MockTransport).
         return httpx.AsyncClient(
-            transport=httpx.MockTransport(handler), timeout=settings.model_timeout
+            transport=httpx.MockTransport(stream_handler), timeout=settings.model_timeout
         )
 
     monkeypatch.setattr(model_client, "_build_async_client", build)
@@ -224,6 +242,43 @@ def test_propose_unknown_dataset_is_404(client: TestClient[Litestar]) -> None:
     assert "nonexistent" not in json.dumps(body)
 
 
+@pytest.mark.parametrize(
+    ("settings", "user_request"),
+    [
+        (Settings(data_dir=_DATA, max_user_request_bytes=1), "xx"),
+        (Settings(data_dir=_DATA, max_csv_bytes=1), "x"),
+        (Settings(data_dir=_DATA, max_manifest_bytes=1), "x"),
+        (Settings(data_dir=_DATA, max_manifest_columns=1), "x"),
+        (Settings(data_dir=_DATA, max_prompt_bytes=1), "x"),
+    ],
+    ids=["user-request", "csv-bytes", "manifest-bytes", "manifest-columns", "prompt-bytes"],
+)
+def test_propose_context_policy_is_422_before_backend(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, user_request: str
+) -> None:
+    # Every pre-model policy source shares one non-verdict 422 shape. The backend spy is the
+    # load-bearing assertion: no resource refusal can become a model call or verification claim.
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
+
+    _install_handler(monkeypatch, handler)
+    with TestClient(app=create_app(settings)) as scoped:
+        response = _propose(scoped, user_request, "sales.csv")
+    assert response.status_code == 422
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.headers["x-content-type-options"] == _NOSNIFF
+    assert response.json() == {
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "the proposer input exceeds the configured resource policy",
+    }
+    assert calls == 0
+
+
 def test_propose_backend_unreachable_is_503(
     client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -291,6 +346,16 @@ def test_propose_malformed_body_is_400(client: TestClient[Litestar], body: bytes
 def test_propose_non_json_body_is_400(client: TestClient[Litestar]) -> None:
     response = client.post("/propose-spec", content=b"not json {", headers=_JSON)
     assert response.status_code == 400
+    assert response.json()["status"] == 400
+
+
+def test_propose_invalid_utf8_body_is_400(client: TestClient[Litestar]) -> None:
+    # msgspec raises builtin UnicodeDecodeError (not DecodeError) for invalid UTF-8 inside a JSON
+    # string. It is still malformed caller transport and must never escape to the generic 500.
+    body = b'{"user_request":"\xed\xa0\x80","dataset_name":"sales.csv"}'
+    response = client.post("/propose-spec", content=body, headers=_JSON)
+    assert response.status_code == 400
+    assert response.headers["content-type"] == _PROBLEM_JSON
     assert response.json()["status"] == 400
 
 

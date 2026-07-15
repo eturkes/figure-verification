@@ -39,6 +39,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # HTTP status the verifier answers verification outcomes with (a Verdict rides a 200).
 _HTTP_OK = 200
+# Pre-model caller/dataset/prompt context exceeded the verifier's proposer resource policy.
+_HTTP_PROMPT_POLICY = 422
 # The pin-refusal status: the model proposed a spec for a different dataset than requested.
 _HTTP_PIN_MISMATCH = 502
 # Any status at or above this is a server/upstream fault (502/503 backend, or a verifier 500).
@@ -60,6 +62,7 @@ _BUCKET_SEMANTIC = "semantic"
 _BUCKET_POLICY = "policy"
 # Fault buckets for a non-200 response.
 _BUCKET_OFF_REQUEST = "off_request"
+_BUCKET_PROMPT_POLICY = "prompt_policy"
 _BUCKET_UPSTREAM_FAULT = "upstream_fault"
 _BUCKET_HARNESS_ERROR = "harness_error"
 
@@ -148,12 +151,13 @@ class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """Observational rates over the n 200-responses, plus the three non-200 fault counts.
+    """Observational rates over the n 200-responses, plus four non-200 outcome counts.
 
     n = number of 200 responses in this scope; every rate is a count / n. The fault counts are
     non-200 outcomes NOT in n: off_request (a model naming a different dataset -- a model failure
-    mode), upstream_fault (backend/verifier infra), harness_error (the harness sent a bad request,
-    expected to be 0). n + the three fault counts = the scope's prompt count.
+    mode), prompt_policy (pre-model resource refusal), upstream_fault (backend/verifier infra),
+    harness_error (the harness sent a bad request, expected to be 0). Their counts plus n equal the
+    scope's prompt count.
     """
 
     n: int
@@ -164,6 +168,7 @@ class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
     policy_failure_rate: float
     verified_render_rate: float
     off_request_count: int
+    prompt_policy_count: int
     upstream_fault_count: int
     harness_error_count: int
 
@@ -235,6 +240,7 @@ class _Tally(msgspec.Struct):
     tool_call: int = 0
     json_valid: int = 0
     off_request: int = 0
+    prompt_policy: int = 0
     upstream_fault: int = 0
     harness_error: int = 0
     fenced: int = 0
@@ -265,14 +271,17 @@ def _classify(verdict: _RespVerdict) -> str:
 
 
 def _classify_fault(status: int, detail: str) -> str:
-    """Bucket a non-200 fault: off_request (model), upstream_fault (infra), or harness_error.
+    """Bucket non-200: off-request model, prompt policy, infra, or harness error.
 
     A 502 with the pin-mismatch detail is a model off-request behavior (a successful dataset
-    redirect), NOT infra -- it stays out of upstream_fault. Every other 5xx is infra; a 4xx means
-    the harness sent a bad request (expected to be 0).
+    redirect), NOT infra. A 422 is the service's dedicated pre-model prompt-policy outcome, not a
+    verifier verdict or harness bug. Every other 5xx is infra; remaining 4xx mean the harness sent
+    a bad request (expected to be 0).
     """
     if status == _HTTP_PIN_MISMATCH and detail == _PIN_MISMATCH_DETAIL:
         return _BUCKET_OFF_REQUEST
+    if status == _HTTP_PROMPT_POLICY:
+        return _BUCKET_PROMPT_POLICY
     if status >= _HTTP_SERVER_ERR:
         return _BUCKET_UPSTREAM_FAULT
     return _BUCKET_HARNESS_ERROR
@@ -352,6 +361,8 @@ def _tally_fault(tally: _Tally, bucket: str) -> None:
     """Record one non-200 fault into a scope's counters."""
     if bucket == _BUCKET_OFF_REQUEST:
         tally.off_request += 1
+    elif bucket == _BUCKET_PROMPT_POLICY:
+        tally.prompt_policy += 1
     elif bucket == _BUCKET_UPSTREAM_FAULT:
         tally.upstream_fault += 1
     elif bucket == _BUCKET_HARNESS_ERROR:
@@ -374,6 +385,7 @@ def _rate_block(tally: _Tally) -> RateBlock:
         policy_failure_rate=_rate(tally.policy, tally.n),
         verified_render_rate=_rate(tally.verified, tally.n),
         off_request_count=tally.off_request,
+        prompt_policy_count=tally.prompt_policy,
         upstream_fault_count=tally.upstream_fault,
         harness_error_count=tally.harness_error,
     )
