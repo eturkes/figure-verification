@@ -149,16 +149,20 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   model failure metering below the bound. Acceptance: spy backend sees zero calls on every prompt
   policy breach; exact-limit request still takes the old path; chunked oversized response proves
   bounded read + no decode; OpenAPI + bench classifiers updated; gate green.
-- **M5.1h — exact backend prompt-token admission** (OPEN): retain `max_prompt_len` in
+- **M5.1h — exact backend prompt-token admission** (DONE): retain `max_prompt_len` in
   `model_backend.Engine`; add a 128 KiB backend request-body cap; after `apply_chat_template`, call
   the installed tokenizer's `encode` with no duplicate special tokens and
   `max_length=max_prompt_len+1`, then reject an over-limit shape with the exact OpenAI error type
-  `prompt_too_long` before `pipe.generate`. The verifier
-  maps ONLY that trusted backend shape to its 422 policy problem; every other non-2xx stays 502.
+  `prompt_too_long` before `pipe.generate`. Forward the SAME admitted `TokenizedInputs` buffer to
+  generation: the installed string overload re-applied the chat template (live 24 admitted → 43
+  native tokens), while direct token input held 24 → 24 and preserved decoded output. The verifier
+  maps ONLY canonical project-backend status/media/body bytes to its 422 policy problem; every
+  other non-2xx stays 502.
   Body-cap + fake-tokenizer/pipe tests pin 413-before-decode, no silently accepted truncation,
-  exact token boundary, no native generate, and error-shape spoof resistance; live NPU smoke confirms the installed API
-  when available but is not the locked gate. Acceptance: the formerly unexercised NPU static-shape
-  overflow is preflighted and cannot enter generation; gate green.
+  exact token boundary + buffer identity, no native generate, and error-shape spoof resistance.
+  The installed CPU path live-confirmed exact-bound generation + over-bound preflight; a concurrent
+  external NPU workload made the optional post-fix NPU rerun unavailable. Acceptance: the formerly
+  unexercised NPU static-shape overflow is preflighted and cannot enter generation; gate green.
 - **M5.1i — deterministic evaluator work budget** (OPEN): add a 10_000_000 configurable integer
   work-unit budget inside `eval.evaluate`, charged BEFORE each operation from current
   rows/columns/keys

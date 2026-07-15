@@ -112,7 +112,7 @@ class ErrorDetail(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True)
 
 
 class ErrorResponse(msgspec.Struct, frozen=True, kw_only=True):
-    """An OpenAI-style error envelope. Emitted for a BackendError; the verifier client reads
-    any non-2xx as an upstream fault, so the exact shape is informational."""
+    """An OpenAI-style error envelope. The verifier recognizes only canonical HTTP-400
+    ``prompt_too_long`` as policy refusal; every other non-success shape is an upstream fault."""
 
     error: ErrorDetail

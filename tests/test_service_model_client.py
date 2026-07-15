@@ -384,6 +384,81 @@ def test_propose_spec_non_2xx_raises_502(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "HTTP 500" in str(exc_info.value)
 
 
+def test_exact_backend_prompt_too_long_shape_raises_policy_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {"error": {"message": "prompt exceeds token ceiling", "type": "prompt_too_long"}}
+    _install(monkeypatch, _returns(httpx.Response(400, json=body)))
+
+    with pytest.raises(ProposerPolicyError) as exc_info:
+        asyncio.run(propose_spec("req", "weather.csv", _settings()))
+
+    assert exc_info.value.resource == "resource.prompt_tokens"
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(
+            500,
+            json={"error": {"message": "prompt exceeds token ceiling", "type": "prompt_too_long"}},
+        ),
+        httpx.Response(
+            400,
+            json={"error": {"message": "prompt exceeds token ceiling", "type": "other"}},
+        ),
+        httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "prompt exceeds token ceiling",
+                    "type": "prompt_too_long",
+                    "extra": True,
+                }
+            },
+        ),
+        httpx.Response(
+            400,
+            json={
+                "error": {"message": "prompt exceeds token ceiling", "type": "prompt_too_long"},
+                "extra": True,
+            },
+        ),
+        httpx.Response(
+            400,
+            content=b'{"error":{"message":"x","type":"prompt_too_long"}}',
+            headers={"content-type": "text/plain"},
+        ),
+        httpx.Response(
+            400,
+            content=(b'{"error":{"message":"x","type":"other","type":"prompt_too_long"}}'),
+            headers={"content-type": "application/json"},
+        ),
+        httpx.Response(
+            400,
+            content=b'{"error": {"message":"x","type":"prompt_too_long"}}',
+            headers={"content-type": "application/json"},
+        ),
+    ],
+    ids=[
+        "wrong-status",
+        "wrong-type",
+        "inner-extra",
+        "outer-extra",
+        "wrong-media-type",
+        "duplicate-key",
+        "noncanonical-json",
+    ],
+)
+def test_backend_error_shape_spoofs_stay_upstream_502(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response
+) -> None:
+    _install(monkeypatch, _returns(response))
+    with pytest.raises(ModelUpstreamError) as exc_info:
+        asyncio.run(propose_spec("req", "weather.csv", _settings()))
+    assert exc_info.value.status == 502
+
+
 def test_encoded_model_response_is_refused_before_decompression(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

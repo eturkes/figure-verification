@@ -88,13 +88,14 @@ The transport reports two kinds of outcome and never confuses them:
 - **A non-verification HTTP outcome** — a wrong `Content-Type` (415), an oversize
   body (413), a wrong method (405), an uncoercible query parameter like a non-boolean
   `include_html` (400), process-local work admission refusal (429), an unknown or malformed
-  artifact id (404), a proposer-context policy refusal before any model output exists (422), or a
-  broken trusted manifest / implementation or native-render fault (500) — answers an RFC 9457
+  artifact id (404), a proposer input/token policy refusal before any model output or native
+  generation exists (422), or a broken trusted manifest / implementation or native-render fault
+  (500) — answers an RFC 9457
   `application/problem+json` document. Resource ceilings are verification outcomes, so they
   return a failed verdict before artifact storage once a spec entered verification; proposer
-  context ceilings instead return 422 because no model content exists to verify. A 500 remains
-  outside the verification contract; its cause stays in the server log, never in the caller's
-  response.
+  context/token ceilings instead return 422 because no model content exists to verify. A 500
+  remains outside the verification contract; its cause stays in the server log, never in the
+  caller's response.
 
 Each application process owns one lock-safe token bucket and active-job gate shared by every POST
 route. The defaults admit a burst of 120 jobs, refill at 120 jobs/minute, and allow 2 active jobs.
@@ -165,17 +166,24 @@ The error split extends the service boundary's rule to the model as an upstream 
 Before calling it, the service admits `user_request` by UTF-8 bytes (4 KiB default), reads the CSV
 and manifest with the core's inclusive bounded-file policy, and incrementally admits the combined
 system + user message content (32 KiB default). This is a byte/memory ceiling, not a token-count
-claim; exact prompt-token admission belongs to the backend. A breach returns a dedicated 422
-problem before any model call or verification result. The backend response is requested without
-content coding and streamed only through 128 KiB + one probe byte; an oversized success or error
-body closes early as 502 before JSON decode and never becomes a stored/metered model reply.
+claim; exact prompt-token admission belongs to the backend. Context breach returns a dedicated 422
+before the backend call. The backend caps its own JSON request at 128 KiB before decode, applies
+the chat template, tokenizes it without duplicate special tokens, and rejects a token count over
+its configured inclusive ceiling before native generation. It forwards that exact admitted token
+buffer to generation - never a string the runtime can re-template or retokenize. The verifier maps
+only that backend's canonical HTTP-400 `prompt_too_long` JSON envelope to the same 422; every
+lookalike stays 502. No 422 carries model output or a verification result. The backend response is
+requested without content coding and streamed only through 128 KiB + one probe byte; an oversized
+success or error body closes early as 502 before JSON decode and never becomes a stored/metered
+model reply.
 
 Once the backend returns a reply with extractable content, that content is a spec proposal —
 however malformed — so it rides a `200` verdict just like a spec posted directly, including a
 decode failure (the model's most common failure mode). Only a fault outside that flow answers
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
 timed-out backend (`503`), a backend reply that is oversized or not a usable chat completion
-(`502`), a decoded proposal naming a different dataset than requested (`502`, the dataset-name
+(`502`, except the exact pre-generation token-policy 422 above), a decoded proposal naming a
+different dataset than requested (`502`, the dataset-name
 pin above),
 or a malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
 proposes the whole spec, but of the verifier's trusted inputs it names only the dataset — never

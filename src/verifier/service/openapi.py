@@ -326,16 +326,16 @@ def _paths() -> dict[str, Any]:
                     ),
                     "404": _problem_response("No dataset with the requested name is provisioned."),
                     "422": _problem_response(
-                        "The user request, bounded dataset context, or assembled prompt exceeded "
-                        "the configured proposer resource policy. No model call or verification "
-                        "occurred. Limits are inclusive UTF-8/file byte ceilings, not token "
-                        "counts."
+                        "The user request, bounded dataset context, assembled prompt, or exact "
+                        "backend-tokenized prompt exceeded proposer resource policy. No native "
+                        "model generation or verification occurred. UTF-8/file byte ceilings "
+                        "and the backend token ceiling are independent and inclusive."
                     ),
                     **problems_post,
                     "502": _problem_response(
                         "The model backend replied, but not with a usable chat completion "
-                        "(a non-success status, an oversized or malformed body, or no usable "
-                        "message content), or it proposed a specification for a different "
+                        "(any other non-success status, an oversized or malformed body, or no "
+                        "usable message content), or it proposed a specification for a different "
                         "dataset than requested."
                     ),
                     "503": _problem_response("The model backend was unreachable or timed out."),

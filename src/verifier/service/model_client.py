@@ -24,14 +24,15 @@ maps without a 200:
   - DatasetNotFoundError: the named CSV+manifest is not a readable file (absent, or the name
     denotes a directory / a path through one) OR the name escapes data_dir (the same answer
     either way -> M3.3 404, no store-probe leak).
-  - ProposerPolicyError: caller text or bounded dataset/prompt context exceeded policy before
-    the backend call (M5.1g 422; no verification outcome exists).
+  - ProposerPolicyError: caller/dataset/prompt context exceeded policy before the backend call,
+    or the backend exactly reported tokenized prompt overflow before native generation (422; no
+    model content or verification outcome exists).
   - ModelUpstreamError(status=503): httpx.RequestError -- the backend is unreachable, or
     connect/read timed out (the wedged-backend hang model_timeout bounds).
-  - ModelUpstreamError(status=502): the backend answered but unusably -- a non-2xx status,
-    unsupported content coding, an oversized body, a body that is not a chat-completion envelope
-    (decode/validation failure), no choices, or empty content. An envelope-decode failure is an
-    UPSTREAM fault, never a 200.
+  - ModelUpstreamError(status=502): the backend answered but unusably -- any non-2xx except the
+    exact token-policy shape above, unsupported content coding, an oversized body, a body that is
+    not a chat-completion envelope (decode/validation failure), no choices, or empty content. An
+    envelope-decode failure is an UPSTREAM fault, never a 200.
 A malformed trusted manifest (load_manifest raises), or a permission/OS fault reading a
 present file, is operator misconfiguration: the error PROPAGATES (M3.3 500), the model
 cannot provoke it (it names only the dataset).
@@ -42,6 +43,12 @@ bound, not a token or post-chat-template claim. Dataset files reuse the core's l
 reader. The client requests and enforces identity encoding, then streams raw HTTP body bytes into
 an exact limit+1 accumulator before status or envelope decode. Oversized success and error bodies
 alike become typed 502 faults and never reach the raw-reply/verdict path.
+
+M5.1h recognizes the backend token-policy signal by exact project protocol: HTTP 400,
+application/json, and a canonical strict OpenAI error envelope whose sole machine type is
+``prompt_too_long``. Only that shape becomes the service's 422 policy outcome; wrong status,
+media type, encoding, fields, or type remain an upstream 502. The operator-selected local backend
+is trusted configuration; this equality check is not cryptographic peer authentication.
 """
 
 import csv
@@ -49,6 +56,7 @@ import json
 from io import StringIO
 from itertools import chain, islice
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import msgspec
@@ -83,11 +91,11 @@ class ModelUpstreamError(Exception):
 
 
 class ProposerPolicyError(Exception):
-    """Pre-model proposer input/context exceeded trusted operator resource policy.
+    """Proposer input/context exceeded trusted operator resource policy.
 
-    The service maps this to a dedicated 422 problem, never a verification verdict: no model
-    content exists to verify. ``resource`` is an operator-log classifier and is never echoed to
-    the caller.
+    The service maps this to a dedicated 422 problem, never a verification verdict: either no
+    backend call occurred, or backend tokenization refused before native generation. No model
+    content exists to verify. ``resource`` is an operator-log classifier and is never echoed.
     """
 
     def __init__(self, message: str, *, resource: str) -> None:
@@ -114,6 +122,23 @@ class _ChatResponse(msgspec.Struct, frozen=True, kw_only=True):
 
 
 _ENVELOPE_DECODER = msgspec.json.Decoder(_ChatResponse)
+
+
+class _BackendPolicyDetail(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
+    """Exact inner shape emitted by this project's backend for prompt-token overflow."""
+
+    message: str
+    type: Literal["prompt_too_long"]
+
+
+class _BackendPolicyError(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
+    """Exact outer OpenAI error envelope; no success or unrelated error can match."""
+
+    error: _BackendPolicyDetail
+
+
+_BACKEND_POLICY_DECODER = msgspec.json.Decoder(_BackendPolicyError)
+_BACKEND_POLICY_STATUS = 400
 
 
 # --- proposer prompt ----------------------------------------------------------
@@ -354,11 +379,32 @@ def _extract_content(response_bytes: bytes) -> bytes:
     return content.encode("utf-8")
 
 
+def _is_backend_prompt_policy(response: httpx.Response, response_bytes: bytes) -> bool:
+    """Whether a non-success response is exactly the local prompt-token policy protocol.
+
+    Decode failures are intentionally false, not exceptions: every lookalike remains the generic
+    upstream 502 path. Parameters on application/json are harmless HTTP media-type syntax.
+    """
+    if response.status_code != _BACKEND_POLICY_STATUS:
+        return False
+    media_type = response.headers.get("content-type", "").partition(";")[0].strip().lower()
+    if media_type != "application/json":
+        return False
+    try:
+        policy = _BACKEND_POLICY_DECODER.decode(response_bytes)
+    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError):
+        return False
+    # Re-encoding the decoded strict struct rejects duplicate keys, alternate key ordering,
+    # whitespace, and other JSON spellings that the project backend never emits.
+    return msgspec.json.encode(policy) == response_bytes
+
+
 async def propose_spec(user_request: str, dataset_name: str, settings: Settings) -> bytes:
     """Propose a VPlot spec for `user_request` over `dataset_name`, returning the model's raw
     reply content as bytes (never decoded here). Raises DatasetNotFoundError (unknown/escaping
-    name), ProposerPolicyError (pre-model 422), or ModelUpstreamError (503 unreachable / 502
-    unusable reply). See the module docstring for the trust and error-split contract."""
+    name), ProposerPolicyError (422 before a model call or native generation), or
+    ModelUpstreamError (503 unreachable / 502 unusable reply). See the module docstring for the
+    trust and error-split contract."""
     if _utf8_size_at_most(user_request, settings.max_user_request_bytes) is None:
         msg = f"proposer user request exceeds UTF-8 byte limit of {settings.max_user_request_bytes}"
         raise ProposerPolicyError(msg, resource="resource.user_request_bytes")
@@ -387,6 +433,9 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
                     response, settings.max_model_response_bytes
                 )
                 if not response.is_success:
+                    if _is_backend_prompt_policy(response, response_bytes):
+                        msg = "model backend refused a prompt over its token ceiling"
+                        raise ProposerPolicyError(msg, resource="resource.prompt_tokens")
                     msg = f"model backend returned HTTP {response.status_code}"
                     raise ModelUpstreamError(msg, status=502)
                 return _extract_content(response_bytes)

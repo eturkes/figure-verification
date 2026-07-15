@@ -139,7 +139,7 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
 
 
 def _exit_code(report: Report) -> int:
-    """1: guarantee broken/unexercised, pre-model refusal, harness error, or no 200.
+    """1: guarantee broken/unexercised, pre-generation refusal, harness error, or no 200.
 
     Broken = a bad golden verified (false accept) OR a good golden failed (false reject) OR
     transport errors kept a golden unjudged. "Not exercised" = either corpus size or identity

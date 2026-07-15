@@ -305,6 +305,21 @@ def test_propose_backend_unusable_reply_is_502(
     assert response.json()["status"] == 502
 
 
+def test_propose_backend_prompt_token_policy_is_422(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = {"error": {"message": "prompt exceeds token ceiling", "type": "prompt_too_long"}}
+    _install_handler(monkeypatch, lambda _request: httpx.Response(400, json=body))
+    response = _propose(client, "anything", "sales.csv")
+    assert response.status_code == 422
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json() == {
+        "title": "Unprocessable Content",
+        "status": 422,
+        "detail": "the proposer input exceeds the configured resource policy",
+    }
+
+
 def test_propose_invalid_utf8_reply_is_502(
     client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
 ) -> None:

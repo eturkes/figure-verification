@@ -13,10 +13,12 @@ NPU by default). Probe-validated OpenVINO facts this module encodes (durable cop
   GenerationConfig() drops eos/stop tokens and defaults max_new_tokens to 2**64-1.
 - Greedy when temperature == 0 (the deterministic proposer path M3.2 uses); do_sample alone
   leaves temperature at 1.0, so set cfg.temperature only when sampling.
-- The NPU compiles to static shapes: Engine.load passes MAX_PROMPT_LEN for an NPU device, so a
-  prompt longer than max_prompt_len raises at generate() (the client reads the non-2xx as an
-  upstream fault). The proposer path is greedy (temperature 0); a nonzero temperature is not
-  exercised on the NPU.
+- The NPU compiles to static shapes: Engine.load passes MAX_PROMPT_LEN for an NPU device. Before
+  native generation on every device, tokenize the chat-templated prompt without adding a second
+  set of special tokens, reject a shape over max_prompt_len as ``prompt_too_long``, and pass that
+  exact admitted TokenizedInputs buffer to generation. This prevents the native string overload
+  from reapplying a chat template or retokenizing after admission. The proposer path is greedy
+  (temperature 0); a nonzero temperature is not exercised on the NPU.
 - Bound the emitted RESPONSE size: after generation, reject a decoded reply whose UTF-8 byte
   length exceeds the ceiling (over-cap -> BackendError, read as an upstream fault). A
   post-generation guard on response bytes; max_new_tokens (per call) bounds the work itself.
@@ -33,8 +35,8 @@ from model_backend.settings import Settings
 
 class BackendError(Exception):
     """A backend fault carrying an HTTP status + machine-readable type; app.py renders it as
-    an OpenAI-style error body. The verifier client treats any non-2xx as an upstream fault
-    (POC_SCOPE error split), so this is how an over-cap generation reaches the client."""
+    an OpenAI-style error body. The verifier recognizes only the exact prompt-too-long protocol
+    shape as policy refusal; every other backend error stays an upstream fault."""
 
     def __init__(self, message: str, *, status: int, error_type: str) -> None:
         super().__init__(message)
@@ -55,9 +57,12 @@ class GenResult(msgspec.Struct, frozen=True, kw_only=True):
 class Engine:
     """A loaded LLMPipeline guarded by a lock. Build via Engine.load (blocking compile)."""
 
-    def __init__(self, pipe: Any, tokenizer: Any, *, max_response_bytes: int) -> None:
+    def __init__(
+        self, pipe: Any, tokenizer: Any, *, max_prompt_len: int, max_response_bytes: int
+    ) -> None:
         self._pipe = pipe
         self._tok = tokenizer
+        self._max_prompt_len = max_prompt_len
         self._max_response_bytes = max_response_bytes
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
         # probed (see memory M3); the lock is the safe default.
@@ -68,37 +73,59 @@ class Engine:
         """Compile the model onto settings.device (blocking; ~seconds, slower on a cold kernel
         cache). Raises loudly if the model path or device is unusable.
 
-        An NPU device compiles to static shapes, so it gets MAX_PROMPT_LEN = max_prompt_len
-        (the largest prompt the pipeline accepts; a longer one raises at generate() — a
-        static-shape contract, not exercised this session). GPU/CPU use dynamic shapes and
-        reject that property, so it is passed only for an NPU device.
+        An NPU device compiles to static shapes, so it gets MAX_PROMPT_LEN = max_prompt_len; the
+        explicit tokenizer preflight keeps every native call at or below that shape. GPU/CPU use
+        dynamic shapes and reject the compile property, so it is passed only for an NPU device;
+        the logical preflight still applies there.
         """
         pipeline_config: dict[str, int] = {}
         if "NPU" in settings.device:
             pipeline_config["MAX_PROMPT_LEN"] = settings.max_prompt_len
         pipe = ov_genai.LLMPipeline(str(settings.model_dir), settings.device, **pipeline_config)
         tokenizer = pipe.get_tokenizer()
-        return cls(pipe, tokenizer, max_response_bytes=settings.max_response_bytes)
+        return cls(
+            pipe,
+            tokenizer,
+            max_prompt_len=settings.max_prompt_len,
+            max_response_bytes=settings.max_response_bytes,
+        )
 
     def generate(
         self, messages: list[dict[str, str]], *, temperature: float, max_tokens: int
     ) -> GenResult:
         """Generate one completion for the full messages array (stateless chat template).
 
-        Serialized behind the lock (one pipeline, one accelerator). Greedy when temperature == 0.
-        Raises BackendError if the decoded text exceeds the response-byte ceiling.
+        Serialized behind the lock (one tokenizer/pipeline/accelerator). Greedy when temperature
+        == 0. Raises BackendError before native generation if the exact templated prompt exceeds
+        the token ceiling, or after generation if decoded text exceeds the response-byte ceiling.
         """
         with self._lock:
-            # apply_chat_template / generate / perf_metrics come from the Any-typed native
-            # module; annotate each extracted value to keep the boundary well-typed.
+            # apply_chat_template / encode / generate / perf_metrics come from the Any-typed
+            # native module; annotate each extracted value to keep the boundary well-typed.
             prompt: str = self._tok.apply_chat_template(messages, add_generation_prompt=True)
+            # The template already materializes this model's control tokens. Adding tokenizer
+            # special tokens again would count a different sequence from native generation.
+            # cap+1 remains a decisive sentinel if a tokenizer truncates at max_length; the
+            # installed runtime returns the full unpadded shape.
+            tokenized = self._tok.encode(
+                prompt,
+                add_special_tokens=False,
+                max_length=self._max_prompt_len + 1,
+            )
+            input_tokens: int = tokenized.input_ids.shape[-1]
+            if input_tokens > self._max_prompt_len:
+                msg = f"tokenized prompt exceeds the {self._max_prompt_len}-token ceiling"
+                raise BackendError(msg, status=400, error_type="prompt_too_long")
             cfg = self._pipe.get_generation_config()
             cfg.max_new_tokens = max_tokens
             cfg.do_sample = temperature > 0
             if cfg.do_sample:
                 cfg.temperature = temperature
-            result = self._pipe.generate([prompt], cfg)
-            text: str = result.texts[0]
+            # TokenizedInputs is the load-bearing handoff: a string overload may apply a chat
+            # template again or otherwise retokenize after this method admitted a different
+            # sequence. EncodedResults carries generated token ids, decoded exactly once here.
+            result = self._pipe.generate(tokenized, cfg)
+            text: str = self._tok.decode(result.tokens[0])
             metrics = result.perf_metrics
             prompt_tokens: int = metrics.get_num_input_tokens()
             completion_tokens: int = metrics.get_num_generated_tokens()

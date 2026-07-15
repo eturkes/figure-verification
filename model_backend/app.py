@@ -7,9 +7,9 @@ The model compiles once at create_app time (Engine.load, blocking); each generat
 the event loop in a worker thread behind the engine lock (asyncio.to_thread — one pipeline,
 one accelerator). This is the UNTRUSTED proposer: request parsing is lenient (OpenAI-compat via the
 typed msgspec body, unknown fields tolerated), and the verifier re-decodes every reply
-strictly (POC_SCOPE). A BackendError (e.g. a reply over the response-byte ceiling) renders as
-an OpenAI-style error body via the handler below; the verifier client reads any non-2xx as an
-upstream fault.
+strictly (POC_SCOPE). Litestar bounds a request before body decode. A BackendError renders as an
+OpenAI-style error body via the handler below; the verifier recognizes only the exact
+``prompt_too_long`` shape as policy refusal and treats every other non-2xx as an upstream fault.
 Streaming is out of scope for this unit. Litestar's OpenAPI auto-gen stays off — the backend
 is consumed by a hardcoded client shape, not via a served document.
 """
@@ -105,4 +105,5 @@ def create_app(settings: Settings) -> Litestar:
         state=State({"settings": settings, "engine": engine}),
         openapi_config=None,
         exception_handlers={BackendError: _backend_error_handler},
+        request_max_body_size=settings.max_body_bytes,
     )

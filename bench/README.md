@@ -25,8 +25,9 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
 
 Buckets partition the 200 denominator (`verified + schema + semantic + policy = 1.0`). Non-200
 faults sit OUTSIDE `n`: `off_request` (a 502 pin-mismatch = model named a different dataset, a
-MODEL failure) · `prompt_policy` (a 422 pre-model context/resource refusal) · `upstream_fault`
-(any other 5xx = backend infra) · `harness_error` (remaining 4xx = a harness bug, expect 0).
+MODEL failure) · `prompt_policy` (a 422 context or pre-generation token-policy refusal) ·
+`upstream_fault` (any other 5xx = backend infra) · `harness_error` (remaining 4xx = a harness bug,
+expect 0).
 Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
 `schema.*`/`dataset.*`/`encoding.*`/`transform.*` check families all bucket SEMANTIC; only
 `label`/`security`/`scale` = POLICY.

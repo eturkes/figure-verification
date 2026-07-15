@@ -39,7 +39,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # HTTP status the verifier answers verification outcomes with (a Verdict rides a 200).
 _HTTP_OK = 200
-# Pre-model caller/dataset/prompt context exceeded the verifier's proposer resource policy.
+# Context or backend-tokenized prompt exceeded policy before native model generation.
 _HTTP_PROMPT_POLICY = 422
 # The pin-refusal status: the model proposed a spec for a different dataset than requested.
 _HTTP_PIN_MISMATCH = 502
@@ -155,7 +155,7 @@ class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
 
     n = number of 200 responses in this scope; every rate is a count / n. The fault counts are
     non-200 outcomes NOT in n: off_request (a model naming a different dataset -- a model failure
-    mode), prompt_policy (pre-model resource refusal), upstream_fault (backend/verifier infra),
+    mode), prompt_policy (pre-generation resource refusal), upstream_fault (backend/verifier infra),
     harness_error (the harness sent a bad request, expected to be 0). Their counts plus n equal the
     scope's prompt count.
     """
@@ -274,9 +274,9 @@ def _classify_fault(status: int, detail: str) -> str:
     """Bucket non-200: off-request model, prompt policy, infra, or harness error.
 
     A 502 with the pin-mismatch detail is a model off-request behavior (a successful dataset
-    redirect), NOT infra. A 422 is the service's dedicated pre-model prompt-policy outcome, not a
-    verifier verdict or harness bug. Every other 5xx is infra; remaining 4xx mean the harness sent
-    a bad request (expected to be 0).
+    redirect), NOT infra. A 422 is the service's dedicated pre-generation prompt-policy outcome,
+    not a verifier verdict or harness bug. Every other 5xx is infra; remaining 4xx mean the harness
+    sent a bad request (expected to be 0).
     """
     if status == _HTTP_PIN_MISMATCH and detail == _PIN_MISMATCH_DETAIL:
         return _BUCKET_OFF_REQUEST

@@ -36,16 +36,16 @@ Error split: a verification outcome (verified, semantic/resource-failed, or deco
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
 Verdict, so a chart never rides an unverified outcome); transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
-404, a malformed /propose-spec body -> 400), proposer-context policy refusal (422), process-local
-admission refusal (429), or a trusted config / implementation fault (a broken manifest or
-invariant/native render fault -> 500)
+404, a malformed /propose-spec body -> 400), proposer input/token policy refusal (422),
+process-local admission refusal (429), or a trusted config / implementation fault (a broken
+manifest or invariant/native render fault -> 500)
 answers RFC 9457 application/problem+json, shaped by the exception handlers below. /propose-spec
 adds two more
 problem+json outcomes over the model boundary — an unknown dataset name -> 404 (the name never
-echoed), a caller/dataset/prompt context over resource policy -> 422 before the model call, and a
-backend that is unreachable (503) or returned an unusable/oversized reply (502) — mapped by typed
-handlers registered ahead of the generic Exception handler (Litestar routes by the exception's
-MRO). A proposal that
+echoed); a caller/dataset/prompt context over resource policy before the backend call OR an exact
+backend prompt-token refusal before native generation -> 422; and a backend that is unreachable
+(503) or returned any other unusable/oversized reply (502) — mapped by typed handlers registered
+ahead of the generic Exception handler (Litestar routes by the exception's MRO). A proposal that
 decodes but names a DIFFERENT dataset than requested is refused 502 too, by the dataset-name pin
 (_verify_render_pinned) via the plain HTTPException handler — never a verified 200 for an
 off-request chart. Every response carries X-Content-Type-Options: nosniff as an app default.
@@ -443,10 +443,12 @@ def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) ->
 
 
 def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
-    """Map a pre-model ProposerPolicyError to 422, never a verification verdict.
+    """Map a pre-content ProposerPolicyError to 422, never a verification verdict.
 
     The operator log retains the exact resource/reason; the fixed caller detail discloses neither
-    provisioned dataset dimensions nor configured ceilings. No backend call occurred.
+    provisioned dataset dimensions nor configured ceilings. No model content or native-generation
+    work exists: context policy stops before the backend call; token policy stops after tokenizer
+    preflight.
     """
     policy = cast("ProposerPolicyError", exc)
     _LOGGER.info("proposer resource policy refusal (%s): %s", policy.resource, policy)

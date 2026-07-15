@@ -170,13 +170,14 @@ def test_every_post_documents_process_local_admission_refusal() -> None:
 
 def test_propose_documents_byte_policy_and_dedicated_422() -> None:
     # JSON Schema maxLength counts code points, so the request component states the real UTF-8
-    # byte rule in prose. The route's dedicated Problem response distinguishes a pre-model policy
-    # refusal from both malformed transport (400) and upstream failure (502/503).
+    # byte rule in prose. The route's dedicated Problem response covers pre-backend context policy
+    # and backend pre-generation token policy, distinct from transport (400) and upstream faults.
     request_schema = _DOC["components"]["schemas"]["ProposeRequest"]
     assert "UTF-8" in request_schema["description"]
     assert "maxLength" not in request_schema["properties"]["user_request"]
     response = _DOC["paths"]["/propose-spec"]["post"]["responses"]["422"]
-    assert "No model call or verification occurred" in response["description"]
+    assert "backend-tokenized prompt" in response["description"]
+    assert "No native model generation or verification occurred" in response["description"]
     assert response["content"]["application/problem+json"]["schema"] == {
         "$ref": "#/components/schemas/Problem"
     }
