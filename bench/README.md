@@ -42,6 +42,36 @@ match's inner text (else the whole reply), stripped, then `msgspec.json.decode`;
 This isolates the SYNTACTIC failure (fence-wrapping, which `decode_spec` rejects) from deeper
 malformation — e.g. the live run's `fenced=97 defenced_json_valid=24`.
 
+## OpenVINO wiring (this Debian container)
+Consolidated repo-local copy of the former `CLAUDE.local.md` guidance and its host guide:
+
+- OpenVINO + GenAI live outside the repo at
+  `/var/home/eturkes/.local/app/openvino_genai`; Python resolves that build through
+  `PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python`. They stay absent from
+  `pyproject.toml`; `.venv-model` supplies numpy + the Python web stack. The installed bindings
+  support CPython 3.10–3.13; this repo uses 3.13.
+- Source `/var/home/eturkes/.local/app/intel-accel/env.sh` **before** Python starts. It points
+  `LD_LIBRARY_PATH` at the host-driver symlink farm, registers the GPU OpenCL ICD through
+  `OCL_ICD_VENDORS`, and registers the GPU + NPU Level Zero drivers through
+  `ZE_ENABLE_ALT_DRIVERS`. Loader paths are consumed at process exec; changing `os.environ`
+  after Python starts is too late. Run the venv interpreter directly: `-E`, `-I`, and isolated
+  `uv run` modes can discard `PYTHONPATH`.
+- The live self-test must enumerate `CPU,GPU,NPU` and report `correct=True` for each:
+  ```
+  source /var/home/eturkes/.local/app/intel-accel/env.sh
+  export PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python:$PYTHONPATH
+  .venv-model/bin/python /var/home/eturkes/.local/app/intel-accel/selftest.py
+  ```
+- Keep benchmark observations pinned to the default `MODEL_BACKEND_DEVICE=NPU` for one-device
+  reproducibility. `AUTO:GPU,CPU` is the documented dynamic-shape fallback. Generic
+  `AUTO:NPU,GPU,CPU` orders candidates but AUTO may temporarily execute on CPU while compiling an
+  accelerator; `HETERO:NPU,GPU,CPU` requests graph partitioning rather than fallback selection,
+  and NPU HETERO support is model-specific. Treat either as a probed experiment, not this
+  benchmark's default.
+- The driver farm is host+container-coupled and stays outside git. After a host Intel-driver
+  update, rebuild it with
+  `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`, then rerun the self-test.
+
 ## Run recipe (hardware-gated — needs both servers up)
 Backend :8001 (NPU; accel env + OpenVINO `PYTHONPATH`, call the venv python DIRECTLY — never
 isolated `-E`/`-I`/`uv run`, which strip `PYTHONPATH`):
