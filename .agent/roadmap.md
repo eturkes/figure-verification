@@ -82,7 +82,7 @@ Sizing: M4's one-module units landed at 48-77% of 200K; its cross-layer units re
 splits. M5 therefore isolates policy, solver, independent oracle, signing, archive, replay, and
 transport. Lowest OPEN unit is next-session work; every unit runs the locked quality gate.
 
-- **M5.1a — core limit vocabulary + bounded ingest** (OPEN): add `verifier.limits` with a frozen
+- **M5.1a — core limit vocabulary + bounded ingest** (DONE): add `verifier.limits` with a frozen
   `VerificationLimits` + chunked `read_bounded(path, max_bytes)` that reads at most limit+1 and
   distinguishes genuine absence/operator faults exactly like the existing trusted-file rule.
   Defaults/operator-overridable upper bounds: 8 MiB raw CSV, 256 KiB manifest, 1_000 manifest

@@ -189,12 +189,17 @@ bytes, §8.)
   Outcome for any `bytes | str` input (the `decode_spec` signature): a total `VPlotSpec`, or
   `msgspec.ValidationError` / `msgspec.DecodeError` — never a partial or coerced object. (A
   non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
+- RESOURCE POLICY (M5, `resource.*`) = inclusive logical ceilings over trusted inputs and later
+  work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation raises a
+  tagged `VerificationError` before later work at that boundary. Ingest currently covers manifest
+  columns plus source logical rows/cells; later M5 units apply the same vocabulary to bytes,
+  recomputation, formal checks, render artifacts, transport admission, and provenance.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
   baseline, units present. Outcome: structured `{check, status, message, severity}`; any blocking
   failure → no render.
 
-A spec can pass DECODE yet fail SEMANTIC.
+A spec can pass DECODE yet fail RESOURCE POLICY or SEMANTIC.
 
 ## 10. Oracle parity (DuckDB, dev/test)
 

@@ -23,6 +23,7 @@ from verifier.ingest import (
     load_manifest,
     load_table,
 )
+from verifier.limits import VerificationLimits
 
 DATA = pathlib.Path(__file__).resolve().parent.parent / "data"
 
@@ -293,6 +294,71 @@ def test_quoted_field_with_embedded_comma() -> None:
     assert table.rows == (("x,y", Decimal(1)),)
 
 
+# --- resource.* boundaries --------------------------------------------------
+@pytest.mark.parametrize(
+    ("rows", "expected_check"), [(1, None), (2, None), (3, "resource.source_rows")]
+)
+def test_source_row_limit_boundary(rows: int, expected_check: str | None) -> None:
+    manifest = Manifest(dataset="t.csv", columns=(StringColumnSpec(name="v"),))
+    raw = b"v\n" + b"x\n" * rows
+    limits = VerificationLimits(max_source_rows=2, max_source_cells=100)
+    if expected_check is not None:
+        with pytest.raises(VerificationError) as exc_info:
+            load_table(raw, manifest, limits=limits)
+        assert exc_info.value.check == expected_check
+    else:
+        assert len(load_table(raw, manifest, limits=limits).rows) == rows
+
+
+@pytest.mark.parametrize(
+    ("cells", "expected_check"), [(1, None), (2, None), (3, "resource.source_cells")]
+)
+def test_source_cell_limit_boundary(cells: int, expected_check: str | None) -> None:
+    manifest = Manifest(dataset="t.csv", columns=(StringColumnSpec(name="v"),))
+    raw = b"v\n" + b"x\n" * cells
+    limits = VerificationLimits(max_source_rows=100, max_source_cells=2)
+    if expected_check is not None:
+        with pytest.raises(VerificationError) as exc_info:
+            load_table(raw, manifest, limits=limits)
+        assert exc_info.value.check == expected_check
+    else:
+        assert len(load_table(raw, manifest, limits=limits).rows) == cells
+
+
+def test_source_cell_limit_counts_actual_record_before_width_or_coercion() -> None:
+    manifest = Manifest(dataset="t.csv", columns=(NumericColumnSpec(name="v", scale=0),))
+    limits = VerificationLimits(max_source_rows=100, max_source_cells=2)
+    # Three parsed fields breach the raw-source cell ceiling even though the manifest expects one.
+    # Resource admission therefore precedes row-width reporting and all numeric coercion.
+    with pytest.raises(VerificationError) as exc_info:
+        load_table(b"v\nnot-a-number,x,y\n", manifest, limits=limits)
+    assert exc_info.value.check == "resource.source_cells"
+
+
+def test_over_limit_logical_row_stops_before_cell_coercion() -> None:
+    manifest = Manifest(dataset="t.csv", columns=(NumericColumnSpec(name="v", scale=0),))
+    limits = VerificationLimits(max_source_rows=1, max_source_cells=100)
+    # The second logical row is both over-limit and an invalid numeric. Resource admission runs
+    # first, so the extra record is never coerced and data.numeric_value cannot mask the limit.
+    with pytest.raises(VerificationError) as exc_info:
+        load_table(b"v\n1\nnot-a-number\n", manifest, limits=limits)
+    assert exc_info.value.check == "resource.source_rows"
+
+
+def test_quoted_physical_newlines_count_as_one_logical_row() -> None:
+    manifest = Manifest(dataset="t.csv", columns=(StringColumnSpec(name="v"),))
+    limits = VerificationLimits(max_source_rows=1, max_source_cells=100)
+    hostile = b'v\n"' + b"line\n" * 1_000 + b'last"\n'
+    table = load_table(hostile, manifest, limits=limits)
+    assert len(table.rows) == 1
+    value = table.rows[0][0]
+    assert isinstance(value, str)
+    assert value.count("\n") == 1_000
+    with pytest.raises(VerificationError) as exc_info:
+        load_table(hostile + b"extra\n", manifest, limits=limits)
+    assert exc_info.value.check == "resource.source_rows"
+
+
 # --- manifest parse layer ----------------------------------------------------
 def test_load_manifest_preserves_unit_and_label() -> None:
     manifest = load_manifest((DATA / "schemas" / "weather.json").read_bytes())
@@ -335,3 +401,32 @@ def test_load_manifest_rejects_duplicate_column_name() -> None:
     )
     with pytest.raises(msgspec.ValidationError):
         load_manifest(raw)
+
+
+@pytest.mark.parametrize(
+    ("columns", "expected_check"), [(1, None), (2, None), (3, "resource.manifest_columns")]
+)
+def test_manifest_column_limit_boundary(columns: int, expected_check: str | None) -> None:
+    encoded_columns = b",".join(
+        f'{{"type":"string","name":"c{i}"}}'.encode() for i in range(columns)
+    )
+    raw = b'{"dataset":"t.csv","columns":[' + encoded_columns + b"]}"
+    limits = VerificationLimits(max_manifest_columns=2)
+    if expected_check is not None:
+        with pytest.raises(VerificationError) as exc_info:
+            load_manifest(raw, limits=limits)
+        assert exc_info.value.check == expected_check
+    else:
+        assert len(load_manifest(raw, limits=limits).columns) == columns
+
+
+def test_load_table_reholds_manifest_column_limit_before_csv_parse() -> None:
+    manifest = Manifest(
+        dataset="t.csv",
+        columns=tuple(StringColumnSpec(name=f"c{i}") for i in range(3)),
+    )
+    limits = VerificationLimits(max_manifest_columns=2)
+    # Invalid UTF-8 would be data.charset if parsing began; the manifest policy gate is earlier.
+    with pytest.raises(VerificationError) as exc_info:
+        load_table(b"\xff", manifest, limits=limits)
+    assert exc_info.value.check == "resource.manifest_columns"

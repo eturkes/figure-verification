@@ -4,14 +4,16 @@
 The spec-independent layer between `canon` (value model + hashing) and `eval` (the
 transform pipeline). It turns the trusted per-column manifest plus the raw CSV bytes
 into a `canon.Table` of SOURCE rows in SOURCE order (the M1.4d evaluator applies the
-transforms and the total-sort closure), or raises on a data-integrity violation.
+transforms and the total-sort closure), or raises on a resource/data-integrity violation.
 Decimal-exact, no float. Implements VPlot_SEMANTICS.md sections 2-3 (data model +
 numeric/temporal parse).
 
-Two layers, two failure types (VPlot_SEMANTICS.md section 9):
+Three failure classes (VPlot_SEMANTICS.md section 9 + M5 resource policy):
   - parse  : load_manifest strict-decodes the trusted manifest, raising msgspec
              ValidationError / DecodeError (mirrors schema.decode_spec — a malformed
              manifest is a broken config, not a verification failure).
+  - policy : manifest/source dimension ceilings raise VerificationError(resource.*)
+             before later per-column/per-cell work.
   - verify : load_table coerces each CSV cell to its manifest type, raising
              VerificationError(check="data.*") on any data-integrity breach (charset,
              header, row width, un-coercible numeric/temporal cell).
@@ -32,6 +34,7 @@ from msgspec import Meta
 
 from verifier import canon
 from verifier.errors import VerificationError
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import DatasetName, FieldName, _Base, _reject_duplicate_keys
 
 # DECIMAL(38, scale) is the M1.4f DuckDB oracle's column type: 38 total significant
@@ -80,16 +83,29 @@ class Manifest(_Base, frozen=True, kw_only=True):
 _MANIFEST_DECODER = msgspec.json.Decoder(Manifest)
 
 
-def load_manifest(manifest_bytes: bytes) -> Manifest:
-    """Strict-decode the trusted manifest, or raise msgspec ValidationError / DecodeError.
+def _check_manifest_columns(manifest: Manifest, limits: VerificationLimits) -> None:
+    """Hold the manifest-width policy before duplicate-name scans or table construction."""
+    count = len(manifest.columns)
+    if count > limits.max_manifest_columns:
+        msg = f"manifest declares {count} columns; limit is {limits.max_manifest_columns}"
+        raise VerificationError(msg, check="resource.manifest_columns")
+
+
+def load_manifest(
+    manifest_bytes: bytes, *, limits: VerificationLimits = DEFAULT_LIMITS
+) -> Manifest:
+    """Strict-decode the trusted manifest under `limits`, or raise parse/resource failure.
 
     Fail-closed like schema.decode_spec: unknown fields, an unknown column tag, or a
     bad scale are rejected, and a duplicate-key rescan (finding 4) rejects the last-wins
-    ambiguity msgspec tolerates so the decoded manifest matches its hashed bytes.
+    ambiguity msgspec tolerates so the decoded manifest matches its hashed bytes. The
+    column ceiling runs immediately after typed decode and before the duplicate-key/name
+    passes, bounding all later per-column work with resource.manifest_columns.
     Duplicate column NAMES are rejected too (the schema analog of a duplicate JSON key):
     a column name is the table's field key, so a repeat makes every downstream name
     reference (channels, transforms, checks) ambiguous."""
     manifest = _MANIFEST_DECODER.decode(manifest_bytes)
+    _check_manifest_columns(manifest, limits)
     json.loads(manifest_bytes, object_pairs_hook=_reject_duplicate_keys)
     names = [c.name for c in manifest.columns]
     if len(set(names)) != len(names):
@@ -237,14 +253,24 @@ def _coerce_cell(column: canon.Column, text: str) -> canon.Cell:
     return text
 
 
-def load_table(csv_bytes: bytes, manifest: Manifest) -> canon.Table:
+def load_table(
+    csv_bytes: bytes,
+    manifest: Manifest,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> canon.Table:
     """Trusted `(raw CSV bytes, manifest)` -> a typed canon.Table of source rows in source
-    order, or raise VerificationError(check="data.*").
+    order, or raise VerificationError(check="resource.*" | "data.*").
 
     The CSV decodes as UTF-8 (data.charset), its header must equal the manifest column
     names in order (data.header), and every row's field count must match (data.row_width);
-    each cell coerces to its column type (data.numeric_value / data.temporal_value). The
-    rows are NOT yet total-sorted -- that closure is the M1.4d evaluator's."""
+    each cell coerces to its column type (data.numeric_value / data.temporal_value).
+    Manifest width, source logical rows, and source table cells are admitted before the
+    corresponding projection/coercion; quoted physical newlines remain one CSV record.
+    The rows are NOT yet total-sorted -- that closure is the M1.4d evaluator's."""
+    # Re-hold at the use site: msgspec constraints and an earlier permissive load can be
+    # bypassed by direct struct construction or a stricter caller policy.
+    _check_manifest_columns(manifest, limits)
     columns = tuple(_canon_column(c) for c in manifest.columns)
     try:
         text = csv_bytes.decode("utf-8")
@@ -274,8 +300,16 @@ def load_table(csv_bytes: bytes, manifest: Manifest) -> canon.Table:
         msg = f"CSV header {header!r} does not match manifest columns {expected!r}"
         raise VerificationError(msg, check="data.header")
     rows: list[tuple[canon.Cell, ...]] = []
+    source_cells = 0
     try:
-        for record in reader:
+        for row_number, record in enumerate(reader, start=1):
+            if row_number > limits.max_source_rows:
+                msg = f"source exceeds logical-row limit of {limits.max_source_rows}"
+                raise VerificationError(msg, check="resource.source_rows")
+            source_cells += len(record)
+            if source_cells > limits.max_source_cells:
+                msg = f"source exceeds cell limit of {limits.max_source_cells}"
+                raise VerificationError(msg, check="resource.source_cells")
             if len(record) != len(columns):
                 msg = f"CSV row has {len(record)} field(s); expected {len(columns)}: {record!r}"
                 raise VerificationError(msg, check="data.row_width")

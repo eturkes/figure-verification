@@ -10,8 +10,8 @@ Check provenance — four deliberately distinct classes:
 - ACTIVE: computed here, one pass-or-fail result each — dataset.hash_matches_source (binding)
   plus the encoding/label stage (fields exist, axis types match, quantitative units present).
 - SURFACED: any VerificationError evaluate() raises — eval's semantic checks and,
-  transitively (eval calls ingest.load_table), ingest's data.* checks — is wrapped as a
-  fail under its own .check name. Check-agnostic: no eval-pass is enumerated here.
+  transitively (eval calls ingest.load_table), ingest's resource.* / data.* checks — is
+  wrapped as a fail under its own .check name. Check-agnostic: no eval-pass is enumerated here.
 - AFFIRMED: true by construction (the trust argument), emitted as constant passes —
   security.no_arbitrary_code, transform.ops_allowed, transform.filters_declared,
   transform.aggregates_match_recomputation.
@@ -254,7 +254,7 @@ def verify(spec: VPlotSpec, manifest: ingest.Manifest, *, data_dir: Path) -> Ver
         return VerificationReport(results=tuple(results), plotted_table=None)
     try:
         plotted = evaluate(spec, manifest, raw)
-    except VerificationError as exc:  # eval semantic or (transitively) ingest data.* failure
+    except VerificationError as exc:  # eval semantic or transitive ingest resource.*/data.*
         results.append(_fail(exc.check, str(exc)))
         return VerificationReport(results=tuple(results), plotted_table=None)
     results.extend(_encoding_checks(spec, plotted, manifest))
