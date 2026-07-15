@@ -4,7 +4,7 @@
 Reads MODEL_BACKEND_* config, compiles the model, and serves the OpenAI /v1 surface with a
 single uvicorn worker (loopback by default). One worker keeps the single compiled pipeline and
 its lock coherent. Requires the intel-accel env sourced and the OpenVINO PYTHONPATH present —
-hardware-gated, NOT the portable uv gate (run recipe: bench/README.md; CLAUDE.local.md).
+hardware-gated, NOT the portable uv gate (authoritative run recipe: bench/README.md).
 """
 
 import uvicorn

@@ -540,7 +540,7 @@ def test_vendored_font_asset_present_and_pinned() -> None:
     # font-swap guard. Vendoring makes OUR DejaVu 2.37 bytes AVAILABLE so the named family resolves
     # to them absent a same-named system font; byte SELECTION over such a font stays unproven (see
     # the family-name test). Read at runtime via importlib.resources -- the same path render.py
-    # loads -- not the Read tool (the .ttf is in the do-not-read set).
+    # loads -- so this covers the packaged bytes rather than a source-tree-only path.
     ttf = render._FONT_DIR / "DejaVuSans.ttf"
     assert ttf.is_file()
     assert hashlib.sha256(ttf.read_bytes()).hexdigest() == _FONT_SHA256

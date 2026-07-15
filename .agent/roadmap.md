@@ -19,7 +19,7 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M5 | Formal + provenance hardening | 13,14 | none | UNPLANNED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
 
-Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn, deny-listed inputs off-limits.
+Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
