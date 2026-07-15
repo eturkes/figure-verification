@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Feedback loop for the hardware-free model-backend stub (M4.3c).
+"""Feedback loop for the hardware-free model-backend stub (M4.3c/M4.5).
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
 test_webui_client.py) rather than a 100%-branch gate. They pin the OpenAI /v1 wire shapes the M4.3e
@@ -8,12 +8,23 @@ field tolerance real OWUI chat traffic needs, and serve's url guard. The stub re
 model_backend.models, so shape drift versus the live backend surfaces here without an accelerator.
 """
 
+import json
+from pathlib import Path
+
 import pytest
 import uvicorn
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from webui.model_stub import _STUB_REPLY, create_app, serve
+from webui.model_stub import (
+    _FINAL_REPLY,
+    _SELECTOR_MARKER,
+    _TOOL_CALL_REPLY,
+    _VPLOT_MARKER,
+    _VPLOT_REPLY,
+    create_app,
+    serve,
+)
 from webui.settings import Settings
 
 
@@ -36,7 +47,7 @@ def test_models_lists_only_the_configured_id() -> None:
 
 
 # --- /v1/chat/completions -------------------------------------------------------------------
-def test_chat_returns_stub_reply_in_openai_envelope() -> None:
+def test_chat_returns_final_reply_in_openai_envelope() -> None:
     with TestClient(app=create_app("stub-model")) as client:
         response = client.post(
             "/v1/chat/completions",
@@ -57,12 +68,12 @@ def test_chat_returns_stub_reply_in_openai_envelope() -> None:
     assert choice["finish_reason"] == "stop"
     assert set(choice["message"]) == {"role", "content"}
     assert choice["message"]["role"] == "assistant"
-    assert choice["message"]["content"] == _STUB_REPLY
+    assert choice["message"]["content"] == _FINAL_REPLY
     # The synthetic word-count proxy: prompt = the 3 message words, completion = the reply words.
     usage = body["usage"]
     assert set(usage) == {"prompt_tokens", "completion_tokens", "total_tokens"}
     assert usage["prompt_tokens"] == 3
-    assert usage["completion_tokens"] == len(_STUB_REPLY.split())
+    assert usage["completion_tokens"] == len(_FINAL_REPLY.split())
     assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
     assert usage["total_tokens"] >= 1
 
@@ -87,7 +98,51 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
     assert response.headers["content-type"].startswith("application/json")
     body = response.json()
     assert body["object"] == "chat.completion"
-    assert body["choices"][0]["message"]["content"] == _STUB_REPLY
+    assert body["choices"][0]["message"]["content"] == _FINAL_REPLY
+
+
+@pytest.mark.parametrize(
+    ("marker", "expected"),
+    [
+        (_SELECTOR_MARKER, _TOOL_CALL_REPLY),
+        (_VPLOT_MARKER, _VPLOT_REPLY),
+    ],
+    ids=["legacy-selector", "vplot-proposer"],
+)
+def test_chat_selects_scripted_e2e_reply(marker: str, expected: str) -> None:
+    with TestClient(app=create_app("stub-model")) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "messages": [
+                    {"role": "system", "content": f"prefix {marker} suffix"},
+                    {"role": "user", "content": "request"},
+                ]
+            },
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["choices"][0]["message"]["content"] == expected
+    assert body["usage"]["completion_tokens"] == len(expected.split())
+
+
+def test_scripted_tool_call_is_exact_propose_request() -> None:
+    assert json.loads(_TOOL_CALL_REPLY) == {
+        "tool_calls": [
+            {
+                "name": "proposeSpec",
+                "parameters": {
+                    "user_request": "total revenue by month",
+                    "dataset_name": "sales.csv",
+                },
+            }
+        ]
+    }
+
+
+def test_scripted_vplot_matches_tracked_good_golden() -> None:
+    golden = Path("examples/good_specs/g01_total_revenue_by_month.json").read_text()
+    assert json.loads(_VPLOT_REPLY) == json.loads(golden)
 
 
 # --- serve ----------------------------------------------------------------------------------

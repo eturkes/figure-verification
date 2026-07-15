@@ -52,6 +52,12 @@ uv run --locked python -m webui stub
 curl -fsS http://127.0.0.1:8001/v1/models
 ```
 
+The stub is a deterministic integration fixture, not a model. It recognizes Open WebUI's legacy
+tool-selector and VPlot-proposer system prompts, then returns an exact `proposeSpec` call, the
+tracked known-good `sales.csv` spec, and a lean final answer. This isolates tool execution, embed
+persistence, and browser rendering from model reliability; no result from the stub supports a
+tool-selection or generation-quality claim.
+
 For an NPU run, replace the stub with the live `model_backend` launch in the
 [M3 bench recipe](../bench/README.md); keep the backend URL and model ID aligned with the
 provisioner settings below.
@@ -80,6 +86,64 @@ creates the filter, and enables both flags. The second signup's 403 → signin i
 updates the existing filter source without inverting already-true flags. Persistent-config is
 disabled: tool/model/legacy-function-calling config comes from the launch environment, while the
 admin user + owned function persist in `.webui-data/`.
+
+## Deterministic successful E2E
+
+With the hardware-free stack provisioned, this synchronous request proves the legacy selector,
+server tool, VPlot proposal, verifier, and clean verdict-context chain:
+
+```sh
+uv run --locked python - <<'PY'
+import json
+
+import httpx
+
+from webui.settings import Settings
+
+settings = Settings.from_env()
+prompt = "Create a verified bar chart of total revenue by month from sales.csv."
+
+with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as client:
+    auth = client.post(
+        "/api/v1/auths/signin",
+        json={"email": settings.admin_email, "password": settings.admin_password},
+    )
+    auth.raise_for_status()
+    client.headers["Authorization"] = f"Bearer {auth.json()['token']}"
+    response = client.post(
+        "/api/chat/completions",
+        json={
+            "model": settings.model_id,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "tool_ids": ["server:verifier"],
+        },
+    )
+    response.raise_for_status()
+    result = response.json()
+
+assert result["choices"][0]["message"]["content"] == (
+    "Figure Verifier confirmed the chart; all checks passed."
+)
+assert result["sources"][0]["source"]["name"] == "server:verifier/proposeSpec"
+assert "Verified chart for sales.csv: all 8 checks passed." in json.dumps(result["sources"])
+print("legacy-FC tool/verifier chain: PASS")
+PY
+```
+
+For persisted/browser evidence, send the same completion with `parent_id: null`, non-empty
+`session_id`, an assistant `id`, and a complete `user_message` carrying its own ID, role, content,
+timestamp, `parentId: null`, and `childrenIds: [<assistant-id>]`. The response supplies `chat_id`;
+poll `GET /api/v1/chats/{chat_id}` until that assistant has `done: true`, then open `/c/{chat_id}`.
+In Open WebUI 0.10.2 the persisted final text is
+`output[0].content[0].text` (legacy `content` stays empty) and the verifier URL is in `embeds[0]`.
+The rendered iframe must contain the verified chart and omit `allow-same-origin` from its sandbox.
+
+An NPU run replaces the stub and measures the weak model separately. M4.5's fixed ten-prompt sample
+selected the tool on 5/10 prompts but produced no verified chart: four calls reached the verifier
+with undecodable fenced specs and one omitted a required argument. That observation is not a bound;
+the deterministic fixture above proves only that the integration works when its untrusted proposer
+supplies valid protocol messages.
 
 ## Live outlet assertion
 

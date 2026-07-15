@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Hardware-free OpenAI /v1 stub — the model-backend stand-in for the M4.3e smoke (M4.3c).
+"""Hardware-free OpenAI /v1 stub — provisioning stand-in + scripted M4.5 E2E fixture.
 
 The three-service smoke needs an OpenAI-compatible backend on :8001, but the live model_backend is
 NPU-gated (OpenVINO resolves via PYTHONPATH, the intel-accel env sourced). This stub serves the two
 routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it into /api/models)
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
 structs only, no openvino import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
-routes, status codes, object literals, and msgspec field order), and returns a fixed reply instead
-of generating one -- the response VALUES are synthetic (see chat_completions). It proposes no real
-spec, so the smoke exercises provisioning + model enumeration + tool registration, never the verify
-path; M4.5 runs that against the live backend.
+routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
+prompt-classified (see _scripted_reply): exact legacy tool selection -> one known-good VPlot -> a
+lean final summary. This makes tool execution, Location embed persistence, and browser rendering
+deterministically testable after the NPU model's reliability is measured separately.
 
-Not the trusted verifier and not even the real proposer -- a test fixture. Like the rest of webui/
-it is coverage-excluded and unshipped, importing only gate-venv deps (msgspec / litestar / uvicorn),
-so the gate runs it with no hardware. _STUB_REPLY is inert placeholder content until M4.5 settles
-the live E2E reply.
+Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
+quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
+importing only gate-venv deps (msgspec / litestar / uvicorn), so the gate runs it with no hardware.
 """
 
 import time
@@ -38,9 +37,34 @@ from model_backend.models import (
 )
 from webui.settings import Settings
 
-# The fixed assistant reply. The stub proposes nothing, so this is inert placeholder text until M4.5
-# settles the live E2E behavior; it stays non-empty so its word count (completion_tokens) is >= 1.
-_STUB_REPLY = "Stub backend online; the hardware-free stand-in proposes no chart spec."
+_SELECTOR_MARKER = "Available Tools:"
+_VPLOT_MARKER = "You are proposing a VPlot v0.1 chart specification."
+_TOOL_CALL_REPLY = (
+    '{"tool_calls":[{"name":"proposeSpec","parameters":'
+    '{"user_request":"total revenue by month","dataset_name":"sales.csv"}}]}'
+)
+# Minified examples/good_specs/g01_total_revenue_by_month.json. Keep this runtime fixture CWD-
+# independent; its test compares the decoded value to the tracked golden so a data/hash drift fails.
+_VPLOT_REPLY = (
+    '{"version":"vplot-0.1","dataset":{"name":"sales.csv","hash":'
+    '"sha256:76356bebaa43bc76ee98fd6a1f1aa29cd7f127408fd43de87adcb7ed5df0478f"},'
+    '"transform":[{"op":"group_by","keys":["month"]},{"op":"aggregate","measures":['
+    '{"field":"revenue","fn":"sum","as":"total_revenue"}]},{"op":"sort","by":['
+    '{"field":"month","order":"ascending"}]}],"mark":"bar","encoding":{"x":'
+    '{"field":"month","type":"ordinal"},"y":{"field":"total_revenue",'
+    '"type":"quantitative"}}}'
+)
+_FINAL_REPLY = "Figure Verifier confirmed the chart; all checks passed."
+
+
+def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:
+    """Classify the two system prompts in the E2E chain; otherwise return the final summary."""
+    system = "\n".join(message.content for message in messages if message.role == "system")
+    if _SELECTOR_MARKER in system:
+        return _TOOL_CALL_REPLY
+    if _VPLOT_MARKER in system:
+        return _VPLOT_REPLY
+    return _FINAL_REPLY
 
 
 @get("/v1/models", sync_to_thread=False)
@@ -52,17 +76,18 @@ def list_models(state: State) -> ModelList:
 
 @post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)
 def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
-    """Return the fixed stub reply in an OpenAI chat-completion envelope.
+    """Return the prompt-classified fixture reply in an OpenAI chat-completion envelope.
 
     Builds the same ChatCompletionResponse SHAPE as model_backend/app.py (Choice wraps a
     ChatMessage, every field required) so the wire schema and field order match, but the VALUES are
-    synthetic: static _STUB_REPLY content, always finish_reason "stop" (the live backend may also
-    emit "length"), and a word-count usage proxy (prompt = summed message words, completion = reply
-    words). Generation params (temperature / max_tokens) are ignored.
+    synthetic: _scripted_reply selects one of three constants, finish_reason is always "stop" (the
+    live backend may also emit "length"), and usage is a word-count proxy (prompt = summed message
+    words, completion = reply words). Generation params (temperature / max_tokens) are ignored.
     """
     model_id = cast("str", state["model_id"])
+    reply = _scripted_reply(data.messages)
     prompt_tokens = sum(len(m.content.split()) for m in data.messages)
-    completion_tokens = len(_STUB_REPLY.split())
+    completion_tokens = len(reply.split())
     return ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex}",
         created=int(time.time()),
@@ -70,7 +95,7 @@ def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletio
         choices=(
             Choice(
                 index=0,
-                message=ChatMessage(role="assistant", content=_STUB_REPLY),
+                message=ChatMessage(role="assistant", content=reply),
                 finish_reason="stop",
             ),
         ),

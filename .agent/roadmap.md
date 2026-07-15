@@ -15,7 +15,7 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M1 | Trusted verifier core (headless) | 0,1·scaffold,2,3,4,5,6 | none — toolchain confirmed | REVIEWED |
 | M2 | Verifier API service (Litestar) | 1·api,8 | none | REVIEWED |
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
-| **M4** | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | **IN-PROGRESS** |
+| **M4** | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | **IMPLEMENTED** |
 | M5 | Formal + provenance hardening | 13,14 | none | UNPLANNED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
 
@@ -23,7 +23,7 @@ Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, A
 
 ---
 
-## M4 — Open WebUI integration   (IN-PROGRESS)
+## M4 — Open WebUI integration   (IMPLEMENTED)
 
 **Gate CONFIRMED at planning (functional)**: open-webui 0.10.2 installed project-local (`.venv-webui`,
 py3.12 — 3.13 refused upstream) + served on 127.0.0.1:8080 → `/health` `{"status":true}`, first-signup
@@ -183,13 +183,16 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   stand-in with NO NPU. `create_app(model_id)`/`list_models`/`chat_completions` REUSE
   `model_backend.models` (msgspec only, no openvino — imports resolve repo-root; gate ran it hardware-free)
   ⇒ OWUI sees the SAME /v1 wire SHAPE as the live backend (routes, status, object literals, msgspec
-  field order); chat builds the same response STRUCT with synthetic VALUES (fixed `_STUB_REPLY` INERT
-  until M4.5, word-count usage, always finish `stop`). `serve(settings)` = urlparse `model_backend_url`,
+  field order); chat builds the same response STRUCT with synthetic VALUES (word-count usage, always
+  finish `stop`). M4.5 extended the inert reply into an explicitly non-model, prompt-classified E2E
+  fixture: exact legacy tool call → tracked good VPlot → clean final summary. `serve(settings)` =
+  urlparse `model_backend_url`,
   fail loud unless it is `http://<host>:<port>/v1` the stub can bind+serve (rejects non-http, non-`/v1`
   path, missing/non-numeric port — Settings only checks scheme+host), else `uvicorn.run(…, workers=1)`.
   NO own `main()` (d's __main__ dispatches). Tests (`tests/test_webui_model_stub.py`, coverage-excluded,
-  Litestar `TestClient`, no socket) pin the full /v1 key-sets + OWUI extra-field tolerance + serve
-  default-bind + unservable-URL rejects (monkeypatch the SHARED `uvicorn`). Recipe consumed → git
+  Litestar `TestClient`, no socket) pin the full /v1 key-sets + OWUI extra-field tolerance + exact
+  scripted payloads/golden equivalence + serve default-bind + unservable-URL rejects (monkeypatch the
+  SHARED `uvicorn`). Recipe consumed → git
   (`git log --grep "(M4.3c"`).
 - **M4.3d — `webui/__main__.py` CLI dispatch** (DONE): commands
   `python -m webui {serve,bootstrap,stub}` wire M4.3a–c without importing Open WebUI: `serve`
@@ -262,12 +265,29 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   `signals=matplotlib chars=100`, with neither content nor marker. The README's independent recipe repeated
   the same differential (`chars=95`). Services stopped, `.webui-data` removed, ports free; full gate green
   (830 tests, 100% verifier branch coverage).
-- **M4.5 — live E2E + evidence** (OPEN; GATED: NPU model_backend live — M3 recipe, confirm functionally):
-  full three-service stack; headless legacy-FC chat with `tool_ids` → tool executed (verifier artifacts
-  exist + verdict context in the reply); persisted-chat flow → embed recorded; chromiumfish capture of the
-  chat showing the sandboxed verified chart; filter on/off differential on a direct-chart prompt; record
-  observations (task-model tool-selection rate, embed behavior) with claim discipline; close M4 →
-  IMPLEMENTED. Acceptance: every seed-9/10/11 exit criterion demonstrated or its miss recorded honestly.
+- **M4.5 — live E2E + evidence** (DONE): gate functionally confirmed with the M3 NPU recipe
+  (`/health` + real completion; 8 generated tokens). A wiped NPU-backed three-service stack and two
+  bootstraps passed. In a fixed ten-phrasing headless legacy-FC sample, the task model selected
+  `proposeSpec` 5/10 times but verified 0/10: four selected calls reached the verifier with fenced,
+  undecodable VPlot and one omitted `user_request` (400). Thus the NPU run produced no verified artifact
+  or embed; this is an observation, not a reliability bound. A 247-character fenced-matplotlib direct
+  model reply then proved the global filter differential: filter-on returned the exact block notice,
+  filter-off preserved the raw reply byte-for-byte, and the filter was restored active + global; its
+  warning exposed only `signals=matplotlib chars=247`.
+
+  Integration mechanics were therefore isolated from weak-model quality by extending the existing
+  hardware-free stub into an explicitly scripted, non-model fixture (exact legacy selection → tracked
+  good VPlot → final summary; tests pin all three). On a second wiped stack, synchronous chat executed
+  `server:verifier/proposeSpec`, exposed the clean `Verified chart for sales.csv: all 8 checks passed.`
+  source context, and returned the final summary. Background chat persistence completed with legacy
+  `content=""`, final text in `output[0].content[0].text`, and one verifier `/chart/{plot_id}` URL in
+  `embeds`; its GET returned 200 HTML with `Content-Security-Policy: sandbox allow-scripts` and the
+  height reporter. Chromiumfish loaded `/c/{chat_id}` and visually showed the three-bar verified chart
+  plus final summary; the 936×286 iframe sandbox was
+  `allow-scripts allow-forms allow-popups allow-downloads` (no `allow-same-origin`). All services stopped,
+  `.webui-data` + browser/capture scratch removed, ports free. Acceptance satisfied with the NPU miss
+  explicit and every seed-9/10/11 integration criterion demonstrated by the deterministic fixture; M4
+  closes IMPLEMENTED. Full gate green (834 tests, 100% verifier branch coverage).
 
 ---
 
