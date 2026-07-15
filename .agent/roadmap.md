@@ -16,10 +16,364 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M2 | Verifier API service (Litestar) | 1·api,8 | none | REVIEWED |
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
-| M5 | Formal + provenance hardening | 13,14 | none | UNPLANNED |
+| M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | IN-PROGRESS |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
+
+---
+
+## M5 — Formal + provenance hardening   (IN-PROGRESS)
+
+**Gate: none; toolchain CONFIRMED at planning.** A clean project-local Python-3.13 scratch run
+installed the current `z3-solver` + `cryptography` releases, proved an UNSAT integer formula, and
+round-tripped an Ed25519 signature; scratch removed, tree stayed clean. The stdlib runtime exposes
+SQLite 3.46.1 + defensive connection controls. M5 deliberately uses rollback-journal `DELETE`,
+not WAL: SQLite documents atomic rollback-journal commits, while the 2026 WAL-reset bug affects
+multi-connection WAL through SQLite 3.51.2. No hardware/service gate.
+
+Scope reconciliation (seed 13/14 + deferred hardening; claim boundary stays modest):
+
+- SMT = a second, bounded checker over the concrete recomputed table + exact builder artifact,
+  not a universal proof of evaluator/renderer correctness. Z3 joins the trusted verifier TCB;
+  `sat` gives a readable counterexample, `unknown`/timeout/exception fails closed, and no chart
+  reaches native Vega rendering. Three obligations are load-bearing: final row order matches the
+  active declared sort + canonical tail; every quantitative positional channel on a bar carries
+  zero baseline; a discrete color legend's explicit domain equals the plotted categories
+  (coverage + no extras).
+  Aggregation remains exact deterministic recomputation - encoding it in SMT would add a less
+  transparent duplicate implementation, not assurance.
+- Resource policy gates each expensive boundary: bounded reads (not `stat`-then-read), CSV
+  rows/cells, plotted cells, Vega/model-response/attestation bytes, resident cache payload, solver
+  time, concurrent active jobs, and prompt size before the corresponding work; transactional
+  logical quota before archive commit. Policy breaches are structured failures; quota never silently
+  evicts audit history and does not claim to bound SQLite pages/journals or filesystem overhead.
+- VCert becomes a method-bearing signed attestation and adds the exact emitted Vega-Lite hash,
+  closing the current four-hash certificate's artifact-binding gap. DSSE authenticates payload
+  bytes + their application-specific type; PyCA Ed25519 supplies crypto. Authenticity means
+  "holder of this independently pinned public key signed these bytes" - no operator identity, PKI,
+  timestamp authority, append-only/completeness, or transparency-log claim. `keyid` is only a
+  lookup hint, never a trust decision. A second signed attempt manifest binds occurrence metadata
+  + every blob in that occurrence; it prevents undetected modification under a pinned key, not
+  record deletion.
+- Durable provenance snapshots the exact raw CSV + manifest actually used, canonical spec,
+  recomputed table, verdict, emitted Vega-Lite, SVG, certificate payload/envelope, prompt/output
+  when a model ran, UTC occurrence time, and tool versions. Live-file references alone are
+  rejected: mutation/deletion of `data/` must not break replay. The relational bundle follows
+  W3C PROV's entity/activity/derivation shape without adding RDF/PROV dependencies.
+- Replay first verifies blob hashes + DSSE against an independently selected trusted key, then
+  re-executes from archived bytes through the current verifier. With matching versions/limits and
+  successful bounded dependencies, replay requires every certified hash + Vega byte to match;
+  resource/solver failure and version/key drift are explicit, never papered over. It does not rerun
+  the weak model. Pixels/browser remain trusted display, not replay proof.
+- Prompt/sample artifacts can contain sensitive user/data text. Raw audit access stays local to
+  the state directory/operator CLI. Unauthenticated HTTP keeps the existing chart/spec surface +
+  bounded certificate/key/replay artifacts, never raw source/prompt/model output.
+
+Planning research: official Z3 guidance defines validity as UNSAT of the negated obligation and
+documents `sat`/`unsat`/`unknown`; its API also makes contexts thread-confined. OpenVINO exposes
+exact prompt tokenization before generation; DSSE v1.0.2 supplies the PAE + JSON-envelope test
+vectors and requires the exact verified payload bytes reach the application; PyCA documents
+Ed25519 public-key verification; SQLite documents atomic commit + WAL sidecars/reset risk. Current
+releases were checked at planning, but `uv.lock` remains the executable version pin once
+M5.2b/M5.3a land.
+
+Sizing: M4's one-module units landed at 48-77% of 200K; its cross-layer units repeatedly needed
+splits. M5 therefore isolates policy, solver, independent oracle, signing, archive, replay, and
+transport. Lowest OPEN unit is next-session work; every unit runs the locked quality gate.
+
+- **M5.1a — core limit vocabulary + bounded ingest** (OPEN): add `verifier.limits` with a frozen
+  `VerificationLimits` + chunked `read_bounded(path, max_bytes)` that reads at most limit+1 and
+  distinguishes genuine absence/operator faults exactly like the existing trusted-file rule.
+  Defaults/operator-overridable upper bounds: 8 MiB raw CSV, 256 KiB manifest, 1_000 manifest
+  columns, 100_000 source rows, 1_000_000 source cells, 1_000_000 plotted cells, 10_000_000
+  evaluator work units, 10_000 render rows, 100_000 SMT terms, 16 MiB Vega JSON, 32 MiB SVG/HTML
+  each, 1 MiB attestation payload, 1 s SMT timeout. Thread limits through `ingest.load_table`; cap
+  manifest columns and stop the CSV iterator at the first over-limit logical row (quoted newlines
+  are one row). Use stable `resource.*` `VerificationError` tags and
+  boundary-1/boundary/boundary+1 + hostile quoted-row tests. Acceptance: no over-limit source is
+  fully allocated/parsed; corpus unchanged; gate green.
+- **M5.1b — bounded verification evidence** (OPEN): internal `checks.verify_run` accepts core limits
+  and returns public results + `VerificationTrace` (exact bounded source/manifest bytes as each is
+  read, including hash/semantic failures) + `RecomputedEvidence` only after every `checks` gate
+  (decoded manifest, exact bytes, hashes, and recomputed table included). The type means eligible
+  for downstream builder/formal gates, never already certified/rendered; public `verify` remains the
+  results-only projection. Add dataset/source/plotted resource checks and surface ingest limit
+  exceptions under their own stable tag. Public serialization exposes neither internal object.
+  Acceptance: byte/row/source-cell/plotted-cell boundary matrix; failures retain only inputs that
+  were actually read, perform no later work, and never carry `RecomputedEvidence`; corpus unchanged;
+  gate green.
+- **M5.1c — evidence-driven render + Vega budget** (OPEN): split core render into a preparation
+  entry consuming decoded spec + `RecomputedEvidence` (never `data_dir`) and a prepared-artifact
+  renderer. Preparation builds + serializes Vega exactly once, enforces render-row/Vega limits,
+  and carries authoritative bytes forward; the renderer mints VCert from the same evidence before
+  native work, then enforces VCert-payload/SVG/HTML ceilings. Return authoritative Vega bytes with
+  SVG + VCert so downstream archive/signing never rebuilds it. Keep the
+  public convenience render as verify -> prepare -> render composition, with one source read.
+  Acceptance:
+  mutate/delete live CSV after evidence capture and output stays bound to captured bytes; injected
+  over-limit row/Vega never calls native render; over-limit native output never stores/returns;
+  ordinary bytes stay golden; gate green.
+- **M5.1d — service single-pass integration** (OPEN): carry trace/evidence in service `Outcome`
+  and have `render_outcome` call the core prepare/render entries; preserve decode-time dataset pin +
+  every existing direct/propose response shape. Resource breaches are ordinary 200 failed verdicts
+  with no store, while broken trusted config remains 500. Acceptance: both render routes read CSV +
+  manifest once (spy-pinned), no response exposes evidence, and mutation between stages cannot
+  change the artifact; gate green.
+- **M5.1e — operator resource settings** (OPEN): thread every core/proposer/cache bound through
+  frozen service `Settings`; add `VERIFIER_MAX_ACTIVE_JOBS` (default 2), work-rate/burst (120/minute +
+  120), and render/chart-cache payload budgets (32 MiB + 128 MiB). Keep field defaults + env
+  fallbacks single-sourced; validate finite/positive integers, cross-limit cache compatibility,
+  eager `VerificationLimits` construction, and absolute upper arithmetic without allocating.
+  Acceptance: exhaustive direct/env/default/invalid/cross-field matrix; every
+  core/proposer/cache/admission bound has one typed setting and no ambient read outside `from_env`;
+  gate green.
+- **M5.1f — process-local service admission** (OPEN): implement a lock-safe global token bucket
+  with integer monotonic-nanosecond accounting plus a nonblocking active-job capacity gate. Apply
+  both before model/worker work on every current POST route and expose the same seam for M5 replay;
+  retain the active-job permit through model wait, CPU verification/render, and archive commit so
+  it also bounds concurrent CPU workers. Refusal answers RFC-9457 429 before expensive work.
+  Keep malformed/oversize request bodies on their existing 4xx path. Test permit release on
+  success/exception and cancellation while a native worker continues. Acceptance: one configured
+  slot admits one job and deterministically refuses the concurrent second; a cancelled request
+  HOLDS its permit until the uncancellable thread actually completes; injected-clock burst/refill
+  exactness; bench/live recipes override rate explicitly when needed; no leaked/early-released
+  permits; process-local scope + OpenAPI documented; gate green.
+- **M5.1g — bounded proposer context** (OPEN): reuse bounded CSV/manifest reads in
+  `model_client`; bound `ProposeRequest.user_request` by UTF-8 bytes (4 KiB) and the fully assembled
+  prompt (32 KiB) DURING assembly before concatenating an over-limit sample - byte/memory bounds,
+  not a token-count claim. An operator-provisioned dataset/prompt over policy answers a dedicated
+  422 problem+json (no model call, no verification claim), distinct from unknown dataset 404 and
+  upstream 502/503. Stream the upstream HTTP response and stop at 128 KiB + 1 byte before JSON decode;
+  an oversized success/error envelope is a typed 502 and never enters trace/archive. Preserve raw
+  model failure metering below the bound. Acceptance: spy backend sees zero calls on every prompt
+  policy breach; exact-limit request still takes the old path; chunked oversized response proves
+  bounded read + no decode; OpenAPI + bench classifiers updated; gate green.
+- **M5.1h — exact backend prompt-token admission** (OPEN): retain `max_prompt_len` in
+  `model_backend.Engine`; add a 128 KiB backend request-body cap; after `apply_chat_template`, call
+  the installed tokenizer's `encode` with no duplicate special tokens and
+  `max_length=max_prompt_len+1`, then reject an over-limit shape with the exact OpenAI error type
+  `prompt_too_long` before `pipe.generate`. The verifier
+  maps ONLY that trusted backend shape to its 422 policy problem; every other non-2xx stays 502.
+  Body-cap + fake-tokenizer/pipe tests pin 413-before-decode, no silently accepted truncation,
+  exact token boundary, no native generate, and error-shape spoof resistance; live NPU smoke confirms the installed API
+  when available but is not the locked gate. Acceptance: the formerly unexercised NPU static-shape
+  overflow is preflighted and cannot enter generation; gate green.
+- **M5.1i — deterministic evaluator work budget** (OPEN): add a 10_000_000 configurable integer
+  work-unit budget inside `eval.evaluate`, charged BEFORE each operation from current
+  rows/columns/keys
+  (`sort = rows*ceil(log2(max(rows,2)))*keys`; linear ops/aggregate + final closure get explicit
+  integer formulas). This is deterministic admission accounting, not a wall-time promise. Raise
+  `resource.eval_work` before the operation that would cross the total; expose consumed units in
+  internal trace for audit. Acceptance: exact-bound/cumulative/many-sort/group-heavy matrices,
+  spy proof the rejected op never starts, row-reducing filters lower later cost, and corpus stays
+  below the default; gate green.
+- **M5.1j — payload-byte-bounded artifact LRUs** (OPEN): extend `ArtifactStore`'s existing count
+  caps with independent exact payload-byte ceilings for render/spec and chart LRUs (defaults 32
+  MiB + 128 MiB); shared specs count once, replacements adjust totals, and oldest entries evict
+  until BOTH count + byte invariants hold. An entry larger than its whole budget is rejected before
+  mutation; `Settings` validates positive budgets and compatibility with declared per-item limits
+  so the production pipeline cannot reach that branch. Acceptance: byte boundary, shared-spec,
+  replacement, mixed count/byte eviction, read/re-put recency, and oversize atomicity matrices;
+  deleting either accounting update fails a mutation witness; resident payload never exceeds its
+  configured logical bound (Python/container overhead remains outside the claim); gate green.
+
+- **M5.2a — method-aware result contract** (OPEN): extend `CheckResult` with a closed
+  method vocabulary (`schema_validation`, `resource_policy`, `deterministic_recompute`,
+  `construction`, `z3_smt`) and tag every existing/synthetic result honestly, including surfaced
+  limit/evaluator errors and the two service-only failures. Update Verdict/OpenAPI/bench consumers;
+  no compatibility field that can disagree; bump project/package version to 0.2.0 with this public
+  contract. Acceptance: an exhaustive check-ID/method matrix pins current results and each public
+  failure layer; response consumers see the new required field + version; gate green.
+- **M5.2b — finite SMT obligation engine** (OPEN): add current `z3-solver>=4.16,<5` runtime dep +
+  lock; isolate its untyped API behind `verifier.formal` typed facts/results. Encode three
+  quantifier-free obligations over bounded integer/rational/category ranks: canonical row order;
+  bar quantitative-axis zero; discrete legend-domain set equality. Each solver gets a local
+  timeout + single-thread setting (no global params), and every invocation creates + wholly owns
+  an explicit Z3 `Context` because contexts are not thread-safe; no AST/context crosses worker
+  calls. Pre-count terms and fail `resource.smt_terms` before constructing an over-limit AST;
+  constrain a unique lowest row/channel/category witness so SAT messages are stable; UNSAT=pass,
+  SAT=model-derived witness=fail, UNKNOWN/exception=`formal.solver_completed` fail. Construct typed
+  ASTs only - no SMT-LIB/model string parser crosses the API. Return an internal bounded
+  `FormalTrace` (obligation, term count, result class), never raw model text.
+  Acceptance: official version smoke + one mutation per obligation yields stable human messages;
+  forced unknown/timeout fails closed; two concurrent worker calls use distinct contexts and
+  agree; gate green.
+- **M5.2c — independent SMT differential** (OPEN): a separate direct oracle consumes raw generated
+  cases, sharing neither Z3 expressions nor formal-fact builders/helpers, and exhausts a small
+  finite table/sort/channel/domain microdomain; Hypothesis samples
+  the larger bounded cross-product and compares Z3 outcomes + witnesses. Cover active multi-key
+  sorts (nulls + mixed directions), bar/channel matrices, and legend domains; add non-vacuity
+  mutations + persisted edge witnesses for duplicate categories, empty/all-null color, exact
+  Decimals, temporal/string rank order. Acceptance: the finite microdomain exhaustively agrees and
+  the property run finds no counterexample; deleting each solver constraint makes its mutation
+  test fail; gate green.
+- **M5.2d — pre-render formal gate** (OPEN): builder emits an explicit deterministic scale domain
+  for nominal/ordinal color from recomputed non-null values; build typed formal facts from the
+  exact dict handed to `_dumps`. Split preparation from native rendering at the orchestration seam:
+  every public verify path (including `/verify-only`) prepares once, runs SMT, merges its results,
+  and carries an internal formal-passed build with authoritative Vega bytes to `render_outcome`.
+  Thus public `verified=true` always includes SMT; render paths never rebuild or re-solve, and a
+  formal failure returns the ordinary 200 Verdict, never `None`->500. Passing formal IDs enter the
+  current VCert's name-only list while carrying `z3_smt` in the report; replace the old
+  construction-only bar/legend claims everywhere. Planning probe already compile-confirmed
+  empty/all-null nominal domain `[]` and numeric ordinal domain under pinned Vega-Lite.
+  Acceptance: `/verify-only`, direct render, and
+  proposer mutation seams block row/domain/zero corruption; spies prove one build + solver pass and
+  zero native render for verify-only/failure; all good corpus renders, all bad corpus blocks,
+  emitted Vega compiles; gate green.
+- **M5.2e — VCert v0.2 method provenance** (OPEN): replace `checks_passed` with
+  `checks: tuple[CertifiedCheck(id, method, status="pass")]`; stamp verifier package + Z3 versions
+  in TCB and add `vega_lite_hash` over the exact serialized builder output. Update certificate
+  canonical bytes, plot IDs, badge, service models, hand OpenAPI, goldens, and claim docs.
+  Acceptance: certificate checks exactly equal the passing final report's IDs/methods; changing one
+  Vega byte or verifier version changes payload/plot identity and is visible; no check-name-only
+  compatibility shim; gate green.
+
+- **M5.3a — DSSE + Ed25519 primitives** (OPEN): add current `cryptography>=49,<50` + lock; implement
+  the tiny DSSE v1.0.2 PAE/envelope surface in `verifier.attestation` around exact VCert bytes with
+  payload type `application/vnd.figure-verification.vcert.v0.2+json`. The application profile requires
+  exactly one Ed25519 signature. Strict duplicate-key/base64/shape decoding; reject
+  payload over the configured attestation limit and envelope over its derived base64 ceiling
+  before JSON/application parse; accept standard + URL-safe base64 as required. The producer emits
+  `keyid`; the verifier treats absent/empty identically and only as a bounded candidate-key hint.
+  The producer uses one canonical JSON envelope encoding. Verify signature/type before parsing, and
+  parse/return the SAME verified payload byte buffer (no envelope reparse). Ed25519 only; no
+  home-grown crypto. Acceptance:
+  official PAE/envelope serialization vector, generated-key sign/verify, type/payload/signature
+  tamper rejection, wrong-key rejection, keyid-tamper/missing equivalence as unauthenticated hints,
+  and unknown envelope fields tolerated per DSSE; gate green.
+- **M5.3b — persistent signing identity** (OPEN): add a state-dir + key-file setting, eagerly
+  absolutized without following the final component (default launch-root `.verifier-state`).
+  Create the directory mode 0700 and one raw Ed25519 private key atomically/no-follow with mode
+  0600 + file/directory fsync when absent; reject final-component symlink/non-directory,
+  wrong-size, wrong-owner, or group/world-accessible state/key paths. Expose a typed signer +
+  `keyid=sha256(raw public key)`. Preserve raw public keys by keyid for verification; keep state out
+  of git. Trusted-key policy defaults to the current signer and accepts at most 32 deduplicated,
+  shape-validated historical keyid pins from operator config; an archived/public endpoint key is
+  NEVER trusted merely because it is present. Acceptance: create/reopen/concurrent-first-start,
+  permissions, symlink/truncation, explicit rotation, and unpinned-historical-key tests; restart
+  returns the same signer/keyid; gate green.
+- **M5.3c — signed service certificate + plot IDs** (OPEN): after core render, the service signs
+  exact VCert payload bytes into deterministic DSSE; `plot_id=sha256(envelope bytes)`; certificate
+  GET serves the envelope. Rebuild the off-chain chart page from the returned authoritative Vega
+  with the static VCert badge + signer keyid + plot_id/certificate link (today `render_html` omits
+  `badge_html`, so this closes a real human-facing provenance gap). Thread signer through
+  app/pipeline without global mutable state and reapply the final HTML byte ceiling after badge.
+  Acceptance: served/returned HTML visibly carries
+  all five artifact hashes, check methods, verifier version, keyid, and exact certificate link;
+  restart keeps byte-identical envelope/id; key rotation changes id explicitly; external wrong
+  key rejects;
+  direct/propose paths share one signing seam; headless Chromium sees the badge/link + chart;
+  docs state the out-of-band pin/identity limit; gate green.
+
+- **M5.4a — transactional provenance archive** (OPEN): add `service/archive.py`, stdlib SQLite
+  STRICT schema (`meta`, immutable `blobs`, `keys`, `plots`, `attempts`, typed references), fresh
+  connection per worker operation, parameterized SQL only. Force `journal_mode=DELETE`,
+  `synchronous=FULL`, foreign keys, defensive mode, trusted-schema off, busy timeout and verify
+  every security/durability readback; schema version mismatch fails startup. DB file mode=0600
+  under the 0700 state dir. Blob metadata is role-bounded
+  before allocation; reads stream through `sqlite3.Blob` while recomputing digest + kind/size. One
+  `BEGIN IMMEDIATE` transaction publishes an entire bundle and checks its tracked
+  logical-byte quota without a writer race. Default 1 GiB configurable logical quota: refuse
+  before commit, no eviction; document that SQLite pages/rollback journal/filesystem overhead can
+  exceed it. Acceptance:
+  dedup/ref integrity, concurrent writers, rollback-on-injected-fault, corruption/wrong-kind,
+  quota, unknown schema, and reopen tests; gate green.
+- **M5.4b — content-addressed plot bundles** (OPEN): add typed `PlotBundle` materialization from
+  one `RecomputedEvidence` + formal-passed render artifact and a direct archive write/read API.
+  Store raw CSV, raw manifest, canonical spec, canonical plotted-table bytes, full method-aware
+  verdict, emitted Vega-Lite, SVG, VCert payload, DSSE envelope, verifier/runtime versions, and
+  signing public key. Occurrence time/route stay out of this content-deduplicated plot. Acceptance:
+  every certificate hash/address resolves to exact role-typed bytes; shared blobs deduplicate;
+  round-trip/reopen is lossless; injected commit fault leaves zero partial rows/blobs; gate green.
+- **M5.4c — lossless model proposal trace** (OPEN): model client returns a typed trace carrying
+  exact serialized request/messages + bounded raw HTTP response body + extracted reply bytes when
+  available, without changing the bytes sent over HTTP or downstream to spec decode. Pre-response
+  exceptions carry the pre-call trace + bounded fault classification; policy-discarded oversized
+  bodies carry classification only. No prompt/reply enters `str(exc)` or logs. Acceptance:
+  request-body byte equality against the old client, fenced extracted reply + invalid-UTF-8/non-2xx
+  raw-response traces, and a mutation test proving the decoder receives traced extracted bytes
+  verbatim; gate green.
+- **M5.4d — signed attempt bundles** (OPEN): add canonical `AttemptManifest`/`AttemptBundle` types
+  + direct archive API under payload type
+  `application/vnd.figure-verification.attempt.v0.1+json`. A CSPRNG 128-bit nonce probabilistically
+  distinguishes repeats; archive
+  uniqueness + bounded collision retry prevents silent aliasing, then
+  `attempt_id=sha256(signed attempt-envelope bytes)` addresses the occurrence. The DSSE payload
+  binds UTC time, entry route, intended HTTP status/outcome kind, exact `plot_id` when present,
+  typed role/digest of every available request/prompt/reply/verdict/trace/plot blob, and
+  key/version identifiers. Closed roles + attestation cap bound construction; unavailable inputs
+  remain absent, never invented. The canonical outcome snapshot excludes the derived attempt ID;
+  that ID exists only after envelope signing, preventing a self-hash cycle. Publish attempt alone
+  or successful plot + attempt in one transaction (a deduplicated plot adds only the attempt).
+  Acceptance: direct success/failure
+  bundles verify + round-trip; repeats differ; injected nonce collision retries then fails closed;
+  tamper/wrong-role/partial-transaction matrices fail at the right layer; gate green.
+- **M5.4e — mandatory service attempt capture** (OPEN): wire every classified outcome-bearing
+  admitted `/propose-spec` and `/verify-and-render` occurrence through the bundle APIs, including model
+  upstream, decode, verify, resource, and formal failures (nullable plot). Pre-admission
+  body/rate/capacity refusal, client cancellation/disconnect before an outcome, process crash, and
+  unclassified operator/implementation faults and archive failures stay explicitly outside the
+  non-completeness claim. Commit is a precondition for returning an artifact-producing endpoint
+  outcome and precedes LRU insertion; logical-quota
+  refusal replaces the outcome with RFC-9457 507, other archive faults with generic 500.
+  Successful/failing committed verdicts + problem extensions carry the non-secret attempt ID;
+  storage-fault responses carry none. Keep `/verify-only` stateless. Acceptance: success + fenced
+  decode + semantic/resource/formal fail + backend fault are diagnosable after restart; each stores
+  only bytes actually observed; injected ledger failure replaces the original outcome without
+  leaking it; no unauditable verified response/LRU entry; OpenAPI/consumers updated; gate green.
+- **M5.4f — operator audit CLI** (OPEN): add an operator-only command that resolves attempt ID,
+  verifies its envelope/blobs, and defaults to hashes/metadata; require an explicit flag to reveal
+  prompt/reply/raw-spec content as ASCII JSON-escaped UTF-8 or base64, never raw terminal
+  control/bidi bytes.
+  No raw-audit HTTP route. Acceptance: all success/failure shapes render stable redacted output;
+  corruption/wrong key fails closed; terminal-escape/invalid-UTF-8 fixtures stay inert; sensitive
+  bytes stay out of logs and default CLI; gate green.
+- **M5.4g — durable retrieval across restart** (OPEN): certificate/spec GETs consult the archive
+  as authority (LRUs may remain read-through caches); expose the public signing key by exact keyid
+  under a bounded non-secret endpoint; chart liveness remains independent/ephemeral until replay.
+  Before serving, re-hold every address equation (`plot_id=envelope hash`, `spec_id=spec hash`,
+  `keyid=public-key hash`) and check certificate signature/type against its digest-matching stored
+  public key as internal consistency, without treating key presence as trust. Unknown/malformed IDs
+  stay uniform 404 and DB corruption becomes logged generic 500, never a forged artifact. Update
+  OpenAPI consumer/golden. Acceptance: render -> new app process -> exact certificate/spec/key
+  bytes; eviction/restart matrix pinned; gate green.
+
+- **M5.5a — pure snapshot replay engine** (OPEN): add `verifier.replay`, importing no service
+  module. It accepts an explicit trusted-key set + typed snapshot bytes; verifies attempt ID/DSSE,
+  exact `plot_id` binding, every blob digest/role, and VCert DSSE before decoding each payload once.
+  Re-run manifest decode/eval/check/build/formal from archived CSV/manifest/spec bytes - never
+  `data_dir`, model, or stored plotted values as computation inputs. Compare all five certified
+  dataset/manifest/spec/table/Vega hashes + exact VCert payload bytes; report version/key drift
+  field-by-field; native SVG comparison remains diagnostic (display TCB). Acceptance: in-memory
+  same-version fixture replays exactly; wrong key/blob/role/version/recomputation mutation fails or
+  reports drift at the right layer; replacing stored table/Vega cannot steer computation; gate green.
+- **M5.5b — archive replay adapter** (OPEN): add thin `service.replay` loading bounded role-typed
+  blobs from the archive. For a plot, select via indexed `LIMIT 1` the lexicographically lowest
+  committed signed successful attempt associated with it, then require the pure engine to verify
+  that signed association. Resolve trust only from current signer + explicit historical keyid pins,
+  never archive key presence. Acceptance: exact replay survives live CSV/manifest mutation,
+  deletion, LRU eviction, process restart, and foreign cwd; unpinned historical key, missing blob,
+  corrupt association, and archive read cap fail closed; no model/data-dir access; gate green.
+- **M5.5c — replay HTTP surface + audit docs** (OPEN): add `GET /replay/{plot_id}` returning a
+  typed ReplayVerdict (integrity, trusted keyid, version match, per-artifact comparisons, no raw
+  snapshots/prompt); an exact replay includes regenerated SVG + repopulates the ephemeral chart
+  LRU. Unknown plot stays 404 and SQLite/schema/implementation faults stay generic 500; signed
+  attestation/blob/key/version/recomputation mismatches return a bounded 200 diagnostic with no
+  chart. Keep `GET /certificate/{plot_id}` as durable DSSE bytes, and hand-author OpenAPI
+  paths/schemas/media types. Document state/key backup, quota failure, key pinning, replay semantics,
+  and operator CLI. Acceptance: render -> restart -> replay -> chart GET works from archived inputs;
+  real TCP; OpenAPI golden + jsonschema/consumer tests; replay uses the same rate + active-job
+  admission; old Open WebUI `proposeSpec` tool surface unchanged; gate green.
+- **M5.5d — end-to-end hardening evidence** (OPEN): from empty state, exercise direct render +
+  deterministic model-stub success/failure, restart, LRU eviction, live-data mutation, exact
+  replay, failed-attempt audit, key mismatch, DB/blob/signature corruption, solver timeout,
+  capacity 429, quota refusal, and crash-injected transaction rollback. Run golden corpus + full
+  locked gate; sweep POC_SCOPE/VPlot semantics/README/memory for claim-method/storage drift; close
+  M5 -> IMPLEMENTED. Acceptance: every seed-13/14 exit criterion demonstrated with retained test
+  evidence, every trust/availability limit stated without stronger cryptographic/formal claim,
+  and gate green.
 
 ---
 
