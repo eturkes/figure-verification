@@ -1,18 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioning REST client for a headless Open WebUI (M4.3b).
+"""Provisioning REST client for a headless Open WebUI (M4.3b, M4.4b).
 
-A thin sync httpx wrapper over the four OWUI endpoints the provisioning smoke needs, with the
-request shapes + fallbacks settled live against 0.10.2 (memory M4 Provisioning-SETTLED-LIVE) --
-TRANSCRIBED here, not re-probed. Every step fails closed via WebUIProvisionError so a misconfigured
-deploy raises loud rather than leaving a half-provisioned, silently-unauthenticated client.
+A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
+settled against 0.10.2 (memory M4 Provisioning-SETTLED-LIVE + Filters) -- TRANSCRIBED here, not
+re-probed. Every step fails closed via WebUIProvisionError so a misconfigured deploy raises loud
+rather than leaving a half-provisioned, silently-unauthenticated client.
 
 The client is injected an httpx.Client (base_url + request_timeout wired by the launcher, M4.3d; a
 test injects a MockTransport-backed one), and holds the admin JWT after authenticate(). Responses
-decode through loose msgspec structs (unknown OWUI keys ignored) -- only the load-bearing fields
-(token, model id, tool-server id) are modelled, matching the bench consumer-struct convention.
+decode through loose msgspec structs (unknown OWUI keys ignored) -- only load-bearing fields are
+modelled, matching the bench consumer-struct convention.
 """
 
 import time
+from typing import Never
 
 import httpx
 import msgspec
@@ -23,12 +24,14 @@ from webui.settings import Settings
 # server tool from a python-function tool in the GET /api/v1/tools/ readback. bootstrap reuses it.
 _TOOL_SERVER_ID_PREFIX = "server:"
 
+_FILTER_FUNCTION_TYPE = "filter"
+
 # Seconds between GET /ready polls while OWUI finishes startup (cold boot ~7-10s here, memory M4).
 _READY_POLL_INTERVAL = 1.0
 
 
 class WebUIProvisionError(RuntimeError):
-    """A provisioning step failed unrecoverably: readiness timeout, auth failure, or empty token."""
+    """A provisioning step failed unrecoverably or returned an invalid state."""
 
 
 class _AuthResponse(msgspec.Struct):
@@ -55,11 +58,21 @@ class _ToolServer(msgspec.Struct):
     id: str
 
 
+class _FunctionState(msgspec.Struct):
+    """Loose function reply; create omits content, while model/toggle/update replies include it."""
+
+    id: str
+    type: str
+    is_active: bool
+    is_global: bool
+    content: str | None = None
+
+
 class WebUIClient:
     """Drives the OWUI provisioning REST surface over an injected httpx.Client.
 
-    Stateful only in the stored admin JWT (_token, set by authenticate()); the authed readbacks
-    (model_ids/tool_server_ids) send it as a Bearer header and raise if authenticate() has not run.
+    Stateful only in the stored admin JWT (_token, set by authenticate()); authed reads/writes send
+    it as a Bearer header and raise if authenticate() has not run.
     """
 
     def __init__(self, http: httpx.Client, settings: Settings) -> None:
@@ -139,6 +152,154 @@ class WebUIClient:
         body = self._authed_get("/api/v1/tools/")
         tools = msgspec.json.decode(body, type=tuple[_ToolServer, ...])
         return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
+
+    def ensure_global_filter(
+        self,
+        *,
+        function_id: str,
+        name: str,
+        content: str,
+        description: str,
+    ) -> None:
+        """Create/update one owned filter, converge active+global flags, then prove final state.
+
+        Open WebUI reports a missing function as 401. A present function is always updated so a
+        bootstrap rerun deploys current source; create/update share one exact payload. Toggle calls
+        are conditional because each endpoint inverts its flag. Every 200 is decoded, every desired
+        state is checked, and a final GET closes response-vs-persistence gaps.
+        """
+        function_path = f"/api/v1/functions/id/{function_id}"
+        discovery = self._authed_request("GET", function_path)
+        if discovery.status_code == httpx.codes.UNAUTHORIZED:
+            phase = "create"
+            write_path = "/api/v1/functions/create"
+        elif discovery.status_code == httpx.codes.OK:
+            self._checked_function_state(
+                discovery,
+                phase="discovery",
+                function_id=function_id,
+            )
+            phase = "update"
+            write_path = f"{function_path}/update"
+        else:
+            self._raise_status(discovery)
+
+        payload: dict[str, object] = {
+            "id": function_id,
+            "name": name,
+            "content": content,
+            "meta": {"description": description},
+        }
+        state = self._checked_function_state(
+            self._authed_request("POST", write_path, json_body=payload),
+            phase=phase,
+            function_id=function_id,
+            content=content if phase == "update" else None,
+        )
+        self._require_state_field(
+            condition=state.type == _FILTER_FUNCTION_TYPE,
+            phase=phase,
+            field="type",
+        )
+        if not state.is_active:
+            toggle_path = f"{function_path}/toggle"
+            state = self._checked_function_state(
+                self._authed_request("POST", toggle_path),
+                phase="active toggle",
+                function_id=function_id,
+                content=content,
+            )
+            self._require_state_field(
+                condition=state.is_active,
+                phase="active toggle",
+                field="is_active",
+            )
+        if not state.is_global:
+            toggle_path = f"{function_path}/toggle/global"
+            state = self._checked_function_state(
+                self._authed_request("POST", toggle_path),
+                phase="global toggle",
+                function_id=function_id,
+                content=content,
+            )
+            self._require_state_field(
+                condition=state.is_global,
+                phase="global toggle",
+                field="is_global",
+            )
+
+        final = self._checked_function_state(
+            self._authed_request("GET", function_path),
+            phase="final",
+            function_id=function_id,
+            content=content,
+        )
+        self._require_state_field(condition=final.is_active, phase="final", field="is_active")
+        self._require_state_field(condition=final.is_global, phase="final", field="is_global")
+
+    def _authed_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, object] | None = None,
+    ) -> httpx.Response:
+        """Send one authenticated function request; normalize transport failures."""
+        try:
+            return self._http.request(
+                method,
+                path,
+                headers=self._auth_headers(),
+                json=json_body,
+            )
+        except httpx.HTTPError as exc:
+            msg = f"{method} {path} failed: {exc}"
+            raise WebUIProvisionError(msg) from exc
+
+    @classmethod
+    def _checked_function_state(
+        cls,
+        response: httpx.Response,
+        *,
+        phase: str,
+        function_id: str,
+        content: str | None = None,
+    ) -> _FunctionState:
+        """Require HTTP 200 + a decodable owned-function state, optionally current filter source."""
+        if response.status_code != httpx.codes.OK:
+            cls._raise_status(response)
+        try:
+            state = msgspec.json.decode(response.content, type=_FunctionState)
+        except msgspec.DecodeError as exc:
+            msg = f"{phase} returned invalid function state: {exc}"
+            raise WebUIProvisionError(msg) from exc
+        cls._require_state_field(condition=state.id == function_id, phase=phase, field="id")
+        if content is not None:
+            cls._require_state_field(
+                condition=state.type == _FILTER_FUNCTION_TYPE,
+                phase=phase,
+                field="type",
+            )
+            cls._require_state_field(
+                condition=state.content == content,
+                phase=phase,
+                field="content",
+            )
+        return state
+
+    @staticmethod
+    def _require_state_field(*, condition: bool, phase: str, field: str) -> None:
+        """Raise one stable fail-closed error for an inexact function-state field."""
+        if not condition:
+            msg = f"{phase} function state mismatch: {field}"
+            raise WebUIProvisionError(msg)
+
+    @staticmethod
+    def _raise_status(response: httpx.Response) -> Never:
+        """Raise one stable fail-closed error for an unexpected function HTTP status."""
+        request = response.request
+        msg = f"{request.method} {request.url.path} returned HTTP {response.status_code}"
+        raise WebUIProvisionError(msg)
 
     def _authed_get(self, path: str) -> bytes:
         """Authed GET that fails closed on non-200 -> the raw body for the caller to decode.

@@ -232,14 +232,17 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   fixed replacement, metadata preservation, and import-exec of `function_source()` in
   `tests/test_webui_enforcement_filter.py`. Landed as specified: the exact payload import-executes under
   Open WebUI's Python 3.12; 31 focused cases + full gate green (800 tests, 100% verifier branch coverage).
-- **M4.4b — idempotent function REST convergence** (OPEN): extend `webui/client.py` with a loose internal
-  function-state struct and `ensure_global_filter(*, function_id, name, content, description) -> None`.
-  Authenticated GET chooses create on 401 or update on 200; every other status fails loud. Decode/check every
-  200, toggle active/global only when false, then final-GET and require exact id + type `filter` + current
-  content + both flags; any HTTP/shape/state mismatch raises `WebUIProvisionError`. MockTransport tests pin
-  create, existing-update, all flag combinations (no accidental toggle-off), exact payload/Bearer paths,
-  final readback, and failures at discovery/write/toggle/final-state seams. Acceptance: targeted suite + full
-  gate green.
+- **M4.4b — idempotent function REST convergence** (DONE): `WebUIClient.ensure_global_filter(...)`
+  authenticated-discovers then always create/updates the exact function payload, conditionally toggles active
+  + global (both inverse endpoints), and final-GET proves exact id + type `filter` + current source + both
+  flags. Every transport/status/decode/state failure normalizes to `WebUIProvisionError`. A targeted pinned-
+  0.10.2 source check caught a contract nuance before close: create returns `FunctionResponse` WITHOUT
+  `content`, whereas update/toggle/GET return `FunctionModel` WITH it; the loose struct therefore permits
+  missing source only for create, checks create's id/type/flags, and relies on the mandatory final GET for
+  persisted-source proof. MockTransport pins create/update, exact payload/Bearer/paths, all four flag states,
+  no-op toggle rejection, malformed/non-200 failures at every seam, intermediate/final exactness, pre-auth +
+  transport failure. Active-predicate mutation made the flag matrix fail (non-vacuous). Focused 51 cases +
+  full gate green (828 tests, 100% verifier branch coverage).
 - **M4.4c — bootstrap filter install** (OPEN): extend only `webui/bootstrap.py` + its tests. Inline the
   consumed M4.4a/b surface: constants `FILTER_ID`/`FILTER_NAME`/`FILTER_DESCRIPTION`, `function_source()`,
   and `_Provisioner.ensure_global_filter(...)`. `run_bootstrap` order = wait → authenticate → converge the
