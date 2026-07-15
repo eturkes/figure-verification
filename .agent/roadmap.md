@@ -211,14 +211,49 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   the final clean rerun was warning-free on that axis. `webui/README.md` records the exact setup, topology,
   readiness order, stub/NPU alternatives, bootstrap semantics, limits, and every `WEBUI_PROVISION_*` knob.
   All services stopped + scratch wiped; gate green (769 tests, 100% verifier branch coverage).
-- **M4.4 — enforcement filter** (OPEN): `webui/` filter module — pure chart-like classifier (matplotlib/
-  plotly/altair/seaborn fences, `<svg`, vega-lite JSON, mermaid, data-URI images ↔ prose + verified-embed
-  negatives) + Filter class (outlet rewrites unverified chart-like assistant output, logs what it blocked);
-  bootstrap installs+activates globally; `tests/test_webui_*.py` on the bench-harness pattern (pure logic,
-  REST-shape pins); headless outlet assertion via `/api/chat/completed`; POC_SCOPE gains the Open WebUI
-  section (trusted display, heuristic filter, global-server no-CORS posture, loopback deployment).
-  Acceptance: gate green; classifier corpus fully pinned; one live `/api/chat/completed` round-trip blocks
-  a chart-like reply and passes a prose reply.
+- **M4.4 — enforcement filter** is SPLIT a→b→c→d: the original unit crossed a standalone function
+  payload/classifier, provisioning REST state machine, bootstrap orchestration, two operator docs, and a
+  live 3-service assertion — incompatible with the strict one-module webui rule established by M4.3.
+  Source check against installed Open WebUI 0.10.2 SETTLED the seams: create/update import-EXEC the posted
+  source; `GET /api/v1/functions/id/{id}` reads state (missing = 401); create/update take the same
+  `{id,name,content,meta:{description}}`; active/global are independent toggle endpoints; global selection
+  requires `type=="filter" ∧ is_active ∧ is_global`; `/api/chat/completed` returns the outlet-mutated body.
+  a–c each touch one webui module + its bench-style tests and leave the full gate green; d carries docs +
+  live evidence. Filter id = `verified_plot_guard`, name = `Verified Plot Guard`; every bootstrap updates
+  its source before converging flags, so code upgrades + reruns are idempotent.
+- **M4.4a — standalone classifier + Filter payload** (OPEN): add stdlib-only
+  `webui/enforcement_filter.py`, itself the exact source posted to Open WebUI (`function_source()` reads the
+  module bytes; no repo imports/Pydantic/frontmatter requirements). Pure `chart_signals(text) -> tuple[str,
+  ...]` detects fenced matplotlib/pyplot/plotly/altair/seaborn code, fenced mermaid, raw `<svg`, parsed
+  Vega-Lite-shaped JSON, and `data:image/...` URIs. `Filter.outlet(body)` inspects only the final assistant
+  message; a hit replaces its content with one fixed verifier-routing notice and warning-logs signal names
+  + character count, never the content. Pin each positive class, combinations/dedup/order, malformed/body
+  no-op shapes, ordinary prose/library discussion, verifier summary + Location/embed metadata negatives,
+  fixed replacement, metadata preservation, and import-exec of `function_source()` in
+  `tests/test_webui_enforcement_filter.py`. Acceptance: targeted suite + full gate green.
+- **M4.4b — idempotent function REST convergence** (OPEN): extend `webui/client.py` with a loose internal
+  function-state struct and `ensure_global_filter(*, function_id, name, content, description) -> None`.
+  Authenticated GET chooses create on 401 or update on 200; every other status fails loud. Decode/check every
+  200, toggle active/global only when false, then final-GET and require exact id + type `filter` + current
+  content + both flags; any HTTP/shape/state mismatch raises `WebUIProvisionError`. MockTransport tests pin
+  create, existing-update, all flag combinations (no accidental toggle-off), exact payload/Bearer paths,
+  final readback, and failures at discovery/write/toggle/final-state seams. Acceptance: targeted suite + full
+  gate green.
+- **M4.4c — bootstrap filter install** (OPEN): extend only `webui/bootstrap.py` + its tests. Inline the
+  consumed M4.4a/b surface: constants `FILTER_ID`/`FILTER_NAME`/`FILTER_DESCRIPTION`, `function_source()`,
+  and `_Provisioner.ensure_global_filter(...)`. `run_bootstrap` order = wait → authenticate → converge the
+  global filter → existing model/tool smoke; convergence failure already raises, so `SmokeResult` + CLI
+  contract stay unchanged. Fake-client tests pin exact args/order, success/rerun idempotency, and that smoke
+  starts only after convergence. Acceptance: targeted suite, `python -m webui --help`, full gate green.
+- **M4.4d — trust-boundary docs + live outlet assertion** (OPEN): `POC_SCOPE.md` gains an Open WebUI section
+  naming it trusted display (not verifier), the heuristic filter as bypassable/false-positive guardrail,
+  global server-side tool execution, CORS-free verifier, sandboxed Location iframe, and bare-metal loopback
+  deployment assumption; `webui/README.md` records bootstrap's filter convergence + assertion recipe. From
+  wiped `.webui-data`, stand up verifier → hardware-free model stub → hermetic Open WebUI; bootstrap twice;
+  authenticated `/api/chat/completed` with required `model,id,chat_id,session_id,messages` must replace a
+  chart-like assistant reply, preserve a prose reply byte-for-byte, and emit the content-free block warning.
+  Record evidence, clean services/state, run full gate. Acceptance: classifier corpus + REST pins green and
+  the live block/pass differential demonstrated honestly.
 - **M4.5 — live E2E + evidence** (OPEN; GATED: NPU model_backend live — M3 recipe, confirm functionally):
   full three-service stack; headless legacy-FC chat with `tool_ids` → tool executed (verifier artifacts
   exist + verdict context in the reply); persisted-chat flow → embed recorded; chromiumfish capture of the
