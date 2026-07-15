@@ -14,8 +14,9 @@ bootstrap orchestration. Locked:
   that drops a python-function tool, the Bearer wiring, and a non-200 readback raising LOUD;
 - ensure_global_filter: missing-create vs existing-update, all active/global flag combinations,
   exact payload/paths/Bearer wiring, final-state verification, and fail-closed seams;
-- smoke / run_bootstrap: the membership derivation, the ok truth table, the wait->auth->smoke order,
-  and restart-idempotency (a re-run's closed signup falls back to signin over a stateful transport).
+- smoke / run_bootstrap: membership + ok truth table, exact filter source/metadata,
+  wait->auth->converge->smoke order, failure barrier, and rerun idempotency (closed signup falls
+  back to signin over a stateful transport, and the existing filter updates).
 """
 
 import itertools
@@ -29,6 +30,12 @@ import pytest
 
 from webui.bootstrap import SmokeResult, run_bootstrap, smoke
 from webui.client import WebUIClient, WebUIProvisionError
+from webui.enforcement_filter import (
+    FILTER_DESCRIPTION,
+    FILTER_ID,
+    FILTER_NAME,
+    function_source,
+)
 from webui.settings import Settings
 
 _Handler = Callable[[httpx.Request], httpx.Response]
@@ -88,10 +95,18 @@ class _FakeClient:
     """A structural _Provisioner: canned readbacks + a call log, so the bootstrap orchestration is
     tested without any HTTP."""
 
-    def __init__(self, model_ids: list[str], tool_server_ids: list[str]) -> None:
+    def __init__(
+        self,
+        model_ids: list[str],
+        tool_server_ids: list[str],
+        *,
+        fail_filter: bool = False,
+    ) -> None:
         self._model_ids = model_ids
         self._tool_server_ids = tool_server_ids
+        self._fail_filter = fail_filter
         self.calls: list[str] = []
+        self.filter_calls: list[tuple[str, str, str, str]] = []
 
     def wait_ready(self) -> None:
         self.calls.append("wait_ready")
@@ -99,6 +114,20 @@ class _FakeClient:
     def authenticate(self) -> str:
         self.calls.append("authenticate")
         return "jwt"
+
+    def ensure_global_filter(
+        self,
+        *,
+        function_id: str,
+        name: str,
+        content: str,
+        description: str,
+    ) -> None:
+        self.calls.append("ensure_global_filter")
+        self.filter_calls.append((function_id, name, content, description))
+        if self._fail_filter:
+            message = "filter convergence failed"
+            raise WebUIProvisionError(message)
 
     def model_ids(self) -> list[str]:
         self.calls.append("model_ids")
@@ -611,7 +640,52 @@ def test_run_bootstrap_ok_in_order() -> None:
     )
     result = run_bootstrap(fake, settings)
     assert result.ok
-    assert fake.calls == ["wait_ready", "authenticate", "model_ids", "tool_server_ids"]
+    assert fake.calls == [
+        "wait_ready",
+        "authenticate",
+        "ensure_global_filter",
+        "model_ids",
+        "tool_server_ids",
+    ]
+    assert fake.filter_calls == [(FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)]
+
+
+def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
+    settings = Settings()
+    fake = _FakeClient(
+        model_ids=[settings.model_id],
+        tool_server_ids=[f"server:{settings.tool_server_id}"],
+    )
+    expected_order = [
+        "wait_ready",
+        "authenticate",
+        "ensure_global_filter",
+        "model_ids",
+        "tool_server_ids",
+    ]
+    expected_filter_call = (FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)
+
+    first = run_bootstrap(fake, settings)
+    second = run_bootstrap(fake, settings)
+
+    assert first == second
+    assert first.ok
+    assert fake.calls == expected_order * 2
+    assert fake.filter_calls == [expected_filter_call] * 2
+
+
+def test_run_bootstrap_does_not_smoke_after_filter_convergence_failure() -> None:
+    settings = Settings()
+    fake = _FakeClient(
+        model_ids=[settings.model_id],
+        tool_server_ids=[f"server:{settings.tool_server_id}"],
+        fail_filter=True,
+    )
+
+    with pytest.raises(WebUIProvisionError, match="filter convergence failed"):
+        run_bootstrap(fake, settings)
+
+    assert fake.calls == ["wait_ready", "authenticate", "ensure_global_filter"]
 
 
 @pytest.mark.parametrize(
@@ -629,28 +703,62 @@ def test_run_bootstrap_not_ok_when_either_missing(
     assert not result.ok
 
 
-def test_run_bootstrap_idempotent_across_restart_via_signin() -> None:
-    # The real restart-idempotency: the first run signs up (200); a second run over the same OWUI
-    # hits a closed signup (403) and falls back to signin (200). Both runs provision-OK and equal.
+def test_run_bootstrap_rerun_is_idempotent_via_signin_and_filter_update() -> None:
+    # First run signs up + creates; rerun hits closed signup, signs in, and updates the same filter.
     settings = Settings()
     signups = {"n": 0}
+    filter_writes = {"create": 0, "update": 0}
+    filter_content = function_source()
+    filter_state: dict[str, object] | None = None
+
+    def handle_filter(request: httpx.Request) -> httpx.Response:
+        nonlocal filter_state
+        path = request.url.path
+        if path == _FUNCTION_PATH and request.method == "GET":
+            if filter_state is None:
+                return httpx.Response(401, json={"detail": "Function not found"})
+            return httpx.Response(200, json=filter_state)
+        if path == "/api/v1/functions/create":
+            filter_writes["create"] += 1
+            assert json.loads(request.content) == {
+                "id": FILTER_ID,
+                "name": FILTER_NAME,
+                "content": filter_content,
+                "meta": {"description": FILTER_DESCRIPTION},
+            }
+            filter_state = _function_state(content=None)
+        elif path == f"{_FUNCTION_PATH}/update":
+            filter_writes["update"] += 1
+            filter_state = _function_state(active=True, global_=True, content=filter_content)
+        elif path == f"{_FUNCTION_PATH}/toggle":
+            filter_state = _function_state(active=True, content=filter_content)
+        elif path == f"{_FUNCTION_PATH}/toggle/global":
+            filter_state = _function_state(active=True, global_=True, content=filter_content)
+        else:
+            pytest.fail(f"unexpected filter path {path}")
+        return httpx.Response(200, json=filter_state)
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path == "/ready":
-            return httpx.Response(200)
-        if path == "/api/v1/auths/signup":
+            response = httpx.Response(200)
+        elif path == "/api/v1/auths/signup":
             signups["n"] += 1
             if signups["n"] == 1:
-                return httpx.Response(200, json={"token": "jwt-signup"})
-            return httpx.Response(403, json={"detail": "signup closed"})
-        if path == "/api/v1/auths/signin":
-            return httpx.Response(200, json={"token": "jwt-signin"})
-        if path == "/api/models":
-            return httpx.Response(200, json={"data": [{"id": settings.model_id}]})
-        if path == "/api/v1/tools/":
-            return httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
-        pytest.fail(f"unexpected path {path}")
+                response = httpx.Response(200, json={"token": "jwt-signup"})
+            else:
+                response = httpx.Response(403, json={"detail": "signup closed"})
+        elif path == "/api/v1/auths/signin":
+            response = httpx.Response(200, json={"token": "jwt-signin"})
+        elif path.startswith("/api/v1/functions"):
+            response = handle_filter(request)
+        elif path == "/api/models":
+            response = httpx.Response(200, json={"data": [{"id": settings.model_id}]})
+        elif path == "/api/v1/tools/":
+            response = httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
+        else:
+            pytest.fail(f"unexpected path {path}")
+        return response
 
     with _webui_client(handler, settings) as client:
         first = run_bootstrap(client, settings)
@@ -658,22 +766,42 @@ def test_run_bootstrap_idempotent_across_restart_via_signin() -> None:
     assert first == second
     assert first.ok
     assert signups["n"] == 2  # both runs attempted signup; the re-run fell back to signin
+    assert filter_writes == {"create": 1, "update": 1}
 
 
 def test_run_bootstrap_end_to_end_over_mock_transport() -> None:
     settings = Settings()
+    filter_content = function_source()
+    filter_created = False
 
     def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal filter_created
         path = request.url.path
         if path == "/ready":
-            return httpx.Response(200)
-        if path == "/api/v1/auths/signup":
-            return httpx.Response(200, json={"token": "jwt"})
-        if path == "/api/models":
-            return httpx.Response(200, json={"data": [{"id": settings.model_id}]})
-        if path == "/api/v1/tools/":
-            return httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
-        pytest.fail(f"unexpected path {path}")
+            response = httpx.Response(200)
+        elif path == "/api/v1/auths/signup":
+            response = httpx.Response(200, json={"token": "jwt"})
+        elif path == _FUNCTION_PATH and request.method == "GET":
+            if not filter_created:
+                response = httpx.Response(401, json={"detail": "Function not found"})
+            else:
+                response = httpx.Response(
+                    200,
+                    json=_function_state(active=True, global_=True, content=filter_content),
+                )
+        elif path == "/api/v1/functions/create":
+            filter_created = True
+            response = httpx.Response(
+                200,
+                json=_function_state(active=True, global_=True, content=None),
+            )
+        elif path == "/api/models":
+            response = httpx.Response(200, json={"data": [{"id": settings.model_id}]})
+        elif path == "/api/v1/tools/":
+            response = httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
+        else:
+            pytest.fail(f"unexpected path {path}")
+        return response
 
     with _webui_client(handler, settings) as client:
         result = run_bootstrap(client, settings)

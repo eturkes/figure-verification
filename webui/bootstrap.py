@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioning smoke over the WebUIClient (M4.3b).
+"""Provisioning convergence + smoke over the WebUIClient (M4.4c).
 
-run_bootstrap = wait_ready -> authenticate -> smoke: the whole hardware-free provisioning act. The
-one DB-persisted write is the admin signup; the tool server + model ride the launcher env, so a
-re-run over a still-running OWUI is idempotent via the signin fallback (memory M4
+run_bootstrap = wait_ready -> authenticate -> converge owned global filter -> smoke: the whole
+hardware-free provisioning act. The admin user + filter are DB-persisted; every rerun updates the
+filter to this repo's exact source before proving it active/global. The tool server + model ride the
+launcher env, and the signin fallback makes reruns idempotent (memory M4
 Provisioning-SETTLED-LIVE). smoke reads back the two facts that PROVE the launcher env took:
 
 - model_enumerated: the configured model id appears in GET /api/models (OPENAI_API_BASE_URL wired +
@@ -21,6 +22,12 @@ from typing import Protocol
 import msgspec
 
 from webui.client import _TOOL_SERVER_ID_PREFIX
+from webui.enforcement_filter import (
+    FILTER_DESCRIPTION,
+    FILTER_ID,
+    FILTER_NAME,
+    function_source,
+)
 from webui.settings import Settings
 
 
@@ -29,6 +36,14 @@ class _Provisioner(Protocol):
 
     def wait_ready(self) -> None: ...
     def authenticate(self) -> str: ...
+    def ensure_global_filter(
+        self,
+        *,
+        function_id: str,
+        name: str,
+        content: str,
+        description: str,
+    ) -> None: ...
     def model_ids(self) -> list[str]: ...
     def tool_server_ids(self) -> list[str]: ...
 
@@ -61,7 +76,13 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
 
 
 def run_bootstrap(client: _Provisioner, settings: Settings) -> SmokeResult:
-    """wait_ready -> authenticate -> smoke: the full provisioning smoke, idempotent per run."""
+    """Wait, authenticate, converge the owned filter, then smoke the launcher-env readbacks."""
     client.wait_ready()
     client.authenticate()
+    client.ensure_global_filter(
+        function_id=FILTER_ID,
+        name=FILTER_NAME,
+        content=function_source(),
+        description=FILTER_DESCRIPTION,
+    )
     return smoke(client, settings)

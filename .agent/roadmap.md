@@ -243,12 +243,13 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   no-op toggle rejection, malformed/non-200 failures at every seam, intermediate/final exactness, pre-auth +
   transport failure. Active-predicate mutation made the flag matrix fail (non-vacuous). Focused 51 cases +
   full gate green (828 tests, 100% verifier branch coverage).
-- **M4.4c — bootstrap filter install** (OPEN): extend only `webui/bootstrap.py` + its tests. Inline the
-  consumed M4.4a/b surface: constants `FILTER_ID`/`FILTER_NAME`/`FILTER_DESCRIPTION`, `function_source()`,
-  and `_Provisioner.ensure_global_filter(...)`. `run_bootstrap` order = wait → authenticate → converge the
-  global filter → existing model/tool smoke; convergence failure already raises, so `SmokeResult` + CLI
-  contract stay unchanged. Fake-client tests pin exact args/order, success/rerun idempotency, and that smoke
-  starts only after convergence. Acceptance: targeted suite, `python -m webui --help`, full gate green.
+- **M4.4c — bootstrap filter install** (DONE): `webui/bootstrap.py` now consumes M4.4a's exact owned
+  function constants/source and M4.4b's convergence method through the structural `_Provisioner` surface.
+  `run_bootstrap` = wait → authenticate → converge active/global current-source filter → existing
+  model/tool smoke; convergence failure raises before either readback, while `SmokeResult` + CLI contract
+  stay unchanged. Fake-client tests pin exact args/order, the failure barrier, and convergence on every
+  rerun; a stateful MockTransport proves first-run create + second-run update/signin idempotency. Focused
+  53 tests + `python -m webui --help` + full gate green (830 tests, 100% verifier branch coverage).
 - **M4.4d — trust-boundary docs + live outlet assertion** (OPEN): `POC_SCOPE.md` gains an Open WebUI section
   naming it trusted display (not verifier), the heuristic filter as bypassable/false-positive guardrail,
   global server-side tool execution, CORS-free verifier, sandboxed Location iframe, and bare-metal loopback
