@@ -428,3 +428,16 @@ def test_render_resource_failure_is_verdict_without_store(
     }
     spec_id = canon.hash_spec(decode_spec(raw)).removeprefix("sha256:")
     assert client.get(f"/spec/{spec_id}").status_code == 404
+
+
+def test_render_uses_operator_resource_limits_without_store() -> None:
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    settings = Settings(data_dir=_DATA, max_render_rows=1)
+    with TestClient(app=create_app(settings)) as scoped:
+        response = scoped.post("/verify-and-render", content=raw, headers=_JSON)
+        body: dict[str, Any] = response.json()
+        assert response.status_code == 200
+        assert body["verified"] is False
+        assert body["results"][-1]["check"] == "resource.render_rows"
+        spec_id = canon.hash_spec(decode_spec(raw)).removeprefix("sha256:")
+        assert scoped.get(f"/spec/{spec_id}").status_code == 404

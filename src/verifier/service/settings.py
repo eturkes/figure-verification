@@ -1,71 +1,89 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Service settings — trusted operator config for the HTTP transport (M2.1).
+"""Trusted operator configuration for transport, verification, and resource policy.
 
-A frozen container struct, never decoded from an untrusted body (unlike the schema
-structs): the operator supplies it through the environment before the process binds.
-data_dir stays trusted config — checks.py path confinement rests on it (the TOCTOU
-precondition documented there). Defaults bind loopback only and cap bodies far under
-the VPlot schema's real size, and __post_init__ rejects a non-positive max_body_bytes
-(which the framework would otherwise read as an unlimited body), store_cap, or html_cap
-(a non-positive cap makes the matching artifact store drop everything at once or crash on
-its first eviction), so a bare or misconfigured deploy fails closed rather than exposing the
-verifier. The field defaults and the from_env fallbacks share one set of constants so the two
-construction paths cannot drift.
+`Settings` is an immutable startup snapshot, never request-decoded. `from_env` is the sole
+ambient-environment boundary. Field defaults and its fallbacks share constants; core defaults
+come directly from `DEFAULT_LIMITS`.
 
-M3.2a adds the model-proposer config (base URL / name / timeout / sample rows / max tokens):
-the operator points the verifier at the local backend, and these stay trusted config too —
-the untrusted model never supplies them. __post_init__ bounds them fail-closed alongside the
-caps above (see the inline notes for each rejection's downstream failure mode).
+M5 resource policy: all resource integers are exact positive signed-64-bit values
+(`model_sample_rows` alone admits zero). This common arithmetic domain protects later native and
+SQLite boundaries and rejects astronomical values without allocating against them. `limits` is
+eagerly derived and cannot be supplied independently, so every service stage receives one frozen
+`VerificationLimits` snapshot. Cache budgets admit one conservatively bounded item: render =
+attestation + both route-specific spec-input ceilings; chart = HTML. Sums are checked for overflow.
 
-M4.2 adds public_base_url — the absolute, browser-facing origin the proposer embeds in a chart
-Location header (M4.2b), distinct from host, the bind address. Left unset it derives the loopback
-literal on the configured port; an operator behind a reverse proxy overrides it via
-VERIFIER_PUBLIC_BASE_URL. __post_init__ requires a clean origin scheme://host[:port] — http(s)
-scheme, present host, ASCII host+port authority (no userinfo, backslash, percent-escape, control
-byte, whitespace, or raw-unicode/IDN host), no path/query/fragment/trailing slash — so
-f"{base}/chart/{id}" appends exactly one clean segment toward the browser. It is the one config
-value a client parses, so it fails closed on any shape a browser would reinterpret (a '\' read as
-'/', userinfo host-confusion, a hostless or non-ASCII Location) rather than trust a hand-written
-origin.
+`public_base_url` is the absolute browser-facing origin used in chart `Location`, separate from
+the bind host. Its ASCII authority allowlist and exact origin round-trip reject browser/parser
+differentials (userinfo, backslash, escapes, controls, IDN, or appended path/query/fragment).
 """
 
 import math
 import os
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
 
-import msgspec
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 _DEFAULT_DATA_DIR = "data"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
-# Real specs are far under 64 KiB (VPlot schema bounds); the cap raises 413 when an
-# oversize body is read (M2.2 reads the raw body before any verifier work).
-_DEFAULT_MAX_BODY_BYTES = 65536
+_DEFAULT_MAX_BODY_BYTES = 64 * 1024
 _DEFAULT_STORE_CAP = 256
-# Offline chart HTML pages inline the whole Vega bundle (~MB each), so they ride their own
-# small LRU (store.py) instead of store_cap's 256 — 256 chart pages would balloon memory.
 _DEFAULT_HTML_CAP = 16
-# Model proposer (M3.2a): the local backend's OpenAI /v1 base (M3.1b binds port 8001; the
-# client appends /chat/completions), the single served model name copied into requests,
-# a generation timeout with slow-accelerator headroom, the sample-row count handed to the prompt,
-# and the new-token ceiling (matches the backend default, bounds the backend's lock-hold time).
+
 _DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:8001/v1"
 _DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_TIMEOUT = 120.0
 _DEFAULT_MODEL_SAMPLE_ROWS = 5
 _DEFAULT_MODEL_MAX_TOKENS = 512
-# public_base_url (M4.2) clean-origin authority allowlist: ASCII host+port only -- letters,
-# digits, dot, hyphen, underscore, colon (port / IPv6), brackets (IPv6). Excludes userinfo '@',
-# backslash, percent-escape, control bytes, whitespace, and raw-unicode/IDN hosts, each of which
-# would corrupt the chart Location the proposer embeds from this value.
+_DEFAULT_MAX_USER_REQUEST_BYTES = 4 * 1024
+_DEFAULT_MAX_PROMPT_BYTES = 32 * 1024
+_DEFAULT_MAX_MODEL_RESPONSE_BYTES = 128 * 1024
+
+_DEFAULT_RENDER_CACHE_BYTES = 32 * 1024 * 1024
+_DEFAULT_CHART_CACHE_BYTES = 128 * 1024 * 1024
+_DEFAULT_MAX_ACTIVE_JOBS = 2
+_DEFAULT_WORK_RATE_PER_MINUTE = 120
+_DEFAULT_WORK_BURST = 120
+
+_MAX_RESOURCE_INTEGER = 2**63 - 1
 _CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
+_POSITIVE_RESOURCE_FIELDS = (
+    "max_body_bytes",
+    "store_cap",
+    "html_cap",
+    "model_max_tokens",
+    "max_user_request_bytes",
+    "max_prompt_bytes",
+    "max_model_response_bytes",
+    "render_cache_bytes",
+    "chart_cache_bytes",
+    "max_active_jobs",
+    "work_rate_per_minute",
+    "work_burst",
+    *DEFAULT_LIMITS.__struct_fields__,
+)
 
 
-class Settings(msgspec.Struct, frozen=True, kw_only=True):
-    """Immutable service configuration. See the module docstring for the trust note."""
+def _require_resource_integer(name: str, value: int, *, minimum: int = 1) -> None:
+    if type(value) is not int or not minimum <= value <= _MAX_RESOURCE_INTEGER:
+        msg = f"{name} must be an integer in {minimum}..{_MAX_RESOURCE_INTEGER}, got {value!r}"
+        raise ValueError(msg)
+
+
+def _checked_resource_sum(name: str, left: int, right: int) -> int:
+    if left > _MAX_RESOURCE_INTEGER - right:
+        msg = f"{name} exceeds the signed-64-bit resource ceiling"
+        raise ValueError(msg)
+    return left + right
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Settings:
+    """Immutable service policy; direct construction and `from_env` share all validation."""
 
     data_dir: Path
     host: str = _DEFAULT_HOST
@@ -74,28 +92,47 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     store_cap: int = _DEFAULT_STORE_CAP
     html_cap: int = _DEFAULT_HTML_CAP
+
     model_base_url: str = _DEFAULT_MODEL_BASE_URL
     model_name: str = _DEFAULT_MODEL_NAME
     model_timeout: float = _DEFAULT_MODEL_TIMEOUT
     model_sample_rows: int = _DEFAULT_MODEL_SAMPLE_ROWS
     model_max_tokens: int = _DEFAULT_MODEL_MAX_TOKENS
+    max_user_request_bytes: int = _DEFAULT_MAX_USER_REQUEST_BYTES
+    max_prompt_bytes: int = _DEFAULT_MAX_PROMPT_BYTES
+    max_model_response_bytes: int = _DEFAULT_MAX_MODEL_RESPONSE_BYTES
+
+    render_cache_bytes: int = _DEFAULT_RENDER_CACHE_BYTES
+    chart_cache_bytes: int = _DEFAULT_CHART_CACHE_BYTES
+    max_active_jobs: int = _DEFAULT_MAX_ACTIVE_JOBS
+    work_rate_per_minute: int = _DEFAULT_WORK_RATE_PER_MINUTE
+    work_burst: int = _DEFAULT_WORK_BURST
+
+    max_csv_bytes: int = DEFAULT_LIMITS.max_csv_bytes
+    max_manifest_bytes: int = DEFAULT_LIMITS.max_manifest_bytes
+    max_manifest_columns: int = DEFAULT_LIMITS.max_manifest_columns
+    max_source_rows: int = DEFAULT_LIMITS.max_source_rows
+    max_source_cells: int = DEFAULT_LIMITS.max_source_cells
+    max_plotted_cells: int = DEFAULT_LIMITS.max_plotted_cells
+    max_eval_work_units: int = DEFAULT_LIMITS.max_eval_work_units
+    max_render_rows: int = DEFAULT_LIMITS.max_render_rows
+    max_smt_terms: int = DEFAULT_LIMITS.max_smt_terms
+    max_vega_bytes: int = DEFAULT_LIMITS.max_vega_bytes
+    max_svg_bytes: int = DEFAULT_LIMITS.max_svg_bytes
+    max_html_bytes: int = DEFAULT_LIMITS.max_html_bytes
+    max_attestation_bytes: int = DEFAULT_LIMITS.max_attestation_bytes
+    smt_timeout_ms: int = DEFAULT_LIMITS.smt_timeout_ms
+
+    limits: VerificationLimits = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        # public_base_url (M4.2): the absolute browser-facing origin the proposer embeds in a chart
-        # Location header. Unset -> derive the loopback default from the port via object.__setattr__
-        # (frozen-struct init derivation: sets the slot, hash + frozen-ness intact). Then require a
-        # clean origin scheme://host[:port] on every construction path (see the module docstring for
-        # the shape and why each rejected form -- '\' path-injection, userinfo host-confusion, a
-        # hostless or non-ASCII Location -- would corrupt f"{base}/chart/{id}" toward the browser).
-        # urlparse raises ValueError on some malformed input (unbalanced IPv6 brackets, a
-        # non-numeric or out-of-range port); catch it so every bad value fails closed uniformly.
         base = self.public_base_url
         if base is None:
             base = f"http://{_DEFAULT_HOST}:{self.port}"
             object.__setattr__(self, "public_base_url", base)
         try:
             parsed = urlparse(base)
-            _ = parsed.port  # property parse raises ValueError on a non-numeric / out-of-range port
+            _ = parsed.port
         except ValueError:
             origin_ok = False
         else:
@@ -108,60 +145,110 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         if not origin_ok:
             msg = f"public_base_url must be a clean http(s) origin, got {base!r}"
             raise ValueError(msg)
-        # A non-positive cap is falsy, so Litestar reads it as an unlimited body
-        # (`... or math.inf`) and the fail-closed guard silently vanishes; reject it
-        # here on every construction path (direct and from_env).
-        if self.max_body_bytes < 1:
-            msg = f"max_body_bytes must be >= 1, got {self.max_body_bytes}"
-            raise ValueError(msg)
-        # A non-positive store_cap makes the bounded artifact store drop every render at
-        # once (cap 0) or crash on its first eviction (cap < 0); reject it here too.
-        if self.store_cap < 1:
-            msg = f"store_cap must be >= 1, got {self.store_cap}"
-            raise ValueError(msg)
-        # A non-positive html_cap breaks the chart LRU the same way store_cap breaks the render
-        # LRU (drop-everything at 0, crash-on-evict below 0); reject it here too.
-        if self.html_cap < 1:
-            msg = f"html_cap must be >= 1, got {self.html_cap}"
-            raise ValueError(msg)
-        # Model-proposer bounds, fail-closed like the caps above. httpx does not validate
-        # its timeout, and not every non-None value is bounded, so guard the value itself.
-        # A value of 0 times out every request immediately; a negative is an undefined
-        # deadline; inf runs unbounded (the wedged-backend hang the timeout prevents); nan
-        # poisons the asyncio deadline (ValueError at request time) and slips a bare `<= 0`
-        # check. float() parses "inf"/"nan" from the env, so require a finite value > 0. A
-        # negative sample-row count is nonsensical for the header+rows prompt slice, and a
-        # max_tokens below 1 is not a valid ceiling (the swappable backend clamps to >= 1,
-        # but the verifier fails closed itself rather than lean on that).
+
+        for name in _POSITIVE_RESOURCE_FIELDS:
+            _require_resource_integer(name, getattr(self, name))
+        _require_resource_integer("model_sample_rows", self.model_sample_rows, minimum=0)
         if not math.isfinite(self.model_timeout) or self.model_timeout <= 0:
             msg = f"model_timeout must be a finite value > 0, got {self.model_timeout}"
             raise ValueError(msg)
-        if self.model_sample_rows < 0:
-            msg = f"model_sample_rows must be >= 0, got {self.model_sample_rows}"
+
+        limits = VerificationLimits(
+            max_csv_bytes=self.max_csv_bytes,
+            max_manifest_bytes=self.max_manifest_bytes,
+            max_manifest_columns=self.max_manifest_columns,
+            max_source_rows=self.max_source_rows,
+            max_source_cells=self.max_source_cells,
+            max_plotted_cells=self.max_plotted_cells,
+            max_eval_work_units=self.max_eval_work_units,
+            max_render_rows=self.max_render_rows,
+            max_smt_terms=self.max_smt_terms,
+            max_vega_bytes=self.max_vega_bytes,
+            max_svg_bytes=self.max_svg_bytes,
+            max_html_bytes=self.max_html_bytes,
+            max_attestation_bytes=self.max_attestation_bytes,
+            smt_timeout_ms=self.smt_timeout_ms,
+        )
+        object.__setattr__(self, "limits", limits)
+
+        max_spec_bytes = _checked_resource_sum(
+            "render cache spec input bound",
+            self.max_body_bytes,
+            self.max_model_response_bytes,
+        )
+        max_render_item = _checked_resource_sum(
+            "render cache item bound", self.max_attestation_bytes, max_spec_bytes
+        )
+        if self.render_cache_bytes < max_render_item:
+            msg = (
+                "render_cache_bytes must admit max_attestation_bytes plus both spec-input "
+                f"ceilings ({max_render_item}), got {self.render_cache_bytes}"
+            )
             raise ValueError(msg)
-        if self.model_max_tokens < 1:
-            msg = f"model_max_tokens must be >= 1, got {self.model_max_tokens}"
+        if self.chart_cache_bytes < self.max_html_bytes:
+            msg = (
+                "chart_cache_bytes must be >= max_html_bytes "
+                f"({self.max_html_bytes}), got {self.chart_cache_bytes}"
+            )
             raise ValueError(msg)
 
     @classmethod
     def from_env(cls) -> Self:
-        """Build from VERIFIER_* environment variables, falling back to the field defaults."""
+        """Build from `VERIFIER_*`; this is the service's only ambient read."""
         env = os.environ
+
+        def integer(name: str, default: int) -> int:
+            return int(env.get(name, str(default)))
+
         return cls(
             data_dir=Path(env.get("VERIFIER_DATA_DIR", _DEFAULT_DATA_DIR)),
             host=env.get("VERIFIER_HOST", _DEFAULT_HOST),
-            port=int(env.get("VERIFIER_PORT", str(_DEFAULT_PORT))),
+            port=integer("VERIFIER_PORT", _DEFAULT_PORT),
             public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL"),
-            max_body_bytes=int(env.get("VERIFIER_MAX_BODY_BYTES", str(_DEFAULT_MAX_BODY_BYTES))),
-            store_cap=int(env.get("VERIFIER_STORE_CAP", str(_DEFAULT_STORE_CAP))),
-            html_cap=int(env.get("VERIFIER_HTML_CAP", str(_DEFAULT_HTML_CAP))),
+            max_body_bytes=integer("VERIFIER_MAX_BODY_BYTES", _DEFAULT_MAX_BODY_BYTES),
+            store_cap=integer("VERIFIER_STORE_CAP", _DEFAULT_STORE_CAP),
+            html_cap=integer("VERIFIER_HTML_CAP", _DEFAULT_HTML_CAP),
             model_base_url=env.get("VERIFIER_MODEL_BASE_URL", _DEFAULT_MODEL_BASE_URL),
             model_name=env.get("VERIFIER_MODEL_NAME", _DEFAULT_MODEL_NAME),
             model_timeout=float(env.get("VERIFIER_MODEL_TIMEOUT", str(_DEFAULT_MODEL_TIMEOUT))),
-            model_sample_rows=int(
-                env.get("VERIFIER_MODEL_SAMPLE_ROWS", str(_DEFAULT_MODEL_SAMPLE_ROWS))
+            model_sample_rows=integer("VERIFIER_MODEL_SAMPLE_ROWS", _DEFAULT_MODEL_SAMPLE_ROWS),
+            model_max_tokens=integer("VERIFIER_MODEL_MAX_TOKENS", _DEFAULT_MODEL_MAX_TOKENS),
+            max_user_request_bytes=integer(
+                "VERIFIER_MAX_USER_REQUEST_BYTES", _DEFAULT_MAX_USER_REQUEST_BYTES
             ),
-            model_max_tokens=int(
-                env.get("VERIFIER_MODEL_MAX_TOKENS", str(_DEFAULT_MODEL_MAX_TOKENS))
+            max_prompt_bytes=integer("VERIFIER_MAX_PROMPT_BYTES", _DEFAULT_MAX_PROMPT_BYTES),
+            max_model_response_bytes=integer(
+                "VERIFIER_MAX_MODEL_RESPONSE_BYTES", _DEFAULT_MAX_MODEL_RESPONSE_BYTES
             ),
+            render_cache_bytes=integer("VERIFIER_RENDER_CACHE_BYTES", _DEFAULT_RENDER_CACHE_BYTES),
+            chart_cache_bytes=integer("VERIFIER_CHART_CACHE_BYTES", _DEFAULT_CHART_CACHE_BYTES),
+            max_active_jobs=integer("VERIFIER_MAX_ACTIVE_JOBS", _DEFAULT_MAX_ACTIVE_JOBS),
+            work_rate_per_minute=integer(
+                "VERIFIER_WORK_RATE_PER_MINUTE", _DEFAULT_WORK_RATE_PER_MINUTE
+            ),
+            work_burst=integer("VERIFIER_WORK_BURST", _DEFAULT_WORK_BURST),
+            max_csv_bytes=integer("VERIFIER_MAX_CSV_BYTES", DEFAULT_LIMITS.max_csv_bytes),
+            max_manifest_bytes=integer(
+                "VERIFIER_MAX_MANIFEST_BYTES", DEFAULT_LIMITS.max_manifest_bytes
+            ),
+            max_manifest_columns=integer(
+                "VERIFIER_MAX_MANIFEST_COLUMNS", DEFAULT_LIMITS.max_manifest_columns
+            ),
+            max_source_rows=integer("VERIFIER_MAX_SOURCE_ROWS", DEFAULT_LIMITS.max_source_rows),
+            max_source_cells=integer("VERIFIER_MAX_SOURCE_CELLS", DEFAULT_LIMITS.max_source_cells),
+            max_plotted_cells=integer(
+                "VERIFIER_MAX_PLOTTED_CELLS", DEFAULT_LIMITS.max_plotted_cells
+            ),
+            max_eval_work_units=integer(
+                "VERIFIER_MAX_EVAL_WORK_UNITS", DEFAULT_LIMITS.max_eval_work_units
+            ),
+            max_render_rows=integer("VERIFIER_MAX_RENDER_ROWS", DEFAULT_LIMITS.max_render_rows),
+            max_smt_terms=integer("VERIFIER_MAX_SMT_TERMS", DEFAULT_LIMITS.max_smt_terms),
+            max_vega_bytes=integer("VERIFIER_MAX_VEGA_BYTES", DEFAULT_LIMITS.max_vega_bytes),
+            max_svg_bytes=integer("VERIFIER_MAX_SVG_BYTES", DEFAULT_LIMITS.max_svg_bytes),
+            max_html_bytes=integer("VERIFIER_MAX_HTML_BYTES", DEFAULT_LIMITS.max_html_bytes),
+            max_attestation_bytes=integer(
+                "VERIFIER_MAX_ATTESTATION_BYTES", DEFAULT_LIMITS.max_attestation_bytes
+            ),
+            smt_timeout_ms=integer("VERIFIER_SMT_TIMEOUT_MS", DEFAULT_LIMITS.smt_timeout_ms),
         )

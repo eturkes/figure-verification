@@ -43,7 +43,7 @@ import msgspec
 
 from verifier import canon, checks, render
 from verifier.errors import VerificationError
-from verifier.limits import DEFAULT_LIMITS, read_bounded
+from verifier.limits import read_bounded
 from verifier.schema import VPlotSpec, decode_spec
 from verifier.service.models import RenderVerdict, Verdict
 from verifier.service.settings import Settings
@@ -91,7 +91,7 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
     # reachable here, unlike checks.py's whole-name CSV resolution).
     manifest_path = settings.data_dir / "schemas" / f"{Path(spec.dataset.name).stem}.json"
     try:
-        manifest_bytes = read_bounded(manifest_path, DEFAULT_LIMITS.max_manifest_bytes)
+        manifest_bytes = read_bounded(manifest_path, settings.limits.max_manifest_bytes)
     except VerificationError as exc:
         verdict = _single(exc.check, str(exc), layer="verify")
         return Outcome(verdict=verdict, spec=spec)
@@ -106,7 +106,9 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
         return Outcome(verdict=verdict, spec=spec)
 
     # verify_run admits/decodes this exact snapshot; broken manifest/mispair -> raise -> 500.
-    run = checks.verify_run(spec, manifest_bytes, data_dir=settings.data_dir, limits=DEFAULT_LIMITS)
+    run = checks.verify_run(
+        spec, manifest_bytes, data_dir=settings.data_dir, limits=settings.limits
+    )
     verdict = Verdict(verified=run.report.passed, layer="verify", results=run.report.results)
     return Outcome(verdict=verdict, spec=spec, trace=run.trace, evidence=run.evidence)
 
@@ -122,7 +124,7 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
 
 
 def render_outcome(
-    outcome: Outcome, _settings: Settings, store: ArtifactStore, *, include_html: bool
+    outcome: Outcome, settings: Settings, store: ArtifactStore, *, include_html: bool
 ) -> Verdict | RenderVerdict:
     """Render the verified chart for a passing Outcome, store the artifacts content-addressed, and
     answer a RenderVerdict. A failing verdict answers the plain Verdict — never a chart on an
@@ -143,8 +145,8 @@ def render_outcome(
     spec = cast("VPlotSpec", outcome.spec)
     evidence = cast("checks.RecomputedEvidence", outcome.evidence)
     try:
-        prepared = render.prepare_render(spec, evidence, limits=DEFAULT_LIMITS)
-        result = render.render_prepared(prepared, include_html=True, limits=DEFAULT_LIMITS)
+        prepared = render.prepare_render(spec, evidence, limits=settings.limits)
+        result = render.render_prepared(prepared, include_html=True, limits=settings.limits)
     except VerificationError as exc:
         resource_failure = checks.CheckResult(
             check=exc.check,

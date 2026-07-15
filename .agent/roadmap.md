@@ -120,7 +120,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   with no store, while broken trusted config remains 500. Acceptance: both render routes read CSV +
   manifest once (spy-pinned), no response exposes evidence, and mutation between stages cannot
   change the artifact; gate green.
-- **M5.1e — operator resource settings** (OPEN): thread every core/proposer/cache bound through
+- **M5.1e — operator resource settings** (DONE): thread every core/proposer/cache bound through
   frozen service `Settings`; add `VERIFIER_MAX_ACTIVE_JOBS` (default 2), work-rate/burst (120/minute +
   120), and render/chart-cache payload budgets (32 MiB + 128 MiB). Keep field defaults + env
   fallbacks single-sourced; validate finite/positive integers, cross-limit cache compatibility,

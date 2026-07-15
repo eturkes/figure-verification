@@ -10,6 +10,7 @@ by monkeypatching uvicorn.run, so no socket binds during the unit suite.
 import ast
 import math
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import uvicorn
@@ -17,24 +18,61 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from verifier import __version__
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import __main__ as service_main
+from verifier.service import settings as settings_module
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
 
+_MAX_RESOURCE_INTEGER = 2**63 - 1
+_CORE_DEFAULTS = {name: getattr(DEFAULT_LIMITS, name) for name in DEFAULT_LIMITS.__struct_fields__}
+_RESOURCE_DEFAULTS = {
+    "max_body_bytes": 64 * 1024,
+    "store_cap": 256,
+    "html_cap": 16,
+    "model_max_tokens": 512,
+    "max_user_request_bytes": 4 * 1024,
+    "max_prompt_bytes": 32 * 1024,
+    "max_model_response_bytes": 128 * 1024,
+    "render_cache_bytes": 32 * 1024 * 1024,
+    "chart_cache_bytes": 128 * 1024 * 1024,
+    "max_active_jobs": 2,
+    "work_rate_per_minute": 120,
+    "work_burst": 120,
+    **_CORE_DEFAULTS,
+}
+_RESOURCE_ENV = {
+    "max_body_bytes": "VERIFIER_MAX_BODY_BYTES",
+    "store_cap": "VERIFIER_STORE_CAP",
+    "html_cap": "VERIFIER_HTML_CAP",
+    "model_max_tokens": "VERIFIER_MODEL_MAX_TOKENS",
+    "max_user_request_bytes": "VERIFIER_MAX_USER_REQUEST_BYTES",
+    "max_prompt_bytes": "VERIFIER_MAX_PROMPT_BYTES",
+    "max_model_response_bytes": "VERIFIER_MAX_MODEL_RESPONSE_BYTES",
+    "render_cache_bytes": "VERIFIER_RENDER_CACHE_BYTES",
+    "chart_cache_bytes": "VERIFIER_CHART_CACHE_BYTES",
+    "max_active_jobs": "VERIFIER_MAX_ACTIVE_JOBS",
+    "work_rate_per_minute": "VERIFIER_WORK_RATE_PER_MINUTE",
+    "work_burst": "VERIFIER_WORK_BURST",
+    **{name: f"VERIFIER_{name.upper()}" for name in DEFAULT_LIMITS.__struct_fields__},
+}
 _VERIFIER_ENV = (
     "VERIFIER_DATA_DIR",
     "VERIFIER_HOST",
     "VERIFIER_PORT",
     "VERIFIER_PUBLIC_BASE_URL",
-    "VERIFIER_MAX_BODY_BYTES",
-    "VERIFIER_STORE_CAP",
-    "VERIFIER_HTML_CAP",
     "VERIFIER_MODEL_BASE_URL",
     "VERIFIER_MODEL_NAME",
     "VERIFIER_MODEL_TIMEOUT",
     "VERIFIER_MODEL_SAMPLE_ROWS",
-    "VERIFIER_MODEL_MAX_TOKENS",
+    *_RESOURCE_ENV.values(),
 )
+
+
+def _settings_with(data_dir: Path, **changes: object) -> Settings:
+    """Dynamically override named fields for exhaustive runtime validation matrices."""
+    constructor = cast("Any", Settings)
+    return cast("Settings", constructor(data_dir=data_dir, **changes))
 
 
 def test_health(tmp_path: Path) -> None:
@@ -49,14 +87,12 @@ def test_settings_defaults(tmp_path: Path) -> None:
     assert settings.host == "127.0.0.1"
     assert settings.port == 8000
     assert settings.public_base_url == "http://127.0.0.1:8000"
-    assert settings.max_body_bytes == 65536
-    assert settings.store_cap == 256
-    assert settings.html_cap == 16
     assert settings.model_base_url == "http://127.0.0.1:8001/v1"
     assert settings.model_name == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert settings.model_timeout == 120.0
     assert settings.model_sample_rows == 5
-    assert settings.model_max_tokens == 512
+    assert {name: getattr(settings, name) for name in _RESOURCE_DEFAULTS} == _RESOURCE_DEFAULTS
+    assert settings.limits == DEFAULT_LIMITS
 
 
 def test_settings_public_base_url_derives_from_port(tmp_path: Path) -> None:
@@ -140,28 +176,14 @@ def test_settings_frozen(tmp_path: Path) -> None:
         setattr(settings, attr, 9)
 
 
-def test_settings_rejects_nonpositive_body_cap(tmp_path: Path) -> None:
-    # A non-positive cap is falsy → Litestar would treat the body as unlimited, silently
-    # disabling the fail-closed guard; __post_init__ rejects it on every construction path.
-    for bad in (0, -1):
-        with pytest.raises(ValueError, match="max_body_bytes"):
-            Settings(data_dir=tmp_path, max_body_bytes=bad)
-
-
-def test_settings_rejects_nonpositive_store_cap(tmp_path: Path) -> None:
-    # A non-positive store_cap makes the artifact store drop every render (cap 0) or crash on
-    # its first eviction (cap < 0); __post_init__ rejects it like the body cap.
-    for bad in (0, -1):
-        with pytest.raises(ValueError, match="store_cap"):
-            Settings(data_dir=tmp_path, store_cap=bad)
-
-
-def test_settings_rejects_nonpositive_html_cap(tmp_path: Path) -> None:
-    # The chart LRU has the same non-positive failure modes as the render LRU; __post_init__
-    # rejects it like store_cap, on every construction path.
-    for bad in (0, -1):
-        with pytest.raises(ValueError, match="html_cap"):
-            Settings(data_dir=tmp_path, html_cap=bad)
+@pytest.mark.parametrize("field", tuple(_RESOURCE_DEFAULTS))
+@pytest.mark.parametrize("bad", [0, -1, cast("int", math.isfinite(1.0)), cast("int", 1.5), 2**63])
+def test_settings_rejects_invalid_resource_integer(tmp_path: Path, field: str, bad: int) -> None:
+    # Every resource setting is a finite positive signed-64-bit integer. The bool/float casts
+    # model runtime misuse without weakening the static API; the huge integer proves the absolute
+    # ceiling with no correspondingly huge allocation.
+    with pytest.raises(ValueError, match=field):
+        _settings_with(tmp_path, **{field: bad})
 
 
 def test_settings_rejects_nonfinite_or_nonpositive_model_timeout(tmp_path: Path) -> None:
@@ -175,17 +197,70 @@ def test_settings_rejects_nonfinite_or_nonpositive_model_timeout(tmp_path: Path)
 
 
 def test_settings_rejects_negative_model_sample_rows(tmp_path: Path) -> None:
-    # sample_rows >= 0 accepts 0 (header only, no data rows sampled), so only negatives reject.
-    for bad in (-1,):
+    # sample_rows >= 0 accepts 0 (header only), but retains the same exact-int/absolute ceiling.
+    for bad in (-1, cast("int", math.isfinite(1.0)), cast("int", 1.5), 2**63):
         with pytest.raises(ValueError, match="model_sample_rows"):
             Settings(data_dir=tmp_path, model_sample_rows=bad)
 
 
-def test_settings_rejects_nonpositive_model_max_tokens(tmp_path: Path) -> None:
-    # max_tokens < 1 is not a valid generation ceiling; reject 0 and negatives like the caps above.
-    for bad in (0, -1):
-        with pytest.raises(ValueError, match="model_max_tokens"):
-            Settings(data_dir=tmp_path, model_max_tokens=bad)
+def test_settings_accepts_resource_integer_boundaries(tmp_path: Path) -> None:
+    # Exercise the inclusive absolute ceiling on a field that does not participate in a sum.
+    settings = Settings(data_dir=tmp_path, max_active_jobs=_MAX_RESOURCE_INTEGER)
+    assert settings.max_active_jobs == _MAX_RESOURCE_INTEGER
+
+
+def test_settings_eagerly_builds_core_limits(tmp_path: Path) -> None:
+    overrides = {name: index + 1 for index, name in enumerate(_CORE_DEFAULTS)}
+    settings = _settings_with(tmp_path, **overrides)
+    assert isinstance(settings.limits, VerificationLimits)
+    assert {name: getattr(settings.limits, name) for name in overrides} == overrides
+
+
+def test_settings_rejects_independently_supplied_limits(tmp_path: Path) -> None:
+    # `limits` is init=False: the flat operator fields are authoritative and derive it once.
+    with pytest.raises(TypeError, match="limits"):
+        _settings_with(tmp_path, limits=DEFAULT_LIMITS)
+
+
+def test_settings_rejects_incompatible_render_cache_budget(tmp_path: Path) -> None:
+    # Conservatively reserve a certificate plus both route-specific spec-input ceilings.
+    with pytest.raises(ValueError, match="render_cache_bytes"):
+        Settings(
+            data_dir=tmp_path,
+            max_body_bytes=11,
+            max_model_response_bytes=13,
+            max_attestation_bytes=17,
+            render_cache_bytes=40,
+        )
+    assert (
+        Settings(
+            data_dir=tmp_path,
+            max_body_bytes=11,
+            max_model_response_bytes=13,
+            max_attestation_bytes=17,
+            render_cache_bytes=41,
+        ).render_cache_bytes
+        == 41
+    )
+
+
+def test_settings_rejects_incompatible_chart_cache_budget(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="chart_cache_bytes"):
+        Settings(data_dir=tmp_path, max_html_bytes=17, chart_cache_bytes=16)
+    assert (
+        Settings(data_dir=tmp_path, max_html_bytes=17, chart_cache_bytes=17).chart_cache_bytes == 17
+    )
+
+
+def test_settings_rejects_resource_bound_sum_overflow_without_allocating(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="render cache item"):
+        Settings(
+            data_dir=tmp_path,
+            max_body_bytes=_MAX_RESOURCE_INTEGER - 1,
+            max_model_response_bytes=1,
+            max_attestation_bytes=1,
+            render_cache_bytes=_MAX_RESOURCE_INTEGER,
+        )
 
 
 def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,57 +275,69 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("VERIFIER_HOST", "192.0.2.1")
     monkeypatch.setenv("VERIFIER_PORT", "9001")
     monkeypatch.setenv("VERIFIER_PUBLIC_BASE_URL", "https://verify.example.org:8443")
-    monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "1024")
-    monkeypatch.setenv("VERIFIER_STORE_CAP", "8")
-    monkeypatch.setenv("VERIFIER_HTML_CAP", "4")
     monkeypatch.setenv("VERIFIER_MODEL_BASE_URL", "http://192.0.2.1:9100/v1")
     monkeypatch.setenv("VERIFIER_MODEL_NAME", "test-model")
     monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", "30.5")  # non-integer float exercises the parse
     monkeypatch.setenv("VERIFIER_MODEL_SAMPLE_ROWS", "3")
-    monkeypatch.setenv("VERIFIER_MODEL_MAX_TOKENS", "256")
-    assert Settings.from_env() == Settings(
-        data_dir=tmp_path,
+    resource_overrides = {name: index + 101 for index, name in enumerate(_RESOURCE_DEFAULTS)}
+    # Keep the two cache budgets compatible with their overridden per-item ceilings.
+    resource_overrides["render_cache_bytes"] = 16_384
+    resource_overrides["chart_cache_bytes"] = 8_192
+    for field, env_name in _RESOURCE_ENV.items():
+        monkeypatch.setenv(env_name, str(resource_overrides[field]))
+    assert Settings.from_env() == _settings_with(
+        tmp_path,
         host="192.0.2.1",
         port=9001,
         public_base_url="https://verify.example.org:8443",
-        max_body_bytes=1024,
-        store_cap=8,
-        html_cap=4,
         model_base_url="http://192.0.2.1:9100/v1",
         model_name="test-model",
         model_timeout=30.5,
         model_sample_rows=3,
-        model_max_tokens=256,
+        **resource_overrides,
     )
 
 
-def test_from_env_rejects_nonpositive_body_cap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("field,env_name", tuple(_RESOURCE_ENV.items()))
+def test_from_env_rejects_every_invalid_resource_bound(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, field: str, env_name: str
 ) -> None:
-    # The guard fires through the env path too, not just direct construction.
     monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("VERIFIER_MAX_BODY_BYTES", "0")
-    with pytest.raises(ValueError, match="max_body_bytes"):
+    monkeypatch.setenv(env_name, "0")
+    with pytest.raises(ValueError, match=field):
         Settings.from_env()
 
 
-def test_from_env_rejects_nonpositive_store_cap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("env_name", tuple(_RESOURCE_ENV.values()))
+def test_from_env_rejects_every_noninteger_resource_bound(
+    monkeypatch: pytest.MonkeyPatch, env_name: str
 ) -> None:
-    # The store_cap guard fires through the env path too, not just direct construction.
-    monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("VERIFIER_STORE_CAP", "0")
-    with pytest.raises(ValueError, match="store_cap"):
+    monkeypatch.setenv(env_name, "not-an-integer")
+    with pytest.raises(ValueError, match="invalid literal"):
         Settings.from_env()
 
 
-def test_from_env_rejects_nonpositive_html_cap(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("bad", ["-1", "not-an-integer", str(2**63)])
+def test_from_env_rejects_invalid_model_sample_rows(
+    monkeypatch: pytest.MonkeyPatch, bad: str
 ) -> None:
-    # The html_cap guard fires through the env path too, not just direct construction.
-    monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("VERIFIER_HTML_CAP", "0")
-    with pytest.raises(ValueError, match="html_cap"):
+    monkeypatch.setenv("VERIFIER_MODEL_SAMPLE_ROWS", bad)
+    with pytest.raises(ValueError, match=r"model_sample_rows|invalid literal"):
+        Settings.from_env()
+
+
+@pytest.mark.parametrize(
+    ("env_name", "field"),
+    [
+        ("VERIFIER_RENDER_CACHE_BYTES", "render_cache_bytes"),
+        ("VERIFIER_CHART_CACHE_BYTES", "chart_cache_bytes"),
+    ],
+)
+def test_from_env_rejects_cross_limit_cache_budget(
+    monkeypatch: pytest.MonkeyPatch, env_name: str, field: str
+) -> None:
+    monkeypatch.setenv(env_name, "1")
+    with pytest.raises(ValueError, match=field):
         Settings.from_env()
 
 
@@ -264,6 +351,26 @@ def test_from_env_rejects_nonfinite_model_timeout(
         monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", bad)
         with pytest.raises(ValueError, match="model_timeout"):
             Settings.from_env()
+
+
+def test_service_environment_is_read_only_inside_from_env() -> None:
+    tree = ast.parse(Path(settings_module.__file__).read_text(encoding="utf-8"))
+
+    def reads_environment(node: ast.AST) -> bool:
+        return any(
+            isinstance(child, ast.Attribute)
+            and isinstance(child.value, ast.Name)
+            and child.value.id == "os"
+            and child.attr in {"environ", "getenv"}
+            for child in ast.walk(node)
+        )
+
+    readers = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and reads_environment(node)
+    ]
+    assert readers == ["from_env"]
 
 
 def test_main_serves_app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -24,7 +24,6 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from verifier import checks
-from verifier.limits import DEFAULT_LIMITS
 from verifier.service import pipeline
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
@@ -212,8 +211,10 @@ def test_manifest_unavailable_is_verdict_fail(tmp_path: Path) -> None:
 def test_oversized_manifest_is_resource_verdict(tmp_path: Path) -> None:
     schemas = tmp_path / "schemas"
     schemas.mkdir()
-    (schemas / "sales.json").write_bytes(b"x" * (DEFAULT_LIMITS.max_manifest_bytes + 1))
-    app = create_app(Settings(data_dir=tmp_path))
+    (schemas / "sales.json").write_bytes(b"xxxx")
+    # A tiny operator override proves the service threads Settings.limits instead of silently
+    # consulting the process-global core defaults.
+    app = create_app(Settings(data_dir=tmp_path, max_manifest_bytes=3))
     with TestClient(app=app) as client:
         raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
         response = client.post("/verify-only", content=raw, headers=_JSON)
