@@ -250,15 +250,18 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   stay unchanged. Fake-client tests pin exact args/order, the failure barrier, and convergence on every
   rerun; a stateful MockTransport proves first-run create + second-run update/signin idempotency. Focused
   53 tests + `python -m webui --help` + full gate green (830 tests, 100% verifier branch coverage).
-- **M4.4d — trust-boundary docs + live outlet assertion** (OPEN): `POC_SCOPE.md` gains an Open WebUI section
-  naming it trusted display (not verifier), the heuristic filter as bypassable/false-positive guardrail,
-  global server-side tool execution, CORS-free verifier, sandboxed Location iframe, and bare-metal loopback
-  deployment assumption; `webui/README.md` records bootstrap's filter convergence + assertion recipe. From
-  wiped `.webui-data`, stand up verifier → hardware-free model stub → hermetic Open WebUI; bootstrap twice;
-  authenticated `/api/chat/completed` with required `model,id,chat_id,session_id,messages` must replace a
-  chart-like assistant reply, preserve a prose reply byte-for-byte, and emit the content-free block warning.
-  Record evidence, clean services/state, run full gate. Acceptance: classifier corpus + REST pins green and
-  the live block/pass differential demonstrated honestly.
+- **M4.4d — trust-boundary docs + live outlet assertion** (DONE): `POC_SCOPE.md` now fixes Open WebUI as
+  trusted display/orchestration (not verifier), the filter as bypassable/false-positive guardrail, global
+  server-side tool execution + CORS-free verifier, the doubly sandboxed Location iframe, and the bare-metal
+  loopback assumption. `webui/README.md` records exact-source filter convergence + a reproducible outlet
+  assertion; the stale settings doc now names admin + owned filter as DB state. LIVE from wiped
+  `.webui-data`: readiness-ordered verifier → stub → hermetic OWUI; bootstrap 1 signup/create/toggled both
+  flags, bootstrap 2 signup-403/signin/update with no toggles, both smokes exited 0. Authenticated
+  `/api/chat/completed` returned the exact fixed notice for uniquely marked fenced-matplotlib content and
+  preserved prose byte-for-byte (both 200, assistant role retained); the sole filter warning carried only
+  `signals=matplotlib chars=100`, with neither content nor marker. The README's independent recipe repeated
+  the same differential (`chars=95`). Services stopped, `.webui-data` removed, ports free; full gate green
+  (830 tests, 100% verifier branch coverage).
 - **M4.5 — live E2E + evidence** (OPEN; GATED: NPU model_backend live — M3 recipe, confirm functionally):
   full three-service stack; headless legacy-FC chat with `tool_ids` → tool executed (verifier artifacts
   exist + verdict context in the reply); persisted-chat flow → embed recorded; chromiumfish capture of the

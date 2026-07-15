@@ -1,17 +1,19 @@
 # webui - Open WebUI provisioning harness
 
 Out-of-tree, unshipped M4 harness: starts Open WebUI under a hermetic environment, bootstraps its
-first admin, and smoke-checks the model + verifier registrations. It is type/lint checked but
-coverage-excluded, like `bench/` and `model_backend/`.
+first admin, converges the repo-owned global outlet filter, and smoke-checks the model + verifier
+registrations. It is type/lint checked but coverage-excluded, like `bench/` and `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
+             ├─ global Verified Plot Guard outlet filter
              ├─ OpenAI /v1 → model backend or stub :8001
              └─ global proposeSpec tool → verifier :8000
 ```
 
-Open WebUI is a trusted display/orchestration layer, not part of the verifier claim. The bootstrap
-proves provisioning only; it sends no chat request and makes no model-reliability claim.
+Open WebUI is a trusted display/orchestration layer, not part of the verifier claim. The filter is
+a bypassable, false-positive-prone guardrail rather than a security boundary. Bootstrap proves
+provisioning only; it sends no chat request and makes no model-reliability claim.
 
 ## One-time setup
 
@@ -71,10 +73,70 @@ uv run --locked python -m webui bootstrap
 uv run --locked python -m webui bootstrap
 ```
 
-Each command exits 0 only when the configured model ID and `server:verifier` are both present. A
-clean first run signs up the admin; the second signup's 403 followed by a successful signin is the
-expected idempotency path. Persistent-config is disabled: tool/model/legacy-function-calling config
-comes from the launch environment, while only the admin user persists in `.webui-data/`.
+Each command first creates or updates `Verified Plot Guard` from the exact
+`webui/enforcement_filter.py` source and proves it active + global, then exits 0 only when the
+configured model ID and `server:verifier` are both present. A clean first run signs up the admin,
+creates the filter, and enables both flags. The second signup's 403 → signin is expected; that run
+updates the existing filter source without inverting already-true flags. Persistent-config is
+disabled: tool/model/legacy-function-calling config comes from the launch environment, while the
+admin user + owned function persist in `.webui-data/`.
+
+## Live outlet assertion
+
+With the clean hardware-free stack + two bootstraps above still running, exercise the server-side
+outlet without asking the model to generate anything:
+
+```sh
+uv run --locked python - <<'PY'
+import httpx
+
+from webui.enforcement_filter import BLOCKED_NOTICE
+from webui.settings import Settings
+
+settings = Settings.from_env()
+chart = """```python
+# SENSITIVE_OUTLET_PROBE
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4])
+```"""
+prose = "Ordinary prose survives the global outlet unchanged."
+
+with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as client:
+    auth = client.post(
+        "/api/v1/auths/signin",
+        json={"email": settings.admin_email, "password": settings.admin_password},
+    )
+    auth.raise_for_status()
+    client.headers["Authorization"] = f"Bearer {auth.json()['token']}"
+
+    def outlet(message_id: str, content: str) -> str:
+        response = client.post(
+            "/api/chat/completed",
+            json={
+                "model": settings.model_id,
+                "id": message_id,
+                "chat_id": "local",
+                "session_id": "m4.4d-outlet",
+                "messages": [{"role": "assistant", "content": content}],
+            },
+        )
+        response.raise_for_status()
+        result = response.json()["messages"][-1]["content"]
+        assert isinstance(result, str)
+        return result
+
+    assert outlet("m4.4d-block", chart) == BLOCKED_NOTICE
+    assert outlet("m4.4d-pass", prose) == prose
+
+print("outlet block/pass differential: PASS")
+PY
+```
+
+The Open WebUI terminal must emit one content-free warning such as
+`signals=matplotlib chars=<n>` for the blocked call, with neither the reply nor its unique marker in
+the log; the prose call emits no filter warning. This endpoint isolates the outlet contract. It
+does not test model generation, tool selection, chart embedding, or persisted-chat behavior; those
+belong to M4.5.
 
 ## Operator inputs
 

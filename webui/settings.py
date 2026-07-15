@@ -19,12 +19,13 @@ Two env namespaces meet here, kept strictly apart:
     axis launch_env does not pin (aiohttp reads HTTP_PROXY via trust_env; transport / SSL knobs are
     unbounded). The launcher (webui/__main__.py, M4.3d) execs os.execve(bin, argv, child_env()).
 
-Persistent-config is OFF (env-over-DB every boot), so config lives in env, never the OWUI DB: the
-one DB-persisted provisioning act is the admin signup (bootstrap, M4.3b). Defaults bind loopback
-only -- OWUI on 8080, the verifier on 8000, the model backend's OpenAI /v1 on 8001 -- and the
-secret_key / admin_password are loopback dev defaults an operator overrides. All names and defaults
-were verified against open-webui 0.10.2 source (config.py / env.py). This package is an out-of-tree
-harness like model_backend and bench: coverage-excluded, unshipped, importing only gate-venv deps.
+Persistent-config is OFF (env-over-DB every boot), so runtime config lives in env, never the OWUI
+DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap,
+M4.3b/M4.4c). Defaults bind loopback only -- OWUI on 8080, the verifier on 8000, the model backend's
+OpenAI /v1 on 8001 -- and the secret_key / admin_password are loopback dev defaults an operator
+overrides. All names and defaults were verified against open-webui 0.10.2 source (config.py /
+env.py). This package is an out-of-tree harness like model_backend and bench: coverage-excluded,
+unshipped, importing only gate-venv deps.
 """
 
 import json

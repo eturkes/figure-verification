@@ -157,3 +157,34 @@ curl -sS http://127.0.0.1:8000/propose-spec \
   -H 'Content-Type: application/json' \
   --data-binary '{"user_request": "total revenue by month", "dataset_name": "sales.csv"}'
 ```
+
+## Open WebUI boundary
+
+Open WebUI is a trusted display and orchestration layer, not a verifier and not an
+extension of the verification claim. It asks the untrusted model what to do, executes
+the allowlisted `proposeSpec` tool, and displays the result. Open WebUI, its function
+runner, the browser, iframe handling, and the final pixels therefore join the trusted
+computing base described above; only the verifier's validated spec, recomputed table,
+emitted Vega-Lite, and certificate are mutually checked.
+
+The verifier tool is global and executes in the Open WebUI backend. Open WebUI fetches
+the verifier's OpenAPI document and posts tool requests server-to-server, so the
+verifier intentionally exposes no browser CORS surface. A verified tool response names
+an absolute chart `Location`; Open WebUI embeds that URL in a sandboxed iframe. The
+chart response adds its own `Content-Security-Policy: sandbox allow-scripts`, while the
+embedding sandbox grants no same-origin capability. This is defense in depth around a
+trusted display path, not a proof of rendered pixels.
+
+The deployment recipe assumes a bare-metal, single-user machine: browser, Open WebUI,
+model backend, and verifier all resolve the same loopback interfaces. A container,
+remote browser, or network-exposed deployment must replace those origins and undergo a
+separate security review; the fixed PoC credentials and loopback URL assumptions are
+not suitable there.
+
+`Verified Plot Guard` is a global server-side outlet filter that replaces common
+direct-chart reply forms with a notice routing the user through Figure Verifier. Its
+classifier is intentionally heuristic: novel encodings can bypass it and ordinary text
+can trigger false positives. It is a usability guardrail only - never a security
+boundary, evidence that a reply was verified, or part of the verifier's correctness
+claim. The deterministic verifier remains the sole authority that can attach a chart
+and provenance certificate.
