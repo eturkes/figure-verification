@@ -21,16 +21,19 @@ Two env namespaces meet here, kept strictly apart:
 
 Persistent-config is OFF (env-over-DB every boot), so runtime config lives in env, never the OWUI
 DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap,
-M4.3b/M4.4c). Defaults bind loopback only -- OWUI on 8080, the verifier on 8000, the model backend's
-OpenAI /v1 on 8001 -- and the secret_key / admin_password are loopback dev defaults an operator
-overrides. All names and defaults were verified against open-webui 0.10.2 source (config.py /
-env.py). This package is an out-of-tree harness like model_backend and bench: coverage-excluded,
-unshipped, importing only gate-venv deps.
+M4.3b/M4.4c). Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fixed
+origin and /v1 joins; the bind/client host is a separate bare ASCII hostname. Defaults bind
+loopback only -- OWUI on 8080, the verifier on 8000, the model backend's OpenAI /v1 on 8001 -- and
+the secret_key / admin_password are loopback dev defaults an operator overrides. All names and
+defaults were verified against open-webui 0.10.2 source (config.py / env.py). This package is an
+out-of-tree harness like model_backend and bench: coverage-excluded, unshipped, importing only
+gate-venv deps.
 """
 
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
@@ -60,9 +63,17 @@ _DEFAULT_READY_TIMEOUT = 60.0
 _MAX_PORT = 65535
 _MIN_SECRET_KEY_BYTES = 32
 
+# URL values are concatenated with fixed consumer paths by Open WebUI. Require one canonical,
+# browser/client-unambiguous form: an ASCII host[:port] authority (IPv6 brackets allowed), no
+# userinfo/backslash/percent/control/unicode authority bytes, and the exact endpoint path expected
+# by this local stack. host is both a uvicorn bind value and the bootstrap-client hostname, so it
+# uses the same ASCII subset without a port (port is its own Settings field).
+_CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
+_CLEAN_HOST = re.compile(r"[A-Za-z0-9._-]+")
+
 # The verifier tool-server registration OWUI reads from TOOL_SERVER_CONNECTIONS. The id becomes the
-# OWUI tool group "server:<id>"; the name is the readback label (memory M4 Provisioning-SETTLED-
-# LIVE). The verifier's OpenAPI lives at schema/openapi.json; proposeSpec is the one exposed op.
+# OWUI tool group "server:<id>"; the name is the readback label. The verifier's OpenAPI lives at
+# schema/openapi.json; proposeSpec is the one exposed op (memory M4 persistent-off contract).
 _TOOL_SERVER_ID = "verifier"
 _TOOL_SERVER_NAME = "Figure Verifier"
 _TOOL_SERVER_DESCRIPTION = (
@@ -92,7 +103,7 @@ _FIXED_ENV: dict[str, str] = {
     "OPENAI_API_KEYS": "dummy",
     "OPENAI_API_CONFIGS": "{}",
     # No task model: title / tag / query generation runs on the task model, so pin it empty (ambient
-    # cannot inject one) and it falls back to the chat model (memory M4 Provisioning).
+    # cannot inject one) and it falls back to the chat model (memory M4 headless-tool contract).
     "TASK_MODEL": "",
     "TASK_MODEL_EXTERNAL": "",
     # Determinism: every post-chat background LLM call off, or the backend request count is
@@ -125,6 +136,10 @@ _FIXED_ENV: dict[str, str] = {
     "ENABLE_SIGNUP": "false",
     "WEBUI_ADMIN_EMAIL": "",
     "WEBUI_AUTH_TRUSTED_EMAIL_HEADER": "",
+    # The repo-owned global outlet filter must run on API chat completions. This currently defaults
+    # true upstream, but it is load-bearing M4 behavior, so the canonical env pins it instead of
+    # silently inheriting a version-sensitive default.
+    "ENABLE_API_OUTLET_FILTERS": "true",
     # Legacy (prompt-template) function calling: the weak model's tool selection runs inline in the
     # chat request. Native FC is gated on the UI event emitter and does not execute headless
     # (memory M4), so the one-shot headless flow needs legacy.
@@ -139,21 +154,36 @@ _FIXED_ENV: dict[str, str] = {
 _BASE_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ")
 
 
-def _require_http_url(name: str, value: str) -> None:
-    """Fail closed unless value is a non-empty http(s) URL carrying a host.
+def _require_http_url(name: str, value: str, *, path: str) -> None:
+    """Fail closed unless value is one canonical http(s) endpoint with the exact path.
 
     verifier_url and model_backend_url are emitted into the OWUI env / tool-server JSON, where a
     blank or scheme-less value fails OPEN not loud: OWUI rewrites an empty OpenAI base-url to
     https://api.openai.com/v1 (config.py) and silently drops a tool server whose url will not
-    url-join, so a misconfigured deploy must raise here instead of surfacing at first request.
+    url-join. Query/fragment/path confusion, userinfo, and browser-reinterpreted authority bytes
+    likewise corrupt the fixed `/schema/openapi.json`, `/models`, and `/chat/completions` joins, so
+    a misconfigured deploy must raise here instead of surfacing at first request.
     """
     try:
         parsed = urlparse(value)
-    except ValueError as exc:  # malformed authority (bad IPv6 literal / port)
-        msg = f"{name} must be an http(s) URL, got {value!r}"
-        raise ValueError(msg) from exc
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        msg = f"{name} must be an http(s) URL with a host, got {value!r}"
+        port = parsed.port
+    except ValueError:  # malformed authority (bad IPv6 literal / non-numeric or out-of-range port)
+        endpoint_ok = False
+    else:
+        endpoint_ok = (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.hostname)
+            and _CLEAN_AUTHORITY.fullmatch(parsed.netloc) is not None
+            and (port is None or port >= 1)
+            and parsed.path == path
+            and not parsed.params
+            and not parsed.query
+            and not parsed.fragment
+            and value == f"{parsed.scheme}://{parsed.netloc}{path}"
+        )
+    if not endpoint_ok:
+        shape = f"ending in {path!r}" if path else "with no path"
+        msg = f"{name} must be a clean http(s) endpoint {shape}, got {value!r}"
         raise ValueError(msg)
 
 
@@ -209,12 +239,16 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             if not math.isfinite(seconds) or seconds <= 0:
                 msg = f"{name} must be a finite value > 0, got {seconds}"
                 raise ValueError(msg)
-        # verifier_url / model_backend_url reach OWUI; host backs base_url -- validate each so an
-        # empty or malformed value fails closed here, not open downstream (see the helper).
-        _require_http_url("verifier_url", self.verifier_url)
-        _require_http_url("model_backend_url", self.model_backend_url)
-        if not self.host or "/" in self.host:
-            msg = f"host must be a bare host without scheme or path, got {self.host!r}"
+        # verifier_url / model_backend_url reach fixed OWUI joins; host backs both its bind argv and
+        # the bootstrap base_url. Validate their complete syntax so malformed values fail here,
+        # not as a misdirected request or invalid client URL downstream (see the helper).
+        _require_http_url("verifier_url", self.verifier_url, path="")
+        _require_http_url("model_backend_url", self.model_backend_url, path="/v1")
+        if _CLEAN_HOST.fullmatch(self.host) is None:
+            msg = (
+                "host must be a bare ASCII hostname without scheme, path, or port, "
+                f"got {self.host!r}"
+            )
             raise ValueError(msg)
 
     @property
@@ -230,7 +264,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     def tool_server_connections(self) -> str:
         """The TOOL_SERVER_CONNECTIONS env value: a one-element JSON array registering the verifier.
 
-        Shape is the settled-live 0.10.2 connection (memory M4 Provisioning-SETTLED-LIVE): OWUI
+        Shape is the reviewed 0.10.2 connection (memory M4 persistent-off contract): OWUI
         fetches {url}/{path} as OpenAPI, exposes only the proposeSpec op (the allowlist), and needs
         config.enable truthy or the server is skipped.
         """

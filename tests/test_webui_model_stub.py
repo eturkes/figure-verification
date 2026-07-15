@@ -166,19 +166,16 @@ def test_serve_binds_the_default_backend_url(monkeypatch: pytest.MonkeyPatch) ->
     "bad_url",
     [
         "http://127.0.0.1/v1",  # no port -> nothing to bind
-        "http://127.0.0.1:bad/v1",  # non-numeric port: .port raises, caught before the guard
         "https://127.0.0.1:8001/v1",  # https: the stub serves plain HTTP only
-        "http://127.0.0.1:8001/openai/v1",  # a path the stub does not mount (routes live under /v1)
-        "http://127.0.0.1:8001",  # no /v1 path at all
     ],
-    ids=["portless", "nonnumeric-port", "https", "wrong-path", "no-path"],
+    ids=["portless", "https"],
 )
 def test_serve_rejects_urls_the_stub_cannot_serve(
     bad_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Each passes Settings validation (http(s) + host) but is not one the stub can bind and serve,
-    # so serve must fail loud before reaching uvicorn -- else it surfaces as a TLS error or a 404
-    # deep in the smoke rather than a clear launch-time config error.
+    # Each passes Settings' canonical /v1 endpoint validation but is not one the stub can bind and
+    # serve, so serve must fail loud before reaching uvicorn -- else it surfaces as a TLS error or
+    # an implicit-port bind deep in the smoke rather than a clear launch-time config error.
     def unreachable(*_args: object, **_kwargs: object) -> None:
         pytest.fail("uvicorn.run must not be reached for an unservable url")
 

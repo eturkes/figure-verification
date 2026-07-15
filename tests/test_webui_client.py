@@ -2,16 +2,18 @@
 """Feedback loop for the Open WebUI provisioning client + smoke (M4.3b).
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
-test_webui_settings.py) rather than a 100%-branch gate. The OWUI request shapes are TRANSCRIBED
-from memory M4 Provisioning-SETTLED-LIVE, not re-probed; here they are pinned against an
+test_webui_settings.py) rather than a 100%-branch gate. The OWUI request shapes are the reviewed
+0.10.2 contracts summarized in memory M4, not re-probed; here they are pinned against an
 httpx.MockTransport (no socket binds, every branch deterministic), plus a structural fake for the
 bootstrap orchestration. Locked:
 
 - wait_ready: returns on the first 200, retries through transport errors, raises on timeout;
 - authenticate: signup-200 stores the JWT; a non-200 signup falls back to signin; both non-200 or an
-  empty token raise; the stored token rides authed reads as a Bearer header;
+  empty/malformed token response raises; signup/signin transport failures normalize to the client
+  error boundary; the stored token rides authed reads as a Bearer header;
 - model_ids / tool_server_ids: the `{data: [...]}` envelope vs the BARE array, the `server:` filter
-  that drops a python-function tool, the Bearer wiring, and a non-200 readback raising LOUD;
+  that drops a python-function tool, the Bearer wiring, and non-200/transport/malformed readbacks
+  raising LOUD through the same error boundary;
 - ensure_global_filter: missing-create vs existing-update, all active/global flag combinations,
   exact payload/paths/Bearer wiring, final-state verification, and fail-closed seams;
 - smoke / run_bootstrap: membership + ok truth table, exact filter source/metadata,
@@ -231,6 +233,38 @@ def test_authenticate_raises_on_empty_token() -> None:
         client.authenticate()
 
 
+@pytest.mark.parametrize(
+    "body",
+    [b"not JSON", b'{"token":"\xff"}'],
+    ids=["malformed-json", "invalid-utf8"],
+)
+def test_authenticate_normalizes_malformed_response(body: bytes) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="authentication returned an invalid response"),
+    ):
+        client.authenticate()
+
+
+@pytest.mark.parametrize("phase", ["signup", "signin"])
+def test_authenticate_normalizes_transport_error(phase: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if phase == "signin" and request.url.path.endswith("/signup"):
+            return httpx.Response(403)
+        msg = "connection reset"
+        raise httpx.ConnectError(msg)
+
+    expected_path = "/api/v1/auths/signup" if phase == "signup" else "/api/v1/auths/signin"
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match=rf"POST {expected_path} failed: connection reset"),
+    ):
+        client.authenticate()
+
+
 # --- authed readbacks -----------------------------------------------------------------------
 def test_model_ids_parses_data_envelope_with_bearer() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -280,6 +314,37 @@ def test_authed_read_raises_loud_on_non_200(readback: str) -> None:
     with _webui_client(handler) as client:
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
         with pytest.raises(WebUIProvisionError, match="HTTP 401"):
+            getattr(client, readback)()
+
+
+@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+def test_authed_read_normalizes_transport_error(readback: str) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        msg = "connection reset"
+        raise httpx.ConnectError(msg)
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        with pytest.raises(WebUIProvisionError, match=r"GET .+ failed: connection reset"):
+            getattr(client, readback)()
+
+
+@pytest.mark.parametrize(
+    ("readback", "path"),
+    [("model_ids", "/api/models"), ("tool_server_ids", "/api/v1/tools/")],
+)
+@pytest.mark.parametrize(
+    "body",
+    [b"not JSON", b'[{"id":"\xff"}]'],
+    ids=["malformed-json", "invalid-utf8"],
+)
+def test_authed_read_normalizes_malformed_response(readback: str, path: str, body: bytes) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        with pytest.raises(WebUIProvisionError, match=rf"GET {path} returned an invalid response"):
             getattr(client, readback)()
 
 
@@ -458,6 +523,18 @@ def test_ensure_global_filter_raises_on_malformed_200_at_every_seam(
 
     def handler(_request: httpx.Request) -> httpx.Response:
         return next(response_iter)
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="invalid function state"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_global_filter(client)
+
+
+def test_ensure_global_filter_normalizes_invalid_utf8_state() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'{"id":"\xff"}')
 
     with (
         _webui_client(handler) as client,

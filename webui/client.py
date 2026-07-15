@@ -2,7 +2,7 @@
 """Provisioning REST client for a headless Open WebUI (M4.3b, M4.4b).
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
-settled against 0.10.2 (memory M4 Provisioning-SETTLED-LIVE + Filters) -- TRANSCRIBED here, not
+settled against 0.10.2 (memory M4 provisioning + filter contracts) -- TRANSCRIBED here, not
 re-probed. Every step fails closed via WebUIProvisionError so a misconfigured deploy raises loud
 rather than leaving a half-provisioned, silently-unauthenticated client.
 
@@ -102,14 +102,15 @@ class WebUIClient:
     def authenticate(self) -> str:
         """Sign up the first-run admin (else sign in); store + return the JWT.
 
-        Idempotent across restarts (memory M4 Provisioning-SETTLED-LIVE): a first signup on a fresh
+        Idempotent across restarts (memory M4 provisioning contract): a first signup on a fresh
         DATA_DIR auto-promotes admin (200 + token); a re-run hits a closed signup (403 same-process,
         400 EMAIL_TAKEN post-restart), so ANY non-200 signup falls back to signin. Both non-200, or
         a 200 with an empty token, raise WebUIProvisionError (no silently-unauthenticated client).
         """
-        response = self._http.post(
+        response = self._request(
+            "POST",
             "/api/v1/auths/signup",
-            json={
+            json_body={
                 "name": self._settings.admin_name,
                 "email": self._settings.admin_email,
                 "password": self._settings.admin_password,
@@ -117,9 +118,10 @@ class WebUIClient:
         )
         signup_status = response.status_code
         if signup_status != httpx.codes.OK:
-            response = self._http.post(
+            response = self._request(
+                "POST",
                 "/api/v1/auths/signin",
-                json={
+                json_body={
                     "email": self._settings.admin_email,
                     "password": self._settings.admin_password,
                 },
@@ -130,7 +132,11 @@ class WebUIClient:
                 f"signin HTTP {response.status_code}"
             )
             raise WebUIProvisionError(msg)
-        token = msgspec.json.decode(response.content, type=_AuthResponse).token
+        try:
+            token = msgspec.json.decode(response.content, type=_AuthResponse).token
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"authentication returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
         if not token:
             msg = "authentication succeeded but returned an empty token"
             raise WebUIProvisionError(msg)
@@ -140,7 +146,11 @@ class WebUIClient:
     def model_ids(self) -> list[str]:
         """Authed GET /api/models -> the served model ids (the `{data: [...]}` envelope's ids)."""
         body = self._authed_get("/api/models")
-        envelope = msgspec.json.decode(body, type=_ModelsEnvelope)
+        try:
+            envelope = msgspec.json.decode(body, type=_ModelsEnvelope)
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"GET /api/models returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
         return [model.id for model in envelope.data]
 
     def tool_server_ids(self) -> list[str]:
@@ -150,7 +160,11 @@ class WebUIClient:
         only `server:`-prefixed ids so a python-function tool never counts as a registered server.
         """
         body = self._authed_get("/api/v1/tools/")
-        tools = msgspec.json.decode(body, type=tuple[_ToolServer, ...])
+        try:
+            tools = msgspec.json.decode(body, type=tuple[_ToolServer, ...])
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"GET /api/v1/tools/ returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
         return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
 
     def ensure_global_filter(
@@ -245,11 +259,27 @@ class WebUIClient:
         json_body: dict[str, object] | None = None,
     ) -> httpx.Response:
         """Send one authenticated function request; normalize transport failures."""
+        return self._request(
+            method,
+            path,
+            headers=self._auth_headers(),
+            json_body=json_body,
+        )
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json_body: dict[str, object] | None = None,
+    ) -> httpx.Response:
+        """Send one request and normalize a transport failure into the client error boundary."""
         try:
             return self._http.request(
                 method,
                 path,
-                headers=self._auth_headers(),
+                headers=headers,
                 json=json_body,
             )
         except httpx.HTTPError as exc:
@@ -270,7 +300,7 @@ class WebUIClient:
             cls._raise_status(response)
         try:
             state = msgspec.json.decode(response.content, type=_FunctionState)
-        except msgspec.DecodeError as exc:
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
             msg = f"{phase} returned invalid function state: {exc}"
             raise WebUIProvisionError(msg) from exc
         cls._require_state_field(condition=state.id == function_id, phase=phase, field="id")
@@ -310,7 +340,7 @@ class WebUIClient:
         readback endpoints are verified-user-gated (routers/tools.py, main.py get_verified_user), so
         a wrong/unverified principal lands here as a 401 rather than as filtered-empty data.
         """
-        response = self._http.get(path, headers=self._auth_headers())
+        response = self._authed_request("GET", path)
         if response.status_code != httpx.codes.OK:
             msg = f"GET {path} returned HTTP {response.status_code}"
             raise WebUIProvisionError(msg)

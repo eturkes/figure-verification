@@ -8,6 +8,6 @@ verifier trust claim: an out-of-tree harness like model_backend and bench -- typ
 mypy --strict but excluded from coverage and the wheel, importing only gate-venv deps (the
 .venv-webui open-webui binary is exec'd, never imported).
 
-settings.py (M4.3a) lands first: the frozen config every other module imports. The REST client,
-bootstrap, model stub, and CLI arrive in M4.3b-d.
+settings.py owns the frozen config every other module imports; the REST client, bootstrap, model
+stub, and CLI keep their wire/process boundaries separate.
 """

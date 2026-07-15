@@ -210,15 +210,15 @@ ambient variables.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WEBUI_PROVISION_HOST` | `127.0.0.1` | Open WebUI bind host + bootstrap host |
+| `WEBUI_PROVISION_HOST` | `127.0.0.1` | Bare ASCII Open WebUI bind host + bootstrap host |
 | `WEBUI_PROVISION_PORT` | `8080` | Open WebUI bind port |
 | `WEBUI_PROVISION_DATA_DIR` | `.webui-data` | SQLite/uploads/cache root; resolved absolute from launch cwd |
 | `WEBUI_PROVISION_SECRET_KEY` | fixed loopback dev value | JWT key; minimum 32 UTF-8 bytes |
 | `WEBUI_PROVISION_ADMIN_NAME` | `operator` | first-admin display name |
 | `WEBUI_PROVISION_ADMIN_EMAIL` | `operator@localhost` | signup/signin identity |
 | `WEBUI_PROVISION_ADMIN_PASSWORD` | fixed loopback dev value | signup/signin password |
-| `WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | global verifier tool-server origin |
-| `WEBUI_PROVISION_MODEL_BACKEND_URL` | `http://127.0.0.1:8001/v1` | OpenAI-compatible backend base URL |
+| `WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | Canonical global verifier tool-server origin (no path) |
+| `WEBUI_PROVISION_MODEL_BACKEND_URL` | `http://127.0.0.1:8001/v1` | Canonical OpenAI-compatible backend `/v1` base URL |
 | `WEBUI_PROVISION_MODEL_ID` | `Qwen2-0.5B-Instruct-int4-sym-ov` | model required by the smoke |
 | `WEBUI_PROVISION_WEBUI_BIN` | `.venv-webui/bin/open-webui` | binary exec target |
 | `WEBUI_PROVISION_REQUEST_TIMEOUT` | `30` | seconds per provisioning request |

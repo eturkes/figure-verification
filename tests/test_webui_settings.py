@@ -11,8 +11,9 @@ regression net rather than a 100%-branch gate. Locked here:
   per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
   only the curated process base;
 - the load-bearing _FIXED_ENV values (persistent-config off, empty task model, legacy FC, every
-  background-generation toggle off, plus the auth / bootstrap login model -- auth on, password
-  login, public signup off, no boot auto-admin, no trusted-header) pinned directly, so a flip fails;
+  background-generation toggle off, API outlet filters on, plus the auth / bootstrap login model
+  -- auth on, password login, public signup off, no boot auto-admin, no trusted-header) pinned
+  directly, so a flip fails;
 - tool_server_connections() as the settled-live one-element verifier registration;
 - from_env() default and WEBUI_PROVISION_* override across int / str / Path / float fields.
 """
@@ -71,10 +72,28 @@ _BAD_CONFIGS: list[tuple[Callable[[], Settings], str]] = [
     (lambda: Settings(ready_timeout=math.nan), "ready_timeout"),
     (lambda: Settings(verifier_url=""), "verifier_url"),
     (lambda: Settings(verifier_url="ftp://127.0.0.1"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://127.0.0.1:8000/base"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://127.0.0.1:8000?x=1"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://trusted@127.0.0.1:8000"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://127.0.0.1:8000\\evil"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://tést.example"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://[::1"), "verifier_url"),
+    (lambda: Settings(verifier_url="http://127.0.0.1:0"), "verifier_url"),
     (lambda: Settings(model_backend_url=""), "model_backend_url"),
     (lambda: Settings(model_backend_url="http://"), "model_backend_url"),
+    (lambda: Settings(model_backend_url="http://127.0.0.1:8001"), "model_backend_url"),
+    (lambda: Settings(model_backend_url="http://127.0.0.1:8001/v1/"), "model_backend_url"),
+    (lambda: Settings(model_backend_url="http://127.0.0.1:bad/v1"), "model_backend_url"),
+    (lambda: Settings(model_backend_url="http://127.0.0.1:8001/v1#fragment"), "model_backend_url"),
+    (
+        lambda: Settings(model_backend_url="https://trusted.example@evil.example/v1"),
+        "model_backend_url",
+    ),
     (lambda: Settings(host=""), "host"),
     (lambda: Settings(host="http://127.0.0.1"), "host"),
+    (lambda: Settings(host="127.0.0.1:9000"), "host"),
+    (lambda: Settings(host="bad host"), "host"),
+    (lambda: Settings(host="host\\name"), "host"),
 ]
 
 
@@ -88,6 +107,17 @@ def test_defaults_construct() -> None:
     settings = Settings()
     assert settings.base_url == "http://127.0.0.1:8080"
     assert settings.tool_server_id == "verifier"
+
+
+def test_accepts_clean_endpoint_authorities() -> None:
+    settings = Settings(
+        verifier_url="https://[2001:db8::1]:8443",
+        model_backend_url="https://models.example.test/v1",
+        host="webui.local",
+    )
+    assert settings.verifier_url == "https://[2001:db8::1]:8443"
+    assert settings.model_backend_url == "https://models.example.test/v1"
+    assert settings.base_url == "http://webui.local:8080"
 
 
 def test_secret_key_bound_counts_utf8_bytes() -> None:
@@ -142,6 +172,7 @@ def test_fixed_env_pins_load_bearing_toggles() -> None:
     assert _FIXED_ENV["ENABLE_SIGNUP"] == "false"
     assert _FIXED_ENV["WEBUI_ADMIN_EMAIL"] == ""
     assert _FIXED_ENV["WEBUI_AUTH_TRUSTED_EMAIL_HEADER"] == ""
+    assert _FIXED_ENV["ENABLE_API_OUTLET_FILTERS"] == "true"
 
 
 def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -154,6 +185,7 @@ def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENABLE_PASSWORD_AUTH", "false")
     monkeypatch.setenv("WEBUI_ADMIN_EMAIL", "attacker@evil.test")
     monkeypatch.setenv("WEBUI_AUTH_TRUSTED_EMAIL_HEADER", "X-Trusted-Email")
+    monkeypatch.setenv("ENABLE_API_OUTLET_FILTERS", "false")
     settings = Settings()
     env = settings.launch_env()
     assert env["ENABLE_PERSISTENT_CONFIG"] == "false"
@@ -164,6 +196,7 @@ def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env["ENABLE_PASSWORD_AUTH"] == "true"  # noqa: S105 (config toggle value)
     assert env["WEBUI_ADMIN_EMAIL"] == ""
     assert env["WEBUI_AUTH_TRUSTED_EMAIL_HEADER"] == ""
+    assert env["ENABLE_API_OUTLET_FILTERS"] == "true"
 
 
 def test_child_env_drops_ambient_keeps_base(monkeypatch: pytest.MonkeyPatch) -> None:

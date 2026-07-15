@@ -94,9 +94,12 @@ The transport reports two kinds of outcome and never confuses them:
   present-but-broken manifest — whose cause stays in the server log, never in the caller's
   response.
 
-Verified renders and their certificates live in a bounded in-memory store (the
-least-recently-used render evicts first), addressable by the content-derived `plot_id` and
-`spec_id` the render returns; nothing is written to disk. Durable on-disk provenance and replay are deferred (M5).
+Verified render certificates + canonical specs live in one bounded in-memory LRU; the much larger
+offline chart pages live in a second, independently bounded LRU. Both are addressable by the
+content-derived `plot_id` / `spec_id` a render returns, and either LRU may evict first - a chart can
+outlive its certificate or vice versa. A served chart was verified when built and is immutable;
+the certificate is provenance, not a chart-liveness gate. Nothing is written to disk. Durable
+on-disk provenance and replay are deferred (M5).
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 
@@ -122,6 +125,9 @@ curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
 # (plot_id and spec_id come from that response; shown here as shell variables)
 curl -sS "http://127.0.0.1:8000/certificate/${plot_id}"
 curl -sS "http://127.0.0.1:8000/spec/${spec_id}"
+
+# fetch the independently bounded offline chart page Open WebUI embeds
+curl -sS "http://127.0.0.1:8000/chart/${plot_id}"
 
 # the hand-authored OpenAPI 3.1 document
 curl -sS http://127.0.0.1:8000/schema/openapi.json

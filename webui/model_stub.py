@@ -123,12 +123,11 @@ def create_app(model_id: str) -> Litestar:
 def serve(settings: Settings) -> None:
     """Serve the stub on the host/port from settings.model_backend_url (one uvicorn worker).
 
-    Settings validates model_backend_url as an http(s) URL with a host, but not that the stub can
-    actually bind and serve it: the stub mounts plain-HTTP routes under a fixed /v1, so only
-    http://<host>:<port>/v1 is honorable. A base-url OWUI would be handed but the stub cannot serve
-    (https, a non-/v1 path, a missing or non-numeric port) passes construction yet would surface as
-    a TLS error or a 404 deep in the smoke -- fail loud here instead. .port raises on a non-numeric
-    port, so read it defensively. One worker matches model_backend's serve.
+    Settings validates a canonical http(s) /v1 endpoint, but not that the stub can bind and serve
+    it: the stub is plain HTTP and needs an explicit bind port, so https or an implicit port would
+    otherwise surface as a TLS/bind error deep in the smoke. Fail loud here instead. Reading .port
+    defensively keeps this boundary sound even for a direct-construction type escape. One worker
+    matches model_backend's serve.
     """
     parsed = urlparse(settings.model_backend_url)
     try:
