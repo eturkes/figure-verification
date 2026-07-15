@@ -81,18 +81,17 @@ supplied through the environment before the process binds — never anything a c
 
 The transport reports two kinds of outcome and never confuses them:
 
-- A **verification outcome** — verified, decoded-but-failed a check, or failed to decode at
+- A **verification outcome** — verified, failed a semantic/resource check, or failed to decode at
   all — is a `200` carrying a structured verdict. A decode failure is an expected model
   failure mode, not a transport error, so it rides the verdict envelope like any other
   blocked spec; a chart is attached only when the verdict is verified, never otherwise.
-- **Transport misuse or a server-config fault** — a wrong `Content-Type` (415), an oversize
+- **Transport misuse or a trusted-system fault** — a wrong `Content-Type` (415), an oversize
   body (413), a wrong method (405), an uncoercible query parameter like a non-boolean
   `include_html` (400), an unknown or malformed artifact id (404), or a broken trusted
-  manifest (500) — answers an RFC 9457 `application/problem+json` document. A request names
-  only the dataset, never the trusted bytes at that path, so over a correctly provisioned
-  deploy no request reaches the 500 path; it signals operator misconfiguration — a
-  present-but-broken manifest — whose cause stays in the server log, never in the caller's
-  response.
+  manifest / implementation or native-render fault (500) — answers an RFC 9457
+  `application/problem+json` document. Resource ceilings are verification outcomes, so they
+  return a failed verdict before artifact storage. A 500 remains outside the verification
+  contract; its cause stays in the server log, never in the caller's response.
 
 Verified render certificates + canonical specs live in one bounded in-memory LRU; the much larger
 offline chart pages live in a second, independently bounded LRU. Both are addressable by the

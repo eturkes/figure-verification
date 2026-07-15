@@ -32,12 +32,12 @@ VERIFIED proposal is returned as the Open WebUI Location-variant chart embed (a 
 summary] array under Content-Disposition: inline + a Location at GET /chart/{plot_id}; see
 propose_spec_route); every non-verified outcome keeps its prior body byte-for-byte.
 
-Error split: a verification outcome (verified, decoded-but-failed, or a decode failure)
+Error split: a verification outcome (verified, semantic/resource-failed, or decode-failed)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
 Verdict, so a chart never rides an unverified outcome); only transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
-404, a malformed /propose-spec body -> 400) or a server-config fault (a broken or unreadable
-trusted manifest, or a render that returns None for a verified spec -> 500) answers RFC 9457
+404, a malformed /propose-spec body -> 400) or a trusted config / implementation fault (a
+broken manifest or invariant/native render fault -> 500) answers RFC 9457
 application/problem+json, shaped by the exception handlers below. /propose-spec adds two more
 problem+json outcomes over the model as an upstream dependency — an unknown dataset name -> 404
 (the name never echoed), and a backend that is unreachable (503) or returned an unusable reply
@@ -366,11 +366,12 @@ def _internal_exception_handler(
 ) -> Response[Problem]:
     """Log any uncaught exception, then answer a generic 500 problem+json.
 
-    Reached only by an operator-config fault escaping the pipeline (a broken, unreadable,
-    or mispaired trusted manifest). The handler logs the cause and traceback itself —
+    Reached by a trusted operator-config fault (a broken, unreadable, or mispaired manifest)
+    or an implementation/native-render fault. Resource-policy refusals stay structured 200
+    verdicts and do not reach this handler. The handler logs the cause and traceback itself —
     Litestar does NOT log an exception a custom handler catches, so without this the fault
-    would vanish from every log — then withholds the cause from the untrusted caller. The
-    model cannot provoke this path — see the pipeline error split.
+    would vanish from every log — then withholds the cause from the untrusted caller; see the
+    pipeline error split.
     """
     _LOGGER.error("unhandled internal error serving a request", exc_info=exc)
     return _problem_response(

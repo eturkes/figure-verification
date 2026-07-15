@@ -114,7 +114,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   mutate/delete live CSV after evidence capture and output stays bound to captured bytes; injected
   over-limit row/Vega never calls native render; over-limit native output never stores/returns;
   ordinary bytes stay golden; gate green.
-- **M5.1d — service single-pass integration** (OPEN): carry trace/evidence in service `Outcome`
+- **M5.1d — service single-pass integration** (DONE): carry trace/evidence in service `Outcome`
   and have `render_outcome` call the core prepare/render entries; preserve decode-time dataset pin +
   every existing direct/propose response shape. Resource breaches are ordinary 200 failed verdicts
   with no store, while broken trusted config remains 500. Acceptance: both render routes read CSV +

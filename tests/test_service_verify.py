@@ -23,6 +23,9 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from verifier import checks
+from verifier.limits import DEFAULT_LIMITS
+from verifier.service import pipeline
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
 
@@ -61,11 +64,38 @@ def test_good_spec_verifies(client: TestClient[Litestar], entry: dict[str, Any])
     raw = (_GOOD_DIR / entry["file"]).read_bytes()
     response = client.post("/verify-only", content=raw, headers=_JSON)
     assert response.status_code == 200
+    for internal_name in (b'"trace"', b'"evidence"', b'"source_bytes"', b'"manifest_bytes"'):
+        assert internal_name not in response.content
     body: dict[str, Any] = response.json()
     assert body["verified"] is True
     assert body["layer"] == "verify"
     assert body["results"]  # non-empty: the real check set passed through, not a vacuous all([])
     assert all(result["status"] == "pass" for result in body["results"])
+
+
+def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
+    settings = Settings(data_dir=_DATA)
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    manifest_bytes = (_DATA / "schemas" / "sales.json").read_bytes()
+    source_bytes = (_DATA / "sales.csv").read_bytes()
+
+    passed = pipeline.verify_only(raw, settings)
+    assert passed.trace.manifest_bytes == manifest_bytes
+    assert passed.trace.source_bytes == source_bytes
+    assert passed.evidence is not None
+    assert passed.evidence.manifest_bytes == manifest_bytes
+    assert passed.evidence.source_bytes == source_bytes
+
+    hash_failure = pipeline.verify_only(
+        (_BAD_DIR / "b08_dataset_hash_mismatch.json").read_bytes(), settings
+    )
+    assert hash_failure.trace.manifest_bytes == manifest_bytes
+    assert hash_failure.trace.source_bytes == source_bytes
+    assert hash_failure.evidence is None
+
+    decode_failure = pipeline.verify_only(b"not JSON", settings)
+    assert decode_failure.trace == checks.VerificationTrace(manifest_bytes=None, source_bytes=None)
+    assert decode_failure.evidence is None
 
 
 # --- bad specs, decode layer: a lone spec.decode fail ------------------------
@@ -177,6 +207,23 @@ def test_manifest_unavailable_is_verdict_fail(tmp_path: Path) -> None:
     assert body["verified"] is False
     assert body["layer"] == "verify"
     assert [result["check"] for result in body["results"]] == ["dataset.manifest_available"]
+
+
+def test_oversized_manifest_is_resource_verdict(tmp_path: Path) -> None:
+    schemas = tmp_path / "schemas"
+    schemas.mkdir()
+    (schemas / "sales.json").write_bytes(b"x" * (DEFAULT_LIMITS.max_manifest_bytes + 1))
+    app = create_app(Settings(data_dir=tmp_path))
+    with TestClient(app=app) as client:
+        raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+        response = client.post("/verify-only", content=raw, headers=_JSON)
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    assert body["verified"] is False
+    assert body["layer"] == "verify"
+    assert [result["check"] for result in body["results"]] == ["resource.file_bytes"]
+    assert "evidence" not in body
+    assert "trace" not in body
 
 
 def test_broken_manifest_is_500_problem(tmp_path: Path) -> None:

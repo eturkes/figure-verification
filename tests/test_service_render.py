@@ -7,9 +7,8 @@ idempotent (same plot_id). The stored artifacts round-trip: GET /certificate ser
 canonical VCert bytes verbatim, GET /spec the canonical spec bytes. The never-a-chart pin
 holds at byte level over ALL 18 bad specs — the raw response carries no "svg"/"html" key. The
 store is bounded (an evicted render 404s on both its cert and spec GET); a malformed or absent
-id 404s alike (no validity leak); and a render that returns None for a verified spec is a
-broken invariant answered as a generic 500. X-Content-Type-Options: nosniff rides every
-response, success and problem alike.
+id 404s alike (no validity leak); and a render resource refusal returns a failed verdict before
+storage. X-Content-Type-Options: nosniff rides every response, success and problem alike.
 
 GET /chart/{plot_id} serves the offline HTML page built + stored on EVERY verified render, so it
 resolves even when the JSON body omitted the inline copy (include_html=false), as text/html under
@@ -20,17 +19,24 @@ plot_id 404s as problem+json carrying neither the CSP nor text/html (only the ap
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NoReturn, cast
+from unittest.mock import AsyncMock
 
+import httpx
 import msgspec
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from verifier import canon, render
-from verifier.schema import decode_spec
+from verifier import canon, checks, limits, render
+from verifier.errors import VerificationError
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.schema import VPlotSpec, decode_spec
+from verifier.service import app as service_app
+from verifier.service import pipeline
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
 
@@ -68,6 +74,37 @@ def _direct_render(raw: bytes, *, include_html: bool = False) -> render.RenderRe
     return result
 
 
+def _copy_sales_dataset(data_dir: Path) -> tuple[Path, Path]:
+    source = data_dir / "sales.csv"
+    manifest = data_dir / "schemas" / "sales.json"
+    manifest.parent.mkdir()
+    source.write_bytes((_DATA / "sales.csv").read_bytes())
+    manifest.write_bytes((_DATA / "schemas" / "sales.json").read_bytes())
+    return source, manifest
+
+
+def _post_render_route(
+    client: TestClient[Litestar], raw: bytes, route: Literal["direct", "propose"]
+) -> httpx.Response:
+    if route == "direct":
+        return client.post("/verify-and-render", content=raw, headers=_JSON)
+    spec = decode_spec(raw)
+    body = msgspec.json.encode(
+        {"user_request": "Plot total revenue by month", "dataset_name": spec.dataset.name}
+    )
+    return client.post("/propose-spec", content=body, headers=_JSON)
+
+
+def _render_verdict(
+    response: httpx.Response, route: Literal["direct", "propose"]
+) -> dict[str, Any]:
+    if route == "direct":
+        return cast("dict[str, Any]", response.json())
+    payload = cast("list[Any]", response.json())
+    result = cast("dict[str, Any]", payload[0])
+    return cast("dict[str, Any]", result["verdict"])
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient[Litestar]]:
     """A client over the real data_dir (the golden corpus binds to it)."""
@@ -98,6 +135,75 @@ def test_good_spec_renders_and_matches_direct(
     assert body["spec_hash"] == cert.spec_hash
     assert body["plotted_table_hash"] == cert.plotted_table_hash
     assert body["manifest_hash"] == cert.manifest_hash
+
+
+@pytest.mark.parametrize("route", ["direct", "propose"])
+def test_render_routes_read_each_verification_input_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: Literal["direct", "propose"],
+) -> None:
+    source, manifest = _copy_sales_dataset(tmp_path)
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    # Stub the upstream proposal so this counts the proposer route's verification/render leg;
+    # model prompt context has its own reads and is bounded separately in M5.1g.
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    reads: Counter[Path] = Counter()
+
+    def counted_read(path: Path, max_bytes: int) -> bytes:
+        reads[path.resolve()] += 1
+        return limits.read_bounded(path, max_bytes)
+
+    monkeypatch.setattr(pipeline, "read_bounded", counted_read)
+    monkeypatch.setattr(checks, "read_bounded", counted_read)
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+        response = _post_render_route(client, raw, route)
+    assert response.status_code == 200
+    assert _render_verdict(response, route)["verified"] is True
+    assert reads == Counter({source.resolve(): 1, manifest.resolve(): 1})
+    for internal_name in (b'"trace"', b'"evidence"', b'"source_bytes"', b'"manifest_bytes"'):
+        assert internal_name not in response.content
+
+
+@pytest.mark.parametrize("route", ["direct", "propose"])
+def test_render_routes_ignore_source_mutation_after_evidence_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: Literal["direct", "propose"],
+) -> None:
+    source, manifest = _copy_sales_dataset(tmp_path)
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    spec = decode_spec(raw)
+    expected = render.render(spec, manifest.read_bytes(), data_dir=tmp_path)
+    assert expected is not None
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    original_verify_run = checks.verify_run
+    calls = 0
+    replacement = b"month,region,revenue,orders\n2099-01,NA,1.00,1\n"
+
+    def capture_then_mutate(
+        captured_spec: VPlotSpec,
+        manifest_bytes: bytes,
+        *,
+        data_dir: Path,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> checks.VerificationRun:
+        nonlocal calls
+        run = original_verify_run(captured_spec, manifest_bytes, data_dir=data_dir, limits=limits)
+        calls += 1
+        source.write_bytes(replacement)
+        return run
+
+    monkeypatch.setattr(checks, "verify_run", capture_then_mutate)
+    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+        response = _post_render_route(client, raw, route)
+    assert response.status_code == 200
+    verdict = _render_verdict(response, route)
+    assert verdict["verified"] is True
+    assert verdict["svg"] == expected.svg
+    assert verdict["dataset_hash"] == expected.certificate.dataset_hash
+    assert calls == 1
+    assert source.read_bytes() == replacement
 
 
 # --- the never-a-chart pin: no svg/html key over the whole bad corpus --------
@@ -295,21 +401,30 @@ def test_verify_and_render_manifest_unavailable_is_verdict(tmp_path: Path) -> No
     assert [result["check"] for result in body["results"]] == ["dataset.manifest_available"]
 
 
-# --- the render-None invariant break -> generic 500 --------------------------
-def test_render_none_after_verified_is_500(
-    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+# --- render policy refusals stay verification outcomes and never store -------
+@pytest.mark.parametrize("stage", ["prepare_render", "render_prepared"])
+def test_render_resource_failure_is_verdict_without_store(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch, stage: str
 ) -> None:
-    # A verified spec whose render returns None cannot happen (render re-runs the same gates
-    # verify_only just passed) -> a broken invariant answered as a generic 500 problem+json.
-    def _render_none(*_args: object, **_kwargs: object) -> None:
-        return None
+    def refused(*_args: object, **_kwargs: object) -> NoReturn:
+        message = "artifact exceeds test limit"
+        raise VerificationError(message, check="resource.vega_bytes")
 
-    monkeypatch.setattr(render, "render", _render_none)
+    monkeypatch.setattr(render, stage, refused)
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     response = client.post("/verify-and-render", content=raw, headers=_JSON)
-    assert response.status_code == 500
-    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.status_code == 200
     assert response.headers["x-content-type-options"] == _NOSNIFF
+    assert b'"svg"' not in response.content
+    assert b'"html"' not in response.content
     body: dict[str, Any] = response.json()
-    assert body["status"] == 500
-    assert "internal" in body["detail"].lower()  # generic, no internal cause leaked
+    assert body["verified"] is False
+    assert body["layer"] == "verify"
+    assert body["results"][-1] == {
+        "check": "resource.vega_bytes",
+        "status": "fail",
+        "severity": "blocking",
+        "message": "artifact exceeds test limit",
+    }
+    spec_id = canon.hash_spec(decode_spec(raw)).removeprefix("sha256:")
+    assert client.get(f"/spec/{spec_id}").status_code == 404
