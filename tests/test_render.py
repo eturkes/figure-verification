@@ -27,6 +27,11 @@ calls; render_svg NAMES the vendored DejaVu Sans family, whose exact bytes are p
 an external-data-url spec is hard-blocked. The compile-confirm inspects the COMPILED Vega: our
 sort:null/order:null leave no sort key anywhere, while a naive variant (nulling stripped)
 reintroduces the line-vertex (marks) AND legend-domain (scales) sorts independently.
+
+M5.1c makes orchestration evidence-driven: preparation binds spec/evidence, gates render rows,
+and serializes one authoritative Vega artifact; prepared rendering gates VCert/SVG/HTML UTF-8
+bytes. Mutation/deletion, single-read/single-serialization, exact-boundary, and native-tripwire
+witnesses pin each expensive seam while the ordinary artifact bytes remain unchanged.
 """
 
 import hashlib
@@ -40,7 +45,9 @@ import pytest
 import vl_convert
 
 from verifier import canon, checks, ingest, render
+from verifier.errors import VerificationError
 from verifier.eval import evaluate
+from verifier.limits import VerificationLimits, read_bounded
 from verifier.schema import (
     Aggregate,
     Channel,
@@ -107,6 +114,14 @@ def _evaluated(name: str) -> tuple[VPlotSpec, ingest.Manifest, canon.Table]:
     spec, manifest = _good(name)
     table = evaluate(spec, manifest, (_DATA / spec.dataset.name).read_bytes())
     return spec, manifest, table
+
+
+def _evidence(name: str, *, data_dir: Path = _DATA) -> tuple[VPlotSpec, checks.RecomputedEvidence]:
+    """One good spec plus the check-passed evidence captured from ``data_dir``."""
+    spec, _ = _good(name)
+    run = checks.verify_run(spec, _manifest_bytes(name), data_dir=data_dir)
+    assert run.evidence is not None
+    return spec, run.evidence
 
 
 def _built(name: str) -> dict[str, object]:
@@ -607,6 +622,26 @@ def test_naive_spec_reintroduces_implicit_ordering() -> None:
 
 
 # --- M1.6c: provenance certificate + render() gate ---------------------------
+def _certificate_evidence(
+    spec: VPlotSpec,
+    table: canon.Table,
+    results: tuple[checks.CheckResult, ...] = (),
+) -> checks.RecomputedEvidence:
+    """Coherent synthetic evidence for certificate-only predicate/disclosure tests."""
+    manifest_bytes = b"{}"
+    return checks.RecomputedEvidence(
+        manifest=ingest.Manifest(dataset=spec.dataset.name, columns=()),
+        manifest_bytes=manifest_bytes,
+        source_bytes=b"",
+        dataset_hash=spec.dataset.hash,
+        manifest_hash=canon.hash_manifest(manifest_bytes),
+        spec_hash=canon.hash_spec(spec),
+        plotted_table=table,
+        plotted_table_hash=canon.hash_table(table),
+        results=results,
+    )
+
+
 def _render(name: str) -> render.RenderResult:
     """render() on a good spec, asserted non-None (mypy narrowing + gate)."""
     spec, _ = _good(name)
@@ -642,6 +677,192 @@ def test_render_gate_skips_svg_on_failure(monkeypatch: pytest.MonkeyPatch) -> No
         spec, dataset=msgspec.structs.replace(spec.dataset, hash="sha256:" + "0" * 64)
     )
     assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
+
+
+# --- M5.1c: evidence-driven preparation + artifact byte ceilings ------------
+def test_render_reads_source_and_serializes_vega_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    read_paths: list[Path] = []
+
+    def _read_spy(path: Path, max_bytes: int) -> bytes:
+        read_paths.append(path)
+        return read_bounded(path, max_bytes)
+
+    original_serialize = render.vega_lite_json
+    serialized: list[str] = []
+
+    def _serialize_spy(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest) -> str:
+        value = original_serialize(spec, table, manifest)
+        serialized.append(value)
+        return value
+
+    monkeypatch.setattr("verifier.checks.read_bounded", _read_spy)
+    monkeypatch.setattr(render, "vega_lite_json", _serialize_spy)
+    spec, _ = _good(_G01)
+    result = render.render(spec, _manifest_bytes(_G01), data_dir=_DATA)
+    assert result is not None
+    assert read_paths == [(_DATA / spec.dataset.name).resolve()]
+    assert len(serialized) == 1
+    assert result.vega_lite == serialized[0].encode("utf-8")
+
+
+@pytest.mark.parametrize("action", ["mutate", "delete"])
+def test_render_from_evidence_ignores_later_live_source_change(tmp_path: Path, action: str) -> None:
+    source = tmp_path / "sales.csv"
+    source.write_bytes((_DATA / "sales.csv").read_bytes())
+    spec, evidence = _evidence(_G01, data_dir=tmp_path)
+    expected = render.render_prepared(render.prepare_render(spec, evidence))
+
+    if action == "mutate":
+        source.write_bytes(b"month,region,revenue,orders\n2099-01,NA,1,1\n")
+    else:
+        source.unlink()
+
+    actual = render.render_prepared(render.prepare_render(spec, evidence))
+    assert actual == expected
+    assert actual.certificate.dataset_hash == evidence.dataset_hash
+    assert actual.certificate.plotted_table_hash == evidence.plotted_table_hash
+
+
+def test_prepare_rejects_spec_not_bound_to_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    _, evidence = _evidence(_G01)
+    different_spec, _ = _good("g02_revenue_by_region.json")
+
+    def _boom(*_args: object, **_kwargs: object) -> str:
+        msg = "builder reached for mismatched evidence"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "vega_lite_json", _boom)
+    with pytest.raises(ValueError, match="does not match evidence"):
+        render.prepare_render(different_spec, evidence)
+
+
+def test_render_row_limit_is_inclusive_and_precedes_native(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, evidence = _evidence(_G01)
+    row_count = len(evidence.plotted_table.rows)
+    prepared = render.prepare_render(
+        spec, evidence, limits=VerificationLimits(max_render_rows=row_count)
+    )
+    assert prepared.evidence is evidence
+
+    def _boom(_: str) -> str:
+        msg = "native render reached after render-row refusal"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "render_svg", _boom)
+    with pytest.raises(VerificationError) as caught:
+        render.render(
+            spec,
+            _manifest_bytes(_G01),
+            data_dir=_DATA,
+            limits=VerificationLimits(max_render_rows=row_count - 1),
+        )
+    assert caught.value.check == "resource.render_rows"
+    assert str(caught.value) == (
+        f"plotted table has {row_count} render rows; limit is {row_count - 1}"
+    )
+
+
+def test_vega_byte_limit_is_inclusive_and_precedes_native(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, evidence = _evidence(_G01)
+    expected = render.prepare_render(spec, evidence).vega_lite
+    exact = render.prepare_render(
+        spec, evidence, limits=VerificationLimits(max_vega_bytes=len(expected))
+    )
+    assert exact.vega_lite == expected
+
+    def _boom(_: str) -> str:
+        msg = "native render reached after Vega refusal"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "render_svg", _boom)
+    with pytest.raises(VerificationError) as caught:
+        render.render(
+            spec,
+            _manifest_bytes(_G01),
+            data_dir=_DATA,
+            limits=VerificationLimits(max_vega_bytes=len(expected) - 1),
+        )
+    assert caught.value.check == "resource.vega_bytes"
+    assert str(caught.value) == (
+        f"Vega-Lite JSON has {len(expected)} bytes; limit is {len(expected) - 1}"
+    )
+
+
+def test_vcert_byte_limit_is_inclusive_and_precedes_native(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, evidence = _evidence(_G01)
+    prepared = render.prepare_render(spec, evidence)
+    payload_size = len(render.vcert_bytes(render._build_certificate(spec, evidence)))
+    native_inputs: list[str] = []
+
+    def _svg_stub(vega_lite: str) -> str:
+        native_inputs.append(vega_lite)
+        return "<svg/>"
+
+    monkeypatch.setattr(render, "render_svg", _svg_stub)
+    admitted = render.render_prepared(
+        prepared, limits=VerificationLimits(max_attestation_bytes=payload_size)
+    )
+    assert admitted.svg == "<svg/>"
+    assert len(native_inputs) == 1
+
+    with pytest.raises(VerificationError) as caught:
+        render.render_prepared(
+            prepared, limits=VerificationLimits(max_attestation_bytes=payload_size - 1)
+        )
+    assert len(native_inputs) == 1
+    assert caught.value.check == "resource.attestation_bytes"
+    assert str(caught.value) == (
+        f"VCert payload has {payload_size} bytes; limit is {payload_size - 1}"
+    )
+
+
+def test_svg_byte_limit_counts_utf8_and_blocks_later_html(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, evidence = _evidence(_G01)
+    prepared = render.prepare_render(spec, evidence)
+    monkeypatch.setattr(render, "render_svg", lambda _vega: "éx")
+    exact = render.render_prepared(prepared, limits=VerificationLimits(max_svg_bytes=3))
+    assert exact.svg == "éx"
+
+    monkeypatch.setattr(render, "render_svg", lambda _vega: "éxx")
+
+    def _boom(_: str) -> str:
+        msg = "HTML built after oversized SVG"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "render_html", _boom)
+    with pytest.raises(VerificationError) as caught:
+        render.render_prepared(
+            prepared, include_html=True, limits=VerificationLimits(max_svg_bytes=3)
+        )
+    assert caught.value.check == "resource.svg_bytes"
+    assert str(caught.value) == "SVG has 4 bytes; limit is 3"
+
+
+def test_html_byte_limit_counts_utf8_and_is_inclusive(monkeypatch: pytest.MonkeyPatch) -> None:
+    spec, evidence = _evidence(_G01)
+    prepared = render.prepare_render(spec, evidence)
+    monkeypatch.setattr(render, "render_svg", lambda _vega: "<svg/>")
+    monkeypatch.setattr(render, "render_html", lambda _vega: "éx")
+    exact = render.render_prepared(
+        prepared, include_html=True, limits=VerificationLimits(max_html_bytes=3)
+    )
+    assert exact.html == "éx"
+
+    monkeypatch.setattr(render, "render_html", lambda _vega: "éxx")
+    with pytest.raises(VerificationError) as caught:
+        render.render_prepared(
+            prepared, include_html=True, limits=VerificationLimits(max_html_bytes=3)
+        )
+    assert caught.value.check == "resource.html_bytes"
+    assert str(caught.value) == "HTML has 4 bytes; limit is 3"
 
 
 def test_certificate_hashes_equal_canonical() -> None:
@@ -697,8 +918,7 @@ def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=())
-    cert = render._build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
     assert render._RENDERER_BAR_ZERO not in cert.checks_passed
 
 
@@ -743,8 +963,7 @@ def test_build_certificate_discloses_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=())
-    cert = render._build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
     assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
     assert cert.sorts == (
         render.DisclosedSort(field="a", order="ascending"),
@@ -765,8 +984,7 @@ def test_build_certificate_empty_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=())
-    cert = render._build_certificate(spec, b"{}", table, report)
+    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
     assert cert.filters == ()
     assert cert.sorts == ()
 
@@ -776,7 +994,6 @@ def test_build_certificate_discloses_only_the_active_sort() -> None:
     # "Applied", so the cert must disclose that ACTIVE sort alone -- never a superseded or discarded
     # one, which would be a false "applied" claim.
     table = canon.Table(columns=(), rows=())
-    report = checks.VerificationReport(results=())
 
     def _sorts(transform: tuple[Transform, ...]) -> tuple[render.DisclosedSort, ...]:
         spec = VPlotSpec(
@@ -789,7 +1006,7 @@ def test_build_certificate_discloses_only_the_active_sort() -> None:
                 y=Channel(field="b", kind="ordinal"),
             ),
         )
-        return render._build_certificate(spec, b"{}", table, report).sorts
+        return render._build_certificate(spec, _certificate_evidence(spec, table)).sorts
 
     asc_a = Sort(by=(SortKey(field="a", order="ascending"),))
     desc_b = Sort(by=(SortKey(field="b", order="descending"),))
@@ -1019,12 +1236,13 @@ def test_render_default_omits_html() -> None:
 
 
 def test_render_html_is_off_the_cert_hash_chain() -> None:
-    # Requesting the HTML view changes neither the SVG bytes nor the certificate.
+    # Requesting the HTML view changes neither Vega/SVG bytes nor the certificate.
     spec, _ = _good(_G01)
     mb = _manifest_bytes(_G01)
     plain = render.render(spec, mb, data_dir=_DATA)
     withhtml = render.render(spec, mb, data_dir=_DATA, include_html=True)
     assert plain is not None and withhtml is not None
+    assert plain.vega_lite == withhtml.vega_lite
     assert plain.svg == withhtml.svg
     assert plain.certificate == withhtml.certificate
     assert plain.html is None and withhtml.html is not None

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""VPlot -> Vega-Lite builder (M1.6a, the pure no-native-dep half).
+"""Evidence-bound VPlot -> Vega-Lite preparation, rendering, and certification.
 
 Turns an untrusted VPlotSpec plus the verifier's recomputed plotted table into a Vega-Lite
 v5 spec dict that inlines ONLY that table. Two trust mechanisms, kept distinct: (1) the
@@ -18,6 +18,13 @@ hashed table's token), -0 folded, so the same table yields byte-identical JSON; 
 is rejected at the boundary. The string _dumps returns is the authoritative artifact M1.6b/c
 consume -- stdlib json.dumps is never applied to builder output (it cannot serialize the
 Decimals build_vega_lite keeps in data.values).
+
+The orchestration boundary is deliberately two-stage. ``prepare_render`` consumes a decoded
+spec plus check-passed ``RecomputedEvidence`` (never a live data directory), binds the pair,
+enforces the render-row ceiling, and carries the one authoritative serialized Vega-Lite byte
+string forward. ``render_prepared`` mints and byte-admits the VCert before native work, renders
+that exact prepared artifact, and admits the SVG/optional HTML before returning either. The
+``render`` convenience entry is their single-read verify -> prepare -> render composition.
 """
 
 import functools
@@ -26,6 +33,7 @@ import html
 import importlib.metadata
 import importlib.resources
 import json
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -34,7 +42,9 @@ import msgspec
 import vl_convert
 
 from verifier import canon, checks, ingest
+from verifier.errors import VerificationError
 from verifier.eval import active_sort
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import Aggregate, Channel, Filter, VPlotSpec
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
@@ -178,6 +188,56 @@ def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifes
     """The authoritative Vega-Lite JSON string (raw Decimal tokens, floats rejected) -- the form
     render_svg consumes."""
     return _dumps(build_vega_lite(spec, table, manifest))
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedArtifact:
+    """Internal check-passed build carrying the exact Vega-Lite bytes into native rendering."""
+
+    spec: VPlotSpec = field(repr=False)
+    evidence: checks.RecomputedEvidence = field(repr=False)
+    vega_lite: bytes = field(repr=False)
+
+
+def _enforce_byte_limit(payload: bytes, limit: int, *, artifact: str, check: str) -> None:
+    """Admit an exact byte artifact at an inclusive ceiling or fail under ``check``."""
+    size = len(payload)
+    if size > limit:
+        message = f"{artifact} has {size} bytes; limit is {limit}"
+        raise VerificationError(message, check=check)
+
+
+def prepare_render(
+    spec: VPlotSpec,
+    evidence: checks.RecomputedEvidence,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> PreparedArtifact:
+    """Build one authoritative Vega-Lite artifact from captured verification evidence.
+
+    ``spec`` is paired to the evidence by its canonical hash before either the row gate or
+    builder runs; a mismatch is a caller invariant violation, not a model-driven verification
+    outcome. The row ceiling runs before materializing builder rows. Serialization then happens
+    exactly once, and the UTF-8 bytes are admitted before any native renderer can receive them.
+    """
+    spec_hash = canon.hash_spec(spec)
+    if spec_hash != evidence.spec_hash:
+        message = f"spec hash {spec_hash} does not match evidence {evidence.spec_hash}"
+        raise ValueError(message)
+
+    row_count = len(evidence.plotted_table.rows)
+    if row_count > limits.max_render_rows:
+        message = f"plotted table has {row_count} render rows; limit is {limits.max_render_rows}"
+        raise VerificationError(message, check="resource.render_rows")
+
+    vega_lite = vega_lite_json(spec, evidence.plotted_table, evidence.manifest).encode("utf-8")
+    _enforce_byte_limit(
+        vega_lite,
+        limits.max_vega_bytes,
+        artifact="Vega-Lite JSON",
+        check="resource.vega_bytes",
+    )
+    return PreparedArtifact(spec=spec, evidence=evidence, vega_lite=vega_lite)
 
 
 # --- SVG rendering (M1.6b: the vl-convert native dep) ------------------------
@@ -407,10 +467,13 @@ def vcert_bytes(cert: VCert) -> bytes:
 
 
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
-    """A verified render: the self-contained SVG plus its provenance certificate, and -- only when
-    render(include_html=True) requests it -- an optional fully offline HTML view (OFF the cert hash
-    chain; None otherwise)."""
+    """A verified render carrying the authoritative Vega-Lite bytes, SVG, and VCert.
 
+    ``html`` is the optional fully offline view requested by ``render(include_html=True)``;
+    it remains off the certificate hash chain.
+    """
+
+    vega_lite: bytes
     svg: str
     certificate: VCert
     html: str | None = None
@@ -434,23 +497,17 @@ def _tcb() -> Tcb:
 
 def _build_certificate(
     spec: VPlotSpec,
-    manifest_bytes: bytes,
-    table: canon.Table,
-    report: checks.VerificationReport,
+    evidence: checks.RecomputedEvidence,
 ) -> VCert:
-    """Mint the provenance certificate. Internal: render() is the sole caller and runs this ONLY
-    after report.passed, so the binding check already proved spec.dataset.hash equals the source
-    bytes' hash (stamped as dataset_hash -- no CSV re-read); the other three hashes are recomputed
-    here from the validated spec, the recomputed table, and the raw manifest bytes. checks_passed is
-    report's passing check names PLUS the renderer-enforced checks that APPLY to this spec: bar-zero
-    ONLY for a bar mark with a quantitative positional axis (the builder emits scale.zero exactly
-    there -- claiming it for a bar with no quantitative x/y would be a false cert), legend-domain
-    when a color channel is present. Filters are disclosed from every filter op; sorts disclose ONLY
-    the ACTIVE sort (eval.active_sort -- the badge heads them "Applied", so a superseded or
-    aggregate-discarded sort must not appear). Both are model-controlled -> escaped at display.
-    `table` comes from the same passed ``RecomputedEvidence`` as ``report``, so this stays total
-    with no coverage-dead assert."""
-    checks_passed = [r.check for r in report.results if r.status == "pass"]
+    """Mint a certificate directly from the same evidence used to build the prepared artifact.
+
+    No source, manifest, table, or hash is re-read/re-derived here. ``checks_passed`` is the
+    evidence's passing names plus the renderer-enforced checks applicable to ``spec``: bar-zero
+    only for a bar with a quantitative positional axis, and legend-domain when color is present.
+    Filters disclose every filter; sorts disclose only the active sort. Model-controlled values
+    are escaped later by ``badge_html``.
+    """
+    checks_passed = [r.check for r in evidence.results if r.status == "pass"]
     if spec.mark == "bar" and (
         spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
     ):
@@ -470,14 +527,60 @@ def _build_certificate(
     )
     return VCert(
         version=_VCERT_VERSION,
-        dataset_hash=spec.dataset.hash,
-        spec_hash=canon.hash_spec(spec),
-        plotted_table_hash=canon.hash_table(table),
-        manifest_hash=canon.hash_manifest(manifest_bytes),
+        dataset_hash=evidence.dataset_hash,
+        spec_hash=evidence.spec_hash,
+        plotted_table_hash=evidence.plotted_table_hash,
+        manifest_hash=evidence.manifest_hash,
         checks_passed=tuple(checks_passed),
         filters=filters,
         sorts=sorts,
         tcb=_tcb(),
+    )
+
+
+def render_prepared(
+    prepared: PreparedArtifact,
+    *,
+    include_html: bool = False,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> RenderResult:
+    """Render one prepared artifact and return only byte-admitted outputs.
+
+    The VCert is minted from ``prepared.evidence`` and admitted before the first native call.
+    SVG and optional HTML are measured as UTF-8 immediately after construction; an oversized
+    artifact raises its stable ``resource.*`` failure and is never returned. Native Vega/Vega-Lite
+    and browser pixels remain trusted display components, not verified proof targets.
+    """
+    certificate = _build_certificate(prepared.spec, prepared.evidence)
+    _enforce_byte_limit(
+        vcert_bytes(certificate),
+        limits.max_attestation_bytes,
+        artifact="VCert payload",
+        check="resource.attestation_bytes",
+    )
+
+    vega_lite_json_text = prepared.vega_lite.decode("utf-8")
+    svg = render_svg(vega_lite_json_text)
+    _enforce_byte_limit(
+        svg.encode("utf-8"),
+        limits.max_svg_bytes,
+        artifact="SVG",
+        check="resource.svg_bytes",
+    )
+
+    offline_html = render_html(vega_lite_json_text) if include_html else None
+    if offline_html is not None:
+        _enforce_byte_limit(
+            offline_html.encode("utf-8"),
+            limits.max_html_bytes,
+            artifact="HTML",
+            check="resource.html_bytes",
+        )
+    return RenderResult(
+        vega_lite=prepared.vega_lite,
+        svg=svg,
+        certificate=certificate,
+        html=offline_html,
     )
 
 
@@ -544,28 +647,21 @@ def render(
     *,
     data_dir: Path,
     include_html: bool = False,
+    limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> RenderResult | None:
-    """The single public entry: verify the untrusted spec, and ONLY if every check passes,
-    render the self-contained SVG (inlining ONLY the recomputed plotted table) with its
-    provenance certificate. Returns None for any failing or blocked spec (no chart for
-    unverified data; eval may have been skipped). The manifest is decoded from its raw bytes
-    HERE, and those same bytes are hashed into the cert -- so verification, rendering, and the
-    manifest hash cannot disagree (a decoded Manifest cannot reproduce its raw bytes, so the
-    bytes are the single source threaded to both verify and the hash). With include_html=True the
-    result also carries a self-contained offline HTML view of the same built spec (render_html) --
-    OFF the cert hash chain: the SVG bytes and the certificate are byte-identical whether or not it
-    is requested."""
-    run = checks.verify_run(spec, manifest_bytes, data_dir=data_dir)
-    report = run.report
-    if not report.passed:
+    """Convenience composition: verify once -> prepare captured evidence -> render prepared.
+
+    A failed verification returns ``None`` and performs no preparation/native work. Render policy
+    failures raise a tagged ``VerificationError`` for orchestration layers to surface as structured
+    outcomes. The source is read only by ``verify_run``; every later stage consumes its immutable
+    evidence, so mutation/deletion of the live CSV cannot rebind an admitted render. Optional HTML
+    remains off the cert hash chain and cannot change the SVG, VCert, or Vega-Lite bytes.
+    """
+    run = checks.verify_run(spec, manifest_bytes, data_dir=data_dir, limits=limits)
+    if not run.report.passed:
         return None
-    # report.passed implies every checks gate passed, so evidence is populated; cast is the
+    # A passing report implies every checks gate passed, so evidence is populated; cast is the
     # coverage-clean narrowing (an assert's never-taken branch fails the 100% gate).
     evidence = cast("checks.RecomputedEvidence", run.evidence)
-    manifest = evidence.manifest
-    table = evidence.plotted_table
-    built_json = vega_lite_json(spec, table, manifest)
-    svg = render_svg(built_json)
-    certificate = _build_certificate(spec, manifest_bytes, table, report)
-    offline_html = render_html(built_json) if include_html else None
-    return RenderResult(svg=svg, certificate=certificate, html=offline_html)
+    prepared = prepare_render(spec, evidence, limits=limits)
+    return render_prepared(prepared, include_html=include_html, limits=limits)

@@ -103,7 +103,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Acceptance: byte/row/source-cell/plotted-cell boundary matrix; failures retain only inputs that
   were actually read, perform no later work, and never carry `RecomputedEvidence`; corpus unchanged;
   gate green.
-- **M5.1c — evidence-driven render + Vega budget** (OPEN): split core render into a preparation
+- **M5.1c — evidence-driven render + Vega budget** (DONE): split core render into a preparation
   entry consuming decoded spec + `RecomputedEvidence` (never `data_dir`) and a prepared-artifact
   renderer. Preparation builds + serializes Vega exactly once, enforces render-row/Vega limits,
   and carries authoritative bytes forward; the renderer mints VCert from the same evidence before

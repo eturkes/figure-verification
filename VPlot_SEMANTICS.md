@@ -22,7 +22,9 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   recomputes the table (correctness oracle-backed) and the M1.6 renderer inlines ONLY that
   recomputation, so no model value can diverge -- true by construction, NOT an active
   byte-comparison (`verify_run()` retains the recomputation only in check-passed internal
-  evidence; `render()` inlines only that evidence's `plotted_table`).
+  evidence; core `render()` reads the source once, `prepare_render()` binds the decoded spec to
+  that evidence and serializes its `plotted_table` once, and `render_prepared()` consumes those
+  exact Vega-Lite bytes without reopening the live dataset).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
