@@ -80,6 +80,16 @@
               }
             }
           },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused the work before model, verification, or render execution. Each service process owns an independent gate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "500": {
             "description": "The verifier hit an internal operator-config fault.",
             "content": {
@@ -158,6 +168,16 @@
           },
           "415": {
             "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused the work before model, verification, or render execution. Each service process owns an independent gate.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -254,6 +274,16 @@
           },
           "415": {
             "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused the work before model, verification, or render execution. Each service process owns an independent gate.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -829,7 +859,7 @@
       },
       "Problem": {
         "title": "Problem",
-        "description": "RFC 9457 problem detail for a transport or server-config fault.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
+        "description": "RFC 9457 detail for transport misuse, admission refusal, or a server-config fault.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
         "type": "object",
         "properties": {
           "title": {

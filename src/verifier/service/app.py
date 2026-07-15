@@ -34,11 +34,12 @@ propose_spec_route); every non-verified outcome keeps its prior body byte-for-by
 
 Error split: a verification outcome (verified, semantic/resource-failed, or decode-failed)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
-Verdict, so a chart never rides an unverified outcome); only transport misuse (wrong
+Verdict, so a chart never rides an unverified outcome); transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
-404, a malformed /propose-spec body -> 400) or a trusted config / implementation fault (a
-broken manifest or invariant/native render fault -> 500) answers RFC 9457
-application/problem+json, shaped by the exception handlers below. /propose-spec adds two more
+404, a malformed /propose-spec body -> 400), process-local admission refusal (429), or a trusted
+config / implementation fault (a broken manifest or invariant/native render fault -> 500)
+answers RFC 9457 application/problem+json, shaped by the exception handlers below. /propose-spec
+adds two more
 problem+json outcomes over the model as an upstream dependency — an unknown dataset name -> 404
 (the name never echoed), and a backend that is unreachable (503) or returned an unusable reply
 (502) — mapped by _dataset_not_found_handler and _model_upstream_handler, both registered
@@ -46,6 +47,14 @@ ahead of the generic Exception handler (Litestar routes by the exception's MRO).
 decodes but names a DIFFERENT dataset than requested is refused 502 too, by the dataset-name pin
 (_verify_render_pinned) via the plain HTTPException handler — never a verified 200 for an
 off-request chart. Every response carries X-Content-Type-Options: nosniff as an app default.
+
+Every POST reads and transport-validates its bounded body before entering one process-local
+``AdmissionController`` shared across the application. A refusal answers RFC 9457 429 before
+model, verifier, or native-render work. An admitted permit spans async model wait and transfers
+to the worker for verification/render/storage; request cancellation cannot release it while that
+uncancellable worker remains active. This is per-process logical admission — the canonical single
+uvicorn worker has one controller, while multiple worker processes would multiply the configured
+aggregate capacity and rate.
 
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
@@ -65,7 +74,6 @@ from typing import Any, cast
 
 import msgspec
 from litestar import Litestar, Request, Response, get, post
-from litestar.concurrency import sync_to_thread
 from litestar.datastructures import ResponseHeader, State
 from litestar.exceptions import HTTPException
 from litestar.params import FromPath, FromQuery
@@ -74,11 +82,13 @@ from litestar.status_codes import (
     HTTP_400_BAD_REQUEST,
     HTTP_404_NOT_FOUND,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_502_BAD_GATEWAY,
 )
 
 from verifier import __version__
+from verifier.service.admission import AdmissionController, JobPermit
 from verifier.service.model_client import (
     DatasetNotFoundError,
     ModelUpstreamError,
@@ -108,6 +118,8 @@ _HEX64 = re.compile(r"[0-9a-f]{64}")
 # response_headers do NOT reach exception-handler responses (one source of truth, no drift).
 _NOSNIFF = ResponseHeader(name="x-content-type-options", value="nosniff")
 
+_ADMISSION_REFUSAL_DETAIL = "the process-local verifier work limit is currently exhausted"
+
 
 @get("/health", operation_id="health", summary="Liveness and version probe", sync_to_thread=False)
 def health() -> dict[str, str]:
@@ -122,6 +134,21 @@ def _require_json(request: Request[Any, Any, Any]) -> None:
     if essence != "application/json":
         msg = f"Content-Type must be application/json, got {essence or 'none'!r}"
         raise HTTPException(detail=msg, status_code=HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+
+def _admit_work(state: State) -> JobPermit:
+    """Acquire the application-global rate token + active slot, or refuse without waiting.
+
+    Every POST calls this only after its bounded body and transport shape have been accepted, but
+    before model/verifier/worker work. The same seam is reserved for M5 replay's POST route.
+    """
+    admission = cast("AdmissionController", state["admission"])
+    permit = admission.try_acquire()
+    if permit is None:
+        raise HTTPException(
+            detail=_ADMISSION_REFUSAL_DETAIL, status_code=HTTP_429_TOO_MANY_REQUESTS
+        )
+    return permit
 
 
 @post(
@@ -140,7 +167,8 @@ async def verify_only_route(request: Request[Any, Any, Any], state: State) -> Ve
     _require_json(request)
     raw = await request.body()
     settings = cast("Settings", state["settings"])
-    outcome = await sync_to_thread(verify_only, raw, settings)
+    with _admit_work(state) as permit:
+        outcome = await permit.run_sync(verify_only, raw, settings)
     return outcome.verdict
 
 
@@ -163,7 +191,10 @@ async def verify_and_render_route(
     raw = await request.body()
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
-    return await sync_to_thread(verify_and_render, raw, settings, store, include_html=include_html)
+    with _admit_work(state) as permit:
+        return await permit.run_sync(
+            verify_and_render, raw, settings, store, include_html=include_html
+        )
 
 
 # The /propose-spec request body is a small typed JSON object (unlike the raw-body POSTs, whose
@@ -200,7 +231,7 @@ def _verify_render_pinned(
     and refuses an off-request name BEFORE any trusted dataset I/O: a decode failure has no name to
     pin, so the 200 decode verdict flows (the metered failure mode); any other off-request name
     (its manifest present, broken, or absent alike) is a uniform 502, never a 500 or a store.
-    CPU-bound + synchronous (the route offloads it via sync_to_thread); the 502 HTTPException
+    CPU-bound + synchronous (the route offloads it via the admitted permit); the 502 HTTPException
     rides the plain HTTPException handler, so its detail names no dataset."""
     decoded = decode_stage(raw)
     if isinstance(decoded, Verdict):
@@ -230,18 +261,19 @@ async def propose_spec_route(
     under Content-Disposition: inline plus a Location header at GET /chart/{plot_id} on
     settings.public_base_url, so the chat UI renders the certified chart in a sandboxed iframe
     while the model sees only the lean summary string; every non-verified outcome keeps its prior
-    body byte-for-byte. The model call is async; the CPU-bound verify+render runs off the event
-    loop via sync_to_thread.
+    body byte-for-byte. The model call is async; the admitted permit spans it, then transfers to
+    the CPU-bound verify+render worker off the event loop.
     """
     _require_json(request)
     raw = await request.body()
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
     req = _decode_propose_request(raw)
-    content = await propose_spec(req.user_request, req.dataset_name, settings)
-    verdict = await sync_to_thread(
-        _verify_render_pinned, content, req.dataset_name, settings, store
-    )
+    with _admit_work(state) as permit:
+        content = await propose_spec(req.user_request, req.dataset_name, settings)
+        verdict = await permit.run_sync(
+            _verify_render_pinned, content, req.dataset_name, settings, store
+        )
     result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
     if not isinstance(verdict, RenderVerdict):
         return result
@@ -344,8 +376,11 @@ def openapi_route() -> Response[bytes]:
 
 
 def _problem_response(status: int, detail: str) -> Response[Problem]:
-    """An RFC 9457 application/problem+json response (transport/server faults only). Carries the
-    nosniff default explicitly — layered response_headers do not reach exception responses."""
+    """An RFC 9457 response for a non-verdict HTTP outcome (misuse/admission/system fault).
+
+    Carries the nosniff default explicitly — layered response headers do not reach exception
+    responses.
+    """
     problem = Problem(title=HTTPStatus(status).phrase, status=status, detail=detail)
     return Response(
         problem,
@@ -356,7 +391,7 @@ def _problem_response(status: int, detail: str) -> Response[Problem]:
 
 
 def _http_exception_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
-    """Render a Litestar HTTPException (415/413/405/404/...) as problem+json."""
+    """Render a Litestar HTTPException (415/413/429/405/404/...) as problem+json."""
     http_exc = cast("HTTPException", exc)
     return _problem_response(http_exc.status_code, http_exc.detail)
 
@@ -367,8 +402,9 @@ def _internal_exception_handler(
     """Log any uncaught exception, then answer a generic 500 problem+json.
 
     Reached by a trusted operator-config fault (a broken, unreadable, or mispaired manifest)
-    or an implementation/native-render fault. Resource-policy refusals stay structured 200
-    verdicts and do not reach this handler. The handler logs the cause and traceback itself —
+    or an implementation/native-render fault. Core resource-policy refusals stay structured 200
+    verdicts; pre-work service admission refuses separately with 429. Neither reaches this
+    handler. The handler logs the cause and traceback itself —
     Litestar does NOT log an exception a custom handler catches, so without this the fault
     would vanish from every log — then withholds the cause from the untrusted caller; see the
     pipeline error split.
@@ -404,6 +440,9 @@ def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) ->
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
     store = ArtifactStore(settings.store_cap, html_cap=settings.html_cap)
+    admission = AdmissionController(
+        settings.max_active_jobs, settings.work_rate_per_minute, settings.work_burst
+    )
     return Litestar(
         route_handlers=[
             health,
@@ -415,7 +454,7 @@ def create_app(settings: Settings) -> Litestar:
             chart_route,
             openapi_route,
         ],
-        state=State({"settings": settings, "store": store}),
+        state=State({"settings": settings, "store": store, "admission": admission}),
         request_max_body_size=settings.max_body_bytes,
         # nosniff on every response: the GETs and render serve stored/JSON-embedded bytes, and
         # the M1 hardening note keeps nosniff on any served artifact; the chart route layers a

@@ -60,6 +60,13 @@ Cross-session live context + lessons. Trajectory: `roadmap.md` + git. Process: `
   owns every service/core/proposer/cache/admission scalar; exact signed-64-bit resource integers,
   eager derived `settings.limits`, and overflow-safe per-item cache compatibility validate at
   startup. `from_env` is the sole ambient read; core/service work consumes that one snapshot.
+- Admission (M5.1f): `create_app` owns one process-local `AdmissionController`; `_admit_work` is
+  the shared all-POST + future-replay seam after bounded transport/typed-body validation. One lock
+  protects active count + exact minute-nanosecond credit (`elapsed_ns * rate`; clock sampled under
+  that lock); capacity refusal spends no token. Refusal = RFC-9457 429 before model/worker work.
+  `JobPermit` covers async model wait, then transfers to a shielded worker whose synchronous
+  `finally` releases it; request cancellation therefore retains capacity until uncancellable
+  native work/storage ends. Canonical `workers=1` = one gate; more processes multiply policy.
 - Formal scope: Z3 checks bounded CONCRETE table/builder obligations (canonical order, bar zero, discrete legend exactness). It is a second trusted checker, not a universal proof; `unknown`/timeout/error blocks. Every public `verified=true`, including verify-only, passes SMT; render reuses that exact prepared Vega without rebuild/re-solve. Each worker invocation owns an explicit Z3 Context because contexts are not thread-safe. Aggregation stays deterministic recomputation. Check method travels in verdict + VCert; Z3 version joins TCB.
 - Resource order: bounded reads/rows/cells/output/model replies + payload-byte LRUs + global rate/active-job admission gate the corresponding model/Z3/native work; an active-job permit spans proposer wait, CPU work, and archive commit. A cancelled request retains it until any uncancellable worker exits. Transactional LOGICAL archive quota gates commit. Policy failure = structured non-chart outcome; cache/archive bounds make no Python-object/SQLite-page/filesystem-overhead claim, and archive quota refuses without eviction.
 - Signing: VCert v0.2 binds dataset/manifest/spec/table + exact emitted Vega hashes (SVG remains display TCB), then DSSE PAE authenticates exact payload bytes + application type; Ed25519 via PyCA. `keyid` only selects candidate keys; current signer + explicitly configured historical pins form trust, never archive/public-key presence. Claim = possession of independently pinned public key, with no PKI/operator-identity/transparency/timestamp-authority implication. Verifier parses the SAME payload bytes it verified (DSSE load-bearing rule).

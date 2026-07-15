@@ -82,8 +82,11 @@ export PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python:$PYTHONPATH
 ```
 Verifier :8000 (defaults already point `VERIFIER_MODEL_BASE_URL` → :8001/v1; imports no OpenVINO):
 ```
-.venv/bin/python -m verifier.service
+VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
+  .venv/bin/python -m verifier.service
 ```
+The explicit high admission rate keeps this 128-request measurement recipe from classifying an
+operator throttle as model behavior; production defaults remain unchanged.
 Eval:
 ```
 .venv/bin/python -m bench                      # ~10 min: 100 prompts, greedy, ~6s each on NPU

@@ -78,6 +78,9 @@ def test_live_socket_health_and_verify(tmp_path: Path) -> None:
         "VERIFIER_DATA_DIR": str(_DATA),
         "VERIFIER_HOST": "127.0.0.1",
         "VERIFIER_PORT": str(port),
+        # Keep the live transport recipe explicit: this smoke probes socket wiring, not admission.
+        "VERIFIER_WORK_RATE_PER_MINUTE": "1000",
+        "VERIFIER_WORK_BURST": "1000",
     }
     env.pop("PYTHONPATH", None)
     with stderr_path.open("wb") as stderr_file:

@@ -36,8 +36,13 @@ state; `.webui-data/` is ignored and disposable.
 
 ```sh
 rm -rf .webui-data
-uv run --locked python -m verifier.service
+VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
+  uv run --locked python -m verifier.service
 ```
+
+This deterministic integration smoke explicitly raises the process-local work rate so repeated
+tool probes exercise Open WebUI rather than admission policy; production defaults stay in force
+when these overrides are absent.
 
 Wait for the verifier before proceeding:
 

@@ -193,6 +193,10 @@ def _paths() -> dict[str, Any]:
     problems_post = {
         "413": _problem_response("The request body exceeded the configured size cap."),
         "415": _problem_response("The Content-Type was not application/json."),
+        "429": _problem_response(
+            "The process-local rate or active-job admission gate refused the work before model, "
+            "verification, or render execution. Each service process owns an independent gate."
+        ),
         "500": _problem_response("The verifier hit an internal operator-config fault."),
     }
     not_found = {"404": _problem_response("No stored artifact for that id, or a malformed id.")}

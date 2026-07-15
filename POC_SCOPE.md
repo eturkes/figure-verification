@@ -85,13 +85,27 @@ The transport reports two kinds of outcome and never confuses them:
   all — is a `200` carrying a structured verdict. A decode failure is an expected model
   failure mode, not a transport error, so it rides the verdict envelope like any other
   blocked spec; a chart is attached only when the verdict is verified, never otherwise.
-- **Transport misuse or a trusted-system fault** — a wrong `Content-Type` (415), an oversize
+- **A non-verification HTTP outcome** — a wrong `Content-Type` (415), an oversize
   body (413), a wrong method (405), an uncoercible query parameter like a non-boolean
-  `include_html` (400), an unknown or malformed artifact id (404), or a broken trusted
+  `include_html` (400), process-local work admission refusal (429), an unknown or malformed
+  artifact id (404), or a broken trusted
   manifest / implementation or native-render fault (500) — answers an RFC 9457
   `application/problem+json` document. Resource ceilings are verification outcomes, so they
   return a failed verdict before artifact storage. A 500 remains outside the verification
   contract; its cause stays in the server log, never in the caller's response.
+
+Each application process owns one lock-safe token bucket and active-job gate shared by every POST
+route. The defaults admit a burst of 120 jobs, refill at 120 jobs/minute, and allow 2 active jobs.
+Bounded body reads and transport-shape validation run first, preserving their 400/413/415 outcomes;
+then a caller either acquires both controls immediately or receives 429 before model, verifier, or
+native-render work. The permit spans async model wait and the full worker operation through
+artifact storage. If the request is cancelled while its worker is running, the worker retains the
+permit until it actually exits - Python cannot cancel that native thread safely.
+
+This admission is logical and process-local, not distributed resource accounting. The canonical
+single-worker uvicorn process has one gate; running multiple service processes multiplies the
+configured aggregate rate and active capacity. Operators tune the three controls with
+`VERIFIER_WORK_RATE_PER_MINUTE`, `VERIFIER_WORK_BURST`, and `VERIFIER_MAX_ACTIVE_JOBS`.
 
 Verified render certificates + canonical specs live in one bounded in-memory LRU; the much larger
 offline chart pages live in a second, independently bounded LRU. Both are addressable by the

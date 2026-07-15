@@ -128,7 +128,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Acceptance: exhaustive direct/env/default/invalid/cross-field matrix; every
   core/proposer/cache/admission bound has one typed setting and no ambient read outside `from_env`;
   gate green.
-- **M5.1f — process-local service admission** (OPEN): implement a lock-safe global token bucket
+- **M5.1f — process-local service admission** (DONE): implement a lock-safe global token bucket
   with integer monotonic-nanosecond accounting plus a nonblocking active-job capacity gate. Apply
   both before model/worker work on every current POST route and expose the same seam for M5 replay;
   retain the active-job permit through model wait, CPU verification/render, and archive commit so

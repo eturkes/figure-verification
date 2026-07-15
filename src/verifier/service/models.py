@@ -8,8 +8,9 @@ misuse). RenderVerdict extends that envelope with the render artifacts POST
 /verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
 content-addressed ids, and the four cert-verbatim hashes); a FAILING verify-and-render
 answers a plain Verdict, so a chart never rides an unverified outcome. Problem is the RFC
-9457 application/problem+json body the app's exception handlers emit for transport misuse
-or a server-config fault (wrong content-type, oversize body, a broken trusted manifest) —
+9457 application/problem+json body the app's exception handlers emit for transport misuse,
+process-local admission refusal, or a server-config fault (wrong content-type, oversize body,
+work gate exhausted, a broken trusted manifest) —
 never a verification outcome. CheckResult is reused verbatim from the trusted core
 (verifier.checks) — the transport adds no result struct or status/severity of its own. It
 does mint two fail-closed check tags the core never emits — `spec.decode` (the raw body
@@ -82,7 +83,7 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
 
 
 class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
-    """RFC 9457 problem detail for a transport or server-config fault.
+    """RFC 9457 detail for transport misuse, admission refusal, or a server-config fault.
 
     `type` defaults to the RFC's "about:blank" (omitted when default), `title` is the HTTP
     status reason phrase, `status` the code, `detail` the occurrence-specific message. A

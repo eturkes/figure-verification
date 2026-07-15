@@ -160,6 +160,14 @@ def test_post_bodies_reference_vplotspec() -> None:
         }
 
 
+def test_every_post_documents_process_local_admission_refusal() -> None:
+    problem_ref = {"$ref": "#/components/schemas/Problem"}
+    for path in ("/verify-only", "/verify-and-render", "/propose-spec"):
+        response = _DOC["paths"][path]["post"]["responses"]["429"]
+        assert "process-local" in response["description"]
+        assert response["content"]["application/problem+json"]["schema"] == problem_ref
+
+
 def _payload(instance: msgspec.Struct) -> Any:
     """A response struct as its decoded-JSON form — the exact shape the service encodes."""
     return json.loads(msgspec.json.encode(instance))
