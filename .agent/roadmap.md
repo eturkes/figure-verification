@@ -221,7 +221,7 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   a–c each touch one webui module + its bench-style tests and leave the full gate green; d carries docs +
   live evidence. Filter id = `verified_plot_guard`, name = `Verified Plot Guard`; every bootstrap updates
   its source before converging flags, so code upgrades + reruns are idempotent.
-- **M4.4a — standalone classifier + Filter payload** (OPEN): add stdlib-only
+- **M4.4a — standalone classifier + Filter payload** (DONE): added stdlib-only
   `webui/enforcement_filter.py`, itself the exact source posted to Open WebUI (`function_source()` reads the
   module bytes; no repo imports/Pydantic/frontmatter requirements). Pure `chart_signals(text) -> tuple[str,
   ...]` detects fenced matplotlib/pyplot/plotly/altair/seaborn code, fenced mermaid, raw `<svg`, parsed
@@ -230,7 +230,8 @@ cited notes. Land a→b→c in order (b's store + c's route/capture depend leftw
   + character count, never the content. Pin each positive class, combinations/dedup/order, malformed/body
   no-op shapes, ordinary prose/library discussion, verifier summary + Location/embed metadata negatives,
   fixed replacement, metadata preservation, and import-exec of `function_source()` in
-  `tests/test_webui_enforcement_filter.py`. Acceptance: targeted suite + full gate green.
+  `tests/test_webui_enforcement_filter.py`. Landed as specified: the exact payload import-executes under
+  Open WebUI's Python 3.12; 31 focused cases + full gate green (800 tests, 100% verifier branch coverage).
 - **M4.4b — idempotent function REST convergence** (OPEN): extend `webui/client.py` with a loose internal
   function-state struct and `ensure_global_filter(*, function_id, name, content, description) -> None`.
   Authenticated GET chooses create on 401 or update on 200; every other status fails loud. Decode/check every
