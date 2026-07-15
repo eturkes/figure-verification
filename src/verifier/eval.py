@@ -15,10 +15,19 @@ before an aggregate, a filter literal that cannot coerce to its column, a non-di
 name — raise VerificationError mid-recompute with a dotted `.check` (the enforce half of
 VPlot_SEMANTICS.md section 5; M1.5 surfaces each as a structured blocking result). The renderer is
 never reached when a check fails.
+
+M5.1i adds deterministic logical-work admission. ``evaluate_run`` returns the same table plus
+consumed units for internal audit; ``evaluate`` remains its table-only projection. Every transform
+and the final closure charges before its implementation starts. The formulas model bounded logical
+visits, not CPU time: select=fields*(rows+columns), filter=rows+columns,
+group_by=keys*columns, aggregate=(keys+measures)*(rows+columns), and each declared sort=
+rows*ceil(log2(max(rows,2)))*keys. The closure uses that sort formula with every final column.
 """
 
 import operator
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from decimal import Decimal
 from fractions import Fraction
 from typing import Any, cast
@@ -52,6 +61,60 @@ _CMP: dict[CmpOp, Callable[[Any, Any], bool]] = {
 }
 
 
+class EvaluationError(VerificationError):
+    """An evaluator failure carrying work admitted before the failure.
+
+    This preserves every existing ``VerificationError`` check/message contract while allowing the
+    verification spine to retain deterministic work consumption on semantic and resource failures.
+    """
+
+    def __init__(self, message: str, *, check: str, work_units: int) -> None:
+        super().__init__(message, check=check)
+        self.work_units = work_units
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRun:
+    """Successful recomputation plus its internal deterministic work consumption."""
+
+    table: canon.Table = dataclass_field(repr=False)
+    work_units: int
+
+
+@dataclass(slots=True)
+class _WorkBudget:
+    """One evaluator's cumulative inclusive work ceiling."""
+
+    limit: int
+    consumed: int = 0
+
+    def charge(self, operation: str, required: int) -> None:
+        """Admit ``required`` atomically, or fail before ``operation`` starts."""
+        if required > self.limit - self.consumed:
+            msg = (
+                f"evaluator work limit {self.limit} would be exceeded before {operation}: "
+                f"{self.consumed} consumed + {required} required"
+            )
+            raise EvaluationError(
+                msg,
+                check="resource.eval_work",
+                work_units=self.consumed,
+            )
+        self.consumed += required
+
+
+def _linear_work(table: canon.Table, width: int) -> int:
+    """Logical visits for a row/column-linear operation of ``width`` fields/keys."""
+    return (len(table.rows) + len(table.columns)) * width
+
+
+def _sort_work(table: canon.Table, key_count: int) -> int:
+    """Roadmap formula using integer-only ceil(log2(max(rows, 2)))."""
+    rows = len(table.rows)
+    log_rows = (max(rows, 2) - 1).bit_length()
+    return rows * log_rows * key_count
+
+
 def evaluate(
     spec: VPlotSpec,
     manifest: ingest.Manifest,
@@ -59,7 +122,44 @@ def evaluate(
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> canon.Table:
-    """Recompute the plotted table from trusted inputs, or raise VerificationError.
+    """Public table-only projection of :func:`evaluate_run`."""
+    return evaluate_run(spec, manifest, csv_bytes, limits=limits).table
+
+
+def evaluate_run(
+    spec: VPlotSpec,
+    manifest: ingest.Manifest,
+    csv_bytes: bytes,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> EvaluationRun:
+    """Recompute with deterministic work admission and retain consumed units internally.
+
+    Every ``VerificationError`` arising after entry is re-raised as ``EvaluationError`` with the
+    already-admitted work count. Programming/configuration exceptions retain their native types.
+    """
+    budget = _WorkBudget(limit=limits.max_eval_work_units)
+    try:
+        return _evaluate(spec, manifest, csv_bytes, limits=limits, budget=budget)
+    except EvaluationError:
+        raise
+    except VerificationError as exc:
+        raise EvaluationError(
+            str(exc),
+            check=exc.check,
+            work_units=budget.consumed,
+        ) from exc
+
+
+def _evaluate(
+    spec: VPlotSpec,
+    manifest: ingest.Manifest,
+    csv_bytes: bytes,
+    *,
+    limits: VerificationLimits,
+    budget: _WorkBudget,
+) -> EvaluationRun:
+    """Implementation behind ``evaluate_run``; all costly calls follow their charge.
 
     Loads the source table (ingest), folds the transform ops in declared order, then applies
     the section 6 total-sort closure. A group_by must be immediately followed by an aggregate
@@ -73,18 +173,27 @@ def evaluate(
             msg = "group_by must be immediately followed by an aggregate"
             raise VerificationError(msg, check="transform.group_by_placement")
         if isinstance(op, Select):
+            budget.charge("select", _linear_work(table, len(op.fields)))
             table = _apply_select(table, op)
         elif isinstance(op, Filter):
+            budget.charge("filter", _linear_work(table, 1))
             table = _apply_filter(table, op)
         elif isinstance(op, GroupBy):
+            budget.charge("group_by", len(table.columns) * len(op.keys))
             _require_distinct(op.keys, "group_by.keys_distinct", "group_by key")
             for key in op.keys:
                 _field_index(table, key)  # schema.fields_exist (raises if absent)
             pending_keys = op.keys
         elif isinstance(op, Aggregate):
+            key_count = len(pending_keys) if pending_keys is not None else 0
+            budget.charge(
+                "aggregate",
+                _linear_work(table, key_count + len(op.measures)),
+            )
             table = _apply_aggregate(table, op, pending_keys)
             pending_keys = None
         else:  # Sort (last union variant; reachable, so warn_unreachable stays satisfied)
+            budget.charge("sort", _sort_work(table, len(op.by)))
             _validate_sort(table, op)  # every sort is validated; active_sort picks the applied one
     if pending_keys is not None:
         msg = "group_by must be immediately followed by an aggregate"
@@ -93,7 +202,9 @@ def evaluate(
     active_keys: list[tuple[str, str]] = (
         [(key.field, key.order) for key in active.by] if active is not None else []
     )
-    return _total_sort(table, active_keys)
+    budget.charge("closure", _sort_work(table, len(table.columns)))
+    plotted = _total_sort(table, active_keys)
+    return EvaluationRun(table=plotted, work_units=budget.consumed)
 
 
 def active_sort(transform: tuple[Transform, ...]) -> Sort | None:

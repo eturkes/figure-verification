@@ -193,10 +193,12 @@ bytes, §8.)
   non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
 - RESOURCE POLICY (M5, `resource.*`) = inclusive logical ceilings over trusted inputs and later
   work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation surfaces its
-  tagged failure before later work at that boundary. Core verification currently covers raw
-  manifest/CSV bytes, manifest columns, source logical rows/cells, and final plotted cells. Later
-  M5 units extend the same vocabulary to evaluator work, formal checks, render artifacts,
-  transport admission, and provenance.
+  tagged failure before work at that boundary. Core verification covers raw manifest/CSV bytes,
+  manifest columns, source rows/cells, deterministic evaluator work, and final plotted cells.
+  Rendering/service boundaries additionally cover render rows/artifact bytes, request/prompt/model
+  response bytes, prompt tokens, request rate, and active jobs. Later M5 units extend the same
+  vocabulary to formal checks and durable provenance. Evaluator work units are deterministic
+  logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
   baseline, units present. Outcome: structured `{check, status, message, severity}`; any blocking

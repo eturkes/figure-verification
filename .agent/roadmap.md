@@ -164,15 +164,17 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   post-fix NPU probe compiled `MAX_PROMPT_LEN=20`, reported 20 native input tokens at that exact
   boundary, then returned `prompt_too_long` for an over-bound request. Acceptance: the formerly
   unexercised NPU static-shape overflow is preflighted and cannot enter generation; gate green.
-- **M5.1i — deterministic evaluator work budget** (OPEN): add a 10_000_000 configurable integer
-  work-unit budget inside `eval.evaluate`, charged BEFORE each operation from current
-  rows/columns/keys
-  (`sort = rows*ceil(log2(max(rows,2)))*keys`; linear ops/aggregate + final closure get explicit
-  integer formulas). This is deterministic admission accounting, not a wall-time promise. Raise
-  `resource.eval_work` before the operation that would cross the total; expose consumed units in
-  internal trace for audit. Acceptance: exact-bound/cumulative/many-sort/group-heavy matrices,
-  spy proof the rejected op never starts, row-reducing filters lower later cost, and corpus stays
-  below the default; gate green.
+- **M5.1i — deterministic evaluator work budget** (DONE): `eval.evaluate_run` cumulatively charges
+  each transform + closure before entry and returns table + consumed units; the existing
+  `evaluate` API remains its table-only projection. Integer formulas: select = fields ×
+  (rows+columns), filter = rows+columns, group staging = keys × columns, aggregate =
+  (keys+measures) × (rows+columns), sort = rows × ceil(log2(max(rows,2))) × keys, closure = the
+  sort formula over every final column. `EvaluationError` preserves the prior check/message while
+  carrying admitted units through semantic/resource failures; `VerificationTrace` retains them
+  without public serialization. This is logical admission accounting, not a wall-time claim.
+  Exact/cumulative/many-sort/group-heavy matrices, all-six-boundary no-start tripwires,
+  filter-reduction differential, service trace propagation, and the full corpus pin pass; gate
+  green.
 - **M5.1j — payload-byte-bounded artifact LRUs** (OPEN): extend `ArtifactStore`'s existing count
   caps with independent exact payload-byte ceilings for render/spec and chart LRUs (defaults 32
   MiB + 128 MiB); shared specs count once, replacements adjust totals, and oldest entries evict

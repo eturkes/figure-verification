@@ -3,8 +3,8 @@
 
 `VerificationLimits` is immutable trusted operator policy. Each positive integer is an
 upper bound, inclusive: work at the boundary is admitted and boundary+1 fails closed.
-Later M5 units thread the relevant fields into their owning boundary; M5.1a establishes
-the complete vocabulary and applies ingest limits.
+M5.1a established the complete vocabulary; owner modules consume their relevant fields directly,
+keeping policy threading explicit and ambient-state-free.
 
 `read_bounded` performs an unbuffered chunked read capped at `max_bytes + 1`, avoiding
 `stat`-then-read races and hidden buffered read-ahead. It preserves filesystem exception

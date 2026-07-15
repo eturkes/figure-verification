@@ -10,6 +10,7 @@ every VPlot_SEMANTICS.md section 7 channel-type ↔ column-kind pair behaviorall
 coverage cannot reach individual map entries); direct unit_source tests pin every arm of
 the count-exempt position-aware unit lineage (terminating + sound on reused output names). A
 Hypothesis property pins the spine invariant: successful evidence equals eval's recomputation.
+M5 matrices pin incremental input + evaluator-work trace retention across every resource gate.
 """
 
 import json
@@ -29,7 +30,7 @@ from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
 from verifier.limits import VerificationLimits
-from verifier.schema import Aggregate, Measure, VPlotSpec, decode_spec
+from verifier.schema import Aggregate, Filter, Measure, VPlotSpec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -95,13 +96,15 @@ _LIMIT_FACTORIES: dict[str, Callable[[int], VerificationLimits]] = {
     "source-rows": lambda value: VerificationLimits(max_source_rows=value),
     "source-cells": lambda value: VerificationLimits(max_source_cells=value),
     "plotted-cells": lambda value: VerificationLimits(max_plotted_cells=value),
+    "eval-work": lambda value: VerificationLimits(max_eval_work_units=value),
 }
 _RESOURCE_BOUNDARIES = [
-    ("manifest-bytes", len(_RESOURCE_MANIFEST_BYTES), "resource.file_bytes", "none"),
-    ("csv-bytes", len(_RESOURCE_CSV_BYTES), "resource.file_bytes", "manifest"),
-    ("source-rows", 2, "resource.source_rows", "both"),
-    ("source-cells", 4, "resource.source_cells", "both"),
-    ("plotted-cells", 4, "resource.plotted_cells", "both"),
+    ("manifest-bytes", len(_RESOURCE_MANIFEST_BYTES), "resource.file_bytes", "none", 0),
+    ("csv-bytes", len(_RESOURCE_CSV_BYTES), "resource.file_bytes", "manifest", 0),
+    ("source-rows", 2, "resource.source_rows", "both", 0),
+    ("source-cells", 4, "resource.source_cells", "both", 0),
+    ("plotted-cells", 4, "resource.plotted_cells", "both", 4),
+    ("eval-work", 4, "resource.eval_work", "both", 0),
 ]
 
 
@@ -154,11 +157,11 @@ def test_corpus_split_covers_each_layer() -> None:
 )
 def test_verification_resource_limit_boundary(
     tmp_path: Path,
-    case: tuple[str, int, str, str],
+    case: tuple[str, int, str, str, int],
     limit_delta: int,
     admission: str,
 ) -> None:
-    resource, boundary, failure_check, failure_trace = case
+    resource, boundary, failure_check, failure_trace, failure_work = case
     spec, raw = _resource_case(tmp_path)
     limits = _LIMIT_FACTORIES[resource](boundary + limit_delta)
     run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path, limits=limits)
@@ -168,11 +171,13 @@ def test_verification_resource_limit_boundary(
         expected_source = raw if failure_trace == "both" else None
         assert run.trace.manifest_bytes == expected_manifest
         assert run.trace.source_bytes == expected_source
+        assert run.trace.eval_work_units == failure_work
         assert run.evidence is None
     else:
         assert run.report.passed
         assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
         assert run.trace.source_bytes == raw
+        assert run.trace.eval_work_units == 4
         assert run.evidence is not None
 
 
@@ -189,6 +194,7 @@ def test_success_evidence_binds_exact_inputs_hashes_and_results(tmp_path: Path) 
     assert evidence.spec_hash == canon.hash_spec(spec)
     assert evidence.plotted_table_hash == canon.hash_table(evidence.plotted_table)
     assert evidence.results == run.report.results
+    assert run.trace.eval_work_units == 4
     assert raw.decode() not in repr(run)  # sensitive snapshots are repr-suppressed
 
 
@@ -256,7 +262,7 @@ def test_csv_byte_failure_stops_before_evaluate(
         msg = "evaluate ran after the CSV byte gate failed"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    monkeypatch.setattr(checks, "evaluate_run", _no_eval)
     run = checks.verify_run(
         spec,
         _RESOURCE_MANIFEST_BYTES,
@@ -281,7 +287,7 @@ def test_hash_failure_retains_both_inputs_and_stops_before_evaluate(
         msg = "evaluate ran after dataset binding failed"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    monkeypatch.setattr(checks, "evaluate_run", _no_eval)
     run = checks.verify_run(mismatched, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
     assert _failing_checks(run) == {"dataset.hash_matches_source"}
     assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
@@ -306,6 +312,35 @@ def test_semantic_failure_retains_both_inputs_and_stops_before_encoding(
     assert _failing_checks(run) == {"schema.fields_exist"}
     assert run.trace.manifest_bytes == manifest_bytes
     assert run.trace.source_bytes == source_bytes
+    assert run.trace.eval_work_units > 0
+    assert run.evidence is None
+
+
+def test_cumulative_eval_work_failure_retains_consumed_units_and_stops_encoding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, raw = _resource_case(tmp_path)
+    filtered = msgspec.structs.replace(
+        spec,
+        transform=(Filter(field="k", cmp="eq", value="a"),),
+    )
+
+    def _no_encoding(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "encoding checks ran after evaluator work admission failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "_encoding_checks", _no_encoding)
+    # filter=(2 rows+2 columns)=4 is admitted exactly; the 1x2 closure then crosses.
+    run = checks.verify_run(
+        filtered,
+        _RESOURCE_MANIFEST_BYTES,
+        data_dir=tmp_path,
+        limits=VerificationLimits(max_eval_work_units=4),
+    )
+    assert _failing_checks(run) == {"resource.eval_work"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes == raw
+    assert run.trace.eval_work_units == 4
     assert run.evidence is None
 
 
@@ -758,7 +793,7 @@ def test_binding_failure_short_circuits_eval(
         msg = "evaluate ran after a binding failure short-circuit"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(checks, "evaluate", _no_eval)
+    monkeypatch.setattr(checks, "evaluate_run", _no_eval)
     spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
     run = checks.verify_run(
         spec, _manifest_bytes_for(spec.dataset.name), data_dir=tmp_path

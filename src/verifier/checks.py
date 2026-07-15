@@ -29,13 +29,13 @@ semantic gate fails. Hashes and recomputed data cross the renderer boundary only
 ``RecomputedEvidence``.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
-from verifier.eval import evaluate
+from verifier.eval import EvaluationError, evaluate_run
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
 from verifier.schema import Aggregate, ChannelType, VPlotSpec, _Base
 
@@ -64,14 +64,17 @@ class VerificationReport(_Base, frozen=True, kw_only=True):
 
 @dataclass(frozen=True, slots=True)
 class VerificationTrace:
-    """Successfully admitted exact inputs, retained incrementally for local audit only.
+    """Successfully admitted inputs/work, retained incrementally for local audit only.
 
     ``None`` means that input never crossed its byte/read gate. Raw bytes stay out of reprs
-    because source/manifest content may be sensitive; the service never serializes this type.
+    because source/manifest content may be sensitive. ``eval_work_units`` is the cumulative
+    deterministic admission charge before evaluator success/failure; the service never serializes
+    this type.
     """
 
     manifest_bytes: bytes | None = field(repr=False)
     source_bytes: bytes | None = field(repr=False)
+    eval_work_units: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,10 +329,11 @@ def verify_run(
     A trusted manifest parse/mispair fault remains an exception; resource, binding, data, eval,
     plotted-size, and encoding failures become structured reports under their own check tags.
 
-    Inputs enter ``VerificationTrace`` only after their byte/read gate succeeds. Evidence is
-    minted only after every gate passes and carries all four current canonical hashes alongside
-    the exact snapshots and recomputation. It means eligible for later builder/formal checks,
-    never already rendered or certified.
+    Inputs enter ``VerificationTrace`` only after their byte/read gate succeeds; evaluator work is
+    retained after its attempt, including a structured failure. Evidence is minted only after every
+    gate passes and carries all four current canonical hashes alongside the exact snapshots and
+    recomputation. It means eligible for later builder/formal checks, never already rendered or
+    certified.
     """
     admitted = _admit_manifest(manifest_bytes, limits)
     if isinstance(admitted, VerificationRun):
@@ -351,10 +355,13 @@ def verify_run(
     source_bytes = cast("bytes", raw)
     admitted_dataset_hash = cast("str", dataset_hash)
     try:
-        plotted = evaluate(spec, manifest, source_bytes, limits=limits)
-    except VerificationError as exc:
+        evaluated = evaluate_run(spec, manifest, source_bytes, limits=limits)
+    except EvaluationError as exc:
+        trace = replace(trace, eval_work_units=exc.work_units)
         results.append(_fail(exc.check, str(exc)))
         return _failed_run(results, trace)
+    plotted = evaluated.table
+    trace = replace(trace, eval_work_units=evaluated.work_units)
 
     plotted_cells = len(plotted.columns) * len(plotted.rows)
     if plotted_cells > limits.max_plotted_cells:

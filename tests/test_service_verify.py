@@ -81,6 +81,7 @@ def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
     passed = pipeline.verify_only(raw, settings)
     assert passed.trace.manifest_bytes == manifest_bytes
     assert passed.trace.source_bytes == source_bytes
+    assert passed.trace.eval_work_units > 0
     assert passed.evidence is not None
     assert passed.evidence.manifest_bytes == manifest_bytes
     assert passed.evidence.source_bytes == source_bytes
@@ -90,6 +91,7 @@ def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
     )
     assert hash_failure.trace.manifest_bytes == manifest_bytes
     assert hash_failure.trace.source_bytes == source_bytes
+    assert hash_failure.trace.eval_work_units == 0
     assert hash_failure.evidence is None
 
     decode_failure = pipeline.verify_only(b"not JSON", settings)

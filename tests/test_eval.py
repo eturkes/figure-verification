@@ -9,19 +9,22 @@ placement, whole-table + multi-measure aggregates, count/min/max/null semantics,
 coercion, and the section 6 closure's null-greatest ordering). M1.4e completes the good-spec
 corpus row-for-row (g02/g03/g06-g10), passes the M1.5-layer specs (b08/b11/b12/b13) through eval
 without error, and anchors determinism: a semantically no-op spec edit leaves the plotted-table
-hash fixed while only the spec hash moves.
+hash fixed while only the spec hash moves. M5.1i adds exact/cumulative work-admission matrices,
+pre-operation tripwires, cost-sensitive filter/sort/group cases, and the default-budget corpus pin.
 """
 
 import itertools
 import pathlib
 from decimal import Decimal
+from typing import NoReturn
 
 import msgspec
 import pytest
 
 from verifier import canon
+from verifier import eval as eval_module
 from verifier.errors import VerificationError
-from verifier.eval import active_sort, evaluate, mean_at_scale
+from verifier.eval import EvaluationError, active_sort, evaluate, evaluate_run, mean_at_scale
 from verifier.ingest import (
     Manifest,
     ManifestColumn,
@@ -30,6 +33,7 @@ from verifier.ingest import (
     TemporalColumnSpec,
     load_manifest,
 )
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import (
     Aggregate,
     Measure,
@@ -75,6 +79,219 @@ def _evaluate(
 ) -> canon.Table:
     """Evaluate an inline spec against an inline (manifest columns, CSV bytes) fixture."""
     return evaluate(_spec(transform), Manifest(dataset="t.csv", columns=columns), csv_bytes)
+
+
+def _work_units(
+    transform: list[dict[str, object]], columns: tuple[ManifestColumn, ...], csv_bytes: bytes
+) -> int:
+    """Run one inline fixture and return its internal deterministic work accounting."""
+    run = evaluate_run(_spec(transform), Manifest(dataset="t.csv", columns=columns), csv_bytes)
+    return run.work_units
+
+
+# --- M5.1i deterministic evaluator work admission ---------------------------
+_WORK_COLUMNS = (
+    NumericColumnSpec(name="x", scale=0),
+    NumericColumnSpec(name="y", scale=0),
+)
+_WORK_CSV = b"x,y\n1,10\n2,20\n"
+
+
+@pytest.mark.parametrize(
+    ("operation", "transform", "helper", "limit"),
+    [
+        (
+            "select",
+            [{"op": "select", "fields": ["x", "y"]}],
+            "_apply_select",
+            7,
+        ),
+        (
+            "filter",
+            [{"op": "filter", "field": "x", "cmp": "ge", "value": 1}],
+            "_apply_filter",
+            3,
+        ),
+        (
+            "group_by",
+            [{"op": "group_by", "keys": ["x", "y"]}],
+            "_require_distinct",
+            3,
+        ),
+        (
+            "aggregate",
+            [{"op": "aggregate", "measures": [{"field": "x", "fn": "sum", "as": "s"}]}],
+            "_apply_aggregate",
+            3,
+        ),
+        (
+            "sort",
+            [
+                {
+                    "op": "sort",
+                    "by": [
+                        {"field": "x", "order": "ascending"},
+                        {"field": "y", "order": "ascending"},
+                    ],
+                }
+            ],
+            "_validate_sort",
+            3,
+        ),
+        ("closure", [], "_total_sort", 3),
+    ],
+)
+def test_work_refusal_precedes_rejected_operation(
+    operation: str,
+    transform: list[dict[str, object]],
+    helper: str,
+    limit: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _no_start(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = f"{operation} started after its work admission failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(eval_module, helper, _no_start)
+    with pytest.raises(EvaluationError) as excinfo:
+        evaluate_run(
+            _spec(transform),
+            Manifest(dataset="t.csv", columns=_WORK_COLUMNS),
+            _WORK_CSV,
+            limits=VerificationLimits(max_eval_work_units=limit),
+        )
+    assert excinfo.value.check == "resource.eval_work"
+    assert excinfo.value.work_units == 0
+    assert operation in str(excinfo.value)
+
+
+def test_work_budget_is_cumulative_and_exact_boundary_is_admitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 3x2 source: select=2*(3+2)=10, then filter=(3+2)=5. A ceiling of 10 admits
+    # the select exactly, then must reject the filter without entering it.
+    csv_bytes = b"x,y\n1,10\n2,20\n3,30\n"
+    transform: list[dict[str, object]] = [
+        {"op": "select", "fields": ["x", "y"]},
+        {"op": "filter", "field": "x", "cmp": "ge", "value": 2},
+    ]
+
+    def _no_filter(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "filter started after cumulative work admission failed"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(eval_module, "_apply_filter", _no_filter)
+    with pytest.raises(EvaluationError) as excinfo:
+        evaluate_run(
+            _spec(transform),
+            Manifest(dataset="t.csv", columns=_WORK_COLUMNS),
+            csv_bytes,
+            limits=VerificationLimits(max_eval_work_units=10),
+        )
+    assert excinfo.value.work_units == 10
+
+
+@pytest.mark.parametrize(
+    ("row_count", "sort_count", "expected"),
+    [
+        (1, 0, 2),
+        (3, 2, 24),
+        (4, 5, 56),
+        (5, 1, 45),
+    ],
+)
+def test_many_sort_work_matrix_exact_boundary(
+    row_count: int, sort_count: int, expected: int
+) -> None:
+    # Each declared one-key sort costs R*ceil(log2(max(R,2))); closure uses both columns.
+    rows = "".join(f"{i},{row_count - i}\n" for i in range(row_count))
+    csv_bytes = f"x,y\n{rows}".encode()
+    transform: list[dict[str, object]] = [
+        {"op": "sort", "by": [{"field": "x", "order": "ascending"}]} for _ in range(sort_count)
+    ]
+    spec = _spec(transform)
+    manifest = Manifest(dataset="t.csv", columns=_WORK_COLUMNS)
+    run = evaluate_run(
+        spec,
+        manifest,
+        csv_bytes,
+        limits=VerificationLimits(max_eval_work_units=expected),
+    )
+    assert run.work_units == expected
+    with pytest.raises(EvaluationError) as excinfo:
+        evaluate_run(
+            spec,
+            manifest,
+            csv_bytes,
+            limits=VerificationLimits(max_eval_work_units=expected - 1),
+        )
+    assert excinfo.value.check == "resource.eval_work"
+
+
+@pytest.mark.parametrize(
+    ("keys", "measure_count", "group_count", "expected"),
+    [
+        (["g"], 1, 1, 19),
+        (["g"], 1, 4, 33),
+        (["g", "h"], 1, 4, 51),
+        (["g"], 2, 1, 27),
+        (["g"], 2, 4, 48),
+    ],
+)
+def test_group_heavy_work_matrix(
+    keys: list[str], measure_count: int, group_count: int, expected: int
+) -> None:
+    columns = (
+        StringColumnSpec(name="g"),
+        StringColumnSpec(name="h"),
+        NumericColumnSpec(name="v", scale=0),
+    )
+    csv_bytes = (
+        b"g,h,v\nx,a,1\nx,a,2\nx,a,3\nx,a,4\n"
+        if group_count == 1
+        else b"g,h,v\na,a,1\nb,b,2\nc,c,3\nd,d,4\n"
+    )
+    measures: list[dict[str, object]] = [{"field": "v", "fn": "sum", "as": "total"}]
+    if measure_count == 2:
+        measures.append({"field": "v", "fn": "count", "as": "count"})
+    transform: list[dict[str, object]] = [
+        {"op": "group_by", "keys": keys},
+        {"op": "aggregate", "measures": measures},
+    ]
+    assert _work_units(transform, columns, csv_bytes) == expected
+
+
+def test_row_reducing_filter_lowers_later_sort_work() -> None:
+    rows = "".join(f"{i},{i}\n" for i in range(8))
+    csv_bytes = f"x,y\n{rows}".encode()
+    keep_one: dict[str, object] = {
+        "op": "filter",
+        "field": "x",
+        "cmp": "eq",
+        "value": 0,
+    }
+    sort: dict[str, object] = {
+        "op": "sort",
+        "by": [{"field": "x", "order": "ascending"}],
+    }
+    filtered_first = _work_units([keep_one, sort], _WORK_COLUMNS, csv_bytes)
+    sorted_first = _work_units([sort, keep_one], _WORK_COLUMNS, csv_bytes)
+    assert filtered_first == 13
+    assert sorted_first == 36
+    assert filtered_first < sorted_first
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((EXAMPLES / "good_specs").glob("*.json")),
+    ids=lambda path: path.stem,
+)
+def test_good_corpus_stays_below_default_work_budget(path: pathlib.Path) -> None:
+    spec = decode_spec(path.read_bytes())
+    stem = pathlib.Path(spec.dataset.name).stem
+    manifest = load_manifest((DATA / "schemas" / f"{stem}.json").read_bytes())
+    run = evaluate_run(spec, manifest, (DATA / spec.dataset.name).read_bytes())
+    assert 0 < run.work_units < DEFAULT_LIMITS.max_eval_work_units
 
 
 # --- the M1.3 eval-bad specs each raise their semantic check ------------------
