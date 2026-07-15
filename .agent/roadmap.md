@@ -160,8 +160,9 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   other non-2xx stays 502.
   Body-cap + fake-tokenizer/pipe tests pin 413-before-decode, no silently accepted truncation,
   exact token boundary + buffer identity, no native generate, and error-shape spoof resistance.
-  The installed CPU path live-confirmed exact-bound generation + over-bound preflight; a concurrent
-  external NPU workload made the optional post-fix NPU rerun unavailable. Acceptance: the formerly
+  The installed CPU + NPU paths live-confirmed exact-bound generation + over-bound preflight; the
+  post-fix NPU probe compiled `MAX_PROMPT_LEN=20`, reported 20 native input tokens at that exact
+  boundary, then returned `prompt_too_long` for an over-bound request. Acceptance: the formerly
   unexercised NPU static-shape overflow is preflighted and cannot enter generation; gate green.
 - **M5.1i — deterministic evaluator work budget** (OPEN): add a 10_000_000 configurable integer
   work-unit budget inside `eval.evaluate`, charged BEFORE each operation from current
