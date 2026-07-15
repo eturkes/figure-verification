@@ -210,15 +210,17 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   empty/inapplicable, rational/null/direction, forced uncertainty/exception, solver-setting, and
   truly concurrent distinct-context tests pass. Disabling each obligation formula makes its
   focused counterexample regression fail; gate green at 1,237 tests/100% branch coverage.
-- **M5.2c — independent SMT differential** (OPEN): a separate direct oracle consumes raw generated
-  cases, sharing neither Z3 expressions nor formal-fact builders/helpers, and exhausts a small
-  finite table/sort/channel/domain microdomain; Hypothesis samples
-  the larger bounded cross-product and compares Z3 outcomes + witnesses. Cover active multi-key
-  sorts (nulls + mixed directions), bar/channel matrices, and legend domains; add non-vacuity
-  mutations + persisted edge witnesses for duplicate categories, empty/all-null color, exact
-  Decimals, temporal/string rank order. Acceptance: the finite microdomain exhaustively agrees and
-  the property run finds no counterexample; deleting each solver constraint makes its mutation
-  test fail; gate green.
+- **M5.2c — independent SMT differential** (DONE): test-only `formal_oracle` consumes raw
+  Decimal/text/null + mark/channel/domain cases and imports neither Z3 nor any production verifier
+  module (AST-pinned); a separate adapter alone constructs formal facts, sharing no builder or
+  obligation helper. Exhaustive agreement covers 3,364 table/sort cases (0..2 keys, 0..3 rows,
+  null/0/1 domain), all 32 bar/channel flag combinations, and 91 duplicate/null legend sequences.
+  Deterministic Hypothesis sampled 250 larger cross-product cases through 4 mixed-kind/direction
+  keys, 7 rows, and larger legend domains with identical outcomes + stable lowest witnesses.
+  Persisted anchors cover beyond-f64 exact Decimals, temporal/string ranks, mixed null directions,
+  x-before-y, duplicate/empty/all-null color, and numeric ordinal categories. Removing each
+  obligation's constraint producer is detected by a focused non-vacuity mutation; property run
+  found no counterexample; gate green at 1,247 tests/100% branch coverage.
 - **M5.2d — pre-render formal gate** (OPEN): builder emits an explicit deterministic scale domain
   for nominal/ordinal color from recomputed non-null values; build typed formal facts from the
   exact dict handed to `_dumps`. Split preparation from native rendering at the orchestration seam:
