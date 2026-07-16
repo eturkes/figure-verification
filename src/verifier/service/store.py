@@ -1,21 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Count- and payload-byte-bounded artifact store (M2.3, M4.1b, M5.1j).
 
-A verified render contributes three canonical byte blobs: the certificate (keyed by its
-content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served verbatim by
-a retrieval GET, as is the offline chart HTML page (keyed by plot_id) at GET /chart/{plot_id}
-(M4.1c). In-memory only: provenance/replay to disk is M5.
+A verified render contributes three canonical byte blobs: the signed DSSE VCert envelope (keyed
+by its content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served
+verbatim by a retrieval GET, as is the signed-provenance chart HTML page (keyed by plot_id) at
+GET /chart/{plot_id}. In-memory only: durable provenance/replay follows in later M5 units.
 
 TWO independent bounded LRUs, each with count + exact logical-payload ceilings:
 
 - RENDERS (store_cap + render_cache_bytes), keyed by plot_id, holds the certificate bytes + the
   spec_id each render references. Its payload total is every certificate plus each live canonical
   spec blob ONCE, regardless of reference count; the oldest render evicts until both ceilings hold.
-  plot_id <-> spec_id is 1:1 under stable
-  trusted config — a fixed spec under a fixed data_dir + manifest + TCB determines every
-  certificate field, hence a single plot_id. Two plot_ids share one spec_id only when an
-  operator mutates the trusted manifest between two renders of the same spec (the certificate's
-  manifest_hash changes, its spec_hash does not), so the spec bytes are held once under a
+  plot_id <-> spec_id is 1:1 under stable trusted config + signer — a fixed spec under a fixed
+  data_dir + manifest + TCB + signing key determines one envelope and plot_id. Two plot_ids can
+  share one spec_id when an operator rotates the signer or mutates the trusted manifest (the
+  envelope/certificate changes, its spec_hash does not), so the spec bytes are held once under a
   live-reference count and drop only when the LAST render referencing them evicts. A stored
   render's spec GET thus always resolves — retrieval consistency holds unconditionally, not
   merely under the 1:1 precondition checks.py rests on.

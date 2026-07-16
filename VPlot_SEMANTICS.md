@@ -35,8 +35,11 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 - VCert v0.2 binds the exact emitted Vega-Lite bytes alongside dataset, manifest, canonical spec,
   and recomputed-table hashes. Its `checks` reproduce every passing final result as
   `{id, method, status:"pass"}` in report order; its TCB stamps verifier + Z3 versions as well as
-  canonicalization/display versions. Changing any bound bytes or stamped version changes the
-  canonical certificate bytes and therefore the service's content-derived `plot_id`.
+  canonicalization/display versions. The service signs those exact canonical payload bytes and
+  their application type into deterministic one-signature DSSE. `plot_id` hashes the complete
+  envelope, so changing bound bytes, a stamped version, or the signing key changes service plot
+  identity. `keyid` remains an unauthenticated hint; authenticity requires an independently pinned
+  Ed25519 public key.
 - Axis titles + units = trusted manifest, never the spec (their VALUE is correct by
   construction). `label.quantitative_units_present` (M1.5) still ENFORCES that a unit is present
   per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given.

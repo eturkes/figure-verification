@@ -367,6 +367,18 @@ def _enforce_byte_limit(payload: bytes, limit: int, *, artifact: str, check: str
         raise VerificationError(message, check=check)
 
 
+def admit_html(html_document: str, limits: VerificationLimits = DEFAULT_LIMITS) -> bytes:
+    """UTF-8 encode and admit one FINAL HTML page, returning the exact bounded bytes."""
+    payload = html_document.encode("utf-8")
+    _enforce_byte_limit(
+        payload,
+        limits.max_html_bytes,
+        artifact="HTML",
+        check="resource.html_bytes",
+    )
+    return payload
+
+
 def prepare_render(
     spec: VPlotSpec,
     evidence: checks.RecomputedEvidence,
@@ -520,6 +532,33 @@ def _embed_bundle() -> str:
     return vl_convert.javascript_bundle(_EMBED_SNIPPET, vl_version=_VL_VERSION)
 
 
+def _render_html_page(vega_lite_json: str, provenance_html: str, style_html: str) -> str:
+    """Build the common page; extra markup/style are generated only by this module."""
+    safe_spec = vega_lite_json.replace("<", "\\u003c")
+    provenance = f"{provenance_html}\n" if provenance_html else ""
+    style = f"{style_html}\n" if style_html else ""
+    return (
+        "<!doctype html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '<meta charset="utf-8">\n'
+        "<title>Verified Plot</title>\n"
+        f"{style}"
+        "</head>\n"
+        "<body>\n"
+        '<div id="vplot-chart"></div>\n'
+        f"{provenance}"
+        f'<script type="application/json" id="vplot-spec">{safe_spec}</script>\n'
+        f"<script>{_embed_bundle()}</script>\n"
+        '<script>vegaEmbed("#vplot-chart", '
+        'JSON.parse(document.getElementById("vplot-spec").textContent), '
+        '{actions: false, renderer: "svg"}).catch(console.error);</script>\n'
+        f"<script>{_HEIGHT_REPORTER}</script>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
 def render_html(vega_lite_json: str) -> str:
     """A self-contained, fully offline HTML view of a BUILDER-PRODUCED Vega-Lite JSON string -- the
     same string render_svg consumes, drawn CLIENT-SIDE by the inlined vega runtime (the same chart
@@ -537,30 +576,12 @@ def render_html(vega_lite_json: str) -> str:
     schema-constrained field identifier (model-selected field + aggregate-output names, bound by
     the FieldName regex to [A-Za-z_][A-Za-z0-9_]* — no markup bytes), and the "<"-escape above
     holds regardless of provenance (untrusted-input hardening is M2+)."""
-    safe_spec = vega_lite_json.replace("<", "\\u003c")
-    return (
-        "<!doctype html>\n"
-        '<html lang="en">\n'
-        "<head>\n"
-        '<meta charset="utf-8">\n'
-        "<title>Verified Plot</title>\n"
-        "</head>\n"
-        "<body>\n"
-        '<div id="vplot-chart"></div>\n'
-        f'<script type="application/json" id="vplot-spec">{safe_spec}</script>\n'
-        f"<script>{_embed_bundle()}</script>\n"
-        '<script>vegaEmbed("#vplot-chart", '
-        'JSON.parse(document.getElementById("vplot-spec").textContent), '
-        '{actions: false, renderer: "svg"}).catch(console.error);</script>\n'
-        f"<script>{_HEIGHT_REPORTER}</script>\n"
-        "</body>\n"
-        "</html>\n"
-    )
+    return _render_html_page(vega_lite_json, "", "")
 
 
 # --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
-# Core render still returns a NON-REPLAYABLE unsigned VCert (service signing + replay follow in
-# M5.3c-M5.5; M5.3a-M5.3b supply attestation primitives + persistent identity only). It
+# Core render returns the deterministic VCert PAYLOAD; the service wraps its exact bytes in signed
+# DSSE, while durable archive/replay follow in M5.4-M5.5. It
 # stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
 # bytes. Every passing result carries its verification method. The TCB identifies this verifier,
 # Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the
@@ -624,9 +645,10 @@ class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw
 
 class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing
-    checks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and
-    non-replayable until later M5 units. Produced by render; attestation verification decodes an
-    external copy only after its exact bytes + application type authenticate under a trusted key."""
+    checks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Produced as a
+    deterministic payload by core render; the service signs its exact bytes into DSSE. Attestation
+    verification decodes an external copy only after those bytes + their application type
+    authenticate under an independently trusted key. Durable replay follows in later M5 units."""
 
     version: Literal["vcert-0.2"]
     dataset_hash: str
@@ -760,12 +782,7 @@ def render_prepared(
 
     offline_html = render_html(vega_lite_json_text) if include_html else None
     if offline_html is not None:
-        _enforce_byte_limit(
-            offline_html.encode("utf-8"),
-            limits.max_html_bytes,
-            artifact="HTML",
-            check="resource.html_bytes",
-        )
+        admit_html(offline_html, limits)
     return RenderResult(
         vega_lite=prepared.vega_lite,
         svg=svg,
@@ -795,7 +812,8 @@ def badge_html(cert: VCert) -> str:
     html.escape(quote=True); the fragment has NO <script>, foreignObject, or other raw-HTML/JS
     sink, so no filter-value byte is ever live markup. All other fields (constrained field
     names, enum cmp/order, sha256 hashes, versions) are escaped uniformly. Pure +
-    deterministic. Non-replayable; service signing follows in M5.3c."""
+    deterministic. The service embeds this payload display beside its signed-envelope identity;
+    durable replay follows in later M5 units."""
 
     def esc(value: object) -> str:
         return html.escape(str(value), quote=True)
@@ -834,6 +852,77 @@ def badge_html(cert: VCert) -> str:
         "</dl>"
         "</div>"
     )
+
+
+# vegaEmbed mutates the chart target into ``.vega-embed`` (display:inline-block). The ID rule's
+# block + width override keeps its bordered container full-width; text-align centers fixed-size
+# Vega output inside it. Styling is off the certificate hash chain and inserted in <head>.
+_SIGNED_PAGE_STYLE = (
+    "<style>"
+    ":root{color-scheme:light;--paper:#f4f1e8;--panel:#fffdf8;--ink:#172a2a;"
+    "--muted:#58706d;--line:#cbd8d2;--accent:#006d5b;}"
+    "*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--paper);color:var(--ink);"
+    'font-family:"DejaVu Sans",sans-serif}#vplot-chart,.vplot-provenance{max-width:1040px;'
+    "margin-inline:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;"
+    "box-shadow:0 16px 40px rgba(23,42,42,.08)}#vplot-chart{display:block!important;"
+    "width:100%;padding:24px;overflow:auto;text-align:center}"
+    ".vplot-provenance{margin-top:20px;padding:26px}.vplot-signature{display:grid;"
+    "grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start;padding-bottom:22px;"
+    "border-bottom:1px solid var(--line)}.vplot-eyebrow{margin:0 0 5px;color:var(--accent);"
+    "font-size:.74rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}"
+    ".vplot-signature h1{margin:0 0 10px;font-size:clamp(1.55rem,4vw,2.35rem);"
+    "line-height:1.05}.vplot-signature p{margin:0;color:var(--muted)}.vplot-identity{margin:0;"
+    "display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:.78rem}"
+    ".vplot-identity dt{color:var(--muted);font-weight:700}.vplot-identity dd{margin:0;"
+    "max-width:42ch;overflow-wrap:anywhere}.vplot-certificate-link{display:inline-block;"
+    "margin-top:14px;padding:9px 13px;border-radius:999px;background:var(--accent);color:white;"
+    "font-size:.82rem;font-weight:700;text-decoration:none}.vcert{margin-top:24px}.vcert h2{"
+    "font-size:1.15rem}.vcert h3{margin:20px 0 8px;font-size:.92rem}.vcert dl{display:grid;"
+    "grid-template-columns:max-content minmax(0,1fr);gap:6px 14px}.vcert dt{color:var(--muted);"
+    "font-weight:700}.vcert dd{margin:0;overflow-wrap:anywhere}.vcert ul{padding-left:21px;"
+    "line-height:1.55}@media(max-width:720px){body{padding:12px}#vplot-chart,.vplot-provenance{"
+    "border-radius:12px}.vplot-signature{grid-template-columns:1fr}.vcert dl{"
+    "grid-template-columns:1fr}.vcert dd{margin-bottom:7px}}"
+    "</style>"
+)
+
+
+def signed_chart_html(
+    vega_lite_json: str,
+    cert: VCert,
+    *,
+    keyid: str,
+    plot_id: str,
+    certificate_url: str,
+) -> str:
+    """Rebuild the off-chain browser page from authoritative Vega + VCert after service signing.
+
+    ``keyid`` is explicitly a signer LOOKUP HINT, not an identity proof; the copy says so. The
+    service supplies its shape-validated signer keyid, content-derived plot_id, and certificate
+    URL constructed from validated ``Settings.public_base_url``. Every displayed value is escaped;
+    ``badge_html`` already applies its stricter injective filter-literal disclosure.
+    """
+
+    def esc(value: str) -> str:
+        return html.escape(value, quote=True)
+
+    provenance = (
+        '<section class="vplot-provenance" aria-label="Signed plot provenance">'
+        '<div class="vplot-signature"><div>'
+        '<p class="vplot-eyebrow">Deterministically verified</p>'
+        "<h1>Verified plot</h1>"
+        "<p>Verify the envelope against an independently pinned public key to authenticate the "
+        "exact certificate payload.</p></div>"
+        '<div><dl class="vplot-identity">'
+        f"<dt>Plot ID</dt><dd>{esc(plot_id)}</dd>"
+        f"<dt>Signer key hint</dt><dd>{esc(keyid)}</dd>"
+        "</dl>"
+        f'<a class="vplot-certificate-link" href="{esc(certificate_url)}">'
+        "Inspect signed certificate envelope</a></div></div>"
+        f"{badge_html(cert)}"
+        "</section>"
+    )
+    return _render_html_page(vega_lite_json, provenance, _SIGNED_PAGE_STYLE)
 
 
 def render(

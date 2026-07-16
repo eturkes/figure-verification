@@ -3,8 +3,8 @@
 
 create_app builds a fully configured Litestar app from a trusted Settings container —
 routes registered, settings on app.state, the framework body cap set to
-settings.max_body_bytes. Transport only: no verification trust lives here (POC_SCOPE
-service boundary).
+settings.max_body_bytes, and one persistent signing identity loaded before the app can serve.
+Transport only: no verification trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
@@ -14,9 +14,10 @@ request.body() before any verifier work, so
 decode_spec's strict decode
 stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, collapsing
 duplicate keys), and Litestar's body cap raises 413 the moment that read exceeds
-settings.max_body_bytes — keeping oversize input off the verifier. verify-and-render stores
-each verified render in the app's bounded ArtifactStore; the GETs serve the stored canonical
-bytes verbatim (a malformed or absent id both answer the same 404 problem+json at the store
+settings.max_body_bytes — keeping oversize input off the verifier. verify-and-render signs each
+exact VCert payload before storing the render in the app's bounded ArtifactStore; the GETs serve
+the stored canonical DSSE/spec bytes verbatim (a malformed or absent id both answer the same 404
+problem+json at the store
 lookup — no leak of which ids were stored; a path that does not match the id route shape gets
 Litestar's own 404 instead, still problem+json, still disclosing nothing about the store). GET
 /chart/{plot_id} serves the stored offline HTML page as text/html under a Content-Security-Policy:
@@ -92,6 +93,7 @@ from litestar.status_codes import (
 
 from verifier import __version__
 from verifier.service.admission import AdmissionController, JobPermit
+from verifier.service.identity import Signer, SigningIdentity, load_identity
 from verifier.service.model_client import (
     DatasetNotFoundError,
     ModelUpstreamError,
@@ -196,9 +198,15 @@ async def verify_and_render_route(
     raw = await request.body()
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
+    identity = cast("SigningIdentity", state["identity"])
     with _admit_work(state) as permit:
         return await permit.run_sync(
-            verify_and_render, raw, settings, store, include_html=include_html
+            verify_and_render,
+            raw,
+            settings,
+            store,
+            identity.signer,
+            include_html=include_html,
         )
 
 
@@ -228,7 +236,11 @@ _PIN_MISMATCH_DETAIL = "the model proposed a specification for a different datas
 
 
 def _verify_render_pinned(
-    raw: bytes, dataset_name: str, settings: Settings, store: ArtifactStore
+    raw: bytes,
+    dataset_name: str,
+    settings: Settings,
+    store: ArtifactStore,
+    signer: Signer,
 ) -> Verdict | RenderVerdict:
     """Decode the model's proposed spec, refuse (502) a spec that names a dataset other than
     requested, then verify + render + store on the requested dataset. Pinning on the decoded name
@@ -243,7 +255,13 @@ def _verify_render_pinned(
         return decoded
     if decoded.dataset.name != dataset_name:
         raise HTTPException(detail=_PIN_MISMATCH_DETAIL, status_code=HTTP_502_BAD_GATEWAY)
-    return render_outcome(verify_decoded(decoded, settings), settings, store, include_html=False)
+    return render_outcome(
+        verify_decoded(decoded, settings),
+        settings,
+        store,
+        signer,
+        include_html=False,
+    )
 
 
 @post(
@@ -273,11 +291,17 @@ async def propose_spec_route(
     raw = await request.body()
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
+    identity = cast("SigningIdentity", state["identity"])
     req = _decode_propose_request(raw)
     with _admit_work(state) as permit:
         content = await propose_spec(req.user_request, req.dataset_name, settings)
         verdict = await permit.run_sync(
-            _verify_render_pinned, content, req.dataset_name, settings, store
+            _verify_render_pinned,
+            content,
+            req.dataset_name,
+            settings,
+            store,
+            identity.signer,
         )
     result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
     if not isinstance(verdict, RenderVerdict):
@@ -329,7 +353,7 @@ def _fetch_artifact(
     sync_to_thread=False,
 )
 def certificate_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
-    """Serve the stored provenance certificate for plot_id (its canonical bytes verbatim)."""
+    """Serve the stored DSSE VCert envelope for plot_id (its canonical bytes verbatim)."""
     store = cast("ArtifactStore", state["store"])
     return _fetch_artifact(plot_id, store.certificate)
 
@@ -457,6 +481,7 @@ def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -
 
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
+    identity = load_identity(settings)
     store = ArtifactStore(
         settings.store_cap,
         html_cap=settings.html_cap,
@@ -477,7 +502,14 @@ def create_app(settings: Settings) -> Litestar:
             chart_route,
             openapi_route,
         ],
-        state=State({"settings": settings, "store": store, "admission": admission}),
+        state=State(
+            {
+                "settings": settings,
+                "identity": identity,
+                "store": store,
+                "admission": admission,
+            }
+        ),
         request_max_body_size=settings.max_body_bytes,
         # nosniff on every response: the GETs and render serve stored/JSON-embedded bytes, and
         # the M1 hardening note keeps nosniff on any served artifact; the chart route layers a

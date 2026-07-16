@@ -25,12 +25,14 @@ artifact only after the final merged report passes. Sensitive bytes stay out of 
 route returns only Outcome.verdict or a separately built RenderVerdict.
 
 render_outcome (split from verify_and_render at M3.3b) is the render half: on a PASSING
-verdict it renders the verified chart, content-addresses the artifacts (plot_id = SHA-256 of
-the certificate bytes, spec_id = the certificate's spec_hash), stores them, and answers a
-RenderVerdict; a failing verdict returns the plain Verdict with no chart. A passing outcome's
-already-formal-passed artifact is rendered directly, so no trusted file is read and no
-verification/build/solver work repeats. A render resource refusal appends its tagged failure and
-returns a plain Verdict before storage; invariant/native faults still escape to 500.
+verdict it renders the verified chart, signs the exact VCert bytes into deterministic DSSE,
+content-addresses the envelope (plot_id = SHA-256(envelope), spec_id = the payload's spec_hash),
+rebuilds the off-chain chart page from returned authoritative Vega with the signed provenance
+display, stores the artifacts, and answers a RenderVerdict. A failing verdict returns the plain
+Verdict with no chart. A passing outcome's already-formal-passed artifact is rendered directly,
+so no trusted file is read and no verification/build/solver work repeats. A render resource
+refusal appends its tagged failure and returns a plain Verdict before storage; invariant/native
+faults still escape to 500.
 verify_and_render is the thin verify_only -> render_outcome composition; app.py's proposer
 reuses these seams — decode_stage, dataset pin, verify_decoded, render_outcome — so an
 off-request name is refused before the wrong dataset's trusted I/O.
@@ -43,10 +45,11 @@ from typing import Literal, cast
 
 import msgspec
 
-from verifier import canon, checks, formal, render
+from verifier import attestation, canon, checks, formal, render
 from verifier.errors import VerificationError
 from verifier.limits import read_bounded
 from verifier.schema import VPlotSpec, decode_spec
+from verifier.service.identity import Signer
 from verifier.service.models import RenderVerdict, Verdict
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
@@ -163,7 +166,12 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
 
 
 def render_outcome(
-    outcome: Outcome, settings: Settings, store: ArtifactStore, *, include_html: bool
+    outcome: Outcome,
+    settings: Settings,
+    store: ArtifactStore,
+    signer: Signer,
+    *,
+    include_html: bool,
 ) -> Verdict | RenderVerdict:
     """Render the verified chart for a passing Outcome, store the artifacts content-addressed, and
     answer a RenderVerdict. A failing verdict answers the plain Verdict — never a chart on an
@@ -171,12 +179,13 @@ def render_outcome(
     Split from verify_and_render so app.py's proposer can pin the requested dataset name between
     decode and verification.
 
-    The offline HTML page is built + stored on EVERY verified render (render(include_html=True)
-    unconditionally, then store.put_chart under plot_id), so both entry routes — verify-and-render
-    and the proposer — populate the chart store through this one seam; GET /chart/{plot_id} then
-    serves that page until chart-LRU eviction (a verified chart can 404 while its certificate
-    still lives — see store.py's mixed-state note). include_html now governs ONLY the JSON-body
-    html copy (the large inline view the caller opts into); the stored page is not gated by it."""
+    The signed offline HTML page is rebuilt + stored on EVERY verified render from the returned
+    authoritative Vega bytes + VCert, then final-byte-admitted after adding the badge, signer
+    keyid, plot_id, and exact certificate URL. Both entry routes — verify-and-render and the
+    proposer — populate the chart store through this one seam; GET /chart/{plot_id} serves that
+    page until chart-LRU eviction (a verified chart can 404 while its certificate still lives —
+    see store.py's mixed-state note). include_html governs ONLY the JSON-body html copy (the large
+    inline view the caller opts into); the stored page is not gated by it."""
     if not outcome.verdict.verified:
         return outcome.verdict
     # verified => the final verify/formal stage passed, so spec + prepared are populated (cast, not
@@ -184,7 +193,25 @@ def render_outcome(
     spec = cast("VPlotSpec", outcome.spec)
     prepared = cast("render.PreparedArtifact", outcome.prepared)
     try:
-        result = render.render_prepared(prepared, include_html=True, limits=settings.limits)
+        result = render.render_prepared(prepared, include_html=False, limits=settings.limits)
+        cert = result.certificate
+        envelope = attestation.sign_vcert(
+            cert,
+            signer.private_key,
+            keyid=signer.keyid,
+            limits=settings.limits,
+        )
+        plot_id = hashlib.sha256(envelope).hexdigest()
+        base = cast("str", settings.public_base_url)
+        certificate_url = f"{base}/certificate/{plot_id}"
+        chart_html = render.signed_chart_html(
+            result.vega_lite.decode("utf-8"),
+            cert,
+            keyid=signer.keyid,
+            plot_id=plot_id,
+            certificate_url=certificate_url,
+        )
+        chart_bytes = render.admit_html(chart_html, settings.limits)
     except VerificationError as exc:
         resource_failure = checks.make_result(exc.check, status="fail", message=str(exc))
         return Verdict(
@@ -192,16 +219,14 @@ def render_outcome(
             layer=outcome.verdict.layer,
             results=(*outcome.verdict.results, resource_failure),
         )
-    # include_html=True => the offline page is always built; cast, not assert (the M1.5a lesson).
-    chart_html = cast("str", result.html)
-    cert = result.certificate
-    cert_bytes = render.vcert_bytes(cert)
-    plot_id = hashlib.sha256(cert_bytes).hexdigest()
     spec_id = cert.spec_hash.removeprefix("sha256:")
     store.put(
-        plot_id=plot_id, cert_bytes=cert_bytes, spec_id=spec_id, spec_bytes=canon.spec_bytes(spec)
+        plot_id=plot_id,
+        cert_bytes=envelope,
+        spec_id=spec_id,
+        spec_bytes=canon.spec_bytes(spec),
     )
-    store.put_chart(plot_id, chart_html.encode("utf-8"))
+    store.put_chart(plot_id, chart_bytes)
     return RenderVerdict(
         verified=True,
         layer=outcome.verdict.layer,
@@ -219,9 +244,20 @@ def render_outcome(
 
 
 def verify_and_render(
-    raw: bytes, settings: Settings, store: ArtifactStore, *, include_html: bool
+    raw: bytes,
+    settings: Settings,
+    store: ArtifactStore,
+    signer: Signer,
+    *,
+    include_html: bool,
 ) -> Verdict | RenderVerdict:
     """Verify raw spec bytes, then render + store on a passing verdict (verify_only ->
     render_outcome). A failing verdict answers the plain Verdict — never a chart. CPU-bound +
     synchronous (the handler offloads it via sync_to_thread)."""
-    return render_outcome(verify_only(raw, settings), settings, store, include_html=include_html)
+    return render_outcome(
+        verify_only(raw, settings),
+        settings,
+        store,
+        signer,
+        include_html=include_html,
+    )

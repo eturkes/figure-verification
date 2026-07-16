@@ -32,6 +32,14 @@ mutually consistent and every check passed:
    canonical-spec, recomputed-table, and exact emitted-Vega hashes; every passing check with its
    method; and the verifier, Z3, canonicalization, and display-tool versions in the trusted base.
 
+For a service render, the persistent Ed25519 signer wraps the exact VCert payload bytes and their
+application-specific type in deterministic DSSE. `plot_id` is SHA-256 over the complete envelope
+bytes, and `/certificate/{plot_id}` serves that envelope verbatim. Signature verification means
+only that the envelope was produced by the holder of an independently pinned public key. The
+envelope's `keyid` is an unauthenticated lookup hint - it does not establish operator identity,
+PKI membership, time, completeness, or transparency-log inclusion. The chart page visibly shows
+the VCert badge, signer hint, plot ID, and exact envelope link; display remains outside the proof.
+
 Because the renderer only ever receives verifier-recomputed data, a chart cannot
 display model-supplied numbers — that class of lie is impossible by construction, not a
 check. Checks instead target spec, encoding, policy, and dataset-binding consistency:
@@ -76,10 +84,11 @@ Vega-Lite bytes and the exact recomputed plotted table.
 
 ## Service boundary
 
-`verifier.service` (M2) wraps this same verifier in a local HTTP transport — one uvicorn
-worker, bound to `127.0.0.1` by default. It adds no trust of its own: a verify request runs
-the pipeline above unchanged and the service serializes the result, mapping a decode failure
-or an unprovisioned manifest to its own fail-closed verdict that can never falsely verify. The
+`verifier.service` wraps this same verifier in a local HTTP transport - one uvicorn worker, bound
+to `127.0.0.1` by default. Its persistent signer attests successful VCert payloads but adds no
+verification check: a verify request runs the pipeline above unchanged and the service serializes
+the result, mapping a decode failure or an unprovisioned manifest to its own fail-closed verdict
+that can never falsely verify. The
 metadata and artifact GETs serve what a prior verified render already produced, so the
 verification claim and the trusted-computing-base line both hold verbatim. `data_dir` stays trusted operator config,
 supplied through the environment before the process binds — never anything a caller sends.
@@ -115,12 +124,16 @@ single-worker uvicorn process has one gate; running multiple service processes m
 configured aggregate rate and active capacity. Operators tune the three controls with
 `VERIFIER_WORK_RATE_PER_MINUTE`, `VERIFIER_WORK_BURST`, and `VERIFIER_MAX_ACTIVE_JOBS`.
 
-Verified render certificates + canonical specs live in one bounded in-memory LRU; the much larger
+Signed VCert envelopes + canonical specs live in one bounded in-memory LRU; the much larger
 offline chart pages live in a second, independently bounded LRU. Both are addressable by the
 content-derived `plot_id` / `spec_id` a render returns, and either LRU may evict first - a chart can
 outlive its certificate or vice versa. A served chart was verified when built and is immutable;
-the certificate is provenance, not a chart-liveness gate. Nothing is written to disk. Durable
-on-disk provenance and replay are deferred (M5).
+the certificate is provenance, not a chart-liveness gate. The service writes only signing identity
+state at this stage: a 0600 raw private key and content-addressed public keys beneath the 0700
+`VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
+rotates identity and changes plot IDs. Preserved/publicly served keys gain no trust automatically;
+operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`. Durable plot
+bundles and replay are deferred to later M5 units.
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 
@@ -142,7 +155,7 @@ curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
   -H 'Content-Type: application/json' \
   --data-binary @examples/good_specs/g01_total_revenue_by_month.json
 
-# fetch a stored certificate / spec by the ids a verify-and-render returned
+# fetch a stored signed DSSE certificate envelope / spec by the ids returned above
 # (plot_id and spec_id come from that response; shown here as shell variables)
 curl -sS "http://127.0.0.1:8000/certificate/${plot_id}"
 curl -sS "http://127.0.0.1:8000/spec/${spec_id}"

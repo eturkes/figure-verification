@@ -11,7 +11,7 @@ plain bool would trade a static (mypy) never-a-chart guarantee for tooling conve
 the document is hand-authored in the project's own-every-byte, positive-allowlist spirit,
 reusing the schemas msgspec CAN introspect and hand-deriving only the one it cannot.
 
-Components come from three sources, zero hand-drift beyond RenderVerdict:
+Components come from three sources, zero hand-drift beyond the transport-only response shapes:
   1. the VPlot request-body defs (schema.json_schema()["$defs"]), their internal pointers
      rebased #/$defs/X -> #/components/schemas/X by string VALUE (msgspec emits the pointer
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
@@ -22,7 +22,8 @@ Components come from three sources, zero hand-drift beyond RenderVerdict:
   3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
      override never bleeds into Verdict's own `verified`); and the M3.3a ProposeResult, whose
-     `verdict` field is the Verdict | RenderVerdict union.
+     `verdict` field is the Verdict | RenderVerdict union; plus the canonical DSSE envelope served
+     as raw bytes (not decoded into a transport model).
 
 openapi_json_bytes() serves the deterministic, newline-terminated text verbatim at
 GET /schema/openapi.json; schema/openapi.json commits the same bytes as a drift detector
@@ -39,6 +40,7 @@ from typing import Any
 import msgspec
 
 from verifier import __version__
+from verifier.attestation import VCERT_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.schema import json_schema
@@ -127,11 +129,48 @@ def _propose_result_schema() -> dict[str, Any]:
     }
 
 
+def _dsse_schemas() -> dict[str, dict[str, Any]]:
+    """Canonical one-signature service envelope; DSSE ``keyid`` remains only a lookup hint."""
+    signature = {
+        "title": "DSSESignature",
+        "description": (
+            "The service's single Ed25519 signature. keyid is an unauthenticated lookup hint; "
+            "trust comes only from an independently pinned public key."
+        ),
+        "type": "object",
+        "properties": {
+            "keyid": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+            "sig": {"type": "string", "contentEncoding": "base64"},
+        },
+        "required": ["keyid", "sig"],
+    }
+    envelope = {
+        "title": "DSSEEnvelope",
+        "description": (
+            "A deterministic DSSE v1 envelope authenticating the exact base64-decoded VCert "
+            "v0.2 payload bytes and application-specific payload type. Verify it against an "
+            "independently pinned Ed25519 public key before parsing the payload."
+        ),
+        "type": "object",
+        "properties": {
+            "payload": {"type": "string", "contentEncoding": "base64"},
+            "payloadType": {"const": VCERT_PAYLOAD_TYPE},
+            "signatures": {
+                "type": "array",
+                "items": {"$ref": f"{_COMPONENTS}/DSSESignature"},
+                "minItems": 1,
+                "maxItems": 1,
+            },
+        },
+        "required": ["payload", "payloadType", "signatures"],
+    }
+    return {"DSSEEnvelope": envelope, "DSSESignature": signature}
+
+
 def _components() -> dict[str, Any]:
     """The components/schemas block: VPlot request-body defs (pointers rebased) + the
     introspectable response/request models (sorted, ProposeRequest among them) + hand-derived
-    RenderVerdict and ProposeResult. The three key spaces are disjoint, so insertion never
-    collides."""
+    transport schemas. The three key spaces are disjoint, so insertion never collides."""
     schemas: dict[str, Any] = {
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
@@ -141,6 +180,7 @@ def _components() -> dict[str, Any]:
     )
     for name in sorted(generated):
         schemas[name] = generated[name]
+    schemas.update(_dsse_schemas())
     schemas["RenderVerdict"] = _render_verdict_schema(generated["Verdict"])
     schemas["ProposeResult"] = _propose_result_schema()
     return schemas
@@ -350,8 +390,10 @@ def _paths() -> dict[str, Any]:
                 "parameters": [_id_parameter("plot_id")],
                 "responses": {
                     "200": _json_response(
-                        "The stored provenance certificate's canonical bytes.",
-                        {"$ref": f"{_COMPONENTS}/VCert"},
+                        "The stored deterministic DSSE envelope bytes. Its plot_id is the "
+                        "SHA-256 digest of these exact bytes; the authenticated payload is VCert "
+                        "v0.2.",
+                        {"$ref": f"{_COMPONENTS}/DSSEEnvelope"},
                     ),
                     **not_found,
                 },

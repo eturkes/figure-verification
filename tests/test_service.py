@@ -18,6 +18,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from verifier import __version__
+from verifier.attestation import envelope_byte_limit
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import __main__ as service_main
 from verifier.service import settings as settings_module
@@ -90,12 +91,14 @@ def test_health(tmp_path: Path) -> None:
 
 
 def test_app_threads_validated_cache_byte_budgets(tmp_path: Path) -> None:
+    render_budget = envelope_byte_limit(1) + 2
     settings = Settings(
         data_dir=tmp_path,
+        state_dir=tmp_path / "state",
         max_body_bytes=1,
         max_model_response_bytes=1,
         max_attestation_bytes=1,
-        render_cache_bytes=3,
+        render_cache_bytes=render_budget,
         max_html_bytes=2,
         chart_cache_bytes=2,
     )
@@ -104,7 +107,12 @@ def test_app_threads_validated_cache_byte_budgets(tmp_path: Path) -> None:
     store.put(plot_id="a" * 64, cert_bytes=b"A", spec_id="5" * 64, spec_bytes=b"SS")
     store.put_chart("a" * 64, b"HH")
     with pytest.raises(ValueError, match="render payload bytes"):
-        store.put(plot_id="b" * 64, cert_bytes=b"BB", spec_id="7" * 64, spec_bytes=b"SS")
+        store.put(
+            plot_id="b" * 64,
+            cert_bytes=b"C" * render_budget,
+            spec_id="7" * 64,
+            spec_bytes=b"S",
+        )
     with pytest.raises(ValueError, match="chart payload bytes"):
         store.put_chart("b" * 64, b"HHH")
 
@@ -299,14 +307,15 @@ def test_settings_rejects_independently_supplied_limits(tmp_path: Path) -> None:
 
 
 def test_settings_rejects_incompatible_render_cache_budget(tmp_path: Path) -> None:
-    # Conservatively reserve a certificate plus both route-specific spec-input ceilings.
+    # Conservatively reserve a full DSSE envelope plus both route-specific spec-input ceilings.
+    required = envelope_byte_limit(17) + 11 + 13
     with pytest.raises(ValueError, match="render_cache_bytes"):
         Settings(
             data_dir=tmp_path,
             max_body_bytes=11,
             max_model_response_bytes=13,
             max_attestation_bytes=17,
-            render_cache_bytes=40,
+            render_cache_bytes=required - 1,
         )
     assert (
         Settings(
@@ -314,9 +323,9 @@ def test_settings_rejects_incompatible_render_cache_budget(tmp_path: Path) -> No
             max_body_bytes=11,
             max_model_response_bytes=13,
             max_attestation_bytes=17,
-            render_cache_bytes=41,
+            render_cache_bytes=required,
         ).render_cache_bytes
-        == 41
+        == required
     )
 
 

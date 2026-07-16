@@ -352,11 +352,11 @@
         ],
         "responses": {
           "200": {
-            "description": "The stored provenance certificate's canonical bytes.",
+            "description": "The stored deterministic DSSE envelope bytes. Its plot_id is the SHA-256 digest of these exact bytes; the authenticated payload is VCert v0.2.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VCert"
+                  "$ref": "#/components/schemas/DSSEEnvelope"
                 }
               }
             }
@@ -1006,7 +1006,7 @@
       },
       "VCert": {
         "title": "VCert",
-        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and\nnon-replayable until later M5 units. Produced by render; attestation verification decodes an\nexternal copy only after its exact bytes + application type authenticate under a trusted key.",
+        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Produced as a\ndeterministic payload by core render; the service signs its exact bytes into DSSE. Attestation\nverification decodes an external copy only after those bytes + their application type\nauthenticate under an independently trusted key. Durable replay follows in later M5 units.",
         "type": "object",
         "properties": {
           "version": {
@@ -1092,9 +1092,55 @@
           "results"
         ]
       },
+      "DSSEEnvelope": {
+        "title": "DSSEEnvelope",
+        "description": "A deterministic DSSE v1 envelope authenticating the exact base64-decoded VCert v0.2 payload bytes and application-specific payload type. Verify it against an independently pinned Ed25519 public key before parsing the payload.",
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "payloadType": {
+            "const": "application/vnd.figure-verification.vcert.v0.2+json"
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DSSESignature"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          }
+        },
+        "required": [
+          "payload",
+          "payloadType",
+          "signatures"
+        ]
+      },
+      "DSSESignature": {
+        "title": "DSSESignature",
+        "description": "The service's single Ed25519 signature. keyid is an unauthenticated lookup hint; trust comes only from an independently pinned public key.",
+        "type": "object",
+        "properties": {
+          "keyid": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "sig": {
+            "type": "string",
+            "contentEncoding": "base64"
+          }
+        },
+        "required": [
+          "keyid",
+          "sig"
+        ]
+      },
       "RenderVerdict": {
         "title": "RenderVerdict",
-        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nchanging the trusted manifest, verifier/formal TCB, or emitted Vega bytes keeps spec_id but\nchanges plot_id, so several plot_ids can share a spec_id (store.py refcounts them). The five\n`*_hash` fields are the certificate's verbatim `sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
+        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nchanging the trusted manifest, verifier/formal TCB, emitted Vega bytes, or signing key keeps\nspec_id but changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them).\nThe five `*_hash` fields are the authenticated VCert payload's verbatim\n`sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
         "type": "object",
         "properties": {
           "verified": {

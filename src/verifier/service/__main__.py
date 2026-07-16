@@ -3,8 +3,8 @@
 
 Reads trusted config from the environment, builds the app, and serves it with a single
 uvicorn worker bound to the configured host (loopback by default). One worker keeps the
-in-memory artifact store (M2.3) coherent and makes the process-local admission gate service-global,
-with no cross-process state to reconcile.
+in-memory artifact store coherent and makes the process-local admission gate service-global;
+the signing identity is persistent state loaded before serving.
 """
 
 import uvicorn

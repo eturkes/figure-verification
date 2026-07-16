@@ -15,7 +15,8 @@ M5 resource policy: all resource integers are exact positive signed-64-bit value
 SQLite boundaries and rejects astronomical values without allocating against them. `limits` is
 eagerly derived and cannot be supplied independently, so every service stage receives one frozen
 `VerificationLimits` snapshot. Cache budgets admit one conservatively bounded item: render =
-attestation + both route-specific spec-input ceilings; chart = HTML. Sums are checked for overflow.
+derived DSSE-envelope ceiling + both route-specific spec-input ceilings; chart = final signed HTML.
+Sums are checked for overflow.
 
 `public_base_url` is the absolute browser-facing origin used in chart `Location`, separate from
 the bind host. Its ASCII authority allowlist and exact origin round-trip reject browser/parser
@@ -30,6 +31,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
 
+from verifier.attestation import envelope_byte_limit
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 _DEFAULT_DATA_DIR = "data"
@@ -229,13 +231,14 @@ class Settings:
             self.max_body_bytes,
             self.max_model_response_bytes,
         )
+        max_envelope_bytes = envelope_byte_limit(self.max_attestation_bytes)
         max_render_item = _checked_resource_sum(
-            "render cache item bound", self.max_attestation_bytes, max_spec_bytes
+            "render cache item bound", max_envelope_bytes, max_spec_bytes
         )
         if self.render_cache_bytes < max_render_item:
             msg = (
-                "render_cache_bytes must admit max_attestation_bytes plus both spec-input "
-                f"ceilings ({max_render_item}), got {self.render_cache_bytes}"
+                "render_cache_bytes must admit the derived DSSE envelope ceiling plus "
+                f"both spec-input ceilings ({max_render_item}), got {self.render_cache_bytes}"
             )
             raise ValueError(msg)
         if self.chart_cache_bytes < self.max_html_bytes:

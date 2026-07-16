@@ -26,6 +26,7 @@ from litestar.routes import HTTPRoute
 from litestar.testing import TestClient
 
 from verifier import __version__
+from verifier.attestation import VCERT_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.schema import json_schema
@@ -133,7 +134,12 @@ def test_component_namespaces_disjoint() -> None:
         [Verdict, Problem, CheckResult, VCert, ProposeRequest],
         ref_template="#/components/schemas/{name}",
     )
-    response_names = set(generated) | {"RenderVerdict", "ProposeResult"}
+    response_names = set(generated) | {
+        "DSSEEnvelope",
+        "DSSESignature",
+        "RenderVerdict",
+        "ProposeResult",
+    }
     assert vplot.isdisjoint(response_names), vplot & response_names
 
 
@@ -176,6 +182,38 @@ def test_vcert_requires_method_aware_certified_checks() -> None:
         "items": {"$ref": "#/components/schemas/CertifiedCheck"},
     }
     assert schemas["VCert"]["properties"]["version"] == {"enum": ["vcert-0.2"]}
+
+
+def test_certificate_response_documents_signed_dsse_profile() -> None:
+    schemas = _DOC["components"]["schemas"]
+    envelope = schemas["DSSEEnvelope"]
+    assert envelope["properties"]["payloadType"] == {"const": VCERT_PAYLOAD_TYPE}
+    assert envelope["properties"]["signatures"] == {
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/DSSESignature"},
+        "minItems": 1,
+        "maxItems": 1,
+    }
+    signature = schemas["DSSESignature"]
+    assert "unauthenticated lookup hint" in signature["description"]
+    assert signature["properties"]["keyid"]["pattern"] == "^sha256:[0-9a-f]{64}$"
+
+    response = _DOC["paths"]["/certificate/{plot_id}"]["get"]["responses"]["200"]
+    assert "SHA-256 digest of these exact bytes" in response["description"]
+    schema = response["content"]["application/json"]["schema"]
+    assert schema == {"$ref": "#/components/schemas/DSSEEnvelope"}
+    assert _validator(schema).is_valid(
+        {
+            "payload": "e30=",
+            "payloadType": VCERT_PAYLOAD_TYPE,
+            "signatures": [
+                {
+                    "keyid": "sha256:" + "a" * 64,
+                    "sig": "AA==",
+                }
+            ],
+        }
+    )
 
 
 def test_post_bodies_reference_vplotspec() -> None:

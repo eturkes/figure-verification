@@ -292,7 +292,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   rotation/pin/missing/hash mismatch, bounded settings, partial-write/temp-collision/cleanup, and
   immutable-policy tests pass; `.verifier-state/` is ignored; gate green at 1,339 tests/100% branch
   coverage.
-- **M5.3c — signed service certificate + plot IDs** (OPEN): after core render, the service signs
+- **M5.3c — signed service certificate + plot IDs** (DONE): after core render, the service signs
   exact VCert payload bytes into deterministic DSSE; `plot_id=sha256(envelope bytes)`; certificate
   GET serves the envelope. Rebuild the off-chain chart page from the returned authoritative Vega
   with the static VCert badge + signer keyid + plot_id/certificate link (today `render_html` omits
@@ -303,7 +303,20 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   restart keeps byte-identical envelope/id; key rotation changes id explicitly; external wrong
   key rejects;
   direct/propose paths share one signing seam; headless Chromium sees the badge/link + chart;
-  docs state the out-of-band pin/identity limit; gate green.
+  docs state the out-of-band pin/identity limit; gate green. Landed as the single
+  `pipeline.render_outcome` signing boundary: `create_app` eagerly loads one persistent identity
+  and passes only its signer into both direct/proposer worker paths; canonical DSSE envelope bytes
+  replace the unsigned payload as the stored certificate and `plot_id` preimage. The authenticated
+  payload remains byte-identical to core VCert; repeat/restart output is byte-stable, explicit key
+  rotation changes envelope/id, and an external wrong key rejects. The service rebuilds the
+  off-chain page from the returned authoritative Vega + VCert after signing, displaying all five
+  hashes, check methods, verifier version, signer hint, plot ID, and exact absolute certificate
+  link; cautious copy requires independent pin verification rather than implying the hint is
+  trust. Final signed HTML is UTF-8-admitted before either LRU mutation, and render-cache startup
+  compatibility now budgets the derived DSSE-envelope ceiling rather than payload bytes alone.
+  The OpenAPI response documents the one-signature DSSE profile; scope/semantics document
+  identity/pin limits. Live restart kept the same ID; Chromium rendered the SVG + centered chart,
+  badge, and exact link. Gate green at 1,345 tests/100% branch coverage.
 
 - **M5.4a — transactional provenance archive** (OPEN): add `service/archive.py`, stdlib SQLite
   STRICT schema (`meta`, immutable `blobs`, `keys`, `plots`, `attempts`, typed references), fresh

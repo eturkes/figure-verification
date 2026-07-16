@@ -11,8 +11,8 @@ DSSE ``keyid`` is unauthenticated. It is bounded and may reorder candidate keys,
 key, remove fallback candidates, affect the returned value, or establish identity. Unknown envelope
 fields remain forward-compatible per DSSE; duplicate keys and malformed known-field shapes fail
 closed. The envelope/payload ceilings bound both JSON parsing and application parsing. Persistent
-signer + independent trust-pin policy live in ``service.identity``; service signing and archive
-replay belong to later M5 units.
+signer + independent trust-pin policy live in ``service.identity``; ``service.pipeline`` signs
+successful render payloads, while durable archive replay belongs to later M5 units.
 """
 
 import base64

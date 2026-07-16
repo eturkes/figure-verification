@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M2.3 POST /verify-and-render + retrieval GETs + GET /chart (M4.1c) — renders through the wire.
+"""Verified render, signed-certificate retrieval, and chart-page transport contracts.
 
 The good corpus renders through the service byte-for-byte as a direct render.render (the SVG,
 the five cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
-idempotent (same plot_id). The stored artifacts round-trip: GET /certificate serves the
-canonical VCert bytes verbatim, GET /spec the canonical spec bytes. The never-a-chart pin
+idempotent (same plot_id). The service signs the exact VCert bytes into deterministic DSSE,
+defines plot_id as SHA-256(envelope), and serves that envelope verbatim. The never-a-chart pin
 holds at byte level over ALL 18 bad specs — the raw response carries no "svg"/"html" key. The
 store is bounded (an evicted render 404s on both its cert and spec GET); a malformed or absent
 id 404s alike (no validity leak); and a render resource refusal returns a failed verdict before
@@ -12,9 +12,11 @@ storage. X-Content-Type-Options: nosniff rides every response, success and probl
 
 GET /chart/{plot_id} serves the offline HTML page built + stored on EVERY verified render, so it
 resolves even when the JSON body omitted the inline copy (include_html=false), as text/html under
-a Content-Security-Policy: sandbox allow-scripts. Its chart LRU (html_cap) evicts independently of
-the render LRU (store_cap) — a certificate can outlive its chart page — and an absent or malformed
-plot_id 404s as problem+json carrying neither the CSP nor text/html (only the app-default nosniff).
+a Content-Security-Policy: sandbox allow-scripts. The page is rebuilt from authoritative Vega
+bytes after signing and visibly carries the VCert badge, signer keyid, plot_id, and exact envelope
+link. Its chart LRU (html_cap) evicts independently of the render LRU (store_cap) — a certificate
+can outlive its chart page — and an absent or malformed plot_id 404s as problem+json carrying
+neither the CSP nor text/html (only the app-default nosniff).
 """
 
 import hashlib
@@ -28,16 +30,20 @@ from unittest.mock import AsyncMock
 import httpx
 import msgspec
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+)
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from verifier import canon, checks, limits, render
+from verifier import attestation, canon, checks, limits, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import VPlotSpec, decode_spec
 from verifier.service import app as service_app
 from verifier.service import pipeline
 from verifier.service.app import create_app
+from verifier.service.identity import SigningIdentity
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -106,16 +112,27 @@ def _render_verdict(
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient[Litestar]]:
+def service(tmp_path: Path) -> Litestar:
+    """One isolated persistent signer over the real corpus data."""
+    return create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state"))
+
+
+@pytest.fixture
+def signing_identity(service: Litestar) -> SigningIdentity:
+    return cast("SigningIdentity", service.state["identity"])
+
+
+@pytest.fixture
+def client(service: Litestar) -> Iterator[TestClient[Litestar]]:
     """A client over the real data_dir (the golden corpus binds to it)."""
-    with TestClient(app=create_app(Settings(data_dir=_DATA))) as test_client:
+    with TestClient(app=service) as test_client:
         yield test_client
 
 
 # --- good specs: verified renders match a direct render byte-for-byte --------
 @pytest.mark.parametrize("entry", _GOOD, ids=_ids(_GOOD))
 def test_good_spec_renders_and_matches_direct(
-    client: TestClient[Litestar], entry: dict[str, Any]
+    client: TestClient[Litestar], signing_identity: SigningIdentity, entry: dict[str, Any]
 ) -> None:
     raw = (_GOOD_DIR / entry["file"]).read_bytes()
     response = client.post("/verify-and-render", content=raw, headers=_JSON)
@@ -128,8 +145,13 @@ def test_good_spec_renders_and_matches_direct(
 
     direct = _direct_render(raw)
     cert = direct.certificate
+    envelope = attestation.sign_vcert(
+        cert,
+        signing_identity.signer.private_key,
+        keyid=signing_identity.signer.keyid,
+    )
     assert body["svg"] == direct.svg  # determinism THROUGH the service
-    assert body["plot_id"] == hashlib.sha256(render.vcert_bytes(cert)).hexdigest()
+    assert body["plot_id"] == hashlib.sha256(envelope).hexdigest()
     assert body["spec_id"] == cert.spec_hash.removeprefix("sha256:")
     assert body["dataset_hash"] == cert.dataset_hash
     assert body["spec_hash"] == cert.spec_hash
@@ -278,7 +300,9 @@ def test_repeat_post_is_idempotent(client: TestClient[Litestar]) -> None:
 
 
 # --- retrieval GETs serve the stored canonical bytes verbatim ---------------
-def test_certificate_get_round_trips(client: TestClient[Litestar]) -> None:
+def test_certificate_get_round_trips_signed_envelope(
+    client: TestClient[Litestar], signing_identity: SigningIdentity
+) -> None:
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     posted: dict[str, Any] = client.post("/verify-and-render", content=raw, headers=_JSON).json()
     response = client.get(f"/certificate/{posted['plot_id']}")
@@ -286,8 +310,84 @@ def test_certificate_get_round_trips(client: TestClient[Litestar]) -> None:
     assert response.headers["content-type"].startswith("application/json")
     assert response.headers["x-content-type-options"] == _NOSNIFF
     direct = _direct_render(raw)
-    assert response.content == render.vcert_bytes(direct.certificate)  # verbatim canonical bytes
-    assert msgspec.json.decode(response.content, type=render.VCert) == direct.certificate
+    assert posted["plot_id"] == hashlib.sha256(response.content).hexdigest()
+    verified = attestation.verify_vcert(response.content, signing_identity.trusted_keys)
+    assert verified.payload == render.vcert_bytes(direct.certificate)
+    assert verified.certificate == direct.certificate
+
+    external_wrong_key = Ed25519PrivateKey.generate().public_key()
+    with pytest.raises(attestation.AttestationError, match="not valid under any trusted"):
+        attestation.verify_vcert(
+            response.content,
+            {"sha256:" + "f" * 64: external_wrong_key},
+        )
+
+
+def test_restart_preserves_envelope_and_rotation_changes_identity(tmp_path: Path) -> None:
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    state_dir = tmp_path / "state"
+    stable_settings = Settings(data_dir=_DATA, state_dir=state_dir)
+
+    def rendered(app: Litestar) -> tuple[dict[str, Any], bytes, SigningIdentity]:
+        identity = cast("SigningIdentity", app.state["identity"])
+        with TestClient(app=app) as scoped:
+            verdict = cast(
+                "dict[str, Any]",
+                scoped.post("/verify-and-render", content=raw, headers=_JSON).json(),
+            )
+            envelope = scoped.get(f"/certificate/{verdict['plot_id']}").content
+        return verdict, envelope, identity
+
+    first, first_envelope, first_identity = rendered(create_app(stable_settings))
+    restarted, restarted_envelope, restarted_identity = rendered(create_app(stable_settings))
+    assert restarted["plot_id"] == first["plot_id"]
+    assert restarted_envelope == first_envelope
+    assert restarted_identity.signer.keyid == first_identity.signer.keyid
+
+    rotated_settings = Settings(
+        data_dir=_DATA,
+        state_dir=state_dir,
+        signing_key_file=state_dir / "rotated.key",
+    )
+    rotated, rotated_envelope, rotated_identity = rendered(create_app(rotated_settings))
+    assert rotated["plot_id"] != first["plot_id"]
+    assert rotated_envelope != first_envelope
+    assert rotated_identity.signer.keyid != first_identity.signer.keyid
+    assert (
+        attestation.verify_vcert(rotated_envelope, rotated_identity.trusted_keys).payload
+        == attestation.verify_vcert(first_envelope, first_identity.trusted_keys).payload
+    )
+
+
+def test_direct_and_propose_routes_share_one_signing_seam(
+    client: TestClient[Litestar],
+    service: Litestar,
+    signing_identity: SigningIdentity,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    original = attestation.sign_vcert
+    calls: list[tuple[render.VCert, Ed25519PrivateKey, str, VerificationLimits]] = []
+
+    def recording_sign(
+        certificate: render.VCert,
+        private_key: Ed25519PrivateKey,
+        *,
+        keyid: str,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> bytes:
+        calls.append((certificate, private_key, keyid, limits))
+        return original(certificate, private_key, keyid=keyid, limits=limits)
+
+    monkeypatch.setattr(attestation, "sign_vcert", recording_sign)
+    direct = _render_verdict(_post_render_route(client, raw, "direct"), "direct")
+    proposed = _render_verdict(_post_render_route(client, raw, "propose"), "propose")
+    assert direct["plot_id"] == proposed["plot_id"]
+    assert len(calls) == 2
+    assert {call[2] for call in calls} == {signing_identity.signer.keyid}
+    assert all(call[1] is signing_identity.signer.private_key for call in calls)
+    assert all(call[3] is service.state["settings"].limits for call in calls)
 
 
 def test_spec_get_serves_canonical_bytes(client: TestClient[Litestar]) -> None:
@@ -301,23 +401,25 @@ def test_spec_get_serves_canonical_bytes(client: TestClient[Litestar]) -> None:
 
 
 # --- the offline HTML view: attached on request, omitted by default ---------
-def test_include_html_attaches_view(client: TestClient[Litestar]) -> None:
+def test_include_html_attaches_signed_chart_view(client: TestClient[Litestar]) -> None:
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     response = client.post(
         "/verify-and-render", content=raw, headers=_JSON, params={"include_html": "true"}
     )
     assert response.status_code == 200
     body: dict[str, Any] = response.json()
-    direct = _direct_render(raw, include_html=True)
-    assert body["html"] == direct.html
-    assert body["svg"] == direct.svg
+    served = client.get(f"/chart/{body['plot_id']}")
+    assert body["html"] == served.text
+    assert body["svg"] == _direct_render(raw).svg
 
 
 # --- GET /chart serves the page built on every verified render (even include_html=false) -----
-def test_chart_get_serves_page_without_inline_copy(client: TestClient[Litestar]) -> None:
+def test_chart_get_serves_signed_badge_and_exact_certificate_link(
+    client: TestClient[Litestar], signing_identity: SigningIdentity
+) -> None:
     # The offline page is built + stored on every verified render, so GET /chart resolves even
-    # when the JSON body omitted the inline copy (include_html=false). The served bytes are a
-    # direct render's HTML verbatim, as text/html under the sandbox CSP (+ the app nosniff).
+    # when the JSON body omitted the inline copy (include_html=false). The served page visibly
+    # binds the human-facing badge to the exact envelope identity and signer hint.
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     posted: dict[str, Any] = client.post(
         "/verify-and-render", content=raw, headers=_JSON, params={"include_html": "false"}
@@ -328,9 +430,46 @@ def test_chart_get_serves_page_without_inline_copy(client: TestClient[Litestar])
     assert response.headers["content-type"].startswith("text/html")
     assert response.headers["content-security-policy"] == "sandbox allow-scripts"
     assert response.headers["x-content-type-options"] == _NOSNIFF
-    direct = _direct_render(raw, include_html=True)
-    assert direct.html is not None
-    assert response.content == direct.html.encode("utf-8")  # the page bytes verbatim
+    envelope = client.get(f"/certificate/{posted['plot_id']}").content
+    certificate = attestation.verify_vcert(envelope, signing_identity.trusted_keys).certificate
+    page = response.text
+    assert 'id="vplot-chart"' in page
+    for digest in (
+        certificate.dataset_hash,
+        certificate.spec_hash,
+        certificate.plotted_table_hash,
+        certificate.manifest_hash,
+        certificate.vega_lite_hash,
+    ):
+        assert digest in page
+    for check in certificate.checks:
+        assert f"{check.id} - {check.method} - pass" in page
+    assert certificate.tcb.verifier_version in page
+    assert signing_identity.signer.keyid in page
+    assert posted["plot_id"] in page
+    certificate_url = f"http://127.0.0.1:8000/certificate/{posted['plot_id']}"
+    assert f'href="{certificate_url}"' in page
+
+
+def test_signed_chart_final_html_limit_is_reapplied_before_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(render, "signed_chart_html", lambda *_args, **_kwargs: "éxx")
+    settings = Settings(
+        data_dir=_DATA,
+        state_dir=tmp_path / "state",
+        max_html_bytes=3,
+        chart_cache_bytes=3,
+    )
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    with TestClient(app=create_app(settings)) as scoped:
+        response = scoped.post("/verify-and-render", content=raw, headers=_JSON)
+        body = cast("dict[str, Any]", response.json())
+        assert body["verified"] is False
+        assert body["results"][-1]["check"] == "resource.html_bytes"
+        assert body["results"][-1]["message"] == "HTML has 4 bytes; limit is 3"
+        spec_id = canon.hash_spec(decode_spec(raw)).removeprefix("sha256:")
+        assert scoped.get(f"/spec/{spec_id}").status_code == 404
 
 
 # --- the chart LRU (html_cap) evicts independently of the render LRU (store_cap) -------------

@@ -60,12 +60,13 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     returns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this
     field alone. A DISTINCT struct rather than a Verdict subclass, so the handler's
     Verdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.
-    `plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);
+    `plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;
     `spec_id` = `spec_hash` minus its
     `sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;
-    changing the trusted manifest, verifier/formal TCB, or emitted Vega bytes keeps spec_id but
-    changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them). The five
-    `*_hash` fields are the certificate's verbatim `sha256:`-prefixed digests.
+    changing the trusted manifest, verifier/formal TCB, emitted Vega bytes, or signing key keeps
+    spec_id but changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them).
+    The five `*_hash` fields are the authenticated VCert payload's verbatim
+    `sha256:`-prefixed digests.
     `html` (omitted when absent via omit_defaults) carries the offline view only under
     include_html=true.
     """
