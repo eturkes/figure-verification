@@ -269,7 +269,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   while DSSE envelope extensions remain tolerated within the resource cap. Official v1.0.2 vector,
   canonical/deterministic round-trip, tamper/wrong-key/hint/base64/shape/resource-order/same-object
   tests pass; locked gate green at 1,306 tests/100% branch coverage.
-- **M5.3b — persistent signing identity** (OPEN): add a state-dir + key-file setting, eagerly
+- **M5.3b — persistent signing identity** (DONE): add a state-dir + key-file setting, eagerly
   absolutized without following the final component (default launch-root `.verifier-state`).
   Create the directory mode 0700 and one raw Ed25519 private key atomically/no-follow with mode
   0600 + file/directory fsync when absent; reject final-component symlink/non-directory,
@@ -279,7 +279,19 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   shape-validated historical keyid pins from operator config; an archived/public endpoint key is
   NEVER trusted merely because it is present. Acceptance: create/reopen/concurrent-first-start,
   permissions, symlink/truncation, explicit rotation, and unpinned-historical-key tests; restart
-  returns the same signer/keyid; gate green.
+  returns the same signer/keyid; gate green. Landed as `service.identity`: launch-root-relative
+  paths retain their final component for descriptor-relative `O_NOFOLLOW`; owned owner-private
+  directories/files are mandatory (including an external key parent). Missing state/public-key
+  directories are 0700. A missing raw 32-byte private key is written + file-fsynced under a random
+  0600 name, hard-linked into place without replacement, then directory-fsynced before + after
+  temporary cleanup, so concurrent starters observe one complete winner. Current raw public keys
+  persist under their SHA-256 keyid; an immutable verification map includes only the current key +
+  at most 32 canonical, order-deduplicated historical pins from operator settings. Rotating via an
+  explicit new key file preserves but does not auto-trust the old key. Creation/reopen/concurrency,
+  file+directory fsync, external path, state/key/public symlink/type/owner/mode/size, tamper,
+  rotation/pin/missing/hash mismatch, bounded settings, partial-write/temp-collision/cleanup, and
+  immutable-policy tests pass; `.verifier-state/` is ignored; gate green at 1,339 tests/100% branch
+  coverage.
 - **M5.3c — signed service certificate + plot IDs** (OPEN): after core render, the service signs
   exact VCert payload bytes into deterministic DSSE; `plot_id=sha256(envelope bytes)`; certificate
   GET serves the envelope. Rebuild the off-chain chart page from the returned authoritative Vega

@@ -37,6 +37,7 @@ bench/reports/
 !.env.example
 
 # Service artifacts
+.verifier-state/
 *.duckdb
 *.duckdb.wal
 *.log

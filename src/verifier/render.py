@@ -560,7 +560,7 @@ def render_html(vega_lite_json: str) -> str:
 
 # --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
 # Core render still returns a NON-REPLAYABLE unsigned VCert (service signing + replay follow in
-# M5.3c-M5.5; M5.3a supplies only the isolated attestation primitives). It
+# M5.3c-M5.5; M5.3a-M5.3b supply attestation primitives + persistent identity only). It
 # stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
 # bytes. Every passing result carries its verification method. The TCB identifies this verifier,
 # Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the

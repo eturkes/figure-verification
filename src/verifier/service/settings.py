@@ -2,8 +2,13 @@
 """Trusted operator configuration for transport, verification, and resource policy.
 
 `Settings` is an immutable startup snapshot, never request-decoded. `from_env` is the sole
-ambient-environment boundary. Field defaults and its fallbacks share constants; core defaults
-come directly from `DEFAULT_LIMITS`.
+ambient-environment-variable boundary. Field defaults and its fallbacks share constants; core
+defaults come directly from `DEFAULT_LIMITS`.
+
+Signing paths are launch-root-relative and eagerly made absolute while preserving each final
+component for the identity loader's no-follow checks. The private-key default follows the resolved
+state-directory setting. Historical trust pins are canonical SHA-256 keyids, order-preserving
+deduplicated, and capped before filesystem work; the current signer is added by identity policy.
 
 M5 resource policy: all resource integers are exact positive signed-64-bit values
 (`model_sample_rows` alone admits zero). This common arithmetic domain protects later native and
@@ -28,6 +33,8 @@ from urllib.parse import urlparse
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 _DEFAULT_DATA_DIR = "data"
+_DEFAULT_STATE_DIR = ".verifier-state"
+_DEFAULT_SIGNING_KEY_FILE = "signing.key"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
 _DEFAULT_MAX_BODY_BYTES = 64 * 1024
@@ -50,7 +57,9 @@ _DEFAULT_WORK_RATE_PER_MINUTE = 120
 _DEFAULT_WORK_BURST = 120
 
 _MAX_RESOURCE_INTEGER = 2**63 - 1
+_MAX_TRUSTED_KEYIDS = 32
 _CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
+_KEYID = re.compile(r"sha256:[0-9a-f]{64}")
 _POSITIVE_RESOURCE_FIELDS = (
     "max_body_bytes",
     "store_cap",
@@ -81,11 +90,45 @@ def _checked_resource_sum(name: str, left: int, right: int) -> int:
     return left + right
 
 
+def _absolute_without_final(path: Path, *, field_name: str) -> Path:
+    """Absolutize through the parent while retaining the final component for O_NOFOLLOW."""
+    path_object: object = path
+    if not isinstance(path_object, Path) or not path.name:
+        msg = f"{field_name} must name a filesystem entry, got {path!r}"
+        raise ValueError(msg)
+    absolute = path if path.is_absolute() else Path.cwd() / path
+    return absolute.parent.resolve(strict=False) / absolute.name
+
+
+def _trusted_keyids(value: tuple[str, ...]) -> tuple[str, ...]:
+    value_object: object = value
+    if not isinstance(value_object, tuple):
+        msg = f"trusted_keyids must be a tuple, got {value!r}"
+        raise TypeError(msg)
+    deduplicated: list[str] = []
+    seen: set[str] = set()
+    for keyid in value:
+        keyid_object: object = keyid
+        if not isinstance(keyid_object, str) or _KEYID.fullmatch(keyid) is None:
+            msg = f"trusted_keyids entries must match sha256:<64 lowercase hex>, got {keyid!r}"
+            raise ValueError(msg)
+        if keyid not in seen:
+            seen.add(keyid)
+            deduplicated.append(keyid)
+    if len(deduplicated) > _MAX_TRUSTED_KEYIDS:
+        msg = f"trusted_keyids admits at most {_MAX_TRUSTED_KEYIDS} distinct pins"
+        raise ValueError(msg)
+    return tuple(deduplicated)
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Settings:
     """Immutable service policy; direct construction and `from_env` share all validation."""
 
     data_dir: Path
+    state_dir: Path = Path(_DEFAULT_STATE_DIR)
+    signing_key_file: Path | None = None
+    trusted_keyids: tuple[str, ...] = ()
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
     public_base_url: str | None = None
@@ -126,6 +169,16 @@ class Settings:
     limits: VerificationLimits = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        state_dir = _absolute_without_final(self.state_dir, field_name="state_dir")
+        object.__setattr__(self, "state_dir", state_dir)
+        key_file = self.signing_key_file
+        if key_file is None:
+            key_file = state_dir / _DEFAULT_SIGNING_KEY_FILE
+        else:
+            key_file = _absolute_without_final(key_file, field_name="signing_key_file")
+        object.__setattr__(self, "signing_key_file", key_file)
+        object.__setattr__(self, "trusted_keyids", _trusted_keyids(self.trusted_keyids))
+
         base = self.public_base_url
         if base is None:
             base = f"http://{_DEFAULT_HOST}:{self.port}"
@@ -200,8 +253,18 @@ class Settings:
         def integer(name: str, default: int) -> int:
             return int(env.get(name, str(default)))
 
+        signing_key_value = env.get("VERIFIER_SIGNING_KEY_FILE")
+        trusted_keyids_value = env.get("VERIFIER_TRUSTED_KEYIDS", "")
+
         return cls(
             data_dir=Path(env.get("VERIFIER_DATA_DIR", _DEFAULT_DATA_DIR)),
+            state_dir=Path(env.get("VERIFIER_STATE_DIR", _DEFAULT_STATE_DIR)),
+            signing_key_file=(Path(signing_key_value) if signing_key_value is not None else None),
+            trusted_keyids=(
+                tuple(part.strip() for part in trusted_keyids_value.split(","))
+                if trusted_keyids_value
+                else ()
+            ),
             host=env.get("VERIFIER_HOST", _DEFAULT_HOST),
             port=integer("VERIFIER_PORT", _DEFAULT_PORT),
             public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL"),

@@ -10,8 +10,9 @@ strictly parses those SAME bytes as VCert. It never re-reads the envelope after 
 DSSE ``keyid`` is unauthenticated. It is bounded and may reorder candidate keys, but cannot add a
 key, remove fallback candidates, affect the returned value, or establish identity. Unknown envelope
 fields remain forward-compatible per DSSE; duplicate keys and malformed known-field shapes fail
-closed. The envelope/payload ceilings bound both JSON parsing and application parsing. Key
-persistence, independent trust pins, service signing, and archive replay belong to later M5 units.
+closed. The envelope/payload ceilings bound both JSON parsing and application parsing. Persistent
+signer + independent trust-pin policy live in ``service.identity``; service signing and archive
+replay belong to later M5 units.
 """
 
 import base64

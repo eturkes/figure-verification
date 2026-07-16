@@ -26,6 +26,8 @@ from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
 _MAX_RESOURCE_INTEGER = 2**63 - 1
+_PIN_A = "sha256:" + "a" * 64
+_PIN_B = "sha256:" + "b" * 64
 _CORE_DEFAULTS = {name: getattr(DEFAULT_LIMITS, name) for name in DEFAULT_LIMITS.__struct_fields__}
 _RESOURCE_DEFAULTS = {
     "max_body_bytes": 64 * 1024,
@@ -59,6 +61,9 @@ _RESOURCE_ENV = {
 }
 _VERIFIER_ENV = (
     "VERIFIER_DATA_DIR",
+    "VERIFIER_STATE_DIR",
+    "VERIFIER_SIGNING_KEY_FILE",
+    "VERIFIER_TRUSTED_KEYIDS",
     "VERIFIER_HOST",
     "VERIFIER_PORT",
     "VERIFIER_PUBLIC_BASE_URL",
@@ -106,6 +111,10 @@ def test_app_threads_validated_cache_byte_budgets(tmp_path: Path) -> None:
 
 def test_settings_defaults(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
+    launch_root = Path.cwd().resolve()
+    assert settings.state_dir == launch_root / ".verifier-state"
+    assert settings.signing_key_file == launch_root / ".verifier-state" / "signing.key"
+    assert settings.trusted_keyids == ()
     assert settings.host == "127.0.0.1"
     assert settings.port == 8000
     assert settings.public_base_url == "http://127.0.0.1:8000"
@@ -122,6 +131,51 @@ def test_settings_public_base_url_derives_from_port(tmp_path: Path) -> None:
     # port (separate from host, the bind address), so a non-default port flows through.
     settings = Settings(data_dir=tmp_path, port=9000)
     assert settings.public_base_url == "http://127.0.0.1:9000"
+
+
+def test_signing_paths_absolutize_without_following_final_component(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target_state = tmp_path / "target-state"
+    target_state.mkdir()
+    state_link = tmp_path / "state-link"
+    state_link.symlink_to(target_state, target_is_directory=True)
+    target_key = tmp_path / "target-key"
+    target_key.write_bytes(b"x")
+    key_link = tmp_path / "key-link"
+    key_link.symlink_to(target_key)
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(
+        data_dir=Path("data"),
+        state_dir=Path("state-link"),
+        signing_key_file=Path("key-link"),
+    )
+    assert settings.state_dir == state_link
+    assert settings.state_dir != target_state
+    assert settings.signing_key_file == key_link
+    assert settings.signing_key_file != target_key
+
+
+def test_signing_path_settings_require_named_path_entries(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="state_dir"):
+        Settings(data_dir=tmp_path, state_dir=Path("/"))
+    with pytest.raises(ValueError, match="signing_key_file"):
+        _settings_with(tmp_path, signing_key_file=cast("Path", "not-a-path"))
+
+
+def test_trusted_keyids_are_canonical_deduplicated_and_bounded(tmp_path: Path) -> None:
+    settings = Settings(data_dir=tmp_path, trusted_keyids=(_PIN_A, _PIN_A, _PIN_B))
+    assert settings.trusted_keyids == (_PIN_A, _PIN_B)
+
+    for bad in ("", "sha256:" + "A" * 64, "sha512:" + "a" * 64, cast("str", 7)):
+        with pytest.raises(ValueError, match="trusted_keyids entries"):
+            _settings_with(tmp_path, trusted_keyids=(bad,))
+    with pytest.raises(TypeError, match="must be a tuple"):
+        _settings_with(tmp_path, trusted_keyids=cast("tuple[str, ...]", [_PIN_A]))
+    too_many = tuple(f"sha256:{index:064x}" for index in range(33))
+    with pytest.raises(ValueError, match="at most 32"):
+        Settings(data_dir=tmp_path, trusted_keyids=too_many)
 
 
 def test_settings_public_base_url_accepts_clean_origins(tmp_path: Path) -> None:
@@ -294,6 +348,11 @@ def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # 192.0.2.1 = RFC 5737 TEST-NET-1: a distinct non-default host, no bind-all (S104).
     monkeypatch.setenv("VERIFIER_DATA_DIR", str(tmp_path))
+    state_dir = tmp_path / "state"
+    signing_key = tmp_path / "rotated.key"
+    monkeypatch.setenv("VERIFIER_STATE_DIR", str(state_dir))
+    monkeypatch.setenv("VERIFIER_SIGNING_KEY_FILE", str(signing_key))
+    monkeypatch.setenv("VERIFIER_TRUSTED_KEYIDS", f"{_PIN_A}, {_PIN_A},{_PIN_B}")
     monkeypatch.setenv("VERIFIER_HOST", "192.0.2.1")
     monkeypatch.setenv("VERIFIER_PORT", "9001")
     monkeypatch.setenv("VERIFIER_PUBLIC_BASE_URL", "https://verify.example.org:8443")
@@ -309,6 +368,9 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         monkeypatch.setenv(env_name, str(resource_overrides[field]))
     assert Settings.from_env() == _settings_with(
         tmp_path,
+        state_dir=state_dir,
+        signing_key_file=signing_key,
+        trusted_keyids=(_PIN_A, _PIN_B),
         host="192.0.2.1",
         port=9001,
         public_base_url="https://verify.example.org:8443",
@@ -318,6 +380,14 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         model_sample_rows=3,
         **resource_overrides,
     )
+
+
+def test_from_env_rejects_malformed_trusted_keyid_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VERIFIER_TRUSTED_KEYIDS", f"{_PIN_A},,")
+    with pytest.raises(ValueError, match="trusted_keyids entries"):
+        Settings.from_env()
 
 
 @pytest.mark.parametrize("field,env_name", tuple(_RESOURCE_ENV.items()))
