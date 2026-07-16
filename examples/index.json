@@ -241,8 +241,11 @@
     "transform.ops_allowed": "the transform tagged-union admits only {select,filter,group_by,aggregate,sort}; an unlisted op is unrepresentable at decode -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
     "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists (M1.5/M1.6) -> no bad-spec attack vector",
     "transform.filters_declared": "every filter is a declared transform.filter op; the verifier recomputes from declared transforms only -> an undeclared filter is unrepresentable",
-    "scale.bar_quantitative_axis_zero": "the renderer sets the bar quantitative-axis baseline to 0 regardless of orientation (vertical or horizontal); the model proposes no scale (M1.6) -> a non-zero baseline is unrepresentable",
-    "encoding.legend_domain_matches_data": "the renderer derives the color legend domain from the recomputed data (M1.6)",
     "derived_value_mismatch": "DROPPED (roadmap data-flow): the model supplies no plotted values, so a derived-value lie is impossible by construction"
+  },
+  "formally_checked": {
+    "sort.canonical_order": "SMT checks the exact built row sequence against the active declared sort plus canonical tail before native Vega (M5.2)",
+    "scale.bar_zero": "SMT checks every exact built quantitative bar channel carries scale.zero=true before native Vega (M5.2)",
+    "encoding.legend_domain_exact": "SMT checks each exact built discrete color domain has complete, no-extra set equality with its plotted non-null categories before native Vega (M5.2)"
   }
 }

@@ -6,7 +6,8 @@ manifest bytes, bounded-reads the bound CSV under ``data_dir``, recomputes every
 value from the declared transforms (verifier.eval), and returns three deliberately split
 views: a public results-only ``VerificationReport``; an internal ``VerificationTrace`` of
 successfully admitted raw inputs; and ``RecomputedEvidence`` only after every check passes.
-``verify`` is the public report-only projection. This is the trust gate — meaning lives in
+``verify`` is the public core-report projection. This is the recomputation/evidence gate; final
+verification additionally checks the exact builder artifact before rendering. Meaning lives in
 VPlot_SEMANTICS.md.
 
 Check provenance — four deliberately distinct classes:
@@ -18,8 +19,9 @@ Check provenance — four deliberately distinct classes:
 - AFFIRMED: true by construction (the trust argument), emitted as constant passes —
   security.no_arbitrary_code, transform.ops_allowed, transform.filters_declared,
   transform.aggregates_match_recomputation.
-- M1.6 renderer: enforced-by-construction at render time (bar baseline, legend domain),
-  not in this module.
+- DOWNSTREAM FORMAL: the pre-render orchestrator checks canonical row order, quantitative-bar
+  zero baselines, and explicit discrete legend domains over this module's passing evidence + the
+  exact builder artifact; those SMT results are intentionally not fabricated here.
 
 Control flow (short-circuit gates): manifest byte/shape policy -> pairing precondition
 (caller bug -> ValueError) -> affirmations -> dataset-binding/read gate -> eval gate ->
@@ -67,7 +69,7 @@ class CheckResult(_Base, frozen=True, kw_only=True):
 
 # Exact registry = one internal source of method provenance. Dynamic VerificationError tags are
 # admitted only through this table: a new check must make its method choice explicit before it can
-# become a public result. ``z3_smt`` is already in CheckMethod for M5.2b, but has no result ID yet.
+# become a public result. The downstream formal engine reuses the same constructor/registry.
 _CHECK_METHODS: dict[str, CheckMethod] = {
     # Service-only schema prerequisites.
     "spec.decode": "schema_validation",
@@ -145,7 +147,7 @@ class VerificationReport(_Base, frozen=True, kw_only=True):
 
     @property
     def passed(self) -> bool:
-        """Every check passed -> the spec may render. Blocking is the only severity."""
+        """Every result included at this stage passed. Blocking is the only severity."""
         return all(r.status == "pass" for r in self.results)
 
 

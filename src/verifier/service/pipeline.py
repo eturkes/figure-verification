@@ -5,8 +5,9 @@ The transport hands raw request bytes straight here (never a framework-parsed ob
 schema.decode_spec's strict, fail-closed decode — its duplicate-key rescan included —
 stays authoritative. verify_only strings the trusted M1 stages the core otherwise offers
 no single orchestrator for, as two composable halves: decode_stage (decode_spec) then
-verify_decoded (bounded manifest read -> checks.verify_run), mapping the public report onto
-a Verdict while retaining the incremental trace and optional check-passed evidence internally.
+verify_decoded (bounded manifest read -> checks.verify_run -> exact builder preparation -> SMT),
+mapping the final merged report onto a Verdict while retaining input/formal traces, recomputation
+evidence, and a native-renderable artifact only after every applicable obligation passes.
 
 Error split (POC_SCOPE service boundary): every verification outcome is a 200 Verdict —
 including a spec that fails to decode (an expected model failure mode) or names a dataset
@@ -18,17 +19,18 @@ app's 500 handler. Resource-policy breaches instead remain ordinary failed 200 V
 The untrusted model controls only the dataset name, not what the trusted data_dir holds at
 that path, so a name with no manifest fails closed as a 200 Verdict.
 
-Outcome is an internal dataclass, never serialized: it carries only inputs admitted so far,
-plus RecomputedEvidence only after every core check passes. Sensitive bytes stay out of its
-repr and every route returns only Outcome.verdict or a separately built RenderVerdict.
+Outcome is an internal dataclass, never serialized: it carries inputs admitted so far,
+RecomputedEvidence after every core check passes, the bounded formal trace, and a prepared builder
+artifact only after the final merged report passes. Sensitive bytes stay out of its repr and every
+route returns only Outcome.verdict or a separately built RenderVerdict.
 
 render_outcome (split from verify_and_render at M3.3b) is the render half: on a PASSING
 verdict it renders the verified chart, content-addresses the artifacts (plot_id = SHA-256 of
 the certificate bytes, spec_id = the certificate's spec_hash), stores them, and answers a
-RenderVerdict; a failing verdict returns the plain Verdict with no chart. A passing outcome
-is prepared and rendered directly from its immutable evidence, so no trusted file is read or
-verification/build repeated after capture. A render resource refusal appends its tagged failure
-and returns a plain Verdict before storage; invariant/native faults still escape to 500.
+RenderVerdict; a failing verdict returns the plain Verdict with no chart. A passing outcome's
+already-formal-passed artifact is rendered directly, so no trusted file is read and no
+verification/build/solver work repeats. A render resource refusal appends its tagged failure and
+returns a plain Verdict before storage; invariant/native faults still escape to 500.
 verify_and_render is the thin verify_only -> render_outcome composition; app.py's proposer
 reuses these seams — decode_stage, dataset pin, verify_decoded, render_outcome — so an
 off-request name is refused before the wrong dataset's trusted I/O.
@@ -41,7 +43,7 @@ from typing import Literal, cast
 
 import msgspec
 
-from verifier import canon, checks, render
+from verifier import canon, checks, formal, render
 from verifier.errors import VerificationError
 from verifier.limits import read_bounded
 from verifier.schema import VPlotSpec, decode_spec
@@ -54,12 +56,14 @@ _EMPTY_TRACE = checks.VerificationTrace(manifest_bytes=None, source_bytes=None)
 
 @dataclass(frozen=True, slots=True)
 class Outcome:
-    """Internal verification state; sensitive trace/evidence never serialize or enter repr."""
+    """Internal final-verification state; trace/evidence/build never serialize or enter repr."""
 
     verdict: Verdict
     spec: VPlotSpec | None = field(default=None, repr=False)
     trace: checks.VerificationTrace = field(default=_EMPTY_TRACE, repr=False)
     evidence: checks.RecomputedEvidence | None = field(default=None, repr=False)
+    formal_trace: tuple[formal.FormalTrace, ...] = field(default=(), repr=False)
+    prepared: render.PreparedArtifact | None = field(default=None, repr=False)
 
 
 def _single(check: str, message: str, *, layer: Literal["decode", "verify"]) -> Verdict:
@@ -109,8 +113,43 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
     run = checks.verify_run(
         spec, manifest_bytes, data_dir=settings.data_dir, limits=settings.limits
     )
-    verdict = Verdict(verified=run.report.passed, layer="verify", results=run.report.results)
-    return Outcome(verdict=verdict, spec=spec, trace=run.trace, evidence=run.evidence)
+    if not run.report.passed:
+        verdict = Verdict(verified=False, layer="verify", results=run.report.results)
+        return Outcome(verdict=verdict, spec=spec, trace=run.trace)
+
+    # A passing core report owns recomputation evidence. Preparation builds/serializes once, then
+    # runs every applicable formal obligation over that exact builder object. Resource refusals at
+    # either boundary remain ordinary failed verdicts; invariant/builder faults still escape -> 500.
+    evidence = cast("checks.RecomputedEvidence", run.evidence)
+    try:
+        preparation = render.prepare_render(spec, evidence, limits=settings.limits)
+    except VerificationError as exc:
+        failure = checks.make_result(exc.check, status="fail", message=str(exc))
+        verdict = Verdict(
+            verified=False,
+            layer="verify",
+            results=(*run.report.results, failure),
+        )
+        return Outcome(
+            verdict=verdict,
+            spec=spec,
+            trace=run.trace,
+            evidence=evidence,
+        )
+
+    verdict = Verdict(
+        verified=preparation.report.passed,
+        layer="verify",
+        results=preparation.report.results,
+    )
+    return Outcome(
+        verdict=verdict,
+        spec=spec,
+        trace=run.trace,
+        evidence=evidence,
+        formal_trace=preparation.formal_trace,
+        prepared=preparation.prepared,
+    )
 
 
 def verify_only(raw: bytes, settings: Settings) -> Outcome:
@@ -140,12 +179,11 @@ def render_outcome(
     html copy (the large inline view the caller opts into); the stored page is not gated by it."""
     if not outcome.verdict.verified:
         return outcome.verdict
-    # verified => the verify stage ran and passed, so spec + evidence are populated (cast, not
+    # verified => the final verify/formal stage passed, so spec + prepared are populated (cast, not
     # assert: an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
     spec = cast("VPlotSpec", outcome.spec)
-    evidence = cast("checks.RecomputedEvidence", outcome.evidence)
+    prepared = cast("render.PreparedArtifact", outcome.prepared)
     try:
-        prepared = render.prepare_render(spec, evidence, limits=settings.limits)
         result = render.render_prepared(prepared, include_html=True, limits=settings.limits)
     except VerificationError as exc:
         resource_failure = checks.make_result(exc.check, status="fail", message=str(exc))

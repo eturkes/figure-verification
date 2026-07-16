@@ -206,6 +206,44 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
     assert source.read_bytes() == replacement
 
 
+def test_proposer_formal_gate_blocks_built_bar_zero_corruption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A builder-scale defect becomes a 200 failed verdict, with no native render or store."""
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    original_build = render.build_vega_lite
+
+    def corrupt_zero(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        built = original_build(*args, **kwargs)
+        built["encoding"]["y"]["scale"]["zero"] = False
+        return built
+
+    def forbidden_native(_: str) -> str:
+        msg = "native render reached after a formal bar-zero failure"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    monkeypatch.setattr(render, "build_vega_lite", corrupt_zero)
+    monkeypatch.setattr(render, "render_svg", forbidden_native)
+    request = msgspec.json.encode(
+        {"user_request": "Plot total revenue by month", "dataset_name": "sales.csv"}
+    )
+    with TestClient(app=create_app(Settings(data_dir=_DATA))) as client:
+        response = client.post("/propose-spec", content=request, headers=_JSON)
+        assert response.status_code == 200
+        body = cast("dict[str, Any]", response.json())
+        verdict = cast("dict[str, Any]", body["verdict"])
+        assert verdict["verified"] is False
+        assert b'"svg"' not in response.content
+        assert b'"html"' not in response.content
+        failed = [item for item in verdict["results"] if item["status"] == "fail"]
+        assert [(item["check"], item["method"]) for item in failed] == [
+            ("scale.bar_zero", "z3_smt")
+        ]
+        spec_id = canon.hash_spec(decode_spec(raw)).removeprefix("sha256:")
+        assert client.get(f"/spec/{spec_id}").status_code == 404
+
+
 # --- the never-a-chart pin: no svg/html key over the whole bad corpus --------
 @pytest.mark.parametrize("entry", _BAD, ids=_ids(_BAD))
 def test_bad_spec_never_renders(client: TestClient[Litestar], entry: dict[str, Any]) -> None:

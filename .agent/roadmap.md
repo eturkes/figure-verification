@@ -221,7 +221,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   x-before-y, duplicate/empty/all-null color, and numeric ordinal categories. Removing each
   obligation's constraint producer is detected by a focused non-vacuity mutation; property run
   found no counterexample; gate green at 1,247 tests/100% branch coverage.
-- **M5.2d — pre-render formal gate** (OPEN): builder emits an explicit deterministic scale domain
+- **M5.2d — pre-render formal gate** (DONE): builder emits an explicit deterministic scale domain
   for nominal/ordinal color from recomputed non-null values; build typed formal facts from the
   exact dict handed to `_dumps`. Split preparation from native rendering at the orchestration seam:
   every public verify path (including `/verify-only`) prepares once, runs SMT, merges its results,
@@ -231,10 +231,11 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   current VCert's name-only list while carrying `z3_smt` in the report; replace the old
   construction-only bar/legend claims everywhere. Planning probe already compile-confirmed
   empty/all-null nominal domain `[]` and numeric ordinal domain under pinned Vega-Lite.
-  Acceptance: `/verify-only`, direct render, and
-  proposer mutation seams block row/domain/zero corruption; spies prove one build + solver pass and
-  zero native render for verify-only/failure; all good corpus renders, all bad corpus blocks,
-  emitted Vega compiles; gate green.
+  `/verify-only`, direct render, and proposer mutation seams block domain/row/zero corruption;
+  spies pin one build + one solver pass and zero native rendering for verify-only/failure. Empty,
+  all-null, and numeric-ordinal explicit domains compile; certificate names equal the final passing
+  report; every old construction-only bar/legend claim was replaced. All good corpus renders, all
+  bad corpus blocks; gate green at 1,258 tests/100% branch coverage.
 - **M5.2e — VCert v0.2 method provenance** (OPEN): replace `checks_passed` with
   `checks: tuple[CertifiedCheck(id, method, status="pass")]`; stamp verifier package + Z3 versions
   in TCB and add `vega_lite_hash` over the exact serialized builder output. Update certificate

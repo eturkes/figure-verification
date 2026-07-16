@@ -23,7 +23,8 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from verifier import checks
+from verifier import checks, formal, render
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import pipeline
 from verifier.service.app import create_app
 from verifier.service.settings import Settings
@@ -77,7 +78,52 @@ def test_good_spec_verifies(client: TestClient[Litestar], entry: dict[str, Any])
     assert {result["method"] for result in body["results"]} == {
         "construction",
         "deterministic_recompute",
+        "z3_smt",
     }
+
+
+def test_verify_only_builds_and_solves_once_then_blocks_domain_corruption(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verify-only path prepares fully, but no failing artifact reaches native rendering."""
+    original_build = render.build_vega_lite
+    original_formal = formal.verify_formal
+    build_count = 0
+    formal_count = 0
+
+    def corrupt_domain(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        nonlocal build_count
+        build_count += 1
+        built = original_build(*args, **kwargs)
+        built["encoding"]["color"]["scale"]["domain"] = ["Cairo"]
+        return built
+
+    def count_formal(
+        facts: formal.FormalFacts,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> formal.FormalRun:
+        nonlocal formal_count
+        formal_count += 1
+        return original_formal(facts, limits=limits)
+
+    def forbidden_native(_: str) -> str:
+        msg = "verify-only reached native Vega"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "build_vega_lite", corrupt_domain)
+    monkeypatch.setattr(formal, "verify_formal", count_formal)
+    monkeypatch.setattr(render, "render_svg", forbidden_native)
+    raw = (_GOOD_DIR / "g07_temp_over_time_by_city.json").read_bytes()
+    response = client.post("/verify-only", content=raw, headers=_JSON)
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    assert body["verified"] is False
+    assert build_count == formal_count == 1
+    failed = [result for result in body["results"] if result["status"] == "fail"]
+    assert [(item["check"], item["method"]) for item in failed] == [
+        ("encoding.legend_domain_exact", "z3_smt")
+    ]
 
 
 def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
@@ -93,6 +139,9 @@ def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
     assert passed.evidence is not None
     assert passed.evidence.manifest_bytes == manifest_bytes
     assert passed.evidence.source_bytes == source_bytes
+    assert passed.prepared is not None
+    assert passed.prepared.vega_lite
+    assert passed.formal_trace
 
     hash_failure = pipeline.verify_only(
         (_BAD_DIR / "b08_dataset_hash_mismatch.json").read_bytes(), settings
@@ -101,10 +150,13 @@ def test_outcome_carries_incremental_trace_and_passed_evidence() -> None:
     assert hash_failure.trace.source_bytes == source_bytes
     assert hash_failure.trace.eval_work_units == 0
     assert hash_failure.evidence is None
+    assert hash_failure.prepared is None
+    assert hash_failure.formal_trace == ()
 
     decode_failure = pipeline.verify_only(b"not JSON", settings)
     assert decode_failure.trace == checks.VerificationTrace(manifest_bytes=None, source_bytes=None)
     assert decode_failure.evidence is None
+    assert decode_failure.prepared is None
 
 
 # --- bad specs, decode layer: a lone spec.decode fail ------------------------
@@ -241,6 +293,26 @@ def test_oversized_manifest_is_resource_verdict(tmp_path: Path) -> None:
     assert body["results"][0]["method"] == "resource_policy"
     assert "evidence" not in body
     assert "trace" not in body
+
+
+def test_smt_term_limit_is_resource_verdict_before_native(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_native(_: str) -> str:
+        msg = "native render reached after an SMT-term refusal"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "render_svg", forbidden_native)
+    app = create_app(Settings(data_dir=_DATA, max_smt_terms=1))
+    with TestClient(app=app) as client:
+        raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+        response = client.post("/verify-only", content=raw, headers=_JSON)
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    assert body["verified"] is False
+    assert body["layer"] == "verify"
+    assert body["results"][-1]["check"] == "resource.smt_terms"
+    assert body["results"][-1]["method"] == "resource_policy"
 
 
 def test_broken_manifest_is_500_problem(tmp_path: Path) -> None:

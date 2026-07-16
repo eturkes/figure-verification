@@ -17,10 +17,14 @@ Enforced by `tests/test_examples.py`.
 - `transform` (×3) → M1.4. group_by placement (§4), aggregate-`as`/group-key collision (§5), sort-field distinctness (§5).
 
 ## By construction — no bad spec (`index.json.enforced_by_construction`)
-`aggregates_match_recomputation` · `filters_declared` · `scale.bar_quantitative_axis_zero` ·
-`legend_domain_matches_data` are unrepresentable as a model spec (the verifier recomputes all
-data; the renderer owns scales + legend). `derived_value_mismatch` is dropped — the model
-emits no plotted values.
+`aggregates_match_recomputation` · `filters_declared` are unrepresentable as a model spec because
+the verifier recomputes all data from declared transforms. `derived_value_mismatch` is dropped —
+the model emits no plotted values.
+
+## Pre-render formal checks (`index.json.formally_checked`)
+`sort.canonical_order` · `scale.bar_zero` · `encoding.legend_domain_exact` consume the exact
+builder artifact and block row-order, bar-baseline, or discrete-domain corruption before native
+Vega. They protect trusted construction behavior; they are not bad model-spec fixtures.
 
 ## Data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is

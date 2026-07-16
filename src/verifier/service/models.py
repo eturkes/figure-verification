@@ -40,8 +40,9 @@ class Verdict(msgspec.Struct, frozen=True, kw_only=True):
 
     `layer` names the stage that produced it: "decode" when the raw body failed to decode
     (a lone synthetic spec.decode result), "verify" once decoding passed and the trusted
-    pipeline ran (dataset binding, eval, encoding/label). `verified` is true only when
-    every result passed. Every field is always present, so no omit_defaults is needed.
+    pipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).
+    `verified` is true only when every final result passed. Every field is always present, so no
+    omit_defaults is needed.
     """
 
     verified: bool

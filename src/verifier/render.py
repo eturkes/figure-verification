@@ -6,9 +6,9 @@ v5 spec dict that inlines ONLY that table. Two trust mechanisms, kept distinct: 
 builder copies NO model-supplied Vega-Lite key, so no dangerous data/JS/URL sink can appear
 (positive allowlist by construction); (2) it EMITS its own narrow fixed safe set to pin
 determinism -- every channel sort:null, quantitative stack:null, line-mark order:null, bar
-scale.zero -- defeating Vega-Lite's implicit field-sort / line-vertex-sort / legend-domain
-sort / stacking so the displayed marks are intended to match the recomputed row order (M1.6b
-compile-confirms the effect).
+scale.zero, and an explicit discrete-color domain from recomputed non-null values -- defeating
+Vega-Lite's implicit field-sort / line-vertex-sort / legend-domain sort / stacking so the
+displayed marks are intended to match the recomputed row order (M1.6b compile-confirms the effect).
 
 Axis titles are manifest-sourced via checks.unit_source lineage (count-derived -> the fixed
 "count", as a count is dimensionless and its output name is model-proposed). _dumps is the
@@ -20,11 +20,12 @@ consume -- stdlib json.dumps is never applied to builder output (it cannot seria
 Decimals build_vega_lite keeps in data.values).
 
 The orchestration boundary is deliberately two-stage. ``prepare_render`` consumes a decoded
-spec plus check-passed ``RecomputedEvidence`` (never a live data directory), binds the pair,
-enforces the render-row ceiling, and carries the one authoritative serialized Vega-Lite byte
-string forward. ``render_prepared`` mints and byte-admits the VCert before native work, renders
-that exact prepared artifact, and admits the SVG/optional HTML before returning either. The
-``render`` convenience entry is their single-read verify -> prepare -> render composition.
+spec plus core-check-passed ``RecomputedEvidence`` (never a live data directory), binds the pair,
+builds/serializes once, derives formal facts from that exact builder object, and runs the bounded
+SMT gate. Only a complete passing report carries ``PreparedArtifact`` forward. ``render_prepared``
+mints and byte-admits the VCert before native work, renders that exact artifact, and admits the
+SVG/optional HTML before returning either. The ``render`` convenience entry is their single-read
+verify -> prepare/formal-check -> render composition.
 """
 
 import functools
@@ -35,17 +36,18 @@ import importlib.resources
 import json
 from dataclasses import dataclass, field
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, cast
 
 import msgspec
 import vl_convert
 
-from verifier import canon, checks, ingest
+from verifier import canon, checks, formal, ingest
 from verifier.errors import VerificationError
 from verifier.eval import active_sort
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import Aggregate, Channel, Filter, VPlotSpec
+from verifier.schema import Aggregate, Channel, Filter, SortOrder, VPlotSpec
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
@@ -139,6 +141,22 @@ def _channel(
     }
 
 
+def _discrete_domain(values: list[dict[str, canon.Cell]], field: str) -> list[canon.Cell]:
+    """Distinct non-null values in first plotted occurrence order.
+
+    The evaluator's canonical total order makes first occurrence deterministic. Cells are
+    immutable/hashable, so one set gives linear deduplication without reordering the legend.
+    """
+    seen: set[Decimal | str] = set()
+    domain: list[canon.Cell] = []
+    for row in values:
+        value = row[field]
+        if value is not None and value not in seen:
+            seen.add(value)
+            domain.append(value)
+    return domain
+
+
 def build_vega_lite(
     spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
 ) -> dict[str, Any]:
@@ -169,7 +187,14 @@ def build_vega_lite(
                 encoded["scale"] = {"zero": True}  # bar baseline-0 obligation (section 7)
     encoding: dict[str, Any] = {"x": x, "y": y}
     if spec.encoding.color is not None:
-        encoding["color"] = _channel(spec.encoding.color, aggregates, manifest)
+        color = _channel(spec.encoding.color, aggregates, manifest)
+        if spec.encoding.color.kind in ("nominal", "ordinal"):
+            # An explicit builder-owned domain closes the exact legend artifact that the formal
+            # gate checks. Empty/all-null domains intentionally emit [] (valid Vega-Lite v5).
+            color["scale"] = {
+                "domain": _discrete_domain(values, spec.encoding.color.field),
+            }
+        encoding["color"] = color
     mark: dict[str, Any] | str = _MARK_MAP[spec.mark]
     if spec.mark == "line":
         # order:null is a MARK property -- the v5 `encoding.order` channel admits no null. Connect
@@ -192,11 +217,146 @@ def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifes
 
 @dataclass(frozen=True, slots=True)
 class PreparedArtifact:
-    """Internal check-passed build carrying the exact Vega-Lite bytes into native rendering."""
+    """Internal formal-passed build carrying exact Vega-Lite bytes into native rendering."""
 
     spec: VPlotSpec = field(repr=False)
     evidence: checks.RecomputedEvidence = field(repr=False)
+    results: tuple[checks.CheckResult, ...] = field(repr=False)
     vega_lite: bytes = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparationRun:
+    """Final report + bounded solver trace + artifact only when every result passed."""
+
+    report: checks.VerificationReport
+    formal_trace: tuple[formal.FormalTrace, ...]
+    prepared: PreparedArtifact | None = field(repr=False)
+
+
+def _row_order_facts(
+    spec: VPlotSpec,
+    table: canon.Table,
+    built: dict[str, Any],
+) -> formal.RowOrderFacts:
+    """Rank the exact built rows under the declared active sort + canonical tail."""
+    active = active_sort(spec.transform)
+    keys: list[tuple[str, SortOrder]] = (
+        [(key.field, key.order) for key in active.by] if active is not None else []
+    )
+    used = {field for field, _direction in keys}
+    keys.extend((column.name, "ascending") for column in table.columns if column.name not in used)
+
+    columns = {column.name: column for column in table.columns}
+    data = cast("dict[str, Any]", built["data"])
+    rows = cast("list[dict[str, canon.Cell]]", data["values"])
+    text_ranks: dict[str, dict[str, int]] = {}
+    for field_name, _direction in keys:
+        if not isinstance(columns[field_name], canon.NumericColumn):
+            values = sorted(
+                {cast("str", row[field_name]) for row in rows if row[field_name] is not None}
+            )
+            text_ranks[field_name] = {value: rank for rank, value in enumerate(values)}
+
+    ranked_rows: list[tuple[formal.RankedCell, ...]] = []
+    for row in rows:
+        ranked_row: list[formal.RankedCell] = []
+        for field_name, _direction in keys:
+            value = row[field_name]
+            if value is None:
+                ranked_row.append(formal.RankedCell(is_null=True, rank=0))
+            elif isinstance(columns[field_name], canon.NumericColumn):
+                ranked_row.append(
+                    formal.RankedCell(is_null=False, rank=Fraction(cast("Decimal", value)))
+                )
+            else:
+                ranked_row.append(
+                    formal.RankedCell(
+                        is_null=False, rank=text_ranks[field_name][cast("str", value)]
+                    )
+                )
+        ranked_rows.append(tuple(ranked_row))
+    return formal.RowOrderFacts(
+        rows=tuple(ranked_rows),
+        directions=tuple(direction for _field, direction in keys),
+    )
+
+
+def _zero_enabled(channel: dict[str, Any]) -> bool:
+    scale = cast("dict[str, Any]", channel.get("scale", {}))
+    return scale.get("zero") is True
+
+
+def _bar_zero_facts(built: dict[str, Any]) -> formal.BarZeroFacts | None:
+    """Read applicable mark/channel/zero facts from the exact built object."""
+    encoding = cast("dict[str, Any]", built["encoding"])
+    x = cast("dict[str, Any]", encoding["x"])
+    y = cast("dict[str, Any]", encoding["y"])
+    x_quantitative = x["type"] == "quantitative"
+    y_quantitative = y["type"] == "quantitative"
+    if built["mark"] != "bar" or not (x_quantitative or y_quantitative):
+        return None
+    return formal.BarZeroFacts(
+        is_bar=True,
+        x_quantitative=x_quantitative,
+        x_zero=_zero_enabled(x),
+        y_quantitative=y_quantitative,
+        y_zero=_zero_enabled(y),
+    )
+
+
+def _category_label(value: Decimal | str) -> str:
+    return format(value, "f") if isinstance(value, Decimal) else value
+
+
+def _legend_domain_facts(
+    table: canon.Table,
+    built: dict[str, Any],
+) -> formal.LegendDomainFacts | None:
+    """Read discrete color occurrences + explicit domain from the exact built object."""
+    encoding = cast("dict[str, Any]", built["encoding"])
+    color_value = encoding.get("color")
+    if color_value is None:
+        return None
+    color = cast("dict[str, Any]", color_value)
+    if color["type"] not in ("nominal", "ordinal"):
+        return None
+
+    field_name = cast("str", color["field"])
+    data = cast("dict[str, Any]", built["data"])
+    rows = cast("list[dict[str, canon.Cell]]", data["values"])
+    plotted = [row[field_name] for row in rows if row[field_name] is not None]
+    scale = cast("dict[str, Any]", color["scale"])
+    domain = cast("list[Decimal | str]", scale["domain"])
+    column = {item.name: item for item in table.columns}[field_name]
+    if isinstance(column, canon.NumericColumn):
+        ordered: list[Decimal | str] = sorted(
+            set(cast("list[Decimal]", plotted)) | set(cast("list[Decimal]", domain))
+        )
+    else:
+        ordered = sorted(set(cast("list[str]", plotted)) | set(cast("list[str]", domain)))
+    ranks = {value: rank for rank, value in enumerate(ordered)}
+
+    def category(value: Decimal | str) -> formal.LegendCategory:
+        return formal.LegendCategory(rank=ranks[value], label=_category_label(value))
+
+    return formal.LegendDomainFacts(
+        plotted=tuple(category(cast("Decimal | str", value)) for value in plotted),
+        domain=tuple(category(value) for value in domain),
+    )
+
+
+def _formal_facts(
+    spec: VPlotSpec,
+    table: canon.Table,
+    built: dict[str, Any],
+) -> formal.FormalFacts:
+    """Typed facts projected from the exact builder object later handed to ``_dumps``."""
+    return formal.FormalFacts(
+        row_order=_row_order_facts(spec, table, built),
+        bar_zero=_bar_zero_facts(built),
+        legend_domain=_legend_domain_facts(table, built),
+    )
 
 
 def _enforce_byte_limit(payload: bytes, limit: int, *, artifact: str, check: str) -> None:
@@ -212,13 +372,15 @@ def prepare_render(
     evidence: checks.RecomputedEvidence,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
-) -> PreparedArtifact:
-    """Build one authoritative Vega-Lite artifact from captured verification evidence.
+) -> PreparationRun:
+    """Build and formally check one authoritative artifact from recomputation evidence.
 
     ``spec`` is paired to the evidence by its canonical hash before either the row gate or
     builder runs; a mismatch is a caller invariant violation, not a model-driven verification
     outcome. The row ceiling runs before materializing builder rows. Serialization then happens
-    exactly once, and the UTF-8 bytes are admitted before any native renderer can receive them.
+    exactly once from the same dict used to derive formal facts. UTF-8 bytes are admitted before
+    solver work. A failed/uncertain formal result returns no ``PreparedArtifact``, making the
+    native-render handoff represent only a complete passing report.
     """
     spec_hash = canon.hash_spec(spec)
     if spec_hash != evidence.spec_hash:
@@ -230,14 +392,34 @@ def prepare_render(
         message = f"plotted table has {row_count} render rows; limit is {limits.max_render_rows}"
         raise VerificationError(message, check="resource.render_rows")
 
-    vega_lite = vega_lite_json(spec, evidence.plotted_table, evidence.manifest).encode("utf-8")
+    built = build_vega_lite(spec, evidence.plotted_table, evidence.manifest)
+    vega_lite = _dumps(built).encode("utf-8")
     _enforce_byte_limit(
         vega_lite,
         limits.max_vega_bytes,
         artifact="Vega-Lite JSON",
         check="resource.vega_bytes",
     )
-    return PreparedArtifact(spec=spec, evidence=evidence, vega_lite=vega_lite)
+    formal_run = formal.verify_formal(
+        _formal_facts(spec, evidence.plotted_table, built),
+        limits=limits,
+    )
+    report = checks.VerificationReport(results=(*evidence.results, *formal_run.results))
+    prepared = (
+        PreparedArtifact(
+            spec=spec,
+            evidence=evidence,
+            results=report.results,
+            vega_lite=vega_lite,
+        )
+        if report.passed
+        else None
+    )
+    return PreparationRun(
+        report=report,
+        formal_trace=formal_run.trace,
+        prepared=prepared,
+    )
 
 
 # --- SVG rendering (M1.6b: the vl-convert native dep) ------------------------
@@ -378,22 +560,14 @@ def render_html(vega_lite_json: str) -> str:
 
 # --- provenance certificate (M1.6c: VCert v0.1 badge + render() gate) --------
 # VCert v0.1 is NON-REPLAYABLE (no nonce/signature; replay + signing are M5). It stamps the
-# four canonical hashes (dataset/spec/plotted-table/manifest), the passed-check names INCLUDING
-# the two the renderer enforces by construction, the disclosed applied filter/sort literals
+# four canonical hashes (dataset/spec/plotted-table/manifest), every passing verifier/formal check,
+# the disclosed applied filter/sort literals
 # (model-controlled -> badge_html escapes them), and the TCB it TRUSTS to render the verified
 # data faithfully (canon + interpreter versions, the vl-convert build, the pinned vl_version,
 # the vendored font family + sha256). The SVG bytes are never hashed into the cert; the TCB
 # DISCLOSES the toolchain for provenance, it does not prove byte-identity (the build + vendored
 # font narrow the toolchain beyond vl_version alone, cross-machine SVG identity is unclaimed).
 _VCERT_VERSION = "vcert-0.1"
-
-# The two checks the RENDERER enforces by construction (examples/index.json marks them
-# enforced_by_construction, NOT computed in checks.py): the builder sets a bar's quantitative-
-# axis scale.zero, and derives the color legend domain from the recomputed data (channel
-# sort:null). Disclosed in the cert only when the spec's mark/encoding makes them applicable,
-# so the cert records the full verified surface without claiming an inapplicable guarantee.
-_RENDERER_BAR_ZERO = "scale.bar_quantitative_axis_zero"
-_RENDERER_LEGEND_DOMAIN = "encoding.legend_domain_matches_data"
 
 # The vendored font ASSET's content hash, computed once from the bytes we ship + register (ties
 # the cert's font provenance to the real asset, not a hardcoded constant). It identifies the
@@ -498,22 +672,17 @@ def _tcb() -> Tcb:
 def _build_certificate(
     spec: VPlotSpec,
     evidence: checks.RecomputedEvidence,
+    results: tuple[checks.CheckResult, ...],
 ) -> VCert:
-    """Mint a certificate directly from the same evidence used to build the prepared artifact.
+    """Mint a certificate from the exact evidence + final results in a prepared artifact.
 
-    No source, manifest, table, or hash is re-read/re-derived here. ``checks_passed`` is the
-    evidence's passing names plus the renderer-enforced checks applicable to ``spec``: bar-zero
-    only for a bar with a quantitative positional axis, and legend-domain when color is present.
+    No source, manifest, table, hash, builder artifact, or formal result is re-read/re-derived here.
+    ``checks_passed`` is the final report's passing names, including applicable SMT obligations.
     Filters disclose every filter; sorts disclose only the active sort. Model-controlled values
-    are escaped later by ``badge_html``.
+    are escaped later by ``badge_html``. M5.2e replaces this name-only v0.1 field with
+    method-bearing certified checks.
     """
-    checks_passed = [r.check for r in evidence.results if r.status == "pass"]
-    if spec.mark == "bar" and (
-        spec.encoding.x.kind == "quantitative" or spec.encoding.y.kind == "quantitative"
-    ):
-        checks_passed.append(_RENDERER_BAR_ZERO)
-    if spec.encoding.color is not None:
-        checks_passed.append(_RENDERER_LEGEND_DOMAIN)
+    checks_passed = [result.check for result in results if result.status == "pass"]
     filters = tuple(
         DisclosedFilter(field=t.field, cmp=t.cmp, value=t.value)
         for t in spec.transform
@@ -551,7 +720,7 @@ def render_prepared(
     artifact raises its stable ``resource.*`` failure and is never returned. Native Vega/Vega-Lite
     and browser pixels remain trusted display components, not verified proof targets.
     """
-    certificate = _build_certificate(prepared.spec, prepared.evidence)
+    certificate = _build_certificate(prepared.spec, prepared.evidence, prepared.results)
     _enforce_byte_limit(
         vcert_bytes(certificate),
         limits.max_attestation_bytes,
@@ -651,17 +820,21 @@ def render(
 ) -> RenderResult | None:
     """Convenience composition: verify once -> prepare captured evidence -> render prepared.
 
-    A failed verification returns ``None`` and performs no preparation/native work. Render policy
-    failures raise a tagged ``VerificationError`` for orchestration layers to surface as structured
-    outcomes. The source is read only by ``verify_run``; every later stage consumes its immutable
-    evidence, so mutation/deletion of the live CSV cannot rebind an admitted render. Optional HTML
-    remains off the cert hash chain and cannot change the SVG, VCert, or Vega-Lite bytes.
+    A failed core verification returns ``None`` before preparation; a failed/uncertain formal
+    check returns ``None`` before native work. Resource-policy failures raise a tagged
+    ``VerificationError`` for orchestration layers to surface as structured outcomes. The source
+    is read only by ``verify_run``; every later stage consumes its immutable evidence, so
+    mutation/deletion of the live CSV cannot rebind an admitted render. Optional HTML remains off
+    the cert hash chain and cannot change the SVG, VCert, or Vega-Lite bytes.
     """
-    run = checks.verify_run(spec, manifest_bytes, data_dir=data_dir, limits=limits)
-    if not run.report.passed:
+    verification = checks.verify_run(spec, manifest_bytes, data_dir=data_dir, limits=limits)
+    if not verification.report.passed:
         return None
     # A passing report implies every checks gate passed, so evidence is populated; cast is the
     # coverage-clean narrowing (an assert's never-taken branch fails the 100% gate).
-    evidence = cast("checks.RecomputedEvidence", run.evidence)
-    prepared = prepare_render(spec, evidence, limits=limits)
+    evidence = cast("checks.RecomputedEvidence", verification.evidence)
+    preparation = prepare_render(spec, evidence, limits=limits)
+    if not preparation.report.passed:
+        return None
+    prepared = cast("PreparedArtifact", preparation.prepared)
     return render_prepared(prepared, include_html=include_html, limits=limits)

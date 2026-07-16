@@ -33,16 +33,17 @@ mutually consistent and every check passed:
 Because the renderer only ever receives verifier-recomputed data, a chart cannot
 display model-supplied numbers — that class of lie is impossible by construction, not a
 check. Checks instead target spec, encoding, policy, and dataset-binding consistency:
-fields exist in the plotted table, axis types match their fields, a bar chart's
-quantitative axis includes zero, a quantitative axis carries the unit the trusted
+fields exist in the plotted table, axis types match their fields, the exact built rows retain the
+declared canonical order, every quantitative bar channel includes zero, an explicit discrete
+legend domain exactly covers its plotted categories, a quantitative axis carries the unit the trusted
 column manifest declares for its field, the declared dataset hash matches the source
 bytes, and only allowlisted ops ever reach the evaluator.
 
 The emitted Vega-Lite carries no model-supplied data transforms — no encoding-level
-aggregate, bin, or impute, no scale-domain override, no top-level `transform`; the only
-`stack`/`sort`/`order` keys are the builder's own `null`s, emitted to switch Vega-Lite's
-implicit stacking and sorting OFF — so the marks show the recomputed rows, nothing
-re-derived downstream.
+aggregate, bin, or impute, no model-supplied scale-domain override, no top-level `transform`.
+The builder's `stack`/`sort`/`order` nulls switch Vega-Lite's implicit stacking/sorting off; its
+only domain is the recomputed discrete-color domain checked before native rendering — so the marks
+show the recomputed rows, nothing re-derived downstream.
 
 What verification does NOT cover: representativeness or intent. A spec that filters to
 an unflattering-but-real subset, or picks a valid-but-misleading encoding, still passes

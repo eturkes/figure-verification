@@ -23,8 +23,9 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   recomputation, so no model value can diverge -- true by construction, NOT an active
   byte-comparison (`verify_run()` retains the recomputation only in check-passed internal
   evidence; core `render()` reads the source once, `prepare_render()` binds the decoded spec to
-  that evidence and serializes its `plotted_table` once, and `render_prepared()` consumes those
-  exact Vega-Lite bytes without reopening the live dataset).
+  that evidence, serializes its `plotted_table` once, and formally checks facts from the same
+  builder object; `render_prepared()` consumes only a passing artifact's exact Vega-Lite bytes
+  without reopening the live dataset or rebuilding/re-solving).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
@@ -140,6 +141,10 @@ regardless of their relative order → the plotted-table hash is permutation-inv
 input-row permutation. (The dataset hash is NOT permutation-invariant — it is raw source
 bytes, §8.)
 
+Before any native render, `sort.canonical_order` (M5.2, `z3_smt`) independently checks adjacent
+rows projected from the exact built `data.values` under the active declared keys + canonical tail.
+SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks the artifact.
+
 ## 7. Encoding + labels
 
 - A channel = `{field, type}` ONLY (`type` = Vega-Lite channel type; schema key `type` → struct
@@ -153,9 +158,11 @@ bytes, §8.)
   | ordinal | numeric \| string |
   | nominal | string \| numeric |
 
-- `x`, `y` required; `color` optional = a third channel, same rules. The color legend domain =
-  the data's distinct values (`encoding.legend_domain_matches_data`, M1.6 renderer — by
-  construction, derived from the recomputed data; not a `checks.py` check).
+- `x`, `y` required; `color` optional = a third channel, same rules. For nominal/ordinal color,
+  the builder emits an explicit scale domain = distinct non-null recomputed values in canonical
+  first-occurrence order (empty/all-null → `[]`). `encoding.legend_domain_exact` (M5.2,
+  `z3_smt`) checks set equality between that exact emitted domain and exact built `data.values`;
+  missing/extra categories, solver uncertainty, or resource refusal blocks the artifact.
 - Axis title = manifest display label + manifest unit appended (M1.6); the title VALUE is
   manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
@@ -169,9 +176,9 @@ bytes, §8.)
   `label.quantitative_units_present` resolves a derived quantitative channel through this lineage
   (`count` is dimensionless — no inherited unit). A group_by KEY keeps its source column's
   metadata; a derived column's numeric scale follows §3.
-- `bar` mark: the renderer sets the quantitative-axis baseline to 0
-  (`scale.bar_quantitative_axis_zero`, M1.6 renderer) — by construction (the model proposes no
-  scale), not a spec check.
+- `bar` mark: the builder emits `scale.zero=true` on every quantitative positional channel (the
+  model proposes no scale). `scale.bar_zero` (M5.2, `z3_smt`) reads the exact built mark/channels
+  and blocks a missing/false baseline, solver uncertainty, or resource refusal before native Vega.
 
 ## 8. Dataset binding
 
@@ -195,9 +202,9 @@ bytes, §8.)
   work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation surfaces its
   tagged failure before work at that boundary. Core verification covers raw manifest/CSV bytes,
   manifest columns, source rows/cells, deterministic evaluator work, and final plotted cells.
-  Rendering/service boundaries additionally cover render rows/artifact bytes, request/prompt/model
-  response bytes, prompt tokens, request rate, and active jobs. Later M5 units extend the same
-  vocabulary to formal checks and durable provenance. Evaluator work units are deterministic
+  Rendering/service boundaries additionally cover render rows/artifact bytes, SMT term count/time,
+  request/prompt/model response bytes, prompt tokens, request rate, and active jobs. Later M5 units
+  extend the same vocabulary to durable provenance. Evaluator work units are deterministic
   logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero

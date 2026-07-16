@@ -281,11 +281,11 @@ def test_every_obligation_gets_local_timeout_and_distinct_solver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original = formal._new_solver
-    seen: list[tuple[int, int]] = []
+    seen: list[tuple[Any, int]] = []
 
     def recording_solver(context: object, timeout_ms: int) -> Any:
         solver = original(context, timeout_ms)
-        seen.append((id(solver), timeout_ms))
+        seen.append((solver, timeout_ms))
         return solver
 
     monkeypatch.setattr(formal, "_new_solver", recording_solver)
@@ -294,8 +294,11 @@ def test_every_obligation_gets_local_timeout_and_distinct_solver(
         result.status == "pass"
         for result in formal.verify_formal(_all_pass(), limits=limits).results
     )
-    assert len({solver_id for solver_id, _timeout in seen}) == 3
-    assert [timeout for _solver_id, timeout in seen] == [17, 17, 17]
+    # Retain the solver objects in ``seen`` while comparing identity. Recording only id(solver)
+    # lets CPython free each prior wrapper and reuse its address, making a distinct-solver witness
+    # spuriously fail even though three native solvers were created.
+    assert len({id(solver) for solver, _timeout in seen}) == 3
+    assert [timeout for _solver, timeout in seen] == [17, 17, 17]
 
 
 def test_solver_configuration_is_local_single_threaded() -> None:

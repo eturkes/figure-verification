@@ -80,6 +80,8 @@ Process / right-sizing (rule itself → roadmap; it binds M2+ planning):
 - An investigation-heavy codex-review can overflow while the fix stays small → capture the verified fix as a re-appliable patch/recipe + verdict, splitting investigation from application.
 - A claim-narrowing fix must SWEEP every restatement of the phrase across src+tests+memory — one narrowed line beside stale twins reads fixed but isn't.
 Test design:
+- An object-identity witness must RETAIN the objects through the assertion; recording only
+  `id(obj)` lets CPython free wrappers and reuse addresses, producing a false same-object result.
 - A green INTERNAL gate (lint/type/100%-branch/structural asserts) does NOT prove EXTERNAL-contract validity → test output artifacts against the real consumer (jsonschema; a full vl-convert COMPILE — now a standing gate over all good specs).
 - 100% BRANCH coverage misses data-DOMAIN gaps (the prec-28 rounding bug) and cannot pin LOOKUP-TABLE entries → regression-test the real data path at hostile magnitudes; matrix-test an enumerable key-space against the spec restated in-test (non-circular oracle).
 - 100% coverage EXECUTES a line without pinning its EFFECT: an LRU recency refresh (`move_to_end`) runs on every put/get yet stays UNPINNED unless a test re-puts an ALREADY-PRESENT key or asserts a READ reorders eviction — re-putting an already-EVICTED key is a fresh insert exercising no refresh (the M4.1b vacuity codex caught). Pin recency with an `html_cap>=2` witness, and PROVE non-vacuous by deleting the refresh + confirming the test FAILS (mutation check), then reverting.

@@ -26,12 +26,18 @@ href/src/CSS-url reference (proven non-vacuous against a known leak) -- and byte
 calls; render_svg NAMES the vendored DejaVu Sans family, whose exact bytes are pinned by sha256;
 an external-data-url spec is hard-blocked. The compile-confirm inspects the COMPILED Vega: our
 sort:null/order:null leave no sort key anywhere, while a naive variant (nulling stripped)
-reintroduces the line-vertex (marks) AND legend-domain (scales) sorts independently.
+reintroduces the line-vertex sort; removing the explicit discrete domain too reintroduces the
+legend-domain sort.
 
 M5.1c makes orchestration evidence-driven: preparation binds spec/evidence, gates render rows,
 and serializes one authoritative Vega artifact; prepared rendering gates VCert/SVG/HTML UTF-8
 bytes. Mutation/deletion, single-read/single-serialization, exact-boundary, and native-tripwire
 witnesses pin each expensive seam while the ordinary artifact bytes remain unchanged.
+
+M5.2d makes preparation final-verification work: one exact builder object supplies serialized Vega
+bytes + typed SMT facts, and only a passing merged report yields a native-renderable artifact.
+Direct/service/proposer mutation witnesses corrupt row order/domain/zero and prove fail-closed
+blocking before native Vega.
 """
 
 import hashlib
@@ -39,15 +45,16 @@ import json
 import re
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import msgspec
 import pytest
 import vl_convert
 
-from verifier import canon, checks, ingest, render
+from verifier import canon, checks, formal, ingest, render
 from verifier.errors import VerificationError
 from verifier.eval import evaluate
-from verifier.limits import VerificationLimits, read_bounded
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
 from verifier.schema import (
     Aggregate,
     Channel,
@@ -326,10 +333,76 @@ def test_every_channel_sorts_null() -> None:
 def test_color_present() -> None:
     enc = _built(_G07)["encoding"]
     assert enc["color"]["field"] == "city"  # type: ignore[index]
+    assert enc["color"]["scale"]["domain"] == ["Cairo", "London"]  # type: ignore[index]
 
 
 def test_color_absent() -> None:
     assert "color" not in _built(_G01)["encoding"]  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    ("rows", "domain"),
+    [
+        ((), []),
+        (((None,), (None,)), []),
+        (
+            ((Decimal("1.0"),), (Decimal("2.0"),), (Decimal("2.0"),)),
+            [Decimal("1.0"), Decimal("2.0")],
+        ),
+    ],
+    ids=["empty", "all-null", "numeric-ordinal"],
+)
+def test_explicit_discrete_domain_edge_cases_compile(
+    rows: tuple[tuple[canon.Cell, ...], ...], domain: list[canon.Cell]
+) -> None:
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(),
+        mark="scatter",
+        encoding=Encoding(
+            x=Channel(field="n", kind="quantitative"),
+            y=Channel(field="n", kind="quantitative"),
+            color=Channel(field="n", kind="ordinal"),
+        ),
+    )
+    manifest = ingest.Manifest(
+        dataset="t.csv",
+        columns=(ingest.NumericColumnSpec(name="n", scale=1, unit="u"),),
+    )
+    table = canon.Table(columns=(canon.NumericColumn(name="n", scale=1),), rows=rows)
+    built = render.build_vega_lite(spec, table, manifest)
+    assert built["encoding"]["color"]["scale"]["domain"] == domain
+    facts = render._formal_facts(spec, table, built)
+    assert facts.legend_domain is not None
+    assert all(result.status == "pass" for result in formal.verify_formal(facts).results)
+    compiled = vl_convert.vegalite_to_vega(render._dumps(built), vl_version=render._VL_VERSION)
+    assert isinstance(compiled, dict)
+
+
+def test_non_discrete_color_has_no_domain_obligation() -> None:
+    spec = VPlotSpec(
+        version="vplot-0.1",
+        dataset=Dataset(name="t.csv", hash="sha256:" + "0" * 64),
+        transform=(),
+        mark="scatter",
+        encoding=Encoding(
+            x=Channel(field="n", kind="quantitative"),
+            y=Channel(field="n", kind="quantitative"),
+            color=Channel(field="n", kind="quantitative"),
+        ),
+    )
+    manifest = ingest.Manifest(
+        dataset="t.csv",
+        columns=(ingest.NumericColumnSpec(name="n", scale=1, unit="u"),),
+    )
+    table = canon.Table(
+        columns=(canon.NumericColumn(name="n", scale=1),),
+        rows=((Decimal("1.0"),),),
+    )
+    built = render.build_vega_lite(spec, table, manifest)
+    assert "scale" not in built["encoding"]["color"]
+    assert render._formal_facts(spec, table, built).legend_domain is None
 
 
 def test_line_mark_order_null() -> None:
@@ -453,6 +526,7 @@ _ALLOWED_KEYS = frozenset(
         "stack",
         "scale",
         "zero",
+        "domain",
     }
 )
 # Keys that would re-open a data/JS/URL sink if the builder ever copied a model-supplied one.
@@ -470,7 +544,6 @@ _DANGEROUS_KEYS = frozenset(
         "aggregate",
         "bin",
         "impute",
-        "domain",
     }
 )
 
@@ -608,13 +681,14 @@ def test_compiled_vega_carries_no_implicit_ordering(name: str) -> None:
 
 
 def test_naive_spec_reintroduces_implicit_ordering() -> None:
-    # The differential proving the assertion above is NOT vacuous: strip our sort:null + line-mark
-    # order:null and Vega-Lite's implicit line-vertex sort and legend-domain sort reappear.
+    # The differential proving the assertion above is NOT vacuous: strip our explicit discrete
+    # domain, sort:null, and line-mark order:null; Vega-Lite's implicit legend/vertex sorts return.
     spec, manifest, table = _evaluated(_G07)
     built = render.build_vega_lite(spec, table, manifest)
     built["mark"] = "line"  # drop the mark-level order:null
     for channel in built["encoding"].values():
         channel.pop("sort", None)  # drop every sort:null
+    built["encoding"]["color"].pop("scale")
     vega = vl_convert.vegalite_to_vega(render._dumps(built), vl_version=render._VL_VERSION)
     paths = _find_sorts(vega)
     assert any(re.search(r"\.marks\b", p) for p in paths), paths  # line-vertex sort
@@ -650,6 +724,19 @@ def _render(name: str) -> render.RenderResult:
     return result
 
 
+def _prepare(
+    spec: VPlotSpec,
+    evidence: checks.RecomputedEvidence,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> render.PreparedArtifact:
+    """Formally passing preparation, narrowed to its native-renderable artifact."""
+    preparation = render.prepare_render(spec, evidence, limits=limits)
+    assert preparation.report.passed
+    assert preparation.prepared is not None
+    return preparation.prepared
+
+
 def test_render_good_spec_returns_svg_and_cert() -> None:
     result = _render(_G01)
     assert "<svg" in result.svg
@@ -679,30 +766,75 @@ def test_render_gate_skips_svg_on_failure(monkeypatch: pytest.MonkeyPatch) -> No
     assert render.render(broken, _manifest_bytes(_G01), data_dir=_DATA) is None
 
 
+def test_direct_render_formal_gate_blocks_built_row_corruption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The solver reads the exact built rows; an inversion never reaches native Vega."""
+    original_build = render.build_vega_lite
+    original_formal = formal.verify_formal
+    build_count = 0
+    formal_runs: list[formal.FormalRun] = []
+
+    def corrupt_rows(
+        spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
+    ) -> dict[str, Any]:
+        nonlocal build_count
+        build_count += 1
+        built = original_build(spec, table, manifest)
+        values = built["data"]["values"]
+        values[0], values[1] = values[1], values[0]
+        return built
+
+    def record_formal(
+        facts: formal.FormalFacts,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> formal.FormalRun:
+        run = original_formal(facts, limits=limits)
+        formal_runs.append(run)
+        return run
+
+    def forbidden_native(_: str) -> str:
+        msg = "native render reached after a formal row-order failure"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(render, "build_vega_lite", corrupt_rows)
+    monkeypatch.setattr(formal, "verify_formal", record_formal)
+    monkeypatch.setattr(render, "render_svg", forbidden_native)
+    spec, _manifest = _good(_G01)
+    result = render.render(spec, _manifest_bytes(_G01), data_dir=_DATA)
+    assert result is None
+    assert build_count == len(formal_runs) == 1
+    failed = [item.check for item in formal_runs[0].results if item.status == "fail"]
+    assert failed == ["sort.canonical_order"]
+
+
 # --- M5.1c: evidence-driven preparation + artifact byte ceilings ------------
-def test_render_reads_source_and_serializes_vega_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_render_reads_source_and_builds_vega_once(monkeypatch: pytest.MonkeyPatch) -> None:
     read_paths: list[Path] = []
 
     def _read_spy(path: Path, max_bytes: int) -> bytes:
         read_paths.append(path)
         return read_bounded(path, max_bytes)
 
-    original_serialize = render.vega_lite_json
-    serialized: list[str] = []
+    original_build = render.build_vega_lite
+    built: list[dict[str, object]] = []
 
-    def _serialize_spy(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest) -> str:
-        value = original_serialize(spec, table, manifest)
-        serialized.append(value)
+    def _build_spy(
+        spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
+    ) -> dict[str, object]:
+        value = original_build(spec, table, manifest)
+        built.append(value)
         return value
 
     monkeypatch.setattr("verifier.checks.read_bounded", _read_spy)
-    monkeypatch.setattr(render, "vega_lite_json", _serialize_spy)
+    monkeypatch.setattr(render, "build_vega_lite", _build_spy)
     spec, _ = _good(_G01)
     result = render.render(spec, _manifest_bytes(_G01), data_dir=_DATA)
     assert result is not None
     assert read_paths == [(_DATA / spec.dataset.name).resolve()]
-    assert len(serialized) == 1
-    assert result.vega_lite == serialized[0].encode("utf-8")
+    assert len(built) == 1
+    assert result.vega_lite == render._dumps(built[0]).encode("utf-8")
 
 
 @pytest.mark.parametrize("action", ["mutate", "delete"])
@@ -710,14 +842,14 @@ def test_render_from_evidence_ignores_later_live_source_change(tmp_path: Path, a
     source = tmp_path / "sales.csv"
     source.write_bytes((_DATA / "sales.csv").read_bytes())
     spec, evidence = _evidence(_G01, data_dir=tmp_path)
-    expected = render.render_prepared(render.prepare_render(spec, evidence))
+    expected = render.render_prepared(_prepare(spec, evidence))
 
     if action == "mutate":
         source.write_bytes(b"month,region,revenue,orders\n2099-01,NA,1,1\n")
     else:
         source.unlink()
 
-    actual = render.render_prepared(render.prepare_render(spec, evidence))
+    actual = render.render_prepared(_prepare(spec, evidence))
     assert actual == expected
     assert actual.certificate.dataset_hash == evidence.dataset_hash
     assert actual.certificate.plotted_table_hash == evidence.plotted_table_hash
@@ -731,7 +863,7 @@ def test_prepare_rejects_spec_not_bound_to_evidence(monkeypatch: pytest.MonkeyPa
         msg = "builder reached for mismatched evidence"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(render, "vega_lite_json", _boom)
+    monkeypatch.setattr(render, "build_vega_lite", _boom)
     with pytest.raises(ValueError, match="does not match evidence"):
         render.prepare_render(different_spec, evidence)
 
@@ -741,9 +873,7 @@ def test_render_row_limit_is_inclusive_and_precedes_native(
 ) -> None:
     spec, evidence = _evidence(_G01)
     row_count = len(evidence.plotted_table.rows)
-    prepared = render.prepare_render(
-        spec, evidence, limits=VerificationLimits(max_render_rows=row_count)
-    )
+    prepared = _prepare(spec, evidence, limits=VerificationLimits(max_render_rows=row_count))
     assert prepared.evidence is evidence
 
     def _boom(_: str) -> str:
@@ -768,10 +898,8 @@ def test_vega_byte_limit_is_inclusive_and_precedes_native(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     spec, evidence = _evidence(_G01)
-    expected = render.prepare_render(spec, evidence).vega_lite
-    exact = render.prepare_render(
-        spec, evidence, limits=VerificationLimits(max_vega_bytes=len(expected))
-    )
+    expected = _prepare(spec, evidence).vega_lite
+    exact = _prepare(spec, evidence, limits=VerificationLimits(max_vega_bytes=len(expected)))
     assert exact.vega_lite == expected
 
     def _boom(_: str) -> str:
@@ -796,8 +924,10 @@ def test_vcert_byte_limit_is_inclusive_and_precedes_native(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     spec, evidence = _evidence(_G01)
-    prepared = render.prepare_render(spec, evidence)
-    payload_size = len(render.vcert_bytes(render._build_certificate(spec, evidence)))
+    prepared = _prepare(spec, evidence)
+    payload_size = len(
+        render.vcert_bytes(render._build_certificate(spec, evidence, prepared.results))
+    )
     native_inputs: list[str] = []
 
     def _svg_stub(vega_lite: str) -> str:
@@ -826,7 +956,7 @@ def test_svg_byte_limit_counts_utf8_and_blocks_later_html(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     spec, evidence = _evidence(_G01)
-    prepared = render.prepare_render(spec, evidence)
+    prepared = _prepare(spec, evidence)
     monkeypatch.setattr(render, "render_svg", lambda _vega: "éx")
     exact = render.render_prepared(prepared, limits=VerificationLimits(max_svg_bytes=3))
     assert exact.svg == "éx"
@@ -848,7 +978,7 @@ def test_svg_byte_limit_counts_utf8_and_blocks_later_html(
 
 def test_html_byte_limit_counts_utf8_and_is_inclusive(monkeypatch: pytest.MonkeyPatch) -> None:
     spec, evidence = _evidence(_G01)
-    prepared = render.prepare_render(spec, evidence)
+    prepared = _prepare(spec, evidence)
     monkeypatch.setattr(render, "render_svg", lambda _vega: "<svg/>")
     monkeypatch.setattr(render, "render_html", lambda _vega: "éx")
     exact = render.render_prepared(
@@ -899,9 +1029,9 @@ def test_certificate_plotted_hash_flips_on_table_edit() -> None:
 
 def test_certificate_bar_zero_check_present_for_bar_absent_otherwise() -> None:
     # g01 is a bar with no color; g07 is a line with color; g10 is a scatter with no color.
-    assert render._RENDERER_BAR_ZERO in _render(_G01).certificate.checks_passed
-    assert render._RENDERER_BAR_ZERO not in _render(_G07).certificate.checks_passed
-    assert render._RENDERER_BAR_ZERO not in _render(_G10).certificate.checks_passed
+    assert "scale.bar_zero" in _render(_G01).certificate.checks_passed
+    assert "scale.bar_zero" not in _render(_G07).certificate.checks_passed
+    assert "scale.bar_zero" not in _render(_G10).certificate.checks_passed
 
 
 def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None:
@@ -918,20 +1048,31 @@ def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None
         ),
     )
     table = canon.Table(columns=(), rows=())
-    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
-    assert render._RENDERER_BAR_ZERO not in cert.checks_passed
+    evidence = _certificate_evidence(spec, table)
+    cert = render._build_certificate(spec, evidence, evidence.results)
+    assert "scale.bar_zero" not in cert.checks_passed
 
 
 def test_certificate_legend_domain_check_present_only_with_color() -> None:
-    assert render._RENDERER_LEGEND_DOMAIN in _render(_G07).certificate.checks_passed
-    assert render._RENDERER_LEGEND_DOMAIN not in _render(_G01).certificate.checks_passed
-    assert render._RENDERER_LEGEND_DOMAIN not in _render(_G10).certificate.checks_passed
+    assert "encoding.legend_domain_exact" in _render(_G07).certificate.checks_passed
+    assert "encoding.legend_domain_exact" not in _render(_G01).certificate.checks_passed
+    assert "encoding.legend_domain_exact" not in _render(_G10).certificate.checks_passed
 
 
 def test_certificate_includes_verifier_passes() -> None:
     passed = _render(_G01).certificate.checks_passed
     assert "dataset.hash_matches_source" in passed
     assert "security.no_arbitrary_code" in passed
+
+
+@pytest.mark.parametrize("name", [_G01, _G07, _G10])
+def test_certificate_check_names_equal_final_passing_report(name: str) -> None:
+    spec, evidence = _evidence(name)
+    preparation = render.prepare_render(spec, evidence)
+    assert preparation.prepared is not None
+    result = render.render_prepared(preparation.prepared)
+    expected = tuple(item.check for item in preparation.report.results if item.status == "pass")
+    assert result.certificate.checks_passed == expected
 
 
 def test_certificate_tcb_stamps_build() -> None:
@@ -963,7 +1104,8 @@ def test_build_certificate_discloses_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
+    evidence = _certificate_evidence(spec, table)
+    cert = render._build_certificate(spec, evidence, evidence.results)
     assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
     assert cert.sorts == (
         render.DisclosedSort(field="a", order="ascending"),
@@ -984,7 +1126,8 @@ def test_build_certificate_empty_filters_and_sorts() -> None:
         ),
     )
     table = canon.Table(columns=(), rows=())
-    cert = render._build_certificate(spec, _certificate_evidence(spec, table))
+    evidence = _certificate_evidence(spec, table)
+    cert = render._build_certificate(spec, evidence, evidence.results)
     assert cert.filters == ()
     assert cert.sorts == ()
 
@@ -1006,7 +1149,8 @@ def test_build_certificate_discloses_only_the_active_sort() -> None:
                 y=Channel(field="b", kind="ordinal"),
             ),
         )
-        return render._build_certificate(spec, _certificate_evidence(spec, table)).sorts
+        evidence = _certificate_evidence(spec, table)
+        return render._build_certificate(spec, evidence, evidence.results).sorts
 
     asc_a = Sort(by=(SortKey(field="a", order="ascending"),))
     desc_b = Sort(by=(SortKey(field="b", order="descending"),))
@@ -1026,17 +1170,18 @@ def test_certificate_bar_zero_disclosure_matches_builder(name: str) -> None:
         enc["x"].get("scale"),  # type: ignore[index]
         enc["y"].get("scale"),  # type: ignore[index]
     )
-    discloses = render._RENDERER_BAR_ZERO in _render(name).certificate.checks_passed
+    discloses = "scale.bar_zero" in _render(name).certificate.checks_passed
     assert discloses == emits_zero
 
 
 @pytest.mark.parametrize("name", [_G01, _G07, _G10])
 def test_certificate_legend_domain_disclosure_matches_builder(name: str) -> None:
-    # CERT-HONESTY binding: legend-domain is disclosed EXACTLY when the builder emits a color
-    # channel (whose domain Vega-Lite derives from the inlined verified data) -- bound to output.
-    has_color = "color" in _built(name)["encoding"]  # type: ignore[operator]
-    discloses = render._RENDERER_LEGEND_DOMAIN in _render(name).certificate.checks_passed
-    assert discloses == has_color
+    # CERT-HONESTY binding: the formal result is disclosed exactly when the builder emits an
+    # explicit discrete color domain over its inlined verified data.
+    encoding = _built(name)["encoding"]
+    has_domain = "color" in encoding and "scale" in encoding["color"]  # type: ignore[operator,index]
+    discloses = "encoding.legend_domain_exact" in _render(name).certificate.checks_passed
+    assert discloses == has_domain
 
 
 def test_badge_html_renders_cert_fields() -> None:

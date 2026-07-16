@@ -1019,7 +1019,7 @@
       },
       "Verdict": {
         "title": "Verdict",
-        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, eval, encoding/label). `verified` is true only when\nevery result passed. Every field is always present, so no omit_defaults is needed.",
+        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).\n`verified` is true only when every final result passed. Every field is always present, so no\nomit_defaults is needed.",
         "type": "object",
         "properties": {
           "verified": {
