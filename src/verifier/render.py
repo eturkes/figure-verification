@@ -38,12 +38,12 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import msgspec
 import vl_convert
 
-from verifier import canon, checks, formal, ingest
+from verifier import __version__, canon, checks, formal, ingest
 from verifier.errors import VerificationError
 from verifier.eval import active_sort
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
@@ -558,16 +558,14 @@ def render_html(vega_lite_json: str) -> str:
     )
 
 
-# --- provenance certificate (M1.6c: VCert v0.1 badge + render() gate) --------
-# VCert v0.1 is NON-REPLAYABLE (no nonce/signature; replay + signing are M5). It stamps the
-# four canonical hashes (dataset/spec/plotted-table/manifest), every passing verifier/formal check,
-# the disclosed applied filter/sort literals
-# (model-controlled -> badge_html escapes them), and the TCB it TRUSTS to render the verified
-# data faithfully (canon + interpreter versions, the vl-convert build, the pinned vl_version,
-# the vendored font family + sha256). The SVG bytes are never hashed into the cert; the TCB
-# DISCLOSES the toolchain for provenance, it does not prove byte-identity (the build + vendored
-# font narrow the toolchain beyond vl_version alone, cross-machine SVG identity is unclaimed).
-_VCERT_VERSION = "vcert-0.1"
+# --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
+# VCert v0.2 is still NON-REPLAYABLE and unsigned (signing + replay follow in M5.3-M5.5). It
+# stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
+# bytes. Every passing result carries its verification method. The TCB identifies this verifier,
+# Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the
+# certificate: the TCB disclosure narrows provenance but proves neither SVG byte identity nor
+# pixels (cross-machine SVG identity remains unclaimed).
+_VCERT_VERSION: Literal["vcert-0.2"] = "vcert-0.2"
 
 # The vendored font ASSET's content hash, computed once from the bytes we ship + register (ties
 # the cert's font provenance to the real asset, not a hardcoded constant). It identifies the
@@ -577,13 +575,18 @@ _FONT_SHA256 = "sha256:" + hashlib.sha256((_FONT_DIR / "DejaVuSans.ttf").read_by
 
 
 class Tcb(msgspec.Struct, frozen=True, kw_only=True):
-    """The trusted computing base disclosed for the rendered SVG's provenance, stamped into the
-    VCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed
-    into the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the
-    installed distribution version; vl_version the pinned Vega-Lite; font_family +
-    vendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not
-    proven to select it over a same-named system font -- render_svg documents the same scope)."""
+    """The verifier/formal/display TCB stamped into VCert.
 
+    ``verifier_version`` identifies the package implementing the checks; ``z3_version`` the
+    solver behind ``z3_smt`` results. The remaining fields identify canonicalization and the
+    native display stack trusted to render verified data faithfully, NOT proven to do so. SVG is
+    not hashed and cross-machine byte identity is unclaimed. ``vendored_font_sha256`` identifies
+    the registered font asset, not proof that vl-convert selected it over a same-named system
+    font (``render_svg`` documents the same scope).
+    """
+
+    verifier_version: str
+    z3_version: str
     canon_version: str
     python: str
     msgspec: str
@@ -610,17 +613,26 @@ class DisclosedSort(msgspec.Struct, frozen=True, kw_only=True):
     order: str
 
 
-class VCert(msgspec.Struct, frozen=True, kw_only=True):
-    """A VPlot v0.1 provenance certificate: the four canonical hashes, the passed checks, the
-    disclosed applied filters/sorts, and the disclosed render TCB. Non-replayable (M5 adds
-    signing/replay). Output record, never decoded from untrusted input."""
+class CertifiedCheck(msgspec.Struct, frozen=True, kw_only=True):
+    """One passing final result recorded with the method that established it."""
 
-    version: str
+    id: str
+    method: checks.CheckMethod
+    status: Literal["pass"]
+
+
+class VCert(msgspec.Struct, frozen=True, kw_only=True):
+    """A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing
+    checks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and
+    non-replayable until later M5 units. Output record, never decoded from untrusted input."""
+
+    version: Literal["vcert-0.2"]
     dataset_hash: str
     spec_hash: str
     plotted_table_hash: str
     manifest_hash: str
-    checks_passed: tuple[str, ...]
+    vega_lite_hash: str
+    checks: tuple[CertifiedCheck, ...]
     filters: tuple[DisclosedFilter, ...]
     sorts: tuple[DisclosedSort, ...]
     tcb: Tcb
@@ -640,6 +652,11 @@ def vcert_bytes(cert: VCert) -> bytes:
     return _CERT_ENCODER.encode(cert)
 
 
+def hash_vega_lite(vega_lite: bytes) -> str:
+    """SHA-256 over the exact serialized Vega-Lite artifact, with the standard digest prefix."""
+    return "sha256:" + hashlib.sha256(vega_lite).hexdigest()
+
+
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
     """A verified render carrying the authoritative Vega-Lite bytes, SVG, and VCert.
 
@@ -654,10 +671,11 @@ class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
 
 
 def _tcb() -> Tcb:
-    """The render TCB disclosed for the SVG's provenance (canon.runtime_versions + the vl-convert
-    build + vendored font); trusted to render faithfully, not proven to (see Tcb)."""
+    """The verifier/formal/render TCB disclosed for one certificate (see ``Tcb``)."""
     versions = canon.runtime_versions()
     return Tcb(
+        verifier_version=__version__,
+        z3_version=formal.solver_version(),
         canon_version=versions.canon_version,
         python=versions.python,
         msgspec=versions.msgspec,
@@ -669,20 +687,20 @@ def _tcb() -> Tcb:
     )
 
 
-def _build_certificate(
-    spec: VPlotSpec,
-    evidence: checks.RecomputedEvidence,
-    results: tuple[checks.CheckResult, ...],
-) -> VCert:
-    """Mint a certificate from the exact evidence + final results in a prepared artifact.
+def _build_certificate(prepared: PreparedArtifact) -> VCert:
+    """Mint VCert from one immutable formal-passed artifact, without rebuilding any input.
 
-    No source, manifest, table, hash, builder artifact, or formal result is re-read/re-derived here.
-    ``checks_passed`` is the final report's passing names, including applicable SMT obligations.
-    Filters disclose every filter; sorts disclose only the active sort. Model-controlled values
-    are escaped later by ``badge_html``. M5.2e replaces this name-only v0.1 field with
-    method-bearing certified checks.
+    Its exact Vega bytes are hashed directly; passing IDs/methods preserve final-report order.
+    Filters disclose every filter and sorts only the active sort. Model-controlled filter values
+    are escaped later by ``badge_html``.
     """
-    checks_passed = [result.check for result in results if result.status == "pass"]
+    spec = prepared.spec
+    evidence = prepared.evidence
+    certified_checks = tuple(
+        CertifiedCheck(id=result.check, method=result.method, status="pass")
+        for result in prepared.results
+        if result.status == "pass"
+    )
     filters = tuple(
         DisclosedFilter(field=t.field, cmp=t.cmp, value=t.value)
         for t in spec.transform
@@ -700,7 +718,8 @@ def _build_certificate(
         spec_hash=evidence.spec_hash,
         plotted_table_hash=evidence.plotted_table_hash,
         manifest_hash=evidence.manifest_hash,
-        checks_passed=tuple(checks_passed),
+        vega_lite_hash=hash_vega_lite(prepared.vega_lite),
+        checks=certified_checks,
         filters=filters,
         sorts=sorts,
         tcb=_tcb(),
@@ -720,7 +739,7 @@ def render_prepared(
     artifact raises its stable ``resource.*`` failure and is never returned. Native Vega/Vega-Lite
     and browser pixels remain trusted display components, not verified proof targets.
     """
-    certificate = _build_certificate(prepared.spec, prepared.evidence, prepared.results)
+    certificate = _build_certificate(prepared)
     _enforce_byte_limit(
         vcert_bytes(certificate),
         limits.max_attestation_bytes,
@@ -779,7 +798,9 @@ def badge_html(cert: VCert) -> str:
     def esc(value: object) -> str:
         return html.escape(str(value), quote=True)
 
-    checks_items = "".join(f"<li>{esc(name)}</li>" for name in cert.checks_passed)
+    checks_items = "".join(
+        f"<li>{esc(item.id)} - {esc(item.method)} - {esc(item.status)}</li>" for item in cert.checks
+    )
     filter_items = "".join(
         f"<li>{esc(f.field)} {esc(f.cmp)} {esc(_literal(f.value))}</li>" for f in cert.filters
     )
@@ -793,11 +814,14 @@ def badge_html(cert: VCert) -> str:
         f"<dt>spec</dt><dd>{esc(cert.spec_hash)}</dd>"
         f"<dt>plotted table</dt><dd>{esc(cert.plotted_table_hash)}</dd>"
         f"<dt>manifest</dt><dd>{esc(cert.manifest_hash)}</dd>"
+        f"<dt>Vega-Lite</dt><dd>{esc(cert.vega_lite_hash)}</dd>"
         "</dl>"
         f"<h3>Checks passed</h3><ul>{checks_items}</ul>"
         f"<h3>Applied filters</h3><ul>{filter_items}</ul>"
         f"<h3>Applied sorts</h3><ul>{sort_items}</ul>"
         '<dl class="vcert-tcb">'
+        f"<dt>verifier</dt><dd>{esc(tcb.verifier_version)}</dd>"
+        f"<dt>Z3</dt><dd>{esc(tcb.z3_version)}</dd>"
         f"<dt>canon</dt><dd>{esc(tcb.canon_version)}</dd>"
         f"<dt>python</dt><dd>{esc(tcb.python)}</dd>"
         f"<dt>msgspec</dt><dd>{esc(tcb.msgspec)}</dd>"

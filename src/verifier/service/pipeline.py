@@ -212,6 +212,7 @@ def render_outcome(
         spec_hash=cert.spec_hash,
         plotted_table_hash=cert.plotted_table_hash,
         manifest_hash=cert.manifest_hash,
+        vega_lite_hash=cert.vega_lite_hash,
         svg=result.svg,
         html=chart_html if include_html else None,
     )

@@ -28,7 +28,9 @@ mutually consistent and every check passed:
    rejected before any computation runs);
 2. the plotted table the verifier recomputed independently from the source CSV;
 3. the emitted Vega-Lite, which inlines only that recomputed table;
-4. the provenance badge: dataset hash, spec hash, plotted-table hash, passed checks.
+4. the VCert v0.2 provenance record and badge representation: source-dataset, trusted-manifest,
+   canonical-spec, recomputed-table, and exact emitted-Vega hashes; every passing check with its
+   method; and the verifier, Z3, canonicalization, and display-tool versions in the trusted base.
 
 Because the renderer only ever receives verifier-recomputed data, a chart cannot
 display model-supplied numbers — that class of lie is impossible by construction, not a
@@ -47,9 +49,10 @@ show the recomputed rows, nothing re-derived downstream.
 
 What verification does NOT cover: representativeness or intent. A spec that filters to
 an unflattering-but-real subset, or picks a valid-but-misleading encoding, still passes
-every check — honest selection is the author's job. The badge records the full spec,
-every filter and sort included, so a reader can see which rows were chosen; the verifier
-guarantees the chart faithfully shows that selection, not that the selection is fair.
+every check — honest selection is the author's job. The certificate binds the separately
+retrievable canonical spec by hash and discloses every applied filter and active sort, so a reader
+can see which rows were chosen; the verifier guarantees the chart faithfully shows that selection,
+not that the selection is fair.
 
 ## What is intentionally not supported?
 
@@ -59,16 +62,17 @@ override) · map charts · faceting · interaction · dashboards · multi-source
 
 ## The line we hold (trusted computing base)
 
-Trusted but NOT formally verified: `vl-convert` and the Vega runtime, SVG
-rasterization, the browser, and the final pixels — trusted to render verified data
-faithfully, not proven to. The claim is about the data-and-spec layer, not the renderer
-or what reaches the screen.
+Z3 is a trusted second checker for three bounded, concrete obligations; it does not prove the
+evaluator, builder, renderer, or whole verifier. `vl-convert` and the Vega runtime, SVG
+rasterization, the browser, and the final pixels are likewise trusted, not formally verified -
+trusted to render verified data faithfully, not proven to. The claim is about the mutually bound
+data, spec, emitted Vega-Lite, and certificate layer, not what reaches the screen.
 
 One quantization inside that trusted zone is KNOWN, not merely unproven: the JS runtime
 parses the inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-double range
 (integer part past 2^53, or more than ~16 significant digits — the DECIMAL(38) data model
-admits both) can display rounded, even though the emitted Vega-Lite and the certified
-plotted-table hash carry it exactly.
+admits both) can display rounded, even though the certificate hashes both the exact emitted
+Vega-Lite bytes and the exact recomputed plotted table.
 
 ## Service boundary
 

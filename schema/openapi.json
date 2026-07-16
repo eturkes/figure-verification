@@ -791,6 +791,35 @@
         ],
         "additionalProperties": false
       },
+      "CertifiedCheck": {
+        "title": "CertifiedCheck",
+        "description": "One passing final result recorded with the method that established it.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "construction",
+              "deterministic_recompute",
+              "resource_policy",
+              "schema_validation",
+              "z3_smt"
+            ]
+          },
+          "status": {
+            "enum": [
+              "pass"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "status"
+        ]
+      },
       "CheckResult": {
         "title": "CheckResult",
         "description": "One blocking check's verdict and the method that established it.\n\n``method`` is closed and orthogonal to the dotted ``check`` family: evaluator failures named\n``schema.*`` still arise from deterministic recomputation, while ``spec.decode`` is schema\nvalidation. ``severity`` has one reserved value (advisory tiers are future work), so\n:attr:`VerificationReport.passed` consults ``status`` only.",
@@ -924,9 +953,15 @@
       },
       "Tcb": {
         "title": "Tcb",
-        "description": "The trusted computing base disclosed for the rendered SVG's provenance, stamped into the\nVCert. Trusted to render the verified data faithfully, NOT proven to (the SVG is never hashed\ninto the cert, and cross-machine byte-identity is unclaimed). vl_convert_python is the\ninstalled distribution version; vl_version the pinned Vega-Lite; font_family +\nvendored_font_sha256 identify the vendored typeface ASSET we register (vl-convert is not\nproven to select it over a same-named system font -- render_svg documents the same scope).",
+        "description": "The verifier/formal/display TCB stamped into VCert.\n\n``verifier_version`` identifies the package implementing the checks; ``z3_version`` the\nsolver behind ``z3_smt`` results. The remaining fields identify canonicalization and the\nnative display stack trusted to render verified data faithfully, NOT proven to do so. SVG is\nnot hashed and cross-machine byte identity is unclaimed. ``vendored_font_sha256`` identifies\nthe registered font asset, not proof that vl-convert selected it over a same-named system\nfont (``render_svg`` documents the same scope).",
         "type": "object",
         "properties": {
+          "verifier_version": {
+            "type": "string"
+          },
+          "z3_version": {
+            "type": "string"
+          },
           "canon_version": {
             "type": "string"
           },
@@ -953,6 +988,8 @@
           }
         },
         "required": [
+          "verifier_version",
+          "z3_version",
           "canon_version",
           "python",
           "msgspec",
@@ -965,11 +1002,13 @@
       },
       "VCert": {
         "title": "VCert",
-        "description": "A VPlot v0.1 provenance certificate: the four canonical hashes, the passed checks, the\ndisclosed applied filters/sorts, and the disclosed render TCB. Non-replayable (M5 adds\nsigning/replay). Output record, never decoded from untrusted input.",
+        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and\nnon-replayable until later M5 units. Output record, never decoded from untrusted input.",
         "type": "object",
         "properties": {
           "version": {
-            "type": "string"
+            "enum": [
+              "vcert-0.2"
+            ]
           },
           "dataset_hash": {
             "type": "string"
@@ -983,10 +1022,13 @@
           "manifest_hash": {
             "type": "string"
           },
-          "checks_passed": {
+          "vega_lite_hash": {
+            "type": "string"
+          },
+          "checks": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/CertifiedCheck"
             }
           },
           "filters": {
@@ -1011,7 +1053,8 @@
           "spec_hash",
           "plotted_table_hash",
           "manifest_hash",
-          "checks_passed",
+          "vega_lite_hash",
+          "checks",
           "filters",
           "sorts",
           "tcb"
@@ -1046,7 +1089,7 @@
       },
       "RenderVerdict": {
         "title": "RenderVerdict",
-        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nmutating the trusted manifest between two renders of one spec keeps spec_id but changes\nmanifest_hash, hence plot_id, so several plot_ids can share a spec_id (store.py refcounts\nthem). The four *_hash fields are the certificate's verbatim `sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
+        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nchanging the trusted manifest, verifier/formal TCB, or emitted Vega bytes keeps spec_id but\nchanges plot_id, so several plot_ids can share a spec_id (store.py refcounts them). The five\n`*_hash` fields are the certificate's verbatim `sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
         "type": "object",
         "properties": {
           "verified": {
@@ -1082,6 +1125,9 @@
           "manifest_hash": {
             "type": "string"
           },
+          "vega_lite_hash": {
+            "type": "string"
+          },
           "svg": {
             "type": "string"
           },
@@ -1099,6 +1145,7 @@
           "spec_hash",
           "plotted_table_hash",
           "manifest_hash",
+          "vega_lite_hash",
           "svg"
         ]
       },

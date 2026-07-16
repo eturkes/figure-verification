@@ -17,7 +17,7 @@ Components come from three sources, zero hand-drift beyond RenderVerdict:
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
   2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert, and the
-     M3.3a ProposeRequest, plus the Disclosed*/Tcb they nest transitively), via
+     M3.3a ProposeRequest, plus CertifiedCheck/Disclosed*/Tcb nested transitively), via
      msgspec.json.schema_components;
   3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
@@ -50,7 +50,7 @@ _OPENAPI_VERSION = "3.1.0"
 _COMPONENTS = "#/components/schemas"
 # A 64-hex artifact id (the fullmatch app.py enforces on the path param, in OpenAPI form).
 _ID_PATTERN = "^[0-9a-f]{64}$"
-# RenderVerdict's eight render-only fields on top of the Verdict envelope; every one is a
+# RenderVerdict's nine render-only fields on top of the Verdict envelope; every one is a
 # plain string, and all but the omit_defaults `html` are required.
 _RENDER_STRING_FIELDS = (
     "plot_id",
@@ -59,6 +59,7 @@ _RENDER_STRING_FIELDS = (
     "spec_hash",
     "plotted_table_hash",
     "manifest_hash",
+    "vega_lite_hash",
     "svg",
     "html",
 )
@@ -87,7 +88,7 @@ def _render_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
     Its `verified/layer/results` come from a DEEPCOPY of Verdict's properties (never an alias:
     an in-place override would rewrite Verdict's own `verified` and falsely document a plain
     failing Verdict as always-verified), with `verified` overridden to {"const": True} — the
-    JSON-Schema meaning of Literal[True]. The eight render fields are plain strings; every field
+    JSON-Schema meaning of Literal[True]. The nine render fields are plain strings; every field
     but the omit_defaults `html` is required. The title/description/type/properties/required key
     shape mirrors msgspec's generated siblings."""
     properties: dict[str, Any] = copy.deepcopy(verdict_schema["properties"])

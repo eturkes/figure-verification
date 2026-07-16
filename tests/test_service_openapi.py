@@ -166,6 +166,18 @@ def test_check_result_requires_closed_method_vocabulary() -> None:
     }
 
 
+def test_vcert_requires_method_aware_certified_checks() -> None:
+    schemas = _DOC["components"]["schemas"]
+    check = schemas["CertifiedCheck"]
+    assert check["required"] == ["id", "method", "status"]
+    assert check["properties"]["status"] == {"enum": ["pass"]}
+    assert schemas["VCert"]["properties"]["checks"] == {
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/CertifiedCheck"},
+    }
+    assert schemas["VCert"]["properties"]["version"] == {"enum": ["vcert-0.2"]}
+
+
 def test_post_bodies_reference_vplotspec() -> None:
     for path in ("/verify-only", "/verify-and-render"):
         body = _DOC["paths"][path]["post"]["requestBody"]
@@ -242,6 +254,7 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
             spec_hash="sha256:" + "d" * 64,
             plotted_table_hash="sha256:" + "e" * 64,
             manifest_hash="sha256:" + "f" * 64,
+            vega_lite_hash="sha256:" + "0" * 64,
             svg="<svg/>",
         )
     )
@@ -302,6 +315,7 @@ def test_propose_payloads_match_schemas() -> None:
         spec_hash="sha256:" + "d" * 64,
         plotted_table_hash="sha256:" + "e" * 64,
         manifest_hash="sha256:" + "f" * 64,
+        vega_lite_hash="sha256:" + "0" * 64,
         svg="<svg/>",
     )
     post = _DOC["paths"]["/propose-spec"]["post"]

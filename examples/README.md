@@ -25,6 +25,7 @@ the model emits no plotted values.
 `sort.canonical_order` · `scale.bar_zero` · `encoding.legend_domain_exact` consume the exact
 builder artifact and block row-order, bar-baseline, or discrete-domain corruption before native
 Vega. They protect trusted construction behavior; they are not bad model-spec fixtures.
+VCert v0.2 records these and every deterministic pass with the method that established it.
 
 ## Data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is

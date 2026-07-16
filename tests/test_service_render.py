@@ -2,7 +2,7 @@
 """M2.3 POST /verify-and-render + retrieval GETs + GET /chart (M4.1c) — renders through the wire.
 
 The good corpus renders through the service byte-for-byte as a direct render.render (the SVG,
-the four cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
+the five cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
 idempotent (same plot_id). The stored artifacts round-trip: GET /certificate serves the
 canonical VCert bytes verbatim, GET /spec the canonical spec bytes. The never-a-chart pin
 holds at byte level over ALL 18 bad specs — the raw response carries no "svg"/"html" key. The
@@ -135,6 +135,12 @@ def test_good_spec_renders_and_matches_direct(
     assert body["spec_hash"] == cert.spec_hash
     assert body["plotted_table_hash"] == cert.plotted_table_hash
     assert body["manifest_hash"] == cert.manifest_hash
+    assert body["vega_lite_hash"] == cert.vega_lite_hash
+    assert [(item.id, item.method, item.status) for item in cert.checks] == [
+        (item["check"], item["method"], item["status"])
+        for item in body["results"]
+        if item["status"] == "pass"
+    ]
 
 
 @pytest.mark.parametrize("route", ["direct", "propose"])

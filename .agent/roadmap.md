@@ -236,13 +236,17 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   all-null, and numeric-ordinal explicit domains compile; certificate names equal the final passing
   report; every old construction-only bar/legend claim was replaced. All good corpus renders, all
   bad corpus blocks; gate green at 1,258 tests/100% branch coverage.
-- **M5.2e — VCert v0.2 method provenance** (OPEN): replace `checks_passed` with
+- **M5.2e — VCert v0.2 method provenance** (DONE): replace `checks_passed` with
   `checks: tuple[CertifiedCheck(id, method, status="pass")]`; stamp verifier package + Z3 versions
   in TCB and add `vega_lite_hash` over the exact serialized builder output. Update certificate
   canonical bytes, plot IDs, badge, service models, hand OpenAPI, goldens, and claim docs.
-  Acceptance: certificate checks exactly equal the passing final report's IDs/methods; changing one
-  Vega byte or verifier version changes payload/plot identity and is visible; no check-name-only
-  compatibility shim; gate green.
+  VCert's version is a closed v0.2 wire literal; construction consumes one immutable formal-passed
+  artifact and records each passing result's exact ID/method/status in report order. The fifth raw
+  SHA-256 binds authoritative Vega bytes; TCB stamps package + native Z3 versions; service verdict,
+  badge, generated OpenAPI, golden, scope/semantics/examples, and memory all expose the new contract.
+  Acceptance: core + HTTP checks equal their passing final reports; one-byte Vega and verifier-version
+  mutations change canonical payload + plot identity and remain visible; name-only wire field absent;
+  gate green at 1,262 tests/100% branch coverage.
 
 - **M5.3a — DSSE + Ed25519 primitives** (OPEN): add current `cryptography>=49,<50` + lock; implement
   the tiny DSSE v1.0.2 PAE/envelope surface in `verifier.attestation` around exact VCert bytes with

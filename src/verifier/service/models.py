@@ -6,7 +6,7 @@ answered HTTP 200 whether the spec verified, decoded but failed a check, or fail
 decode (a decode failure is an expected model failure mode M3 meters, not transport
 misuse). RenderVerdict extends that envelope with the render artifacts POST
 /verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
-content-addressed ids, and the four cert-verbatim hashes); a FAILING verify-and-render
+content-addressed ids, and the five cert-verbatim hashes); a FAILING verify-and-render
 answers a plain Verdict, so a chart never rides an unverified outcome. Problem is the RFC
 9457 application/problem+json body the app's exception handlers emit for transport misuse,
 process-local admission refusal, or a server-config fault (wrong content-type, oversize body,
@@ -63,9 +63,9 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     `plot_id` = SHA-256 hexdigest of the certificate's canonical bytes (render.vcert_bytes);
     `spec_id` = `spec_hash` minus its
     `sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;
-    mutating the trusted manifest between two renders of one spec keeps spec_id but changes
-    manifest_hash, hence plot_id, so several plot_ids can share a spec_id (store.py refcounts
-    them). The four *_hash fields are the certificate's verbatim `sha256:`-prefixed digests.
+    changing the trusted manifest, verifier/formal TCB, or emitted Vega bytes keeps spec_id but
+    changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them). The five
+    `*_hash` fields are the certificate's verbatim `sha256:`-prefixed digests.
     `html` (omitted when absent via omit_defaults) carries the offline view only under
     include_html=true.
     """
@@ -79,6 +79,7 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     spec_hash: str
     plotted_table_hash: str
     manifest_hash: str
+    vega_lite_hash: str
     svg: str
     html: str | None = None
 

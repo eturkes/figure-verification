@@ -38,11 +38,16 @@ M5.2d makes preparation final-verification work: one exact builder object suppli
 bytes + typed SMT facts, and only a passing merged report yields a native-renderable artifact.
 Direct/service/proposer mutation witnesses corrupt row order/domain/zero and prove fail-closed
 blocking before native Vega.
+
+M5.2e upgrades VCert to method-bearing v0.2, binds the exact Vega bytes + verifier/Z3 versions,
+and propagates the fifth hash through badge/service/OpenAPI surfaces.
 """
 
 import hashlib
+import importlib.metadata
 import json
 import re
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -737,6 +742,23 @@ def _prepare(
     return preparation.prepared
 
 
+def _certificate(
+    spec: VPlotSpec,
+    evidence: checks.RecomputedEvidence,
+    *,
+    vega_lite: bytes = b"{}",
+) -> render.VCert:
+    """Certificate-only helper over an explicit synthetic prepared artifact."""
+    return render._build_certificate(
+        render.PreparedArtifact(
+            spec=spec,
+            evidence=evidence,
+            results=evidence.results,
+            vega_lite=vega_lite,
+        )
+    )
+
+
 def test_render_good_spec_returns_svg_and_cert() -> None:
     result = _render(_G01)
     assert "<svg" in result.svg
@@ -925,9 +947,7 @@ def test_vcert_byte_limit_is_inclusive_and_precedes_native(
 ) -> None:
     spec, evidence = _evidence(_G01)
     prepared = _prepare(spec, evidence)
-    payload_size = len(
-        render.vcert_bytes(render._build_certificate(spec, evidence, prepared.results))
-    )
+    payload_size = len(render.vcert_bytes(render._build_certificate(prepared)))
     native_inputs: list[str] = []
 
     def _svg_stub(vega_lite: str) -> str:
@@ -997,12 +1017,14 @@ def test_html_byte_limit_counts_utf8_and_is_inclusive(monkeypatch: pytest.Monkey
 
 def test_certificate_hashes_equal_canonical() -> None:
     spec, _, table = _evaluated(_G01)
-    cert = _render(_G01).certificate
-    assert cert.version == "vcert-0.1"
+    result = _render(_G01)
+    cert = result.certificate
+    assert cert.version == "vcert-0.2"
     assert cert.dataset_hash == spec.dataset.hash
     assert cert.spec_hash == canon.hash_spec(spec)
     assert cert.plotted_table_hash == canon.hash_table(table)
     assert cert.manifest_hash == canon.hash_manifest(_manifest_bytes(_G01))
+    assert cert.vega_lite_hash == "sha256:" + hashlib.sha256(result.vega_lite).hexdigest()
 
 
 def test_vcert_bytes_is_deterministic_and_round_trips() -> None:
@@ -1012,6 +1034,43 @@ def test_vcert_bytes_is_deterministic_and_round_trips() -> None:
     encoded = render.vcert_bytes(cert)
     assert render.vcert_bytes(cert) == encoded  # byte-stable
     assert msgspec.json.decode(encoded, type=render.VCert) == cert
+    wire: dict[str, Any] = msgspec.json.decode(encoded)
+    assert "checks" in wire
+    assert "checks_passed" not in wire
+
+
+def test_certificate_identity_binds_exact_vega_bytes() -> None:
+    spec, evidence = _evidence(_G01)
+    prepared = _prepare(spec, evidence)
+    original = render._build_certificate(prepared)
+    changed = render._build_certificate(replace(prepared, vega_lite=prepared.vega_lite + b" "))
+
+    assert original.vega_lite_hash == render.hash_vega_lite(prepared.vega_lite)
+    assert changed.vega_lite_hash == render.hash_vega_lite(prepared.vega_lite + b" ")
+    assert original.vega_lite_hash != changed.vega_lite_hash
+    assert render.vcert_bytes(original) != render.vcert_bytes(changed)
+    assert (
+        hashlib.sha256(render.vcert_bytes(original)).hexdigest()
+        != hashlib.sha256(render.vcert_bytes(changed)).hexdigest()
+    )
+
+
+def test_certificate_identity_binds_visible_verifier_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, evidence = _evidence(_G01)
+    prepared = _prepare(spec, evidence)
+    original = render._build_certificate(prepared)
+    monkeypatch.setattr(render, "__version__", "0.2.0-test")
+    changed = render._build_certificate(prepared)
+
+    assert original.tcb.verifier_version == importlib.metadata.version("verifier")
+    assert changed.tcb.verifier_version == "0.2.0-test"
+    assert render.vcert_bytes(original) != render.vcert_bytes(changed)
+    assert (
+        hashlib.sha256(render.vcert_bytes(original)).hexdigest()
+        != hashlib.sha256(render.vcert_bytes(changed)).hexdigest()
+    )
 
 
 def test_certificate_manifest_hash_flips_on_edit() -> None:
@@ -1029,9 +1088,9 @@ def test_certificate_plotted_hash_flips_on_table_edit() -> None:
 
 def test_certificate_bar_zero_check_present_for_bar_absent_otherwise() -> None:
     # g01 is a bar with no color; g07 is a line with color; g10 is a scatter with no color.
-    assert "scale.bar_zero" in _render(_G01).certificate.checks_passed
-    assert "scale.bar_zero" not in _render(_G07).certificate.checks_passed
-    assert "scale.bar_zero" not in _render(_G10).certificate.checks_passed
+    assert "scale.bar_zero" in {item.id for item in _render(_G01).certificate.checks}
+    assert "scale.bar_zero" not in {item.id for item in _render(_G07).certificate.checks}
+    assert "scale.bar_zero" not in {item.id for item in _render(_G10).certificate.checks}
 
 
 def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None:
@@ -1049,34 +1108,44 @@ def test_certificate_bar_zero_absent_for_bar_without_quantitative_axis() -> None
     )
     table = canon.Table(columns=(), rows=())
     evidence = _certificate_evidence(spec, table)
-    cert = render._build_certificate(spec, evidence, evidence.results)
-    assert "scale.bar_zero" not in cert.checks_passed
+    cert = _certificate(spec, evidence)
+    assert "scale.bar_zero" not in {item.id for item in cert.checks}
 
 
 def test_certificate_legend_domain_check_present_only_with_color() -> None:
-    assert "encoding.legend_domain_exact" in _render(_G07).certificate.checks_passed
-    assert "encoding.legend_domain_exact" not in _render(_G01).certificate.checks_passed
-    assert "encoding.legend_domain_exact" not in _render(_G10).certificate.checks_passed
+    assert "encoding.legend_domain_exact" in {item.id for item in _render(_G07).certificate.checks}
+    assert "encoding.legend_domain_exact" not in {
+        item.id for item in _render(_G01).certificate.checks
+    }
+    assert "encoding.legend_domain_exact" not in {
+        item.id for item in _render(_G10).certificate.checks
+    }
 
 
 def test_certificate_includes_verifier_passes() -> None:
-    passed = _render(_G01).certificate.checks_passed
+    passed = {item.id for item in _render(_G01).certificate.checks}
     assert "dataset.hash_matches_source" in passed
     assert "security.no_arbitrary_code" in passed
 
 
 @pytest.mark.parametrize("name", [_G01, _G07, _G10])
-def test_certificate_check_names_equal_final_passing_report(name: str) -> None:
+def test_certificate_checks_equal_final_passing_report(name: str) -> None:
     spec, evidence = _evidence(name)
     preparation = render.prepare_render(spec, evidence)
     assert preparation.prepared is not None
     result = render.render_prepared(preparation.prepared)
-    expected = tuple(item.check for item in preparation.report.results if item.status == "pass")
-    assert result.certificate.checks_passed == expected
+    expected = tuple(
+        render.CertifiedCheck(id=item.check, method=item.method, status="pass")
+        for item in preparation.report.results
+        if item.status == "pass"
+    )
+    assert result.certificate.checks == expected
 
 
 def test_certificate_tcb_stamps_build() -> None:
     tcb = _render(_G01).certificate.tcb
+    assert tcb.verifier_version == importlib.metadata.version("verifier")
+    assert tcb.z3_version == formal.solver_version()
     assert tcb.canon_version == "canon-0.1"
     assert tcb.vl_version == "5.21"
     assert tcb.font_family == "DejaVu Sans"
@@ -1105,7 +1174,7 @@ def test_build_certificate_discloses_filters_and_sorts() -> None:
     )
     table = canon.Table(columns=(), rows=())
     evidence = _certificate_evidence(spec, table)
-    cert = render._build_certificate(spec, evidence, evidence.results)
+    cert = _certificate(spec, evidence)
     assert cert.filters == (render.DisclosedFilter(field="a", cmp="gt", value="1"),)
     assert cert.sorts == (
         render.DisclosedSort(field="a", order="ascending"),
@@ -1127,7 +1196,7 @@ def test_build_certificate_empty_filters_and_sorts() -> None:
     )
     table = canon.Table(columns=(), rows=())
     evidence = _certificate_evidence(spec, table)
-    cert = render._build_certificate(spec, evidence, evidence.results)
+    cert = _certificate(spec, evidence)
     assert cert.filters == ()
     assert cert.sorts == ()
 
@@ -1150,7 +1219,7 @@ def test_build_certificate_discloses_only_the_active_sort() -> None:
             ),
         )
         evidence = _certificate_evidence(spec, table)
-        return render._build_certificate(spec, evidence, evidence.results).sorts
+        return _certificate(spec, evidence).sorts
 
     asc_a = Sort(by=(SortKey(field="a", order="ascending"),))
     desc_b = Sort(by=(SortKey(field="b", order="descending"),))
@@ -1170,7 +1239,7 @@ def test_certificate_bar_zero_disclosure_matches_builder(name: str) -> None:
         enc["x"].get("scale"),  # type: ignore[index]
         enc["y"].get("scale"),  # type: ignore[index]
     )
-    discloses = "scale.bar_zero" in _render(name).certificate.checks_passed
+    discloses = "scale.bar_zero" in {item.id for item in _render(name).certificate.checks}
     assert discloses == emits_zero
 
 
@@ -1180,7 +1249,9 @@ def test_certificate_legend_domain_disclosure_matches_builder(name: str) -> None
     # explicit discrete color domain over its inlined verified data.
     encoding = _built(name)["encoding"]
     has_domain = "color" in encoding and "scale" in encoding["color"]  # type: ignore[operator,index]
-    discloses = "encoding.legend_domain_exact" in _render(name).certificate.checks_passed
+    discloses = "encoding.legend_domain_exact" in {
+        item.id for item in _render(name).certificate.checks
+    }
     assert discloses == has_domain
 
 
@@ -1189,19 +1260,28 @@ def test_badge_html_renders_cert_fields() -> None:
     badge = render.badge_html(cert)
     assert "<script" not in badge
     assert cert.spec_hash in badge
+    assert cert.vega_lite_hash in badge
     assert "dataset.hash_matches_source" in badge
+    assert "deterministic_recompute" in badge
+    assert cert.tcb.verifier_version in badge
+    assert cert.tcb.z3_version in badge
     assert render._FONT_FAMILY in badge
 
 
 def test_badge_html_with_filters_and_sorts() -> None:
     # Non-empty filters + sorts -> the disclosure loops fire (covers the join comprehensions).
     cert = render.VCert(
-        version="vcert-0.1",
+        version="vcert-0.2",
         dataset_hash="sha256:" + "0" * 64,
         spec_hash="sha256:" + "1" * 64,
         plotted_table_hash="sha256:" + "2" * 64,
         manifest_hash="sha256:" + "3" * 64,
-        checks_passed=("security.no_arbitrary_code",),
+        vega_lite_hash="sha256:" + "4" * 64,
+        checks=(
+            render.CertifiedCheck(
+                id="security.no_arbitrary_code", method="construction", status="pass"
+            ),
+        ),
         filters=(render.DisclosedFilter(field="region", cmp="eq", value="EU"),),
         sorts=(render.DisclosedSort(field="month", order="ascending"),),
         tcb=render._tcb(),
@@ -1215,12 +1295,13 @@ def test_badge_html_with_filters_and_sorts() -> None:
 def _filter_cert(value: int | str) -> render.VCert:
     """A minimal cert whose single disclosed filter carries `value` (the badge display tests)."""
     return render.VCert(
-        version="vcert-0.1",
+        version="vcert-0.2",
         dataset_hash="sha256:" + "0" * 64,
         spec_hash="sha256:" + "1" * 64,
         plotted_table_hash="sha256:" + "2" * 64,
         manifest_hash="sha256:" + "3" * 64,
-        checks_passed=(),
+        vega_lite_hash="sha256:" + "4" * 64,
+        checks=(),
         filters=(render.DisclosedFilter(field="x", cmp="eq", value=value),),
         sorts=(),
         tcb=render._tcb(),

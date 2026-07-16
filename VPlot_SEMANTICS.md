@@ -32,6 +32,11 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   intent: a valid cherry-picked `filter` passes. The VCert badge (M1.6) discloses every
   applied filter + sort, so a reader sees the selected subset; the verifier guarantees the
   chart faithfully shows that selection, not that the selection is fair.
+- VCert v0.2 binds the exact emitted Vega-Lite bytes alongside dataset, manifest, canonical spec,
+  and recomputed-table hashes. Its `checks` reproduce every passing final result as
+  `{id, method, status:"pass"}` in report order; its TCB stamps verifier + Z3 versions as well as
+  canonicalization/display versions. Changing any bound bytes or stamped version changes the
+  canonical certificate bytes and therefore the service's content-derived `plot_id`.
 - Axis titles + units = trusted manifest, never the spec (their VALUE is correct by
   construction). `label.quantitative_units_present` (M1.5) still ENFORCES that a unit is present
   per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given.
@@ -211,7 +216,8 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   baseline, units present. Outcome: structured `{check, method, status, severity, message}`; any
   blocking failure → no render. Each result carries the closed verification method that established
   it: `schema_validation`, `resource_policy`, `deterministic_recompute`, `construction`, or
-  `z3_smt`.
+  `z3_smt`. A passing result's ID + method enter VCert v0.2 verbatim; there is no name-only
+  certificate compatibility field.
 
 A spec can pass DECODE yet fail RESOURCE POLICY or SEMANTIC.
 
