@@ -3,8 +3,9 @@
 
 create_app builds a fully configured Litestar app from a trusted Settings container —
 routes registered, settings on app.state, the framework body cap set to
-settings.max_body_bytes, and one persistent signing identity loaded before the app can serve.
-Transport only: no verification trust lives here (POC_SCOPE service boundary).
+settings.max_body_bytes, one persistent signing identity loaded, and the exact versioned provenance
+archive initialized before the app can serve. The archive is not populated until later M5 bundle
+units. Transport only: no verification trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
@@ -93,6 +94,7 @@ from litestar.status_codes import (
 
 from verifier import __version__
 from verifier.service.admission import AdmissionController, JobPermit
+from verifier.service.archive import open_archive
 from verifier.service.identity import Signer, SigningIdentity, load_identity
 from verifier.service.model_client import (
     DatasetNotFoundError,
@@ -482,6 +484,7 @@ def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -
 def create_app(settings: Settings) -> Litestar:
     """Build the Litestar app from trusted operator settings."""
     identity = load_identity(settings)
+    archive = open_archive(settings)
     store = ArtifactStore(
         settings.store_cap,
         html_cap=settings.html_cap,
@@ -506,6 +509,7 @@ def create_app(settings: Settings) -> Litestar:
             {
                 "settings": settings,
                 "identity": identity,
+                "archive": archive,
                 "store": store,
                 "admission": admission,
             }

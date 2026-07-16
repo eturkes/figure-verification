@@ -318,7 +318,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   identity/pin limits. Live restart kept the same ID; Chromium rendered the SVG + centered chart,
   badge, and exact link. Gate green at 1,345 tests/100% branch coverage.
 
-- **M5.4a — transactional provenance archive** (OPEN): add `service/archive.py`, stdlib SQLite
+- **M5.4a — transactional provenance archive** (DONE): add `service/archive.py`, stdlib SQLite
   STRICT schema (`meta`, immutable `blobs`, `keys`, `plots`, `attempts`, typed references), fresh
   connection per worker operation, parameterized SQL only. Force `journal_mode=DELETE`,
   `synchronous=FULL`, foreign keys, defensive mode, trusted-schema off, busy timeout and verify
@@ -330,7 +330,21 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   before commit, no eviction; document that SQLite pages/rollback journal/filesystem overhead can
   exceed it. Acceptance:
   dedup/ref integrity, concurrent writers, rollback-on-injected-fault, corruption/wrong-kind,
-  quota, unknown schema, and reopen tests; gate green.
+  quota, unknown schema, and reopen tests; gate green. Landed as a startup-initialized append-only
+  substrate with an exact-fingerprinted STRICT schema: `meta`, immutable typed blobs, keys, plots,
+  attempts, and role-constrained plot/attempt references. Blob identity is `(sha256, kind)`, so
+  same-role content deduplicates across bundles while byte-identical model-reply/raw-spec roles
+  remain truthfully representable; existing bytes are streamed + byte-compared on dedup. Every
+  operation owns a hardened fresh connection; startup rejects version/shape/accounting drift and
+  unsafe state/DB objects before serving. `BEGIN IMMEDIATE` serializes the trigger-maintained
+  logical quota check + whole batch; quota refuses without eviction, and admission stays O(bundle)
+  while startup/operator stats reconcile the counter against all blob metadata. Reads bind role,
+  kind, size, and caller ceiling before incremental BLOB allocation, then recompute SHA-256.
+  `VERIFIER_MAX_ARCHIVE_BYTES` defaults to 1 GiB logical typed payload only - SQLite pages,
+  row/index metadata, journals, and filesystem overhead remain explicitly outside the bound.
+  Exact-bound/typed-dedup, 12-successful-writer + quota-race, FK/immutable/ref, injected rollback,
+  native corruption/wrong-kind, connection-profile/fault, schema/version/reopen, and filesystem
+  matrices pass; locked gate green at 1,377 tests/100% branch coverage.
 - **M5.4b — content-addressed plot bundles** (OPEN): add typed `PlotBundle` materialization from
   one `RecomputedEvidence` + formal-passed render artifact and a direct archive write/read API.
   Store raw CSV, raw manifest, canonical spec, canonical plotted-table bytes, full method-aware

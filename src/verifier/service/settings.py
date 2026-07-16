@@ -16,7 +16,9 @@ SQLite boundaries and rejects astronomical values without allocating against the
 eagerly derived and cannot be supplied independently, so every service stage receives one frozen
 `VerificationLimits` snapshot. Cache budgets admit one conservatively bounded item: render =
 derived DSSE-envelope ceiling + both route-specific spec-input ceilings; chart = final signed HTML.
-Sums are checked for overflow.
+The archive budget is an inclusive logical typed-blob payload quota (default 1 GiB), not a bound on
+SQLite pages, row/index metadata, rollback journals, or filesystem overhead. Sums are checked for
+overflow.
 
 `public_base_url` is the absolute browser-facing origin used in chart `Location`, separate from
 the bind host. Its ASCII authority allowlist and exact origin round-trip reject browser/parser
@@ -54,6 +56,7 @@ _DEFAULT_MAX_MODEL_RESPONSE_BYTES = 128 * 1024
 
 _DEFAULT_RENDER_CACHE_BYTES = 32 * 1024 * 1024
 _DEFAULT_CHART_CACHE_BYTES = 128 * 1024 * 1024
+_DEFAULT_MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 _DEFAULT_MAX_ACTIVE_JOBS = 2
 _DEFAULT_WORK_RATE_PER_MINUTE = 120
 _DEFAULT_WORK_BURST = 120
@@ -72,6 +75,7 @@ _POSITIVE_RESOURCE_FIELDS = (
     "max_model_response_bytes",
     "render_cache_bytes",
     "chart_cache_bytes",
+    "max_archive_bytes",
     "max_active_jobs",
     "work_rate_per_minute",
     "work_burst",
@@ -149,6 +153,7 @@ class Settings:
 
     render_cache_bytes: int = _DEFAULT_RENDER_CACHE_BYTES
     chart_cache_bytes: int = _DEFAULT_CHART_CACHE_BYTES
+    max_archive_bytes: int = _DEFAULT_MAX_ARCHIVE_BYTES
     max_active_jobs: int = _DEFAULT_MAX_ACTIVE_JOBS
     work_rate_per_minute: int = _DEFAULT_WORK_RATE_PER_MINUTE
     work_burst: int = _DEFAULT_WORK_BURST
@@ -288,6 +293,7 @@ class Settings:
             ),
             render_cache_bytes=integer("VERIFIER_RENDER_CACHE_BYTES", _DEFAULT_RENDER_CACHE_BYTES),
             chart_cache_bytes=integer("VERIFIER_CHART_CACHE_BYTES", _DEFAULT_CHART_CACHE_BYTES),
+            max_archive_bytes=integer("VERIFIER_MAX_ARCHIVE_BYTES", _DEFAULT_MAX_ARCHIVE_BYTES),
             max_active_jobs=integer("VERIFIER_MAX_ACTIVE_JOBS", _DEFAULT_MAX_ACTIVE_JOBS),
             work_rate_per_minute=integer(
                 "VERIFIER_WORK_RATE_PER_MINUTE", _DEFAULT_WORK_RATE_PER_MINUTE

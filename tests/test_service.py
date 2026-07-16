@@ -23,6 +23,7 @@ from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import __main__ as service_main
 from verifier.service import settings as settings_module
 from verifier.service.app import create_app
+from verifier.service.archive import Archive
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -40,6 +41,7 @@ _RESOURCE_DEFAULTS = {
     "max_model_response_bytes": 128 * 1024,
     "render_cache_bytes": 32 * 1024 * 1024,
     "chart_cache_bytes": 128 * 1024 * 1024,
+    "max_archive_bytes": 1024 * 1024 * 1024,
     "max_active_jobs": 2,
     "work_rate_per_minute": 120,
     "work_burst": 120,
@@ -55,6 +57,7 @@ _RESOURCE_ENV = {
     "max_model_response_bytes": "VERIFIER_MAX_MODEL_RESPONSE_BYTES",
     "render_cache_bytes": "VERIFIER_RENDER_CACHE_BYTES",
     "chart_cache_bytes": "VERIFIER_CHART_CACHE_BYTES",
+    "max_archive_bytes": "VERIFIER_MAX_ARCHIVE_BYTES",
     "max_active_jobs": "VERIFIER_MAX_ACTIVE_JOBS",
     "work_rate_per_minute": "VERIFIER_WORK_RATE_PER_MINUTE",
     "work_burst": "VERIFIER_WORK_BURST",
@@ -103,6 +106,7 @@ def test_app_threads_validated_cache_byte_budgets(tmp_path: Path) -> None:
         chart_cache_bytes=2,
     )
     app = create_app(settings)
+    assert isinstance(app.state["archive"], Archive)
     store = cast("ArtifactStore", app.state["store"])
     store.put(plot_id="a" * 64, cert_bytes=b"A", spec_id="5" * 64, spec_bytes=b"SS")
     store.put_chart("a" * 64, b"HH")

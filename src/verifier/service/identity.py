@@ -38,6 +38,8 @@ __all__ = [
     "SigningIdentity",
     "keyid_for_public_key",
     "load_identity",
+    "open_state_directory",
+    "validate_state_metadata",
 ]
 
 _KEY_BYTES = 32
@@ -80,7 +82,10 @@ def keyid_for_public_key(public_key_bytes: bytes) -> str:
     return "sha256:" + hashlib.sha256(public_key_bytes).hexdigest()
 
 
-def _validate_metadata(metadata: os.stat_result, *, subject: str, expect_directory: bool) -> None:
+def validate_state_metadata(
+    metadata: os.stat_result, *, subject: str, expect_directory: bool
+) -> None:
+    """Require an effective-owner, owner-private regular file or directory."""
     expected = (
         stat.S_ISDIR(metadata.st_mode) if expect_directory else stat.S_ISREG(metadata.st_mode)
     )
@@ -109,7 +114,7 @@ def _open_directory_path(path: Path, *, subject: str) -> int:
 def _open_secure_directory_path(path: Path, *, subject: str) -> int:
     descriptor = _open_directory_path(path, subject=subject)
     try:
-        _validate_metadata(os.fstat(descriptor), subject=subject, expect_directory=True)
+        validate_state_metadata(os.fstat(descriptor), subject=subject, expect_directory=True)
     except Exception:
         os.close(descriptor)
         raise
@@ -123,14 +128,15 @@ def _open_secure_directory_at(parent_fd: int, name: str, *, subject: str) -> int
         msg = f"{subject} must be an available no-follow directory"
         raise IdentityError(msg) from exc
     try:
-        _validate_metadata(os.fstat(descriptor), subject=subject, expect_directory=True)
+        validate_state_metadata(os.fstat(descriptor), subject=subject, expect_directory=True)
     except Exception:
         os.close(descriptor)
         raise
     return descriptor
 
 
-def _ensure_state_directory(path: Path) -> int:
+def open_state_directory(path: Path) -> int:
+    """Create/reopen the owner-private state directory and return its no-follow descriptor."""
     parent_fd = _open_directory_path(path.parent, subject="state-directory parent")
     try:
         try:
@@ -166,7 +172,7 @@ def _read_secure_file(parent_fd: int, name: str, *, subject: str) -> bytes:
         raise IdentityError(msg) from exc
     try:
         metadata = os.fstat(descriptor)
-        _validate_metadata(metadata, subject=subject, expect_directory=False)
+        validate_state_metadata(metadata, subject=subject, expect_directory=False)
         if metadata.st_size != _KEY_BYTES:
             msg = f"{subject} must contain exactly {_KEY_BYTES} raw bytes; got {metadata.st_size}"
             raise IdentityError(msg)
@@ -275,7 +281,7 @@ def _load_pinned_public_key(public_dir_fd: int, keyid: str) -> Ed25519PublicKey:
 
 
 def _load_identity(settings: Settings) -> SigningIdentity:
-    state_fd = _ensure_state_directory(settings.state_dir)
+    state_fd = open_state_directory(settings.state_dir)
     try:
         key_path = cast("Path", settings.signing_key_file)
         if key_path.parent == settings.state_dir:
