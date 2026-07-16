@@ -559,7 +559,8 @@ def render_html(vega_lite_json: str) -> str:
 
 
 # --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
-# VCert v0.2 is still NON-REPLAYABLE and unsigned (signing + replay follow in M5.3-M5.5). It
+# Core render still returns a NON-REPLAYABLE unsigned VCert (service signing + replay follow in
+# M5.3c-M5.5; M5.3a supplies only the isolated attestation primitives). It
 # stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
 # bytes. Every passing result carries its verification method. The TCB identifies this verifier,
 # Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the
@@ -574,7 +575,7 @@ _VCERT_VERSION: Literal["vcert-0.2"] = "vcert-0.2"
 _FONT_SHA256 = "sha256:" + hashlib.sha256((_FONT_DIR / "DejaVuSans.ttf").read_bytes()).hexdigest()
 
 
-class Tcb(msgspec.Struct, frozen=True, kw_only=True):
+class Tcb(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """The verifier/formal/display TCB stamped into VCert.
 
     ``verifier_version`` identifies the package implementing the checks; ``z3_version`` the
@@ -597,7 +598,7 @@ class Tcb(msgspec.Struct, frozen=True, kw_only=True):
     vendored_font_sha256: str
 
 
-class DisclosedFilter(msgspec.Struct, frozen=True, kw_only=True):
+class DisclosedFilter(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary
     text within FilterValue bounds) -> badge_html HTML-escapes it."""
 
@@ -606,14 +607,14 @@ class DisclosedFilter(msgspec.Struct, frozen=True, kw_only=True):
     value: int | str
 
 
-class DisclosedSort(msgspec.Struct, frozen=True, kw_only=True):
+class DisclosedSort(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """One applied sort key, disclosed in the cert (flattened across all sort ops in order)."""
 
     field: str
     order: str
 
 
-class CertifiedCheck(msgspec.Struct, frozen=True, kw_only=True):
+class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """One passing final result recorded with the method that established it."""
 
     id: str
@@ -621,10 +622,11 @@ class CertifiedCheck(msgspec.Struct, frozen=True, kw_only=True):
     status: Literal["pass"]
 
 
-class VCert(msgspec.Struct, frozen=True, kw_only=True):
+class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing
     checks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and
-    non-replayable until later M5 units. Output record, never decoded from untrusted input."""
+    non-replayable until later M5 units. Produced by render; attestation verification decodes an
+    external copy only after its exact bytes + application type authenticate under a trusted key."""
 
     version: Literal["vcert-0.2"]
     dataset_hash: str
@@ -793,7 +795,7 @@ def badge_html(cert: VCert) -> str:
     html.escape(quote=True); the fragment has NO <script>, foreignObject, or other raw-HTML/JS
     sink, so no filter-value byte is ever live markup. All other fields (constrained field
     names, enum cmp/order, sha256 hashes, versions) are escaped uniformly. Pure +
-    deterministic. Non-replayable (signing is M5)."""
+    deterministic. Non-replayable; service signing follows in M5.3c."""
 
     def esc(value: object) -> str:
         return html.escape(str(value), quote=True)

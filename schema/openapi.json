@@ -818,7 +818,8 @@
           "id",
           "method",
           "status"
-        ]
+        ],
+        "additionalProperties": false
       },
       "CheckResult": {
         "title": "CheckResult",
@@ -887,7 +888,8 @@
           "field",
           "cmp",
           "value"
-        ]
+        ],
+        "additionalProperties": false
       },
       "DisclosedSort": {
         "title": "DisclosedSort",
@@ -904,7 +906,8 @@
         "required": [
           "field",
           "order"
-        ]
+        ],
+        "additionalProperties": false
       },
       "Problem": {
         "title": "Problem",
@@ -998,11 +1001,12 @@
           "vl_version",
           "font_family",
           "vendored_font_sha256"
-        ]
+        ],
+        "additionalProperties": false
       },
       "VCert": {
         "title": "VCert",
-        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and\nnon-replayable until later M5 units. Output record, never decoded from untrusted input.",
+        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Unsigned and\nnon-replayable until later M5 units. Produced by render; attestation verification decodes an\nexternal copy only after its exact bytes + application type authenticate under a trusted key.",
         "type": "object",
         "properties": {
           "version": {
@@ -1058,7 +1062,8 @@
           "filters",
           "sorts",
           "tcb"
-        ]
+        ],
+        "additionalProperties": false
       },
       "Verdict": {
         "title": "Verdict",

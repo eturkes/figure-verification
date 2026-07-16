@@ -248,7 +248,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   mutations change canonical payload + plot identity and remain visible; name-only wire field absent;
   gate green at 1,262 tests/100% branch coverage.
 
-- **M5.3a — DSSE + Ed25519 primitives** (OPEN): add current `cryptography>=49,<50` + lock; implement
+- **M5.3a — DSSE + Ed25519 primitives** (DONE): add current `cryptography>=49,<50` + lock; implement
   the tiny DSSE v1.0.2 PAE/envelope surface in `verifier.attestation` around exact VCert bytes with
   payload type `application/vnd.figure-verification.vcert.v0.2+json`. The application profile requires
   exactly one Ed25519 signature. Strict duplicate-key/base64/shape decoding; reject
@@ -260,7 +260,15 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   home-grown crypto. Acceptance:
   official PAE/envelope serialization vector, generated-key sign/verify, type/payload/signature
   tamper rejection, wrong-key rejection, keyid-tamper/missing equivalence as unauthenticated hints,
-  and unknown envelope fields tolerated per DSSE; gate green.
+  and unknown envelope fields tolerated per DSSE. Landed as an algorithm-closed PyCA Ed25519
+  profile: canonical one-signature producer; strict padded standard/URL-safe base64 + duplicate-key
+  and known-shape decode; 128-byte unauthenticated keyid hint with complete trusted-key fallback;
+  derived pre-JSON envelope cap + pre-application payload cap; signature/type gates before strict
+  VCert parsing, whose parser consumes and returns the identical verified byte object. VCert's
+  nested wire structs now reject unknown application fields and OpenAPI advertises that constraint,
+  while DSSE envelope extensions remain tolerated within the resource cap. Official v1.0.2 vector,
+  canonical/deterministic round-trip, tamper/wrong-key/hint/base64/shape/resource-order/same-object
+  tests pass; locked gate green at 1,306 tests/100% branch coverage.
 - **M5.3b — persistent signing identity** (OPEN): add a state-dir + key-file setting, eagerly
   absolutized without following the final component (default launch-root `.verifier-state`).
   Create the directory mode 0700 and one raw Ed25519 private key atomically/no-follow with mode

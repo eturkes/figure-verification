@@ -21,6 +21,8 @@ authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # py.typed; today transitive via litestar's TestClient, now declared as a direct runtime dep.
 # z3-solver (M5.2b): finite concrete obligations behind verifier.formal's typed boundary. Its
 # dynamic API has no PEP-561 marker, so direct imports outside that module are lint-blocked below.
+# cryptography (M5.3a): PyCA's typed Ed25519 implementation; verifier.attestation owns the tiny
+# DSSE profile and deliberately exposes no algorithm agility.
 dependencies = [
     "msgspec>=0.21,<1",
     "vl-convert-python>=1.9,<2",
@@ -28,6 +30,7 @@ dependencies = [
     "uvicorn>=0.49,<1",
     "httpx>=0.28,<1",
     "z3-solver>=4.16,<5",
+    "cryptography>=49,<50",
 ]
 
 [dependency-groups]
