@@ -22,6 +22,14 @@ caller's byte limit before opening the BLOB. ``sqlite3.Blob`` is consumed in fix
 SHA-256 digest is recomputed; neither a metadata lie nor corruption can become trusted payload.
 Application values use SQL parameters exclusively; the only literal SQL is fixed schema/PRAGMA
 text owned by this module.
+
+The high-level successful-plot API materializes one immutable ``PlotBundle`` from the exact
+formal-passed evidence/render chain, publishes all eleven typed payloads atomically, and reads them
+only after aggregate-size admission. Publish + read recheck canonical spec/verdict/version forms,
+the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
+the bundle's archived public key establishes internal cryptographic consistency only; it never
+grants that key operator trust. Replay applies independently configured trust policy in a later
+unit. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
 """
 
 import hashlib
@@ -36,11 +44,21 @@ from enum import StrEnum
 from pathlib import Path
 from typing import cast
 
+import msgspec
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from verifier import attestation, canon, render
+from verifier.errors import VerificationError
+from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.schema import VPlotSpec, decode_spec
 from verifier.service.identity import (
     IdentityError,
+    Signer,
+    keyid_for_public_key,
     open_state_directory,
     validate_state_metadata,
 )
+from verifier.service.models import Verdict
 from verifier.service.settings import Settings
 
 __all__ = [
@@ -60,9 +78,11 @@ __all__ = [
     "BlobRef",
     "BlobWrite",
     "KeyRecord",
+    "PlotBundle",
     "PlotRecord",
     "PlotReference",
     "PlotRole",
+    "materialize_plot_bundle",
     "open_archive",
 ]
 
@@ -83,6 +103,8 @@ _BLOB_METADATA_COLUMNS = 4
 _DATABASE_MODE = 0o600
 _STATE_DIRECTORY_MODE = 0o700
 _CONNECTION_FACTORY: type[sqlite3.Connection] = sqlite3.Connection
+_PLOT_RECORD_COLUMNS = 3
+_PLOT_REFERENCE_COLUMNS = 5
 
 
 class ArchiveError(RuntimeError):
@@ -156,6 +178,56 @@ class AttemptRole(StrEnum):
     MODEL_RESPONSE = BlobKind.MODEL_RESPONSE
     MODEL_REPLY = BlobKind.MODEL_REPLY
     ATTEMPT_PAYLOAD = BlobKind.ATTEMPT_PAYLOAD
+
+
+_PLOT_BUNDLE_BYTE_FIELDS = (
+    "raw_csv",
+    "raw_manifest",
+    "canonical_spec",
+    "plotted_table",
+    "verdict",
+    "vega_lite",
+    "svg",
+    "vcert_payload",
+    "vcert_envelope",
+    "tool_versions",
+    "public_key",
+)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlotBundle:
+    """One successful plot's exact content-deduplicated provenance snapshot.
+
+    Every byte field maps to one closed archive kind. ``plot_id`` addresses the signed VCert
+    envelope; ``keyid`` addresses the raw Ed25519 key that actually verifies it. Occurrence data
+    (time, route, request/model trace) belongs to a later signed attempt bundle, never here.
+    Construction checks only wire shape; materialization and archive publish/read revalidate the
+    complete signature, canonical forms, verdict, and VCert hash graph under explicit limits.
+    """
+
+    plot_id: str
+    keyid: str
+    raw_csv: bytes = field(repr=False)
+    raw_manifest: bytes = field(repr=False)
+    canonical_spec: bytes = field(repr=False)
+    plotted_table: bytes = field(repr=False)
+    verdict: bytes = field(repr=False)
+    vega_lite: bytes = field(repr=False)
+    svg: bytes = field(repr=False)
+    vcert_payload: bytes = field(repr=False)
+    vcert_envelope: bytes = field(repr=False)
+    tool_versions: bytes = field(repr=False)
+    public_key: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _require_address(self.plot_id, subject="plot bundle id")
+        _require_sha256(self.keyid, subject="plot bundle keyid")
+        for name in _PLOT_BUNDLE_BYTE_FIELDS:
+            value = getattr(self, name)
+            if not isinstance(value, bytes):
+                msg = f"plot bundle {name} must be bytes, got {type(value).__name__}"
+                raise TypeError(msg)
 
 
 def _require_sha256(value: str, *, subject: str) -> None:
@@ -330,6 +402,221 @@ class ArchiveStats:
     attempts: int
 
 
+_PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
+    (PlotRole.RAW_CSV, "raw_csv"),
+    (PlotRole.RAW_MANIFEST, "raw_manifest"),
+    (PlotRole.CANONICAL_SPEC, "canonical_spec"),
+    (PlotRole.PLOTTED_TABLE, "plotted_table"),
+    (PlotRole.VERDICT, "verdict"),
+    (PlotRole.VEGA_LITE, "vega_lite"),
+    (PlotRole.SVG, "svg"),
+    (PlotRole.VCERT_PAYLOAD, "vcert_payload"),
+    (PlotRole.TOOL_VERSIONS, "tool_versions"),
+)
+_BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
+_VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
+_TOOL_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
+
+
+def _require_limits(limits: VerificationLimits) -> None:
+    limits_object: object = limits
+    if not isinstance(limits_object, VerificationLimits):
+        msg = f"limits must be VerificationLimits, got {type(limits).__name__}"
+        raise TypeError(msg)
+
+
+def _decode_canonical_verdict(payload: bytes) -> Verdict:
+    try:
+        verdict = _VERDICT_DECODER.decode(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "plot bundle verdict is not valid structured JSON"
+        raise ArchiveIntegrityError(msg) from exc
+    if _BUNDLE_ENCODER.encode(verdict) != payload:
+        msg = "plot bundle verdict is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return verdict
+
+
+def _decode_canonical_versions(payload: bytes) -> render.Tcb:
+    try:
+        versions = _TOOL_VERSIONS_DECODER.decode(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "plot bundle tool versions are not valid structured JSON"
+        raise ArchiveIntegrityError(msg) from exc
+    if _BUNDLE_ENCODER.encode(versions) != payload:
+        msg = "plot bundle tool versions are not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return versions
+
+
+def _decode_canonical_spec(payload: bytes) -> VPlotSpec:
+    try:
+        spec = decode_spec(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "plot bundle canonical spec is not a valid VPlot specification"
+        raise ArchiveIntegrityError(msg) from exc
+    if canon.spec_bytes(spec) != payload:
+        msg = "plot bundle canonical spec bytes are not canonical"
+        raise ArchiveIntegrityError(msg)
+    return spec
+
+
+def _authenticated_bundle_certificate(
+    bundle: PlotBundle, limits: VerificationLimits
+) -> render.VCert:
+    if len(bundle.vcert_payload) > limits.max_attestation_bytes:
+        msg = (
+            f"plot bundle VCert payload has {len(bundle.vcert_payload)} bytes; "
+            f"limit is {limits.max_attestation_bytes}"
+        )
+        raise ArchiveReadLimitError(msg)
+    envelope_limit = attestation.envelope_byte_limit(limits.max_attestation_bytes)
+    if len(bundle.vcert_envelope) > envelope_limit:
+        msg = (
+            f"plot bundle VCert envelope has {len(bundle.vcert_envelope)} bytes; "
+            f"limit is {envelope_limit}"
+        )
+        raise ArchiveReadLimitError(msg)
+
+    if hashlib.sha256(bundle.vcert_envelope).hexdigest() != bundle.plot_id:
+        msg = "plot bundle id does not address its exact VCert envelope bytes"
+        raise ArchiveIntegrityError(msg)
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(bundle.public_key)
+        actual_keyid = keyid_for_public_key(bundle.public_key)
+        verified = attestation.verify_vcert(
+            bundle.vcert_envelope,
+            {bundle.keyid: public_key},
+            limits=limits,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "plot bundle VCert envelope or signing public key failed verification"
+        raise ArchiveIntegrityError(msg) from exc
+    if actual_keyid != bundle.keyid:
+        msg = "plot bundle keyid does not address its signing public key bytes"
+        raise ArchiveIntegrityError(msg)
+    if verified.payload != bundle.vcert_payload:
+        msg = "plot bundle VCert payload differs from the authenticated envelope payload"
+        raise ArchiveIntegrityError(msg)
+    certificate = verified.certificate
+    if render.vcert_bytes(certificate) != bundle.vcert_payload:
+        msg = "plot bundle VCert payload is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return certificate
+
+
+def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> None:
+    """Check canonical content + every VCert slot after envelope authentication."""
+
+    spec = _decode_canonical_spec(bundle.canonical_spec)
+    verdict = _decode_canonical_verdict(bundle.verdict)
+    versions = _decode_canonical_versions(bundle.tool_versions)
+    try:
+        bundle.svg.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        msg = "plot bundle SVG is not valid UTF-8"
+        raise ArchiveIntegrityError(msg) from exc
+
+    actual_hashes = (
+        ("dataset", canon.hash_dataset(bundle.raw_csv), certificate.dataset_hash),
+        ("manifest", canon.hash_manifest(bundle.raw_manifest), certificate.manifest_hash),
+        ("spec", canon.hash_spec(spec), certificate.spec_hash),
+        (
+            "plotted table",
+            canon.hash_table_bytes(bundle.plotted_table),
+            certificate.plotted_table_hash,
+        ),
+        ("Vega-Lite", render.hash_vega_lite(bundle.vega_lite), certificate.vega_lite_hash),
+    )
+    for subject, actual, certified in actual_hashes:
+        if actual != certified:
+            msg = f"plot bundle {subject} bytes disagree with the certified hash"
+            raise ArchiveIntegrityError(msg)
+    if spec.dataset.hash != certificate.dataset_hash:
+        msg = "plot bundle canonical spec dataset binding disagrees with the certified dataset"
+        raise ArchiveIntegrityError(msg)
+
+    if (
+        not verdict.verified
+        or verdict.layer != "verify"
+        or any(result.status != "pass" for result in verdict.results)
+    ):
+        msg = "plot bundle verdict must be a complete passing verification outcome"
+        raise ArchiveIntegrityError(msg)
+    certified_checks = tuple(
+        render.CertifiedCheck(id=result.check, method=result.method, status="pass")
+        for result in verdict.results
+    )
+    if certificate.checks != certified_checks:
+        msg = "plot bundle full method-aware verdict disagrees with certified checks"
+        raise ArchiveIntegrityError(msg)
+    if versions != certificate.tcb:
+        msg = "plot bundle tool versions disagree with the VCert TCB"
+        raise ArchiveIntegrityError(msg)
+
+
+def _validate_plot_bundle(bundle: PlotBundle, limits: VerificationLimits) -> None:
+    """Revalidate one bundle's signature + full byte/hash graph before trust or persistence."""
+    _require_limits(limits)
+    certificate = _authenticated_bundle_certificate(bundle, limits)
+    _validate_bundle_contents(bundle, certificate)
+
+
+def materialize_plot_bundle(
+    prepared: render.PreparedArtifact,
+    rendered: render.RenderResult,
+    envelope: bytes,
+    signer: Signer,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> PlotBundle:
+    """Materialize exact successful-plot bytes from one evidence/render/signing chain.
+
+    The function performs no I/O and invents no occurrence metadata. ``PreparedArtifact`` already
+    retains the one exact ``RecomputedEvidence`` that crossed the core + formal gates; this binds
+    its raw snapshots and recomputation to the native result and signed certificate. The complete
+    method-aware verdict is projected from that final passing result tuple, never accepted as a
+    second independently pairable input.
+    """
+    typed_values: tuple[tuple[object, type[object], str], ...] = (
+        (prepared, render.PreparedArtifact, "prepared"),
+        (rendered, render.RenderResult, "rendered"),
+        (signer, Signer, "signer"),
+    )
+    for value, expected_type, name in typed_values:
+        if not isinstance(value, expected_type):
+            msg = f"{name} must be {expected_type.__name__}, got {type(value).__name__}"
+            raise TypeError(msg)
+    envelope_object: object = envelope
+    if not isinstance(envelope_object, bytes):
+        msg = f"envelope must be bytes, got {type(envelope).__name__}"
+        raise TypeError(msg)
+    _require_limits(limits)
+    if rendered.vega_lite != prepared.vega_lite:
+        msg = "rendered Vega-Lite bytes differ from the formal-passed prepared artifact"
+        raise ValueError(msg)
+
+    evidence = prepared.evidence
+    verdict = Verdict(verified=True, layer="verify", results=prepared.results)
+    bundle = PlotBundle(
+        plot_id=hashlib.sha256(envelope).hexdigest(),
+        keyid=signer.keyid,
+        raw_csv=evidence.source_bytes,
+        raw_manifest=evidence.manifest_bytes,
+        canonical_spec=canon.spec_bytes(prepared.spec),
+        plotted_table=canon.serialize_table(evidence.plotted_table).encode("utf-8"),
+        verdict=_BUNDLE_ENCODER.encode(verdict),
+        vega_lite=rendered.vega_lite,
+        svg=rendered.svg.encode("utf-8"),
+        vcert_payload=render.vcert_bytes(rendered.certificate),
+        vcert_envelope=envelope,
+        tool_versions=_BUNDLE_ENCODER.encode(rendered.certificate.tcb),
+        public_key=signer.public_key_bytes,
+    )
+    _validate_plot_bundle(bundle, limits)
+    return bundle
+
+
 _CREATE_META = """CREATE TABLE meta (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     schema_version INTEGER NOT NULL CHECK (schema_version > 0),
@@ -479,6 +766,14 @@ _SELECT_ATTEMPT_ENVELOPE = """SELECT b.blob_id, b.digest, b.kind, b.size
 FROM attempts AS a
 JOIN blobs AS b ON b.digest = a.envelope_digest AND b.kind = a.envelope_kind
 WHERE a.attempt_id = ?"""
+_SELECT_PLOT_RECORD = """SELECT certificate_digest, certificate_kind, keyid
+FROM plots
+WHERE plot_id = ?"""
+_SELECT_PLOT_REFERENCES = """SELECT r.role, b.blob_id, b.digest, b.kind, b.size
+FROM plot_references AS r
+JOIN blobs AS b ON b.digest = r.blob_digest AND b.kind = r.blob_kind
+WHERE r.plot_id = ?
+ORDER BY r.role"""
 
 
 def _read_scalar(connection: sqlite3.Connection, statement: str) -> object:
@@ -750,6 +1045,140 @@ def _consume_blob(
     if policy.collect:
         return b"".join(chunks)
     return None
+
+
+def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
+    role_blobs = {
+        role: BlobWrite(BlobKind(role.value), cast("bytes", getattr(bundle, field_name)))
+        for role, field_name in _PLOT_ROLE_FIELDS
+    }
+    envelope = BlobWrite(BlobKind.VCERT_ENVELOPE, bundle.vcert_envelope)
+    public_key = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, bundle.public_key)
+    return ArchiveBatch(
+        blobs=(*role_blobs.values(), envelope, public_key),
+        keys=(KeyRecord(bundle.keyid, public_key.ref),),
+        plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid),),
+        plot_references=tuple(
+            PlotReference(bundle.plot_id, role, role_blobs[role].ref)
+            for role, _field_name in _PLOT_ROLE_FIELDS
+        ),
+    )
+
+
+def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str]:
+    if not isinstance(row, tuple) or len(row) != _PLOT_RECORD_COLUMNS:
+        msg = "archive plot record is malformed"
+        raise ArchiveIntegrityError(msg)
+    certificate_digest, certificate_kind, keyid = row
+    if (
+        not isinstance(certificate_digest, str)
+        or certificate_digest != f"sha256:{plot_id}"
+        or certificate_kind != BlobKind.VCERT_ENVELOPE.value
+        or not isinstance(keyid, str)
+        or _SHA256.fullmatch(keyid) is None
+    ):
+        msg = "archive plot record types, address, certificate kind, or keyid are corrupt"
+        raise ArchiveIntegrityError(msg)
+    return BlobRef(certificate_digest, BlobKind.VCERT_ENVELOPE), keyid
+
+
+def _plot_bundle_blob_rows(
+    connection: sqlite3.Connection,
+    plot_id: str,
+    certificate: BlobRef,
+    keyid: str,
+) -> tuple[
+    tuple[BlobRef, _BlobRow],
+    tuple[BlobRef, _BlobRow],
+    dict[PlotRole, tuple[BlobRef, _BlobRow]],
+]:
+    certificate_row = _blob_row(connection, certificate)
+    key_row_value = connection.execute(_SELECT_KEY_BLOB, (keyid,)).fetchone()
+    if certificate_row is None or key_row_value is None:
+        msg = "archive plot certificate or signing-key relation is broken"
+        raise ArchiveIntegrityError(msg)
+    key_row = _validated_blob_row(key_row_value)
+    key_ref = BlobRef(keyid, BlobKind.ED25519_PUBLIC_KEY)
+    if key_row[1] != key_ref.digest or key_row[2] != key_ref.kind.value:
+        msg = "archive plot signing-key record resolves to the wrong typed blob"
+        raise ArchiveIntegrityError(msg)
+
+    role_rows: dict[PlotRole, tuple[BlobRef, _BlobRow]] = {}
+    rows = connection.execute(_SELECT_PLOT_REFERENCES, (plot_id,)).fetchall()
+    for row in rows:
+        if not isinstance(row, tuple) or len(row) != _PLOT_REFERENCE_COLUMNS:
+            msg = "archive plot reference row is malformed"
+            raise ArchiveIntegrityError(msg)
+        role_value = row[0]
+        try:
+            role = PlotRole(role_value)
+        except (TypeError, ValueError) as exc:
+            msg = f"archive plot carries unknown role {role_value!r}"
+            raise ArchiveIntegrityError(msg) from exc
+        blob_row = _validated_blob_row(tuple(row[1:]))
+        reference = BlobRef(blob_row[1], BlobKind(role.value))
+        if blob_row[2] != reference.kind.value or role in role_rows:
+            msg = "archive plot role resolves to a wrong-kind or duplicate blob"
+            raise ArchiveIntegrityError(msg)
+        role_rows[role] = (reference, blob_row)
+    if set(role_rows) != set(PlotRole):
+        msg = "archive plot does not carry every required role exactly once"
+        raise ArchiveIntegrityError(msg)
+    return (certificate, certificate_row), (key_ref, key_row), role_rows
+
+
+def _read_complete_plot_bundle(
+    connection: sqlite3.Connection,
+    plot_id: str,
+    *,
+    max_bytes: int,
+) -> PlotBundle:
+    record_row = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
+    if record_row is None:
+        msg = "archive plot address was not found"
+        raise ArchiveNotFoundError(msg)
+    certificate, keyid = _validated_plot_record(record_row, plot_id)
+    certificate_entry, key_entry, role_rows = _plot_bundle_blob_rows(
+        connection, plot_id, certificate, keyid
+    )
+
+    entries = (certificate_entry, key_entry, *(role_rows[role] for role in PlotRole))
+    admitted_bytes = 0
+    for _reference, row in entries:
+        size = row[3]
+        if size > max_bytes - admitted_bytes:
+            msg = f"archive plot bundle exceeds aggregate read limit of {max_bytes} bytes"
+            raise ArchiveReadLimitError(msg)
+        admitted_bytes += size
+
+    def read_entry(entry: tuple[BlobRef, _BlobRow]) -> bytes:
+        reference, row = entry
+        payload = _consume_blob(
+            connection,
+            row,
+            reference,
+            _BlobReadPolicy(max_bytes=row[3], expected_payload=None, collect=True),
+        )
+        return cast("bytes", payload)
+
+    certificate_payload = read_entry(certificate_entry)
+    public_key = read_entry(key_entry)
+    role_payloads = {role: read_entry(role_rows[role]) for role in PlotRole}
+    return PlotBundle(
+        plot_id=plot_id,
+        keyid=keyid,
+        raw_csv=role_payloads[PlotRole.RAW_CSV],
+        raw_manifest=role_payloads[PlotRole.RAW_MANIFEST],
+        canonical_spec=role_payloads[PlotRole.CANONICAL_SPEC],
+        plotted_table=role_payloads[PlotRole.PLOTTED_TABLE],
+        verdict=role_payloads[PlotRole.VERDICT],
+        vega_lite=role_payloads[PlotRole.VEGA_LITE],
+        svg=role_payloads[PlotRole.SVG],
+        vcert_payload=role_payloads[PlotRole.VCERT_PAYLOAD],
+        vcert_envelope=certificate_payload,
+        tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
+        public_key=public_key,
+    )
 
 
 def _require_batch_items(batch: ArchiveBatch) -> None:
@@ -1070,6 +1499,20 @@ class Archive:
         finally:
             connection.close()
 
+    def publish_plot(
+        self,
+        bundle: PlotBundle,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> None:
+        """Revalidate and atomically publish one complete successful-plot bundle."""
+        bundle_object: object = bundle
+        if not isinstance(bundle_object, PlotBundle):
+            msg = f"bundle must be a PlotBundle, got {type(bundle).__name__}"
+            raise TypeError(msg)
+        _validate_plot_bundle(bundle, limits)
+        self.publish(_plot_bundle_batch(bundle))
+
     def _read_payload(
         self,
         statement: str,
@@ -1157,6 +1600,31 @@ class Archive:
             (attempt_id, role.value),
             expected,
         )
+
+    def read_plot(
+        self,
+        plot_id: str,
+        *,
+        max_bytes: int,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> PlotBundle:
+        """Read one complete plot under an aggregate cap, then revalidate its signed hash graph."""
+        _require_address(plot_id, subject="plot_id")
+        _require_read_limit(max_bytes)
+        _require_limits(limits)
+        connection = self._connect()
+        try:
+            bundle = _read_complete_plot_bundle(connection, plot_id, max_bytes=max_bytes)
+            _validate_plot_bundle(bundle, limits)
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed while reading a complete plot bundle"
+            raise ArchiveError(msg) from exc
+        else:
+            return bundle
+        finally:
+            connection.close()
 
     def stats(self) -> ArchiveStats:
         """Return checked logical accounting + row counts from one fresh connection."""

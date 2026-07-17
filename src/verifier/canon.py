@@ -186,7 +186,17 @@ def hash_dataset(csv_bytes: bytes) -> str:
 
 def hash_table(table: Table) -> str:
     """The recomputed plotted table's hash, over its typed-NDJSON form; domain-tagged."""
-    return _digest("table", serialize_table(table).encode("utf-8"))
+    return hash_table_bytes(serialize_table(table).encode("utf-8"))
+
+
+def hash_table_bytes(payload: bytes) -> str:
+    """Hash exact already-canonical typed-NDJSON table bytes.
+
+    Archive/replay code owns the canonical-byte precondition; live tables should use
+    :func:`hash_table`, which serializes them first. Keeping the domain tag here prevents a
+    second provenance layer from restating canon's versioned hash construction.
+    """
+    return _digest("table", payload)
 
 
 def spec_bytes(spec: VPlotSpec) -> bytes:

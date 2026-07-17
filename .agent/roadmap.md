@@ -345,13 +345,24 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Exact-bound/typed-dedup, 12-successful-writer + quota-race, FK/immutable/ref, injected rollback,
   native corruption/wrong-kind, connection-profile/fault, schema/version/reopen, and filesystem
   matrices pass; locked gate green at 1,377 tests/100% branch coverage.
-- **M5.4b — content-addressed plot bundles** (OPEN): add typed `PlotBundle` materialization from
+- **M5.4b — content-addressed plot bundles** (DONE): add typed `PlotBundle` materialization from
   one `RecomputedEvidence` + formal-passed render artifact and a direct archive write/read API.
   Store raw CSV, raw manifest, canonical spec, canonical plotted-table bytes, full method-aware
   verdict, emitted Vega-Lite, SVG, VCert payload, DSSE envelope, verifier/runtime versions, and
   signing public key. Occurrence time/route stay out of this content-deduplicated plot. Acceptance:
   every certificate hash/address resolves to exact role-typed bytes; shared blobs deduplicate;
   round-trip/reopen is lossless; injected commit fault leaves zero partial rows/blobs; gate green.
+  Landed as a pure materializer over one `PreparedArtifact` (which retains the exact
+  `RecomputedEvidence`), its native `RenderResult`, canonical DSSE envelope, and signer. It derives
+  the complete passing method-aware verdict rather than accepting a separately pairable copy;
+  canonicalizes spec/table/verdict/TCB bytes; and rejects any signature, plot/key address,
+  canonical-form, certificate hash, dataset binding, check-method, or tool-version disagreement.
+  `Archive.publish_plot` maps the eleven exact typed payloads to one atomic low-level batch;
+  `read_plot` admits their aggregate metadata size before any BLOB opens, streams + digests each,
+  reconstructs the bundle, and revalidates the signed graph. Archived-key verification proves
+  bundle self-consistency only - it grants no trust. Reopen is byte-lossless; a second signer
+  shares all nine role blobs while adding only its key/envelope; an injected final-commit fault
+  leaves zero rows/bytes. Locked gate green at 1,387 tests/100% branch coverage.
 - **M5.4c — lossless model proposal trace** (OPEN): model client returns a typed trace carrying
   exact serialized request/messages + bounded raw HTTP response body + extracted reply bytes when
   available, without changing the bytes sent over HTTP or downstream to spec decode. Pre-response
