@@ -1,13 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Model proposer client: bounded (user request, dataset context) -> raw model reply bytes.
+"""Model proposer client: bounded context -> lossless model exchange -> raw reply bytes.
 
 The untrusted local proposer's ONLY entry into the verifier. propose_spec builds the VPlot
 v0.1 proposer prompt (the trusted grammar + rules as system, the dataset binding + column
 schema + sample rows + the user request as user), POSTs it to the local backend's OpenAI
-/v1/chat/completions, and returns choices[0].message.content as raw UTF-8 bytes. It NEVER
-decodes that content as VPlot: the bytes flow on to schema.decode_spec downstream, so a
+/v1/chat/completions, and returns a typed ``ModelProposal`` whose reply is
+choices[0].message.content as raw UTF-8 bytes. It NEVER decodes that content as VPlot: the
+identical bytes flow on to schema.decode_spec downstream, so a
 malformed-but-extracted spec still reaches a 200 verdict (the model-failure mode M3.4
 meters), exactly mirroring the pipeline's raw-body discipline.
+
+The proposal also carries a lossless, sensitive ``ProposalTrace``: the exact HTTPX-serialized
+request body (including both messages), the complete bounded raw response body, and the extracted
+reply bytes. HTTPX builds the request once; the same request object is sent and traced. A closed
+``ProposalFault`` classifies every backend failure without placing prompt/reply bytes in exception
+text or logs. Transport/pre-body failures retain the request only; a response rejected at the
+limit+1 probe retains no prefix; fully admitted non-2xx or malformed bodies remain available for
+the later operator-only attempt archive.
 
 Dataset binding (removes a guaranteed-fail noise mode from the eval): the prompt hands the
 model json.dumps({"name", "hash"}) with hash = canon.hash_dataset(csv_bytes) to copy
@@ -53,6 +62,8 @@ is trusted configuration; this equality check is not cryptographic peer authenti
 
 import csv
 import json
+from dataclasses import dataclass, field
+from enum import StrEnum
 from io import StringIO
 from itertools import chain, islice
 from pathlib import Path
@@ -66,7 +77,57 @@ from verifier.errors import VerificationError
 from verifier.limits import read_bounded
 from verifier.service.settings import Settings
 
-__all__ = ["DatasetNotFoundError", "ModelUpstreamError", "ProposerPolicyError", "propose_spec"]
+__all__ = [
+    "DatasetNotFoundError",
+    "ModelProposal",
+    "ModelUpstreamError",
+    "ProposalFault",
+    "ProposalTrace",
+    "ProposerPolicyError",
+    "propose_spec",
+]
+
+
+class ProposalFault(StrEnum):
+    """Closed, non-sensitive classification for a failed outbound model exchange."""
+
+    TRANSPORT = "transport"
+    CONTENT_ENCODING = "content_encoding"
+    RESPONSE_TOO_LARGE = "response_too_large"
+    HTTP_STATUS = "http_status"
+    PROMPT_TOKENS = "prompt_tokens"
+    INVALID_ENVELOPE = "invalid_envelope"
+    NO_CHOICES = "no_choices"
+    EMPTY_CONTENT = "empty_content"
+
+
+@dataclass(frozen=True, slots=True)
+class ProposalTrace:
+    """Exact observed model-exchange bytes; byte fields stay out of repr and exception text.
+
+    ``request_body`` is the body of the exact HTTPX request object sent to the backend.
+    ``response_body`` exists only after the complete raw body passed its byte ceiling;
+    limit+1 and pre-body failures deliberately retain ``None``. ``reply_bytes`` is the exact
+    UTF-8 buffer handed downstream when extraction succeeded. ``fault`` is ``None`` only for a
+    successful extraction.
+    """
+
+    request_body: bytes = field(repr=False)
+    response_body: bytes | None = field(repr=False)
+    reply_bytes: bytes | None = field(repr=False)
+    fault: ProposalFault | None
+
+
+@dataclass(frozen=True, slots=True)
+class ModelProposal:
+    """Successful model extraction plus its lossless trace.
+
+    Production constructs both fields from the same reply buffer; keeping the explicit field
+    makes downstream use statically non-optional while the trace represents failure shapes too.
+    """
+
+    reply_bytes: bytes = field(repr=False)
+    trace: ProposalTrace
 
 
 class DatasetNotFoundError(Exception):
@@ -82,12 +143,14 @@ class DatasetNotFoundError(Exception):
 
 class ModelUpstreamError(Exception):
     """The model backend failed as an upstream dependency: unreachable (503) or an unusable
-    response (502). M3.3 maps `status` onto a problem+json; the cause is logged and withheld.
-    Never a 200 verdict -- no content reached decode_spec, so there is nothing to verify."""
+    response (502). M3.3 maps `status` onto a problem+json; logs receive only bounded status/fault
+    classifiers, never trace bytes or the transport cause. Never a 200 verdict -- no content reached
+    decode_spec, so there is nothing to verify."""
 
-    def __init__(self, message: str, *, status: int) -> None:
+    def __init__(self, message: str, *, status: int, trace: ProposalTrace) -> None:
         super().__init__(message)
         self.status = status
+        self.trace = trace
 
 
 class ProposerPolicyError(Exception):
@@ -98,9 +161,10 @@ class ProposerPolicyError(Exception):
     content exists to verify. ``resource`` is an operator-log classifier and is never echoed.
     """
 
-    def __init__(self, message: str, *, resource: str) -> None:
+    def __init__(self, message: str, *, resource: str, trace: ProposalTrace | None = None) -> None:
         super().__init__(message)
         self.resource = resource
+        self.trace = trace
 
 
 # --- OpenAI chat-completion envelope (decode-only; tolerate unknown fields) ---
@@ -255,10 +319,10 @@ def _append_sample_rows(builder: _PromptAssembler, csv_bytes: bytes, count: int)
     for row_index, row in enumerate(chain(islice(reader, 1), islice(reader, count))):
         if row_index:
             builder.append("\n")
-        for field_index, field in enumerate(row):
+        for field_index, cell in enumerate(row):
             if field_index:
                 builder.append(",")
-            builder.append(field)
+            builder.append(cell)
 
 
 def _build_messages(
@@ -346,20 +410,28 @@ def _build_async_client(settings: Settings) -> httpx.AsyncClient:
 
 
 async def _read_response_bounded(response: httpx.Response, max_bytes: int) -> bytes:
-    """Stream at most ``max_bytes + 1`` raw body bytes, then fail 502 and close early."""
+    """Stream at most ``max_bytes + 1`` raw body bytes, then fail and close early."""
     stop = max_bytes + 1
     payload = bytearray()
     async for chunk in response.aiter_raw():
         payload.extend(chunk[: stop - len(payload)])
         if len(payload) == stop:
             msg = f"model backend response exceeds byte limit of {max_bytes}"
-            raise ModelUpstreamError(msg, status=502)
+            raise _ModelResponseError(msg, ProposalFault.RESPONSE_TOO_LARGE)
     return bytes(payload)
 
 
+class _ModelResponseError(Exception):
+    """Internal response failure enriched with the request/response trace by ``propose_spec``."""
+
+    def __init__(self, message: str, fault: ProposalFault) -> None:
+        super().__init__(message)
+        self.fault = fault
+
+
 def _extract_content(response_bytes: bytes) -> bytes:
-    """The chat-completion reply -> choices[0].message.content as raw UTF-8 bytes, or raise
-    ModelUpstreamError(502). A body that is not valid UTF-8 (msgspec raises the builtin
+    """The chat-completion reply -> choices[0].message.content as raw UTF-8 bytes, or classify
+    an unusable 502 response. A body that is not valid UTF-8 (msgspec raises the builtin
     UnicodeDecodeError, not its own DecodeError) or not a valid envelope, no choices, or empty
     content are all unusable upstream responses -- a 502, never the operator-config 500. NEVER
     decodes the content as VPlot -- that stays downstream, so a malformed-but-present spec flows
@@ -367,15 +439,15 @@ def _extract_content(response_bytes: bytes) -> bytes:
     try:
         envelope = _ENVELOPE_DECODER.decode(response_bytes)
     except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
-        msg = f"model reply is not a chat-completion envelope: {exc}"
-        raise ModelUpstreamError(msg, status=502) from exc
+        msg = "model reply is not a chat-completion envelope"
+        raise _ModelResponseError(msg, ProposalFault.INVALID_ENVELOPE) from exc
     if not envelope.choices:
         msg = "model reply carries no choices"
-        raise ModelUpstreamError(msg, status=502)
+        raise _ModelResponseError(msg, ProposalFault.NO_CHOICES)
     content = envelope.choices[0].message.content
     if not content:
         msg = "model reply content is empty"
-        raise ModelUpstreamError(msg, status=502)
+        raise _ModelResponseError(msg, ProposalFault.EMPTY_CONTENT)
     return content.encode("utf-8")
 
 
@@ -399,12 +471,14 @@ def _is_backend_prompt_policy(response: httpx.Response, response_bytes: bytes) -
     return msgspec.json.encode(policy) == response_bytes
 
 
-async def propose_spec(user_request: str, dataset_name: str, settings: Settings) -> bytes:
-    """Propose a VPlot spec for `user_request` over `dataset_name`, returning the model's raw
-    reply content as bytes (never decoded here). Raises DatasetNotFoundError (unknown/escaping
-    name), ProposerPolicyError (422 before a model call or native generation), or
-    ModelUpstreamError (503 unreachable / 502 unusable reply). See the module docstring for the
-    trust and error-split contract."""
+async def propose_spec(user_request: str, dataset_name: str, settings: Settings) -> ModelProposal:
+    """Propose a VPlot spec and return its exact reply plus lossless model-exchange trace.
+
+    The reply is never decoded here. Raises DatasetNotFoundError (unknown/escaping name),
+    ProposerPolicyError (422 before a model call/native generation), or ModelUpstreamError
+    (503 unreachable / 502 unusable reply). Any exception after request construction carries its
+    bounded trace. See the module docstring for the trust and error-split contract.
+    """
     if _utf8_size_at_most(user_request, settings.max_user_request_bytes) is None:
         msg = f"proposer user request exceeds UTF-8 byte limit of {settings.max_user_request_bytes}"
         raise ProposerPolicyError(msg, resource="resource.user_request_bytes")
@@ -419,26 +493,86 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
     }
     url = f"{settings.model_base_url.rstrip('/')}/chat/completions"
     async with _build_async_client(settings) as client:
+        # build_request is the same serialization step client.stream used before tracing. Retain
+        # the body, then send this exact request object: no second encoding can drift from audit.
+        request = client.build_request(
+            "POST", url, json=payload, headers={"accept-encoding": "identity"}
+        )
+        request_body = request.content
+        response_bytes: bytes | None = None
         try:
-            async with client.stream(
-                "POST", url, json=payload, headers={"accept-encoding": "identity"}
-            ) as response:
+            response = await client.send(request, stream=True)
+            try:
                 content_encoding = response.headers.get("content-encoding")
                 if content_encoding is not None and content_encoding.lower() != "identity":
-                    msg = (
-                        f"model backend returned unsupported content encoding {content_encoding!r}"
+                    msg = "model backend returned an unsupported content encoding"
+                    trace = ProposalTrace(
+                        request_body,
+                        response_body=None,
+                        reply_bytes=None,
+                        fault=ProposalFault.CONTENT_ENCODING,
                     )
-                    raise ModelUpstreamError(msg, status=502)
+                    raise ModelUpstreamError(msg, status=502, trace=trace)
                 response_bytes = await _read_response_bounded(
                     response, settings.max_model_response_bytes
                 )
                 if not response.is_success:
                     if _is_backend_prompt_policy(response, response_bytes):
                         msg = "model backend refused a prompt over its token ceiling"
-                        raise ProposerPolicyError(msg, resource="resource.prompt_tokens")
+                        trace = ProposalTrace(
+                            request_body,
+                            response_bytes,
+                            reply_bytes=None,
+                            fault=ProposalFault.PROMPT_TOKENS,
+                        )
+                        raise ProposerPolicyError(
+                            msg, resource="resource.prompt_tokens", trace=trace
+                        )
                     msg = f"model backend returned HTTP {response.status_code}"
-                    raise ModelUpstreamError(msg, status=502)
-                return _extract_content(response_bytes)
+                    trace = ProposalTrace(
+                        request_body,
+                        response_bytes,
+                        reply_bytes=None,
+                        fault=ProposalFault.HTTP_STATUS,
+                    )
+                    raise ModelUpstreamError(msg, status=502, trace=trace)
+                try:
+                    reply_bytes = _extract_content(response_bytes)
+                except _ModelResponseError as exc:
+                    trace = ProposalTrace(
+                        request_body,
+                        response_bytes,
+                        reply_bytes=None,
+                        fault=exc.fault,
+                    )
+                    raise ModelUpstreamError(str(exc), status=502, trace=trace) from exc
+                trace = ProposalTrace(
+                    request_body,
+                    response_bytes,
+                    reply_bytes,
+                    fault=None,
+                )
+                return ModelProposal(reply_bytes, trace)
+            finally:
+                await response.aclose()
+        except _ModelResponseError as exc:
+            # The only error reaching here is limit+1 admission. Its observed prefix is discarded:
+            # retaining it would turn a policy-rejected, potentially huge body into audit content.
+            trace = ProposalTrace(
+                request_body,
+                response_body=None,
+                reply_bytes=None,
+                fault=exc.fault,
+            )
+            raise ModelUpstreamError(str(exc), status=502, trace=trace) from exc
         except httpx.RequestError as exc:
-            msg = f"model backend is unreachable: {exc}"
-            raise ModelUpstreamError(msg, status=503) from exc
+            # This covers both a failure before headers and an interrupted body. In either case no
+            # complete response exists, so only the pre-call request + closed classifier survive.
+            trace = ProposalTrace(
+                request_body,
+                response_body=None,
+                reply_bytes=None,
+                fault=ProposalFault.TRANSPORT,
+            )
+            msg = "model backend is unreachable"
+            raise ModelUpstreamError(msg, status=503, trace=trace) from exc

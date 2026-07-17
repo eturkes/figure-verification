@@ -18,6 +18,7 @@ verified proposal also populates the chart store through the shared render_outco
 """
 
 import json
+import logging
 import shutil
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
@@ -43,6 +44,17 @@ _PROBLEM_JSON = "application/problem+json"
 _NOSNIFF = "nosniff"
 # A good sales spec, used verbatim as the model's reply for the verified path.
 _SALES_GOOD = "g01_total_revenue_by_month.json"
+
+
+class _ListHandler(logging.Handler):
+    """Collect records from the named app logger after Litestar startup."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
 
 
 def _install_handler(
@@ -292,7 +304,7 @@ def test_propose_backend_unreachable_is_503(
     assert response.headers["content-type"] == _PROBLEM_JSON
     body: dict[str, Any] = response.json()
     assert body["status"] == 503
-    assert "refused" not in json.dumps(body)  # the cause is logged, never leaked
+    assert "refused" not in json.dumps(body)  # the transport cause is neither logged nor leaked
 
 
 def test_propose_backend_unusable_reply_is_502(
@@ -303,6 +315,51 @@ def test_propose_backend_unusable_reply_is_502(
     assert response.status_code == 502
     assert response.headers["content-type"] == _PROBLEM_JSON
     assert response.json()["status"] == 502
+
+
+def test_proposer_fault_logs_exclude_prompt_response_and_exception_objects(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sensitive_prompt = "private-user-prompt"
+    sensitive_response = "private-model-response"
+    responses = [
+        httpx.Response(200, content=sensitive_response.encode()),
+        httpx.Response(
+            400,
+            content=msgspec.json.encode(
+                {
+                    "error": {
+                        "message": sensitive_response,
+                        "type": "prompt_too_long",
+                    }
+                }
+            ),
+            headers={"content-type": "application/json"},
+        ),
+    ]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return responses.pop(0)
+
+    _install_handler(monkeypatch, handler)
+    log_handler = _ListHandler()
+    logger = logging.getLogger("verifier.service.app")
+    logger.addHandler(log_handler)
+    try:
+        upstream = _propose(client, sensitive_prompt, "sales.csv")
+        policy = _propose(client, sensitive_prompt, "sales.csv")
+    finally:
+        logger.removeHandler(log_handler)
+
+    assert (upstream.status_code, policy.status_code) == (502, 422)
+    assert [record.args for record in log_handler.records] == [
+        (502, "invalid_envelope"),
+        ("resource.prompt_tokens",),
+    ]
+    rendered_logs = "\n".join(record.getMessage() for record in log_handler.records)
+    assert sensitive_prompt not in rendered_logs
+    assert sensitive_response not in rendered_logs
+    assert all(record.exc_info is None for record in log_handler.records)
 
 
 def test_propose_backend_prompt_token_policy_is_422(

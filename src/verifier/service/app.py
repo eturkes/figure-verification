@@ -99,6 +99,7 @@ from verifier.service.identity import Signer, SigningIdentity, load_identity
 from verifier.service.model_client import (
     DatasetNotFoundError,
     ModelUpstreamError,
+    ProposalFault,
     ProposerPolicyError,
     propose_spec,
 )
@@ -296,7 +297,8 @@ async def propose_spec_route(
     identity = cast("SigningIdentity", state["identity"])
     req = _decode_propose_request(raw)
     with _admit_work(state) as permit:
-        content = await propose_spec(req.user_request, req.dataset_name, settings)
+        proposal = await propose_spec(req.user_request, req.dataset_name, settings)
+        content = proposal.reply_bytes
         verdict = await permit.run_sync(
             _verify_render_pinned,
             content,
@@ -460,24 +462,29 @@ def _dataset_not_found_handler(
 
 def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
     """Map a /propose-spec ModelUpstreamError to its carried status (503 unreachable / 502
-    unusable reply) problem+json. Registered ahead of the generic Exception handler. The cause is
-    logged and withheld from the untrusted caller — a backend fault, never a verification
-    outcome, so no verdict rides it."""
+    unusable reply) problem+json. Registered ahead of the generic Exception handler. Only its
+    bounded status/classifier are logged; transport causes and sensitive trace bytes stay out of
+    logs and the caller — a backend fault, never a verification outcome, so no verdict rides it."""
     upstream = cast("ModelUpstreamError", exc)
-    _LOGGER.warning("model backend upstream fault serving /propose-spec: %s", upstream)
+    fault = cast("ProposalFault", upstream.trace.fault)
+    _LOGGER.warning(
+        "model backend upstream fault serving /propose-spec (status=%d, fault=%s)",
+        upstream.status,
+        fault.value,
+    )
     return _problem_response(upstream.status, "the model backend did not return a usable proposal")
 
 
 def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
     """Map a pre-content ProposerPolicyError to 422, never a verification verdict.
 
-    The operator log retains the exact resource/reason; the fixed caller detail discloses neither
-    provisioned dataset dimensions nor configured ceilings. No model content or native-generation
-    work exists: context policy stops before the backend call; token policy stops after tokenizer
-    preflight.
+    The operator log retains the exact resource classifier; the fixed caller detail discloses
+    neither provisioned dataset dimensions nor configured ceilings. No model content or
+    native-generation work exists: context policy stops before the backend call; token policy stops
+    after tokenizer preflight.
     """
     policy = cast("ProposerPolicyError", exc)
-    _LOGGER.info("proposer resource policy refusal (%s): %s", policy.resource, policy)
+    _LOGGER.info("proposer resource policy refusal (%s)", policy.resource)
     return _problem_response(HTTP_422_UNPROCESSABLE_ENTITY, _PROPOSER_POLICY_DETAIL)
 
 

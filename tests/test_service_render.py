@@ -44,6 +44,8 @@ from verifier.service import app as service_app
 from verifier.service import pipeline
 from verifier.service.app import create_app
 from verifier.service.identity import SigningIdentity
+from verifier.service.model_client import ModelProposal, ProposalTrace
+from verifier.service.models import Verdict
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -101,6 +103,12 @@ def _post_render_route(
     return client.post("/propose-spec", content=body, headers=_JSON)
 
 
+def _proposal(reply: bytes) -> ModelProposal:
+    """A successful typed proposer result for route tests that stub the model boundary."""
+    trace = ProposalTrace(b"model request", b"model response", reply, fault=None)
+    return ModelProposal(reply, trace)
+
+
 def _render_verdict(
     response: httpx.Response, route: Literal["direct", "propose"]
 ) -> dict[str, Any]:
@@ -109,6 +117,33 @@ def _render_verdict(
     payload = cast("list[Any]", response.json())
     result = cast("dict[str, Any]", payload[0])
     return cast("dict[str, Any]", result["verdict"])
+
+
+def test_proposer_decoder_receives_traced_reply_buffer_verbatim(
+    client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The route must not decode/re-encode between model extraction and schema decode."""
+    reply = bytes(bytearray(b'```json\n{"not":"a spec"}\n```'))
+    proposal = _proposal(reply)
+    observed: list[bytes] = []
+    original_decode = pipeline.decode_stage
+
+    def recording_decode(candidate: bytes) -> VPlotSpec | Verdict:
+        observed.append(candidate)
+        return original_decode(candidate)
+
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=proposal))
+    monkeypatch.setattr(service_app, "decode_stage", recording_decode)
+    request = msgspec.json.encode(
+        {"user_request": "Plot total revenue", "dataset_name": "sales.csv"}
+    )
+
+    response = client.post("/propose-spec", content=request, headers=_JSON)
+
+    assert response.status_code == 200
+    assert observed == [reply]
+    assert observed[0] is proposal.trace.reply_bytes
+    assert response.json()["model_reply"] == reply.decode()
 
 
 @pytest.fixture
@@ -175,7 +210,7 @@ def test_render_routes_read_each_verification_input_once(
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     # Stub the upstream proposal so this counts the proposer route's verification/render leg;
     # model prompt context has its own reads and is bounded separately in M5.1g.
-    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     reads: Counter[Path] = Counter()
 
     def counted_read(path: Path, max_bytes: int) -> bytes:
@@ -204,7 +239,7 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
     spec = decode_spec(raw)
     expected = render.render(spec, manifest.read_bytes(), data_dir=tmp_path)
     assert expected is not None
-    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     original_verify_run = checks.verify_run
     calls = 0
     replacement = b"month,region,revenue,orders\n2099-01,NA,1.00,1\n"
@@ -250,7 +285,7 @@ def test_proposer_formal_gate_blocks_built_bar_zero_corruption(
         msg = "native render reached after a formal bar-zero failure"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     monkeypatch.setattr(render, "build_vega_lite", corrupt_zero)
     monkeypatch.setattr(render, "render_svg", forbidden_native)
     request = msgspec.json.encode(
@@ -366,7 +401,7 @@ def test_direct_and_propose_routes_share_one_signing_seam(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
-    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=raw))
+    monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     original = attestation.sign_vcert
     calls: list[tuple[render.VCert, Ed25519PrivateKey, str, VerificationLimits]] = []
 

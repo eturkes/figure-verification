@@ -145,9 +145,9 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   not a token-count claim. An operator-provisioned dataset/prompt over policy answers a dedicated
   422 problem+json (no model call, no verification claim), distinct from unknown dataset 404 and
   upstream 502/503. Stream the upstream HTTP response and stop at 128 KiB + 1 byte before JSON decode;
-  an oversized success/error envelope is a typed 502 and never enters trace/archive. Preserve raw
-  model failure metering below the bound. Acceptance: spy backend sees zero calls on every prompt
-  policy breach; exact-limit request still takes the old path; chunked oversized response proves
+  an oversized success/error envelope is a typed 502; its body bytes never enter trace/archive.
+  Preserve raw model failure metering below the bound. Acceptance: spy backend sees zero calls on
+  every prompt policy breach; exact-limit request still takes the old path; chunked oversized response proves
   bounded read + no decode; OpenAPI + bench classifiers updated; gate green.
 - **M5.1h — exact backend prompt-token admission** (DONE): retain `max_prompt_len` in
   `model_backend.Engine`; add a 128 KiB backend request-body cap; after `apply_chat_template`, call
@@ -363,7 +363,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   bundle self-consistency only - it grants no trust. Reopen is byte-lossless; a second signer
   shares all nine role blobs while adding only its key/envelope; an injected final-commit fault
   leaves zero rows/bytes. Locked gate green at 1,387 tests/100% branch coverage.
-- **M5.4c — lossless model proposal trace** (OPEN): model client returns a typed trace carrying
+- **M5.4c — lossless model proposal trace** (DONE): model client returns a typed trace carrying
   exact serialized request/messages + bounded raw HTTP response body + extracted reply bytes when
   available, without changing the bytes sent over HTTP or downstream to spec decode. Pre-response
   exceptions carry the pre-call trace + bounded fault classification; policy-discarded oversized
@@ -371,6 +371,15 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   request-body byte equality against the old client, fenced extracted reply + invalid-UTF-8/non-2xx
   raw-response traces, and a mutation test proving the decoder receives traced extracted bytes
   verbatim; gate green.
+  Landed as repr-hidden `ProposalTrace` bytes + closed `ProposalFault` on a typed `ModelProposal`.
+  The client calls HTTPX `build_request` once, retains `request.content`, and sends that same object;
+  production constructs the result and trace from one extracted reply buffer, which the app hands
+  directly to `decode_stage`. Fully admitted success/non-2xx/malformed bodies retain exact raw bytes;
+  transport/interrupted-read/content-coding failures retain the request only, and the limit+1 path
+  discards its prefix. Generic public errors/logs carry no prompt/reply or transport-cause text.
+  Old-wire serialization, fenced content/object identity, invalid UTF-8, non-2xx, prompt-token,
+  encoding, interrupted transport, exact-limit, log-redaction, and chunk-stop cases pass; locked
+  gate green at 1,391 tests/100% branch coverage.
 - **M5.4d — signed attempt bundles** (OPEN): add canonical `AttemptManifest`/`AttemptBundle` types
   + direct archive API under payload type
   `application/vnd.figure-verification.attempt.v0.1+json`. A CSPRNG 128-bit nonce probabilistically
@@ -504,8 +513,8 @@ by hash; POC_SCOPE "## Model proposer" holds the contract). Pieces: `model_backe
 Litestar+uvicorn OpenAI-`/v1` wrapper over the installed `openvino_genai.LLMPipeline`, NPU-served
 local INT4_SYM Qwen2-0.5B re-export — the NPU switch landed mid-milestone as a direct task;
 hardware-gated, coverage-excluded, unshipped) → `service/model_client.py` (async `propose_spec` →
-raw reply bytes, never VPlot-decoded client-side) → `POST /propose-spec` (typed body → reply →
-`decode_stage` → dataset-name PIN at decode time → `verify_decoded` → `render_outcome`; the
+typed proposal with raw reply bytes, never VPlot-decoded client-side) → `POST /propose-spec`
+(typed body → reply → `decode_stage` → dataset-name PIN at decode time → `verify_decoded` → `render_outcome`; the
 pipeline split into those reusable seams) → repo-root `bench/` (100-prompt failure eval + the
 deterministic two-corpus guarantee; classifiers/digests/exit-code locked by
 `tests/test_bench_harness.py`). Error split: every extracted reply rides a 200 verdict (decode

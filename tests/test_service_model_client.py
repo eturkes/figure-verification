@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M3.2b model-proposer client tests: prompt assembly, envelope extraction, error split.
+"""Model-proposer client tests: prompt assembly, lossless traces, extraction, error split.
 
 Patches model_client._build_async_client to return an httpx.AsyncClient backed by a
 MockTransport, so no socket binds and every branch runs deterministically. The weather
@@ -21,7 +21,9 @@ from verifier import canon
 from verifier.service import model_client
 from verifier.service.model_client import (
     DatasetNotFoundError,
+    ModelProposal,
     ModelUpstreamError,
+    ProposalFault,
     ProposerPolicyError,
     propose_spec,
 )
@@ -78,6 +80,12 @@ def _chat_response(content: str = _CONTENT) -> bytes:
     return json.dumps({"choices": [{"message": {"content": content}}]}).encode("utf-8")
 
 
+def _reply(proposal: ModelProposal) -> bytes:
+    """Project a successful proposal while pinning its trace to the identical reply object."""
+    assert proposal.reply_bytes is proposal.trace.reply_bytes
+    return proposal.reply_bytes
+
+
 class _TrackingStream(httpx.AsyncByteStream):
     """Chunked response stream recording which chunks the bounded reader requested."""
 
@@ -112,19 +120,26 @@ class _FailingStream(httpx.AsyncByteStream):
 
 def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, httpx.Request] = {}
+    response_body = json.dumps(
+        {"choices": [{"message": {"role": "assistant", "content": _CONTENT}}]},
+        separators=(",", ":"),
+    ).encode()
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured["request"] = request
-        body = {"choices": [{"message": {"role": "assistant", "content": _CONTENT}}]}
-        return httpx.Response(200, json=body, headers={"content-encoding": "identity"})
+        return httpx.Response(200, content=response_body, headers={"content-encoding": "identity"})
 
     _install(monkeypatch, handler)
     result = asyncio.run(
         propose_spec("Plot average temperature by city", "weather.csv", _settings())
     )
 
-    # Raw content bytes, verbatim and undecoded.
-    assert result == _CONTENT.encode("utf-8")
+    # Raw content bytes, verbatim and undecoded, retained under the same object in the trace.
+    assert _reply(result) == _CONTENT.encode("utf-8")
+    assert result.trace.fault is None
+    assert result.trace.response_body == response_body
+    assert _CONTENT not in repr(result)
+    assert "Plot average temperature" not in repr(result.trace)
 
     request = captured["request"]
     assert str(request.url) == "http://127.0.0.1:8001/v1/chat/completions"
@@ -183,6 +198,39 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
         ]
     )
 
+    # This is HTTPX's pre-trace JSON wire form: compact, UTF-8, and non-ASCII-preserving. The
+    # client now builds once, traces request.content, and sends that exact request object.
+    old_wire_body = json.dumps(
+        {
+            "model": "Qwen2-0.5B-Instruct-int4-sym-ov",
+            "messages": [system, user],
+            "temperature": 0,
+            "max_tokens": 512,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    assert request.content == result.trace.request_body == old_wire_body
+
+
+def test_fenced_reply_is_traced_and_returned_verbatim(monkeypatch: pytest.MonkeyPatch) -> None:
+    reply = b'```json\n{"version":"vplot-0.1"}\n```'
+    response_body = json.dumps(
+        {"choices": [{"message": {"content": reply.decode()}}]},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode()
+    _install(monkeypatch, _returns(httpx.Response(200, content=response_body)))
+
+    proposal = asyncio.run(propose_spec("req", "weather.csv", _settings()))
+
+    assert proposal.reply_bytes is proposal.trace.reply_bytes
+    assert proposal.reply_bytes == reply
+    assert proposal.trace.response_body == response_body
+    assert proposal.trace.fault is None
+    assert reply.decode() not in repr(proposal)
+
 
 def test_user_request_utf8_byte_boundary_and_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
     # Two-byte scalars pin bytes rather than code points. The exact 4-byte request reaches the
@@ -197,7 +245,7 @@ def test_user_request_utf8_byte_boundary_and_overflow(monkeypatch: pytest.Monkey
     _install(monkeypatch, handler)
     request = "éé"
     exact = Settings(data_dir=_DATA, max_user_request_bytes=4)
-    assert asyncio.run(propose_spec(request, "weather.csv", exact)) == _CONTENT.encode()
+    assert _reply(asyncio.run(propose_spec(request, "weather.csv", exact))) == _CONTENT.encode()
     assert calls == 1
 
     over = Settings(data_dir=_DATA, max_user_request_bytes=3)
@@ -223,7 +271,7 @@ def test_assembled_prompt_byte_boundary_and_overflow(monkeypatch: pytest.MonkeyP
 
     _install(monkeypatch, handler)
     exact = Settings(data_dir=_DATA, max_prompt_bytes=prompt_bytes)
-    assert asyncio.run(propose_spec("req", "weather.csv", exact)) == _CONTENT.encode()
+    assert _reply(asyncio.run(propose_spec("req", "weather.csv", exact))) == _CONTENT.encode()
     assert calls == 1
 
     over = Settings(data_dir=_DATA, max_prompt_bytes=prompt_bytes - 1)
@@ -238,7 +286,7 @@ def test_maximum_sample_row_setting_does_not_overflow(monkeypatch: pytest.Monkey
     # compute max+1 for islice (outside sys.maxsize); it simply consumes every available row.
     _install(monkeypatch, _returns(httpx.Response(200, content=_chat_response())))
     settings = Settings(data_dir=_DATA, model_sample_rows=2**63 - 1)
-    assert asyncio.run(propose_spec("req", "weather.csv", settings)) == _CONTENT.encode()
+    assert _reply(asyncio.run(propose_spec("req", "weather.csv", settings))) == _CONTENT.encode()
 
 
 def test_oversized_sample_fails_before_final_prompt_join(
@@ -299,15 +347,17 @@ def test_dataset_file_byte_boundary_and_overflow(
 
     _install(monkeypatch, handler)
     assert (
-        asyncio.run(
-            propose_spec(
-                "req",
-                "tiny.csv",
-                Settings(
-                    data_dir=tmp_path,
-                    max_csv_bytes=len(csv_bytes),
-                    max_manifest_bytes=len(manifest_bytes),
-                ),
+        _reply(
+            asyncio.run(
+                propose_spec(
+                    "req",
+                    "tiny.csv",
+                    Settings(
+                        data_dir=tmp_path,
+                        max_csv_bytes=len(csv_bytes),
+                        max_manifest_bytes=len(manifest_bytes),
+                    ),
+                )
             )
         )
         == _CONTENT.encode()
@@ -352,15 +402,23 @@ def test_manifest_column_policy_short_circuits_backend(
 
 
 def test_propose_spec_unreachable_raises_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    sensitive_text = "prompt-must-not-enter-errors"
+
     def handler(_request: httpx.Request) -> httpx.Response:
-        msg = "connection refused"
+        msg = f"connection refused with {sensitive_text}"
         raise httpx.ConnectError(msg)
 
     _install(monkeypatch, handler)
     with pytest.raises(ModelUpstreamError) as exc_info:
-        asyncio.run(propose_spec("req", "weather.csv", _settings()))
+        asyncio.run(propose_spec(sensitive_text, "weather.csv", _settings()))
     assert exc_info.value.status == 503
     assert "unreachable" in str(exc_info.value)
+    assert exc_info.value.trace.fault is ProposalFault.TRANSPORT
+    assert exc_info.value.trace.response_body is None
+    assert exc_info.value.trace.reply_bytes is None
+    assert sensitive_text.encode() in exc_info.value.trace.request_body
+    assert sensitive_text not in str(exc_info.value)
+    assert sensitive_text not in repr(exc_info.value.trace)
 
 
 def test_propose_spec_stream_read_error_raises_503(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -373,15 +431,21 @@ def test_propose_spec_stream_read_error_raises_503(monkeypatch: pytest.MonkeyPat
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 503
+    assert exc_info.value.trace.fault is ProposalFault.TRANSPORT
+    assert exc_info.value.trace.response_body is None
     assert stream.closed is True
 
 
 def test_propose_spec_non_2xx_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install(monkeypatch, _returns(httpx.Response(500, json={"error": "boom"})))
+    response_body = b'{"error":"boom"}'
+    _install(monkeypatch, _returns(httpx.Response(500, content=response_body)))
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
     assert "HTTP 500" in str(exc_info.value)
+    assert exc_info.value.trace.response_body == response_body
+    assert exc_info.value.trace.reply_bytes is None
+    assert exc_info.value.trace.fault is ProposalFault.HTTP_STATUS
 
 
 def test_exact_backend_prompt_too_long_shape_raises_policy_refusal(
@@ -394,6 +458,10 @@ def test_exact_backend_prompt_too_long_shape_raises_policy_refusal(
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
 
     assert exc_info.value.resource == "resource.prompt_tokens"
+    assert exc_info.value.trace is not None
+    assert exc_info.value.trace.response_body == json.dumps(body, separators=(",", ":")).encode()
+    assert exc_info.value.trace.reply_bytes is None
+    assert exc_info.value.trace.fault is ProposalFault.PROMPT_TOKENS
 
 
 @pytest.mark.parametrize(
@@ -457,6 +525,8 @@ def test_backend_error_shape_spoofs_stay_upstream_502(
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert exc_info.value.trace.fault is ProposalFault.HTTP_STATUS
+    assert exc_info.value.trace.response_body is not None
 
 
 def test_encoded_model_response_is_refused_before_decompression(
@@ -475,6 +545,9 @@ def test_encoded_model_response_is_refused_before_decompression(
     with pytest.raises(ModelUpstreamError, match="unsupported content encoding") as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
+    assert exc_info.value.trace.fault is ProposalFault.CONTENT_ENCODING
+    assert exc_info.value.trace.response_body is None
+    assert exc_info.value.trace.reply_bytes is None
 
 
 def test_model_response_exact_byte_boundary_and_overflow(
@@ -490,12 +563,15 @@ def test_model_response_exact_byte_boundary_and_overflow(
 
     _install(monkeypatch, handler)
     exact = Settings(data_dir=_DATA, max_model_response_bytes=len(body))
-    assert asyncio.run(propose_spec("req", "weather.csv", exact)) == _CONTENT.encode()
+    assert _reply(asyncio.run(propose_spec("req", "weather.csv", exact))) == _CONTENT.encode()
 
     over = Settings(data_dir=_DATA, max_model_response_bytes=len(body) - 1)
     with pytest.raises(ModelUpstreamError, match="exceeds byte limit") as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", over))
     assert exc_info.value.status == 502
+    assert exc_info.value.trace.fault is ProposalFault.RESPONSE_TOO_LARGE
+    assert exc_info.value.trace.response_body is None
+    assert exc_info.value.trace.reply_bytes is None
     assert calls == 2
 
 
@@ -522,17 +598,38 @@ def test_chunked_oversized_response_stops_at_limit_plus_one_before_decode(
     with pytest.raises(ModelUpstreamError, match="exceeds byte limit") as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", settings))
     assert exc_info.value.status == 502
+    assert exc_info.value.trace.fault is ProposalFault.RESPONSE_TOO_LARGE
+    assert exc_info.value.trace.response_body is None
     assert stream.yielded == 2
     assert stream.closed is True
     assert decoded is False
 
 
 def test_propose_spec_non_json_body_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
-    _install(monkeypatch, _returns(httpx.Response(200, content=b"not json {")))
+    response_body = b"not json {"
+    _install(monkeypatch, _returns(httpx.Response(200, content=response_body)))
     with pytest.raises(ModelUpstreamError) as exc_info:
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
     assert "not a chat-completion envelope" in str(exc_info.value)
+    assert exc_info.value.trace.response_body == response_body
+    assert exc_info.value.trace.fault is ProposalFault.INVALID_ENVELOPE
+
+
+def test_invalid_utf8_response_is_retained_but_absent_from_error_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response_body = b'{"choices":[{"message":{"content":"\xff"}}]}'
+    _install(monkeypatch, _returns(httpx.Response(200, content=response_body)))
+
+    with pytest.raises(ModelUpstreamError) as exc_info:
+        asyncio.run(propose_spec("req", "weather.csv", _settings()))
+
+    assert exc_info.value.trace.response_body == response_body
+    assert exc_info.value.trace.reply_bytes is None
+    assert exc_info.value.trace.fault is ProposalFault.INVALID_ENVELOPE
+    assert "\\xff" not in str(exc_info.value)
+    assert "choices" not in repr(exc_info.value.trace)
 
 
 def test_propose_spec_invalid_envelope_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -544,6 +641,7 @@ def test_propose_spec_invalid_envelope_raises_502(monkeypatch: pytest.MonkeyPatc
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
     assert "not a chat-completion envelope" in str(exc_info.value)
+    assert exc_info.value.trace.fault is ProposalFault.INVALID_ENVELOPE
 
 
 def test_propose_spec_no_choices_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -552,6 +650,7 @@ def test_propose_spec_no_choices_raises_502(monkeypatch: pytest.MonkeyPatch) -> 
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
     assert "no choices" in str(exc_info.value)
+    assert exc_info.value.trace.fault is ProposalFault.NO_CHOICES
 
 
 def test_propose_spec_empty_content_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -561,6 +660,7 @@ def test_propose_spec_empty_content_raises_502(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(propose_spec("req", "weather.csv", _settings()))
     assert exc_info.value.status == 502
     assert "content is empty" in str(exc_info.value)
+    assert exc_info.value.trace.fault is ProposalFault.EMPTY_CONTENT
 
 
 def test_propose_spec_absent_dataset_raises_not_found() -> None:
