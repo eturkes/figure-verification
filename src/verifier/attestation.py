@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""DSSE v1.0.2 + Ed25519 profile for exact VCert v0.2 bytes.
+"""DSSE v1.0.2 + Ed25519 profile for exact application payload bytes.
 
-This module is deliberately small and algorithm-closed. ``sign_vcert`` canonical-encodes one
-JSON DSSE envelope carrying ``render.vcert_bytes(certificate)`` and exactly one PyCA Ed25519
-signature. ``verify_vcert`` accepts standard or URL-safe RFC-4648 base64, tries only explicitly
-trusted Ed25519 keys, authenticates payload bytes + the application-specific payload type, then
-strictly parses those SAME bytes as VCert. It never re-reads the envelope after authentication.
+This module is deliberately small and algorithm-closed. ``sign_dsse``/``verify_dsse`` authenticate
+arbitrary bounded bytes plus one caller-selected application payload type; the VCert wrappers
+canonicalize/strictly parse the certificate application type. Every envelope carries exactly one
+PyCA Ed25519 signature. Verification accepts standard or URL-safe RFC-4648 base64, tries only
+explicitly trusted Ed25519 keys, and returns the SAME authenticated payload byte object for the
+application to parse. It never re-reads the envelope after authentication.
 
 DSSE ``keyid`` is unauthenticated. It is bounded and may reorder candidate keys, but cannot add a
 key, remove fallback candidates, affect the returned value, or establish identity. Unknown envelope
@@ -39,10 +40,13 @@ __all__ = [
     "MAX_KEYID_BYTES",
     "VCERT_PAYLOAD_TYPE",
     "AttestationError",
+    "VerifiedPayload",
     "VerifiedVCert",
     "envelope_byte_limit",
     "pae",
+    "sign_dsse",
     "sign_vcert",
+    "verify_dsse",
     "verify_vcert",
 ]
 
@@ -56,11 +60,25 @@ class AttestationError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class VerifiedPayload:
+    """Exact application bytes authenticated by one accepted DSSE signature."""
+
+    payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedVCert:
     """Authenticated exact payload bytes and the VCert parsed from that same byte object."""
 
     payload: bytes
     certificate: VCert
+
+
+@dataclass(frozen=True, slots=True)
+class _PayloadProfile:
+    payload_type: str
+    max_payload_bytes: int
+    subject: str
 
 
 # Decode structs intentionally tolerate unknown fields. Required fields have no defaults; keyid is
@@ -105,17 +123,22 @@ def _base64_length(raw_bytes: int) -> int:
     return 4 * ((raw_bytes + 2) // 3)
 
 
-_EMPTY_ENVELOPE = _ENVELOPE_ENCODER.encode(
-    _EncodedEnvelope(
-        payload="",
-        payload_type=VCERT_PAYLOAD_TYPE,
-        signatures=(_EncodedSignature(keyid="", sig=""),),
-    )
-)
 _SIGNATURE_BASE64_BYTES = _base64_length(_ED25519_SIGNATURE_BYTES)
 
 
-def envelope_byte_limit(max_payload_bytes: int) -> int:
+def _validate_payload_type(payload_type: str, *, subject: str) -> None:
+    payload_type_object: object = payload_type
+    if not isinstance(payload_type_object, str) or not payload_type:
+        msg = f"{subject} payload type must be a non-empty string"
+        raise ValueError(msg)
+    try:
+        payload_type.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        msg = f"{subject} payload type is not valid UTF-8"
+        raise ValueError(msg) from exc
+
+
+def envelope_byte_limit(max_payload_bytes: int, *, payload_type: str = VCERT_PAYLOAD_TYPE) -> int:
     """Raw-envelope ceiling derived from one canonical profile envelope.
 
     The variable terms are padded base64 payload, fixed-size Ed25519 signature, and a bounded
@@ -126,8 +149,16 @@ def envelope_byte_limit(max_payload_bytes: int) -> int:
     if type(max_payload_bytes) is not int or max_payload_bytes < 0:
         msg = f"max_payload_bytes must be a non-negative integer, got {max_payload_bytes!r}"
         raise ValueError(msg)
+    _validate_payload_type(payload_type, subject="DSSE")
+    empty_envelope = _ENVELOPE_ENCODER.encode(
+        _EncodedEnvelope(
+            payload="",
+            payload_type=payload_type,
+            signatures=(_EncodedSignature(keyid="", sig=""),),
+        )
+    )
     return (
-        len(_EMPTY_ENVELOPE)
+        len(empty_envelope)
         + _base64_length(max_payload_bytes)
         + _SIGNATURE_BASE64_BYTES
         + 6 * MAX_KEYID_BYTES
@@ -172,9 +203,9 @@ def _validate_keyid_hint(keyid: str) -> None:
         raise AttestationError(msg)
 
 
-def _enforce_payload_limit(payload: bytes, max_payload_bytes: int) -> None:
+def _enforce_payload_limit(payload: bytes, max_payload_bytes: int, *, subject: str) -> None:
     if len(payload) > max_payload_bytes:
-        msg = f"VCert payload has {len(payload)} bytes; limit is {max_payload_bytes}"
+        msg = f"{subject} payload has {len(payload)} bytes; limit is {max_payload_bytes}"
         raise VerificationError(msg, check="resource.attestation_bytes")
 
 
@@ -247,6 +278,45 @@ def _decode_vcert_payload(payload: bytes) -> VCert:
     return certificate
 
 
+def _sign_dsse(
+    payload: bytes,
+    private_key: Ed25519PrivateKey,
+    *,
+    keyid: str,
+    profile: _PayloadProfile,
+) -> bytes:
+    payload_object: object = payload
+    private_key_object: object = private_key
+    if not isinstance(payload_object, bytes):
+        msg = f"payload must be bytes, got {type(payload).__name__}"
+        raise TypeError(msg)
+    if not isinstance(private_key_object, Ed25519PrivateKey):
+        msg = "private_key must be an Ed25519PrivateKey"
+        raise TypeError(msg)
+    _validate_required_keyid(keyid, subject="signer")
+    envelope_byte_limit(profile.max_payload_bytes, payload_type=profile.payload_type)
+    _enforce_payload_limit(payload, profile.max_payload_bytes, subject=profile.subject)
+    signature = private_key.sign(pae(profile.payload_type, payload))
+    return _encode_envelope(payload, signature, keyid, payload_type=profile.payload_type)
+
+
+def sign_dsse(
+    payload: bytes,
+    private_key: Ed25519PrivateKey,
+    *,
+    keyid: str,
+    payload_type: str,
+    max_payload_bytes: int,
+) -> bytes:
+    """Sign exact bounded application bytes into the one-signature DSSE profile."""
+    return _sign_dsse(
+        payload,
+        private_key,
+        keyid=keyid,
+        profile=_PayloadProfile(payload_type, max_payload_bytes, "attestation"),
+    )
+
+
 def sign_vcert(
     certificate: VCert,
     private_key: Ed25519PrivateKey,
@@ -255,15 +325,13 @@ def sign_vcert(
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> bytes:
     """Sign canonical exact VCert bytes into one canonical, keyid-bearing DSSE envelope."""
-    private_key_object: object = private_key
-    if not isinstance(private_key_object, Ed25519PrivateKey):
-        msg = "private_key must be an Ed25519PrivateKey"
-        raise TypeError(msg)
-    _validate_required_keyid(keyid, subject="signer")
     payload = vcert_bytes(certificate)
-    _enforce_payload_limit(payload, limits.max_attestation_bytes)
-    signature = private_key.sign(pae(VCERT_PAYLOAD_TYPE, payload))
-    return _encode_envelope(payload, signature, keyid)
+    return _sign_dsse(
+        payload,
+        private_key,
+        keyid=keyid,
+        profile=_PayloadProfile(VCERT_PAYLOAD_TYPE, limits.max_attestation_bytes, "VCert"),
+    )
 
 
 def _trusted_key_items(
@@ -282,19 +350,19 @@ def _trusted_key_items(
     return items
 
 
-def verify_vcert(
+def _verify_dsse(
     envelope_bytes: bytes,
     trusted_keys: Mapping[str, Ed25519PublicKey],
     *,
-    limits: VerificationLimits = DEFAULT_LIMITS,
-) -> VerifiedVCert:
-    """Authenticate one DSSE envelope, then parse and return its exact VCert payload bytes.
-
-    The untrusted keyid only puts a matching trusted candidate first. Every remaining trusted key
-    is still tried, so changing/removing the hint cannot change acceptance or the returned value.
-    """
-    max_payload_bytes = limits.max_attestation_bytes
-    max_envelope_bytes = envelope_byte_limit(max_payload_bytes)
+    payload_type: str,
+    max_payload_bytes: int,
+    subject: str,
+) -> VerifiedPayload:
+    envelope_object: object = envelope_bytes
+    if not isinstance(envelope_object, bytes):
+        msg = f"envelope_bytes must be bytes, got {type(envelope_bytes).__name__}"
+        raise TypeError(msg)
+    max_envelope_bytes = envelope_byte_limit(max_payload_bytes, payload_type=payload_type)
     if len(envelope_bytes) > max_envelope_bytes:
         msg = f"DSSE envelope has {len(envelope_bytes)} bytes; limit is {max_envelope_bytes}"
         raise VerificationError(msg, check="resource.attestation_bytes")
@@ -305,10 +373,10 @@ def verify_vcert(
 
     max_payload_base64 = _base64_length(max_payload_bytes)
     if len(envelope.payload) > max_payload_base64:
-        msg = f"VCert payload base64 exceeds encoded byte limit of {max_payload_base64}"
+        msg = f"{subject} payload base64 exceeds encoded byte limit of {max_payload_base64}"
         raise VerificationError(msg, check="resource.attestation_bytes")
     payload = _decode_base64(envelope.payload, field="payload")
-    _enforce_payload_limit(payload, max_payload_bytes)
+    _enforce_payload_limit(payload, max_payload_bytes, subject=subject)
 
     if len(signature_record.sig) != _SIGNATURE_BASE64_BYTES:
         msg = "DSSE Ed25519 signature has an invalid base64 length"
@@ -333,8 +401,47 @@ def verify_vcert(
         msg = "DSSE signature is not valid under any trusted Ed25519 key"
         raise AttestationError(msg)
 
-    if envelope.payload_type != VCERT_PAYLOAD_TYPE:
+    if envelope.payload_type != payload_type:
         msg = f"unsupported DSSE payload type: {envelope.payload_type!r}"
         raise AttestationError(msg)
+    return VerifiedPayload(payload=payload)
+
+
+def verify_dsse(
+    envelope_bytes: bytes,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    *,
+    payload_type: str,
+    max_payload_bytes: int,
+) -> VerifiedPayload:
+    """Authenticate exact bounded bytes + application type under explicit trusted keys.
+
+    The untrusted keyid only puts a matching trusted candidate first. Every remaining trusted key
+    is still tried, so changing/removing the hint cannot change acceptance or the returned value.
+    """
+    return _verify_dsse(
+        envelope_bytes,
+        trusted_keys,
+        payload_type=payload_type,
+        max_payload_bytes=max_payload_bytes,
+        subject="attestation",
+    )
+
+
+def verify_vcert(
+    envelope_bytes: bytes,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> VerifiedVCert:
+    """Authenticate one DSSE envelope, then parse its SAME payload byte object as VCert."""
+    verified = _verify_dsse(
+        envelope_bytes,
+        trusted_keys,
+        payload_type=VCERT_PAYLOAD_TYPE,
+        max_payload_bytes=limits.max_attestation_bytes,
+        subject="VCert",
+    )
+    payload = verified.payload
     certificate = _decode_vcert_payload(payload)
     return VerifiedVCert(payload=payload, certificate=certificate)

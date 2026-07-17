@@ -380,7 +380,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Old-wire serialization, fenced content/object identity, invalid UTF-8, non-2xx, prompt-token,
   encoding, interrupted transport, exact-limit, log-redaction, and chunk-stop cases pass; locked
   gate green at 1,391 tests/100% branch coverage.
-- **M5.4d — signed attempt bundles** (OPEN): add canonical `AttemptManifest`/`AttemptBundle` types
+- **M5.4d — signed attempt bundles** (DONE): add canonical `AttemptManifest`/`AttemptBundle` types
   + direct archive API under payload type
   `application/vnd.figure-verification.attempt.v0.1+json`. A CSPRNG 128-bit nonce probabilistically
   distinguishes repeats; archive
@@ -395,6 +395,19 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Acceptance: direct success/failure
   bundles verify + round-trip; repeats differ; injected nonce collision retries then fails closed;
   tamper/wrong-role/partial-transaction matrices fail at the right layer; gate green.
+  Landed as a distinct generic exact-payload DSSE profile plus canonical attempt payload. One
+  `AttemptDraft` carries the occurrence facts and only bytes actually observed; its manifest binds
+  those closed attempt roles and, on success, all eleven typed `PlotBundle` bytes in a separate
+  namespace. The payload omits its own derived ID/envelope to avoid a self-hash cycle; a 128-bit
+  CSPRNG nonce makes otherwise identical repeats distinct, while serialized archive-ID admission
+  retries three collisions then refuses without aliasing. `publish_attempt` validates the complete
+  signed attempt/plot graph and commits both in one transaction; an existing plot deduplicates so a
+  repeat adds only its new payload/envelope. Complete reads metadata-admit unique aggregate bytes
+  before any BLOB opens, authenticate the exact payload under the archived key as self-consistency
+  only, reconstruct optional/plot bytes, and re-hold every role/digest/outcome/key/version edge.
+  Direct verified/rejected bundles, all classified proposer faults, repeat/collision exhaustion,
+  signature/role/byte/SQL corruption, quota/read bounds, and injected rollback matrices pass;
+  locked gate green at 1,416 tests/100% branch coverage.
 - **M5.4e — mandatory service attempt capture** (OPEN): wire every classified outcome-bearing
   admitted `/propose-spec` and `/verify-and-render` occurrence through the bundle APIs, including model
   upstream, decode, verify, resource, and formal failures (nullable plot). Pre-admission

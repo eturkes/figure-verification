@@ -128,12 +128,14 @@ Signed VCert envelopes + canonical specs live in one bounded in-memory LRU; the 
 offline chart pages live in a second, independently bounded LRU. Both are addressable by the
 content-derived `plot_id` / `spec_id` a render returns, and either LRU may evict first - a chart can
 outlive its certificate or vice versa. A served chart was verified when built and is immutable;
-the certificate is provenance, not a chart-liveness gate. The service writes only signing identity
-state at this stage: a 0600 raw private key and content-addressed public keys beneath the 0700
+the certificate is provenance, not a chart-liveness gate. The service writes signing identity plus
+an initialized owner-private provenance archive at this stage: a 0600 raw private key,
+content-addressed public keys, and a versioned SQLite schema beneath the 0700
 `VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
 rotates identity and changes plot IDs. Preserved/publicly served keys gain no trust automatically;
-operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`. Durable plot
-bundles and replay are deferred to later M5 units.
+operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`. The archive
+primitives support atomic plot + signed occurrence bundles, but endpoint capture begins in M5.4e;
+until then the service leaves the initialized archive empty. Durable retrieval/replay follow later.
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 

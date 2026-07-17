@@ -4,8 +4,9 @@
 create_app builds a fully configured Litestar app from a trusted Settings container —
 routes registered, settings on app.state, the framework body cap set to
 settings.max_body_bytes, one persistent signing identity loaded, and the exact versioned provenance
-archive initialized before the app can serve. The archive is not populated until later M5 bundle
-units. Transport only: no verification trust lives here (POC_SCOPE service boundary).
+archive initialized before the app can serve. The archive is not populated until M5.4e wires
+mandatory service attempt capture. Transport only: no verification trust lives here (POC_SCOPE
+service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST

@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Transactional, content-addressed provenance storage.
+"""Transactional, content-addressed plot + signed-attempt provenance storage.
 
-The archive is an append-only SQLite substrate for later plot/attempt bundle units. One
-``BEGIN IMMEDIATE`` transaction publishes every blob, key, plot, attempt, and typed reference in a
-batch. Blob payload bytes are SHA-256-addressed within a closed kind and deduplicated by
-``(digest, kind)``; identical bytes may legitimately carry multiple observed roles and each typed
-payload counts toward quota once. A trigger maintains the tracked logical-payload total. The
+One ``BEGIN IMMEDIATE`` transaction publishes every blob, key, plot, signed attempt, and typed
+reference in a batch. Blob payload bytes are SHA-256-addressed within a closed kind and deduplicated
+by ``(digest, kind)``; identical bytes may legitimately carry multiple observed roles and each
+typed payload counts toward quota once. A trigger maintains the tracked logical-payload total. The
 configured quota gates new typed bytes while the writer lock is held, before inserts, and never
 evicts history. It intentionally excludes SQLite pages, row/index metadata, rollback journals, and
 filesystem overhead. Startup and operator statistics reconcile the counter against all blob
@@ -30,24 +29,36 @@ the DSSE signature, plot/key content addresses, and every VCert hash/check edge.
 the bundle's archived public key establishes internal cryptographic consistency only; it never
 grants that key operator trust. Replay applies independently configured trust policy in a later
 unit. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
+
+``AttemptManifest`` adds that occurrence layer under a distinct DSSE application type: canonical
+UTC time, 128-bit CSPRNG nonce, route, status/outcome classifier, signer/verifier identifiers, every
+available observed-byte digest, and all eleven optional plot-byte digests. Its payload omits the
+derived attempt ID to avoid a self-hash cycle; SHA-256 of the signed envelope becomes that ID.
+``record_attempt`` retries a bounded generated-ID collision while holding archive uniqueness, and
+``publish_attempt`` atomically adds the new occurrence plus a new or deduplicated plot. Complete
+reads pre-admit unique aggregate blob bytes, authenticate the exact manifest, reconstruct every
+available byte, and revalidate the signed attempt + plot graph. Archived-key verification proves
+self-consistency only, never independent trust or archive completeness.
 """
 
 import hashlib
 import os
 import re
+import secrets
 import sqlite3
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from verifier import attestation, canon, render
+from verifier import __version__, attestation, canon, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import VPlotSpec, decode_spec
@@ -62,8 +73,10 @@ from verifier.service.models import Verdict
 from verifier.service.settings import Settings
 
 __all__ = [
+    "ATTEMPT_PAYLOAD_TYPE",
     "Archive",
     "ArchiveBatch",
+    "ArchiveCollisionError",
     "ArchiveError",
     "ArchiveIntegrityError",
     "ArchiveNotFoundError",
@@ -71,9 +84,16 @@ __all__ = [
     "ArchiveReadLimitError",
     "ArchiveSchemaError",
     "ArchiveStats",
+    "AttemptArtifacts",
+    "AttemptBundle",
+    "AttemptDraft",
+    "AttemptManifest",
+    "AttemptOutcome",
     "AttemptRecord",
     "AttemptReference",
     "AttemptRole",
+    "AttemptRoute",
+    "BlobBinding",
     "BlobKind",
     "BlobRef",
     "BlobWrite",
@@ -82,6 +102,7 @@ __all__ = [
     "PlotRecord",
     "PlotReference",
     "PlotRole",
+    "materialize_attempt_bundle",
     "materialize_plot_bundle",
     "open_archive",
 ]
@@ -105,6 +126,15 @@ _STATE_DIRECTORY_MODE = 0o700
 _CONNECTION_FACTORY: type[sqlite3.Connection] = sqlite3.Connection
 _PLOT_RECORD_COLUMNS = 3
 _PLOT_REFERENCE_COLUMNS = 5
+_ATTEMPT_RECORD_COLUMNS = 4
+_ATTEMPT_REFERENCE_COLUMNS = 5
+_ATTEMPT_VERSION: Literal["attempt-0.1"] = "attempt-0.1"
+ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
+_ATTEMPT_NONCE_BYTES = 16
+_ATTEMPT_NONCE_ATTEMPTS = 3
+_NONCE_HEX = re.compile(r"[0-9a-f]{32}")
+_UTC_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z")
+_MAX_VERSION_BYTES = 128
 
 
 class ArchiveError(RuntimeError):
@@ -129,6 +159,10 @@ class ArchiveQuotaError(ArchiveError):
 
 class ArchiveReadLimitError(ArchiveError):
     """A stored blob exceeds the caller's role-specific read ceiling."""
+
+
+class ArchiveCollisionError(ArchiveError):
+    """A generated signed occurrence address already exists in the append-only archive."""
 
 
 class BlobKind(StrEnum):
@@ -180,6 +214,31 @@ class AttemptRole(StrEnum):
     ATTEMPT_PAYLOAD = BlobKind.ATTEMPT_PAYLOAD
 
 
+class AttemptRoute(StrEnum):
+    """Artifact-producing service entry routes included in the occurrence ledger."""
+
+    VERIFY_AND_RENDER = "/verify-and-render"
+    PROPOSE_SPEC = "/propose-spec"
+
+
+class AttemptOutcome(StrEnum):
+    """Closed outcome/fault classifier; the signed manifest also carries its HTTP status."""
+
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+    DATASET_NOT_FOUND = "dataset_not_found"
+    PROPOSER_POLICY = "proposer_policy"
+    DATASET_MISMATCH = "dataset_mismatch"
+    MODEL_TRANSPORT = "model_transport"
+    MODEL_CONTENT_ENCODING = "model_content_encoding"
+    MODEL_RESPONSE_TOO_LARGE = "model_response_too_large"
+    MODEL_HTTP_STATUS = "model_http_status"
+    MODEL_PROMPT_TOKENS = "model_prompt_tokens"
+    MODEL_INVALID_ENVELOPE = "model_invalid_envelope"
+    MODEL_NO_CHOICES = "model_no_choices"
+    MODEL_EMPTY_CONTENT = "model_empty_content"
+
+
 _PLOT_BUNDLE_BYTE_FIELDS = (
     "raw_csv",
     "raw_manifest",
@@ -228,6 +287,138 @@ class PlotBundle:
             if not isinstance(value, bytes):
                 msg = f"plot bundle {name} must be bytes, got {type(value).__name__}"
                 raise TypeError(msg)
+
+
+class BlobBinding(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """One signed, closed blob role + exact SHA-256 content digest."""
+
+    role: BlobKind
+    digest: str
+
+
+class AttemptManifest(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """Canonical occurrence payload authenticated under ``ATTEMPT_PAYLOAD_TYPE``.
+
+    ``attempt_id`` is deliberately absent: it is the SHA-256 of the DSSE envelope created only
+    after this payload is signed. ``artifacts`` binds every available attempt-observation byte;
+    ``plot_artifacts`` binds all eleven bytes of the optional complete plot bundle. The attempt
+    payload/envelope cannot bind their own digest without a hash cycle, while DSSE directly
+    authenticates the payload and the final ID directly addresses the envelope.
+    """
+
+    version: Literal["attempt-0.1"]
+    nonce: str
+    occurred_at: str
+    route: AttemptRoute
+    http_status: int
+    outcome: AttemptOutcome
+    plot_id: str | None
+    artifacts: tuple[BlobBinding, ...]
+    plot_artifacts: tuple[BlobBinding, ...]
+    keyid: str
+    verifier_version: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AttemptArtifacts:
+    """Exact observed bytes available for one admitted attempt; absence stays ``None``."""
+
+    raw_csv: bytes | None = field(default=None, repr=False)
+    raw_manifest: bytes | None = field(default=None, repr=False)
+    raw_spec: bytes | None = field(default=None, repr=False)
+    verdict: bytes | None = field(default=None, repr=False)
+    model_request: bytes | None = field(default=None, repr=False)
+    model_response: bytes | None = field(default=None, repr=False)
+    model_reply: bytes | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        for _role, name in _ATTEMPT_ARTIFACT_FIELDS:
+            value = getattr(self, name)
+            if value is not None and not isinstance(value, bytes):
+                msg = f"attempt artifact {name} must be bytes or None, got {type(value).__name__}"
+                raise TypeError(msg)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AttemptDraft:
+    """Unsigned occurrence facts + available bytes supplied to the archive recorder."""
+
+    occurred_at: datetime
+    route: AttemptRoute
+    http_status: int
+    outcome: AttemptOutcome
+    artifacts: AttemptArtifacts
+    plot: PlotBundle | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AttemptBundle:
+    """One signed occurrence plus exact observed bytes and its optional complete plot.
+
+    The nested plot lets publish/read validate the manifest's complete plot digest namespace and
+    makes successful occurrence publication one transaction. Repeated plots still deduplicate at
+    the archive's typed-blob layer; only the fresh attempt payload/envelope need be new.
+    """
+
+    attempt_id: str
+    keyid: str
+    manifest: AttemptManifest
+    artifacts: AttemptArtifacts
+    attempt_payload: bytes = field(repr=False)
+    attempt_envelope: bytes = field(repr=False)
+    public_key: bytes = field(repr=False)
+    plot: PlotBundle | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        _require_address(self.attempt_id, subject="attempt bundle id")
+        _require_sha256(self.keyid, subject="attempt bundle keyid")
+        manifest_object: object = self.manifest
+        artifacts_object: object = self.artifacts
+        plot_object: object = self.plot
+        if not isinstance(manifest_object, AttemptManifest):
+            msg = (
+                "attempt bundle manifest must be AttemptManifest, "
+                f"got {type(self.manifest).__name__}"
+            )
+            raise TypeError(msg)
+        if not isinstance(artifacts_object, AttemptArtifacts):
+            msg = (
+                "attempt bundle artifacts must be AttemptArtifacts, "
+                f"got {type(self.artifacts).__name__}"
+            )
+            raise TypeError(msg)
+        if plot_object is not None and not isinstance(plot_object, PlotBundle):
+            msg = f"attempt bundle plot must be PlotBundle or None, got {type(self.plot).__name__}"
+            raise TypeError(msg)
+        for name in ("attempt_payload", "attempt_envelope", "public_key"):
+            value = getattr(self, name)
+            if not isinstance(value, bytes):
+                msg = f"attempt bundle {name} must be bytes, got {type(value).__name__}"
+                raise TypeError(msg)
+
+
+_ATTEMPT_ARTIFACT_FIELDS: tuple[tuple[AttemptRole, str], ...] = (
+    (AttemptRole.RAW_CSV, "raw_csv"),
+    (AttemptRole.RAW_MANIFEST, "raw_manifest"),
+    (AttemptRole.RAW_SPEC, "raw_spec"),
+    (AttemptRole.VERDICT, "verdict"),
+    (AttemptRole.MODEL_REQUEST, "model_request"),
+    (AttemptRole.MODEL_RESPONSE, "model_response"),
+    (AttemptRole.MODEL_REPLY, "model_reply"),
+)
+_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (
+    (BlobKind.RAW_CSV, "raw_csv"),
+    (BlobKind.RAW_MANIFEST, "raw_manifest"),
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.VEGA_LITE, "vega_lite"),
+    (BlobKind.SVG, "svg"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
 
 
 def _require_sha256(value: str, *, subject: str) -> None:
@@ -416,6 +607,34 @@ _PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
 _TOOL_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
+_ATTEMPT_DECODER = msgspec.json.Decoder(AttemptManifest, strict=True)
+_ATTEMPT_STATUS: dict[AttemptOutcome, int] = {
+    AttemptOutcome.VERIFIED: 200,
+    AttemptOutcome.REJECTED: 200,
+    AttemptOutcome.DATASET_NOT_FOUND: 404,
+    AttemptOutcome.PROPOSER_POLICY: 422,
+    AttemptOutcome.DATASET_MISMATCH: 502,
+    AttemptOutcome.MODEL_TRANSPORT: 503,
+    AttemptOutcome.MODEL_CONTENT_ENCODING: 502,
+    AttemptOutcome.MODEL_RESPONSE_TOO_LARGE: 502,
+    AttemptOutcome.MODEL_HTTP_STATUS: 502,
+    AttemptOutcome.MODEL_PROMPT_TOKENS: 422,
+    AttemptOutcome.MODEL_INVALID_ENVELOPE: 502,
+    AttemptOutcome.MODEL_NO_CHOICES: 502,
+    AttemptOutcome.MODEL_EMPTY_CONTENT: 502,
+}
+_MODEL_REQUEST_ONLY = {
+    AttemptOutcome.MODEL_TRANSPORT,
+    AttemptOutcome.MODEL_CONTENT_ENCODING,
+    AttemptOutcome.MODEL_RESPONSE_TOO_LARGE,
+}
+_MODEL_REQUEST_RESPONSE = {
+    AttemptOutcome.MODEL_HTTP_STATUS,
+    AttemptOutcome.MODEL_PROMPT_TOKENS,
+    AttemptOutcome.MODEL_INVALID_ENVELOPE,
+    AttemptOutcome.MODEL_NO_CHOICES,
+    AttemptOutcome.MODEL_EMPTY_CONTENT,
+}
 
 
 def _require_limits(limits: VerificationLimits) -> None:
@@ -425,14 +644,14 @@ def _require_limits(limits: VerificationLimits) -> None:
         raise TypeError(msg)
 
 
-def _decode_canonical_verdict(payload: bytes) -> Verdict:
+def _decode_canonical_verdict(payload: bytes, *, subject: str = "plot bundle") -> Verdict:
     try:
         verdict = _VERDICT_DECODER.decode(payload)
     except (ValueError, RecursionError) as exc:
-        msg = "plot bundle verdict is not valid structured JSON"
+        msg = f"{subject} verdict is not valid structured JSON"
         raise ArchiveIntegrityError(msg) from exc
     if _BUNDLE_ENCODER.encode(verdict) != payload:
-        msg = "plot bundle verdict is not in the canonical deterministic JSON form"
+        msg = f"{subject} verdict is not in the canonical deterministic JSON form"
         raise ArchiveIntegrityError(msg)
     return verdict
 
@@ -617,6 +836,401 @@ def materialize_plot_bundle(
     return bundle
 
 
+def _canonical_utc_timestamp(occurred_at: datetime) -> str:
+    occurred_object: object = occurred_at
+    if not isinstance(occurred_object, datetime) or occurred_at.utcoffset() is None:
+        msg = "occurred_at must be a timezone-aware datetime"
+        raise ValueError(msg)
+    return occurred_at.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _artifact_bindings(artifacts: AttemptArtifacts) -> tuple[BlobBinding, ...]:
+    return tuple(
+        BlobBinding(role=BlobKind(role.value), digest=_digest(payload))
+        for role, name in _ATTEMPT_ARTIFACT_FIELDS
+        if (payload := cast("bytes | None", getattr(artifacts, name))) is not None
+    )
+
+
+def _plot_bindings(plot: PlotBundle | None) -> tuple[BlobBinding, ...]:
+    if plot is None:
+        return ()
+    return tuple(
+        BlobBinding(role=role, digest=_digest(cast("bytes", getattr(plot, name))))
+        for role, name in _PLOT_BINDING_FIELDS
+    )
+
+
+def _validate_binding_tuple(bindings: tuple[BlobBinding, ...], *, subject: str) -> None:
+    bindings_object: object = bindings
+    if not isinstance(bindings_object, tuple):
+        msg = f"attempt manifest {subject} must be a tuple"
+        raise ArchiveIntegrityError(msg)
+    seen: set[BlobKind] = set()
+    for binding in bindings:
+        binding_object: object = binding
+        if not isinstance(binding_object, BlobBinding):
+            msg = f"attempt manifest {subject} carries a malformed blob binding"
+            raise ArchiveIntegrityError(msg)
+        role_object: object = binding_object.role
+        if not isinstance(role_object, BlobKind):
+            msg = f"attempt manifest {subject} carries a malformed blob binding"
+            raise ArchiveIntegrityError(msg)
+        try:
+            _require_sha256(binding.digest, subject=f"attempt manifest {subject} digest")
+        except ValueError as exc:
+            msg = f"attempt manifest {subject} carries a malformed blob digest"
+            raise ArchiveIntegrityError(msg) from exc
+        if binding.role in seen:
+            msg = f"attempt manifest {subject} repeats blob role {binding.role.value}"
+            raise ArchiveIntegrityError(msg)
+        seen.add(binding.role)
+
+
+def _validate_manifest_nonce_time(manifest: AttemptManifest) -> None:
+    version_object: object = manifest.version
+    nonce_object: object = manifest.nonce
+    occurred_at_object: object = manifest.occurred_at
+    if version_object != _ATTEMPT_VERSION:
+        msg = f"attempt manifest version must be {_ATTEMPT_VERSION!r}"
+        raise ArchiveIntegrityError(msg)
+    if not isinstance(nonce_object, str) or _NONCE_HEX.fullmatch(nonce_object) is None:
+        msg = "attempt manifest nonce must contain exactly 128 bits as lowercase hex"
+        raise ArchiveIntegrityError(msg)
+    if (
+        not isinstance(occurred_at_object, str)
+        or _UTC_TIMESTAMP.fullmatch(occurred_at_object) is None
+    ):
+        msg = "attempt manifest occurrence time is not canonical UTC"
+        raise ArchiveIntegrityError(msg)
+    try:
+        parsed_time = datetime.fromisoformat(manifest.occurred_at)
+    except ValueError as exc:
+        msg = "attempt manifest occurrence time is not a real UTC instant"
+        raise ArchiveIntegrityError(msg) from exc
+    _canonical_utc_timestamp(parsed_time)
+
+
+def _validate_manifest_route_status(manifest: AttemptManifest) -> None:
+    route_object: object = manifest.route
+    outcome_object: object = manifest.outcome
+    if not isinstance(route_object, AttemptRoute):
+        msg = "attempt manifest route is not a closed AttemptRoute"
+        raise ArchiveIntegrityError(msg)
+    if not isinstance(outcome_object, AttemptOutcome):
+        msg = "attempt manifest outcome is not a closed AttemptOutcome"
+        raise ArchiveIntegrityError(msg)
+    if (
+        type(manifest.http_status) is not int
+        or manifest.http_status != _ATTEMPT_STATUS[manifest.outcome]
+    ):
+        msg = "attempt manifest HTTP status disagrees with its closed outcome"
+        raise ArchiveIntegrityError(msg)
+
+
+def _validate_manifest_identity(manifest: AttemptManifest) -> None:
+    plot_id_object: object = manifest.plot_id
+    version_object: object = manifest.verifier_version
+    if plot_id_object is not None:
+        try:
+            _require_address(cast("str", plot_id_object), subject="attempt manifest plot_id")
+        except ValueError as exc:
+            msg = "attempt manifest plot_id is malformed"
+            raise ArchiveIntegrityError(msg) from exc
+    try:
+        _require_sha256(manifest.keyid, subject="attempt manifest keyid")
+    except ValueError as exc:
+        msg = "attempt manifest keyid is malformed"
+        raise ArchiveIntegrityError(msg) from exc
+    if not isinstance(version_object, str) or not version_object:
+        msg = "attempt manifest verifier version must be a non-empty string"
+        raise ArchiveIntegrityError(msg)
+    try:
+        version_bytes = version_object.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        msg = "attempt manifest verifier version is not valid UTF-8"
+        raise ArchiveIntegrityError(msg) from exc
+    if len(version_bytes) > _MAX_VERSION_BYTES:
+        msg = f"attempt manifest verifier version exceeds {_MAX_VERSION_BYTES} UTF-8 bytes"
+        raise ArchiveIntegrityError(msg)
+
+
+def _validate_attempt_manifest_shape(manifest: AttemptManifest) -> None:
+    manifest_object: object = manifest
+    if not isinstance(manifest_object, AttemptManifest):
+        msg = f"manifest must be AttemptManifest, got {type(manifest).__name__}"
+        raise TypeError(msg)
+    _validate_manifest_nonce_time(manifest)
+    _validate_manifest_route_status(manifest)
+    _validate_manifest_identity(manifest)
+    _validate_binding_tuple(manifest.artifacts, subject="artifacts")
+    _validate_binding_tuple(manifest.plot_artifacts, subject="plot artifacts")
+
+
+def _present_model_roles(artifacts: AttemptArtifacts) -> set[AttemptRole]:
+    return {
+        role
+        for role, name in _ATTEMPT_ARTIFACT_FIELDS
+        if role in {AttemptRole.MODEL_REQUEST, AttemptRole.MODEL_RESPONSE, AttemptRole.MODEL_REPLY}
+        and getattr(artifacts, name) is not None
+    }
+
+
+def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
+    if manifest.route is AttemptRoute.VERIFY_AND_RENDER:
+        if manifest.outcome not in {AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED}:
+            msg = "direct render attempts may only carry verified or rejected outcomes"
+            raise ArchiveIntegrityError(msg)
+        return set()
+    if manifest.outcome in {
+        AttemptOutcome.VERIFIED,
+        AttemptOutcome.REJECTED,
+        AttemptOutcome.DATASET_MISMATCH,
+    }:
+        return {
+            AttemptRole.MODEL_REQUEST,
+            AttemptRole.MODEL_RESPONSE,
+            AttemptRole.MODEL_REPLY,
+        }
+    if manifest.outcome in _MODEL_REQUEST_ONLY:
+        return {AttemptRole.MODEL_REQUEST}
+    if manifest.outcome in _MODEL_REQUEST_RESPONSE:
+        return {AttemptRole.MODEL_REQUEST, AttemptRole.MODEL_RESPONSE}
+    return set()
+
+
+def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
+    manifest = bundle.manifest
+    artifacts = bundle.artifacts
+    has_plot = bundle.plot is not None
+    if has_plot != (manifest.outcome is AttemptOutcome.VERIFIED):
+        msg = "attempt plot presence must exactly match a verified outcome"
+        raise ArchiveIntegrityError(msg)
+    if (artifacts.verdict is not None) != (
+        manifest.outcome in {AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED}
+    ):
+        msg = "attempt verdict presence disagrees with its outcome"
+        raise ArchiveIntegrityError(msg)
+    needs_raw_spec = manifest.outcome in {
+        AttemptOutcome.VERIFIED,
+        AttemptOutcome.REJECTED,
+        AttemptOutcome.DATASET_MISMATCH,
+    }
+    if (artifacts.raw_spec is not None) != needs_raw_spec:
+        msg = "attempt raw-spec presence disagrees with its outcome"
+        raise ArchiveIntegrityError(msg)
+
+    if _present_model_roles(artifacts) != _expected_model_roles(manifest):
+        msg = "attempt model trace presence disagrees with its route/outcome"
+        raise ArchiveIntegrityError(msg)
+
+    if (
+        manifest.route is AttemptRoute.PROPOSE_SPEC
+        and artifacts.model_reply is not None
+        and artifacts.model_reply != artifacts.raw_spec
+    ):
+        msg = "attempt model reply differs from the exact raw spec handed to decode"
+        raise ArchiveIntegrityError(msg)
+    if artifacts.verdict is not None:
+        verdict = _decode_canonical_verdict(artifacts.verdict, subject="attempt bundle")
+        expected_verified = manifest.outcome is AttemptOutcome.VERIFIED
+        if verdict.verified != expected_verified:
+            msg = "attempt canonical verdict judgement disagrees with its outcome"
+            raise ArchiveIntegrityError(msg)
+    if artifacts.verdict is None and (
+        artifacts.raw_csv is not None or artifacts.raw_manifest is not None
+    ):
+        msg = "attempt without a verification verdict cannot invent verifier input trace bytes"
+        raise ArchiveIntegrityError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _AttemptAuthentication:
+    attempt_id: str
+    keyid: str
+    payload: bytes
+    envelope: bytes
+    public_key: bytes
+
+
+def _authenticate_attempt_payload(
+    parts: _AttemptAuthentication, limits: VerificationLimits
+) -> AttemptManifest:
+    attempt_id = parts.attempt_id
+    keyid = parts.keyid
+    payload = parts.payload
+    envelope = parts.envelope
+    if len(payload) > limits.max_attestation_bytes:
+        msg = f"attempt payload has {len(payload)} bytes; limit is {limits.max_attestation_bytes}"
+        raise ArchiveReadLimitError(msg)
+    envelope_limit = attestation.envelope_byte_limit(
+        limits.max_attestation_bytes, payload_type=ATTEMPT_PAYLOAD_TYPE
+    )
+    if len(envelope) > envelope_limit:
+        msg = f"attempt envelope has {len(envelope)} bytes; limit is {envelope_limit}"
+        raise ArchiveReadLimitError(msg)
+    if hashlib.sha256(envelope).hexdigest() != attempt_id:
+        msg = "attempt bundle id does not address its exact DSSE envelope bytes"
+        raise ArchiveIntegrityError(msg)
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(parts.public_key)
+        actual_keyid = keyid_for_public_key(parts.public_key)
+        verified = attestation.verify_dsse(
+            envelope,
+            {keyid: public_key},
+            payload_type=ATTEMPT_PAYLOAD_TYPE,
+            max_payload_bytes=limits.max_attestation_bytes,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "attempt envelope or signing public key failed verification"
+        raise ArchiveIntegrityError(msg) from exc
+    if actual_keyid != keyid:
+        msg = "attempt keyid does not address its signing public key bytes"
+        raise ArchiveIntegrityError(msg)
+    if verified.payload != payload:
+        msg = "attempt payload differs from the authenticated envelope payload"
+        raise ArchiveIntegrityError(msg)
+    try:
+        manifest = _ATTEMPT_DECODER.decode(verified.payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "authenticated attempt payload is not a valid v0.1 manifest"
+        raise ArchiveIntegrityError(msg) from exc
+    if _BUNDLE_ENCODER.encode(manifest) != verified.payload:
+        msg = "attempt payload is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return manifest
+
+
+def _authenticated_attempt_manifest(
+    bundle: AttemptBundle, limits: VerificationLimits
+) -> AttemptManifest:
+    manifest = _authenticate_attempt_payload(
+        _AttemptAuthentication(
+            bundle.attempt_id,
+            bundle.keyid,
+            bundle.attempt_payload,
+            bundle.attempt_envelope,
+            bundle.public_key,
+        ),
+        limits,
+    )
+    if manifest != bundle.manifest:
+        msg = "attempt bundle manifest differs from its authenticated payload"
+        raise ArchiveIntegrityError(msg)
+    return manifest
+
+
+def _validate_attempt_bundle(bundle: AttemptBundle, limits: VerificationLimits) -> None:
+    _require_limits(limits)
+    manifest = _authenticated_attempt_manifest(bundle, limits)
+    _validate_attempt_manifest_shape(manifest)
+    if manifest.keyid != bundle.keyid:
+        msg = "attempt manifest keyid disagrees with the bundle signer"
+        raise ArchiveIntegrityError(msg)
+    if manifest.artifacts != _artifact_bindings(bundle.artifacts):
+        msg = "attempt manifest artifact bindings disagree with observed bytes"
+        raise ArchiveIntegrityError(msg)
+    if manifest.plot_artifacts != _plot_bindings(bundle.plot):
+        msg = "attempt manifest plot bindings disagree with the complete plot bytes"
+        raise ArchiveIntegrityError(msg)
+    plot_id = None if bundle.plot is None else bundle.plot.plot_id
+    if manifest.plot_id != plot_id:
+        msg = "attempt manifest plot_id disagrees with the complete plot"
+        raise ArchiveIntegrityError(msg)
+    _validate_attempt_outcome(bundle)
+    if bundle.plot is not None:
+        _validate_plot_bundle(bundle.plot, limits)
+        if bundle.plot.keyid != bundle.keyid or bundle.plot.public_key != bundle.public_key:
+            msg = "attempt signer differs from the successful plot signer"
+            raise ArchiveIntegrityError(msg)
+        if (
+            bundle.artifacts.raw_csv != bundle.plot.raw_csv
+            or bundle.artifacts.raw_manifest != bundle.plot.raw_manifest
+            or bundle.artifacts.verdict != bundle.plot.verdict
+        ):
+            msg = "attempt observed verifier bytes disagree with the successful plot bundle"
+            raise ArchiveIntegrityError(msg)
+        versions = _decode_canonical_versions(bundle.plot.tool_versions)
+        if manifest.verifier_version != versions.verifier_version:
+            msg = "attempt verifier version disagrees with the successful plot TCB"
+            raise ArchiveIntegrityError(msg)
+
+
+def materialize_attempt_bundle(
+    draft: AttemptDraft,
+    signer: Signer,
+    *,
+    nonce: str,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> AttemptBundle:
+    """Purely materialize and sign one occurrence using an explicit 128-bit nonce."""
+    draft_object: object = draft
+    signer_object: object = signer
+    if not isinstance(draft_object, AttemptDraft):
+        msg = f"draft must be AttemptDraft, got {type(draft).__name__}"
+        raise TypeError(msg)
+    route_object: object = draft.route
+    outcome_object: object = draft.outcome
+    artifacts_object: object = draft.artifacts
+    plot_object: object = draft.plot
+    if not isinstance(route_object, AttemptRoute):
+        msg = f"draft route must be AttemptRoute, got {type(draft.route).__name__}"
+        raise TypeError(msg)
+    if not isinstance(outcome_object, AttemptOutcome):
+        msg = f"draft outcome must be AttemptOutcome, got {type(draft.outcome).__name__}"
+        raise TypeError(msg)
+    if not isinstance(artifacts_object, AttemptArtifacts):
+        msg = f"draft artifacts must be AttemptArtifacts, got {type(draft.artifacts).__name__}"
+        raise TypeError(msg)
+    if not isinstance(signer_object, Signer):
+        msg = f"signer must be Signer, got {type(signer).__name__}"
+        raise TypeError(msg)
+    if plot_object is not None and not isinstance(plot_object, PlotBundle):
+        msg = f"draft plot must be PlotBundle or None, got {type(draft.plot).__name__}"
+        raise TypeError(msg)
+    _require_limits(limits)
+    occurred_at_text = _canonical_utc_timestamp(draft.occurred_at)
+    manifest = AttemptManifest(
+        version=_ATTEMPT_VERSION,
+        nonce=nonce,
+        occurred_at=occurred_at_text,
+        route=draft.route,
+        http_status=draft.http_status,
+        outcome=draft.outcome,
+        plot_id=None if draft.plot is None else draft.plot.plot_id,
+        artifacts=_artifact_bindings(draft.artifacts),
+        plot_artifacts=_plot_bindings(draft.plot),
+        keyid=signer.keyid,
+        verifier_version=__version__,
+    )
+    _validate_attempt_manifest_shape(manifest)
+    payload = _BUNDLE_ENCODER.encode(manifest)
+    envelope = attestation.sign_dsse(
+        payload,
+        signer.private_key,
+        keyid=signer.keyid,
+        payload_type=ATTEMPT_PAYLOAD_TYPE,
+        max_payload_bytes=limits.max_attestation_bytes,
+    )
+    bundle = AttemptBundle(
+        attempt_id=hashlib.sha256(envelope).hexdigest(),
+        keyid=signer.keyid,
+        manifest=manifest,
+        artifacts=draft.artifacts,
+        attempt_payload=payload,
+        attempt_envelope=envelope,
+        public_key=signer.public_key_bytes,
+        plot=draft.plot,
+    )
+    _validate_attempt_bundle(bundle, limits)
+    return bundle
+
+
+def _attempt_nonce() -> str:
+    """Return one CSPRNG 128-bit nonce in the manifest's canonical wire form."""
+    return secrets.token_hex(_ATTEMPT_NONCE_BYTES)
+
+
 _CREATE_META = """CREATE TABLE meta (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     schema_version INTEGER NOT NULL CHECK (schema_version > 0),
@@ -774,6 +1388,15 @@ FROM plot_references AS r
 JOIN blobs AS b ON b.digest = r.blob_digest AND b.kind = r.blob_kind
 WHERE r.plot_id = ?
 ORDER BY r.role"""
+_SELECT_ATTEMPT_RECORD = """SELECT envelope_digest, envelope_kind, keyid, plot_id
+FROM attempts
+WHERE attempt_id = ?"""
+_SELECT_ATTEMPT_REFERENCES = """SELECT r.role, b.blob_id, b.digest, b.kind, b.size
+FROM attempt_references AS r
+JOIN blobs AS b ON b.digest = r.blob_digest AND b.kind = r.blob_kind
+WHERE r.attempt_id = ?
+ORDER BY r.role"""
+_SELECT_ATTEMPT_EXISTS = "SELECT 1 FROM attempts WHERE attempt_id = ?"
 
 
 def _read_scalar(connection: sqlite3.Connection, statement: str) -> object:
@@ -1065,6 +1688,43 @@ def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
     )
 
 
+def _attempt_bundle_batch(bundle: AttemptBundle) -> ArchiveBatch:
+    artifact_blobs = {
+        role: BlobWrite(BlobKind(role.value), payload)
+        for role, name in _ATTEMPT_ARTIFACT_FIELDS
+        if (payload := cast("bytes | None", getattr(bundle.artifacts, name))) is not None
+    }
+    attempt_payload_blob = BlobWrite(BlobKind.ATTEMPT_PAYLOAD, bundle.attempt_payload)
+    envelope = BlobWrite(BlobKind.ATTEMPT_ENVELOPE, bundle.attempt_envelope)
+    public_key = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, bundle.public_key)
+    plot_batch = ArchiveBatch() if bundle.plot is None else _plot_bundle_batch(bundle.plot)
+    plot_id = None if bundle.plot is None else bundle.plot.plot_id
+    return ArchiveBatch(
+        blobs=(
+            *plot_batch.blobs,
+            *artifact_blobs.values(),
+            attempt_payload_blob,
+            envelope,
+            public_key,
+        ),
+        keys=(*plot_batch.keys, KeyRecord(bundle.keyid, public_key.ref)),
+        plots=plot_batch.plots,
+        attempts=(AttemptRecord(bundle.attempt_id, envelope.ref, bundle.keyid, plot_id),),
+        plot_references=plot_batch.plot_references,
+        attempt_references=(
+            *(
+                AttemptReference(bundle.attempt_id, role, blob.ref)
+                for role, blob in artifact_blobs.items()
+            ),
+            AttemptReference(
+                bundle.attempt_id,
+                AttemptRole.ATTEMPT_PAYLOAD,
+                attempt_payload_blob.ref,
+            ),
+        ),
+    )
+
+
 def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str]:
     if not isinstance(row, tuple) or len(row) != _PLOT_RECORD_COLUMNS:
         msg = "archive plot record is malformed"
@@ -1179,6 +1839,225 @@ def _read_complete_plot_bundle(
         tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
         public_key=public_key,
     )
+
+
+def _validated_attempt_record(row: object, attempt_id: str) -> tuple[BlobRef, str, str | None]:
+    if not isinstance(row, tuple) or len(row) != _ATTEMPT_RECORD_COLUMNS:
+        msg = "archive attempt record is malformed"
+        raise ArchiveIntegrityError(msg)
+    envelope_digest, envelope_kind, keyid, plot_id = row
+    if (
+        not isinstance(envelope_digest, str)
+        or envelope_digest != f"sha256:{attempt_id}"
+        or envelope_kind != BlobKind.ATTEMPT_ENVELOPE.value
+        or not isinstance(keyid, str)
+        or _SHA256.fullmatch(keyid) is None
+        or (
+            plot_id is not None
+            and (not isinstance(plot_id, str) or _HEX64.fullmatch(plot_id) is None)
+        )
+    ):
+        msg = "archive attempt record types, address, envelope kind, keyid, or plot_id are corrupt"
+        raise ArchiveIntegrityError(msg)
+    return BlobRef(envelope_digest, BlobKind.ATTEMPT_ENVELOPE), keyid, plot_id
+
+
+def _attempt_bundle_blob_rows(
+    connection: sqlite3.Connection,
+    attempt_id: str,
+    envelope: BlobRef,
+    keyid: str,
+) -> tuple[
+    tuple[BlobRef, _BlobRow],
+    tuple[BlobRef, _BlobRow],
+    dict[AttemptRole, tuple[BlobRef, _BlobRow]],
+]:
+    envelope_row = _blob_row(connection, envelope)
+    key_row_value = connection.execute(_SELECT_KEY_BLOB, (keyid,)).fetchone()
+    if envelope_row is None or key_row_value is None:
+        msg = "archive attempt envelope or signing-key relation is broken"
+        raise ArchiveIntegrityError(msg)
+    key_row = _validated_blob_row(key_row_value)
+    key_ref = BlobRef(keyid, BlobKind.ED25519_PUBLIC_KEY)
+    if key_row[1] != key_ref.digest or key_row[2] != key_ref.kind.value:
+        msg = "archive attempt signing-key record resolves to the wrong typed blob"
+        raise ArchiveIntegrityError(msg)
+
+    role_rows: dict[AttemptRole, tuple[BlobRef, _BlobRow]] = {}
+    rows = connection.execute(_SELECT_ATTEMPT_REFERENCES, (attempt_id,)).fetchall()
+    for row in rows:
+        if not isinstance(row, tuple) or len(row) != _ATTEMPT_REFERENCE_COLUMNS:
+            msg = "archive attempt reference row is malformed"
+            raise ArchiveIntegrityError(msg)
+        role_value = row[0]
+        try:
+            role = AttemptRole(role_value)
+        except (TypeError, ValueError) as exc:
+            msg = f"archive attempt carries unknown role {role_value!r}"
+            raise ArchiveIntegrityError(msg) from exc
+        blob_row = _validated_blob_row(tuple(row[1:]))
+        reference = BlobRef(blob_row[1], BlobKind(role.value))
+        if blob_row[2] != reference.kind.value or role in role_rows:
+            msg = "archive attempt role resolves to a wrong-kind or duplicate blob"
+            raise ArchiveIntegrityError(msg)
+        role_rows[role] = (reference, blob_row)
+    if AttemptRole.ATTEMPT_PAYLOAD not in role_rows:
+        msg = "archive attempt does not carry its authenticated payload role"
+        raise ArchiveIntegrityError(msg)
+    return (envelope, envelope_row), (key_ref, key_row), role_rows
+
+
+type _BlobEntry = tuple[BlobRef, _BlobRow]
+
+
+def _read_unique_entries(
+    connection: sqlite3.Connection,
+    entries: tuple[_BlobEntry, ...],
+    *,
+    max_bytes: int,
+) -> dict[BlobRef, bytes]:
+    unique: dict[BlobRef, _BlobRow] = {}
+    for reference, row in entries:
+        previous = unique.get(reference)
+        if previous is not None and previous != row:
+            msg = "archive bundle resolves one typed digest to conflicting blob metadata"
+            raise ArchiveIntegrityError(msg)
+        unique[reference] = row
+    admitted_bytes = 0
+    for row in unique.values():
+        size = row[3]
+        if size > max_bytes - admitted_bytes:
+            msg = f"archive attempt bundle exceeds aggregate read limit of {max_bytes} bytes"
+            raise ArchiveReadLimitError(msg)
+        admitted_bytes += size
+
+    payloads: dict[BlobRef, bytes] = {}
+    for reference, row in unique.items():
+        payload = _consume_blob(
+            connection,
+            row,
+            reference,
+            _BlobReadPolicy(max_bytes=row[3], expected_payload=None, collect=True),
+        )
+        payloads[reference] = cast("bytes", payload)
+    return payloads
+
+
+@dataclass(frozen=True, slots=True)
+class _PlotEntries:
+    plot_id: str
+    keyid: str
+    certificate: _BlobEntry
+    key: _BlobEntry
+    roles: dict[PlotRole, _BlobEntry]
+
+
+def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> PlotBundle:
+    role_payloads = {role: payloads[entries.roles[role][0]] for role in PlotRole}
+    return PlotBundle(
+        plot_id=entries.plot_id,
+        keyid=entries.keyid,
+        raw_csv=role_payloads[PlotRole.RAW_CSV],
+        raw_manifest=role_payloads[PlotRole.RAW_MANIFEST],
+        canonical_spec=role_payloads[PlotRole.CANONICAL_SPEC],
+        plotted_table=role_payloads[PlotRole.PLOTTED_TABLE],
+        verdict=role_payloads[PlotRole.VERDICT],
+        vega_lite=role_payloads[PlotRole.VEGA_LITE],
+        svg=role_payloads[PlotRole.SVG],
+        vcert_payload=role_payloads[PlotRole.VCERT_PAYLOAD],
+        vcert_envelope=payloads[entries.certificate[0]],
+        tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
+        public_key=payloads[entries.key[0]],
+    )
+
+
+def _read_complete_attempt_bundle(
+    connection: sqlite3.Connection,
+    attempt_id: str,
+    *,
+    max_bytes: int,
+    limits: VerificationLimits,
+) -> AttemptBundle:
+    record_row = connection.execute(_SELECT_ATTEMPT_RECORD, (attempt_id,)).fetchone()
+    if record_row is None:
+        msg = "archive attempt address was not found"
+        raise ArchiveNotFoundError(msg)
+    envelope, keyid, plot_id = _validated_attempt_record(record_row, attempt_id)
+    envelope_entry, key_entry, role_rows = _attempt_bundle_blob_rows(
+        connection, attempt_id, envelope, keyid
+    )
+
+    plot_parts: _PlotEntries | None = None
+    plot_entries: tuple[_BlobEntry, ...] = ()
+    if plot_id is not None:
+        plot_record = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
+        if plot_record is None:
+            msg = "archive attempt's linked plot record is absent"
+            raise ArchiveIntegrityError(msg)
+        certificate, plot_keyid = _validated_plot_record(plot_record, plot_id)
+        certificate_entry, plot_key_entry, plot_role_rows = _plot_bundle_blob_rows(
+            connection, plot_id, certificate, plot_keyid
+        )
+        plot_parts = _PlotEntries(
+            plot_id,
+            plot_keyid,
+            certificate_entry,
+            plot_key_entry,
+            plot_role_rows,
+        )
+        plot_entries = (
+            certificate_entry,
+            plot_key_entry,
+            *(plot_role_rows[role] for role in PlotRole),
+        )
+
+    entries = (
+        envelope_entry,
+        key_entry,
+        *(role_rows[role] for role in role_rows),
+        *plot_entries,
+    )
+    payloads = _read_unique_entries(connection, entries, max_bytes=max_bytes)
+    attempt_payload = payloads[role_rows[AttemptRole.ATTEMPT_PAYLOAD][0]]
+    attempt_envelope = payloads[envelope_entry[0]]
+    public_key = payloads[key_entry[0]]
+    manifest = _authenticate_attempt_payload(
+        _AttemptAuthentication(
+            attempt_id,
+            keyid,
+            attempt_payload,
+            attempt_envelope,
+            public_key,
+        ),
+        limits,
+    )
+
+    def artifact(role: AttemptRole) -> bytes | None:
+        entry = role_rows.get(role)
+        return None if entry is None else payloads[entry[0]]
+
+    artifacts = AttemptArtifacts(
+        raw_csv=artifact(AttemptRole.RAW_CSV),
+        raw_manifest=artifact(AttemptRole.RAW_MANIFEST),
+        raw_spec=artifact(AttemptRole.RAW_SPEC),
+        verdict=artifact(AttemptRole.VERDICT),
+        model_request=artifact(AttemptRole.MODEL_REQUEST),
+        model_response=artifact(AttemptRole.MODEL_RESPONSE),
+        model_reply=artifact(AttemptRole.MODEL_REPLY),
+    )
+    plot = None if plot_parts is None else _plot_from_entries(plot_parts, payloads)
+    bundle = AttemptBundle(
+        attempt_id=attempt_id,
+        keyid=keyid,
+        manifest=manifest,
+        artifacts=artifacts,
+        attempt_payload=attempt_payload,
+        attempt_envelope=attempt_envelope,
+        public_key=public_key,
+        plot=plot,
+    )
+    _validate_attempt_bundle(bundle, limits)
+    return bundle
 
 
 def _require_batch_items(batch: ArchiveBatch) -> None:
@@ -1410,6 +2289,19 @@ def _publish_batch(
     _before_archive_commit()
 
 
+def _publish_unique_attempt(
+    connection: sqlite3.Connection,
+    bundle: AttemptBundle,
+    batch: ArchiveBatch,
+    blobs: tuple[BlobWrite, ...],
+    max_logical_bytes: int,
+) -> None:
+    if connection.execute(_SELECT_ATTEMPT_EXISTS, (bundle.attempt_id,)).fetchone() is not None:
+        msg = f"signed attempt address {bundle.attempt_id} already exists"
+        raise ArchiveCollisionError(msg)
+    _publish_batch(connection, batch, blobs, max_logical_bytes)
+
+
 class Archive:
     """Versioned SQLite archive; construction initializes and validates durable state."""
 
@@ -1512,6 +2404,70 @@ class Archive:
             raise TypeError(msg)
         _validate_plot_bundle(bundle, limits)
         self.publish(_plot_bundle_batch(bundle))
+
+    def publish_attempt(
+        self,
+        bundle: AttemptBundle,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> None:
+        """Validate and atomically publish one occurrence plus its optional complete plot.
+
+        Unlike content-idempotent plots, an occurrence address must be new. A duplicate raises
+        ``ArchiveCollisionError`` so ``record_attempt`` can regenerate its nonce without silently
+        aliasing two requests.
+        """
+        bundle_object: object = bundle
+        if not isinstance(bundle_object, AttemptBundle):
+            msg = f"bundle must be an AttemptBundle, got {type(bundle).__name__}"
+            raise TypeError(msg)
+        _validate_attempt_bundle(bundle, limits)
+        batch = _attempt_bundle_batch(bundle)
+        _require_batch_items(batch)
+        blobs = _unique_blob_writes(batch.blobs)
+        connection = self._connect()
+        try:
+            with _immediate_transaction(connection):
+                _publish_unique_attempt(
+                    connection,
+                    bundle,
+                    batch,
+                    blobs,
+                    self._max_logical_bytes,
+                )
+        except ArchiveError:
+            raise
+        except sqlite3.IntegrityError as exc:
+            msg = "archive attempt violates an immutable typed reference"
+            raise ArchiveIntegrityError(msg) from exc
+        except sqlite3.Error as exc:
+            msg = "SQLite failed while publishing the attempt transaction"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+
+    def record_attempt(
+        self,
+        draft: AttemptDraft,
+        signer: Signer,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> AttemptBundle:
+        """Generate/sign/publish one occurrence, retrying bounded CSPRNG nonce collisions."""
+        for _attempt in range(_ATTEMPT_NONCE_ATTEMPTS):
+            bundle = materialize_attempt_bundle(
+                draft,
+                signer=signer,
+                nonce=_attempt_nonce(),
+                limits=limits,
+            )
+            try:
+                self.publish_attempt(bundle, limits=limits)
+            except ArchiveCollisionError:
+                continue
+            return bundle
+        msg = f"attempt nonce collisions exhausted {_ATTEMPT_NONCE_ATTEMPTS} signed candidates"
+        raise ArchiveCollisionError(msg)
 
     def _read_payload(
         self,
@@ -1620,6 +2576,35 @@ class Archive:
             raise
         except sqlite3.Error as exc:
             msg = "SQLite failed while reading a complete plot bundle"
+            raise ArchiveError(msg) from exc
+        else:
+            return bundle
+        finally:
+            connection.close()
+
+    def read_attempt(
+        self,
+        attempt_id: str,
+        *,
+        max_bytes: int,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> AttemptBundle:
+        """Read one complete occurrence under an aggregate cap, then verify all signed bindings."""
+        _require_address(attempt_id, subject="attempt_id")
+        _require_read_limit(max_bytes)
+        _require_limits(limits)
+        connection = self._connect()
+        try:
+            bundle = _read_complete_attempt_bundle(
+                connection,
+                attempt_id,
+                max_bytes=max_bytes,
+                limits=limits,
+            )
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed while reading a complete attempt bundle"
             raise ArchiveError(msg) from exc
         else:
             return bundle
