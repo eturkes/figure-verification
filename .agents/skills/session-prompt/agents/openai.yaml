@@ -1,7 +1,0 @@
-interface:
-  display_name: "Session Prompt"
-  short_description: "Continue the active roadmap workflow"
-  default_prompt: "Use $session-prompt to continue the active project unit."
-
-policy:
-  allow_implicit_invocation: false

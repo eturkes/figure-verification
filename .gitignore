@@ -42,6 +42,18 @@ bench/reports/
 *.duckdb.wal
 *.log
 
+# Serena runtime cache (project.yml is committed when present)
+.serena/cache/
+
+# Headroom tokensave code-graph state (regenerable: `tokensave init`/`sync`)
+.tokensave/
+
+# Claude Code machine-local (settings + private instructions)
+.claude/settings.local.json
+CLAUDE.local.md
+# Headroom wrap live-session marker (ephemeral: pid/port/env key; removed on exit)
+.claude/.headroom_wrap_marker.json
+
 # OS
 .DS_Store
 Thumbs.db
