@@ -1,20 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Service entry point — `python -m verifier.service` (M2.1).
+"""Service + operator-audit entry point — ``python -m verifier.service [audit ...]``.
 
-Reads trusted config from the environment, builds the app, and serves it with a single
-uvicorn worker bound to the configured host (loopback by default). One worker keeps the
-in-memory artifact store coherent and makes the process-local admission gate service-global;
-the signing identity and versioned archive schema are persistent state loaded before serving.
+With no arguments, reads trusted config, builds the app, and serves it with one uvicorn worker.
+``audit ATTEMPT_ID`` dispatches the owner-local signed-attempt audit without starting a server.
 """
+
+import sys
+from collections.abc import Sequence
 
 import uvicorn
 
 from verifier.service.app import create_app
+from verifier.service.audit import main as audit_main
 from verifier.service.settings import Settings
 
 
-def main() -> None:
-    """Build the app from the environment and serve it (blocking)."""
+def main(argv: Sequence[str] = ()) -> int:
+    """Dispatch operator audit, or build the app and serve it when ``argv`` is empty."""
+    if argv:
+        if argv[0] == "audit":
+            return audit_main(tuple(argv[1:]))
+        message = "usage: python -m verifier.service [audit ATTEMPT_ID [--reveal-sensitive]]"
+        raise SystemExit(message)
     settings = Settings.from_env()
     uvicorn.run(
         create_app(settings),
@@ -22,7 +29,8 @@ def main() -> None:
         port=settings.port,
         workers=1,
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(tuple(sys.argv[1:])))

@@ -436,13 +436,24 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   transactional refusal. Artifact-route tests use isolated state directories, never operator state.
   OpenAPI golden + loose bench consumer updated; locked gate green at 1,428 tests/100% branch
   coverage.
-- **M5.4f — operator audit CLI** (OPEN): add an operator-only command that resolves attempt ID,
+- **M5.4f — operator audit CLI** (DONE): add an operator-only command that resolves attempt ID,
   verifies its envelope/blobs, and defaults to hashes/metadata; require an explicit flag to reveal
   prompt/reply/raw-spec content as ASCII JSON-escaped UTF-8 or base64, never raw terminal
   control/bidi bytes.
   No raw-audit HTTP route. Acceptance: all success/failure shapes render stable redacted output;
   corruption/wrong key fails closed; terminal-escape/invalid-UTF-8 fixtures stay inert; sensitive
   bytes stay out of logs and default CLI; gate green.
+  Landed as `python -m verifier.service audit ATTEMPT_ID [--reveal-sensitive]`. The command first
+  performs the archive's aggregate-bounded complete occurrence read, which authenticates every
+  address/typed blob/digest and optional plot graph, then independently requires the occurrence
+  signer in the current-or-explicitly-pinned key policy and verifies the attempt + optional VCert
+  envelopes under that exact key. Archive key presence alone never grants trust. Deterministic
+  ASCII JSON defaults to signed metadata, byte counts, and digests; the explicit flag adds every
+  available attempt observation as JSON-escaped UTF-8 or padded base64 while plot blobs remain
+  metadata-only. Every closed outcome shape, restart/foreign-cwd dispatch, old-key pinning,
+  corruption, ANSI/OSC/bidi controls, invalid UTF-8, redaction, and generic content-free failure
+  diagnostics are pinned; no HTTP/OpenAPI surface changed. Locked gate green at 1,433 tests/100%
+  branch coverage.
 - **M5.4g — durable retrieval across restart** (OPEN): certificate/spec GETs consult the archive
   as authority (LRUs may remain read-through caches); expose the public signing key by exact keyid
   under a bounded non-secret endpoint; chart liveness remains independent/ephemeral until replay.
