@@ -115,9 +115,9 @@ Each application process owns one lock-safe token bucket and active-job gate sha
 route. The defaults admit a burst of 120 jobs, refill at 120 jobs/minute, and allow 2 active jobs.
 Bounded body reads and transport-shape validation run first, preserving their 400/413/415 outcomes;
 then a caller either acquires both controls immediately or receives 429 before model, verifier, or
-native-render work. The permit spans async model wait and the full worker operation through
-artifact storage. If the request is cancelled while its worker is running, the worker retains the
-permit until it actually exits - Python cannot cancel that native thread safely.
+native-render work. The permit spans async model wait and the full worker operation through signed
+attempt commit and artifact storage. If the request is cancelled while its worker is running, the
+worker retains the permit until it actually exits - Python cannot cancel that native thread safely.
 
 This admission is logical and process-local, not distributed resource accounting. The canonical
 single-worker uvicorn process has one gate; running multiple service processes multiplies the
@@ -128,14 +128,24 @@ Signed VCert envelopes + canonical specs live in one bounded in-memory LRU; the 
 offline chart pages live in a second, independently bounded LRU. Both are addressable by the
 content-derived `plot_id` / `spec_id` a render returns, and either LRU may evict first - a chart can
 outlive its certificate or vice versa. A served chart was verified when built and is immutable;
-the certificate is provenance, not a chart-liveness gate. The service writes signing identity plus
-an initialized owner-private provenance archive at this stage: a 0600 raw private key,
-content-addressed public keys, and a versioned SQLite schema beneath the 0700
+the certificate is provenance, not a chart-liveness gate. Independent of those ephemeral caches,
+the service writes signing identity plus an owner-private provenance archive: a 0600 raw private
+key, content-addressed public keys, and a versioned SQLite schema beneath the 0700
 `VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
 rotates identity and changes plot IDs. Preserved/publicly served keys gain no trust automatically;
-operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`. The archive
-primitives support atomic plot + signed occurrence bundles, but endpoint capture begins in M5.4e;
-until then the service leaves the initialized archive empty. Durable retrieval/replay follow later.
+operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`.
+
+Every admitted, classified `/verify-and-render` or `/propose-spec` outcome commits one signed
+occurrence before response and before either LRU mutates. A successful occurrence atomically adds
+the complete plot bundle too; rejected verdicts and proposer faults bind only bytes actually
+observed. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
+from that occurrence envelope. `/verify-only`, pre-admission transport/rate/capacity refusal,
+disconnect before an outcome, process crash, unclassified operator/implementation fault, and
+archive failure are intentionally outside this non-completeness claim. Logical archive-quota
+refusal replaces the original outcome with 507; another archive fault replaces it with generic 500;
+neither response carries an attempt ID or leaks an unarchived chart. Raw CSV, prompt, model, and
+request bytes stay operator-local in the archive, never on an unauthenticated HTTP route. Durable
+certificate/spec retrieval and replay follow later.
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 
@@ -199,13 +209,16 @@ model reply.
 
 Once the backend returns a reply with extractable content, that content is a spec proposal —
 however malformed — so it rides a `200` verdict just like a spec posted directly, including a
-decode failure (the model's most common failure mode). Only a fault outside that flow answers
+decode failure (the model's most common failure mode). The verdict carries its committed
+`attempt_id`. Only a fault outside that flow answers
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
 timed-out backend (`503`), a backend reply that is oversized or not a usable chat completion
 (`502`, except the exact pre-generation token-policy 422 above), a decoded proposal naming a
 different dataset than requested (`502`, the dataset-name
 pin above),
-or a malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). The model
+or a malformed request body, wrong `Content-Type`, or wrong method (`400`/`415`/`405`). Admitted,
+classified proposer faults carry a committed `attempt_id`; transport-shape and admission refusals
+do not. The model
 proposes the whole spec, but of the verifier's trusted inputs it names only the dataset — never
 the trusted files at that path — so it cannot provoke the operator-config `500`.
 

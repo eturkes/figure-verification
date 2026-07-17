@@ -232,6 +232,35 @@ def test_every_post_documents_process_local_admission_refusal() -> None:
         assert response["content"]["application/problem+json"]["schema"] == problem_ref
 
 
+def test_attempt_addresses_and_archive_quota_are_documented() -> None:
+    schemas = _DOC["components"]["schemas"]
+    optional_address = {
+        "anyOf": [
+            {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            {"type": "null"},
+        ],
+        "default": None,
+    }
+    assert schemas["Verdict"]["properties"]["attempt_id"] == optional_address
+    assert "attempt_id" not in schemas["Verdict"]["required"]
+    assert schemas["Problem"]["properties"]["attempt_id"] == optional_address
+    assert "attempt_id" not in schemas["Problem"]["required"]
+    assert schemas["RenderVerdict"]["properties"]["attempt_id"] == {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$",
+    }
+    assert "attempt_id" in schemas["RenderVerdict"]["required"]
+
+    paths = _DOC["paths"]
+    for path in ("/verify-and-render", "/propose-spec"):
+        response = paths[path]["post"]["responses"]["507"]
+        assert "original endpoint outcome" in response["description"]
+        assert response["content"]["application/problem+json"]["schema"] == {
+            "$ref": "#/components/schemas/Problem"
+        }
+    assert "507" not in paths["/verify-only"]["post"]["responses"]
+
+
 def test_propose_documents_byte_policy_and_dedicated_422() -> None:
     # JSON Schema maxLength counts code points, so the request component states the real UTF-8
     # byte rule in prose. The route's dedicated Problem response covers pre-backend context policy
@@ -286,6 +315,7 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
             verified=True,
             layer="verify",
             results=(),
+            attempt_id="9" * 64,
             plot_id="a" * 64,
             spec_id="b" * 64,
             dataset_hash="sha256:" + "c" * 64,
@@ -308,6 +338,9 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
         paths["/verify-only"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
     )
     assert verify_200.is_valid(fail_verdict)
+    committed_fail = {**fail_verdict, "attempt_id": "8" * 64}
+    assert render_200.is_valid(committed_fail)
+    assert not render_200.is_valid({**fail_verdict, "attempt_id": "not-an-address"})
     # A render payload ALSO satisfies the bare Verdict schema — the overlap the anyOf relies on,
     # and precisely what breaks if Verdict gains forbid_unknown_fields (additionalProperties:false).
     assert verify_200.is_valid(render_verdict)
@@ -347,6 +380,7 @@ def test_propose_payloads_match_schemas() -> None:
         verified=True,
         layer="verify",
         results=(),
+        attempt_id="9" * 64,
         plot_id="a" * 64,
         spec_id="b" * 64,
         dataset_hash="sha256:" + "c" * 64,

@@ -211,8 +211,8 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   tagged failure before work at that boundary. Core verification covers raw manifest/CSV bytes,
   manifest columns, source rows/cells, deterministic evaluator work, and final plotted cells.
   Rendering/service boundaries additionally cover render rows/artifact bytes, SMT term count/time,
-  request/prompt/model response bytes, prompt tokens, request rate, and active jobs. Later M5 units
-  extend the same vocabulary to durable provenance. Evaluator work units are deterministic
+  request/prompt/model response bytes, prompt tokens, request rate, active jobs, and transactional
+  logical archive payload. Evaluator work units are deterministic
   logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero

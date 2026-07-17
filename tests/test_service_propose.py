@@ -21,6 +21,7 @@ import json
 import logging
 import shutil
 from collections.abc import AsyncIterator, Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -106,9 +107,11 @@ def _spec_text(name: str) -> bytes:
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient[Litestar]]:
+def client(tmp_path: Path) -> Iterator[TestClient[Litestar]]:
     """A client over the real data_dir (the golden corpus binds to it)."""
-    with TestClient(app=create_app(Settings(data_dir=_DATA))) as test_client:
+    with TestClient(
+        app=create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state"))
+    ) as test_client:
         yield test_client
 
 
@@ -118,8 +121,19 @@ def _propose(client: TestClient[Litestar], user_request: str, dataset_name: str)
     return client.post("/propose-spec", content=body, headers=_JSON)
 
 
+def _without_attempt_id(body: dict[str, Any]) -> dict[str, Any]:
+    """Remove and validate the committed occurrence address from one Problem body."""
+    attempt_id = body.pop("attempt_id")
+    assert isinstance(attempt_id, str)
+    assert len(attempt_id) == 64
+    int(attempt_id, 16)
+    return body
+
+
 # --- the verification outcomes: every proposal rides a 200 verdict -----------
-def test_propose_verified_spec_renders_and_stores(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_propose_verified_spec_renders_and_stores(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # A proposed good spec verifies and renders: the verified-success 200 is the Open WebUI
     # Location-variant embed — a [ProposeResult, summary] JSON array under Content-Disposition:
     # inline plus a Location header at GET /chart/{plot_id} on the operator's public origin
@@ -131,7 +145,15 @@ def test_propose_verified_spec_renders_and_stores(monkeypatch: pytest.MonkeyPatc
     # verify-and-render does — both reach it through the shared render seam.
     _install_reply(monkeypatch, _spec_text(_SALES_GOOD))
     base = "https://charts.example"
-    with TestClient(app=create_app(Settings(data_dir=_DATA, public_base_url=base))) as scoped:
+    with TestClient(
+        app=create_app(
+            Settings(
+                data_dir=_DATA,
+                state_dir=tmp_path / "state",
+                public_base_url=base,
+            )
+        )
+    ) as scoped:
         response = _propose(scoped, "Plot total revenue by month", "sales.csv")
         assert response.status_code == 200
         assert response.headers["x-content-type-options"] == _NOSNIFF
@@ -231,7 +253,9 @@ def test_propose_offrequest_broken_manifest_is_502(
     spec = json.loads(_spec_text(_SALES_GOOD))
     spec["dataset"]["name"] = "trap.csv"  # a decodable spec naming the broken-manifest dataset
     _install_reply(monkeypatch, json.dumps(spec).encode("utf-8"))
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as scoped:
         response = _propose(scoped, "anything", "sales.csv")
     assert response.status_code == 502
     assert response.headers["content-type"] == _PROBLEM_JSON
@@ -266,7 +290,10 @@ def test_propose_unknown_dataset_is_404(client: TestClient[Litestar]) -> None:
     ids=["user-request", "csv-bytes", "manifest-bytes", "manifest-columns", "prompt-bytes"],
 )
 def test_propose_context_policy_is_422_before_backend(
-    monkeypatch: pytest.MonkeyPatch, settings: Settings, user_request: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    user_request: str,
 ) -> None:
     # Every pre-model policy source shares one non-verdict 422 shape. The backend spy is the
     # load-bearing assertion: no resource refusal can become a model call or verification claim.
@@ -278,12 +305,13 @@ def test_propose_context_policy_is_422_before_backend(
         return httpx.Response(200, json={"choices": [{"message": {"content": "{}"}}]})
 
     _install_handler(monkeypatch, handler)
-    with TestClient(app=create_app(settings)) as scoped:
+    isolated = replace(settings, state_dir=tmp_path / "state")
+    with TestClient(app=create_app(isolated)) as scoped:
         response = _propose(scoped, user_request, "sales.csv")
     assert response.status_code == 422
     assert response.headers["content-type"] == _PROBLEM_JSON
     assert response.headers["x-content-type-options"] == _NOSNIFF
-    assert response.json() == {
+    assert _without_attempt_id(response.json()) == {
         "title": "Unprocessable Content",
         "status": 422,
         "detail": "the proposer input exceeds the configured resource policy",
@@ -370,7 +398,7 @@ def test_propose_backend_prompt_token_policy_is_422(
     response = _propose(client, "anything", "sales.csv")
     assert response.status_code == 422
     assert response.headers["content-type"] == _PROBLEM_JSON
-    assert response.json() == {
+    assert _without_attempt_id(response.json()) == {
         "title": "Unprocessable Content",
         "status": 422,
         "detail": "the proposer input exceeds the configured resource policy",
@@ -456,7 +484,9 @@ def test_propose_csv_without_manifest_is_404(tmp_path: Path) -> None:
     # locks the split CSV/manifest reads — the absence case must not become a 500.
     (tmp_path / "sales.csv").write_bytes(b"date,revenue\n2021-01,100\n")
     (tmp_path / "schemas").mkdir()
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as scoped:
         response = _propose(scoped, "anything", "sales.csv")
     assert response.status_code == 404
     assert response.headers["content-type"] == _PROBLEM_JSON
@@ -470,7 +500,9 @@ def test_propose_manifest_is_directory_is_500(tmp_path: Path) -> None:
     # transport installed); the fault fires while the proposer reads the manifest.
     (tmp_path / "sales.csv").write_bytes(b"date,revenue\n2021-01,100\n")
     (tmp_path / "schemas" / "sales.json").mkdir(parents=True)
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as scoped:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as scoped:
         response = _propose(scoped, "anything", "sales.csv")
     assert response.status_code == 500
     assert response.headers["content-type"] == _PROBLEM_JSON

@@ -219,7 +219,9 @@ def test_render_routes_read_each_verification_input_once(
 
     monkeypatch.setattr(pipeline, "read_bounded", counted_read)
     monkeypatch.setattr(checks, "read_bounded", counted_read)
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as client:
         response = _post_render_route(client, raw, route)
     assert response.status_code == 200
     assert _render_verdict(response, route)["verified"] is True
@@ -258,7 +260,9 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
         return run
 
     monkeypatch.setattr(checks, "verify_run", capture_then_mutate)
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as client:
         response = _post_render_route(client, raw, route)
     assert response.status_code == 200
     verdict = _render_verdict(response, route)
@@ -270,6 +274,7 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
 
 
 def test_proposer_formal_gate_blocks_built_bar_zero_corruption(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A builder-scale defect becomes a 200 failed verdict, with no native render or store."""
@@ -291,7 +296,9 @@ def test_proposer_formal_gate_blocks_built_bar_zero_corruption(
     request = msgspec.json.encode(
         {"user_request": "Plot total revenue by month", "dataset_name": "sales.csv"}
     )
-    with TestClient(app=create_app(Settings(data_dir=_DATA))) as client:
+    with TestClient(
+        app=create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state"))
+    ) as client:
         response = client.post("/propose-spec", content=request, headers=_JSON)
         assert response.status_code == 200
         body = cast("dict[str, Any]", response.json())
@@ -508,11 +515,18 @@ def test_signed_chart_final_html_limit_is_reapplied_before_store(
 
 
 # --- the chart LRU (html_cap) evicts independently of the render LRU (store_cap) -------------
-def test_chart_lru_evicts_independently_of_certificate() -> None:
+def test_chart_lru_evicts_independently_of_certificate(tmp_path: Path) -> None:
     # store_cap=2, html_cap=1: two renders both keep their certificate, but only the newest keeps
     # its chart page — the reachable mixed state (a certificate outlives its chart page), pinning
     # that the two LRUs evict on their OWN recency, through the transport.
-    app = create_app(Settings(data_dir=_DATA, store_cap=2, html_cap=1))
+    app = create_app(
+        Settings(
+            data_dir=_DATA,
+            state_dir=tmp_path / "state",
+            store_cap=2,
+            html_cap=1,
+        )
+    )
     with TestClient(app=app) as client:
         a: dict[str, Any] = client.post(
             "/verify-and-render", content=(_GOOD_DIR / _GOOD[0]["file"]).read_bytes(), headers=_JSON
@@ -543,8 +557,8 @@ def test_chart_absent_or_malformed_404_without_csp(client: TestClient[Litestar])
 
 
 # --- the store is bounded: the oldest render evicts, cert AND spec together --
-def test_store_eviction_drops_cert_and_spec() -> None:
-    app = create_app(Settings(data_dir=_DATA, store_cap=1))
+def test_store_eviction_drops_cert_and_spec(tmp_path: Path) -> None:
+    app = create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state", store_cap=1))
     with TestClient(app=app) as client:
         a: dict[str, Any] = client.post(
             "/verify-and-render", content=(_GOOD_DIR / _GOOD[0]["file"]).read_bytes(), headers=_JSON
@@ -605,7 +619,7 @@ def test_verify_and_render_manifest_unavailable_is_verdict(tmp_path: Path) -> No
     # A decodable good spec whose dataset has no trusted manifest under data_dir fails closed as
     # a 200 Verdict — never a chart — through verify-and-render's early return on an unverified
     # outcome (a real data-domain path that 100% branch coverage does not otherwise pin here).
-    app = create_app(Settings(data_dir=tmp_path))
+    app = create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
     with TestClient(app=app) as no_manifest_client:
         raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
         response = no_manifest_client.post("/verify-and-render", content=raw, headers=_JSON)
@@ -649,9 +663,13 @@ def test_render_resource_failure_is_verdict_without_store(
     assert client.get(f"/spec/{spec_id}").status_code == 404
 
 
-def test_render_uses_operator_resource_limits_without_store() -> None:
+def test_render_uses_operator_resource_limits_without_store(tmp_path: Path) -> None:
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
-    settings = Settings(data_dir=_DATA, max_render_rows=1)
+    settings = Settings(
+        data_dir=_DATA,
+        state_dir=tmp_path / "state",
+        max_render_rows=1,
+    )
     with TestClient(app=create_app(settings)) as scoped:
         response = scoped.post("/verify-and-render", content=raw, headers=_JSON)
         body: dict[str, Any] = response.json()

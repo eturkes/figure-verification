@@ -4,9 +4,9 @@
 create_app builds a fully configured Litestar app from a trusted Settings container —
 routes registered, settings on app.state, the framework body cap set to
 settings.max_body_bytes, one persistent signing identity loaded, and the exact versioned provenance
-archive initialized before the app can serve. The archive is not populated until M5.4e wires
-mandatory service attempt capture. Transport only: no verification trust lives here (POC_SCOPE
-service boundary).
+archive initialized before the app can serve. Every admitted outcome-bearing artifact POST commits
+a signed attempt there before its response or cache publication. Transport only: no verification
+trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
@@ -33,7 +33,7 @@ untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the
 redirect the verdict onto a different dataset than asked, so the verification claim is unmoved. A
 VERIFIED proposal is returned as the Open WebUI Location-variant chart embed (a [ProposeResult,
 summary] array under Content-Disposition: inline + a Location at GET /chart/{plot_id}; see
-propose_spec_route); every non-verified outcome keeps its prior body byte-for-byte.
+propose_spec_route); every committed success/failure carries its signed occurrence address.
 
 Error split: a verification outcome (verified, semantic/resource-failed, or decode-failed)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
@@ -47,19 +47,22 @@ adds two more
 problem+json outcomes over the model boundary — an unknown dataset name -> 404 (the name never
 echoed); a caller/dataset/prompt context over resource policy before the backend call OR an exact
 backend prompt-token refusal before native generation -> 422; and a backend that is unreachable
-(503) or returned any other unusable/oversized reply (502) — mapped by typed handlers registered
-ahead of the generic Exception handler (Litestar routes by the exception's MRO). A proposal that
-decodes but names a DIFFERENT dataset than requested is refused 502 too, by the dataset-name pin
-(_verify_render_pinned) via the plain HTTPException handler — never a verified 200 for an
-off-request chart. Every response carries X-Content-Type-Options: nosniff as an app default.
+(503) or returned any other unusable/oversized reply (502). The route catches these closed typed
+outcomes while it still owns the admission permit, commits their attempts in a worker, then returns
+the fixed public Problem. A proposal that decodes but names a DIFFERENT dataset than requested is
+refused 502 too, by the dataset-name pin (_verify_render_pinned) — never a verified 200 for an
+off-request chart. These admitted classified proposer faults commit a signed attempt before their
+Problem response. An archive logical-quota refusal replaces the original outcome with 507; another
+archive fault becomes generic 500; neither leaks the original response, an attempt id, or a cache
+entry. Every response carries X-Content-Type-Options: nosniff as an app default.
 
 Every POST reads and transport-validates its bounded body before entering one process-local
 ``AdmissionController`` shared across the application. A refusal answers RFC 9457 429 before
-model, verifier, or native-render work. An admitted permit spans async model wait and transfers
-to the worker for verification/render/storage; request cancellation cannot release it while that
-uncancellable worker remains active. This is per-process logical admission — the canonical single
-uvicorn worker has one controller, while multiple worker processes would multiply the configured
-aggregate capacity and rate.
+model, verifier, or native-render work. An admitted permit spans async model wait and transfers to
+the worker for verification, rendering, archive commit, and cache publication; request cancellation
+cannot release it while that uncancellable worker remains active. This is per-process logical
+admission — the canonical single uvicorn worker has one controller, while multiple worker processes
+would multiply the configured aggregate capacity and rate.
 
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
@@ -91,12 +94,19 @@ from litestar.status_codes import (
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_502_BAD_GATEWAY,
+    HTTP_507_INSUFFICIENT_STORAGE,
 )
 
 from verifier import __version__
 from verifier.service.admission import AdmissionController, JobPermit
-from verifier.service.archive import open_archive
-from verifier.service.identity import Signer, SigningIdentity, load_identity
+from verifier.service.archive import (
+    Archive,
+    ArchiveQuotaError,
+    AttemptOutcome,
+    AttemptRoute,
+    open_archive,
+)
+from verifier.service.identity import SigningIdentity, load_identity
 from verifier.service.model_client import (
     DatasetNotFoundError,
     ModelUpstreamError,
@@ -107,6 +117,9 @@ from verifier.service.model_client import (
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 from verifier.service.openapi import openapi_json_bytes
 from verifier.service.pipeline import (
+    AttemptWriter,
+    Outcome,
+    RenderContext,
     decode_stage,
     render_outcome,
     verify_and_render,
@@ -130,6 +143,25 @@ _NOSNIFF = ResponseHeader(name="x-content-type-options", value="nosniff")
 
 _ADMISSION_REFUSAL_DETAIL = "the process-local verifier work limit is currently exhausted"
 _PROPOSER_POLICY_DETAIL = "the proposer input exceeds the configured resource policy"
+_ARCHIVE_QUOTA_DETAIL = "the provenance archive has insufficient logical storage capacity"
+_FAULT_OUTCOME = {
+    ProposalFault.TRANSPORT: AttemptOutcome.MODEL_TRANSPORT,
+    ProposalFault.CONTENT_ENCODING: AttemptOutcome.MODEL_CONTENT_ENCODING,
+    ProposalFault.RESPONSE_TOO_LARGE: AttemptOutcome.MODEL_RESPONSE_TOO_LARGE,
+    ProposalFault.HTTP_STATUS: AttemptOutcome.MODEL_HTTP_STATUS,
+    ProposalFault.PROMPT_TOKENS: AttemptOutcome.MODEL_PROMPT_TOKENS,
+    ProposalFault.INVALID_ENVELOPE: AttemptOutcome.MODEL_INVALID_ENVELOPE,
+    ProposalFault.NO_CHOICES: AttemptOutcome.MODEL_NO_CHOICES,
+    ProposalFault.EMPTY_CONTENT: AttemptOutcome.MODEL_EMPTY_CONTENT,
+}
+
+
+class _RecordedProblem(msgspec.Struct, frozen=True):
+    """One classified Problem whose signed attempt already committed."""
+
+    status: int
+    detail: str
+    attempt_id: str
 
 
 @get("/health", operation_id="health", summary="Liveness and version probe", sync_to_thread=False)
@@ -203,13 +235,17 @@ async def verify_and_render_route(
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
     identity = cast("SigningIdentity", state["identity"])
+    archive = cast("Archive", state["archive"])
+    context = RenderContext(
+        writer=AttemptWriter(settings=settings, archive=archive, signer=identity.signer),
+        store=store,
+        route=AttemptRoute.VERIFY_AND_RENDER,
+        raw_spec=raw,
+    )
     with _admit_work(state) as permit:
         return await permit.run_sync(
             verify_and_render,
-            raw,
-            settings,
-            store,
-            identity.signer,
+            context,
             include_html=include_html,
         )
 
@@ -240,30 +276,36 @@ _PIN_MISMATCH_DETAIL = "the model proposed a specification for a different datas
 
 
 def _verify_render_pinned(
-    raw: bytes,
+    context: RenderContext,
     dataset_name: str,
-    settings: Settings,
-    store: ArtifactStore,
-    signer: Signer,
-) -> Verdict | RenderVerdict:
+) -> Verdict | RenderVerdict | _RecordedProblem:
     """Decode the model's proposed spec, refuse (502) a spec that names a dataset other than
     requested, then verify + render + store on the requested dataset. Pinning on the decoded name
     between decode_stage and verify_decoded keeps the request notion out of the trusted pipeline
     and refuses an off-request name BEFORE any trusted dataset I/O: a decode failure has no name to
     pin, so the 200 decode verdict flows (the metered failure mode); any other off-request name
     (its manifest present, broken, or absent alike) is a uniform 502, never a 500 or a store.
-    CPU-bound + synchronous (the route offloads it via the admitted permit); the 502 HTTPException
-    rides the plain HTTPException handler, so its detail names no dataset."""
+    CPU-bound + synchronous (the route offloads it via the admitted permit); the fixed 502 Problem
+    carries the committed attempt id while naming no dataset."""
+    raw = context.raw_spec
     decoded = decode_stage(raw)
     if isinstance(decoded, Verdict):
-        return decoded
+        return render_outcome(
+            Outcome(verdict=decoded),
+            context,
+            include_html=False,
+        )
     if decoded.dataset.name != dataset_name:
-        raise HTTPException(detail=_PIN_MISMATCH_DETAIL, status_code=HTTP_502_BAD_GATEWAY)
+        attempt_id = context.writer.record_problem(
+            AttemptOutcome.DATASET_MISMATCH,
+            HTTP_502_BAD_GATEWAY,
+            proposal_trace=context.proposal_trace,
+            raw_spec=raw,
+        )
+        return _RecordedProblem(HTTP_502_BAD_GATEWAY, _PIN_MISMATCH_DETAIL, attempt_id)
     return render_outcome(
-        verify_decoded(decoded, settings),
-        settings,
-        store,
-        signer,
+        verify_decoded(decoded, context.writer.settings),
+        context,
         include_html=False,
     )
 
@@ -276,7 +318,7 @@ def _verify_render_pinned(
 )
 async def propose_spec_route(
     request: Request[Any, Any, Any], state: State
-) -> ProposeResult | Response[bytes]:
+) -> ProposeResult | Response[bytes] | Response[Problem]:
     """Ask the untrusted local model to propose a VPlot spec for the request over the named
     dataset, then verify + render that proposal pinned to the requested dataset name
     (_verify_render_pinned). The model supplies only a spec, never plotted values, so the claim
@@ -287,27 +329,81 @@ async def propose_spec_route(
     Location-variant embed instead of a bare ProposeResult: a [ProposeResult, summary] JSON array
     under Content-Disposition: inline plus a Location header at GET /chart/{plot_id} on
     settings.public_base_url, so the chat UI renders the certified chart in a sandboxed iframe
-    while the model sees only the lean summary string; every non-verified outcome keeps its prior
-    body byte-for-byte. The model call is async; the admitted permit spans it, then transfers to
-    the CPU-bound verify+render worker off the event loop.
+    while the model sees only the lean summary string; every classified admitted outcome adds only
+    its non-secret attempt id to the prior public shape. The model call is async; the admitted
+    permit spans it, then transfers to the CPU-bound verify+render/archive worker off the event
+    loop.
     """
     _require_json(request)
     raw = await request.body()
     settings = cast("Settings", state["settings"])
     store = cast("ArtifactStore", state["store"])
     identity = cast("SigningIdentity", state["identity"])
+    archive = cast("Archive", state["archive"])
+    writer = AttemptWriter(settings=settings, archive=archive, signer=identity.signer)
     req = _decode_propose_request(raw)
     with _admit_work(state) as permit:
-        proposal = await propose_spec(req.user_request, req.dataset_name, settings)
+        try:
+            proposal = await propose_spec(req.user_request, req.dataset_name, settings)
+        except DatasetNotFoundError as not_found:
+            _LOGGER.info("propose-spec named an unknown dataset: %r", not_found.dataset_name)
+            attempt_id = await permit.run_sync(
+                writer.record_problem,
+                AttemptOutcome.DATASET_NOT_FOUND,
+                HTTP_404_NOT_FOUND,
+            )
+            return _problem_response(HTTP_404_NOT_FOUND, "no such dataset", attempt_id=attempt_id)
+        except ProposerPolicyError as policy:
+            _LOGGER.info("proposer resource policy refusal (%s)", policy.resource)
+            attempt_outcome = (
+                AttemptOutcome.PROPOSER_POLICY
+                if policy.trace is None
+                else _FAULT_OUTCOME[cast("ProposalFault", policy.trace.fault)]
+            )
+            attempt_id = await permit.run_sync(
+                writer.record_problem,
+                attempt_outcome,
+                HTTP_422_UNPROCESSABLE_ENTITY,
+                policy.trace,
+            )
+            return _problem_response(
+                HTTP_422_UNPROCESSABLE_ENTITY,
+                _PROPOSER_POLICY_DETAIL,
+                attempt_id=attempt_id,
+            )
+        except ModelUpstreamError as upstream:
+            fault = cast("ProposalFault", upstream.trace.fault)
+            _LOGGER.warning(
+                "model backend upstream fault serving /propose-spec (status=%d, fault=%s)",
+                upstream.status,
+                fault.value,
+            )
+            attempt_id = await permit.run_sync(
+                writer.record_problem,
+                _FAULT_OUTCOME[fault],
+                upstream.status,
+                upstream.trace,
+            )
+            return _problem_response(
+                upstream.status,
+                "the model backend did not return a usable proposal",
+                attempt_id=attempt_id,
+            )
         content = proposal.reply_bytes
+        context = RenderContext(
+            writer=writer,
+            store=store,
+            route=AttemptRoute.PROPOSE_SPEC,
+            raw_spec=content,
+            proposal_trace=proposal.trace,
+        )
         verdict = await permit.run_sync(
             _verify_render_pinned,
-            content,
+            context,
             req.dataset_name,
-            settings,
-            store,
-            identity.signer,
         )
+    if isinstance(verdict, _RecordedProblem):
+        return _problem_response(verdict.status, verdict.detail, attempt_id=verdict.attempt_id)
     result = ProposeResult(model_reply=content.decode("utf-8"), verdict=verdict)
     if not isinstance(verdict, RenderVerdict):
         return result
@@ -318,7 +414,8 @@ async def propose_spec_route(
     # string, never a dict/list), and renders the Location as a sandboxed chart iframe.
     # Content-Disposition: inline + Location is the embed trigger; the app-default nosniff already
     # rides the Response (the _fetch_artifact/chart precedent). Only verified-success bodies take
-    # this shape — every failing/refused/faulting outcome keeps its prior body byte-for-byte.
+    # this shape — every failing admitted outcome keeps the bare ProposeResult shape (now extended
+    # only by its nested verdict's attempt_id).
     base = cast("str", settings.public_base_url)
     summary = f"Verified chart for {req.dataset_name}: all {len(verdict.results)} checks passed."
     return Response(
@@ -409,13 +506,20 @@ def openapi_route() -> Response[bytes]:
     return Response(openapi_json_bytes(), media_type="application/json", status_code=HTTP_200_OK)
 
 
-def _problem_response(status: int, detail: str) -> Response[Problem]:
+def _problem_response(
+    status: int, detail: str, *, attempt_id: str | None = None
+) -> Response[Problem]:
     """An RFC 9457 response for a non-verdict HTTP outcome (misuse/admission/system fault).
 
     Carries the nosniff default explicitly — layered response headers do not reach exception
     responses.
     """
-    problem = Problem(title=HTTPStatus(status).phrase, status=status, detail=detail)
+    problem = Problem(
+        title=HTTPStatus(status).phrase,
+        status=status,
+        detail=detail,
+        attempt_id=attempt_id,
+    )
     return Response(
         problem,
         status_code=status,
@@ -449,44 +553,10 @@ def _internal_exception_handler(
     )
 
 
-def _dataset_not_found_handler(
-    _request: Request[Any, Any, Any], exc: Exception
-) -> Response[Problem]:
-    """Map a /propose-spec DatasetNotFoundError to a 404 problem+json. Registered ahead of the
-    generic Exception handler (Litestar routes by the exception's MRO), so an unknown/escaping
-    dataset name gets a 404, not the generic 500. The name is logged, never echoed — absent and
-    out-of-root answer alike, so a caller learns nothing about what the data directory holds."""
-    not_found = cast("DatasetNotFoundError", exc)
-    _LOGGER.info("propose-spec named an unknown dataset: %r", not_found.dataset_name)
-    return _problem_response(HTTP_404_NOT_FOUND, "no such dataset")
-
-
-def _model_upstream_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
-    """Map a /propose-spec ModelUpstreamError to its carried status (503 unreachable / 502
-    unusable reply) problem+json. Registered ahead of the generic Exception handler. Only its
-    bounded status/classifier are logged; transport causes and sensitive trace bytes stay out of
-    logs and the caller — a backend fault, never a verification outcome, so no verdict rides it."""
-    upstream = cast("ModelUpstreamError", exc)
-    fault = cast("ProposalFault", upstream.trace.fault)
-    _LOGGER.warning(
-        "model backend upstream fault serving /propose-spec (status=%d, fault=%s)",
-        upstream.status,
-        fault.value,
-    )
-    return _problem_response(upstream.status, "the model backend did not return a usable proposal")
-
-
-def _proposer_policy_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
-    """Map a pre-content ProposerPolicyError to 422, never a verification verdict.
-
-    The operator log retains the exact resource classifier; the fixed caller detail discloses
-    neither provisioned dataset dimensions nor configured ceilings. No model content or
-    native-generation work exists: context policy stops before the backend call; token policy stops
-    after tokenizer preflight.
-    """
-    policy = cast("ProposerPolicyError", exc)
-    _LOGGER.info("proposer resource policy refusal (%s)", policy.resource)
-    return _problem_response(HTTP_422_UNPROCESSABLE_ENTITY, _PROPOSER_POLICY_DETAIL)
+def _archive_quota_handler(_request: Request[Any, Any, Any], exc: Exception) -> Response[Problem]:
+    """Replace an uncommitted endpoint outcome with a fixed RFC-9457 507 and no attempt id."""
+    _LOGGER.warning("provenance archive logical quota refused an attempt", exc_info=exc)
+    return _problem_response(HTTP_507_INSUFFICIENT_STORAGE, _ARCHIVE_QUOTA_DETAIL)
 
 
 def create_app(settings: Settings) -> Litestar:
@@ -533,9 +603,7 @@ def create_app(settings: Settings) -> Litestar:
         # served verbatim by openapi_route above.
         openapi_config=None,
         exception_handlers={
-            DatasetNotFoundError: _dataset_not_found_handler,
-            ModelUpstreamError: _model_upstream_handler,
-            ProposerPolicyError: _proposer_policy_handler,
+            ArchiveQuotaError: _archive_quota_handler,
             HTTPException: _http_exception_handler,
             Exception: _internal_exception_handler,
         },

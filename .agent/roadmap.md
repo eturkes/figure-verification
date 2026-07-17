@@ -408,7 +408,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   Direct verified/rejected bundles, all classified proposer faults, repeat/collision exhaustion,
   signature/role/byte/SQL corruption, quota/read bounds, and injected rollback matrices pass;
   locked gate green at 1,416 tests/100% branch coverage.
-- **M5.4e — mandatory service attempt capture** (OPEN): wire every classified outcome-bearing
+- **M5.4e — mandatory service attempt capture** (DONE): wire every classified outcome-bearing
   admitted `/propose-spec` and `/verify-and-render` occurrence through the bundle APIs, including model
   upstream, decode, verify, resource, and formal failures (nullable plot). Pre-admission
   body/rate/capacity refusal, client cancellation/disconnect before an outcome, process crash, and
@@ -421,6 +421,21 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   decode + semantic/resource/formal fail + backend fault are diagnosable after restart; each stores
   only bytes actually observed; injected ledger failure replaces the original outcome without
   leaking it; no unauditable verified response/LRU entry; OpenAPI/consumers updated; gate green.
+  Landed as an `AttemptWriter` + per-occurrence `RenderContext` spanning the exact route bytes,
+  signer, limits, archive, and cache. Direct/proposer verified and rejected paths construct the
+  canonical pre-address verdict, materialize the successful plot when present, atomically record
+  the signed occurrence, then extend the public verdict with `attempt_id` and only afterward mutate
+  either LRU. The proposer route catches every closed dataset/policy/model fault while its admission
+  permit is live; the total `ProposalFault` mapping records only its lossless available trace, while
+  dataset mismatch commits inside the pinned worker before its fixed Problem returns. Logical quota
+  maps to fixed 507; every other archive/collision/integrity fault stays generic 500; neither carries
+  an attempt ID, original outcome, or cache entry. `Verdict`/`Problem` expose optional committed
+  addresses, `RenderVerdict` requires one, and `/verify-only` plus pre-admission 4xx/429 stay
+  address-free. Restart tests authenticate direct/proposer success, decode/semantic/resource/formal
+  rejection, mismatch, and backend-fault bundles; fault injection pins archive-before-cache and
+  transactional refusal. Artifact-route tests use isolated state directories, never operator state.
+  OpenAPI golden + loose bench consumer updated; locked gate green at 1,428 tests/100% branch
+  coverage.
 - **M5.4f — operator audit CLI** (OPEN): add an operator-only command that resolves attempt ID,
   verifies its envelope/blobs, and defaults to hashes/metadata; require an explicit flag to reveal
   prompt/reply/raw-spec content as ASCII JSON-escaped UTF-8 or base64, never raw terminal

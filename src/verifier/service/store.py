@@ -4,7 +4,8 @@
 A verified render contributes three canonical byte blobs: the signed DSSE VCert envelope (keyed
 by its content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served
 verbatim by a retrieval GET, as is the signed-provenance chart HTML page (keyed by plot_id) at
-GET /chart/{plot_id}. In-memory only: durable provenance/replay follows in later M5 units.
+GET /chart/{plot_id}. These caches are in-memory only; the independent archive already retains
+durable signed attempts + plot bundles, while durable HTTP retrieval/replay follows later.
 
 TWO independent bounded LRUs, each with count + exact logical-payload ceilings:
 

@@ -28,11 +28,13 @@ render_outcome (split from verify_and_render at M3.3b) is the render half: on a 
 verdict it renders the verified chart, signs the exact VCert bytes into deterministic DSSE,
 content-addresses the envelope (plot_id = SHA-256(envelope), spec_id = the payload's spec_hash),
 rebuilds the off-chain chart page from returned authoritative Vega with the signed provenance
-display, stores the artifacts, and answers a RenderVerdict. A failing verdict returns the plain
-Verdict with no chart. A passing outcome's already-formal-passed artifact is rendered directly,
-so no trusted file is read and no verification/build/solver work repeats. A render resource
-refusal appends its tagged failure and returns a plain Verdict before storage; invariant/native
-faults still escape to 500.
+display, atomically archives the complete plot + signed attempt, then stores the artifacts and
+answers a RenderVerdict. A failing verdict commits a signed attempt and returns the plain Verdict
+with no chart. Both public shapes gain the derived attempt id only after commit. A passing
+outcome's already-formal-passed artifact is rendered directly, so no trusted file is read and no
+verification/build/solver work repeats. A render resource
+refusal appends its tagged failure and commits a rejected attempt before return; archive failure
+escapes before cache publication, while invariant/native faults still escape to 500.
 verify_and_render is the thin verify_only -> render_outcome composition; app.py's proposer
 reuses these seams — decode_stage, dataset pin, verify_decoded, render_outcome — so an
 off-request name is refused before the wrong dataset's trusted I/O.
@@ -40,6 +42,7 @@ off-request name is refused before the wrong dataset's trusted I/O.
 
 import hashlib
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
 
@@ -49,12 +52,23 @@ from verifier import attestation, canon, checks, formal, render
 from verifier.errors import VerificationError
 from verifier.limits import read_bounded
 from verifier.schema import VPlotSpec, decode_spec
+from verifier.service.archive import (
+    Archive,
+    AttemptArtifacts,
+    AttemptDraft,
+    AttemptOutcome,
+    AttemptRoute,
+    PlotBundle,
+    materialize_plot_bundle,
+)
 from verifier.service.identity import Signer
+from verifier.service.model_client import ProposalTrace
 from verifier.service.models import RenderVerdict, Verdict
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
 _EMPTY_TRACE = checks.VerificationTrace(manifest_bytes=None, source_bytes=None)
+_ENCODER = msgspec.json.Encoder(order="deterministic")
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +81,51 @@ class Outcome:
     evidence: checks.RecomputedEvidence | None = field(default=None, repr=False)
     formal_trace: tuple[formal.FormalTrace, ...] = field(default=(), repr=False)
     prepared: render.PreparedArtifact | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class AttemptWriter:
+    """One app's durable occurrence writer: archive + signer + exact active limits."""
+
+    settings: Settings
+    archive: Archive
+    signer: Signer
+
+    def record_problem(
+        self,
+        outcome: AttemptOutcome,
+        http_status: int,
+        proposal_trace: ProposalTrace | None = None,
+        raw_spec: bytes | None = None,
+    ) -> str:
+        """Sign + commit one classified admitted proposer fault before its Problem returns."""
+        artifacts = AttemptArtifacts(
+            raw_spec=raw_spec,
+            model_request=None if proposal_trace is None else proposal_trace.request_body,
+            model_response=None if proposal_trace is None else proposal_trace.response_body,
+            model_reply=None if proposal_trace is None else proposal_trace.reply_bytes,
+        )
+        draft = AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=AttemptRoute.PROPOSE_SPEC,
+            http_status=http_status,
+            outcome=outcome,
+            artifacts=artifacts,
+        )
+        return self.archive.record_attempt(
+            draft, self.signer, limits=self.settings.limits
+        ).attempt_id
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RenderContext:
+    """All service-owned state + observed route bytes needed to capture one render attempt."""
+
+    writer: AttemptWriter
+    store: ArtifactStore
+    route: AttemptRoute
+    raw_spec: bytes = field(repr=False)
+    proposal_trace: ProposalTrace | None = field(default=None, repr=False)
 
 
 def _single(check: str, message: str, *, layer: Literal["decode", "verify"]) -> Verdict:
@@ -165,19 +224,64 @@ def verify_only(raw: bytes, settings: Settings) -> Outcome:
     return verify_decoded(decoded, settings)
 
 
+def _attempt_artifacts(
+    outcome: Outcome,
+    raw_spec: bytes,
+    verdict: bytes,
+    proposal_trace: ProposalTrace | None,
+) -> AttemptArtifacts:
+    """Project one final verdict onto only the exact bytes observed along its route."""
+    return AttemptArtifacts(
+        raw_csv=outcome.trace.source_bytes,
+        raw_manifest=outcome.trace.manifest_bytes,
+        raw_spec=raw_spec,
+        verdict=verdict,
+        model_request=None if proposal_trace is None else proposal_trace.request_body,
+        model_response=None if proposal_trace is None else proposal_trace.response_body,
+        model_reply=None if proposal_trace is None else proposal_trace.reply_bytes,
+    )
+
+
+def _record_verdict_attempt(
+    outcome: Outcome,
+    verdict: Verdict,
+    context: RenderContext,
+    plot: PlotBundle | None,
+) -> str:
+    """Sign + commit one verified/rejected occurrence and return its derived address."""
+    verdict_bytes = plot.verdict if plot is not None else _ENCODER.encode(verdict)
+    draft = AttemptDraft(
+        occurred_at=datetime.now(UTC),
+        route=context.route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED if plot is not None else AttemptOutcome.REJECTED,
+        artifacts=_attempt_artifacts(
+            outcome,
+            context.raw_spec,
+            verdict_bytes,
+            context.proposal_trace,
+        ),
+        plot=plot,
+    )
+    writer = context.writer
+    return writer.archive.record_attempt(
+        draft, writer.signer, limits=writer.settings.limits
+    ).attempt_id
+
+
 def render_outcome(
     outcome: Outcome,
-    settings: Settings,
-    store: ArtifactStore,
-    signer: Signer,
+    context: RenderContext,
     *,
     include_html: bool,
 ) -> Verdict | RenderVerdict:
-    """Render the verified chart for a passing Outcome, store the artifacts content-addressed, and
-    answer a RenderVerdict. A failing verdict answers the plain Verdict — never a chart on an
-    unverified outcome. CPU-bound + synchronous (the handler offloads it via sync_to_thread).
-    Split from verify_and_render so app.py's proposer can pin the requested dataset name between
-    decode and verification.
+    """Render, durably capture, then cache one admitted artifact-producing outcome.
+
+    A failing verdict commits its exact observed inputs + canonical pre-address verdict and returns
+    the same verdict extended with the derived attempt id. A passing outcome renders/signs once,
+    atomically commits the complete plot + occurrence, and only then mutates either LRU. Archive
+    failure therefore escapes before an outcome or cache entry can leak. CPU-bound + synchronous
+    (the handler offloads the entire operation through its admission permit).
 
     The signed offline HTML page is rebuilt + stored on EVERY verified render from the returned
     authoritative Vega bytes + VCert, then final-byte-admitted after adding the badge, signer
@@ -187,12 +291,20 @@ def render_outcome(
     see store.py's mixed-state note). include_html governs ONLY the JSON-body html copy (the large
     inline view the caller opts into); the stored page is not gated by it."""
     if not outcome.verdict.verified:
-        return outcome.verdict
+        attempt_id = _record_verdict_attempt(
+            outcome,
+            outcome.verdict,
+            context,
+            None,
+        )
+        return msgspec.structs.replace(outcome.verdict, attempt_id=attempt_id)
     # verified => the final verify/formal stage passed, so spec + prepared are populated (cast, not
     # assert: an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
     spec = cast("VPlotSpec", outcome.spec)
     prepared = cast("render.PreparedArtifact", outcome.prepared)
     try:
+        settings = context.writer.settings
+        signer = context.writer.signer
         result = render.render_prepared(prepared, include_html=False, limits=settings.limits)
         cert = result.certificate
         envelope = attestation.sign_vcert(
@@ -214,23 +326,44 @@ def render_outcome(
         chart_bytes = render.admit_html(chart_html, settings.limits)
     except VerificationError as exc:
         resource_failure = checks.make_result(exc.check, status="fail", message=str(exc))
-        return Verdict(
+        verdict = Verdict(
             verified=False,
             layer=outcome.verdict.layer,
             results=(*outcome.verdict.results, resource_failure),
         )
+        attempt_id = _record_verdict_attempt(
+            outcome,
+            verdict,
+            context,
+            None,
+        )
+        return msgspec.structs.replace(verdict, attempt_id=attempt_id)
+    plot = materialize_plot_bundle(
+        prepared,
+        result,
+        envelope,
+        signer,
+        limits=settings.limits,
+    )
+    attempt_id = _record_verdict_attempt(
+        outcome,
+        outcome.verdict,
+        context,
+        plot,
+    )
     spec_id = cert.spec_hash.removeprefix("sha256:")
-    store.put(
+    context.store.put(
         plot_id=plot_id,
         cert_bytes=envelope,
         spec_id=spec_id,
         spec_bytes=canon.spec_bytes(spec),
     )
-    store.put_chart(plot_id, chart_bytes)
+    context.store.put_chart(plot_id, chart_bytes)
     return RenderVerdict(
         verified=True,
         layer=outcome.verdict.layer,
         results=outcome.verdict.results,
+        attempt_id=attempt_id,
         plot_id=plot_id,
         spec_id=spec_id,
         dataset_hash=cert.dataset_hash,
@@ -244,10 +377,7 @@ def render_outcome(
 
 
 def verify_and_render(
-    raw: bytes,
-    settings: Settings,
-    store: ArtifactStore,
-    signer: Signer,
+    context: RenderContext,
     *,
     include_html: bool,
 ) -> Verdict | RenderVerdict:
@@ -255,9 +385,7 @@ def verify_and_render(
     render_outcome). A failing verdict answers the plain Verdict — never a chart. CPU-bound +
     synchronous (the handler offloads it via sync_to_thread)."""
     return render_outcome(
-        verify_only(raw, settings),
-        settings,
-        store,
-        signer,
+        verify_only(context.raw_spec, context.writer.settings),
+        context,
         include_html=include_html,
     )

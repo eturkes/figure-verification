@@ -194,14 +194,24 @@ def test_decode_propose_result_reads_embed_and_bare() -> None:
     # array marked by a Location header) -> take element0; a non-verified 200 is the bare
     # ProposeResult object. Both yield the structured result the report tallies. The weak model
     # never reaches verified success live, but the shape must decode for a future stronger one.
-    verified = {"verified": True, "layer": "verify", "results": []}
+    verified = {
+        "verified": True,
+        "layer": "verify",
+        "results": [],
+        "attempt_id": "a" * 64,
+    }
     embed = msgspec.json.encode([{"model_reply": "spec", "verdict": verified}, "chart summary"])
     embedded = httpx.Response(200, content=embed, headers={"location": "http://x/chart/id"})
     from_embed = _decode_propose_result(embedded)
     assert from_embed.model_reply == "spec"
     assert from_embed.verdict.verified is True
     # A bare 200 (no Location header) is the non-verified ProposeResult object, as before.
-    failed = {"verified": False, "layer": "decode", "results": []}
+    failed = {
+        "verified": False,
+        "layer": "decode",
+        "results": [],
+        "attempt_id": "b" * 64,
+    }
     bare = msgspec.json.encode({"model_reply": "```json\n{}\n```", "verdict": failed})
     from_bare = _decode_propose_result(httpx.Response(200, content=bare))
     assert from_bare.model_reply == "```json\n{}\n```"

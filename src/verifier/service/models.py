@@ -6,7 +6,8 @@ answered HTTP 200 whether the spec verified, decoded but failed a check, or fail
 decode (a decode failure is an expected model failure mode M3 meters, not transport
 misuse). RenderVerdict extends that envelope with the render artifacts POST
 /verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
-content-addressed ids, and the five cert-verbatim hashes); a FAILING verify-and-render
+content-addressed ids, the durable attempt id, and the five cert-verbatim hashes); a FAILING
+verify-and-render
 answers a plain Verdict, so a chart never rides an unverified outcome. Problem is the RFC
 9457 application/problem+json body the app's exception handlers emit for transport misuse,
 process-local admission refusal, or a server-config fault (wrong content-type, oversize body,
@@ -25,7 +26,7 @@ verdict on it. The model proposes only a spec, never plotted values, so the clai
 unchanged — a malformed proposal simply rides a failing verdict like any other blocked spec.
 """
 
-from typing import Literal
+from typing import Annotated, Literal
 
 import msgspec
 
@@ -34,20 +35,26 @@ from verifier.schema import DatasetName
 
 __all__ = ["Problem", "ProposeRequest", "ProposeResult", "RenderVerdict", "Verdict"]
 
+type AttemptId = Annotated[str, msgspec.Meta(pattern="^[0-9a-f]{64}$")]
 
-class Verdict(msgspec.Struct, frozen=True, kw_only=True):
+
+class Verdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
     """The verification outcome (HTTP 200 regardless of the judgement).
 
     `layer` names the stage that produced it: "decode" when the raw body failed to decode
     (a lone synthetic spec.decode result), "verify" once decoding passed and the trusted
     pipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).
-    `verified` is true only when every final result passed. Every field is always present, so no
-    omit_defaults is needed.
+    `verified` is true only when every final result passed. `attempt_id` is present only after an
+    artifact-producing route durably commits the signed occurrence; stateless `/verify-only`
+    leaves it absent. The archived canonical verdict omits it too because the signed attempt
+    envelope - and therefore its content-derived id - does not exist until after those bytes are
+    fixed.
     """
 
     verified: bool
     layer: Literal["decode", "verify"]
     results: tuple[CheckResult, ...]
+    attempt_id: AttemptId | None = None
 
 
 class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
@@ -60,6 +67,8 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     returns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this
     field alone. A DISTINCT struct rather than a Verdict subclass, so the handler's
     Verdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.
+    `attempt_id` = SHA-256 hexdigest of the signed occurrence envelope committed atomically with
+    the complete plot bundle, before either in-memory LRU mutates.
     `plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;
     `spec_id` = `spec_hash` minus its
     `sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;
@@ -74,6 +83,7 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     verified: Literal[True]
     layer: Literal["decode", "verify"]
     results: tuple[CheckResult, ...]
+    attempt_id: AttemptId
     plot_id: str
     spec_id: str
     dataset_hash: str
@@ -90,7 +100,9 @@ class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
 
     `type` defaults to the RFC's "about:blank" (omitted when default), `title` is the HTTP
     status reason phrase, `status` the code, `detail` the occurrence-specific message. Transport
-    misuse, work/prompt-policy refusal, upstream failure, and server faults use this shape. A
+    misuse, work/prompt-policy refusal, upstream failure, and server faults use this shape.
+    `attempt_id` is present only for an admitted, classified proposer fault whose signed occurrence
+    committed successfully; pre-admission refusals and archive/internal faults omit it. A
     verification outcome never travels as a Problem — it is always a 200 Verdict.
     """
 
@@ -98,6 +110,7 @@ class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
     status: int
     detail: str
     type: str = "about:blank"
+    attempt_id: AttemptId | None = None
 
 
 class ProposeRequest(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):

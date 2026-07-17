@@ -91,7 +91,7 @@
             }
           },
           "500": {
-            "description": "The verifier hit an internal operator-config fault.",
+            "description": "The verifier hit an internal operator-config, implementation, or archive fault.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -130,7 +130,7 @@
         },
         "responses": {
           "200": {
-            "description": "A RenderVerdict with the certified chart on a passing verdict, or a plain Verdict on a failing one — never a chart on an unverified outcome.",
+            "description": "A RenderVerdict with the certified chart on a passing verdict, or a plain Verdict on a failing one — each carrying its durably committed attempt_id, and never a chart on an unverified outcome.",
             "content": {
               "application/json": {
                 "schema": {
@@ -187,7 +187,17 @@
             }
           },
           "500": {
-            "description": "The verifier hit an internal operator-config fault.",
+            "description": "The verifier hit an internal operator-config, implementation, or archive fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -216,7 +226,7 @@
         },
         "responses": {
           "200": {
-            "description": "On a verified proposal, a [result, summary] array carrying the certified chart as an Open WebUI embed; on any other outcome, the bare result — the model's raw reply paired with the verify-and-render verdict (a plain verdict when unverified).",
+            "description": "On a verified proposal, a [result, summary] array carrying the certified chart as an Open WebUI embed; on any other outcome, the bare result — the model's raw reply paired with the verify-and-render verdict (a plain verdict when unverified). Every admitted classified outcome carries its durably committed attempt_id.",
             "content": {
               "application/json": {
                 "schema": {
@@ -303,7 +313,17 @@
             }
           },
           "500": {
-            "description": "The verifier hit an internal operator-config fault.",
+            "description": "The verifier hit an internal operator-config, implementation, or archive fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -911,7 +931,7 @@
       },
       "Problem": {
         "title": "Problem",
-        "description": "RFC 9457 detail for a non-verification HTTP outcome.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. Transport\nmisuse, work/prompt-policy refusal, upstream failure, and server faults use this shape. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
+        "description": "RFC 9457 detail for a non-verification HTTP outcome.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. Transport\nmisuse, work/prompt-policy refusal, upstream failure, and server faults use this shape.\n`attempt_id` is present only for an admitted, classified proposer fault whose signed occurrence\ncommitted successfully; pre-admission refusals and archive/internal faults omit it. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
         "type": "object",
         "properties": {
           "title": {
@@ -926,6 +946,18 @@
           "type": {
             "type": "string",
             "default": "about:blank"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1067,7 +1099,7 @@
       },
       "Verdict": {
         "title": "Verdict",
-        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).\n`verified` is true only when every final result passed. Every field is always present, so no\nomit_defaults is needed.",
+        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).\n`verified` is true only when every final result passed. `attempt_id` is present only after an\nartifact-producing route durably commits the signed occurrence; stateless `/verify-only`\nleaves it absent. The archived canonical verdict omits it too because the signed attempt\nenvelope - and therefore its content-derived id - does not exist until after those bytes are\nfixed.",
         "type": "object",
         "properties": {
           "verified": {
@@ -1084,6 +1116,18 @@
             "items": {
               "$ref": "#/components/schemas/CheckResult"
             }
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1140,7 +1184,7 @@
       },
       "RenderVerdict": {
         "title": "RenderVerdict",
-        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nchanging the trusted manifest, verifier/formal TCB, emitted Vega bytes, or signing key keeps\nspec_id but changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them).\nThe five `*_hash` fields are the authenticated VCert payload's verbatim\n`sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
+        "description": "A passing /verify-and-render outcome: the Verdict fields plus the render artifacts.\n\nOnly ever answered when `verified` is true — the field is typed `Literal[True]`, a STATIC\n(mypy) pin: constructing a RenderVerdict with `verified=False` is a type error, though\nmsgspec skips `Literal` checks at runtime (direct construction still builds one), so the\nruntime never-a-chart guarantee lives in the pipeline path (a failing verify-and-render\nreturns a plain Verdict, structurally without svg/html) plus the bad-corpus tests, not this\nfield alone. A DISTINCT struct rather than a Verdict subclass, so the handler's\nVerdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.\n`attempt_id` = SHA-256 hexdigest of the signed occurrence envelope committed atomically with\nthe complete plot bundle, before either in-memory LRU mutates.\n`plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;\n`spec_id` = `spec_hash` minus its\n`sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;\nchanging the trusted manifest, verifier/formal TCB, emitted Vega bytes, or signing key keeps\nspec_id but changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them).\nThe five `*_hash` fields are the authenticated VCert payload's verbatim\n`sha256:`-prefixed digests.\n`html` (omitted when absent via omit_defaults) carries the offline view only under\ninclude_html=true.",
         "type": "object",
         "properties": {
           "verified": {
@@ -1157,6 +1201,10 @@
             "items": {
               "$ref": "#/components/schemas/CheckResult"
             }
+          },
+          "attempt_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           },
           "plot_id": {
             "type": "string"
@@ -1190,6 +1238,7 @@
           "verified",
           "layer",
           "results",
+          "attempt_id",
           "plot_id",
           "spec_id",
           "dataset_hash",

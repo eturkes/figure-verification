@@ -52,9 +52,10 @@ _OPENAPI_VERSION = "3.1.0"
 _COMPONENTS = "#/components/schemas"
 # A 64-hex artifact id (the fullmatch app.py enforces on the path param, in OpenAPI form).
 _ID_PATTERN = "^[0-9a-f]{64}$"
-# RenderVerdict's nine render-only fields on top of the Verdict envelope; every one is a
+# RenderVerdict's ten render-only fields on top of the Verdict envelope; every one is a
 # plain string, and all but the omit_defaults `html` are required.
 _RENDER_STRING_FIELDS = (
+    "attempt_id",
     "plot_id",
     "spec_id",
     "dataset_hash",
@@ -90,13 +91,14 @@ def _render_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
     Its `verified/layer/results` come from a DEEPCOPY of Verdict's properties (never an alias:
     an in-place override would rewrite Verdict's own `verified` and falsely document a plain
     failing Verdict as always-verified), with `verified` overridden to {"const": True} — the
-    JSON-Schema meaning of Literal[True]. The nine render fields are plain strings; every field
+    JSON-Schema meaning of Literal[True]. The ten render fields are plain strings; every field
     but the omit_defaults `html` is required. The title/description/type/properties/required key
     shape mirrors msgspec's generated siblings."""
     properties: dict[str, Any] = copy.deepcopy(verdict_schema["properties"])
     properties["verified"] = {"const": True}
     for name in _RENDER_STRING_FIELDS:
         properties[name] = {"type": "string"}
+    properties["attempt_id"]["pattern"] = _ID_PATTERN
     return {
         "title": "RenderVerdict",
         "description": inspect.getdoc(RenderVerdict),
@@ -238,7 +240,15 @@ def _paths() -> dict[str, Any]:
             "The process-local rate or active-job admission gate refused the work before model, "
             "verification, or render execution. Each service process owns an independent gate."
         ),
-        "500": _problem_response("The verifier hit an internal operator-config fault."),
+        "500": _problem_response(
+            "The verifier hit an internal operator-config, implementation, or archive fault."
+        ),
+    }
+    archive_quota = {
+        "507": _problem_response(
+            "The signed attempt could not commit within the configured logical archive quota; "
+            "the original endpoint outcome and any chart artifact were withheld."
+        )
     }
     not_found = {"404": _problem_response("No stored artifact for that id, or a malformed id.")}
     return {
@@ -292,7 +302,8 @@ def _paths() -> dict[str, Any]:
                 "responses": {
                     "200": _json_response(
                         "A RenderVerdict with the certified chart on a passing verdict, or a "
-                        "plain Verdict on a failing one — never a chart on an unverified outcome.",
+                        "plain Verdict on a failing one — each carrying its durably committed "
+                        "attempt_id, and never a chart on an unverified outcome.",
                         # anyOf, NOT oneOf: a RenderVerdict payload also satisfies Verdict
                         # (which carries no additionalProperties:false), so the two are not
                         # mutually exclusive.
@@ -310,6 +321,7 @@ def _paths() -> dict[str, Any]:
                         "The include_html query parameter was not a valid boolean."
                     ),
                     **problems_post,
+                    **archive_quota,
                 },
             }
         },
@@ -341,7 +353,8 @@ def _paths() -> dict[str, Any]:
                         "On a verified proposal, a [result, summary] array carrying the certified "
                         "chart as an Open WebUI embed; on any other outcome, the bare result — the "
                         "model's raw reply paired with the verify-and-render verdict (a plain "
-                        "verdict when unverified).",
+                        "verdict when unverified). Every admitted classified outcome carries its "
+                        "durably committed attempt_id.",
                         # anyOf: the bare ProposeResult object (every non-verified outcome), OR the
                         # verified-success embed body — a two-element [ProposeResult, summary]
                         # array (element0 that same ProposeResult, element1 a human summary
@@ -373,6 +386,7 @@ def _paths() -> dict[str, Any]:
                         "and the backend token ceiling are independent and inclusive."
                     ),
                     **problems_post,
+                    **archive_quota,
                     "502": _problem_response(
                         "The model backend replied, but not with a usable chat completion "
                         "(any other non-success status, an oversized or malformed body, or no "
