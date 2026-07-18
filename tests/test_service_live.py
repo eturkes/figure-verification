@@ -4,7 +4,8 @@
 The in-process TestClient suites (test_service*.py) already pin the full verdict/transport
 matrix; this proves the one thing they cannot — that `python -m verifier.service` really binds
 a socket and serves ASGI through uvicorn from a foreign working directory, the shape a real
-deploy (and M4's Open WebUI tool server) uses. So it stays a single health + verify-only check.
+deploy (and M4's Open WebUI tool server) uses. It drives health, verification, render, replay,
+and regenerated-chart retrieval over that socket.
 
 VERIFIER_DATA_DIR points at the project's real data/ (absolute) so the good spec's sales.csv
 binding resolves; cwd is a throwaway tmp dir purely to prove the installed package resolves
@@ -78,6 +79,7 @@ def test_live_socket_health_and_verify(tmp_path: Path) -> None:
         "VERIFIER_DATA_DIR": str(_DATA),
         "VERIFIER_HOST": "127.0.0.1",
         "VERIFIER_PORT": str(port),
+        "VERIFIER_STATE_DIR": str(tmp_path / "state"),
         # Keep the live transport recipe explicit: this smoke probes socket wiring, not admission.
         "VERIFIER_WORK_RATE_PER_MINUTE": "1000",
         "VERIFIER_WORK_BURST": "1000",
@@ -115,6 +117,29 @@ def test_live_socket_health_and_verify(tmp_path: Path) -> None:
             assert results, "verify stage returned no checks"
             assert all(result["status"] == "pass" for result in results)
             assert "dataset.hash_matches_source" in {result["check"] for result in results}
+
+            rendered = httpx.post(
+                f"{base_url}/verify-and-render",
+                content=_GOOD_SPEC.read_bytes(),
+                headers={"content-type": "application/json"},
+                timeout=20.0,
+            )
+            assert rendered.status_code == 200
+            rendered_body = rendered.json()
+            assert rendered_body["verified"] is True
+            plot_id = rendered_body["plot_id"]
+
+            replay = httpx.get(f"{base_url}/replay/{plot_id}", timeout=20.0)
+            assert replay.status_code == 200
+            replay_body = replay.json()
+            assert replay_body["status"] == "exact"
+            assert replay_body["exact"] is True
+
+            chart = httpx.get(f"{base_url}/chart/{plot_id}", timeout=10.0)
+            assert chart.status_code == 200
+            assert chart.headers["content-type"].startswith("text/html")
+            assert chart.headers["content-security-policy"] == "sandbox allow-scripts"
+            assert plot_id in chart.text
         finally:
             proc.terminate()
             try:

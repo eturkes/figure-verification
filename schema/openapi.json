@@ -355,6 +355,65 @@
         }
       }
     },
+    "/replay/{plot_id}": {
+      "get": {
+        "operationId": "replayPlot",
+        "summary": "Replay an archived verified plot and report reproduction status",
+        "parameters": [
+          {
+            "name": "plot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A bounded reproduction verdict under the configured independent trust policy; it contains no raw snapshot, prompt, or rendered bytes. An exact reproduction repopulates the ephemeral chart LRU so GET /chart/{plot_id} serves the regenerated page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayVerdict"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused replay before verification or render execution. Each service process owns an independent gate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/certificate/{plot_id}": {
       "get": {
         "operationId": "getCertificate",
@@ -881,6 +940,70 @@
         ],
         "additionalProperties": false
       },
+      "ArtifactHashMatches": {
+        "title": "ArtifactHashMatches",
+        "description": "Fresh-vs-authenticated VCert hash equality for each certified artifact.",
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "plotted_table": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "vega_lite": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
       "CertifiedCheck": {
         "title": "CertifiedCheck",
         "description": "One passing final result recorded with the method that established it.",
@@ -1056,6 +1179,117 @@
         ],
         "additionalProperties": false
       },
+      "ReplayVerdict": {
+        "title": "ReplayVerdict",
+        "description": "Bounded replay result; carries hashes/flags/versions but no source or rendered artifacts.",
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "drift",
+              "exact",
+              "integrity_failed",
+              "recomputation_failed",
+              "untrusted_key"
+            ]
+          },
+          "integrity_ok": {
+            "type": "boolean"
+          },
+          "trusted_keyid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "attempt_address",
+                  "attempt_artifacts",
+                  "attempt_manifest",
+                  "attempt_outcome",
+                  "attempt_plot",
+                  "attempt_signature",
+                  "plot_address",
+                  "plot_artifacts",
+                  "plot_contents",
+                  "plot_signature",
+                  "recomputation",
+                  "trust"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostic": {
+            "type": "string"
+          },
+          "artifact_matches": {
+            "$ref": "#/components/schemas/ArtifactHashMatches"
+          },
+          "payload_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drift": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionDrift"
+            }
+          },
+          "svg_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exact": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "integrity_ok",
+          "trusted_keyid",
+          "failure_stage",
+          "diagnostic",
+          "artifact_matches",
+          "payload_match",
+          "version_match",
+          "drift",
+          "svg_match",
+          "exact"
+        ],
+        "additionalProperties": false
+      },
       "Tcb": {
         "title": "Tcb",
         "description": "The verifier/formal/display TCB stamped into VCert.\n\n``verifier_version`` identifies the package implementing the checks; ``z3_version`` the\nsolver behind ``z3_smt`` results. The remaining fields identify canonicalization and the\nnative display stack trusted to render verified data faithfully, NOT proven to do so. SVG is\nnot hashed and cross-machine byte identity is unclaimed. ``vendored_font_sha256`` identifies\nthe registered font asset, not proof that vl-convert selected it over a same-named system\nfont (``render_svg`` documents the same scope).",
@@ -1205,6 +1439,39 @@
           "layer",
           "results"
         ]
+      },
+      "VersionDrift": {
+        "title": "VersionDrift",
+        "description": "One bounded TCB field whose archived and current values differ.",
+        "type": "object",
+        "properties": {
+          "field": {
+            "enum": [
+              "canon_version",
+              "font_family",
+              "msgspec",
+              "python",
+              "unidata",
+              "vendored_font_sha256",
+              "verifier_version",
+              "vl_convert_python",
+              "vl_version",
+              "z3_version"
+            ]
+          },
+          "archived": {
+            "type": "string"
+          },
+          "current": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "archived",
+          "current"
+        ],
+        "additionalProperties": false
       },
       "DSSEEnvelope": {
         "title": "DSSEEnvelope",

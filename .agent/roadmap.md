@@ -525,7 +525,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   model-client import and no `data_dir` argument. Locked gate green at 1,519 tests/100% branch
   coverage.
   Context: `main=61% 165K/272K`; `impl=68% 185K/272K`.
-- **M5.5c — replay HTTP surface + audit docs** (OPEN): add `GET /replay/{plot_id}` returning a
+- **M5.5c — replay HTTP surface + audit docs** (DONE): add `GET /replay/{plot_id}` returning a
   typed ReplayVerdict (integrity, trusted keyid, version match, per-artifact comparisons, no raw
   snapshots/prompt); an exact replay includes regenerated SVG + repopulates the ephemeral chart
   LRU. Unknown plot stays 404 and SQLite/schema/implementation faults stay generic 500; signed
@@ -535,6 +535,24 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   and operator CLI. Acceptance: render -> restart -> replay -> chart GET works from archived inputs;
   real TCP; OpenAPI golden + jsonschema/consumer tests; replay uses the same rate + active-job
   admission; old Open WebUI `proposeSpec` tool surface unchanged; gate green.
+  Landed admitted async `GET /replay/{plot_id}` -> `Response[bytes]` serializing the pure
+  `verifier.replay.ReplayVerdict` (no raw/prompt/rendered bytes); a synchronous admitted worker runs
+  `service.replay.replay_plot_chart` and, only when `verdict.exact`, rebuilds the signed chart from
+  the archived hash-bound Vega + caller-trusted DSSE-authenticated VCert payload (archived
+  `snapshot.plot.keyid`, `settings.public_base_url`) and repopulates the ephemeral chart LRU.
+  `replay_plot_chart`/`PlotReplay` factor a shared `_replay_lowest`; the M5.5b `replay_plot`
+  contract + AST purity hold (adds only `render`/`VCert`/`msgspec`). Malformed id -> 404 before
+  admission; `ArchiveNotFoundError` -> 404; other archive/SQLite/schema faults -> logged generic
+  500; untrusted/integrity/drift/recomputation mismatches -> bounded 200 diagnostic, no chart.
+  OpenAPI adds `replayPlot` + the msgspec-introspected `ReplayVerdict`/`ArtifactHashMatches`/
+  `VersionDrift` components (golden strictly additive; `proposeSpec` byte-identical, verified by
+  sorted-key hash). POC_SCOPE documents replay semantics/error split, `VERIFIER_STATE_DIR` one-unit
+  backup, `VERIFIER_MAX_ARCHIVE_BYTES` 507, `VERIFIER_TRUSTED_KEYIDS` pinning, and the `audit` CLI.
+  Tests pin render->restart->replay->chart repopulation, bounded body/no-raw-bytes, malformed-vs-
+  unknown 404-before-admission ordering, rotated-signer 200 diagnostic w/o chart, schema-drop logged
+  500, shared-admission 429, a real-TCP replay leg, and jsonschema consumer validation. Locked gate
+  green at 1,530 tests/100% branch coverage.
+  Context: `main=72% 197K/272K`; `impl=65% 176K/272K`.
 - **M5.5d — end-to-end hardening evidence** (OPEN): from empty state, exercise direct render +
   deterministic model-stub success/failure, restart, LRU eviction, live-data mutation, exact
   replay, failed-attempt audit, key mismatch, DB/blob/signature corruption, solver timeout,

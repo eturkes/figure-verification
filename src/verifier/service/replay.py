@@ -5,14 +5,21 @@ Archive reads authenticate signed attempt and plot bytes under their embedded ar
 establish internal self-consistency. That archived key never grants trust. The caller's explicit
 current-signer plus historical-pin mapping is passed unchanged to the pure replay engine, which
 re-authenticates the graph under that policy. Recomputation consumes archived bytes only; this
-adapter has no data-directory or model-client dependency.
+adapter has no data-directory or model-client dependency. On an exact replay, the archived
+hash-bound Vega bytes and caller-trusted DSSE-authenticated VCert payload are the freshly
+reproduced certified inputs, so rebuilding their display page is equivalent to a fresh render;
+the chart remains display TCB either way.
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
+import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from verifier import render
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.render import VCert
 from verifier.replay import (
     ReplayAttemptArtifacts,
     ReplayPlotSnapshot,
@@ -30,11 +37,19 @@ from verifier.service.archive import (
 from verifier.service.identity import load_identity
 from verifier.service.settings import Settings
 
-__all__ = ["replay_plot", "replay_plot_from_settings"]
+__all__ = ["PlotReplay", "replay_plot", "replay_plot_chart", "replay_plot_from_settings"]
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _ADDRESS_LENGTH = 64
 _MAX_SQLITE_INTEGER = 2**63 - 1
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PlotReplay:
+    """A replay verdict plus the regenerated chart page available only on exact reproduction."""
+
+    verdict: ReplayVerdict
+    chart_html: bytes | None
 
 
 def _require_plot_id(value: object) -> str:
@@ -109,6 +124,23 @@ def _snapshot_from_bundle(bundle: AttemptBundle) -> ReplaySnapshot:
     )
 
 
+def _replay_lowest(
+    archive: Archive,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    plot_id: str,
+    max_bytes: int,
+    limits: VerificationLimits,
+) -> tuple[ReplayVerdict, ReplaySnapshot]:
+    """Read and replay the lowest signed successful attempt for one validated plot address."""
+    attempt_id = archive.lowest_verified_attempt_id(plot_id)
+    if attempt_id is None:
+        msg = "archive plot has no replayable signed verified attempt"
+        raise ArchiveNotFoundError(msg)
+    bundle = archive.read_attempt(attempt_id, max_bytes=max_bytes, limits=limits)
+    snapshot = _snapshot_from_bundle(bundle)
+    return replay_snapshot(snapshot, trusted_keys, limits=limits), snapshot
+
+
 def replay_plot(
     archive: Archive,
     trusted_keys: Mapping[str, Ed25519PublicKey],
@@ -125,12 +157,59 @@ def replay_plot(
         max_bytes,
         limits,
     )
-    attempt_id = archive.lowest_verified_attempt_id(plot_id)
-    if attempt_id is None:
-        msg = "archive plot has no replayable signed verified attempt"
-        raise ArchiveNotFoundError(msg)
-    bundle = archive.read_attempt(attempt_id, max_bytes=max_bytes, limits=limits)
-    return replay_snapshot(_snapshot_from_bundle(bundle), trusted_keys, limits=limits)
+    verdict, _ = _replay_lowest(archive, trusted_keys, plot_id, max_bytes, limits)
+    return verdict
+
+
+def _rebuild_signed_chart(
+    snapshot: ReplaySnapshot,
+    *,
+    plot_id: str,
+    public_base_url: str,
+    limits: VerificationLimits,
+) -> bytes:
+    """Rebuild the bounded display page from exact authenticated and freshly reproduced bytes."""
+    certificate = msgspec.json.decode(snapshot.plot.vcert_payload, type=VCert)
+    certificate_url = f"{public_base_url}/certificate/{plot_id}"
+    chart_html = render.signed_chart_html(
+        snapshot.plot.vega_lite.decode("utf-8"),
+        certificate,
+        keyid=snapshot.plot.keyid,
+        plot_id=plot_id,
+        certificate_url=certificate_url,
+    )
+    return render.admit_html(chart_html, limits)
+
+
+def replay_plot_chart(  # noqa: PLR0913
+    archive: Archive,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    plot_id: str,
+    *,
+    public_base_url: str,
+    max_bytes: int,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> PlotReplay:
+    """Replay one archived plot and rebuild its chart page only on exact reproduction."""
+    archive, trusted_keys, plot_id, max_bytes, limits = _require_replay_inputs(
+        archive,
+        trusted_keys,
+        plot_id,
+        max_bytes,
+        limits,
+    )
+    verdict, snapshot = _replay_lowest(archive, trusted_keys, plot_id, max_bytes, limits)
+    chart_html = (
+        _rebuild_signed_chart(
+            snapshot,
+            plot_id=plot_id,
+            public_base_url=public_base_url,
+            limits=limits,
+        )
+        if verdict.exact
+        else None
+    )
+    return PlotReplay(verdict=verdict, chart_html=chart_html)
 
 
 def replay_plot_from_settings(settings: Settings, plot_id: str) -> ReplayVerdict:

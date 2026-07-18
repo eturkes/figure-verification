@@ -16,8 +16,8 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      rebased #/$defs/X -> #/components/schemas/X by string VALUE (msgspec emits the pointer
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
-  2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert, and the
-     M3.3a ProposeRequest, plus CertifiedCheck/Disclosed*/Tcb nested transitively), via
+  2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert,
+     ReplayVerdict, and the M3.3a ProposeRequest, plus their nested structs transitively), via
      msgspec.json.schema_components;
   3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
@@ -44,6 +44,7 @@ from verifier import __version__
 from verifier.attestation import VCERT_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
+from verifier.replay import ReplayVerdict
 from verifier.schema import json_schema
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 
@@ -173,13 +174,14 @@ def _dsse_schemas() -> dict[str, dict[str, Any]]:
 
 def _components() -> dict[str, Any]:
     """The components/schemas block: VPlot request-body defs (pointers rebased) + the
-    introspectable response/request models (sorted, ProposeRequest among them) + hand-derived
+    introspectable response/request models (sorted, including ProposeRequest and ReplayVerdict) +
+    hand-derived
     transport schemas. The three key spaces are disjoint, so insertion never collides."""
     schemas: dict[str, Any] = {
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert, ProposeRequest],
+        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict],
         ref_template=f"{_COMPONENTS}/{{name}}",
     )
     for name in sorted(generated):
@@ -246,7 +248,7 @@ def _keyid_parameter() -> dict[str, Any]:
 
 
 def _paths() -> dict[str, Any]:
-    """The eight documented operations, each with an explicit operationId + summary (Open WebUI
+    """The nine documented operations, each with an explicit operationId + summary (Open WebUI
     maps operationId -> tool name; the model reads description, else summary — proposeSpec, the
     model-invoked proposal tool, carries the description). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
@@ -420,6 +422,29 @@ def _paths() -> dict[str, Any]:
                         "dataset than requested."
                     ),
                     "503": _problem_response("The model backend was unreachable or timed out."),
+                },
+            }
+        },
+        "/replay/{plot_id}": {
+            "get": {
+                "operationId": "replayPlot",
+                "summary": "Replay an archived verified plot and report reproduction status",
+                "parameters": [_id_parameter("plot_id")],
+                "responses": {
+                    "200": _json_response(
+                        "A bounded reproduction verdict under the configured independent trust "
+                        "policy; it contains no raw snapshot, prompt, or rendered bytes. An exact "
+                        "reproduction repopulates the ephemeral chart LRU so GET "
+                        "/chart/{plot_id} serves the regenerated page.",
+                        {"$ref": f"{_COMPONENTS}/ReplayVerdict"},
+                    ),
+                    **not_found,
+                    "429": _problem_response(
+                        "The process-local rate or active-job admission gate refused replay "
+                        "before verification or render execution. Each service process owns an "
+                        "independent gate."
+                    ),
+                    **public_archive_fault,
                 },
             }
         },

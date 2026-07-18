@@ -10,7 +10,8 @@ trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
-/propose-spec (M3.3a), GET /key/{keyid} (M5.4g), GET /schema/openapi.json (M2.4). The
+/propose-spec (M3.3a), GET /key/{keyid} (M5.4g), GET /replay/{plot_id} (M5.5c), GET
+/schema/openapi.json (M2.4). The
 verify POST handlers read the RAW request body via request.body() before any verifier work, so
 decode_spec's strict decode stays authoritative (a framework-parsed `data: bytes` would
 JSON-decode first, collapsing duplicate keys), and Litestar's body cap raises 413 the moment that
@@ -57,13 +58,13 @@ Problem response. An archive logical-quota refusal replaces the original outcome
 archive fault becomes generic 500; neither leaks the original response, an attempt id, or a cache
 entry. Every response carries X-Content-Type-Options: nosniff as an app default.
 
-Every POST reads and transport-validates its bounded body before entering one process-local
+Every admitted POST and the replay GET enter one process-local
 ``AdmissionController`` shared across the application. A refusal answers RFC 9457 429 before
-model, verifier, or native-render work. An admitted permit spans async model wait and transfers to
-the worker for verification, rendering, archive commit, and cache publication; request cancellation
-cannot release it while that uncancellable worker remains active. This is per-process logical
-admission — the canonical single uvicorn worker has one controller, while multiple worker processes
-would multiply the configured aggregate capacity and rate.
+model, verifier/replay, or native-render work. An admitted permit spans async model wait and
+transfers to the worker for verification, rendering, archive commit, and cache publication;
+request cancellation cannot release it while that uncancellable worker remains active. This is
+per-process logical admission — the canonical single uvicorn worker has one controller. Multiple
+worker processes multiply the configured aggregate capacity and rate.
 
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
@@ -128,6 +129,7 @@ from verifier.service.pipeline import (
     verify_decoded,
     verify_only,
 )
+from verifier.service.replay import replay_plot_chart
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -185,8 +187,9 @@ def _require_json(request: Request[Any, Any, Any]) -> None:
 def _admit_work(state: State) -> JobPermit:
     """Acquire the application-global rate token + active slot, or refuse without waiting.
 
-    Every POST calls this only after its bounded body and transport shape have been accepted, but
-    before model/verifier/worker work. The same seam is reserved for M5 replay's POST route.
+    Every admitted POST calls this only after bounded transport validation, and replay calls it
+    after validating its path id, but always before model/verifier/worker work. The seam is shared
+    by every admitted POST plus the replay GET.
     """
     admission = cast("AdmissionController", state["admission"])
     permit = admission.try_acquire()
@@ -431,6 +434,56 @@ async def propose_spec_route(
     )
 
 
+def _replay_plot_worker(
+    plot_id: str,
+    settings: Settings,
+    archive: Archive,
+    identity: SigningIdentity,
+    store: ArtifactStore,
+) -> bytes:
+    """Replay synchronously in the admitted worker and publish only an exact rebuilt chart."""
+    replay = replay_plot_chart(
+        archive,
+        identity.trusted_keys,
+        plot_id,
+        public_base_url=cast("str", settings.public_base_url),
+        max_bytes=settings.max_archive_bytes,
+        limits=settings.limits,
+    )
+    if replay.chart_html is not None:
+        store.put_chart(plot_id, replay.chart_html)
+    return msgspec.json.encode(replay.verdict)
+
+
+@get(
+    "/replay/{plot_id:str}",
+    operation_id="replayPlot",
+    summary="Replay an archived verified plot and report reproduction status",
+    status_code=HTTP_200_OK,
+)
+async def replay_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
+    """Replay one durable plot under configured trust; regenerate its chart only if exact."""
+    if _HEX64.fullmatch(plot_id) is None:
+        raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND)
+    settings = cast("Settings", state["settings"])
+    archive = cast("Archive", state["archive"])
+    identity = cast("SigningIdentity", state["identity"])
+    store = cast("ArtifactStore", state["store"])
+    with _admit_work(state) as permit:
+        try:
+            body = await permit.run_sync(
+                _replay_plot_worker,
+                plot_id,
+                settings,
+                archive,
+                identity,
+                store,
+            )
+        except ArchiveNotFoundError as exc:
+            raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND) from exc
+    return Response(body, media_type="application/json", status_code=HTTP_200_OK)
+
+
 def _fetch_artifact(
     artifact_id: str,
     fetch: Callable[[str], bytes | None],
@@ -620,6 +673,7 @@ def create_app(settings: Settings) -> Litestar:
             verify_only_route,
             verify_and_render_route,
             propose_spec_route,
+            replay_route,
             certificate_route,
             spec_route,
             public_key_route,

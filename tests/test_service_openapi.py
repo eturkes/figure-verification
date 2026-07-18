@@ -16,7 +16,7 @@ change), NOT a cross-environment byte promise.
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import msgspec
 import msgspec.structs
@@ -29,6 +29,7 @@ from verifier import __version__
 from verifier.attestation import VCERT_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
+from verifier.replay import ReplayVerdict
 from verifier.schema import json_schema
 from verifier.service.app import create_app
 from verifier.service.models import (
@@ -42,7 +43,11 @@ from verifier.service.openapi import openapi_document, openapi_document_text
 from verifier.service.settings import Settings
 
 _DOC = openapi_document()
-_GOLDEN = Path(__file__).parents[1] / "schema" / "openapi.json"
+_ROOT = Path(__file__).parents[1]
+_DATA = _ROOT / "data"
+_GOOD_SPEC = _ROOT / "examples" / "good_specs" / "g01_total_revenue_by_month.json"
+_GOLDEN = _ROOT / "schema" / "openapi.json"
+_JSON = {"content-type": "application/json"}
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
 _NOSNIFF = "nosniff"
 
@@ -112,6 +117,8 @@ def test_documented_operations_match_live_routes(tmp_path: Path) -> None:
         live |= {(method, path) for method in route.methods if method not in {"OPTIONS", "HEAD"}}
     documented = {(method.upper(), path) for path, method, _ in _operations()}
     assert documented == live
+    assert ("GET", "/replay/{plot_id}") in live
+    assert "replayPlot" in {operation["operationId"] for _, _, operation in _operations()}
 
 
 def test_internal_pointers_resolve() -> None:
@@ -131,7 +138,7 @@ def test_component_namespaces_disjoint() -> None:
     # gate instead of corrupting the document.
     vplot = set(json_schema()["$defs"])
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert, ProposeRequest],
+        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict],
         ref_template="#/components/schemas/{name}",
     )
     response_names = set(generated) | {
@@ -379,6 +386,24 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
         "application/json"
     ]["schema"]
     assert Draft202012Validator(health_schema).is_valid({"status": "ok", "version": __version__})
+
+
+def test_real_replay_response_matches_replay_verdict_component(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    with TestClient(app=create_app(settings)) as client:
+        rendered = client.post(
+            "/verify-and-render",
+            content=_GOOD_SPEC.read_bytes(),
+            headers=_JSON,
+        )
+        assert rendered.status_code == 200
+        plot_id = cast("str", cast("dict[str, Any]", rendered.json())["plot_id"])
+        replay = client.get(f"/replay/{plot_id}")
+
+    assert replay.status_code == 200
+    schema = _validator({"$ref": "#/components/schemas/ReplayVerdict"})
+    errors = list(schema.iter_errors(replay.json()))
+    assert errors == []
 
 
 def test_propose_payloads_match_schemas() -> None:

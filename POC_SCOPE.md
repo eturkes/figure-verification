@@ -115,13 +115,15 @@ The transport reports two kinds of outcome and never confuses them:
   remains outside the verification contract; its cause stays in the server log, never in the
   caller's response.
 
-Each application process owns one lock-safe token bucket and active-job gate shared by every POST
-route. The defaults admit a burst of 120 jobs, refill at 120 jobs/minute, and allow 2 active jobs.
-Bounded body reads and transport-shape validation run first, preserving their 400/413/415 outcomes;
-then a caller either acquires both controls immediately or receives 429 before model, verifier, or
-native-render work. The permit spans async model wait and the full worker operation through signed
-attempt commit and artifact storage. If the request is cancelled while its worker is running, the
-worker retains the permit until it actually exits - Python cannot cancel that native thread safely.
+Each application process owns one lock-safe token bucket and active-job gate shared by every
+admitted POST route plus `GET /replay/{plot_id}`. The defaults admit a burst of 120 jobs, refill at
+120 jobs/minute, and allow 2 active jobs. Bounded POST-body reads and transport-shape validation run
+first, preserving their 400/413/415 outcomes; a malformed replay id likewise 404s before admission.
+Then a caller either acquires both controls immediately or receives 429 before model, verifier,
+replay, or native-render work. The permit spans async model wait and the full worker operation
+through signed attempt commit and artifact storage. If the request is cancelled while its worker is
+running, the worker retains the permit until it actually exits - Python cannot cancel that native
+thread safely.
 
 This admission is logical and process-local, not distributed resource accounting. The canonical
 single-worker uvicorn process has one gate; running multiple service processes multiplies the
@@ -133,11 +135,13 @@ nonauthoritative write-side cache; the much larger offline chart pages live in a
 independently bounded LRU. Only chart-LRU eviction is endpoint-visible: `/chart/{plot_id}` may 404
 after eviction or restart, while certificate, spec, and public-key GETs resolve durably from the
 archive and revalidate their exact bytes. A served chart was verified when built and is immutable;
-the certificate is provenance, not a chart-liveness gate. The service writes signing identity plus
-an owner-private provenance archive: a 0600 raw private key, content-addressed public keys, and a
-versioned SQLite schema beneath the 0700 `VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
-rotates identity and changes plot IDs. Preserved/publicly served keys gain no trust automatically;
-operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`.
+the certificate is provenance, not a chart-liveness gate. `VERIFIER_STATE_DIR` (default
+`.verifier-state`, mode 0700) holds the 0600 raw Ed25519 signing key, content-addressed public keys,
+and the owner-private SQLite provenance archive. Keep it off git and back it up as one private state
+unit: losing it loses both signing identity and durable provenance/replay, so archived charts cannot
+be replayed. Choosing a new `VERIFIER_SIGNING_KEY_FILE` rotates identity and changes plot IDs.
+Preserved/publicly served keys gain no trust automatically; operators pin accepted historical key
+IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`.
 
 Every admitted, classified `/verify-and-render` or `/propose-spec` outcome commits one signed
 occurrence before response and before either LRU mutates. A successful occurrence atomically adds
@@ -145,12 +149,30 @@ the complete plot bundle too; rejected verdicts and proposer faults bind only by
 observed. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
 from that occurrence envelope. `/verify-only`, pre-admission transport/rate/capacity refusal,
 disconnect before an outcome, process crash, unclassified operator/implementation fault, and
-archive failure are intentionally outside this non-completeness claim. Logical archive-quota
-refusal replaces the original outcome with 507; another archive fault replaces it with generic 500;
-neither response carries an attempt ID or leaks an unarchived chart. Raw CSV, prompt, model, and
-request bytes stay operator-local in the archive, never on an unauthenticated HTTP route.
-Certificate, spec, and public-key retrieval is durable and archive-backed; broader archive replay
-remains future work.
+archive failure are intentionally outside this non-completeness claim. `VERIFIER_MAX_ARCHIVE_BYTES`
+gates logical typed payload bytes transactionally without eviction; SQLite pages, indexes, rollback
+journals, and filesystem overhead remain outside that accounting. Quota refusal replaces the
+original outcome with 507; another archive fault replaces it with generic 500. Neither response
+carries an attempt ID or leaks an unarchived chart.
+
+Owner-local audit is `python -m verifier.service audit ATTEMPT_ID [--reveal-sensitive]`. It
+revalidates the complete signed archive graph and authenticates under the current-or-explicitly-pinned
+key. Default ASCII JSON exposes hashes and metadata only; `--reveal-sensitive` additionally exposes
+attempt-observation bytes as JSON-escaped UTF-8 or padded base64. Raw CSV, prompt, model, and request
+bytes stay operator-local; no HTTP surface exposes them.
+
+`GET /replay/{plot_id}` re-runs the trusted pipeline from archived raw CSV, manifest, and canonical
+spec bytes under the operator's independent trust policy: the current signer plus explicitly pinned
+historical key IDs. Archive key presence never grants trust. Its bounded `ReplayVerdict` reports
+reproduction status, trusted keyid, per-artifact hash matches, version drift, and diagnostic-only SVG
+equality - never raw source, prompt, snapshot, or rendered bytes. An exact reproduction repopulates
+the ephemeral chart LRU from the authenticated archived inputs, so `GET /chart/{plot_id}` serves the
+regenerated page. An unknown or malformed id returns 404; process-local rate/active-job refusal
+returns 429; a SQLite, schema, archive-read, or implementation fault becomes generic 500. A signed
+attestation, blob, key, version, or recomputation mismatch instead returns a bounded 200 diagnostic
+with no chart. Replay does not re-run the weak model; pixels and browser rendering remain trusted
+display, not replay proof. Certificate, spec, and public-key retrieval remain durable and
+archive-backed.
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 
@@ -176,6 +198,10 @@ curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
 # (plot_id and spec_id come from that response; shown here as shell variables)
 curl -sS "http://127.0.0.1:8000/certificate/${plot_id}"
 curl -sS "http://127.0.0.1:8000/spec/${spec_id}"
+
+# replay the archived inputs under current-or-explicitly-pinned trust;
+# an exact result regenerates the ephemeral chart page
+curl -sS "http://127.0.0.1:8000/replay/${plot_id}"
 
 # fetch the independently bounded offline chart page Open WebUI embeds
 curl -sS "http://127.0.0.1:8000/chart/${plot_id}"
