@@ -23,7 +23,8 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
      override never bleeds into Verdict's own `verified`); and the M3.3a ProposeResult, whose
      `verdict` field is the Verdict | RenderVerdict union; plus the canonical DSSE envelope served
-     as raw bytes (not decoded into a transport model).
+     as JSON bytes and the raw Ed25519 key served as application/octet-stream (neither decoded into
+     a transport response model).
 
 openapi_json_bytes() serves the deterministic, newline-terminated text verbatim at
 GET /schema/openapi.json; schema/openapi.json commits the same bytes as a drift detector
@@ -52,6 +53,7 @@ _OPENAPI_VERSION = "3.1.0"
 _COMPONENTS = "#/components/schemas"
 # A 64-hex artifact id (the fullmatch app.py enforces on the path param, in OpenAPI form).
 _ID_PATTERN = "^[0-9a-f]{64}$"
+_KEYID_PATTERN = "^sha256:[0-9a-f]{64}$"
 # RenderVerdict's ten render-only fields on top of the Verdict envelope; every one is a
 # plain string, and all but the omit_defaults `html` are required.
 _RENDER_STRING_FIELDS = (
@@ -207,6 +209,14 @@ def _html_response(description: str) -> dict[str, Any]:
     return {"description": description, "content": {"text/html": {"schema": {"type": "string"}}}}
 
 
+def _binary_response(description: str) -> dict[str, Any]:
+    """An opaque application/octet-stream response."""
+    return {
+        "description": description,
+        "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+    }
+
+
 def _spec_request_body() -> dict[str, Any]:
     """The required VPlot-spec JSON request body shared by both POST routes."""
     return {
@@ -225,8 +235,18 @@ def _id_parameter(name: str) -> dict[str, Any]:
     }
 
 
+def _keyid_parameter() -> dict[str, Any]:
+    """The exact canonical SHA-256 keyid selecting one raw public signing key."""
+    return {
+        "name": "keyid",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": _KEYID_PATTERN},
+    }
+
+
 def _paths() -> dict[str, Any]:
-    """The seven documented operations, each with an explicit operationId + summary (Open WebUI
+    """The eight documented operations, each with an explicit operationId + summary (Open WebUI
     maps operationId -> tool name; the model reads description, else summary — proposeSpec, the
     model-invoked proposal tool, carries the description). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
@@ -251,6 +271,12 @@ def _paths() -> dict[str, Any]:
         )
     }
     not_found = {"404": _problem_response("No stored artifact for that id, or a malformed id.")}
+    public_archive_fault = {
+        "500": _problem_response(
+            "The provenance archive, stored relation, content address, or artifact authentication "
+            "check failed. The cause is logged and withheld."
+        )
+    }
     return {
         "/health": {
             "get": {
@@ -400,30 +426,50 @@ def _paths() -> dict[str, Any]:
         "/certificate/{plot_id}": {
             "get": {
                 "operationId": "getCertificate",
-                "summary": "Fetch a stored verified-plot certificate by plot_id",
+                "summary": "Fetch a durable verified-plot certificate by plot_id",
                 "parameters": [_id_parameter("plot_id")],
                 "responses": {
                     "200": _json_response(
-                        "The stored deterministic DSSE envelope bytes. Its plot_id is the "
-                        "SHA-256 digest of these exact bytes; the authenticated payload is VCert "
-                        "v0.2.",
+                        "The archive-authenticated canonical DSSE envelope bytes. Its plot_id is "
+                        "the SHA-256 digest of these exact bytes; the authenticated payload has "
+                        "the exact VCert v0.2 type. The archive key proves self-consistency, not "
+                        "signer trust or identity.",
                         {"$ref": f"{_COMPONENTS}/DSSEEnvelope"},
                     ),
                     **not_found,
+                    **public_archive_fault,
                 },
             }
         },
         "/spec/{spec_id}": {
             "get": {
                 "operationId": "getSpec",
-                "summary": "Fetch a stored verified spec's canonical bytes by spec_id",
+                "summary": "Fetch a durable verified spec's canonical bytes by spec_id",
                 "parameters": [_id_parameter("spec_id")],
                 "responses": {
                     "200": _json_response(
-                        "The stored verified spec's canonical bytes.",
+                        "The archive-validated canonical spec bytes. spec_id is canon.hash_spec "
+                        "of the decoded exact bytes.",
                         {"$ref": f"{_COMPONENTS}/VPlotSpec"},
                     ),
                     **not_found,
+                    **public_archive_fault,
+                },
+            }
+        },
+        "/key/{keyid}": {
+            "get": {
+                "operationId": "getPublicKey",
+                "summary": "Fetch an archived raw Ed25519 public key by exact keyid",
+                "parameters": [_keyid_parameter()],
+                "responses": {
+                    "200": _binary_response(
+                        "The exact raw 32-byte Ed25519 public key whose SHA-256 digest is keyid. "
+                        "Archive presence does not establish signer trust, identity, PKI status, "
+                        "or inclusion in the operator's independent trust policy."
+                    ),
+                    **not_found,
+                    **public_archive_fault,
                 },
             }
         },

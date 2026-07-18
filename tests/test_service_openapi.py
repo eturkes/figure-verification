@@ -101,7 +101,7 @@ def test_documented_operations_match_live_routes(tmp_path: Path) -> None:
     # The paths object must track the app's real HTTP routes: strip Litestar's `:type` param
     # suffix to OpenAPI form, drop the framework's OPTIONS/HEAD, and drop the self-describing
     # /schema/openapi.json route (documented nowhere — it would reference itself).
-    app = create_app(Settings(data_dir=tmp_path))
+    app = create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
     live: set[tuple[str, str]] = set()
     for route in app.routes:
         if not isinstance(route, HTTPRoute):
@@ -214,6 +214,32 @@ def test_certificate_response_documents_signed_dsse_profile() -> None:
             ],
         }
     )
+
+
+def test_durable_public_artifact_responses_and_raw_key_profile() -> None:
+    problem_ref = {"$ref": "#/components/schemas/Problem"}
+    for path in ("/certificate/{plot_id}", "/spec/{spec_id}", "/key/{keyid}"):
+        responses = _DOC["paths"][path]["get"]["responses"]
+        assert responses["404"]["content"]["application/problem+json"]["schema"] == problem_ref
+        assert responses["500"]["content"]["application/problem+json"]["schema"] == problem_ref
+        assert "archive" in responses["500"]["description"].lower()
+
+    operation = _DOC["paths"]["/key/{keyid}"]["get"]
+    assert operation["operationId"] == "getPublicKey"
+    assert operation["parameters"] == [
+        {
+            "name": "keyid",
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        }
+    ]
+    response = operation["responses"]["200"]
+    assert "does not establish signer trust" in response["description"]
+    assert response["content"] == {
+        "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+    }
+    assert "500" not in _DOC["paths"]["/chart/{plot_id}"]["get"]["responses"]
 
 
 def test_post_bodies_reference_vplotspec() -> None:
@@ -423,7 +449,9 @@ def test_invalid_include_html_returns_documented_400(tmp_path: Path) -> None:
     problem_ref = {"$ref": "#/components/schemas/Problem"}
     responses = _DOC["paths"]["/verify-and-render"]["post"]["responses"]
     assert responses["400"]["content"]["application/problem+json"]["schema"] == problem_ref
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as client:
         response = client.post(
             "/verify-and-render?include_html=maybe",
             content=b"{}",
@@ -435,7 +463,9 @@ def test_invalid_include_html_returns_documented_400(tmp_path: Path) -> None:
 
 
 def test_served_via_test_client(tmp_path: Path) -> None:
-    with TestClient(app=create_app(Settings(data_dir=tmp_path))) as client:
+    with TestClient(
+        app=create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    ) as client:
         response = client.get("/schema/openapi.json")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")

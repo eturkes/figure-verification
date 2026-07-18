@@ -10,22 +10,23 @@ trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
-/propose-spec (M3.3a), GET /schema/openapi.json (M2.4). The verify POST handlers read the RAW
-request body via
-request.body() before any verifier work, so
-decode_spec's strict decode
-stays authoritative (a framework-parsed `data: bytes` would JSON-decode first, collapsing
-duplicate keys), and Litestar's body cap raises 413 the moment that read exceeds
-settings.max_body_bytes — keeping oversize input off the verifier. verify-and-render signs each
-exact VCert payload before storing the render in the app's bounded ArtifactStore; the GETs serve
-the stored canonical DSSE/spec bytes verbatim (a malformed or absent id both answer the same 404
-problem+json at the store
-lookup — no leak of which ids were stored; a path that does not match the id route shape gets
-Litestar's own 404 instead, still problem+json, still disclosing nothing about the store). GET
-/chart/{plot_id} serves the stored offline HTML page as text/html under a Content-Security-Policy:
-sandbox allow-scripts (its 404 carries neither the CSP nor text/html, only the app-default
-nosniff); the page is built + stored on every verified render, so a verified plot_id resolves
-here regardless of the entry route (verify-and-render or the proposer).
+/propose-spec (M3.3a), GET /key/{keyid} (M5.4g), GET /schema/openapi.json (M2.4). The
+verify POST handlers read the RAW request body via request.body() before any verifier work, so
+decode_spec's strict decode stays authoritative (a framework-parsed `data: bytes` would
+JSON-decode first, collapsing duplicate keys), and Litestar's body cap raises 413 the moment that
+read exceeds settings.max_body_bytes — keeping oversize input off the verifier.
+
+Successful artifact POSTs commit the exact canonical DSSE envelope, canonical spec, and raw
+signing public key to the SQLite archive before mutating any LRU. Certificate/spec/key GETs use
+that archive as authority on every request, with narrow metadata-first bounded reads: they re-hold
+the requested address, typed relations, exact bytes, and canonical spec/key form; certificate
+reads additionally authenticate the canonical DSSE signature + exact VCert payload type under the
+digest-matching archived key. That key proves archive self-consistency only, never identity or
+operator trust. A malformed or truly absent address answers the same 404 problem+json; archive,
+SQLite, relation, hash, signature, or type faults escape to the logged content-free 500. No warm
+render LRU can bypass these checks. GET /chart/{plot_id} deliberately remains independent and
+ephemeral: it serves only the chart LRU's offline HTML under Content-Security-Policy: sandbox
+allow-scripts, and restart/eviction may 404 even while the durable public artifacts resolve.
 /propose-spec instead decodes a small typed {user_request, dataset_name} JSON body, runs the
 untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
 — not the caller's body — through verify-and-render, pinned to the requested dataset name
@@ -97,10 +98,11 @@ from litestar.status_codes import (
     HTTP_507_INSUFFICIENT_STORAGE,
 )
 
-from verifier import __version__
+from verifier import __version__, attestation
 from verifier.service.admission import AdmissionController, JobPermit
 from verifier.service.archive import (
     Archive,
+    ArchiveNotFoundError,
     ArchiveQuotaError,
     AttemptOutcome,
     AttemptRoute,
@@ -131,10 +133,11 @@ from verifier.service.store import ArtifactStore
 
 _LOGGER = logging.getLogger(__name__)
 
-# A content-addressed artifact id: exactly 64 lowercase hex (a SHA-256 hexdigest). fullmatch
-# confines a path param to this shape, so a wrong-case, short, or traversal id never reaches
-# the store (and a malformed id and a miss answer the same 404 — no validity leak).
+# Public artifact addresses are exact canonical strings. A malformed address and an archive miss
+# answer the same 404, so callers learn nothing about which values have ever existed.
 _HEX64 = re.compile(r"[0-9a-f]{64}")
+_KEYID = re.compile(r"sha256:[0-9a-f]{64}")
+_ED25519_PUBLIC_KEY_BYTES = 32
 
 # X-Content-Type-Options: nosniff on every response. The app-level response_headers cover
 # handler responses; the exception handlers re-set it via _problem_response, since layered
@@ -432,17 +435,22 @@ def _fetch_artifact(
     artifact_id: str,
     fetch: Callable[[str], bytes | None],
     *,
+    address_pattern: re.Pattern[str] = _HEX64,
     media_type: str = "application/json",
     headers: dict[str, str] | None = None,
 ) -> Response[bytes]:
-    """Serve a stored artifact's canonical bytes verbatim (media_type + optional response headers
-    let one seam serve the JSON artifacts or the text/html chart page with its sandbox CSP). A
-    malformed id (not 64 lowercase hex) or a store miss both raise 404 problem+json — the same
-    answer, so a caller learns nothing about which ids ever existed; the 404 carries neither
-    media_type nor headers (the app-default nosniff still rides it via the exception handler)."""
-    if _HEX64.fullmatch(artifact_id) is None:
+    """Serve exact artifact bytes after canonical-address validation and authoritative lookup.
+
+    ``ArchiveNotFoundError`` and malformed addresses share one 404. Every archive integrity,
+    schema, SQLite, authentication, or implementation fault escapes to the logged generic 500.
+    The chart callback remains an ephemeral LRU read and reports its miss as ``None``.
+    """
+    if address_pattern.fullmatch(artifact_id) is None:
         raise HTTPException(detail="no such artifact", status_code=HTTP_404_NOT_FOUND)
-    payload = fetch(artifact_id)
+    try:
+        payload = fetch(artifact_id)
+    except ArchiveNotFoundError as exc:
+        raise HTTPException(detail="no such artifact", status_code=HTTP_404_NOT_FOUND) from exc
     if payload is None:
         raise HTTPException(detail="no such artifact", status_code=HTTP_404_NOT_FOUND)
     return Response(payload, media_type=media_type, status_code=HTTP_200_OK, headers=headers)
@@ -451,25 +459,59 @@ def _fetch_artifact(
 @get(
     "/certificate/{plot_id:str}",
     operation_id="getCertificate",
-    summary="Fetch a stored verified-plot certificate by plot_id",
-    sync_to_thread=False,
+    summary="Fetch a durable verified-plot certificate by plot_id",
+    sync_to_thread=True,
 )
 def certificate_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
-    """Serve the stored DSSE VCert envelope for plot_id (its canonical bytes verbatim)."""
-    store = cast("ArtifactStore", state["store"])
-    return _fetch_artifact(plot_id, store.certificate)
+    """Serve an archive-authenticated canonical DSSE VCert envelope verbatim."""
+    archive = cast("Archive", state["archive"])
+    settings = cast("Settings", state["settings"])
+    max_bytes = attestation.envelope_byte_limit(settings.max_attestation_bytes)
+    return _fetch_artifact(
+        plot_id,
+        lambda address: archive.read_certificate(
+            address,
+            max_bytes=max_bytes,
+            limits=settings.limits,
+        ),
+    )
 
 
 @get(
     "/spec/{spec_id:str}",
     operation_id="getSpec",
-    summary="Fetch a stored verified spec's canonical bytes by spec_id",
-    sync_to_thread=False,
+    summary="Fetch a durable verified spec's canonical bytes by spec_id",
+    sync_to_thread=True,
 )
 def spec_route(spec_id: FromPath[str], state: State) -> Response[bytes]:
-    """Serve the stored canonical spec bytes for spec_id (verbatim, as first hashed)."""
-    store = cast("ArtifactStore", state["store"])
-    return _fetch_artifact(spec_id, store.spec)
+    """Serve archive-validated canonical spec bytes under canon's exact spec address."""
+    archive = cast("Archive", state["archive"])
+    settings = cast("Settings", state["settings"])
+    max_bytes = settings.max_body_bytes + settings.max_model_response_bytes
+    return _fetch_artifact(
+        spec_id,
+        lambda address: archive.read_spec(address, max_bytes=max_bytes),
+    )
+
+
+@get(
+    "/key/{keyid:str}",
+    operation_id="getPublicKey",
+    summary="Fetch an archived raw Ed25519 public key by exact keyid",
+    sync_to_thread=True,
+)
+def public_key_route(keyid: FromPath[str], state: State) -> Response[bytes]:
+    """Serve exact raw public-key bytes.
+
+    Archive presence establishes no signer trust or identity.
+    """
+    archive = cast("Archive", state["archive"])
+    return _fetch_artifact(
+        keyid,
+        lambda address: archive.read_key(address, max_bytes=_ED25519_PUBLIC_KEY_BYTES),
+        address_pattern=_KEYID,
+        media_type="application/octet-stream",
+    )
 
 
 # The chart page ships Content-Security-Policy: sandbox allow-scripts. A bare `sandbox` blocks the
@@ -580,6 +622,7 @@ def create_app(settings: Settings) -> Litestar:
             propose_spec_route,
             certificate_route,
             spec_route,
+            public_key_route,
             chart_route,
             openapi_route,
         ],
@@ -593,9 +636,9 @@ def create_app(settings: Settings) -> Litestar:
             }
         ),
         request_max_body_size=settings.max_body_bytes,
-        # nosniff on every response: the GETs and render serve stored/JSON-embedded bytes, and
-        # the M1 hardening note keeps nosniff on any served artifact; the chart route layers a
-        # sandbox CSP on top of it for its HTML page (_CHART_HEADERS).
+        # nosniff on every response: the public GETs serve archive-validated exact bytes while
+        # render responses embed trusted artifacts; the chart route layers a sandbox CSP on top
+        # for its deliberately ephemeral HTML page (_CHART_HEADERS).
         response_headers=[_NOSNIFF],
         # Litestar's OpenAPI auto-gen stays OFF: it introspects response models via
         # msgspec.inspect, which raises on RenderVerdict.verified: Literal[True] (the M2.3

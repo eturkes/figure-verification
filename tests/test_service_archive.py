@@ -34,6 +34,7 @@ from verifier.service.archive import (
     PlotRecord,
     PlotReference,
     PlotRole,
+    SpecRecord,
     open_archive,
 )
 from verifier.service.settings import Settings
@@ -152,6 +153,7 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
         "blobs",
         "keys",
         "plots",
+        "specs",
         "attempts",
         "plot_references",
         "attempt_references",
@@ -412,7 +414,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 ) -> None:
     versioned = _archive(tmp_path / "versioned")
     with _database_connection(versioned) as connection:
-        connection.execute("PRAGMA user_version=2")
+        connection.execute("PRAGMA user_version=3")
     with pytest.raises(ArchiveSchemaError, match="schema version"):
         _archive(tmp_path / "versioned")
 
@@ -424,7 +426,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 
     meta = _archive(tmp_path / "meta")
     with _database_connection(meta) as connection:
-        connection.execute("UPDATE meta SET schema_version = 2 WHERE singleton = 1")
+        connection.execute("UPDATE meta SET schema_version = 3 WHERE singleton = 1")
     with pytest.raises(ArchiveSchemaError, match="meta row"):
         _archive(tmp_path / "meta")
 
@@ -483,10 +485,10 @@ def test_constructor_and_wire_record_runtime_validation(tmp_path: Path) -> None:
     absolute = tmp_path.resolve()
     for state in (Path("relative"), cast("Path", "not-a-path")):
         with pytest.raises(ValueError, match="absolute Path"):
-            Archive(state, max_logical_bytes=1)
+            Archive(state, max_logical_bytes=1, max_spec_bytes=1)
     for bad in (0, -1, _BOOL_AS_INT, cast("int", 1.5), 2**63):
         with pytest.raises(ValueError, match="max_logical_bytes"):
-            Archive(absolute, max_logical_bytes=bad)
+            Archive(absolute, max_logical_bytes=bad, max_spec_bytes=1)
     with pytest.raises(TypeError, match="validated service Settings"):
         open_archive(cast("Settings", object()))
 
@@ -536,6 +538,20 @@ def test_constructor_and_wire_record_runtime_validation(tmp_path: Path) -> None:
         AttemptReference(attempt_id, cast("AttemptRole", "raw_csv"), csv_blob.ref)
     with pytest.raises(ValueError, match="requires blob kind"):
         AttemptReference(attempt_id, AttemptRole.RAW_CSV, key_blob.ref)
+
+
+def test_spec_record_and_migration_limit_runtime_validation(tmp_path: Path) -> None:
+    absolute = tmp_path.resolve()
+    for bad in (0, -1, _BOOL_AS_INT, cast("int", 1.5), 2**63):
+        with pytest.raises(ValueError, match="max_spec_bytes"):
+            Archive(absolute, max_logical_bytes=1, max_spec_bytes=bad)
+
+    spec_blob = BlobWrite(BlobKind.CANONICAL_SPEC, b"{}")
+    csv_blob = BlobWrite(BlobKind.RAW_CSV, b"{}")
+    with pytest.raises(ValueError, match="spec_id"):
+        SpecRecord("A" * 64, spec_blob.ref)
+    with pytest.raises(ValueError, match="canonical_spec"):
+        SpecRecord("b" * 64, csv_blob.ref)
 
 
 def test_batch_and_read_api_runtime_validation(tmp_path: Path) -> None:
@@ -793,7 +809,7 @@ def test_sqlite_faults_are_normalized_and_connections_close(
 
     real_initialize = archive_module._create_or_validate_schema
 
-    def fail_initialize(_connection: sqlite3.Connection) -> None:
+    def fail_initialize(_connection: sqlite3.Connection, **_kwargs: object) -> None:
         msg = "initialize fault"
         raise sqlite3.DatabaseError(msg)
 

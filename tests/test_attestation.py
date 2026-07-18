@@ -413,3 +413,9 @@ def test_required_keyid_runtime_type_and_utf8_fail_closed() -> None:
         attestation._validate_required_keyid(cast("str", 1), subject="test")
     with pytest.raises(ValueError, match="not valid UTF-8"):
         attestation._validate_required_keyid("\ud800", subject="test")
+    with pytest.raises(TypeError, match="must be a bool"):
+        attestation.verify_vcert(
+            _envelope(),
+            {_KEYID: _PUBLIC_KEY},
+            require_canonical_envelope=cast("bool", 1),
+        )

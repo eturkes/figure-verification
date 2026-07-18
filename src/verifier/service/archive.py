@@ -20,7 +20,14 @@ Reads first validate the requested role/kind and stored digest/kind/size metadat
 caller's byte limit before opening the BLOB. ``sqlite3.Blob`` is consumed in fixed chunks while its
 SHA-256 digest is recomputed; neither a metadata lie nor corruption can become trusted payload.
 Application values use SQL parameters exclusively; the only literal SQL is fixed schema/PRAGMA
-text owned by this module.
+text owned by this module. Schema v2 adds an immutable domain-separated spec-address index; the
+atomic v1 migration reads only each plot's canonical-spec blob under the configured spec ceiling,
+never raw CSV, prompt, or model bytes.
+
+Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
++ key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
+spec reads resolve one indexed canonical-spec blob then decode/re-encode/hash it; key reads require
+one exact raw 32-byte Ed25519 blob under its keyid. Archived keys prove self-consistency only.
 
 The high-level successful-plot API materializes one immutable ``PlotBundle`` from the exact
 formal-passed evidence/render chain, publishes all eleven typed payloads atomically, and reads them
@@ -102,12 +109,13 @@ __all__ = [
     "PlotRecord",
     "PlotReference",
     "PlotRole",
+    "SpecRecord",
     "materialize_attempt_bundle",
     "materialize_plot_bundle",
     "open_archive",
 ]
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _DATABASE_NAME = "archive.sqlite3"
 _BUSY_TIMEOUT_MS = 5_000
 _BLOB_CHUNK_BYTES = 64 * 1024
@@ -121,6 +129,10 @@ _CONFIG_OFF = False
 _FULL_SYNCHRONOUS = 2
 _META_COLUMNS = 2
 _BLOB_METADATA_COLUMNS = 4
+_KEY_RECORD_COLUMNS = 2
+_SPEC_RECORD_COLUMNS = 2
+_MIGRATION_SPEC_COLUMNS = 5
+_ED25519_PUBLIC_KEY_BYTES = 32
 _DATABASE_MODE = 0o600
 _STATE_DIRECTORY_MODE = 0o700
 _CONNECTION_FACTORY: type[sqlite3.Connection] = sqlite3.Connection
@@ -511,6 +523,20 @@ class PlotRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SpecRecord:
+    """A canonical domain-separated spec address bound to its exact canonical bytes."""
+
+    spec_id: str
+    canonical_spec: BlobRef
+
+    def __post_init__(self) -> None:
+        _require_address(self.spec_id, subject="spec_id")
+        if self.canonical_spec.kind is not BlobKind.CANONICAL_SPEC:
+            msg = "spec record must reference a canonical_spec blob"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
 class AttemptRecord:
     """An occurrence address bound to its attempt DSSE envelope, signer, and optional plot."""
 
@@ -577,6 +603,7 @@ class ArchiveBatch:
     blobs: tuple[BlobWrite, ...] = ()
     keys: tuple[KeyRecord, ...] = ()
     plots: tuple[PlotRecord, ...] = ()
+    specs: tuple[SpecRecord, ...] = ()
     attempts: tuple[AttemptRecord, ...] = ()
     plot_references: tuple[PlotReference, ...] = ()
     attempt_references: tuple[AttemptReference, ...] = ()
@@ -680,6 +707,48 @@ def _decode_canonical_spec(payload: bytes) -> VPlotSpec:
     return spec
 
 
+def _authenticate_archive_certificate(
+    *,
+    plot_id: str,
+    keyid: str,
+    envelope: bytes,
+    public_key_bytes: bytes,
+    limits: VerificationLimits,
+) -> attestation.VerifiedVCert:
+    """Re-hold one archived certificate's addresses, producer form, signature, type, and payload.
+
+    The digest-matching archived key proves archive self-consistency only. Callers must never add
+    it to the operator's independent trust policy merely because this check succeeds.
+    """
+    envelope_limit = attestation.envelope_byte_limit(limits.max_attestation_bytes)
+    if len(envelope) > envelope_limit:
+        msg = f"archived VCert envelope has {len(envelope)} bytes; limit is {envelope_limit}"
+        raise ArchiveReadLimitError(msg)
+    if hashlib.sha256(envelope).hexdigest() != plot_id:
+        msg = "plot id does not address its exact canonical VCert envelope bytes"
+        raise ArchiveIntegrityError(msg)
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        actual_keyid = keyid_for_public_key(public_key_bytes)
+        verified = attestation.verify_vcert(
+            envelope,
+            {keyid: public_key},
+            limits=limits,
+            require_canonical_envelope=True,
+            expected_keyid_hint=keyid,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "archived VCert envelope or signing public key failed verification"
+        raise ArchiveIntegrityError(msg) from exc
+    if actual_keyid != keyid:
+        msg = "archived keyid does not address its signing public key bytes"
+        raise ArchiveIntegrityError(msg)
+    if render.vcert_bytes(verified.certificate) != verified.payload:
+        msg = "archived VCert payload is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return verified
+
+
 def _authenticated_bundle_certificate(
     bundle: PlotBundle, limits: VerificationLimits
 ) -> render.VCert:
@@ -689,39 +758,17 @@ def _authenticated_bundle_certificate(
             f"limit is {limits.max_attestation_bytes}"
         )
         raise ArchiveReadLimitError(msg)
-    envelope_limit = attestation.envelope_byte_limit(limits.max_attestation_bytes)
-    if len(bundle.vcert_envelope) > envelope_limit:
-        msg = (
-            f"plot bundle VCert envelope has {len(bundle.vcert_envelope)} bytes; "
-            f"limit is {envelope_limit}"
-        )
-        raise ArchiveReadLimitError(msg)
-
-    if hashlib.sha256(bundle.vcert_envelope).hexdigest() != bundle.plot_id:
-        msg = "plot bundle id does not address its exact VCert envelope bytes"
-        raise ArchiveIntegrityError(msg)
-    try:
-        public_key = Ed25519PublicKey.from_public_bytes(bundle.public_key)
-        actual_keyid = keyid_for_public_key(bundle.public_key)
-        verified = attestation.verify_vcert(
-            bundle.vcert_envelope,
-            {bundle.keyid: public_key},
-            limits=limits,
-        )
-    except (ValueError, attestation.AttestationError, VerificationError) as exc:
-        msg = "plot bundle VCert envelope or signing public key failed verification"
-        raise ArchiveIntegrityError(msg) from exc
-    if actual_keyid != bundle.keyid:
-        msg = "plot bundle keyid does not address its signing public key bytes"
-        raise ArchiveIntegrityError(msg)
+    verified = _authenticate_archive_certificate(
+        plot_id=bundle.plot_id,
+        keyid=bundle.keyid,
+        envelope=bundle.vcert_envelope,
+        public_key_bytes=bundle.public_key,
+        limits=limits,
+    )
     if verified.payload != bundle.vcert_payload:
         msg = "plot bundle VCert payload differs from the authenticated envelope payload"
         raise ArchiveIntegrityError(msg)
-    certificate = verified.certificate
-    if render.vcert_bytes(certificate) != bundle.vcert_payload:
-        msg = "plot bundle VCert payload is not in the canonical deterministic JSON form"
-        raise ArchiveIntegrityError(msg)
-    return certificate
+    return verified.certificate
 
 
 def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> None:
@@ -1280,6 +1327,15 @@ _CREATE_PLOTS = """CREATE TABLE plots (
     FOREIGN KEY (keyid) REFERENCES keys(keyid)
 ) STRICT, WITHOUT ROWID"""
 
+_CREATE_SPECS = """CREATE TABLE specs (
+    spec_id TEXT PRIMARY KEY CHECK (
+        length(spec_id) = 64 AND spec_id NOT GLOB '*[^0-9a-f]*'
+    ),
+    canonical_spec_digest TEXT NOT NULL,
+    canonical_spec_kind TEXT NOT NULL CHECK (canonical_spec_kind = 'canonical_spec'),
+    FOREIGN KEY (canonical_spec_digest, canonical_spec_kind) REFERENCES blobs(digest, kind)
+) STRICT, WITHOUT ROWID"""
+
 _CREATE_ATTEMPTS = """CREATE TABLE attempts (
     attempt_id TEXT PRIMARY KEY CHECK (
         length(attempt_id) = 64 AND attempt_id NOT GLOB '*[^0-9a-f]*'
@@ -1343,6 +1399,7 @@ _SCHEMA_OBJECTS = (
     ("table", "blobs", "blobs", _CREATE_BLOBS),
     ("table", "keys", "keys", _CREATE_KEYS),
     ("table", "plots", "plots", _CREATE_PLOTS),
+    ("table", "specs", "specs", _CREATE_SPECS),
     ("table", "attempts", "attempts", _CREATE_ATTEMPTS),
     ("table", "plot_references", "plot_references", _CREATE_PLOT_REFERENCES),
     ("table", "attempt_references", "attempt_references", _CREATE_ATTEMPT_REFERENCES),
@@ -1350,6 +1407,7 @@ _SCHEMA_OBJECTS = (
     ("trigger", "blobs_reject_update", "blobs", _CREATE_BLOB_UPDATE_GUARD),
     ("trigger", "blobs_reject_delete", "blobs", _CREATE_BLOB_DELETE_GUARD),
 )
+_SCHEMA_OBJECTS_V1 = tuple(row for row in _SCHEMA_OBJECTS if row[1] != "specs")
 
 _INSERT_BLOB = "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)"
 _SELECT_BLOB = """SELECT blob_id, digest, kind, size
@@ -1372,6 +1430,17 @@ _SELECT_KEY_BLOB = """SELECT b.blob_id, b.digest, b.kind, b.size
 FROM keys AS k
 JOIN blobs AS b ON b.digest = k.public_key_digest AND b.kind = k.public_key_kind
 WHERE k.keyid = ?"""
+_SELECT_KEY_RECORD = """SELECT public_key_digest, public_key_kind
+FROM keys
+WHERE keyid = ?"""
+_SELECT_SPEC_RECORD = """SELECT canonical_spec_digest, canonical_spec_kind
+FROM specs
+WHERE spec_id = ?"""
+_SELECT_MIGRATION_SPECS = """SELECT p.plot_id, b.blob_id, b.digest, b.kind, b.size
+FROM plots AS p
+JOIN plot_references AS r ON r.plot_id = p.plot_id AND r.role = 'canonical_spec'
+JOIN blobs AS b ON b.digest = r.blob_digest AND b.kind = r.blob_kind
+ORDER BY p.plot_id"""
 _SELECT_PLOT_ENVELOPE = """SELECT b.blob_id, b.digest, b.kind, b.size
 FROM plots AS p
 JOIN blobs AS b ON b.digest = p.certificate_digest AND b.kind = p.certificate_kind
@@ -1480,13 +1549,19 @@ def _schema_rows(connection: sqlite3.Connection) -> tuple[tuple[object, ...], ..
     return tuple(tuple(row) for row in rows)
 
 
-def _validate_schema(connection: sqlite3.Connection, *, verify_accounting: bool) -> int:
+def _validate_schema_version(
+    connection: sqlite3.Connection,
+    *,
+    schema_version: int,
+    schema_objects: tuple[tuple[str, str, str, str], ...],
+    verify_accounting: bool,
+) -> int:
     user_version = _read_scalar(connection, "PRAGMA user_version")
-    if type(user_version) is not int or user_version != _SCHEMA_VERSION:
-        msg = f"archive schema version must be {_SCHEMA_VERSION}; found {user_version!r}"
+    if type(user_version) is not int or user_version != schema_version:
+        msg = f"archive schema version must be {schema_version}; found {user_version!r}"
         raise ArchiveSchemaError(msg)
 
-    expected_schema = tuple(sorted(_SCHEMA_OBJECTS, key=lambda row: (row[0], row[1])))
+    expected_schema = tuple(sorted(schema_objects, key=lambda row: (row[0], row[1])))
     if _schema_rows(connection) != expected_schema:
         msg = "archive schema objects disagree with the exact versioned STRICT schema"
         raise ArchiveSchemaError(msg)
@@ -1498,7 +1573,7 @@ def _validate_schema(connection: sqlite3.Connection, *, verify_accounting: bool)
         not isinstance(row, tuple)
         or len(row) != _META_COLUMNS
         or type(row[0]) is not int
-        or row[0] != _SCHEMA_VERSION
+        or row[0] != schema_version
         or type(row[1]) is not int
         or not 0 <= row[1] <= _MAX_SQLITE_INTEGER
     ):
@@ -1513,7 +1588,55 @@ def _validate_schema(connection: sqlite3.Connection, *, verify_accounting: bool)
     return logical_bytes
 
 
-def _create_or_validate_schema(connection: sqlite3.Connection) -> None:
+def _validate_schema(connection: sqlite3.Connection, *, verify_accounting: bool) -> int:
+    return _validate_schema_version(
+        connection,
+        schema_version=_SCHEMA_VERSION,
+        schema_objects=_SCHEMA_OBJECTS,
+        verify_accounting=verify_accounting,
+    )
+
+
+def _migrate_v1_to_v2(connection: sqlite3.Connection, *, max_spec_bytes: int) -> None:
+    """Add the durable semantic-spec index from existing complete plot references atomically."""
+    _validate_schema_version(
+        connection,
+        schema_version=1,
+        schema_objects=_SCHEMA_OBJECTS_V1,
+        verify_accounting=True,
+    )
+    connection.execute(_CREATE_SPECS)
+    rows = connection.execute(_SELECT_MIGRATION_SPECS).fetchall()
+    plot_count = _read_scalar(connection, "SELECT COUNT(*) FROM plots")
+    if type(plot_count) is not int or len(rows) != plot_count:
+        msg = "version-1 archive plots do not each resolve one canonical spec relation"
+        raise ArchiveIntegrityError(msg)
+    for row in rows:
+        if not isinstance(row, tuple) or len(row) != _MIGRATION_SPEC_COLUMNS:
+            msg = "version-1 archive canonical spec relation row is malformed"
+            raise ArchiveIntegrityError(msg)
+        plot_id, *blob_values = row
+        if not isinstance(plot_id, str) or _HEX64.fullmatch(plot_id) is None:
+            msg = "version-1 archive plot address is corrupt"
+            raise ArchiveIntegrityError(msg)
+        blob_row = _validated_blob_row(tuple(blob_values))
+        reference = BlobRef(blob_row[1], BlobKind.CANONICAL_SPEC)
+        if blob_row[2] != reference.kind.value:
+            msg = "version-1 archive canonical spec relation resolves the wrong byte kind"
+            raise ArchiveIntegrityError(msg)
+        _admit_blob_row(blob_row, max_bytes=max_spec_bytes, subject="canonical spec migration")
+        payload = _collect_blob(connection, reference, blob_row)
+        spec = _decode_canonical_spec(payload)
+        spec_id = canon.hash_spec(spec).removeprefix("sha256:")
+        _put_spec(connection, SpecRecord(spec_id, reference))
+    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )
+    connection.execute("PRAGMA user_version=2")
+
+
+def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes: int) -> None:
+    _require_read_limit(max_spec_bytes)
     with _immediate_transaction(connection):
         version = _read_scalar(connection, "PRAGMA user_version")
         if version == 0:
@@ -1526,7 +1649,9 @@ def _create_or_validate_schema(connection: sqlite3.Connection) -> None:
                 "INSERT INTO meta(singleton, schema_version, logical_blob_bytes) VALUES (?, ?, ?)",
                 (1, _SCHEMA_VERSION, 0),
             )
-            connection.execute("PRAGMA user_version=1")
+            connection.execute("PRAGMA user_version=2")
+        elif version == 1:
+            _migrate_v1_to_v2(connection, max_spec_bytes=max_spec_bytes)
         _validate_schema(connection, verify_accounting=True)
 
 
@@ -1615,6 +1740,64 @@ def _validated_blob_row(row: object) -> _BlobRow:
     return blob_id, digest, kind, size
 
 
+def _validated_key_record(row: object, keyid: str) -> BlobRef:
+    if not isinstance(row, tuple) or len(row) != _KEY_RECORD_COLUMNS:
+        msg = "archive signing-key record is malformed"
+        raise ArchiveIntegrityError(msg)
+    public_key_digest, public_key_kind = row
+    if public_key_digest != keyid or public_key_kind != BlobKind.ED25519_PUBLIC_KEY.value:
+        msg = "archive signing-key record resolves the wrong address or byte kind"
+        raise ArchiveIntegrityError(msg)
+    return BlobRef(keyid, BlobKind.ED25519_PUBLIC_KEY)
+
+
+def _admit_blob_row(
+    row: _BlobRow,
+    *,
+    max_bytes: int,
+    subject: str,
+    exact_bytes: int | None = None,
+) -> None:
+    _require_read_limit(max_bytes)
+    size = row[3]
+    if size > max_bytes:
+        msg = f"archive {subject} has {size} bytes; read limit is {max_bytes}"
+        raise ArchiveReadLimitError(msg)
+    if exact_bytes is not None and size != exact_bytes:
+        msg = f"archive {subject} must have exactly {exact_bytes} bytes; found {size}"
+        raise ArchiveIntegrityError(msg)
+
+
+def _collect_blob(
+    connection: sqlite3.Connection,
+    reference: BlobRef,
+    row: _BlobRow,
+) -> bytes:
+    payload = _consume_blob(
+        connection,
+        row,
+        reference,
+        _BlobReadPolicy(max_bytes=row[3], expected_payload=None, collect=True),
+    )
+    return cast("bytes", payload)
+
+
+def _validated_spec_record(row: object, spec_id: str) -> BlobRef:
+    if not isinstance(row, tuple) or len(row) != _SPEC_RECORD_COLUMNS:
+        msg = "archive spec record is malformed"
+        raise ArchiveIntegrityError(msg)
+    canonical_spec_digest, canonical_spec_kind = row
+    if (
+        not isinstance(canonical_spec_digest, str)
+        or _SHA256.fullmatch(canonical_spec_digest) is None
+        or canonical_spec_kind != BlobKind.CANONICAL_SPEC.value
+    ):
+        msg = "archive spec record resolves the wrong address or byte kind"
+        raise ArchiveIntegrityError(msg)
+    _require_address(spec_id, subject="stored spec_id")
+    return BlobRef(canonical_spec_digest, BlobKind.CANONICAL_SPEC)
+
+
 def _blob_row(connection: sqlite3.Connection, reference: BlobRef) -> _BlobRow | None:
     row = connection.execute(
         _SELECT_EXACT_BLOB, (reference.digest, reference.kind.value)
@@ -1677,10 +1860,13 @@ def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
     }
     envelope = BlobWrite(BlobKind.VCERT_ENVELOPE, bundle.vcert_envelope)
     public_key = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, bundle.public_key)
+    canonical_spec = role_blobs[PlotRole.CANONICAL_SPEC]
+    spec_id = canon.hash_spec(_decode_canonical_spec(bundle.canonical_spec)).removeprefix("sha256:")
     return ArchiveBatch(
         blobs=(*role_blobs.values(), envelope, public_key),
         keys=(KeyRecord(bundle.keyid, public_key.ref),),
         plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid),),
+        specs=(SpecRecord(spec_id, canonical_spec.ref),),
         plot_references=tuple(
             PlotReference(bundle.plot_id, role, role_blobs[role].ref)
             for role, _field_name in _PLOT_ROLE_FIELDS
@@ -1709,6 +1895,7 @@ def _attempt_bundle_batch(bundle: AttemptBundle) -> ArchiveBatch:
         ),
         keys=(*plot_batch.keys, KeyRecord(bundle.keyid, public_key.ref)),
         plots=plot_batch.plots,
+        specs=plot_batch.specs,
         attempts=(AttemptRecord(bundle.attempt_id, envelope.ref, bundle.keyid, plot_id),),
         plot_references=plot_batch.plot_references,
         attempt_references=(
@@ -2065,6 +2252,7 @@ def _require_batch_items(batch: ArchiveBatch) -> None:
         (batch.blobs, BlobWrite, "blobs"),
         (batch.keys, KeyRecord, "keys"),
         (batch.plots, PlotRecord, "plots"),
+        (batch.specs, SpecRecord, "specs"),
         (batch.attempts, AttemptRecord, "attempts"),
         (batch.plot_references, PlotReference, "plot_references"),
         (batch.attempt_references, AttemptReference, "attempt_references"),
@@ -2135,6 +2323,30 @@ def _put_plot(connection: sqlite3.Connection, record: PlotRecord) -> None:
             identity=(record.plot_id,),
             values=values,
             subject="plot",
+        ),
+    )
+
+
+def _put_spec(connection: sqlite3.Connection, record: SpecRecord) -> None:
+    values = (
+        record.spec_id,
+        record.canonical_spec.digest,
+        record.canonical_spec.kind.value,
+    )
+    _put_immutable_row(
+        connection,
+        _ImmutableWrite(
+            select_sql=(
+                "SELECT spec_id, canonical_spec_digest, canonical_spec_kind "
+                "FROM specs WHERE spec_id = ?"
+            ),
+            insert_sql=(
+                "INSERT INTO specs(spec_id, canonical_spec_digest, canonical_spec_kind) "
+                "VALUES (?, ?, ?)"
+            ),
+            identity=(record.spec_id,),
+            values=values,
+            subject="spec",
         ),
     )
 
@@ -2264,6 +2476,8 @@ def _insert_batch_rows(
         _put_key(connection, key_record)
     for plot_record in batch.plots:
         _put_plot(connection, plot_record)
+    for spec_record in batch.specs:
+        _put_spec(connection, spec_record)
     for attempt_record in batch.attempts:
         _put_attempt(connection, attempt_record)
     for plot_reference in batch.plot_references:
@@ -2307,7 +2521,13 @@ class Archive:
 
     __slots__ = ("_database_path", "_max_logical_bytes", "_state_dir")
 
-    def __init__(self, state_dir: Path, *, max_logical_bytes: int) -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        *,
+        max_logical_bytes: int,
+        max_spec_bytes: int,
+    ) -> None:
         state_object: object = state_dir
         if not isinstance(state_object, Path) or not state_dir.is_absolute():
             msg = "archive state_dir must be an absolute Path"
@@ -2318,12 +2538,18 @@ class Archive:
                 f"1..{_MAX_SQLITE_INTEGER}, got {max_logical_bytes!r}"
             )
             raise ValueError(msg)
+        if type(max_spec_bytes) is not int or not 1 <= max_spec_bytes <= _MAX_SQLITE_INTEGER:
+            msg = (
+                "max_spec_bytes must be an integer in "
+                f"1..{_MAX_SQLITE_INTEGER}, got {max_spec_bytes!r}"
+            )
+            raise ValueError(msg)
         self._state_dir = state_dir
         self._database_path = state_dir / _DATABASE_NAME
         self._max_logical_bytes = max_logical_bytes
         connection = self._connect()
         try:
-            _create_or_validate_schema(connection)
+            _create_or_validate_schema(connection, max_spec_bytes=max_spec_bytes)
         except sqlite3.Error as exc:
             msg = "SQLite failed while initializing the provenance schema"
             raise ArchiveError(msg) from exc
@@ -2515,11 +2741,145 @@ class Archive:
             _ExpectedBlob(reference.kind, reference.digest, max_bytes),
         )
 
+    def read_certificate(
+        self,
+        plot_id: str,
+        *,
+        max_bytes: int,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> bytes:
+        """Read and independently authenticate one public VCert envelope without other plot data.
+
+        The plot/key rows and both bounded typed blobs resolve on one connection. The archived key
+        proves self-consistency only; this method never consults or extends operator trust policy.
+        """
+        _require_address(plot_id, subject="plot_id")
+        _require_read_limit(max_bytes)
+        _require_limits(limits)
+        connection = self._connect()
+        result: bytes
+        try:
+            _validate_schema(connection, verify_accounting=False)
+            record_row = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
+            if record_row is None:
+                msg = "archive plot address was not found"
+                raise ArchiveNotFoundError(msg)
+            certificate, keyid = _validated_plot_record(record_row, plot_id)
+            certificate_row = _blob_row(connection, certificate)
+            if certificate_row is None:
+                msg = "archive plot certificate relation is broken"
+                raise ArchiveIntegrityError(msg)
+            key_record = connection.execute(_SELECT_KEY_RECORD, (keyid,)).fetchone()
+            if key_record is None:
+                msg = "archive plot signing-key relation is broken"
+                raise ArchiveIntegrityError(msg)
+            key_reference = _validated_key_record(key_record, keyid)
+            key_row = _blob_row(connection, key_reference)
+            if key_row is None:
+                msg = "archive plot signing-key blob is absent"
+                raise ArchiveIntegrityError(msg)
+
+            _admit_blob_row(certificate_row, max_bytes=max_bytes, subject="VCert envelope")
+            _admit_blob_row(
+                key_row,
+                max_bytes=_ED25519_PUBLIC_KEY_BYTES,
+                subject="Ed25519 public key",
+                exact_bytes=_ED25519_PUBLIC_KEY_BYTES,
+            )
+            envelope = _collect_blob(connection, certificate, certificate_row)
+            public_key = _collect_blob(connection, key_reference, key_row)
+            _authenticate_archive_certificate(
+                plot_id=plot_id,
+                keyid=keyid,
+                envelope=envelope,
+                public_key_bytes=public_key,
+                limits=limits,
+            )
+            result = envelope
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed during a bounded public-certificate read"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+        return result
+
+    def read_spec(self, spec_id: str, *, max_bytes: int) -> bytes:
+        """Read verified canonical spec bytes by their domain-separated public address."""
+        _require_address(spec_id, subject="spec_id")
+        _require_read_limit(max_bytes)
+        connection = self._connect()
+        result: bytes
+        try:
+            _validate_schema(connection, verify_accounting=False)
+            record_row = connection.execute(_SELECT_SPEC_RECORD, (spec_id,)).fetchone()
+            if record_row is None:
+                msg = "archive canonical spec address was not found"
+                raise ArchiveNotFoundError(msg)
+            reference = _validated_spec_record(record_row, spec_id)
+            blob_row = _blob_row(connection, reference)
+            if blob_row is None:
+                msg = "archive canonical spec relation is broken"
+                raise ArchiveIntegrityError(msg)
+            _admit_blob_row(blob_row, max_bytes=max_bytes, subject="canonical spec")
+            payload = _collect_blob(connection, reference, blob_row)
+            spec = _decode_canonical_spec(payload)
+            if canon.hash_spec(spec) != f"sha256:{spec_id}":
+                msg = "archive spec_id does not address the decoded canonical spec"
+                raise ArchiveIntegrityError(msg)
+            result = payload
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed during a bounded public-spec read"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+        return result
+
     def read_key(self, keyid: str, *, max_bytes: int) -> bytes:
-        """Read + verify one preserved raw Ed25519 public-key blob."""
+        """Read one exact raw 32-byte Ed25519 public key under its canonical SHA-256 keyid."""
         _require_sha256(keyid, subject="keyid")
-        expected = _ExpectedBlob(BlobKind.ED25519_PUBLIC_KEY, keyid, max_bytes)
-        return self._read_payload(_SELECT_KEY_BLOB, (keyid,), expected)
+        _require_read_limit(max_bytes)
+        connection = self._connect()
+        result: bytes
+        try:
+            _validate_schema(connection, verify_accounting=False)
+            record_row = connection.execute(_SELECT_KEY_RECORD, (keyid,)).fetchone()
+            if record_row is None:
+                msg = "archive public-key address was not found"
+                raise ArchiveNotFoundError(msg)
+            reference = _validated_key_record(record_row, keyid)
+            blob_row = _blob_row(connection, reference)
+            if blob_row is None:
+                msg = "archive public-key relation is broken"
+                raise ArchiveIntegrityError(msg)
+            _admit_blob_row(
+                blob_row,
+                max_bytes=max_bytes,
+                subject="Ed25519 public key",
+                exact_bytes=_ED25519_PUBLIC_KEY_BYTES,
+            )
+            payload = _collect_blob(connection, reference, blob_row)
+            try:
+                Ed25519PublicKey.from_public_bytes(payload)
+                actual_keyid = keyid_for_public_key(payload)
+            except ValueError as exc:
+                msg = "archive public-key bytes are not a raw Ed25519 public key"
+                raise ArchiveIntegrityError(msg) from exc
+            if actual_keyid != keyid:
+                msg = "archive keyid does not address its raw public-key bytes"
+                raise ArchiveIntegrityError(msg)
+            result = payload
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed during a bounded public-key read"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+        return result
 
     def read_plot_envelope(self, plot_id: str, *, max_bytes: int) -> bytes:
         """Read + verify the VCert DSSE envelope whose SHA-256 is ``plot_id``."""
@@ -2644,4 +3004,8 @@ def open_archive(settings: Settings) -> Archive:
     if not isinstance(settings_object, Settings):
         msg = "settings must be a validated service Settings instance"
         raise TypeError(msg)
-    return Archive(settings.state_dir, max_logical_bytes=settings.max_archive_bytes)
+    return Archive(
+        settings.state_dir,
+        max_logical_bytes=settings.max_archive_bytes,
+        max_spec_bytes=settings.max_body_bytes + settings.max_model_response_bytes,
+    )

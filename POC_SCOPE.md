@@ -34,11 +34,15 @@ mutually consistent and every check passed:
 
 For a service render, the persistent Ed25519 signer wraps the exact VCert payload bytes and their
 application-specific type in deterministic DSSE. `plot_id` is SHA-256 over the complete envelope
-bytes, and `/certificate/{plot_id}` serves that envelope verbatim. Signature verification means
-only that the envelope was produced by the holder of an independently pinned public key. The
-envelope's `keyid` is an unauthenticated lookup hint - it does not establish operator identity,
-PKI membership, time, completeness, or transparency-log inclusion. The chart page visibly shows
-the VCert badge, signer hint, plot ID, and exact envelope link; display remains outside the proof.
+bytes; `/certificate/{plot_id}`, `/spec/{spec_id}`, and `/key/{keyid}` serve archive-validated exact
+certificate, canonical-spec, and raw-public-key bytes durably across process restart. Each GET
+rechecks its address and typed archive relation; certificate retrieval also verifies the canonical
+DSSE signature/type under the digest-matching archived key as self-consistency. Archive/key-endpoint
+presence is never trust: signature verification means only that the envelope was produced by the
+holder of an independently pinned public key. The envelope's `keyid` is an unauthenticated lookup
+hint - it does not establish operator identity, PKI membership, time, completeness, or
+transparency log inclusion. Chart liveness remains process-local and ephemeral. The chart page
+visibly shows the VCert badge, signer hint, plot ID, and exact envelope link; display remains outside the proof.
 
 Because the renderer only ever receives verifier-recomputed data, a chart cannot
 display model-supplied numbers — that class of lie is impossible by construction, not a
@@ -124,14 +128,14 @@ single-worker uvicorn process has one gate; running multiple service processes m
 configured aggregate rate and active capacity. Operators tune the three controls with
 `VERIFIER_WORK_RATE_PER_MINUTE`, `VERIFIER_WORK_BURST`, and `VERIFIER_MAX_ACTIVE_JOBS`.
 
-Signed VCert envelopes + canonical specs live in one bounded in-memory LRU; the much larger
-offline chart pages live in a second, independently bounded LRU. Both are addressable by the
-content-derived `plot_id` / `spec_id` a render returns, and either LRU may evict first - a chart can
-outlive its certificate or vice versa. A served chart was verified when built and is immutable;
-the certificate is provenance, not a chart-liveness gate. Independent of those ephemeral caches,
-the service writes signing identity plus an owner-private provenance archive: a 0600 raw private
-key, content-addressed public keys, and a versioned SQLite schema beneath the 0700
-`VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
+Signed VCert envelopes and canonical specs remain in one bounded in-memory render LRU as a
+nonauthoritative write-side cache; the much larger offline chart pages live in a second,
+independently bounded LRU. Only chart-LRU eviction is endpoint-visible: `/chart/{plot_id}` may 404
+after eviction or restart, while certificate, spec, and public-key GETs resolve durably from the
+archive and revalidate their exact bytes. A served chart was verified when built and is immutable;
+the certificate is provenance, not a chart-liveness gate. The service writes signing identity plus
+an owner-private provenance archive: a 0600 raw private key, content-addressed public keys, and a
+versioned SQLite schema beneath the 0700 `VERIFIER_STATE_DIR` (default `.verifier-state`). Choosing a new `VERIFIER_SIGNING_KEY_FILE`
 rotates identity and changes plot IDs. Preserved/publicly served keys gain no trust automatically;
 operators pin accepted historical key IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`.
 
@@ -144,8 +148,9 @@ disconnect before an outcome, process crash, unclassified operator/implementatio
 archive failure are intentionally outside this non-completeness claim. Logical archive-quota
 refusal replaces the original outcome with 507; another archive fault replaces it with generic 500;
 neither response carries an attempt ID or leaks an unarchived chart. Raw CSV, prompt, model, and
-request bytes stay operator-local in the archive, never on an unauthenticated HTTP route. Durable
-certificate/spec retrieval and replay follow later.
+request bytes stay operator-local in the archive, never on an unauthenticated HTTP route.
+Certificate, spec, and public-key retrieval is durable and archive-backed; broader archive replay
+remains future work.
 
 Endpoints, exercised with `curl` (defaults: loopback, port 8000):
 

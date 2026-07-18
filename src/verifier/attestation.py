@@ -79,6 +79,8 @@ class _PayloadProfile:
     payload_type: str
     max_payload_bytes: int
     subject: str
+    require_canonical_envelope: bool = False
+    expected_keyid_hint: str | None = None
 
 
 # Decode structs intentionally tolerate unknown fields. Required fields have no defaults; keyid is
@@ -353,16 +355,15 @@ def _trusted_key_items(
 def _verify_dsse(
     envelope_bytes: bytes,
     trusted_keys: Mapping[str, Ed25519PublicKey],
-    *,
-    payload_type: str,
-    max_payload_bytes: int,
-    subject: str,
+    profile: _PayloadProfile,
 ) -> VerifiedPayload:
     envelope_object: object = envelope_bytes
     if not isinstance(envelope_object, bytes):
         msg = f"envelope_bytes must be bytes, got {type(envelope_bytes).__name__}"
         raise TypeError(msg)
-    max_envelope_bytes = envelope_byte_limit(max_payload_bytes, payload_type=payload_type)
+    max_envelope_bytes = envelope_byte_limit(
+        profile.max_payload_bytes, payload_type=profile.payload_type
+    )
     if len(envelope_bytes) > max_envelope_bytes:
         msg = f"DSSE envelope has {len(envelope_bytes)} bytes; limit is {max_envelope_bytes}"
         raise VerificationError(msg, check="resource.attestation_bytes")
@@ -370,13 +371,19 @@ def _verify_dsse(
     envelope = _parse_envelope(envelope_bytes)
     signature_record = envelope.signatures[0]
     _validate_keyid_hint(signature_record.keyid)
+    if (
+        profile.expected_keyid_hint is not None
+        and signature_record.keyid != profile.expected_keyid_hint
+    ):
+        msg = "DSSE keyid hint disagrees with the required archive relation"
+        raise AttestationError(msg)
 
-    max_payload_base64 = _base64_length(max_payload_bytes)
+    max_payload_base64 = _base64_length(profile.max_payload_bytes)
     if len(envelope.payload) > max_payload_base64:
-        msg = f"{subject} payload base64 exceeds encoded byte limit of {max_payload_base64}"
+        msg = f"{profile.subject} payload base64 exceeds encoded byte limit of {max_payload_base64}"
         raise VerificationError(msg, check="resource.attestation_bytes")
     payload = _decode_base64(envelope.payload, field="payload")
-    _enforce_payload_limit(payload, max_payload_bytes, subject=subject)
+    _enforce_payload_limit(payload, profile.max_payload_bytes, subject=profile.subject)
 
     if len(signature_record.sig) != _SIGNATURE_BASE64_BYTES:
         msg = "DSSE Ed25519 signature has an invalid base64 length"
@@ -384,6 +391,14 @@ def _verify_dsse(
     signature = _decode_base64(signature_record.sig, field="signature")
     if len(signature) != _ED25519_SIGNATURE_BYTES:
         msg = "DSSE signature is not a 64-byte Ed25519 signature"
+        raise AttestationError(msg)
+    if profile.require_canonical_envelope and envelope_bytes != _encode_envelope(
+        payload,
+        signature,
+        signature_record.keyid,
+        payload_type=envelope.payload_type,
+    ):
+        msg = "DSSE envelope is not in the canonical deterministic JSON form"
         raise AttestationError(msg)
 
     trusted = _trusted_key_items(trusted_keys)
@@ -401,7 +416,7 @@ def _verify_dsse(
         msg = "DSSE signature is not valid under any trusted Ed25519 key"
         raise AttestationError(msg)
 
-    if envelope.payload_type != payload_type:
+    if envelope.payload_type != profile.payload_type:
         msg = f"unsupported DSSE payload type: {envelope.payload_type!r}"
         raise AttestationError(msg)
     return VerifiedPayload(payload=payload)
@@ -422,9 +437,7 @@ def verify_dsse(
     return _verify_dsse(
         envelope_bytes,
         trusted_keys,
-        payload_type=payload_type,
-        max_payload_bytes=max_payload_bytes,
-        subject="attestation",
+        _PayloadProfile(payload_type, max_payload_bytes, "attestation"),
     )
 
 
@@ -433,14 +446,31 @@ def verify_vcert(
     trusted_keys: Mapping[str, Ed25519PublicKey],
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
+    require_canonical_envelope: bool = False,
+    expected_keyid_hint: str | None = None,
 ) -> VerifiedVCert:
-    """Authenticate one DSSE envelope, then parse its SAME payload byte object as VCert."""
+    """Authenticate one DSSE envelope, then parse its SAME payload byte object as VCert.
+
+    ``require_canonical_envelope`` and ``expected_keyid_hint`` are optional producer/archive
+    consistency checks, never trust decisions. General DSSE verification remains
+    forward-compatible by default; explicit ``trusted_keys`` alone control authentication.
+    """
+    canonical_object: object = require_canonical_envelope
+    if type(canonical_object) is not bool:
+        msg = "require_canonical_envelope must be a bool"
+        raise TypeError(msg)
+    if expected_keyid_hint is not None:
+        _validate_required_keyid(expected_keyid_hint, subject="expected")
     verified = _verify_dsse(
         envelope_bytes,
         trusted_keys,
-        payload_type=VCERT_PAYLOAD_TYPE,
-        max_payload_bytes=limits.max_attestation_bytes,
-        subject="VCert",
+        _PayloadProfile(
+            VCERT_PAYLOAD_TYPE,
+            limits.max_attestation_bytes,
+            "VCert",
+            require_canonical_envelope,
+            expected_keyid_hint,
+        ),
     )
     payload = verified.payload
     certificate = _decode_vcert_payload(payload)

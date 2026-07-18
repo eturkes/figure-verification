@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.4b successful-plot materialization, signed hash graph, and archive round-trip."""
+"""Successful-plot archive graph, bounded public reads, migration, and round-trip."""
 
 import hashlib
 import sqlite3
@@ -73,11 +73,14 @@ def _resign_bundle(
     certificate: render.VCert,
     *,
     payload: bytes | None = None,
+    keyid: str | None = None,
 ) -> PlotBundle:
     if payload is None:
         payload = render.vcert_bytes(certificate)
+    if keyid is None:
+        keyid = signer.keyid
     signature = signer.private_key.sign(attestation.pae(attestation.VCERT_PAYLOAD_TYPE, payload))
-    envelope = attestation._encode_envelope(payload, signature, signer.keyid)
+    envelope = attestation._encode_envelope(payload, signature, keyid)
     return replace(
         bundle,
         plot_id=hashlib.sha256(envelope).hexdigest(),
@@ -148,6 +151,25 @@ def test_materialized_plot_resolves_every_certified_byte_and_round_trips_reopen(
     )
     reopened.publish_plot(bundle, limits=settings.limits)
     assert reopened.stats() == archive.stats()
+
+
+def test_version_one_archive_migrates_durable_spec_addresses_atomically(tmp_path: Path) -> None:
+    settings, _signer, _prepared, rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+    connection = sqlite3.connect(archive.database_path, autocommit=True)
+    try:
+        connection.execute("DROP TABLE specs")
+        connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")
+        connection.execute("PRAGMA user_version=1")
+    finally:
+        connection.close()
+
+    reopened = open_archive(settings)
+    spec_id = rendered.certificate.spec_hash.removeprefix("sha256:")
+    assert (
+        reopened.read_spec(spec_id, max_bytes=len(bundle.canonical_spec)) == bundle.canonical_spec
+    )
 
 
 def test_rotated_signature_creates_second_plot_while_shared_role_blobs_deduplicate(
@@ -239,6 +261,35 @@ def test_complete_plot_read_admits_aggregate_size_before_opening_any_blob(
     assert TrackingConnection.blob_opens == 11
 
 
+def test_public_artifact_reads_admit_metadata_before_opening_blobs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    settings, _signer, _prepared, rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+    spec_id = rendered.certificate.spec_hash.removeprefix("sha256:")
+
+    class TrackingConnection(sqlite3.Connection):
+        blob_opens = 0
+
+        def blobopen(self, *args: Any, **kwargs: Any) -> sqlite3.Blob:
+            type(self).blob_opens += 1
+            return super().blobopen(*args, **kwargs)
+
+    monkeypatch.setattr(archive_module, "_CONNECTION_FACTORY", TrackingConnection)
+    with pytest.raises(ArchiveReadLimitError, match="VCert envelope"):
+        archive.read_certificate(
+            bundle.plot_id,
+            max_bytes=len(bundle.vcert_envelope) - 1,
+            limits=settings.limits,
+        )
+    with pytest.raises(ArchiveReadLimitError, match="canonical spec"):
+        archive.read_spec(spec_id, max_bytes=len(bundle.canonical_spec) - 1)
+    with pytest.raises(ArchiveReadLimitError, match="public key"):
+        archive.read_key(bundle.keyid, max_bytes=len(bundle.public_key) - 1)
+    assert TrackingConnection.blob_opens == 0
+
+
 def test_bundle_api_runtime_shape_and_direct_materialization_invariants(
     tmp_path: Path,
 ) -> None:
@@ -320,11 +371,20 @@ def test_signed_but_cross_inconsistent_plot_components_fail_closed(tmp_path: Pat
     settings, signer, _prepared, rendered, bundle = _parts(tmp_path)
     archive = open_archive(settings)
 
-    # keyid is a lookup hint during DSSE verification; the bundle additionally requires it to
-    # content-address the actual verifying key.
-    wrong_keyid = replace(bundle, keyid="sha256:" + "f" * 64)
+    # Archive publication requires both the unauthenticated envelope hint and the independently
+    # stored relation to agree, then separately requires that relation to address the key bytes.
+    wrong_keyid = "sha256:" + "f" * 64
+    with pytest.raises(ArchiveIntegrityError, match="failed verification"):
+        archive.publish_plot(replace(bundle, keyid=wrong_keyid))
+
+    wrong_key_relation = _resign_bundle(
+        replace(bundle, keyid=wrong_keyid),
+        signer,
+        rendered.certificate,
+        keyid=wrong_keyid,
+    )
     with pytest.raises(ArchiveIntegrityError, match="keyid does not address"):
-        archive.publish_plot(wrong_keyid)
+        archive.publish_plot(wrong_key_relation)
 
     noncanonical_payload = bundle.vcert_payload + b"\n"
     noncanonical = _resign_bundle(
@@ -507,3 +567,224 @@ def test_complete_plot_read_normalizes_sqlite_fault(
     monkeypatch.setattr(archive_module, "_read_complete_plot_bundle", fail_read)
     with pytest.raises(archive_module.ArchiveError, match="complete plot bundle"):
         archive.read_plot(bundle.plot_id, max_bytes=_bundle_bytes(bundle))
+
+
+@pytest.mark.parametrize(
+    ("fault", "message"),
+    [
+        ("count_type", "do not each resolve"),
+        ("count_mismatch", "do not each resolve"),
+        ("row_type", "relation row is malformed"),
+        ("row_size", "relation row is malformed"),
+        ("plot_address", "plot address is corrupt"),
+        ("wrong_kind", "wrong byte kind"),
+    ],
+)
+def test_version_one_migration_rejects_corrupt_spec_index_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fault: str,
+    message: str,
+) -> None:
+    settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+    connection = sqlite3.connect(archive.database_path, autocommit=True)
+    try:
+        connection.execute("DROP TABLE specs")
+        connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")
+        connection.execute("PRAGMA user_version=1")
+    finally:
+        connection.close()
+
+    class MigrationResult:
+        def __init__(self, rows: list[object]) -> None:
+            self._rows = rows
+
+        def fetchall(self) -> list[object]:
+            return self._rows
+
+    class MigrationConnection:
+        def __init__(self, raw: sqlite3.Connection) -> None:
+            self._raw = raw
+
+        def execute(
+            self, statement: str, parameters: tuple[object, ...] = ()
+        ) -> sqlite3.Cursor | MigrationResult:
+            cursor = self._raw.execute(statement, parameters)
+            if statement != archive_module._SELECT_MIGRATION_SPECS:
+                return cursor
+            rows: list[object] = list(cursor.fetchall())
+            row = cast("tuple[object, ...]", rows[0])
+            if fault == "row_type":
+                rows[0] = list(row)
+            elif fault == "row_size":
+                rows[0] = (row[0],)
+            elif fault == "plot_address":
+                rows[0] = (1, *row[1:])
+            elif fault == "wrong_kind":
+                rows[0] = (*row[:3], BlobKind.RAW_CSV.value, row[4])
+            return MigrationResult(rows)
+
+        def blobopen(self, *args: Any, **kwargs: Any) -> sqlite3.Blob:
+            return self._raw.blobopen(*args, **kwargs)
+
+    real_read_scalar = archive_module._read_scalar
+
+    def corrupt_plot_count(raw: sqlite3.Connection, statement: str) -> object:
+        value = real_read_scalar(raw, statement)
+        if statement != "SELECT COUNT(*) FROM plots":
+            return value
+        if fault == "count_type":
+            return "corrupt"
+        assert type(value) is int
+        return value + 1
+
+    if fault.startswith("count_"):
+        monkeypatch.setattr(archive_module, "_read_scalar", corrupt_plot_count)
+
+    connection = sqlite3.connect(archive.database_path, autocommit=True)
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(ArchiveIntegrityError, match=message):
+            archive_module._migrate_v1_to_v2(
+                cast("sqlite3.Connection", MigrationConnection(connection)),
+                max_spec_bytes=len(bundle.canonical_spec),
+            )
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_public_record_rows_and_exact_key_size_fail_closed() -> None:
+    keyid = "sha256:" + "a" * 64
+    spec_id = "b" * 64
+    spec_digest = "sha256:" + "c" * 64
+
+    for malformed_key_row in (None, (keyid,)):
+        with pytest.raises(ArchiveIntegrityError, match="signing-key record is malformed"):
+            archive_module._validated_key_record(malformed_key_row, keyid)
+    for wrong_key_row in (
+        ("sha256:" + "d" * 64, BlobKind.ED25519_PUBLIC_KEY.value),
+        (keyid, BlobKind.RAW_CSV.value),
+    ):
+        with pytest.raises(ArchiveIntegrityError, match="wrong address or byte kind"):
+            archive_module._validated_key_record(wrong_key_row, keyid)
+
+    for malformed_spec_row in (None, (spec_digest,)):
+        with pytest.raises(ArchiveIntegrityError, match="spec record is malformed"):
+            archive_module._validated_spec_record(malformed_spec_row, spec_id)
+    for wrong_spec_row in (
+        (1, BlobKind.CANONICAL_SPEC.value),
+        ("not-a-digest", BlobKind.CANONICAL_SPEC.value),
+        (spec_digest, BlobKind.RAW_CSV.value),
+    ):
+        with pytest.raises(ArchiveIntegrityError, match="wrong address or byte kind"):
+            archive_module._validated_spec_record(wrong_spec_row, spec_id)
+
+    short_key_row = (1, keyid, BlobKind.ED25519_PUBLIC_KEY.value, 31)
+    with pytest.raises(ArchiveIntegrityError, match="exactly 32 bytes"):
+        archive_module._admit_blob_row(
+            short_key_row,
+            max_bytes=32,
+            subject="Ed25519 public key",
+            exact_bytes=32,
+        )
+
+
+@pytest.mark.parametrize(
+    ("fault", "message"),
+    [
+        ("certificate_blob", "certificate relation is broken"),
+        ("key_record", "signing-key relation is broken"),
+        ("key_blob", "signing-key blob is absent"),
+    ],
+)
+def test_certificate_read_rejects_absent_related_rows(
+    tmp_path: Path, fault: str, message: str
+) -> None:
+    settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+    connection = sqlite3.connect(archive.database_path, autocommit=True)
+    try:
+        if fault != "key_record":
+            connection.execute("DROP TRIGGER blobs_reject_delete")
+        if fault == "certificate_blob":
+            connection.execute(
+                "DELETE FROM blobs WHERE digest = ? AND kind = ?",
+                (f"sha256:{bundle.plot_id}", BlobKind.VCERT_ENVELOPE.value),
+            )
+        elif fault == "key_record":
+            connection.execute("DELETE FROM keys WHERE keyid = ?", (bundle.keyid,))
+        else:
+            connection.execute(
+                "DELETE FROM blobs WHERE digest = ? AND kind = ?",
+                (bundle.keyid, BlobKind.ED25519_PUBLIC_KEY.value),
+            )
+        if fault != "key_record":
+            connection.execute(archive_module._CREATE_BLOB_DELETE_GUARD)
+    finally:
+        connection.close()
+
+    with pytest.raises(ArchiveIntegrityError, match=message):
+        archive.read_certificate(
+            bundle.plot_id,
+            max_bytes=len(bundle.vcert_envelope),
+            limits=settings.limits,
+        )
+    if fault == "key_blob":
+        with pytest.raises(ArchiveIntegrityError, match="public-key relation is broken"):
+            archive.read_key(bundle.keyid, max_bytes=len(bundle.public_key))
+
+
+def test_public_reads_normalize_sqlite_faults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    settings, _signer, _prepared, rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+    spec_id = rendered.certificate.spec_hash.removeprefix("sha256:")
+
+    def fail_blob_lookup(*_args: object, **_kwargs: object) -> None:
+        msg = "public read fault"
+        raise sqlite3.DatabaseError(msg)
+
+    monkeypatch.setattr(archive_module, "_blob_row", fail_blob_lookup)
+    with pytest.raises(archive_module.ArchiveError, match="public-certificate read"):
+        archive.read_certificate(
+            bundle.plot_id,
+            max_bytes=len(bundle.vcert_envelope),
+            limits=settings.limits,
+        )
+    with pytest.raises(archive_module.ArchiveError, match="public-spec read"):
+        archive.read_spec(spec_id, max_bytes=len(bundle.canonical_spec))
+    with pytest.raises(archive_module.ArchiveError, match="public-key read"):
+        archive.read_key(bundle.keyid, max_bytes=len(bundle.public_key))
+
+
+def test_public_key_read_rechecks_parse_and_address(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    archive.publish_plot(bundle, limits=settings.limits)
+
+    class RejectingPublicKey:
+        @staticmethod
+        def from_public_bytes(_payload: bytes) -> None:
+            msg = "invalid key"
+            raise ValueError(msg)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(archive_module, "Ed25519PublicKey", RejectingPublicKey)
+        with pytest.raises(ArchiveIntegrityError, match="not a raw Ed25519 public key"):
+            archive.read_key(bundle.keyid, max_bytes=len(bundle.public_key))
+
+    def wrong_keyid(_payload: bytes) -> str:
+        return "sha256:" + "f" * 64
+
+    with monkeypatch.context() as patch:
+        patch.setattr(archive_module, "keyid_for_public_key", wrong_keyid)
+        with pytest.raises(ArchiveIntegrityError, match="does not address"):
+            archive.read_key(bundle.keyid, max_bytes=len(bundle.public_key))

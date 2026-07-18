@@ -454,15 +454,23 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   corruption, ANSI/OSC/bidi controls, invalid UTF-8, redaction, and generic content-free failure
   diagnostics are pinned; no HTTP/OpenAPI surface changed. Locked gate green at 1,433 tests/100%
   branch coverage.
-- **M5.4g — durable retrieval across restart** (OPEN): certificate/spec GETs consult the archive
-  as authority (LRUs may remain read-through caches); expose the public signing key by exact keyid
-  under a bounded non-secret endpoint; chart liveness remains independent/ephemeral until replay.
-  Before serving, re-hold every address equation (`plot_id=envelope hash`, `spec_id=spec hash`,
-  `keyid=public-key hash`) and check certificate signature/type against its digest-matching stored
-  public key as internal consistency, without treating key presence as trust. Unknown/malformed IDs
-  stay uniform 404 and DB corruption becomes logged generic 500, never a forged artifact. Update
-  OpenAPI consumer/golden. Acceptance: render -> new app process -> exact certificate/spec/key
-  bytes; eviction/restart matrix pinned; gate green.
+- **M5.4g — durable retrieval across restart** (DONE): certificate/spec GETs consult the archive
+  as authority; expose the public signing key by exact keyid under a bounded non-secret endpoint;
+  chart liveness remains independent/ephemeral until replay. Before serving, re-hold every address
+  equation (`plot_id=envelope hash`, `spec_id=spec hash`, `keyid=public-key hash`) and check
+  certificate signature/type against its digest-matching stored public key as internal consistency,
+  without treating key presence as trust. Unknown/malformed IDs stay uniform 404 and DB corruption
+  becomes logged generic 500, never a forged artifact. Update OpenAPI consumer/golden.
+  Landed archive-authoritative `GET /certificate/{plot_id}`, `GET /spec/{spec_id}`, and bounded raw
+  `GET /key/{keyid}`. Every request validates the exact versioned SQLite schema, admits relation/blob
+  metadata before opening bytes, rechecks its content address/canonical form, and - for certificates
+  - authenticates canonical DSSE + exact VCert type under the digest-matching archived key as
+  self-consistency only. Schema v2 adds an immutable `spec_id -> canonical_spec` index with atomic,
+  bounded v1 migration; render LRUs remain nonauthoritative write-side caches and `/chart` remains
+  process-local. Restart, eviction, rotation-without-trust, migration, read-bound, schema drift, and
+  relation/blob/hash/signature/type corruption matrices are pinned; OpenAPI golden + scope/docs are
+  aligned. Locked gate green at 1,467 tests/100% branch coverage.
+  Context: `main=52% 142K/272K`; `impl=46% 126K/272K`.
 
 - **M5.5a — pure snapshot replay engine** (OPEN): add `verifier.replay`, importing no service
   module. It accepts an explicit trusted-key set + typed snapshot bytes; verifies attempt ID/DSSE,

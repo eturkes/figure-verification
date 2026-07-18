@@ -358,7 +358,7 @@
     "/certificate/{plot_id}": {
       "get": {
         "operationId": "getCertificate",
-        "summary": "Fetch a stored verified-plot certificate by plot_id",
+        "summary": "Fetch a durable verified-plot certificate by plot_id",
         "parameters": [
           {
             "name": "plot_id",
@@ -372,7 +372,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The stored deterministic DSSE envelope bytes. Its plot_id is the SHA-256 digest of these exact bytes; the authenticated payload is VCert v0.2.",
+            "description": "The archive-authenticated canonical DSSE envelope bytes. Its plot_id is the SHA-256 digest of these exact bytes; the authenticated payload has the exact VCert v0.2 type. The archive key proves self-consistency, not signer trust or identity.",
             "content": {
               "application/json": {
                 "schema": {
@@ -390,6 +390,16 @@
                 }
               }
             }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -397,7 +407,7 @@
     "/spec/{spec_id}": {
       "get": {
         "operationId": "getSpec",
-        "summary": "Fetch a stored verified spec's canonical bytes by spec_id",
+        "summary": "Fetch a durable verified spec's canonical bytes by spec_id",
         "parameters": [
           {
             "name": "spec_id",
@@ -411,7 +421,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The stored verified spec's canonical bytes.",
+            "description": "The archive-validated canonical spec bytes. spec_id is canon.hash_spec of the decoded exact bytes.",
             "content": {
               "application/json": {
                 "schema": {
@@ -422,6 +432,66 @@
           },
           "404": {
             "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/key/{keyid}": {
+      "get": {
+        "operationId": "getPublicKey",
+        "summary": "Fetch an archived raw Ed25519 public key by exact keyid",
+        "parameters": [
+          {
+            "name": "keyid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact raw 32-byte Ed25519 public key whose SHA-256 digest is keyid. Archive presence does not establish signer trust, identity, PKI status, or inclusion in the operator's independent trust policy.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
             "content": {
               "application/problem+json": {
                 "schema": {

@@ -3,12 +3,14 @@
 
 The good corpus renders through the service byte-for-byte as a direct render.render (the SVG,
 the five cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
-idempotent (same plot_id). The service signs the exact VCert bytes into deterministic DSSE,
-defines plot_id as SHA-256(envelope), and serves that envelope verbatim. The never-a-chart pin
-holds at byte level over ALL 18 bad specs — the raw response carries no "svg"/"html" key. The
-store is bounded (an evicted render 404s on both its cert and spec GET); a malformed or absent
-id 404s alike (no validity leak); and a render resource refusal returns a failed verdict before
-storage. X-Content-Type-Options: nosniff rides every response, success and problem alike.
+idempotent (same plot_id). The service signs exact VCert bytes into deterministic DSSE, defines
+plot_id as SHA-256(envelope), and durably serves exact certificate/spec/raw-key bytes from the
+archive across render-LRU eviction and app restart. Every public read independently rechecks its
+address and archive relations; certificate reads authenticate canonical DSSE signature/type under
+the digest-matching archived key without elevating it to trust. Malformed/unknown addresses share
+one 404; relation/blob/hash/signature/type corruption — even after warm LRU reads — becomes logged
+generic 500. The never-a-chart pin still holds over all bad specs. X-Content-Type-Options: nosniff
+rides every response, success and problem alike.
 
 GET /chart/{plot_id} serves the offline HTML page built + stored on EVERY verified render, so it
 resolves even when the JSON body omitted the inline copy (include_html=false), as text/html under
@@ -21,8 +23,11 @@ neither the CSP nor text/html (only the app-default nosniff).
 
 import hashlib
 import json
+import logging
+import sqlite3
 from collections import Counter
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, NoReturn, cast
 from unittest.mock import AsyncMock
@@ -41,12 +46,15 @@ from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import VPlotSpec, decode_spec
 from verifier.service import app as service_app
+from verifier.service import archive as archive_module
 from verifier.service import pipeline
 from verifier.service.app import create_app
-from verifier.service.identity import SigningIdentity
+from verifier.service.archive import Archive, ArchiveBatch, BlobKind, BlobWrite, KeyRecord
+from verifier.service.identity import SigningIdentity, keyid_for_public_key
 from verifier.service.model_client import ModelProposal, ProposalTrace
 from verifier.service.models import Verdict
 from verifier.service.settings import Settings
+from verifier.service.store import ArtifactStore
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -62,6 +70,15 @@ _JSON = {"content-type": "application/json"}
 _PROBLEM_JSON = "application/problem+json"
 _NOSNIFF = "nosniff"
 _SALES_GOOD = "g01_total_revenue_by_month.json"
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
@@ -401,6 +418,32 @@ def test_restart_preserves_envelope_and_rotation_changes_identity(tmp_path: Path
     )
 
 
+def test_archived_public_key_presence_does_not_extend_rotated_trust(tmp_path: Path) -> None:
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    state_dir = tmp_path / "state"
+    first_app = create_app(Settings(data_dir=_DATA, state_dir=state_dir))
+    first_identity = cast("SigningIdentity", first_app.state["identity"])
+    with TestClient(app=first_app) as client:
+        response = client.post("/verify-and-render", content=raw, headers=_JSON)
+        assert response.status_code == 200
+    old_keyid = first_identity.signer.keyid
+    old_public_key = first_identity.signer.public_key_bytes
+
+    rotated_app = create_app(
+        Settings(
+            data_dir=_DATA,
+            state_dir=state_dir,
+            signing_key_file=state_dir / "rotated.key",
+        )
+    )
+    rotated_identity = cast("SigningIdentity", rotated_app.state["identity"])
+    assert old_keyid not in rotated_identity.trusted_keys
+    with TestClient(app=rotated_app) as client:
+        response = client.get(f"/key/{old_keyid}")
+    assert response.status_code == 200
+    assert response.content == old_public_key
+
+
 def test_direct_and_propose_routes_share_one_signing_seam(
     client: TestClient[Litestar],
     service: Litestar,
@@ -440,6 +483,278 @@ def test_spec_get_serves_canonical_bytes(client: TestClient[Litestar]) -> None:
     assert response.headers["content-type"].startswith("application/json")
     assert response.content == canon.spec_bytes(decode_spec(raw))  # canonical, not the raw file
     assert decode_spec(response.content) == decode_spec(raw)  # yet decodes to the same spec
+
+
+@dataclass(frozen=True, slots=True)
+class _PublicArtifacts:
+    archive: Archive
+    plot_id: str
+    spec_id: str
+    keyid: str
+    envelope: bytes
+    public_key: bytes
+    canonical_spec: bytes
+
+
+def _replace_blob(
+    connection: sqlite3.Connection,
+    old_digest: str,
+    kind: BlobKind,
+    payload: bytes,
+    new_digest: str | None = None,
+) -> str:
+    digest = old_digest if new_digest is None else new_digest
+    connection.execute("DROP TRIGGER blobs_reject_update")
+    try:
+        cursor = connection.execute(
+            "UPDATE blobs SET digest = ?, size = ?, content = ? WHERE digest = ? AND kind = ?",
+            (digest, len(payload), payload, old_digest, kind.value),
+        )
+    finally:
+        connection.execute(archive_module._CREATE_BLOB_UPDATE_GUARD)
+    assert cursor.rowcount == 1
+    return digest
+
+
+def _readdress_envelope(
+    connection: sqlite3.Connection, artifacts: _PublicArtifacts, corrupted: bytes
+) -> str:
+    new_plot_id = hashlib.sha256(corrupted).hexdigest()
+    new_digest = f"sha256:{new_plot_id}"
+    _replace_blob(
+        connection,
+        f"sha256:{artifacts.plot_id}",
+        BlobKind.VCERT_ENVELOPE,
+        corrupted,
+        new_digest,
+    )
+    cursor = connection.execute(
+        "UPDATE plots SET plot_id = ?, certificate_digest = ? WHERE plot_id = ?",
+        (new_plot_id, new_digest, artifacts.plot_id),
+    )
+    assert cursor.rowcount == 1
+    return f"/certificate/{new_plot_id}"
+
+
+def _corrupt_envelope(
+    connection: sqlite3.Connection, fault: str, artifacts: _PublicArtifacts
+) -> str:
+    if fault == "envelope_blob":
+        corrupted = artifacts.envelope[:-1] + b"!"
+        _replace_blob(
+            connection,
+            f"sha256:{artifacts.plot_id}",
+            BlobKind.VCERT_ENVELOPE,
+            corrupted,
+        )
+        return f"/certificate/{artifacts.plot_id}"
+    if fault == "envelope_noncanonical":
+        return _readdress_envelope(connection, artifacts, artifacts.envelope + b" ")
+
+    document = cast("dict[str, Any]", json.loads(artifacts.envelope))
+    if fault == "envelope_signature":
+        signatures = cast("list[dict[str, Any]]", document["signatures"])
+        signature = cast("str", signatures[0]["sig"])
+        signatures[0]["sig"] = ("A" if signature[0] != "A" else "B") + signature[1:]
+    elif fault == "envelope_keyid":
+        signatures = cast("list[dict[str, Any]]", document["signatures"])
+        signatures[0]["keyid"] = "sha256:" + "f" * 64
+    else:
+        payload_type = cast("str", document["payloadType"])
+        document["payloadType"] = payload_type[:-1] + ("x" if payload_type[-1] != "x" else "y")
+    corrupted = json.dumps(document, separators=(",", ":")).encode()
+    return _readdress_envelope(connection, artifacts, corrupted)
+
+
+def _corrupt_key(connection: sqlite3.Connection, fault: str, artifacts: _PublicArtifacts) -> str:
+    if fault == "key_blob":
+        corrupted = bytes([artifacts.public_key[0] ^ 1]) + artifacts.public_key[1:]
+        _replace_blob(
+            connection,
+            artifacts.keyid,
+            BlobKind.ED25519_PUBLIC_KEY,
+            corrupted,
+        )
+        return f"/key/{artifacts.keyid}"
+
+    second_public_key = Ed25519PrivateKey.generate().public_key().public_bytes_raw()
+    second_blob = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, second_public_key)
+    second_keyid = keyid_for_public_key(second_public_key)
+    artifacts.archive.publish(
+        ArchiveBatch(
+            blobs=(second_blob,),
+            keys=(KeyRecord(second_keyid, second_blob.ref),),
+        )
+    )
+    cursor = connection.execute(
+        "UPDATE plots SET keyid = ? WHERE plot_id = ?",
+        (second_keyid, artifacts.plot_id),
+    )
+    assert cursor.rowcount == 1
+    return f"/certificate/{artifacts.plot_id}"
+
+
+def _corrupt_spec(connection: sqlite3.Connection, fault: str, artifacts: _PublicArtifacts) -> str:
+    if fault == "spec_relation":
+        cursor = connection.execute(
+            "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
+            ("sha256:" + "f" * 64, artifacts.spec_id),
+        )
+        assert cursor.rowcount == 1
+        return f"/spec/{artifacts.spec_id}"
+
+    replacement = (
+        artifacts.canonical_spec + b"\n"
+        if fault == "spec_noncanonical"
+        else canon.spec_bytes(decode_spec((_GOOD_DIR / _GOOD[1]["file"]).read_bytes()))
+    )
+    assert replacement != artifacts.canonical_spec
+    old_digest = "sha256:" + hashlib.sha256(artifacts.canonical_spec).hexdigest()
+    new_digest = "sha256:" + hashlib.sha256(replacement).hexdigest()
+    _replace_blob(connection, old_digest, BlobKind.CANONICAL_SPEC, replacement, new_digest)
+    cursor = connection.execute(
+        "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
+        (new_digest, artifacts.spec_id),
+    )
+    assert cursor.rowcount == 1
+    return f"/spec/{artifacts.spec_id}"
+
+
+def _corrupt_public_artifact(
+    connection: sqlite3.Connection, fault: str, artifacts: _PublicArtifacts
+) -> str:
+    connection.execute("PRAGMA foreign_keys=OFF")
+    if fault.startswith("envelope_"):
+        return _corrupt_envelope(connection, fault, artifacts)
+    if fault.startswith("key_"):
+        return _corrupt_key(connection, fault, artifacts)
+    return _corrupt_spec(connection, fault, artifacts)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "envelope_blob",
+        "envelope_signature",
+        "envelope_keyid",
+        "envelope_type",
+        "envelope_noncanonical",
+        "key_relation",
+        "key_blob",
+        "spec_relation",
+        "spec_noncanonical",
+        "spec_hash",
+    ],
+)
+def test_public_artifact_corruption_is_logged_generic_500(tmp_path: Path, fault: str) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    app = create_app(settings)
+    archive = cast("Archive", app.state["archive"])
+    identity = cast("SigningIdentity", app.state["identity"])
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+    canonical_spec = canon.spec_bytes(decode_spec(raw))
+
+    with TestClient(app=app) as client:
+        posted = cast(
+            "dict[str, Any]",
+            client.post("/verify-and-render", content=raw, headers=_JSON).json(),
+        )
+        plot_id = cast("str", posted["plot_id"])
+        spec_id = cast("str", posted["spec_id"])
+        keyid = identity.signer.keyid
+        envelope = client.get(f"/certificate/{plot_id}").content
+        public_key = client.get(f"/key/{keyid}").content
+        assert client.get(f"/spec/{spec_id}").content == canonical_spec
+        artifacts = _PublicArtifacts(
+            archive,
+            plot_id,
+            spec_id,
+            keyid,
+            envelope,
+            public_key,
+            canonical_spec,
+        )
+
+        connection = sqlite3.connect(archive.database_path, autocommit=True)
+        try:
+            target = _corrupt_public_artifact(connection, fault, artifacts)
+        finally:
+            connection.close()
+
+        handler = _ListHandler()
+        logger = logging.getLogger("verifier.service.app")
+        logger.addHandler(handler)
+        try:
+            response = client.get(target)
+        finally:
+            logger.removeHandler(handler)
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json() == {
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "the verifier encountered an internal error",
+    }
+    assert fault not in response.text
+    assert handler.records
+    assert handler.records[-1].levelno == logging.ERROR
+    assert handler.records[-1].exc_info is not None
+
+
+@pytest.mark.parametrize("artifact", ["certificate", "spec", "key"])
+@pytest.mark.parametrize("schema_fault", ["version", "guard_trigger"])
+def test_public_artifact_schema_drift_is_logged_generic_500(
+    tmp_path: Path, artifact: str, schema_fault: str
+) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    app = create_app(settings)
+    archive = cast("Archive", app.state["archive"])
+    identity = cast("SigningIdentity", app.state["identity"])
+    raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
+
+    with TestClient(app=app) as client:
+        posted = cast(
+            "dict[str, Any]",
+            client.post("/verify-and-render", content=raw, headers=_JSON).json(),
+        )
+        targets = {
+            "certificate": f"/certificate/{posted['plot_id']}",
+            "spec": f"/spec/{posted['spec_id']}",
+            "key": f"/key/{identity.signer.keyid}",
+        }
+        target = targets[artifact]
+        artifact_bytes = client.get(target).content
+        assert artifact_bytes
+
+        connection = sqlite3.connect(archive.database_path, autocommit=True)
+        try:
+            if schema_fault == "version":
+                connection.execute("PRAGMA user_version=3")
+            else:
+                connection.execute("DROP TRIGGER blobs_reject_delete")
+        finally:
+            connection.close()
+
+        handler = _ListHandler()
+        logger = logging.getLogger("verifier.service.app")
+        logger.addHandler(handler)
+        try:
+            response = client.get(target)
+        finally:
+            logger.removeHandler(handler)
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json() == {
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "the verifier encountered an internal error",
+    }
+    assert artifact_bytes not in response.content
+    assert handler.records
+    assert handler.records[-1].levelno == logging.ERROR
+    assert handler.records[-1].exc_info is not None
 
 
 # --- the offline HTML view: attached on request, omitted by default ---------
@@ -557,22 +872,52 @@ def test_chart_absent_or_malformed_404_without_csp(client: TestClient[Litestar])
 
 
 # --- the store is bounded: the oldest render evicts, cert AND spec together --
-def test_store_eviction_drops_cert_and_spec(tmp_path: Path) -> None:
-    app = create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state", store_cap=1))
+def test_archive_artifacts_survive_lru_eviction_and_restart(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=_DATA,
+        state_dir=tmp_path / "state",
+        store_cap=1,
+        html_cap=1,
+    )
+    app = create_app(settings)
+    store = cast("ArtifactStore", app.state["store"])
+    identity = cast("SigningIdentity", app.state["identity"])
+    raw_a = (_GOOD_DIR / _GOOD[0]["file"]).read_bytes()
+    raw_b = (_GOOD_DIR / _GOOD[1]["file"]).read_bytes()
+    expected_spec = canon.spec_bytes(decode_spec(raw_a))
+    keyid = identity.signer.keyid
+    expected_key = identity.signer.public_key_bytes
+
     with TestClient(app=app) as client:
-        a: dict[str, Any] = client.post(
-            "/verify-and-render", content=(_GOOD_DIR / _GOOD[0]["file"]).read_bytes(), headers=_JSON
-        ).json()
-        b: dict[str, Any] = client.post(
-            "/verify-and-render", content=(_GOOD_DIR / _GOOD[1]["file"]).read_bytes(), headers=_JSON
-        ).json()
+        a = cast(
+            "dict[str, Any]",
+            client.post("/verify-and-render", content=raw_a, headers=_JSON).json(),
+        )
+        expected_certificate = client.get(f"/certificate/{a['plot_id']}").content
+        assert client.get(f"/spec/{a['spec_id']}").content == expected_spec
+        key_response = client.get(f"/key/{keyid}")
+        assert key_response.status_code == 200
+        assert key_response.headers["content-type"] == "application/octet-stream"
+        assert key_response.content == expected_key
+
+        b = cast(
+            "dict[str, Any]",
+            client.post("/verify-and-render", content=raw_b, headers=_JSON).json(),
+        )
         assert a["plot_id"] != b["plot_id"]
-        # A is the oldest render at cap 1 -> evicted, and its spec mapping drops with it.
-        assert client.get(f"/certificate/{a['plot_id']}").status_code == 404
-        assert client.get(f"/spec/{a['spec_id']}").status_code == 404
-        # B, the surviving render, still resolves on both GETs.
-        assert client.get(f"/certificate/{b['plot_id']}").status_code == 200
-        assert client.get(f"/spec/{b['spec_id']}").status_code == 200
+        assert store.certificate(cast("str", a["plot_id"])) is None
+        assert store.spec(cast("str", a["spec_id"])) is None
+        assert client.get(f"/certificate/{a['plot_id']}").content == expected_certificate
+        assert client.get(f"/spec/{a['spec_id']}").content == expected_spec
+        assert client.get(f"/key/{keyid}").content == expected_key
+        assert client.get(f"/chart/{a['plot_id']}").status_code == 404
+
+    restarted = create_app(settings)
+    with TestClient(app=restarted) as client:
+        assert client.get(f"/certificate/{a['plot_id']}").content == expected_certificate
+        assert client.get(f"/spec/{a['spec_id']}").content == expected_spec
+        assert client.get(f"/key/{keyid}").content == expected_key
+        assert client.get(f"/chart/{a['plot_id']}").status_code == 404
 
 
 # --- id discipline: malformed and absent ids 404 alike (no validity leak) ----
@@ -601,6 +946,20 @@ def test_well_formed_but_absent_id_404_problem(client: TestClient[Litestar]) -> 
     response = client.get("/spec/" + "f" * 64)
     assert response.status_code == 404
     assert response.headers["content-type"] == _PROBLEM_JSON
+
+
+def test_public_key_malformed_and_unknown_addresses_share_uniform_404(
+    client: TestClient[Litestar],
+) -> None:
+    unknown = client.get("/key/sha256:" + "0" * 64)
+    assert unknown.status_code == 404
+    expected = unknown.json()
+    for keyid in ("abc", "sha256:abc", "sha256:" + "A" * 64, "0" * 64):
+        response = client.get(f"/key/{keyid}")
+        assert response.status_code == 404
+        assert response.headers["content-type"] == _PROBLEM_JSON
+        assert response.headers["x-content-type-options"] == _NOSNIFF
+        assert response.json() == expected
 
 
 # --- transport misuse on the new route -> problem+json ----------------------

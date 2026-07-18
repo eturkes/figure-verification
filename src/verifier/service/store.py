@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Count- and payload-byte-bounded artifact store (M2.3, M4.1b, M5.1j).
 
-A verified render contributes three canonical byte blobs: the signed DSSE VCert envelope (keyed
-by its content-addressed plot_id) and the canonical spec (keyed by spec_id) are each served
-verbatim by a retrieval GET, as is the signed-provenance chart HTML page (keyed by plot_id) at
-GET /chart/{plot_id}. These caches are in-memory only; the independent archive already retains
-durable signed attempts + plot bundles, while durable HTTP retrieval/replay follows later.
+A verified render contributes three canonical byte blobs. The signed DSSE VCert envelope (keyed
+by plot_id) + canonical spec (keyed by spec_id) remain in a bounded write-side render LRU, but the
+public certificate/spec GETs always use the SQLite archive as authority and independently recheck
+every address, typed relation, canonical form, and certificate authentication before serving. The
+chart HTML page (keyed by plot_id) alone is served from this process-local store at GET
+/chart/{plot_id}; its liveness remains deliberately ephemeral across eviction/restart.
 
 TWO independent bounded LRUs, each with count + exact logical-payload ceilings:
 
@@ -16,9 +17,8 @@ TWO independent bounded LRUs, each with count + exact logical-payload ceilings:
   data_dir + manifest + TCB + signing key determines one envelope and plot_id. Two plot_ids can
   share one spec_id when an operator rotates the signer or mutates the trusted manifest (the
   envelope/certificate changes, its spec_hash does not), so the spec bytes are held once under a
-  live-reference count and drop only when the LAST render referencing them evicts. A stored
-  render's spec GET thus always resolves — retrieval consistency holds unconditionally, not
-  merely under the 1:1 precondition checks.py rests on.
+  live-reference count and drop only when the LAST render referencing them evicts. Eviction has
+  no effect on public certificate/spec liveness because those GETs read the durable archive.
 - CHARTS (html_cap + chart_cache_bytes), keyed by plot_id, holds the offline chart HTML pages.
   Each inlines the whole Vega bundle (~MB), so this LRU is count-bounded far tighter than the
   render LRU (html_cap << store_cap by default) and evicts on its OWN recency.
@@ -28,16 +28,12 @@ Replacement refreshes recency and adjusts payload totals before eviction. A sing
 service ``Settings`` makes those branches unreachable for policy-conforming pipeline outputs.
 These are exact resident ``bytes`` payload totals, not Python-container/process-memory bounds.
 
-The two LRUs evict independently, so BOTH mixed states are reachable and accepted: a chart 404s
-while its certificate still lives (the common case, html_cap << store_cap), and — under
-chart-only access, since chart() refreshes only the chart LRU — a certificate 404s while its
-chart still lives. Intended: a served chart was verified at render time and is immutable, so it
-needs no live certificate; the certificate stays the canonical provenance artifact, NOT a
-liveness gate for the chart.
+The two LRUs still evict independently, but only chart eviction is externally observable: a chart
+may 404 while its certificate/spec/key continue to resolve durably. A served chart was verified at
+render time and is immutable; archive-backed certificate liveness is not a gate for the chart.
 
-Thread-safe: the CPU-bound verify-and-render runs in a worker thread (sync_to_thread) and
-the retrieval GETs read on the event loop, so every access takes the lock. The lock is held
-only for O(1) dict operations, never across a render.
+Thread-safe: render workers mutate both LRUs and chart GET workers read the chart LRU. Every
+access takes the lock only for O(1) dict operations, never across rendering or archive I/O.
 """
 
 import threading
