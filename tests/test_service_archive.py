@@ -146,6 +146,16 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
         assert not connection.getconfig(sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA)
         assert connection.getconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_FKEY)
         table_rows = connection.execute("PRAGMA table_list").fetchall()
+        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute(
+            "SELECT schema_version FROM meta WHERE singleton = 1"
+        ).fetchone() == (3,)
+        assert archive_module._schema_rows(connection) == tuple(
+            sorted(archive_module._SCHEMA_OBJECTS, key=lambda row: (row[0], row[1]))
+        )
+        assert connection.execute(
+            "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
+        ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
     finally:
         connection.close()
     expected_tables = {
@@ -166,6 +176,24 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
     reopened = open_archive(settings)
     assert reopened.database_path == archive.database_path
     assert reopened.stats() == archive.stats()
+
+
+def test_version_two_archive_migrates_partial_attempt_index_atomically(tmp_path: Path) -> None:
+    archive = _archive(tmp_path)
+    with _database_connection(archive) as connection:
+        connection.execute("DROP INDEX attempts_by_plot")
+        connection.execute("UPDATE meta SET schema_version = 2 WHERE singleton = 1")
+        connection.execute("PRAGMA user_version=2")
+
+    reopened = _archive(tmp_path)
+    with _database_connection(reopened) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute(
+            "SELECT schema_version FROM meta WHERE singleton = 1"
+        ).fetchone() == (3,)
+        assert connection.execute(
+            "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
+        ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
 
 
 def test_app_initializes_archive_and_rejects_schema_version_drift_at_startup(
@@ -212,6 +240,80 @@ def test_complete_batch_round_trips_every_relation_and_typed_read(tmp_path: Path
         assert connection.execute("SELECT COUNT(*) FROM attempt_references").fetchone() == (8,)
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+
+
+def test_lowest_verified_attempt_id_is_indexed_bounded_and_corruption_safe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    plot_id = batch.plots[0].plot_id
+    keyid = batch.keys[0].keyid
+
+    extra_envelopes = tuple(
+        BlobWrite(BlobKind.ATTEMPT_ENVELOPE, payload)
+        for payload in (b"second signed attempt", b"third signed attempt")
+    )
+    plotless_envelope = BlobWrite(BlobKind.ATTEMPT_ENVELOPE, b"plotless signed attempt")
+    extra_attempts = tuple(
+        AttemptRecord(_address(envelope), envelope.ref, keyid, plot_id)
+        for envelope in extra_envelopes
+    )
+    plotless_attempt = AttemptRecord(
+        _address(plotless_envelope),
+        plotless_envelope.ref,
+        keyid,
+    )
+    archive.publish(
+        ArchiveBatch(
+            blobs=(*extra_envelopes, plotless_envelope),
+            attempts=(*extra_attempts, plotless_attempt),
+        )
+    )
+
+    expected = min(batch.attempts[0].attempt_id, *(item.attempt_id for item in extra_attempts))
+    assert archive.lowest_verified_attempt_id(plot_id) == expected
+    with _database_connection(archive) as connection:
+        plan = connection.execute(
+            "EXPLAIN QUERY PLAN " + archive_module._SELECT_LOWEST_PLOT_ATTEMPT,
+            (plot_id,),
+        ).fetchall()
+    assert any("USING COVERING INDEX attempts_by_plot" in cast("str", row[3]) for row in plan)
+    absent_plot_id = "0" * 64 if plot_id != "0" * 64 else "1" * 64
+    assert archive.lowest_verified_attempt_id(absent_plot_id) is None
+    with pytest.raises(ValueError, match="64 lowercase"):
+        archive.lowest_verified_attempt_id(cast("str", 1))
+    with pytest.raises(ValueError, match="64 lowercase"):
+        archive.lowest_verified_attempt_id("bad")
+
+    valid_row = ("a" * 64,)
+    assert archive_module._validated_lowest_attempt_id(valid_row) == valid_row[0]
+    malformed_rows: tuple[object, ...] = (None, [], (), ("a" * 64, "b" * 64))
+    for malformed_row in malformed_rows:
+        with pytest.raises(ArchiveIntegrityError, match="row is malformed"):
+            archive_module._validated_lowest_attempt_id(malformed_row)
+    for corrupt_row in ((1,), ("bad",)):
+        with pytest.raises(ArchiveIntegrityError, match="address is corrupt"):
+            archive_module._validated_lowest_attempt_id(corrupt_row)
+
+    with _database_connection(archive) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute("PRAGMA ignore_check_constraints=ON")
+        connection.execute(
+            "UPDATE attempts SET attempt_id = ? WHERE attempt_id = ?", ("!", expected)
+        )
+    with pytest.raises(ArchiveIntegrityError, match="address is corrupt"):
+        archive.lowest_verified_attempt_id(plot_id)
+
+    monkeypatch.setattr(
+        archive_module,
+        "_SELECT_LOWEST_PLOT_ATTEMPT",
+        "SELECT absent_column FROM attempts",
+    )
+    with pytest.raises(ArchiveError, match="selecting the lowest verified"):
+        archive.lowest_verified_attempt_id(plot_id)
 
 
 def test_blob_dedup_is_typed_idempotent_and_cross_kind_equal_bytes_are_representable(
@@ -414,7 +516,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 ) -> None:
     versioned = _archive(tmp_path / "versioned")
     with _database_connection(versioned) as connection:
-        connection.execute("PRAGMA user_version=3")
+        connection.execute("PRAGMA user_version=4")
     with pytest.raises(ArchiveSchemaError, match="schema version"):
         _archive(tmp_path / "versioned")
 
@@ -424,9 +526,23 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
     with pytest.raises(ArchiveSchemaError, match="schema objects"):
         _archive(tmp_path / "shape")
 
+    missing_index = _archive(tmp_path / "missing-index")
+    with _database_connection(missing_index) as connection:
+        connection.execute("DROP INDEX attempts_by_plot")
+    with pytest.raises(ArchiveSchemaError, match="schema objects"):
+        missing_index.lowest_verified_attempt_id("a" * 64)
+    with pytest.raises(ArchiveSchemaError, match="schema objects"):
+        _archive(tmp_path / "missing-index")
+
+    extra_index = _archive(tmp_path / "extra-index")
+    with _database_connection(extra_index) as connection:
+        connection.execute("CREATE INDEX attempts_extra ON attempts(keyid)")
+    with pytest.raises(ArchiveSchemaError, match="schema objects"):
+        _archive(tmp_path / "extra-index")
+
     meta = _archive(tmp_path / "meta")
     with _database_connection(meta) as connection:
-        connection.execute("UPDATE meta SET schema_version = 3 WHERE singleton = 1")
+        connection.execute("UPDATE meta SET schema_version = 4 WHERE singleton = 1")
     with pytest.raises(ArchiveSchemaError, match="meta row"):
         _archive(tmp_path / "meta")
 

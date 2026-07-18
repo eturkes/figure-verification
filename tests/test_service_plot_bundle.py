@@ -153,12 +153,15 @@ def test_materialized_plot_resolves_every_certified_byte_and_round_trips_reopen(
     assert reopened.stats() == archive.stats()
 
 
-def test_version_one_archive_migrates_durable_spec_addresses_atomically(tmp_path: Path) -> None:
+def test_version_one_archive_chains_spec_and_attempt_index_migrations_atomically(
+    tmp_path: Path,
+) -> None:
     settings, _signer, _prepared, rendered, bundle = _parts(tmp_path)
     archive = open_archive(settings)
     archive.publish_plot(bundle, limits=settings.limits)
     connection = sqlite3.connect(archive.database_path, autocommit=True)
     try:
+        connection.execute("DROP INDEX attempts_by_plot")
         connection.execute("DROP TABLE specs")
         connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")
         connection.execute("PRAGMA user_version=1")
@@ -170,6 +173,17 @@ def test_version_one_archive_migrates_durable_spec_addresses_atomically(tmp_path
     assert (
         reopened.read_spec(spec_id, max_bytes=len(bundle.canonical_spec)) == bundle.canonical_spec
     )
+    connection = sqlite3.connect(reopened.database_path, autocommit=True)
+    try:
+        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute(
+            "SELECT schema_version FROM meta WHERE singleton = 1"
+        ).fetchone() == (3,)
+        assert connection.execute(
+            "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
+        ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
+    finally:
+        connection.close()
 
 
 def test_rotated_signature_creates_second_plot_while_shared_role_blobs_deduplicate(
@@ -591,6 +605,7 @@ def test_version_one_migration_rejects_corrupt_spec_index_inputs(
     archive.publish_plot(bundle, limits=settings.limits)
     connection = sqlite3.connect(archive.database_path, autocommit=True)
     try:
+        connection.execute("DROP INDEX attempts_by_plot")
         connection.execute("DROP TABLE specs")
         connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")
         connection.execute("PRAGMA user_version=1")

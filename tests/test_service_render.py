@@ -730,7 +730,7 @@ def test_public_artifact_schema_drift_is_logged_generic_500(
         connection = sqlite3.connect(archive.database_path, autocommit=True)
         try:
             if schema_fault == "version":
-                connection.execute("PRAGMA user_version=3")
+                connection.execute("PRAGMA user_version=4")
             else:
                 connection.execute("DROP TRIGGER blobs_reject_delete")
         finally:

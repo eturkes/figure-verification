@@ -21,8 +21,9 @@ caller's byte limit before opening the BLOB. ``sqlite3.Blob`` is consumed in fix
 SHA-256 digest is recomputed; neither a metadata lie nor corruption can become trusted payload.
 Application values use SQL parameters exclusively; the only literal SQL is fixed schema/PRAGMA
 text owned by this module. Schema v2 adds an immutable domain-separated spec-address index; the
-atomic v1 migration reads only each plot's canonical-spec blob under the configured spec ceiling,
-never raw CSV, prompt, or model bytes.
+atomic v1 migration reads only each plot's canonical-spec blob under the configured spec ceiling.
+Schema v3 adds a partial ``(plot_id, attempt_id)`` index for bounded lowest-attempt selection,
+without reading raw CSV, prompt, or model bytes.
 
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
@@ -115,7 +116,8 @@ __all__ = [
     "open_archive",
 ]
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION_V2 = 2
+_SCHEMA_VERSION = 3
 _DATABASE_NAME = "archive.sqlite3"
 _BUSY_TIMEOUT_MS = 5_000
 _BLOB_CHUNK_BYTES = 64 * 1024
@@ -1394,6 +1396,10 @@ BEGIN
     SELECT RAISE(ABORT, 'archive blobs are immutable');
 END"""
 
+# fmt: off
+_CREATE_ATTEMPTS_BY_PLOT = "CREATE INDEX attempts_by_plot ON attempts(plot_id, attempt_id) WHERE plot_id IS NOT NULL"  # noqa: E501
+# fmt: on
+
 _SCHEMA_OBJECTS = (
     ("table", "meta", "meta", _CREATE_META),
     ("table", "blobs", "blobs", _CREATE_BLOBS),
@@ -1406,8 +1412,10 @@ _SCHEMA_OBJECTS = (
     ("trigger", "blobs_track_logical_bytes", "blobs", _CREATE_BLOB_ACCOUNTING),
     ("trigger", "blobs_reject_update", "blobs", _CREATE_BLOB_UPDATE_GUARD),
     ("trigger", "blobs_reject_delete", "blobs", _CREATE_BLOB_DELETE_GUARD),
+    ("index", "attempts_by_plot", "attempts", _CREATE_ATTEMPTS_BY_PLOT),
 )
-_SCHEMA_OBJECTS_V1 = tuple(row for row in _SCHEMA_OBJECTS if row[1] != "specs")
+_SCHEMA_OBJECTS_V2 = tuple(row for row in _SCHEMA_OBJECTS if row[1] != "attempts_by_plot")
+_SCHEMA_OBJECTS_V1 = tuple(row for row in _SCHEMA_OBJECTS_V2 if row[1] != "specs")
 
 _INSERT_BLOB = "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)"
 _SELECT_BLOB = """SELECT blob_id, digest, kind, size
@@ -1465,6 +1473,9 @@ FROM attempt_references AS r
 JOIN blobs AS b ON b.digest = r.blob_digest AND b.kind = r.blob_kind
 WHERE r.attempt_id = ?
 ORDER BY r.role"""
+_SELECT_LOWEST_PLOT_ATTEMPT = (
+    "SELECT attempt_id FROM attempts WHERE plot_id = ? ORDER BY attempt_id LIMIT 1"
+)
 _SELECT_ATTEMPT_EXISTS = "SELECT 1 FROM attempts WHERE attempt_id = ?"
 
 
@@ -1630,9 +1641,24 @@ def _migrate_v1_to_v2(connection: sqlite3.Connection, *, max_spec_bytes: int) ->
         spec_id = canon.hash_spec(spec).removeprefix("sha256:")
         _put_spec(connection, SpecRecord(spec_id, reference))
     connection.execute(
-        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION_V2, 1)
     )
     connection.execute("PRAGMA user_version=2")
+
+
+def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
+    """Add the indexed lowest-attempt lookup derived from existing attempt rows."""
+    _validate_schema_version(
+        connection,
+        schema_version=_SCHEMA_VERSION_V2,
+        schema_objects=_SCHEMA_OBJECTS_V2,
+        verify_accounting=True,
+    )
+    connection.execute(_CREATE_ATTEMPTS_BY_PLOT)
+    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )
+    connection.execute("PRAGMA user_version=3")
 
 
 def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes: int) -> None:
@@ -1649,9 +1675,12 @@ def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes
                 "INSERT INTO meta(singleton, schema_version, logical_blob_bytes) VALUES (?, ?, ?)",
                 (1, _SCHEMA_VERSION, 0),
             )
-            connection.execute("PRAGMA user_version=2")
+            connection.execute("PRAGMA user_version=3")
         elif version == 1:
             _migrate_v1_to_v2(connection, max_spec_bytes=max_spec_bytes)
+            _migrate_v2_to_v3(connection)
+        elif version == _SCHEMA_VERSION_V2:
+            _migrate_v2_to_v3(connection)
         _validate_schema(connection, verify_accounting=True)
 
 
@@ -2026,6 +2055,17 @@ def _read_complete_plot_bundle(
         tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
         public_key=public_key,
     )
+
+
+def _validated_lowest_attempt_id(row: object) -> str:
+    if not isinstance(row, tuple) or len(row) != 1:
+        msg = "archive lowest plot-attempt row is malformed"
+        raise ArchiveIntegrityError(msg)
+    attempt_id = row[0]
+    if not isinstance(attempt_id, str) or _HEX64.fullmatch(attempt_id) is None:
+        msg = "archive lowest plot-attempt address is corrupt"
+        raise ArchiveIntegrityError(msg)
+    return attempt_id
 
 
 def _validated_attempt_record(row: object, attempt_id: str) -> tuple[BlobRef, str, str | None]:
@@ -2941,6 +2981,24 @@ class Archive:
             return bundle
         finally:
             connection.close()
+
+    def lowest_verified_attempt_id(self, plot_id: str) -> str | None:
+        """Return the lexicographically lowest signed verified attempt for one plot."""
+        _require_address(plot_id, subject="plot_id")
+        connection = self._connect()
+        result: str | None
+        try:
+            _validate_schema(connection, verify_accounting=False)
+            row = connection.execute(_SELECT_LOWEST_PLOT_ATTEMPT, (plot_id,)).fetchone()
+            result = None if row is None else _validated_lowest_attempt_id(row)
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed while selecting the lowest verified plot attempt"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+        return result
 
     def read_attempt(
         self,

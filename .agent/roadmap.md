@@ -501,13 +501,30 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   stored-table/Vega/verdict/SVG steering-resistance are pinned. Locked gate green at 1,508 tests/100%
   branch coverage.
   Context: `main=24% 65K/272K`; `impl=80% 218K/272K`.
-- **M5.5b — archive replay adapter** (OPEN): add thin `service.replay` loading bounded role-typed
+- **M5.5b — archive replay adapter** (DONE): add thin `service.replay` loading bounded role-typed
   blobs from the archive. For a plot, select via indexed `LIMIT 1` the lexicographically lowest
   committed signed successful attempt associated with it, then require the pure engine to verify
   that signed association. Resolve trust only from current signer + explicit historical keyid pins,
   never archive key presence. Acceptance: exact replay survives live CSV/manifest mutation,
   deletion, LRU eviction, process restart, and foreign cwd; unpinned historical key, missing blob,
   corrupt association, and archive read cap fail closed; no model/data-dir access; gate green.
+  Landed `verifier.service.replay.replay_plot(archive, trusted_keys, plot_id, *, max_bytes, limits)
+  -> ReplayVerdict` plus a `replay_plot_from_settings` convenience: it resolves the lexicographically
+  lowest signed verified attempt via a new schema-v3 partial covering index `attempts_by_plot ON
+  attempts(plot_id, attempt_id) WHERE plot_id IS NOT NULL` and SQL-owned
+  `Archive.lowest_verified_attempt_id` (indexed `LIMIT 1`), reads that bundle under the aggregate
+  byte cap, materializes a pure `ReplaySnapshot` by a 1:1 field copy of the archive
+  `AttemptBundle`/`PlotBundle`, and passes `identity.trusted_keys` unchanged to `replay_snapshot`.
+  The archived key proves storage self-consistency only; trust stays current signer + explicit
+  historical pins. The schema bump chains v1->v2->v3 / v2->v3 (the index is derived, no blob reads);
+  `_migrate_v1_to_v2` now advances only to the intermediate `_SCHEMA_VERSION_V2` so the chained path
+  stays consistent. Pinned: exact replay survives CSV/manifest mutation+deletion, cache-cold state,
+  process restart, and foreign cwd; multi-attempt lowest-selection + unchanged trust-mapping are
+  observed through a `replay_snapshot` spy; an unpinned signer returns `untrusted_key`; missing blob,
+  corrupt plot association, zero read cap, and unknown plot fail closed; an AST test pins no
+  model-client import and no `data_dir` argument. Locked gate green at 1,519 tests/100% branch
+  coverage.
+  Context: `main=61% 165K/272K`; `impl=68% 185K/272K`.
 - **M5.5c — replay HTTP surface + audit docs** (OPEN): add `GET /replay/{plot_id}` returning a
   typed ReplayVerdict (integrity, trusted keyid, version match, per-artifact comparisons, no raw
   snapshots/prompt); an exact replay includes regenerated SVG + repopulates the ephemeral chart
