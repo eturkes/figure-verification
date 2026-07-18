@@ -561,6 +561,41 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   test-layer/demo-layer seam per the M4.1 multi-layer overflow lesson. FAST-PATH recipe (authority =
   commit 26375ac + the named tests; transcribe, do not re-derive — re-read each named source test
   for exact injection bytes):
+  - DEFECT step 0 (parallel-session doc audit; MAIN-reproduced 2026-07-19): invalid-UTF-8 request
+    bytes make `schema.decode_spec` raise builtin `UnicodeDecodeError` (NOT msgspec), which
+    `pipeline.decode_stage` line 144 `except (ValidationError, DecodeError)` omits, so it escapes ->
+    BOTH `/verify-only` and `/verify-and-render` return generic 500, violating the documented
+    decode-failure->200-verdict contract (POC_SCOPE.md:102-105, VPlot_SEMANTICS.md:204-208) and
+    `.agent/memory.md:17`. FIX = in `schema.decode_spec` bytes-path wrap `_DECODER.decode(data)` to
+    re-raise `UnicodeDecodeError` as `msgspec.DecodeError` (mirrors the str-path
+    `UnicodeEncodeError`->`DecodeError` at schema.py:158-160) and fix the now-false docstring; both
+    endpoints then return the 200 structured decode-failure verdict (same arm as malformed JSON).
+    CLEAN, no dead branch: propose-body uses a separate `_PROPOSE_DECODER` (app.py:262/270, already
+    catches all three), invalid-UTF-8 model REPLY is caught in `model_client`->502, and the new
+    regression test covers the new arm. Capstone decode scenarios assert the FIXED 200 behavior;
+    MAIN inspects this production fix diff separately from the test authoring.
+  - VERIFIED-DISCOVERY: parallel read-only agents (scaffold-research, evidence-map, docs-audit)
+    re-derived + line-verified the anchors below — treat the `file::test` pointers as validated.
+    Prefer the FAST typed proposer stub `monkeypatch.setattr(service_app, "propose_spec",
+    AsyncMock(return_value=ModelProposal(reply, ProposalTrace(...))))` (from
+    `test_service_attempt_capture.py::_proposal`) over HTTP MockTransport where only pass/fail
+    matters — success `reply` = g01 good-spec bytes, decode-fail `reply` = a fenced non-VPlot JSON,
+    classified backend fault = `AsyncMock(side_effect=ModelUpstreamError(status=502,
+    trace=ProposalTrace(fault=ProposalFault.INVALID_ENVELOPE)))`. Manifests live in `data/schemas/`
+    (helper `test_service_render.py::_copy_sales_dataset` copies `data/sales.csv`+`data/schemas/
+    sales.json` for scenario 6). Audit-in-pytest = `verifier.service.audit.audit_attempt(settings,
+    attempt_id)` (CLI leg = `main(("audit", attempt_id))`). HTTP quota-507 + rollback anchor =
+    `test_service_attempt_capture.py::test_archive_fault_replaces_verified_outcome_before_any_lru_
+    mutation` (`fault="quota"`/`"ledger"`, `max_archive_bytes=1`; assert 507/500, no attempt_id, no
+    LRU put, reopened `ArchiveStats(0,0,0,0,0)`). HAZARDS: attempt IDs nondeterministic -> capture
+    returned IDs, never hardcode; replay picks the lexicographically LOWEST attempt id -> use
+    `min(observed_ids)`; SVG diagnostic-only -> never gate `exact` on svg equality; force solver
+    `unknown` via the `_check_solver` seam, never wall-clock; 429 needs a held permit + sync;
+    isolate each SQLite-corruption case in its own state_dir/app lifecycle. NEW end-to-end
+    composition the capstone adds (currently uncovered): real endpoint pass+fail -> restart ->
+    actual audit CLI asserting the human-readable reason; two distinct datasets -> distinct
+    fetched-certificate `dataset_hash`; HTTP exact formal-failure MESSAGE text; single restart ->
+    independently verify certificate -> replay -> chart.
   - Scaffold (verbatim from `tests/test_service_replay_route.py`): `create_app` from
     `verifier.service.app`, `Settings` from `verifier.service.settings`, `TestClient` from
     `litestar.testing`; `_ROOT=Path(__file__).resolve().parent.parent`, `_DATA=_ROOT/"data"`,
@@ -628,7 +663,24 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   artifacts"** vs the FIVE bound hashes (dataset/manifest/spec/plotted_table/vega_lite in replay
   `artifact_matches` + VCert v0.2) — verify against the VCert struct and correct if stale; rescan the
   same token families at anchors examples/README.md:28, VPlot_SEMANTICS.md:37/152/172/188/219-222,
-  POC_SCOPE.md:24/31/33/119-175, bench/README.md:33-34. (c) MAIN closes M5: set M5.5d+M5.5e DONE and
+  POC_SCOPE.md:24/31/33/119-175, bench/README.md:33-34. WORKLIST (parallel docs-audit; MAIN
+  validates each before editing — docs-audit rated POC five-hashes + method vocabulary + DSSE/keyid
+  + quota/replay-error split as CONSISTENT, do not touch): DEFINITE doc fixes — VPlot_SEMANTICS.md:
+  31-34 "discloses every applied filter + sort" -> only the ACTIVE sort (`render._build_certificate`
+  keeps `active_sort`; POC_SCOPE.md:65 already right); VPlot_SEMANTICS.md:217-225 classifies
+  `scale.bar_zero` as M1 SEMANTIC -> it is M5.2 `z3_smt` (same doc correct at 187-189);
+  webui/README.md:134 "all 8 checks passed" -> g01 now yields 10 final results;
+  examples/README.md:19-22 construction inventory omits `security.no_arbitrary_code` +
+  `transform.ops_allowed`; `.agent/memory.md:21` "SVG/pixels unhashed" -> pixels unhashed/display-TCB
+  but SVG IS digest-bound in signed attempt provenance (`archive._PLOT_BINDING_FIELDS`), only absent
+  from VCert + diagnostic-only for exact replay. REVIEW-ONLY wording: POC_SCOPE.md:31-33/47-49,
+  VPlot_SEMANTICS.md:29-30/209-216, examples/README.md:24-28, bench/README.md:87-93 (cumulative
+  repeat-run archive reuse), `.agent/memory.md:75` (archive schema is now v3 via `_migrate_v2_to_v3`,
+  not v2). Reconcile my earlier POC_SCOPE.md:24 "four artifacts" flag (docs-audit rated POC
+  five-hashes consistent — confirm whether :24 is a distinct enumeration or a genuine miss). The
+  invalid-UTF-8 decode items (POC_SCOPE.md:102-105, VPlot_SEMANTICS.md:204-208) are NOT doc drift —
+  they state the correct contract; the CODE bug is fixed in M5.5d, so leave those docs as-is.
+  (c) MAIN closes M5: set M5.5d+M5.5e DONE and
   M5 IMPLEMENTED, record main=/impl=, commit. Scaffold identical to M5.5d. Gate green (`demo/`
   outside `verifier` coverage source, like `bench/`). Acceptance: `demo` runs clean from empty state
   and reports every scenario; no stale claim-method/storage statement and no overclaim survives; gate
