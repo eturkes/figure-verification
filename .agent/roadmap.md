@@ -553,14 +553,86 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   500, shared-admission 429, a real-TCP replay leg, and jsonschema consumer validation. Locked gate
   green at 1,530 tests/100% branch coverage.
   Context: `main=72% 197K/272K`; `impl=65% 176K/272K`.
-- **M5.5d — end-to-end hardening evidence** (OPEN): from empty state, exercise direct render +
-  deterministic model-stub success/failure, restart, LRU eviction, live-data mutation, exact
-  replay, failed-attempt audit, key mismatch, DB/blob/signature corruption, solver timeout,
-  capacity 429, quota refusal, and crash-injected transaction rollback. Run golden corpus + full
-  locked gate; sweep POC_SCOPE/VPlot semantics/README/memory for claim-method/storage drift; close
-  M5 -> IMPLEMENTED. Acceptance: every seed-13/14 exit criterion demonstrated with retained test
-  evidence, every trust/availability limit stated without stronger cryptographic/formal claim,
-  and gate green.
+- **M5.5d — end-to-end hardening capstone (pytest)** (OPEN): author `tests/test_e2e_hardening.py`,
+  one from-empty-state pytest module demonstrating all 13 hardening scenarios, each assertion
+  annotated to the seed-13/seed-14 exit criterion it satisfies; golden corpus (`test_examples`) +
+  full locked gate green. Respec of the former single M5.5d after the user chose BOTH a gated pytest
+  capstone AND a runnable demo (that demo + doc sweep + close are now M5.5e); split at the
+  test-layer/demo-layer seam per the M4.1 multi-layer overflow lesson. FAST-PATH recipe (authority =
+  commit 26375ac + the named tests; transcribe, do not re-derive — re-read each named source test
+  for exact injection bytes):
+  - Scaffold (verbatim from `tests/test_service_replay_route.py`): `create_app` from
+    `verifier.service.app`, `Settings` from `verifier.service.settings`, `TestClient` from
+    `litestar.testing`; `_ROOT=Path(__file__).resolve().parent.parent`, `_DATA=_ROOT/"data"`,
+    `_GOOD_SPEC=_ROOT/"examples"/"good_specs"/"g01_total_revenue_by_month.json"`; reuse
+    `_render_plot`, `_assert_problem`, `_ListHandler`. Empty state = `state_dir=tmp_path/"state"`.
+    Settings knobs (confirmed): `store_cap`, `html_cap`, `render_cache_bytes`, `chart_cache_bytes`,
+    `max_archive_bytes` (quota), `max_active_jobs`, `work_rate_per_minute`, `work_burst`,
+    `signing_key_file`; SMT timeout knob = confirm exact field in `settings.py` (`VerificationLimits.
+    smt_timeout_ms`). Handles: `cast("Archive", app.state["archive"])` (`.database_path`),
+    `cast("AdmissionController", app.state["admission"])` (`.try_acquire()`).
+  - Scenario -> reuse source: (1) direct render `_render_plot`. (2/3) model-stub success/failure:
+    `monkeypatch.setattr(verifier.service.model_client, "_build_async_client", build)`, `build`
+    returns `httpx.AsyncClient(transport=httpx.MockTransport(handler))`, handler returns canned
+    OpenAI chat reply (valid VPlot JSON = success; decode/verify-failing reply = failure) — from
+    `tests/test_service_propose.py` (~L64-90); POST `/propose-spec {user_request, dataset_name}`.
+    (4) restart: 2nd `TestClient(create_app(same settings))` -> `/chart` 404, `/replay` 200 exact,
+    `/chart` repopulates (`test_service_replay_route.py::test_render_restart_replay_repopulates_
+    chart_lru`). (5) LRU eviction: tiny `store_cap`/`html_cap`/`chart_cache_bytes` -> chart 404,
+    certificate/spec archive-durable (`test_service_render.py::test_chart_lru_evicts_independently_
+    of_certificate`, `::test_archive_artifacts_survive_lru_eviction_and_restart`). (6) live-data
+    mutation: render from a COPIED tmp data dir, then alter/delete the CSV -> `/replay` still exact
+    (filesystem-free `checks.verify_snapshot`). (7) exact replay: `/replay` status `exact`,
+    `artifact_matches` all True (`::test_exact_replay_response_is_bounded_replay_verdict`). (8)
+    failed-attempt audit: capture the `attempt_id` a blocked verdict/Problem carries, then
+    `from verifier.service.audit import main as audit_main`; `audit_main((attempt_id,))` exit 0,
+    stable JSON (`tests/test_service_audit.py`). (9) key mismatch: 2nd app `signing_key_file=
+    state_dir/"rotated.key"` -> `/replay` `untrusted_key`, `integrity_ok` False, no chart
+    (`::test_untrusted_archived_signer_returns_diagnostic_without_chart`). (10) DB corruption:
+    `sqlite3.connect(archive.database_path)` `DROP INDEX attempts_by_plot; commit` -> `/replay` 500
+    generic, `ArchiveSchemaError` logged, no leak (`::test_archive_schema_fault_is_logged_and_
+    returns_generic_500`). (11) blob corruption: transcribe `tests/test_service_archive.py::
+    test_blob_triggers_reject_mutation_then_stream_read_detects_content_corruption` (~L478). (12)
+    signature corruption: transcribe `tests/test_service_attempt_bundle.py::test_tampered_signature_
+    roles_bytes_and_cross_bundle_edges_fail_before_mutation` (~L424). (13) solver timeout:
+    `monkeypatch.setattr(verifier.formal, "_check_solver", lambda _s: "unknown")` -> obligation
+    "unknown or timed out", render blocked (`tests/test_formal.py::test_forced_unknown_or_timeout_
+    fails_closed`); capacity 429: `max_active_jobs=1`, `held=admission.try_acquire()`, request under
+    `with ... held:` -> 429 (`::test_replay_uses_shared_active_job_admission`); quota 507: tiny
+    `max_archive_bytes` -> `/verify-and-render` commit -> 507 (POC_SCOPE.md:152-156 +
+    `test_service_archive.py` quota tests); crash-injected rollback: transcribe
+    `tests/test_service_archive.py::test_injected_fault_rolls_back_all_rows_and_trigger_accounting`
+    (~L402) — archive-level, not HTTP.
+  - Seed evidence (assert + comment each): 13(a) >=3 z3 obligations exercised via a verified VCert;
+    13(b) z3 unknown -> readable message; 13(c) VCert `checks:[{id,method,status}]` shows `z3_smt`
+    vs `deterministic_recompute`; 14(a) replay reproduces from stored artifacts; 14(b) distinct CSV
+    -> distinct `dataset_hash`; 14(c) verifier-version drift visible in replay `version_match`/`drift`
+    + VCert TCB; 14(d) audit debugs a failed attempt; routes `/replay/{id}` + `/certificate/{id}`
+    both exercised.
+  - Constraints/gates: reuse helpers (no re-derive); TARGETED edits to any shared test util; every
+    trust/availability claim at current strength (archived-key verification = self-consistency only,
+    replay/audit fail-closed, no cryptographic/formal overclaim). Gate = locked `ruff check` /
+    `ruff format --check` / `mypy --strict` / `pytest` (100% branch, source `verifier`; the new test
+    only ADDS coverage; `--no-cov` only for local subsets); golden corpus = `test_examples` green.
+    AGENT does not commit. Acceptance: every seed-13/14 criterion demonstrated with retained
+    evidence, no overclaim, gate green.
+- **M5.5e — demo walkthrough + doc-drift sweep + M5 close** (OPEN, after M5.5d): (a) runnable
+  hardware-free `demo/` walkthrough — spin the service on a tmp `state_dir` from empty and walk the
+  M5.5d scenarios, printing PASS/FAIL + a gitignored JSON report, with a short `demo/README.md` run
+  recipe; mirror the capstone scenario drivers (may import light helpers from `test_e2e_hardening`
+  or duplicate — user accepted minor duplication); clean the stale `demo/__pycache__`. (b) doc-drift
+  sweep of POC_SCOPE.md / VPlot_SEMANTICS.md / bench+webui+examples READMEs / `.agent/memory.md` to
+  current M5 truth — docs already largely current (VCert v0.2, 5-method vocabulary schema_validation/
+  resource_policy/deterministic_recompute/construction/z3_smt, DSSE/keyid trust language, replay+
+  audit routes, 429/507/500 all present). Known drift candidate: **POC_SCOPE.md:24 "these four
+  artifacts"** vs the FIVE bound hashes (dataset/manifest/spec/plotted_table/vega_lite in replay
+  `artifact_matches` + VCert v0.2) — verify against the VCert struct and correct if stale; rescan the
+  same token families at anchors examples/README.md:28, VPlot_SEMANTICS.md:37/152/172/188/219-222,
+  POC_SCOPE.md:24/31/33/119-175, bench/README.md:33-34. (c) MAIN closes M5: set M5.5d+M5.5e DONE and
+  M5 IMPLEMENTED, record main=/impl=, commit. Scaffold identical to M5.5d. Gate green (`demo/`
+  outside `verifier` coverage source, like `bench/`). Acceptance: `demo` runs clean from empty state
+  and reports every scenario; no stale claim-method/storage statement and no overclaim survives; gate
+  green; M5 IMPLEMENTED.
 
 ---
 
