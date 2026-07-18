@@ -234,20 +234,18 @@ def _affirmations() -> list[CheckResult]:
 # --- dataset binding ---------------------------------------------------------
 def _check_dataset_binding(
     spec: VPlotSpec, data_dir: Path, limits: VerificationLimits
-) -> tuple[CheckResult, bytes | None, str | None]:
-    """Resolve the spec's CSV under data_dir and verify its bytes hash to the declared
-    dataset.hash. Returns the exact bounded source bytes after any successful read, including
-    a hash mismatch, so the caller can retain them in ``VerificationTrace``. Confinement or
-    genuine absence returns no bytes; an over-limit read surfaces its own ``resource.*`` tag;
-    any other filesystem fault is broken trusted config and propagates.
+) -> tuple[CheckResult | None, bytes | None]:
+    """Resolve and bounded-read the spec's CSV under ``data_dir``.
+
+    A successful read returns exact source bytes for the shared bytes-driven verification core;
+    that core performs the dataset-hash check. Confinement or genuine absence returns a binding
+    failure with no bytes; an over-limit read surfaces its own ``resource.*`` tag; any other
+    filesystem fault is broken trusted config and propagates.
 
     Path confinement (VPlot_SEMANTICS.md section 8): resolve() + is_relative_to(root) is
-    the authoritative guard, rejecting any absolute, '..'-traversal, or symlink target that
-    resolves outside data_dir regardless of how the spec was built (pathlib discards root on
-    an absolute join). A decoded DatasetName also forbids '/' and CR/LF (defense in depth),
-    so a model-proposed traversal name cannot even decode. data_dir is trusted operator
-    config, so a concurrent resolve->read swap (TOCTOU) is out of scope; the read is on the
-    already-resolved real path.
+    authoritative, rejecting any absolute, '..'-traversal, or symlink target resolving outside
+    ``data_dir`` regardless of how the spec was built. ``data_dir`` is trusted operator config,
+    so a concurrent resolve->read swap (TOCTOU) remains out of scope.
     """
     check = "dataset.hash_matches_source"
     name = spec.dataset.name
@@ -255,20 +253,31 @@ def _check_dataset_binding(
     source = (root / name).resolve()
     if not source.is_relative_to(root):
         result = _fail(check, f"dataset {name!r} resolves outside the data directory")
-        return result, None, None
+        return result, None
     try:
         raw = read_bounded(source, limits.max_csv_bytes)
     except VerificationError as exc:
-        return _fail(exc.check, str(exc)), None, None
+        return _fail(exc.check, str(exc)), None
     except FileNotFoundError:
         result = _fail(check, f"dataset {name!r} could not be read under the data directory")
-        return result, None, None
-    actual = canon.hash_dataset(raw)
+        return result, None
+    return None, raw
+
+
+def _check_dataset_hash(spec: VPlotSpec, source_bytes: bytes) -> tuple[CheckResult, str]:
+    """Bind already-admitted source bytes to the spec's declared dataset hash."""
+    actual = canon.hash_dataset(source_bytes)
     if actual != spec.dataset.hash:
-        result = _fail(check, f"declared {spec.dataset.hash} != source {actual}")
-        return result, raw, actual
-    result = _pass(check, f"source bytes hash to the declared {spec.dataset.hash}")
-    return result, raw, actual
+        result = _fail(
+            "dataset.hash_matches_source",
+            f"declared {spec.dataset.hash} != source {actual}",
+        )
+        return result, actual
+    result = _pass(
+        "dataset.hash_matches_source",
+        f"source bytes hash to the declared {spec.dataset.hash}",
+    )
+    return result, actual
 
 
 # --- encoding / label checks -------------------------------------------------
@@ -403,46 +412,21 @@ def _admit_manifest(
         return _failed_run([_fail(exc.check, str(exc))], trace)
 
 
-def verify_run(
+def _verify_admitted_source(
     spec: VPlotSpec,
+    manifest: ingest.Manifest,
     manifest_bytes: bytes,
-    *,
-    data_dir: Path,
-    limits: VerificationLimits = DEFAULT_LIMITS,
+    source_bytes: bytes,
+    limits: VerificationLimits,
 ) -> VerificationRun:
-    """Verify a decoded spec and retain bounded internal trace/evidence.
-
-    ``manifest_bytes`` is the trusted caller's exact manifest snapshot. Its size is admitted
-    before decode; filesystem callers use ``read_bounded`` before invoking this entry (the
-    service adapter is wired in M5.1d). ``data_dir`` roots the independently bounded CSV read.
-    A trusted manifest parse/mispair fault remains an exception; resource, binding, data, eval,
-    plotted-size, and encoding failures become structured reports under their own check tags.
-
-    Inputs enter ``VerificationTrace`` only after their byte/read gate succeeds; evaluator work is
-    retained after its attempt, including a structured failure. Evidence is minted only after every
-    gate passes and carries all four current canonical hashes alongside the exact snapshots and
-    recomputation. It means eligible for later builder/formal checks, never already rendered or
-    certified.
-    """
-    admitted = _admit_manifest(manifest_bytes, limits)
-    if isinstance(admitted, VerificationRun):
-        return admitted
-    manifest = admitted
-    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
-    if manifest.dataset != spec.dataset.name:
-        msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
-        raise ValueError(msg)
-
+    """Run the shared post-read verification over exact admitted source bytes."""
     results = _affirmations()
-    binding, raw, dataset_hash = _check_dataset_binding(spec, data_dir, limits)
+    binding, admitted_dataset_hash = _check_dataset_hash(spec, source_bytes)
     results.append(binding)
-    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=raw)
+    trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=source_bytes)
     if binding.status == "fail":
         return _failed_run(results, trace)
 
-    # A passing binding result is constructed only with admitted raw bytes + its exact hash.
-    source_bytes = cast("bytes", raw)
-    admitted_dataset_hash = cast("str", dataset_hash)
     try:
         evaluated = evaluate_run(spec, manifest, source_bytes, limits=limits)
     except EvaluationError as exc:
@@ -475,6 +459,71 @@ def verify_run(
         results=report.results,
     )
     return VerificationRun(report=report, trace=trace, evidence=evidence)
+
+
+def verify_run(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    *,
+    data_dir: Path,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> VerificationRun:
+    """Verify a decoded spec against a bounded CSV read rooted under ``data_dir``.
+
+    ``manifest_bytes`` is the trusted caller's exact manifest snapshot. A trusted manifest
+    parse/mispair fault remains an exception; resource, binding, data, eval, plotted-size, and
+    encoding failures become structured reports. Inputs enter ``VerificationTrace`` only after
+    their byte/read gate succeeds. Evidence is minted only after every gate passes.
+    """
+    admitted = _admit_manifest(manifest_bytes, limits)
+    if isinstance(admitted, VerificationRun):
+        return admitted
+    manifest = admitted
+    if manifest.dataset != spec.dataset.name:
+        msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
+        raise ValueError(msg)
+
+    read_failure, raw = _check_dataset_binding(spec, data_dir, limits)
+    if read_failure is not None:
+        results = _affirmations()
+        results.append(read_failure)
+        trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
+        return _failed_run(results, trace)
+
+    source_bytes = cast("bytes", raw)
+    return _verify_admitted_source(spec, manifest, manifest_bytes, source_bytes, limits)
+
+
+def verify_snapshot(
+    spec: VPlotSpec,
+    manifest_bytes: bytes,
+    source_bytes: bytes,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> VerificationRun:
+    """Verify exact caller-supplied CSV bytes without filesystem or confinement work.
+
+    The manifest and source cross the same inclusive byte ceilings as ``verify_run``. A source
+    over the CSV ceiling is not retained in ``VerificationTrace``; an admitted source remains
+    retained even when its declared dataset hash mismatches. The shared post-read core then runs
+    the same hash, evaluator, plotted-cell, encoding, and evidence path as filesystem verification.
+    """
+    admitted = _admit_manifest(manifest_bytes, limits)
+    if isinstance(admitted, VerificationRun):
+        return admitted
+    manifest = admitted
+    if manifest.dataset != spec.dataset.name:
+        msg = f"manifest binds {manifest.dataset!r} but spec binds {spec.dataset.name!r}"
+        raise ValueError(msg)
+
+    if len(source_bytes) > limits.max_csv_bytes:
+        message = f"file exceeds byte limit of {limits.max_csv_bytes}"
+        results = _affirmations()
+        results.append(_fail("resource.file_bytes", message))
+        trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
+        return _failed_run(results, trace)
+
+    return _verify_admitted_source(spec, manifest, manifest_bytes, source_bytes, limits)
 
 
 def verify(

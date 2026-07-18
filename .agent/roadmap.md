@@ -472,7 +472,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   aligned. Locked gate green at 1,467 tests/100% branch coverage.
   Context: `main=52% 142K/272K`; `impl=46% 126K/272K`.
 
-- **M5.5a — pure snapshot replay engine** (OPEN): add `verifier.replay`, importing no service
+- **M5.5a — pure snapshot replay engine** (DONE): add `verifier.replay`, importing no service
   module. It accepts an explicit trusted-key set + typed snapshot bytes; verifies attempt ID/DSSE,
   exact `plot_id` binding, every blob digest/role, and VCert DSSE before decoding each payload once.
   Re-run manifest decode/eval/check/build/formal from archived CSV/manifest/spec bytes - never
@@ -481,6 +481,26 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   field-by-field; native SVG comparison remains diagnostic (display TCB). Acceptance: in-memory
   same-version fixture replays exactly; wrong key/blob/role/version/recomputation mutation fails or
   reports drift at the right layer; replacing stored table/Vega cannot steer computation; gate green.
+  Landed `verifier.replay.replay_snapshot(snapshot, trusted_keys, *, limits) -> ReplayVerdict`, a
+  bounded typed verdict carrying five artifact-hash matches, payload/version match, field-by-field
+  TCB drift, and a diagnostic-only SVG flag - never raw or rendered bytes. The module imports only
+  core (`attestation`/`canon`/`checks`/`errors`/`render`/`schema`/`limits`) with its own strict
+  attempt-manifest/verdict wire structs and role vocabulary; an AST test pins zero `verifier.service`
+  import and a vocabulary test pins that role copy against the producer `BlobKind`/`PlotRole`. The
+  caller's explicit `Mapping[keyid, Ed25519PublicKey]` is the sole trust anchor: embedded key
+  bytes/keyids only prove self-address consistency, and `verify_dsse`/`verify_vcert` run under the
+  caller-pinned key, so an unpinned keyid returns `untrusted_key` while a pinned-but-bad signature
+  returns `integrity_failed`. Authentication binds attempt/plot ID addresses, every artifact/plot
+  digest+role, attempt-plot signer equality, route/outcome, all five certified hashes against
+  archived bytes, VCert checks/TCB, and canonical round-trips before any recomputation. Recomputation
+  feeds only archived canonical-spec/raw-CSV/raw-manifest through the new filesystem-free
+  `checks.verify_snapshot` seam (`verify_run` behavior byte-preserved), re-runs formal + render, and
+  compares the fresh certificate: `exact` requires all five artifact hashes + no TCB drift + exact
+  VCert payload bytes, version drift alone is `drift`, and native SVG equality is reported but never
+  gates `exact`. Exact/wrong-key/mutated-blob/role-swap/version-drift/recomputation-mutation and
+  stored-table/Vega/verdict/SVG steering-resistance are pinned. Locked gate green at 1,508 tests/100%
+  branch coverage.
+  Context: `main=24% 65K/272K`; `impl=80% 218K/272K`.
 - **M5.5b — archive replay adapter** (OPEN): add thin `service.replay` loading bounded role-typed
   blobs from the archive. For a plot, select via indexed `LIMIT 1` the lexicographically lowest
   committed signed successful attempt associated with it, then require the pure engine to verify

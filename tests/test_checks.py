@@ -249,6 +249,83 @@ def test_success_evidence_binds_exact_inputs_hashes_and_results(tmp_path: Path) 
     assert raw.decode() not in repr(run)  # sensitive snapshots are repr-suppressed
 
 
+def test_verify_snapshot_matches_filesystem_verification_exactly(tmp_path: Path) -> None:
+    spec, raw = _resource_case(tmp_path)
+    filesystem = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    snapshot = checks.verify_snapshot(spec, _RESOURCE_MANIFEST_BYTES, raw)
+
+    assert (
+        snapshot.report
+        == filesystem.report
+        == verify(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
+    )
+    assert snapshot.trace == filesystem.trace
+    assert snapshot.evidence == filesystem.evidence
+    assert snapshot.report.passed
+    assert snapshot.evidence is not None
+
+
+def test_verify_snapshot_hash_mismatch_is_structured_and_retains_admitted_source(
+    tmp_path: Path,
+) -> None:
+    spec, raw = _resource_case(tmp_path)
+    mismatched = raw + b" "
+    run = checks.verify_snapshot(spec, _RESOURCE_MANIFEST_BYTES, mismatched)
+
+    assert _failing_checks(run) == {"dataset.hash_matches_source"}
+    assert run.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert run.trace.source_bytes == mismatched
+    assert not run.report.passed
+    assert run.evidence is None
+
+
+def test_verify_snapshot_manifest_mispair_remains_a_value_error(tmp_path: Path) -> None:
+    spec, raw = _resource_case(tmp_path)
+    mispaired = _RESOURCE_MANIFEST_BYTES.replace(b'"t.csv"', b'"x.csv"')
+
+    with pytest.raises(ValueError, match=r"manifest binds 'x\.csv' but spec binds 't\.csv'"):
+        checks.verify_snapshot(spec, mispaired, raw)
+
+
+def test_verify_snapshot_source_byte_boundary_controls_admission_trace(tmp_path: Path) -> None:
+    spec, raw = _resource_case(tmp_path)
+    admitted = checks.verify_snapshot(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        raw,
+        limits=VerificationLimits(max_csv_bytes=len(raw)),
+    )
+    refused = checks.verify_snapshot(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        raw,
+        limits=VerificationLimits(max_csv_bytes=len(raw) - 1),
+    )
+
+    assert admitted.report.passed
+    assert admitted.trace.source_bytes == raw
+    assert admitted.evidence is not None
+    assert _failing_checks(refused) == {"resource.file_bytes"}
+    assert refused.trace.manifest_bytes == _RESOURCE_MANIFEST_BYTES
+    assert refused.trace.source_bytes is None
+    assert refused.evidence is None
+
+
+def test_verify_snapshot_manifest_admission_failure_stops_before_source(tmp_path: Path) -> None:
+    spec, raw = _resource_case(tmp_path)
+    run = checks.verify_snapshot(
+        spec,
+        _RESOURCE_MANIFEST_BYTES,
+        raw,
+        limits=VerificationLimits(max_manifest_bytes=len(_RESOURCE_MANIFEST_BYTES) - 1),
+    )
+
+    assert _failing_checks(run) == {"resource.file_bytes"}
+    assert run.trace.manifest_bytes is None
+    assert run.trace.source_bytes is None
+    assert run.evidence is None
+
+
 def test_public_verify_serializes_results_only(tmp_path: Path) -> None:
     spec, _raw = _resource_case(tmp_path)
     run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
@@ -900,11 +977,11 @@ def test_binding_rejects_absolute_name_even_when_target_readable(tmp_path: Path)
             base.dataset, name=str(secret), hash=canon.hash_dataset(payload)
         ),
     )
-    binding, raw, actual = checks._check_dataset_binding(evil, data_dir, VerificationLimits())
+    binding, raw = checks._check_dataset_binding(evil, data_dir, VerificationLimits())
+    assert binding is not None
     assert binding.status == "fail"  # matching outside bytes never cross the confinement gate
     assert binding.check == "dataset.hash_matches_source"
     assert raw is None
-    assert actual is None
 
 
 # --- pairing precondition: a caller bug, not a verification outcome -----------
