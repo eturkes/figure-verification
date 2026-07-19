@@ -37,11 +37,12 @@ application-specific type in deterministic DSSE. `plot_id` is SHA-256 over the c
 bytes; `/certificate/{plot_id}`, `/spec/{spec_id}`, and `/key/{keyid}` serve archive-validated exact
 certificate, canonical-spec, and raw-public-key bytes durably across process restart. Each GET
 rechecks its address and typed archive relation; certificate retrieval also verifies the canonical
-DSSE signature/type under the digest-matching archived key as self-consistency. Archive/key-endpoint
-presence is never trust: signature verification means only that the envelope was produced by the
-holder of an independently pinned public key. The envelope's `keyid` is an unauthenticated lookup
-hint - it does not establish operator identity, PKI membership, time, completeness, or
-transparency log inclusion. Chart liveness remains process-local and ephemeral. The chart page
+DSSE signature/type under the digest-matching archived key as a self-consistency check.
+Archive and key-endpoint presence are never trust. Authentication under an independently pinned public key means
+only that the holder of the corresponding private key produced the envelope. The envelope's
+`keyid` is an unauthenticated lookup hint - it does not establish operator identity, PKI
+membership, time, completeness, or transparency log inclusion. Chart liveness remains process-local
+and ephemeral. The chart page
 visibly shows the VCert badge, signer hint, plot ID, and exact envelope link; display remains outside the proof.
 
 Because the renderer only ever receives verifier-recomputed data, a chart cannot
@@ -130,11 +131,11 @@ single-worker uvicorn process has one gate; running multiple service processes m
 configured aggregate rate and active capacity. Operators tune the three controls with
 `VERIFIER_WORK_RATE_PER_MINUTE`, `VERIFIER_WORK_BURST`, and `VERIFIER_MAX_ACTIVE_JOBS`.
 
-Signed VCert envelopes and canonical specs remain in one bounded in-memory render LRU as a
-nonauthoritative write-side cache; the much larger offline chart pages live in a second,
-independently bounded LRU. Only chart-LRU eviction is endpoint-visible: `/chart/{plot_id}` may 404
-after eviction or restart, while certificate, spec, and public-key GETs resolve durably from the
-archive and revalidate their exact bytes. A served chart was verified when built and is immutable;
+Only offline chart pages occupy a bounded in-memory LRU; it is a process-local liveness cache.
+Signed VCert envelopes and canonical specs are not render-cached: certificate, spec, and public-key
+GETs resolve durably from the SQLite archive and revalidate their exact bytes. Only chart-LRU
+eviction is endpoint-visible: `/chart/{plot_id}` may 404 after eviction or restart. A served chart
+was verified when built and is immutable;
 the certificate is provenance, not a chart-liveness gate. `VERIFIER_STATE_DIR` (default
 `.verifier-state`, mode 0700) holds the 0600 raw Ed25519 signing key, content-addressed public keys,
 and the owner-private SQLite provenance archive. Keep it off git and back it up as one private state
@@ -143,8 +144,15 @@ be replayed. Choosing a new `VERIFIER_SIGNING_KEY_FILE` rotates identity and cha
 Preserved/publicly served keys gain no trust automatically; operators pin accepted historical key
 IDs explicitly with `VERIFIER_TRUSTED_KEYIDS`.
 
+The archive database rejects any inode with a link count other than one. It uses rollback-journal
+`DELETE` with `synchronous=EXTRA`, an extra durability guarantee within the documented local
+filesystem/VFS contract. The no-follow descriptor is validated before SQLite separately connects
+through the open state-directory FD; replacement in that interval remains an accepted local
+filesystem TOCTOU boundary. The pre-COMMIT fault hook proves explicit rollback only, not COMMIT
+failure, hot-journal recovery, process termination, or power loss.
+
 Every admitted, classified `/verify-and-render` or `/propose-spec` outcome commits one signed
-occurrence before response and before either LRU mutates. A successful occurrence atomically adds
+occurrence before response and before the chart LRU mutates. A successful occurrence atomically adds
 the complete plot bundle too; rejected verdicts and proposer faults bind only bytes actually
 observed. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
 from that occurrence envelope. `/verify-only`, pre-admission transport/rate/capacity refusal,
@@ -156,8 +164,9 @@ original outcome with 507; another archive fault replaces it with generic 500. N
 carries an attempt ID or leaks an unarchived chart.
 
 Owner-local audit is `python -m verifier.service audit ATTEMPT_ID [--reveal-sensitive]`. It
-revalidates the complete signed archive graph and authenticates under the current-or-explicitly-pinned
-key. Default ASCII JSON exposes hashes and metadata only; `--reveal-sensitive` additionally exposes
+revalidates the complete signed graph reachable from the named attempt and authenticates under the
+current signer's public verification key or an explicitly pinned historical public key. Default
+ASCII JSON exposes hashes and metadata only; `--reveal-sensitive` additionally exposes
 attempt-observation bytes as JSON-escaped UTF-8 or padded base64. Raw CSV, prompt, model, and request
 bytes stay operator-local; no HTTP surface exposes them.
 
@@ -222,6 +231,11 @@ rendered, or stored, and an off-request chart cannot ride an honest hash. The cl
 does not move: the model proposes only a spec, never plotted values, and the verifier recomputes
 the whole plotted table and re-binds the source CSV by hash exactly as before — so the model
 earns no new trust, and a chart still rides only a verified, on-request outcome.
+
+Prompt construction and later trusted verification read separate bounded filesystem snapshots.
+A local change between them is an accepted TOCTOU boundary: the prompt may describe the earlier
+snapshot, but only the later verification snapshot can satisfy binding checks and enter the signed
+archive.
 
 The error split extends the service boundary's rule to the model as an upstream dependency.
 Before calling it, the service admits `user_request` by UTF-8 bytes (4 KiB default), reads the CSV

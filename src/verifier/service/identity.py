@@ -9,10 +9,11 @@ grant no group/world permissions. A missing raw Ed25519 key is written + fsynced
 therefore see either absence or all 32 bytes, never a partially written final file. Directory
 fsyncs make each created/published entry durable under the local-filesystem contract.
 
-Every current public key is likewise preserved, content-addressed by
-``sha256(raw_public_key)``. Preservation is not trust: ``trusted_keys`` contains only the current
-signer plus canonical historical keyids explicitly pinned in ``Settings``. Merely finding a public
-key in state, an archive, or a future HTTP response never admits it.
+Every current signer's public verification key is likewise preserved, content-addressed by
+``sha256(raw_public_key)``. Preservation alone is not trust: ``trusted_keys`` contains only the
+current signer's verification key plus keys for canonical historical keyids explicitly pinned in
+``Settings``. Merely finding a public key in state, the archive, or a served HTTP response
+never admits it.
 """
 
 import hashlib

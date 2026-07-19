@@ -21,7 +21,8 @@ Enforced by `tests/test_examples.py`.
 expr/code/url field) and the transform tagged-union admits only {select, filter, group_by,
 aggregate, sort} — an unlisted op or arbitrary-code path is unrepresentable at decode, so both
 emit as constant-pass M1.5 affirmations.
-`aggregates_match_recomputation` · `filters_declared` are unrepresentable as a model spec because
+`transform.aggregates_match_recomputation` · `transform.filters_declared` are unrepresentable as a
+model spec because
 the verifier recomputes all data from declared transforms. `derived_value_mismatch` is dropped —
 the model emits no plotted values.
 

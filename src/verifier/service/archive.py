@@ -14,7 +14,10 @@ Every operation owns a fresh connection. Each connection forces + verifies rollb
 ``DELETE` mode, ``EXTRA`` synchronous writes, foreign keys, defensive mode, trusted-schema off, and
 a finite busy timeout. The database lives as a 0600 regular file under the service's 0700
 owner-private state directory. Startup transactionally creates or exact-matches one versioned
-STRICT schema; unknown/unversioned non-empty schemas fail closed.
+STRICT schema; unknown/unversioned non-empty schemas fail closed. The archive rejects a database
+inode with a link count other than one. Descriptor validation precedes SQLite's separate connect
+through the open state-directory FD; replacement in that interval is an accepted local-filesystem
+TOCTOU boundary.
 
 Reads first validate the requested role/kind and stored digest/kind/size metadata, then enforce the
 caller's byte limit before opening the BLOB. ``sqlite3.Blob`` is consumed in fixed chunks while its
@@ -35,8 +38,8 @@ formal-passed evidence/render chain, publishes all eleven typed payloads atomica
 only after aggregate-size admission. Publish + read recheck canonical spec/verdict/version forms,
 the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
 the bundle's archived public key establishes internal cryptographic consistency only; it never
-grants that key operator trust. Replay applies independently configured trust policy in a later
-unit. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
+grants that key operator trust. Replay applies independently configured trust policy before
+recomputation. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
 
 ``AttemptManifest`` adds that occurrence layer under a distinct DSSE application type: canonical
 UTC time, 128-bit CSPRNG nonce, route, status/outcome classifier, signer/verifier identifiers, every
@@ -181,7 +184,7 @@ class ArchiveReadLimitError(ArchiveError):
 
 
 class ArchiveCollisionError(ArchiveError):
-    """A generated signed occurrence address already exists in the append-only archive."""
+    """A generated signed occurrence address already exists in the current archive."""
 
 
 class BlobKind(StrEnum):
@@ -1611,7 +1614,11 @@ def _immediate_transaction(connection: sqlite3.Connection) -> Iterator[None]:
 
 
 def _before_archive_commit() -> None:
-    """Fault-injection seam: production is intentionally empty."""
+    """Pre-COMMIT fault seam; production is empty.
+
+    This runs after row/accounting validation but before the transaction context executes COMMIT.
+    Raising here proves explicit rollback only, not COMMIT failure, crash recovery, or power loss.
+    """
 
 
 def _schema_rows(connection: sqlite3.Connection) -> tuple[tuple[object, ...], ...]:
@@ -2989,13 +2996,21 @@ class Archive:
         return result
 
     def read_plot_envelope(self, plot_id: str, *, max_bytes: int) -> bytes:
-        """Read + verify the VCert DSSE envelope whose SHA-256 is ``plot_id``."""
+        """Read VCert-envelope bytes after typed relation/address and SHA-256 verification.
+
+        This does not authenticate the DSSE signature, payload type/canonical form, or key
+        relation; higher-level certificate/replay paths perform that authentication.
+        """
         _require_address(plot_id, subject="plot_id")
         expected = _ExpectedBlob(BlobKind.VCERT_ENVELOPE, f"sha256:{plot_id}", max_bytes)
         return self._read_payload(_SELECT_PLOT_ENVELOPE, (plot_id,), expected)
 
     def read_attempt_envelope(self, attempt_id: str, *, max_bytes: int) -> bytes:
-        """Read + verify the attempt DSSE envelope whose SHA-256 is ``attempt_id``."""
+        """Read attempt-envelope bytes after typed relation/address and SHA-256 verification.
+
+        This does not authenticate the DSSE signature, payload type/canonical form, or key
+        relation; higher-level attempt/replay paths perform that authentication.
+        """
         _require_address(attempt_id, subject="attempt_id")
         expected = _ExpectedBlob(BlobKind.ATTEMPT_ENVELOPE, f"sha256:{attempt_id}", max_bytes)
         return self._read_payload(_SELECT_ATTEMPT_ENVELOPE, (attempt_id,), expected)

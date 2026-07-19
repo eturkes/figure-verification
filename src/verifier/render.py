@@ -581,7 +581,7 @@ def render_html(vega_lite_json: str) -> str:
 
 # --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
 # Core render returns the deterministic VCert PAYLOAD; the service wraps its exact bytes in signed
-# DSSE, while durable archive/replay follow in M5.4-M5.5. It
+# DSSE; durable archive and replay consume those signed bytes. It
 # stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
 # bytes. Every passing result carries its verification method. The TCB identifies this verifier,
 # Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the
@@ -602,7 +602,8 @@ class Tcb(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True)
     ``verifier_version`` identifies the package implementing the checks; ``z3_version`` the
     solver behind ``z3_smt`` results. The remaining fields identify canonicalization and the
     native display stack trusted to render verified data faithfully, NOT proven to do so. SVG is
-    not hashed and cross-machine byte identity is unclaimed. ``vendored_font_sha256`` identifies
+    not hashed by the VCert, and cross-machine byte identity is unclaimed.
+    ``vendored_font_sha256`` identifies
     the registered font asset, not proof that vl-convert selected it over a same-named system
     font (``render_svg`` documents the same scope).
     """
@@ -629,7 +630,7 @@ class DisclosedFilter(msgspec.Struct, frozen=True, forbid_unknown_fields=True, k
 
 
 class DisclosedSort(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """One applied sort key, disclosed in the cert (flattened across all sort ops in order)."""
+    """One active-sort key, disclosed in the certificate in that transform's declared order."""
 
     field: str
     order: str
@@ -644,11 +645,13 @@ class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw
 
 
 class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing
-    checks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Produced as a
-    deterministic payload by core render; the service signs its exact bytes into DSSE. Attestation
-    verification decodes an external copy only after those bytes + their application type
-    authenticate under an independently trusted key. Durable replay follows in later M5 units."""
+    """A VCert v0.2 provenance certificate: five bound artifact hashes, method-bearing passing
+    checks, disclosed applied filters and active-sort keys, and the verifier/formal/display TCB.
+    Core render produces a deterministic payload; the service signs its exact bytes into DSSE.
+    Attestation verification decodes an external copy only after its signature and application
+    type verify under an independently trusted public key. Durable archive/replay consumers use
+    that same authenticated payload.
+    """
 
     version: Literal["vcert-0.2"]
     dataset_hash: str
@@ -822,7 +825,7 @@ def badge_html(cert: VCert) -> str:
     sink, so no filter-value byte is ever live markup. All other fields (constrained field
     names, enum cmp/order, sha256 hashes, versions) are escaped uniformly. Pure +
     deterministic. The service embeds this payload display beside its signed-envelope identity;
-    durable replay follows in later M5 units."""
+    durable replay consumes the independently authenticated payload, not this display."""
 
     def esc(value: object) -> str:
         return html.escape(str(value), quote=True)

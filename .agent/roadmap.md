@@ -61,7 +61,7 @@ Scope reconciliation (seed 13/14 + deferred hardening; claim boundary stays mode
 - VCert becomes a method-bearing signed attestation and adds the exact emitted Vega-Lite hash,
   closing the current four-hash certificate's artifact-binding gap. DSSE authenticates payload
   bytes + their application-specific type; PyCA Ed25519 supplies crypto. Authenticity means
-  "holder of this independently pinned public key signed these bytes" - no operator identity, PKI,
+  "the holder of the private key corresponding to this independently pinned public key produced these bytes" - no operator identity, PKI,
   timestamp authority, append-only/completeness, or transparency-log claim. `keyid` is only a
   lookup hint, never a trust decision. A second signed attempt manifest binds occurrence metadata
   + every blob in that occurrence; it prevents undetected modification under a pinned key, not
@@ -586,7 +586,9 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   `/replay/{id}` + `/certificate/{id}` both exercised. Fail-closed guards: rotated-unpinned signer ->
   `untrusted_key` no chart; DROP-INDEX schema damage -> logged generic 500 no leak; blob-content +
   attempt-signature corruption -> detected before use/mutation; capacity 429 (held permit), quota
-  507, injected pre-commit rollback -> `ArchiveStats(0,0,0,0,0)`. All trust/availability claims at
+  507, injected pre-COMMIT rollback -> `ArchiveStats(0,0,0,0,0)` (zero reachable rows and logical
+  payload bytes; not COMMIT-failure, hot-journal, or power-loss coverage).
+  All trust/availability claims at
   current strength (archived-key verification = self-consistency only; replay/audit fail-closed; no
   crypto/formal overclaim). MAIN independently reproduced the defect, re-derived the exact fix facts
   + solver message, inspected both diffs, and reran all four gate legs. Locked gate green at 1,545
@@ -744,7 +746,7 @@ the core never imports the service). Pieces: `settings.py` (frozen operator conf
 POSTs so `decode_spec` stays authoritative, nosniff app default, two problem+json exception
 handlers) → `pipeline.py` (decode → resolve manifest → load → `checks.verify`, reused by
 render) → `models.py` (Verdict / RenderVerdict with `verified: Literal[True]` / RFC-9457 Problem)
-→ `store.py` (bounded LRU over renders + refcounted shared-spec map) → `openapi.py`
+→ `store.py` (bounded LRU over chart renders) → `openapi.py`
 (hand-authored OpenAPI 3.1 doc, served at `/schema/openapi.json`, golden-pinned). Error split
 (POC_SCOPE "## Service boundary"): every verification outcome incl. decode failure = 200
 verdict; only transport misuse / operator-config fault = problem+json 4xx/5xx (its cause

@@ -1106,7 +1106,7 @@
       },
       "DisclosedSort": {
         "title": "DisclosedSort",
-        "description": "One applied sort key, disclosed in the cert (flattened across all sort ops in order).",
+        "description": "One active-sort key, disclosed in the certificate in that transform's declared order.",
         "type": "object",
         "properties": {
           "field": {
@@ -1292,7 +1292,7 @@
       },
       "Tcb": {
         "title": "Tcb",
-        "description": "The verifier/formal/display TCB stamped into VCert.\n\n``verifier_version`` identifies the package implementing the checks; ``z3_version`` the\nsolver behind ``z3_smt`` results. The remaining fields identify canonicalization and the\nnative display stack trusted to render verified data faithfully, NOT proven to do so. SVG is\nnot hashed and cross-machine byte identity is unclaimed. ``vendored_font_sha256`` identifies\nthe registered font asset, not proof that vl-convert selected it over a same-named system\nfont (``render_svg`` documents the same scope).",
+        "description": "The verifier/formal/display TCB stamped into VCert.\n\n``verifier_version`` identifies the package implementing the checks; ``z3_version`` the\nsolver behind ``z3_smt`` results. The remaining fields identify canonicalization and the\nnative display stack trusted to render verified data faithfully, NOT proven to do so. SVG is\nnot hashed by the VCert, and cross-machine byte identity is unclaimed.\n``vendored_font_sha256`` identifies\nthe registered font asset, not proof that vl-convert selected it over a same-named system\nfont (``render_svg`` documents the same scope).",
         "type": "object",
         "properties": {
           "verifier_version": {
@@ -1342,7 +1342,7 @@
       },
       "VCert": {
         "title": "VCert",
-        "description": "A VPlot v0.1 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters/sorts, and the verifier/formal/display TCB. Produced as a\ndeterministic payload by core render; the service signs its exact bytes into DSSE. Attestation\nverification decodes an external copy only after those bytes + their application type\nauthenticate under an independently trusted key. Durable replay follows in later M5 units.",
+        "description": "A VCert v0.2 provenance certificate: five bound artifact hashes, method-bearing passing\nchecks, disclosed applied filters and active-sort keys, and the verifier/formal/display TCB.\nCore render produces a deterministic payload; the service signs its exact bytes into DSSE.\nAttestation verification decodes an external copy only after its signature and application\ntype verify under an independently trusted public key. Durable archive/replay consumers use\nthat same authenticated payload.",
         "type": "object",
         "properties": {
           "version": {
