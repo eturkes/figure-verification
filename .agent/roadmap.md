@@ -51,7 +51,7 @@ g01+`"scale":{"zero":false}` variant proving the misleading-baseline vector is U
 `z3_smt` pass). Acceptance-criteria sweep (all 10) closes the milestone. No new deps; no web
 research needed (all-local stack, already probed).
 
-- **M6.1 — deterministic three-case demo driver** (OPEN): add `demo/e2e.py` + `python -m demo.e2e`
+- **M6.1 — deterministic three-case demo driver** (DONE): add `demo/e2e.py` + `python -m demo.e2e`
   driving a REAL-socket verifier it spawns itself (subprocess `python -m verifier.service`, tmp
   `VERIFIER_STATE_DIR`, free port — reuse the `tests/test_service_live.py` spawn/poll pattern;
   hardware-free, no model backend: direct `/verify-and-render` + `/verify-only`). Cases: (1) g01 →
@@ -73,6 +73,14 @@ research needed (all-local stack, already probed).
   unit); b07 = sales.csv scatter filter field `profit`. Acceptance: `python -m
   demo.e2e` runs clean from a fresh checkout with only `uv sync --locked` (no NPU/webui), report
   shows 1 pass + 2 blocked with the exact reasons, replay-after-restart exact; gate green.
+  Landed `demo/e2e.py` (`_VerifierService` owns spawn/restart against one tmp state dir; DSSE cert
+  verified under the fetched `/key/{keyid}` Ed25519 key via `attestation.verify_vcert`) +
+  `tests/test_demo_e2e.py`. b07 reason = `field 'profit' does not exist in the table` (the plan's
+  "absent from sales.csv" was a paraphrase); crafted scale-zero refused as
+  ``spec.decode: Object contains unknown field `scale` - at `$.encoding.y```. Determinism boundary:
+  spec_id + 5 artifact hashes byte-stable across runs, plot_id + keyid vary per fresh identity.
+  Gate green (ruff/mypy/pytest 1532 @ 100% branch + `python -m demo.e2e` exit 0).
+  Context: `main=53% 144K/272K`; `impl=49% 132K/272K`.
 - **M6.2 — Open WebUI persisted-chat driver** (OPEN): extend `webui/` with the persisted-chat
   helper the README leaves as prose: signin → create chat → `POST /api/chat/completions` with
   `session_id`/`chat_id`, assistant `id`, complete `user_message` (id/role/content/timestamp/
