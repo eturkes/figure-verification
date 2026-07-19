@@ -81,7 +81,7 @@ research needed (all-local stack, already probed).
   spec_id + 5 artifact hashes byte-stable across runs, plot_id + keyid vary per fresh identity.
   Gate green (ruff/mypy/pytest 1532 @ 100% branch + `python -m demo.e2e` exit 0).
   Context: `main=53% 144K/272K`; `impl=49% 132K/272K`.
-- **M6.2 — Open WebUI persisted-chat driver** (OPEN): extend `webui/` with the persisted-chat
+- **M6.2 — Open WebUI persisted-chat driver** (DONE): extend `webui/` with the persisted-chat
   helper the README leaves as prose: signin → create chat → `POST /api/chat/completions` with
   `session_id`/`chat_id`, assistant `id`, complete `user_message` (id/role/content/timestamp/
   `parentId: null`/`childrenIds:[assistant-id]`) → poll `GET /api/v1/chats/{chat_id}` until the
@@ -97,6 +97,23 @@ research needed (all-local stack, already probed).
   matrix like `tests/test_webui_client.py` (injected-transport `_webui_client` pattern at :58-63)
   (success, poll-pending→done, missing embed, transport/status/JSON faults). Acceptance: against the live hardware-free stack (stub + bootstrap) the
   command returns the stub's final summary + a `/chart/` URL; mock matrix green; gate green.
+  Landed `WebUIClient.run_persisted_chat(prompt) -> PersistedChatResult(final_text, chart_url|None)`
+  (post-`authenticate()`, reused by M6.3's `--with-webui`) + `python -m webui chat --prompt …`
+  (webui/client.py, __main__.py) + MockTransport matrix (test_webui_client.py, test_webui_cli.py).
+  Wire shape MAIN-live-PROBED (not guessed) then transcribed: create `POST /api/v1/chats/new`
+  `{chat:{models,messages:[],history:{messages:{},currentId:null}}}` → top-level `id`; completion
+  `POST /api/chat/completions` (tool_ids from `settings.tool_server_id`) → background
+  `{status:true,task_ids,chat_id}`; poll `GET /api/v1/chats/{chat_id}` →
+  `chat.history.messages[<assistant_id>].done`, text `output[0].content[0].text`, url `embeds[0]`.
+  Poll bounded by `ready_timeout` monotonic deadline (mirrors `wait_ready`); fail-closed on
+  missing/empty final text; empty embeds → `None`; loose msgspec wire structs; every fault →
+  `WebUIProvisionError`; no raw-content logging. Argparse → `Namespace` (`--prompt` non-empty
+  validator, chat-only-required); result → stdout, progress → logger. Live hardware-free acceptance
+  (MAIN, real OWUI 0.10.2): stub+bootstrap → `python -m webui chat` returned the stub summary +
+  `http://127.0.0.1:8000/chart/<64-hex>`, exit 0 (cold-boot ~110s here). `webui/` coverage-excluded,
+  so its 100 new tests don't gate the 100%-branch coverage. Gate green (ruff/mypy + pytest 1556 @
+  100% branch). Services/state torn down, ports freed, `.webui-data`/tmp state removed.
+  Context: `main=79% 214K/272K`; `impl=59% 161K/272K`.
 - **M6.3 — live-stack orchestration + demo evidence run** (OPEN; run after M6.1+M6.2 land): add
   `--with-webui` (drive the M6.2 chat leg against the provisioned stack, record final text +
   chart URL + certificate fetch in the report) and `--with-model` (the three seed-15 prompts

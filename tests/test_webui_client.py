@@ -16,6 +16,8 @@ bootstrap orchestration. Locked:
   raising LOUD through the same error boundary;
 - ensure_global_filter: missing-create vs existing-update, all active/global flag combinations,
   exact payload/paths/Bearer wiring, final-state verification, and fail-closed seams;
+- run_persisted_chat: exact create/completion/poll wire shapes, pending/done extraction, optional
+  embed, and transport/status/JSON/timeout/malformed-output failures;
 - smoke / run_bootstrap: membership + ok truth table, exact filter source/metadata,
   wait->auth->converge->smoke order, failure barrier, and rerun idempotency (closed signup falls
   back to signin over a stateful transport, and the existing filter updates).
@@ -24,6 +26,7 @@ bootstrap orchestration. Locked:
 import itertools
 import json
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 
@@ -31,7 +34,7 @@ import httpx
 import pytest
 
 from webui.bootstrap import SmokeResult, run_bootstrap, smoke
-from webui.client import WebUIClient, WebUIProvisionError
+from webui.client import PersistedChatResult, WebUIClient, WebUIProvisionError
 from webui.enforcement_filter import (
     FILTER_DESCRIPTION,
     FILTER_ID,
@@ -53,6 +56,50 @@ _FUNCTION_PAYLOAD: dict[str, object] = {
     "content": _FUNCTION_CONTENT,
     "meta": {"description": _FUNCTION_DESCRIPTION},
 }
+
+
+_CHAT_ID = "00000000-0000-4000-8000-000000000001"
+_CHAT_PROMPT = "Create a verified chart."
+_CHAT_TEXT = "Figure Verifier confirmed the chart; all checks passed."
+_CHAT_URL = "http://127.0.0.1:8000/chart/plot-1"
+
+
+def _chat_ack() -> httpx.Response:
+    """One valid background-completion acknowledgement."""
+    return httpx.Response(
+        200,
+        json={"status": True, "task_ids": ["task-1"], "chat_id": _CHAT_ID},
+    )
+
+
+def _chat_readback(
+    assistant_id: str,
+    *,
+    include_assistant: bool = True,
+    done: bool = True,
+    embeds: tuple[str, ...] = (_CHAT_URL,),
+    malformed_output: bool = False,
+) -> httpx.Response:
+    """One loose persisted-chat response with a controllable assistant entry."""
+    messages: dict[str, object] = {}
+    if include_assistant:
+        output: list[object] = []
+        if not malformed_output:
+            output = [
+                {
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": _CHAT_TEXT}],
+                }
+            ]
+        messages[assistant_id] = {
+            "id": assistant_id,
+            "role": "assistant",
+            "content": "",
+            "done": done,
+            "embeds": list(embeds),
+            "output": output,
+        }
+    return httpx.Response(200, json={"chat": {"history": {"messages": messages}}})
 
 
 @contextmanager
@@ -291,6 +338,305 @@ def test_tool_server_ids_parses_bare_array_and_filters_non_server() -> None:
     with _webui_client(handler) as client:
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
         assert client.tool_server_ids() == ["server:verifier", "server:other"]
+
+
+# --- persisted chat -------------------------------------------------------------------------
+def test_run_persisted_chat_sends_exact_wire_and_returns_result() -> None:
+    settings = Settings(model_id="model-test")
+    calls: list[tuple[str, str]] = []
+    completion_body: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer tok"
+        calls.append((request.method, request.url.path))
+        if request.url.path == "/api/v1/chats/new":
+            assert request.method == "POST"
+            assert json.loads(request.content) == {
+                "chat": {
+                    "models": [settings.model_id],
+                    "messages": [],
+                    "history": {"messages": {}, "currentId": None},
+                }
+            }
+            return httpx.Response(200, json={"id": _CHAT_ID, "title": "New Chat"})
+        if request.url.path == "/api/chat/completions":
+            assert request.method == "POST"
+            body: dict[str, object] = json.loads(request.content)
+            completion_body.update(body)
+            assert set(body) == {
+                "model",
+                "stream",
+                "tool_ids",
+                "chat_id",
+                "session_id",
+                "id",
+                "parent_id",
+                "messages",
+                "user_message",
+            }
+            assert body["model"] == settings.model_id
+            assert body["stream"] is False
+            assert body["tool_ids"] == ["server:verifier"]
+            assert body["chat_id"] == _CHAT_ID
+            assert body["parent_id"] is None
+            assert body["messages"] == [{"role": "user", "content": _CHAT_PROMPT}]
+            session_id = body["session_id"]
+            assistant_id = body["id"]
+            user_message = body["user_message"]
+            assert isinstance(session_id, str)
+            assert isinstance(assistant_id, str)
+            assert isinstance(user_message, dict)
+            user_id = user_message["id"]
+            assert isinstance(user_id, str)
+            for generated_id in (session_id, assistant_id, user_id):
+                assert uuid.UUID(generated_id).version == 4
+            assert len({session_id, assistant_id, user_id}) == 3
+            assert set(user_message) == {
+                "id",
+                "role",
+                "content",
+                "timestamp",
+                "parentId",
+                "childrenIds",
+            }
+            assert user_message["role"] == "user"
+            assert user_message["content"] == _CHAT_PROMPT
+            assert type(user_message["timestamp"]) is int
+            assert user_message["parentId"] is None
+            assert user_message["childrenIds"] == [assistant_id]
+            return _chat_ack()
+
+        assert request.method == "GET"
+        assert request.url.path == f"/api/v1/chats/{_CHAT_ID}"
+        assistant_id = completion_body["id"]
+        assert isinstance(assistant_id, str)
+        return _chat_readback(assistant_id)
+
+    with _webui_client(handler, settings) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        result = client.run_persisted_chat(_CHAT_PROMPT)
+
+    assert result == PersistedChatResult(final_text=_CHAT_TEXT, chart_url=_CHAT_URL)
+    assert calls == [
+        ("POST", "/api/v1/chats/new"),
+        ("POST", "/api/chat/completions"),
+        ("GET", f"/api/v1/chats/{_CHAT_ID}"),
+    ]
+
+
+def test_run_persisted_chat_polls_missing_assistant_until_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleeps: list[float] = []
+
+    def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(time, "sleep", record_sleep)
+    assistant_id = ""
+    polls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id, polls
+        if request.url.path == "/api/v1/chats/new":
+            return httpx.Response(200, json={"id": _CHAT_ID})
+        if request.url.path == "/api/chat/completions":
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            return _chat_ack()
+        assert request.url.path == f"/api/v1/chats/{_CHAT_ID}"
+        polls += 1
+        if polls == 1:
+            return _chat_readback(assistant_id, include_assistant=False)
+        return _chat_readback(assistant_id)
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        result = client.run_persisted_chat(_CHAT_PROMPT)
+
+    assert result.final_text == _CHAT_TEXT
+    assert polls == 2
+    assert sleeps == [1.0]
+
+
+def test_run_persisted_chat_allows_missing_embed() -> None:
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            return httpx.Response(200, json={"id": _CHAT_ID})
+        if request.url.path == "/api/chat/completions":
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            return _chat_ack()
+        return _chat_readback(assistant_id, embeds=())
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        result = client.run_persisted_chat(_CHAT_PROMPT)
+
+    assert result == PersistedChatResult(final_text=_CHAT_TEXT, chart_url=None)
+
+
+@pytest.mark.parametrize("fault_phase", ["create", "completion", "poll"])
+def test_run_persisted_chat_normalizes_transport_fault(fault_phase: str) -> None:
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            phase = "create"
+            response = httpx.Response(200, json={"id": _CHAT_ID})
+        elif request.url.path == "/api/chat/completions":
+            phase = "completion"
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            response = _chat_ack()
+        else:
+            phase = "poll"
+            response = _chat_readback(assistant_id)
+        if phase == fault_phase:
+            msg = "transport failed"
+            raise httpx.ConnectError(msg)
+        return response
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="failed"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        client.run_persisted_chat(_CHAT_PROMPT)
+
+
+@pytest.mark.parametrize("fault_phase", ["create", "completion", "poll"])
+def test_run_persisted_chat_rejects_non_200(fault_phase: str) -> None:
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            phase = "create"
+            response = httpx.Response(200, json={"id": _CHAT_ID})
+        elif request.url.path == "/api/chat/completions":
+            phase = "completion"
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            response = _chat_ack()
+        else:
+            phase = "poll"
+            response = _chat_readback(assistant_id)
+        if phase == fault_phase:
+            return httpx.Response(503)
+        return response
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="returned HTTP 503"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        client.run_persisted_chat(_CHAT_PROMPT)
+
+
+@pytest.mark.parametrize("fault_phase", ["create", "completion", "poll"])
+@pytest.mark.parametrize(
+    "bad_body",
+    [
+        pytest.param(b"{", id="malformed-json"),
+        pytest.param(b"\xff", id="invalid-utf8"),
+    ],
+)
+def test_run_persisted_chat_rejects_invalid_json(
+    fault_phase: str,
+    bad_body: bytes,
+) -> None:
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            phase = "create"
+            response = httpx.Response(200, json={"id": _CHAT_ID})
+        elif request.url.path == "/api/chat/completions":
+            phase = "completion"
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            response = _chat_ack()
+        else:
+            phase = "poll"
+            response = _chat_readback(assistant_id)
+        if phase == fault_phase:
+            return httpx.Response(200, content=bad_body)
+        return response
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="invalid response"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        client.run_persisted_chat(_CHAT_PROMPT)
+
+
+def test_run_persisted_chat_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(time, "monotonic", itertools.count(0.0, 1.0).__next__)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    assistant_id = ""
+    polls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id, polls
+        if request.url.path == "/api/v1/chats/new":
+            return httpx.Response(200, json={"id": _CHAT_ID})
+        if request.url.path == "/api/chat/completions":
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            return _chat_ack()
+        polls += 1
+        return _chat_readback(assistant_id, include_assistant=False)
+
+    with (
+        _webui_client(handler, Settings(ready_timeout=2.0)) as client,
+        pytest.raises(WebUIProvisionError, match=r"did not complete after 2\.0s"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        client.run_persisted_chat(_CHAT_PROMPT)
+
+    assert polls == 2
+
+
+def test_run_persisted_chat_rejects_done_message_without_final_text() -> None:
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            return httpx.Response(200, json={"id": _CHAT_ID})
+        if request.url.path == "/api/chat/completions":
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            return _chat_ack()
+        return _chat_readback(assistant_id, malformed_output=True)
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="returned no final text"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        client.run_persisted_chat(_CHAT_PROMPT)
 
 
 @pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])

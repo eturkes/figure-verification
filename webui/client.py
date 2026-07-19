@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioning REST client for a headless Open WebUI (M4.3b, M4.4b).
+"""Provisioning and persisted-chat REST client for Open WebUI (M4.3b, M4.4b, M6.2).
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
 settled against 0.10.2 (memory M4 provisioning + filter contracts) -- TRANSCRIBED here, not
@@ -13,7 +13,8 @@ modelled, matching the bench consumer-struct convention.
 """
 
 import time
-from typing import Never
+import uuid
+from typing import NamedTuple, Never
 
 import httpx
 import msgspec
@@ -29,9 +30,19 @@ _FILTER_FUNCTION_TYPE = "filter"
 # Seconds between GET /ready polls while OWUI finishes startup (cold boot ~7-10s here, memory M4).
 _READY_POLL_INTERVAL = 1.0
 
+# Seconds between persisted-chat readbacks while the background completion runs.
+_CHAT_POLL_INTERVAL = 1.0
+
 
 class WebUIProvisionError(RuntimeError):
-    """A provisioning step failed unrecoverably or returned an invalid state."""
+    """An Open WebUI client step failed unrecoverably or returned an invalid state."""
+
+
+class PersistedChatResult(NamedTuple):
+    """Final persisted assistant text and optional verified-chart embed URL."""
+
+    final_text: str
+    chart_url: str | None
 
 
 class _AuthResponse(msgspec.Struct):
@@ -66,6 +77,56 @@ class _FunctionState(msgspec.Struct):
     is_active: bool
     is_global: bool
     content: str | None = None
+
+
+class _CreatedChat(msgspec.Struct):
+    """Loose POST /api/v1/chats/new reply; only the top-level chat id is read."""
+
+    id: str = ""
+
+
+class _CompletionAck(msgspec.Struct):
+    """Loose background-completion acknowledgement; only acceptance is load-bearing."""
+
+    status: bool = False
+
+
+class _OutputText(msgspec.Struct):
+    """One persisted assistant content item; only final text is read."""
+
+    text: str = ""
+
+
+class _AssistantOutput(msgspec.Struct):
+    """One persisted assistant output item; only its content list is read."""
+
+    content: tuple[_OutputText, ...] = ()
+
+
+class _ChatMessage(msgspec.Struct):
+    """Loose persisted message; user entries decode through defaults and are ignored."""
+
+    done: bool = False
+    embeds: tuple[str, ...] = ()
+    output: tuple[_AssistantOutput, ...] = ()
+
+
+class _ChatHistory(msgspec.Struct):
+    """Persisted history keyed by message id."""
+
+    messages: dict[str, _ChatMessage] = msgspec.field(default_factory=dict)
+
+
+class _ChatBody(msgspec.Struct):
+    """The nested chat body containing persisted history."""
+
+    history: _ChatHistory = msgspec.field(default_factory=_ChatHistory)
+
+
+class _ChatResponse(msgspec.Struct):
+    """Loose GET /api/v1/chats/{id} reply; only chat.history is read."""
+
+    chat: _ChatBody = msgspec.field(default_factory=_ChatBody)
 
 
 class WebUIClient:
@@ -167,6 +228,133 @@ class WebUIClient:
             raise WebUIProvisionError(msg) from exc
         return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
 
+    def run_persisted_chat(self, prompt: str) -> PersistedChatResult:
+        """Run one background persisted chat and return its final text plus chart URL.
+
+        The client must already be authenticated. The background completion is bounded by
+        ``settings.ready_timeout``: the harness reuses its existing Open WebUI operation-wait budget
+        and a monotonic deadline rather than introducing a second operator timeout.
+        """
+        chat_id = self._create_chat()
+        session_id = str(uuid.uuid4())
+        assistant_id = str(uuid.uuid4())
+        user_id = str(uuid.uuid4())
+        self._post_chat_completion(
+            prompt=prompt,
+            chat_id=chat_id,
+            session_id=session_id,
+            assistant_id=assistant_id,
+            user_id=user_id,
+        )
+        return self._poll_persisted_chat(chat_id=chat_id, assistant_id=assistant_id)
+
+    def _create_chat(self) -> str:
+        """Create the empty persisted chat container and return its top-level id."""
+        path = "/api/v1/chats/new"
+        response = self._authed_request(
+            "POST",
+            path,
+            json_body={
+                "chat": {
+                    "models": [self._settings.model_id],
+                    "messages": [],
+                    "history": {"messages": {}, "currentId": None},
+                }
+            },
+        )
+        if response.status_code != httpx.codes.OK:
+            self._raise_status(response)
+        try:
+            chat_id = msgspec.json.decode(response.content, type=_CreatedChat).id
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"POST {path} returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
+        if not chat_id:
+            msg = f"POST {path} returned an empty chat id"
+            raise WebUIProvisionError(msg)
+        return chat_id
+
+    def _post_chat_completion(
+        self,
+        *,
+        prompt: str,
+        chat_id: str,
+        session_id: str,
+        assistant_id: str,
+        user_id: str,
+    ) -> None:
+        """Start the persisted background completion with OWUI's exact 0.10.2 wire shape."""
+        path = "/api/chat/completions"
+        response = self._authed_request(
+            "POST",
+            path,
+            json_body={
+                "model": self._settings.model_id,
+                "stream": False,
+                "tool_ids": [f"{_TOOL_SERVER_ID_PREFIX}{self._settings.tool_server_id}"],
+                "chat_id": chat_id,
+                "session_id": session_id,
+                "id": assistant_id,
+                "parent_id": None,
+                "messages": [{"role": "user", "content": prompt}],
+                "user_message": {
+                    "id": user_id,
+                    "role": "user",
+                    "content": prompt,
+                    "timestamp": int(time.time()),
+                    "parentId": None,
+                    "childrenIds": [assistant_id],
+                },
+            },
+        )
+        if response.status_code != httpx.codes.OK:
+            self._raise_status(response)
+        try:
+            acknowledged = msgspec.json.decode(response.content, type=_CompletionAck).status
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"POST {path} returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
+        if not acknowledged:
+            msg = f"POST {path} did not acknowledge the background completion"
+            raise WebUIProvisionError(msg)
+
+    def _poll_persisted_chat(
+        self,
+        *,
+        chat_id: str,
+        assistant_id: str,
+    ) -> PersistedChatResult:
+        """Poll the persisted chat until the named assistant message reports done."""
+        path = f"/api/v1/chats/{chat_id}"
+        deadline = time.monotonic() + self._settings.ready_timeout
+        while True:
+            body = self._authed_get(path)
+            try:
+                chat = msgspec.json.decode(body, type=_ChatResponse)
+            except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+                msg = f"GET {path} returned an invalid response: {exc}"
+                raise WebUIProvisionError(msg) from exc
+            assistant = chat.chat.history.messages.get(assistant_id)
+            if assistant is not None and assistant.done:
+                return self._completed_chat_result(assistant)
+            if time.monotonic() >= deadline:
+                msg = f"persisted chat did not complete after {self._settings.ready_timeout}s"
+                raise WebUIProvisionError(msg)
+            time.sleep(_CHAT_POLL_INTERVAL)
+
+    @staticmethod
+    def _completed_chat_result(message: _ChatMessage) -> PersistedChatResult:
+        """Extract the fail-closed final text and optional first embed from a done message."""
+        if not message.output or not message.output[0].content:
+            msg = "completed assistant message returned no final text"
+            raise WebUIProvisionError(msg)
+        final_text = message.output[0].content[0].text
+        if not final_text:
+            msg = "completed assistant message returned no final text"
+            raise WebUIProvisionError(msg)
+        chart_url = message.embeds[0] if message.embeds else None
+        return PersistedChatResult(final_text=final_text, chart_url=chart_url)
+
     def ensure_global_filter(
         self,
         *,
@@ -258,7 +446,7 @@ class WebUIClient:
         *,
         json_body: dict[str, object] | None = None,
     ) -> httpx.Response:
-        """Send one authenticated function request; normalize transport failures."""
+        """Send one authenticated request; normalize transport failures."""
         return self._request(
             method,
             path,
@@ -326,7 +514,7 @@ class WebUIClient:
 
     @staticmethod
     def _raise_status(response: httpx.Response) -> Never:
-        """Raise one stable fail-closed error for an unexpected function HTTP status."""
+        """Raise one stable fail-closed error for an unexpected authenticated HTTP status."""
         request = response.request
         msg = f"{request.method} {request.url.path} returned HTTP {response.status_code}"
         raise WebUIProvisionError(msg)

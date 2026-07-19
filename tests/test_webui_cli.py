@@ -9,7 +9,7 @@ import pytest
 
 import webui.__main__ as cli
 from webui.bootstrap import SmokeResult
-from webui.client import WebUIProvisionError
+from webui.client import PersistedChatResult, WebUIClient, WebUIProvisionError
 from webui.settings import Settings
 
 
@@ -26,7 +26,20 @@ _SENTINEL = Settings()
 
 @pytest.mark.parametrize("command", ["serve", "bootstrap", "stub"])
 def test_parse_args_accepts_command(command: str) -> None:
-    assert cli._parse_args([command]) == command
+    assert cli._parse_args([command]).command == command
+
+
+def test_parse_args_accepts_chat_prompt() -> None:
+    args = cli._parse_args(["chat", "--prompt", "x"])
+
+    assert args.command == "chat"
+    assert args.prompt == "x"
+
+
+@pytest.mark.parametrize("argv", [["chat"], ["chat", "--prompt", ""], ["chat", "--prompt", " "]])
+def test_parse_args_rejects_chat_without_non_empty_prompt(argv: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        cli._parse_args(argv)
 
 
 def test_parse_args_rejects_unknown_command() -> None:
@@ -75,6 +88,59 @@ def test_main_dispatches_bootstrap_with_one_settings(monkeypatch: pytest.MonkeyP
 
     assert cli.main(["bootstrap"]) == 0
     assert seen == [_SENTINEL]
+
+
+def test_main_dispatches_chat_and_prints_result(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[str] = []
+
+    def fake_authenticate(_self: WebUIClient) -> str:
+        calls.append("authenticate")
+        return "jwt"
+
+    def fake_run_persisted_chat(
+        _self: WebUIClient,
+        prompt: str,
+    ) -> PersistedChatResult:
+        calls.append(f"chat:{prompt}")
+        return PersistedChatResult(final_text="answer", chart_url="http://chart.test/1")
+
+    monkeypatch.setattr(Settings, "from_env", staticmethod(lambda: _SENTINEL))
+    monkeypatch.setattr(WebUIClient, "authenticate", fake_authenticate)
+    monkeypatch.setattr(WebUIClient, "run_persisted_chat", fake_run_persisted_chat)
+
+    assert cli.main(["chat", "--prompt", "x"]) == 0
+    assert calls == ["authenticate", "chat:x"]
+    assert capsys.readouterr().out == "answer\nhttp://chart.test/1\n"
+
+
+def test_main_chat_maps_provision_error_to_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_authenticate(_self: WebUIClient) -> str:
+        return "jwt"
+
+    def fake_run_persisted_chat(
+        _self: WebUIClient,
+        _prompt: str,
+    ) -> PersistedChatResult:
+        message = "chat failed"
+        raise WebUIProvisionError(message)
+
+    monkeypatch.setattr(Settings, "from_env", staticmethod(lambda: _SENTINEL))
+    monkeypatch.setattr(WebUIClient, "authenticate", fake_authenticate)
+    monkeypatch.setattr(WebUIClient, "run_persisted_chat", fake_run_persisted_chat)
+
+    assert cli.main(["chat", "--prompt", "x"]) == 1
+    assert capsys.readouterr().out == ""
+
+
+def test_main_chat_without_prompt_errors() -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["chat"])
 
 
 def test_serve_execs_open_webui_with_hermetic_env(

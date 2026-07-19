@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Open WebUI harness entry point: serve, provision, or run the model stub."""
+"""Open WebUI harness entry point: serve, provision, chat, or run the model stub."""
 
 import argparse
 import logging
 import os
+import sys
 from collections.abc import Sequence
 from typing import NoReturn, cast
 
@@ -61,15 +62,49 @@ def _bootstrap(settings: Settings) -> int:
     return 0
 
 
-def _parse_args(argv: Sequence[str] | None) -> str:
+def _chat(settings: Settings, prompt: str) -> int:
+    """Authenticate, run one persisted chat, and print only its result to stdout."""
+    try:
+        with httpx.Client(
+            base_url=settings.base_url,
+            timeout=settings.request_timeout,
+        ) as http:
+            client = WebUIClient(http, settings)
+            client.authenticate()
+            result = client.run_persisted_chat(prompt)
+    except WebUIProvisionError:
+        _LOGGER.exception("Open WebUI chat failed")
+        return 1
+
+    output = result.final_text
+    if result.chart_url is not None:
+        output = f"{output}\n{result.chart_url}"
+    sys.stdout.write(f"{output}\n")
+    return 0
+
+
+def _non_empty_prompt(value: str) -> str:
+    """Argparse converter rejecting an empty or whitespace-only chat prompt."""
+    if not value.strip():
+        msg = "--prompt must not be empty"
+        raise argparse.ArgumentTypeError(msg)
+    return value
+
+
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("serve", "bootstrap", "stub"))
-    return cast("str", parser.parse_args(argv).command)
+    parser.add_argument("command", choices=("serve", "bootstrap", "stub", "chat"))
+    parser.add_argument("--prompt", type=_non_empty_prompt)
+    args = parser.parse_args(argv)
+    if cast("str", args.command) == "chat" and args.prompt is None:
+        parser.error("chat requires --prompt")
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
-    command = _parse_args(argv)
+    args = _parse_args(argv)
+    command = cast("str", args.command)
     settings = Settings.from_env()
 
     if command == "serve":
@@ -77,6 +112,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif command == "stub":
         serve_stub(settings)
         return 0
+    elif command == "chat":
+        return _chat(settings, cast("str", args.prompt))
     else:
         return _bootstrap(settings)
 
