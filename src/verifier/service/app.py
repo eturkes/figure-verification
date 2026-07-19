@@ -18,15 +18,16 @@ JSON-decode first, collapsing duplicate keys), and Litestar's body cap raises 41
 read exceeds settings.max_body_bytes — keeping oversize input off the verifier.
 
 Successful artifact POSTs commit the exact canonical DSSE envelope, canonical spec, and raw
-signing public key to the SQLite archive before mutating any LRU. Certificate/spec/key GETs use
-that archive as authority on every request, with narrow metadata-first bounded reads: they re-hold
-the requested address, typed relations, exact bytes, and canonical spec/key form; certificate
-reads additionally authenticate the canonical DSSE signature + exact VCert payload type under the
-digest-matching archived key. That key proves archive self-consistency only, never identity or
-operator trust. A malformed or truly absent address answers the same 404 problem+json; archive,
-SQLite, relation, hash, signature, or type faults escape to the logged content-free 500. No warm
-render LRU can bypass these checks. GET /chart/{plot_id} deliberately remains independent and
-ephemeral: it serves only the chart LRU's offline HTML under Content-Security-Policy: sandbox
+signing public key to the SQLite archive before publishing the chart cache.
+Certificate/spec/key GETs use that archive as authority on every request, with narrow
+metadata-first bounded reads: they re-hold the requested address, typed relations, exact bytes, and
+canonical spec/key form; certificate reads additionally authenticate the canonical DSSE
+signature + exact VCert payload type under the digest-matching archived key. That key proves archive
+self-consistency only, never identity or operator trust. A malformed or truly absent address
+answers the same 404 problem+json; archive, SQLite, relation, hash, signature, or type faults escape
+to the logged content-free 500. No process-local cache can bypass these checks.
+GET /chart/{plot_id} deliberately remains independent and ephemeral: it serves only the chart
+LRU's offline HTML under Content-Security-Policy: sandbox
 allow-scripts, and restart/eviction may 404 even while the durable public artifacts resolve.
 /propose-spec instead decodes a small typed {user_request, dataset_name} JSON body, runs the
 untrusted local model (service/model_client.py) to PROPOSE a spec, and hands the model's reply
@@ -589,7 +590,7 @@ def chart_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
     """Serve the stored offline chart HTML page for plot_id (its bytes verbatim, as text/html
     under the sandbox CSP). Built + stored on every verified render regardless of the entry route
     (verify-and-render or the proposer), then served until chart-LRU eviction — a verified chart
-    can 404 here while its certificate still lives (see store.py's mixed-state note)."""
+    can 404 here while its certificate remains durable in the archive."""
     store = cast("ArtifactStore", state["store"])
     return _fetch_artifact(plot_id, store.chart, media_type="text/html", headers=_CHART_HEADERS)
 
@@ -664,9 +665,7 @@ def create_app(settings: Settings) -> Litestar:
     identity = load_identity(settings)
     archive = open_archive(settings)
     store = ArtifactStore(
-        settings.store_cap,
         html_cap=settings.html_cap,
-        render_cache_bytes=settings.render_cache_bytes,
         chart_cache_bytes=settings.chart_cache_bytes,
     )
     admission = AdmissionController(

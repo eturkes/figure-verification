@@ -132,7 +132,7 @@ def test_exact_replay_uses_archived_bytes_after_live_mutation_and_deletion(tmp_p
     assert verdict.exact
 
 
-def test_replay_is_independent_of_render_and_chart_lru_state(tmp_path: Path) -> None:
+def test_replay_is_independent_of_chart_lru_state(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
     plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
 

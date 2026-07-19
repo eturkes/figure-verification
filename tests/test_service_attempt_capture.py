@@ -304,7 +304,7 @@ def test_verify_only_and_pre_admission_refusals_remain_outside_occurrence_ledger
     ("fault", "expected_status"),
     [("quota", 507), ("ledger", 500)],
 )
-def test_archive_fault_replaces_verified_outcome_before_any_lru_mutation(
+def test_archive_fault_replaces_verified_outcome_before_chart_lru_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     fault: str,
@@ -312,13 +312,9 @@ def test_archive_fault_replaces_verified_outcome_before_any_lru_mutation(
 ) -> None:
     cache_calls: list[str] = []
 
-    def observe_render(_store: ArtifactStore, **_kwargs: object) -> None:
-        cache_calls.append("render")
-
     def observe_chart(_store: ArtifactStore, _plot_id: str, _chart: bytes) -> None:
         cache_calls.append("chart")
 
-    monkeypatch.setattr(ArtifactStore, "put", observe_render)
     monkeypatch.setattr(ArtifactStore, "put_chart", observe_chart)
     settings = _settings(tmp_path, max_archive_bytes=1 if fault == "quota" else 1_000_000)
     app = service_app.create_app(settings)

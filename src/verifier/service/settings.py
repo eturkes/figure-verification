@@ -14,11 +14,9 @@ M5 resource policy: all resource integers are exact positive signed-64-bit value
 (`model_sample_rows` alone admits zero). This common arithmetic domain protects later native and
 SQLite boundaries and rejects astronomical values without allocating against them. `limits` is
 eagerly derived and cannot be supplied independently, so every service stage receives one frozen
-`VerificationLimits` snapshot. Cache budgets admit one conservatively bounded item: render =
-derived DSSE-envelope ceiling + both route-specific spec-input ceilings; chart = final signed HTML.
-The archive budget is an inclusive logical typed-blob payload quota (default 1 GiB), not a bound on
-SQLite pages, row/index metadata, rollback journals, or filesystem overhead. Sums are checked for
-overflow.
+`VerificationLimits` snapshot. The chart cache budget admits one final signed HTML page. The
+archive budget is an inclusive logical typed-blob payload quota (default 1 GiB), not a bound on
+SQLite pages, row/index metadata, rollback journals, or filesystem overhead.
 
 `public_base_url` is the absolute browser-facing origin used in chart `Location`, separate from
 the bind host. Its ASCII authority allowlist and exact origin round-trip reject browser/parser
@@ -33,7 +31,6 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import urlparse
 
-from verifier.attestation import envelope_byte_limit
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 _DEFAULT_DATA_DIR = "data"
@@ -42,7 +39,6 @@ _DEFAULT_SIGNING_KEY_FILE = "signing.key"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
 _DEFAULT_MAX_BODY_BYTES = 64 * 1024
-_DEFAULT_STORE_CAP = 256
 _DEFAULT_HTML_CAP = 16
 
 _DEFAULT_MODEL_BASE_URL = "http://127.0.0.1:8001/v1"
@@ -54,7 +50,6 @@ _DEFAULT_MAX_USER_REQUEST_BYTES = 4 * 1024
 _DEFAULT_MAX_PROMPT_BYTES = 32 * 1024
 _DEFAULT_MAX_MODEL_RESPONSE_BYTES = 128 * 1024
 
-_DEFAULT_RENDER_CACHE_BYTES = 32 * 1024 * 1024
 _DEFAULT_CHART_CACHE_BYTES = 128 * 1024 * 1024
 _DEFAULT_MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
 _DEFAULT_MAX_ACTIVE_JOBS = 2
@@ -67,13 +62,11 @@ _CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
 _KEYID = re.compile(r"sha256:[0-9a-f]{64}")
 _POSITIVE_RESOURCE_FIELDS = (
     "max_body_bytes",
-    "store_cap",
     "html_cap",
     "model_max_tokens",
     "max_user_request_bytes",
     "max_prompt_bytes",
     "max_model_response_bytes",
-    "render_cache_bytes",
     "chart_cache_bytes",
     "max_archive_bytes",
     "max_active_jobs",
@@ -87,13 +80,6 @@ def _require_resource_integer(name: str, value: int, *, minimum: int = 1) -> Non
     if type(value) is not int or not minimum <= value <= _MAX_RESOURCE_INTEGER:
         msg = f"{name} must be an integer in {minimum}..{_MAX_RESOURCE_INTEGER}, got {value!r}"
         raise ValueError(msg)
-
-
-def _checked_resource_sum(name: str, left: int, right: int) -> int:
-    if left > _MAX_RESOURCE_INTEGER - right:
-        msg = f"{name} exceeds the signed-64-bit resource ceiling"
-        raise ValueError(msg)
-    return left + right
 
 
 def _absolute_without_final(path: Path, *, field_name: str) -> Path:
@@ -139,7 +125,6 @@ class Settings:
     port: int = _DEFAULT_PORT
     public_base_url: str | None = None
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
-    store_cap: int = _DEFAULT_STORE_CAP
     html_cap: int = _DEFAULT_HTML_CAP
 
     model_base_url: str = _DEFAULT_MODEL_BASE_URL
@@ -151,7 +136,6 @@ class Settings:
     max_prompt_bytes: int = _DEFAULT_MAX_PROMPT_BYTES
     max_model_response_bytes: int = _DEFAULT_MAX_MODEL_RESPONSE_BYTES
 
-    render_cache_bytes: int = _DEFAULT_RENDER_CACHE_BYTES
     chart_cache_bytes: int = _DEFAULT_CHART_CACHE_BYTES
     max_archive_bytes: int = _DEFAULT_MAX_ARCHIVE_BYTES
     max_active_jobs: int = _DEFAULT_MAX_ACTIVE_JOBS
@@ -231,21 +215,6 @@ class Settings:
         )
         object.__setattr__(self, "limits", limits)
 
-        max_spec_bytes = _checked_resource_sum(
-            "render cache spec input bound",
-            self.max_body_bytes,
-            self.max_model_response_bytes,
-        )
-        max_envelope_bytes = envelope_byte_limit(self.max_attestation_bytes)
-        max_render_item = _checked_resource_sum(
-            "render cache item bound", max_envelope_bytes, max_spec_bytes
-        )
-        if self.render_cache_bytes < max_render_item:
-            msg = (
-                "render_cache_bytes must admit the derived DSSE envelope ceiling plus "
-                f"both spec-input ceilings ({max_render_item}), got {self.render_cache_bytes}"
-            )
-            raise ValueError(msg)
         if self.chart_cache_bytes < self.max_html_bytes:
             msg = (
                 "chart_cache_bytes must be >= max_html_bytes "
@@ -277,7 +246,6 @@ class Settings:
             port=integer("VERIFIER_PORT", _DEFAULT_PORT),
             public_base_url=env.get("VERIFIER_PUBLIC_BASE_URL"),
             max_body_bytes=integer("VERIFIER_MAX_BODY_BYTES", _DEFAULT_MAX_BODY_BYTES),
-            store_cap=integer("VERIFIER_STORE_CAP", _DEFAULT_STORE_CAP),
             html_cap=integer("VERIFIER_HTML_CAP", _DEFAULT_HTML_CAP),
             model_base_url=env.get("VERIFIER_MODEL_BASE_URL", _DEFAULT_MODEL_BASE_URL),
             model_name=env.get("VERIFIER_MODEL_NAME", _DEFAULT_MODEL_NAME),
@@ -291,7 +259,6 @@ class Settings:
             max_model_response_bytes=integer(
                 "VERIFIER_MAX_MODEL_RESPONSE_BYTES", _DEFAULT_MAX_MODEL_RESPONSE_BYTES
             ),
-            render_cache_bytes=integer("VERIFIER_RENDER_CACHE_BYTES", _DEFAULT_RENDER_CACHE_BYTES),
             chart_cache_bytes=integer("VERIFIER_CHART_CACHE_BYTES", _DEFAULT_CHART_CACHE_BYTES),
             max_archive_bytes=integer("VERIFIER_MAX_ARCHIVE_BYTES", _DEFAULT_MAX_ARCHIVE_BYTES),
             max_active_jobs=integer("VERIFIER_MAX_ACTIVE_JOBS", _DEFAULT_MAX_ACTIVE_JOBS),

@@ -298,11 +298,10 @@ def test_04_restart_replay_repopulates_ephemeral_chart(tmp_path: Path) -> None:
 
 
 def test_05_lru_eviction_preserves_archive_certificate_and_spec(tmp_path: Path) -> None:
-    """Count/byte-bounded LRUs evict a chart while the archive remains authoritative."""
+    """The count/byte-bounded chart LRU evicts while the archive remains authoritative."""
     settings = Settings(
         data_dir=_DATA,
         state_dir=tmp_path / "state",
-        store_cap=1,
         html_cap=1,
         max_html_bytes=2 * 1024 * 1024,
         chart_cache_bytes=2 * 1024 * 1024,
@@ -735,9 +734,6 @@ def test_13_solver_capacity_quota_and_transaction_fail_closed(
 
     cache_calls: list[str] = []
 
-    def observe_render(_store: ArtifactStore, **_kwargs: object) -> None:
-        cache_calls.append("render")
-
     def observe_chart(_store: ArtifactStore, _plot_id: str, _chart: bytes) -> None:
         cache_calls.append("chart")
 
@@ -747,7 +743,6 @@ def test_13_solver_capacity_quota_and_transaction_fail_closed(
         max_archive_bytes=1,
     )
     with monkeypatch.context() as quota_patch:
-        quota_patch.setattr(ArtifactStore, "put", observe_render)
         quota_patch.setattr(ArtifactStore, "put_chart", observe_chart)
         with TestClient(app=create_app(quota_settings)) as client:
             quota_response = client.post(

@@ -68,12 +68,13 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     field alone. A DISTINCT struct rather than a Verdict subclass, so the handler's
     Verdict | RenderVerdict return stays a real union for mypy and the OpenAPI surface.
     `attempt_id` = SHA-256 hexdigest of the signed occurrence envelope committed atomically with
-    the complete plot bundle, before either in-memory LRU mutates.
+    the complete plot bundle, before the chart LRU mutates.
     `plot_id` = SHA-256 hexdigest of the deterministic signed DSSE envelope bytes;
     `spec_id` = `spec_hash` minus its
     `sha256:` prefix (bare 64-hex). plot_id <-> spec_id is 1:1 only under stable trusted config;
     changing the trusted manifest, verifier/formal TCB, emitted Vega bytes, or signing key keeps
-    spec_id but changes plot_id, so several plot_ids can share a spec_id (store.py refcounts them).
+    spec_id but changes plot_id, so several plot_ids can share a spec_id; the archive preserves
+    each plot/spec relation.
     The five `*_hash` fields are the authenticated VCert payload's verbatim
     `sha256:`-prefixed digests.
     `html` (omitted when absent via omit_defaults) carries the offline view only under

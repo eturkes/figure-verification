@@ -18,7 +18,6 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from verifier import __version__
-from verifier.attestation import envelope_byte_limit
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import __main__ as service_main
 from verifier.service import settings as settings_module
@@ -33,13 +32,11 @@ _PIN_B = "sha256:" + "b" * 64
 _CORE_DEFAULTS = {name: getattr(DEFAULT_LIMITS, name) for name in DEFAULT_LIMITS.__struct_fields__}
 _RESOURCE_DEFAULTS = {
     "max_body_bytes": 64 * 1024,
-    "store_cap": 256,
     "html_cap": 16,
     "model_max_tokens": 512,
     "max_user_request_bytes": 4 * 1024,
     "max_prompt_bytes": 32 * 1024,
     "max_model_response_bytes": 128 * 1024,
-    "render_cache_bytes": 32 * 1024 * 1024,
     "chart_cache_bytes": 128 * 1024 * 1024,
     "max_archive_bytes": 1024 * 1024 * 1024,
     "max_active_jobs": 2,
@@ -49,13 +46,11 @@ _RESOURCE_DEFAULTS = {
 }
 _RESOURCE_ENV = {
     "max_body_bytes": "VERIFIER_MAX_BODY_BYTES",
-    "store_cap": "VERIFIER_STORE_CAP",
     "html_cap": "VERIFIER_HTML_CAP",
     "model_max_tokens": "VERIFIER_MODEL_MAX_TOKENS",
     "max_user_request_bytes": "VERIFIER_MAX_USER_REQUEST_BYTES",
     "max_prompt_bytes": "VERIFIER_MAX_PROMPT_BYTES",
     "max_model_response_bytes": "VERIFIER_MAX_MODEL_RESPONSE_BYTES",
-    "render_cache_bytes": "VERIFIER_RENDER_CACHE_BYTES",
     "chart_cache_bytes": "VERIFIER_CHART_CACHE_BYTES",
     "max_archive_bytes": "VERIFIER_MAX_ARCHIVE_BYTES",
     "max_active_jobs": "VERIFIER_MAX_ACTIVE_JOBS",
@@ -93,30 +88,17 @@ def test_health(tmp_path: Path) -> None:
     assert response.json() == {"status": "ok", "version": __version__}
 
 
-def test_app_threads_validated_cache_byte_budgets(tmp_path: Path) -> None:
-    render_budget = envelope_byte_limit(1) + 2
+def test_app_threads_validated_chart_cache_byte_budget(tmp_path: Path) -> None:
     settings = Settings(
         data_dir=tmp_path,
         state_dir=tmp_path / "state",
-        max_body_bytes=1,
-        max_model_response_bytes=1,
-        max_attestation_bytes=1,
-        render_cache_bytes=render_budget,
         max_html_bytes=2,
         chart_cache_bytes=2,
     )
     app = create_app(settings)
     assert isinstance(app.state["archive"], Archive)
     store = cast("ArtifactStore", app.state["store"])
-    store.put(plot_id="a" * 64, cert_bytes=b"A", spec_id="5" * 64, spec_bytes=b"SS")
     store.put_chart("a" * 64, b"HH")
-    with pytest.raises(ValueError, match="render payload bytes"):
-        store.put(
-            plot_id="b" * 64,
-            cert_bytes=b"C" * render_budget,
-            spec_id="7" * 64,
-            spec_bytes=b"S",
-        )
     with pytest.raises(ValueError, match="chart payload bytes"):
         store.put_chart("b" * 64, b"HHH")
 
@@ -310,46 +292,12 @@ def test_settings_rejects_independently_supplied_limits(tmp_path: Path) -> None:
         _settings_with(tmp_path, limits=DEFAULT_LIMITS)
 
 
-def test_settings_rejects_incompatible_render_cache_budget(tmp_path: Path) -> None:
-    # Conservatively reserve a full DSSE envelope plus both route-specific spec-input ceilings.
-    required = envelope_byte_limit(17) + 11 + 13
-    with pytest.raises(ValueError, match="render_cache_bytes"):
-        Settings(
-            data_dir=tmp_path,
-            max_body_bytes=11,
-            max_model_response_bytes=13,
-            max_attestation_bytes=17,
-            render_cache_bytes=required - 1,
-        )
-    assert (
-        Settings(
-            data_dir=tmp_path,
-            max_body_bytes=11,
-            max_model_response_bytes=13,
-            max_attestation_bytes=17,
-            render_cache_bytes=required,
-        ).render_cache_bytes
-        == required
-    )
-
-
 def test_settings_rejects_incompatible_chart_cache_budget(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="chart_cache_bytes"):
         Settings(data_dir=tmp_path, max_html_bytes=17, chart_cache_bytes=16)
     assert (
         Settings(data_dir=tmp_path, max_html_bytes=17, chart_cache_bytes=17).chart_cache_bytes == 17
     )
-
-
-def test_settings_rejects_resource_bound_sum_overflow_without_allocating(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="render cache item"):
-        Settings(
-            data_dir=tmp_path,
-            max_body_bytes=_MAX_RESOURCE_INTEGER - 1,
-            max_model_response_bytes=1,
-            max_attestation_bytes=1,
-            render_cache_bytes=_MAX_RESOURCE_INTEGER,
-        )
 
 
 def test_from_env_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -374,8 +322,7 @@ def test_from_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("VERIFIER_MODEL_TIMEOUT", "30.5")  # non-integer float exercises the parse
     monkeypatch.setenv("VERIFIER_MODEL_SAMPLE_ROWS", "3")
     resource_overrides = {name: index + 101 for index, name in enumerate(_RESOURCE_DEFAULTS)}
-    # Keep the two cache budgets compatible with their overridden per-item ceilings.
-    resource_overrides["render_cache_bytes"] = 16_384
+    # Keep the chart cache budget compatible with its overridden per-item ceiling.
     resource_overrides["chart_cache_bytes"] = 8_192
     for field, env_name in _RESOURCE_ENV.items():
         monkeypatch.setenv(env_name, str(resource_overrides[field]))
@@ -431,18 +378,11 @@ def test_from_env_rejects_invalid_model_sample_rows(
         Settings.from_env()
 
 
-@pytest.mark.parametrize(
-    ("env_name", "field"),
-    [
-        ("VERIFIER_RENDER_CACHE_BYTES", "render_cache_bytes"),
-        ("VERIFIER_CHART_CACHE_BYTES", "chart_cache_bytes"),
-    ],
-)
-def test_from_env_rejects_cross_limit_cache_budget(
-    monkeypatch: pytest.MonkeyPatch, env_name: str, field: str
+def test_from_env_rejects_cross_limit_chart_cache_budget(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(env_name, "1")
-    with pytest.raises(ValueError, match=field):
+    monkeypatch.setenv("VERIFIER_CHART_CACHE_BYTES", "1")
+    with pytest.raises(ValueError, match="chart_cache_bytes"):
         Settings.from_env()
 
 

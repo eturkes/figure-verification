@@ -466,7 +466,6 @@ def _check_lru_archive_durability(tmp_path: Path) -> None:
     settings = Settings(
         data_dir=_DATA,
         state_dir=tmp_path / "lru-state",
-        store_cap=1,
         html_cap=1,
         max_html_bytes=_CACHE_BYTES,
         chart_cache_bytes=_CACHE_BYTES,
@@ -887,9 +886,6 @@ def _scenario_capacity_and_quota_fail_closed(tmp_path: Path) -> str:
 
     cache_calls: list[str] = []
 
-    def observe_render(_store: ArtifactStore, **_kwargs: object) -> None:
-        cache_calls.append("render")
-
     def observe_chart(_store: ArtifactStore, _plot_id: str, _chart: bytes) -> None:
         cache_calls.append("chart")
 
@@ -899,7 +895,6 @@ def _scenario_capacity_and_quota_fail_closed(tmp_path: Path) -> str:
         max_archive_bytes=1,
     )
     with (
-        patch.object(ArtifactStore, "put", observe_render),
         patch.object(ArtifactStore, "put_chart", observe_chart),
         TestClient(app=create_app(quota_settings)) as client,
     ):

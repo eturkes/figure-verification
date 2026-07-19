@@ -5,10 +5,10 @@ The good corpus renders through the service byte-for-byte as a direct render.ren
 the five cert-verbatim hashes, and the content-addressed plot_id/spec_id); a repeat POST is
 idempotent (same plot_id). The service signs exact VCert bytes into deterministic DSSE, defines
 plot_id as SHA-256(envelope), and durably serves exact certificate/spec/raw-key bytes from the
-archive across render-LRU eviction and app restart. Every public read independently rechecks its
+archive across chart-LRU eviction and app restart. Every public read independently rechecks its
 address and archive relations; certificate reads authenticate canonical DSSE signature/type under
 the digest-matching archived key without elevating it to trust. Malformed/unknown addresses share
-one 404; relation/blob/hash/signature/type corruption — even after warm LRU reads — becomes logged
+one 404; relation/blob/hash/signature/type corruption — even after repeated reads — becomes logged
 generic 500. The never-a-chart pin still holds over all bad specs. X-Content-Type-Options: nosniff
 rides every response, success and problem alike.
 
@@ -16,8 +16,8 @@ GET /chart/{plot_id} serves the offline HTML page built + stored on EVERY verifi
 resolves even when the JSON body omitted the inline copy (include_html=false), as text/html under
 a Content-Security-Policy: sandbox allow-scripts. The page is rebuilt from authoritative Vega
 bytes after signing and visibly carries the VCert badge, signer keyid, plot_id, and exact envelope
-link. Its chart LRU (html_cap) evicts independently of the render LRU (store_cap) — a certificate
-can outlive its chart page — and an absent or malformed plot_id 404s as problem+json carrying
+link. Its chart LRU (html_cap) is process-local, while certificates remain archive-durable, so a
+certificate can outlive its chart page; an absent or malformed plot_id 404s as problem+json carrying
 neither the CSP nor text/html (only the app-default nosniff).
 """
 
@@ -54,7 +54,6 @@ from verifier.service.identity import SigningIdentity, keyid_for_public_key
 from verifier.service.model_client import ModelProposal, ProposalTrace
 from verifier.service.models import Verdict
 from verifier.service.settings import Settings
-from verifier.service.store import ArtifactStore
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -829,16 +828,12 @@ def test_signed_chart_final_html_limit_is_reapplied_before_store(
         assert scoped.get(f"/spec/{spec_id}").status_code == 404
 
 
-# --- the chart LRU (html_cap) evicts independently of the render LRU (store_cap) -------------
-def test_chart_lru_evicts_independently_of_certificate(tmp_path: Path) -> None:
-    # store_cap=2, html_cap=1: two renders both keep their certificate, but only the newest keeps
-    # its chart page — the reachable mixed state (a certificate outlives its chart page), pinning
-    # that the two LRUs evict on their OWN recency, through the transport.
+# --- chart-LRU eviction leaves archive-durable certificates available -------------------------
+def test_chart_lru_eviction_leaves_archive_certificate_available(tmp_path: Path) -> None:
     app = create_app(
         Settings(
             data_dir=_DATA,
             state_dir=tmp_path / "state",
-            store_cap=2,
             html_cap=1,
         )
     )
@@ -850,10 +845,8 @@ def test_chart_lru_evicts_independently_of_certificate(tmp_path: Path) -> None:
             "/verify-and-render", content=(_GOOD_DIR / _GOOD[1]["file"]).read_bytes(), headers=_JSON
         ).json()
         assert a["plot_id"] != b["plot_id"]
-        # Both renders sit within store_cap=2 -> both certificates live.
         assert client.get(f"/certificate/{a['plot_id']}").status_code == 200
         assert client.get(f"/certificate/{b['plot_id']}").status_code == 200
-        # But html_cap=1: A's chart page evicted when B's landed, while B's chart page lives.
         assert client.get(f"/chart/{a['plot_id']}").status_code == 404
         assert client.get(f"/chart/{b['plot_id']}").status_code == 200
 
@@ -871,16 +864,14 @@ def test_chart_absent_or_malformed_404_without_csp(client: TestClient[Litestar])
         assert response.headers["x-content-type-options"] == _NOSNIFF
 
 
-# --- the store is bounded: the oldest render evicts, cert AND spec together --
-def test_archive_artifacts_survive_lru_eviction_and_restart(tmp_path: Path) -> None:
+# --- archive artifacts survive chart-LRU eviction and restart -----------------
+def test_archive_artifacts_survive_chart_lru_eviction_and_restart(tmp_path: Path) -> None:
     settings = Settings(
         data_dir=_DATA,
         state_dir=tmp_path / "state",
-        store_cap=1,
         html_cap=1,
     )
     app = create_app(settings)
-    store = cast("ArtifactStore", app.state["store"])
     identity = cast("SigningIdentity", app.state["identity"])
     raw_a = (_GOOD_DIR / _GOOD[0]["file"]).read_bytes()
     raw_b = (_GOOD_DIR / _GOOD[1]["file"]).read_bytes()
@@ -905,8 +896,6 @@ def test_archive_artifacts_survive_lru_eviction_and_restart(tmp_path: Path) -> N
             client.post("/verify-and-render", content=raw_b, headers=_JSON).json(),
         )
         assert a["plot_id"] != b["plot_id"]
-        assert store.certificate(cast("str", a["plot_id"])) is None
-        assert store.spec(cast("str", a["spec_id"])) is None
         assert client.get(f"/certificate/{a['plot_id']}").content == expected_certificate
         assert client.get(f"/spec/{a['spec_id']}").content == expected_spec
         assert client.get(f"/key/{keyid}").content == expected_key

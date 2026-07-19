@@ -28,7 +28,7 @@ render_outcome (split from verify_and_render at M3.3b) is the render half: on a 
 verdict it renders the verified chart, signs the exact VCert bytes into deterministic DSSE,
 content-addresses the envelope (plot_id = SHA-256(envelope), spec_id = the payload's spec_hash),
 rebuilds the off-chain chart page from returned authoritative Vega with the signed provenance
-display, atomically archives the complete plot + signed attempt, then stores the artifacts and
+display, atomically archives the complete plot + signed attempt, then caches the chart page and
 answers a RenderVerdict. A failing verdict commits a signed attempt and returns the plain Verdict
 with no chart. Both public shapes gain the derived attempt id only after commit. A passing
 outcome's already-formal-passed artifact is rendered directly, so no trusted file is read and no
@@ -48,7 +48,7 @@ from typing import Literal, cast
 
 import msgspec
 
-from verifier import attestation, canon, checks, formal, render
+from verifier import attestation, checks, formal, render
 from verifier.errors import VerificationError
 from verifier.limits import read_bounded
 from verifier.schema import VPlotSpec, decode_spec
@@ -279,16 +279,16 @@ def render_outcome(
 
     A failing verdict commits its exact observed inputs + canonical pre-address verdict and returns
     the same verdict extended with the derived attempt id. A passing outcome renders/signs once,
-    atomically commits the complete plot + occurrence, and only then mutates either LRU. Archive
-    failure therefore escapes before an outcome or cache entry can leak. CPU-bound + synchronous
-    (the handler offloads the entire operation through its admission permit).
+    atomically commits the complete plot + occurrence, and only then publishes the chart cache.
+    Archive failure therefore escapes before an outcome or cache entry can leak. CPU-bound +
+    synchronous (the handler offloads the entire operation through its admission permit).
 
     The signed offline HTML page is rebuilt + stored on EVERY verified render from the returned
     authoritative Vega bytes + VCert, then final-byte-admitted after adding the badge, signer
     keyid, plot_id, and exact certificate URL. Both entry routes — verify-and-render and the
     proposer — populate the chart store through this one seam; GET /chart/{plot_id} serves that
-    page until chart-LRU eviction (a verified chart can 404 while its certificate still lives —
-    see store.py's mixed-state note). include_html governs ONLY the JSON-body html copy (the large
+    page until chart-LRU eviction (a verified chart can 404 while its certificate remains durable
+    in the archive). include_html governs ONLY the JSON-body html copy (the large
     inline view the caller opts into); the stored page is not gated by it."""
     if not outcome.verdict.verified:
         attempt_id = _record_verdict_attempt(
@@ -298,9 +298,8 @@ def render_outcome(
             None,
         )
         return msgspec.structs.replace(outcome.verdict, attempt_id=attempt_id)
-    # verified => the final verify/formal stage passed, so spec + prepared are populated (cast, not
-    # assert: an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
-    spec = cast("VPlotSpec", outcome.spec)
+    # verified => the final verify/formal stage passed, so prepared is populated (cast, not assert:
+    # an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
     prepared = cast("render.PreparedArtifact", outcome.prepared)
     try:
         settings = context.writer.settings
@@ -352,12 +351,6 @@ def render_outcome(
         plot,
     )
     spec_id = cert.spec_hash.removeprefix("sha256:")
-    context.store.put(
-        plot_id=plot_id,
-        cert_bytes=envelope,
-        spec_id=spec_id,
-        spec_bytes=canon.spec_bytes(spec),
-    )
     context.store.put_chart(plot_id, chart_bytes)
     return RenderVerdict(
         verified=True,
