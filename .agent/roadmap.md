@@ -64,7 +64,13 @@ research needed (all-local stack, already probed).
   `demo/reports/e2e_report.json` (reuse `walkthrough` report/encode helpers where they fit), exit
   0 only when all cases match expectation. Tests: in-gate pytest spawning the driver end-to-end
   (subprocess, `--no-cov` semantics same as live test — demo stays outside coverage source),
-  asserting report shape + case outcomes + specific-reason strings. Acceptance: `python -m
+  asserting report shape + case outcomes + specific-reason strings. Recon fast-path (Explore,
+  this planning session): reuse walkthrough's transport-neutral helpers `_require`/`_object`/
+  `_object_list`/`_response_object`/`_expect_status`/`_expect_problem`/`_attempt_id`
+  (demo/walkthrough.py:120-171) + `ScenarioResult`/`WalkthroughReport`/`run_walkthrough`-style
+  registry/`encode_report`; do NOT reuse `_certificate`/`_render_*`/`_propose` — TestClient-bound
+  (`_certificate` reads `app.state["identity"]`). b13 = weather.csv line y=aqi (manifest has no
+  unit); b07 = sales.csv scatter filter field `profit`. Acceptance: `python -m
   demo.e2e` runs clean from a fresh checkout with only `uv sync --locked` (no NPU/webui), report
   shows 1 pass + 2 blocked with the exact reasons, replay-after-restart exact; gate green.
 - **M6.2 — Open WebUI persisted-chat driver** (OPEN): extend `webui/` with the persisted-chat
@@ -75,9 +81,13 @@ research needed (all-local stack, already probed).
   (`embeds[0]`) — reconcile the exact wire shape against the M4.5 evidence commit
   (`git log --grep "(M4.5"`; memory says create-chat-first, README shows the completion fields).
   Expose `python -m webui chat --prompt …` printing text + chart URL; keep `client.py` style
-  (`WebUIProvisionError` normalization, no raw-content logging). Tests: `httpx.MockTransport`
-  matrix like `tests/test_webui_client.py` (success, poll-pending→done, missing embed, transport/
-  status/JSON faults). Acceptance: against the live hardware-free stack (stub + bootstrap) the
+  (`WebUIProvisionError` normalization, no raw-content logging). Recon fast-path (Explore, this
+  planning session): `WebUIClient` today = `wait_ready`/`authenticate` (signup→signin fallback;
+  no public signin)/`model_ids`/`tool_server_ids`/`ensure_global_filter` — chat/persisted-chat
+  helpers do NOT exist anywhere (README:101-145 inline httpx + prose only); CLI subcommands =
+  `serve`/`bootstrap`/`stub` (webui/__main__.py:64-80). Tests: `httpx.MockTransport`
+  matrix like `tests/test_webui_client.py` (injected-transport `_webui_client` pattern at :58-63)
+  (success, poll-pending→done, missing embed, transport/status/JSON faults). Acceptance: against the live hardware-free stack (stub + bootstrap) the
   command returns the stub's final summary + a `/chart/` URL; mock matrix green; gate green.
 - **M6.3 — live-stack orchestration + demo evidence run** (OPEN; run after M6.1+M6.2 land): add
   `--with-webui` (drive the M6.2 chat leg against the provisioned stack, record final text +
@@ -89,8 +99,9 @@ research needed (all-local stack, already probed).
   evidence run: three terminals recipe (NPU backend, verifier, webui serve + bootstrap), `python
   -m demo.e2e --with-webui --with-model`, the README outlet block/pass differential, and a
   chromiumfish `/c/{chat_id}` capture proving the embedded verified chart + badge (browser
-  evidence stays textual in this roadmap per M4.5/M5.3c precedent; captures deleted after
-  inspection). Acceptance: flags off = byte-identical M6.1 behavior; live run records chart
+  evidence stays textual in this roadmap per M4.5/M5.3c precedent — no literal M4.5 command
+  survives, only the flag skeleton above; binary resolves via `command -v chromiumfish`; captures
+  deleted after inspection). Acceptance: flags off = byte-identical M6.1 behavior; live run records chart
   embedded in Open WebUI, model-leg verdicts + one audited attempt, outlet differential; evidence
   paragraph lands here at close; gate green.
 - **M6.4 — root README + PoC acceptance sweep + M6 close** (OPEN): author the repo's missing
