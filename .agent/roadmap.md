@@ -17,9 +17,93 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
-| M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
+| M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | IN-PROGRESS |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
+
+---
+
+## M6 — End-to-end demo   (IN-PROGRESS)
+
+**Gate: full stack (M3+M4) — CONFIRMED live at this planning turn.** Fresh probes this session:
+intel-accel selftest enumerated CPU/GPU/NPU all `correct=True`; the NPU `model_backend` served
+`/v1/models` and a live `/propose-spec` returned a 200 verdict in ~12 s with a real fenced NPU
+reply (the first call during cold NPU compile returned the typed 503 upstream path WITH a
+committed `attempt_id` — M5 capture working live); `python -m webui serve` on the existing
+`.venv-webui` answered `/ready` and `python -m webui bootstrap` exited 0 (`models=1
+tool_servers=1`); `chromiumfish` present on host (`--headless=new --no-sandbox --disable-gpu`,
+optional `--print-to-pdf --no-pdf-header-footer` + `pdftoppm`; avoid the virtual-time/compositor
+flags — they can hang). Services stopped after probing; `.webui-data/` + `.verifier-state/` are
+operator/disposable state, never test sinks (demo runs use tmp state dirs).
+
+Scope reconciliation (seed 15 + "Suggested PoC acceptance criteria"): the live NPU model verifies
+0/100 (M3 eval), so seed case 1 "model proposes → chart renders" is NOT reliably reachable
+model-first. The demo therefore layers honestly, mirroring M4.5: a DETERMINISTIC layer proves the
+three cases + the full integration chain from a clean checkout (direct API cases; scripted-stub
+Open WebUI chain), and a LIVE-NPU observation layer meters the real weak model on the same
+prompts (expected: blocked, specific reasons, audit-diagnosable — which IS the PoC story; claim
+discipline: observations, never bounds). Case mapping — case 1 = g01 verified chart +
+certificate + replay; case 2 = b07 (`schema.fields_exist`: "filter field 'profit' is absent from
+sales.csv", the seed's exact scenario); case 3 = policy pair: b13
+(`label.quantitative_units_present`, POLICY family) as the 200 policy verdict AND a crafted
+g01+`"scale":{"zero":false}` variant proving the misleading-baseline vector is UNREPRESENTABLE
+(decode-refused unknown field; `scale.bar_zero` instead rides every verified certificate as a
+`z3_smt` pass). Acceptance-criteria sweep (all 10) closes the milestone. No new deps; no web
+research needed (all-local stack, already probed).
+
+- **M6.1 — deterministic three-case demo driver** (OPEN): add `demo/e2e.py` + `python -m demo.e2e`
+  driving a REAL-socket verifier it spawns itself (subprocess `python -m verifier.service`, tmp
+  `VERIFIER_STATE_DIR`, free port — reuse the `tests/test_service_live.py` spawn/poll pattern;
+  hardware-free, no model backend: direct `/verify-and-render` + `/verify-only`). Cases: (1) g01 →
+  verified chart, print all five certificate hashes + check id/method lines, fetch
+  `/certificate/{plot_id}` + `/chart/{plot_id}`, restart the subprocess, `/replay/{plot_id}` exact
+  → chart repopulated; (2) b07 → blocked, print the specific `schema.fields_exist` message; (3)
+  b13 → blocked policy verdict + crafted scale-zero spec → decode-refused (unrepresentable), print
+  both reasons + note the certificate's `scale.bar_zero`/`z3_smt` line from case 1. Human-readable
+  PASS/FAIL narrative on stdout (logging like `demo/__main__.py`), JSON report to gitignored
+  `demo/reports/e2e_report.json` (reuse `walkthrough` report/encode helpers where they fit), exit
+  0 only when all cases match expectation. Tests: in-gate pytest spawning the driver end-to-end
+  (subprocess, `--no-cov` semantics same as live test — demo stays outside coverage source),
+  asserting report shape + case outcomes + specific-reason strings. Acceptance: `python -m
+  demo.e2e` runs clean from a fresh checkout with only `uv sync --locked` (no NPU/webui), report
+  shows 1 pass + 2 blocked with the exact reasons, replay-after-restart exact; gate green.
+- **M6.2 — Open WebUI persisted-chat driver** (OPEN): extend `webui/` with the persisted-chat
+  helper the README leaves as prose: signin → create chat → `POST /api/chat/completions` with
+  `session_id`/`chat_id`, assistant `id`, complete `user_message` (id/role/content/timestamp/
+  `parentId: null`/`childrenIds:[assistant-id]`) → poll `GET /api/v1/chats/{chat_id}` until the
+  assistant message is `done: true` → return final text (`output[0].content[0].text`) + chart URL
+  (`embeds[0]`) — reconcile the exact wire shape against the M4.5 evidence commit
+  (`git log --grep "(M4.5"`; memory says create-chat-first, README shows the completion fields).
+  Expose `python -m webui chat --prompt …` printing text + chart URL; keep `client.py` style
+  (`WebUIProvisionError` normalization, no raw-content logging). Tests: `httpx.MockTransport`
+  matrix like `tests/test_webui_client.py` (success, poll-pending→done, missing embed, transport/
+  status/JSON faults). Acceptance: against the live hardware-free stack (stub + bootstrap) the
+  command returns the stub's final summary + a `/chart/` URL; mock matrix green; gate green.
+- **M6.3 — live-stack orchestration + demo evidence run** (OPEN; run after M6.1+M6.2 land): add
+  `--with-webui` (drive the M6.2 chat leg against the provisioned stack, record final text +
+  chart URL + certificate fetch in the report) and `--with-model` (the three seed-15 prompts
+  through live `/propose-spec`; record verdict/failure classes + `attempt_id`s, then shell out to
+  `python -m verifier.service audit <id>` for one failure to show post-hoc diagnosability;
+  observations, never bounds) flags to `demo/e2e.py`; both default OFF so M6.1's hardware-free
+  contract holds; tests stub the legs (no live deps in gate). MAIN then executes the full live
+  evidence run: three terminals recipe (NPU backend, verifier, webui serve + bootstrap), `python
+  -m demo.e2e --with-webui --with-model`, the README outlet block/pass differential, and a
+  chromiumfish `/c/{chat_id}` capture proving the embedded verified chart + badge (browser
+  evidence stays textual in this roadmap per M4.5/M5.3c precedent; captures deleted after
+  inspection). Acceptance: flags off = byte-identical M6.1 behavior; live run records chart
+  embedded in Open WebUI, model-leg verdicts + one audited attempt, outlet differential; evidence
+  paragraph lands here at close; gate green.
+- **M6.4 — root README + PoC acceptance sweep + M6 close** (OPEN): author the repo's missing
+  root `README.md` — what the PoC is, the modest claim (verbatim boundary from POC_SCOPE), trust
+  spine diagram, repo layout, quickstart (`uv sync --locked` → gate → `python -m demo` →
+  `python -m demo.e2e`), live-stack recipe pointers (bench/webui READMEs), license note. Sweep
+  the seed's 10 PoC acceptance criteria into a short "PoC acceptance" record (criterion →
+  where proven: filter differential, propose-only construction, recompute-by-construction,
+  bench 18/18+10/10, demo cases, chat embed, replay/certificate) — POC_SCOPE or README, one
+  place, no overclaim (bypassable filter stays a guardrail, pixels stay TCB). Reconcile
+  demo/webui READMEs with the new commands; `.agent/memory.md` gains only durable M6 facts.
+  Acceptance: every criterion maps to landed evidence or an explicit modest-claim boundary; docs
+  agree with commands; gate green; M6 IMPLEMENTED.
 
 ---
 
