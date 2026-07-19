@@ -242,6 +242,7 @@ def _parse_args(argv: Sequence[str] | None) -> tuple[str, bool]:
     parser = argparse.ArgumentParser(
         prog="python -m verifier.service audit",
         description="Authenticate and inspect one operator-local signed attempt.",
+        allow_abbrev=False,
     )
     parser.add_argument("attempt_id", type=_attempt_id, metavar="ATTEMPT_ID")
     parser.add_argument(

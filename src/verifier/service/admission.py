@@ -136,7 +136,13 @@ class JobPermit:
         def call_and_release() -> _T:
             return self._call_and_release(fn, *args, **kwargs)
 
-        worker = asyncio.create_task(sync_to_thread(call_and_release))
+        try:
+            worker = asyncio.create_task(sync_to_thread(call_and_release))
+        except BaseException:
+            with self._lock:
+                self._owner = _RELEASED
+            self._controller._release()
+            raise
         worker_object = cast("asyncio.Task[object]", worker)
         self._worker_task = worker_object
         worker_object.add_done_callback(self._observe_worker)

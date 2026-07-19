@@ -234,6 +234,32 @@ def test_worker_success_exception_and_route_exception_release_permits() -> None:
     asyncio.run(exercise())
 
 
+def test_worker_task_creation_failure_releases_permit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def exercise() -> None:
+        admission = AdmissionController(1, 1, 2, clock=lambda: 0)
+        permit = admission.try_acquire()
+        assert permit is not None
+
+        def fail_create_task(coroutine: Any) -> None:
+            coroutine.close()
+            msg = "task creation failed"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(asyncio, "create_task", fail_create_task)
+        with permit, pytest.raises(RuntimeError, match="task creation failed"):
+            await permit.run_sync(lambda: None)
+
+        assert admission._active_jobs == 0
+        recovered = admission.try_acquire()
+        assert recovered is not None
+        with recovered:
+            pass
+
+    asyncio.run(exercise())
+
+
 class _RawJsonRequest:
     """Minimal Request shape used to cancel the real verify-only route coroutine."""
 

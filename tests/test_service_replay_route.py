@@ -12,7 +12,7 @@ from litestar.testing import TestClient
 
 from verifier.service.admission import AdmissionController
 from verifier.service.app import create_app
-from verifier.service.archive import Archive, ArchiveSchemaError
+from verifier.service.archive import Archive, ArchiveSchemaError, BlobKind
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -175,6 +175,61 @@ def test_untrusted_archived_signer_returns_diagnostic_without_chart(tmp_path: Pa
         assert body["integrity_ok"] is False
         assert body["exact"] is False
         assert client.get(f"/chart/{plot_id}").status_code == 404
+
+
+def test_archive_artifact_integrity_fault_returns_bounded_200(tmp_path: Path) -> None:
+    app = create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state"))
+    archive = cast("Archive", app.state["archive"])
+
+    with TestClient(app=app) as client:
+        plot_id = _render_plot(client)
+        connection = sqlite3.connect(archive.database_path)
+        try:
+            row = connection.execute(
+                "SELECT content FROM blobs WHERE kind = ?",
+                (BlobKind.RAW_CSV.value,),
+            ).fetchone()
+            assert row is not None
+            payload = cast("bytes", row[0])
+            trigger_row = connection.execute(
+                "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = ?",
+                ("blobs_reject_update",),
+            ).fetchone()
+            assert trigger_row is not None
+            trigger_sql = cast("str", trigger_row[0])
+            connection.execute("DROP TRIGGER blobs_reject_update")
+            connection.execute(
+                "UPDATE blobs SET content = ? WHERE kind = ?",
+                (b"x" * len(payload), BlobKind.RAW_CSV.value),
+            )
+            connection.execute(trigger_sql)
+            connection.commit()
+        finally:
+            connection.close()
+
+        response = client.get(f"/replay/{plot_id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {
+        "status": "integrity_failed",
+        "integrity_ok": False,
+        "trusted_keyid": None,
+        "failure_stage": "attempt_artifacts",
+        "diagnostic": "archived replay artifacts failed integrity validation",
+        "artifact_matches": {
+            "dataset": None,
+            "manifest": None,
+            "spec": None,
+            "plotted_table": None,
+            "vega_lite": None,
+        },
+        "payload_match": None,
+        "version_match": None,
+        "drift": [],
+        "svg_match": None,
+        "exact": False,
+    }
 
 
 def test_archive_schema_fault_is_logged_and_returns_generic_500(tmp_path: Path) -> None:

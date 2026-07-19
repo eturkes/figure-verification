@@ -100,9 +100,11 @@ from litestar.status_codes import (
 )
 
 from verifier import __version__, attestation
+from verifier import replay as replay_core
 from verifier.service.admission import AdmissionController, JobPermit
 from verifier.service.archive import (
     Archive,
+    ArchiveIntegrityError,
     ArchiveNotFoundError,
     ArchiveQuotaError,
     AttemptOutcome,
@@ -442,14 +444,17 @@ def _replay_plot_worker(
     store: ArtifactStore,
 ) -> bytes:
     """Replay synchronously in the admitted worker and publish only an exact rebuilt chart."""
-    replay = replay_plot_chart(
-        archive,
-        identity.trusted_keys,
-        plot_id,
-        public_base_url=cast("str", settings.public_base_url),
-        max_bytes=settings.max_archive_bytes,
-        limits=settings.limits,
-    )
+    try:
+        replay = replay_plot_chart(
+            archive,
+            identity.trusted_keys,
+            plot_id,
+            public_base_url=cast("str", settings.public_base_url),
+            max_bytes=settings.max_archive_bytes,
+            limits=settings.limits,
+        )
+    except ArchiveIntegrityError:
+        return msgspec.json.encode(replay_core.archive_integrity_verdict())
     if replay.chart_html is not None:
         store.put_chart(plot_id, replay.chart_html)
     return msgspec.json.encode(replay.verdict)

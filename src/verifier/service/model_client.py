@@ -316,13 +316,17 @@ def _append_sample_rows(builder: _PromptAssembler, csv_bytes: bytes, count: int)
     reader = csv.reader(StringIO(text, newline=""))
     # Two slices avoid ``count + 1`` overflowing islice's sys.maxsize domain at Settings' valid
     # signed-64-bit maximum. The first consumes at most the header; the second starts after it.
-    for row_index, row in enumerate(chain(islice(reader, 1), islice(reader, count))):
-        if row_index:
-            builder.append("\n")
-        for field_index, cell in enumerate(row):
-            if field_index:
-                builder.append(",")
-            builder.append(cell)
+    try:
+        for row_index, row in enumerate(chain(islice(reader, 1), islice(reader, count))):
+            if row_index:
+                builder.append("\n")
+            for field_index, cell in enumerate(row):
+                if field_index:
+                    builder.append(",")
+                builder.append(cell)
+    except csv.Error as exc:
+        msg = f"CSV is malformed: {exc}"
+        raise VerificationError(msg, check="data.csv_syntax") from exc
 
 
 def _build_messages(

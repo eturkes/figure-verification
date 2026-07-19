@@ -10,6 +10,7 @@ factory tests install no transport -- they short-circuit or never dispatch.
 """
 
 import asyncio
+import csv
 import json
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
@@ -18,6 +19,7 @@ import httpx
 import pytest
 
 from verifier import canon
+from verifier.errors import VerificationError
 from verifier.service import model_client
 from verifier.service.model_client import (
     DatasetNotFoundError,
@@ -318,6 +320,29 @@ def test_oversized_sample_fails_before_final_prompt_join(
         asyncio.run(propose_spec("req", "large.csv", settings))
     assert exc_info.value.resource == "resource.prompt_bytes"
     assert finished is False
+
+
+def test_malformed_csv_raises_structured_syntax_error_before_backend(tmp_path: Path) -> None:
+    oversized_field = b"x" * (csv.field_size_limit() + 1)
+    csv_bytes = b"value\n" + oversized_field + b"\n"
+    manifest_bytes = b'{"dataset":"malformed.csv","columns":[{"type":"string","name":"value"}]}'
+    (tmp_path / "schemas").mkdir()
+    (tmp_path / "malformed.csv").write_bytes(csv_bytes)
+    (tmp_path / "schemas" / "malformed.json").write_bytes(manifest_bytes)
+
+    with pytest.raises(VerificationError, match=r"^CSV is malformed: ") as exc_info:
+        asyncio.run(
+            propose_spec(
+                "req",
+                "malformed.csv",
+                Settings(
+                    data_dir=tmp_path,
+                    max_csv_bytes=len(csv_bytes),
+                    max_prompt_bytes=2 * len(csv_bytes),
+                ),
+            )
+        )
+    assert exc_info.value.check == "data.csv_syntax"
 
 
 @pytest.mark.parametrize(

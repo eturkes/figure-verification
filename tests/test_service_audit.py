@@ -352,6 +352,14 @@ def test_corruption_and_cli_fail_closed_without_content_or_logs(
     assert secret.decode() not in caplog.text
 
 
+def test_cli_requires_full_reveal_sensitive_option() -> None:
+    attempt_id = "a" * 64
+    with pytest.raises(SystemExit) as exc_info:
+        audit._parse_args(("--reveal", attempt_id))
+    assert exc_info.value.code == 2
+    assert audit._parse_args((attempt_id, "--reveal-sensitive")) == (attempt_id, True)
+
+
 def test_cli_dispatch_validation_and_real_module_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -941,6 +941,16 @@ def _failure_verdict(failure: _ReplayFailureError) -> ReplayVerdict:
     )
 
 
+def archive_integrity_verdict() -> ReplayVerdict:
+    """Bound an archive integrity fault that occurs before a replay snapshot can be built."""
+    return _failure_verdict(
+        _integrity_error(
+            "attempt_artifacts",
+            "archived replay artifacts failed integrity validation",
+        )
+    )
+
+
 def _recomputation_failure(diagnostic: str, *, trusted_keyid: str) -> ReplayVerdict:
     return ReplayVerdict(
         status="recomputation_failed",

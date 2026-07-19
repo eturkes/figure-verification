@@ -277,7 +277,9 @@ def _order_term_count(facts: RowOrderFacts) -> int:
     row_count = len(facts.rows)
     key_count = len(facts.directions)
     pair_count = max(row_count - 1, 0)
-    return 4 * row_count * key_count + pair_count * (13 * key_count + 6) + 3
+    # Each adjacent pair adds 13 constructors per key, two for the row inversion's prefix/Or,
+    # and five for its lowest-witness candidate. Witness setup + final Or add three globally.
+    return 4 * row_count * key_count + pair_count * (13 * key_count + 7) + 3
 
 
 def _solve_order(facts: RowOrderFacts, context: Any, timeout_ms: int) -> _SolverOutcome:

@@ -6,6 +6,7 @@ import inspect
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from fractions import Fraction
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -188,6 +189,76 @@ def test_empty_key_rows_have_no_order_counterexample() -> None:
     run = formal.verify_formal(facts)
     assert run.results[0].status == "pass"
     assert run.trace[0].result_class == "unsat"
+
+
+def _constructed_order_term_count(facts: RowOrderFacts, monkeypatch: pytest.MonkeyPatch) -> int:
+    """Count every requested Z3 AST constructor while building the real order obligation."""
+    count = 0
+
+    class _Term:
+        __hash__ = object.__hash__
+
+        def __eq__(self, _other: object) -> Any:
+            return _construct()
+
+        def __lt__(self, _other: object) -> Any:
+            return _construct()
+
+        def __gt__(self, _other: object) -> Any:
+            return _construct()
+
+        def __truediv__(self, _other: object) -> Any:
+            return _construct()
+
+    def _construct(*_args: object, **_kwargs: object) -> _Term:
+        nonlocal count
+        count += 1
+        return _Term()
+
+    monkeypatch.setattr(
+        formal,
+        "z3",
+        SimpleNamespace(
+            And=_construct,
+            BoolVal=_construct,
+            Int=_construct,
+            IntVal=_construct,
+            Not=_construct,
+            Or=_construct,
+            RealVal=_construct,
+        ),
+    )
+    context = object()
+    rows = tuple(tuple(formal._z3_cell(cell, context) for cell in row) for row in facts.rows)
+    violations = [
+        formal._row_inversion(rows[index], rows[index + 1], facts.directions, context)
+        for index in range(max(len(rows) - 1, 0))
+    ]
+
+    class _Solver:
+        def add(self, _term: object) -> None:
+            pass
+
+    formal._lowest_index_witness(_Solver(), violations, context)
+    return count
+
+
+def test_order_term_estimate_bounds_requested_z3_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = _rank(Fraction(1, 2))
+    cases = (
+        RowOrderFacts(rows=((), (), ()), directions=()),
+        RowOrderFacts(rows=((cell,), (cell,), (cell,)), directions=("ascending",)),
+        RowOrderFacts(
+            rows=((cell, cell), (cell, cell), (cell, cell)),
+            directions=("ascending", "descending"),
+        ),
+    )
+    for facts in cases:
+        estimated = formal._order_term_count(facts)
+        constructed = _constructed_order_term_count(facts, monkeypatch)
+        assert estimated >= constructed
 
 
 def test_fact_shape_guards_reject_internal_drift() -> None:
