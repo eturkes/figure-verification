@@ -11,7 +11,7 @@ filesystem overhead. Startup and operator statistics reconcile the counter again
 metadata; per-bundle admission remains O(schema-size + bundle-size), not O(archive-history).
 
 Every operation owns a fresh connection. Each connection forces + verifies rollback-journal
-``DELETE` mode, ``FULL`` synchronous writes, foreign keys, defensive mode, trusted-schema off, and
+``DELETE` mode, ``EXTRA`` synchronous writes, foreign keys, defensive mode, trusted-schema off, and
 a finite busy timeout. The database lives as a 0600 regular file under the service's 0700
 owner-private state directory. Startup transactionally creates or exact-matches one versioned
 STRICT schema; unknown/unversioned non-empty schemas fail closed.
@@ -59,8 +59,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
+from types import GenericAlias
 from typing import Literal, cast
 
 import msgspec
@@ -128,7 +130,7 @@ _DATABASE_OPEN_FLAGS = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC
 _DATABASE_CREATE_FLAGS = _DATABASE_OPEN_FLAGS | os.O_CREAT | os.O_EXCL
 _CONFIG_ON = True
 _CONFIG_OFF = False
-_FULL_SYNCHRONOUS = 2
+_EXTRA_SYNCHRONOUS = 3
 _META_COLUMNS = 2
 _BLOB_METADATA_COLUMNS = 4
 _KEY_RECORD_COLUMNS = 2
@@ -147,6 +149,9 @@ ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
 _ATTEMPT_NONCE_BYTES = 16
 _ATTEMPT_NONCE_ATTEMPTS = 3
 _NONCE_HEX = re.compile(r"[0-9a-f]{32}")
+_TABLE_COLUMN_DESCRIPTOR = re.compile(
+    r"(.*):(?:numeric:([0-9]+)|temporal:(date|datetime)|(string))", re.DOTALL
+)
 _UTC_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z")
 _MAX_VERSION_BYTES = 128
 
@@ -635,6 +640,7 @@ _PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
 )
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
+_TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
 _TOOL_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
 _ATTEMPT_DECODER = msgspec.json.Decoder(AttemptManifest, strict=True)
 _ATTEMPT_STATUS: dict[AttemptOutcome, int] = {
@@ -673,6 +679,47 @@ def _require_limits(limits: VerificationLimits) -> None:
         raise TypeError(msg)
 
 
+def _decode_table_column(descriptor: str) -> canon.Column:
+    match = _TABLE_COLUMN_DESCRIPTOR.fullmatch(descriptor)
+    if match is None:
+        msg = f"invalid plotted-table column descriptor: {descriptor!r}"
+        raise ValueError(msg)
+    name = match.group(1)
+    scale = match.group(2)
+    granularity = match.group(3)
+    if scale is not None:
+        return canon.NumericColumn(name=name, scale=int(scale))
+    if granularity is not None:
+        return canon.TemporalColumn(
+            name=name, granularity=cast("Literal['date', 'datetime']", granularity)
+        )
+    return canon.StringColumn(name=name)
+
+
+def _decode_canonical_table(payload: bytes) -> canon.Table:
+    try:
+        header, _separator, row_bytes = payload.partition(b"\n")
+        columns = tuple(
+            _decode_table_column(descriptor) for descriptor in _TABLE_HEADER_DECODER.decode(header)
+        )
+        cell_types = tuple(
+            Decimal | None if isinstance(column, canon.NumericColumn) else str | None
+            for column in columns
+        )
+        row_type = cast("type[tuple[canon.Cell, ...]]", GenericAlias(tuple, cell_types))
+        row_decoder = msgspec.json.Decoder(row_type, strict=True)
+        rows = tuple(row_decoder.decode(row) for row in row_bytes.splitlines())
+        table = canon.Table(columns=columns, rows=rows)
+        canonical = canon.serialize_table(table).encode("utf-8")
+    except (msgspec.DecodeError, UnicodeDecodeError, ValueError, TypeError, ArithmeticError) as exc:
+        msg = "plot bundle plotted table is not valid typed NDJSON"
+        raise ArchiveIntegrityError(msg) from exc
+    if canonical != payload:
+        msg = "plot bundle plotted table bytes are not canonical"
+        raise ArchiveIntegrityError(msg)
+    return table
+
+
 def _decode_canonical_verdict(payload: bytes, *, subject: str = "plot bundle") -> Verdict:
     try:
         verdict = _VERDICT_DECODER.decode(payload)
@@ -681,6 +728,9 @@ def _decode_canonical_verdict(payload: bytes, *, subject: str = "plot bundle") -
         raise ArchiveIntegrityError(msg) from exc
     if _BUNDLE_ENCODER.encode(verdict) != payload:
         msg = f"{subject} verdict is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    if verdict.attempt_id is not None:
+        msg = f"{subject} verdict must omit attempt_id before archival"
         raise ArchiveIntegrityError(msg)
     return verdict
 
@@ -777,6 +827,7 @@ def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> 
     """Check canonical content + every VCert slot after envelope authentication."""
 
     spec = _decode_canonical_spec(bundle.canonical_spec)
+    _decode_canonical_table(bundle.plotted_table)
     verdict = _decode_canonical_verdict(bundle.verdict)
     versions = _decode_canonical_versions(bundle.tool_versions)
     try:
@@ -1124,18 +1175,20 @@ def _authenticate_attempt_payload(
     try:
         public_key = Ed25519PublicKey.from_public_bytes(parts.public_key)
         actual_keyid = keyid_for_public_key(parts.public_key)
+        if actual_keyid != keyid:
+            msg = "attempt keyid does not address its signing public key bytes"
+            raise ArchiveIntegrityError(msg)
         verified = attestation.verify_dsse(
             envelope,
             {keyid: public_key},
             payload_type=ATTEMPT_PAYLOAD_TYPE,
             max_payload_bytes=limits.max_attestation_bytes,
+            require_canonical_envelope=True,
+            expected_keyid_hint=keyid,
         )
     except (ValueError, attestation.AttestationError, VerificationError) as exc:
         msg = "attempt envelope or signing public key failed verification"
         raise ArchiveIntegrityError(msg) from exc
-    if actual_keyid != keyid:
-        msg = "attempt keyid does not address its signing public key bytes"
-        raise ArchiveIntegrityError(msg)
     if verified.payload != payload:
         msg = "attempt payload differs from the authenticated envelope payload"
         raise ArchiveIntegrityError(msg)
@@ -1498,7 +1551,7 @@ def _configure_connection(connection: sqlite3.Connection) -> None:
     connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, _CONFIG_ON)
     connection.setconfig(sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA, _CONFIG_OFF)
     connection.execute("PRAGMA journal_mode=DELETE").fetchone()
-    connection.execute("PRAGMA synchronous=FULL")
+    connection.execute("PRAGMA synchronous=EXTRA")
     connection.execute("PRAGMA foreign_keys=ON")
     connection.execute("PRAGMA trusted_schema=OFF")
     connection.execute("PRAGMA busy_timeout=5000")
@@ -1507,7 +1560,7 @@ def _configure_connection(connection: sqlite3.Connection) -> None:
         "journal_mode", _read_scalar(connection, "PRAGMA journal_mode"), "delete"
     )
     _require_connection_setting(
-        "synchronous", _read_scalar(connection, "PRAGMA synchronous"), _FULL_SYNCHRONOUS
+        "synchronous", _read_scalar(connection, "PRAGMA synchronous"), _EXTRA_SYNCHRONOUS
     )
     _require_connection_setting("foreign_keys", _read_scalar(connection, "PRAGMA foreign_keys"), 1)
     _require_connection_setting(
@@ -1553,9 +1606,9 @@ def _schema_rows(connection: sqlite3.Connection) -> tuple[tuple[object, ...], ..
     rows = connection.execute(
         """SELECT type, name, tbl_name, sql
         FROM sqlite_schema
-        WHERE name NOT LIKE ? AND sql IS NOT NULL
+        WHERE name NOT GLOB ? AND sql IS NOT NULL
         ORDER BY type, name""",
-        ("sqlite_%",),
+        ("sqlite_*",),
     ).fetchall()
     return tuple(tuple(row) for row in rows)
 
@@ -1685,10 +1738,12 @@ def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes
 
 
 def _validate_database_file(descriptor: int, state_descriptor: int) -> None:
-    validate_state_metadata(
-        os.fstat(descriptor), subject="archive database", expect_directory=False
-    )
-    database_mode = stat.S_IMODE(os.fstat(descriptor).st_mode)
+    metadata = os.fstat(descriptor)
+    validate_state_metadata(metadata, subject="archive database", expect_directory=False)
+    if metadata.st_nlink != 1:
+        msg = f"archive database must have exactly one hard link; got {metadata.st_nlink}"
+        raise ArchiveError(msg)
+    database_mode = stat.S_IMODE(metadata.st_mode)
     if database_mode != _DATABASE_MODE:
         msg = f"archive database must have mode 0600; got {database_mode:#05o}"
         raise ArchiveError(msg)

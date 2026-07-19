@@ -138,7 +138,7 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
     connection = archive._connect()
     try:
         assert connection.execute("PRAGMA journal_mode").fetchone() == ("delete",)
-        assert connection.execute("PRAGMA synchronous").fetchone() == (2,)
+        assert connection.execute("PRAGMA synchronous").fetchone() == (3,)
         assert connection.execute("PRAGMA foreign_keys").fetchone() == (1,)
         assert connection.execute("PRAGMA trusted_schema").fetchone() == (0,)
         assert connection.execute("PRAGMA busy_timeout").fetchone() == (5_000,)
@@ -206,6 +206,16 @@ def test_app_initializes_archive_and_rejects_schema_version_drift_at_startup(
         connection.execute("PRAGMA user_version=99")
     with pytest.raises(ArchiveSchemaError, match="schema version"):
         create_app(settings)
+
+
+def test_schema_validation_detects_like_wildcard_alias_object(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    archive = open_archive(settings)
+    with _database_connection(archive) as connection:
+        connection.execute("CREATE INDEX sqliteXevil ON blobs(size)")
+
+    with pytest.raises(ArchiveSchemaError, match="exact versioned STRICT schema"):
+        open_archive(settings)
 
 
 def test_complete_batch_round_trips_every_relation_and_typed_read(tmp_path: Path) -> None:
@@ -595,6 +605,16 @@ def test_database_and_state_path_security_rejects_unsafe_final_entries(tmp_path:
     (directory_settings.state_dir / "archive.sqlite3").mkdir(mode=0o700)
     with pytest.raises(ArchiveError, match="secure provenance"):
         open_archive(directory_settings)
+
+
+def test_archive_database_rejects_hard_linked_inode(tmp_path: Path) -> None:
+    archive = _archive(tmp_path)
+    alias = tmp_path / "archive-alias.sqlite3"
+    os.link(archive.database_path, alias)
+    assert archive.database_path.stat().st_nlink == 2
+
+    with pytest.raises(ArchiveError, match="exactly one hard link"):
+        _archive(tmp_path)
 
 
 def test_constructor_and_wire_record_runtime_validation(tmp_path: Path) -> None:

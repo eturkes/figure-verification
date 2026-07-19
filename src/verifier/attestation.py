@@ -422,22 +422,37 @@ def _verify_dsse(
     return VerifiedPayload(payload=payload)
 
 
-def verify_dsse(
+def verify_dsse(  # noqa: PLR0913
     envelope_bytes: bytes,
     trusted_keys: Mapping[str, Ed25519PublicKey],
     *,
     payload_type: str,
     max_payload_bytes: int,
+    require_canonical_envelope: bool = False,
+    expected_keyid_hint: str | None = None,
 ) -> VerifiedPayload:
     """Authenticate exact bounded bytes + application type under explicit trusted keys.
 
-    The untrusted keyid only puts a matching trusted candidate first. Every remaining trusted key
-    is still tried, so changing/removing the hint cannot change acceptance or the returned value.
+    ``require_canonical_envelope`` and ``expected_keyid_hint`` are optional producer/archive
+    consistency checks, never trust decisions. General DSSE verification remains
+    forward-compatible by default; explicit ``trusted_keys`` alone control authentication.
     """
+    canonical_object: object = require_canonical_envelope
+    if type(canonical_object) is not bool:
+        msg = "require_canonical_envelope must be a bool"
+        raise TypeError(msg)
+    if expected_keyid_hint is not None:
+        _validate_required_keyid(expected_keyid_hint, subject="expected")
     return _verify_dsse(
         envelope_bytes,
         trusted_keys,
-        _PayloadProfile(payload_type, max_payload_bytes, "attestation"),
+        _PayloadProfile(
+            payload_type,
+            max_payload_bytes,
+            "attestation",
+            require_canonical_envelope,
+            expected_keyid_hint,
+        ),
     )
 
 

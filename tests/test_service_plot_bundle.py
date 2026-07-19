@@ -356,6 +356,32 @@ def test_bundle_api_runtime_shape_and_direct_materialization_invariants(
         )
 
 
+def test_publish_rejects_noncanonical_or_invalid_plotted_table_bytes(tmp_path: Path) -> None:
+    settings, signer, _prepared, rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    payloads = (
+        bundle.plotted_table + b"\xff",
+        b'["value:unknown"]\n["x"]\n',
+        bundle.plotted_table.replace(b"[", b"[ ", 1),
+    )
+
+    for payload in payloads:
+        certificate = msgspec.structs.replace(
+            rendered.certificate,
+            plotted_table_hash=canon.hash_table_bytes(payload),
+        )
+        mutant = _resign_bundle(
+            replace(bundle, plotted_table=payload),
+            signer,
+            certificate,
+        )
+        with pytest.raises(ArchiveIntegrityError, match="plotted table"):
+            archive.publish_plot(mutant)
+
+    archive_module._decode_canonical_table(b'["when:temporal:date"]\n["2026-07-17"]\n')
+    assert archive.stats() == ArchiveStats(0, 0, 0, 0, 0)
+
+
 def test_publish_rejects_tampered_signed_graph_before_archive_mutation(tmp_path: Path) -> None:
     settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
     archive = open_archive(settings)
@@ -378,6 +404,19 @@ def test_publish_rejects_tampered_signed_graph_before_archive_mutation(tmp_path:
     for mutant in mutants:
         with pytest.raises(ArchiveIntegrityError):
             archive.publish_plot(mutant)
+    assert archive.stats() == ArchiveStats(0, 0, 0, 0, 0)
+
+
+def test_publish_rejects_archived_verdict_attempt_id(tmp_path: Path) -> None:
+    settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
+    archive = open_archive(settings)
+    verdict = archive_module._VERDICT_DECODER.decode(bundle.verdict)
+    archived_verdict = archive_module._BUNDLE_ENCODER.encode(
+        msgspec.structs.replace(verdict, attempt_id="f" * 64)
+    )
+
+    with pytest.raises(ArchiveIntegrityError, match="plot bundle verdict must omit attempt_id"):
+        archive.publish_plot(replace(bundle, verdict=archived_verdict))
     assert archive.stats() == ArchiveStats(0, 0, 0, 0, 0)
 
 

@@ -141,6 +141,24 @@ def _resign(
     )
 
 
+def test_materialize_attempt_rejects_archived_verdict_attempt_id(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    draft = _rejected_draft(settings, route=AttemptRoute.VERIFY_AND_RENDER)
+    verdict = archive_module._VERDICT_DECODER.decode(cast("bytes", draft.artifacts.verdict))
+    archived_verdict = _ENCODER.encode(msgspec.structs.replace(verdict, attempt_id="f" * 64))
+
+    with pytest.raises(ArchiveIntegrityError, match="attempt bundle verdict must omit attempt_id"):
+        materialize_attempt_bundle(
+            replace(
+                draft,
+                artifacts=replace(draft.artifacts, verdict=archived_verdict),
+            ),
+            signer,
+            nonce="a" * 32,
+        )
+
+
 def test_success_manifest_binds_every_observed_and_plot_blob_then_round_trips(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -470,6 +488,39 @@ def test_tampered_signature_roles_bytes_and_cross_bundle_edges_fail_before_mutat
         with pytest.raises(ArchiveIntegrityError):
             archive.publish_attempt(mutant)
         assert archive.stats() == archive_module.ArchiveStats(0, 0, 0, 0, 0)
+
+
+def test_attempt_envelope_malleability_is_rejected_on_publish_and_read(tmp_path: Path) -> None:
+    _settings, signer, plot = _plot_parts(tmp_path)
+    base = materialize_attempt_bundle(
+        _success_draft(plot, route=AttemptRoute.VERIFY_AND_RENDER),
+        signer,
+        nonce="f" * 32,
+    )
+    wrong_keyid = "sha256:" + "f" * 64
+    keyid_field = b'"keyid":' + msgspec.json.encode(signer.keyid) + b","
+    malleable_envelopes = (
+        base.attempt_envelope + b" ",
+        base.attempt_envelope.replace(signer.keyid.encode(), wrong_keyid.encode(), 1),
+        base.attempt_envelope.replace(keyid_field, b"", 1),
+    )
+
+    for index, envelope in enumerate(malleable_envelopes):
+        mutant = replace(
+            base,
+            attempt_id=hashlib.sha256(envelope).hexdigest(),
+            attempt_envelope=envelope,
+        )
+        publish_archive = open_archive(
+            Settings(data_dir=_DATA, state_dir=tmp_path / f"publish-{index}")
+        )
+        with pytest.raises(ArchiveIntegrityError, match="failed verification"):
+            publish_archive.publish_attempt(mutant)
+
+        read_archive = open_archive(Settings(data_dir=_DATA, state_dir=tmp_path / f"read-{index}"))
+        read_archive.publish(archive_module._attempt_bundle_batch(mutant))
+        with pytest.raises(ArchiveIntegrityError, match="failed verification"):
+            read_archive.read_attempt(mutant.attempt_id, max_bytes=_bundle_size(mutant))
 
 
 def test_wrong_signer_verdict_trace_and_version_relationships_fail_closed(tmp_path: Path) -> None:
@@ -920,6 +971,14 @@ def test_generic_dsse_profile_validates_payload_type_types_and_exact_limits(tmp_
         ).payload
         == payload
     )
+    with pytest.raises(TypeError, match="require_canonical_envelope must be a bool"):
+        attestation.verify_dsse(
+            envelope,
+            {signer.keyid: signer.public_key},
+            payload_type=ATTEMPT_PAYLOAD_TYPE,
+            max_payload_bytes=len(payload),
+            require_canonical_envelope=cast("bool", 1),
+        )
     with pytest.raises(VerificationError, match="payload has"):
         attestation.sign_dsse(
             payload,
