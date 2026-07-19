@@ -582,6 +582,11 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   + solver message, inspected both diffs, and reran all four gate legs. Locked gate green at 1,545
   tests/100% branch coverage; golden `test_examples` green.
   Context: `main=87% 235K/272K`; `impl=61% 166K/272K` (capstone author; +26% 70K/272K fix batch).
+  Post-close hardening (adversarial review): `test_05` now 200-guards every compared cert/spec fetch +
+  DSSE-decodes the initial VCert; `test_08` pins `spec.decode`/`schema_validation`/`blocking` on both the
+  endpoint + audited verdict — two vacuous-capable seed-14 regression guards (uniform-404 archival
+  regression; self-referential audit reason) hardened. Peer reports #1-3 + capstone-map's four = stale
+  pre-fix reads already addressed by the fix batch. Gate re-green 1,545/100%; `guard-fix=42% 114K/272K`.
 - **M5.5e — demo walkthrough + doc-drift sweep + M5 close** (OPEN, after M5.5d): (a) runnable
   hardware-free `demo/` walkthrough — spin the service on a tmp `state_dir` from empty and walk the
   M5.5d scenarios, printing PASS/FAIL + a gitignored JSON report, with a short `demo/README.md` run

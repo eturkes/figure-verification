@@ -307,15 +307,23 @@ def test_05_lru_eviction_preserves_archive_certificate_and_spec(tmp_path: Path) 
         max_html_bytes=2 * 1024 * 1024,
         chart_cache_bytes=2 * 1024 * 1024,
     )
-    with TestClient(app=create_app(settings)) as client:
+    app = create_app(settings)
+    with TestClient(app=app) as client:
         first = cast(
             "dict[str, Any]",
             client.post(
                 "/verify-and-render", content=_GOOD_SPEC.read_bytes(), headers=_JSON
             ).json(),
         )
-        first_certificate = client.get(f"/certificate/{first['plot_id']}").content
-        first_spec = client.get(f"/spec/{first['spec_id']}").content
+        first_vcert = _certificate(client, app, cast("str", first["plot_id"]))
+        assert first_vcert.dataset_hash
+        assert first_vcert.checks
+        first_certificate_response = client.get(f"/certificate/{first['plot_id']}")
+        assert first_certificate_response.status_code == 200
+        first_certificate = first_certificate_response.content
+        first_spec_response = client.get(f"/spec/{first['spec_id']}")
+        assert first_spec_response.status_code == 200
+        first_spec = first_spec_response.content
         second = cast(
             "dict[str, Any]",
             client.post(
@@ -326,13 +334,21 @@ def test_05_lru_eviction_preserves_archive_certificate_and_spec(tmp_path: Path) 
         assert client.get(f"/chart/{first['plot_id']}").status_code == 404
         assert client.get(f"/chart/{second['plot_id']}").status_code == 200
         # Seed 14(a): LRU absence does not erase the stored reproduction inputs.
-        assert client.get(f"/certificate/{first['plot_id']}").content == first_certificate
-        assert client.get(f"/spec/{first['spec_id']}").content == first_spec
+        archived_certificate_response = client.get(f"/certificate/{first['plot_id']}")
+        assert archived_certificate_response.status_code == 200
+        assert archived_certificate_response.content == first_certificate
+        archived_spec_response = client.get(f"/spec/{first['spec_id']}")
+        assert archived_spec_response.status_code == 200
+        assert archived_spec_response.content == first_spec
 
     with TestClient(app=create_app(settings)) as restarted:
         assert restarted.get(f"/chart/{first['plot_id']}").status_code == 404
-        assert restarted.get(f"/certificate/{first['plot_id']}").content == first_certificate
-        assert restarted.get(f"/spec/{first['spec_id']}").content == first_spec
+        restarted_certificate_response = restarted.get(f"/certificate/{first['plot_id']}")
+        assert restarted_certificate_response.status_code == 200
+        assert restarted_certificate_response.content == first_certificate
+        restarted_spec_response = restarted.get(f"/spec/{first['spec_id']}")
+        assert restarted_spec_response.status_code == 200
+        assert restarted_spec_response.content == first_spec
 
 
 def test_06_archived_replay_ignores_live_dataset_mutation_and_deletion(
@@ -506,6 +522,12 @@ def test_08_failed_attempt_audit_survives_restart_and_explains_reason(
     success_id = _attempt_id(success)
     failure_id = _attempt_id(failure)
     assert success_id != failure_id
+    failure_result = cast("dict[str, Any]", failure["results"][0])
+    assert failure["verified"] is False
+    assert failure["layer"] == "decode"
+    assert failure_result["check"] == "spec.decode"
+    assert failure_result["method"] == "schema_validation"
+    assert failure_result["severity"] == "blocking"
     failure_reason = cast("str", failure["results"][0]["message"])
     assert failure_reason
 
@@ -539,6 +561,10 @@ def test_08_failed_attempt_audit_survives_restart_and_explains_reason(
     content = cast("dict[str, Any]", verdict_artifact["content"])
     assert content["encoding"] == "utf-8"
     audited_verdict = cast("dict[str, Any]", json.loads(cast("str", content["value"])))
+    audited_result = cast("dict[str, Any]", audited_verdict["results"][0])
+    assert audited_result["check"] == "spec.decode"
+    assert audited_result["method"] == "schema_validation"
+    assert audited_result["severity"] == "blocking"
     # Seed 14(d): the authenticated retained verdict explains the failed attempt after restart.
     assert audited_verdict["results"][0]["message"] == failure_reason
 
