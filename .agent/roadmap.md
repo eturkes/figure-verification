@@ -25,6 +25,16 @@ Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, A
 
 ## M5 — Formal + provenance hardening   (IMPLEMENTED)
 
+### Review ledger: M5-review active until REVIEWED at close
+Lens findings dispositioned. Fixed→commit (`git log --grep "(M5 review"`):
+- FIXED: BA-1/BND-2/BA-5/SA-1/SA-4/D2 → 78360e8; FA1/FR1/FR2/L1.4/L1.3 → 6079a24; D5 (dead cert/spec render-LRU + settings drop) → 08a2666; crosscheck#1/#2 → e5925a8; model#1/#2 (propose-spec `from None` exc-sever + suppress-guarded aclose) → 65d6a52. crosscheck#3=BA-5, crosscheck#4=BND-2.
+- WITHDRAWN: L1.6 — proposed recomputation-mismatch arm was a semantic regression (payload_match embeds TCB verifier-version → benign drift misreported); exact→drift→else path retained, tests reverted.
+- D1–D7 (user-approved "all rec"): D1 archive-integrity TIGHTEN (=BA-1/BND-2/BA-5/SA-1/SA-4) + NARROW only BND-1 (SVG/verdict-severity bound solely via signed AttemptBundle); D2 synchronous durability = EXTRA (done); D3 hard-link DB reject st_nlink>1 (=SA-4, archive DB, done 78360e8); D4 descriptor→connect TOCTOU (archive.py 2611-2616) = document boundary; D5 remove dead LRU (done); D6 /propose-spec dual-snapshot TOCTOU = document boundary; D7 accept re-run-killed lens coverage.
+- PENDING code — crypto#1 (Batch G, next): identity.py:50 `_READ_FLAGS` += `os.O_NONBLOCK` (writerless-FIFO `os.open` no-hang; reject deferred to validate_state_metadata S_ISREG) + deterministic FIFO-reject regression (thread + bounded join, fails-not-hangs). Files: src/verifier/service/identity.py + tests/test_service_identity.py.
+- PENDING docs — Batch D (conformance sweep, no behavior change; dispatch AFTER crypto#1 to avoid identity.py conflict): BND-1 narrow plot_id claim + memory.md:21; crypto#4 identity public-key "signs"/"complete-graph" wording; crosscheck#6 read_plot_envelope doc; F1 render docstring; F2 memory schema v2→v3; L2.2 examples check-ids; L2.6/SA-6; SA-3; D4/D6 TOCTOU boundary docs; render future-comments. LRU-removal stale refs: memory.md 14(refcount)/74/80(either→chart)/75(render-LRU→no process cache + schema v3)/87(put() ref); roadmap.md 737 module-map (KEEP historical unit-lines); POC_SCOPE.md 133(certs/specs archive-durable, not in-mem render-LRU)/147(either→chart). Record L1.6/model#3/formal#2 dispositions where docs cite them.
+- ACCEPT-RECORD (confirm at close): crypto#2 (key-deletion/rotation semantics — VERIFY no POC-claim conflict; surface to user first if it would change a claim); crypto#3 (owner st_uid==geteuid + no group/world already enforced → nlink accept); model#3 (stdlib exc_info emits no frame-locals; app.py handlers = trusted faults, kept); model#4 (same-object test); formal#2 (AST-purity hardening); crosscheck#5 (migration streaming → accept-document); D7 (coverage).
+Close: verify accept-records → set M5 REVIEWED + commit `<scope> (M5 review): …`.
+
 **Gate: none; toolchain CONFIRMED at planning.** A clean project-local Python-3.13 scratch run
 installed the current `z3-solver` + `cryptography` releases, proved an UNSAT integer formula, and
 round-tripped an Ed25519 signature; scratch removed, tree stayed clean. The stdlib runtime exposes
