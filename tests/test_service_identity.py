@@ -4,6 +4,7 @@
 import os
 import secrets
 import stat
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import MappingProxyType
@@ -169,6 +170,35 @@ def test_key_final_component_rejects_symlink_and_non_regular(tmp_path: Path, key
 
     with pytest.raises(IdentityError, match="signing key"):
         load_identity(_settings(state_dir))
+
+
+def test_writerless_fifo_private_key_rejects_without_blocking(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    settings = _settings(state_dir)
+    load_identity(settings)
+    key_file = cast("Path", settings.signing_key_file)
+    key_file.unlink()
+    os.mkfifo(key_file, 0o600)
+
+    captured: list[IdentityError] = []
+
+    def reopen() -> None:
+        try:
+            load_identity(settings)
+        except IdentityError as exc:
+            captured.append(exc)
+
+    thread = threading.Thread(target=reopen, daemon=True)
+    thread.start()
+    thread.join(timeout=5.0)
+    if thread.is_alive():
+        writer = os.open(key_file, os.O_WRONLY)
+        os.close(writer)
+        thread.join(timeout=5.0)
+        pytest.fail("os.open FIFO _READ_FLAGS O_NONBLOCK")
+
+    assert len(captured) == 1
+    assert isinstance(captured[0], IdentityError)
 
 
 @pytest.mark.parametrize(

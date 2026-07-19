@@ -47,7 +47,9 @@ _PUBLIC_KEYS_DIRECTORY = "public-keys"
 _PUBLIC_KEY_SUFFIX = ".ed25519.pub"
 _NO_GROUP_OR_WORLD = stat.S_IRWXG | stat.S_IRWXO
 _DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-_READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC
+# O_NONBLOCK lets writerless FIFOs reach regular-file validation without awaiting a writer; it is
+# inert for regular files.
+_READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 _CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
