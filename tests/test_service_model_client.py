@@ -120,6 +120,21 @@ class _FailingStream(httpx.AsyncByteStream):
         self.closed = True
 
 
+class _FinalCloseFailingResponse(httpx.Response):
+    """Response whose redundant final close raises a transport teardown error."""
+
+    def __init__(self, status_code: int, *, body: bytes) -> None:
+        super().__init__(status_code, stream=_TrackingStream((body,)))
+        self.close_calls = 0
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+        if self.close_calls > 1:
+            msg = "connection teardown failed"
+            raise httpx.ReadError(msg)
+        await super().aclose()
+
+
 def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, httpx.Request] = {}
     response_body = json.dumps(
@@ -444,6 +459,8 @@ def test_propose_spec_unreachable_raises_503(monkeypatch: pytest.MonkeyPatch) ->
     assert sensitive_text.encode() in exc_info.value.trace.request_body
     assert sensitive_text not in str(exc_info.value)
     assert sensitive_text not in repr(exc_info.value.trace)
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
 
 
 def test_propose_spec_stream_read_error_raises_503(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -471,6 +488,37 @@ def test_propose_spec_non_2xx_raises_502(monkeypatch: pytest.MonkeyPatch) -> Non
     assert exc_info.value.trace.response_body == response_body
     assert exc_info.value.trace.reply_bytes is None
     assert exc_info.value.trace.fault is ProposalFault.HTTP_STATUS
+
+
+def test_propose_spec_final_close_error_after_success_is_suppressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response_body = _chat_response()
+    response = _FinalCloseFailingResponse(200, body=response_body)
+    _install(monkeypatch, _returns(response))
+
+    proposal = asyncio.run(propose_spec("req", "weather.csv", _settings()))
+
+    assert _reply(proposal) == _CONTENT.encode()
+    assert proposal.trace.response_body == response_body
+    assert proposal.trace.fault is None
+    assert response.close_calls == 2
+
+
+def test_propose_spec_final_close_error_does_not_mask_502(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response_body = b'{"error":"boom"}'
+    response = _FinalCloseFailingResponse(500, body=response_body)
+    _install(monkeypatch, _returns(response))
+
+    with pytest.raises(ModelUpstreamError) as exc_info:
+        asyncio.run(propose_spec("req", "weather.csv", _settings()))
+
+    assert exc_info.value.status == 502
+    assert exc_info.value.trace.response_body == response_body
+    assert exc_info.value.trace.fault is ProposalFault.HTTP_STATUS
+    assert response.close_calls == 2
 
 
 def test_exact_backend_prompt_too_long_shape_raises_policy_refusal(
@@ -597,6 +645,8 @@ def test_model_response_exact_byte_boundary_and_overflow(
     assert exc_info.value.trace.fault is ProposalFault.RESPONSE_TOO_LARGE
     assert exc_info.value.trace.response_body is None
     assert exc_info.value.trace.reply_bytes is None
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
     assert calls == 2
 
 
@@ -667,6 +717,8 @@ def test_propose_spec_invalid_envelope_raises_502(monkeypatch: pytest.MonkeyPatc
     assert exc_info.value.status == 502
     assert "not a chat-completion envelope" in str(exc_info.value)
     assert exc_info.value.trace.fault is ProposalFault.INVALID_ENVELOPE
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__ is True
 
 
 def test_propose_spec_no_choices_raises_502(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -60,6 +60,7 @@ media type, encoding, fields, or type remain an upstream 502. The operator-selec
 is trusted configuration; this equality check is not cryptographic peer authentication.
 """
 
+import contextlib
 import csv
 import json
 from dataclasses import dataclass, field
@@ -549,7 +550,7 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
                         reply_bytes=None,
                         fault=exc.fault,
                     )
-                    raise ModelUpstreamError(str(exc), status=502, trace=trace) from exc
+                    raise ModelUpstreamError(str(exc), status=502, trace=trace) from None
                 trace = ProposalTrace(
                     request_body,
                     response_bytes,
@@ -558,7 +559,9 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
                 )
                 return ModelProposal(reply_bytes, trace)
             finally:
-                await response.aclose()
+                # Closing is cleanup only: never replace a completed result or classified fault.
+                with contextlib.suppress(Exception):
+                    await response.aclose()
         except _ModelResponseError as exc:
             # The only error reaching here is limit+1 admission. Its observed prefix is discarded:
             # retaining it would turn a policy-rejected, potentially huge body into audit content.
@@ -568,8 +571,8 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
                 reply_bytes=None,
                 fault=exc.fault,
             )
-            raise ModelUpstreamError(str(exc), status=502, trace=trace) from exc
-        except httpx.RequestError as exc:
+            raise ModelUpstreamError(str(exc), status=502, trace=trace) from None
+        except httpx.RequestError:
             # This covers both a failure before headers and an interrupted body. In either case no
             # complete response exists, so only the pre-call request + closed classifier survive.
             trace = ProposalTrace(
@@ -579,4 +582,4 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
                 fault=ProposalFault.TRANSPORT,
             )
             msg = "model backend is unreachable"
-            raise ModelUpstreamError(msg, status=503, trace=trace) from exc
+            raise ModelUpstreamError(msg, status=503, trace=trace) from None
