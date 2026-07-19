@@ -114,7 +114,7 @@ research needed (all-local stack, already probed).
   so its 100 new tests don't gate the 100%-branch coverage. Gate green (ruff/mypy + pytest 1556 @
   100% branch). Services/state torn down, ports freed, `.webui-data`/tmp state removed.
   Context: `main=79% 214K/272K`; `impl=59% 161K/272K`.
-- **M6.3 — live-stack orchestration + demo evidence run** (OPEN; run after M6.1+M6.2 land): add
+- **M6.3 — live-stack orchestration + demo evidence run** (DONE): add
   `--with-webui` (drive the M6.2 chat leg against the provisioned stack, record final text +
   chart URL + certificate fetch in the report) and `--with-model` (the three seed-15 prompts
   through live `/propose-spec`; record verdict/failure classes + `attempt_id`s, then shell out to
@@ -129,6 +129,36 @@ research needed (all-local stack, already probed).
   deleted after inspection). Acceptance: flags off = byte-identical M6.1 behavior; live run records chart
   embedded in Open WebUI, model-leg verdicts + one audited attempt, outlet differential; evidence
   paragraph lands here at close; gate green.
+  Landed `demo/e2e.py` `--with-webui`/`--with-model` (both default OFF; flags-on wraps the M6.1
+  `WalkthroughReport` in an `E2EReport` adding `webui`/`model` blocks) + hardware-free
+  `tests/test_demo_e2e_legs.py` (stubbed legs: byte-identity flags-off, chart-cert webui leg,
+  `_propose_once` MockTransport matrix, `--with-model` audit). Live evidence run (MAIN, real OWUI
+  0.10.2 stack) is TWO passes because the model backend — stub XOR NPU — shares :8001 (`--with-webui`
+  needs the stub for a valid spec→chart; `--with-model` needs the NPU for realistic blocked
+  verdicts): (A) STUB pass — bootstrap `models=1 tool_servers=1`; `--with-webui` → 3/3 cases PASS +
+  webui leg PASS: persisted chat "Show total revenue by month." → "Figure Verifier confirmed the
+  chart; all checks passed.", chart `…:8000/chart/ea130823…`, certificate verified under keyid
+  `sha256:bdc125e4…` (5 artifact hashes); persisted-chat DOM (chat `30b5b298…`) assistant
+  `done=true`, legacy `content=""`, `embeds[0]`=that chart URL; chart served under CSP
+  `sandbox allow-scripts` with server-rendered "Verified"/"Checks passed" + `vcert`/`vplot-signature`
+  markup. README Live-outlet differential: chart-looking content → `BLOCKED_NOTICE`, prose unchanged.
+  (B) NPU pass — `--with-model` → model leg PASS: all 3 seed prompts http 200 `verified=False`
+  `spec.decode` "JSON is malformed: invalid character (byte 0)", distinct `attempt_id`s
+  (`921b13e9…`/`18cdabb6…`/`b0a1dcaa…`); `921b13e9…` audited via `python -m verifier.service audit`
+  → `audit_ok=True`. Live NPU greedy decode overran the 20s hardware-free hang-guard on a
+  token-emitting prompt → dedicated `_MODEL_REQUEST_TIMEOUT_S=180` (model leg only; deterministic
+  cases keep 20s). Flags off: `python -m demo.e2e` writes the bare 6-field `WalkthroughReport` (no
+  webui/model) — byte-identical M6.1 behavior (in-gate test locks it). chromiumfish capture
+  attempted with BOTH a virtual-time DOM dump and the banked `--headless=new --print-to-pdf`
+  recipe — both rc=124 hangs: this execution container's software-GL (SwANGLE/Vulkan EGL) fails to
+  initialize (GPU process exits, no frame renders) compounded by GCM background-network retries
+  (the M6-planning probe ran on the host, not here). Browser render therefore rests on M4.5's
+  reviewed Chromium precedent + the textual DOM/CSP proof above (roadmap keeps browser evidence
+  textual per M4.5/M5.3c). Gate green (ruff/mypy 93 files + pytest 1563 @ 100% branch, demo.e2e flags-off
+  exit 0). Services/state/captures torn down, ports 8000/8001/8080 freed,
+  `.webui-data`/`.verifier-state`/tmp removed.
+  Context: `main=48% 131K/272K`; `impl=(flags+tests landed prior session; pct not recovered
+  post-compaction — MAIN ran the live evidence run + timeout fix this session)`.
 - **M6.4 — root README + PoC acceptance sweep + M6 close** (OPEN): author the repo's missing
   root `README.md` — what the PoC is, the modest claim (verbatim boundary from POC_SCOPE), trust
   spine diagram, repo layout, quickstart (`uv sync --locked` → gate → `python -m demo` →

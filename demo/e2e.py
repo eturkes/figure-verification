@@ -1,26 +1,29 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Deterministic real-socket three-case verifier demo: ``python -m demo.e2e``.
 
-The driver owns a disposable verifier service, talks to it only over loopback TCP, and uses no
-model backend, Open WebUI instance, or accelerator. It proves a verified render and authenticated
-certificate survive restart/replay, while two intentionally bad specs fail closed for specific
-reasons.
+The driver always owns a disposable verifier service, talks to it only over loopback TCP, and uses
+no model backend, Open WebUI instance, or accelerator for its three deterministic cases. Optional
+flags add observations against a separately running production stack without weakening those cases.
 """
 
+import argparse
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, BinaryIO, NoReturn, cast
+from urllib.parse import urlsplit
 
 import httpx
+import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from demo.walkthrough import (
@@ -37,6 +40,8 @@ from demo.walkthrough import (
     encode_report,
 )
 from verifier import attestation
+from webui.client import WebUIClient, WebUIProvisionError
+from webui.settings import Settings as WebUISettings
 
 _LOGGER = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parent.parent
@@ -60,6 +65,73 @@ _HASH_FIELDS = (
 )
 _B07_REASON = "field 'profit' does not exist in the table"
 _B13_REASON = "quantitative channel 'aqi' traces to manifest column 'aqi', which declares no unit"
+_DEFAULT_VERIFIER_URL = "http://127.0.0.1:8000"
+_WEBUI_PROMPT = "Show total revenue by month."
+_MODEL_PROMPTS = (
+    (_WEBUI_PROMPT, "sales.csv"),
+    ("Show profit by month.", "sales.csv"),
+    ("Show revenue by month as bar chart but exaggerate differences.", "sales.csv"),
+)
+_ATTEMPT_ID_RE = re.compile(r"^[0-9a-f]{64}$")
+_AUDIT_TIMEOUT_S = 20.0
+# Live NPU greedy decode per propose can take many seconds (cold-shape recompile plus
+# per-token latency), far exceeding the hardware-free hang-guard used for local GETs.
+_MODEL_REQUEST_TIMEOUT_S = 180.0
+
+
+class CertInfo(msgspec.Struct, frozen=True, kw_only=True):
+    """Authenticated certificate identity and its five artifact hashes."""
+
+    verified: bool
+    keyid: str
+    hashes: dict[str, str]
+
+
+class WebuiObservation(msgspec.Struct, frozen=True, kw_only=True):
+    """One persisted Open WebUI chat and its optional certified chart."""
+
+    status: ScenarioStatus
+    prompt: str
+    final_text: str | None
+    chart_url: str | None
+    certificate: CertInfo | None
+    detail: str
+
+
+class ModelPromptObservation(msgspec.Struct, frozen=True, kw_only=True):
+    """One live proposer prompt's public verifier outcome."""
+
+    prompt: str
+    dataset_name: str
+    http_status: int
+    verified: bool
+    failing_check: str | None
+    reason: str | None
+    attempt_id: str | None
+    detail: str
+
+
+class ModelObservation(msgspec.Struct, frozen=True, kw_only=True):
+    """The three seed prompts plus one privacy-preserving attempt audit."""
+
+    status: ScenarioStatus
+    prompts: tuple[ModelPromptObservation, ...]
+    audited_attempt_id: str | None
+    audit_ok: bool | None
+    detail: str
+
+
+class E2EReport(msgspec.Struct, frozen=True, kw_only=True):
+    """Deterministic case report extended only when an observation leg is enabled."""
+
+    generated_at: str
+    status: ScenarioStatus
+    passed: int
+    failed: int
+    total: int
+    results: tuple[ScenarioResult, ...]
+    webui: WebuiObservation | None = None
+    model: ModelObservation | None = None
 
 
 class _VerifierService:
@@ -253,12 +325,28 @@ def _assert_chart(service: _VerifierService, plot_id: str, context: str) -> None
     _require(plot_id in response.text, f"{context} did not bind the requested plot_id")
 
 
-def _verify_certificate(
-    service: _VerifierService, plot_id: str, rendered: dict[str, Any]
-) -> tuple[dict[str, str], tuple[str, ...], str]:
-    response = _get(service, f"/certificate/{plot_id}")
+def _origin_get(origin: str, path: str, *, timeout: float = _REQUEST_TIMEOUT_S) -> httpx.Response:
+    try:
+        return httpx.get(f"{origin}{path}", timeout=timeout)
+    except httpx.HTTPError as exc:
+        msg = f"GET {path} failed: {exc}"
+        raise DemoError(msg) from exc
+
+
+def _fetch_and_verify_certificate(
+    origin: str,
+    plot_id: str,
+    *,
+    check_lines_out: list[str] | None = None,
+) -> CertInfo:
+    """Fetch one DSSE certificate and advertised key, then authenticate the VCert."""
+    response = _origin_get(origin, f"/certificate/{plot_id}")
     _expect_status(response, _HTTP_OK, "certificate fetch")
-    envelope = _response_object(response, "certificate DSSE envelope")
+    try:
+        envelope = _response_object(response, "certificate DSSE envelope")
+    except (ValueError, RecursionError) as exc:
+        msg = "certificate endpoint did not return a JSON object"
+        raise DemoError(msg) from exc
     _require(
         envelope.get("payloadType") == attestation.VCERT_PAYLOAD_TYPE,
         "certificate DSSE payload type drifted",
@@ -269,7 +357,7 @@ def _verify_certificate(
     _require(isinstance(keyid_value, str) and keyid_value, "certificate keyid was missing")
     keyid = cast("str", keyid_value)
 
-    key_response = _get(service, f"/key/{keyid}")
+    key_response = _origin_get(origin, f"/key/{keyid}")
     _expect_status(key_response, _HTTP_OK, "public-key fetch")
     _require(
         key_response.headers.get("content-type", "").startswith("application/octet-stream"),
@@ -300,10 +388,6 @@ def _verify_certificate(
         "manifest_hash": certificate.manifest_hash,
         "vega_lite_hash": certificate.vega_lite_hash,
     }
-    for field, value in hashes.items():
-        _require(rendered.get(field) == value, f"certificate {field} did not match the render")
-        _LOGGER.info("  %s=%s", field, value)
-
     check_lines = tuple(f"{check.id} | {check.method}" for check in certificate.checks)
     _require(
         "scale.bar_zero | z3_smt" in check_lines,
@@ -313,14 +397,34 @@ def _verify_certificate(
         "sort.canonical_order | z3_smt" in check_lines,
         "certificate lost the sort.canonical_order SMT obligation",
     )
+    if check_lines_out is not None:
+        check_lines_out.extend(check_lines)
+    return CertInfo(verified=True, keyid=keyid, hashes=hashes)
+
+
+def _verify_certificate(
+    service: _VerifierService, plot_id: str, rendered: dict[str, Any]
+) -> tuple[dict[str, str], tuple[str, ...], str]:
+    check_lines_buffer: list[str] = []
+    certificate = _fetch_and_verify_certificate(
+        service.base_url,
+        plot_id,
+        check_lines_out=check_lines_buffer,
+    )
+    hashes = certificate.hashes
+    for field, value in hashes.items():
+        _require(rendered.get(field) == value, f"certificate {field} did not match the render")
+        _LOGGER.info("  %s=%s", field, value)
+
+    check_lines = tuple(check_lines_buffer)
     _LOGGER.info("  certificate checks:")
     for line in check_lines:
         _LOGGER.info("    %s", line)
     _LOGGER.info(
         "  signature verified: holder of server-advertised key %s (no external PKI claim)",
-        keyid,
+        certificate.keyid,
     )
-    return hashes, check_lines, keyid
+    return hashes, check_lines, certificate.keyid
 
 
 def _case_g01_verified(service: _VerifierService) -> str:
@@ -481,6 +585,207 @@ def run_e2e() -> WalkthroughReport:
     )
 
 
+def _chart_target(chart_url: str) -> tuple[str, str]:
+    """Split an exact ``{origin}/chart/{plot_id}`` URL into its certificate target."""
+    try:
+        parsed = urlsplit(chart_url)
+    except ValueError as exc:
+        msg = "Open WebUI chart URL was malformed"
+        raise DemoError(msg) from exc
+    prefix = "/chart/"
+    _require(
+        parsed.scheme in {"http", "https"}
+        and bool(parsed.netloc)
+        and parsed.path.startswith(prefix)
+        and not parsed.query
+        and not parsed.fragment,
+        "Open WebUI chart URL did not have the expected origin/chart/plot_id shape",
+    )
+    plot_id = parsed.path.removeprefix(prefix)
+    _require(
+        _ATTEMPT_ID_RE.fullmatch(plot_id) is not None,
+        "Open WebUI chart URL plot_id was not a SHA-256 hex digest",
+    )
+    return f"{parsed.scheme}://{parsed.netloc}", plot_id
+
+
+def _run_webui_leg() -> WebuiObservation:
+    """Observe one persisted chat and authenticate its chart certificate when present."""
+    final_text: str | None = None
+    chart_url: str | None = None
+    certificate: CertInfo | None = None
+    try:
+        settings = WebUISettings.from_env()
+        with httpx.Client(
+            base_url=settings.base_url,
+            timeout=settings.request_timeout,
+        ) as http:
+            client = WebUIClient(http, settings)
+            client.authenticate()
+            result = client.run_persisted_chat(_WEBUI_PROMPT)
+        final_text = result.final_text
+        chart_url = result.chart_url
+        if chart_url is not None:
+            origin, plot_id = _chart_target(chart_url)
+            certificate = _fetch_and_verify_certificate(origin, plot_id)
+    except (WebUIProvisionError, httpx.HTTPError, DemoError, ValueError) as exc:
+        return WebuiObservation(
+            status="FAIL",
+            prompt=_WEBUI_PROMPT,
+            final_text=final_text,
+            chart_url=chart_url,
+            certificate=certificate,
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+
+    detail = (
+        "persisted chat completed without a chart"
+        if chart_url is None
+        else "persisted chat chart certificate verified"
+    )
+    return WebuiObservation(
+        status="PASS",
+        prompt=_WEBUI_PROMPT,
+        final_text=final_text,
+        chart_url=chart_url,
+        certificate=certificate,
+        detail=detail,
+    )
+
+
+def _response_json(response: httpx.Response, context: str) -> object:
+    try:
+        return response.json()
+    except (ValueError, RecursionError) as exc:
+        msg = f"{context} was not valid JSON"
+        raise DemoError(msg) from exc
+
+
+def _propose_once(
+    client: httpx.Client,
+    verifier_url: str,
+    prompt: str,
+    dataset: str,
+) -> ModelPromptObservation:
+    """Post one seed prompt and reduce the public response to operator-safe fields."""
+    response = client.post(
+        f"{verifier_url}/propose-spec",
+        json={"user_request": prompt, "dataset_name": dataset},
+    )
+    http_status = response.status_code
+    payload = _response_json(response, "propose-spec response")
+    if http_status == _HTTP_OK:
+        if isinstance(payload, list):
+            values = cast("list[object]", payload)
+            _require(bool(values), "verified propose-spec response was an empty JSON array")
+            body = _object(values[0], "verified propose-spec result")
+        else:
+            body = _object(payload, "propose-spec result")
+        verdict = _object(body["verdict"], "propose-spec verdict") if "verdict" in body else body
+        results = _object_list(verdict.get("results"), "propose-spec verdict results")
+        failed = next((result for result in results if result.get("status") == "fail"), None)
+        failing_check_value = None if failed is None else failed.get("check")
+        reason_value = None if failed is None else failed.get("message")
+        attempt_id_value = verdict.get("attempt_id")
+        return ModelPromptObservation(
+            prompt=prompt,
+            dataset_name=dataset,
+            http_status=http_status,
+            verified=bool(verdict.get("verified")),
+            failing_check=(failing_check_value if isinstance(failing_check_value, str) else None),
+            reason=reason_value if isinstance(reason_value, str) else None,
+            attempt_id=attempt_id_value if isinstance(attempt_id_value, str) else None,
+            detail="",
+        )
+
+    problem = _object(payload, "propose-spec problem")
+    detail_value = problem.get("detail")
+    attempt_id_value = problem.get("attempt_id")
+    return ModelPromptObservation(
+        prompt=prompt,
+        dataset_name=dataset,
+        http_status=http_status,
+        verified=False,
+        failing_check=None,
+        reason=None,
+        attempt_id=attempt_id_value if isinstance(attempt_id_value, str) else None,
+        detail=(
+            detail_value
+            if isinstance(detail_value, str)
+            else f"HTTP {http_status} problem omitted a string detail"
+        ),
+    )
+
+
+def _run_audit(attempt_id: str) -> tuple[int, str]:
+    """Run the safe-by-default audit CLI for one format-validated attempt id."""
+    completed = subprocess.run(  # noqa: S603
+        [sys.executable, "-m", "verifier.service", "audit", attempt_id],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=_AUDIT_TIMEOUT_S,
+    )
+    return completed.returncode, completed.stdout
+
+
+def _run_model_leg(verifier_url: str) -> ModelObservation:
+    """Observe the three seed prompts and audit one blocked attempt without revealing payloads."""
+    observations: list[ModelPromptObservation] = []
+    audited_attempt_id: str | None = None
+    audit_ok: bool | None = None
+    try:
+        with httpx.Client(timeout=_MODEL_REQUEST_TIMEOUT_S) as client:
+            for prompt, dataset in _MODEL_PROMPTS:
+                observations.append(_propose_once(client, verifier_url, prompt, dataset))
+
+        audit_target = next(
+            (
+                observation
+                for observation in observations
+                if not observation.verified and observation.attempt_id is not None
+            ),
+            None,
+        )
+        _require(audit_target is not None, "no blocked proposer outcome had an attempt_id to audit")
+        attempt_id_value = cast("ModelPromptObservation", audit_target).attempt_id
+        _require(attempt_id_value is not None, "selected audit outcome lost its attempt_id")
+        attempt_id = cast("str", attempt_id_value)
+        _require(
+            _ATTEMPT_ID_RE.fullmatch(attempt_id) is not None,
+            "audited attempt_id was not a SHA-256 hex digest",
+        )
+        audited_attempt_id = attempt_id
+        audit_code, _audit_stdout = _run_audit(attempt_id)
+        audit_ok = audit_code == 0
+
+        non_ok = sum(item.http_status != _HTTP_OK for item in observations)
+        failures: list[str] = []
+        if non_ok:
+            failures.append(f"{non_ok} prompt(s) returned non-200")
+        if not audit_ok:
+            failures.append(f"audit exited with code {audit_code}")
+        status: ScenarioStatus = "FAIL" if failures else "PASS"
+        detail = (
+            "; ".join(failures) if failures else "observed 3 prompts; blocked attempt audit passed"
+        )
+        return ModelObservation(
+            status=status,
+            prompts=tuple(observations),
+            audited_attempt_id=audited_attempt_id,
+            audit_ok=audit_ok,
+            detail=detail,
+        )
+    except (httpx.HTTPError, DemoError, OSError, subprocess.SubprocessError) as exc:
+        return ModelObservation(
+            status="FAIL",
+            prompts=tuple(observations),
+            audited_attempt_id=audited_attempt_id,
+            audit_ok=audit_ok,
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _configure_logging() -> None:
     """Keep the socket demo's human-readable narrative on stdout."""
     logging.basicConfig(level=logging.CRITICAL, force=True)
@@ -494,15 +799,62 @@ def _configure_logging() -> None:
         logger.propagate = False
 
 
-def main() -> int:
-    """Run the cases, write their JSON report, and fail unless all expectations matched."""
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--with-webui", action="store_true")
+    parser.add_argument("--with-model", action="store_true")
+    parser.add_argument("--verifier-url", default=_DEFAULT_VERIFIER_URL)
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run deterministic cases plus any explicitly requested production observations."""
+    args = _parse_args(argv)
+    with_webui = cast("bool", args.with_webui)
+    with_model = cast("bool", args.with_model)
+    verifier_url = cast("str", args.verifier_url)
     _configure_logging()
     report = run_e2e()
+    if not with_webui and not with_model:
+        _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _REPORT_PATH.write_bytes(encode_report(report))
+        _LOGGER.info("wrote report=%s", _REPORT_PATH.relative_to(_ROOT))
+        _LOGGER.info("e2e demo: %d/%d cases PASS", report.passed, report.total)
+        return 1 if report.failed else 0
+
+    webui = _run_webui_leg() if with_webui else None
+    model = _run_model_leg(verifier_url) if with_model else None
+    leg_failed = (webui is not None and webui.status == "FAIL") or (
+        model is not None and model.status == "FAIL"
+    )
+    status: ScenarioStatus = "PASS" if report.failed == 0 and not leg_failed else "FAIL"
+    e2e = E2EReport(
+        generated_at=report.generated_at,
+        status=status,
+        passed=report.passed,
+        failed=report.failed,
+        total=report.total,
+        results=report.results,
+        webui=webui,
+        model=model,
+    )
+    encoded = msgspec.json.format(msgspec.json.encode(e2e), indent=2) + b"\n"
     _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _REPORT_PATH.write_bytes(encode_report(report))
+    _REPORT_PATH.write_bytes(encoded)
     _LOGGER.info("wrote report=%s", _REPORT_PATH.relative_to(_ROOT))
-    _LOGGER.info("e2e demo: %d/%d cases PASS", report.passed, report.total)
-    return 1 if report.failed else 0
+    if webui is not None:
+        _LOGGER.info("webui observation: %s (%s)", webui.status, webui.detail)
+    if model is not None:
+        _LOGGER.info(
+            "model observation: %s; prompts=%d; audit_ok=%s",
+            model.status,
+            len(model.prompts),
+            model.audit_ok,
+        )
+    _LOGGER.info(
+        "e2e demo: %d/%d cases PASS; optional status=%s", report.passed, report.total, status
+    )
+    return 1 if report.failed or leg_failed else 0
 
 
 if __name__ == "__main__":
