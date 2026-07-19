@@ -711,6 +711,25 @@ def _tcb() -> Tcb:
     )
 
 
+def disclosed_transforms(
+    spec: VPlotSpec,
+) -> tuple[tuple[DisclosedFilter, ...], tuple[DisclosedSort, ...]]:
+    """Derive deterministic filter and active-sort disclosures from one VPlot spec."""
+
+    filters = tuple(
+        DisclosedFilter(field=transform.field, cmp=transform.cmp, value=transform.value)
+        for transform in spec.transform
+        if isinstance(transform, Filter)
+    )
+    active = active_sort(spec.transform)
+    sorts = (
+        tuple(DisclosedSort(field=key.field, order=key.order) for key in active.by)
+        if active is not None
+        else ()
+    )
+    return filters, sorts
+
+
 def _build_certificate(prepared: PreparedArtifact) -> VCert:
     """Mint VCert from one immutable formal-passed artifact, without rebuilding any input.
 
@@ -725,17 +744,7 @@ def _build_certificate(prepared: PreparedArtifact) -> VCert:
         for result in prepared.results
         if result.status == "pass"
     )
-    filters = tuple(
-        DisclosedFilter(field=t.field, cmp=t.cmp, value=t.value)
-        for t in spec.transform
-        if isinstance(t, Filter)
-    )
-    active = active_sort(spec.transform)
-    sorts = (
-        tuple(DisclosedSort(field=key.field, order=key.order) for key in active.by)
-        if active is not None
-        else ()
-    )
+    filters, sorts = disclosed_transforms(spec)
     return VCert(
         version=_VCERT_VERSION,
         dataset_hash=evidence.dataset_hash,

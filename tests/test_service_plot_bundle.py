@@ -10,7 +10,7 @@ from typing import Any, cast
 import msgspec
 import pytest
 
-from verifier import attestation, canon, render
+from verifier import attestation, canon, checks, render
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import decode_spec
 from verifier.service import archive as archive_module
@@ -466,6 +466,32 @@ def test_signed_but_cross_inconsistent_plot_components_fail_closed(tmp_path: Pat
     with pytest.raises(ArchiveIntegrityError, match="dataset binding disagrees"):
         archive.publish_plot(rebound)
 
+    filter_mutant = msgspec.structs.replace(
+        rendered.certificate,
+        filters=(
+            *rendered.certificate.filters,
+            render.DisclosedFilter(field="month", cmp="eq", value="unexpected"),
+        ),
+    )
+    first_sort = rendered.certificate.sorts[0]
+    sort_mutant = msgspec.structs.replace(
+        rendered.certificate,
+        sorts=(
+            msgspec.structs.replace(
+                first_sort,
+                order="descending" if first_sort.order == "ascending" else "ascending",
+            ),
+            *rendered.certificate.sorts[1:],
+        ),
+    )
+    disclosure_mutants = (
+        (filter_mutant, "canonical spec filters disagree"),
+        (sort_mutant, "canonical spec sorts disagree"),
+    )
+    for mutant_certificate, message in disclosure_mutants:
+        with pytest.raises(ArchiveIntegrityError, match=message):
+            archive.publish_plot(_resign_bundle(bundle, signer, mutant_certificate))
+
     decoded_verdict = archive_module._VERDICT_DECODER.decode(bundle.verdict)
     invalid_outcomes = (
         Verdict(verified=False, layer="verify", results=decoded_verdict.results),
@@ -494,6 +520,35 @@ def test_signed_but_cross_inconsistent_plot_components_fail_closed(tmp_path: Pat
         archive.publish_plot(
             replace(bundle, verdict=archive_module._BUNDLE_ENCODER.encode(shortened))
         )
+
+    original_method = decoded_verdict.results[0].method
+    wrong_method: checks.CheckMethod = (
+        "resource_policy" if original_method == "schema_validation" else "schema_validation"
+    )
+    method_mutant_verdict = msgspec.structs.replace(
+        decoded_verdict,
+        results=(
+            msgspec.structs.replace(decoded_verdict.results[0], method=wrong_method),
+            *decoded_verdict.results[1:],
+        ),
+    )
+    method_mutant_certificate = msgspec.structs.replace(
+        rendered.certificate,
+        checks=(
+            msgspec.structs.replace(rendered.certificate.checks[0], method=wrong_method),
+            *rendered.certificate.checks[1:],
+        ),
+    )
+    method_mutant_bundle = _resign_bundle(
+        replace(
+            bundle,
+            verdict=archive_module._BUNDLE_ENCODER.encode(method_mutant_verdict),
+        ),
+        signer,
+        method_mutant_certificate,
+    )
+    with pytest.raises(ArchiveIntegrityError, match="registered verification method"):
+        archive.publish_plot(method_mutant_bundle)
 
     wrong_versions = msgspec.structs.replace(rendered.certificate.tcb, python="other")
     with pytest.raises(ArchiveIntegrityError, match="tool versions disagree"):

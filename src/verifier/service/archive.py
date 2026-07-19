@@ -68,7 +68,7 @@ from typing import Literal, cast
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from verifier import __version__, attestation, canon, render
+from verifier import __version__, attestation, canon, checks, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import VPlotSpec, decode_spec
@@ -855,6 +855,14 @@ def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> 
         msg = "plot bundle canonical spec dataset binding disagrees with the certified dataset"
         raise ArchiveIntegrityError(msg)
 
+    expected_filters, expected_sorts = render.disclosed_transforms(spec)
+    if certificate.filters != expected_filters:
+        msg = "plot bundle canonical spec filters disagree with certified filters"
+        raise ArchiveIntegrityError(msg)
+    if certificate.sorts != expected_sorts:
+        msg = "plot bundle canonical spec sorts disagree with certified sorts"
+        raise ArchiveIntegrityError(msg)
+
     if (
         not verdict.verified
         or verdict.layer != "verify"
@@ -869,6 +877,10 @@ def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> 
     if certificate.checks != certified_checks:
         msg = "plot bundle full method-aware verdict disagrees with certified checks"
         raise ArchiveIntegrityError(msg)
+    for certified_check in certificate.checks:
+        if checks._CHECK_METHODS.get(certified_check.id) != certified_check.method:
+            msg = "plot bundle certified check disagrees with the registered verification method"
+            raise ArchiveIntegrityError(msg)
     if versions != certificate.tcb:
         msg = "plot bundle tool versions disagree with the VCert TCB"
         raise ArchiveIntegrityError(msg)
