@@ -16,14 +16,14 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M2 | Verifier API service (Litestar) | 1·api,8 | none | REVIEWED |
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
-| M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | IN-PROGRESS |
+| M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | IMPLEMENTED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) | UNPLANNED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M5 — Formal + provenance hardening   (IN-PROGRESS)
+## M5 — Formal + provenance hardening   (IMPLEMENTED)
 
 **Gate: none; toolchain CONFIRMED at planning.** A clean project-local Python-3.13 scratch run
 installed the current `z3-solver` + `cryptography` releases, proved an UNSAT integer formula, and
@@ -587,7 +587,7 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   endpoint + audited verdict — two vacuous-capable seed-14 regression guards (uniform-404 archival
   regression; self-referential audit reason) hardened. Peer reports #1-3 + capstone-map's four = stale
   pre-fix reads already addressed by the fix batch. Gate re-green 1,545/100%; `guard-fix=42% 114K/272K`.
-- **M5.5e — demo walkthrough + doc-drift sweep + M5 close** (OPEN, after M5.5d): (a) runnable
+- **M5.5e — demo walkthrough + doc-drift sweep + M5 close** (DONE): (a) runnable
   hardware-free `demo/` walkthrough — spin the service on a tmp `state_dir` from empty and walk the
   M5.5d scenarios, printing PASS/FAIL + a gitignored JSON report, with a short `demo/README.md` run
   recipe; mirror the capstone scenario drivers (may import light helpers from `test_e2e_hardening`
@@ -621,6 +621,24 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   outside `verifier` coverage source, like `bench/`). Acceptance: `demo` runs clean from empty state
   and reports every scenario; no stale claim-method/storage statement and no overclaim survives; gate
   green; M5 IMPLEMENTED.
+  Done (MAIN-verified): `demo/` package — `python -m demo` runs a self-contained hardware-free
+  `walkthrough.py` (in-process `TestClient` with `unittest.mock`/`httpx.MockTransport` model seams,
+  no live service or network) that spins the verifier from an empty tmp `state_dir` through all 13
+  M5.5d hardening scenarios, prints per-scenario PASS/FAIL, and writes a gitignored
+  `demo/reports/report.json`; short `demo/README.md` recipe; mirrors the capstone drivers; transient
+  `demo/__pycache__` gitignored. `pyproject.toml` drops `demo` from the coverage source + adds it to
+  ruff `known-first-party`; `.gitignore` ignores `demo/reports/`. Doc-drift sweep — 5 DEFINITE fixes:
+  VPlot_SEMANTICS.md "every applied filter + sort" -> active sort only, and `scale.bar_zero`
+  reclassified M1-SEMANTIC -> M5.2 `z3_smt`; webui/README.md 8 -> 10 checks; examples/README.md
+  construction inventory adds `security.no_arbitrary_code` + `transform.ops_allowed`; `.agent/memory.md`
+  SVG "unhashed" -> digest-bound in the signed archive (`_PLOT_BINDING_FIELDS`) but outside VCert.
+  POC_SCOPE.md:24 "four artifacts" CONFIRMED accurate (distinct top-level enumeration; VCert artifact
+  #4 itemizes its 5 bound hashes) — no edit; REVIEW-ONLY anchors reconciled no-edit. Gates re-green
+  independently: ruff format/check 0 (90 files), mypy 0 (90 files incl. `demo`), `python -m demo`
+  13/13 PASS, pytest 1,545 passed / 100.00% coverage (1,044 branches, 0 missing). M5 IMPLEMENTED
+  (M5.1a-M5.5e all DONE).
+  Context: `main=62% 168K/272K` (coordination peak before close-compaction; close tail 20% 55K/272K);
+  `impl=45% 122K/272K` (demo author; peak 137K/50%, compaction-free).
 
 ---
 

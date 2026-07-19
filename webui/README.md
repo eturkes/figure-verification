@@ -131,7 +131,7 @@ assert result["choices"][0]["message"]["content"] == (
     "Figure Verifier confirmed the chart; all checks passed."
 )
 assert result["sources"][0]["source"]["name"] == "server:verifier/proposeSpec"
-assert "Verified chart for sales.csv: all 8 checks passed." in json.dumps(result["sources"])
+assert "Verified chart for sales.csv: all 10 checks passed." in json.dumps(result["sources"])
 print("legacy-FC tool/verifier chain: PASS")
 PY
 ```

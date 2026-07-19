@@ -30,7 +30,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
   intent: a valid cherry-picked `filter` passes. The VCert badge (M1.6) discloses every
-  applied filter + sort, so a reader sees the selected subset; the verifier guarantees the
+  applied filter and active sort, so a reader sees the selected subset; the verifier guarantees the
   chart faithfully shows that selection, not that the selection is fair.
 - VCert v0.2 binds the exact emitted Vega-Lite bytes alongside dataset, manifest, canonical spec,
   and recomputed-table hashes. Its `checks` reproduce every passing final result as
@@ -215,8 +215,8 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   logical archive payload. Evaluator work units are deterministic
   logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
 - SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
-  matches, hash matches source, distinctness/collision, filter coercion, encoding type, bar-zero
-  baseline, units present. Outcome: structured `{check, method, status, severity, message}`; any
+  matches, hash matches source, distinctness/collision, filter coercion, encoding type, units
+  present. Outcome: structured `{check, method, status, severity, message}`; any
   blocking failure → no render. Each result carries the closed verification method that established
   it: `schema_validation`, `resource_policy`, `deterministic_recompute`, `construction`, or
   `z3_smt`. A passing result's ID + method enter VCert v0.2 verbatim; there is no name-only

@@ -17,6 +17,10 @@ Enforced by `tests/test_examples.py`.
 - `transform` (×3) → M1.4. group_by placement (§4), aggregate-`as`/group-key collision (§5), sort-field distinctness (§5).
 
 ## By construction — no bad spec (`index.json.enforced_by_construction`)
+`security.no_arbitrary_code` · `transform.ops_allowed` hold because a spec is data-only (no
+expr/code/url field) and the transform tagged-union admits only {select, filter, group_by,
+aggregate, sort} — an unlisted op or arbitrary-code path is unrepresentable at decode, so both
+emit as constant-pass M1.5 affirmations.
 `aggregates_match_recomputation` · `filters_declared` are unrepresentable as a model spec because
 the verifier recomputes all data from declared transforms. `derived_value_mismatch` is dropped —
 the model emits no plotted values.
