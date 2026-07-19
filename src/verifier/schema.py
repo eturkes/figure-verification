@@ -148,9 +148,13 @@ def decode_spec(raw: bytes | str) -> VPlotSpec:
 
     str input is normalized to UTF-8 bytes first so the strict decode and the
     duplicate-key rescan see identical bytes, and a lone surrogate maps to DecodeError
-    instead of leaking UnicodeEncodeError. The rescan runs only after the decode
-    succeeds, so it sees solely the bounded VPlotSpec shape (no pathological depth); its
-    sole job is to reject the duplicate keys msgspec silently last-wins (finding 4).
+    instead of leaking UnicodeEncodeError. For bytes input, msgspec finding 9 shows that
+    Decoder.decode can raise builtin UnicodeDecodeError for invalid UTF-8 inside a JSON
+    string; that also maps to DecodeError. Callers guarding DecodeError and ValidationError
+    therefore see the documented decode failure instead of an escaping builtin. The rescan
+    runs only after the decode succeeds, so it sees solely the bounded VPlotSpec shape (no
+    pathological depth); its sole job is to reject the duplicate keys msgspec silently
+    last-wins (finding 4).
     """
     if isinstance(raw, str):
         try:
@@ -160,7 +164,11 @@ def decode_spec(raw: bytes | str) -> VPlotSpec:
             raise msgspec.DecodeError(msg) from exc
     else:
         data = raw
-    spec = _DECODER.decode(data)
+    try:
+        spec = _DECODER.decode(data)
+    except UnicodeDecodeError as exc:
+        msg = "spec input is not valid UTF-8"
+        raise msgspec.DecodeError(msg) from exc
     json.loads(data, object_pairs_hook=_reject_duplicate_keys)
     return spec
 

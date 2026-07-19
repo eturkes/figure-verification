@@ -553,104 +553,35 @@ transport. Lowest OPEN unit is next-session work; every unit runs the locked qua
   500, shared-admission 429, a real-TCP replay leg, and jsonschema consumer validation. Locked gate
   green at 1,530 tests/100% branch coverage.
   Context: `main=72% 197K/272K`; `impl=65% 176K/272K`.
-- **M5.5d — end-to-end hardening capstone (pytest)** (OPEN): author `tests/test_e2e_hardening.py`,
-  one from-empty-state pytest module demonstrating all 13 hardening scenarios, each assertion
-  annotated to the seed-13/seed-14 exit criterion it satisfies; golden corpus (`test_examples`) +
-  full locked gate green. Respec of the former single M5.5d after the user chose BOTH a gated pytest
-  capstone AND a runnable demo (that demo + doc sweep + close are now M5.5e); split at the
-  test-layer/demo-layer seam per the M4.1 multi-layer overflow lesson. FAST-PATH recipe (authority =
-  commit 26375ac + the named tests; transcribe, do not re-derive — re-read each named source test
-  for exact injection bytes):
-  - DEFECT step 0 (parallel-session doc audit; MAIN-reproduced 2026-07-19): invalid-UTF-8 request
-    bytes make `schema.decode_spec` raise builtin `UnicodeDecodeError` (NOT msgspec), which
-    `pipeline.decode_stage` line 144 `except (ValidationError, DecodeError)` omits, so it escapes ->
-    BOTH `/verify-only` and `/verify-and-render` return generic 500, violating the documented
-    decode-failure->200-verdict contract (POC_SCOPE.md:102-105, VPlot_SEMANTICS.md:204-208) and
-    `.agent/memory.md:17`. FIX = in `schema.decode_spec` bytes-path wrap `_DECODER.decode(data)` to
-    re-raise `UnicodeDecodeError` as `msgspec.DecodeError` (mirrors the str-path
-    `UnicodeEncodeError`->`DecodeError` at schema.py:158-160) and fix the now-false docstring; both
-    endpoints then return the 200 structured decode-failure verdict (same arm as malformed JSON).
-    CLEAN, no dead branch: propose-body uses a separate `_PROPOSE_DECODER` (app.py:262/270, already
-    catches all three), invalid-UTF-8 model REPLY is caught in `model_client`->502, and the new
-    regression test covers the new arm. Capstone decode scenarios assert the FIXED 200 behavior;
-    MAIN inspects this production fix diff separately from the test authoring.
-  - VERIFIED-DISCOVERY: parallel read-only agents (scaffold-research, evidence-map, docs-audit)
-    re-derived + line-verified the anchors below — treat the `file::test` pointers as validated.
-    Prefer the FAST typed proposer stub `monkeypatch.setattr(service_app, "propose_spec",
-    AsyncMock(return_value=ModelProposal(reply, ProposalTrace(...))))` (from
-    `test_service_attempt_capture.py::_proposal`) over HTTP MockTransport where only pass/fail
-    matters — success `reply` = g01 good-spec bytes, decode-fail `reply` = a fenced non-VPlot JSON,
-    classified backend fault = `AsyncMock(side_effect=ModelUpstreamError(status=502,
-    trace=ProposalTrace(fault=ProposalFault.INVALID_ENVELOPE)))`. Manifests live in `data/schemas/`
-    (helper `test_service_render.py::_copy_sales_dataset` copies `data/sales.csv`+`data/schemas/
-    sales.json` for scenario 6). Audit-in-pytest = `verifier.service.audit.audit_attempt(settings,
-    attempt_id)` (CLI leg = `main(("audit", attempt_id))`). HTTP quota-507 + rollback anchor =
-    `test_service_attempt_capture.py::test_archive_fault_replaces_verified_outcome_before_any_lru_
-    mutation` (`fault="quota"`/`"ledger"`, `max_archive_bytes=1`; assert 507/500, no attempt_id, no
-    LRU put, reopened `ArchiveStats(0,0,0,0,0)`). HAZARDS: attempt IDs nondeterministic -> capture
-    returned IDs, never hardcode; replay picks the lexicographically LOWEST attempt id -> use
-    `min(observed_ids)`; SVG diagnostic-only -> never gate `exact` on svg equality; force solver
-    `unknown` via the `_check_solver` seam, never wall-clock; 429 needs a held permit + sync;
-    isolate each SQLite-corruption case in its own state_dir/app lifecycle. NEW end-to-end
-    composition the capstone adds (currently uncovered): real endpoint pass+fail -> restart ->
-    actual audit CLI asserting the human-readable reason; two distinct datasets -> distinct
-    fetched-certificate `dataset_hash`; HTTP exact formal-failure MESSAGE text; single restart ->
-    independently verify certificate -> replay -> chart.
-  - Scaffold (verbatim from `tests/test_service_replay_route.py`): `create_app` from
-    `verifier.service.app`, `Settings` from `verifier.service.settings`, `TestClient` from
-    `litestar.testing`; `_ROOT=Path(__file__).resolve().parent.parent`, `_DATA=_ROOT/"data"`,
-    `_GOOD_SPEC=_ROOT/"examples"/"good_specs"/"g01_total_revenue_by_month.json"`; reuse
-    `_render_plot`, `_assert_problem`, `_ListHandler`. Empty state = `state_dir=tmp_path/"state"`.
-    Settings knobs (confirmed): `store_cap`, `html_cap`, `render_cache_bytes`, `chart_cache_bytes`,
-    `max_archive_bytes` (quota), `max_active_jobs`, `work_rate_per_minute`, `work_burst`,
-    `signing_key_file`; SMT timeout knob = confirm exact field in `settings.py` (`VerificationLimits.
-    smt_timeout_ms`). Handles: `cast("Archive", app.state["archive"])` (`.database_path`),
-    `cast("AdmissionController", app.state["admission"])` (`.try_acquire()`).
-  - Scenario -> reuse source: (1) direct render `_render_plot`. (2/3) model-stub success/failure:
-    `monkeypatch.setattr(verifier.service.model_client, "_build_async_client", build)`, `build`
-    returns `httpx.AsyncClient(transport=httpx.MockTransport(handler))`, handler returns canned
-    OpenAI chat reply (valid VPlot JSON = success; decode/verify-failing reply = failure) — from
-    `tests/test_service_propose.py` (~L64-90); POST `/propose-spec {user_request, dataset_name}`.
-    (4) restart: 2nd `TestClient(create_app(same settings))` -> `/chart` 404, `/replay` 200 exact,
-    `/chart` repopulates (`test_service_replay_route.py::test_render_restart_replay_repopulates_
-    chart_lru`). (5) LRU eviction: tiny `store_cap`/`html_cap`/`chart_cache_bytes` -> chart 404,
-    certificate/spec archive-durable (`test_service_render.py::test_chart_lru_evicts_independently_
-    of_certificate`, `::test_archive_artifacts_survive_lru_eviction_and_restart`). (6) live-data
-    mutation: render from a COPIED tmp data dir, then alter/delete the CSV -> `/replay` still exact
-    (filesystem-free `checks.verify_snapshot`). (7) exact replay: `/replay` status `exact`,
-    `artifact_matches` all True (`::test_exact_replay_response_is_bounded_replay_verdict`). (8)
-    failed-attempt audit: capture the `attempt_id` a blocked verdict/Problem carries, then
-    `from verifier.service.audit import main as audit_main`; `audit_main((attempt_id,))` exit 0,
-    stable JSON (`tests/test_service_audit.py`). (9) key mismatch: 2nd app `signing_key_file=
-    state_dir/"rotated.key"` -> `/replay` `untrusted_key`, `integrity_ok` False, no chart
-    (`::test_untrusted_archived_signer_returns_diagnostic_without_chart`). (10) DB corruption:
-    `sqlite3.connect(archive.database_path)` `DROP INDEX attempts_by_plot; commit` -> `/replay` 500
-    generic, `ArchiveSchemaError` logged, no leak (`::test_archive_schema_fault_is_logged_and_
-    returns_generic_500`). (11) blob corruption: transcribe `tests/test_service_archive.py::
-    test_blob_triggers_reject_mutation_then_stream_read_detects_content_corruption` (~L478). (12)
-    signature corruption: transcribe `tests/test_service_attempt_bundle.py::test_tampered_signature_
-    roles_bytes_and_cross_bundle_edges_fail_before_mutation` (~L424). (13) solver timeout:
-    `monkeypatch.setattr(verifier.formal, "_check_solver", lambda _s: "unknown")` -> obligation
-    "unknown or timed out", render blocked (`tests/test_formal.py::test_forced_unknown_or_timeout_
-    fails_closed`); capacity 429: `max_active_jobs=1`, `held=admission.try_acquire()`, request under
-    `with ... held:` -> 429 (`::test_replay_uses_shared_active_job_admission`); quota 507: tiny
-    `max_archive_bytes` -> `/verify-and-render` commit -> 507 (POC_SCOPE.md:152-156 +
-    `test_service_archive.py` quota tests); crash-injected rollback: transcribe
-    `tests/test_service_archive.py::test_injected_fault_rolls_back_all_rows_and_trigger_accounting`
-    (~L402) — archive-level, not HTTP.
-  - Seed evidence (assert + comment each): 13(a) >=3 z3 obligations exercised via a verified VCert;
-    13(b) z3 unknown -> readable message; 13(c) VCert `checks:[{id,method,status}]` shows `z3_smt`
-    vs `deterministic_recompute`; 14(a) replay reproduces from stored artifacts; 14(b) distinct CSV
-    -> distinct `dataset_hash`; 14(c) verifier-version drift visible in replay `version_match`/`drift`
-    + VCert TCB; 14(d) audit debugs a failed attempt; routes `/replay/{id}` + `/certificate/{id}`
-    both exercised.
-  - Constraints/gates: reuse helpers (no re-derive); TARGETED edits to any shared test util; every
-    trust/availability claim at current strength (archived-key verification = self-consistency only,
-    replay/audit fail-closed, no cryptographic/formal overclaim). Gate = locked `ruff check` /
-    `ruff format --check` / `mypy --strict` / `pytest` (100% branch, source `verifier`; the new test
-    only ADDS coverage; `--no-cov` only for local subsets); golden corpus = `test_examples` green.
-    AGENT does not commit. Acceptance: every seed-13/14 criterion demonstrated with retained
-    evidence, no overclaim, gate green.
+- **M5.5d — end-to-end hardening capstone (pytest)** (DONE): fixed the invalid-UTF-8 decode-500
+  defect + authored `tests/test_e2e_hardening.py`. DEFECT (MAIN-reproduced): invalid-UTF-8 bytes
+  inside a JSON string made `schema._DECODER.decode` raise builtin `UnicodeDecodeError` (finding 9),
+  escaping `pipeline.decode_stage`'s `except (ValidationError, DecodeError)` -> generic 500 on BOTH
+  `/verify-only` + `/verify-and-render`, violating the decode->200-verdict contract. FIX centralized
+  in `schema.decode_spec` bytes-path (map `UnicodeDecodeError`->`msgspec.DecodeError`, mirror the
+  str-path; docstring corrected; regression in `test_schema.py` covers the new branch); both
+  endpoints now return the 200 decode verdict (same arm as malformed JSON). No dead branch:
+  `archive`/`replay` `decode_spec` callers use `except (ValueError, RecursionError)` (DecodeError +
+  UnicodeDecodeError both subclass ValueError, already caught); `_PROPOSE_DECODER` is a separate
+  already-catching decoder; `decode_stage` untouched. Capstone = 14 from-empty-state tests covering
+  all 13 hardening scenarios (+ a distinct-datasets companion), each assertion annotated to its
+  seed-13/14 exit criterion: 13(a) >=3 z3 obligations in a verified VCert; 13(b) HTTP EXACT
+  forced-unknown message (three `formal.solver_completed`/`z3_smt`/`fail` obligations) via the
+  `_check_solver` seam; 13(c) fetched-VCert `{id,method,status}` shows `z3_smt` vs
+  `deterministic_recompute`; 14(a) replay reproduces from archived bytes across restart + LRU
+  eviction + live-CSV mutation/deletion, plus one restart->independently-verify-certificate->replay->
+  chart flow; 14(b) two DISTINCT datasets (sales+weather) -> distinct fetched-certificate
+  `dataset_hash`; 14(c) verifier-version drift visible in replay `version_match`/`drift` + VCert TCB;
+  14(d) real endpoint pass+fail -> restart -> actual audit CLI asserting the human-readable reason;
+  `/replay/{id}` + `/certificate/{id}` both exercised. Fail-closed guards: rotated-unpinned signer ->
+  `untrusted_key` no chart; DROP-INDEX schema damage -> logged generic 500 no leak; blob-content +
+  attempt-signature corruption -> detected before use/mutation; capacity 429 (held permit), quota
+  507, injected pre-commit rollback -> `ArchiveStats(0,0,0,0,0)`. All trust/availability claims at
+  current strength (archived-key verification = self-consistency only; replay/audit fail-closed; no
+  crypto/formal overclaim). MAIN independently reproduced the defect, re-derived the exact fix facts
+  + solver message, inspected both diffs, and reran all four gate legs. Locked gate green at 1,545
+  tests/100% branch coverage; golden `test_examples` green.
+  Context: `main=87% 235K/272K`; `impl=61% 166K/272K` (capstone author; +26% 70K/272K fix batch).
 - **M5.5e — demo walkthrough + doc-drift sweep + M5 close** (OPEN, after M5.5d): (a) runnable
   hardware-free `demo/` walkthrough — spin the service on a tmp `state_dir` from empty and walk the
   M5.5d scenarios, printing PASS/FAIL + a gitignored JSON report, with a short `demo/README.md` run

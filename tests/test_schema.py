@@ -224,6 +224,12 @@ def test_lone_surrogate_str_maps_to_decode_error() -> None:
         decode_spec(chr(0xD800))
 
 
+def test_invalid_utf8_bytes_maps_to_decode_error() -> None:
+    """Invalid UTF-8 inside a JSON string raises DecodeError, not UnicodeDecodeError."""
+    with pytest.raises(msgspec.DecodeError):
+        decode_spec(b'{"version":"\xff\xfe"}')
+
+
 def test_spec_is_frozen_hashable_and_deeply_immutable() -> None:
     spec = decode_spec(_GOOD_BYTES)
     assert hash(spec) == hash(decode_spec(_GOOD_BYTES))  # value-hashed across two decodes
