@@ -3,10 +3,10 @@
 # Sums the last assistant turn's real API tokens (input+cache_creation+cache_read+output) = that request's
 # occupancy floor for the NEXT turn — the dominant, authoritative headroom signal. It far exceeds the visible
 # conversation: sys-prompt/tools/CLAUDE.md + injected reminders + prior-turn redacted extended-thinking ride in
-# the cached input, none shown in the .jsonl. A high reading is REAL occupancy, not inflated accounting.
+# the cached input, none shown in the .jsonl. A high reading is REAL occupancy — genuine billed load rather than inflated accounting.
 transcript_root="$HOME/.claude/projects"
 f=$(find "$transcript_root" -mindepth 2 -maxdepth 2 -type f -name "$CLAUDE_CODE_SESSION_ID.jsonl" -print -quit 2>/dev/null)
-# fallback (no session id): newest transcript in THIS project's dir only, never another project's
+# fallback (no session id): newest transcript in THIS project's dir only, scoped to this project alone
 project_transcripts="$transcript_root/$(pwd -P | tr '/.' '-')"
 [ -n "$f" ] || f=$(find "$project_transcripts" -maxdepth 1 -type f -name '*.jsonl' -printf '%T@ %p\n' 2>/dev/null | sort -nr | cut -d ' ' -f 2- | head -1)
 u=$(jq -n 'last(inputs|select(.type=="assistant" and .isSidechain!=true and .message.model!="<synthetic>" and (.message.usage|type)=="object")|.message.usage|.input_tokens+.cache_creation_input_tokens+.cache_read_input_tokens+.output_tokens)//empty' "$f" 2>/dev/null)
