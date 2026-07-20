@@ -18,13 +18,49 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
-| M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | IMPLEMENTED |
+| M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | REVIEWED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M7 — Interactive local-model browser instance   (IMPLEMENTED)
+## M7 — Interactive local-model browser instance   (REVIEWED)
+
+### Review ledger: M7 REVIEWED — all dispositions closed
+
+Four analysis lenses (correctness/spec, cross-unit integration, instruction/memory conformance,
+token-efficiency/obsolescence) over every M7 commit (`git log --grep "(M7[. ]"` — plan + M7.1 +
+M7.2). Every accepted finding landed in the launcher `webui/launch.sh` (bash, outside the
+ruff/mypy/pytest gate — no coverage-source Python changed), folded into this review commit, no
+separate batches. Operator docs (root `README.md` "Try it in your browser", `webui/README.md`
+"One-command interactive instance") audited clean — the launcher fix keeps their one-command claim
+honest; no doc edit needed.
+- FIXED (override-fidelity / port-coupling — the load-bearing finding): the launcher hardcoded its
+  child endpoints, so a `VERIFIER_PORT` / `MODEL_BACKEND_PORT` override did NOT wire through — OWUI
+  provisioning, the verifier's chart `Location`, AND the verifier's OWN model client (`/propose-spec`
+  → the backend, via `VERIFIER_MODEL_BASE_URL`) all stayed pinned to the default ports, so a remapped
+  launch served certificate links on the wrong port and the verifier answered 503 against the moved
+  backend. Now derives + exports `WEBUI_PROVISION_VERIFIER_URL`, `WEBUI_PROVISION_MODEL_BACKEND_URL`,
+  `VERIFIER_MODEL_BASE_URL` (and surfaces `WEBUI_PROVISION_WEBUI_BIN`) from `HEALTH_HOST` + the port
+  vars, and also exports `VERIFIER_PORT` — byte-identical to the prior child settings defaults at the
+  default ports (an explicit URL override still wins).
+- FIXED (start-time safety): a `port_in_use()` `/dev/tcp` preflight refuses to start when any target
+  port is already bound, placed BEFORE `trap cleanup` installs so a refusal never `fuser -k`s a
+  pre-existing foreign listener (closes the readiness-poll-adopts-a-stranger + teardown-kills-an-
+  innocent hazard); the readiness `curl` gained `--connect-timeout 2 --max-time 5` so an
+  accepting-but-silent socket can't hang the poll; and the preconditions now check
+  `$UV_PROJECT_ENVIRONMENT` / `$WEBUI_PROVISION_WEBUI_BIN` (not hardcoded `.venv` /
+  `.venv-webui/bin/open-webui`) so an override governs its own guard.
+- ACCEPT-RECORD (no change): M7 moves no verifier trust or claim boundary anywhere (orchestration +
+  docs only; POC_SCOPE TCB intact, as the plan asserts); the `--stub`-XOR-real one-port model tier,
+  the setsid-group teardown, and the backgrounded-SIGINT no-op are all correct as landed (memory
+  M7.1/M7.2).
+CLOSED: M7 REVIEWED — MAIN independently reran `shellcheck` rc=0 + `bash -n` rc=0, re-parsed the
+verifier `VERIFIER_MODEL_BASE_URL` knob (→ `http://127.0.0.1:8011/v1`), and inspected the full
+uncommitted diff; the fix Agent's remapped-port (8010/8011/8090) `--stub` standup returned the
+`http://127.0.0.1:8010/chart/<hex>` URL + certificate HTTP 200 (verifier-logged `propose-spec 200`
++ `cert 200`), teardown freed all three ports, tree clean. No coverage-source Python changed → the
+ruff/mypy/pytest gate is unaffected (last green at M7.2: 1564 @ 100% branch).
 
 A minimal, human-facing standup: one launcher brings up the existing verifier + `model_backend`
 (the REAL local OpenVINO model, per `CLAUDE.local.md`) + Open WebUI, provisioned, so the operator

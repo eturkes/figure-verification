@@ -50,6 +50,16 @@ WEBUI_PROVISION_PORT="${WEBUI_PROVISION_PORT:-8080}"
 WEBUI_PROVISION_ADMIN_EMAIL="${WEBUI_PROVISION_ADMIN_EMAIL:-operator@localhost}"
 WEBUI_PROVISION_ADMIN_PASSWORD="${WEBUI_PROVISION_ADMIN_PASSWORD:-loopback-dev-password}"
 WEBUI_PROVISION_DATA_DIR="${WEBUI_PROVISION_DATA_DIR:-.webui-data}"
+WEBUI_PROVISION_WEBUI_BIN="${WEBUI_PROVISION_WEBUI_BIN:-.venv-webui/bin/open-webui}"
+# Open WebUI reaches the verifier + model backend, the verifier reaches the model backend for
+# /propose-spec, and the stub binds the backend URL -- all through these URLs. Derive them from the
+# ports above so a single VERIFIER_PORT / MODEL_BACKEND_PORT override wires through to provisioning,
+# the verifier's model client, the stub bind, and (via VERIFIER_PORT, which the verifier turns into
+# its chart Location) the certificate links. An explicit URL override still wins, and at the default
+# ports these are byte-identical to the previous defaults.
+WEBUI_PROVISION_VERIFIER_URL="${WEBUI_PROVISION_VERIFIER_URL:-http://${HEALTH_HOST}:${VERIFIER_PORT}}"
+WEBUI_PROVISION_MODEL_BACKEND_URL="${WEBUI_PROVISION_MODEL_BACKEND_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
+VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
 # Real-model device preference (CLAUDE.local.md: NPU>GPU>CPU) and the host-coupled accel farm
 # (bench/README "OpenVINO wiring"): sourced + prepended ONLY for the real model_backend child.
 MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-NPU}"
@@ -71,7 +81,8 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-.venv}"
 export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 # The webui / model children read these from the environment.
 export WEBUI_PROVISION_ADMIN_EMAIL WEBUI_PROVISION_ADMIN_PASSWORD WEBUI_PROVISION_PORT
-export WEBUI_PROVISION_DATA_DIR MODEL_BACKEND_DEVICE MODEL_BACKEND_PORT
+export WEBUI_PROVISION_DATA_DIR MODEL_BACKEND_DEVICE MODEL_BACKEND_PORT VERIFIER_PORT
+export WEBUI_PROVISION_WEBUI_BIN WEBUI_PROVISION_VERIFIER_URL WEBUI_PROVISION_MODEL_BACKEND_URL VERIFIER_MODEL_BASE_URL
 
 USE_STUB=0
 FRESH=0
@@ -112,6 +123,12 @@ free_port() {
   fi
 }
 
+port_in_use() {
+  # True (0) if something already listens on this loopback port -- a dependency-free /dev/tcp probe
+  # in a subshell (the fd never leaks to the parent); connection refused (free) -> non-zero.
+  (exec 3<>"/dev/tcp/${HEALTH_HOST}/$1") 2>/dev/null
+}
+
 cleanup() {
   trap - EXIT INT TERM
   log "shutting down..."
@@ -142,7 +159,7 @@ wait_http() {
   local name=$1 url=$2 timeout=$3 pid=$4 logfile=$5 waited=0
   log "waiting for ${name} at ${url} (<= ${timeout}s)"
   while (( waited < timeout )); do
-    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
+    if curl -fsS --connect-timeout 2 --max-time 5 -o /dev/null "$url" 2>/dev/null; then
       log "${name} ready"
       return 0
     fi
@@ -168,13 +185,22 @@ for arg in "$@"; do
   esac
 done
 
-[[ -d .venv ]] || die "container venv .venv missing -- run: uv sync --locked"
-[[ -x .venv-webui/bin/open-webui ]] || die ".venv-webui/bin/open-webui missing -- see webui/README.md one-time setup"
+[[ -d "$UV_PROJECT_ENVIRONMENT" ]] || die "project venv ${UV_PROJECT_ENVIRONMENT} missing -- run: uv sync --locked"
+[[ -x "$WEBUI_PROVISION_WEBUI_BIN" ]] || die "${WEBUI_PROVISION_WEBUI_BIN} missing -- see webui/README.md one-time setup"
 if (( ! USE_STUB )); then
   [[ -x .venv-model/bin/python ]] || die ".venv-model/bin/python missing -- see bench/README.md (or run with --stub)"
   [[ -f "$INTEL_ACCEL_ENV" ]] || die "accel env not found: ${INTEL_ACCEL_ENV} (set INTEL_ACCEL_ENV, or run with --stub)"
   [[ -d "$OPENVINO_GENAI_PYTHON" ]] || die "OpenVINO GenAI python dir not found: ${OPENVINO_GENAI_PYTHON} (set OPENVINO_GENAI_PYTHON, or run with --stub)"
 fi
+
+# Refuse to start if a target port is already taken: keeps the readiness poll from adopting a
+# foreign listener and keeps the fuser -k teardown scoped to this launcher's own children. This runs
+# BEFORE the cleanup trap is installed so a refusal never fuser -k's the pre-existing listener.
+for _port in "$VERIFIER_PORT" "$MODEL_BACKEND_PORT" "$WEBUI_PROVISION_PORT"; do
+  if port_in_use "$_port"; then
+    die "port ${_port} is already in use -- stop whatever is bound there (or override the port) before launching"
+  fi
+done
 
 mkdir -p "$LOG_DIR"
 if (( FRESH )); then
