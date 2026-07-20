@@ -82,17 +82,24 @@ each item against the committed tree and the follow-up worktree.
   added `MODEL_BACKEND_PYTHON` (used by the precondition and the accel `exec`). Plus: the `fuser`
   backstop now fires only on a port STILL bound after the precise group kills (with a log line), and
   `wait_http` checks the child PID before trusting a `curl` 2xx.
-- KNOWN LIMITATION (recorded, not fixed — bounded, never silent): readiness is sequential and each
-  `wait_http` watches only the PID of the service it is currently polling, so a REQUIRED service that
-  dies AFTER passing its own gate but DURING a later service's readiness window is detected not
-  instantly but either when that later service comes up and `wait -n` reaps the already-dead child,
-  or when that window hits its timeout (its `*_READY_S` budget, default 180s) and `die` tears down.
-  Either way the launcher exits NON-ZERO and tears down — it is never read as a clean success (the
-  finding-4 hazard); a death during a service's OWN gate is caught within about a second by that
-  gate's `kill -0` check. This is detection LATENCY during the startup window, not a hang or a
-  false-clean; instant mid-startup detection would need an all-PID sweep on every poll (a latency
-  optimization beyond the accepted finding-4, which concerned the post-READY `wait -n` mask) →
-  deferred as future hardening.
+- SEPARATE FOLLOW-UP (pre-wait / final-wait crash-detection robustness — root mechanism UNPROVEN):
+  the observed trigger was a verifier killed at its bootstrap line (`models=1 tool_servers=1`), BEFORE
+  READY, that left the launcher blocked with ports still up until a manual TERM (clean rc143). PROVEN:
+  killing a TRACKED service leader post-READY makes the final `wait -n` return and the F-block name it
+  (finding-4 rc137); a death during a service's OWN readiness gate is caught within ~1s by that gate's
+  `kill -0`; and each `wait_http` is a wall-clock `while (( waited < timeout ))` loop, so a block
+  DURING readiness is bounded by that service's `*_READY_S` (default 180s) regardless of PID tracking
+  → `die`. NOT proven (the actual gap the challenger named): whether a REAL inner-service crash always
+  propagates to the tracked `setsid` leader that `wait -n` / `kill -0` observe — the launcher relies on
+  `exec` (accel model) and `uv run` exit-forwarding (verifier / webui) for that, untested; if a leader
+  could outlive a crashed descendant, the post-READY final `wait -n` (no wall-clock timeout, unlike
+  readiness) could block indefinitely. That worst case is a HANG (a stuck stack surfaced as no-exit / a
+  dead endpoint, or rc130/143 on Ctrl-C/TERM), NOT the finding-4 exit-0 false-clean — so the finding-4
+  hazard stays closed. Both the challenger and the fix Agent concur on deferring; the artifact ships
+  crash-faithful for the proven paths. Follow-up for M8: (1) confirm the killed/crashed PID is the
+  tracked setsid leader and dead afterward; (2) validate all tracked PIDs immediately before the READY
+  banner / final wait; (3) switch the final wait to explicit tracked-leader operands via
+  `wait -n -p VAR pid…` so it monitors the leaders, not any job. No launcher change in this review.
 CLOSED (follow-up): MAIN independently reran `shellcheck` rc=0 + `bash -n` rc=0 on the final tree,
 confirmed no new `# shellcheck disable` (only the pre-existing SC2016) and the exact six-edit diff,
 and reproduced the mechanism (killing a READY verifier → launcher rc 137 naming `service verifier
