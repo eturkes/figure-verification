@@ -62,6 +62,43 @@ uncommitted diff; the fix Agent's remapped-port (8010/8011/8090) `--stub` standu
 + `cert 200`), teardown freed all three ports, tree clean. No coverage-source Python changed → the
 ruff/mypy/pytest gate is unaffected (last green at M7.2: 1564 @ 100% branch).
 
+### Post-close challenger findings (independent adversarial re-audit) — dispositioned
+
+An independent read-only challenger re-audited the launcher after the close above; MAIN validated
+each item against the committed tree and the follow-up worktree.
+- ALREADY CLOSED by the fixes folded above (its static pass read a pre-fix snapshot): the port/URL
+  topology (all child endpoints derived + exported, incl. `VERIFIER_MODEL_BASE_URL`), the unbounded
+  readiness `curl` (`--connect-timeout` / `--max-time`), the two hardcoded-venv preconditions (now
+  `$UV_PROJECT_ENVIRONMENT` / `$WEBUI_PROVISION_WEBUI_BIN`), and the HIGH "a second launcher adopts
+  then destroys a running stack" scenario (the start-time `port_in_use` preflight refuses BEFORE
+  `trap cleanup` and the pidfile, so a collision never `fuser -k`s or overwrites the pre-existing
+  stack).
+- FIXED here (genuinely open after that close, one cohesive batch): (finding-4) `wait -n 2>/dev/null
+  || true` masked a post-READY required-service crash as exit 0 while `SERVICE_NAMES` sat unused →
+  now captures the status, names the dead child via `SERVICE_NAMES`, and exits non-zero through a
+  subshell `(exit …)` so a bare top-level `exit` never trips ShellCheck SC2317 on the EXIT-trap-only
+  helpers (`set -e` propagates the status; the EXIT trap still tears down). (finding-5)
+  `.venv-model/bin/python` was hardcoded with no override, falsifying "every default overridable" →
+  added `MODEL_BACKEND_PYTHON` (used by the precondition and the accel `exec`). Plus: the `fuser`
+  backstop now fires only on a port STILL bound after the precise group kills (with a log line), and
+  `wait_http` checks the child PID before trusting a `curl` 2xx.
+- KNOWN LIMITATION (recorded, not fixed — bounded, never silent): readiness is sequential and each
+  `wait_http` watches only the PID of the service it is currently polling, so a REQUIRED service that
+  dies AFTER passing its own gate but DURING a later service's readiness window is detected not
+  instantly but either when that later service comes up and `wait -n` reaps the already-dead child,
+  or when that window hits its timeout (its `*_READY_S` budget, default 180s) and `die` tears down.
+  Either way the launcher exits NON-ZERO and tears down — it is never read as a clean success (the
+  finding-4 hazard); a death during a service's OWN gate is caught within about a second by that
+  gate's `kill -0` check. This is detection LATENCY during the startup window, not a hang or a
+  false-clean; instant mid-startup detection would need an all-PID sweep on every poll (a latency
+  optimization beyond the accepted finding-4, which concerned the post-READY `wait -n` mask) →
+  deferred as future hardening.
+CLOSED (follow-up): MAIN independently reran `shellcheck` rc=0 + `bash -n` rc=0 on the final tree,
+confirmed no new `# shellcheck disable` (only the pre-existing SC2016) and the exact six-edit diff,
+and reproduced the mechanism (killing a READY verifier → launcher rc 137 naming `service verifier
+exited (status 137)`, ports freed; `MODEL_BACKEND_PYTHON=/nonexistent…` → die rc 1, no
+`.launch-logs`). Committed in the follow-up `webui (M7 review): …`. M7 stays REVIEWED.
+
 A minimal, human-facing standup: one launcher brings up the existing verifier + `model_backend`
 (the REAL local OpenVINO model, per `CLAUDE.local.md`) + Open WebUI, provisioned, so the operator
 opens `http://127.0.0.1:8080` in a browser and interactively exercises the verified-plot pipeline.

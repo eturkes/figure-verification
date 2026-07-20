@@ -65,6 +65,7 @@ VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODE
 MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-NPU}"
 INTEL_ACCEL_ENV="${INTEL_ACCEL_ENV:-/var/home/eturkes/.local/app/intel-accel/env.sh}"
 OPENVINO_GENAI_PYTHON="${OPENVINO_GENAI_PYTHON:-/var/home/eturkes/.local/app/openvino_genai/python}"
+MODEL_BACKEND_PYTHON="${MODEL_BACKEND_PYTHON:-.venv-model/bin/python}"
 # Per-service logs (*.log + launch.pid; the dir is gitignored).
 LOG_DIR="${LAUNCH_LOG_DIR:-.launch-logs}"
 # Health-poll ceilings (seconds) -- generous for a cold boot.
@@ -115,18 +116,22 @@ any_service_alive() {
   return 1
 }
 
-free_port() {
-  # Best-effort backstop: free a port of any straggler (e.g. an orphan reparented to init).
-  local port=$1
-  if command -v fuser >/dev/null 2>&1; then
-    fuser -k "${port}/tcp" >/dev/null 2>&1 || true
-  fi
-}
-
 port_in_use() {
   # True (0) if something already listens on this loopback port -- a dependency-free /dev/tcp probe
   # in a subshell (the fd never leaks to the parent); connection refused (free) -> non-zero.
   (exec 3<>"/dev/tcp/${HEALTH_HOST}/$1") 2>/dev/null
+}
+
+free_port() {
+  # Best-effort orphan backstop: only touch a port STILL bound after precise process-group kills
+  # above (fuser -k on a free port is already a no-op, but this means we never signal a port we never
+  # bound; the start-time preflight already refused launch atop a pre-existing listener). Log if the
+  # backstop actually kills something.
+  local port=$1
+  if port_in_use "$port" && command -v fuser >/dev/null 2>&1; then
+    log "port ${port} still bound after group teardown; backstop fuser -k ${port}/tcp"
+    fuser -k "${port}/tcp" >/dev/null 2>&1 || true
+  fi
 }
 
 cleanup() {
@@ -159,14 +164,14 @@ wait_http() {
   local name=$1 url=$2 timeout=$3 pid=$4 logfile=$5 waited=0
   log "waiting for ${name} at ${url} (<= ${timeout}s)"
   while (( waited < timeout )); do
-    if curl -fsS --connect-timeout 2 --max-time 5 -o /dev/null "$url" 2>/dev/null; then
-      log "${name} ready"
-      return 0
-    fi
     if ! kill -0 "$pid" 2>/dev/null; then
       log "${name} process exited before becoming ready; last log lines:"
       tail -n 20 "$logfile" >&2 2>/dev/null || true
       return 1
+    fi
+    if curl -fsS --connect-timeout 2 --max-time 5 -o /dev/null "$url" 2>/dev/null; then
+      log "${name} ready"
+      return 0
     fi
     sleep 1
     waited=$(( waited + 1 ))
@@ -188,7 +193,7 @@ done
 [[ -d "$UV_PROJECT_ENVIRONMENT" ]] || die "project venv ${UV_PROJECT_ENVIRONMENT} missing -- run: uv sync --locked"
 [[ -x "$WEBUI_PROVISION_WEBUI_BIN" ]] || die "${WEBUI_PROVISION_WEBUI_BIN} missing -- see webui/README.md one-time setup"
 if (( ! USE_STUB )); then
-  [[ -x .venv-model/bin/python ]] || die ".venv-model/bin/python missing -- see bench/README.md (or run with --stub)"
+  [[ -x "$MODEL_BACKEND_PYTHON" ]] || die "${MODEL_BACKEND_PYTHON} missing -- see bench/README.md (or run --stub)"
   [[ -f "$INTEL_ACCEL_ENV" ]] || die "accel env not found: ${INTEL_ACCEL_ENV} (set INTEL_ACCEL_ENV, or run with --stub)"
   [[ -d "$OPENVINO_GENAI_PYTHON" ]] || die "OpenVINO GenAI python dir not found: ${OPENVINO_GENAI_PYTHON} (set OPENVINO_GENAI_PYTHON, or run with --stub)"
 fi
@@ -225,8 +230,8 @@ else
   # The single-quoted child script intentionally expands only inside the child bash.
   # shellcheck disable=SC2016
   start_bg model "${LOG_DIR}/model.log" \
-    bash -c 'source "$1"; export PYTHONPATH="$2${PYTHONPATH:+:$PYTHONPATH}"; exec .venv-model/bin/python -m model_backend' \
-    _accel "$INTEL_ACCEL_ENV" "$OPENVINO_GENAI_PYTHON"
+    bash -c 'source "$1"; export PYTHONPATH="$2${PYTHONPATH:+:$PYTHONPATH}"; exec "$3" -m model_backend' \
+    _accel "$INTEL_ACCEL_ENV" "$OPENVINO_GENAI_PYTHON" "$MODEL_BACKEND_PYTHON"
 fi
 wait_http model "http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1/models" "$MODEL_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/model.log" \
   || die "model tier did not become ready"
@@ -270,6 +275,21 @@ cat >&2 <<BANNER
 
 BANNER
 
-# 6) Block until a service exits or the operator interrupts; the EXIT trap tears everything down.
-wait -n 2>/dev/null || true
-log "a service exited or the launcher was interrupted; tearing down"
+# 6) Block until a REQUIRED service exits. SIGINT/SIGTERM are handled by their own traps (which exit
+#    130/143 before returning here); getting past `wait -n` means a child died on its own -- a
+#    failure. Name it and exit non-zero so automation never reads a crashed stack as a clean launch;
+#    the EXIT trap still tears everything down.
+service_rc=0
+wait -n 2>/dev/null || service_rc=$?
+dead_service=""
+for _i in "${!SERVICE_PIDS[@]}"; do
+  if ! kill -0 "${SERVICE_PIDS[$_i]}" 2>/dev/null; then
+    dead_service="${SERVICE_NAMES[$_i]}"
+    break
+  fi
+done
+log "service ${dead_service:-unknown} exited (status ${service_rc}); tearing down"
+# Subshell exit, not a bare top-level `exit`: the latter trips ShellCheck SC2317 ("unreachable")
+# on the EXIT-trap-only helpers; `set -e` still propagates this status to the parent, whose EXIT
+# trap runs the teardown.
+(exit "$(( service_rc == 0 ? 1 : service_rc ))")
