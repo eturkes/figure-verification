@@ -17,13 +17,13 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
-| M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | IN-PROGRESS |
+| M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | IMPLEMENTED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M6 — End-to-end demo   (IN-PROGRESS)
+## M6 — End-to-end demo   (IMPLEMENTED)
 
 **Gate: full stack (M3+M4) — CONFIRMED live at this planning turn.** Fresh probes this session:
 intel-accel selftest enumerated CPU/GPU/NPU all `correct=True`; the NPU `model_backend` served
@@ -159,7 +159,7 @@ research needed (all-local stack, already probed).
   `.webui-data`/`.verifier-state`/tmp removed.
   Context: `main=48% 131K/272K`; `impl=(flags+tests landed prior session; pct not recovered
   post-compaction — MAIN ran the live evidence run + timeout fix this session)`.
-- **M6.4 — root README + PoC acceptance sweep + M6 close** (OPEN): author the repo's missing
+- **M6.4 — root README + PoC acceptance sweep + M6 close** (DONE): author the repo's missing
   root `README.md` — what the PoC is, the modest claim (verbatim boundary from POC_SCOPE), trust
   spine diagram, repo layout, quickstart (`uv sync --locked` → gate → `python -m demo` →
   `python -m demo.e2e`), live-stack recipe pointers (bench/webui READMEs), license note. Sweep
@@ -170,6 +170,26 @@ research needed (all-local stack, already probed).
   demo/webui READMEs with the new commands; `.agent/memory.md` gains only durable M6 facts.
   Acceptance: every criterion maps to landed evidence or an explicit modest-claim boundary; docs
   agree with commands; gate green; M6 IMPLEMENTED.
+  Landed root `README.md` as the SINGLE PoC-acceptance sweep (POC_SCOPE left as the stable
+  claim-boundary reference, not duplicated): what-it-is + the modest claim quoted VERBATIM from
+  POC_SCOPE (the four-artifacts "Verified means …" definition + the "line we hold" TCB paragraph,
+  both byte-exact — MAIN-verified against POC_SCOPE:22-33/78-82; the two `grep -F` "misses" were
+  newline-wrap false negatives) + an ASCII trust-spine (model proposes ONLY a spec → verifier
+  recomputes ALL plotted data + re-binds dataset by hash → allowlist builder inlines only that →
+  renderer + DSSE VCert v0.2 5 hashes; pixels/`vl-convert`/SVG-raster/browser stay TCB) + repo
+  layout + hardware-free quickstart (`uv sync --locked` → gate → `python -m demo` →
+  `python -m demo.e2e`) + live-stack pointers (bench/webui READMEs; `--with-webui`/`--with-model`
+  off-by-default, :8001 stub-XOR-NPU) + `Apache-2.0 WITH LLVM-exception`. All 10 seed criteria map
+  to landed evidence + an explicit modest boundary (guard bypassable #1/#9, corpus-bound not
+  universal #5/#6, browser-textual/pixels-TCB #8, replay-not-model/drift→diagnostic #10). Code
+  anchors MAIN-checked to resolve (`checks.verify_run`/`eval.evaluate_run`/`render.prepare_render`/
+  `render.build_vega_lite`/`ProposeRequest`/`WebUIClient.run_persisted_chat`/`BLOCKED_NOTICE`).
+  `demo/README.md` gains a `python -m demo.e2e` three-case section; `webui/README.md` gains the
+  `python -m webui chat --prompt …` pointer; `.agent/memory.md` gains one durable line. Docs-only
+  (coverage source stays `verifier`): gate INDEPENDENTLY re-green — ruff format 93 / ruff check /
+  mypy 93 / pytest 1563 @ 100% branch (all unchanged) + `python -m demo` 13/13 + `python -m demo.e2e`
+  3/3, exit 0. M6 IMPLEMENTED (M6.1–M6.4 all DONE).
+  Context: `main=56% 153K/272K`; `impl=69% 189K/272K`.
 
 ---
 

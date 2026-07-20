@@ -144,6 +144,16 @@ In Open WebUI 0.10.2 the persisted final text is
 `output[0].content[0].text` (legacy `content` stays empty) and the verifier URL is in `embeds[0]`.
 The rendered iframe must contain the verified chart and omit `allow-same-origin` from its sandbox.
 
+The M6 persisted-chat CLI runs that flow without duplicating the request construction:
+
+```sh
+uv run --locked python -m webui chat --prompt \
+  "Create a verified bar chart of total revenue by month from sales.csv."
+```
+
+It calls `WebUIClient.run_persisted_chat`, waits for the persisted assistant message, then prints
+its final text from `output[0].content[0].text` and, when present, the chart URL from `embeds[0]`.
+
 An NPU run replaces the stub and measures the weak model separately. M4.5's fixed ten-prompt sample
 selected the tool on 5/10 prompts but produced no verified chart: four calls reached the verifier
 with undecodable fenced specs and one omitted a required argument. That observation is not a bound;
