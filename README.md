@@ -90,6 +90,7 @@ The certificate binds the exact emitted Vega-Lite bytes, not SVG rasterization o
 ├── bench/                 weak-model failure evaluation and deterministic corpus guarantee
 ├── webui/                 Open WebUI provisioning, guardrail, stub, and persisted-chat harness
 ├── demo/                  hardware-free hardening and real-socket end-to-end walkthroughs
+├── tests/                 hardware-free pytest unit and integration suite
 ├── examples/              10 known-good and 18 known-bad VPlot specifications
 ├── data/                  synthetic source CSVs and trusted column manifests
 ├── schema/                exported VPlot JSON Schema golden

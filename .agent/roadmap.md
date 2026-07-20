@@ -17,13 +17,35 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M3 | Local model proposer + failure eval | 1·model,7,8·propose,12 | local OpenAI-compat backend — OpenVINO (confirmed M3.1a; was "Ollama") | REVIEWED |
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
-| M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | IMPLEMENTED |
+| M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M6 — End-to-end demo   (IMPLEMENTED)
+## M6 — End-to-end demo   (REVIEWED)
+
+### Review ledger: M6 REVIEWED — all dispositions closed
+
+Lenses (correctness/integration/conformance/efficiency) + a README-evidence audit over M6.1–M6.4
+(`git log --grep "(M6[. ]"`); every accepted fix folded into this review commit, no separate batches:
+- FIXED code: W2 `_run_webui_leg` → fail-closed when the persisted chat yields no chart (was a
+  false PASS); `test_main_with_webui_fails_when_chat_produces_no_chart` locks it. W1
+  `--with-webui`/`--with-model` → mutually-exclusive argparse group (enforces the :8001
+  stub-XOR-NPU constraint the CLI never checked) + a both-flags rejection test.
+- FIXED docs: roadmap M6.2 dropped an impossible "100 new tests" count; roadmap M6.3 replaced the
+  invalid combined `--with-webui --with-model` command (now argparse-rejected) with the two separate
+  passes; README repo-layout tree gained the omitted `tests/`.
+- ADJUDICATED honestly-bounded, no change (README PoC criteria): item 8 inline-chart (global claim
+  excludes "what reaches the screen"), item 9 guard (boundary = heuristic/bypassable/usability-only,
+  never verification — matches POC_SCOPE), item 10 replay/cert (POC_SCOPE:40-44: keyid =
+  unauthenticated hint, no PKI). A README-link "blank-line split" flag was a lossy-read artifact, not
+  real. Modest-claim + TCB verbatim from POC_SCOPE; cert-auth soundness + reason-string exactness
+  confirmed, empirically corroborated by the green `python -m demo.e2e` (reasons, both z3_smt checks,
+  "no external PKI claim").
+
+CLOSED: M6 REVIEWED — gate independently reran green (ruff/mypy clean, 1,564 passed @ 100% branch,
+demo 3/3, exit 0).
 
 **Gate: full stack (M3+M4) — CONFIRMED live at this planning turn.** Fresh probes this session:
 intel-accel selftest enumerated CPU/GPU/NPU all `correct=True`; the NPU `model_backend` served
@@ -111,7 +133,7 @@ research needed (all-local stack, already probed).
   validator, chat-only-required); result → stdout, progress → logger. Live hardware-free acceptance
   (MAIN, real OWUI 0.10.2): stub+bootstrap → `python -m webui chat` returned the stub summary +
   `http://127.0.0.1:8000/chart/<64-hex>`, exit 0 (cold-boot ~110s here). `webui/` coverage-excluded,
-  so its 100 new tests don't gate the 100%-branch coverage. Gate green (ruff/mypy + pytest 1556 @
+  so its new tests don't gate the 100%-branch coverage. Gate green (ruff/mypy + pytest 1556 @
   100% branch). Services/state torn down, ports freed, `.webui-data`/tmp state removed.
   Context: `main=79% 214K/272K`; `impl=59% 161K/272K`.
 - **M6.3 — live-stack orchestration + demo evidence run** (DONE): add
@@ -121,8 +143,8 @@ research needed (all-local stack, already probed).
   `python -m verifier.service audit <id>` for one failure to show post-hoc diagnosability;
   observations, never bounds) flags to `demo/e2e.py`; both default OFF so M6.1's hardware-free
   contract holds; tests stub the legs (no live deps in gate). MAIN then executes the full live
-  evidence run: three terminals recipe (NPU backend, verifier, webui serve + bootstrap), `python
-  -m demo.e2e --with-webui --with-model`, the README outlet block/pass differential, and a
+  evidence run: three terminals recipe (NPU backend, verifier, webui serve + bootstrap), `python -m demo.e2e --with-webui` /
+  `--with-model` (separate passes), the README outlet block/pass differential, and a
   chromiumfish `/c/{chat_id}` capture proving the embedded verified chart + badge (browser
   evidence stays textual in this roadmap per M4.5/M5.3c precedent — no literal M4.5 command
   survives, only the flag skeleton above; binary resolves via `command -v chromiumfish`; captures

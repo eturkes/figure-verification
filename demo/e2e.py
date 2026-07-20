@@ -638,18 +638,22 @@ def _run_webui_leg() -> WebuiObservation:
             detail=f"{type(exc).__name__}: {exc}",
         )
 
-    detail = (
-        "persisted chat completed without a chart"
-        if chart_url is None
-        else "persisted chat chart certificate verified"
-    )
+    if chart_url is None:
+        return WebuiObservation(
+            status="FAIL",
+            prompt=_WEBUI_PROMPT,
+            final_text=final_text,
+            chart_url=None,
+            certificate=None,
+            detail="persisted chat completed without a chart",
+        )
     return WebuiObservation(
         status="PASS",
         prompt=_WEBUI_PROMPT,
         final_text=final_text,
         chart_url=chart_url,
         certificate=certificate,
-        detail=detail,
+        detail="persisted chat chart certificate verified",
     )
 
 
@@ -801,8 +805,9 @@ def _configure_logging() -> None:
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--with-webui", action="store_true")
-    parser.add_argument("--with-model", action="store_true")
+    leg = parser.add_mutually_exclusive_group()
+    leg.add_argument("--with-webui", action="store_true")
+    leg.add_argument("--with-model", action="store_true")
     parser.add_argument("--verifier-url", default=_DEFAULT_VERIFIER_URL)
     return parser.parse_args(argv)
 

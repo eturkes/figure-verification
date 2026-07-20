@@ -78,6 +78,12 @@ def test_main_without_flags_keeps_walkthrough_report_bytes(
     assert list(body) == ["generated_at", "status", "passed", "failed", "total", "results"]
 
 
+def test_parse_args_rejects_both_legs_together() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        e2e._parse_args(["--with-webui", "--with-model"])
+    assert excinfo.value.code == 2
+
+
 def test_main_with_webui_verifies_chart_certificate(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -112,7 +118,7 @@ def test_main_with_webui_verifies_chart_certificate(
     )
 
 
-def test_main_with_webui_accepts_chat_without_chart(
+def test_main_with_webui_fails_when_chat_produces_no_chart(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     report_path = _prepare_main(monkeypatch, tmp_path)
@@ -128,13 +134,14 @@ def test_main_with_webui_accepts_chat_without_chart(
     monkeypatch.setattr(WebUIClient, "run_persisted_chat", run_persisted_chat)
     monkeypatch.setattr(e2e, "_fetch_and_verify_certificate", unexpected_fetch)
 
-    assert e2e.main(["--with-webui"]) == 0
+    assert e2e.main(["--with-webui"]) == 1
     report = _decode_e2e(report_path)
-    assert report.status == "PASS"
+    assert report.status == "FAIL"
     assert report.webui is not None
-    assert report.webui.status == "PASS"
+    assert report.webui.status == "FAIL"
     assert report.webui.chart_url is None
     assert report.webui.certificate is None
+    assert report.webui.detail == "persisted chat completed without a chart"
 
 
 def test_main_with_webui_records_provisioning_error(
