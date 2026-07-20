@@ -18,8 +18,114 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
+| M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | IN-PROGRESS |
 
-Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
+Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
+
+---
+
+## M7 — Interactive local-model browser instance   (IN-PROGRESS)
+
+A minimal, human-facing standup: one launcher brings up the existing verifier + `model_backend`
+(the REAL local OpenVINO model, per `CLAUDE.local.md`) + Open WebUI, provisioned, so the operator
+opens `http://127.0.0.1:8080` in a browser and interactively exercises the verified-plot pipeline.
+Adds NO verifier trust and moves NO claim boundary — Open WebUI, its function runner, the
+iframe/browser, and pixels stay trusted display/orchestration (POC_SCOPE TCB), exactly as M4
+established. New surface = orchestration + operator docs only; every service, provisioning step,
+and the chart/embed contract already exist (M3 `model_backend`, M4 `webui/`, M5 verifier, M6
+persisted-chat + demo). Not in the outline (seed 0–15 consumed by M1–M6) — a user request layered
+on the finished PoC. No new deps; no web research (all-local, already probed — `CLAUDE.local.md` +
+`bench/README.md` "OpenVINO wiring" + memory Stack cover OpenVINO).
+
+**Gate: live stack (verifier + OpenVINO `model_backend` + Open WebUI) — CONFIRMED at this planning
+turn.** Artifact probes this session: `models/Qwen2-0.5B-Instruct-int4-sym-ov/`, `.venv-model/`
+(openvino imports only after the accel env is sourced — expected), and `.venv-webui/bin/open-webui`
+all present; the host accel farm is intact (`/var/home/eturkes/.local/app/intel-accel/env.sh`,
+`.../openvino_genai/python/`, `.../intel-accel/selftest.py`). The M6 gate probe (same container,
+this session-lineage) already live-confirmed the full stack (intel-accel selftest CPU/GPU/NPU
+`correct=True`; NPU backend `/v1/models`; `webui serve`→`/ready`; `bootstrap` exit 0). M7.2's live
+standup re-confirms at run.
+
+Scope reconciliation + banked decisions (recon this session — read, don't re-derive):
+- **"Local model" = the existing `model_backend` on OpenVINO** (`CLAUDE.local.md`: prefer OpenVINO,
+  device preference NPU>GPU>CPU). NO `model_backend` code change: `Engine.load` gates the NPU
+  static-shape property by substring — `if "NPU" in settings.device` (`model_backend/engine.py:82`)
+  — so any NPU-bearing device string already carries `MAX_PROMPT_LEN`. Launcher DEFAULT
+  `MODEL_BACKEND_DEVICE=NPU` (top preference; M3/M6 live-confirmed, byte-deterministic greedy
+  ~68 tok/s). `AUTO:GPU,CPU` is the documented dynamic-shape fallback knob; `AUTO:NPU,GPU,CPU` /
+  `HETERO:...` stay probed experiments, not the default (bench/README: AUTO may transiently run on
+  CPU while compiling, and static-shape `MAX_PROMPT_LEN` + AUTO fallback is fragile).
+- **Accel-env recipe is load-bearing** (bench/README "OpenVINO wiring", authoritative,
+  host-coupled): before `model_backend` the launcher must `source
+  /var/home/eturkes/.local/app/intel-accel/env.sh` and prepend
+  `/var/home/eturkes/.local/app/openvino_genai/python` to `PYTHONPATH`, then run
+  `.venv-model/bin/python -m model_backend` DIRECTLY (loader paths are consumed at exec;
+  `uv run`/`-E`/`-I` strip `PYTHONPATH`). Both host paths become launcher env overrides defaulting
+  to these values. Wait for `/health`=200 (~7 s cold compile). The verifier imports no OpenVINO →
+  it launches via `uv run --locked python -m verifier.service` (no accel/`PYTHONPATH` needs).
+- **Orchestration order is load-bearing** (webui/README): verifier `/health` → backend
+  `/v1/models` → OWUI `/ready` → `webui bootstrap` (OWUI re-fetches each tool-server's OpenAPI and
+  drops an unreachable one, so the verifier must be up first). `webui serve` `os.execve`s (the
+  harness `_serve`) → the launcher backgrounds it as a child; a SIGINT/EXIT trap tears every child
+  down and frees :8000/:8001/:8080. `:8001` serves stub XOR backend (one port).
+- **Honest weak-model framing** (M3: the real NPU verifies 0/100 — 97/100 markdown-fenced, decode
+  refused): with the REAL local model the browser honestly shows blocked verdicts + the
+  `Verified Plot Guard` outlet notice — that IS the PoC (a trusted verifier holding against a
+  fully-failing untrusted proposer). A `--stub` flag swaps `model_backend`→`webui stub` (the
+  deterministic known-good `sales.csv` spec) for the verified-chart happy path, hardware-free. Docs
+  must set this expectation so a curious operator doesn't read "blocked" as "broken".
+- **Browser render is the operator's step, and the TCB boundary.** chromiumfish is BLOCKED in the
+  agent execution container (SwANGLE/Vulkan EGL init fails — memory M6.3; the M6-plan probe ran on
+  the host). The agent verifies up to the browser boundary (served chart HTML + CSP `sandbox
+  allow-scripts` + `embeds[0]` URL + fetched certificate + textual persisted-chat DOM); the
+  operator crosses it, which is also POC_SCOPE's trusted-display line. So "open it in my browser"
+  is genuinely the human's action; the milestone delivers + verifies the browser-ready instance.
+- **Personal-instance state**: bootstrap is idempotent and the admin user + owned function persist
+  in `.webui-data/` → the launcher KEEPS `.webui-data` across runs (fast re-launch); `--fresh`
+  wipes it. Default admin `operator@localhost` / `loopback-dev-password` (loopback dev defaults,
+  overridable via `WEBUI_PROVISION_*`). The launcher raises the verifier work-rate
+  (`VERIFIER_WORK_RATE_PER_MINUTE`/`_BURST`, per the webui/README smoke) so interactive clicking
+  isn't 429-throttled.
+- **Placement**: launcher = committed `webui/launch.sh` (co-located with the harness it invokes;
+  root README + webui/README point to it), bash — outside the ruff/mypy/pytest gate, like the rest
+  of `webui/`. M7 changes no `verifier` coverage-source Python, so the existing gate (ruff/mypy/
+  pytest 1563 @ 100% branch) stays green unchanged; acceptance is a live standup recorded as
+  evidence, per M4/M6 precedent.
+
+Sizing: one bash orchestrator + operator docs over already-built services — small. Two units
+isolate the hardware gate (mirroring M6's deterministic-then-live shape); both fit well under the
+~200K aim.
+
+- **M7.1 — one-command launcher + hardware-free (`--stub`) standup** (OPEN): author
+  `webui/launch.sh`, a repo-root bash orchestrator that (1) optionally `--fresh`-wipes
+  `.webui-data`; (2) starts the verifier (`uv run --locked python -m verifier.service`, raised
+  work-rate) and waits `/health`; (3) starts the model tier — default REAL `model_backend` (source
+  accel env + OpenVINO `PYTHONPATH`, `.venv-model/bin/python -m model_backend`, device default
+  `NPU`) XOR `--stub` (`webui stub`, hardware-free) — and waits `/v1/models`; (4) starts
+  `webui serve` (backgrounded child) and waits `/ready`; (5) runs `webui bootstrap`; (6) prints the
+  browser URL + admin creds + a one-line "what to try"; (7) traps SIGINT/EXIT to tear all children
+  down and free the three ports. Host accel paths, device, creds, and ports are env overrides with
+  the confirmed defaults. Acceptance (HARDWARE-FREE, MAIN-executed in the agent container):
+  `webui/launch.sh --stub` brings the stack up, all three health endpoints answer,
+  `python -m webui chat --prompt "…total revenue by month from sales.csv."` returns the stub
+  summary + a `/chart/{plot_id}` URL whose fetched certificate verifies, and the trap tears
+  everything down with :8000/:8001/:8080 freed; evidence recorded. Existing Python gate reruns
+  green (unchanged — no coverage-source edit).
+- **M7.2 — real local-model browser walkthrough + operator docs + M7 close** (OPEN): run
+  `webui/launch.sh` with the REAL local model (`MODEL_BACKEND_DEVICE=NPU`, per `CLAUDE.local.md`);
+  confirm the live standup (accel selftest / backend `/v1/models` / OWUI `/ready` / bootstrap
+  `models=1 tool_servers=1`); drive one persisted chat through the real model and record the honest
+  outcome (blocked verdict + `attempt_id`, plus the guard block/pass outlet differential —
+  observations, never bounds); prove the browser-ready surface textually for a `--stub` verified
+  case (served chart HTML/CSP + `embeds[0]` + certificate), since the real model produces no chart.
+  Author the human-facing docs — a root-README "Try it in your browser" section (one command → open
+  `http://127.0.0.1:8080` → log in → what to type → what to expect with the real weak model vs
+  `--stub`) + a `webui/README.md` "interactive instance" pointer at `launch.sh`, reconciled with
+  the existing multi-terminal recipe; `.agent/memory.md` gains only durable M7 facts. MAIN closes
+  M7 (set M7.1+M7.2 DONE, M7 IMPLEMENTED, record main=/impl=, commit). Acceptance: the launcher
+  stands the real-model instance up browser-ready; docs match the launcher and set the honest
+  weak-model expectation with the `--stub` happy-path pointer; no overclaim (pixels/browser stay
+  TCB; the guard stays a bypassable guardrail); existing gate green; M7 IMPLEMENTED.
 
 ---
 
