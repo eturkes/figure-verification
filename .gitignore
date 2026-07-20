@@ -40,6 +40,8 @@ demo/reports/
 
 # Service artifacts
 .verifier-state/
+# One-command launcher runtime (M7; per-service *.log + launch.pid; regenerable)
+.launch-logs/
 *.duckdb
 *.duckdb.wal
 *.log

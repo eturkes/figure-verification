@@ -96,7 +96,7 @@ Sizing: one bash orchestrator + operator docs over already-built services — sm
 isolate the hardware gate (mirroring M6's deterministic-then-live shape); both fit well under the
 ~200K aim.
 
-- **M7.1 — one-command launcher + hardware-free (`--stub`) standup** (OPEN): author
+- **M7.1 — one-command launcher + hardware-free (`--stub`) standup** (DONE): author
   `webui/launch.sh`, a repo-root bash orchestrator that (1) optionally `--fresh`-wipes
   `.webui-data`; (2) starts the verifier (`uv run --locked python -m verifier.service`, raised
   work-rate) and waits `/health`; (3) starts the model tier — default REAL `model_backend` (source
@@ -111,6 +111,34 @@ isolate the hardware gate (mirroring M6's deterministic-then-live shape); both f
   summary + a `/chart/{plot_id}` URL whose fetched certificate verifies, and the trap tears
   everything down with :8000/:8001/:8080 freed; evidence recorded. Existing Python gate reruns
   green (unchanged — no coverage-source edit).
+  Landed executable `webui/launch.sh` (repo-root bash orchestrator, SPDX header) + `.gitignore`
+  entry for `.launch-logs/` (per-service `*.log` + `launch.pid`, regenerable). It is bash, outside
+  the ruff/mypy/pytest gate, so shellcheck is its quality gate (clean; one justified
+  `# shellcheck disable=SC2016` on the single-quoted `bash -c` accel child) and `bash -n` parses.
+  Design: each service starts under its own `setsid` session/process-group, so `cleanup`
+  group-kills (`kill -- -pgid`, 10s grace, then `SIGKILL`) with a `fuser -k` port backstop that
+  frees every straggler; `trap cleanup EXIT` + `trap 'exit 130' INT` + `trap 'exit 143' TERM`; the
+  launcher blocks on `wait -n`. Standup order is verifier `/health` → model `/v1/models` →
+  Open WebUI `/ready` → `webui bootstrap` → banner (browser URL + admin creds + a what-to-try
+  line). Every host path/device/cred/port/timeout is an env override with the confirmed default
+  (ports 8000/8001/8080, `MODEL_BACKEND_DEVICE=NPU`, accel `INTEL_ACCEL_ENV` /
+  `OPENVINO_GENAI_PYTHON`, `operator@localhost` / `loopback-dev-password`, work-rate 10000). Real
+  model tier = accel env sourced + OpenVINO `PYTHONPATH` prepended in a subshell then
+  `.venv-model/bin/python -m model_backend` DIRECTLY (uv run/`-E`/`-I` strip PYTHONPATH); the
+  `--stub` tier = `uv run --locked python -m webui stub`; `--fresh` wipes `.webui-data`. Live
+  hardware-free acceptance (MAIN, agent container): `webui/launch.sh --stub --fresh` reached READY;
+  all three health endpoints answered; `python -m webui chat` returned "Figure Verifier confirmed
+  the chart; all checks passed." + `http://127.0.0.1:8000/chart/<64-hex>`; the fetched
+  `/certificate/{plot_id}` verified under the advertised `/key/{keyid}` Ed25519 key via
+  `attestation.verify_vcert` (vcert-0.2, 10 checks, keyid `sha256:88ca1e07…`). Teardown proven
+  twice: programmatic SIGTERM → cleanup → :8000/:8001/:8080 freed (0 listeners), AND an operator
+  Ctrl-C under a real controlling PTY → INT trap → `exit 130` → cleanup → ports freed. Teardown
+  gotcha (durable; → memory at M7.2): a `&`-backgrounded launcher inherits SIGINT=`SIG_IGN` (bash
+  cannot trap a signal ignored on entry to a non-interactive shell), so the INT trap is a silent
+  no-op ONLY when backgrounded — SIGTERM/EXIT still tear down and interactive Ctrl-C works
+  (PTY-proven); programmatic teardown uses SIGTERM or the `.launch-logs/launch.pid` pidfile. Gate
+  re-green unchanged: ruff format 93 / ruff check / mypy 93 / pytest 1564 @ 100% branch.
+  Context: `main=85% 230K/272K`; `impl=36% 98K/272K` (implementing Agent).
 - **M7.2 — real local-model browser walkthrough + operator docs + M7 close** (OPEN): run
   `webui/launch.sh` with the REAL local model (`MODEL_BACKEND_DEVICE=NPU`, per `CLAUDE.local.md`);
   confirm the live standup (accel selftest / backend `/v1/models` / OWUI `/ready` / bootstrap
