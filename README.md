@@ -204,6 +204,43 @@ From a clean checkout, no model backend or accelerator is required:
    uv run --locked python -m demo.e2e
    ```
 
+## Try it in your browser
+
+One command stands up the whole instance — the verifier, a local model, and Open WebUI, fully
+provisioned — so you can drive the verified-plot pipeline from a browser:
+
+```sh
+webui/launch.sh          # real local model on the NPU (hardware-gated)
+webui/launch.sh --stub   # deterministic stub, no accelerator required
+```
+
+The launcher waits for the verifier (`:8000`), the model backend (`:8001`), and Open WebUI
+(`:8080`), bootstraps Open WebUI, then prints a banner with the browser URL and admin login. The
+one-time `.venv-webui` setup — and, for the real model, the accelerator wiring — is in
+[webui/README.md](webui/README.md); `--fresh` wipes the persisted instance, and `Ctrl-C` frees all
+three ports.
+
+Then open `http://127.0.0.1:8080`, log in with the printed credentials (`operator@localhost` /
+`loopback-dev-password` by default), and type a chart request such as
+`Create a verified bar chart of total revenue by month from sales.csv.` What happens depends on the
+model tier:
+
+- **Real local model (default).** The weak local model almost never produces a valid VPlot spec: it
+  typically returns fenced JSON that rambles past the strict decode gate, or ignores the tool and
+  replies with raw plotting code. Either way **nothing is verified** — the proposal is blocked at
+  `spec.decode`, and the `Verified Plot Guard` outlet rewrites any chart-looking answer to a blocked
+  notice. That is the PoC working as intended: a trusted verifier holding the line against a
+  fully-failing untrusted proposer. Each attempt is still committed and auditable with
+  `uv run --locked python -m verifier.service audit <attempt_id>`.
+- **`--stub`.** The deterministic stub proposes a known-good `sales.csv` spec, so a **verified chart
+  renders inline** with its provenance badge — the dataset, manifest, spec, recomputed-table, and
+  emitted Vega-Lite hashes; every passing check with its method; and the signer keyid — plus a
+  certificate link. This is the verified happy path, hardware-free.
+
+Open WebUI, its iframe, the browser, and the pixels stay trusted display — the modest claim above
+and [POC_SCOPE.md](POC_SCOPE.md) hold that line — while the `Verified Plot Guard` is a bypassable
+usability guardrail, never evidence of verification.
+
 ## Live full-stack recipes
 
 The hardware-gated two-server NPU evaluation recipe is in [bench/README.md](bench/README.md).

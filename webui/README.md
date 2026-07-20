@@ -29,6 +29,28 @@ Open WebUI 0.10.2 refuses the project's Python 3.13 line, so its ignored `.venv-
 separate Python 3.12 environment. The harness executes its binary; it never imports Open WebUI into
 the verifier environment.
 
+## One-command interactive instance
+
+`webui/launch.sh` (run from the repository root) automates the entire per-terminal recipe below in a
+single command: it starts the verifier, the model tier, and Open WebUI in the load-bearing order,
+waits for each readiness endpoint, runs `bootstrap`, prints the browser URL and admin login, then
+blocks until interrupted, tearing every child down and freeing the three ports on exit.
+
+```sh
+webui/launch.sh          # real local model on the NPU (needs .venv-model and the accel farm)
+webui/launch.sh --stub   # deterministic stub, no accelerator required
+webui/launch.sh --fresh  # wipe the persisted .webui-data instance before starting
+```
+
+The model tier is the real OpenVINO `model_backend` on the NPU (default) or the hardware-free stub
+(`--stub`), mutually exclusive on port `8001`. Every host path, device, credential, port, and
+timeout is an environment override with the default documented in the script header. Interactive
+`Ctrl-C` tears the instance down; a scripted, backgrounded launcher does not receive `SIGINT`, so
+send `SIGTERM` (or use `.launch-logs/launch.pid`) to stop one non-interactively.
+
+The per-terminal recipe below remains the way to run each service on its own — for debugging a
+single service or a custom topology — and documents exactly what the launcher automates.
+
 ## Clean hardware-free smoke
 
 Run each long-lived service in its own terminal. Stop any prior Open WebUI process before deleting

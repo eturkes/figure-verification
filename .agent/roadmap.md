@@ -18,13 +18,13 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M4 | Open WebUI integration | 1·webui,9,10,11 | Open WebUI running — CONFIRMED at plan | REVIEWED |
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
-| M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | IN-PROGRESS |
+| M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | IMPLEMENTED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M7 — Interactive local-model browser instance   (IN-PROGRESS)
+## M7 — Interactive local-model browser instance   (IMPLEMENTED)
 
 A minimal, human-facing standup: one launcher brings up the existing verifier + `model_backend`
 (the REAL local OpenVINO model, per `CLAUDE.local.md`) + Open WebUI, provisioned, so the operator
@@ -139,7 +139,7 @@ isolate the hardware gate (mirroring M6's deterministic-then-live shape); both f
   (PTY-proven); programmatic teardown uses SIGTERM or the `.launch-logs/launch.pid` pidfile. Gate
   re-green unchanged: ruff format 93 / ruff check / mypy 93 / pytest 1564 @ 100% branch.
   Context: `main=85% 230K/272K`; `impl=36% 98K/272K` (implementing Agent).
-- **M7.2 — real local-model browser walkthrough + operator docs + M7 close** (OPEN): run
+- **M7.2 — real local-model browser walkthrough + operator docs + M7 close** (DONE): run
   `webui/launch.sh` with the REAL local model (`MODEL_BACKEND_DEVICE=NPU`, per `CLAUDE.local.md`);
   confirm the live standup (accel selftest / backend `/v1/models` / OWUI `/ready` / bootstrap
   `models=1 tool_servers=1`); drive one persisted chat through the real model and record the honest
@@ -154,6 +154,52 @@ isolate the hardware gate (mirroring M6's deterministic-then-live shape); both f
   stands the real-model instance up browser-ready; docs match the launcher and set the honest
   weak-model expectation with the `--stub` happy-path pointer; no overclaim (pixels/browser stay
   TCB; the guard stays a bypassable guardrail); existing gate green; M7 IMPLEMENTED.
+  Done (MAIN-executed live evidence run + docs — the launcher landed in M7.1, so M7.2 adds only the
+  walkthrough + operator docs, no implementing Agent). Precondition reconfirmed this session:
+  OpenVINO 2026.2.1 + `openvino_genai` import in `.venv-model` with the accel env sourced, NPU
+  enumerated (`['CPU','GPU','NPU']`) — the exact environment the real `model_backend` child runs in
+  (so the accel farm/NPU DO work in this container; only chromiumfish/GL is blocked, per M6.3 → the
+  browser render stays the operator's step). REAL-NPU standup: `webui/launch.sh --fresh` reached
+  READY — verifier `/health`, backend `/v1/models` (serving `Qwen2-0.5B-Instruct-int4-sym-ov`,
+  `owned_by=openvino`), OWUI `/ready` all 200; idempotent `bootstrap` → `models=1 tool_servers=1`
+  (signup 403 → signin 200, admin persists); launcher alive on the `.launch-logs/launch.pid`
+  pidfile. REAL-MODEL walkthrough (observations, never bounds): three live `/propose-spec` →
+  `verified=False`, `layer=decode`, `spec.decode`/`schema_validation`/`fail`, three distinct
+  `attempt_id`s (`e9582b62…`/`25da6705…`/`6c94ad52…`; the CSPRNG nonce distinguishes even the
+  repeated sales.csv prompt), replies fenced-then-rambling (runaway digit string) XOR `bare_object`,
+  messages `JSON malformed: invalid character (byte 0)` / `Input data was truncated`; `python -m
+  verifier.service audit e9582b62…` → `attempt-audit-0.1`, DSSE `valid` under
+  `current-or-explicitly-pinned`, outcome `rejected`, `plot_id: null`, keyid `sha256:88ca1e07…`,
+  all five blobs (raw_spec/verdict/model_request/model_response/model_reply) as redacted
+  metadata+digests only. Guard differential via `/api/chat/completed` — chart-looking →
+  `BLOCKED_NOTICE`, prose unchanged; a persisted chat through the real model IGNORED the tool and
+  returned raw matplotlib code (no tool call, `embeds[0]` empty → no verified chart) — exactly the
+  chart-looking reply the browser's outlet blocks. `--stub` BROWSER-READY surface (the real model
+  produces no chart): `webui/launch.sh --stub` → persisted chat returned `Figure Verifier confirmed
+  the chart; all checks passed.` + `embeds[0]` = `…:8000/chart/0415e6a1…`; the served page is HTTP
+  200 `text/html` under CSP `sandbox allow-scripts` (no `allow-same-origin`) with server-rendered
+  `Verified`/`Checks passed` + `vcert`/`vplot-signature` markup + the plot_id; the fetched
+  `/certificate/{plot_id}` DSSE-verified via `attestation.verify_vcert` under the advertised
+  `/key/{keyid}` Ed25519 key — `vcert-0.2`, all five bound hashes
+  (dataset/spec/plotted_table/manifest/vega_lite), 10 passing checks (4 `construction` + 4
+  `deterministic_recompute` + 2 `z3_smt`: `sort.canonical_order`, `scale.bar_zero`), keyid
+  `sha256:88ca1e07…` (same signing identity across both passes, from the reused `.verifier-state`).
+  Teardown proven both passes: SIGTERM to the pidfile → launcher exited in ~3 s → `cleanup` freed
+  :8000/:8001/:8080 and removed the pidfile (the backgrounded INT-trap no-op held; the SIGTERM path
+  was exercised, per the M7.1 gotcha now banked in memory). State torn down —
+  `.launch-logs`/`.webui-data`/`.verifier-state` removed, tree clean, ports free. DOCS: root
+  `README.md` gained a `## Try it in your browser` section (one command → open
+  `http://127.0.0.1:8080` → log in → what to type → the honest real-weak-model expectation vs the
+  `--stub` verified happy path, with the browser/pixels-TCB + bypassable-guard boundary);
+  `webui/README.md` gained a `## One-command interactive instance` section pointing at `launch.sh`,
+  reconciled with the per-terminal recipe it automates; `.agent/memory.md` gained two durable M7
+  bullets (launcher contract + teardown gotcha; the honest walkthrough + the accel/NPU-works-here /
+  only-GL-blocked clarification). No overclaim: pixels/browser stay TCB, the guard stays a bypassable
+  guardrail, every model observation is framed as an observation not a bound. Docs-only (coverage
+  source stays `verifier`): gate INDEPENDENTLY re-green — ruff format 93 / ruff check / mypy 93 /
+  pytest 1564 @ 100% branch (unchanged from M7.1). M7 IMPLEMENTED (M7.1 + M7.2 both DONE).
+  Context: `main=76% 207K/272K`; `impl=(none — MAIN-executed live evidence run + docs; the launcher
+  itself landed in M7.1)`.
 
 ---
 
