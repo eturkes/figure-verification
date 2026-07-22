@@ -247,24 +247,25 @@ log "provisioning Open WebUI (admin + model + verifier tool registration)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. The "Try typing" pair is mode-aware because in this PoC the block-vs-verify outcome is
-#    driven by the MODEL TIER, not the prompt text. The real weak model almost never emits a valid
-#    spec, so a chart request is blocked (that IS the PoC) while a plain question -- not a chart --
-#    passes the guard untouched. The deterministic stub is a scripted fixture that emits ONE
-#    known-good spec for ANY prompt, so every request verifies to the same chart. So each tier gets
-#    an honest pair, plus how to flip the chart request's outcome by relaunching in the other tier.
+# 5) banner. "Try typing" shows ONE figure request and is mode-aware, because in this PoC the
+#    verify-vs-block outcome is driven by the MODEL TIER, not the prompt text -- so one tier can
+#    honestly demonstrate only one of the two outcomes. Under --stub the scripted fixture proposes a
+#    known-good spec, so the request VERIFIES and the chart renders inline as an actual figure (the
+#    verified-success Location embed -> a sandboxed /chart iframe in the reply). Under the real weak
+#    model a valid spec almost never appears, so nothing renders and the Verified Plot Guard outlet
+#    replaces any chart-like reply with its blocked notice. Each tier states its genuine outcome and
+#    points at the other tier for the opposite one.
 chart_prompt="Create a verified bar chart of total revenue by month from sales.csv."
-plain_prompt="In one sentence, what does Figure Verifier check before it shows a chart?"
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
-  item1_headline="VERIFIES (verified chart) -- the stub emits a known-good spec:"
-  item2_headline="ALSO VERIFIES -- the stub is a scripted fixture: ANY prompt yields the same chart:"
-  flip_line="To watch a request get BLOCKED instead, relaunch the real weak model:  webui/launch.sh"
+  outcome_headline="VERIFIES -- the verifier recomputes the data and every check passes."
+  outcome_detail="The chart renders inline as a real figure (a sandboxed frame), not just its spec or code."
+  flip_line="To watch the SAME request get BLOCKED instead, relaunch:  webui/launch.sh"
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
-  item1_headline="OFTEN BLOCKED -- the weak model emits raw plot code or an invalid spec (that IS the PoC):"
-  item2_headline="OFTEN SUCCEEDS -- a plain question is not a chart, so it passes straight through:"
-  flip_line="To watch that chart request VERIFY (hardware-free), relaunch:  webui/launch.sh --stub"
+  outcome_headline="USUALLY BLOCKED -- the weak model rarely proposes a spec that verifies (that IS the PoC)."
+  outcome_detail="No chart renders; any chart-like reply is replaced with a plain \"blocked\" notice."
+  flip_line="To watch it VERIFY and render a real figure (hardware-free), relaunch:  webui/launch.sh --stub"
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER
@@ -277,10 +278,11 @@ cat >&2 <<BANNER
     Model      ${model_desc}
 
     Try typing:
-      ${item1_headline}
         ${chart_prompt}
-      ${item2_headline}
-        ${plain_prompt}
+
+      ${outcome_headline}
+        ${outcome_detail}
+
       ${flip_line}
 
     Logs       ${LOG_DIR}/{verifier,model,webui}.log
