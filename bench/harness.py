@@ -523,8 +523,8 @@ def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
     A verified-success 200 is the Open WebUI Location-variant embed (app.py propose_spec_route): a
     [ProposeResult, summary] JSON array marked by a Location header -> take element0, the full
     structured result. A non-verified 200 (any failing verdict) carries the bare ProposeResult
-    object. The weak local model never reaches verified success live, but the shape must decode so
-    a stronger model's verified chart still tallies here.
+    object. A weak local model verifies only a minority of prompts live, so both shapes occur; each
+    must decode so a verified chart still tallies here.
     """
     if "location" in response.headers:
         wrapped: tuple[_RespProposeResult, str] = msgspec.json.decode(

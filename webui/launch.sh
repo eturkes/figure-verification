@@ -269,7 +269,7 @@ else
     "    Try typing:" \
     "      1) ${succeeds_prompt}" \
     "" \
-    "           VERIFIES -- the verifier drafts the spec, recomputes the data, and every check passes," \
+    "           VERIFIES -- the model proposes the spec, the verifier recomputes the data, and every check passes," \
     "           so a real figure renders inline (a sandboxed frame), not just its code." \
     "" \
     "      2) ${blocked_prompt}" \

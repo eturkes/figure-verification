@@ -192,8 +192,8 @@ def test_defenced_json_valid() -> None:
 def test_decode_propose_result_reads_embed_and_bare() -> None:
     # A verified-success 200 is the Open WebUI Location-variant embed ([ProposeResult, summary]
     # array marked by a Location header) -> take element0; a non-verified 200 is the bare
-    # ProposeResult object. Both yield the structured result the report tallies. The weak model
-    # never reaches verified success live, but the shape must decode for a future stronger one.
+    # ProposeResult object. Both yield the structured result the report tallies. A weak model
+    # verifies only a minority of prompts live, so both shapes occur; each must decode here.
     verified = {
         "verified": True,
         "layer": "verify",

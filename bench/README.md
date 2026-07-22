@@ -108,7 +108,7 @@ Eval:
 - `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
   `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
 
-Headline numbers live in `.agent/roadmap.md` (M3 close-out) as durable evidence — reports/ is not
+Headline numbers live in `.agent/roadmap.md` (the M3 and M8 close-outs) as durable evidence — reports/ is not
 committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
 = INVALID run only: the guarantee broken (`false_accept > 0`, `false_reject > 0`, or transport
 errors) or NOT exercised (either corpus size or identity digest mismatches),

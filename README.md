@@ -87,7 +87,7 @@ The certificate binds the exact emitted Vega-Lite bytes, not SVG rasterization o
 ├── src/verifier/          trusted verifier core
 │   └── service/           `verifier.service` local HTTP transport, archive, audit, and replay
 ├── model_backend/         hardware-gated OpenVINO NPU wrapper; unshipped
-├── bench/                 weak-model failure evaluation and deterministic corpus guarantee
+├── bench/                 weak-model proposer evaluation and deterministic verifier-corpus guarantee
 ├── webui/                 Open WebUI provisioning, guardrail, stub, and persisted-chat harness
 ├── demo/                  hardware-free hardening and real-socket end-to-end walkthroughs
 ├── tests/                 hardware-free pytest unit and integration suite
@@ -224,19 +224,23 @@ Then open `http://127.0.0.1:8080`, log in with the printed credentials (`operato
 `loopback-dev-password` by default), and type a chart request such as
 `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`. Bootstrap makes Figure
 Verifier a default tool on the configured model, so browser chats offer it automatically with no
-manual tool toggle. What happens depends on the model tier:
+manual tool toggle. What happens depends on the model tier and, for the real model, on the exact prompt:
 
 - **Real local model (default).** Open WebUI's first call selects a tool without guidance; only a
-  selected `proposeSpec` call is schema-guided, forcing VPlot structure instead of the raw model's
-  markdown-fenced prose. The `webui/launch.sh` banner pins both live outcomes:
-  `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv` drives `proposeSpec`
-  and renders a real **verified chart inline**; `Using sales.csv, plot a chart of revenue versus
-  orders.` omits the required `dataset_name`, falls back to raw matplotlib, and the bypassable
-  `Verified Plot Guard` replaces it with `BLOCKED_NOTICE`. In M8.3's 100-prompt NPU observation,
-  26/100 arbitrary prompts fully verified (up from raw 0/100, with fence wrapping 97→0); this is not
-  a reliability bound. Blocking remains common and expected when output truncates or a structurally
-  valid proposal fails semantic checks. Guidance constrains structure only, never values, semantics,
-  or data: the strict verifier still re-decodes every proposal, recomputes the plotted table,
+  selected `proposeSpec` call is schema-guided, steering the weak model toward schema-representable
+  structure instead of the raw model's markdown-fenced prose. The `webui/launch.sh` banner pins both
+  live outcomes: `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv` drives
+  `proposeSpec` and renders a real **verified chart inline**; `Using sales.csv, plot a chart of
+  revenue versus orders.` returns the model's own unverified chart, which the bypassable
+  `Verified Plot Guard` replaces with `BLOCKED_NOTICE`. These are deterministic observations for the
+  pinned model, device, and config, not a reliability bound, and the guard never proves verification.
+  A separate 100-prompt bench that calls `/propose-spec` directly — exercising neither Open WebUI
+  tool selection nor the guard — fully verified 26/100 of its fixed benchmark prompts (versus raw
+  0/100, with fence wrapping 97→0), while 51/100 still failed strict decode and 23/100 failed a
+  semantic check; an observation, not a bound. Blocking remains common and expected when output
+  truncates or a structurally valid proposal fails semantic checks. Guidance constrains structure
+  only; it does not establish values, semantics, dataset binding, recomputation, provenance, or
+  acceptance: the strict verifier still re-decodes every proposal, recomputes the plotted table,
   re-binds the CSV by SHA-256, and alone decides whether a chart is verified. Each admitted attempt
   remains auditable with `uv run --locked python -m verifier.service audit <attempt_id>`.
 - **`--stub`.** The deterministic stub proposes a known-good `sales.csv` spec, so a **verified chart

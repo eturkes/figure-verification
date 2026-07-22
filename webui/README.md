@@ -121,7 +121,7 @@ when the tool is already attached. Persistent-config is disabled for launcher se
 tool/model/legacy-function-calling config comes from the launch environment, while the admin user,
 owned function, and workspace model config persist in `.webui-data/`.
 
-## Deterministic successful E2E
+## Deterministic successful E2E (`--stub`)
 
 With the hardware-free stack provisioned, this synchronous request proves the legacy selector,
 server tool, VPlot proposal, verifier, and clean verdict-context chain:
@@ -189,15 +189,17 @@ reached the verifier with undecodable fenced specs and one omitted a required ar
 observation is not a bound; the deterministic fixture above proves only that the integration works
 when its untrusted proposer supplies valid protocol messages.
 
-The shipped M8.3 default now schema-guides only a selected `proposeSpec` generation, so completed
-replies are structurally constrained VPlot objects rather than fenced prose. In the fixed 100-prompt
-live NPU run, `verified_render=0.26` versus the raw baseline's `0.00`; all 100 replies were bare
-objects and fence failures were eliminated, so the real model can render a verified chart for a
-well-formed request even though residual decode and semantic blocks remain. These results are
+The shipped M8.3 default now schema-guides a selected `proposeSpec` generation, steering the weak
+model toward schema-representable structure rather than fenced prose. In the fixed 100-prompt live
+NPU run, `verified_render=0.26` versus the raw baseline's `0.00`; every reply had the `bare_object`
+surface form (began `{`, with 0 fenced versus 97 raw) and 83/100 parsed as JSON, yet 51/100 still
+failed strict VPlot decode and 23/100 failed a semantic check — so the real model can render a
+verified chart for some well-formed requests while most attempts stay blocked. These results are
 observations, not bounds, reproducible only per device/config; they do not expand what the
-deterministic fixture proves. The `webui/launch.sh` two-example banner gives the pinned verified and
-blocked prompts, and [the bench recipe](../bench/README.md) documents reproduction and the
-session-logged, gitignored reports.
+deterministic fixture proves, and the 100-prompt bench calls `/propose-spec` directly, so it
+measures neither Open WebUI tool selection nor guard coverage. The `webui/launch.sh` two-example
+banner gives the pinned verified and blocked prompts, and [the bench recipe](../bench/README.md)
+documents reproduction and the session-logged, gitignored reports.
 
 ## Live outlet assertion
 

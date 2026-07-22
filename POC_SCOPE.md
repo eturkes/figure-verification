@@ -232,12 +232,16 @@ does not move: the model proposes only a spec, never plotted values, and the ver
 the whole plotted table and re-binds the source CSV by hash exactly as before — so the model
 earns no new trust, and a chart still rides only a verified, on-request outcome.
 
-Schema-guided decoding is the shipped default for a selected `proposeSpec` generation: the service
-asks the untrusted backend for structure-constrained ("guided") output so the weak model reliably
-emits structurally valid VPlot instead of markdown-fenced prose. This constrains output STRUCTURE
-ONLY — never values, semantics, or data — and is a generation convenience, not a trust grant or
-boundary change. The backend remains untrusted; the verifier strictly re-decodes every proposal and
-owns every semantic and provenance check. The modest claim and TCB line above are unchanged.
+Schema-guided decoding is the shipped default for `/propose-spec` generation: the service asks the
+untrusted backend for structure-constrained ("guided") output, steering the weak model toward
+schema-representable structure instead of markdown-fenced prose. The guidance schema is derived from
+the authoritative VPlot schema with the unsupported `pattern` and `format` constraints stripped;
+ordinary chat and Open WebUI tool selection omit the flag and stay unconstrained. This constrains
+output STRUCTURE ONLY — it does not establish semantic correctness, dataset binding, recomputation,
+provenance, or acceptance — and is a generation convenience, not a trust grant or boundary change.
+Guided bytes are still subject to the full strict VPlot decode and every semantic, resource, and SMT
+check; the backend remains untrusted, the verifier strictly re-decodes every proposal and owns every
+semantic and provenance check, and the modest claim and TCB line above are unchanged.
 
 Prompt construction and later trusted verification read separate bounded filesystem snapshots.
 A local change between them is an accepted TOCTOU boundary: the prompt may describe the earlier
@@ -261,9 +265,9 @@ model reply.
 
 Once the backend returns a reply with extractable content, that content is a spec proposal —
 however malformed — so it rides a `200` verdict just like a spec posted directly, including a
-decode failure (no longer the raw model's universal fence-wrapped mode: guided replies are bare
-objects, though token-cap truncation or value-level constraints can still fail strict decode; a
-common residual block after decode is semantic, for example a selected field absent from the
+decode failure (whether a reply passes strict decode or fails at decode or a later check is an
+observation of a particular model, device, and configuration, not part of this boundary; residual
+failures include strict-decode misses and semantic blocks such as a selected field absent from the
 recomputed plotted table). The verdict carries its committed
 `attempt_id`. Only a fault outside that flow answers
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
