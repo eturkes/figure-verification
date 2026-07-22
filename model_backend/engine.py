@@ -30,6 +30,7 @@ from typing import Any, Literal, Self
 import msgspec
 import openvino_genai as ov_genai
 
+from model_backend.schema_guidance import load_guidance_schema
 from model_backend.settings import Settings
 
 
@@ -58,12 +59,19 @@ class Engine:
     """A loaded LLMPipeline guarded by a lock. Build via Engine.load (blocking compile)."""
 
     def __init__(
-        self, pipe: Any, tokenizer: Any, *, max_prompt_len: int, max_response_bytes: int
+        self,
+        pipe: Any,
+        tokenizer: Any,
+        *,
+        max_prompt_len: int,
+        max_response_bytes: int,
+        guidance_schema: str | None = None,
     ) -> None:
         self._pipe = pipe
         self._tok = tokenizer
         self._max_prompt_len = max_prompt_len
         self._max_response_bytes = max_response_bytes
+        self._guidance_schema = guidance_schema
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
         # probed (see memory M3); the lock is the safe default.
         self._lock = threading.Lock()
@@ -77,7 +85,13 @@ class Engine:
         explicit tokenizer preflight keeps every native call at or below that shape. GPU/CPU use
         dynamic shapes and reject the compile property, so it is passed only for an NPU device;
         the logical preflight still applies there.
+
+        Structured guidance is fail-closed: when enabled, a missing, unreadable, or invalid JSON
+        schema aborts loading rather than silently serving unconstrained output.
         """
+        guidance_schema = (
+            load_guidance_schema(settings.vplot_schema_path) if settings.structured_output else None
+        )
         pipeline_config: dict[str, int] = {}
         if "NPU" in settings.device:
             pipeline_config["MAX_PROMPT_LEN"] = settings.max_prompt_len
@@ -88,6 +102,7 @@ class Engine:
             tokenizer,
             max_prompt_len=settings.max_prompt_len,
             max_response_bytes=settings.max_response_bytes,
+            guidance_schema=guidance_schema,
         )
 
     def generate(
@@ -121,6 +136,11 @@ class Engine:
             cfg.do_sample = temperature > 0
             if cfg.do_sample:
                 cfg.temperature = temperature
+            if self._guidance_schema is not None:
+                # Constrain VPlot structure only; semantics and provenance remain verifier-owned.
+                cfg.structured_output_config = ov_genai.StructuredOutputConfig(
+                    json_schema=self._guidance_schema
+                )
             # TokenizedInputs is the load-bearing handoff: a string overload may apply a chat
             # template again or otherwise retokenize after this method admitted a different
             # sequence. EncodedResults carries generated token ids, decoded exactly once here.

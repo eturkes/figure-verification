@@ -6,13 +6,23 @@ module boundary before importing ``model_backend.engine``; every test supplies f
 pipeline objects, so no accelerator, model load, or native generation enters the locked suite.
 """
 
+import json
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Any, cast
 
 import pytest
+from jsonschema import Draft202012Validator
 from litestar.testing import TestClient
+
+from model_backend.schema_guidance import load_guidance_schema, strip_guidance
+from model_backend.settings import Settings
+
+_ROOT = Path(__file__).resolve().parent.parent
+_SCHEMA_PATH = _ROOT / "schema" / "vplot-0.1.schema.json"
+_GOOD_SPECS_DIR = _ROOT / "examples" / "good_specs"
 
 _LENGTH = object()
 
@@ -20,13 +30,16 @@ _LENGTH = object()
 class _FakeOpenVinoGenAI(ModuleType):
     GenerationFinishReason = SimpleNamespace(LENGTH=_LENGTH)
 
+    class StructuredOutputConfig:
+        def __init__(self, *, json_schema: str) -> None:
+            self.json_schema = json_schema
+
 
 _OPENVINO_GENAI = _FakeOpenVinoGenAI("openvino_genai")
 sys.modules["openvino_genai"] = _OPENVINO_GENAI
 
 from model_backend.app import create_app  # noqa: E402
 from model_backend.engine import BackendError, Engine, GenResult  # noqa: E402
-from model_backend.settings import Settings  # noqa: E402
 
 
 class _Tensor:
@@ -64,9 +77,11 @@ class _Tokenizer:
 
 
 class _Config:
-    max_new_tokens = 0
-    do_sample = False
-    temperature = 0.0
+    def __init__(self) -> None:
+        self.max_new_tokens = 0
+        self.do_sample = False
+        self.temperature = 0.0
+        self.structured_output_config: _FakeOpenVinoGenAI.StructuredOutputConfig | None = None
 
 
 class _Metrics:
@@ -88,6 +103,7 @@ class _Pipe:
         self.tokenizer = tokenizer
         self.config_calls = 0
         self.generate_calls = 0
+        self.last_config: _Config | None = None
 
     def get_tokenizer(self) -> _Tokenizer:
         return self.tokenizer
@@ -101,6 +117,7 @@ class _Pipe:
         # tokenize differently after the preflight decision.
         assert tokenized is self.tokenizer.encoded
         assert config.max_new_tokens == 7
+        self.last_config = config
         self.generate_calls += 1
         return _Encoded()
 
@@ -118,6 +135,153 @@ def _engine(token_count: int, *, max_prompt_len: int = 3) -> tuple[Engine, _Toke
         tokenizer,
         pipe,
     )
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    loaded: Any = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return cast("dict[str, Any]", loaded)
+
+
+def _loaded_engine(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> tuple[Engine, _Pipe]:
+    tokenizer = _Tokenizer(3)
+    pipe = _Pipe(tokenizer)
+
+    def load(_model_dir: str, _device: str, **_config: int) -> _Pipe:
+        return pipe
+
+    monkeypatch.setattr(_OPENVINO_GENAI, "LLMPipeline", load, raising=False)
+    return Engine.load(settings), pipe
+
+
+def test_strip_guidance_removes_only_pattern_and_format_recursively() -> None:
+    source: dict[str, Any] = {
+        "pattern": "^root$",
+        "format": "date-time",
+        "required": ["outer"],
+        "additionalProperties": False,
+        "$defs": {
+            "Inner": {
+                "anyOf": [
+                    {"type": "string", "pattern": "^x$", "minLength": 1},
+                    {
+                        "type": "object",
+                        "properties": {"value": {"type": "string", "format": "uri"}},
+                    },
+                ]
+            }
+        },
+    }
+
+    assert strip_guidance(source) == {
+        "required": ["outer"],
+        "additionalProperties": False,
+        "$defs": {
+            "Inner": {
+                "anyOf": [
+                    {"type": "string", "minLength": 1},
+                    {
+                        "type": "object",
+                        "properties": {"value": {"type": "string"}},
+                    },
+                ]
+            }
+        },
+    }
+    assert source["pattern"] == "^root$"
+    assert source["format"] == "date-time"
+
+    strict = _read_json_object(_SCHEMA_PATH)
+    strict_text = json.dumps(strict)
+    assert '"pattern"' in strict_text
+    guidance_text = json.dumps(strip_guidance(strict))
+    assert '"pattern"' not in guidance_text
+    assert '"format"' not in guidance_text
+    for structural_key in ("required", "additionalProperties", "anyOf", "$defs"):
+        assert f'"{structural_key}"' in guidance_text
+
+
+def test_guidance_schema_is_valid_and_accepts_all_good_goldens() -> None:
+    strict = _read_json_object(_SCHEMA_PATH)
+    guidance = strip_guidance(strict)
+    Draft202012Validator.check_schema(guidance)
+    validator = Draft202012Validator(guidance)
+    good_specs = sorted(_GOOD_SPECS_DIR.glob("g*.json"))
+    assert len(good_specs) == 10
+    for spec_path in good_specs:
+        validator.validate(_read_json_object(spec_path))
+
+
+def test_load_guidance_schema_round_trips_and_fails_closed(tmp_path: Path) -> None:
+    strict = _read_json_object(_SCHEMA_PATH)
+    guidance_text = load_guidance_schema(_SCHEMA_PATH)
+
+    assert '"pattern"' not in guidance_text
+    assert '"format"' not in guidance_text
+    assert json.loads(guidance_text) == strip_guidance(strict)
+    with pytest.raises(FileNotFoundError):
+        load_guidance_schema(tmp_path / "missing.json")
+
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{", encoding="utf-8")
+    with pytest.raises(json.JSONDecodeError):
+        load_guidance_schema(invalid)
+
+
+def test_structured_output_settings_defaults_and_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings().structured_output is True
+    assert Settings().vplot_schema_path == Path("schema/vplot-0.1.schema.json")
+
+    monkeypatch.delenv("MODEL_BACKEND_STRUCTURED_OUTPUT", raising=False)
+    monkeypatch.delenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", raising=False)
+    assert Settings.from_env().structured_output is True
+
+    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "TrUe")
+    assert Settings.from_env().structured_output is True
+    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "OFF")
+    assert Settings.from_env().structured_output is False
+
+    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "yes")
+    monkeypatch.setenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", "custom/vplot.json")
+    assert Settings.from_env().vplot_schema_path == Path("custom/vplot.json")
+
+    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "sometimes")
+    with pytest.raises(ValueError, match="invalid boolean value"):
+        Settings.from_env()
+
+
+def test_engine_applies_structured_output_config_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings()
+    engine, pipe = _loaded_engine(monkeypatch, settings)
+
+    engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+
+    assert pipe.last_config is not None
+    structured = pipe.last_config.structured_output_config
+    assert isinstance(structured, _FakeOpenVinoGenAI.StructuredOutputConfig)
+    expected = load_guidance_schema(Path("schema/vplot-0.1.schema.json"))
+    assert structured.json_schema == expected
+    assert '"pattern"' not in structured.json_schema
+    assert '"format"' not in structured.json_schema
+
+
+def test_engine_omits_structured_output_config_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        structured_output=False,
+        vplot_schema_path=Path("missing-but-disabled.json"),
+    )
+    engine, pipe = _loaded_engine(monkeypatch, settings)
+
+    engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+
+    assert pipe.last_config is not None
+    assert pipe.last_config.structured_output_config is None
 
 
 def test_engine_admits_exact_token_boundary_without_duplicate_special_tokens() -> None:
@@ -161,7 +325,14 @@ def test_engine_load_retains_prompt_cap_and_npu_static_shape_config(
         return pipe
 
     monkeypatch.setattr(_OPENVINO_GENAI, "LLMPipeline", load, raising=False)
-    engine = Engine.load(Settings(model_dir=Path("model"), device="NPU", max_prompt_len=5))
+    engine = Engine.load(
+        Settings(
+            model_dir=Path("model"),
+            device="NPU",
+            structured_output=False,
+            max_prompt_len=5,
+        )
+    )
 
     with pytest.raises(BackendError):
         engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)

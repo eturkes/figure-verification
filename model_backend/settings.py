@@ -22,6 +22,8 @@ import msgspec
 _DEFAULT_MODEL_DIR = "models/Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_DEVICE = "NPU"
+_DEFAULT_STRUCTURED_OUTPUT = True
+_DEFAULT_VPLOT_SCHEMA_PATH = "schema/vplot-0.1.schema.json"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8001
 _DEFAULT_MAX_BODY_BYTES = 128 * 1024
@@ -40,6 +42,21 @@ _DEFAULT_MAX_TOKENS = 512
 # a generation that outgrows the configured bound (over-cap -> upstream fault at the client).
 _DEFAULT_MAX_RESPONSE_BYTES = 65536
 
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_bool(value: str | None, *, default: bool) -> bool:
+    if value is None:
+        return default
+    normalized = value.casefold()
+    if normalized in _TRUTHY:
+        return True
+    if normalized in _FALSY:
+        return False
+    msg = f"invalid boolean value {value!r}; expected one of 0, 1, false, no, off, on, true, yes"
+    raise ValueError(msg)
+
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
     """Immutable backend configuration. See the module docstring for the trust note."""
@@ -47,6 +64,8 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     model_dir: Path = Path(_DEFAULT_MODEL_DIR)
     model_name: str = _DEFAULT_MODEL_NAME
     device: str = _DEFAULT_DEVICE
+    structured_output: bool = _DEFAULT_STRUCTURED_OUTPUT
+    vplot_schema_path: Path = Path(_DEFAULT_VPLOT_SCHEMA_PATH)
     max_prompt_len: int = _DEFAULT_MAX_PROMPT_LEN
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     host: str = _DEFAULT_HOST
@@ -81,6 +100,13 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             model_dir=Path(env.get("MODEL_BACKEND_MODEL_DIR", _DEFAULT_MODEL_DIR)),
             model_name=env.get("MODEL_BACKEND_MODEL_NAME", _DEFAULT_MODEL_NAME),
             device=env.get("MODEL_BACKEND_DEVICE", _DEFAULT_DEVICE),
+            structured_output=_parse_bool(
+                env.get("MODEL_BACKEND_STRUCTURED_OUTPUT"),
+                default=_DEFAULT_STRUCTURED_OUTPUT,
+            ),
+            vplot_schema_path=Path(
+                env.get("MODEL_BACKEND_VPLOT_SCHEMA_PATH", _DEFAULT_VPLOT_SCHEMA_PATH)
+            ),
             max_prompt_len=int(
                 env.get("MODEL_BACKEND_MAX_PROMPT_LEN", str(_DEFAULT_MAX_PROMPT_LEN))
             ),

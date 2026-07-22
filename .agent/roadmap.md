@@ -89,7 +89,7 @@ empirically validated (supersedes web docs).
   (base messages) — regenerate if gone.
 
 ### Units (IN-PROGRESS)
-- **M8.1 (OPEN) — backend structured-output mechanism.** New pure `model_backend/schema_guidance.py`
+- **M8.1 (DONE) — backend structured-output mechanism.** New pure `model_backend/schema_guidance.py`
   (NO `openvino_genai` import → portably importable/testable even though model_backend is
   coverage-excluded) deriving the pattern/format-stripped guidance schema from
   `schema/vplot-0.1.schema.json`; `model_backend/settings.py` gains `structured_output: bool = True` +
@@ -99,6 +99,11 @@ empirically validated (supersedes web docs).
   all 10 good goldens validate against the derived schema (drift guard), plus the settings flags.
   Acceptance: ruff/mypy/pytest green (model_backend type-checked, coverage-excluded); MAIN NPU-validates
   constrained generate → structurally-valid VPlot + a simple prompt verifies. No prompt/banner/doc change.
+  Done: gates green (ruff format/check, mypy 94 files, pytest 1596 @ 100% verifier cov); MAIN NPU-validated
+  the real Engine (structured_output on; 3511-byte guidance, no `pattern`/`format`) → structurally-valid VPlot,
+  `decode_spec` ACCEPTED (`weather.csv` scatter). A `sales` (no-`.csv`) run was structure-valid but
+  verifier-REJECTED on the dataset-name rule — live-proof of the structure-vs-semantics split (schema forces
+  structure; the verifier owns semantics). Context: `main=38% 105K/272K`; `impl=47% 128K/272K` (implementing Agent).
 - **M8.2 (OPEN, needs M8.1) — two-example banner + clear blocked message (+ optional few-shot).** MAIN
   (M8.1 live on NPU) confirms the reliable succeeds-prompt + blocked-prompt against the real code, and
   decides whether 1-shot is needed (demo fidelity) vs base+schema (simpler). AGENT transcribes: the
