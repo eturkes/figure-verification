@@ -247,13 +247,24 @@ log "provisioning Open WebUI (admin + model + verifier tool registration)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner
+# 5) banner. The "Try typing" pair is mode-aware because in this PoC the block-vs-verify outcome is
+#    driven by the MODEL TIER, not the prompt text. The real weak model almost never emits a valid
+#    spec, so a chart request is blocked (that IS the PoC) while a plain question -- not a chart --
+#    passes the guard untouched. The deterministic stub is a scripted fixture that emits ONE
+#    known-good spec for ANY prompt, so every request verifies to the same chart. So each tier gets
+#    an honest pair, plus how to flip the chart request's outcome by relaunching in the other tier.
+chart_prompt="Create a verified bar chart of total revenue by month from sales.csv."
+plain_prompt="In one sentence, what does Figure Verifier check before it shows a chart?"
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
-  try_note="the stub returns a known-good spec, so a VERIFIED chart appears"
+  item1_headline="VERIFIES (verified chart) -- the stub emits a known-good spec:"
+  item2_headline="ALSO VERIFIES -- the stub is a scripted fixture: ANY prompt yields the same chart:"
+  flip_line="To watch a request get BLOCKED instead, relaunch the real weak model:  webui/launch.sh"
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
-  try_note="the weak local model almost always yields a BLOCKED verdict -- that IS the PoC; run --stub for the verified happy path"
+  item1_headline="OFTEN BLOCKED -- the weak model emits raw plot code or an invalid spec (that IS the PoC):"
+  item2_headline="OFTEN SUCCEEDS -- a plain question is not a chart, so it passes straight through:"
+  flip_line="To watch that chart request VERIFY (hardware-free), relaunch:  webui/launch.sh --stub"
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER
@@ -266,8 +277,11 @@ cat >&2 <<BANNER
     Model      ${model_desc}
 
     Try typing:
-      Create a verified bar chart of total revenue by month from sales.csv.
-      (${try_note})
+      ${item1_headline}
+        ${chart_prompt}
+      ${item2_headline}
+        ${plain_prompt}
+      ${flip_line}
 
     Logs       ${LOG_DIR}/{verifier,model,webui}.log
     Stop       Ctrl-C  (frees :${VERIFIER_PORT} / :${MODEL_BACKEND_PORT} / :${WEBUI_PROVISION_PORT})
