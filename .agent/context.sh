@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Context gauge → "N% used/window" (tokens) from the live Claude Code transcript = headroom. Window = 272K; auto-compaction triggers at 90% (~245K).
 # Sums the last assistant turn's real API tokens (input+cache_creation+cache_read+output) = that request's
 # occupancy floor for the NEXT turn — the dominant, authoritative headroom signal. It far exceeds the visible

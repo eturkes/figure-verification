@@ -2,6 +2,10 @@
   "permissions": {
     "deny": [
       "Read(/.tokensave/**)",
+      "Read(/.serena/cache/**)",
+      "Read(/.verifier-state/**)",
+      "Read(/.launch-logs/**)",
+      "Read(/bench/reports/details.jsonl)",
       "Read(/.webui-data/webui.db*)",
       "Read(/.webui-data/cache/**)",
       "Read(/.webui-data/uploads/**)",
