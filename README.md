@@ -222,8 +222,9 @@ three ports.
 
 Then open `http://127.0.0.1:8080`, log in with the printed credentials (`operator@localhost` /
 `loopback-dev-password` by default), and type a chart request such as
-`Create a verified bar chart of total revenue by month from sales.csv.` What happens depends on the
-model tier:
+`Create a verified bar chart of total revenue by month from sales.csv.` Bootstrap makes Figure
+Verifier a default tool on the configured model, so browser chats offer it automatically with no
+manual tool toggle. What happens depends on the model tier:
 
 - **Real local model (default).** The weak local model almost never produces a valid VPlot spec: it
   typically returns fenced JSON that rambles past the strict decode gate, or ignores the tool and

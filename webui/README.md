@@ -1,8 +1,9 @@
 # webui - Open WebUI provisioning harness
 
 Out-of-tree, unshipped M4 harness: starts Open WebUI under a hermetic environment, bootstraps its
-first admin, converges the repo-owned global outlet filter, and smoke-checks the model + verifier
-registrations. It is type/lint checked but coverage-excluded, like `bench/` and `model_backend/`.
+first admin, converges the repo-owned global outlet filter, attaches the verifier server to the
+configured model's default tools, and smoke-checks all three readbacks. It is type/lint checked but
+coverage-excluded, like `bench/` and `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
@@ -34,7 +35,9 @@ the verifier environment.
 `webui/launch.sh` (run from the repository root) automates the entire per-terminal recipe below in a
 single command: it starts the verifier, the model tier, and Open WebUI in the load-bearing order,
 waits for each readiness endpoint, runs `bootstrap`, prints the browser URL and admin login, then
-blocks until interrupted, tearing every child down and freeing the three ports on exit.
+blocks until interrupted, tearing every child down and freeing the three ports on exit. Bootstrap
+makes Figure Verifier a default tool on the configured model, so browser chats offer it without a
+manual tool toggle.
 
 ```sh
 webui/launch.sh          # real local model on the NPU (needs .venv-model and the accel farm)
@@ -107,12 +110,16 @@ uv run --locked python -m webui bootstrap
 ```
 
 Each command first creates or updates `Verified Plot Guard` from the exact
-`webui/enforcement_filter.py` source and proves it active + global, then exits 0 only when the
-configured model ID and `server:verifier` are both present. A clean first run signs up the admin,
-creates the filter, and enables both flags. The second signup's 403 → signin is expected; that run
-updates the existing filter source without inverting already-true flags. Persistent-config is
-disabled: tool/model/legacy-function-calling config comes from the launch environment, while the
-admin user + owned function persist in `.webui-data/`.
+`webui/enforcement_filter.py` source and proves it active + global, then creates or non-destructively
+updates the workspace model config so its `meta.toolIds` includes `server:verifier`. It exits 0 only
+when the configured model ID is enumerated, the server is registered, and that tool id is attached
+to the model; on a clean instance the success banner reports
+`models=1 tool_servers=1 model_tools=1`. A clean first run signs up the admin, creates the filter,
+enables both flags, and creates the model config. The second signup's 403 → signin is expected; that
+run updates the existing filter source without inverting already-true flags and makes no model write
+when the tool is already attached. Persistent-config is disabled for launcher settings:
+tool/model/legacy-function-calling config comes from the launch environment, while the admin user,
+owned function, and workspace model config persist in `.webui-data/`.
 
 ## Deterministic successful E2E
 

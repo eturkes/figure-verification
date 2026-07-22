@@ -188,8 +188,10 @@ def test_bootstrap_returns_smoke_status(
         return SmokeResult(
             model_ids=(),
             tool_server_ids=(),
+            model_tool_ids=(),
             model_enumerated=b,
             tool_registered=b,
+            model_tool_attached=b,
         )
 
     monkeypatch.setattr(cli, "run_bootstrap", fake_run_bootstrap)

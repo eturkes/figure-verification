@@ -11,11 +11,12 @@ bootstrap orchestration. Locked:
 - authenticate: signup-200 stores the JWT; a non-200 signup falls back to signin; both non-200 or an
   empty/malformed token response raises; signup/signin transport failures normalize to the client
   error boundary; the stored token rides authed reads as a Bearer header;
-- model_ids / tool_server_ids: the `{data: [...]}` envelope vs the BARE array, the `server:` filter
-  that drops a python-function tool, the Bearer wiring, and non-200/transport/malformed readbacks
-  raising LOUD through the same error boundary;
-- ensure_global_filter: missing-create vs existing-update, all active/global flag combinations,
-  exact payload/paths/Bearer wiring, final-state verification, and fail-closed seams;
+- model_ids / tool_server_ids / model_tool_ids: the served-model envelope, BARE tool array, and
+  workspace-model `meta.toolIds` readbacks; server filtering, Bearer wiring, 404-as-no-config, and
+  every other non-200/transport/malformed response failing loudly;
+- ensure_global_filter / ensure_model_tool: filter create/update/toggle convergence plus
+  model-config create-or-merge, exact payload/paths, operator-key preservation, final verification,
+  and idempotent no-write behavior;
 - run_persisted_chat: exact create/completion/poll wire shapes, pending/done extraction, optional
   embed, and transport/status/JSON/timeout/malformed-output failures;
 - smoke / run_bootstrap: membership + ok truth table, exact filter source/metadata,
@@ -130,6 +131,18 @@ def _function_state(
     return state
 
 
+def _model_config(model_id: str, *tool_ids: str) -> dict[str, object]:
+    """Minimal loose workspace-model config shape consumed by WebUIClient."""
+    return {
+        "id": model_id,
+        "base_model_id": None,
+        "name": model_id,
+        "params": {},
+        "meta": {"toolIds": list(tool_ids)},
+        "is_active": True,
+    }
+
+
 def _ensure_global_filter(client: WebUIClient) -> None:
     """Call the unit surface with one canonical payload."""
     client.ensure_global_filter(
@@ -148,14 +161,19 @@ class _FakeClient:
         self,
         model_ids: list[str],
         tool_server_ids: list[str],
+        model_tool_ids: list[str] | None = None,
         *,
         fail_filter: bool = False,
     ) -> None:
         self._model_ids = model_ids
         self._tool_server_ids = tool_server_ids
+        self._model_tool_ids = (
+            list(model_tool_ids) if model_tool_ids is not None else list(tool_server_ids)
+        )
         self._fail_filter = fail_filter
         self.calls: list[str] = []
         self.filter_calls: list[tuple[str, str, str, str]] = []
+        self.model_tool_calls: list[tuple[str, str]] = []
 
     def wait_ready(self) -> None:
         self.calls.append("wait_ready")
@@ -178,6 +196,10 @@ class _FakeClient:
             message = "filter convergence failed"
             raise WebUIProvisionError(message)
 
+    def ensure_model_tool(self, *, model_id: str, tool_id: str) -> None:
+        self.calls.append("ensure_model_tool")
+        self.model_tool_calls.append((model_id, tool_id))
+
     def model_ids(self) -> list[str]:
         self.calls.append("model_ids")
         return list(self._model_ids)
@@ -185,6 +207,119 @@ class _FakeClient:
     def tool_server_ids(self) -> list[str]:
         self.calls.append("tool_server_ids")
         return list(self._tool_server_ids)
+
+    def model_tool_ids(self, model_id: str) -> list[str]:
+        del model_id
+        self.calls.append("model_tool_ids")
+        return list(self._model_tool_ids)
+
+
+class _BootstrapTransport:
+    """Stateful MockTransport handler for one or more full bootstrap runs."""
+
+    def __init__(self, settings: Settings, *, close_signup_after_first: bool) -> None:
+        self.settings = settings
+        self.close_signup_after_first = close_signup_after_first
+        self.signups = 0
+        self.filter_writes = {"create": 0, "update": 0}
+        self.model_writes = {"create": 0, "update": 0}
+        self.filter_content = function_source()
+        self.filter_state: dict[str, object] | None = None
+        self.model_config: dict[str, object] | None = None
+        self.tool_id = f"server:{settings.tool_server_id}"
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/ready":
+            response = httpx.Response(200)
+        elif path == "/api/v1/auths/signup":
+            response = self._signup()
+        elif path == "/api/v1/auths/signin":
+            response = httpx.Response(200, json={"token": "jwt-signin"})
+        else:
+            assert request.headers["authorization"].startswith("Bearer jwt-")
+            if path.startswith("/api/v1/functions"):
+                response = self._handle_filter(request)
+            elif path in {
+                "/api/v1/models/model",
+                "/api/v1/models/create",
+                "/api/v1/models/model/update",
+            }:
+                response = self._handle_model(request)
+            elif path == "/api/models":
+                response = httpx.Response(
+                    200,
+                    json={"data": [{"id": self.settings.model_id}]},
+                )
+            elif path == "/api/v1/tools/":
+                response = httpx.Response(200, json=[{"id": self.tool_id}])
+            else:
+                pytest.fail(f"unexpected path {path}")
+        return response
+
+    def _signup(self) -> httpx.Response:
+        self.signups += 1
+        if self.close_signup_after_first and self.signups > 1:
+            return httpx.Response(403, json={"detail": "signup closed"})
+        return httpx.Response(200, json={"token": "jwt-signup"})
+
+    def _handle_filter(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == _FUNCTION_PATH and request.method == "GET":
+            if self.filter_state is None:
+                return httpx.Response(401, json={"detail": "Function not found"})
+            return httpx.Response(200, json=self.filter_state)
+        if path == "/api/v1/functions/create":
+            self.filter_writes["create"] += 1
+            assert json.loads(request.content) == {
+                "id": FILTER_ID,
+                "name": FILTER_NAME,
+                "content": self.filter_content,
+                "meta": {"description": FILTER_DESCRIPTION},
+            }
+            self.filter_state = _function_state(content=None)
+        elif path == f"{_FUNCTION_PATH}/update":
+            self.filter_writes["update"] += 1
+            self.filter_state = _function_state(
+                active=True,
+                global_=True,
+                content=self.filter_content,
+            )
+        elif path == f"{_FUNCTION_PATH}/toggle":
+            self.filter_state = _function_state(active=True, content=self.filter_content)
+        elif path == f"{_FUNCTION_PATH}/toggle/global":
+            self.filter_state = _function_state(
+                active=True,
+                global_=True,
+                content=self.filter_content,
+            )
+        else:
+            pytest.fail(f"unexpected filter path {path}")
+        return httpx.Response(200, json=self.filter_state)
+
+    def _handle_model(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            assert request.url.params.get("id") == self.settings.model_id
+            if self.model_config is None:
+                return httpx.Response(404, json={"detail": "Model not found"})
+            return httpx.Response(200, json=self.model_config)
+        payload: dict[str, object] = json.loads(request.content)
+        if request.url.path == "/api/v1/models/create":
+            self.model_writes["create"] += 1
+            assert payload == {
+                "id": self.settings.model_id,
+                "base_model_id": None,
+                "name": self.settings.model_id,
+                "meta": {"toolIds": [self.tool_id]},
+                "params": {},
+                "is_active": True,
+            }
+        elif request.url.path == "/api/v1/models/model/update":
+            self.model_writes["update"] += 1
+        else:
+            pytest.fail(f"unexpected model path {request.url.path}")
+        self.model_config = payload
+        return httpx.Response(200, json=self.model_config)
 
 
 # --- wait_ready -----------------------------------------------------------------------------
@@ -338,6 +473,84 @@ def test_tool_server_ids_parses_bare_array_and_filters_non_server() -> None:
     with _webui_client(handler) as client:
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
         assert client.tool_server_ids() == ["server:verifier", "server:other"]
+
+
+def test_model_tool_ids_returns_workspace_model_tools_with_bearer() -> None:
+    model_id = "model/id?variant=1"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        assert request.headers["authorization"] == "Bearer tok"
+        assert request.url.path == "/api/v1/models/model"
+        assert request.url.params.get("id") == model_id
+        return httpx.Response(
+            200,
+            json={
+                "id": model_id,
+                "base_model_id": None,
+                "name": model_id,
+                "params": {},
+                "meta": {"toolIds": ["server:verifier", 7, "server:other"]},
+                "is_active": True,
+            },
+        )
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        assert client.model_tool_ids(model_id) == ["server:verifier", "server:other"]
+
+
+def test_model_tool_ids_returns_empty_for_missing_workspace_config() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        assert request.headers["authorization"] == "Bearer tok"
+        return httpx.Response(404, json={"detail": "Model not found"})
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        assert client.model_tool_ids("model") == []
+
+
+def test_model_tool_ids_raises_loud_on_non_404_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        return httpx.Response(500)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="HTTP 500"):
+            client.model_tool_ids("model")
+
+
+def test_model_tool_ids_requires_authentication() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        pytest.fail("no request should be sent before authenticate")
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="authenticate"),
+    ):
+        client.model_tool_ids("model")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"not JSON", b'{"meta":{"toolIds":["\xff"]}}'],
+    ids=["malformed-json", "invalid-utf8"],
+)
+def test_model_tool_ids_rejects_invalid_json(body: bytes) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        return httpx.Response(200, content=body)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="invalid model config"):
+            client.model_tool_ids("model")
 
 
 # --- persisted chat -------------------------------------------------------------------------
@@ -1025,19 +1238,269 @@ def test_ensure_global_filter_normalizes_transport_error() -> None:
         _ensure_global_filter(client)
 
 
-# --- smoke / run_bootstrap ------------------------------------------------------------------
+# --- workspace-model tool convergence -------------------------------------------------------
+def test_ensure_model_tool_creates_missing_config_and_verifies() -> None:
+    model_id = "model/create"
+    tool_id = "server:verifier"
+    calls: list[tuple[str, str]] = []
+    config: dict[str, object] | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal config
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        assert request.headers["authorization"] == "Bearer tok"
+        call = (request.method, request.url.path)
+        calls.append(call)
+        if call == ("GET", "/api/v1/models/model"):
+            assert request.url.params.get("id") == model_id
+            if config is None:
+                return httpx.Response(404, json={"detail": "Model not found"})
+            return httpx.Response(200, json=config)
+        assert call == ("POST", "/api/v1/models/create")
+        payload: dict[str, object] = json.loads(request.content)
+        assert payload == {
+            "id": model_id,
+            "base_model_id": None,
+            "name": model_id,
+            "meta": {"toolIds": [tool_id]},
+            "params": {},
+            "is_active": True,
+        }
+        config = payload
+        return httpx.Response(200, json=config)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        client.ensure_model_tool(model_id=model_id, tool_id=tool_id)
+
+    assert calls == [
+        ("GET", "/api/v1/models/model"),
+        ("POST", "/api/v1/models/create"),
+        ("GET", "/api/v1/models/model"),
+    ]
+
+
+def test_ensure_model_tool_updates_by_merging_operator_config() -> None:
+    model_id = "model-update"
+    tool_id = "server:verifier"
+    config: dict[str, object] = {
+        "id": model_id,
+        "base_model_id": "base-model",
+        "name": "Operator model name",
+        "params": {"temperature": 0.25, "nested": {"keep": True}},
+        "meta": {
+            "toolIds": ["server:other"],
+            "description": "keep me",
+            "nested": {"keep": "also"},
+        },
+        "is_active": False,
+    }
+    writes = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal config, writes
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        assert request.headers["authorization"] == "Bearer tok"
+        if request.method == "GET":
+            return httpx.Response(200, json=config)
+        assert request.url.path == "/api/v1/models/model/update"
+        writes += 1
+        payload: dict[str, object] = json.loads(request.content)
+        assert payload == {
+            "id": model_id,
+            "base_model_id": "base-model",
+            "name": "Operator model name",
+            "params": {"temperature": 0.25, "nested": {"keep": True}},
+            "meta": {
+                "toolIds": ["server:other", tool_id],
+                "description": "keep me",
+                "nested": {"keep": "also"},
+            },
+            "is_active": False,
+        }
+        assert "access_grants" not in payload
+        config = payload
+        return httpx.Response(200, json=config)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        client.ensure_model_tool(model_id=model_id, tool_id=tool_id)
+
+    assert writes == 1
+
+
+def test_ensure_model_tool_is_write_free_when_already_attached() -> None:
+    model_id = "model"
+    tool_id = "server:verifier"
+    model_gets = 0
+    writes = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal model_gets, writes
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        if request.method == "POST":
+            writes += 1
+            return httpx.Response(500)
+        model_gets += 1
+        return httpx.Response(200, json=_model_config(model_id, tool_id))
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        client.ensure_model_tool(model_id=model_id, tool_id=tool_id)
+
+    assert model_gets == 1
+    assert writes == 0
+
+
+def test_ensure_model_tool_rejects_discovery_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        return httpx.Response(500)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="HTTP 500"):
+            client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
 @pytest.mark.parametrize(
-    ("model_enumerated", "tool_registered", "expected_ok"),
-    [(True, True, True), (True, False, False), (False, True, False), (False, False, False)],
+    ("existing", "write_path"),
+    [
+        (False, "/api/v1/models/create"),
+        (True, "/api/v1/models/model/update"),
+    ],
+    ids=["create", "update"],
+)
+def test_ensure_model_tool_rejects_write_error(*, existing: bool, write_path: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        if request.method == "GET":
+            if existing:
+                return httpx.Response(200, json=_model_config("model"))
+            return httpx.Response(404)
+        assert request.url.path == write_path
+        return httpx.Response(503)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="HTTP 503"):
+            client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
+def test_ensure_model_tool_rejects_missing_tool_after_write() -> None:
+    model_gets = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal model_gets
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        if request.method == "GET":
+            model_gets += 1
+            if model_gets == 1:
+                return httpx.Response(404)
+            return httpx.Response(200, json=_model_config("model"))
+        return httpx.Response(200, json=_model_config("model", "server:verifier"))
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="did not persist"):
+            client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
+@pytest.mark.parametrize("phase", ["discovery", "write", "verify"])
+@pytest.mark.parametrize(
+    "bad_body",
+    [b"not JSON", b'{"meta":{"toolIds":["\xff"]}}'],
+    ids=["malformed-json", "invalid-utf8"],
+)
+def test_ensure_model_tool_rejects_invalid_json_at_every_phase(
+    phase: str,
+    bad_body: bytes,
+) -> None:
+    model_gets = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal model_gets
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        if request.method == "GET":
+            model_gets += 1
+            if phase == "discovery" and model_gets == 1:
+                return httpx.Response(200, content=bad_body)
+            if model_gets == 1:
+                return httpx.Response(404)
+            if phase == "verify":
+                return httpx.Response(200, content=bad_body)
+            pytest.fail("unexpected model-config GET")
+        if phase == "write":
+            return httpx.Response(200, content=bad_body)
+        return httpx.Response(200, json=_model_config("model", "server:verifier"))
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match="invalid model config"):
+            client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
+def test_ensure_model_tool_normalizes_transport_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/auths/signup":
+            return httpx.Response(200, json={"token": "tok"})
+        msg = "connection reset"
+        raise httpx.ConnectError(msg)
+
+    with _webui_client(handler) as client:
+        client.authenticate()
+        with pytest.raises(WebUIProvisionError, match=r"GET .+ failed: connection reset"):
+            client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
+def test_ensure_model_tool_requires_authentication() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        pytest.fail("no request should be sent before authenticate")
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="authenticate"),
+    ):
+        client.ensure_model_tool(model_id="model", tool_id="server:verifier")
+
+
+# --- smoke / run_bootstrap ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("model_enumerated", "tool_registered", "model_tool_attached", "expected_ok"),
+    [
+        (True, True, True, True),
+        (True, True, False, False),
+        (True, False, True, False),
+        (True, False, False, False),
+        (False, True, True, False),
+        (False, True, False, False),
+        (False, False, True, False),
+        (False, False, False, False),
+    ],
 )
 def test_smoke_result_ok_is_conjunction(
-    *, model_enumerated: bool, tool_registered: bool, expected_ok: bool
+    *,
+    model_enumerated: bool,
+    tool_registered: bool,
+    model_tool_attached: bool,
+    expected_ok: bool,
 ) -> None:
     result = SmokeResult(
         model_ids=(),
         tool_server_ids=(),
+        model_tool_ids=(),
         model_enumerated=model_enumerated,
         tool_registered=tool_registered,
+        model_tool_attached=model_tool_attached,
     )
     assert result.ok is expected_ok
 
@@ -1051,8 +1514,14 @@ def test_smoke_derives_membership_without_wait_or_auth() -> None:
     result = smoke(fake, settings)
     assert result.model_enumerated
     assert result.tool_registered
+    assert result.model_tool_attached
     assert result.model_ids == ("other-model", settings.model_id)
-    assert fake.calls == ["model_ids", "tool_server_ids"]  # smoke alone: no wait_ready/authenticate
+    assert result.model_tool_ids == ("server:x", f"server:{settings.tool_server_id}")
+    assert fake.calls == [
+        "model_ids",
+        "tool_server_ids",
+        "model_tool_ids",
+    ]  # smoke alone: no wait_ready/authenticate
 
 
 def test_run_bootstrap_ok_in_order() -> None:
@@ -1067,10 +1536,13 @@ def test_run_bootstrap_ok_in_order() -> None:
         "wait_ready",
         "authenticate",
         "ensure_global_filter",
+        "ensure_model_tool",
         "model_ids",
         "tool_server_ids",
+        "model_tool_ids",
     ]
     assert fake.filter_calls == [(FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)]
+    assert fake.model_tool_calls == [(settings.model_id, f"server:{settings.tool_server_id}")]
 
 
 def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
@@ -1083,10 +1555,13 @@ def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
         "wait_ready",
         "authenticate",
         "ensure_global_filter",
+        "ensure_model_tool",
         "model_ids",
         "tool_server_ids",
+        "model_tool_ids",
     ]
     expected_filter_call = (FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)
+    expected_model_tool_call = (settings.model_id, f"server:{settings.tool_server_id}")
 
     first = run_bootstrap(fake, settings)
     second = run_bootstrap(fake, settings)
@@ -1095,6 +1570,7 @@ def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
     assert first.ok
     assert fake.calls == expected_order * 2
     assert fake.filter_calls == [expected_filter_call] * 2
+    assert fake.model_tool_calls == [expected_model_tool_call] * 2
 
 
 def test_run_bootstrap_does_not_smoke_after_filter_convergence_failure() -> None:
@@ -1112,122 +1588,57 @@ def test_run_bootstrap_does_not_smoke_after_filter_convergence_failure() -> None
 
 
 @pytest.mark.parametrize(
-    ("model_ids", "tool_server_ids"),
+    ("model_present", "tool_registered", "model_tool_attached"),
     [
-        ([], ["server:verifier"]),  # model missing
-        (["Qwen2-0.5B-Instruct-int4-sym-ov"], []),  # tool server missing
+        (False, True, True),
+        (True, False, True),
+        (True, True, False),
     ],
 )
 def test_run_bootstrap_not_ok_when_either_missing(
-    model_ids: list[str], tool_server_ids: list[str]
+    *,
+    model_present: bool,
+    tool_registered: bool,
+    model_tool_attached: bool,
 ) -> None:
     settings = Settings()
-    result = run_bootstrap(_FakeClient(model_ids, tool_server_ids), settings)
+    tool_id = f"server:{settings.tool_server_id}"
+    fake = _FakeClient(
+        [settings.model_id] if model_present else [],
+        [tool_id] if tool_registered else [],
+        [tool_id] if model_tool_attached else [],
+    )
+    result = run_bootstrap(fake, settings)
     assert not result.ok
 
 
 def test_run_bootstrap_rerun_is_idempotent_via_signin_and_filter_update() -> None:
-    # First run signs up + creates; rerun hits closed signup, signs in, and updates the same filter.
+    # First run signs up + creates; rerun signs in, updates the filter, and does no model write.
     settings = Settings()
-    signups = {"n": 0}
-    filter_writes = {"create": 0, "update": 0}
-    filter_content = function_source()
-    filter_state: dict[str, object] | None = None
+    state = _BootstrapTransport(settings, close_signup_after_first=True)
 
-    def handle_filter(request: httpx.Request) -> httpx.Response:
-        nonlocal filter_state
-        path = request.url.path
-        if path == _FUNCTION_PATH and request.method == "GET":
-            if filter_state is None:
-                return httpx.Response(401, json={"detail": "Function not found"})
-            return httpx.Response(200, json=filter_state)
-        if path == "/api/v1/functions/create":
-            filter_writes["create"] += 1
-            assert json.loads(request.content) == {
-                "id": FILTER_ID,
-                "name": FILTER_NAME,
-                "content": filter_content,
-                "meta": {"description": FILTER_DESCRIPTION},
-            }
-            filter_state = _function_state(content=None)
-        elif path == f"{_FUNCTION_PATH}/update":
-            filter_writes["update"] += 1
-            filter_state = _function_state(active=True, global_=True, content=filter_content)
-        elif path == f"{_FUNCTION_PATH}/toggle":
-            filter_state = _function_state(active=True, content=filter_content)
-        elif path == f"{_FUNCTION_PATH}/toggle/global":
-            filter_state = _function_state(active=True, global_=True, content=filter_content)
-        else:
-            pytest.fail(f"unexpected filter path {path}")
-        return httpx.Response(200, json=filter_state)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path == "/ready":
-            response = httpx.Response(200)
-        elif path == "/api/v1/auths/signup":
-            signups["n"] += 1
-            if signups["n"] == 1:
-                response = httpx.Response(200, json={"token": "jwt-signup"})
-            else:
-                response = httpx.Response(403, json={"detail": "signup closed"})
-        elif path == "/api/v1/auths/signin":
-            response = httpx.Response(200, json={"token": "jwt-signin"})
-        elif path.startswith("/api/v1/functions"):
-            response = handle_filter(request)
-        elif path == "/api/models":
-            response = httpx.Response(200, json={"data": [{"id": settings.model_id}]})
-        elif path == "/api/v1/tools/":
-            response = httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
-        else:
-            pytest.fail(f"unexpected path {path}")
-        return response
-
-    with _webui_client(handler, settings) as client:
+    with _webui_client(state, settings) as client:
         first = run_bootstrap(client, settings)
         second = run_bootstrap(client, settings)
+
     assert first == second
     assert first.ok
-    assert signups["n"] == 2  # both runs attempted signup; the re-run fell back to signin
-    assert filter_writes == {"create": 1, "update": 1}
+    assert first.model_tool_ids == (state.tool_id,)
+    assert first.model_tool_attached
+    assert state.signups == 2  # both runs attempted signup; the re-run fell back to signin
+    assert state.filter_writes == {"create": 1, "update": 1}
+    assert state.model_writes == {"create": 1, "update": 0}
 
 
 def test_run_bootstrap_end_to_end_over_mock_transport() -> None:
     settings = Settings()
-    filter_content = function_source()
-    filter_created = False
+    state = _BootstrapTransport(settings, close_signup_after_first=False)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal filter_created
-        path = request.url.path
-        if path == "/ready":
-            response = httpx.Response(200)
-        elif path == "/api/v1/auths/signup":
-            response = httpx.Response(200, json={"token": "jwt"})
-        elif path == _FUNCTION_PATH and request.method == "GET":
-            if not filter_created:
-                response = httpx.Response(401, json={"detail": "Function not found"})
-            else:
-                response = httpx.Response(
-                    200,
-                    json=_function_state(active=True, global_=True, content=filter_content),
-                )
-        elif path == "/api/v1/functions/create":
-            filter_created = True
-            response = httpx.Response(
-                200,
-                json=_function_state(active=True, global_=True, content=None),
-            )
-        elif path == "/api/models":
-            response = httpx.Response(200, json={"data": [{"id": settings.model_id}]})
-        elif path == "/api/v1/tools/":
-            response = httpx.Response(200, json=[{"id": f"server:{settings.tool_server_id}"}])
-        else:
-            pytest.fail(f"unexpected path {path}")
-        return response
-
-    with _webui_client(handler, settings) as client:
+    with _webui_client(state, settings) as client:
         result = run_bootstrap(client, settings)
+
     assert result.ok
     assert result.model_ids == (settings.model_id,)
-    assert result.tool_server_ids == (f"server:{settings.tool_server_id}",)
+    assert result.tool_server_ids == (state.tool_id,)
+    assert result.model_tool_ids == (state.tool_id,)
+    assert result.model_tool_attached

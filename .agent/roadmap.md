@@ -106,6 +106,35 @@ and reproduced the mechanism (killing a READY verifier → launcher rc 137 namin
 exited (status 137)`, ports freed; `MODEL_BACKEND_PYTHON=/nonexistent…` → die rc 1, no
 `.launch-logs`). Committed in the follow-up `webui (M7 review): …`. M7 stays REVIEWED.
 
+### Post-review follow-up: browser default-tool auto-attach (user-reported) — CLOSED
+
+User hit the real-OWUI browser instance — a chart prompt called the model, which returned a code
+snippet: no plot, no verifier call. Root cause (OWUI 0.10.2 source; `.agent/memory.md` holds the
+full mechanism): M7 registered `server:verifier` as a GLOBAL tool server (OWUI lists it *available*)
+but never attached it to the model, and OWUI auto-attaches a global server to NO chat — the browser
+frontend pre-selects a model's `meta.toolIds`, the chat backend resolves only request `tool_ids`,
+neither adopts a merely-available global server. So a browser chat was never offered the verifier
+absent a manual toggle — exactly the M7.2 walkthrough observation ("a persisted chat IGNORED the
+tool → raw matplotlib, no verified chart"), and the undocumented step behind the root-README "Try it
+in your browser" verified-path claim.
+- FIXED: `bootstrap.run_bootstrap` converges the workspace model's `meta.toolIds` → `server:verifier`
+  via new `WebUIClient.ensure_model_tool` (create-or-merge: 404→create, else a non-destructive update
+  preserving `params`/other `meta`, idempotent no-write when already attached, fail-closed final-GET
+  readback) + `WebUIClient.model_tool_ids` readback; `SmokeResult` gains
+  `model_tool_ids`/`model_tool_attached` and `ok` now also requires model-tool-attached (clean banner
+  `models=1 tool_servers=1 model_tools=1`). Root `README.md` + `webui/README.md` state the auto-offer;
+  `.agent/memory.md` holds the durable mechanism. Headless `run_persisted_chat` is unchanged (it
+  already sends `tool_ids` explicitly); `access_grants` omitted (moot on this single-admin instance).
+- EVIDENCE (MAIN, live real OWUI 0.10.2, `--stub` standup): `model_tool_ids(model_id)` =
+  `['server:verifier']` (browser auto-attach proven), the model still enumerated (omitting
+  `access_grants` hid nothing), and a persisted chat returned the verified chart + DSSE-certificate
+  URL (the completion path is intact under create-or-merge). Gate independently re-green: ruff format
+  / ruff check / mypy 93 files / pytest 1590 @ 100% branch (`webui/` stays coverage-excluded → its
+  new `+619/-131` tests don't gate coverage). Stack torn down (SIGTERM pidfile), :8000/:8001/:8080
+  freed.
+CLOSED: committed `webui: … (M7 followup)`. M7 stays REVIEWED — provisioning + docs only; no verifier
+trust or claim boundary moved (browser/pixels stay TCB; the guard stays a bypassable guardrail).
+
 A minimal, human-facing standup: one launcher brings up the existing verifier + `model_backend`
 (the REAL local OpenVINO model, per `CLAUDE.local.md`) + Open WebUI, provisioned, so the operator
 opens `http://127.0.0.1:8080` in a browser and interactively exercises the verified-plot pipeline.

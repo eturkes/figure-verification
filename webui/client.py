@@ -15,6 +15,7 @@ modelled, matching the bench consumer-struct convention.
 import time
 import uuid
 from typing import NamedTuple, Never
+from urllib.parse import quote
 
 import httpx
 import msgspec
@@ -61,6 +62,22 @@ class _ModelsEnvelope(msgspec.Struct):
     """GET /api/models body: a `{data: [...]}` envelope (default empty => enumerated-none)."""
 
     data: tuple[_Model, ...] = ()
+
+
+class _ModelConfig(msgspec.Struct):
+    """Loose GET /api/v1/models/model reply: only fields needed to converge the model's tool list.
+
+    ``meta``/``params`` stay raw mappings so an update preserves operator-set keys while adding the
+    verifier tool id; Open WebUI stores default tool ids at ``meta.toolIds`` (read by the browser
+    frontend Chat.svelte, never auto-resolved by the chat backend -- utils/automations.py).
+    """
+
+    id: str = ""
+    base_model_id: str | None = None
+    name: str = ""
+    params: dict[str, object] = msgspec.field(default_factory=dict)
+    meta: dict[str, object] = msgspec.field(default_factory=dict)
+    is_active: bool = True
 
 
 class _ToolServer(msgspec.Struct):
@@ -227,6 +244,76 @@ class WebUIClient:
             msg = f"GET /api/v1/tools/ returned an invalid response: {exc}"
             raise WebUIProvisionError(msg) from exc
         return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
+
+    def model_tool_ids(self, model_id: str) -> list[str]:
+        """Authed GET the workspace model config -> its default tool ids (``meta.toolIds``).
+
+        A model with no workspace config row (Open WebUI 404) has no attached tools -> ``[]``; any
+        other non-200 fails closed loudly, like the other readbacks.
+        """
+        path = f"/api/v1/models/model?id={quote(model_id, safe='')}"
+        response = self._authed_request("GET", path)
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return []
+        config = self._decode_model_config(response, phase="model tool readback")
+        return self._meta_tool_ids(config.meta)
+
+    def ensure_model_tool(self, *, model_id: str, tool_id: str) -> None:
+        """Attach one tool id to the model's default tool list so the browser auto-offers it.
+
+        Open WebUI lists a global tool server (``server:<id>``) as *available* but never
+        auto-attaches it to a chat: the chat backend resolves tools only from the request's
+        ``tool_ids`` (utils/middleware.py), while the browser frontend (Chat.svelte) pre-selects a
+        model's ``info.meta.toolIds`` (utils/automations.py notes the backend never resolves them).
+        So without this step a browser chat is never offered the verifier and the operator must
+        toggle it by hand. This converges the workspace model config for ``model_id`` so
+        ``meta.toolIds`` carries ``tool_id`` -- create when no config row exists (Open WebUI reports
+        that GET as 404), else a non-destructive update preserving ``params`` and any other ``meta``
+        keys -- then a final GET proves the attach persisted. Idempotent: a config already carrying
+        ``tool_id`` makes no write.
+        """
+        config_path = f"/api/v1/models/model?id={quote(model_id, safe='')}"
+        discovery = self._authed_request("GET", config_path)
+        payload: dict[str, object]
+        if discovery.status_code == httpx.codes.NOT_FOUND:
+            payload = {
+                "id": model_id,
+                "base_model_id": None,
+                "name": model_id,
+                "meta": {"toolIds": [tool_id]},
+                "params": {},
+                "is_active": True,
+            }
+            write_path = "/api/v1/models/create"
+            phase = "model create"
+        elif discovery.status_code == httpx.codes.OK:
+            config = self._decode_model_config(discovery, phase="model discovery")
+            tool_ids = self._meta_tool_ids(config.meta)
+            if tool_id in tool_ids:
+                return  # already attached: no write, fully idempotent
+            payload = {
+                "id": model_id,
+                "base_model_id": config.base_model_id,
+                "name": config.name or model_id,
+                "meta": {**config.meta, "toolIds": [*tool_ids, tool_id]},
+                "params": config.params,
+                "is_active": config.is_active,
+            }
+            write_path = "/api/v1/models/model/update"
+            phase = "model update"
+        else:
+            self._raise_status(discovery)
+        self._decode_model_config(
+            self._authed_request("POST", write_path, json_body=payload),
+            phase=phase,
+        )
+        final = self._decode_model_config(
+            self._authed_request("GET", config_path),
+            phase="model tool verify",
+        )
+        if tool_id not in self._meta_tool_ids(final.meta):
+            msg = f"model {model_id!r} tool did not persist: {tool_id!r} absent from toolIds"
+            raise WebUIProvisionError(msg)
 
     def run_persisted_chat(self, prompt: str) -> PersistedChatResult:
         """Run one background persisted chat and return its final text plus chart URL.
@@ -473,6 +560,29 @@ class WebUIClient:
         except httpx.HTTPError as exc:
             msg = f"{method} {path} failed: {exc}"
             raise WebUIProvisionError(msg) from exc
+
+    def _decode_model_config(
+        self,
+        response: httpx.Response,
+        *,
+        phase: str,
+    ) -> _ModelConfig:
+        """Require HTTP 200 + decodable workspace model config, else fail closed."""
+        if response.status_code != httpx.codes.OK:
+            self._raise_status(response)
+        try:
+            return msgspec.json.decode(response.content, type=_ModelConfig)
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"{phase} returned invalid model config: {exc}"
+            raise WebUIProvisionError(msg) from exc
+
+    @staticmethod
+    def _meta_tool_ids(meta: dict[str, object]) -> list[str]:
+        """Return string ids from ``meta.toolIds``; defensively drop other shapes and entries."""
+        raw = meta.get("toolIds")
+        if not isinstance(raw, list):
+            return []
+        return [item for item in raw if isinstance(item, str)]
 
     @classmethod
     def _checked_function_state(
