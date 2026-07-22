@@ -12,7 +12,7 @@ service. Two measurements, never conflated:
   without the good leg, a verifier that rejected EVERYTHING would satisfy the bad-corpus
   bound vacuously and the run would still exit 0 (M3-review finding).
 
-  OBSERVATIONS (statistical, characterize the weak proposer) -- tool-call / json-validity /
+  OBSERVATIONS (statistical, characterize the weak proposer) -- JSON-object / JSON-validity /
   schema|semantic|policy failure / verified-render rates plus the top failing checks. NOT a
   bound: a weak model failing most prompts is the expected outcome. There is no automatic model
   false-accept number -- a chart verified for an unfair-but-real request sits outside the
@@ -51,9 +51,8 @@ _PIN_MISMATCH_DETAIL = "the model proposed a specification for a different datas
 
 _NDIGITS = 4  # rate rounding
 _TOP_MODES = 5  # how many top failing checks the report keeps
-# Config-scoped only: the harness observes neither the backend device nor its sampling mode
-# (greedy temperature 0 is the verifier client's fixed request), so the note asserts no
-# device fact -- runs are byte-reproducible per backend (device, config).
+# Prompt order and the verifier client's greedy request are fixed; MetaBlock separately captures
+# backend device + structured-output mode so runs can be compared within one backend config.
 _REPRODUCIBILITY = "fixed ordered prompts, greedy client; per backend (device, config)"
 
 # Verdict buckets for a 200 response.
@@ -131,13 +130,37 @@ class _ModelList(msgspec.Struct):
 
 
 # --- report structs (encoded to report.json; all frozen + kw_only) --------------------------
+class BackendProvenance(msgspec.Struct, frozen=True, kw_only=True):
+    """Model backend provenance decoded from its root /health endpoint."""
+
+    model_name: str
+    device: str
+    structured_output: bool
+    vplot_schema_sha256: str | None
+
+
+class RunProvenance(msgspec.Struct, frozen=True, kw_only=True):
+    """Inputs captured once by the CLI and copied into the report metadata."""
+
+    git_commit: str | None
+    git_dirty: bool
+    vplot_schema_sha256: str | None
+    model_probe_url: str
+    backend: BackendProvenance | None
+
+
 class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """Provenance for the run: the served model, prompt count, categories, reproducibility note."""
+    """Explicit run provenance plus prompt-set identity and reproducibility note."""
 
     served_model: str | None
     prompt_count: int
     categories: tuple[str, ...]
     reproducibility: str
+    git_commit: str | None
+    git_dirty: bool
+    vplot_schema_sha256: str | None
+    model_probe_url: str
+    backend: BackendProvenance | None
 
 
 class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
@@ -163,15 +186,17 @@ class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
 class RateBlock(msgspec.Struct, frozen=True, kw_only=True):
     """Observational rates over the n 200-responses, plus four non-200 outcome counts.
 
-    n = number of 200 responses in this scope; every rate is a count / n. The fault counts are
-    non-200 outcomes NOT in n: off_request (a model naming a different dataset -- a model failure
+    n = number of 200 responses in this scope; every rate is a count / n. json_object_rate is
+    the fraction whose model reply parses as a JSON object; json_validity_rate accepts any JSON
+    value. The fault counts are non-200 outcomes NOT in n: off_request (a model naming a different
+    dataset -- a model failure
     mode), prompt_policy (pre-generation resource refusal), upstream_fault (backend/verifier infra),
     harness_error (the harness sent a bad request, expected to be 0). Their counts plus n equal the
     scope's prompt count.
     """
 
     n: int
-    tool_call_rate: float
+    json_object_rate: float
     json_validity_rate: float
     schema_failure_rate: float
     semantic_failure_rate: float
@@ -247,7 +272,7 @@ class _Tally(msgspec.Struct):
     schema: int = 0
     semantic: int = 0
     policy: int = 0
-    tool_call: int = 0
+    json_object: int = 0
     json_valid: int = 0
     off_request: int = 0
     prompt_policy: int = 0
@@ -349,7 +374,7 @@ def _tally_200(tally: _Tally, sample: _Sample) -> None:
     if sample.valid_json:
         tally.json_valid += 1
     if sample.is_object:
-        tally.tool_call += 1
+        tally.json_object += 1
     if sample.bucket == _BUCKET_VERIFIED:
         tally.verified += 1
     elif sample.bucket == _BUCKET_SCHEMA:
@@ -391,7 +416,7 @@ def _rate_block(tally: _Tally) -> RateBlock:
     """Finalize a scope's counters into an immutable RateBlock."""
     return RateBlock(
         n=tally.n,
-        tool_call_rate=_rate(tally.tool_call, tally.n),
+        json_object_rate=_rate(tally.json_object, tally.n),
         json_validity_rate=_rate(tally.json_valid, tally.n),
         schema_failure_rate=_rate(tally.schema, tally.n),
         semantic_failure_rate=_rate(tally.semantic, tally.n),
@@ -517,6 +542,18 @@ def fetch_model_name(client: httpx.Client, model_base_url: str) -> str | None:
     return models.data[0].id
 
 
+def fetch_backend_provenance(client: httpx.Client, model_url: str) -> BackendProvenance | None:
+    """GET the backend-root /health provenance, or None on any probe/decode failure."""
+    try:
+        health_url = str(httpx.URL(model_url).join("/health"))
+        response = client.get(health_url)
+        if response.status_code != _HTTP_OK:
+            return None
+        return msgspec.json.decode(response.content, type=BackendProvenance)
+    except (httpx.HTTPError, httpx.InvalidURL, msgspec.DecodeError, ValueError):
+        return None
+
+
 def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
     """Decode a /propose-spec 200 body into the loose ProposeResult the report tallies.
 
@@ -535,12 +572,13 @@ def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
 
 
 # --- the driver -----------------------------------------------------------------------------
-def run_eval(
+def run_eval(  # noqa: PLR0913 — explicit boundary inputs keep provenance non-defaulted
     client: httpx.Client,
     verifier_base_url: str,
     examples_dir: Path,
     served_model: str | None,
     prompts: tuple[Prompt, ...],
+    provenance: RunProvenance,
 ) -> tuple[Report, tuple[PromptRecord, ...]]:
     """Run the guarantee (both corpora) then every prompt through /propose-spec; return the
     report + JSONL rows.
@@ -606,6 +644,11 @@ def run_eval(
         prompt_count=len(prompts),
         categories=CATEGORIES,
         reproducibility=_REPRODUCIBILITY,
+        git_commit=provenance.git_commit,
+        git_dirty=provenance.git_dirty,
+        vplot_schema_sha256=provenance.vplot_schema_sha256,
+        model_probe_url=provenance.model_probe_url,
+        backend=provenance.backend,
     )
     return Report(meta=meta, guarantee=guarantee, observations=observations), tuple(records)
 

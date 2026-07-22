@@ -18,9 +18,11 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
   portable gate. The good goldens bake `data/`'s live CSV hashes → the verifier under eval must
   serve the repo's own `VERIFIER_DATA_DIR=data`.
 - **OBSERVATIONS** (statistical, characterize the model — NOT a bound): over the `n` HTTP-200
-  `/propose-spec` verdicts → tool_call / json_validity / schema|semantic|policy_failure /
-  verified_render rates + top-5 failing checks, overall + per category (normal · ambiguous ·
-  adversarial · bad_aggregation · hidden_filter, 20 each). NO automatic model "false_accept" — a
+  `/propose-spec` verdicts → `json_object_rate` / `json_validity_rate` /
+  schema|semantic|policy failure / verified-render rates + top-5 failing checks, overall + per
+  category (normal · ambiguous · adversarial · bad_aggregation · hidden_filter, 20 each).
+  `json_object_rate` = fraction of 200-replies parsing as a JSON object (formerly mislabeled
+  "tool-call rate"); it says nothing about tool calls. NO automatic model "false_accept" — a
   chart verified for an unfair request needs manual labels, out of scope (POC_SCOPE).
 
 Buckets partition the 200 denominator (`verified + schema + semantic + policy = 1.0`). Non-200
@@ -33,6 +35,22 @@ Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
 `label`/`security`/`scale` or a result whose method is `resource_policy` = POLICY. Every result
 must carry one method from the 0.2 wire vocabulary; a missing/unknown method invalidates decode
 instead of silently misclassifying an older response.
+
+## Run provenance (`report.json` → `meta`)
+
+Every report explicitly records `git_commit` (or `null`), `git_dirty` (tracked OR untracked),
+bench's own raw-byte `vplot_schema_sha256` for `schema/vplot-0.1.schema.json`, and the exact
+`model_probe_url` supplied by `--model-url`. `backend` is either `null` (unreachable, non-200, or
+undecodable probe) or the backend root `/health` block: `model_name`, `device`,
+`structured_output`, `vplot_schema_sha256`. When bench and backend both report a schema digest,
+`_log_summary` warns on divergence; provenance remains observational and never changes exit
+status.
+
+`--model-url` selects ONLY the backend that bench probes (`/v1/models` + root `/health`). The
+verifier independently selects its proposal backend with `VERIFIER_MODEL_BASE_URL`. Point both at
+the same backend so `meta.backend` describes the actual proposer; the schema-digest cross-check
+surfaces schema-version divergence, but cannot prove endpoint identity when equal digests are
+served.
 
 **Reply shape** (`reply_shape` block — a first-class classifier over the same `n` replies)
 partitions each by SURFACE FORM — `fenced` (carries a markdown code fence) · `bare_object` (no
@@ -96,6 +114,29 @@ Eval:
 .venv/bin/python -m bench                      # ~10 min: 100 prompts, greedy, ~6s each on NPU
 ```
 
+## Paired raw-vs-guided A/B (same commit)
+
+Hold git commit, verifier config, prompts, model, and device fixed; restart only the backend between
+arms (source the accelerator environment exactly as above in each backend shell):
+
+RAW arm — schema guidance OFF; the verifier's hardcoded `guided_json` request becomes a no-op:
+```
+MODEL_BACKEND_STRUCTURED_OUTPUT=false .venv-model/bin/python -m model_backend
+# In the eval shell, after /health is ready:
+.venv/bin/python -m bench --out bench/reports/report-raw.json \
+  --details bench/reports/details-raw.jsonl
+```
+Stop that backend, then launch the GUIDED arm — default `structured_output=true`:
+```
+.venv-model/bin/python -m model_backend
+# In the eval shell, after /health is ready:
+.venv/bin/python -m bench --out bench/reports/report-guided.json \
+  --details bench/reports/details-guided.jsonl
+```
+Compare `observations.overall.verified_render_rate` in the two reports. This paired ablation, not an
+unpaired historical 0→26 comparison, isolates schema guidance; `meta.git_commit`, `git_dirty`, and
+`backend.structured_output` make accidental arm drift visible.
+
 ## Defaults (all overridable, see `python -m bench --help`)
 `--verifier-url http://127.0.0.1:8000` · `--model-url http://127.0.0.1:8001/v1` ·
 `--examples-dir examples` (golden-corpora root, bad + good) · `--out bench/reports/report.json` ·
@@ -103,8 +144,8 @@ Eval:
 `VERIFIER_DATA_DIR` (default `data/`) — the prompts reference `sales.csv` + `weather.csv`.
 
 ## Outputs (`bench/reports/`, gitignored — host+model-coupled)
-- `report.json` — `meta` + `guarantee` (incl. both corpus digests) + `observations{overall,
-  by_category, top_failure_modes, reply_shape}`.
+- `report.json` — `meta` (git/schema/backend provenance above) + `guarantee` (incl. both corpus
+  digests) + `observations{overall, by_category, top_failure_modes, reply_shape}`.
 - `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
   `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
 

@@ -20,6 +20,7 @@ M3.4a synthetic-payload exercise was a one-off script, never committed). Locked 
 - the exit-code validity matrix (every single violation flips a valid run to exit 1).
 """
 
+import hashlib
 from pathlib import Path
 
 import httpx
@@ -31,9 +32,12 @@ from bench.__main__ import (
     _EXPECTED_BAD_CORPUS_SIZE,
     _EXPECTED_GOOD_CORPUS_DIGEST,
     _EXPECTED_GOOD_CORPUS_SIZE,
+    _SCHEMA_PATH,
     _exit_code,
+    _schema_digest,
 )
 from bench.harness import (
+    BackendProvenance,
     GuaranteeBlock,
     MetaBlock,
     ObservationsBlock,
@@ -54,6 +58,7 @@ from bench.harness import (
     _run_guarantee,
     _Tally,
     _tally_fault,
+    fetch_backend_provenance,
 )
 from verifier.service.app import _PIN_MISMATCH_DETAIL
 
@@ -218,6 +223,48 @@ def test_decode_propose_result_reads_embed_and_bare() -> None:
     assert from_bare.verdict.verified is False
 
 
+def test_fetch_backend_provenance_uses_backend_root_health() -> None:
+    schema_digest = "sha256:" + "a" * 64
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/health"
+        return httpx.Response(
+            200,
+            json={
+                "status": "ok",
+                "model_name": "model-id",
+                "device": "NPU",
+                "structured_output": True,
+                "vplot_schema_sha256": schema_digest,
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provenance = fetch_backend_provenance(client, "http://backend.test/v1")
+    assert provenance == BackendProvenance(
+        model_name="model-id",
+        device="NPU",
+        structured_output=True,
+        vplot_schema_sha256=schema_digest,
+    )
+
+
+def test_fetch_backend_provenance_non_200_is_none() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "unavailable"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_backend_provenance(client, "http://backend.test/v1") is None
+
+
+def test_fetch_backend_provenance_old_health_shape_is_none() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "ok"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        assert fetch_backend_provenance(client, "http://backend.test/v1") is None
+
+
 @pytest.mark.parametrize(
     "result",
     [
@@ -233,6 +280,12 @@ def test_response_consumer_requires_closed_check_method(result: dict[str, str]) 
 
 
 # --- corpus identity pins re-derived from the tree -----------------------------
+def test_schema_digest_matches_committed_schema_bytes() -> None:
+    expected = "sha256:" + hashlib.sha256(_SCHEMA_PATH.read_bytes()).hexdigest()
+    assert _schema_digest() == expected
+    assert _schema_digest() == expected
+
+
 def test_corpus_digest_pins_match_tree() -> None:
     # The __main__ pins must equal a fresh digest of the real M1 goldens: a corpus edit without
     # a conscious re-pin fails HERE (portable gate), not only on the next live run.
@@ -343,7 +396,7 @@ def _valid_report(**guarantee_overrides: int | str) -> Report:
         guarantee = msgspec.structs.replace(guarantee, **guarantee_overrides)
     rates = RateBlock(
         n=100,
-        tool_call_rate=0.0,
+        json_object_rate=0.0,
         json_validity_rate=0.0,
         schema_failure_rate=1.0,
         semantic_failure_rate=0.0,
@@ -359,7 +412,15 @@ def _valid_report(**guarantee_overrides: int | str) -> Report:
     )
     return Report(
         meta=MetaBlock(
-            served_model="m", prompt_count=100, categories=("normal",), reproducibility="r"
+            served_model="m",
+            prompt_count=100,
+            categories=("normal",),
+            reproducibility="r",
+            git_commit="abcdef0",
+            git_dirty=False,
+            vplot_schema_sha256="sha256:" + "0" * 64,
+            model_probe_url="http://127.0.0.1:8001/v1",
+            backend=None,
         ),
         guarantee=guarantee,
         observations=ObservationsBlock(
