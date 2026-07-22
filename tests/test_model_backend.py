@@ -17,7 +17,7 @@ import pytest
 from jsonschema import Draft202012Validator
 from litestar.testing import TestClient
 
-from model_backend.schema_guidance import load_guidance_schema, strip_guidance
+from model_backend.schema_guidance import load_guidance_schema, schema_digest, strip_guidance
 from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -143,7 +143,7 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return cast("dict[str, Any]", loaded)
 
 
-def _loaded_engine(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> tuple[Engine, _Pipe]:
+def _patch_pipeline(monkeypatch: pytest.MonkeyPatch) -> _Pipe:
     tokenizer = _Tokenizer(3)
     pipe = _Pipe(tokenizer)
 
@@ -151,6 +151,11 @@ def _loaded_engine(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> tuple
         return pipe
 
     monkeypatch.setattr(_OPENVINO_GENAI, "LLMPipeline", load, raising=False)
+    return pipe
+
+
+def _loaded_engine(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> tuple[Engine, _Pipe]:
+    pipe = _patch_pipeline(monkeypatch)
     return Engine.load(settings), pipe
 
 
@@ -228,6 +233,60 @@ def test_load_guidance_schema_round_trips_and_fails_closed(tmp_path: Path) -> No
         load_guidance_schema(invalid)
 
 
+def test_load_guidance_schema_rejects_duplicate_keys(tmp_path: Path) -> None:
+    schema_path = tmp_path / "duplicate.json"
+    schema_path.write_text('{"type":"object","type":"array"}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        load_guidance_schema(schema_path)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ['{"type": NaN}', '{"type": Infinity}', '{"type": -Infinity}', '{"minimum": 1e400}'],
+    ids=["nan", "positive-infinity", "negative-infinity", "overflow-float"],
+)
+def test_load_guidance_schema_rejects_non_finite_numbers(tmp_path: Path, source: str) -> None:
+    schema_path = tmp_path / "non-finite.json"
+    schema_path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="non-finite JSON"):
+        load_guidance_schema(schema_path)
+
+
+@pytest.mark.parametrize("source", ["{}", '{"foo": 1}'], ids=["empty", "no-schema-keyword"])
+def test_load_guidance_schema_rejects_non_schema_objects(tmp_path: Path, source: str) -> None:
+    schema_path = tmp_path / "not-schema.json"
+    schema_path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="non-empty JSON Schema"):
+        load_guidance_schema(schema_path)
+
+
+def test_load_guidance_schema_keeps_non_object_root_as_type_error(tmp_path: Path) -> None:
+    schema_path = tmp_path / "array.json"
+    schema_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(TypeError, match="root must be a JSON object"):
+        load_guidance_schema(schema_path)
+
+
+def test_schema_digest_is_stable_raw_byte_sha256(tmp_path: Path) -> None:
+    compact = tmp_path / "compact.json"
+    spaced = tmp_path / "spaced.json"
+    compact.write_text('{"type":"object"}', encoding="utf-8")
+    spaced.write_text('{"type": "object"}', encoding="utf-8")
+
+    digest = schema_digest(compact)
+    hex_digest = digest.removeprefix("sha256:")
+    assert digest.startswith("sha256:")
+    assert len(hex_digest) == 64
+    assert hex_digest == hex_digest.lower()
+    assert set(hex_digest) <= set("0123456789abcdef")
+    assert schema_digest(compact) == digest
+    assert schema_digest(spaced) != digest
+
+
 def test_structured_output_settings_defaults_and_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -250,6 +309,43 @@ def test_structured_output_settings_defaults_and_env(
     monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "sometimes")
     with pytest.raises(ValueError, match="invalid boolean value"):
         Settings.from_env()
+
+
+def test_health_reports_loaded_schema_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings()
+    _patch_pipeline(monkeypatch)
+
+    with TestClient(app=create_app(settings)) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model_name": settings.model_name,
+        "device": settings.device,
+        "structured_output": True,
+        "vplot_schema_sha256": schema_digest(settings.vplot_schema_path),
+    }
+
+
+def test_health_reports_disabled_structured_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(
+        structured_output=False,
+        vplot_schema_path=Path("missing-but-disabled.json"),
+    )
+    _patch_pipeline(monkeypatch)
+
+    with TestClient(app=create_app(settings)) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "model_name": settings.model_name,
+        "device": settings.device,
+        "structured_output": False,
+        "vplot_schema_sha256": None,
+    }
 
 
 def test_engine_applies_structured_output_config_when_enabled_and_guided(

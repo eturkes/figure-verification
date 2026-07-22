@@ -31,6 +31,7 @@ from model_backend.models import (
     Choice,
     ErrorDetail,
     ErrorResponse,
+    HealthResponse,
     ModelCard,
     ModelList,
     Usage,
@@ -39,9 +40,16 @@ from model_backend.settings import Settings
 
 
 @get("/health", sync_to_thread=False)
-def health() -> dict[str, str]:
-    """Report backend liveness."""
-    return {"status": "ok"}
+def health(state: State) -> HealthResponse:
+    """Report backend liveness and loaded model/schema provenance."""
+    settings = cast("Settings", state["settings"])
+    engine = cast("Engine", state["engine"])
+    return HealthResponse(
+        model_name=settings.model_name,
+        device=settings.device,
+        structured_output=settings.structured_output,
+        vplot_schema_sha256=engine.schema_sha256,
+    )
 
 
 @post("/v1/chat/completions", status_code=HTTP_200_OK)

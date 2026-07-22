@@ -30,7 +30,7 @@ from typing import Any, Literal, Self
 import msgspec
 import openvino_genai as ov_genai
 
-from model_backend.schema_guidance import load_guidance_schema
+from model_backend.schema_guidance import load_guidance_schema, schema_digest
 from model_backend.settings import Settings
 
 
@@ -58,7 +58,7 @@ class GenResult(msgspec.Struct, frozen=True, kw_only=True):
 class Engine:
     """A loaded LLMPipeline guarded by a lock. Build via Engine.load (blocking compile)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         pipe: Any,
         tokenizer: Any,
@@ -66,15 +66,22 @@ class Engine:
         max_prompt_len: int,
         max_response_bytes: int,
         guidance_schema: str | None = None,
+        schema_sha256: str | None = None,
     ) -> None:
         self._pipe = pipe
         self._tok = tokenizer
         self._max_prompt_len = max_prompt_len
         self._max_response_bytes = max_response_bytes
         self._guidance_schema = guidance_schema
+        self._schema_sha256 = schema_sha256
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
         # probed (see memory M3); the lock is the safe default.
         self._lock = threading.Lock()
+
+    @property
+    def schema_sha256(self) -> str | None:
+        """Return the loaded operator schema's raw-byte digest, if guidance is enabled."""
+        return self._schema_sha256
 
     @classmethod
     def load(cls, settings: Settings) -> Self:
@@ -90,9 +97,13 @@ class Engine:
         missing, unreadable, or invalid JSON schema aborts loading rather than silently serving
         unconstrained output; the derived capability is applied only to requests that opt in.
         """
-        guidance_schema = (
-            load_guidance_schema(settings.vplot_schema_path) if settings.structured_output else None
-        )
+        if settings.structured_output:
+            guidance_schema = load_guidance_schema(settings.vplot_schema_path)
+            # Intentionally re-read raw bytes after parsing: tiny static file, blocking load path.
+            schema_sha256 = schema_digest(settings.vplot_schema_path)
+        else:
+            guidance_schema = None
+            schema_sha256 = None
         pipeline_config: dict[str, int] = {}
         if "NPU" in settings.device:
             pipeline_config["MAX_PROMPT_LEN"] = settings.max_prompt_len
@@ -104,6 +115,7 @@ class Engine:
             max_prompt_len=settings.max_prompt_len,
             max_response_bytes=settings.max_response_bytes,
             guidance_schema=guidance_schema,
+            schema_sha256=schema_sha256,
         )
 
     def generate(

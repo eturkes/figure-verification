@@ -25,6 +25,7 @@ __all__ = [
     "Choice",
     "ErrorDetail",
     "ErrorResponse",
+    "HealthResponse",
     "ModelCard",
     "ModelList",
     "Usage",
@@ -91,6 +92,16 @@ class ChatCompletionResponse(msgspec.Struct, frozen=True, kw_only=True):
     choices: tuple[Choice, ...]
     usage: Usage
     object: Literal["chat.completion"] = "chat.completion"
+
+
+class HealthResponse(msgspec.Struct, frozen=True, kw_only=True):
+    """Backend liveness plus model and operator-schema provenance."""
+
+    model_name: str
+    device: str
+    structured_output: bool
+    vplot_schema_sha256: str | None
+    status: Literal["ok"] = "ok"
 
 
 class ModelCard(msgspec.Struct, frozen=True, kw_only=True):
