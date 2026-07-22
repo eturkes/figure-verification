@@ -104,17 +104,55 @@ empirically validated (supersedes web docs).
   `decode_spec` ACCEPTED (`weather.csv` scatter). A `sales` (no-`.csv`) run was structure-valid but
   verifier-REJECTED on the dataset-name rule — live-proof of the structure-vs-semantics split (schema forces
   structure; the verifier owns semantics). Context: `main=38% 105K/272K`; `impl=47% 128K/272K` (implementing Agent).
-- **M8.2 (OPEN, needs M8.1) — two-example banner + clear blocked message (+ optional few-shot).** MAIN
-  (M8.1 live on NPU) confirms the reliable succeeds-prompt + blocked-prompt against the real code, and
-  decides whether 1-shot is needed (demo fidelity) vs base+schema (simpler). AGENT transcribes: the
-  optional 1-shot exemplar into `verifier.service.model_client._build_messages`; rewrite the
-  `webui/launch.sh` "Try typing" banner (+ its `:250` tier-split comment) to show BOTH confirmed
-  prompts with their real prompt-driven outcomes; wire a CLEAR "blocked" message for the failed-verdict
-  path (spec fails a semantic/policy check → no `Location` → the reply states it was blocked and why —
-  `enforcement_filter.py`'s Verified Plot Guard outlet already covers the raw-code path). Acceptance:
-  portable gate green; MAIN reruns the real-model standup → the succeeds-prompt renders a real inline
-  figure end-to-end AND the blocked-prompt shows a clear "blocked" message, both deterministic.
-- **M8.3 (OPEN, needs M8.2) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
+- **M8.2 respec → M8.2a + M8.2b (live-NPU findings).** Confirmed seam: request-scoping is a
+  newly-required mechanism (global structured output breaks OWUI chat), and the banner +
+  blocked-message decisions need live OWUI validation that only exists once request-scoping lands.
+  Phase-A facts (live NPU, structured ON globally, 3× byte-identical) banked here — transcribe, do NOT
+  re-derive.
+  - **Confirmed prompts (`sales.csv`).** SUCCEEDS (base+schema, NO few-shot): request `Scatter plot of
+    revenue versus orders.` → deterministic VERIFIED (9/9 checks) ⇒ NO 1-shot exemplar needed (drop
+    the `_build_messages` change). BLOCKED (schema-valid but semantic-fail): request `Create a bar
+    chart of total revenue by month.` → deterministic `verified=false`, fails
+    `encoding.fields_exist_in_plotted_table` (`deterministic_recompute`, blocking): channel field
+    `revenue` absent from plotted columns `[month]` (model selected only `[month]`, mark line,
+    y=revenue) — the sharper schema-valid-but-semantically-wrong cut.
+  - **Global structured output breaks OWUI (PROBE 1).** Plain `capital of France?` chat → model emits
+    VPlot JSON. So guidance must be REQUEST-SCOPED, not the M8.1 global `settings.structured_output`
+    default; this supersedes M8.2's original "succeeds via direct `/propose-spec`" assumption.
+  - **OWUI cannot relay a summary-only.** `process_tool_result` (`open_webui/utils/middleware.py`,
+    ~826-1028 in the `.webui-venv`) unpacks a `[result, summary]` tool body to `summary` ONLY when
+    `Content-Disposition: inline` AND (content-type `text/html` → it embeds element0 as HTML, OR a
+    `Location` header present → it embeds that). No "relay element1, embed nothing" path exists ⇒ the
+    clear blocked message must come from `enforcement_filter.py`'s outlet (`BLOCKED_NOTICE`), NOT a
+    verifier failed-verdict response-shape change (the `[result, blocked_summary]` "Option A" is dead).
+- **M8.2a (OPEN, needs M8.1) — request-scoped structured output.** Make M8.1 guidance opt-in per
+  request so OWUI chat/tool-selection stays unconstrained while the verifier's proposeSpec is
+  VPlot-constrained. model_backend: `ChatCompletionRequest` gains `guided_json: bool = False`
+  (`model_backend/models.py`); `chat_completions` threads `guided=data.guided_json`
+  (`model_backend/app.py`); `Engine.generate(…, guided: bool)` applies `StructuredOutputConfig` only
+  when `guided and self._guidance_schema is not None` (`model_backend/engine.py`) — load-time
+  derivation unchanged, still fail-closed. verifier: `propose_spec` adds `"guided_json": true` to the
+  `payload` dict (`src/verifier/service/model_client.py:493`). Tests: model_backend apply/omit becomes
+  per-request (coverage-excluded); the model_client request-body byte-equality tests absorb the new
+  field. Acceptance: portable gate green (ruff/mypy/pytest, 100% verifier cov); MAIN NPU-check → a
+  `guided_json:true` request is VPlot-constrained (proposeSpec still verifies) while a plain
+  `/v1/chat/completions` request is unconstrained (`capital of France?` answers in prose). No
+  prompt/banner/doc change.
+- **M8.2b (BLOCKED on M8.2a live) — two-example banner + clear blocked message.** MAIN re-standups the
+  real NPU stack with request-scoping and validates the live OWUI flow: plain chat unconstrained; a
+  succeeds-prompt (start from `Scatter plot of revenue versus orders.`) that deterministically drives
+  proposeSpec → a verified inline chart embed; a blocked-prompt (`Create a bar chart of total revenue
+  by month.`) whose OWUI outcome deterministically surfaces a clear blocked message. Tool-selection is
+  per-fixed-prompt greedy-deterministic (a prompt always- or never-calls the tool) → pin prompts that
+  behave; if the blocked reply is not chart-looking (outlet silent), add a minimal
+  `enforcement_filter.py` enhancement (standalone, non-gated) — do NOT relay a verifier summary-only
+  (banked OWUI fact). AGENT transcribes: rewrite `webui/launch.sh` "Try typing" banner (and drop its
+  `:250` tier-split comment) to show BOTH pinned prompts with their prompt-driven outcomes; any outlet
+  enhancement. Acceptance: portable gate green; MAIN real-model standup → succeeds-prompt renders a
+  real inline figure end-to-end (textual proof: `/propose-spec` `Location` + served chart HTML +
+  certificate; OWUI `run_persisted_chat` embed per M7.2 precedent) AND blocked-prompt shows a clear
+  "blocked" message, both deterministic.
+- **M8.3 (OPEN, needs M8.2b) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
   (constrained default) → new observations. AGENT updates the honest record: this M8 section's numbers,
   an M3 note that 0/100 is the RAW baseline superseded by the constrained default, `.agent/memory.md`,
   `POC_SCOPE.md` (proposer section), root + `webui` READMEs. Acceptance: portable gate green; `bench`
