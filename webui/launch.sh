@@ -260,9 +260,10 @@ if (( USE_STUB )); then
     "      1) ${succeeds_prompt}" \
     "      2) ${blocked_prompt}" \
     "" \
-    "           Both VERIFY -- the stub proposes a known-good spec for any request, so each renders a real" \
-    "           figure inline. It cannot show the blocked path; relaunch on the real model (drop --stub)" \
-    "           to watch prompt 2 get BLOCKED."
+    "           Both VERIFY -- the stub proposes a FIXED known-good spec for any request (ignoring prompt" \
+    "           intent), so each renders that same demo figure inline, not the chart your prompt describes." \
+    "           It cannot show the blocked path; relaunch on the real model (drop --stub) to watch prompt 2" \
+    "           get BLOCKED."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
   printf -v try_typing '%s\n' \

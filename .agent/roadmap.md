@@ -19,13 +19,58 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
 | M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | REVIEWED |
-| M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | IMPLEMENTED |
+| M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | REVIEWED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M8 — Reliable real-model figures (schema-guided decoding)   (IMPLEMENTED)
+## M8 — Reliable real-model figures (schema-guided decoding)   (REVIEWED)
+
+### Review ledger: M8 REVIEWED — all dispositions closed
+
+Four analysis lenses (correctness/spec, cross-unit integration, instruction/memory conformance,
+token-efficiency/obsolescence) over every M8 commit (`git log --grep "(M8[. ]"` — plan + M8.1 + M8.2a
++ M8.2b + M8.3 ×2), cross-checked by independent peer audits + three targeted probes (artifact/SPDX,
+bench-provenance, OWUI-traffic). No trust-boundary or logic defect surfaced: every mechanic —
+per-request `guided_json` scoping, the xgrammar `pattern`/`format` strip, strict-decode authority,
+Decimal recompute, SHA-256 re-bind — is correct, and guidance is structure-only (SPDX "fails closed",
+bench-provenance "clean trust seam", OWUI-trace "guidance adds no trust"; the deterministic bound
+18/18 bad blocked + 10/10 good accepted + 0 faults held). Cross-unit integration confirmed the four
+units compose at their seams (M8.1 mechanism → M8.2a per-request scoping → M8.2b OWUI two-call flow →
+M8.3 measure) with the TCB unmoved end-to-end. Every accepted finding was CLAIM-DISCIPLINE, folded
+into this review commit (comment/docstring + doc/roadmap/memory only, no logic change → no separate
+Agent batch):
+
+- **Overclaim cluster** ("forces / reliably emit / valid structure" → "steers toward a
+  schema-representable structure") — the bulk landed in M8.3's `7aacd83`; review tightened the last
+  residual "valid VPlot structure" → "schema-representable" in `model_backend/models.py` +
+  `src/verifier/service/model_client.py`.
+- **0→26 confound** (git-validated): the raw `0/100` baseline predates BOTH the M5.1h gen-path fix
+  (`548809e`) AND the verifier's M5-M7 evolution → the delta reflects all three, not guidance alone;
+  only fenced→0 is by-construction guidance-attributable (caveat a). `verified_render` counts VERIFIER
+  passes, not natural-language prompt-intent (caveat b).
+- **Two distinct blocked paths** (not to be conflated): the banner's reliably-BLOCKED prompt hits the
+  `Verified Plot Guard` (model bypass → raw matplotlib → `BLOCKED_NOTICE`, a bypassable guardrail),
+  NOT the verifier; the schema-valid-but-semantically-wrong verifier rejection is the backend-direct
+  `/propose-spec` probe (`encoding.fields_exist_in_plotted_table`). Documented in the thesis +
+  M8.3-close.
+- **won't-compile doc-narrow**: `Engine.load` fails closed only on a missing / unreadable / non-object
+  schema; the xgrammar grammar builds lazily at first guided generate (an uncompilable override
+  surfaces there as an upstream fault — the verifier still accepts no spec).
+
+Deferred (recorded, not fixed — outside M8 claim-discipline): OWUI output-item-type robustness (inert
+under the shipped Qwen2-0.5B backend — see Deferred above); operator-schema hardening (load-time
+meta-validation + `json.loads` non-finite/duplicate-key strictness — safety-independent, the strict
+verifier still prevents false verification); pre-M8 hygiene (`.agent/context.sh` SPDX header; Read-deny
+gaps for `.verifier-state/**` [Ed25519 signing.key + archive DB], `.serena/cache/**`,
+`bench/reports/details.jsonl`, `.launch-logs/**`); the bench-provenance overhaul + a paired
+current-commit raw-vs-guided A/B + the `tool_call_rate` rename — all surfaced to the user
+(permission / `CLAUDE.md` edits are the user's call, not peer-grantable).
+
+CLOSED: M8 REVIEWED — MAIN independently reran the full gate green (ruff format 94 / ruff check / mypy
+94 / pytest 1605 @ 100% branch) after folding the four claim-discipline edits (comment/docstring + doc
+only; no coverage-source logic changed, test count unchanged at 1605).
 
 **User task** (`/session-prompt`): the launched OWUI PoC's "Try typing" banner should offer TWO
 real examples — one that reliably gets BLOCKED (with a clear "blocked" message) and one that reliably
@@ -44,12 +89,17 @@ ruff/mypy/pytest gate).
 
 **Thesis preserved / sharpened.** Claim boundary UNCHANGED: the model supplies NO data values; verify
 recomputes the whole plotted table (Decimal-exact) + re-binds the CSV by SHA-256. Constrained decoding
-forces only output STRUCTURE (schema-valid VPlot), never SEMANTICS or data → the verifier's
-demonstrated value shifts from "catches syntactic garbage" to "catches semantic + provenance error a
-schema can't" (wrong column/unit/type, hash mismatch, recomputation, SMT) — a sharper cut. M3's raw
-proposer 0/100 stays the honest baseline (unconstrained); M8 ships constrained as the default and
-re-measures. The reliably-BLOCKED banner example is exactly a schema-valid-but-semantically-wrong spec
-the verifier rejects.
+steers output toward a relaxed, schema-representable STRUCTURE (value constraints stripped, so strict
+decode stays the authority), never SEMANTICS or data → the verifier's demonstrated value shifts from
+"catches syntactic garbage" to "catches the semantic errors a schema can't" (wrong column/unit/type);
+provenance/hash/recompute/SMT rejection stays a by-construction guarantee, not exercised by this corpus
+(faults 0). M3's raw proposer 0/100 stays the honest baseline (unconstrained); M8 ships constrained as
+the default and re-measures. Two DISTINCT blocked paths, not to be conflated: (1) the banner's
+reliably-BLOCKED prompt is caught by the `Verified Plot Guard` (the model bypasses proposeSpec → raw
+matplotlib → `BLOCKED_NOTICE` — a bypassable guardrail, NOT the verifier); (2) the
+schema-valid-but-semantically-wrong verifier rejection is demonstrated by the backend-direct
+`/propose-spec` probe (`bar chart of total revenue by month` → fails
+`encoding.fields_exist_in_plotted_table`).
 
 **Precondition CONFIRMED (live NPU, this session).** OV GenAI 2026.2.1
 `StructuredOutputConfig(json_schema=)` works on the NPU (demo default; pipeline loads ~7s,
@@ -61,32 +111,14 @@ prompting (~30 variants, 0 clean). Schema-guidance forbids the trailing key
 example → `scatter of temp_c vs precip_mm from weather.csv` verifies deterministically. Tooling choice
 empirically validated (supersedes web docs).
 
-**BANKED RECIPE (transcribe, do NOT re-derive).**
-- OV GenAI: set `cfg.structured_output_config = ov_genai.StructuredOutputConfig(json_schema=<jsonstr>)`
-  (module also exposes `EBNF` / `Regex` / `compound_grammar`); applies during `generate`,
-  deterministic under greedy.
-- xgrammar (OV's backend) REJECTS the VPlot schema's negative-lookahead `pattern`s
-  (`^(?!.*[\r\n])…` → RuntimeError "Lookahead is not supported") and ignores `minLength` / `maxLength`
-  / `format` beside a `pattern`. FIX: derive a guidance schema = the authoritative
-  `schema/vplot-0.1.schema.json` with every `pattern` + `format` key recursively stripped. Structure
-  (`required` / `additionalProperties:false` / `enum` / `anyOf`+discriminator) is PRESERVED = what
-  forces valid VPlot + kills the trailing key. The verifier keeps the FULL strict schema as sole
-  authority (guidance only relaxes value patterns, never structure) → derive at runtime from the
-  authoritative file so it cannot drift; a test asserts stripping preserves structure + all 10 good
-  goldens still validate against the derived schema.
-- Prompt budget: 1-shot fits the NPU 1536-tok static cap; 2-shot overflows (`prompt_too_long` +
-  truncation) → 1-shot max. The working exemplar = an empty-transform scatter (from a golden) as an
-  assistant turn + a CROSS-dataset user turn built by `_build_messages` (so the model copies the REAL
-  binding, not the example's).
-- Schema forces STRUCTURE not SEMANTICS → PIN each banner prompt to a MAIN-confirmed deterministic
-  outcome. Candidate succeeds: `scatter of temp_c vs precip_mm from weather.csv` (few-shot+schema ✓)
-  or a sales scatter (base+schema ✓). Candidate blocked:
-  `Plot temperature over time for each city as a line chart` (base+schema → schema-valid spec that
-  FAILS verification on a select/encoding mismatch) — a real schema-valid-but-wrong block. Re-confirm
-  both against M8.1's actual code.
-- Probe scripts banked in `/tmp`: `fv_schema_gen.py` (schema-strip + StructuredOutputConfig generate),
-  `fv_verify_replies.py` (build few-shot + verdict), `fv_v.py` (verdict-only), `fv_build_msgs.py`
-  (base messages) — regenerate if gone.
+**Recipe (CONSUMED — mechanism shipped in M8.1).** The xgrammar strip (OV's backend rejects the VPlot
+schema's negative-lookahead `pattern`s; `pattern` + `format` recursively stripped from
+`schema/vplot-0.1.schema.json`, structure — `required` / `additionalProperties:false` / `enum` /
+`anyOf`+discriminator — preserved) shipped in `model_backend/schema_guidance.py`, derived at runtime
+from the authoritative file so it cannot drift; the strict schema stays the SOLE verifier authority
+(guidance only relaxes value patterns). No few-shot exemplar (M8.2a dropped it: base+schema suffices).
+Live-NPU probe facts + the final pinned prompts live in `.agent/memory.md` (M8) and the DONE-records
+below; the superseded 1-shot/candidate-prompt planning detail + `/tmp` probe scripts are in git.
 
 ### Units (IMPLEMENTED)
 - **M8.1 (DONE) — backend structured-output mechanism.** New pure `model_backend/schema_guidance.py`
@@ -94,11 +126,13 @@ empirically validated (supersedes web docs).
   coverage-excluded) deriving the pattern/format-stripped guidance schema from
   `schema/vplot-0.1.schema.json`; `model_backend/settings.py` gains `structured_output: bool = True` +
   `vplot_schema_path`; `model_backend/engine.py` applies `StructuredOutputConfig` in `generate` when
-  enabled (fail-closed if the schema won't compile). Portable tests (run in the `.venv` suite, import
+  enabled (`Engine.load` fails closed on a missing, unreadable, or non-JSON-object schema; the
+  xgrammar grammar itself builds lazily at first guided generate, so a valid-JSON-but-uncompilable
+  override surfaces there as an upstream fault — the verifier still accepts no spec). Portable tests (run in the `.venv` suite, import
   only the no-openvino modules): derivation strips exactly `pattern` / `format`, preserves structure,
   all 10 good goldens validate against the derived schema (drift guard), plus the settings flags.
   Acceptance: ruff/mypy/pytest green (model_backend type-checked, coverage-excluded); MAIN NPU-validates
-  constrained generate → structurally-valid VPlot + a simple prompt verifies. No prompt/banner/doc change.
+  constrained generate → structurally-valid VPlot + a simple prompt verifies. No operator-doc change (internal `.agent/` bookkeeping only).
   Done: gates green (ruff format/check, mypy 94 files, pytest 1596 @ 100% verifier cov); MAIN NPU-validated
   the real Engine (structured_output on; 3511-byte guidance, no `pattern`/`format`) → structurally-valid VPlot,
   `decode_spec` ACCEPTED (`weather.csv` scatter). A `sales` (no-`.csv`) run was structure-valid but
@@ -107,24 +141,13 @@ empirically validated (supersedes web docs).
 - **M8.2 respec → M8.2a + M8.2b (live-NPU findings).** Confirmed seam: request-scoping is a
   newly-required mechanism (global structured output breaks OWUI chat), and the banner +
   blocked-message decisions need live OWUI validation that only exists once request-scoping lands.
-  Phase-A facts (live NPU, structured ON globally, 3× byte-identical) banked here — transcribe, do NOT
-  re-derive.
-  - **Confirmed prompts (`sales.csv`).** SUCCEEDS (base+schema, NO few-shot): request `Scatter plot of
-    revenue versus orders.` → deterministic VERIFIED (9/9 checks) ⇒ NO 1-shot exemplar needed (drop
-    the `_build_messages` change). BLOCKED (schema-valid but semantic-fail): request `Create a bar
-    chart of total revenue by month.` → deterministic `verified=false`, fails
-    `encoding.fields_exist_in_plotted_table` (`deterministic_recompute`, blocking): channel field
-    `revenue` absent from plotted columns `[month]` (model selected only `[month]`, mark line,
-    y=revenue) — the sharper schema-valid-but-semantically-wrong cut.
-  - **Global structured output breaks OWUI (PROBE 1).** Plain `capital of France?` chat → model emits
-    VPlot JSON. So guidance must be REQUEST-SCOPED, not the M8.1 global `settings.structured_output`
-    default; this supersedes M8.2's original "succeeds via direct `/propose-spec`" assumption.
-  - **OWUI cannot relay a summary-only.** `process_tool_result` (`open_webui/utils/middleware.py`,
-    ~826-1028 in the `.webui-venv`) unpacks a `[result, summary]` tool body to `summary` ONLY when
-    `Content-Disposition: inline` AND (content-type `text/html` → it embeds element0 as HTML, OR a
-    `Location` header present → it embeds that). No "relay element1, embed nothing" path exists ⇒ the
-    clear blocked message must come from `enforcement_filter.py`'s outlet (`BLOCKED_NOTICE`), NOT a
-    verifier failed-verdict response-shape change (the `[result, blocked_summary]` "Option A" is dead).
+  Phase-A live-NPU findings (CONSUMED — shipped + recorded in `.agent/memory.md` M8 + the DONE-records
+  below): global structured output breaks OWUI chat (`capital of France?` emits VPlot JSON) → guidance
+  must be REQUEST-SCOPED (M8.2a), superseding M8.2's original direct-`/propose-spec` assumption; OWUI
+  cannot relay a summary-only (`process_tool_result` embeds only on `Content-Disposition: inline` +
+  `text/html`/`Location`), so the clear blocked message comes from `enforcement_filter.py`'s outlet
+  (`BLOCKED_NOTICE`), NOT a verifier response-shape change. Pinned succeeds/blocked prompts + the
+  direct-probe semantic-fail (`fields_exist_in_plotted_table`) are in memory M8; full probe detail in git.
 - **M8.2a (DONE) — request-scoped structured output.** Make M8.1 guidance opt-in per
   request so OWUI chat/tool-selection stays unconstrained while the verifier's proposeSpec is
   VPlot-constrained. model_backend: `ChatCompletionRequest` gains `guided_json: bool = False`
@@ -137,7 +160,7 @@ empirically validated (supersedes web docs).
   field. Acceptance: portable gate green (ruff/mypy/pytest, 100% verifier cov); MAIN NPU-check → a
   `guided_json:true` request is VPlot-constrained (proposeSpec still verifies) while a plain
   `/v1/chat/completions` request is unconstrained (`capital of France?` answers in prose). No
-  prompt/banner/doc change.
+  operator-doc change (internal `.agent/` bookkeeping only).
   Done: portable gate independently re-green (ruff format 94 / ruff check / mypy 94 / pytest 1598 @
   100% verifier branch cov). Edits exactly as specced — `ChatCompletionRequest.guided_json: bool =
   False` (models.py), `chat_completions` threads `guided=data.guided_json` (app.py),
@@ -154,7 +177,7 @@ empirically validated (supersedes web docs).
   versus orders.` → 200 `Content-Disposition: inline` + `Location …/chart/6cb6ab12…` + summary
   `all 9 checks passed` + chart served 200 CSP `sandbox allow-scripts` (the M4 verified-success
   signature — a failure returns a bare object with no Location; reproduces the Phase-A 9/9 result
-  under request-scoping). No prompt/banner/doc change. Context: `main=70% 189K/272K`; `impl=48%
+  under request-scoping). No operator-doc change (internal `.agent/` bookkeeping only). Context: `main=70% 189K/272K`; `impl=48%
   130K/272K` (implementing Agent).
 - **M8.2b (DONE) — two-example banner + clear blocked message.** MAIN re-standups the
   real NPU stack with request-scoping and validates the live OWUI flow: plain chat unconstrained; a
@@ -201,24 +224,47 @@ empirically validated (supersedes web docs).
   faults all 0; per-category verified_render normal 0.15 / ambiguous 0.45 / adversarial 0.45 /
   bad_aggregation 0.00 / hidden_filter 0.25. The GUARANTEE held UNCHANGED — bad 18/18 (`false_accept=0`),
   good 10/10 (`false_reject=0`), 0 transport, corpus digests unchanged — so the deterministic verifier
-  bound is untouched. This LIVE-CONFIRMS the M8 sharper-cut thesis: schema guidance forces STRUCTURE
-  (the markdown-fence failure mode is eliminated), and the residual failures split between
-  token-cap/value-level strict-decode misses and SEMANTIC blocks a schema cannot enforce
-  (`encoding.fields_exist_in_plotted_table`) — the verifier's demonstrated value shifts from catching
-  syntactic garbage to catching semantic + provenance error. Claim boundary UNMOVED (model supplies no
-  data values; verifier recomputes the whole plotted table + re-binds the CSV by SHA-256; guidance =
-  structure-only, no trust). Doc updates (implementing Agent, uncommitted → folded into this unit
-  commit): `.agent/memory.md` (M8 constrained-result bullet + M3 raw-baseline annotation),
-  `POC_SCOPE.md` proposer section (schema-guided-default paragraph + decode-failure parenthetical),
-  root `README.md` (real-model browser bullet → two-example outcome + 26/100 observation, pinned
-  succeeds prompt), `webui/README.md` (M4.5 raw record annotated + M8.3 constrained-default note); MAIN
-  added the M3-section supersession note above. Portable gate independently re-green (ruff format 94 /
-  ruff check / mypy 94 / pytest 1605 @ 100% branch — unchanged, docs-only; no coverage-source Python
-  changed). Context: `main=73% 199K/272K`; `impl=62% 168K/272K` (doc-update Agent). M8 IMPLEMENTED
+  bound is untouched. This LIVE-CONFIRMS the M8 sharper-cut thesis: schema guidance STEERS structure —
+  it mechanically eliminates the markdown-fence failure mode (the grammar forbids the fence: fenced
+  97→0, de-fenced/JSON-valid 24→83) — while residual failures split between token-cap/value-level
+  strict-decode misses (51) and SEMANTIC blocks a schema cannot enforce
+  (`encoding.fields_exist_in_plotted_table`, 22) — the verifier's demonstrated value shifts from
+  catching syntactic garbage to catching the SEMANTIC errors a schema can't; provenance/hash/recompute
+  rejection stays a by-construction guarantee, NOT exercised by this corpus (faults 0). TWO CAVEATS on
+  the 0→26 delta: (a) it is NOT an isolated guidance A/B — the raw `0/100` baseline (54e5757/944e3a9,
+  Jul 6-7) predates BOTH the M5.1h generation-path fix (548809e, string-gen → exact `TokenizedInputs`)
+  AND the verifier's M5-M7 evolution (formal/SMT/archive machinery), so the delta reflects all three
+  changes, not guidance alone; only fenced→0 is by-construction guidance-attributable (the grammar
+  forbids the fence, independent of gen-path or verifier version).
+  (b) `verified_render` counts VERIFIER passes (schema + Decimal-exact recompute + provenance), NOT
+  natural-language prompt-intent satisfaction — a spec can verify while not answering the request;
+  intent alignment is outside the verifier (`bench/README.md`). Claim boundary UNMOVED (model supplies
+  no data values; verifier recomputes the whole plotted table + re-binds the CSV by SHA-256; guidance =
+  structure-only, no trust). M8.3 shipped in TWO commits. (1) `801ee63` — constrained re-measure + doc updates: `.agent/memory.md`
+  (M8 constrained-result bullet + M3 raw-baseline annotation), `.agent/roadmap.md`, `POC_SCOPE.md`
+  proposer section, root `README.md` (two-example outcome + 26/100 observation), `webui/README.md`
+  (M4.5 raw record annotated + constrained note); MAIN added the M3-section supersession note above.
+  Context: `main=73% 199K/272K`; `impl=62% 168K/272K` (doc-update Agent) — this FIRST pass only. (2)
+  `7aacd83` — honesty follow-up (faithful raw-vs-constrained numbers + trust boundary):
+  `.agent/memory.md`, `POC_SCOPE.md`, `README.md`, `bench/README.md`, `bench/harness.py`,
+  `tests/test_bench_harness.py`, `webui/README.md`, and the `webui/launch.sh` banner trust-wording fix
+  ("verifier drafts the spec" → "model proposes, verifier recomputes"). Portable gate independently
+  re-green at each (ruff format 94 / ruff check / mypy 94 / pytest 1605 @ 100% branch — docs +
+  coverage-excluded bench harness/test docstrings; no coverage-source Python changed). M8 IMPLEMENTED
   (M8.1 + M8.2a + M8.2b + M8.3 all DONE).
 
 **Deferred (not M8):** the M7-review launcher crash-detection follow-up (parked in the M7 section)
 stays separate — unrelated to proposer reliability.
+
+**Deferred (M8-review):** OWUI output-item-type robustness — the persisted-chat reader
+(`webui/client.py:433-443`, positional `output[0].content[0]`) and `enforcement_filter.py:136-158`
+(concatenates `output[].content[].text`) both assume a single `type="message"` item. Correct for the
+shipped single-`content`-item `model_backend` reply (Qwen2-0.5B, no reasoning item), fragile against
+a reasoning-capable backend that prepends a `type="reasoning"` item — MEDIUM: reader returns the
+reasoning text or rejects the chart chat as no-final-text (dropping the M8.2b blocked notice); LOW:
+filter reasoning-item false-positive. INERT under the shipped backend (M8.2b live path sound, verified
+in review); fix when a reasoning backend is introduced by selecting the `type="message"` /
+`type="output_text"` item by type, not position (M8 review).
 
 ---
 
@@ -376,7 +422,7 @@ Scope reconciliation + banked decisions (recon this session — read, don't re-d
   harness `_serve`) → the launcher backgrounds it as a child; a SIGINT/EXIT trap tears every child
   down and frees :8000/:8001/:8080. `:8001` serves stub XOR backend (one port).
 - **Honest weak-model framing** (M3: the real NPU verifies 0/100 — 97/100 markdown-fenced, decode
-  refused): with the REAL local model the browser honestly shows blocked verdicts + the
+  refused; → M8.3's schema-guided default now verifies 26/100, still a minority — see M8): with the REAL local model the browser honestly shows blocked verdicts + the
   `Verified Plot Guard` outlet notice — that IS the PoC (a trusted verifier holding against a
   fully-failing untrusted proposer). A `--stub` flag swaps `model_backend`→`webui stub` (the
   deterministic known-good `sales.csv` spec) for the verified-chart happy path, hardware-free. Docs
@@ -546,7 +592,8 @@ flags — they can hang). Services stopped after probing; `.webui-data/` + `.ver
 operator/disposable state, never test sinks (demo runs use tmp state dirs).
 
 Scope reconciliation (seed 15 + "Suggested PoC acceptance criteria"): the live NPU model verifies
-0/100 (M3 eval), so seed case 1 "model proposes → chart renders" is NOT reliably reachable
+0/100 (M3 eval; pre-M8 unconstrained — M8.3's guided default reaches 26/100, a minority, still not
+reliable), so seed case 1 "model proposes → chart renders" is NOT reliably reachable
 model-first. The demo therefore layers honestly, mirroring M4.5: a DETERMINISTIC layer proves the
 three cases + the full integration chain from a clean checkout (direct API cases; scripted-stub
 Open WebUI chain), and a LIVE-NPU observation layer meters the real weak model on the same

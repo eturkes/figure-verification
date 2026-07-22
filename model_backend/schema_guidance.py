@@ -13,6 +13,8 @@ from typing import Any, cast
 
 type JSON = None | bool | int | float | str | list[JSON] | dict[str, JSON]
 
+# Stripped by JSON-Schema keyword NAME: safe while no VPlot property or `$defs` entry is literally
+# named "pattern"/"format" (v0.1: none). A future such property would need context-aware stripping.
 _STRIPPED_GUIDANCE_KEYS = frozenset({"pattern", "format"})
 
 

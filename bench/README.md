@@ -1,4 +1,4 @@
-# bench — M3.4 failure-oriented eval
+# bench — proposer eval (M3 raw baseline + M8 schema-guided default)
 
 Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public HTTP surface
 (`/propose-spec` + `/verify-only`), never imports `verifier` internals → adds no trust. Sync
@@ -44,7 +44,7 @@ match's inner text (else the whole reply), stripped, then `msgspec.json.decode`;
     ```(?:json)?\s*(.*?)```
 
 This isolates the SYNTACTIC failure (fence-wrapping, which `decode_spec` rejects) from deeper
-malformation — e.g. the live run's `fenced=97 defenced_json_valid=24`.
+malformation — e.g. the pre-M8 raw run's `fenced=97 defenced_json_valid=24` (M8's schema-guided default eliminates the fence: `fenced=0`).
 
 ## OpenVINO wiring (this Debian container)
 Consolidated repo-local copy of the former `CLAUDE.local.md` guidance and its host guide:
