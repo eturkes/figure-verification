@@ -134,8 +134,11 @@ Stop that backend, then launch the GUIDED arm — default `structured_output=tru
   --details bench/reports/details-guided.jsonl
 ```
 Compare `observations.overall.verified_render_rate` in the two reports. This paired ablation, not an
-unpaired historical 0→26 comparison, isolates schema guidance; `meta.git_commit`, `git_dirty`, and
-`backend.structured_output` make accidental arm drift visible.
+unpaired historical 0→26 comparison, isolates schema guidance. Each report records `meta.git_commit`,
+`git_dirty`, and `backend.structured_output`, so diffing the two `meta` blocks surfaces accidental
+drift in commit, tree state, or the guidance flag — but only for the backend `--model-url` probes;
+keep it on the verifier's proposal backend (per Run provenance above) or `backend.structured_output`
+describes the wrong server.
 
 ## Defaults (all overridable, see `python -m bench --help`)
 `--verifier-url http://127.0.0.1:8000` · `--model-url http://127.0.0.1:8001/v1` ·

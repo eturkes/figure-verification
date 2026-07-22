@@ -65,23 +65,32 @@ def _schema_digest() -> str | None:
 
 
 def _git_provenance() -> tuple[str | None, bool]:
-    """Return this checkout's HEAD and tracked-or-untracked dirty state, best-effort."""
+    """Return this checkout's HEAD and tracked-or-untracked dirty state, best-effort.
+
+    Best-effort literally: an OSError launching git (binary gone after which(), fork/ENOMEM)
+    degrades to (None, False) rather than aborting the run. `git status` forces
+    --untracked-files=normal so an ambient status.showUntrackedFiles=no cannot suppress the
+    untracked signal and mislabel a dirty tree as clean.
+    """
     git = shutil.which("git")
     if git is None:
         return (None, False)
-    commit = subprocess.run(  # noqa: S603 — fixed argv, which()-resolved git
-        [git, "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        commit = subprocess.run(  # noqa: S603 — fixed argv, which()-resolved git
+            [git, "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        status = subprocess.run(  # noqa: S603 — fixed argv, which()-resolved git
+            [git, "status", "--porcelain", "--untracked-files=normal"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return (None, False)
     git_commit = (commit.stdout.strip() or None) if commit.returncode == 0 else None
-    status = subprocess.run(  # noqa: S603 — fixed argv, which()-resolved git
-        [git, "status", "--porcelain"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
     git_dirty = status.returncode == 0 and bool(status.stdout.strip())
     return (git_commit, git_dirty)
 
@@ -130,6 +139,10 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
                 meta.vplot_schema_sha256,
                 backend.vplot_schema_sha256,
             )
+    else:
+        _LOGGER.warning(
+            "PROVENANCE backend unavailable: no /health provenance from %s", meta.model_probe_url
+        )
 
     guarantee = report.guarantee
     overall = report.observations.overall

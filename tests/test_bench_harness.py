@@ -21,6 +21,8 @@ M3.4a synthetic-payload exercise was a one-off script, never committed). Locked 
 """
 
 import hashlib
+import shutil
+import subprocess
 from pathlib import Path
 
 import httpx
@@ -34,6 +36,7 @@ from bench.__main__ import (
     _EXPECTED_GOOD_CORPUS_SIZE,
     _SCHEMA_PATH,
     _exit_code,
+    _git_provenance,
     _schema_digest,
 )
 from bench.harness import (
@@ -174,6 +177,16 @@ def test_fault_4xx_is_harness_error() -> None:
     assert _classify_fault(404, "no such dataset") == "harness_error"
 
 
+def test_rate_block_reports_json_object_rate_distinct_from_validity() -> None:
+    # Guards the tool_call_rate -> json_object_rate rename: the rate is json_object / n and stays
+    # DISTINCT from json_validity_rate (a reply can be valid JSON that is not an object, e.g. a
+    # bare string or array), so the two counters must never be conflated.
+    tally = _Tally(n=4, json_object=1, json_valid=3)
+    rates = _rate_block(tally)
+    assert rates.json_object_rate == 0.25
+    assert rates.json_validity_rate == 0.75
+
+
 # --- reply shape + de-fence ---------------------------------------------------
 def test_reply_shape_taxonomy() -> None:
     assert _reply_shape("") == "empty"
@@ -283,7 +296,27 @@ def test_response_consumer_requires_closed_check_method(result: dict[str, str]) 
 def test_schema_digest_matches_committed_schema_bytes() -> None:
     expected = "sha256:" + hashlib.sha256(_SCHEMA_PATH.read_bytes()).hexdigest()
     assert _schema_digest() == expected
-    assert _schema_digest() == expected
+
+
+def test_git_provenance_reports_untracked_despite_suppressing_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The explicit --untracked-files=normal must defeat an ambient status.showUntrackedFiles=no:
+    # an untracked file still marks the tree dirty, so provenance cannot mislabel it clean (a bare
+    # `git status --porcelain` honors the config and would hide it). HEAD is None in a fresh,
+    # commit-less repo, exercising the best-effort None branch.
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git is not available")
+    monkeypatch.chdir(tmp_path)
+    subprocess.run([git, "init", "-q"], check=True)  # noqa: S603 — which()-resolved git
+    subprocess.run(  # noqa: S603 — which()-resolved git
+        [git, "config", "status.showUntrackedFiles", "no"], check=True
+    )
+    (tmp_path / "untracked.txt").write_text("x", encoding="utf-8")
+    commit, dirty = _git_provenance()
+    assert dirty is True
+    assert commit is None
 
 
 def test_corpus_digest_pins_match_tree() -> None:
