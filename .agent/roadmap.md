@@ -156,7 +156,7 @@ empirically validated (supersedes web docs).
   signature — a failure returns a bare object with no Location; reproduces the Phase-A 9/9 result
   under request-scoping). No prompt/banner/doc change. Context: `main=70% 189K/272K`; `impl=48%
   130K/272K` (implementing Agent).
-- **M8.2b (OPEN, needs live OWUI standup) — two-example banner + clear blocked message.** MAIN re-standups the
+- **M8.2b (DONE) — two-example banner + clear blocked message.** MAIN re-standups the
   real NPU stack with request-scoping and validates the live OWUI flow: plain chat unconstrained; a
   succeeds-prompt (start from `Scatter plot of revenue versus orders.`) that deterministically drives
   proposeSpec → a verified inline chart embed; a blocked-prompt (`Create a bar chart of total revenue
@@ -170,6 +170,23 @@ empirically validated (supersedes web docs).
   real inline figure end-to-end (textual proof: `/propose-spec` `Location` + served chart HTML +
   certificate; OWUI `run_persisted_chat` embed per M7.2 precedent) AND blocked-prompt shows a clear
   "blocked" message, both deterministic.
+  DONE (real NPU, greedy-deterministic; the live pins differ from the plan's starting phrasings):
+  succeeds-prompt `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv` — the
+  explicit `dataset_name:` cue is required, since a loose `from/using sales.csv` drops the arg
+  (`/propose-spec` 400 → raw matplotlib) — drives proposeSpec → a verified inline embed
+  `/chart/519a22ee…` (200, `text/html`, 900110 B, live `<svg>`+Vega); blocked-prompt `Using sales.csv,
+  plot a chart of revenue versus orders.` → the model emits raw matplotlib → the outlet guard
+  (`signals=matplotlib chars=1062`) → `BLOCKED_NOTICE` (147 B); control `What is the capital of
+  France?` → `The capital of France is Paris.`. As the plan anticipated, the outlet was silent on
+  OWUI's background/persisted path (legacy `content` empty; the reply lives in
+  `output[].content[].text`), so the standalone non-gated `enforcement_filter.py` enhancement was
+  required: classify over `content`+`output`, then rewrite the persisted `output` via a NEW deep copy
+  (OWUI `outlet_filter_handler` persists only on `message["output"] != original` object-inequality —
+  `middleware.py` ~L3336/L3396). `webui/launch.sh` banner now shows BOTH pinned prompts with their
+  prompt-driven outcomes (real: 1 verifies / 2 blocks; `--stub` verifies any request so both render,
+  and points to the real model for the block), and the `:250` tier-split comment is dropped. Portable
+  gate green (ruff format/check, mypy 94, pytest 1605, verifier cov 100%); `shellcheck` + `bash -n`
+  clean. Context: `main=44% 121K/272K`; `impl=39% 106K/272K` (implementing Agent).
 - **M8.3 (OPEN, needs M8.2b) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
   (constrained default) → new observations. AGENT updates the honest record: this M8 section's numbers,
   an M3 note that 0/100 is the RAW baseline superseded by the constrained default, `.agent/memory.md`,

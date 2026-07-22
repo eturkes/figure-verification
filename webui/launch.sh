@@ -247,25 +247,35 @@ log "provisioning Open WebUI (admin + model + verifier tool registration)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. "Try typing" shows ONE figure request and is mode-aware, because in this PoC the
-#    verify-vs-block outcome is driven by the MODEL TIER, not the prompt text -- so one tier can
-#    honestly demonstrate only one of the two outcomes. Under --stub the scripted fixture proposes a
-#    known-good spec, so the request VERIFIES and the chart renders inline as an actual figure (the
-#    verified-success Location embed -> a sandboxed /chart iframe in the reply). Under the real weak
-#    model a valid spec almost never appears, so nothing renders and the Verified Plot Guard outlet
-#    replaces any chart-like reply with its blocked notice. Each tier states its genuine outcome and
-#    points at the other tier for the opposite one.
-chart_prompt="Create a verified bar chart of total revenue by month from sales.csv."
+# 5) banner. With the real model, outcomes are prompt-driven: naming `dataset_name` sends a
+#    request through the verifier to a rendered figure; a loose request yields a raw chart the guard
+#    blocks. The --stub fixture proposes a known-good spec for every request, so it demonstrates only
+#    the verified-render path.
+succeeds_prompt="Plot a scatter chart of revenue versus orders. dataset_name: sales.csv"
+blocked_prompt="Using sales.csv, plot a chart of revenue versus orders."
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
-  outcome_headline="VERIFIES -- the verifier recomputes the data and every check passes."
-  outcome_detail="The chart renders inline as a real figure (a sandboxed frame), not just its spec or code."
-  flip_line="To watch the SAME request get BLOCKED instead, relaunch:  webui/launch.sh"
+  printf -v try_typing '%s\n' \
+    "    Try typing (either prompt):" \
+    "      1) ${succeeds_prompt}" \
+    "      2) ${blocked_prompt}" \
+    "" \
+    "           Both VERIFY -- the stub proposes a known-good spec for any request, so each renders a real" \
+    "           figure inline. It cannot show the blocked path; relaunch on the real model (drop --stub)" \
+    "           to watch prompt 2 get BLOCKED."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
-  outcome_headline="USUALLY BLOCKED -- the weak model rarely proposes a spec that verifies (that IS the PoC)."
-  outcome_detail="No chart renders; any chart-like reply is replaced with a plain \"blocked\" notice."
-  flip_line="To watch it VERIFY and render a real figure (hardware-free), relaunch:  webui/launch.sh --stub"
+  printf -v try_typing '%s\n' \
+    "    Try typing:" \
+    "      1) ${succeeds_prompt}" \
+    "" \
+    "           VERIFIES -- the verifier drafts the spec, recomputes the data, and every check passes," \
+    "           so a real figure renders inline (a sandboxed frame), not just its code." \
+    "" \
+    "      2) ${blocked_prompt}" \
+    "" \
+    "           BLOCKED -- the model answers with its own unverified chart, so the Verified Plot Guard" \
+    "           replaces it with a plain \"blocked\" notice."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER
@@ -277,13 +287,7 @@ cat >&2 <<BANNER
     Log in     ${WEBUI_PROVISION_ADMIN_EMAIL}  /  ${WEBUI_PROVISION_ADMIN_PASSWORD}
     Model      ${model_desc}
 
-    Try typing:
-        ${chart_prompt}
-
-      ${outcome_headline}
-        ${outcome_detail}
-
-      ${flip_line}
+${try_typing}
 
     Logs       ${LOG_DIR}/{verifier,model,webui}.log
     Stop       Ctrl-C  (frees :${VERIFIER_PORT} / :${MODEL_BACKEND_PORT} / :${WEBUI_PROVISION_PORT})

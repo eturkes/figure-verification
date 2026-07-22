@@ -119,6 +119,120 @@ def test_outlet_rewrites_only_content_and_logs_metadata(
     assert "TOP-SECRET" not in caplog.text
 
 
+def test_outlet_rewrites_persisted_output_on_a_distinct_object(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    reply = "```python\nimport matplotlib.pyplot as plt\nplt.scatter([1], [2])\n```"
+    original_output: list[object] = [
+        {"content": [{"text": reply}], "status": "complete"},
+        "not-an-output-item",
+        {"content": "not-a-content-list"},
+        {"content": ["not-a-content-item", {}, {"text": 7}]},
+    ]
+    original_output_value = copy.deepcopy(original_output)
+    body: dict[str, object] = {
+        "id": "completion-1",
+        "messages": [
+            {"role": "user", "content": "draw it"},
+            {
+                "id": "assistant-1",
+                "role": "assistant",
+                "content": "",
+                "output": original_output,
+                "done": True,
+            },
+        ],
+        "session_id": "session-1",
+    }
+    expected = copy.deepcopy(body)
+    expected_message = cast("list[dict[str, object]]", expected["messages"])[-1]
+    expected_message["content"] = BLOCKED_NOTICE
+    expected_output = cast("list[object]", expected_message["output"])
+    expected_first = cast("dict[str, object]", expected_output[0])
+    expected_contents = cast("list[dict[str, object]]", expected_first["content"])
+    expected_contents[0]["text"] = BLOCKED_NOTICE
+
+    with caplog.at_level(logging.WARNING, logger=FILTER_ID):
+        returned = Filter().outlet(body)
+
+    message = cast("list[dict[str, object]]", body["messages"])[-1]
+    rewritten_output = cast("list[dict[str, object]]", message["output"])
+    rewritten_contents = cast("list[dict[str, object]]", rewritten_output[0]["content"])
+    assert returned is body
+    assert body == expected
+    assert rewritten_contents[0]["text"] == BLOCKED_NOTICE
+    assert message["output"] is not original_output
+    assert original_output == original_output_value
+    assert len(caplog.records) == 1
+    assert caplog.records[0].getMessage() == (
+        f"Blocked unverified chart-like assistant output: signals=matplotlib chars={len(reply)}"
+    )
+
+
+def test_outlet_rewrites_legacy_content_and_persisted_output() -> None:
+    original_output: list[object] = [{"content": [{"text": "<svg><path/></svg>"}]}]
+    body: dict[str, object] = {
+        "messages": [
+            {
+                "role": "assistant",
+                "content": "```mermaid\ngraph LR\nA-->B\n```",
+                "output": original_output,
+            }
+        ]
+    }
+
+    assert Filter().outlet(body) is body
+
+    message = cast("list[dict[str, object]]", body["messages"])[-1]
+    rewritten_output = cast("list[dict[str, object]]", message["output"])
+    rewritten_contents = cast("list[dict[str, object]]", rewritten_output[0]["content"])
+    assert message["content"] == BLOCKED_NOTICE
+    assert rewritten_contents[0]["text"] == BLOCKED_NOTICE
+
+
+def test_outlet_passes_persisted_prose_byte_for_byte(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    original_output: list[object] = [
+        {"content": [{"text": "I will ask Figure Verifier to check the chart."}]}
+    ]
+    body: dict[str, object] = {
+        "messages": [
+            {
+                "role": "assistant",
+                "content": "",
+                "output": original_output,
+                "done": True,
+            }
+        ]
+    }
+    before = copy.deepcopy(body)
+
+    with caplog.at_level(logging.WARNING, logger=FILTER_ID):
+        assert Filter().outlet(body) is body
+
+    message = cast("list[dict[str, object]]", body["messages"])[-1]
+    assert body == before
+    assert message["output"] is original_output
+    assert not caplog.records
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "not-a-list",
+        ["not-an-output-item"],
+        [{"content": "not-a-content-list"}],
+        [{"content": ["not-a-content-item", {}, {"text": 7}]}],
+    ],
+)
+def test_outlet_skips_malformed_persisted_output(output: object) -> None:
+    body: dict[str, object] = {"messages": [{"role": "assistant", "content": "", "output": output}]}
+    before = copy.deepcopy(body)
+    assert Filter().outlet(body) is body
+    assert body == before
+
+
 def test_outlet_passes_verified_embed_message_byte_for_byte(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

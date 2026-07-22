@@ -12,6 +12,7 @@ content length, never assistant content, so diagnostics do not copy potentially 
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -132,6 +133,52 @@ def function_source() -> str:
     return Path(__file__).read_text(encoding="utf-8")
 
 
+def _output_text(message: dict[str, object]) -> str:
+    """Concatenate assistant text from Open WebUI's persisted ``output[].content[].text`` items.
+
+    The background/persisted completion path (which the harness reads back) leaves the legacy
+    top-level ``content`` empty and carries the reply here instead, so the guard must inspect these
+    items to see a direct chart at all. Shapes are untrusted OWUI data, so every level is
+    type-checked and non-conforming entries are skipped.
+    """
+    parts: list[str] = []
+    output = message.get("output")
+    if isinstance(output, list):
+        for out_item in output:
+            if not isinstance(out_item, dict):
+                continue
+            contents = out_item.get("content")
+            if not isinstance(contents, list):
+                continue
+            for content_item in contents:
+                if isinstance(content_item, dict):
+                    text = content_item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+    return "\n".join(parts)
+
+
+def _blocked_output(message: dict[str, object]) -> object:
+    """Deep-copy ``output`` with every text item replaced by the blocked notice.
+
+    A NEW object is returned (never an in-place mutation): OWUI's outlet handler persists the
+    rewrite only when ``message['output'] != original_message['output']``, and those two references
+    share the pre-outlet object, so mutating in place would compare equal and never persist.
+    """
+    output = copy.deepcopy(message.get("output"))
+    if isinstance(output, list):
+        for out_item in output:
+            if not isinstance(out_item, dict):
+                continue
+            contents = out_item.get("content")
+            if not isinstance(contents, list):
+                continue
+            for content_item in contents:
+                if isinstance(content_item, dict) and isinstance(content_item.get("text"), str):
+                    content_item["text"] = BLOCKED_NOTICE
+    return output
+
+
 class Filter:
     """Open WebUI function contract: rewrite a chart-like final assistant message in-place."""
 
@@ -142,17 +189,24 @@ class Filter:
         message = messages[-1]
         if not isinstance(message, dict) or message.get("role") != "assistant":
             return body
+
         content = message.get("content")
-        if not isinstance(content, str):
+        legacy = content if isinstance(content, str) else ""
+        combined = "\n".join(part for part in (legacy, _output_text(message)) if part)
+        if not combined:
             return body
 
-        signals = chart_signals(content)
+        signals = chart_signals(combined)
         if not signals:
             return body
-        message["content"] = BLOCKED_NOTICE
+
+        if isinstance(content, str):
+            message["content"] = BLOCKED_NOTICE
+        if message.get("output"):
+            message["output"] = _blocked_output(message)
         _LOGGER.warning(
             "Blocked unverified chart-like assistant output: signals=%s chars=%d",
             ",".join(signals),
-            len(content),
+            len(combined),
         )
         return body
