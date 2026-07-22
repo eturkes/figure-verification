@@ -19,13 +19,13 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
 | M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | REVIEWED |
-| M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | IN-PROGRESS |
+| M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | IMPLEMENTED |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
 
 ---
 
-## M8 — Reliable real-model figures (schema-guided decoding)   (IN-PROGRESS)
+## M8 — Reliable real-model figures (schema-guided decoding)   (IMPLEMENTED)
 
 **User task** (`/session-prompt`): the launched OWUI PoC's "Try typing" banner should offer TWO
 real examples — one that reliably gets BLOCKED (with a clear "blocked" message) and one that reliably
@@ -88,7 +88,7 @@ empirically validated (supersedes web docs).
   `fv_verify_replies.py` (build few-shot + verdict), `fv_v.py` (verdict-only), `fv_build_msgs.py`
   (base messages) — regenerate if gone.
 
-### Units (IN-PROGRESS)
+### Units (IMPLEMENTED)
 - **M8.1 (DONE) — backend structured-output mechanism.** New pure `model_backend/schema_guidance.py`
   (NO `openvino_genai` import → portably importable/testable even though model_backend is
   coverage-excluded) deriving the pattern/format-stripped guidance schema from
@@ -187,11 +187,35 @@ empirically validated (supersedes web docs).
   and points to the real model for the block), and the `:250` tier-split comment is dropped. Portable
   gate green (ruff format/check, mypy 94, pytest 1605, verifier cov 100%); `shellcheck` + `bash -n`
   clean. Context: `main=44% 121K/272K`; `impl=39% 106K/272K` (implementing Agent).
-- **M8.3 (OPEN, needs M8.2b) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
+- **M8.3 (DONE) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
   (constrained default) → new observations. AGENT updates the honest record: this M8 section's numbers,
   an M3 note that 0/100 is the RAW baseline superseded by the constrained default, `.agent/memory.md`,
   `POC_SCOPE.md` (proposer section), root + `webui` READMEs. Acceptance: portable gate green; `bench`
   exits 0; docs state raw-vs-constrained numbers faithfully.
+  DONE (MAIN-executed live NPU bench, `python -m bench` exit 0; served `Qwen2-0.5B-Instruct-int4-sym-ov`,
+  greedy temp=0, n=100 HTTP-200 `/propose-spec` verdicts; reproducible per (device,config); gitignored
+  reports/ → these numbers are the durable record). CONSTRAINED default vs the RAW M3 baseline:
+  `verified_render` **0/100 → 26/100**; reply shape **fenced 97→0, bare_object 2→100**,
+  defenced/JSON-valid **24→83**; buckets `schema=0.51 / semantic=0.23 / policy=0.00`; top checks
+  `spec.decode`(51) + `encoding.fields_exist_in_plotted_table`(22) + `schema.field_types_match`(1);
+  faults all 0; per-category verified_render normal 0.15 / ambiguous 0.45 / adversarial 0.45 /
+  bad_aggregation 0.00 / hidden_filter 0.25. The GUARANTEE held UNCHANGED — bad 18/18 (`false_accept=0`),
+  good 10/10 (`false_reject=0`), 0 transport, corpus digests unchanged — so the deterministic verifier
+  bound is untouched. This LIVE-CONFIRMS the M8 sharper-cut thesis: schema guidance forces STRUCTURE
+  (the markdown-fence failure mode is eliminated), and the residual failures split between
+  token-cap/value-level strict-decode misses and SEMANTIC blocks a schema cannot enforce
+  (`encoding.fields_exist_in_plotted_table`) — the verifier's demonstrated value shifts from catching
+  syntactic garbage to catching semantic + provenance error. Claim boundary UNMOVED (model supplies no
+  data values; verifier recomputes the whole plotted table + re-binds the CSV by SHA-256; guidance =
+  structure-only, no trust). Doc updates (implementing Agent, uncommitted → folded into this unit
+  commit): `.agent/memory.md` (M8 constrained-result bullet + M3 raw-baseline annotation),
+  `POC_SCOPE.md` proposer section (schema-guided-default paragraph + decode-failure parenthetical),
+  root `README.md` (real-model browser bullet → two-example outcome + 26/100 observation, pinned
+  succeeds prompt), `webui/README.md` (M4.5 raw record annotated + M8.3 constrained-default note); MAIN
+  added the M3-section supersession note above. Portable gate independently re-green (ruff format 94 /
+  ruff check / mypy 94 / pytest 1605 @ 100% branch — unchanged, docs-only; no coverage-source Python
+  changed). Context: `main=73% 199K/272K`; `impl=62% 168K/272K` (doc-update Agent). M8 IMPLEMENTED
+  (M8.1 + M8.2a + M8.2b + M8.3 all DONE).
 
 **Deferred (not M8):** the M7-review launcher crash-detection follow-up (parked in the M7 section)
 stays separate — unrelated to proposer reliability.
@@ -1388,7 +1412,10 @@ SYNTACTIC (markdown fence). The review re-run's summary reported an exact repeat
 model-side number (independent server processes, same device+config — consistent with the
 per-(device,config) determinism design; session-logged only, like all eval numbers here). So the
 untrusted model EXERCISES the pipeline without weakening it — the deterministic verifier bound
-is untouched by a fully-failing proposer.
+is untouched by a fully-failing proposer. **(M8.3 supersession note):** this raw `0/100` is the
+honest UNCONSTRAINED baseline; M8 ships schema-guided decoding as the DEFAULT and re-measured
+`verified_render=26/100` on the same live NPU (fence failures `97→0`), with the guarantee unchanged
+(18/18 blocked, 10/10 accepted) — see the M8 section for the full raw-vs-constrained record.
 
 ---
 

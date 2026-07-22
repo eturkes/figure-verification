@@ -183,11 +183,21 @@ uv run --locked python -m webui chat --prompt \
 It calls `WebUIClient.run_persisted_chat`, waits for the persisted assistant message, then prints
 its final text from `output[0].content[0].text` and, when present, the chart URL from `embeds[0]`.
 
-An NPU run replaces the stub and measures the weak model separately. M4.5's fixed ten-prompt sample
-selected the tool on 5/10 prompts but produced no verified chart: four calls reached the verifier
-with undecodable fenced specs and one omitted a required argument. That observation is not a bound;
-the deterministic fixture above proves only that the integration works when its untrusted proposer
-supplies valid protocol messages.
+An NPU run replaces the stub and measures the weak model separately. M4.5's raw, unconstrained fixed
+ten-prompt sample selected the tool on 5/10 prompts but produced no verified chart: four calls
+reached the verifier with undecodable fenced specs and one omitted a required argument. That
+observation is not a bound; the deterministic fixture above proves only that the integration works
+when its untrusted proposer supplies valid protocol messages.
+
+The shipped M8.3 default now schema-guides only a selected `proposeSpec` generation, so completed
+replies are structurally constrained VPlot objects rather than fenced prose. In the fixed 100-prompt
+live NPU run, `verified_render=0.26` versus the raw baseline's `0.00`; all 100 replies were bare
+objects and fence failures were eliminated, so the real model can render a verified chart for a
+well-formed request even though residual decode and semantic blocks remain. These results are
+observations, not bounds, reproducible only per device/config; they do not expand what the
+deterministic fixture proves. The `webui/launch.sh` two-example banner gives the pinned verified and
+blocked prompts, and [the bench recipe](../bench/README.md) documents reproduction and the
+session-logged, gitignored reports.
 
 ## Live outlet assertion
 

@@ -222,17 +222,23 @@ three ports.
 
 Then open `http://127.0.0.1:8080`, log in with the printed credentials (`operator@localhost` /
 `loopback-dev-password` by default), and type a chart request such as
-`Create a verified bar chart of total revenue by month from sales.csv.` Bootstrap makes Figure
+`Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`. Bootstrap makes Figure
 Verifier a default tool on the configured model, so browser chats offer it automatically with no
 manual tool toggle. What happens depends on the model tier:
 
-- **Real local model (default).** The weak local model almost never produces a valid VPlot spec: it
-  typically returns fenced JSON that rambles past the strict decode gate, or ignores the tool and
-  replies with raw plotting code. Either way **nothing is verified** — the proposal is blocked at
-  `spec.decode`, and the `Verified Plot Guard` outlet rewrites any chart-looking answer to a blocked
-  notice. That is the PoC working as intended: a trusted verifier holding the line against a
-  fully-failing untrusted proposer. Each attempt is still committed and auditable with
-  `uv run --locked python -m verifier.service audit <attempt_id>`.
+- **Real local model (default).** Open WebUI's first call selects a tool without guidance; only a
+  selected `proposeSpec` call is schema-guided, forcing VPlot structure instead of the raw model's
+  markdown-fenced prose. The `webui/launch.sh` banner pins both live outcomes:
+  `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv` drives `proposeSpec`
+  and renders a real **verified chart inline**; `Using sales.csv, plot a chart of revenue versus
+  orders.` omits the required `dataset_name`, falls back to raw matplotlib, and the bypassable
+  `Verified Plot Guard` replaces it with `BLOCKED_NOTICE`. In M8.3's 100-prompt NPU observation,
+  26/100 arbitrary prompts fully verified (up from raw 0/100, with fence wrapping 97→0); this is not
+  a reliability bound. Blocking remains common and expected when output truncates or a structurally
+  valid proposal fails semantic checks. Guidance constrains structure only, never values, semantics,
+  or data: the strict verifier still re-decodes every proposal, recomputes the plotted table,
+  re-binds the CSV by SHA-256, and alone decides whether a chart is verified. Each admitted attempt
+  remains auditable with `uv run --locked python -m verifier.service audit <attempt_id>`.
 - **`--stub`.** The deterministic stub proposes a known-good `sales.csv` spec, so a **verified chart
   renders inline** with its provenance badge — the dataset, manifest, spec, recomputed-table, and
   emitted Vega-Lite hashes; every passing check with its method; and the signer keyid — plus a

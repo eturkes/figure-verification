@@ -232,6 +232,13 @@ does not move: the model proposes only a spec, never plotted values, and the ver
 the whole plotted table and re-binds the source CSV by hash exactly as before — so the model
 earns no new trust, and a chart still rides only a verified, on-request outcome.
 
+Schema-guided decoding is the shipped default for a selected `proposeSpec` generation: the service
+asks the untrusted backend for structure-constrained ("guided") output so the weak model reliably
+emits structurally valid VPlot instead of markdown-fenced prose. This constrains output STRUCTURE
+ONLY — never values, semantics, or data — and is a generation convenience, not a trust grant or
+boundary change. The backend remains untrusted; the verifier strictly re-decodes every proposal and
+owns every semantic and provenance check. The modest claim and TCB line above are unchanged.
+
 Prompt construction and later trusted verification read separate bounded filesystem snapshots.
 A local change between them is an accepted TOCTOU boundary: the prompt may describe the earlier
 snapshot, but only the later verification snapshot can satisfy binding checks and enter the signed
@@ -254,7 +261,10 @@ model reply.
 
 Once the backend returns a reply with extractable content, that content is a spec proposal —
 however malformed — so it rides a `200` verdict just like a spec posted directly, including a
-decode failure (the model's most common failure mode). The verdict carries its committed
+decode failure (no longer the raw model's universal fence-wrapped mode: guided replies are bare
+objects, though token-cap truncation or value-level constraints can still fail strict decode; a
+common residual block after decode is semantic, for example a selected field absent from the
+recomputed plotted table). The verdict carries its committed
 `attempt_id`. Only a fault outside that flow answers
 problem+json: an unknown dataset name (`404`, the name never echoed back), an unreachable or
 timed-out backend (`503`), a backend reply that is oversized or not a usable chat completion
