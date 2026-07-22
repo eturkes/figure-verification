@@ -495,6 +495,11 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
         "messages": messages,
         "temperature": 0,
         "max_tokens": settings.model_max_tokens,
+        # Request schema-guided decoding so the backend constrains output to valid VPlot
+        # structure. Structure only: the verifier still re-decodes strictly and owns every
+        # semantic + provenance check. This is what makes the real weak model reliably emit a
+        # decodable VPlot instead of a schema-valid spec plus a trailing junk key.
+        "guided_json": True,
     }
     url = f"{settings.model_base_url.rstrip('/')}/chat/completions"
     async with _build_async_client(settings) as client:

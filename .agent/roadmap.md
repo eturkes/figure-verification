@@ -125,7 +125,7 @@ empirically validated (supersedes web docs).
     `Location` header present → it embeds that). No "relay element1, embed nothing" path exists ⇒ the
     clear blocked message must come from `enforcement_filter.py`'s outlet (`BLOCKED_NOTICE`), NOT a
     verifier failed-verdict response-shape change (the `[result, blocked_summary]` "Option A" is dead).
-- **M8.2a (OPEN, needs M8.1) — request-scoped structured output.** Make M8.1 guidance opt-in per
+- **M8.2a (DONE) — request-scoped structured output.** Make M8.1 guidance opt-in per
   request so OWUI chat/tool-selection stays unconstrained while the verifier's proposeSpec is
   VPlot-constrained. model_backend: `ChatCompletionRequest` gains `guided_json: bool = False`
   (`model_backend/models.py`); `chat_completions` threads `guided=data.guided_json`
@@ -138,7 +138,25 @@ empirically validated (supersedes web docs).
   `guided_json:true` request is VPlot-constrained (proposeSpec still verifies) while a plain
   `/v1/chat/completions` request is unconstrained (`capital of France?` answers in prose). No
   prompt/banner/doc change.
-- **M8.2b (BLOCKED on M8.2a live) — two-example banner + clear blocked message.** MAIN re-standups the
+  Done: portable gate independently re-green (ruff format 94 / ruff check / mypy 94 / pytest 1598 @
+  100% verifier branch cov). Edits exactly as specced — `ChatCompletionRequest.guided_json: bool =
+  False` (models.py), `chat_completions` threads `guided=data.guided_json` (app.py),
+  `Engine.generate(…, *, guided: bool)` applies `StructuredOutputConfig` only when `guided and
+  self._guidance_schema is not None` (engine.py; load-time derivation unchanged, still fail-closed),
+  `propose_spec` payload gains a trailing `"guided_json": True` (model_client.py). Tests recast to
+  per-request apply/omit (3 cases: guided+available→applied, not-guided+available→omitted,
+  guided+disabled-at-load→omitted) + an app-level `guided_json` true/default-false threading test +
+  the `old_wire_body` byte-equality absorbing the field; attempt-capture tests self-adjust (they
+  compare against the live `trace.request_body`). MAIN NPU-check (real backend on NPU + verifier,
+  fresh tmp state): plain `/v1/chat/completions` `capital of France?` → `"The capital of France is
+  Paris."` unconstrained prose (`decode_spec` DecodeError); backend-direct `guided_json:true` →
+  structurally-valid VPlot JSON; verifier `/propose-spec` `sales.csv` `Scatter plot of revenue
+  versus orders.` → 200 `Content-Disposition: inline` + `Location …/chart/6cb6ab12…` + summary
+  `all 9 checks passed` + chart served 200 CSP `sandbox allow-scripts` (the M4 verified-success
+  signature — a failure returns a bare object with no Location; reproduces the Phase-A 9/9 result
+  under request-scoping). No prompt/banner/doc change. Context: `main=70% 189K/272K`; `impl=48%
+  130K/272K` (implementing Agent).
+- **M8.2b (OPEN, needs live OWUI standup) — two-example banner + clear blocked message.** MAIN re-standups the
   real NPU stack with request-scoping and validates the live OWUI flow: plain chat unconstrained; a
   succeeds-prompt (start from `Scatter plot of revenue versus orders.`) that deterministically drives
   proposeSpec → a verified inline chart embed; a blocked-prompt (`Create a bar chart of total revenue

@@ -165,6 +165,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert sent["temperature"] == 0
     assert sent["max_tokens"] == 512
+    assert sent["guided_json"] is True
 
     system, user = sent["messages"]
     assert system["role"] == "system"
@@ -223,6 +224,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
             "messages": [system, user],
             "temperature": 0,
             "max_tokens": 512,
+            "guided_json": True,
         },
         ensure_ascii=False,
         separators=(",", ":"),

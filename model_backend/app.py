@@ -48,6 +48,8 @@ def health() -> dict[str, str]:
 async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
     """Generate one non-streaming chat completion from the local model.
 
+    Schema guidance applies only when guided_json is true.
+
     The requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
     single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
     zero/omitted value from starving the reply (an omitted max_tokens uses the ceiling). The
@@ -60,7 +62,11 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
     max_tokens = max(1, min(requested, settings.max_tokens))
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
     gen = await asyncio.to_thread(
-        engine.generate, messages, temperature=data.temperature, max_tokens=max_tokens
+        engine.generate,
+        messages,
+        temperature=data.temperature,
+        max_tokens=max_tokens,
+        guided=data.guided_json,
     )
     return ChatCompletionResponse(
         id=f"chatcmpl-{uuid.uuid4().hex}",

@@ -86,8 +86,9 @@ class Engine:
         dynamic shapes and reject the compile property, so it is passed only for an NPU device;
         the logical preflight still applies there.
 
-        Structured guidance is fail-closed: when enabled, a missing, unreadable, or invalid JSON
-        schema aborts loading rather than silently serving unconstrained output.
+        Structured guidance is derived once at load when settings.structured_output is enabled. A
+        missing, unreadable, or invalid JSON schema aborts loading rather than silently serving
+        unconstrained output; the derived capability is applied only to requests that opt in.
         """
         guidance_schema = (
             load_guidance_schema(settings.vplot_schema_path) if settings.structured_output else None
@@ -106,9 +107,18 @@ class Engine:
         )
 
     def generate(
-        self, messages: list[dict[str, str]], *, temperature: float, max_tokens: int
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        guided: bool,
     ) -> GenResult:
         """Generate one completion for the full messages array (stateless chat template).
+
+        Guidance is derived at load under settings.structured_output and applied only when this
+        request's guided flag is true. It constrains VPlot structure only; verifier semantics and
+        provenance remain authoritative, while unconstrained OWUI chat/tool selection is unaffected.
 
         Serialized behind the lock (one tokenizer/pipeline/accelerator). Greedy when temperature
         == 0. Raises BackendError before native generation if the exact templated prompt exceeds
@@ -136,8 +146,10 @@ class Engine:
             cfg.do_sample = temperature > 0
             if cfg.do_sample:
                 cfg.temperature = temperature
-            if self._guidance_schema is not None:
+            if guided and self._guidance_schema is not None:
                 # Constrain VPlot structure only; semantics and provenance remain verifier-owned.
+                # The guidance schema is derived once at load; a caller opts in per request via
+                # `guided`, so unconstrained traffic (OWUI chat/tool-selection) is unaffected.
                 cfg.structured_output_config = ov_genai.StructuredOutputConfig(
                     json_schema=self._guidance_schema
                 )

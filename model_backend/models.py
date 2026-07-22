@@ -46,6 +46,10 @@ class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
 class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     """An OpenAI chat-completion request (unknown fields tolerated — see module docstring).
 
+    Schema-guided (constrained) decoding is opt-in per request via guided_json: verifier's
+    proposeSpec sets it true to force valid VPlot structure, while generic OpenAI/OWUI callers omit
+    it (default false) and stay unconstrained.
+
     messages is required and non-empty; model/temperature/max_tokens are optional (the server
     supplies model_name, greedy temperature 0, the configured max_tokens ceiling). temperature
     is bounded to OpenAI's [0, 2] at decode (a negative would silently mean greedy, an absurd
@@ -57,6 +61,7 @@ class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     model: str | None = None
     temperature: Annotated[float, msgspec.Meta(ge=0.0, le=2.0)] = 0.0
     max_tokens: int | None = None
+    guided_json: bool = False
 
 
 class Choice(msgspec.Struct, frozen=True, kw_only=True):

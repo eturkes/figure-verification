@@ -252,13 +252,15 @@ def test_structured_output_settings_defaults_and_env(
         Settings.from_env()
 
 
-def test_engine_applies_structured_output_config_when_enabled(
+def test_engine_applies_structured_output_config_when_enabled_and_guided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings()
     engine, pipe = _loaded_engine(monkeypatch, settings)
 
-    engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+    engine.generate(
+        [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=True
+    )
 
     assert pipe.last_config is not None
     structured = pipe.last_config.structured_output_config
@@ -269,7 +271,24 @@ def test_engine_applies_structured_output_config_when_enabled(
     assert '"format"' not in structured.json_schema
 
 
-def test_engine_omits_structured_output_config_when_disabled(
+def test_engine_omits_structured_output_config_when_not_guided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings()
+    engine, pipe = _loaded_engine(monkeypatch, settings)
+
+    engine.generate(
+        [{"role": "user", "content": "hello"}],
+        temperature=0.0,
+        max_tokens=7,
+        guided=False,
+    )
+
+    assert pipe.last_config is not None
+    assert pipe.last_config.structured_output_config is None
+
+
+def test_engine_omits_structured_output_config_when_disabled_even_if_guided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
@@ -278,7 +297,9 @@ def test_engine_omits_structured_output_config_when_disabled(
     )
     engine, pipe = _loaded_engine(monkeypatch, settings)
 
-    engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+    engine.generate(
+        [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=True
+    )
 
     assert pipe.last_config is not None
     assert pipe.last_config.structured_output_config is None
@@ -288,7 +309,7 @@ def test_engine_admits_exact_token_boundary_without_duplicate_special_tokens() -
     engine, tokenizer, pipe = _engine(3)
     messages = [{"role": "user", "content": "hello"}]
 
-    result = engine.generate(messages, temperature=0.0, max_tokens=7)
+    result = engine.generate(messages, temperature=0.0, max_tokens=7, guided=False)
 
     prompt = f"templated:{messages!r}"
     assert tokenizer.encode_calls == [(prompt, False, 4)]
@@ -304,7 +325,9 @@ def test_engine_rejects_overlong_prompt_before_native_generation(token_count: in
     engine, tokenizer, pipe = _engine(token_count)
 
     with pytest.raises(BackendError, match=r"prompt.*token ceiling") as exc_info:
-        engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+        engine.generate(
+            [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=False
+        )
 
     assert exc_info.value.status == 400
     assert exc_info.value.error_type == "prompt_too_long"
@@ -335,7 +358,9 @@ def test_engine_load_retains_prompt_cap_and_npu_static_shape_config(
     )
 
     with pytest.raises(BackendError):
-        engine.generate([{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7)
+        engine.generate(
+            [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=False
+        )
     assert calls == [("model", "NPU", {"MAX_PROMPT_LEN": 5})]
     assert pipe.generate_calls == 0
 
@@ -343,23 +368,36 @@ def test_engine_load_retains_prompt_cap_and_npu_static_shape_config(
 class _AppEngine:
     def __init__(self) -> None:
         self.generate_calls = 0
+        self.last_guided: bool | None = None
 
     def generate(
-        self, messages: list[dict[str, str]], *, temperature: float, max_tokens: int
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        guided: bool,
     ) -> GenResult:
         assert messages == [{"role": "user", "content": "hello"}]
         assert temperature == 0.0
         assert max_tokens >= 1
         self.generate_calls += 1
+        self.last_guided = guided
         return GenResult(text="{}", prompt_tokens=1, completion_tokens=1, finish_reason="stop")
 
 
 class _RejectingAppEngine:
     def generate(
-        self, _messages: list[dict[str, str]], *, temperature: float, max_tokens: int
+        self,
+        _messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        guided: bool,
     ) -> GenResult:
         assert temperature == 0.0
         assert max_tokens >= 1
+        assert guided is False
         msg = "prompt is too long"
         raise BackendError(msg, status=400, error_type="prompt_too_long")
 
@@ -385,6 +423,26 @@ def test_backend_body_cap_accepts_boundary_and_rejects_plus_one_before_decode(
     assert over.status_code == 413
     # The +1 body is still valid JSON if decoded. No second call proves the cap fired first.
     assert engine.generate_calls == 1
+
+
+def test_backend_threads_guided_json_per_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    guided_engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: guided_engine))
+    guided_payload = b'{"messages":[{"role":"user","content":"hello"}],"guided_json":true}'
+    with TestClient(app=create_app(Settings())) as client:
+        guided_response = client.post("/v1/chat/completions", content=guided_payload)
+
+    assert guided_response.status_code == 200
+    assert guided_engine.last_guided is True
+
+    unguided_engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: unguided_engine))
+    unguided_payload = b'{"messages":[{"role":"user","content":"hello"}]}'
+    with TestClient(app=create_app(Settings())) as client:
+        unguided_response = client.post("/v1/chat/completions", content=unguided_payload)
+
+    assert unguided_response.status_code == 200
+    assert unguided_engine.last_guided is False
 
 
 def test_backend_request_body_setting_default_env_and_validation(
