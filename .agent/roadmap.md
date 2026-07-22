@@ -19,8 +19,104 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M5 | Formal + provenance hardening | 13,14 | none — toolchain probe confirmed | REVIEWED |
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
 | M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | REVIEWED |
+| M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | IN-PROGRESS |
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them.
+
+---
+
+## M8 — Reliable real-model figures (schema-guided decoding)   (IN-PROGRESS)
+
+**User task** (`/session-prompt`): the launched OWUI PoC's "Try typing" banner should offer TWO
+real examples — one that reliably gets BLOCKED (with a clear "blocked" message) and one that reliably
+SUCCEEDS (renders a real verified figure) — with the REAL weak model, not `--stub`. That requires the
+real model to reliably emit a verifiable VPlot for a chosen prompt; M7's banner shows only ONE
+mode-gated outcome precisely because the raw model can't (M3: 0/100). Root cause + fix VALIDATED on
+the live NPU stack before planning.
+
+**Why M7's one-example banner can't just be doubled.** `webui/launch.sh:250` states the M7 truth:
+the verify-vs-block outcome is driven by MODEL TIER (real=blocked, `--stub`=verifies), not prompt
+text, so one tier honestly shows one outcome. M8 makes the real model reliably verify a well-formed
+request → outcome becomes PROMPT-driven within the single real tier → the banner can honestly show a
+blocked-prompt + a succeeds-prompt together. `webui/bootstrap.py` provisions no OWUI-native
+suggestion chips; the "Try typing" the user sees IS the launcher banner (bash, outside the
+ruff/mypy/pytest gate).
+
+**Thesis preserved / sharpened.** Claim boundary UNCHANGED: the model supplies NO data values; verify
+recomputes the whole plotted table (Decimal-exact) + re-binds the CSV by SHA-256. Constrained decoding
+forces only output STRUCTURE (schema-valid VPlot), never SEMANTICS or data → the verifier's
+demonstrated value shifts from "catches syntactic garbage" to "catches semantic + provenance error a
+schema can't" (wrong column/unit/type, hash mismatch, recomputation, SMT) — a sharper cut. M3's raw
+proposer 0/100 stays the honest baseline (unconstrained); M8 ships constrained as the default and
+re-measures. The reliably-BLOCKED banner example is exactly a schema-valid-but-semantically-wrong spec
+the verifier rejects.
+
+**Precondition CONFIRMED (live NPU, this session).** OV GenAI 2026.2.1
+`StructuredOutputConfig(json_schema=)` works on the NPU (demo default; pipeline loads ~7s,
+greedy-deterministic, byte-identical to CPU) AND CPU. Real Qwen2-0.5B → verifier `/verify-only`: raw
+0/100 (M3) is a Vega-Lite prior (mark-as-object, ~97% markdown-fenced) + a reliable trailing junk key
+(`select` / `color`) after an otherwise-perfect 5-key spec that strict decode rejects — unfixable by
+prompting (~30 variants, 0 clean). Schema-guidance forbids the trailing key
+(`additionalProperties:false`) → base-prompt+schema 2/3 simple prompts verify; +1-shot empty-transform
+example → `scatter of temp_c vs precip_mm from weather.csv` verifies deterministically. Tooling choice
+empirically validated (supersedes web docs).
+
+**BANKED RECIPE (transcribe, do NOT re-derive).**
+- OV GenAI: set `cfg.structured_output_config = ov_genai.StructuredOutputConfig(json_schema=<jsonstr>)`
+  (module also exposes `EBNF` / `Regex` / `compound_grammar`); applies during `generate`,
+  deterministic under greedy.
+- xgrammar (OV's backend) REJECTS the VPlot schema's negative-lookahead `pattern`s
+  (`^(?!.*[\r\n])…` → RuntimeError "Lookahead is not supported") and ignores `minLength` / `maxLength`
+  / `format` beside a `pattern`. FIX: derive a guidance schema = the authoritative
+  `schema/vplot-0.1.schema.json` with every `pattern` + `format` key recursively stripped. Structure
+  (`required` / `additionalProperties:false` / `enum` / `anyOf`+discriminator) is PRESERVED = what
+  forces valid VPlot + kills the trailing key. The verifier keeps the FULL strict schema as sole
+  authority (guidance only relaxes value patterns, never structure) → derive at runtime from the
+  authoritative file so it cannot drift; a test asserts stripping preserves structure + all 10 good
+  goldens still validate against the derived schema.
+- Prompt budget: 1-shot fits the NPU 1536-tok static cap; 2-shot overflows (`prompt_too_long` +
+  truncation) → 1-shot max. The working exemplar = an empty-transform scatter (from a golden) as an
+  assistant turn + a CROSS-dataset user turn built by `_build_messages` (so the model copies the REAL
+  binding, not the example's).
+- Schema forces STRUCTURE not SEMANTICS → PIN each banner prompt to a MAIN-confirmed deterministic
+  outcome. Candidate succeeds: `scatter of temp_c vs precip_mm from weather.csv` (few-shot+schema ✓)
+  or a sales scatter (base+schema ✓). Candidate blocked:
+  `Plot temperature over time for each city as a line chart` (base+schema → schema-valid spec that
+  FAILS verification on a select/encoding mismatch) — a real schema-valid-but-wrong block. Re-confirm
+  both against M8.1's actual code.
+- Probe scripts banked in `/tmp`: `fv_schema_gen.py` (schema-strip + StructuredOutputConfig generate),
+  `fv_verify_replies.py` (build few-shot + verdict), `fv_v.py` (verdict-only), `fv_build_msgs.py`
+  (base messages) — regenerate if gone.
+
+### Units (IN-PROGRESS)
+- **M8.1 (OPEN) — backend structured-output mechanism.** New pure `model_backend/schema_guidance.py`
+  (NO `openvino_genai` import → portably importable/testable even though model_backend is
+  coverage-excluded) deriving the pattern/format-stripped guidance schema from
+  `schema/vplot-0.1.schema.json`; `model_backend/settings.py` gains `structured_output: bool = True` +
+  `vplot_schema_path`; `model_backend/engine.py` applies `StructuredOutputConfig` in `generate` when
+  enabled (fail-closed if the schema won't compile). Portable tests (run in the `.venv` suite, import
+  only the no-openvino modules): derivation strips exactly `pattern` / `format`, preserves structure,
+  all 10 good goldens validate against the derived schema (drift guard), plus the settings flags.
+  Acceptance: ruff/mypy/pytest green (model_backend type-checked, coverage-excluded); MAIN NPU-validates
+  constrained generate → structurally-valid VPlot + a simple prompt verifies. No prompt/banner/doc change.
+- **M8.2 (OPEN, needs M8.1) — two-example banner + clear blocked message (+ optional few-shot).** MAIN
+  (M8.1 live on NPU) confirms the reliable succeeds-prompt + blocked-prompt against the real code, and
+  decides whether 1-shot is needed (demo fidelity) vs base+schema (simpler). AGENT transcribes: the
+  optional 1-shot exemplar into `verifier.service.model_client._build_messages`; rewrite the
+  `webui/launch.sh` "Try typing" banner (+ its `:250` tier-split comment) to show BOTH confirmed
+  prompts with their real prompt-driven outcomes; wire a CLEAR "blocked" message for the failed-verdict
+  path (spec fails a semantic/policy check → no `Location` → the reply states it was blocked and why —
+  `enforcement_filter.py`'s Verified Plot Guard outlet already covers the raw-code path). Acceptance:
+  portable gate green; MAIN reruns the real-model standup → the succeeds-prompt renders a real inline
+  figure end-to-end AND the blocked-prompt shows a clear "blocked" message, both deterministic.
+- **M8.3 (OPEN, needs M8.2) — honest re-measure + finding/doc updates.** MAIN re-runs `bench`
+  (constrained default) → new observations. AGENT updates the honest record: this M8 section's numbers,
+  an M3 note that 0/100 is the RAW baseline superseded by the constrained default, `.agent/memory.md`,
+  `POC_SCOPE.md` (proposer section), root + `webui` READMEs. Acceptance: portable gate green; `bench`
+  exits 0; docs state raw-vs-constrained numbers faithfully.
+
+**Deferred (not M8):** the M7-review launcher crash-detection follow-up (parked in the M7 section)
+stays separate — unrelated to proposer reliability.
 
 ---
 
