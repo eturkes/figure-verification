@@ -11,7 +11,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -40,6 +40,11 @@ sys.modules["openvino_genai"] = _OPENVINO_GENAI
 
 from model_backend.app import create_app  # noqa: E402
 from model_backend.engine import BackendError, Engine, GenResult  # noqa: E402
+from model_backend.models import ChatMessage  # noqa: E402
+from model_backend.verified_chart import (  # noqa: E402
+    VERIFIED_CHART_REPLY,
+    is_verified_chart_summary,
+)
 
 
 class _Tensor:
@@ -569,3 +574,95 @@ def test_backend_error_response_keeps_exact_openai_shape(
     assert response.json() == {
         "error": {"message": "prompt is too long", "type": "prompt_too_long"}
     }
+
+
+# --- Open WebUI post-verified-chart summarize turn -----------------------------------------
+
+# The verifier success summary (src/verifier/service/app.py), as OWUI str()-ifies it into the
+# post-chart summarize turn's citation context (a <source> block in the system prompt).
+_VERIFIER_SUMMARY = "Verified chart for sales.csv: all 5 checks passed."
+_OWUI_SUMMARIZE_SYSTEM = f'<source id="1" name="verifier/proposeSpec">{_VERIFIER_SUMMARY}</source>'
+
+
+def _msg(role: Literal["system", "user", "assistant"], content: str) -> ChatMessage:
+    return ChatMessage(role=role, content=content)
+
+
+@pytest.mark.parametrize(
+    "messages",
+    [
+        (_msg("system", _OWUI_SUMMARIZE_SYSTEM), _msg("user", "Plot revenue vs orders.")),
+        (_msg("user", _OWUI_SUMMARIZE_SYSTEM),),  # RAG-into-user-message injection variant
+        (_msg("system", "Verified chart for orders.parquet: all 12 checks passed."),),
+    ],
+    ids=["system-context", "user-context", "other-dataset-and-count"],
+)
+def test_is_verified_chart_summary_detects_post_chart_turn(
+    messages: tuple[ChatMessage, ...],
+) -> None:
+    assert is_verified_chart_summary(messages) is True
+
+
+@pytest.mark.parametrize(
+    "messages",
+    [
+        (_msg("system", "Available Tools: proposeSpec"), _msg("user", "plot revenue by month")),
+        (
+            _msg("system", "You are proposing a VPlot v0.1 chart specification."),
+            _msg("user", "total revenue by month"),
+        ),
+        (_msg("user", "Can you verify my chart? It has 5 checks."),),
+        (_msg("user", "hello there world"),),
+    ],
+    ids=["tool-selector", "vplot-proposer", "near-miss-prose", "plain-chat"],
+)
+def test_is_verified_chart_summary_ignores_other_turns(
+    messages: tuple[ChatMessage, ...],
+) -> None:
+    assert is_verified_chart_summary(messages) is False
+
+
+def test_backend_returns_fixed_reply_without_generating_on_verified_chart_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
+    payload = {
+        "messages": [
+            {"role": "system", "content": _OWUI_SUMMARIZE_SYSTEM},
+            {"role": "user", "content": "Plot a scatter chart of revenue versus orders."},
+        ]
+    }
+    with TestClient(app=create_app(Settings())) as client:
+        response = client.post("/v1/chat/completions", json=payload)
+
+    assert response.status_code == 200
+    body = response.json()
+    # The fixed closing line replaces the 0.5B proposer's free-text filler; the model never ran.
+    assert engine.generate_calls == 0
+    assert body["object"] == "chat.completion"
+    assert body["model"] == Settings().model_name
+    choice = body["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"] == {"role": "assistant", "content": VERIFIED_CHART_REPLY}
+    # Usage is a word-count proxy (no generation ran), matching the hardware-free stub's shape.
+    usage = body["usage"]
+    assert usage["completion_tokens"] == len(VERIFIED_CHART_REPLY.split())
+    assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
+
+
+def test_backend_generates_when_no_verified_chart_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
+    with TestClient(app=create_app(Settings())) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"messages": [{"role": "user", "content": "hello"}]},
+        )
+
+    assert response.status_code == 200
+    # No verifier summary -> the model runs (canned path is summary-gated, not the default).
+    assert engine.generate_calls == 1
+    assert response.json()["choices"][0]["message"]["content"] == "{}"

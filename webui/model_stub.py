@@ -35,6 +35,7 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
+from model_backend.verified_chart import VERIFIED_CHART_REPLY
 from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
@@ -54,7 +55,9 @@ _VPLOT_REPLY = (
     '{"field":"month","type":"ordinal"},"y":{"field":"total_revenue",'
     '"type":"quantitative"}}}'
 )
-_FINAL_REPLY = "Figure Verifier confirmed the chart; all checks passed."
+# Shared with the live backend so both close the verified-plot demo identically; the live backend
+# also returns this on the same turn instead of generating (model_backend.verified_chart).
+_FINAL_REPLY = VERIFIED_CHART_REPLY
 
 
 def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:

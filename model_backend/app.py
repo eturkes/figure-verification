@@ -37,6 +37,7 @@ from model_backend.models import (
     Usage,
 )
 from model_backend.settings import Settings
+from model_backend.verified_chart import VERIFIED_CHART_REPLY, is_verified_chart_summary
 
 
 @get("/health", sync_to_thread=False)
@@ -52,20 +53,64 @@ def health(state: State) -> HealthResponse:
     )
 
 
+def _completion(
+    settings: Settings,
+    *,
+    text: str,
+    finish_reason: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> ChatCompletionResponse:
+    """Wrap one reply in the OpenAI chat-completion envelope.
+
+    Reports settings.model_name (the one served model), never the caller's requested `model` —
+    echoing an arbitrary name would misreport which model produced the reply.
+    """
+    return ChatCompletionResponse(
+        id=f"chatcmpl-{uuid.uuid4().hex}",
+        created=int(time.time()),
+        model=settings.model_name,
+        choices=(
+            Choice(
+                index=0,
+                message=ChatMessage(role="assistant", content=text),
+                finish_reason=finish_reason,
+            ),
+        ),
+        usage=Usage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        ),
+    )
+
+
 @post("/v1/chat/completions", status_code=HTTP_200_OK)
 async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
     """Generate one non-streaming chat completion from the local model.
 
-    Schema guidance applies only when guided_json is true.
+    Open WebUI's post-verified-chart summarize turn short-circuits to a fixed reply without running
+    the model (model_backend.verified_chart); every other turn generates. Schema guidance applies
+    only when guided_json is true.
 
     The requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
     single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
-    zero/omitted value from starving the reply (an omitted max_tokens uses the ceiling). The
-    response reports settings.model_name (the one served model), never the caller's requested
-    `model` — echoing an arbitrary name would misreport which model produced the spec.
+    zero/omitted value from starving the reply (an omitted max_tokens uses the ceiling).
     """
     settings = cast("Settings", state["settings"])
     engine = cast("Engine", state["engine"])
+    if is_verified_chart_summary(data.messages):
+        # The verifier already certified and embedded the chart, and OWUI re-prompts for a
+        # human-facing closing line. Return one fixed sentence rather than let the 0.5B proposer
+        # emit unrelated filler. The ONLY canned path — tool selection, the verifier's guided spec
+        # generation, and ordinary chat all still run the model below.
+        return _completion(
+            settings,
+            text=VERIFIED_CHART_REPLY,
+            finish_reason="stop",
+            prompt_tokens=sum(len(m.content.split()) for m in data.messages),
+            completion_tokens=len(VERIFIED_CHART_REPLY.split()),
+        )
     requested = data.max_tokens if data.max_tokens is not None else settings.max_tokens
     max_tokens = max(1, min(requested, settings.max_tokens))
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
@@ -76,22 +121,12 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
         max_tokens=max_tokens,
         guided=data.guided_json,
     )
-    return ChatCompletionResponse(
-        id=f"chatcmpl-{uuid.uuid4().hex}",
-        created=int(time.time()),
-        model=settings.model_name,
-        choices=(
-            Choice(
-                index=0,
-                message=ChatMessage(role="assistant", content=gen.text),
-                finish_reason=gen.finish_reason,
-            ),
-        ),
-        usage=Usage(
-            prompt_tokens=gen.prompt_tokens,
-            completion_tokens=gen.completion_tokens,
-            total_tokens=gen.prompt_tokens + gen.completion_tokens,
-        ),
+    return _completion(
+        settings,
+        text=gen.text,
+        finish_reason=gen.finish_reason,
+        prompt_tokens=gen.prompt_tokens,
+        completion_tokens=gen.completion_tokens,
     )
 
 
