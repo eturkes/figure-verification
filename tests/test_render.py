@@ -1255,93 +1255,42 @@ def test_certificate_legend_domain_disclosure_matches_builder(name: str) -> None
     assert discloses == has_domain
 
 
-def test_badge_html_renders_cert_fields() -> None:
+def test_badge_html_is_compact_and_omits_technical_detail() -> None:
+    # The in-chat badge states only "Verified plot" + how many checks passed. It has no <script>
+    # sink and drops the raw hashes / TCB versions / per-check dump that used to crowd the chat --
+    # that full record lives in the signed certificate envelope linked beside it.
     cert = _render(_G01).certificate
     badge = render.badge_html(cert)
     assert "<script" not in badge
-    assert cert.spec_hash in badge
-    assert cert.vega_lite_hash in badge
-    assert "dataset.hash_matches_source" in badge
-    assert "deterministic_recompute" in badge
-    assert cert.tcb.verifier_version in badge
-    assert cert.tcb.z3_version in badge
-    assert render._FONT_FAMILY in badge
+    assert "Verified plot" in badge
+    assert f"{len(cert.checks)} checks passed" in badge
+    assert cert.spec_hash not in badge
+    assert cert.vega_lite_hash not in badge
+    assert cert.tcb.verifier_version not in badge
+    assert "Checks passed" not in badge  # no verbose per-check heading survives
 
 
-def test_badge_html_with_filters_and_sorts() -> None:
-    # Non-empty filters + sorts -> the disclosure loops fire (covers the join comprehensions).
-    cert = render.VCert(
-        version="vcert-0.2",
-        dataset_hash="sha256:" + "0" * 64,
-        spec_hash="sha256:" + "1" * 64,
-        plotted_table_hash="sha256:" + "2" * 64,
-        manifest_hash="sha256:" + "3" * 64,
-        vega_lite_hash="sha256:" + "4" * 64,
-        checks=(
-            render.CertifiedCheck(
-                id="security.no_arbitrary_code", method="construction", status="pass"
-            ),
-        ),
-        filters=(render.DisclosedFilter(field="region", cmp="eq", value="EU"),),
-        sorts=(render.DisclosedSort(field="month", order="ascending"),),
-        tcb=render._tcb(),
-    )
-    badge = render.badge_html(cert)
-    assert "region" in badge
-    assert "month" in badge
-    assert "<script" not in badge
+def test_badge_html_pluralizes_check_count() -> None:
+    # Grammar branch: one passing check reads "1 check passed", several read "N checks passed".
+    def _cert_with_checks(n: int) -> render.VCert:
+        passing = render.CertifiedCheck(
+            id="security.no_arbitrary_code", method="construction", status="pass"
+        )
+        return render.VCert(
+            version="vcert-0.2",
+            dataset_hash="sha256:" + "0" * 64,
+            spec_hash="sha256:" + "1" * 64,
+            plotted_table_hash="sha256:" + "2" * 64,
+            manifest_hash="sha256:" + "3" * 64,
+            vega_lite_hash="sha256:" + "4" * 64,
+            checks=(passing,) * n,
+            filters=(),
+            sorts=(),
+            tcb=render._tcb(),
+        )
 
-
-def _filter_cert(value: int | str) -> render.VCert:
-    """A minimal cert whose single disclosed filter carries `value` (the badge display tests)."""
-    return render.VCert(
-        version="vcert-0.2",
-        dataset_hash="sha256:" + "0" * 64,
-        spec_hash="sha256:" + "1" * 64,
-        plotted_table_hash="sha256:" + "2" * 64,
-        manifest_hash="sha256:" + "3" * 64,
-        vega_lite_hash="sha256:" + "4" * 64,
-        checks=(),
-        filters=(render.DisclosedFilter(field="x", cmp="eq", value=value),),
-        sorts=(),
-        tcb=render._tcb(),
-    )
-
-
-def test_badge_html_escapes_adversarial_filter_value() -> None:
-    # A model-controlled filter value carrying markup + control chars is escaped to inert text.
-    # chr(0x2028) = U+2028 LINE SEPARATOR: inert in HTML text. Built via chr() rather than a
-    # unicode-escape literal so the source stays pure ASCII -> ruff RUF001 stays silent, and no
-    # Write/Edit JSON transport can decode an escape back into the raw char (which re-triggers it).
-    hostile = "</script><script>alert(1)</script><>&\"'\n" + chr(0x2028)
-    badge = render.badge_html(_filter_cert(hostile))
-    assert "<script>" not in badge
-    assert "</script>" not in badge
-    assert "&lt;script&gt;" in badge
-    assert "&amp;" in badge and "&quot;" in badge and "&#x27;" in badge
-
-
-def test_badge_html_filter_literal_control_chars_visible() -> None:
-    # Disclosure must be AUDITABLE, not merely inert: control / format / bidi code points in a
-    # model-controlled literal (NUL, newline, tab, U+2028, U+202E RIGHT-TO-LEFT OVERRIDE -- which
-    # would visually reorder the badge text) render as visible \uXXXX / \n escapes inside a
-    # JSON-quoted literal, so two distinct literals can never display identically. The raw
-    # chars themselves never reach the HTML.
-    hostile = "a\x00b\nc\td" + chr(0x2028) + "e" + chr(0x202E) + "f"
-    badge = render.badge_html(_filter_cert(hostile))
-    for raw in ("\x00", "\n", "\t", chr(0x2028), chr(0x202E)):
-        assert raw not in badge  # the raw control/format char never reaches the HTML
-    backslash = chr(0x5C)  # built via chr() so this source line stays pure ASCII
-    for code in ("u0000", "n", "t", "u2028", "u202e"):
-        assert backslash + code in badge  # ...its visible backslash-escape does
-    assert "&quot;a" in badge  # JSON-quoted: the literal's bounds are explicit
-
-
-def test_badge_html_int_and_string_literals_display_distinctly() -> None:
-    # int 5 and string "5" are DIFFERENT filter literals (b10's defect class); the badge must
-    # display them distinctly: bare 5 vs JSON-quoted &quot;5&quot;.
-    assert "<li>x eq 5</li>" in render.badge_html(_filter_cert(5))
-    assert "<li>x eq &quot;5&quot;</li>" in render.badge_html(_filter_cert("5"))
+    assert "1 check passed" in render.badge_html(_cert_with_checks(1))
+    assert "3 checks passed" in render.badge_html(_cert_with_checks(3))
 
 
 # --- M1.6d: OPTIONAL offline HTML view (off the cert hash chain) --------------

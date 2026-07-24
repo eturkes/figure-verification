@@ -33,7 +33,6 @@ import hashlib
 import html
 import importlib.metadata
 import importlib.resources
-import json
 from dataclasses import dataclass, field
 from decimal import Decimal
 from fractions import Fraction
@@ -803,98 +802,58 @@ def render_prepared(
     )
 
 
-def _literal(value: int | str) -> str:
-    """A disclosed filter literal in its unambiguous DISPLAY form: an int bare, a string
-    JSON-quoted with ASCII-only escaping (json.dumps default). Quoting exposes leading/trailing
-    whitespace and keeps int 5 distinct from string "5"; every control / format / bidi /
-    invisible code point (NUL, newline, TAB, U+2028, a U+202E direction override that would
-    visually reorder the badge, ...) renders as its visible \\uXXXX / \\n escape -- so two
-    distinct literals can never display identically and the disclosure stays AUDITABLE, not
-    merely inert. Display only: the VCert struct carries the raw value."""
-    if isinstance(value, int):
-        return str(value)
-    return json.dumps(value)
+_VERIFIED_CHECK_SVG = (
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" '
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    '<path d="M2.5 8.5 6 12 13.5 4.5"/></svg>'
+)
 
 
 def badge_html(cert: VCert) -> str:
-    """Render a VCert as a static, self-contained HTML fragment for human display. Every
-    model-controlled string (the disclosed filter values -- arbitrary text) is rendered via
-    _literal (a visible, injective ASCII form -- control/format/bidi chars appear as \\uXXXX
-    escapes, so the disclosure is auditable) and then, like every other field, HTML-escaped via
-    html.escape(quote=True); the fragment has NO <script>, foreignObject, or other raw-HTML/JS
-    sink, so no filter-value byte is ever live markup. All other fields (constrained field
-    names, enum cmp/order, sha256 hashes, versions) are escaped uniformly. Pure +
-    deterministic. The service embeds this payload display beside its signed-envelope identity;
-    durable replay consumes the independently authenticated payload, not this display."""
+    """A compact, self-contained "verified" line for the in-chat embed.
 
-    def esc(value: object) -> str:
-        return html.escape(str(value), quote=True)
-
-    checks_items = "".join(
-        f"<li>{esc(item.id)} - {esc(item.method)} - {esc(item.status)}</li>" for item in cert.checks
-    )
-    filter_items = "".join(
-        f"<li>{esc(f.field)} {esc(f.cmp)} {esc(_literal(f.value))}</li>" for f in cert.filters
-    )
-    sort_items = "".join(f"<li>{esc(s.field)} {esc(s.order)}</li>" for s in cert.sorts)
-    tcb = cert.tcb
+    It states only that the plot was verified and how many checks passed -- deliberately without
+    the raw hashes, TCB versions, per-check methods, or applied filter/sort dump, which read as
+    technical noise inside a chat and remain in full in the signed certificate envelope linked
+    beside it. The single interpolated value is an integer count, so the fragment carries no
+    model-controlled bytes and no <script>/raw-HTML sink; the check glyph is a fixed inline SVG
+    (no external asset). The service shows this beside the envelope link; durable replay consumes
+    the independently authenticated payload, not this display.
+    """
+    passed = len(cert.checks)
+    unit = "check" if passed == 1 else "checks"
     return (
-        '<div class="vcert">'
-        f"<h2>Verified Plot Certificate ({esc(cert.version)})</h2>"
-        '<dl class="vcert-hashes">'
-        f"<dt>dataset</dt><dd>{esc(cert.dataset_hash)}</dd>"
-        f"<dt>spec</dt><dd>{esc(cert.spec_hash)}</dd>"
-        f"<dt>plotted table</dt><dd>{esc(cert.plotted_table_hash)}</dd>"
-        f"<dt>manifest</dt><dd>{esc(cert.manifest_hash)}</dd>"
-        f"<dt>Vega-Lite</dt><dd>{esc(cert.vega_lite_hash)}</dd>"
-        "</dl>"
-        f"<h3>Checks passed</h3><ul>{checks_items}</ul>"
-        f"<h3>Applied filters</h3><ul>{filter_items}</ul>"
-        f"<h3>Applied sorts</h3><ul>{sort_items}</ul>"
-        '<dl class="vcert-tcb">'
-        f"<dt>verifier</dt><dd>{esc(tcb.verifier_version)}</dd>"
-        f"<dt>Z3</dt><dd>{esc(tcb.z3_version)}</dd>"
-        f"<dt>canon</dt><dd>{esc(tcb.canon_version)}</dd>"
-        f"<dt>python</dt><dd>{esc(tcb.python)}</dd>"
-        f"<dt>msgspec</dt><dd>{esc(tcb.msgspec)}</dd>"
-        f"<dt>unidata</dt><dd>{esc(tcb.unidata)}</dd>"
-        f"<dt>vl-convert-python</dt><dd>{esc(tcb.vl_convert_python)}</dd>"
-        f"<dt>vega-lite</dt><dd>{esc(tcb.vl_version)}</dd>"
-        f"<dt>font</dt><dd>{esc(tcb.font_family)} ({esc(tcb.vendored_font_sha256)})</dd>"
-        "</dl>"
-        "</div>"
+        f'<span class="vplot-badge">{_VERIFIED_CHECK_SVG}Verified plot</span>'
+        f'<span class="vplot-note">{passed} {unit} passed</span>'
     )
 
 
-# vegaEmbed mutates the chart target into ``.vega-embed`` (display:inline-block). The ID rule's
-# block + width override keeps its bordered container full-width; text-align centers fixed-size
-# Vega output inside it. Styling is off the certificate hash chain and inserted in <head>.
+# vegaEmbed mutates the chart target into ``.vega-embed`` (display:inline-block); the ID rule's
+# block override reclaims the card's full width and text-align centers the fixed-size Vega output
+# inside it. The page background is transparent and every color tracks prefers-color-scheme, so the
+# view blends into the Open WebUI chat in light or dark: a sandboxed cross-origin iframe cannot read
+# the parent theme but shares the OS prefers-color-scheme, which OWUI's default ``system`` theme
+# follows. The chart keeps a light card because the verified SVG's axes/text are dark. Off the
+# certificate hash chain, inserted in <head>.
 _SIGNED_PAGE_STYLE = (
     "<style>"
-    ":root{color-scheme:light;--paper:#f4f1e8;--panel:#fffdf8;--ink:#172a2a;"
-    "--muted:#58706d;--line:#cbd8d2;--accent:#006d5b;}"
-    "*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--paper);color:var(--ink);"
-    'font-family:"DejaVu Sans",sans-serif}#vplot-chart,.vplot-provenance{max-width:1040px;'
-    "margin-inline:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;"
-    "box-shadow:0 16px 40px rgba(23,42,42,.08)}#vplot-chart{display:block!important;"
-    "width:100%;padding:24px;overflow:auto;text-align:center}"
-    ".vplot-provenance{margin-top:20px;padding:26px}.vplot-signature{display:grid;"
-    "grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start;padding-bottom:22px;"
-    "border-bottom:1px solid var(--line)}.vplot-eyebrow{margin:0 0 5px;color:var(--accent);"
-    "font-size:.74rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}"
-    ".vplot-signature h1{margin:0 0 10px;font-size:clamp(1.55rem,4vw,2.35rem);"
-    "line-height:1.05}.vplot-signature p{margin:0;color:var(--muted)}.vplot-identity{margin:0;"
-    "display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:.78rem}"
-    ".vplot-identity dt{color:var(--muted);font-weight:700}.vplot-identity dd{margin:0;"
-    "max-width:42ch;overflow-wrap:anywhere}.vplot-certificate-link{display:inline-block;"
-    "margin-top:14px;padding:9px 13px;border-radius:999px;background:var(--accent);color:white;"
-    "font-size:.82rem;font-weight:700;text-decoration:none}.vcert{margin-top:24px}.vcert h2{"
-    "font-size:1.15rem}.vcert h3{margin:20px 0 8px;font-size:.92rem}.vcert dl{display:grid;"
-    "grid-template-columns:max-content minmax(0,1fr);gap:6px 14px}.vcert dt{color:var(--muted);"
-    "font-weight:700}.vcert dd{margin:0;overflow-wrap:anywhere}.vcert ul{padding-left:21px;"
-    "line-height:1.55}@media(max-width:720px){body{padding:12px}#vplot-chart,.vplot-provenance{"
-    "border-radius:12px}.vplot-signature{grid-template-columns:1fr}.vcert dl{"
-    "grid-template-columns:1fr}.vcert dd{margin-bottom:7px}}"
+    ":root{--ink:#1b2a2a;--muted:#5c6d6b;--line:#dde5e2;--accent:#0a7d68;"
+    "--card:#ffffff;--card-line:#e6ebe8;--shadow:0 1px 2px rgba(16,32,32,.06)}"
+    "@media(prefers-color-scheme:dark){:root{--ink:#e7ecec;--muted:#94a3a0;--line:#2b302f;"
+    "--accent:#5bd6bb;--card-line:rgba(255,255,255,.12);--shadow:0 1px 3px rgba(0,0,0,.35)}}"
+    "*{box-sizing:border-box}html,body{margin:0;background:transparent}"
+    'body{padding:6px;color:var(--ink);font-family:"DejaVu Sans",system-ui,sans-serif;'
+    "font-size:14px;line-height:1.5}"
+    "#vplot-chart{display:block!important;max-width:1040px;margin-inline:auto;"
+    "background:var(--card);border:1px solid var(--card-line);border-radius:14px;"
+    "box-shadow:var(--shadow);padding:16px;overflow:auto;text-align:center}"
+    ".vplot-verified{max-width:1040px;margin:8px auto 0;padding:0 4px;display:flex;"
+    "align-items:center;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}"
+    ".vplot-badge{display:inline-flex;align-items:center;gap:6px;color:var(--accent);"
+    "font-weight:700}.vplot-badge svg{width:14px;height:14px;flex:none}"
+    ".vplot-verified a{color:var(--muted);text-decoration:underline;text-underline-offset:2px;"
+    "text-decoration-color:var(--line)}.vplot-verified a:hover{color:var(--ink)}"
+    "@media(max-width:720px){#vplot-chart{border-radius:12px;padding:12px}}"
     "</style>"
 )
 
@@ -903,36 +862,26 @@ def signed_chart_html(
     vega_lite_json: str,
     cert: VCert,
     *,
-    keyid: str,
-    plot_id: str,
     certificate_url: str,
 ) -> str:
-    """Rebuild the off-chain browser page from authoritative Vega + VCert after service signing.
+    """Rebuild the in-chat browser page from authoritative Vega + VCert after service signing.
 
-    ``keyid`` is explicitly a signer LOOKUP HINT, not an identity proof; the copy says so. The
-    service supplies its shape-validated signer keyid, content-derived plot_id, and certificate
-    URL constructed from validated ``Settings.public_base_url``. Every displayed value is escaped;
-    ``badge_html`` already applies its stricter injective filter-literal disclosure.
+    The page is a transparent-background, theme-adaptive view meant to sit inline in the Open
+    WebUI chat: the verified chart on a light card above one compact ``badge_html`` line linking
+    to the signed certificate envelope. It intentionally omits the raw hashes, TCB, and the
+    per-check/transform dump -- that full technical record is the linked envelope, fetched on
+    demand. ``certificate_url`` (the service's validated ``public_base_url`` plus the plot id) is
+    the only interpolated value and is HTML-escaped for defense in depth.
     """
 
     def esc(value: str) -> str:
         return html.escape(value, quote=True)
 
     provenance = (
-        '<section class="vplot-provenance" aria-label="Signed plot provenance">'
-        '<div class="vplot-signature"><div>'
-        '<p class="vplot-eyebrow">Deterministically verified</p>'
-        "<h1>Verified plot</h1>"
-        "<p>Verify the envelope against an independently pinned public key to authenticate the "
-        "exact certificate payload.</p></div>"
-        '<div><dl class="vplot-identity">'
-        f"<dt>Plot ID</dt><dd>{esc(plot_id)}</dd>"
-        f"<dt>Signer key hint</dt><dd>{esc(keyid)}</dd>"
-        "</dl>"
-        f'<a class="vplot-certificate-link" href="{esc(certificate_url)}">'
-        "Inspect signed certificate envelope</a></div></div>"
+        '<footer class="vplot-verified" aria-label="Verified plot">'
         f"{badge_html(cert)}"
-        "</section>"
+        f'<a href="{esc(certificate_url)}">View certificate</a>'
+        "</footer>"
     )
     return _render_html_page(vega_lite_json, provenance, _SIGNED_PAGE_STYLE)
 

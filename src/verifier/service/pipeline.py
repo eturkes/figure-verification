@@ -318,8 +318,6 @@ def render_outcome(
         chart_html = render.signed_chart_html(
             result.vega_lite.decode("utf-8"),
             cert,
-            keyid=signer.keyid,
-            plot_id=plot_id,
             certificate_url=certificate_url,
         )
         chart_bytes = render.admit_html(chart_html, settings.limits)

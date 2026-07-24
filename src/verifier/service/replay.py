@@ -174,8 +174,6 @@ def _rebuild_signed_chart(
     chart_html = render.signed_chart_html(
         snapshot.plot.vega_lite.decode("utf-8"),
         certificate,
-        keyid=snapshot.plot.keyid,
-        plot_id=plot_id,
         certificate_url=certificate_url,
     )
     return render.admit_html(chart_html, limits)

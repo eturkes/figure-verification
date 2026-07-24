@@ -770,12 +770,14 @@ def test_include_html_attaches_signed_chart_view(client: TestClient[Litestar]) -
 
 
 # --- GET /chart serves the page built on every verified render (even include_html=false) -----
-def test_chart_get_serves_signed_badge_and_exact_certificate_link(
+def test_chart_get_serves_compact_verified_page_and_certificate_link(
     client: TestClient[Litestar], signing_identity: SigningIdentity
 ) -> None:
     # The offline page is built + stored on every verified render, so GET /chart resolves even
-    # when the JSON body omitted the inline copy (include_html=false). The served page visibly
-    # binds the human-facing badge to the exact envelope identity and signer hint.
+    # when the JSON body omitted the inline copy (include_html=false). The served page is the
+    # COMPACT in-chat view: the chart, a "Verified plot" badge with the passing-check count, and a
+    # link to the signed certificate envelope -- and it deliberately drops the raw hashes / TCB /
+    # per-check dump (kept only in the linked envelope) so it blends into the chat.
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     posted: dict[str, Any] = client.post(
         "/verify-and-render", content=raw, headers=_JSON, params={"include_html": "false"}
@@ -789,7 +791,12 @@ def test_chart_get_serves_signed_badge_and_exact_certificate_link(
     envelope = client.get(f"/certificate/{posted['plot_id']}").content
     certificate = attestation.verify_vcert(envelope, signing_identity.trusted_keys).certificate
     page = response.text
-    assert 'id="vplot-chart"' in page
+    assert 'id="vplot-chart"' in page  # the chart card
+    assert "Verified plot" in page  # the compact verified badge
+    assert f"{len(certificate.checks)} checks passed" in page  # honest, low-noise signal
+    certificate_url = f"http://127.0.0.1:8000/certificate/{posted['plot_id']}"
+    assert f'href="{certificate_url}"' in page  # the sole path to the full signed record
+    # The verbose technical dump is gone -- this is the "fits the chat" regression guard.
     for digest in (
         certificate.dataset_hash,
         certificate.spec_hash,
@@ -797,14 +804,9 @@ def test_chart_get_serves_signed_badge_and_exact_certificate_link(
         certificate.manifest_hash,
         certificate.vega_lite_hash,
     ):
-        assert digest in page
-    for check in certificate.checks:
-        assert f"{check.id} - {check.method} - pass" in page
-    assert certificate.tcb.verifier_version in page
-    assert signing_identity.signer.keyid in page
-    assert posted["plot_id"] in page
-    certificate_url = f"http://127.0.0.1:8000/certificate/{posted['plot_id']}"
-    assert f'href="{certificate_url}"' in page
+        assert digest not in page
+    assert certificate.tcb.verifier_version not in page
+    assert signing_identity.signer.keyid not in page
 
 
 def test_signed_chart_final_html_limit_is_reapplied_before_store(
