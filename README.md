@@ -230,10 +230,14 @@ manual tool toggle. What happens depends on the model tier and, for the real mod
   selected `proposeSpec` call is schema-guided, steering the weak model toward schema-representable
   structure instead of the raw model's markdown-fenced prose. The `webui/launch.sh` banner pins both
   live outcomes: `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv` drives
-  `proposeSpec` and renders a real **verified chart inline**; `Using sales.csv, plot a chart of
-  revenue versus orders.` returns the model's own unverified chart, which the bypassable
-  `Verified Plot Guard` replaces with `BLOCKED_NOTICE`. These are deterministic observations for the
-  pinned model, device, and config, not a reliability bound, and the guard never proves verification.
+  `proposeSpec` and renders a real **verified chart inline** (a deterministic observation for the
+  pinned model, device, and config, not a reliability bound). The blocked example is deliberately
+  over-elaborate: `Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled
+  revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter
+  colored by region, and a KPI panel, on a dark theme with the peak month annotated.` No verifiable
+  VPlot spec can express that, so the weak model answers with its own unverified chart code, which
+  the bypassable `Verified Plot Guard` replaces with `BLOCKED_NOTICE`. The exact blocked reply
+  depends on the weak model, and the guard never proves verification.
   A separate 100-prompt bench that calls `/propose-spec` directly — exercising neither Open WebUI
   tool selection nor the guard — fully verified 26/100 of its fixed benchmark prompts (versus raw
   0/100, with fence wrapping 97→0), while 51/100 still failed strict decode and 23/100 failed a

@@ -252,7 +252,7 @@ uv run --locked python -m webui bootstrap \
 #    blocks. The --stub fixture proposes a known-good spec for every request, so it demonstrates only
 #    the verified-render path.
 succeeds_prompt="Plot a scatter chart of revenue versus orders. dataset_name: sales.csv"
-blocked_prompt="Using sales.csv, plot a chart of revenue versus orders."
+blocked_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
   printf -v try_typing '%s\n' \
@@ -275,8 +275,8 @@ else
     "" \
     "      2) ${blocked_prompt}" \
     "" \
-    "           BLOCKED -- the model answers with its own unverified chart, so the Verified Plot Guard" \
-    "           replaces it with a plain \"blocked\" notice."
+    "           BLOCKED -- this request is too elaborate for any verifiable spec, so the model answers" \
+    "           with its own unverified chart code, which the Verified Plot Guard rewrites to the blocked notice."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER
