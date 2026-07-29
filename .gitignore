@@ -54,6 +54,8 @@ demo/reports/
 
 # Agent research scratch (source PDFs/notes; findings distil into roadmap/memory, papers stay upstream)
 .agent/research-tmp/
+# Teammate report root (`/session-prompt` fan-out writes `.scratch/agents/<name>.md`; MAIN harvests, then distils into roadmap/memory)
+.scratch/
 
 # Claude Code machine-local (settings + private instructions)
 .claude/settings.local.json
