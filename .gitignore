@@ -52,6 +52,9 @@ demo/reports/
 # Headroom tokensave code-graph state (regenerable: `tokensave init`/`sync`)
 .tokensave/
 
+# Agent research scratch (source PDFs/notes; findings distil into roadmap/memory, papers stay upstream)
+.agent/research-tmp/
+
 # Claude Code machine-local (settings + private instructions)
 .claude/settings.local.json
 CLAUDE.local.md
