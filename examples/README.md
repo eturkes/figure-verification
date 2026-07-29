@@ -10,6 +10,12 @@ Enforced by `tests/test_examples.py`.
 - `bad_specs/b01..b18` — each fails exactly ONE way (`index.json.bad_specs[].layer/check/reason`).
 - `../data/{sales,weather,deliberately_dirty}.csv` + `../data/schemas/<stem>.json` — CSVs + trusted per-column manifest (`type`, numeric `scale`, optional `unit`/`label`, temporal `granularity`).
 
+## Formula mode — M9.1 contract corpus
+- `formula_good_specs/f01..f06` — six decode-valid rational-profile functions: square · line · cubic · rational · absolute value · quadratic; line/scatter only.
+- `formula_bad_specs/fb01..fb20` — each fails exactly one declared layer (`index.json.formula_bad_specs[].layer/check/reason`).
+- Rejection points: `decode` (×14) → M9.1 `decode_formula_spec`, `decodes=false`; later (×6), still decode by design → M9.2 parser (×2), M9.3 evaluation/sampling (×2), M9.4 domain (×1), M9.2/M9.4 exponent policy (×1).
+- Check ORDER is load-bearing, so `check` names the FIRST failing check: `formula.domain_ordered` precedes `formula.sample_points_strictly_increasing`, since a reversed domain always produces a descending schedule and no fixture can isolate one from the other. M9.3/M9.4 must evaluate ordering first, or fb17 stops discriminating.
+
 ## Bad-spec layers (rejection point)
 - `decode` (×8) → now, at `decode_spec`. `decodes=false`. Bad enum/op/fn, float value, unknown key, wrong version, Vega-Lite injection keys (`encoding.aggregate`, top-level `url`) refused by `forbid_unknown_fields`.
 - `dataset-binding` (×4) → M1.4/M1.5. Missing field, `dataset.hash` mismatch, sum-on-string, int-vs-string filter. `decodes=true`.

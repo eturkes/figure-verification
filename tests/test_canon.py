@@ -6,7 +6,7 @@ CRLF / BOM; serialize_table emits stable typed-NDJSON (HALF_EVEN numerics, negat
 zero folded, null distinct from "null", cells byte-faithful + control-escaped); the
 table/spec/manifest hashes are domain-tagged; the spec hash is byte-faithful (NFC-
 equivalent filter values hash apart) and flips on an edit; fixed golden vectors pin
-the canonical bytes; and all four hashes are byte-identical across two PYTHONHASHSEED
+the canonical bytes; and all six hashes are byte-identical across two PYTHONHASHSEED
 subprocesses.
 """
 
@@ -26,25 +26,31 @@ import pytest
 
 from verifier import canon
 from verifier.canon import (
+    FormulaSource,
     NumericColumn,
     StringColumn,
     Table,
     TemporalColumn,
+    formula_source_bytes,
     hash_dataset,
+    hash_formula,
+    hash_formula_source,
     hash_manifest,
+    hash_matplotlib_script,
     hash_spec,
     hash_table,
     runtime_versions,
     serialize_table,
     spec_bytes,
 )
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
 
 ZERO_HASH = "sha256:" + "0" * 64
 # "cafe" in two NFC-equivalent but byte-different forms: precomposed e-acute (U+00E9) vs
 # e + combining acute (U+0301). Built via chr() so this source stays pure ASCII.
 _CAFE_COMPOSED = "caf" + chr(0x00E9)
 _CAFE_DECOMPOSED = "cafe" + chr(0x0301)
+_FORMULA_SCRIPT = b"import matplotlib.pyplot as plt\nplt.plot([0.0, 1.0], [0.0, 1.0])\nplt.show()\n"
 
 
 def _spec(value: object = "West", *, mark: str = "bar") -> VPlotSpec:
@@ -69,6 +75,35 @@ def _table() -> Table:
         columns=(StringColumn(name="region"), NumericColumn(name="revenue", scale=2)),
         rows=(("West", Decimal("10.50")), ("East", Decimal("20.00")), (None, None)),
     )
+
+
+def _formula_source() -> FormulaSource:
+    return FormulaSource(
+        grammar_version="vplot-expr-0.1",
+        numeric_profile="rational-half-even-v1",
+        rounding="ROUND_HALF_EVEN",
+        ast="(+ (** x 2) 1)",
+        start=Decimal("-1.25"),
+        stop=Decimal("2.50"),
+        samples=16,
+        x_scale=2,
+        y_scale=3,
+    )
+
+
+def _formula_spec() -> FormulaPlotSpec:
+    raw: dict[str, Any] = {
+        "version": "vplot-formula-0.1",
+        "formula": "x**2",
+        "domain": {"start": "-3", "stop": "3", "samples": 13, "x_scale": 1, "y_scale": 2},
+        "numeric_profile": "rational-half-even-v1",
+        "mark": "line",
+        "encoding": {
+            "x": {"field": "x", "type": "quantitative"},
+            "y": {"field": "y", "type": "quantitative"},
+        },
+    }
+    return decode_formula_spec(msgspec.json.encode(raw))
 
 
 # --- dataset hash: tag-free raw-byte source identity -------------------------
@@ -232,6 +267,92 @@ def test_table_cells_are_byte_faithful() -> None:
     assert hash_table(composed) != hash_table(decomposed)
 
 
+# --- resolved formula source + hash domains ---------------------------------
+def test_formula_source_bytes_shape() -> None:
+    expected = (
+        b'grammar="vplot-expr-0.1"\n'
+        b'profile="rational-half-even-v1"\n'
+        b'rounding="ROUND_HALF_EVEN"\n'
+        b"x_scale=2\n"
+        b"y_scale=3\n"
+        b"samples=16\n"
+        b"start=-1.25\n"
+        b"stop=2.50\n"
+        b'ast="(+ (** x 2) 1)"\n'
+    )
+    assert formula_source_bytes(_formula_source()) == expected
+    assert expected.count(b"\n") == 9
+
+
+def test_formula_source_bytes_shape_at_a_second_scale() -> None:
+    """Pin a full vector at a DIFFERENT x_scale. Whole-payload inequality alone cannot
+    catch a serializer that hard-codes the `x_scale=` line, because changing x_scale also
+    changes how the endpoints render — so only a second exact form fixes that line."""
+    expected = (
+        b'grammar="vplot-expr-0.1"\n'
+        b'profile="rational-half-even-v1"\n'
+        b'rounding="ROUND_HALF_EVEN"\n'
+        b"x_scale=3\n"
+        b"y_scale=3\n"
+        b"samples=16\n"
+        b"start=-1.250\n"
+        b"stop=2.500\n"
+        b'ast="(+ (** x 2) 1)"\n'
+    )
+    source = msgspec.structs.replace(_formula_source(), x_scale=3)
+    assert formula_source_bytes(source) == expected
+    assert hash_formula(source) == (
+        "sha256:c9a6a1659e5630d59717f5f87f8148c765d8bf0c9e3dec86cf64311e17f82bb8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("grammar_version", "vplot-expr-0.2"),
+        ("numeric_profile", "rational-other-v1"),
+        ("rounding", "ROUND_DOWN"),
+        ("ast", "(+ (** x 3) 1)"),
+        ("start", Decimal("-1.24")),
+        ("stop", Decimal("2.51")),
+        ("samples", 17),
+        ("x_scale", 3),
+        ("y_scale", 4),
+    ],
+)
+def test_formula_source_bytes_change_on_every_component(field: str, value: object) -> None:
+    source = _formula_source()
+    changed = msgspec.structs.replace(source, **{field: value})
+    assert formula_source_bytes(changed) != formula_source_bytes(source)
+
+
+def test_formula_source_bytes_fold_negative_zero_endpoints() -> None:
+    source = msgspec.structs.replace(
+        _formula_source(),
+        start=Decimal("-0"),
+        stop=Decimal("-0.00"),
+    )
+    lines = formula_source_bytes(source).splitlines()
+    assert lines[6:8] == [b"start=0.00", b"stop=0.00"]
+
+
+def test_formula_and_script_hashes_use_separate_domains() -> None:
+    payload = b"identical canonical bytes\n"
+    expected = {
+        domain: "sha256:"
+        + hashlib.sha256(f"vplot-{domain}/{canon.CANON_VERSION}\n".encode() + payload).hexdigest()
+        for domain in ("table", "spec", "manifest", "formula", "matplotlib-script")
+    }
+    assert len(set(expected.values())) == 5
+    assert hash_formula_source(payload) == expected["formula"]
+    assert hash_matplotlib_script(payload) == expected["matplotlib-script"]
+
+
+def test_hash_formula_composes_over_the_canonical_bytes() -> None:
+    source = _formula_source()
+    assert hash_formula(source) == hash_formula_source(formula_source_bytes(source))
+
+
 # --- table hash: domain-tagged over the canonical form -----------------------
 def test_hash_table_is_domain_tagged() -> None:
     table = _table()
@@ -280,6 +401,36 @@ def test_spec_bytes_is_deterministic_and_backs_hash_spec() -> None:
     assert decode_spec(encoded) == _spec()  # canonical bytes round-trip to an equal spec
     tag = f"vplot-spec/{canon.CANON_VERSION}\n".encode()
     assert hash_spec(_spec()) == "sha256:" + hashlib.sha256(tag + encoded).hexdigest()
+
+
+def test_dataset_spec_bytes_and_hash_stay_unchanged_under_plot_union() -> None:
+    expected = (
+        b'{"version":"vplot-0.1","dataset":{"name":"sales.csv","hash":"sha256:'
+        + b"0" * 64
+        + b'"},"transform":[{"op":"filter","field":"region","cmp":"eq","value":"West"}]'
+        b',"mark":"bar","encoding":{"x":{"field":"region","type":"nominal"},'
+        b'"y":{"field":"revenue","type":"quantitative"},"color":null}}'
+    )
+    assert spec_bytes(_spec()) == expected
+    assert hash_spec(_spec()) == (
+        "sha256:990615ee353d3f4c534c141cf3ff993cbee0b15a9453806d9f8fd3b31c6cbe67"
+    )
+
+
+def test_formula_spec_flows_through_shared_spec_canonicalization() -> None:
+    expected = (
+        b'{"version":"vplot-formula-0.1","formula":"x**2","domain":{"start":"-3",'
+        b'"stop":"3","samples":13,"x_scale":1,"y_scale":2},'
+        b'"numeric_profile":"rational-half-even-v1","mark":"line","encoding":{'
+        b'"x":{"field":"x","type":"quantitative"},'
+        b'"y":{"field":"y","type":"quantitative"}}}'
+    )
+    spec = _formula_spec()
+    assert spec_bytes(spec) == expected
+    assert decode_formula_spec(expected) == spec
+    assert hash_spec(spec) == (
+        "sha256:634e8a9bdf628b0f8b0cf99ef6cb45167ec882450dff4e77a1492860d8472160"
+    )
 
 
 def test_hash_spec_distinguishes_nfc_variants() -> None:
@@ -338,6 +489,15 @@ def test_golden_hash_vectors() -> None:
     )
 
 
+def test_formula_golden_hash_vectors() -> None:
+    assert hash_formula(_formula_source()) == (
+        "sha256:9dfeb1d5e76632ef38f20fe2a630e49ea5a3ac2ab4d9780b4fb127db8740810e"
+    )
+    assert hash_matplotlib_script(_FORMULA_SCRIPT) == (
+        "sha256:05053f5c55599b847c3fdb3c738931372706cdc33f08ebf6cd337c7713fe8533"
+    )
+
+
 # --- cross-process determinism (PYTHONHASHSEED) ------------------------------
 _DETERMINISM_PROG = """
 from decimal import Decimal
@@ -365,10 +525,23 @@ table = canon.Table(
     columns=(canon.StringColumn(name="r"), canon.NumericColumn(name="v", scale=2)),
     rows=(("West", Decimal("10.50")), (None, None)),
 )
+formula = canon.FormulaSource(
+    grammar_version="vplot-expr-0.1",
+    numeric_profile="rational-half-even-v1",
+    rounding="ROUND_HALF_EVEN",
+    ast="(+ (** x 2) 1)",
+    start=Decimal("-1.25"),
+    stop=Decimal("2.50"),
+    samples=16,
+    x_scale=2,
+    y_scale=3,
+)
 print(canon.hash_dataset(b"region,rev,West,10.50"))
 print(canon.hash_table(table))
 print(canon.hash_spec(spec))
 print(canon.hash_manifest(b"manifest-bytes"))
+print(canon.hash_formula(formula))
+print(canon.hash_matplotlib_script(b"matplotlib-script-bytes\\n"))
 """
 
 
@@ -383,7 +556,7 @@ def _hashes_under_seed(seed: str) -> str:
     return result.stdout
 
 
-def test_all_four_hashes_are_stable_across_pythonhashseed() -> None:
+def test_all_six_hashes_are_stable_across_pythonhashseed() -> None:
     out = _hashes_under_seed("0")
     assert out == _hashes_under_seed("1")
-    assert out.count("sha256:") == 4  # dataset, table, spec, manifest all emitted
+    assert out.count("sha256:") == 6  # dataset, table, spec, manifest, formula, script

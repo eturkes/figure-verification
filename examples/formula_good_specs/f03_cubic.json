@@ -1,0 +1,1 @@
+{"version":"vplot-formula-0.1","formula":"x*(x - 1)*(x + 1)","domain":{"start":"-2","stop":"2","samples":21,"x_scale":1,"y_scale":3},"numeric_profile":"rational-half-even-v1","mark":"scatter","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}

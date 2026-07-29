@@ -156,6 +156,18 @@ class Settings:
     max_html_bytes: int = DEFAULT_LIMITS.max_html_bytes
     max_attestation_bytes: int = DEFAULT_LIMITS.max_attestation_bytes
     smt_timeout_ms: int = DEFAULT_LIMITS.smt_timeout_ms
+    max_formula_bytes: int = DEFAULT_LIMITS.max_formula_bytes
+    max_formula_tokens: int = DEFAULT_LIMITS.max_formula_tokens
+    max_formula_ast_nodes: int = DEFAULT_LIMITS.max_formula_ast_nodes
+    max_formula_ast_depth: int = DEFAULT_LIMITS.max_formula_ast_depth
+    max_formula_paren_depth: int = DEFAULT_LIMITS.max_formula_paren_depth
+    max_formula_digits: int = DEFAULT_LIMITS.max_formula_digits
+    max_formula_exponent: int = DEFAULT_LIMITS.max_formula_exponent
+    max_formula_identifier_bytes: int = DEFAULT_LIMITS.max_formula_identifier_bytes
+    max_formula_samples: int = DEFAULT_LIMITS.max_formula_samples
+    max_formula_work_units: int = DEFAULT_LIMITS.max_formula_work_units
+    max_formula_intermediate_bits: int = DEFAULT_LIMITS.max_formula_intermediate_bits
+    max_matplotlib_script_bytes: int = DEFAULT_LIMITS.max_matplotlib_script_bytes
 
     limits: VerificationLimits = field(init=False, repr=False)
 
@@ -212,6 +224,18 @@ class Settings:
             max_html_bytes=self.max_html_bytes,
             max_attestation_bytes=self.max_attestation_bytes,
             smt_timeout_ms=self.smt_timeout_ms,
+            max_formula_bytes=self.max_formula_bytes,
+            max_formula_tokens=self.max_formula_tokens,
+            max_formula_ast_nodes=self.max_formula_ast_nodes,
+            max_formula_ast_depth=self.max_formula_ast_depth,
+            max_formula_paren_depth=self.max_formula_paren_depth,
+            max_formula_digits=self.max_formula_digits,
+            max_formula_exponent=self.max_formula_exponent,
+            max_formula_identifier_bytes=self.max_formula_identifier_bytes,
+            max_formula_samples=self.max_formula_samples,
+            max_formula_work_units=self.max_formula_work_units,
+            max_formula_intermediate_bits=self.max_formula_intermediate_bits,
+            max_matplotlib_script_bytes=self.max_matplotlib_script_bytes,
         )
         object.__setattr__(self, "limits", limits)
 
@@ -290,4 +314,43 @@ class Settings:
                 "VERIFIER_MAX_ATTESTATION_BYTES", DEFAULT_LIMITS.max_attestation_bytes
             ),
             smt_timeout_ms=integer("VERIFIER_SMT_TIMEOUT_MS", DEFAULT_LIMITS.smt_timeout_ms),
+            max_formula_bytes=integer(
+                "VERIFIER_MAX_FORMULA_BYTES", DEFAULT_LIMITS.max_formula_bytes
+            ),
+            max_formula_tokens=integer(
+                "VERIFIER_MAX_FORMULA_TOKENS", DEFAULT_LIMITS.max_formula_tokens
+            ),
+            max_formula_ast_nodes=integer(
+                "VERIFIER_MAX_FORMULA_AST_NODES", DEFAULT_LIMITS.max_formula_ast_nodes
+            ),
+            max_formula_ast_depth=integer(
+                "VERIFIER_MAX_FORMULA_AST_DEPTH", DEFAULT_LIMITS.max_formula_ast_depth
+            ),
+            max_formula_paren_depth=integer(
+                "VERIFIER_MAX_FORMULA_PAREN_DEPTH", DEFAULT_LIMITS.max_formula_paren_depth
+            ),
+            max_formula_digits=integer(
+                "VERIFIER_MAX_FORMULA_DIGITS", DEFAULT_LIMITS.max_formula_digits
+            ),
+            max_formula_exponent=integer(
+                "VERIFIER_MAX_FORMULA_EXPONENT", DEFAULT_LIMITS.max_formula_exponent
+            ),
+            max_formula_identifier_bytes=integer(
+                "VERIFIER_MAX_FORMULA_IDENTIFIER_BYTES",
+                DEFAULT_LIMITS.max_formula_identifier_bytes,
+            ),
+            max_formula_samples=integer(
+                "VERIFIER_MAX_FORMULA_SAMPLES", DEFAULT_LIMITS.max_formula_samples
+            ),
+            max_formula_work_units=integer(
+                "VERIFIER_MAX_FORMULA_WORK_UNITS", DEFAULT_LIMITS.max_formula_work_units
+            ),
+            max_formula_intermediate_bits=integer(
+                "VERIFIER_MAX_FORMULA_INTERMEDIATE_BITS",
+                DEFAULT_LIMITS.max_formula_intermediate_bits,
+            ),
+            max_matplotlib_script_bytes=integer(
+                "VERIFIER_MAX_MATPLOTLIB_SCRIPT_BYTES",
+                DEFAULT_LIMITS.max_matplotlib_script_bytes,
+            ),
         )

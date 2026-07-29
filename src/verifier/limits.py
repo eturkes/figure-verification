@@ -3,8 +3,11 @@
 
 `VerificationLimits` is immutable trusted operator policy. Each positive integer is an
 upper bound, inclusive: work at the boundary is admitted and boundary+1 fails closed.
-M5.1a established the complete vocabulary; owner modules consume their relevant fields directly,
-keeping policy threading explicit and ambient-state-free.
+M5.1a established the vocabulary-ahead-of-consumers pattern; M9.1 extends it with
+formula parse/evaluation/sampling and script-emission bounds before M9.2-M9.5 consume them.
+Owner modules consume their relevant fields directly, keeping policy threading explicit and
+ambient-state-free. Formula limits are operator policy beneath the schema's wider absolute
+wire-shape bounds (`FormulaText` 1024 characters, domain samples 100,000); both layers fail closed.
 
 `read_bounded` performs an unbuffered chunked read capped at `max_bytes + 1`, avoiding
 `stat`-then-read races and hidden buffered read-ahead. It preserves filesystem exception
@@ -41,6 +44,24 @@ class VerificationLimits(msgspec.Struct, frozen=True, kw_only=True):
     max_html_bytes: int = 32 * _MIB
     max_attestation_bytes: int = _MIB
     smt_timeout_ms: int = 1_000
+
+    # Parse one formula (M9.2). digits caps one numeric literal; identifier_bytes caps
+    # one name. Every bound is inclusive and deliberately tighter than wire shape.
+    max_formula_bytes: int = 512
+    max_formula_tokens: int = 256
+    max_formula_ast_nodes: int = 256
+    max_formula_ast_depth: int = 32
+    max_formula_paren_depth: int = 32
+    max_formula_digits: int = 32
+    # Integer exponent of `**`: exact-rational numerator/denominator growth (M9.2/M9.4).
+    max_formula_exponent: int = 64
+    max_formula_identifier_bytes: int = 32
+    # Sample schedule and exact-rational work/intermediate bit width (M9.3).
+    max_formula_samples: int = 10_000
+    max_formula_work_units: int = 10_000_000
+    max_formula_intermediate_bits: int = 4096
+    # Exact verifier-authored matplotlib script bytes (M9.5).
+    max_matplotlib_script_bytes: int = _MIB
 
     def __post_init__(self) -> None:
         for name in self.__struct_fields__:

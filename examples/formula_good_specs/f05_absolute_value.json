@@ -1,0 +1,1 @@
+{"version":"vplot-formula-0.1","formula":"abs(x)","domain":{"start":"-4","stop":"4","samples":17,"x_scale":1,"y_scale":1},"numeric_profile":"rational-half-even-v1","mark":"line","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}

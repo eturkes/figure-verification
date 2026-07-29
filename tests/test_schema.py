@@ -33,6 +33,11 @@ _STRUCTS: list[type[msgspec.Struct]] = [
     schema.SortKey,
     schema.Sort,
     schema.VPlotSpec,
+    schema.FormulaXChannel,
+    schema.FormulaYChannel,
+    schema.FormulaEncoding,
+    schema.FormulaDomain,
+    schema.FormulaPlotSpec,
 ]
 
 
@@ -81,6 +86,100 @@ def _bad_encoding(x: dict[str, Any]) -> bytes:
     """Spec with a tampered x-channel dict and a valid y, for channel-level rejects."""
     y = {"field": "total", "type": "quantitative"}
     return _enc(_good() | {"encoding": {"x": x, "y": y}})
+
+
+def _formula() -> dict[str, Any]:
+    """A fresh shape-valid formula spec dict."""
+    return {
+        "version": "vplot-formula-0.1",
+        "formula": "x",
+        "domain": {"start": "0", "stop": "1", "samples": 2, "x_scale": 0, "y_scale": 0},
+        "numeric_profile": "rational-half-even-v1",
+        "mark": "line",
+        "encoding": {
+            "x": {"field": "x", "type": "quantitative"},
+            "y": {"field": "y", "type": "quantitative"},
+        },
+    }
+
+
+def _formula_top(**changes: Any) -> dict[str, Any]:
+    raw = _formula()
+    raw.update(changes)
+    return raw
+
+
+def _formula_domain(**changes: Any) -> dict[str, Any]:
+    raw = _formula()
+    domain = cast("dict[str, Any]", raw["domain"])
+    domain.update(changes)
+    return raw
+
+
+def _formula_channel(channel: str, **changes: Any) -> dict[str, Any]:
+    raw = _formula()
+    encoding = cast("dict[str, Any]", raw["encoding"])
+    selected = cast("dict[str, Any]", encoding[channel])
+    selected.update(changes)
+    return raw
+
+
+def _formula_without_domain() -> dict[str, Any]:
+    raw = _formula()
+    del raw["domain"]
+    return raw
+
+
+type FormulaCase = tuple[str, str, str, int, int, int, str]
+
+
+def _formula_case(case: FormulaCase) -> dict[str, Any]:
+    formula, start, stop, samples, x_scale, y_scale, mark = case
+    raw = _formula_top(formula=formula, mark=mark)
+    domain = cast("dict[str, Any]", raw["domain"])
+    domain.update(
+        start=start,
+        stop=stop,
+        samples=samples,
+        x_scale=x_scale,
+        y_scale=y_scale,
+    )
+    return raw
+
+
+_FORMULA_GOOD_CASES: list[FormulaCase] = [
+    ("x**2", "-3", "3", 13, 1, 2, "line"),
+    ("2*x + 1", "0", "10", 11, 0, 0, "line"),
+    ("x*(x - 1)*(x + 1)", "-2", "2", 21, 1, 3, "scatter"),
+    ("1/(1 + x*x)", "-5", "5", 41, 1, 4, "line"),
+    ("abs(x)", "-4", "4", 17, 1, 1, "line"),
+    ("-x**2 + 3*x - 2", "0", "3", 7, 1, 2, "scatter"),
+]
+_FORMULA_GOOD_IDS = ["square", "linear", "cubic", "rational", "absolute", "quadratic"]
+_FORMULA_BYTES = _enc(_formula())
+_FORMULA_DUP_MARK = _FORMULA_BYTES.replace(b'"mark":"line"', b'"mark":"line","mark":"scatter"', 1)
+_FORMULA_REJECTS: dict[str, tuple[bytes, str]] = {
+    "wrong_version": (_enc(_formula_top(version="vplot-formula-0.2")), "$.version"),
+    "dataset_key": (
+        _enc(_formula_top(dataset={"name": "sales.csv", "hash": HASH})),
+        "unknown field `dataset`",
+    ),
+    "bar_mark": (_enc(_formula_top(mark="bar")), "$.mark"),
+    "wrong_y_field": (_enc(_formula_channel("y", field="z")), "$.encoding.y.field"),
+    "wrong_x_type": (_enc(_formula_channel("x", type="ordinal")), "$.encoding.x.type"),
+    "code_injection_alphabet": (
+        _enc(_formula_top(formula="__import__('os').system('ls')")),
+        "$.formula",
+    ),
+    "formula_newline": (_enc(_formula_top(formula="x\n+1")), "$.formula"),
+    "samples_below_min": (_enc(_formula_domain(samples=1)), "$.domain.samples"),
+    "numeric_start_token": (_enc(_formula_domain(start=0)), "$.domain.start"),
+    "negative_x_scale": (_enc(_formula_domain(x_scale=-1)), "$.domain.x_scale"),
+    "numeric_profile": (_enc(_formula_top(numeric_profile="float64")), "$.numeric_profile"),
+    "duplicate_mark": (_FORMULA_DUP_MARK, "duplicate object key: 'mark'"),
+    "exponent_decimal": (_enc(_formula_domain(stop="1e3")), "$.domain.stop"),
+    "missing_domain": (_enc(_formula_without_domain()), "required field `domain`"),
+}
 
 
 _GOOD_BYTES = _enc(_good())
@@ -228,6 +327,237 @@ def test_invalid_utf8_bytes_maps_to_decode_error() -> None:
     """Invalid UTF-8 inside a JSON string raises DecodeError, not UnicodeDecodeError."""
     with pytest.raises(msgspec.DecodeError):
         decode_spec(b'{"version":"\xff\xfe"}')
+
+
+@pytest.mark.parametrize("case", _FORMULA_GOOD_CASES, ids=_FORMULA_GOOD_IDS)
+def test_formula_good_specs_decode_to_declared_fields(case: FormulaCase) -> None:
+    formula, start, stop, samples, x_scale, y_scale, mark = case
+    spec = schema.decode_formula_spec(_enc(_formula_case(case)))
+    assert isinstance(spec, schema.FormulaPlotSpec)
+    assert spec.version == "vplot-formula-0.1"
+    assert spec.formula == formula
+    assert (spec.domain.start, spec.domain.stop) == (start, stop)
+    assert (spec.domain.samples, spec.domain.x_scale, spec.domain.y_scale) == (
+        samples,
+        x_scale,
+        y_scale,
+    )
+    assert spec.numeric_profile == "rational-half-even-v1"
+    assert spec.mark == mark
+    assert (spec.encoding.x.field, spec.encoding.x.kind) == ("x", "quantitative")
+    assert (spec.encoding.y.field, spec.encoding.y.kind) == ("y", "quantitative")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [_FORMULA_BYTES, _FORMULA_BYTES.decode("utf-8")],
+    ids=["bytes", "str"],
+)
+def test_formula_decode_accepts_bytes_and_str(raw: bytes | str) -> None:
+    assert schema.decode_formula_spec(raw).formula == "x"
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    _FORMULA_REJECTS.values(),
+    ids=list(_FORMULA_REJECTS),
+)
+def test_formula_decode_rejects_invalid_shape(raw: bytes, message: str) -> None:
+    with pytest.raises(msgspec.ValidationError) as exc_info:
+        schema.decode_formula_spec(raw)
+    assert type(exc_info.value) is msgspec.ValidationError
+    assert message in str(exc_info.value)
+
+
+def test_formula_duplicate_key_would_silently_pass_a_bare_decoder() -> None:
+    bare = msgspec.json.Decoder(schema.FormulaPlotSpec)
+    assert bare.decode(_FORMULA_DUP_MARK).mark == "scatter"
+    with pytest.raises(msgspec.ValidationError, match="duplicate object key"):
+        schema.decode_formula_spec(_FORMULA_DUP_MARK)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"{ not json", chr(0xD800), b'{"version":"\xff"}'],
+    ids=["malformed", "lone-surrogate-str", "invalid-utf8-bytes"],
+)
+def test_formula_decode_maps_malformed_or_non_utf8_to_decode_error(raw: bytes | str) -> None:
+    with pytest.raises(msgspec.DecodeError) as exc_info:
+        schema.decode_formula_spec(raw)
+    assert type(exc_info.value) is msgspec.DecodeError
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("samples", 2),
+        ("samples", 100_000),
+        ("x_scale", 0),
+        ("x_scale", 12),
+        ("y_scale", 0),
+        ("y_scale", 12),
+    ],
+)
+def test_formula_domain_inclusive_boundaries_decode(field: str, value: int) -> None:
+    raw = _formula()
+    domain = cast("dict[str, Any]", raw["domain"])
+    domain[field] = value
+    spec = schema.decode_formula_spec(_enc(raw))
+    assert getattr(spec.domain, field) == value
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("samples", 1),
+        ("samples", 100_001),
+        ("x_scale", -1),
+        ("x_scale", 13),
+        ("y_scale", -1),
+        ("y_scale", 13),
+    ],
+)
+def test_formula_domain_boundary_plus_one_rejected(field: str, value: int) -> None:
+    raw = _formula()
+    domain = cast("dict[str, Any]", raw["domain"])
+    domain[field] = value
+    with pytest.raises(msgspec.ValidationError):
+        schema.decode_formula_spec(_enc(raw))
+
+
+def test_formula_text_max_length_decodes() -> None:
+    formula = "x" * 1024
+    assert schema.decode_formula_spec(_enc(_formula_top(formula=formula))).formula == formula
+
+
+def test_formula_text_boundary_plus_one_rejected() -> None:
+    with pytest.raises(msgspec.ValidationError, match="length <= 1024"):
+        schema.decode_formula_spec(_enc(_formula_top(formula="x" * 1025)))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "0",
+        "-0",
+        "9" * 18,
+        "-" + "9" * 18,
+        "1." + "2" * 9,
+        "9" * 18 + "." + "9" * 9,
+        "-" + "9" * 18 + "." + "9" * 9,
+    ],
+    ids=[
+        "zero",
+        "negative-zero",
+        "18-integer",
+        "negative-18-integer",
+        "9-fraction",
+        "both-max",
+        # 29 characters: the longest token the grammar admits, which is why DecimalText
+        # carries no max_length — a cap could never bind before the pattern does.
+        "longest-token",
+    ],
+)
+def test_formula_decimal_text_digit_boundaries_decode(value: str) -> None:
+    spec = schema.decode_formula_spec(_enc(_formula_domain(start=value)))
+    assert spec.domain.start == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["9" * 19, "0." + "1" * 10],
+    ids=["19-integer", "10-fraction"],
+)
+def test_formula_decimal_text_boundary_plus_one_rejected(value: str) -> None:
+    with pytest.raises(msgspec.ValidationError):
+        schema.decode_formula_spec(_enc(_formula_domain(start=value)))
+
+
+# One case per lexical rule the DecimalText grammar claims. Without these, a pattern
+# loosened to accept a leading plus, leading zeroes, or a bare/trailing point still passes
+# every other decimal vector, so the claimed canonical spelling would go unenforced.
+@pytest.mark.parametrize(
+    "value",
+    ["+1", "01", "-01", "00", "1.", ".1", "-.1", "1_000", " 1", "1 ", "--1", "-", ""],
+    ids=[
+        "leading-plus",
+        "leading-zero",
+        "negative-leading-zero",
+        "double-zero",
+        "trailing-point",
+        "bare-fraction",
+        "negative-bare-fraction",
+        "digit-separator",
+        "leading-space",
+        "trailing-space",
+        "double-sign",
+        "sign-only",
+        "empty",
+    ],
+)
+def test_formula_decimal_text_rejects_non_canonical_spellings(value: str) -> None:
+    with pytest.raises(msgspec.ValidationError, match=r"\$\.domain\.start"):
+        schema.decode_formula_spec(_enc(_formula_domain(start=value)))
+
+
+# The closed alphabet IS the claim that code-injection shapes are unrepresentable at
+# decode, so pin it character by character: a class widened by even one of these passes
+# every good spec, every bad-corpus entry, and both length-boundary vectors.
+@pytest.mark.parametrize(
+    "char",
+    [
+        ",",
+        "'",
+        '"',
+        ";",
+        "^",
+        "=",
+        "[",
+        "]",
+        "{",
+        "}",
+        "\\",
+        ":",
+        "!",
+        "<",
+        ">",
+        "#",
+        "?",
+        "|",
+        "&",
+        "$",
+        "%",
+        "@",
+        "~",
+        "`",
+        "\r",
+        "\n",
+        "\t",
+        "\x00",
+        "é",
+    ],
+)
+def test_formula_text_rejects_every_excluded_character(char: str) -> None:
+    with pytest.raises(msgspec.ValidationError, match=r"\$\.formula"):
+        schema.decode_formula_spec(_enc(_formula_top(formula=f"x + 1{char}")))
+
+
+def test_plot_spec_aliases_accept_both_modes() -> None:
+    dataset: schema.DatasetPlotSpec = decode_spec(_GOOD_BYTES)
+    formula: schema.FormulaPlotSpec = schema.decode_formula_spec(_FORMULA_BYTES)
+    specs: tuple[schema.PlotSpec, ...] = (dataset, formula)
+    assert [spec.version for spec in specs] == ["vplot-0.1", "vplot-formula-0.1"]
+
+
+def test_formula_spec_is_frozen_hashable_and_deeply_immutable() -> None:
+    spec = schema.decode_formula_spec(_FORMULA_BYTES)
+    assert hash(spec) == hash(schema.decode_formula_spec(_FORMULA_BYTES))
+    attr = "formula"
+    with pytest.raises(AttributeError):
+        setattr(spec, attr, "x + 1")
+    nested_attr = "samples"
+    with pytest.raises(AttributeError):
+        setattr(spec.domain, nested_attr, 3)
 
 
 def test_spec_is_frozen_hashable_and_deeply_immutable() -> None:

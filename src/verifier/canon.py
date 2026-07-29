@@ -3,7 +3,7 @@
 
 Evaluator-independent foundation (M1.4b's ingest, M1.4d's eval, and M1.4f's oracle
 import it; no transform logic lives here). It pins ONE textual canonical form for a recomputed
-table and FOUR SHA-256 hashes over text — never Arrow/Parquet bytes, which couple
+table and SIX SHA-256 hashes over text — never Arrow/Parquet bytes, which couple
 to a library version. The hashes split by purpose:
 
   - dataset  : raw CSV bytes, `sha256:`-prefixed, NO domain tag. This IS the source
@@ -11,13 +11,17 @@ to a library version. The hashes split by purpose:
                and is row-order / CRLF / BOM sensitive by design.
   - table    : the typed-NDJSON serialization (serialize_table) of the recomputed
                plotted table; domain-tagged.
-  - spec     : the validated VPlotSpec re-encoded deterministically (msgspec finding 8);
+  - spec     : the validated dataset/formula plot spec re-encoded deterministically
+               (msgspec finding 8);
                domain-tagged. Byte-faithful — NO Unicode normalization — matching the
                evaluator + DuckDB oracle, which compare string filters verbatim by UTF-8
                code-point order (VPlot_SEMANTICS sections 3/4/10); folding here would collide
                specs that select different rows. The re-encode still folds JSON surface
                noise (whitespace, key order, escaping) to one form.
   - manifest : the trusted per-column manifest's raw bytes; domain-tagged.
+  - formula  : the resolved formula source (canonical AST, numeric profile, domain,
+               schedule, scales, and rounding); domain-tagged.
+  - matplotlib-script : the exact verifier-authored emitted script bytes; domain-tagged.
 
 Only the table hash is permutation-invariant (M1.4d closes every plot with a total
 sort); the dataset hash deliberately is not. Display metadata (unit/label) lives in
@@ -34,7 +38,7 @@ from typing import ClassVar, Literal
 import msgspec
 from msgspec import Struct
 
-from verifier.schema import VPlotSpec
+from verifier.schema import PlotSpec
 
 # Serialization-format pin: a CANON_VERSION bump invalidates stale domain-tagged hashes
 # (the raw dataset hash stays format-free). Golden hex vectors (tests) lock the canonical
@@ -92,6 +96,25 @@ class Versions(Struct, frozen=True, kw_only=True):
     python: str
     msgspec: str
     unidata: str
+
+
+class FormulaSource(Struct, frozen=True, kw_only=True):
+    """Resolved source containing everything that determines certified formula points.
+
+    grammar_version, numeric_profile, and rounding are verifier-owned constants, never
+    model bytes. ast is the verifier's canonical re-print over its closed grammar, never
+    the model's raw formula text.
+    """
+
+    grammar_version: str  # parser grammar pin; M9.2 owns the constant
+    numeric_profile: str  # rational-half-even-v1
+    rounding: str  # ROUND_HALF_EVEN
+    ast: str  # verifier-owned canonical AST text; M9.2 owns the printer
+    start: Decimal
+    stop: Decimal
+    samples: int
+    x_scale: int
+    y_scale: int
 
 
 # --- typed-NDJSON serialization ----------------------------------------------
@@ -163,13 +186,44 @@ def serialize_table(table: Table) -> str:
     return "\n".join(lines) + "\n"
 
 
+# --- resolved formula-source serialization -----------------------------------
+def formula_source_bytes(source: FormulaSource) -> bytes:
+    """Nine fixed, newline-terminated UTF-8 lines for a resolved formula source.
+
+    String values are JSON tokens (quotes + escaping included), so fixed keys + fixed order
+    stay unambiguous for any verifier-produced text: quotes, backslashes, and newlines escape
+    rather than break the line structure. Inputs are verifier-owned constants and the
+    verifier's own AST printer, never model bytes (msgspec raises on a lone surrogate rather
+    than emitting one), so no guard branch is needed. Endpoints are rendered at x_scale via
+    canon's HALF_EVEN
+    primitive: this resolves them, including folding negative zero. Requiring a declared
+    endpoint to be exactly representable at x_scale is an M9.3/M9.4 semantic check, not a
+    serializer concern.
+    """
+    lines = [
+        "grammar=" + msgspec.json.encode(source.grammar_version).decode("utf-8"),
+        "profile=" + msgspec.json.encode(source.numeric_profile).decode("utf-8"),
+        "rounding=" + msgspec.json.encode(source.rounding).decode("utf-8"),
+        f"x_scale={source.x_scale}",
+        f"y_scale={source.y_scale}",
+        f"samples={source.samples}",
+        f"start={_format_decimal(source.start, source.x_scale)}",
+        f"stop={_format_decimal(source.stop, source.x_scale)}",
+        "ast=" + msgspec.json.encode(source.ast).decode("utf-8"),
+    ]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 # --- hashes ------------------------------------------------------------------
-def _digest(domain: Literal["table", "spec", "manifest"], payload: bytes) -> str:
+def _digest(
+    domain: Literal["table", "spec", "manifest", "formula", "matplotlib-script"],
+    payload: bytes,
+) -> str:
     """SHA-256 over a `vplot-<domain>/<CANON_VERSION>\\n` tag + payload, `sha256:`-prefixed.
-    The tag domain-separates table/spec/manifest hashes and ties them to the format version
-    so a serialization bump cannot collide with a stale hash. The tag/payload split is
-    injective only because `domain` is a closed, slash-free literal set — an arbitrary
-    domain string must not be threaded in."""
+    The tag domain-separates table/spec/manifest/formula/matplotlib-script hashes and ties
+    them to the format version so a serialization bump cannot collide with a stale hash. The
+    tag/payload split is injective only because `domain` is a closed, slash-free literal set
+    — an arbitrary domain string must not be threaded in."""
     tag = f"vplot-{domain}/{CANON_VERSION}\n".encode()
     return "sha256:" + hashlib.sha256(tag + payload).hexdigest()
 
@@ -178,9 +232,10 @@ def hash_dataset(csv_bytes: bytes) -> str:
     """The source-identity hash: raw CSV bytes, `sha256:`-prefixed, NO domain tag. Equals
     what a spec's `dataset.hash` declares (= `sha256sum` of the file), so it stays format-
     free and byte-exact (row order, CRLF, and a BOM all change it). Untagged, a crafted CSV
-    could share a preimage with a tagged digest; that is inert because the VCert separates
-    the four hashes by SLOT (dataset/table/spec/manifest) and never compares bare digests
-    across domains, and the dataset is trusted source (the model emits only the spec)."""
+    could share a preimage with a tagged digest; that is inert because every consumer separates
+    hashes by SLOT and never compares bare digests across domains (VCert v0.2 carries
+    dataset/table/spec/manifest; the formula + matplotlib-script slots land with v0.3 in M9.6),
+    and the dataset is trusted source (the model emits only the spec)."""
     return "sha256:" + hashlib.sha256(csv_bytes).hexdigest()
 
 
@@ -199,28 +254,46 @@ def hash_table_bytes(payload: bytes) -> str:
     return _digest("table", payload)
 
 
-def spec_bytes(spec: VPlotSpec) -> bytes:
-    """The validated spec's deterministic canonical bytes: a byte-faithful msgspec re-encode
-    (finding 8) that folds JSON surface noise (whitespace, key order, escaping) to one form
-    with NO Unicode normalization. The public seam over _SPEC_ENCODER — hash_spec digests
-    these bytes, and the service serves them verbatim as the canonical spec artifact
-    (content-addressed by hash_spec's digest), so both stay off the private encoder."""
+def spec_bytes(spec: PlotSpec) -> bytes:
+    """A validated dataset/formula spec's deterministic canonical msgspec bytes.
+
+    The byte-faithful re-encode (finding 8) folds JSON surface noise (whitespace, key
+    order, escaping) with NO Unicode normalization. The public seam over _SPEC_ENCODER is
+    served verbatim as the canonical spec artifact and is hash_spec's exact input.
+    """
     return _SPEC_ENCODER.encode(spec)
 
 
-def hash_spec(spec: VPlotSpec) -> str:
-    """The validated spec's hash: spec_bytes' deterministic re-encode (finding 8), domain-tagged.
-    Byte-faithful (NO Unicode normalization): the evaluator + DuckDB oracle compare string
-    filters verbatim by UTF-8 code-point order (VPlot_SEMANTICS sections 3/4/10), so the hash must
-    distinguish exactly what they distinguish — folding combining-mark variants here would
-    collide specs that select different rows. The re-encode still canonicalizes JSON surface
-    noise (whitespace, key order, escaping) to one form."""
+def hash_spec(spec: PlotSpec) -> str:
+    """A validated dataset/formula spec's domain-tagged canonical re-encode hash.
+
+    Both modes share the ``spec`` domain tag: preimages never collide because canonical
+    spec bytes always carry their own distinct ``version`` literal. Dataset-mode strings
+    remain byte-faithful (NO Unicode normalization), matching evaluator + DuckDB oracle
+    comparisons by UTF-8 code-point order (VPlot_SEMANTICS sections 3/4/10); the re-encode
+    still canonicalizes JSON surface noise (finding 8).
+    """
     return _digest("spec", spec_bytes(spec))
+
+
+def hash_formula_source(payload: bytes) -> str:
+    """Hash exact already-canonical formula-source bytes for archive/replay."""
+    return _digest("formula", payload)
+
+
+def hash_formula(source: FormulaSource) -> str:
+    """Hash a resolved FormulaSource over its canonical nine-line form."""
+    return hash_formula_source(formula_source_bytes(source))
 
 
 def hash_manifest(manifest_bytes: bytes) -> str:
     """The trusted per-column manifest's hash, over its raw bytes; domain-tagged."""
     return _digest("manifest", manifest_bytes)
+
+
+def hash_matplotlib_script(script_bytes: bytes) -> str:
+    """Hash the exact verifier-authored emitted matplotlib script bytes."""
+    return _digest("matplotlib-script", script_bytes)
 
 
 def runtime_versions() -> Versions:

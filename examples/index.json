@@ -236,6 +236,232 @@
       "reason": "sort.by repeats the field 'month'"
     }
   ],
+  "formula_good_specs": [
+    {
+      "file": "f01_square.json",
+      "intent": "Plot y = x squared from -3 to 3.",
+      "decodes": true,
+      "mark": "line",
+      "formula": "x**2"
+    },
+    {
+      "file": "f02_linear.json",
+      "intent": "Plot the line y = 2x + 1 from 0 to 10.",
+      "decodes": true,
+      "mark": "line",
+      "formula": "2*x + 1"
+    },
+    {
+      "file": "f03_cubic.json",
+      "intent": "Scatter y = x(x - 1)(x + 1) from -2 to 2.",
+      "decodes": true,
+      "mark": "scatter",
+      "formula": "x*(x - 1)*(x + 1)"
+    },
+    {
+      "file": "f04_rational.json",
+      "intent": "Plot y = 1 / (1 + x squared) from -5 to 5.",
+      "decodes": true,
+      "mark": "line",
+      "formula": "1/(1 + x*x)"
+    },
+    {
+      "file": "f05_absolute_value.json",
+      "intent": "Plot y = absolute value of x from -4 to 4.",
+      "decodes": true,
+      "mark": "line",
+      "formula": "abs(x)"
+    },
+    {
+      "file": "f06_quadratic.json",
+      "intent": "Scatter y = -x squared + 3x - 2 from 0 to 3.",
+      "decodes": true,
+      "mark": "scatter",
+      "formula": "-x**2 + 3*x - 2"
+    }
+  ],
+  "formula_bad_specs": [
+    {
+      "file": "fb01_wrong_version.json",
+      "intent": "Plot y = x from 0 to 1.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (version Literal)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "version 'vplot-formula-0.2' is not the pinned formula version"
+    },
+    {
+      "file": "fb02_dataset_key.json",
+      "intent": "Plot y = x while also naming a dataset.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (forbid_unknown_fields)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "dataset-mode top-level key 'dataset' is unrepresentable in formula mode"
+    },
+    {
+      "file": "fb03_bar_mark.json",
+      "intent": "Draw bars for sampled y = x values.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (FormulaMark enum)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "formula mark 'bar' is outside the closed line/scatter enum"
+    },
+    {
+      "file": "fb04_y_field.json",
+      "intent": "Plot y = x using a z output channel.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (fixed y field Literal)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "formula encoding.y.field must be the literal 'y', not 'z'"
+    },
+    {
+      "file": "fb05_x_type.json",
+      "intent": "Plot y = x with an ordinal horizontal axis.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (fixed quantitative channel Literal)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "formula encoding.x.type must be quantitative, not ordinal"
+    },
+    {
+      "file": "fb06_code_injection.json",
+      "intent": "Plot the result of an operating-system import expression.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (FormulaText alphabet)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "quote characters in the code-injection-shaped formula are outside the v0.1 alphabet"
+    },
+    {
+      "file": "fb07_formula_newline.json",
+      "intent": "Plot x plus 1 from a multiline formula.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (FormulaText newline guard)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "the formula contains a newline forbidden by the leading negative lookahead"
+    },
+    {
+      "file": "fb08_samples_below_min.json",
+      "intent": "Plot y = x at one sample.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (samples lower bound)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "samples 1 is below the inclusive minimum 2"
+    },
+    {
+      "file": "fb09_numeric_start_token.json",
+      "intent": "Plot y = x from numeric-token zero to 1.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (DecimalText strict string)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "domain.start is a JSON number token, never the required decimal string"
+    },
+    {
+      "file": "fb10_negative_x_scale.json",
+      "intent": "Plot y = x with horizontal scale -1.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (x_scale lower bound)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "x_scale -1 is below the inclusive minimum 0"
+    },
+    {
+      "file": "fb11_numeric_profile.json",
+      "intent": "Plot y = x under a float64 numeric profile.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (NumericProfile enum)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "numeric_profile 'float64' is outside the closed rational HALF_EVEN profile"
+    },
+    {
+      "file": "fb12_duplicate_mark.json",
+      "intent": "Plot y = x as both a line and scatter chart.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (duplicate-key rescan)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "the top-level mark key is duplicated with conflicting valid values"
+    },
+    {
+      "file": "fb13_exponent_decimal.json",
+      "intent": "Plot y = x from 0 to one thousand in exponent notation.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (DecimalText pattern)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "domain.stop '1e3' uses exponent notation forbidden by DecimalText"
+    },
+    {
+      "file": "fb14_missing_domain.json",
+      "intent": "Plot y = x without a declared domain.",
+      "layer": "decode",
+      "decodes": false,
+      "check": "schema decode (required field)",
+      "caught_by": "decode_formula_spec (M9.1)",
+      "reason": "the required top-level domain field is absent"
+    },
+    {
+      "file": "fb15_disallowed_function.json",
+      "intent": "Plot y = sine of x from 0 to 1.",
+      "layer": "parser",
+      "decodes": true,
+      "check": "formula.functions_allowed",
+      "caught_by": "M9.2",
+      "reason": "sin is outside the v0.1 exact-rational function allowlist"
+    },
+    {
+      "file": "fb16_disallowed_name.json",
+      "intent": "Plot y plus 1 as a function of x.",
+      "layer": "parser",
+      "decodes": true,
+      "check": "formula.names_allowed",
+      "caught_by": "M9.2",
+      "reason": "formula mode binds only the variable x; y is not an allowed input name"
+    },
+    {
+      "file": "fb17_reversed_domain.json",
+      "intent": "Plot y = x from 5 down to 1.",
+      "layer": "domain",
+      "decodes": true,
+      "check": "formula.domain_ordered",
+      "caught_by": "M9.4",
+      "reason": "domain.start 5 is not less than domain.stop 1 — the FIRST failing check. A reversed domain necessarily yields a descending schedule too, so formula.sample_points_strictly_increasing is a DEPENDENT check that M9.3/M9.4 must evaluate only once ordering holds."
+    },
+    {
+      "file": "fb18_division_by_zero.json",
+      "intent": "Plot y = 1 / (x - 1) from 0 to 2.",
+      "layer": "evaluation",
+      "decodes": true,
+      "check": "formula.values_defined",
+      "caught_by": "M9.3",
+      "reason": "the sample schedule lands exactly on x=1, where division by zero is undefined"
+    },
+    {
+      "file": "fb19_exponent_too_large.json",
+      "intent": "Plot y = x to the 999th power from 0 to 1.",
+      "layer": "parser/evaluation",
+      "decodes": true,
+      "check": "formula.exponents_bounded",
+      "caught_by": "M9.2/M9.4",
+      "reason": "integer exponent 999 exceeds max_formula_exponent=64"
+    },
+    {
+      "file": "fb20_sample_collision.json",
+      "intent": "Plot y = x from 0 to 1 at five integer-scale samples.",
+      "layer": "sampling",
+      "decodes": true,
+      "check": "formula.sample_points_strictly_increasing",
+      "caught_by": "M9.3",
+      "reason": "quantizing five scheduled points to x_scale 0 produces repeated x values"
+    }
+  ],
   "enforced_by_construction": {
     "security.no_arbitrary_code": "the spec is data-only (msgspec structs, no expr/code/url field); no arbitrary-code path exists to execute -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
     "transform.ops_allowed": "the transform tagged-union admits only {select,filter,group_by,aggregate,sort}; an unlisted op is unrepresentable at decode -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",

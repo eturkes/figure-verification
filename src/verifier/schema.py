@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""VPlot v0.1 schema — the restricted chart spec the untrusted model proposes.
+"""VPlot v0.1 schemas — the restricted chart specs the untrusted model proposes.
 
-The schema gate (syntax only; meaning lives in VPlot_SEMANTICS.md, M1.2b). It
-defines frozen, fail-closed msgspec structs and one entry point, decode_spec,
-turning raw JSON into a fully validated VPlotSpec or raising. A spec that decodes
-is total — never partial or coerced: strict mode rejects float/bool/null tokens
-and unknown keys, bounded tuples enforce array lengths, and a duplicate-key scan
-rejects the last-wins ambiguity msgspec tolerates. See memory Stack for the
-empirically pinned msgspec behaviors (cited below by finding number).
+The schema gates (syntax only; meaning lives in VPlot_SEMANTICS.md, M1.2b)
+define frozen, fail-closed msgspec structs and two entry points: decode_spec for
+dataset mode and decode_formula_spec for formula mode. Each turns raw JSON into a
+fully shape-validated, total spec or raises. A spec that decodes is never partial
+or coerced: strict mode rejects float/bool/null tokens and unknown keys, bounded
+tuples enforce array lengths, and a duplicate-key scan rejects the last-wins
+ambiguity msgspec tolerates. See memory Stack for the empirically pinned msgspec
+behaviors (cited below by finding number).
 """
 
 import json
@@ -24,6 +25,18 @@ DatasetName = Annotated[
     str, Meta(pattern=r"^(?!.*[\r\n])[A-Za-z0-9][A-Za-z0-9._-]*\.csv$", max_length=128)
 ]
 DatasetHash = Annotated[str, Meta(pattern=r"^(?!.*[\r\n])sha256:[0-9a-f]{64}$")]
+# FormulaText's ASCII-only v0.1 alphabet admits digits, letters, underscore, space,
+# parentheses, decimal point, and + - * /. Length in characters therefore equals bytes;
+# commas/quotes/semicolons/^/=/brackets/braces are unrepresentable.
+FormulaText = Annotated[str, Meta(pattern=r"^(?!.*[\r\n])[0-9A-Za-z_ ().*/+-]+$", max_length=1024)]
+# Domain endpoints are bounded decimal STRINGS, never JSON floats: no exponent, leading
+# plus/zeroes, or trailing point; at most 18 integer and 9 fractional digits. The grammar
+# is self-bounding at 29 characters (sign + 18 + point + 9), so unlike FieldName/DatasetName
+# — whose patterns are unbounded — this alias carries NO max_length: a cap here could never
+# bind, and dead policy reads as tested policy.
+DecimalText = Annotated[
+    str, Meta(pattern=r"^(?!.*[\r\n])-?(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,9})?$")
+]
 
 # Filter literals carry no float/Decimal: int|str rejects float/bool/null at decode in
 # strict mode (finding 3), keeping the M1.4 spec re-encode exact. The int is bounded to
@@ -34,6 +47,9 @@ FilterValue = FilterInt | Annotated[str, Meta(max_length=128)]
 
 # --- closed enums ------------------------------------------------------------
 Mark = Literal["bar", "line", "scatter"]
+# Formula mode deliberately excludes bars: sampled functions are line/scatter only.
+FormulaMark = Literal["line", "scatter"]
+NumericProfile = Literal["rational-half-even-v1"]
 ChannelType = Literal["quantitative", "temporal", "ordinal", "nominal"]
 AggFn = Literal["sum", "mean", "count", "min", "max"]
 CmpOp = Literal["eq", "ne", "lt", "le", "gt", "ge"]
@@ -60,6 +76,22 @@ class Encoding(_Base, frozen=True, kw_only=True):
     x: Channel
     y: Channel
     color: Channel | None = None
+
+
+# --- formula encoding --------------------------------------------------------
+class FormulaXChannel(_Base, frozen=True, kw_only=True):
+    field: Literal["x"]
+    kind: Literal["quantitative"] = msgspec.field(name="type")
+
+
+class FormulaYChannel(_Base, frozen=True, kw_only=True):
+    field: Literal["y"]
+    kind: Literal["quantitative"] = msgspec.field(name="type")
+
+
+class FormulaEncoding(_Base, frozen=True, kw_only=True):
+    x: FormulaXChannel
+    y: FormulaYChannel
 
 
 # --- dataset binding ---------------------------------------------------------
@@ -119,9 +151,33 @@ class VPlotSpec(_Base, frozen=True, kw_only=True):
     encoding: Encoding
 
 
-# One module-level strict decoder (strict is msgspec's default; pinned explicitly
-# because fail-closed decode is the whole contract of this gate).
+# Shape only: ordering, representability, grammar, names/functions/exponents, and sample
+# distinctness are semantic checks owned by M9.2-M9.4, never Struct post-init validation.
+class FormulaDomain(_Base, frozen=True, kw_only=True):
+    start: DecimalText
+    stop: DecimalText
+    samples: Annotated[int, Meta(ge=2, le=100_000)]
+    x_scale: Annotated[int, Meta(ge=0, le=12)]
+    y_scale: Annotated[int, Meta(ge=0, le=12)]
+
+
+class FormulaPlotSpec(_Base, frozen=True, kw_only=True):
+    version: Literal["vplot-formula-0.1"]
+    formula: FormulaText
+    domain: FormulaDomain
+    numeric_profile: NumericProfile
+    mark: FormulaMark
+    encoding: FormulaEncoding
+
+
+type DatasetPlotSpec = VPlotSpec
+type PlotSpec = VPlotSpec | FormulaPlotSpec
+
+
+# One module-level strict decoder per external shape (strict is msgspec's default;
+# pinned explicitly because fail-closed decode is the whole contract of these gates).
 _DECODER = msgspec.json.Decoder(VPlotSpec, strict=True)
+_FORMULA_DECODER = msgspec.json.Decoder(FormulaPlotSpec, strict=True)
 
 _DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
 
@@ -136,6 +192,32 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValidationError(msg)
         seen.add(key)
     return dict(pairs)
+
+
+def _decode[T](raw: bytes | str, decoder: msgspec.json.Decoder[T]) -> T:
+    """Run the shared UTF-8, strict-shape, then duplicate-key decode mechanics.
+
+    str input is normalized to UTF-8 bytes first so strict decode and the rescan see
+    identical bytes; lone surrogates map to DecodeError. For bytes input, msgspec finding
+    9's builtin UnicodeDecodeError also maps to DecodeError. The rescan runs only after
+    strict decode succeeds, so it sees a bounded shape and solely rejects msgspec's
+    duplicate-key last-wins behavior (finding 4).
+    """
+    if isinstance(raw, str):
+        try:
+            data = raw.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            msg = "spec input is not valid UTF-8"
+            raise msgspec.DecodeError(msg) from exc
+    else:
+        data = raw
+    try:
+        decoded = decoder.decode(data)
+    except UnicodeDecodeError as exc:
+        msg = "spec input is not valid UTF-8"
+        raise msgspec.DecodeError(msg) from exc
+    json.loads(data, object_pairs_hook=_reject_duplicate_keys)
+    return decoded
 
 
 def decode_spec(raw: bytes | str) -> VPlotSpec:
@@ -156,21 +238,17 @@ def decode_spec(raw: bytes | str) -> VPlotSpec:
     pathological depth); its sole job is to reject the duplicate keys msgspec silently
     last-wins (finding 4).
     """
-    if isinstance(raw, str):
-        try:
-            data = raw.encode("utf-8")
-        except UnicodeEncodeError as exc:
-            msg = "spec input is not valid UTF-8"
-            raise msgspec.DecodeError(msg) from exc
-    else:
-        data = raw
-    try:
-        spec = _DECODER.decode(data)
-    except UnicodeDecodeError as exc:
-        msg = "spec input is not valid UTF-8"
-        raise msgspec.DecodeError(msg) from exc
-    json.loads(data, object_pairs_hook=_reject_duplicate_keys)
-    return spec
+    return _decode(raw, _DECODER)
+
+
+def decode_formula_spec(raw: bytes | str) -> FormulaPlotSpec:
+    """Decode raw JSON into a shape-validated FormulaPlotSpec, or raise.
+
+    Failure types and UTF-8/duplicate-key handling match :func:`decode_spec`. This gate is
+    syntax only: formula grammar and all cross-field numeric/domain meaning remain M9.2-M9.4
+    semantic checks, so a shape-valid but semantically doomed spec still decodes.
+    """
+    return _decode(raw, _FORMULA_DECODER)
 
 
 def json_schema() -> dict[str, Any]:

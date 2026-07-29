@@ -26,6 +26,18 @@ _DEFAULTS = {
     "max_html_bytes": 32 * 1024 * 1024,
     "max_attestation_bytes": 1024 * 1024,
     "smt_timeout_ms": 1_000,
+    "max_formula_bytes": 512,
+    "max_formula_tokens": 256,
+    "max_formula_ast_nodes": 256,
+    "max_formula_ast_depth": 32,
+    "max_formula_paren_depth": 32,
+    "max_formula_digits": 32,
+    "max_formula_exponent": 64,
+    "max_formula_identifier_bytes": 32,
+    "max_formula_samples": 10_000,
+    "max_formula_work_units": 10_000_000,
+    "max_formula_intermediate_bits": 4096,
+    "max_matplotlib_script_bytes": 1_048_576,
 }
 
 

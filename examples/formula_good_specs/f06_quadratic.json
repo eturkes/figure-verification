@@ -1,0 +1,1 @@
+{"version":"vplot-formula-0.1","formula":"-x**2 + 3*x - 2","domain":{"start":"0","stop":"3","samples":7,"x_scale":1,"y_scale":2},"numeric_profile":"rational-half-even-v1","mark":"scatter","encoding":{"x":{"field":"x","type":"quantitative"},"y":{"field":"y","type":"quantitative"}}}
