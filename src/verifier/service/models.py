@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Serialized response models for the verifier service (M2.2).
+"""Serialized response models for the verifier service.
 
 Three shapes cross the transport boundary. Verdict is the verification-outcome envelope,
 answered HTTP 200 whether the spec verified, decoded but failed a check, or failed to
-decode (a decode failure is an expected model failure mode M3 meters, not transport
+decode (a decode failure is an expected model failure mode bench meters, not transport
 misuse). RenderVerdict extends that envelope with the render artifacts POST
 /verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
 content-addressed ids, the durable attempt id, and the five cert-verbatim hashes); a FAILING
@@ -19,7 +19,7 @@ would not decode) and `dataset.manifest_available` (no trusted manifest for the 
 dataset) — each a blocking pre-pipeline verdict (see pipeline.py) that can only fail closed,
 never falsely verify.
 
-ProposeRequest and ProposeResult (M3.3a) frame the /propose-spec endpoint that runs the
+ProposeRequest and ProposeResult frame the /propose-spec endpoint that runs the
 untrusted local model in front of this same pipeline: the request carries the user's ask plus
 the dataset name to plot; the result pairs the model's raw reply with the verify-and-render
 verdict on it. The model proposes only a spec, never plotted values, so the claim boundary is

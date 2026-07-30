@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Backend settings — operator config for the local model server (M3.1b).
+"""Backend settings — operator config for the local model server.
 
 A frozen container built from MODEL_BACKEND_* env, mirroring the verifier service's Settings
 pattern: field defaults and from_env fallbacks share one set of constants (no drift), and
@@ -9,7 +9,7 @@ allocation, the single compiled pipeline / lock, and response size, never a veri
 Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target the
 NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: OpenVINO's NPU LLM path
 wants symmetric int4 (the stock asymmetric -int4-ov IR fails the NPU VCL compiler — the
-leading, not isolated, reason; see .agent/memory.md M3) and compiles to static shapes, so
+leading, not isolated, reason; see .agent/memory.md) and compiles to static shapes, so
 max_prompt_len caps the prompt the pipeline accepts.
 """
 

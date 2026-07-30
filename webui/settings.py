@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioner settings — operator config for the Open WebUI harness (M4.3a).
+"""Provisioner settings — operator config for the Open WebUI harness.
 
 A frozen container built from WEBUI_PROVISION_* env, mirroring the verifier / model_backend
 Settings pattern: field defaults and from_env fallbacks share one set of _DEFAULT_* constants (no
@@ -17,11 +17,11 @@ Two env namespaces meet here, kept strictly apart:
     (only the process vars the child needs -- PATH / HOME / locale), everything else in os.environ
     DROPPED. This is the hermetic boundary -- a bare {**os.environ, **launch_env()} would leak any
     axis launch_env does not pin (aiohttp reads HTTP_PROXY via trust_env; transport / SSL knobs are
-    unbounded). The launcher (webui/__main__.py, M4.3d) execs os.execve(bin, argv, child_env()).
+    unbounded). The launcher (webui/__main__.py) execs os.execve(bin, argv, child_env()).
 
 Persistent-config is OFF (env-over-DB every boot), so runtime config lives in env, never the OWUI
-DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap,
-M4.3b/M4.4c). Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fixed
+DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap).
+Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fixed
 origin and /v1 joins; the bind/client host is a separate bare ASCII hostname. Defaults bind
 loopback only -- OWUI on 8080, the verifier on 8000, the model backend's OpenAI /v1 on 8001 -- and
 the secret_key / admin_password are loopback dev defaults an operator overrides. All names and
@@ -73,7 +73,7 @@ _CLEAN_HOST = re.compile(r"[A-Za-z0-9._-]+")
 
 # The verifier tool-server registration OWUI reads from TOOL_SERVER_CONNECTIONS. The id becomes the
 # OWUI tool group "server:<id>"; the name is the readback label. The verifier's OpenAPI lives at
-# schema/openapi.json; proposeSpec is the one exposed op (memory M4 persistent-off contract).
+# schema/openapi.json; proposeSpec is the one exposed op (.agent/memory.md persistent-off contract).
 _TOOL_SERVER_ID = "verifier"
 _TOOL_SERVER_NAME = "Figure Verifier"
 _TOOL_SERVER_DESCRIPTION = (
@@ -88,7 +88,7 @@ _PROPOSE_OPERATION_ID = "proposeSpec"
 # ambient Open WebUI config never enters the child.
 _FIXED_ENV: dict[str, str] = {
     # Config lives in env, never the DB: with persistent-config off, every boot reads these env
-    # values and UI/REST config edits do not stick (the whole provisioning model, memory M4).
+    # values and UI/REST config edits do not stick (the whole provisioning model).
     "ENABLE_PERSISTENT_CONFIG": "false",
     # Hermetic isolation: no outbound network, no ~90MB embedding-model download, no version ping.
     "OFFLINE_MODE": "true",
@@ -103,7 +103,7 @@ _FIXED_ENV: dict[str, str] = {
     "OPENAI_API_KEYS": "dummy",
     "OPENAI_API_CONFIGS": "{}",
     # No task model: title / tag / query generation runs on the task model, so pin it empty (ambient
-    # cannot inject one) and it falls back to the chat model (memory M4 headless-tool contract).
+    # cannot inject one) and it falls back to the chat model (headless-tool contract).
     "TASK_MODEL": "",
     "TASK_MODEL_EXTERNAL": "",
     # Determinism: every post-chat background LLM call off, or the backend request count is
@@ -122,7 +122,7 @@ _FIXED_ENV: dict[str, str] = {
     "ENABLE_COMMUNITY_SHARING": "false",
     "ENABLE_MESSAGE_RATING": "false",
     # Auth + bootstrap login model pinned so the override-only merge cannot let ambient rewrite the
-    # signup / signin path M4.3b depends on. WEBUI_AUTH on (ambient off disables auth);
+    # signup / signin path bootstrap depends on. WEBUI_AUTH on (ambient off disables auth);
     # login form + password auth on (each gates signup and signin, routers/auths.py); public signup
     # off (the first admin auto-registers regardless -- auths.py first-user get_num_users==1 -- so
     # this only shuts LATER signups). WEBUI_ADMIN_EMAIL empty defuses the boot-time auto-admin
@@ -137,12 +137,12 @@ _FIXED_ENV: dict[str, str] = {
     "WEBUI_ADMIN_EMAIL": "",
     "WEBUI_AUTH_TRUSTED_EMAIL_HEADER": "",
     # The repo-owned global outlet filter must run on API chat completions. This currently defaults
-    # true upstream, but it is load-bearing M4 behavior, so the canonical env pins it instead of
+    # true upstream, but it is load-bearing behavior, so the canonical env pins it instead of
     # silently inheriting a version-sensitive default.
     "ENABLE_API_OUTLET_FILTERS": "true",
     # Legacy (prompt-template) function calling: the weak model's tool selection runs inline in the
     # chat request. Native FC is gated on the UI event emitter and does not execute headless
-    # (memory M4), so the one-shot headless flow needs legacy.
+    # (.agent/memory.md), so the one-shot headless flow needs legacy.
     "DEFAULT_MODEL_PARAMS": '{"function_calling": "legacy"}',
 }
 
@@ -150,7 +150,7 @@ _FIXED_ENV: dict[str, str] = {
 # The process-level vars the OWUI child legitimately inherits (child_env passthrough allowlist):
 # enough to find the interpreter / libraries and localize, nothing that steers OWUI config,
 # networking, or auth. Everything else in os.environ is dropped so no unpinned axis leaks past
-# launch_env(). Extend only if the M4.3e live smoke proves a var is genuinely needed.
+# launch_env(). Extend only when a live smoke proves a var is genuinely needed.
 _BASE_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "TZ")
 
 
@@ -264,7 +264,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     def tool_server_connections(self) -> str:
         """The TOOL_SERVER_CONNECTIONS env value: a one-element JSON array registering the verifier.
 
-        Shape is the reviewed 0.10.2 connection (memory M4 persistent-off contract): OWUI
+        Shape is the settled 0.10.2 connection (.agent/memory.md persistent-off contract): OWUI
         fetches {url}/{path} as OpenAPI, exposes only the proposeSpec op (the allowlist), and needs
         config.enable truthy or the server is skipped.
         """

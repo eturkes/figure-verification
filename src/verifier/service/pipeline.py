@@ -3,7 +3,7 @@
 
 The transport hands raw request bytes straight here (never a framework-parsed object), so
 schema.decode_spec's strict, fail-closed decode — its duplicate-key rescan included —
-stays authoritative. verify_only strings the trusted M1 stages the core otherwise offers
+stays authoritative. verify_only strings the trusted core stages it otherwise offers
 no single orchestrator for, as two composable halves: decode_stage (decode_spec) then
 verify_decoded (bounded manifest read -> checks.verify_run -> exact builder preparation -> SMT),
 mapping the final merged report onto a Verdict while retaining input/formal traces, recomputation
@@ -24,7 +24,7 @@ RecomputedEvidence after every core check passes, the bounded formal trace, and 
 artifact only after the final merged report passes. Sensitive bytes stay out of its repr and every
 route returns only Outcome.verdict or a separately built RenderVerdict.
 
-render_outcome (split from verify_and_render at M3.3b) is the render half: on a PASSING
+render_outcome (split from verify_and_render) is the render half: on a PASSING
 verdict it renders the verified chart, signs the exact VCert bytes into deterministic DSSE,
 content-addresses the envelope (plot_id = SHA-256(envelope), spec_id = the payload's spec_hash),
 rebuilds the off-chain chart page from returned authoritative Vega with the signed provenance
@@ -149,7 +149,7 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
     """Verify an already-decoded spec: resolve + load the trusted manifest, run checks, map the
     report onto an Outcome. A dataset with no manifest fails closed as a 200 Verdict; a PRESENT
     but unloadable manifest (or a checks mispair) raises -> the app's 500 (see the module
-    docstring). Split from verify_only (M3.3b) so the proposer pins the name between decode_stage
+    docstring). Split from verify_only so the proposer pins the name between decode_stage
     and this stage, keeping an off-request name off this dataset I/O entirely."""
     # The manifest's filename is Path(name).stem + ".json"; .stem collapses any directory
     # or traversal in the decode-validated, .csv-suffixed name to a flat component, so the
@@ -299,7 +299,7 @@ def render_outcome(
         )
         return msgspec.structs.replace(outcome.verdict, attempt_id=attempt_id)
     # verified => the final verify/formal stage passed, so prepared is populated (cast, not assert:
-    # an assert's never-taken branch fails the 100% gate — the M1.5a lesson).
+    # an assert's never-taken branch fails the 100% gate).
     prepared = cast("render.PreparedArtifact", outcome.prepared)
     try:
         settings = context.writer.settings

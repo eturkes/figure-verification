@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""OpenAI-shaped request/response models for the local backend (M3.1b).
+"""OpenAI-shaped request/response models for the local backend.
 
-A minimal subset of the OpenAI Chat Completions + Models schema — enough for the M3.2
+A minimal subset of the OpenAI Chat Completions + Models schema — enough for the verifier's
 verifier client (and, later, Open WebUI) to talk to the local proposer. The REQUEST struct
 deliberately does NOT forbid unknown fields: this is an OpenAI-compatible endpoint and
 callers send extra params (stream, top_p, ...) the backend simply ignores. That tolerance is
@@ -36,7 +36,7 @@ class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
     """One chat message. role is the closed set {system, user, assistant}, enforced at decode
     (an unknown role — e.g. a control-token string — is rejected 400, never rendered into the
     chat template); content is text (this PoC is text-only, no multimodal content array). The
-    set matches this proposer's traffic (the M3.2 client sends system+user, the reply is
+    set matches this proposer's traffic (the verifier's client sends system+user, the reply is
     assistant); widen it if a tool/multimodal role is ever needed. Content-level control tokens
     are NOT sanitized here — harmless, since the verifier re-decodes every reply strictly."""
 

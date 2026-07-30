@@ -3,12 +3,12 @@
 
 The spec-independent layer between `canon` (value model + hashing) and `eval` (the
 transform pipeline). It turns the trusted per-column manifest plus the raw CSV bytes
-into a `canon.Table` of SOURCE rows in SOURCE order (the M1.4d evaluator applies the
+into a `canon.Table` of SOURCE rows in SOURCE order (the evaluator applies the
 transforms and the total-sort closure), or raises on a resource/data-integrity violation.
 Decimal-exact, no float. Implements VPlot_SEMANTICS.md sections 2-3 (data model +
 numeric/temporal parse).
 
-Three failure classes (VPlot_SEMANTICS.md section 9 + M5 resource policy):
+Three failure classes (VPlot_SEMANTICS.md section 9 + resource policy):
   - parse  : load_manifest strict-decodes the trusted manifest, raising msgspec
              ValidationError / DecodeError (mirrors schema.decode_spec — a malformed
              manifest is a broken config, not a verification failure).
@@ -18,7 +18,7 @@ Three failure classes (VPlot_SEMANTICS.md section 9 + M5 resource policy):
              VerificationError(check="data.*") on any data-integrity breach (charset,
              header, row width, un-coercible numeric/temporal cell).
 
-The numeric/temporal coercers are reused by the M1.4d evaluator for filter-value
+The numeric/temporal coercers are reused by the evaluator for filter-value
 coercion (re-tagged filter.value_type there); they raise the data.* check here.
 """
 
@@ -37,7 +37,7 @@ from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import DatasetName, FieldName, _Base, _reject_duplicate_keys
 
-# DECIMAL(38, scale) is the M1.4f DuckDB oracle's column type: 38 total significant
+# DECIMAL(38, scale) is the DuckDB oracle's column type: 38 total significant
 # digits, `scale` of them fractional. The two numeric bounds below (magnitude + excess
 # precision) keep every source cell inside that domain so the dual engines never diverge.
 _MAX_PRECISION = 38
@@ -74,7 +74,7 @@ ManifestColumn = NumericColumnSpec | TemporalColumnSpec | StringColumnSpec
 class Manifest(_Base, frozen=True, kw_only=True):
     """The trusted per-column schema for one CSV (data/schemas/<name>.json). Hashed into
     the VCert (canon.hash_manifest over raw bytes); the source of truth the evaluator
-    coerces to and the M1.5 type/unit/label checks read from."""
+    coerces to and the type/unit/label checks read from."""
 
     dataset: DatasetName
     columns: Annotated[tuple[ManifestColumn, ...], Meta(min_length=1)]
@@ -177,7 +177,7 @@ def _coerce_numeric(text: str, scale: int) -> Decimal:
 
     Parse + finiteness + excess-precision are the filter-literal primitive's checks; a STORED
     cell adds two a filter literal does not need: a magnitude bound (the value must fit
-    DECIMAL(38, scale), the M1.4f oracle's column type) and a re-quantize to exactly `scale`
+    DECIMAL(38, scale), the oracle's column type) and a re-quantize to exactly `scale`
     fractional places (the canonical stored form). Order matches the pre-split monolith --
     parse+finite -> magnitude -> excess-precision -> canonicalize -- so a cell breaching both
     magnitude and precision reports magnitude first (the filter primitive, reusing
@@ -267,7 +267,7 @@ def load_table(
     each cell coerces to its column type (data.numeric_value / data.temporal_value).
     Manifest width, source logical rows, and source table cells are admitted before the
     corresponding projection/coercion; quoted physical newlines remain one CSV record.
-    The rows are NOT yet total-sorted -- that closure is the M1.4d evaluator's."""
+    The rows are NOT yet total-sorted -- that closure is the evaluator's."""
     # Re-hold at the use site: msgspec constraints and an earlier permissive load can be
     # bypassed by direct struct construction or a stricter caller policy.
     _check_manifest_columns(manifest, limits)

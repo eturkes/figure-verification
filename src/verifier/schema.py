@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """VPlot v0.1 schemas — the restricted chart specs the untrusted model proposes.
 
-The schema gates (syntax only; meaning lives in VPlot_SEMANTICS.md, M1.2b)
+The schema gates (syntax only; meaning lives in VPlot_SEMANTICS.md)
 define frozen, fail-closed msgspec structs and two entry points: decode_spec for
 dataset mode and decode_formula_spec for formula mode. Each turns raw JSON into a
 fully shape-validated, total spec or raises. A spec that decodes is never partial
@@ -39,7 +39,7 @@ DecimalText = Annotated[
 ]
 
 # Filter literals carry no float/Decimal: int|str rejects float/bool/null at decode in
-# strict mode (finding 3), keeping the M1.4 spec re-encode exact. The int is bounded to
+# strict mode (finding 3), keeping the spec re-encode exact. The int is bounded to
 # signed 64-bit (the universal integer-column domain); larger or fractional numbers
 # travel as bounded strings, lifted per manifest at eval.
 FilterInt = Annotated[int, Meta(ge=-(2**63), le=2**63 - 1)]
@@ -98,7 +98,7 @@ class FormulaEncoding(_Base, frozen=True, kw_only=True):
 class Dataset(_Base, frozen=True, kw_only=True):
     name: DatasetName
     # JSON key `hash`; DECLARES the expected SHA-256 of the source bytes. The bind/verify
-    # against the actual file bytes is M1.5 — this gate only checks the hash's shape.
+    # against the actual file bytes is the checks layer — this gate only checks the hash's shape.
     hash: DatasetHash
 
 
@@ -152,7 +152,7 @@ class VPlotSpec(_Base, frozen=True, kw_only=True):
 
 
 # Shape only: ordering, representability, grammar, names/functions/exponents, and sample
-# distinctness are semantic checks owned by M9.2-M9.4, never Struct post-init validation.
+# distinctness are formula semantic checks, never Struct post-init validation.
 class FormulaDomain(_Base, frozen=True, kw_only=True):
     start: DecimalText
     stop: DecimalText
@@ -245,7 +245,7 @@ def decode_formula_spec(raw: bytes | str) -> FormulaPlotSpec:
     """Decode raw JSON into a shape-validated FormulaPlotSpec, or raise.
 
     Failure types and UTF-8/duplicate-key handling match :func:`decode_spec`. This gate is
-    syntax only: formula grammar and all cross-field numeric/domain meaning remain M9.2-M9.4
+    syntax only: formula grammar and all cross-field numeric/domain meaning remain formula
     semantic checks, so a shape-valid but semantically doomed spec still decodes.
     """
     return _decode(raw, _FORMULA_DECODER)

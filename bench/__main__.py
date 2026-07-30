@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Failure-eval entry point -- `python -m bench` (M3.4a).
+"""Failure-eval entry point -- `python -m bench`.
 
 Drives the running verifier (and, for provenance, the model backend's /models + /health) over
 HTTP and writes two artifacts: a report.json (the guarantee block plus observational rates) and a
@@ -41,14 +41,14 @@ _DEFAULT_DETAILS = "bench/reports/details.jsonl"
 _DEFAULT_TIMEOUT = 180.0
 _SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.1.schema.json"
 
-# The M1 corpora are exactly 18 bad + 10 good goldens (examples/index.json). Pinning each count
+# The corpora are exactly 18 bad + 10 good goldens (examples/index.json). Pinning each count
 # makes the guarantee fail LOUD on a missing or truncated corpus, so a short corpus is never
 # mistaken for "all goldens judged". Grows only by a conscious edit here.
 _EXPECTED_BAD_CORPUS_SIZE = 18
 _EXPECTED_GOOD_CORPUS_SIZE = 10
 # The SHA-256 IDENTITY of each corpus (sorted filename + content-hash pairs; see bench's
 # _corpus_digest). Pinning identity, not just size, stops the guarantee passing vacuously against
-# a wrong --examples-dir that happens to hold same-sized sets of other specs (codex-review M3.4b
+# a wrong --examples-dir that happens to hold same-sized sets of other specs
 # F1). Recompute here after any deliberate corpus edit (tests/test_bench_harness.py re-derives
 # both from the tree, so a drift fails the portable gate too).
 _EXPECTED_BAD_CORPUS_DIGEST = "063cbc7bc11c2c6913b7da6a164a45268cf22e6a59b2d0325f9a3f3a79afca4e"
@@ -225,7 +225,7 @@ def _exit_code(report: Report) -> int:
 
     Broken = a bad golden verified (false accept) OR a good golden failed (false reject) OR
     transport errors kept a golden unjudged. "Not exercised" = either corpus size or identity
-    digest does not match the real M1 goldens, so a vacuous guarantee (an empty/truncated corpus,
+    digest does not match the real goldens, so a vacuous guarantee (an empty/truncated corpus,
     or a wrong --examples-dir -- even one holding same-sized sets of other specs) never passes as
     satisfied. A weak model merely failing prompts stays a valid run (exit 0).
     """

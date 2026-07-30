@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Fixed 100-prompt corpus (5 categories x 20) for the failure eval (M3.4a).
+"""Fixed 100-prompt corpus (5 categories x 20) for the failure eval.
 
 Ordered and RNG-free, so a run is byte-reproducible for a fixed (device, config). Each Prompt
 pairs a dataset name with a user ask; the harness POSTs it to /propose-spec and buckets the

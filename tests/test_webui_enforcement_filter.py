@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Corpus + payload feedback loop for the standalone Open WebUI enforcement filter (M4.4a)."""
+"""Corpus + payload feedback loop for the standalone Open WebUI enforcement filter."""
 
 import copy
 import logging

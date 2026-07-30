@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Direct raw-value oracle for the finite SMT obligations (M5.2c).
+"""Direct raw-value oracle for the finite SMT obligations.
 
 This test-only module imports neither Z3 nor ``verifier.formal``. Generated cases stay at the
 pre-fact boundary: exact Decimals/text/nulls, declared sort metadata, raw mark/channel flags, and

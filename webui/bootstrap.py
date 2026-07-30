@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioning convergence + smoke over the WebUIClient (M4.4c).
+"""Provisioning convergence + smoke over the WebUIClient.
 
 run_bootstrap = wait_ready -> authenticate -> converge owned global filter -> attach verifier to
 workspace model -> smoke: the whole hardware-free provisioning act. The admin user, filter, and
 workspace model config are DB-persisted; every rerun updates the filter to this repo's exact source,
 proves it active/global, and idempotently converges the model's ``meta.toolIds``. The tool server +
-served model ride the launcher env, and the signin fallback makes reruns idempotent (memory M4
-provisioning contract). smoke reads back the three facts that prove provisioning took:
+served model ride the launcher env, and the signin fallback makes reruns idempotent
+(.agent/memory.md provisioning contract). smoke reads back the three facts that prove provisioning
+took:
 
 - model_enumerated: the configured model id appears in GET /api/models (OPENAI_API_BASE_URL wired +
   ENABLE_OPENAI_API on);

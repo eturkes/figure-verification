@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Hand-authored OpenAPI 3.1 document for the verifier service (M2.4).
+"""Hand-authored OpenAPI 3.1 document for the verifier service.
 
 Litestar's OpenAPI auto-generation stays OFF (the app sets openapi_config=None): it
 introspects response models via msgspec.inspect, and RenderVerdict.verified: Literal[True]
-(the M2.3 never-a-chart type pin) makes msgspec.inspect.type_info() — like
+(the never-a-chart type pin) makes msgspec.inspect.type_info() — like
 msgspec.json.schema() and .decode() — raise TypeError ("Literal may only contain
 None/integers/strings") at inspector build. Only encode + direct construction tolerate it,
 and RenderVerdict is response-only, so the service just encodes it; weakening the pin to a
@@ -17,11 +17,11 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
   2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert,
-     ReplayVerdict, and the M3.3a ProposeRequest, plus their nested structs transitively), via
+     ReplayVerdict, and ProposeRequest, plus their nested structs transitively), via
      msgspec.json.schema_components;
   3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
-     override never bleeds into Verdict's own `verified`); and the M3.3a ProposeResult, whose
+     override never bleeds into Verdict's own `verified`); and ProposeResult, whose
      `verdict` field is the Verdict | RenderVerdict union; plus the canonical DSSE envelope served
      as JSON bytes and the raw Ed25519 key served as application/octet-stream (neither decoded into
      a transport response model).

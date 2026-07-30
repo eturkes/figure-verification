@@ -13,7 +13,7 @@ key, remove fallback candidates, affect the returned value, or establish identit
 fields remain forward-compatible per DSSE; duplicate keys and malformed known-field shapes fail
 closed. The envelope/payload ceilings bound both JSON parsing and application parsing. Persistent
 signer + independent trust-pin policy live in ``service.identity``; ``service.pipeline`` signs
-successful render payloads, while durable archive replay belongs to later M5 units.
+successful render payloads, while durable archive replay belongs to the archive layer.
 """
 
 import base64

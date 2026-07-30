@@ -1,6 +1,6 @@
 {
   "vplot_version": "vplot-0.1",
-  "note": "M1.3 golden corpus. Good specs decode AND are semantically valid (M1.4/M1.5 goldens). Bad specs: decodes=false => rejected now at decode_spec; decodes=true => decodes now, blocked later at `check`. Layer/check taxonomy = VPlot_SEMANTICS.md.",
+  "note": "Golden corpus. Good specs decode AND are semantically valid (eval + checks goldens). Bad specs: decodes=false => rejected now at decode_spec; decodes=true => decodes now, blocked later at `check`. Layer/check taxonomy = VPlot_SEMANTICS.md.",
   "datasets": [
     {
       "name": "sales.csv",
@@ -96,7 +96,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (Mark enum)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "mark 'pie' is not in {bar,line,scatter}"
     },
     {
@@ -104,7 +104,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (transform tag)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "transform op 'pivot' is outside the allowlisted tagged union"
     },
     {
@@ -112,7 +112,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (AggFn enum)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "aggregate fn 'median' is not in {sum,mean,count,min,max}"
     },
     {
@@ -120,7 +120,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (FilterValue int|str, strict)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "filter value 1.5 is a JSON float; strict decode rejects float tokens"
     },
     {
@@ -128,7 +128,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (forbid_unknown_fields)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "channel carries unknown key 'title'; the model proposes no titles"
     },
     {
@@ -136,7 +136,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (version Literal)",
-      "caught_by": "decode_spec (M1.2a)",
+      "caught_by": "decode_spec",
       "reason": "version 'vplot-0.2' is not the pinned literal 'vplot-0.1'"
     },
     {
@@ -144,23 +144,23 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (forbid_unknown_fields)",
-      "caught_by": "decode_spec (M1.2a)",
-      "reason": "Vega-Lite encoding-level 'aggregate' refused at decode (M1.6 injection vector)"
+      "caught_by": "decode_spec",
+      "reason": "Vega-Lite encoding-level 'aggregate' refused at decode (a render injection vector)"
     },
     {
       "file": "b18_injection_top_level_url.json",
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (forbid_unknown_fields)",
-      "caught_by": "decode_spec (M1.2a)",
-      "reason": "Vega-Lite top-level 'url' loader refused at decode (M1.6 injection vector)"
+      "caught_by": "decode_spec",
+      "reason": "Vega-Lite top-level 'url' loader refused at decode (a render injection vector)"
     },
     {
       "file": "b07_nonexistent_field.json",
       "layer": "dataset-binding",
       "decodes": true,
       "check": "schema.fields_exist",
-      "caught_by": "M1.4 eval / M1.5 checks",
+      "caught_by": "eval / checks",
       "reason": "filter field 'profit' is absent from sales.csv"
     },
     {
@@ -168,7 +168,7 @@
       "layer": "dataset-binding",
       "decodes": true,
       "check": "dataset.hash_matches_source",
-      "caught_by": "M1.5",
+      "caught_by": "checks",
       "reason": "declared dataset.hash does not match the sales.csv source bytes"
     },
     {
@@ -176,7 +176,7 @@
       "layer": "dataset-binding",
       "decodes": true,
       "check": "schema.field_types_match",
-      "caught_by": "M1.4 eval / M1.5 checks (input-type rule, semantics §4)",
+      "caught_by": "eval / checks (input-type rule, semantics §4)",
       "reason": "sum requires a numeric column; region is string"
     },
     {
@@ -184,7 +184,7 @@
       "layer": "dataset-binding",
       "decodes": true,
       "check": "filter.value_type",
-      "caught_by": "M1.4 eval",
+      "caught_by": "eval",
       "reason": "int literal 5 cannot coerce to the string column region"
     },
     {
@@ -192,7 +192,7 @@
       "layer": "encoding",
       "decodes": true,
       "check": "encoding.axis_types_match_fields",
-      "caught_by": "M1.5",
+      "caught_by": "checks",
       "reason": "y typed quantitative but region is a string column"
     },
     {
@@ -200,7 +200,7 @@
       "layer": "encoding",
       "decodes": true,
       "check": "encoding.fields_exist_in_plotted_table",
-      "caught_by": "M1.5",
+      "caught_by": "checks",
       "reason": "orders is dropped by the aggregate; not in the plotted table {month,total_revenue}"
     },
     {
@@ -208,7 +208,7 @@
       "layer": "encoding",
       "decodes": true,
       "check": "label.quantitative_units_present",
-      "caught_by": "M1.5",
+      "caught_by": "checks",
       "reason": "aqi is quantitative but the weather manifest declares no unit for it"
     },
     {
@@ -216,7 +216,7 @@
       "layer": "transform",
       "decodes": true,
       "check": "transform.group_by_placement",
-      "caught_by": "M1.4 eval",
+      "caught_by": "eval",
       "reason": "group_by is valid only immediately before an aggregate; here it precedes a sort"
     },
     {
@@ -224,7 +224,7 @@
       "layer": "transform",
       "decodes": true,
       "check": "aggregate.output_unique",
-      "caught_by": "M1.4 eval",
+      "caught_by": "eval",
       "reason": "measure output 'region' collides with the group key 'region'"
     },
     {
@@ -232,7 +232,7 @@
       "layer": "transform",
       "decodes": true,
       "check": "sort.fields_distinct",
-      "caught_by": "M1.4 eval",
+      "caught_by": "eval",
       "reason": "sort.by repeats the field 'month'"
     }
   ],
@@ -287,7 +287,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (version Literal)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "version 'vplot-formula-0.2' is not the pinned formula version"
     },
     {
@@ -296,7 +296,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (forbid_unknown_fields)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "dataset-mode top-level key 'dataset' is unrepresentable in formula mode"
     },
     {
@@ -305,7 +305,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (FormulaMark enum)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "formula mark 'bar' is outside the closed line/scatter enum"
     },
     {
@@ -314,7 +314,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (fixed y field Literal)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "formula encoding.y.field must be the literal 'y', not 'z'"
     },
     {
@@ -323,7 +323,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (fixed quantitative channel Literal)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "formula encoding.x.type must be quantitative, not ordinal"
     },
     {
@@ -332,7 +332,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (FormulaText alphabet)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "quote characters in the code-injection-shaped formula are outside the v0.1 alphabet"
     },
     {
@@ -341,7 +341,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (FormulaText newline guard)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "the formula contains a newline forbidden by the leading negative lookahead"
     },
     {
@@ -350,7 +350,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (samples lower bound)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "samples 1 is below the inclusive minimum 2"
     },
     {
@@ -359,7 +359,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (DecimalText strict string)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "domain.start is a JSON number token, never the required decimal string"
     },
     {
@@ -368,7 +368,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (x_scale lower bound)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "x_scale -1 is below the inclusive minimum 0"
     },
     {
@@ -377,7 +377,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (NumericProfile enum)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "numeric_profile 'float64' is outside the closed rational HALF_EVEN profile"
     },
     {
@@ -386,7 +386,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (duplicate-key rescan)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "the top-level mark key is duplicated with conflicting valid values"
     },
     {
@@ -395,7 +395,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (DecimalText pattern)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "domain.stop '1e3' uses exponent notation forbidden by DecimalText"
     },
     {
@@ -404,7 +404,7 @@
       "layer": "decode",
       "decodes": false,
       "check": "schema decode (required field)",
-      "caught_by": "decode_formula_spec (M9.1)",
+      "caught_by": "decode_formula_spec",
       "reason": "the required top-level domain field is absent"
     },
     {
@@ -413,7 +413,7 @@
       "layer": "parser",
       "decodes": true,
       "check": "formula.functions_allowed",
-      "caught_by": "M9.2",
+      "caught_by": "parser",
       "reason": "sin is outside the v0.1 exact-rational function allowlist"
     },
     {
@@ -422,7 +422,7 @@
       "layer": "parser",
       "decodes": true,
       "check": "formula.names_allowed",
-      "caught_by": "M9.2",
+      "caught_by": "parser",
       "reason": "formula mode binds only the variable x; y is not an allowed input name"
     },
     {
@@ -431,8 +431,8 @@
       "layer": "domain",
       "decodes": true,
       "check": "formula.domain_ordered",
-      "caught_by": "M9.4",
-      "reason": "domain.start 5 is not less than domain.stop 1 — the FIRST failing check. A reversed domain necessarily yields a descending schedule too, so formula.sample_points_strictly_increasing is a DEPENDENT check that M9.3/M9.4 must evaluate only once ordering holds."
+      "caught_by": "domain checks",
+      "reason": "domain.start 5 is not less than domain.stop 1 — the FIRST failing check. A reversed domain necessarily yields a descending schedule too, so formula.sample_points_strictly_increasing is a DEPENDENT check to evaluate only once ordering holds."
     },
     {
       "file": "fb18_division_by_zero.json",
@@ -440,7 +440,7 @@
       "layer": "evaluation",
       "decodes": true,
       "check": "formula.values_defined",
-      "caught_by": "M9.3",
+      "caught_by": "evaluation/sampling",
       "reason": "the sample schedule lands exactly on x=1, where division by zero is undefined"
     },
     {
@@ -449,7 +449,7 @@
       "layer": "parser/evaluation",
       "decodes": true,
       "check": "formula.exponents_bounded",
-      "caught_by": "M9.2/M9.4",
+      "caught_by": "parser/domain checks",
       "reason": "integer exponent 999 exceeds max_formula_exponent=64"
     },
     {
@@ -458,20 +458,20 @@
       "layer": "sampling",
       "decodes": true,
       "check": "formula.sample_points_strictly_increasing",
-      "caught_by": "M9.3",
+      "caught_by": "evaluation/sampling",
       "reason": "quantizing five scheduled points to x_scale 0 produces repeated x values"
     }
   ],
   "enforced_by_construction": {
-    "security.no_arbitrary_code": "the spec is data-only (msgspec structs, no expr/code/url field); no arbitrary-code path exists to execute -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
-    "transform.ops_allowed": "the transform tagged-union admits only {select,filter,group_by,aggregate,sort}; an unlisted op is unrepresentable at decode -> emitted as a constant-pass M1.5 affirmation, no bad-spec attack vector",
-    "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists (M1.5/M1.6) -> no bad-spec attack vector",
+    "security.no_arbitrary_code": "the spec is data-only (msgspec structs, no expr/code/url field); no arbitrary-code path exists to execute -> emitted as a constant-pass affirmation, no bad-spec attack vector",
+    "transform.ops_allowed": "the transform tagged-union admits only {select,filter,group_by,aggregate,sort}; an unlisted op is unrepresentable at decode -> emitted as a constant-pass affirmation, no bad-spec attack vector",
+    "transform.aggregates_match_recomputation": "renderer inlines only the recomputed data.values; no model-value path exists -> no bad-spec attack vector",
     "transform.filters_declared": "every filter is a declared transform.filter op; the verifier recomputes from declared transforms only -> an undeclared filter is unrepresentable",
     "derived_value_mismatch": "DROPPED (roadmap data-flow): the model supplies no plotted values, so a derived-value lie is impossible by construction"
   },
   "formally_checked": {
-    "sort.canonical_order": "SMT checks the exact built row sequence against the active declared sort plus canonical tail before native Vega (M5.2)",
-    "scale.bar_zero": "SMT checks every exact built quantitative bar channel carries scale.zero=true before native Vega (M5.2)",
-    "encoding.legend_domain_exact": "SMT checks each exact built discrete color domain has complete, no-extra set equality with its plotted non-null categories before native Vega (M5.2)"
+    "sort.canonical_order": "SMT checks the exact built row sequence against the active declared sort plus canonical tail before native Vega",
+    "scale.bar_zero": "SMT checks every exact built quantitative bar channel carries scale.zero=true before native Vega",
+    "encoding.legend_domain_exact": "SMT checks each exact built discrete color domain has complete, no-extra set equality with its plotted non-null categories before native Vega"
   }
 }

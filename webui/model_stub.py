@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Hardware-free OpenAI /v1 stub — provisioning stand-in + scripted M4.5 E2E fixture.
+"""Hardware-free OpenAI /v1 stub — provisioning stand-in + scripted E2E fixture.
 
 The three-service smoke needs an OpenAI-compatible backend on :8001, but the live model_backend is
 NPU-gated (OpenVINO resolves via PYTHONPATH, the intel-accel env sourced). This stub serves the two

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Deterministic tests for canonical forms + provenance hashing (M1.4a).
+"""Deterministic tests for canonical forms + provenance hashing.
 
 Asserts: the dataset hash is a tag-free raw-byte identity sensitive to row order /
 CRLF / BOM; serialize_table emits stable typed-NDJSON (HALF_EVEN numerics, negative

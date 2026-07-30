@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Backend entry point — `python -m model_backend` (M3.1b).
+"""Backend entry point — `python -m model_backend`.
 
 Reads MODEL_BACKEND_* config, compiles the model, and serves the OpenAI /v1 surface with a
 single uvicorn worker (loopback by default). One worker keeps the single compiled pipeline and

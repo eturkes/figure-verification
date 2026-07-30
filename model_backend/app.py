@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Litestar app for the local model backend — OpenAI /v1 surface (M3.1b).
+"""Litestar app for the local model backend — OpenAI /v1 surface.
 
-Two routes the verifier client (M3.2) and Open WebUI (M4) use — POST /v1/chat/completions
+Two routes the verifier client and Open WebUI use — POST /v1/chat/completions
 (one non-streaming completion) and GET /v1/models (the single served model) — plus /health.
 The model compiles once at create_app time (Engine.load, blocking); each generation runs off
 the event loop in a worker thread behind the engine lock (asyncio.to_thread — one pipeline,

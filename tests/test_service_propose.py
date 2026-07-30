@@ -14,7 +14,7 @@ A proposal that decodes but names a DIFFERENT dataset than requested is refused
 502 by the M3.3b dataset-name pin, right after decode — before any verify or render, so even a
 broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart. A
 verified proposal also populates the chart store through the shared render_outcome seam, so GET
-/chart/{plot_id} resolves for a proposed chart just as for verify-and-render (M4.1c).
+/chart/{plot_id} resolves for a proposed chart just as for verify-and-render.
 """
 
 import json

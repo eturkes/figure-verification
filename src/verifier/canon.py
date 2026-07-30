@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Canonical forms + provenance hashing — the deterministic backbone of the VCert.
 
-Evaluator-independent foundation (M1.4b's ingest, M1.4d's eval, and M1.4f's oracle
+Evaluator-independent foundation (ingest, eval, and the oracle
 import it; no transform logic lives here). It pins ONE textual canonical form for a recomputed
 table and SIX SHA-256 hashes over text — never Arrow/Parquet bytes, which couple
 to a library version. The hashes split by purpose:
@@ -23,7 +23,7 @@ to a library version. The hashes split by purpose:
                schedule, scales, and rounding); domain-tagged.
   - matplotlib-script : the exact verifier-authored emitted script bytes; domain-tagged.
 
-Only the table hash is permutation-invariant (M1.4d closes every plot with a total
+Only the table hash is permutation-invariant (eval closes every plot with a total
 sort); the dataset hash deliberately is not. Display metadata (unit/label) lives in
 the manifest, never in a Column, so it never enters the table hash. See memory Stack
 (Hashing); VPlot_SEMANTICS.md is the meaning these realize.
@@ -83,14 +83,14 @@ type Column = NumericColumn | TemporalColumn | StringColumn
 
 class Table(Struct, frozen=True, kw_only=True):
     """A recomputed plotted table: columns plus rows already in canonical total order
-    (M1.4d's closure produces that order; this module only serializes/hashes it)."""
+    (eval's closure produces that order; this module only serializes/hashes it)."""
 
     columns: tuple[Column, ...]
     rows: tuple[tuple[Cell, ...], ...]
 
 
 class Versions(Struct, frozen=True, kw_only=True):
-    """The determinism-relevant runtime versions the M1.6 VCert badge stamps."""
+    """The determinism-relevant runtime versions the VCert badge stamps."""
 
     canon_version: str
     python: str
@@ -106,10 +106,10 @@ class FormulaSource(Struct, frozen=True, kw_only=True):
     the model's raw formula text.
     """
 
-    grammar_version: str  # parser grammar pin; M9.2 owns the constant
+    grammar_version: str  # parser grammar pin; the parser owns the constant
     numeric_profile: str  # rational-half-even-v1
     rounding: str  # ROUND_HALF_EVEN
-    ast: str  # verifier-owned canonical AST text; M9.2 owns the printer
+    ast: str  # verifier-owned canonical AST text; the parser owns the printer
     start: Decimal
     stop: Decimal
     samples: int
@@ -130,7 +130,7 @@ def _format_decimal(value: Decimal, scale: int) -> str:
     zero clamp is load-bearing: the C decimal impl returns adjusted() == the exponent for a
     zero (not 0), so a "0E+999..." cell would else push precision past MAX_PREC -> Context()
     raises an uncaught ValueError. Negative zero folds to positive so 0 and -0 share a canonical
-    form. Magnitude-bounding the trusted dataset is M1.4b's parse-boundary job, not canon's."""
+    form. Magnitude-bounding the trusted dataset is ingest's parse-boundary job, not canon's."""
     if not value.is_finite():
         msg = f"non-finite numeric cell: {value!r}"
         raise ValueError(msg)
@@ -197,7 +197,7 @@ def formula_source_bytes(source: FormulaSource) -> bytes:
     than emitting one), so no guard branch is needed. Endpoints are rendered at x_scale via
     canon's HALF_EVEN
     primitive: this resolves them, including folding negative zero. Requiring a declared
-    endpoint to be exactly representable at x_scale is an M9.3/M9.4 semantic check, not a
+    endpoint to be exactly representable at x_scale is a formula semantic check, not a
     serializer concern.
     """
     lines = [
@@ -234,7 +234,7 @@ def hash_dataset(csv_bytes: bytes) -> str:
     free and byte-exact (row order, CRLF, and a BOM all change it). Untagged, a crafted CSV
     could share a preimage with a tagged digest; that is inert because every consumer separates
     hashes by SLOT and never compares bare digests across domains (VCert v0.2 carries
-    dataset/table/spec/manifest; the formula + matplotlib-script slots land with v0.3 in M9.6),
+    dataset/table/spec/manifest; the formula + matplotlib-script slots land with v0.3),
     and the dataset is trusted source (the model emits only the spec)."""
     return "sha256:" + hashlib.sha256(csv_bytes).hexdigest()
 
@@ -297,7 +297,7 @@ def hash_matplotlib_script(script_bytes: bytes) -> str:
 
 
 def runtime_versions() -> Versions:
-    """The determinism-relevant runtime versions, for the M1.6 VCert badge."""
+    """The determinism-relevant runtime versions, for the VCert badge."""
     return Versions(
         canon_version=CANON_VERSION,
         python=platform.python_version(),

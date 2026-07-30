@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Core resource-policy vocabulary + byte-bounded file reads (M5.1a)."""
+"""Core resource-policy vocabulary + byte-bounded file reads."""
 
 import io
 from pathlib import Path

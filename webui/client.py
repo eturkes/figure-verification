@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Provisioning and persisted-chat REST client for Open WebUI (M4.3b, M4.4b, M6.2).
+"""Provisioning and persisted-chat REST client for Open WebUI.
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
-settled against 0.10.2 (memory M4 provisioning + filter contracts) -- TRANSCRIBED here, not
+settled against 0.10.2 (.agent/memory.md provisioning + filter contracts) -- TRANSCRIBED here, not
 re-probed. Every step fails closed via WebUIProvisionError so a misconfigured deploy raises loud
 rather than leaving a half-provisioned, silently-unauthenticated client.
 
-The client is injected an httpx.Client (base_url + request_timeout wired by the launcher, M4.3d; a
+The client is injected an httpx.Client (base_url + request_timeout wired by the launcher; a
 test injects a MockTransport-backed one), and holds the admin JWT after authenticate(). Responses
 decode through loose msgspec structs (unknown OWUI keys ignored) -- only load-bearing fields are
 modelled, matching the bench consumer-struct convention.
@@ -28,7 +28,7 @@ _TOOL_SERVER_ID_PREFIX = "server:"
 
 _FILTER_FUNCTION_TYPE = "filter"
 
-# Seconds between GET /ready polls while OWUI finishes startup (cold boot ~7-10s here, memory M4).
+# Seconds between GET /ready polls while OWUI finishes startup (cold boot ~7-10s here).
 _READY_POLL_INTERVAL = 1.0
 
 # Seconds between persisted-chat readbacks while the background completion runs.
@@ -161,8 +161,8 @@ class WebUIClient:
     def wait_ready(self) -> None:
         """Poll GET /ready until 200 or the ready_timeout deadline; raise on timeout.
 
-        /health 200s before startup finishes; /ready gates on startup_complete (503 until, memory
-        M4 Standup), and a pre-bind poll raises httpx.HTTPError (connection refused) -- both mean
+        /health 200s before startup finishes; /ready gates on startup_complete (503 until startup
+        finishes), and a pre-bind poll raises httpx.HTTPError (connection refused) -- both mean
         still-booting, so swallow and retry every _READY_POLL_INTERVAL against a monotonic deadline.
         """
         deadline = time.monotonic() + self._settings.ready_timeout
@@ -180,10 +180,11 @@ class WebUIClient:
     def authenticate(self) -> str:
         """Sign up the first-run admin (else sign in); store + return the JWT.
 
-        Idempotent across restarts (memory M4 provisioning contract): a first signup on a fresh
-        DATA_DIR auto-promotes admin (200 + token); a re-run hits a closed signup (403 same-process,
-        400 EMAIL_TAKEN post-restart), so ANY non-200 signup falls back to signin. Both non-200, or
-        a 200 with an empty token, raise WebUIProvisionError (no silently-unauthenticated client).
+        Idempotent across restarts (.agent/memory.md provisioning contract): a first signup on a
+        fresh DATA_DIR auto-promotes admin (200 + token); a re-run hits a closed signup (403
+        same-process, 400 EMAIL_TAKEN post-restart), so ANY non-200 signup falls back to signin.
+        Both non-200, or a 200 with an empty token, raise WebUIProvisionError (no
+        silently-unauthenticated client).
         """
         response = self._request(
             "POST",

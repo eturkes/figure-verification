@@ -571,7 +571,7 @@ def test_allowlist_keys_only(name: str) -> None:
     assert keys.isdisjoint(_DANGEROUS_KEYS)  # no data/JS/URL sink
 
 
-# --- render_svg: the vl-convert native dep (M1.6b) ----------------------------
+# --- render_svg: the vl-convert native dep ------------------------------------
 def test_vl_version_pin_is_available() -> None:
     # The pin is the determinism lever: it must be a version vl-convert can actually select.
     assert render._VL_VERSION in vl_convert.get_vegalite_versions()

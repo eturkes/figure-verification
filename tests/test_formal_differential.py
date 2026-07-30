@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Independent exhaustive/property differential for the finite SMT obligations (M5.2c)."""
+"""Independent exhaustive/property differential for the finite SMT obligations."""
 
 import ast
 import inspect

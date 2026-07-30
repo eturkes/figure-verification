@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Feedback loop for the hardware-free model-backend stub (M4.3c/M4.5).
+"""Feedback loop for the hardware-free model-backend stub.
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
 test_webui_client.py) rather than a 100%-branch gate. They pin the OpenAI /v1 wire shapes the M4.3e

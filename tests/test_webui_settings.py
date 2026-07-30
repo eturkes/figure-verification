@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Feedback loop for the Open WebUI provisioner settings (M4.3a).
+"""Feedback loop for the Open WebUI provisioner settings.
 
 webui/ is a coverage-excluded harness, not part of the verifier claim, so these are a bench-style
 regression net rather than a 100%-branch gate. Locked here:

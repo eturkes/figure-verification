@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Application factory: the trusted verifier behind Litestar routes (M2.1 + M2.2).
+"""Application factory: the trusted verifier behind Litestar routes.
 
 create_app builds a fully configured Litestar app from a trusted Settings container —
 routes registered, settings on app.state, the framework body cap set to
@@ -8,10 +8,10 @@ archive initialized before the app can serve. Every admitted outcome-bearing art
 a signed attempt there before its response or cache publication. Transport only: no verification
 trust lives here (POC_SCOPE service boundary).
 
-Routes: /health (liveness), POST /verify-only (M2.2), POST /verify-and-render + GET
-/certificate/{plot_id} + GET /spec/{spec_id} (M2.3) + GET /chart/{plot_id} (M4.1c), POST
-/propose-spec (M3.3a), GET /key/{keyid} (M5.4g), GET /replay/{plot_id} (M5.5c), GET
-/schema/openapi.json (M2.4). The
+Routes: /health (liveness), POST /verify-only, POST /verify-and-render + GET
+/certificate/{plot_id} + GET /spec/{spec_id} + GET /chart/{plot_id}, POST
+/propose-spec, GET /key/{keyid}, GET /replay/{plot_id}, GET
+/schema/openapi.json. The
 verify POST handlers read the RAW request body via request.body() before any verifier work, so
 decode_spec's strict decode stays authoritative (a framework-parsed `data: bytes` would
 JSON-decode first, collapsing duplicate keys), and Litestar's body cap raises 413 the moment that
@@ -70,8 +70,8 @@ worker processes multiply the configured aggregate capacity and rate.
 The OpenAPI 3.1 document is hand-authored (service/openapi.py) and served verbatim by
 openapi_route at GET /schema/openapi.json; Litestar's auto-gen stays off (openapi_config=None)
 because it introspects RenderVerdict.verified: Literal[True] and crashes. Each route still
-carries an explicit operation_id + summary that MIRROR the document's hand-authored values (M4
-Open WebUI maps operationId -> tool name; model-visible text = description, else summary); with
+carries an explicit operation_id + summary that MIRROR the document's hand-authored values (Open
+WebUI maps operationId -> tool name; model-visible text = description, else summary); with
 auto-gen off nothing consumes
 these route-level copies — openapi.py hand-authors the operationIds it serves — but they keep
 each handler self-describing and would feed auto-gen if it were ever re-enabled.
@@ -699,7 +699,7 @@ def create_app(settings: Settings) -> Litestar:
         # for its deliberately ephemeral HTML page (_CHART_HEADERS).
         response_headers=[_NOSNIFF],
         # Litestar's OpenAPI auto-gen stays OFF: it introspects response models via
-        # msgspec.inspect, which raises on RenderVerdict.verified: Literal[True] (the M2.3
+        # msgspec.inspect, which raises on RenderVerdict.verified: Literal[True] (the
         # never-a-chart pin). The 3.1 document is hand-authored (service/openapi.py) and
         # served verbatim by openapi_route above.
         openapi_config=None,

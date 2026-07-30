@@ -8,16 +8,16 @@ builder copies NO model-supplied Vega-Lite key, so no dangerous data/JS/URL sink
 determinism -- every channel sort:null, quantitative stack:null, line-mark order:null, bar
 scale.zero, and an explicit discrete-color domain from recomputed non-null values -- defeating
 Vega-Lite's implicit field-sort / line-vertex-sort / legend-domain sort / stacking so the
-displayed marks are intended to match the recomputed row order (M1.6b compile-confirms the effect).
+displayed marks are intended to match the recomputed row order (a compile test confirms the effect).
 
 Axis titles are manifest-sourced via checks.unit_source lineage (count-derived -> the fixed
 "count", as a count is dimensionless and its output name is model-proposed). _dumps is the
 SOLE serializer: a Decimal cell becomes a RAW fixed-point JSON number token at its COLUMN
 scale (build re-quantizes each data cell via _scaled_cell, so the inlined number equals the
 hashed table's token), -0 folded, so the same table yields byte-identical JSON; a Python float
-is rejected at the boundary. The string _dumps returns is the authoritative artifact M1.6b/c
-consume -- stdlib json.dumps is never applied to builder output (it cannot serialize the
-Decimals build_vega_lite keeps in data.values).
+is rejected at the boundary. The string _dumps returns is the authoritative artifact the SVG
+and certificate halves consume -- stdlib json.dumps is never applied to builder output (it
+cannot serialize the Decimals build_vega_lite keeps in data.values).
 
 The orchestration boundary is deliberately two-stage. ``prepare_render`` consumes a decoded
 spec plus core-check-passed ``RecomputedEvidence`` (never a live data directory), binds the pair,
@@ -49,7 +49,7 @@ from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import Aggregate, Channel, Filter, SortOrder, VPlotSpec
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
-# exact bundled minor (vl_version is M1.6b's determinism lever), so this half needs no dep.
+# exact bundled minor (vl_version is the determinism lever), so this half needs no dep.
 _VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
 # The family name of the vendored font (the file + register_font_directory are below). Naming it
 # in every spec's config REQUESTS this family for all text; the registered vendored file guarantees
@@ -433,7 +433,7 @@ def prepare_render(
     )
 
 
-# --- SVG rendering (M1.6b: the vl-convert native dep) ------------------------
+# --- SVG rendering (the vl-convert native dep) -------------------------------
 # Two determinism levers: a pinned Vega-Lite version (one of get_vegalite_versions()) and the
 # vendored DejaVu Sans, registered below and named by _FONT_FAMILY in every spec's config. Within
 # one pinned vl-convert-python build the SVG bytes are reproducible across calls (same-process /
@@ -459,7 +459,7 @@ def render_svg(vega_lite_json: str) -> str:
     allowlist emits no image/href/url/datasets sink -- PLUS allowed_base_urls=[], which hard-blocks
     every external DATA url at COMPILE time (defense-in-depth). It does NOT sanitize arbitrary
     input: a hand-rolled non-builder spec with an image mark keeps its external href in the output
-    (a general post-render output audit is the M1.6c render() gate's job); here the caller is always
+    (a general post-render output audit would be the render() gate's job); here the caller is always
     the builder. Text is laid out as DejaVu Sans -- the vendored family named in the spec config,
     its directory registered at import so the family RESOLVES regardless of the host's system fonts
     (vendoring guarantees availability; it does not prove vl-convert chose our copy over a
@@ -470,11 +470,11 @@ def render_svg(vega_lite_json: str) -> str:
     inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-double range (integer part
     past 2**53, or more than ~16 significant digits -- DECIMAL(38) admits both) can DISPLAY
     rounded; the emitted Vega-Lite JSON and the certified plotted-table hash carry it exactly
-    (POC_SCOPE TCB line; a Vega-safe-numeric render gate is a candidate M2+ hardening)."""
+    (POC_SCOPE TCB line; a Vega-safe-numeric render gate stays a candidate hardening)."""
     return vl_convert.vegalite_to_svg(vega_lite_json, vl_version=_VL_VERSION, allowed_base_urls=[])
 
 
-# --- offline HTML view (M1.6d: OPTIONAL self-contained view, OFF the cert hash chain) ---------
+# --- offline HTML view (OPTIONAL self-contained view, OFF the cert hash chain) ----------------
 # A second, non-canonical rendering of the SAME builder JSON the SVG and cert consume: a fully
 # self-contained page a browser renders CLIENT-SIDE from the inlined vega runtime. The emitted
 # builder specs carry no params / selection / tooltip, so it is the SAME chart as the SVG drawn by
@@ -498,12 +498,12 @@ def render_svg(vega_lite_json: str) -> str:
 _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 
 # A trusted-template height self-reporter appended as the page's LAST <script> (render_html). Open
-# WebUI embeds this page (M4) in a sandboxed iframe (allow-scripts, no allow-same-origin) with no
+# WebUI embeds this page in a sandboxed iframe (allow-scripts, no allow-same-origin) with no
 # intrinsic height -- absent a self-report the frame collapses and the chart renders tiny (Open
 # WebUI's same-origin auto-measure throws on a no-same-origin child -> self-report is mandatory). So
 # the page posts its rendered CONTENT height; Open WebUI sizes the frame on the
 # {type:"iframe:height",height} message (its listener source-matches the frame + applies height
-# VERBATIM -> the value must be right; memory "## M4" pins the verified contract). Height =
+# VERBATIM -> the value must be right; `.agent/memory.md` pins the contract). Height =
 # ceil(documentElement.getBoundingClientRect().height) = the viewport-INDEPENDENT content box;
 # scrollHeight is WRONG (floors at the frame's viewport -> a chart shorter than its frame reports
 # inflated + can never shrink; verified headless). Fires on load AND every ResizeObserver tick (the
@@ -564,7 +564,7 @@ def render_html(vega_lite_json: str) -> str:
     as the SVG, not a richer interactive view: the builder emits no params / selection / tooltip).
     No <script src> / CDN reference and no editor/actions menu (actions:false). A trailing
     trusted-template <script> (_HEIGHT_REPORTER) self-reports its content height to a parent
-    frame (postMessage on load + ResizeObserver), so an M4 sandboxed-iframe embed sizes to content
+    frame (postMessage on load + ResizeObserver), so a sandboxed-iframe embed sizes to content
     instead of rendering tiny -- fixed self-contained JS adding no external ref. OFF the cert hash
     chain: a convenience view, never hashed into the VCert. Self-containment also rests on embedding
     the spec as inert application/json DATA (JSON.parse'd, never executed) with EVERY "<" rewritten
@@ -574,11 +574,11 @@ def render_html(vega_lite_json: str) -> str:
     spec; in the pipeline every string byte is either a trusted-source/manifest value or a
     schema-constrained field identifier (model-selected field + aggregate-output names, bound by
     the FieldName regex to [A-Za-z_][A-Za-z0-9_]* — no markup bytes), and the "<"-escape above
-    holds regardless of provenance (untrusted-input hardening is M2+)."""
+    holds regardless of provenance (hardening arbitrary untrusted input stays out of scope)."""
     return _render_html_page(vega_lite_json, "", "")
 
 
-# --- provenance certificate (M5.2e: VCert v0.2 method + artifact binding) ----
+# --- provenance certificate (VCert v0.2 method + artifact binding) -----------
 # Core render returns the deterministic VCert PAYLOAD; the service wraps its exact bytes in signed
 # DSSE; durable archive and replay consume those signed bytes. It
 # stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite

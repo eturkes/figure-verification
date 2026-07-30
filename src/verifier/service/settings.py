@@ -10,7 +10,7 @@ component for the identity loader's no-follow checks. The private-key default fo
 state-directory setting. Historical trust pins are canonical SHA-256 keyids, order-preserving
 deduplicated, and capped before filesystem work; the current signer is added by identity policy.
 
-M5 resource policy: all resource integers are exact positive signed-64-bit values
+Resource policy: all resource integers are exact positive signed-64-bit values
 (`model_sample_rows` alone admits zero). This common arithmetic domain protects later native and
 SQLite boundaries and rejects astronomical values without allocating against them. `limits` is
 eagerly derived and cannot be supplied independently, so every service stage receives one frozen

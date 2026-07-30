@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# webui/launch.sh -- one-command standup of the verified-plot browser instance (M7.1).
+# webui/launch.sh -- one-command standup of the verified-plot browser instance.
 #
 # Brings up the three local services the PoC needs, provisioned, so an operator can open
 # http://127.0.0.1:8080 in a browser and interactively exercise the verified-plot pipeline:
@@ -11,9 +11,9 @@
 # The model tier is EITHER the real local OpenVINO model_backend (default; hardware-gated;
 # device NPU per CLAUDE.local.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
 # its function runner, the iframe/browser, and pixels stay trusted display/orchestration -- the
-# verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB, as M4 established).
+# verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB).
 # This launcher is orchestration only; every service, provisioning step, and the chart/embed
-# contract already exists (M3 model_backend, M4 webui/, M5 verifier, M6 persisted-chat + demo).
+# contract already exists (model_backend, webui/, the verifier, persisted chat + demo).
 #
 # Run from the repository root:
 #     webui/launch.sh            # real local model on the NPU

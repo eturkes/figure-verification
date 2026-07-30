@@ -53,19 +53,19 @@ _EXPECTED_DECODE_MESSAGES = {
     "fb14_missing_domain.json": "required field `domain`",
 }
 _EXPECTED_LATER = {
-    "fb15_disallowed_function.json": ("parser", "formula.functions_allowed", "M9.2"),
-    "fb16_disallowed_name.json": ("parser", "formula.names_allowed", "M9.2"),
-    "fb17_reversed_domain.json": ("domain", "formula.domain_ordered", "M9.4"),
-    "fb18_division_by_zero.json": ("evaluation", "formula.values_defined", "M9.3"),
+    "fb15_disallowed_function.json": ("parser", "formula.functions_allowed", "parser"),
+    "fb16_disallowed_name.json": ("parser", "formula.names_allowed", "parser"),
+    "fb17_reversed_domain.json": ("domain", "formula.domain_ordered", "domain checks"),
+    "fb18_division_by_zero.json": ("evaluation", "formula.values_defined", "evaluation/sampling"),
     "fb19_exponent_too_large.json": (
         "parser/evaluation",
         "formula.exponents_bounded",
-        "M9.2/M9.4",
+        "parser/domain checks",
     ),
     "fb20_sample_collision.json": (
         "sampling",
         "formula.sample_points_strictly_increasing",
-        "M9.3",
+        "evaluation/sampling",
     ),
 }
 
@@ -78,7 +78,7 @@ _EXPECTED_GOOD_AST = {
     "f05_absolute_value.json": "(abs x)",
     "f06_quadratic.json": "(sub (add (neg (pow x 2)) (mul 3 x)) 2)",
 }
-_BAD_PARSER = [entry for entry in _BAD_LATER if str(entry["caught_by"]).startswith("M9.2")]
+_BAD_PARSER = [entry for entry in _BAD_LATER if str(entry["caught_by"]).startswith("parser")]
 _BAD_AFTER_PARSER = [entry for entry in _BAD_LATER if entry not in _BAD_PARSER]
 
 
@@ -153,7 +153,7 @@ def test_formula_good_spec_schedule_is_exact_and_strictly_increasing(
 def test_formula_bad_spec_decode_layer_rejected(entry: dict[str, Any]) -> None:
     assert entry["layer"] == "decode"
     assert entry["decodes"] is False
-    assert entry["caught_by"] == "decode_formula_spec (M9.1)"
+    assert entry["caught_by"] == "decode_formula_spec"
     assert isinstance(entry["check"], str) and entry["check"]
     assert isinstance(entry["reason"], str) and entry["reason"]
     with pytest.raises(msgspec.ValidationError) as exc_info:

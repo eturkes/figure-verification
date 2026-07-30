@@ -13,11 +13,11 @@ source whitespace, redundant source grouping, decimal-literal spelling to a lowe
 spelling. It performs no constant folding or other algebraic rewrite. Parse cost is bounded
 by admitted source bytes and tokens/nodes plus the fixed literal-digit ceiling; trusted
 allowlist validation additionally depends on allowlist cardinality. No separate parse work
-meter is needed, so ``max_formula_work_units`` remains M9.3's cumulative exact-evaluator
-budget rather than a parser bound. The structured check names raised here
-become registered check IDs when M9.4 wires the engine into the verification spine; until
-then this leaf is called only by its tests. The variable allowlist is a caller parameter so
-M11 can reuse the same engine with dataset column names bound instead of formula mode's ``x``.
+meter is needed, so ``max_formula_work_units`` stays the exact evaluator's cumulative budget
+rather than a parser bound. The structured check names raised here become registered check
+IDs once the engine is wired into the verification spine; until then this leaf is called only
+by its tests. The variable allowlist is a caller parameter so a dataset-bound mode can reuse
+the same engine with column names bound instead of formula mode's ``x``.
 """
 
 from fractions import Fraction

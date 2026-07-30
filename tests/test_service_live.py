@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Live-socket smoke test: serve the package in a subprocess, drive it over real TCP (M2.5).
+"""Live-socket smoke test: serve the package in a subprocess, drive it over real TCP.
 
 The in-process TestClient suites (test_service*.py) already pin the full verdict/transport
 matrix; this proves the one thing they cannot — that `python -m verifier.service` really binds

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Finite-SMT obligation engine: exact witnesses, bounds, and context isolation (M5.2b)."""
+"""Finite-SMT obligation engine: exact witnesses, bounds, and context isolation."""
 
 import importlib.metadata
 import inspect

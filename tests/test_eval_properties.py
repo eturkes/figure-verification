@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Property tests for verifier.eval determinism (M1.4g).
+"""Property tests for verifier.eval determinism.
 
 A test-only Hypothesis layer over the already-100%-covered M1.4d evaluator (no new verifier
 code, no oracle -- duckdb is absent here). A FIXED small manifest + two FIXED specs hold the

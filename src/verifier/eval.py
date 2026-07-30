@@ -13,10 +13,11 @@ mean rounds ONCE HALF_EVEN via Fraction (no float, no double-round). Spec-semant
 the schema gate cannot catch — a field absent from the running table, a group_by not immediately
 before an aggregate, a filter literal that cannot coerce to its column, a non-distinct/colliding
 name — raise VerificationError mid-recompute with a dotted `.check` (the enforce half of
-VPlot_SEMANTICS.md section 5; M1.5 surfaces each as a structured blocking result). The renderer is
+VPlot_SEMANTICS.md section 5; checks surfaces each as a structured blocking result). The renderer
+is
 never reached when a check fails.
 
-M5.1i adds deterministic logical-work admission. ``evaluate_run`` returns the same table plus
+Deterministic logical-work admission rides the same pass. ``evaluate_run`` returns the table plus
 consumed units for internal audit; ``evaluate`` remains its table-only projection. Every transform
 and the final closure charges before its implementation starts. The formulas model bounded logical
 visits, not CPU time: select=fields*(rows+columns), filter=rows+columns,
@@ -388,7 +389,7 @@ def _aggregate_one(fn: AggFn, cells: list[canon.Cell], scale: int) -> canon.Cell
 
 def mean_at_scale(total: Decimal, count: int, scale: int) -> Decimal:
     """The mean total/count quantized to `scale` places, HALF_EVEN, exactly. Public so the
-    M1.4f DuckDB oracle recomputes mean identically (SQL avg rounds through double). Fraction
+    The DuckDB oracle recomputes mean identically (SQL avg rounds through double). Fraction
     keeps the division exact and rounds ONCE (no float, no Decimal double-round); the scaled
     result is integer-valued (denominator 1) so .numerator is exact."""
     rounded = round(Fraction(total) / count, scale)

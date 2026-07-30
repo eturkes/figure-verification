@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Count- and payload-byte-bounded chart artifact store (M4.1b, M5.1j).
+"""Count- and payload-byte-bounded chart artifact store.
 
 Only offline chart HTML pages keyed by ``plot_id`` live in this process-local store. Verified
 certificate, spec, and key artifacts are committed to the SQLite archive before cache publication;

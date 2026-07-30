@@ -7,7 +7,7 @@ schema + sample rows + the user request as user), POSTs it to the local backend'
 /v1/chat/completions, and returns a typed ``ModelProposal`` whose reply is
 choices[0].message.content as raw UTF-8 bytes. It NEVER decodes that content as VPlot: the
 identical bytes flow on to schema.decode_spec downstream, so a
-malformed-but-extracted spec still reaches a 200 verdict (the model-failure mode M3.4
+malformed-but-extracted spec still reaches a 200 verdict (the model-failure mode bench
 meters), exactly mirroring the pipeline's raw-body discipline.
 
 The proposal also carries a lossless, sensitive ``ProposalTrace``: the exact HTTPX-serialized
@@ -23,16 +23,16 @@ model json.dumps({"name", "hash"}) with hash = canon.hash_dataset(csv_bytes) to 
 VERBATIM into spec.dataset. The verifier re-checks that hash against the real bytes, so a
 copy that corrupts the hash fails closed. The re-check binds faithfulness to the spec's OWN
 declared dataset, NOT to the request -- pinning spec.dataset.name to the requested name is
-M3.3's endpoint check. The model controls only the dataset NAME, never the trusted files.
+the endpoint's check. The model controls only the dataset NAME, never the trusted files.
 The name resolves under settings.data_dir with the checks.py confinement (resolve() +
 is_relative_to), authoritative here because the whole name builds the CSV path (unlike
 the manifest path, which .stem collapses to a flat component, safe by construction).
 
-Error split (POC_SCOPE service boundary), each branch a distinct fault the caller (M3.3)
+Error split (POC_SCOPE service boundary), each branch a distinct fault the caller
 maps without a 200:
   - DatasetNotFoundError: the named CSV+manifest is not a readable file (absent, or the name
     denotes a directory / a path through one) OR the name escapes data_dir (the same answer
-    either way -> M3.3 404, no store-probe leak).
+    either way -> 404, no store-probe leak).
   - ProposerPolicyError: caller/dataset/prompt context exceeded policy before the backend call,
     or the backend exactly reported tokenized prompt overflow before native generation (422; no
     model content or verification outcome exists).
@@ -43,17 +43,17 @@ maps without a 200:
     not a chat-completion envelope (decode/validation failure), no choices, or empty content. An
     envelope-decode failure is an UPSTREAM fault, never a 200.
 A malformed trusted manifest (load_manifest raises), or a permission/OS fault reading a
-present file, is operator misconfiguration: the error PROPAGATES (M3.3 500), the model
+present file, is operator misconfiguration: the error PROPAGATES (500), the model
 cannot provoke it (it names only the dataset).
 
-M5.1g bounds every proposer allocation boundary. The request text and sum of system/user
+Resource policy bounds every proposer allocation boundary. The request text and sum of system/user
 message-content UTF-8 bytes are admitted before the model call; the latter is a byte/memory
 bound, not a token or post-chat-template claim. Dataset files reuse the core's limit+1 bounded
 reader. The client requests and enforces identity encoding, then streams raw HTTP body bytes into
 an exact limit+1 accumulator before status or envelope decode. Oversized success and error bodies
 alike become typed 502 faults and never reach the raw-reply/verdict path.
 
-M5.1h recognizes the backend token-policy signal by exact project protocol: HTTP 400,
+The client recognizes the backend token-policy signal by exact project protocol: HTTP 400,
 application/json, and a canonical strict OpenAI error envelope whose sole machine type is
 ``prompt_too_long``. Only that shape becomes the service's 422 policy outcome; wrong status,
 media type, encoding, fields, or type remain an upstream 502. The operator-selected local backend
@@ -133,7 +133,7 @@ class ModelProposal:
 
 class DatasetNotFoundError(Exception):
     """The named dataset has no readable CSV + manifest under data_dir, or the name escapes
-    it. M3.3 maps this to 404 -- the same answer whether absent or out-of-root, so probing a
+    it. The endpoint maps this to 404 -- the same answer whether absent or out-of-root, so probing a
     name reveals nothing about what the store holds. dataset_name carries the offending name
     for logging (never echoed to the untrusted caller)."""
 
@@ -144,9 +144,9 @@ class DatasetNotFoundError(Exception):
 
 class ModelUpstreamError(Exception):
     """The model backend failed as an upstream dependency: unreachable (503) or an unusable
-    response (502). M3.3 maps `status` onto a problem+json; logs receive only bounded status/fault
-    classifiers, never trace bytes or the transport cause. Never a 200 verdict -- no content reached
-    decode_spec, so there is nothing to verify."""
+    response (502). The endpoint maps `status` onto a problem+json; logs receive only bounded
+    status/fault classifiers, never trace bytes or the transport cause. Never a 200 verdict -- no
+    content reached decode_spec, so there is nothing to verify."""
 
     def __init__(self, message: str, *, status: int, trace: ProposalTrace) -> None:
         super().__init__(message)
@@ -370,7 +370,7 @@ def _build_messages(
 def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest.Manifest, bytes]:
     """Resolve and read the named dataset's CSV bytes + parsed manifest under data_dir, or
     raise DatasetNotFoundError (a 404). The CSV path is built from the whole name, so resolve() +
-    is_relative_to is the authoritative confinement (a traversal name that slipped past M3.3's
+    is_relative_to is the authoritative confinement (a traversal name that slipped past the
     DatasetName guard resolves outside the root -> not found). The manifest path uses Path.stem,
     which collapses any directory to a flat component, so it needs no runtime confinement branch
     (the pipeline precedent). The CSV name is wholly caller-picked, so a name denoting no readable

@@ -846,7 +846,7 @@ def test_g10_temp_vs_precip() -> None:
     )
 
 
-# --- M1.5-layer specs recompute cleanly; their defect is caught later (M1.5) --------
+# --- M1.5-layer specs recompute cleanly; their defect is caught later ---------------
 @pytest.mark.parametrize(
     ("filename", "dataset_stem", "columns", "n_rows"),
     [

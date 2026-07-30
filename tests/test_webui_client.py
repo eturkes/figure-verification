@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Feedback loop for the Open WebUI provisioning client + smoke (M4.3b).
+"""Feedback loop for the Open WebUI provisioning client + smoke.
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
 test_webui_settings.py) rather than a 100%-branch gate. The OWUI request shapes are the reviewed

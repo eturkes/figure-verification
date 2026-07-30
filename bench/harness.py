@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Eval driver, classification, and report encoding for the failure eval (M3.4a).
+"""Eval driver, classification, and report encoding for the failure eval.
 
 An out-of-tree observer: a synchronous httpx client (deterministic) driving ONLY the verifier's
 public HTTP surface -- /propose-spec for the model path and /verify-only for the corpus
 guarantee. It never imports verifier internals, so it adds no trust; it measures the existing
 service. Two measurements, never conflated:
 
-  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks all 18 M1 bad
+  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks all 18 bad
   goldens (bad_corpus_false_accept_count MUST be 0) AND accepts all 10 good ones
   (good_corpus_false_reject_count MUST be 0). Either non-zero is a real verifier regression;
   without the good leg, a verifier that rejected EVERYTHING would satisfy the bad-corpus
-  bound vacuously and the run would still exit 0 (M3-review finding).
+  bound vacuously and the run would still exit 0.
 
   OBSERVATIONS (statistical, characterize the weak proposer) -- JSON-object / JSON-validity /
   schema|semantic|policy failure / verified-render rates plus the top failing checks. NOT a
@@ -72,8 +72,8 @@ _BUCKET_HARNESS_ERROR = "harness_error"
 # (security.no_arbitrary_code is a pass-only affirmation; scale.* is a certificate string).
 _POLICY_FAMILIES = frozenset({"label", "security", "scale"})
 
-# Reply-shape taxonomy over a 200 model reply -- WHY the strict decode gate fails (codex-review
-# M3.4b F2). Reproducible per (device, config) from the persisted replies; de-fence rule below.
+# Reply-shape taxonomy over a 200 model reply -- WHY the strict decode gate fails.
+# Reproducible per (device, config) from the persisted replies; de-fence rule below.
 _SHAPE_FENCED = "fenced"  # the reply carries a ``` fence (a markdown code block)
 _SHAPE_BARE_OBJECT = "bare_object"  # no fence; the stripped reply opens with {
 _SHAPE_EMPTY = "empty"  # the stripped reply is ""
@@ -166,11 +166,11 @@ class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
 class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
     """The deterministic bounds: all 18 bad goldens blocked (false_accept == 0) AND all 10 good
     goldens accepted (false_reject == 0) -- the good leg keeps a reject-everything verifier from
-    satisfying the bad bound vacuously (M3-review).
+    satisfying the bad bound vacuously.
 
     Each corpus digest pins its IDENTITY (SHA-256 over the sorted filename + content-hash pairs),
-    so __main__ rejects a run whose --examples-dir is not the real M1 goldens even when it
-    happens to hold same-sized sets of other specs (codex-review M3.4b F1).
+    so __main__ rejects a run whose --examples-dir is not the real goldens even when it
+    happens to hold same-sized sets of other specs.
     """
 
     bad_corpus_size: int
@@ -447,7 +447,7 @@ def _corpus_digest(spec_dir: Path, files: tuple[str, ...]) -> str:
 
     Pins the corpus IDENTITY, not just its size, so a wrong --examples-dir holding a same-sized
     set of other specs yields a different digest -- the guarantee cannot pass vacuously against a
-    corpus that is not the real M1 goldens (codex-review M3.4b F1).
+    corpus that is not the real goldens.
     """
     digest = hashlib.sha256()
     for name in sorted(files):

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Self-contained M5.5d hardening walkthrough used by ``python -m demo``.
+"""Self-contained hardening walkthrough used by ``python -m demo``.
 
 Every scenario owns a temporary service state directory, drives the Litestar app in process, and
 checks an operator-visible hardening property. Expected faults are induced with scoped patches;

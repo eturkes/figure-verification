@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""OpenVINO GenAI engine wrapper — the untrusted local proposer (M3.1b).
+"""OpenVINO GenAI engine wrapper — the untrusted local proposer.
 
 Isolates the one untyped native import (openvino_genai; a mypy override in pyproject makes it
 resolve to Any so `mypy --strict` type-checks this package without the native runtime present)
 and serializes generation behind a single lock: one compiled LLMPipeline, one accelerator (the
-NPU by default). Probe-validated OpenVINO facts this module encodes (durable copies:
-.agent/memory.md M3; probe provenance: the consumed .agent/m3_1_design.md in git history):
+NPU by default). OpenVINO facts this module encodes (durable copies: .agent/memory.md):
 
 - Chat is STATELESS: apply the chat template to the full messages array each call (never
   start_chat/finish_chat, which keep server-side history — wrong for OpenAI /v1).
 - Start from the model's BUNDLED GenerationConfig and mutate in place; a fresh
   GenerationConfig() drops eos/stop tokens and defaults max_new_tokens to 2**64-1.
-- Greedy when temperature == 0 (the deterministic proposer path M3.2 uses); do_sample alone
+- Greedy when temperature == 0 (the deterministic proposer path); do_sample alone
   leaves temperature at 1.0, so set cfg.temperature only when sampling.
 - The NPU compiles to static shapes: Engine.load passes MAX_PROMPT_LEN for an NPU device. Before
   native generation on every device, tokenize the chat-templated prompt without adding a second
@@ -75,7 +74,7 @@ class Engine:
         self._guidance_schema = guidance_schema
         self._schema_sha256 = schema_sha256
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
-        # probed (see memory M3); the lock is the safe default.
+        # probed (see .agent/memory.md); the lock is the safe default.
         self._lock = threading.Lock()
 
     @property

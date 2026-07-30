@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Tests for verifier.ingest — typed (manifest, CSV) -> canon.Table (M1.4b).
+"""Tests for verifier.ingest — typed (manifest, CSV) -> canon.Table.
 
 Golden loads (sales / weather / deliberately_dirty) lock the full coerced table against
 its CSV by hand-verified explicit asserts (stronger than a self-blessed snapshot); inline
@@ -160,7 +160,7 @@ def test_stored_cell_reports_magnitude_before_precision_filter_reports_precision
 
 
 def test_decimal_at_scale_filter_primitive_accepts_over_magnitude_and_folds_zero() -> None:
-    # The evaluator (M1.4d) reuses _decimal_at_scale for string filter literals. A literal is
+    # The evaluator reuses _decimal_at_scale for string filter literals. A literal is
     # COMPARED, never stored, so it carries NO DECIMAL(38, scale) magnitude bound: a 39-digit value
     # a stored cell rejects, a filter literal accepts. -0 folds to +0; finiteness still re-tags.
     over_mag = "9" * 39  # rejected as a cell, accepted as a filter literal (no magnitude bound)

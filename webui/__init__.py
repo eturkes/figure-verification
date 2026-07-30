@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""webui — the Open WebUI integration harness (M4.3).
+"""webui — the Open WebUI integration harness.
 
 Provisions and drives a headless Open WebUI over its REST API: it registers the verifier as an
 OpenAPI tool server, bootstraps an admin, and launches OWUI under a canonical hermetic env so the
