@@ -1,11 +1,11 @@
-# bench — proposer eval (M3 raw baseline + M8 schema-guided default)
+# bench — weak-proposer eval (raw baseline + schema-guided default)
 
 Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public HTTP surface
 (`/propose-spec` + `/verify-only`), never imports `verifier` internals → adds no trust. Sync
 `httpx.Client`, RNG-free, fixed ordered prompts → byte-reproducible per (device, config).
 
 ## What it measures — two things, never conflated
-- **GUARANTEE** (deterministic, the ONLY bounds): re-POST the 18 M1 bad goldens AND the 10 good
+- **GUARANTEE** (deterministic, the ONLY bounds): re-POST the 18 bad goldens AND the 10 good
   ones to `/verify-only` → `bad_corpus_false_accept_count` MUST = 0 AND
   `good_corpus_false_reject_count` MUST = 0. Either nonzero = a real verifier regression → the
   run is INVALID (exit 1). The good leg closes the reject-everything vacuity: without it a
@@ -21,8 +21,8 @@ Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public
   `/propose-spec` verdicts → `json_object_rate` / `json_validity_rate` /
   schema|semantic|policy failure / verified-render rates + top-5 failing checks, overall + per
   category (normal · ambiguous · adversarial · bad_aggregation · hidden_filter, 20 each).
-  `json_object_rate` = fraction of 200-replies parsing as a JSON object (formerly mislabeled
-  "tool-call rate"); it says nothing about tool calls. NO automatic model "false_accept" — a
+  `json_object_rate` = fraction of 200-replies parsing as a JSON object; it says nothing about
+  tool calls. NO automatic model "false_accept" — a
   chart verified for an unfair request needs manual labels, out of scope (POC_SCOPE).
 
 Buckets partition the 200 denominator (`verified + schema + semantic + policy = 1.0`). Non-200
@@ -62,10 +62,10 @@ match's inner text (else the whole reply), stripped, then `msgspec.json.decode`;
     ```(?:json)?\s*(.*?)```
 
 This isolates the SYNTACTIC failure (fence-wrapping, which `decode_spec` rejects) from deeper
-malformation — e.g. the pre-M8 raw run's `fenced=97 defenced_json_valid=24` (M8's schema-guided default eliminates the fence: `fenced=0`).
+malformation — e.g. an unguided run's `fenced=97 defenced_json_valid=24` against the
+schema-guided default's `fenced=0`.
 
 ## OpenVINO wiring (this Debian container)
-Consolidated repo-local copy of the former `CLAUDE.local.md` guidance and its host guide:
 
 - OpenVINO + GenAI live outside the repo at
   `/var/home/eturkes/.local/app/openvino_genai`; Python resolves that build through
@@ -133,8 +133,8 @@ Stop that backend, then launch the GUIDED arm — default `structured_output=tru
 .venv/bin/python -m bench --out bench/reports/report-guided.json \
   --details bench/reports/details-guided.jsonl
 ```
-Compare `observations.overall.verified_render_rate` in the two reports. This paired ablation, not an
-unpaired historical 0→26 comparison, isolates schema guidance. Each report records `meta.git_commit`,
+Compare `observations.overall.verified_render_rate` in the two reports. This paired ablation
+isolates schema guidance; an unpaired cross-run comparison cannot. Each report records `meta.git_commit`,
 `git_dirty`, and `backend.structured_output`, so diffing the two `meta` blocks surfaces accidental
 drift in commit, tree state, or the guidance flag — but only for the backend `--model-url` probes;
 keep it on the verifier's proposal backend (per Run provenance above) or `backend.structured_output`
@@ -152,8 +152,7 @@ describes the wrong server.
 - `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
   `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
 
-Headline numbers live in `.agent/roadmap.md` (the M3 and M8 close-outs) as durable evidence — reports/ is not
-committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
+Headline numbers live in `.agent/roadmap.md` as durable evidence — `reports/` is not committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
 = INVALID run only: the guarantee broken (`false_accept > 0`, `false_reject > 0`, or transport
 errors) or NOT exercised (either corpus size or identity digest mismatches),
 `prompt_policy > 0`, `harness_error > 0`, or `n == 0` void.

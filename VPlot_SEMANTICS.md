@@ -1,13 +1,13 @@
 # VPlot v0.1 — semantics
 
 Schema is syntax; this is meaning. `src/verifier/schema.py` (+ `schema/vplot-0.1.schema.json`)
-is the DECODE gate: shape, types, enums, bounds. **This file is the MEANING contract** —
-M1.4 evaluator, M1.5 checks, M1.6 renderer, and the DuckDB oracle (dev/test) all conform
-to it. Co-versioned `vplot-0.1`. Boundary + the modest claim: `POC_SCOPE.md`.
+is the DECODE gate: shape, types, enums, bounds. **This file is the MEANING contract** — the
+evaluator, checks, renderer, and the DuckDB oracle (dev/test) all conform to it. Co-versioned
+`vplot-0.1`. Boundary + the modest claim: `POC_SCOPE.md`.
 
 A spec that passes `decode_spec` is syntactically total (every field present, typed, never
-coerced). Semantics add MEANING rules that need the dataset + its column manifest (M1.3),
-so they run post-decode (M1.4 eval, M1.5 checks). Decode-valid ⊉ semantically-valid: a
+coerced). Semantics add MEANING rules that need the dataset + its column manifest,
+so they run post-decode (eval + checks). Decode-valid ⊉ semantically-valid: a
 well-formed spec naming a missing column decodes, then blocks — never renders.
 
 ## 1. Trust spine
@@ -18,8 +18,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   ONLY that recomputed table → a model-supplied PLOTTED value cannot reach `data.values`
   (impossible by construction, not a check). Model-supplied spec PARAMETERS (filter literals,
   field names, channel types) shape the selection and are disclosed in the badge — never inlined
-  as mark data. `transform.aggregates_match_recomputation` (M1.5) is an AFFIRMATION (constant pass): `verify`
-  recomputes the table (correctness oracle-backed) and the M1.6 renderer inlines ONLY that
+  as mark data. `transform.aggregates_match_recomputation` is an AFFIRMATION (constant pass): `verify`
+  recomputes the table (correctness oracle-backed) and the renderer inlines ONLY that
   recomputation, so no model value can diverge -- true by construction, NOT an active
   byte-comparison (`verify_run()` retains the recomputation only in check-passed internal
   evidence; core `render()` reads the source once, `prepare_render()` binds the decoded spec to
@@ -29,7 +29,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
   construction: no `eval`/`exec`/SQL/JS/free-form-expr path exists anywhere.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
-  intent: a valid cherry-picked `filter` passes. The VCert badge (M1.6) discloses every
+  intent: a valid cherry-picked `filter` passes. The VCert badge discloses every
   applied filter and active sort, so a reader sees the selected subset; the verifier guarantees the
   chart faithfully shows that selection, not that the selection is fair.
 - VCert v0.2 binds the exact emitted Vega-Lite bytes alongside dataset, manifest, canonical spec,
@@ -41,8 +41,8 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   identity. `keyid` remains an unauthenticated hint; authenticity requires an independently pinned
   Ed25519 public key.
 - Axis titles + units = trusted manifest, never the spec (their VALUE is correct by
-  construction). `label.quantitative_units_present` (M1.5) still ENFORCES that a unit is present
-  per quantitative channel — manifest units are optional (M1.3), so presence is checked, not given.
+  construction). `label.quantitative_units_present` still ENFORCES that a unit is present
+  per quantitative channel — manifest units are optional, so presence is checked, not given.
   A quantitative channel tracing (via §7 position-aware reverse lineage) to a `count` is
   dimensionless → unit-exempt; every other quantitative channel must resolve to a manifest numeric
   column that declares a `unit`.
@@ -50,7 +50,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
 ## 2. Data model
 
 - Source = a CSV under `data/`. Cells parse as TEXT, then coerce to the column's MANIFEST
-  type (M1.3 — a CSV alone carries no types/units/labels). The manifest is the trusted column
+  type (a CSV alone carries no types/units/labels). The manifest is the trusted column
   schema; it is hashed into the VCert.
 - Column types: `numeric` (scale s ≥ 0 decimal places; integer = scale 0), `temporal`
   (canonical zero-padded ISO-8601 — date `YYYY-MM-DD` or datetime `YYYY-MM-DDThh:mm:ss[.ffffff]`,
@@ -58,7 +58,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   non-canonical; granularity per manifest; lexical order = chronological), `string` (nominal/ordinal text,
   Unicode after decode).
 - ONE null token: an empty cell → null. No other null source. Null prints as a single reserved
-  sentinel in the canonical table (M1.4). NaN never exists (no float math, §3).
+  sentinel in the canonical table. NaN never exists (no float math, §3).
 - No floats in data OR spec: spec numerics are `int | string` (float/bool/null tokens rejected
   at decode, schema finding 3); column numerics are `Decimal` (§3).
 
@@ -84,7 +84,7 @@ well-formed spec naming a missing column decodes, then blocks — never renders.
   | temporal | semantic error | parse canonical ISO; bad format → semantic error |
   | string | semantic error | used verbatim |
 
-  Coercion failure = a SEMANTIC error → block (M1.4 eval raises, surfaced as a failed check),
+  Coercion failure = a SEMANTIC error → block (eval raises, surfaced as a failed check),
   never a silent drop-all. Comparison then happens within one coerced type domain.
 
 ## 4. Transform pipeline
@@ -115,7 +115,7 @@ through each op. Empty list → the loaded table unchanged.
   key direction ∈ {ascending, descending}. NULL = greatest (ascending → nulls last; descending
   → nulls first).
 
-## 5. Distinctness + collision (semantic, enforced M1.4)
+## 5. Distinctness + collision (semantic, enforced in eval)
 
 - `select.fields` distinct; `group_by.keys` distinct; `sort.by` fields distinct.
 - aggregate `as` names: mutually unique AND disjoint from the group keys (no output-column
@@ -125,11 +125,11 @@ through each op. Empty list → the loaded table unchanged.
   must therefore resolve POSITION-AWARE — latest producer first, each measure input against
   STRICTLY EARLIER aggregates — else it mis-resolves a reused name or fails to terminate.
 - Every TRANSFORM-referenced field exists in the CURRENT schema at that pipeline step
-  (`schema.fields_exist` — M1.4 eval ENFORCES it, raising during recompute; M1.5 `checks.py`
+  (`schema.fields_exist` — eval ENFORCES it, raising during recompute; `checks.py`
   SURFACES it as a structured result); encoding channels reference existing PLOTTED-table columns
-  (`encoding.fields_exist_in_plotted_table`, M1.5).
+  (`encoding.fields_exist_in_plotted_table`).
 
-## 6. Canonical total ordering (M1.4)
+## 6. Canonical total ordering (eval)
 
 The plotted table is closed under a TOTAL order so its hash is permutation-invariant:
 1. the ACTIVE declared sort — the LAST `sort` op in the pipeline (an earlier `sort` superseded by
@@ -149,7 +149,7 @@ regardless of their relative order → the plotted-table hash is permutation-inv
 input-row permutation. (The dataset hash is NOT permutation-invariant — it is raw source
 bytes, §8.)
 
-Before any native render, `sort.canonical_order` (M5.2, `z3_smt`) independently checks adjacent
+Before any native render, `sort.canonical_order` (`z3_smt`) independently checks adjacent
 rows projected from the exact built `data.values` under the active declared keys + canonical tail.
 SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks the artifact.
 
@@ -157,7 +157,7 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
 
 - A channel = `{field, type}` ONLY (`type` = Vega-Lite channel type; schema key `type` → struct
   `kind`). No model-proposed title/unit/scale/format.
-- `type` ↔ plotted-column type (`encoding.axis_types_match_fields`, M1.5):
+- `type` ↔ plotted-column type (`encoding.axis_types_match_fields`):
 
   | channel `type` | column type |
   |---|---|
@@ -168,13 +168,13 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
 
 - `x`, `y` required; `color` optional = a third channel, same rules. For nominal/ordinal color,
   the builder emits an explicit scale domain = distinct non-null recomputed values in canonical
-  first-occurrence order (empty/all-null → `[]`). `encoding.legend_domain_exact` (M5.2,
+  first-occurrence order (empty/all-null → `[]`). `encoding.legend_domain_exact`
   `z3_smt`) checks set equality between that exact emitted domain and exact built `data.values`;
   missing/extra categories, solver uncertainty, or resource refusal blocks the artifact.
-- Axis title = manifest display label + manifest unit appended (M1.6); the title VALUE is
-  manifest-sourced, never model-proposed. `label.quantitative_units_present` (M1.5) verifies the
+- Axis title = manifest display label + manifest unit appended; the title VALUE is
+  manifest-sourced, never model-proposed. `label.quantitative_units_present` verifies the
   manifest supplies a unit for each quantitative channel and BLOCKS when absent (units are optional
-  in the manifest, M1.3 — presence is checked, not guaranteed by construction). A channel tracing
+  in the manifest — presence is checked, not guaranteed by construction). A channel tracing
   to a `count` is dimensionless → unit-exempt (no inherited unit); every other quantitative channel
   resolves to a manifest numeric column that MUST declare a `unit`.
 - A DERIVED plotted column (an aggregate `as`) inherits manifest metadata through its measure to
@@ -185,7 +185,7 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   (`count` is dimensionless — no inherited unit). A group_by KEY keeps its source column's
   metadata; a derived column's numeric scale follows §3.
 - `bar` mark: the builder emits `scale.zero=true` on every quantitative positional channel (the
-  model proposes no scale). `scale.bar_zero` (M5.2, `z3_smt`) reads the exact built mark/channels
+  model proposes no scale). `scale.bar_zero` (`z3_smt`) reads the exact built mark/channels
   and blocks a missing/false baseline, solver uncertainty, or resource refusal before native Vega.
 
 ## 8. Dataset binding
@@ -196,17 +196,17 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   `^[A-Za-z0-9][A-Za-z0-9._-]*\.csv$` — no path separator and no leading separator, so it is a
   relative single segment. (The pattern still admits a literal `..` substring, e.g. `a..csv`,
   harmless without a separator.) Traversal is prevented by the separator-free pattern PLUS the
-  resolved-path-within-`data/` check. `dataset.hash_matches_source` (M1.5) recomputes the source
+  resolved-path-within-`data/` check. `dataset.hash_matches_source` recomputes the source
   hash, confirms path-confinement, and compares; mismatch → block.
 
 ## 9. Error layers
 
-- DECODE (M1.2a, `decode_spec`) = SYNTAX: unknown field/op/mark/enum, wrong container/type,
+- DECODE (`decode_spec`) = SYNTAX: unknown field/op/mark/enum, wrong container/type,
   float/bool/null token, length/pattern breach, duplicate key, malformed or non-UTF-8 JSON.
   Outcome for any `bytes | str` input (the `decode_spec` signature): a total `VPlotSpec`, or
   `msgspec.ValidationError` / `msgspec.DecodeError` — never a partial or coerced object. (A
   non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
-- RESOURCE POLICY (M5, `resource.*`) = inclusive logical ceilings over trusted inputs and later
+- RESOURCE POLICY (`resource.*`) = inclusive logical ceilings over trusted inputs and later
   work/artifacts. Admission at the ceiling proceeds; the first ceiling+1 observation surfaces its
   tagged failure before work at that boundary. Core verification covers raw manifest/CSV bytes,
   manifest columns, source rows/cells, deterministic evaluator work, and final plotted cells.
@@ -214,7 +214,7 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   request/prompt/model response bytes, prompt tokens, request rate, active jobs, and transactional
   logical archive payload. Evaluator work units are deterministic
   logical-visit formulas declared in `eval.py`, not elapsed-time or CPU guarantees.
-- SEMANTIC (M1.4 eval + M1.5 checks) = MEANING (needs dataset + manifest): field exists, type
+- SEMANTIC (eval + checks) = MEANING (needs dataset + manifest): field exists, type
   matches, hash matches source, distinctness/collision, filter coercion, encoding type, units
   present. Outcome: structured `{check, method, status, severity, message}`; any
   blocking failure → no render. Each result carries the closed verification method that established
@@ -238,7 +238,7 @@ not rely on its defaults):
 - `group_by` NULL = single group; `COUNT(col)` = non-null; `SUM`/`MIN`/`MAX` over all-null =
   NULL — all match by default and are asserted, not assumed.
 
-Every v0.1 op reproduces bit-for-bit (goldens + adversarial synthetic parity, M1.4f). Outside
+Every v0.1 op reproduces bit-for-bit (goldens + adversarial synthetic parity). Outside
 DuckDB's DECIMAL(38)/HUGEINT domain — where eval's unbounded exact arithmetic still succeeds —
 the oracle raises LOUDLY (filter-literal magnitude bound; SUM-accumulator or typed-reinsert
 overflow, both sites pinned by tests), never a silent divergence.
@@ -246,7 +246,7 @@ overflow, both sites pinned by tests), never a silent divergence.
 ## 11. Divergences from the outline (`.agent/outline.md`)
 
 - Labels + units = the trusted MANIFEST, not model- or policy-proposed.
-- NO `policy` block: policy folds into M1.5 checks + the manifest (the model proposes no policy).
+- NO `policy` block: policy folds into checks + the manifest (the model proposes no policy).
 - Per-key `sort` (a list of `{field, order}`) vs the outline's single sort.
 - Named cmp ops (eq/ne/lt/le/gt/ge) vs operator symbols.
 - Filter values = `int | string` (no float/Decimal tokens); decimals travel as bounded strings,
@@ -255,18 +255,18 @@ overflow, both sites pinned by tests), never a silent divergence.
   model supplies no plotted values, §1). The renderer-inlined-data-equals-recomputation check
   (`transform.aggregates_match_recomputation`, §1) REMAINS in force.
 
-## Open (resolve when the layer lands)
+## Settled decisions (never re-litigate)
 
-- RESOLVED (M1.6): filter-literal STRINGS stay length-bound (≤ 128) + byte-faithful — control
+- Filter-literal STRINGS stay length-bound (≤ 128) + byte-faithful — control
   chars (NL/CR/TAB/NUL/U+2028) are admitted and handled at DISCLOSURE time (`badge_html` renders
   each literal in a visible INJECTIVE form — int bare, string JSON-quoted ASCII-escaped, so
   control/format/bidi chars display as `\uXXXX` and two distinct literals never render alike —
   then `html.escape(quote=True)`; the offline HTML view escapes every `<` → U+003C). Forbid-pattern
-  and NFC both rejected: NFC-folding collides specs that select different rows (the M1.4a
-  reversal — hash must distinguish exactly what eval's verbatim compare distinguishes), and a
-  forbid-pattern would reject valid filters on legitimate control-char cells.
-- RESOLVED (M1.5c): a dimensionless `count` on a quantitative channel is unit-exempt vs
+  and NFC both rejected: NFC-folding collides specs that select different rows (the hash must
+  distinguish exactly what eval's verbatim compare distinguishes), and a forbid-pattern would
+  reject valid filters on legitimate control-char cells.
+- A dimensionless `count` on a quantitative channel is unit-exempt vs
   `label.quantitative_units_present` — `unit_source` (§5/§7) returns None for a count-derived
-  column (the lineage carries no unit), now stated in §1/§7. Dedicated end-to-end `test_checks.py`
-  specs (a direct count and a count→sum chain) plus `unit_source` lineage arms exercise it (no
-  good-spec corpus golden uses `count`, which would ripple into M1.4e/M1.4f).
+  column (the lineage carries no unit), as stated in §1/§7. Dedicated end-to-end `test_checks.py`
+  specs (a direct count and a count→sum chain) plus `unit_source` lineage arms exercise it; no
+  good-spec corpus golden uses `count`.

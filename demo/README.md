@@ -12,8 +12,8 @@ The equivalent locked-environment command is:
 uv run --locked python -m demo
 ```
 
-The walkthrough builds a fresh in-process verifier for each scenario and exercises the M5.5d
-formal-method, archive, replay, audit, integrity, capacity, and transaction hardening paths. It
+The walkthrough builds a fresh in-process verifier for each scenario and exercises the formal-method,
+archive, replay, audit, integrity, capacity, and transaction hardening paths. It
 uses temporary state directories and deterministic model stubs, so it needs no model download,
 accelerator, network connection, socket, or operator `.verifier-state/` directory.
 
@@ -23,7 +23,7 @@ exits `1` after recording all results if any scenario fails.
 
 ## Real-socket end-to-end demo
 
-Run the hardware-free M6 driver from the repository root:
+Run the hardware-free driver from the repository root:
 
 ```console
 uv run --locked python -m demo.e2e

@@ -1,6 +1,6 @@
 # webui - Open WebUI provisioning harness
 
-Out-of-tree, unshipped M4 harness: starts Open WebUI under a hermetic environment, bootstraps its
+Out-of-tree, unshipped harness: starts Open WebUI under a hermetic environment, bootstraps its
 first admin, converges the repo-owned global outlet filter, attaches the verifier server to the
 configured model's default tools, and smoke-checks all three readbacks. It is type/lint checked but
 coverage-excluded, like `bench/` and `model_backend/`.
@@ -89,7 +89,7 @@ persistence, and browser rendering from model reliability; no result from the st
 tool-selection or generation-quality claim.
 
 For an NPU run, replace the stub with the live `model_backend` launch in the
-[M3 bench recipe](../bench/README.md); keep the backend URL and model ID aligned with the
+[bench recipe](../bench/README.md); keep the backend URL and model ID aligned with the
 provisioner settings below.
 
 Only after both upstreams answer, start Open WebUI and wait for application readiness:
@@ -173,7 +173,7 @@ In Open WebUI 0.10.2 the persisted final text is
 `output[0].content[0].text` (legacy `content` stays empty) and the verifier URL is in `embeds[0]`.
 The rendered iframe must contain the verified chart and omit `allow-same-origin` from its sandbox.
 
-The M6 persisted-chat CLI runs that flow without duplicating the request construction:
+The persisted-chat CLI runs that flow without duplicating the request construction:
 
 ```sh
 uv run --locked python -m webui chat --prompt \
@@ -183,16 +183,17 @@ uv run --locked python -m webui chat --prompt \
 It calls `WebUIClient.run_persisted_chat`, waits for the persisted assistant message, then prints
 its final text from `output[0].content[0].text` and, when present, the chart URL from `embeds[0]`.
 
-An NPU run replaces the stub and measures the weak model separately. M4.5's raw, unconstrained fixed
+An NPU run replaces the stub and measures the weak model separately. A raw, unconstrained
 ten-prompt sample selected the tool on 5/10 prompts but produced no verified chart: four calls
 reached the verifier with undecodable fenced specs and one omitted a required argument. That
 observation is not a bound; the deterministic fixture above proves only that the integration works
 when its untrusted proposer supplies valid protocol messages.
 
-The shipped M8.3 default now schema-guides a selected `proposeSpec` generation, steering the weak
-model toward schema-representable structure rather than fenced prose. In the fixed 100-prompt live
-NPU run, `verified_render=0.26` versus the raw baseline's `0.00`; every reply had the `bare_object`
-surface form (began `{`, with 0 fenced versus 97 raw) and 83/100 parsed as JSON, yet 51/100 still
+The shipped default schema-guides a selected `proposeSpec` generation, steering the weak model
+toward schema-representable structure rather than fenced prose. In the fixed 100-prompt live NPU
+run, `verified_render=0.26` against `0.00` for the unguided arm of a same-commit A/B; every reply
+had the `bare_object` surface form (began `{`, 0 fenced against that arm's 52) and 83/100 parsed
+as JSON, yet 51/100 still
 failed strict VPlot decode and 23/100 failed a semantic check — so the real model can render a
 verified chart for some well-formed requests while most attempts stay blocked. These results are
 observations, not bounds, reproducible only per device/config; they do not expand what the
@@ -236,7 +237,7 @@ with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) 
                 "model": settings.model_id,
                 "id": message_id,
                 "chat_id": "local",
-                "session_id": "m4.4d-outlet",
+                "session_id": "outlet-probe",
                 "messages": [{"role": "assistant", "content": content}],
             },
         )
@@ -245,8 +246,8 @@ with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) 
         assert isinstance(result, str)
         return result
 
-    assert outlet("m4.4d-block", chart) == BLOCKED_NOTICE
-    assert outlet("m4.4d-pass", prose) == prose
+    assert outlet("outlet-block", chart) == BLOCKED_NOTICE
+    assert outlet("outlet-pass", prose) == prose
 
 print("outlet block/pass differential: PASS")
 PY
@@ -255,8 +256,8 @@ PY
 The Open WebUI terminal must emit one content-free warning such as
 `signals=matplotlib chars=<n>` for the blocked call, with neither the reply nor its unique marker in
 the log; the prose call emits no filter warning. This endpoint isolates the outlet contract. It
-does not test model generation, tool selection, chart embedding, or persisted-chat behavior; those
-belong to M4.5.
+does not test model generation, tool selection, chart embedding, or persisted-chat behavior; the
+steps above cover those.
 
 ## Operator inputs
 

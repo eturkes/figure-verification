@@ -221,7 +221,7 @@ curl -sS http://127.0.0.1:8000/schema/openapi.json
 
 ## Model proposer
 
-`verifier.service` (M3) puts a weak local model in front of that same verifier through one more
+`verifier.service` puts a weak local model in front of that same verifier through one more
 endpoint, `POST /propose-spec`. The request is a small `{user_request, dataset_name}` object;
 the service builds the VPlot proposer prompt, asks the local backend for a spec, and feeds
 whatever it returns through `verify-and-render` above, pinned to the requested dataset: a

@@ -100,8 +100,8 @@ The certificate binds the exact emitted Vega-Lite bytes, not SVG rasterization o
 
 ## PoC acceptance
 
-This is the single acceptance record for the ten criteria in the original scope seed. Each item
-points to landed evidence and states the boundary that keeps the claim modest.
+This is the single acceptance record for the PoC's ten criteria. Each item points to landed
+evidence and states the boundary that keeps the claim modest.
 
 1. **The model cannot render a chart directly through the approved path.**
    **Evidence:** `POST /propose-spec` in `src/verifier/service/app.py` accepts a request, obtains raw
@@ -153,10 +153,10 @@ points to landed evidence and states the boundary that keeps the claim modest.
 8. **Open WebUI shows verified charts inline.**
    **Evidence:** `WebUIClient.run_persisted_chat` and
    `python -m webui chat --prompt "…"` read final text from `output[0].content[0].text` and the chart
-   URL from `embeds[0]`; the M6.3 live run recorded a verified
-   `http://127.0.0.1:8000/chart/<hash>` embed in a sandboxed iframe.
-   **Boundary:** this repository's retained browser evidence is textual DOM/CSP evidence plus the
-   earlier Chromium precedent. Browser rendering and pixels remain in the trusted computing base.
+   URL from `embeds[0]`; a live run records a verified `http://127.0.0.1:8000/chart/<hash>` embed in
+   a sandboxed iframe.
+   **Boundary:** the retained browser evidence here is textual DOM and CSP evidence. Browser
+   rendering and pixels remain in the trusted computing base.
 
 9. **Unverified chart-like output is blocked or clearly labeled.**
    **Evidence:** the global `Verified Plot Guard` outlet replaces recognized direct-chart replies
@@ -239,9 +239,10 @@ manual tool toggle. What happens depends on the model tier and, for the real mod
   the bypassable `Verified Plot Guard` replaces with `BLOCKED_NOTICE`. The exact blocked reply
   depends on the weak model, and the guard never proves verification.
   A separate 100-prompt bench that calls `/propose-spec` directly — exercising neither Open WebUI
-  tool selection nor the guard — fully verified 26/100 of its fixed benchmark prompts (versus raw
-  0/100, with fence wrapping 97→0), while 51/100 still failed strict decode and 23/100 failed a
-  semantic check; an observation, not a bound. Blocking remains common and expected when output
+  tool selection nor the guard — fully verified 26/100 of its fixed benchmark prompts, while 51/100
+  still failed strict decode and 23/100 failed a semantic check. A same-commit A/B in which only
+  schema guidance changes puts the unguided arm at 0/100, with JSON validity 0.01→0.83 and markdown
+  fencing 52→0; both arms are observations, not bounds. Blocking remains common and expected when output
   truncates or a structurally valid proposal fails semantic checks. Guidance constrains structure
   only; it does not establish values, semantics, dataset binding, recomputation, provenance, or
   acceptance: the strict verifier still re-decodes every proposal, recomputes the plotted table,
