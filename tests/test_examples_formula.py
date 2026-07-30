@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M9.1 formula corpus checks: strict decode layer + deferred semantic layers."""
+"""M9.1-M9.2 formula corpus checks: decode shape and bounded expression parsing."""
 
 import json
 from fractions import Fraction
@@ -10,6 +10,9 @@ from typing import Any
 import msgspec
 import pytest
 
+from verifier.errors import VerificationError
+from verifier.expr import parse_expr, print_expr
+from verifier.limits import VerificationLimits
 from verifier.schema import FormulaPlotSpec, decode_formula_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -65,6 +68,18 @@ _EXPECTED_LATER = {
         "M9.3",
     ),
 }
+
+
+_EXPECTED_GOOD_AST = {
+    "f01_square.json": "(pow x 2)",
+    "f02_linear.json": "(add (mul 2 x) 1)",
+    "f03_cubic.json": "(mul (mul x (sub x 1)) (add x 1))",
+    "f04_rational.json": "(div 1 (add 1 (mul x x)))",
+    "f05_absolute_value.json": "(abs x)",
+    "f06_quadratic.json": "(sub (add (neg (pow x 2)) (mul 3 x)) 2)",
+}
+_BAD_PARSER = [entry for entry in _BAD_LATER if str(entry["caught_by"]).startswith("M9.2")]
+_BAD_AFTER_PARSER = [entry for entry in _BAD_LATER if entry not in _BAD_PARSER]
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
@@ -154,3 +169,37 @@ def test_formula_bad_spec_later_layer_still_decodes(entry: dict[str, Any]) -> No
     assert entry["decodes"] is True
     assert (entry["layer"], entry["check"], entry["caught_by"]) == _EXPECTED_LATER[entry["file"]]
     assert isinstance(entry["reason"], str) and entry["reason"]
+
+
+@pytest.mark.parametrize("entry", _GOOD, ids=_ids(_GOOD))
+def test_formula_good_spec_parses_to_pinned_canonical_ast(entry: dict[str, Any]) -> None:
+    spec = decode_formula_spec((_GOOD_DIR / entry["file"]).read_bytes())
+    parsed = parse_expr(
+        spec.formula,
+        allowed_vars=frozenset({"x"}),
+        limits=VerificationLimits(),
+    )
+    assert print_expr(parsed.ast) == _EXPECTED_GOOD_AST[entry["file"]]
+
+
+@pytest.mark.parametrize("entry", _BAD_PARSER, ids=_ids(_BAD_PARSER))
+def test_formula_bad_spec_parser_layer_rejected_by_declared_check(entry: dict[str, Any]) -> None:
+    spec = decode_formula_spec((_BAD_DIR / entry["file"]).read_bytes())
+    with pytest.raises(VerificationError) as exc_info:
+        parse_expr(
+            spec.formula,
+            allowed_vars=frozenset({"x"}),
+            limits=VerificationLimits(),
+        )
+    assert exc_info.value.check == entry["check"]
+
+
+@pytest.mark.parametrize("entry", _BAD_AFTER_PARSER, ids=_ids(_BAD_AFTER_PARSER))
+def test_formula_bad_spec_deferred_past_parser_parses_cleanly(entry: dict[str, Any]) -> None:
+    spec = decode_formula_spec((_BAD_DIR / entry["file"]).read_bytes())
+    parsed = parse_expr(
+        spec.formula,
+        allowed_vars=frozenset({"x"}),
+        limits=VerificationLimits(),
+    )
+    assert print_expr(parsed.ast)
