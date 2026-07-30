@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M1.6a render-builder tests: the canonical JSON serializer + the positive-allowlist Vega-Lite
+"""Render-builder tests: the canonical JSON serializer + the positive-allowlist Vega-Lite
 builder, fully unit-testable (no native dep).
 
 The serializer pins each cell kind to its token (Decimal -> raw fixed-point number, -0 folded;
@@ -15,7 +15,7 @@ pins every title branch (count-exempt, label present/absent, numeric+unit / nume
 non-numeric). An allowlist scan over all three specs proves only the generated safe key set is
 emitted and no dangerous data/JS/URL key appears.
 
-M1.6b adds the vl-convert SVG layer and the totality hardening. _scaled_cell now routes EVERY
+The vl-convert SVG layer adds totality hardening. _scaled_cell now routes EVERY
 (column, cell) pair through canon._cell_token, so the parity tests assert render's inlined token
 equals the hash token on every valid pair, raises the SAME type on every canon-rejected pair, and
 rejects a width-mismatched row exactly as the hash does; build_vega_lite additionally rejects
@@ -29,17 +29,17 @@ sort:null/order:null leave no sort key anywhere, while a naive variant (nulling 
 reintroduces the line-vertex sort; removing the explicit discrete domain too reintroduces the
 legend-domain sort.
 
-M5.1c makes orchestration evidence-driven: preparation binds spec/evidence, gates render rows,
+Orchestration is evidence-driven: preparation binds spec/evidence, gates render rows,
 and serializes one authoritative Vega artifact; prepared rendering gates VCert/SVG/HTML UTF-8
 bytes. Mutation/deletion, single-read/single-serialization, exact-boundary, and native-tripwire
 witnesses pin each expensive seam while the ordinary artifact bytes remain unchanged.
 
-M5.2d makes preparation final-verification work: one exact builder object supplies serialized Vega
+Preparation is final-verification work: one exact builder object supplies serialized Vega
 bytes + typed SMT facts, and only a passing merged report yields a native-renderable artifact.
 Direct/service/proposer mutation witnesses corrupt row order/domain/zero and prove fail-closed
 blocking before native Vega.
 
-M5.2e upgrades VCert to method-bearing v0.2, binds the exact Vega bytes + verifier/Z3 versions,
+VCert v0.2 is method-bearing and binds the exact Vega bytes + verifier/Z3 versions,
 and propagates the fifth hash through badge/service/OpenAPI surfaces.
 """
 
@@ -219,7 +219,7 @@ def test_scaled_cell_rejects_non_finite() -> None:
 
 # --- totality hardening: render's token == canon's hash token, reject-parity on mismatches -----
 # A type-mismatched cell (a Decimal in a string column) once slipped through _scaled_cell and was
-# serialized as a number where canon._cell_token RAISES (codex-review r2). The builder must match
+# serialized as a number where canon._cell_token RAISES. The builder must match
 # the hash CELL-FOR-CELL: same token on every valid pair, same raise on every rejected pair. It is
 # additionally STRICTER -- it also rejects duplicate column names (tested below).
 _VALID_PAIRS: list[tuple[canon.Column, canon.Cell]] = [
@@ -412,7 +412,7 @@ def test_non_discrete_color_has_no_domain_obligation() -> None:
 
 def test_line_mark_order_null() -> None:
     # order:null is a MARK property -- a line spec with encoding.order:null FAILS the real v5
-    # schema (the order channel admits no null). Full schema validity is M1.6b's vl-convert compile.
+    # schema (the order channel admits no null). Full schema validity is the vl-convert compile.
     built = _built(_G07)
     assert built["mark"] == {"type": "line", "order": None}
     assert "order" not in built["encoding"]  # type: ignore[operator]  # moved to the mark
@@ -493,7 +493,7 @@ def test_axis_title_branches(field: str, aggregates: tuple[Aggregate, ...], titl
 
 def test_special_char_label_escaped_end_to_end() -> None:
     # A manifest label with a quote is JSON-escaped in the authoritative string, so no raw quote
-    # breaks the JSON (M1.6a's escaping boundary; XML/HTML escaping for SVG is M1.6b/c).
+    # breaks the JSON (the builder's escaping boundary; XML/HTML escaping belongs to the SVG half).
     spec, _ = _good(_G01)
     manifest = ingest.Manifest(
         dataset="sales.csv",
@@ -580,7 +580,7 @@ def test_vl_version_pin_is_available() -> None:
 @pytest.mark.parametrize("name", _ALL_GOOD)
 def test_render_svg_compiles_and_is_self_contained(name: str) -> None:
     # Every good spec must COMPILE (only vl-convert proves v5-schema validity -- the gap that let
-    # a line encoding.order:null ship past M1.6a's structural gate) and yield a self-contained SVG.
+    # a line encoding.order:null ship past the builder's structural gate) and yield a clean SVG.
     svg = _svg(name)
     assert "<script" not in svg.lower()  # no JavaScript sink
     assert _external_refs(svg) == []  # no external/relative fetch -- only xmlns + inline content
@@ -592,7 +592,7 @@ def test_external_ref_audit_flags_a_leak() -> None:
     # attribute, a CSS url(), and a CSS @import. render_svg's allowed_base_urls=[] blocks a
     # compile-time DATA fetch but does NOT strip an image mark's href, so this proves the AUDIT
     # detects a leak; self-containment rests on the builder precondition, never on render_svg
-    # sanitizing arbitrary input (M1.6c gate's job).
+    # sanitizing arbitrary input (the render gate's job).
     leak = (
         '<svg xmlns="http://www.w3.org/2000/svg">'
         '<image xlink:href="HTTPS://example.com/a.png"/>'
@@ -643,7 +643,7 @@ def test_render_svg_blocks_external_data_url() -> None:
     # allowed_base_urls=[] hard-blocks an external DATA url at compile time -- defense-in-depth
     # behind the builder's positive allowlist (which never emits a data.url in the first place). It
     # does NOT strip an image-mark href -- output-reference auditing rests on the builder
-    # precondition + the M1.6c gate (the leak test exercises an unstripped href).
+    # precondition + the render gate (the leak test exercises an unstripped href).
     external = json.dumps(
         {
             "$schema": render._VEGA_LITE_SCHEMA,
@@ -700,7 +700,7 @@ def test_naive_spec_reintroduces_implicit_ordering() -> None:
     assert any(p.endswith(".domain.sort") for p in paths), paths  # legend-domain sort
 
 
-# --- M1.6c: provenance certificate + render() gate ---------------------------
+# --- provenance certificate + render() gate ---------------------------------
 def _certificate_evidence(
     spec: VPlotSpec,
     table: canon.Table,
@@ -831,7 +831,7 @@ def test_direct_render_formal_gate_blocks_built_row_corruption(
     assert failed == ["sort.canonical_order"]
 
 
-# --- M5.1c: evidence-driven preparation + artifact byte ceilings ------------
+# --- evidence-driven preparation + artifact byte ceilings -------------------
 def test_render_reads_source_and_builds_vega_once(monkeypatch: pytest.MonkeyPatch) -> None:
     read_paths: list[Path] = []
 
@@ -1293,7 +1293,7 @@ def test_badge_html_pluralizes_check_count() -> None:
     assert "3 checks passed" in render.badge_html(_cert_with_checks(3))
 
 
-# --- M1.6d: OPTIONAL offline HTML view (off the cert hash chain) --------------
+# --- OPTIONAL offline HTML view (off the cert hash chain) --------------------
 # External-fetch audit for the HTML page: a src/href attribute valued as an absolute http(s) URL
 # (a network load on page open). The inlined bundle carries none (regression-guarded below) and the
 # template adds none; scoped to http(s):// so an inert data string never false-positives, and to a
@@ -1340,13 +1340,13 @@ def test_render_html_scaffold_is_self_contained() -> None:
 
 
 def test_render_html_self_reports_height_for_iframe_embed() -> None:
-    # An M4 sandboxed-iframe embed has no intrinsic height -> the page must self-report or render
+    # A sandboxed-iframe embed has no intrinsic height -> the page must self-report or render
     # tiny. The trusted-template reporter posts {type:"iframe:height",height} to the parent on load
     # AND on every ResizeObserver tick (async vega render grows the DOM after load). Open WebUI's
-    # listener applies our height VERBATIM (memory "## M4"), so it must be the viewport-INDEPENDENT
-    # content box (getBoundingClientRect), never the frame-viewport-floored scrollHeight -- else a
-    # chart shorter than its frame reports inflated and can never shrink. Fixed self-contained JS,
-    # off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).
+    # listener applies our height VERBATIM (.agent/memory.md), so it must be the viewport-
+    # INDEPENDENT content box (getBoundingClientRect), never the frame-viewport-floored scrollHeight
+    # -- else a chart shorter than its frame reports inflated and can never shrink. Fixed
+    # self-contained JS, off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).
     html_doc = _html(_G01)
     assert render._HEIGHT_REPORTER in html_doc  # the exact trusted-template reporter is embedded
     assert 'type:"iframe:height"' in html_doc  # Open WebUI's own message key (keep verbatim)

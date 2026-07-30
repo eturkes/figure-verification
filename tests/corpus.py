@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Shared Hypothesis row strategies + CSV writer for the property suites (M1 review
-consolidation of the M1.4g / M1.5a duplicates; tests-local like the DuckDB oracle).
+"""Shared Hypothesis row strategies + CSV writer for the property suites (tests-local,
+like the DuckDB oracle).
 
 Every draw is an ingest-valid cell (VPlot_SEMANTICS.md sections 2-3): numeric -> exact
 fixed-point text at the column scale, temporal -> canonical ISO date, string -> any UTF-8
 text; "" -> the section-2 null. codec="utf-8" excludes the one non-encodable input (lone
 surrogates); an embedded comma / quote / CR-LF / NUL is quoted by csv.writer and round-trips
-through ingest's csv.reader(strict=True) (verified end-to-end in the M1.4g suite).
+through ingest's csv.reader(strict=True) (verified end-to-end in the eval property suite).
 """
 
 import csv

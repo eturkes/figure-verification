@@ -190,7 +190,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         assert line in user["content"]
 
-    # The incremental byte-budget builder must preserve the pre-M5 prompt byte-for-byte; even a
+    # The incremental byte-budget builder must preserve the unbudgeted prompt byte-for-byte; even a
     # newline drift changes the deterministic weak-model observation for a fixed backend/config.
     sample = "\n".join((_DATA / "weather.csv").read_text(encoding="utf-8").splitlines()[:6])
     columns = "\n".join(
@@ -750,7 +750,7 @@ def test_propose_spec_absent_dataset_raises_not_found() -> None:
 
 
 def test_propose_spec_traversal_dataset_raises_not_found() -> None:
-    # A name escaping data_dir (M3.3's DatasetName would already block it; this is the
+    # A name escaping data_dir (DatasetName would already block it; this is the
     # defense-in-depth confinement branch): resolves outside the root -> not found.
     with pytest.raises(DatasetNotFoundError):
         asyncio.run(propose_spec("req", "../weather.csv", _settings()))
@@ -760,7 +760,7 @@ def test_propose_spec_directory_name_raises_not_found() -> None:
     # A name resolving to a directory inside data_dir (here the real schemas/ dir) clears
     # confinement but is not a readable file: read_bytes raises IsADirectoryError, mapped to
     # not-found rather than an uncaught 500. The same branch fires for a *.csv-named directory
-    # -- the case M3.3's DatasetName cannot exclude.
+    # -- the case DatasetName cannot exclude.
     with pytest.raises(DatasetNotFoundError):
         asyncio.run(propose_spec("req", "schemas", _settings()))
 

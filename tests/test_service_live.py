@@ -4,7 +4,7 @@
 The in-process TestClient suites (test_service*.py) already pin the full verdict/transport
 matrix; this proves the one thing they cannot — that `python -m verifier.service` really binds
 a socket and serves ASGI through uvicorn from a foreign working directory, the shape a real
-deploy (and M4's Open WebUI tool server) uses. It drives health, verification, render, replay,
+deploy (and the Open WebUI tool server) uses. It drives health, verification, render, replay,
 and regenerated-chart retrieval over that socket.
 
 VERIFIER_DATA_DIR points at the project's real data/ (absolute) so the good spec's sales.csv

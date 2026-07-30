@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M3-review feedback loop for bench's pure logic (no servers, no sockets).
+"""Feedback loop for bench's pure logic (no servers, no sockets).
 
 bench/ is a coverage-excluded runnable harness, not part of the verifier claim — but its
 classifiers decide what the eval REPORTS, and until this module they had no standing tests (the
-M3.4a synthetic-payload exercise was a one-off script, never committed). Locked here:
+synthetic-payload exercise was a one-off script, never committed). Locked here:
 
 - the verdict buckets (verified / schema=decode-layer / semantic / policy) incl. the
   policy-requires-policy-family rule and the empty-failing-set drift arm;
@@ -15,7 +15,7 @@ M3.4a synthetic-payload exercise was a one-off script, never committed). Locked 
 - both corpus identity pins re-derived from the live tree (a corpus edit fails this portable
   gate, not just the next hardware-gated live run);
 - the guarantee runner itself over a MockTransport mini-corpus (per-corpus regression counting
-  and the transport-fault arms — codex-review: a swapped regression_verdict or broken None
+  and the transport-fault arms: a swapped regression_verdict or broken None
   handling must fail HERE, not only on the next live run);
 - the exit-code validity matrix (every single violation flips a valid run to exit 1).
 """
@@ -143,7 +143,7 @@ def test_classify_resource_method_as_policy() -> None:
 
 def test_classify_empty_failing_set_is_semantic() -> None:
     # Contract-precluded drift shape (verified False yet nothing failed): falls to semantic,
-    # never a vacuous policy count (codex-review M3.4a F2).
+    # never a vacuous policy count.
     assert _classify(_verdict(verified=False, layer="verify")) == "semantic"
 
 
@@ -320,7 +320,7 @@ def test_git_provenance_reports_untracked_despite_suppressing_config(
 
 
 def test_corpus_digest_pins_match_tree() -> None:
-    # The __main__ pins must equal a fresh digest of the real M1 goldens: a corpus edit without
+    # The __main__ pins must equal a fresh digest of the real goldens: a corpus edit without
     # a conscious re-pin fails HERE (portable gate), not only on the next live run.
     index = msgspec.json.decode((_EXAMPLES / "index.json").read_bytes(), type=_Index)
     bad = tuple(entry.file for entry in index.bad_specs)
@@ -463,7 +463,7 @@ def _valid_report(**guarantee_overrides: int | str) -> Report:
 
 
 def test_exit_code_valid_run_is_zero() -> None:
-    # The recorded M3.4b shape (a fully-failing weak model) is the EXPECTED success.
+    # The recorded shape (a fully-failing weak model) is the EXPECTED success.
     assert _exit_code(_valid_report()) == 0
 
 

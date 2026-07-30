@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.5d from-empty-state hardening capstone across formal, archive, audit, and replay."""
+"""From-empty-state hardening capstone across formal, archive, audit, and replay."""
 
 import hashlib
 import json

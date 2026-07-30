@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.4d signed occurrence manifests, collision safety, and atomic archive round-trips."""
+"""Signed occurrence manifests, collision safety, and atomic archive round-trips."""
 
 import hashlib
 import sqlite3

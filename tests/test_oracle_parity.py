@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Dual-engine parity: verifier.eval's hand-rolled Decimal pipeline vs the DuckDB oracle must
 produce the byte-identical canonical plotted table. This is the real correctness oracle behind
-the M1.4d-e self-locked goldens -- two engines INDEPENDENT in their computation (DuckDB runs
+the self-locked goldens -- two engines INDEPENDENT in their computation (DuckDB runs
 filter/select/group_by/aggregate/sort itself) that must agree. The shared surface is deliberate
 + minimal: ingestion (verifier.ingest.load_table, so both see the same coerced cells) and mean's
 final division (verifier.eval.mean_at_scale, since SQL division rounds the wrong way) -- so mean
 ROUNDING is not independently cross-checked here (test_eval pins half-even directly); the rest is.
 
-Two layers: test_oracle_matches_eval over the 10 M1.3 goldens, and
+Two layers: test_oracle_matches_eval over the 10 goldens, and
 test_oracle_matches_eval_synthetic over adversarial in-process specs the fixed corpus leaves
 cold -- every comparator + the null three-valued drop, scientific-notation filter literals (a
 positive-exponent DuckDB bind bug, regression), count vs sum, whole-table + all-null aggregates,
@@ -37,7 +37,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 EXAMPLES = ROOT / "examples"
 
-# (good-spec filename, dataset stem) — the 10 M1.3 goldens.
+# (good-spec filename, dataset stem) — the 10 goldens.
 _GOLDENS = [
     ("g01_total_revenue_by_month.json", "sales"),
     ("g02_revenue_by_region.json", "sales"),
@@ -139,7 +139,7 @@ def _spec_manifest(
     manifest_json: bytes, csv: bytes, transform: list[dict[str, Any]]
 ) -> tuple[VPlotSpec, Manifest]:
     """A decoded spec + manifest for a synthetic case. encoding is recompute/evaluate-irrelevant
-    (only M1.6 render reads it), so x/y just name real columns to satisfy the schema gate."""
+    (only render reads it), so x/y just name real columns to satisfy the schema gate."""
     cols = [c["name"] for c in json.loads(manifest_json)["columns"]]
     raw = msgspec.json.encode(
         {

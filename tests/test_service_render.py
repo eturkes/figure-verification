@@ -225,7 +225,7 @@ def test_render_routes_read_each_verification_input_once(
     source, manifest = _copy_sales_dataset(tmp_path)
     raw = (_GOOD_DIR / _SALES_GOOD).read_bytes()
     # Stub the upstream proposal so this counts the proposer route's verification/render leg;
-    # model prompt context has its own reads and is bounded separately in M5.1g.
+    # model prompt context has its own reads and is bounded separately by the model client.
     monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     reads: Counter[Path] = Counter()
 

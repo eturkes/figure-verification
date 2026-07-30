@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.4f operator-only attempt audit, configured trust, and terminal-safe disclosure."""
+"""Operator-only attempt audit, configured trust, and terminal-safe disclosure."""
 
 import base64
 import json

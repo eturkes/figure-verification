@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""DuckDB recompute oracle — an independent second engine for the M1.4d evaluator.
+"""DuckDB recompute oracle — an independent second engine for the evaluator.
 
 Dev/test only (duckdb is a dev dep; a ruff TID251 ban keeps it out of src/). It reproduces a
 VALIDATED spec's plotted table per VPlot_SEMANTICS.md sections 3-6 + 10 with DuckDB SQL, so
-tests/test_oracle_parity can byte-compare it against verifier.eval on the M1.3 goldens — two
+tests/test_oracle_parity can byte-compare it against verifier.eval on the goldens — two
 independent engines that must agree. Independence is in the COMPUTATION: DuckDB runs
 filter / group_by / aggregate / sort itself. Ingestion is SHARED (verifier.ingest.load_table) —
-section 3 + the M1.4b codex-review settle that the oracle feeds ALREADY-COERCED Decimals via a typed
+section 3 settles that the oracle feeds ALREADY-COERCED Decimals via a typed
 INSERT, never DuckDB's string->DECIMAL CAST on raw source text (which silently rounds excess
 precision the verifier rejects, manufacturing false divergences). Only mean borrows
 eval.mean_at_scale, because section 10 mandates the division round identically in Python (SQL avg /
@@ -232,7 +232,7 @@ def _run(
 ) -> canon.Table:
     source = load_table(csv_bytes, manifest)  # SHARED trusted ingestion -> coerced canon.Table
     schema = list(source.columns)
-    # Seed DuckDB from the COERCED cells (section 3 + M1.4b codex-review: never read_csv's
+    # Seed DuckDB from the COERCED cells (section 3: never read_csv's
     # string->DECIMAL CAST on raw source — it rounds excess precision the verifier rejects).
     col_defs = ", ".join(f"{_q(c.name)} {_duckdb_type(c)}" for c in schema)
     con.execute(f"CREATE TEMP TABLE t0 ({col_defs})")

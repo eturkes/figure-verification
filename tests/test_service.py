@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M2.1 service scaffold tests: Settings env parsing, app factory, /health, runner.
+"""Service scaffold tests: Settings env parsing, app factory, /health, runner.
 
 Uses litestar.testing.TestClient(app=create_app(...)): the app factory owns route
 registration + the body cap, so the client must wrap the built app rather than

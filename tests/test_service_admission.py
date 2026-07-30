@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.1f process-local rate + active-job admission tests.
+"""Process-local rate + active-job admission tests.
 
 Pins exact integer token refill, lock-safe concurrent admission, capacity-without-token-spend,
 permit release on every ownership path, all-POST integration, transport-validation precedence,

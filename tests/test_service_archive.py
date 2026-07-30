@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.4a transactional SQLite archive, typed references, quotas, and corruption gates."""
+"""Transactional SQLite archive, typed references, quotas, and corruption gates."""
 
 import os
 import sqlite3

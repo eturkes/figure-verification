@@ -2,7 +2,7 @@
 """Verifier spine: public reports, bounded trace/evidence, and semantic checks.
 
 verify() exposes only a VerificationReport; verify_run() retains exact internal inputs and
-mints recomputation evidence only after every gate. This suite drives the M1.3 corpus
+mints recomputation evidence only after every gate. This suite drives the golden corpus
 (examples/index.json): decode-layer specs never reach verify; every bad spec fails at its
 indexed gate with no evidence; good specs bind evidence to the exact recomputation. A direct
 matrix test pins
@@ -10,7 +10,7 @@ every VPlot_SEMANTICS.md section 7 channel-type ↔ column-kind pair behaviorall
 coverage cannot reach individual map entries); direct unit_source tests pin every arm of
 the count-exempt position-aware unit lineage (terminating + sound on reused output names). A
 Hypothesis property pins the spine invariant: successful evidence equals eval's recomputation.
-M5 matrices pin incremental input + evaluator-work trace retention across every resource gate.
+Matrices pin incremental input + evaluator-work trace retention across every resource gate.
 """
 
 import json
@@ -43,7 +43,7 @@ _INDEX: dict[str, Any] = json.loads((_EXAMPLES / "index.json").read_text(encodin
 _GOOD: list[dict[str, Any]] = _INDEX["good_specs"]
 _BAD: list[dict[str, Any]] = _INDEX["bad_specs"]
 
-# Encoding/label checks the M1.5c stage catches (b11 axis-type, b12 field-absent, b13 unit).
+# Encoding/label checks the checks stage catches (b11 axis-type, b12 field-absent, b13 unit).
 _ENCODING_CHECKS = frozenset(
     {
         "encoding.fields_exist_in_plotted_table",
@@ -195,7 +195,7 @@ def test_corpus_split_covers_each_layer() -> None:
     assert _BAD_DECODE  # decode-layer specs exist to assert verify is unreached
 
 
-# --- M5.1b resource boundaries + evidence lifecycle -------------------------
+# --- resource boundaries + evidence lifecycle -------------------------------
 @pytest.mark.parametrize(
     "case",
     _RESOURCE_BOUNDARIES,

@@ -2,7 +2,7 @@
 """Feedback loop for the hardware-free model-backend stub.
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
-test_webui_client.py) rather than a 100%-branch gate. They pin the OpenAI /v1 wire shapes the M4.3e
+test_webui_client.py) rather than a 100%-branch gate. They pin the OpenAI /v1 wire shapes the
 smoke depends on (driven in-process through Litestar's TestClient, no socket binds), the unknown-
 field tolerance real OWUI chat traffic needs, and serve's url guard. The stub reuses
 model_backend.models, so shape drift versus the live backend surfaces here without an accelerator.

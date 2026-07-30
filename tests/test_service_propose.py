@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M3.3a POST /propose-spec tests: propose -> verify_and_render end to end, error split.
+"""POST /propose-spec tests: propose -> verify_and_render end to end, error split.
 
 Drives the whole app through TestClient, injecting the model backend by patching
 model_client._build_async_client with an httpx.AsyncClient over a MockTransport (the
@@ -11,7 +11,7 @@ problem+json: an unknown dataset -> 404 (the name never echoed), an over-policy 
 prompt context -> 422 before the backend, an unreachable backend -> 503, an unusable or oversized
 reply -> 502, a malformed request body -> 400, a wrong content-type -> 415, a wrong method -> 405.
 A proposal that decodes but names a DIFFERENT dataset than requested is refused
-502 by the M3.3b dataset-name pin, right after decode — before any verify or render, so even a
+502 by the dataset-name pin, right after decode — before any verify or render, so even a
 broken off-request manifest is a uniform 502, never a 500 or a store — no off-request chart. A
 verified proposal also populates the chart store through the shared render_outcome seam, so GET
 /chart/{plot_id} resolves for a proposed chart just as for verify-and-render.
@@ -199,7 +199,7 @@ def test_propose_failing_check_is_verify_verdict(
 ) -> None:
     # A reply that decodes cleanly but declares a wrong dataset hash fails the binding check ->
     # a 200 layer="verify" verdict, never a chart (a decoded-but-failed outcome, not a decode
-    # failure). The name still matches the requested dataset, so no M3.3b pin is involved.
+    # failure). The name still matches the requested dataset, so no pin is involved.
     spec = json.loads(_spec_text(_SALES_GOOD))
     spec["dataset"]["hash"] = "sha256:" + "0" * 64  # valid shape, wrong value
     reply = json.dumps(spec).encode("utf-8")
@@ -212,7 +212,7 @@ def test_propose_failing_check_is_verify_verdict(
     assert "svg" not in verdict
 
 
-# --- the M3.3b dataset-name pin: an off-request proposal is refused, not verified ---
+# --- the dataset-name pin: an off-request proposal is refused, not verified ---------
 def test_propose_dataset_mismatch_is_502(
     client: TestClient[Litestar], monkeypatch: pytest.MonkeyPatch
 ) -> None:

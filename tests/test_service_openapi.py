@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M2.4 tests: the hand-authored OpenAPI 3.1 document and its /schema/openapi.json route.
+"""Tests for the hand-authored OpenAPI 3.1 document and its /schema/openapi.json route.
 
 The document is assembled from three sources (VPlot defs + introspectable response models +
 hand-derived RenderVerdict), so these tests pin the seams that could silently drift: the
 committed golden byte-for-byte, the version/info surface (servers deliberately omitted), an
-operationId + summary on every op (Open WebUI M4 reads them), the documented operations against
+operationId + summary on every op (Open WebUI reads them), the documented operations against
 the app's live routes,
 every internal pointer resolving to a present component (which also proves the discriminator
 mapping was rebased, not just the $ref values), each component as a valid Draft 2020-12 schema,
@@ -321,7 +321,7 @@ def _validator(schema: dict[str, Any]) -> Draft202012Validator:
 
 
 def test_documented_response_schemas_accept_real_payloads() -> None:
-    # The M1 external-contract lesson: prove the service's REAL encoded structs satisfy the
+    # The external-contract rule: prove the service's REAL encoded structs satisfy the
     # schemas the document advertises, not merely that those schemas are well-formed. It pins
     # anyOf over oneOf (a render payload validates against BOTH RenderVerdict and Verdict, so
     # oneOf would reject it) and guards the overlap the anyOf relies on — the

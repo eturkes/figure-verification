@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Property tests for verifier.eval determinism.
 
-A test-only Hypothesis layer over the already-100%-covered M1.4d evaluator (no new verifier
+A test-only Hypothesis layer over the already-100%-covered evaluator (no new verifier
 code, no oracle -- duckdb is absent here). A FIXED small manifest + two FIXED specs hold the
 spec side constant; Hypothesis generates only the CSV ROWS over it (per column: numeric ->
 exact-at-scale decimal text, date -> canonical ISO, string -> UTF-8 text; "" -> the section-2
@@ -23,7 +23,7 @@ evaluate -> canon.hash_table pipeline:
 Rows go through csv.writer (CR-LF dialect), so an embedded comma / quote / CR-LF / NUL in a
 string field round-trips through ingest's csv.reader(strict=True) without hand-escaping
 (verified end-to-end against load_table). Cell strategies + the writer are the shared
-tests/corpus.py (M1-review consolidation with the M1.5a spine property).
+tests/corpus.py, shared with the checks spine property.
 """
 
 import os

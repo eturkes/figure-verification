@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M2.2 POST /verify-only tests — the golden corpus through the HTTP transport.
+"""POST /verify-only tests — the golden corpus through the HTTP transport.
 
 Mirrors test_examples.py's corpus iteration, but asserts the verdict the running service
 returns rather than the decode outcome alone: 10 good specs verify (200, layer "verify",

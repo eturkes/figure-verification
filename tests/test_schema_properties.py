@@ -191,7 +191,7 @@ def test_arbitrary_json_decode_or_raise(value: object) -> None:
 @given(spec_dict=_valid_spec_dicts())
 def test_valid_spec_decodes_and_reencode_is_a_fixed_point(spec_dict: dict[str, Any]) -> None:
     """A generated schema-valid spec decodes to a VPlotSpec; re-encoding and decoding again
-    yields an equal, equally-hashing value (decode never coerces away information — the M1.4
+    yields an equal, equally-hashing value (decode never coerces away information — the eval
     canonical-hashing precondition)."""
     spec = decode_spec(msgspec.json.encode(spec_dict))
     assert type(spec) is VPlotSpec

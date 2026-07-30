@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Deterministic tests for the VPlot v0.1 schema gate (fuzz lives in M1.2b).
+"""Deterministic tests for the VPlot v0.1 schema gate (fuzz lives in the property suite).
 
 Asserts: a full spec decodes to a typed, total object; every documented error
 layer raises at decode; duplicate keys are rejected; specs are frozen + hashable
@@ -265,7 +265,7 @@ def test_minimal_spec_decodes() -> None:
 
 
 def test_numeric_string_filter_value_decodes() -> None:
-    """A numeric STRING value is syntactically valid; its numeric sense is an M1.4 check."""
+    """A numeric STRING value is syntactically valid; its numeric sense is an eval check."""
     spec = decode_spec(_filter("1.2"))
     t = spec.transform[0]
     assert isinstance(t, Filter)

@@ -181,7 +181,7 @@ def test_format_decimal_total_over_extreme_finite_magnitude() -> None:
     """canon formats any finite Decimal whose needed precision fits decimal.MAX_PREC: an
     astronomical magnitude formats without raising InvalidOperation (the per-value context
     widens the exponent range past the default ~1e6 Emax); past MAX_PREC it raises LOUDLY
-    (the companion test below). Magnitude-bounding the trusted dataset is M1.4b's job."""
+    (the companion test below). Magnitude-bounding the trusted dataset is ingest's job."""
     table = Table(columns=(NumericColumn(name="v", scale=0),), rows=((Decimal("1e1000000"),),))
     rendered = serialize_table(table).splitlines()[1]
     assert rendered.startswith("[1") and rendered.endswith("0]")
@@ -258,7 +258,7 @@ def test_column_kind_discriminator() -> None:
 def test_table_cells_are_byte_faithful() -> None:
     """Cells are hashed byte-faithfully (NO Unicode normalization): a precomposed vs a
     decomposed "cafe" — NFC-equivalent yet byte-different — must serialize and hash APART,
-    locking against a future encoder that normalizes cells (the M1.4d/M1.6 trap)."""
+    locking against a future encoder that normalizes cells (the eval/render trap)."""
     assert unicodedata.normalize("NFC", _CAFE_DECOMPOSED) == _CAFE_COMPOSED  # same NFC class
     assert _CAFE_COMPOSED != _CAFE_DECOMPOSED  # different code points
     composed = Table(columns=(StringColumn(name="s"),), rows=((_CAFE_COMPOSED,),))

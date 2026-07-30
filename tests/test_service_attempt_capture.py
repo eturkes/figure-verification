@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.4e mandatory endpoint capture, restart diagnosis, and fail-closed publication."""
+"""Mandatory endpoint capture, restart diagnosis, and fail-closed publication."""
 
 import json
 from pathlib import Path

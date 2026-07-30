@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.3b persistent signer, secure filesystem boundary, rotation, and trust policy."""
+"""Persistent signer, secure filesystem boundary, rotation, and trust policy."""
 
 import os
 import secrets

@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M1.3 golden corpus checks (decode layer + dataset binding only).
+"""Golden corpus checks (decode layer + dataset binding only).
 
 The corpus lives in examples/ (good_specs/, bad_specs/, index.json) over the synthetic
 data/ CSVs + their trusted manifests (data/schemas/). This suite asserts each spec
 decodes — or fails to — exactly as index.json annotates, that the file set and the
 index agree (no drift), that good specs bind to their source bytes by hash, and that
-the manifests are well-formed for the M1.4 evaluator.
+the manifests are well-formed for the evaluator.
 
-Syntax only. Semantic rejection of the decodes=true bad specs is the job of M1.4 eval /
-M1.5 checks; here we assert they DO decode (their badness is meaning, not shape), so the
+Syntax only. Semantic rejection of the decodes=true bad specs is the job of eval +
+checks; here we assert they DO decode (their badness is meaning, not shape), so the
 layer attribution in index.json stays honest. See VPlot_SEMANTICS.md for the taxonomy.
 """
 
@@ -46,7 +46,7 @@ def _source_hash(name: str) -> str:
     return "sha256:" + hashlib.sha256((_DATA / name).read_bytes()).hexdigest()
 
 
-# --- corpus floor (roadmap M1.3: >=5 good, >=10 bad, 10 intents) -------------
+# --- corpus floor (>=5 good, >=10 bad, 10 intents) ---------------------------
 def test_corpus_meets_floor() -> None:
     assert len(_GOOD) >= 5
     assert len(_BAD) >= 10
@@ -67,7 +67,7 @@ def test_good_spec_decodes_and_binds(entry: dict[str, Any]) -> None:
     spec = decode_spec((_GOOD_DIR / entry["file"]).read_bytes())
     assert isinstance(spec, VPlotSpec)
     # the file's referenced dataset matches the index, and the declared hash is the live
-    # source hash -> M1.5 dataset.hash_matches_source will pass; hashes are reproducible.
+    # source hash -> dataset.hash_matches_source will pass; hashes are reproducible.
     assert spec.dataset.name == entry["dataset"]
     assert spec.dataset.hash == _source_hash(spec.dataset.name)
     assert spec.mark == entry["mark"]
@@ -81,7 +81,7 @@ def test_bad_spec_decode_layer_rejected(entry: dict[str, Any]) -> None:
         decode_spec(raw)
 
 
-# --- bad specs: semantic-layer still decode (badness deferred to M1.4/M1.5) --
+# --- bad specs: semantic-layer still decode (badness deferred to eval/checks) -
 @pytest.mark.parametrize("entry", _BAD_SEMANTIC, ids=_ids(_BAD_SEMANTIC))
 def test_bad_spec_semantic_layer_decodes(entry: dict[str, Any]) -> None:
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
@@ -90,7 +90,7 @@ def test_bad_spec_semantic_layer_decodes(entry: dict[str, Any]) -> None:
 
 def test_hash_mismatch_fixture_is_genuinely_wrong() -> None:
     # The one dataset-binding bad spec must declare a hash that truly differs from source,
-    # else M1.5 would wrongly accept it. (Every other spec declares the live source hash.)
+    # else checks would wrongly accept it. (Every other spec declares the live source hash.)
     [entry] = [b for b in _BAD if b["check"] == "dataset.hash_matches_source"]
     spec = decode_spec((_BAD_DIR / entry["file"]).read_bytes())
     assert spec.dataset.hash != _source_hash(spec.dataset.name)
@@ -162,7 +162,7 @@ def _max_decimals(values: list[str]) -> int:
 @pytest.mark.parametrize("dataset", _INDEX["datasets"], ids=lambda d: d["name"])
 def test_manifest_numeric_scale_matches_data(dataset: dict[str, Any]) -> None:
     # Declared numeric scale == the actual decimal precision in the CSV column, so the manifest
-    # can't silently over/under-state the precision the M1.4 evaluator quantizes to.
+    # can't silently over/under-state the precision the evaluator quantizes to.
     manifest: dict[str, Any] = json.loads((_ROOT / dataset["manifest"]).read_text(encoding="utf-8"))
     with (_DATA / dataset["name"]).open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
@@ -180,7 +180,7 @@ _TEMPORAL_RE = {
 @pytest.mark.parametrize("dataset", _INDEX["datasets"], ids=lambda d: d["name"])
 def test_temporal_columns_are_canonical(dataset: dict[str, Any]) -> None:
     # §2: temporal cells are zero-padded ISO-8601 (date YYYY-MM-DD / datetime ...Thh:mm:ss). Locks
-    # the synthetic data so the M1.4 evaluator's date parsing receives canonical input only.
+    # the synthetic data so the evaluator's date parsing receives canonical input only.
     manifest: dict[str, Any] = json.loads((_ROOT / dataset["manifest"]).read_text(encoding="utf-8"))
     with (_DATA / dataset["name"]).open(encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
@@ -194,7 +194,7 @@ def test_temporal_columns_are_canonical(dataset: dict[str, Any]) -> None:
 
 
 def test_manifests_are_canonical_json() -> None:
-    # hash-stable provenance input (M1.4 hashes the manifest): bytes already equal the
+    # hash-stable provenance input (canon hashes the manifest): bytes already equal the
     # canonical re-serialization, so the committed file is the stable canonical form.
     for p in _SCHEMAS.glob("*.json"):
         loaded: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))

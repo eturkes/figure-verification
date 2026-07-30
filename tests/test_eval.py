@@ -1,17 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Tests for verifier.eval — the deterministic recompute pipeline (M1.4d/e).
+"""Tests for verifier.eval — the deterministic recompute pipeline.
 
-Three layers: (1) the M1.3 eval-bad specs each raise their specific semantic `check`;
-(2) verified anchor goldens (g01/g04/g05) reproduced row-for-row against the sales CSV by
-hand-verified explicit asserts (the M1.4f DuckDB oracle will independently confirm these);
-(3) inline constructed-table fixtures driving every remaining branch (distinctness, group_by
-placement, whole-table + multi-measure aggregates, count/min/max/null semantics, filter
-coercion, and the section 6 closure's null-greatest ordering). M1.4e completes the good-spec
-corpus row-for-row (g02/g03/g06-g10), passes the M1.5-layer specs (b08/b11/b12/b13) through eval
-without error, and anchors determinism: a semantically no-op spec edit leaves the plotted-table
-hash fixed while only the spec hash moves. M5.1i adds exact/cumulative work-admission matrices,
-pre-operation tripwires, cost-sensitive filter/sort/group cases, and the default-budget corpus pin.
-"""
+Three layers: (1) the eval-bad specs each raise their specific semantic `check`; (2) verified anchor
+goldens (g01/g04/g05) reproduced row-for-row against the sales CSV by hand-verified explicit asserts
+(the DuckDB oracle independently confirms these); (3) inline constructed-table fixtures driving
+every remaining branch (distinctness, group_by placement, whole-table + multi-measure aggregates,
+count/min/max/null semantics, filter coercion, and the section 6 closure's null-greatest ordering).
+The good-spec corpus is covered row-for-row (g02/g03/g06-g10), the checks-layer specs
+(b08/b11/b12/b13) pass through eval without error, and anchors determinism: a semantically no-op
+spec edit leaves the plotted-table hash fixed while only the spec hash moves. Exact/cumulative
+work-admission matrices, pre-operation tripwires, cost-sensitive filter/sort/group cases, and the
+default-budget corpus pin."""
 
 import itertools
 import pathlib
@@ -89,7 +88,7 @@ def _work_units(
     return run.work_units
 
 
-# --- M5.1i deterministic evaluator work admission ---------------------------
+# --- deterministic evaluator work admission ---------------------------------
 _WORK_COLUMNS = (
     NumericColumnSpec(name="x", scale=0),
     NumericColumnSpec(name="y", scale=0),
@@ -294,7 +293,7 @@ def test_good_corpus_stays_below_default_work_budget(path: pathlib.Path) -> None
     assert 0 < run.work_units < DEFAULT_LIMITS.max_eval_work_units
 
 
-# --- the M1.3 eval-bad specs each raise their semantic check ------------------
+# --- the eval-bad specs each raise their semantic check ----------------------
 @pytest.mark.parametrize(
     ("filename", "check"),
     [
@@ -687,7 +686,7 @@ def test_filter_drops_null_cells_including_ne() -> None:
 
 def test_filter_huge_exponent_literal_does_not_hang() -> None:
     # A huge-exponent numeric filter literal coerces instantly via the _decimal_at_scale exponent
-    # guard (no ~1e18-digit quantize materialization), locking the M1.4c DoS fix on this path.
+    # guard (no ~1e18-digit quantize materialization), locking the DoS fix on this path.
     table = _evaluate(
         [{"op": "filter", "field": "v", "cmp": "lt", "value": "1e999999999999999999"}],
         (NumericColumnSpec(name="v", scale=0),),
@@ -707,7 +706,7 @@ def test_mean_at_scale_handles_negative_total() -> None:
     assert mean_at_scale(Decimal(-1), 2, 1) == Decimal("-0.5")
 
 
-# --- exact aggregation over the DECIMAL(38) domain (codex-review M1.4d) -------
+# --- exact aggregation over the DECIMAL(38) domain --------------------------
 # 1e28 is a 29-digit summand, one digit past the ambient decimal context (prec 28); a
 # context-bound `sum()` rounds mid-accumulation and so depends on source row order, whereas
 # section 3 mandates exact Sigma. These drive the real CSV -> coerce -> aggregate -> hash path
@@ -746,7 +745,7 @@ def test_aggregation_hash_is_row_permutation_invariant() -> None:
     assert len(hashes) == 1
 
 
-# --- M1.4e: remaining good-spec corpus, row-for-row (the M1.4f oracle will confirm) ------
+# --- remaining good-spec corpus, row-for-row (the DuckDB oracle confirms) ----------------
 def test_g02_revenue_by_region() -> None:
     # group_by region -> sum revenue -> sort total_revenue desc.
     table = _evaluate_example("good_specs", "g02_revenue_by_region.json", "sales")
@@ -846,7 +845,7 @@ def test_g10_temp_vs_precip() -> None:
     )
 
 
-# --- M1.5-layer specs recompute cleanly; their defect is caught later ---------------
+# --- checks-layer specs recompute cleanly; their defect is caught later -----------------
 @pytest.mark.parametrize(
     ("filename", "dataset_stem", "columns", "n_rows"),
     [
@@ -883,7 +882,7 @@ def test_m15_layer_spec_evaluates_without_error(
     filename: str, dataset_stem: str, columns: tuple[canon.Column, ...], n_rows: int
 ) -> None:
     # eval inspects neither dataset.hash nor encoding, so a hash/axis-type/absent-field/missing-
-    # unit defect passes straight through here and is rejected by the M1.5 checks instead. Pinning
+    # unit defect passes straight through here and is rejected by the checks layer instead. Pinning
     # the recomputed columns + row count stops a same-size table drift from passing silently.
     table = _evaluate_example("bad_specs", filename, dataset_stem)
     assert table.columns == columns

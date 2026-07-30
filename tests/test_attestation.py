@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M5.3a DSSE v1.0.2 / Ed25519 profile vectors, adversarial decode, and resource order."""
+"""DSSE v1.0.2 / Ed25519 profile vectors, adversarial decode, and resource order."""
 
 import base64
 from collections.abc import Callable

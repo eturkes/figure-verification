@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M9.1-M9.2 formula corpus checks: decode shape and bounded expression parsing."""
+"""Formula corpus checks: decode shape and bounded expression parsing."""
 
 import json
 from fractions import Fraction
@@ -27,7 +27,7 @@ _BAD_LATER = [entry for entry in _BAD if entry["decodes"]]
 
 # The COMPLETE expected shape per good file: (mark, formula, start, stop, samples,
 # x_scale, y_scale). Pinning only mark+formula let a domain drift silently, and these
-# domains are load-bearing — they are the planned M9.3/M9.4 pass-goldens.
+# domains are load-bearing — they are the evaluation/sampling pass-goldens.
 _EXPECTED_GOOD = {
     "f01_square.json": ("line", "x**2", "-3", "3", 13, 1, 2),
     "f02_linear.json": ("line", "2*x + 1", "0", "10", 11, 0, 0),
@@ -129,7 +129,8 @@ def test_formula_good_spec_decodes_to_its_complete_pinned_shape(entry: dict[str,
 def test_formula_good_spec_schedule_is_exact_and_strictly_increasing(
     entry: dict[str, Any],
 ) -> None:
-    """The property that makes these files usable as M9.3/M9.4 pass-goldens: every declared
+    """The property that makes these files usable as evaluation/sampling pass-goldens: every
+    declared
     endpoint is exactly representable at x_scale, and quantizing the evenly-spaced schedule
     HALF_EVEN keeps it strictly increasing. Computed here from the spec alone — an
     independent oracle, not the (not-yet-written) sampler."""
