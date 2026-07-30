@@ -12,13 +12,13 @@ license = "Apache-2.0 WITH LLVM-exception"
 license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # msgspec (NOT Pydantic): strict, fail-closed decode — float/bool/unknown-key tokens
-# are rejected at decode, so a valid spec is never partial or coerced. See memory Stack.
+# are rejected at decode, so a valid spec is never partial or coerced.
 # vl-convert-python: the deterministic VPlot→Vega-Lite→SVG renderer. Ships py.typed
 # (no mypy override) and is a src dep (no TID251 ban, unlike the dev-only duckdb oracle).
 # litestar + uvicorn: the local HTTP transport wrapping the verifier — msgspec-native
-# serialization, built-in body cap, single-worker 127.0.0.1. Both ship py.typed. See memory Stack.
+# serialization, built-in body cap, single-worker 127.0.0.1. Both ship py.typed.
 # httpx: the async client the model-proposer client POSTs the local backend with. Ships
-# py.typed; today transitive via litestar's TestClient, now declared as a direct runtime dep.
+# py.typed; a direct runtime dep, also reachable transitively through litestar's TestClient.
 # z3-solver: finite concrete obligations behind verifier.formal's typed boundary. Its
 # dynamic API has no PEP-561 marker, so direct imports outside that module are lint-blocked below.
 # cryptography: PyCA's typed Ed25519 implementation; verifier.attestation owns the tiny
@@ -75,10 +75,10 @@ ignore = [
 "src/verifier/formal.py" = ["TID251"]
 
 [tool.ruff.lint.isort]
-# model_backend (the hardware-gated local model server, M3.1b), bench (the failure-eval
-# harness, M3.4a), demo (the hardware-free hardening walkthrough, M5.5e), and webui (the Open
-# WebUI integration harness, M4.3) are repo-root packages, not under src/ — declare them
-# first-party so their imports sort with verifier's.
+# model_backend (hardware-gated local model server), bench (failure-eval harness), demo
+# (hardware-free hardening walkthrough), and webui (Open WebUI integration harness) are
+# repo-root packages, not under src/ — declare them first-party so their imports sort with
+# verifier's.
 known-first-party = ["verifier", "model_backend", "bench", "demo", "webui"]
 
 [tool.ruff.lint.flake8-tidy-imports]
@@ -95,10 +95,8 @@ ban-relative-imports = "all"
 [tool.mypy]
 python_version = "3.13"
 strict = true
-# model_backend = the repo-root hardware-gated local model server; bench = the
-# repo-root failure-eval harness; demo = the repo-root hardening walkthrough;
-# webui = the repo-root Open WebUI integration harness. All type-checked under --strict
-# but shipped separately (coverage-excluded, not in the wheel).
+# The four repo-root packages above type-check under --strict but ship separately
+# (coverage-excluded, absent from the wheel).
 files = ["src", "tests", "model_backend", "bench", "demo", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
