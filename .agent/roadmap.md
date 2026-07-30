@@ -105,9 +105,11 @@ Durable facts (detail: memory M8, `bench/README.md`):
 - Live NPU bench, constrained default vs M3's unconstrained baseline: `verified_render` 0/100 ->
   26/100; reply shape fenced 97->0 and bare_object 2->100; de-fenced/JSON-valid 24->83; buckets
   schema=0.51 / semantic=0.23 / policy=0.00; faults 0. The guarantee is unchanged — 18/18 bad
-  blocked, 10/10 good accepted. The 0->26 delta is CONFOUNDED (the raw baseline predates both the
-  M5.1h generation-path fix and the verifier's own prompt changes), so guidance owns only the fence
-  collapse 97->0, which is attributable by construction.
+  blocked, 10/10 good accepted. The historical 0->26 comparison spans the M5.1h generation-path fix
+  and the M5-M7 verifier evolution, so attribution rests on the M8-review same-commit A/B (only
+  `MODEL_BACKEND_STRUCTURED_OUTPUT` flips): RAW 0/100 -> GUIDED 26/100, `json_validity` 0.01->0.83,
+  fenced 52->0, buckets schema 1.00->0.51 — guidance-attributable end-to-end, with the guarantee
+  identical in both arms.
 - Guidance forces STRUCTURE, never SEMANTICS: a spec can verify and still not answer the request;
   intent alignment stays outside the verifier.
 
