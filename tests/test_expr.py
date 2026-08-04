@@ -1,10 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Deterministic, corpus, resource, and adversarial tests for the expression parser."""
+"""Deterministic, resource, and adversarial tests for the closed expression engine."""
 
 import ast
 import inspect
+import os
+import subprocess
+import sys
+from decimal import Decimal
 from fractions import Fraction
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pytest
 
@@ -16,15 +20,18 @@ from verifier.expr import (
     Abs,
     Binary,
     Expr,
+    ExpressionEvaluationError,
     Neg,
     Number,
     ParsedExpr,
     Pow,
     Variable,
+    eval_expr,
     parse_expr,
     print_expr,
 )
 from verifier.limits import VerificationLimits
+from verifier.work import WorkBudget, WorkBudgetExceededError
 
 _ALLOWED = frozenset({"x", "x_1"})
 _CANONICAL_CASES = [
@@ -522,6 +529,451 @@ def test_allowed_variable_contract_rejects_every_trusted_caller_misuse(
         _parse("x", allowed_vars=allowed_vars, limits=limits)
 
 
+# --- exact interpreter + shared work meter ----------------------------------
+def _evaluate_expression(
+    source: str,
+    binding: dict[str, Decimal | Fraction] | None = None,
+    *,
+    limits: VerificationLimits | None = None,
+) -> tuple[Fraction, int]:
+    active_limits = VerificationLimits() if limits is None else limits
+    budget = WorkBudget(limit=active_limits.max_formula_work_units)
+    value = eval_expr(
+        _parse(source, limits=active_limits).ast, binding or {}, active_limits, budget=budget
+    )
+    return value, budget.consumed
+
+
+@pytest.mark.parametrize(
+    ("source", "binding", "expected", "expected_work"),
+    [
+        ("1", {}, Fraction(1), 1),
+        ("x", {"x": Decimal("1.25")}, Fraction(5, 4), 1),
+        ("-x", {"x": Fraction(5, 4)}, Fraction(-5, 4), 2),
+        ("abs(-x)", {"x": Fraction(5, 4)}, Fraction(5, 4), 3),
+        ("x+2", {"x": Fraction(3)}, Fraction(5), 3),
+        ("x-2", {"x": Fraction(3)}, Fraction(1), 3),
+        ("x*2", {"x": Fraction(3)}, Fraction(6), 3),
+        ("x/2", {"x": Fraction(3)}, Fraction(3, 2), 3),
+        ("2**3", {}, Fraction(8), 5),
+        ("2**-3", {}, Fraction(1, 8), 5),
+        ("0**0", {}, Fraction(1), 2),
+        ("1**64", {}, Fraction(1), 66),
+        ("x+x_1", {"x": Fraction(2), "x_1": Fraction(3)}, Fraction(5), 3),
+    ],
+)
+def test_eval_expr_covers_every_node_with_exact_literal_work_counts(
+    source: str,
+    binding: dict[str, Decimal | Fraction],
+    expected: Fraction,
+    expected_work: int,
+) -> None:
+    assert _evaluate_expression(source, binding) == (expected, expected_work)
+
+
+def test_work_budget_admits_boundary_and_refuses_atomically() -> None:
+    budget = WorkBudget(limit=3)
+    budget.charge(0)  # shared dataset accounting legitimately has zero-cost empty stages
+    budget.charge(3)
+    with pytest.raises(WorkBudgetExceededError) as exc_info:
+        budget.charge(1)
+    assert (exc_info.value.limit, exc_info.value.consumed, exc_info.value.required) == (3, 3, 1)
+    assert str(exc_info.value) == "work limit 3: 3 consumed + 1 required"
+    assert budget.consumed == 3
+
+
+def test_work_budget_accepts_neutral_constructor_boundaries() -> None:
+    at_limit = WorkBudget(limit=1, consumed=1)
+    assert at_limit.consumed == 1
+
+    zero = WorkBudget(limit=0)
+    assert zero.consumed == 0
+    with pytest.raises(WorkBudgetExceededError) as exc_info:
+        zero.charge(1)
+    assert (exc_info.value.limit, exc_info.value.consumed, exc_info.value.required) == (0, 0, 1)
+    assert zero.consumed == 0
+
+
+def test_work_budget_rejects_invalid_trusted_state_and_charges() -> None:
+    for limit in (-1, cast("int", 1.5), cast("int", bool(1))):
+        with pytest.raises(ValueError, match="limit"):
+            WorkBudget(limit=limit)
+    for consumed in (-1, 2, cast("int", 0.5), cast("int", bool(0))):
+        with pytest.raises(ValueError, match="consumption"):
+            WorkBudget(limit=1, consumed=consumed)
+    budget = WorkBudget(limit=1)
+    for required in (-1, cast("int", 0.5), cast("int", bool(1))):
+        with pytest.raises(ValueError, match="required"):
+            budget.charge(required)
+    assert budget.consumed == 0
+
+
+@pytest.mark.parametrize(
+    ("node", "admitted", "refused", "operation"),
+    [
+        (
+            Number(value=Fraction(1)),
+            (1, Fraction(1), (Fraction(1),)),
+            (1, 1, ()),
+            "number",
+        ),
+        (
+            Neg(operand=Number(value=Fraction(1))),
+            (2, Fraction(-1), (Fraction(1), Fraction(-1))),
+            (1, 0, (Fraction(1),)),
+            "negation",
+        ),
+        (
+            Abs(operand=Number(value=Fraction(1))),
+            (2, Fraction(1), (Fraction(1), Fraction(1))),
+            (1, 0, (Fraction(1),)),
+            "absolute value",
+        ),
+    ],
+)
+def test_node_charge_precedes_its_intermediate_admission(
+    node: Expr,
+    admitted: tuple[int, Fraction, tuple[Fraction, ...]],
+    refused: tuple[int, int, tuple[Fraction, ...]],
+    operation: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admitted_limit, expected, admitted_checks = admitted
+    refused_limit, refused_consumed, refused_checks = refused
+    original_bounded_fraction = expr_module._bounded_fraction
+    checked: list[Fraction] = []
+
+    def _observe(
+        value: Fraction,
+        limits: VerificationLimits,
+        budget: WorkBudget,
+    ) -> Fraction:
+        checked.append(value)
+        return original_bounded_fraction(value, limits, budget)
+
+    monkeypatch.setattr(expr_module, "_bounded_fraction", _observe)
+
+    admitted_limits = VerificationLimits(max_formula_work_units=admitted_limit)
+    admitted_budget = WorkBudget(limit=admitted_limit)
+    assert eval_expr(node, {}, admitted_limits, budget=admitted_budget) == expected
+    assert admitted_budget.consumed == admitted_limit
+    assert tuple(checked) == admitted_checks
+
+    checked.clear()
+    refused_limits = VerificationLimits(max_formula_work_units=refused_limit)
+    refused_budget = WorkBudget(limit=refused_limit, consumed=refused_consumed)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(node, {}, refused_limits, budget=refused_budget)
+    assert exc_info.value.check == "resource.formula_work"
+    assert str(exc_info.value) == (
+        f"formula work limit {refused_limit} would be exceeded before {operation}: "
+        f"{refused_limit} consumed + 1 required"
+    )
+    assert exc_info.value.work_units == refused_limit
+    assert refused_budget.consumed == refused_limit
+    assert tuple(checked) == refused_checks
+
+
+def test_expression_work_refusal_precedes_the_guarded_binary_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started = False
+
+    def _bomb(*_args: object, **_kwargs: object) -> NoReturn:
+        nonlocal started
+        started = True
+        msg = "binary arithmetic started after work refusal"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(expr_module, "_apply_binary", _bomb)
+    limits = VerificationLimits(max_formula_work_units=2)
+    budget = WorkBudget(limit=2)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(_parse("x+1", limits=limits).ast, {"x": Fraction(2)}, limits, budget=budget)
+    assert exc_info.value.check == "resource.formula_work"
+    assert exc_info.value.work_units == 2
+    assert budget.consumed == 2
+    assert started is False
+
+
+@pytest.mark.parametrize(("source", "expected_work"), [("1/0", 3), ("0**-1", 3)])
+def test_undefined_operations_retain_their_admitted_work(source: str, expected_work: int) -> None:
+    limits = VerificationLimits()
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(_parse(source).ast, {}, limits, budget=budget)
+    assert exc_info.value.check == "formula.values_defined"
+    assert exc_info.value.work_units == expected_work
+    assert budget.consumed == expected_work
+
+
+def test_eval_expr_rejects_invalid_trusted_binding_and_budget_contracts() -> None:
+    node = _parse("x").ast
+    limits = VerificationLimits(max_formula_work_units=2)
+
+    missing_budget = WorkBudget(limit=2)
+    with pytest.raises(ValueError, match="missing variable"):
+        eval_expr(node, {}, limits, budget=missing_budget)
+    assert missing_budget.consumed == 1
+
+    for value, error, message in [
+        (Decimal("NaN"), ValueError, "finite"),
+        (cast("Decimal | Fraction", 1), TypeError, "Decimal or Fraction"),
+    ]:
+        budget = WorkBudget(limit=2)
+        with pytest.raises(error, match=message):
+            eval_expr(node, {"x": value}, limits, budget=budget)
+        assert budget.consumed == 1
+
+    mismatched = WorkBudget(limit=1)
+    with pytest.raises(ValueError, match="does not match"):
+        eval_expr(node, {"x": Fraction(1)}, limits, budget=mismatched)
+    assert mismatched.consumed == 0
+
+
+def test_numerator_and_denominator_bit_bounds_hold_at_the_joint_corner() -> None:
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    assert _evaluate_expression("x", {"x": Fraction(15, 8)}, limits=limits) == (
+        Fraction(15, 8),
+        1,
+    )
+    for value in (Fraction(17, 8), Fraction(15, 16)):
+        budget = WorkBudget(limit=limits.max_formula_work_units)
+        with pytest.raises(ExpressionEvaluationError) as exc_info:
+            eval_expr(_parse("x", limits=limits).ast, {"x": value}, limits, budget=budget)
+        assert exc_info.value.check == "resource.formula_intermediate_bits"
+        assert exc_info.value.work_units == 1
+
+
+def test_each_arithmetic_result_is_checked_at_the_intermediate_boundary() -> None:
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    for source, expected_work in [("15+1", 3), ("(1/8)/2", 5)]:
+        budget = WorkBudget(limit=limits.max_formula_work_units)
+        with pytest.raises(ExpressionEvaluationError) as exc_info:
+            eval_expr(_parse(source, limits=limits).ast, {}, limits, budget=budget)
+        assert exc_info.value.check == "resource.formula_intermediate_bits"
+        assert exc_info.value.work_units == expected_work
+
+
+def test_number_intermediate_admission_precedes_cancellation() -> None:
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    admitted = Binary(
+        op="sub",
+        left=Number(value=Fraction(15)),
+        right=Number(value=Fraction(15)),
+    )
+    admitted_budget = WorkBudget(limit=limits.max_formula_work_units)
+    assert eval_expr(admitted, {}, limits, budget=admitted_budget) == 0
+    assert admitted_budget.consumed == 3
+
+    rejected = Binary(
+        op="sub",
+        left=Number(value=Fraction(16)),
+        right=Number(value=Fraction(15)),
+    )
+    rejected_budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(rejected, {}, limits, budget=rejected_budget)
+    assert exc_info.value.check == "resource.formula_intermediate_bits"
+    assert str(exc_info.value) == "formula intermediate needs 5 bits; limit is 4"
+    assert exc_info.value.work_units == 1
+    assert rejected_budget.consumed == 1
+
+
+def test_transient_intermediate_is_rejected_before_later_cancellation() -> None:
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    assert _evaluate_expression("(14+1)-15", limits=limits) == (Fraction(0), 5)
+
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(_parse("(15+1)-15", limits=limits).ast, {}, limits, budget=budget)
+    assert exc_info.value.check == "resource.formula_intermediate_bits"
+    assert str(exc_info.value) == "formula intermediate needs 5 bits; limit is 4"
+    assert exc_info.value.work_units == 3
+    assert budget.consumed == 3
+
+
+def test_binary_evaluation_reports_the_left_failure_before_the_right_failure() -> None:
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    right = Pow(base=Number(value=Fraction(0)), exponent=-1)
+
+    right_budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as right_exc:
+        eval_expr(right, {}, limits, budget=right_budget)
+    assert right_exc.value.check == "formula.values_defined"
+    assert str(right_exc.value) == "formula value is undefined: zero to a negative power"
+    assert right_exc.value.work_units == 3
+    assert right_budget.consumed == 3
+
+    joint = Binary(
+        op="add",
+        left=Number(value=Fraction(16)),
+        right=right,
+    )
+    joint_budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as joint_exc:
+        eval_expr(joint, {}, limits, budget=joint_budget)
+    assert joint_exc.value.check == "resource.formula_intermediate_bits"
+    assert str(joint_exc.value) == "formula intermediate needs 5 bits; limit is 4"
+    assert joint_exc.value.work_units == 1
+    assert joint_budget.consumed == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "expected", "expected_work"),
+    [("2**3", Fraction(8), 5), ("2**-3", Fraction(1, 8), 5)],
+)
+def test_power_admits_positive_and_reciprocal_joint_bit_boundaries(
+    source: str, expected: Fraction, expected_work: int
+) -> None:
+    assert _evaluate_expression(
+        source,
+        limits=VerificationLimits(max_formula_intermediate_bits=4),
+    ) == (expected, expected_work)
+
+
+def test_power_node_has_its_own_intermediate_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_bounded_fraction = expr_module._bounded_fraction
+    checked: list[Fraction] = []
+
+    def _observe(
+        value: Fraction,
+        limits: VerificationLimits,
+        budget: WorkBudget,
+    ) -> Fraction:
+        checked.append(value)
+        return original_bounded_fraction(value, limits, budget)
+
+    monkeypatch.setattr(expr_module, "_bounded_fraction", _observe)
+    limits = VerificationLimits(
+        max_formula_work_units=3,
+        max_formula_intermediate_bits=2,
+    )
+    budget = WorkBudget(limit=3)
+    node = Pow(base=Number(value=Fraction(2)), exponent=1)
+    assert eval_expr(node, {}, limits, budget=budget) == 2
+    assert budget.consumed == 3
+    assert checked == [Fraction(2), Fraction(2)]
+
+
+@pytest.mark.parametrize(
+    ("legal", "over", "bits"),
+    [
+        (("2**1", Fraction(2), 3), ("2**2", 4), 2),
+        (("2**-1", Fraction(1, 2), 3), ("2**-2", 4), 2),
+        (("11**2", Fraction(121), 4), ("12**2", 4), 7),
+        (("11**-2", Fraction(1, 121), 4), ("12**-2", 4), 7),
+    ],
+)
+def test_power_preflight_admits_quotient_equality_and_rejects_its_neighbor(
+    legal: tuple[str, Fraction, int],
+    over: tuple[str, int],
+    bits: int,
+) -> None:
+    source, expected, expected_work = legal
+    over_source, over_work = over
+    limits = VerificationLimits(max_formula_intermediate_bits=bits)
+    assert _evaluate_expression(source, limits=limits) == (expected, expected_work)
+
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(_parse(over_source, limits=limits).ast, {}, limits, budget=budget)
+    assert exc_info.value.check == "resource.formula_intermediate_bits"
+    assert str(exc_info.value) == f"formula power cannot fit intermediate bit limit {bits}"
+    assert exc_info.value.work_units == over_work
+    assert budget.consumed == over_work
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_work"),
+    [("2**4", 6), ("2**-4", 6), ("3**3", 5)],
+)
+def test_power_growth_is_refused_before_exact_power_allocation(
+    source: str,
+    expected_work: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _bomb(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "oversized exact power was allocated"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(expr_module, "_pow_exact", _bomb)
+    limits = VerificationLimits(max_formula_intermediate_bits=4)
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(_parse(source, limits=limits).ast, {}, limits, budget=budget)
+    assert exc_info.value.check == "resource.formula_intermediate_bits"
+    assert exc_info.value.work_units == expected_work
+
+
+def test_power_preflight_has_no_exact_allocation_before_the_single_power_site() -> None:
+    tree = ast.parse(inspect.getsource(expr_module))
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    power_sites = {
+        name: [
+            node
+            for node in ast.walk(function)
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow)
+        ]
+        for name, function in functions.items()
+    }
+    assert power_sites["_component_power_fits"] == []
+    assert {name for name, sites in power_sites.items() if sites} == {"_pow_exact"}
+    assert len(power_sites["_pow_exact"]) == 1
+
+
+_LOW_INT_STRING_LIMIT_PROGRAM = """
+from fractions import Fraction
+
+from verifier.expr import eval_expr, parse_expr
+from verifier.limits import VerificationLimits
+from verifier.work import WorkBudget
+
+limits = VerificationLimits(
+    max_formula_exponent=4095,
+    max_formula_intermediate_bits=4096,
+    max_formula_work_units=4097,
+)
+budget = WorkBudget(limit=4097)
+parsed = parse_expr("2**4095", allowed_vars=frozenset({"x"}), limits=limits)
+value = eval_expr(parsed.ast, {}, limits, budget=budget)
+assert value == Fraction(1 << 4095)
+print(value.numerator.bit_length(), value.denominator, budget.consumed)
+"""
+
+
+def test_fraction_bit_admission_ignores_python_integer_string_limit() -> None:
+    result = subprocess.run(  # noqa: S603 — fixed interpreter and literal child program
+        [sys.executable, "-c", _LOW_INT_STRING_LIMIT_PROGRAM],
+        capture_output=True,
+        check=True,
+        env={**os.environ, "PYTHONINTMAXSTRDIGITS": "640"},
+        text=True,
+    )
+    assert result.stdout == "4096 1 4097\n"
+
+
+def test_direct_ast_exponent_policy_fails_before_base_evaluation() -> None:
+    limits = VerificationLimits(max_formula_exponent=2, max_formula_intermediate_bits=1)
+    node = Pow(base=Number(value=Fraction(2)), exponent=3)
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    with pytest.raises(ExpressionEvaluationError) as exc_info:
+        eval_expr(node, {}, limits, budget=budget)
+    assert exc_info.value.check == "formula.exponents_bounded"
+    assert exc_info.value.work_units == 0
+
+
+def test_interpreter_function_dispatch_matches_the_parser_allowlist_exactly() -> None:
+    assert frozenset({"abs"}) == FUNCTION_NAMES
+    assert _evaluate_expression("abs(x)", {"x": Fraction(-2)}) == (Fraction(2), 2)
+    for name in ("sin", "cos", "tan", "exp", "log", "sqrt"):
+        with pytest.raises(VerificationError) as exc_info:
+            _parse(f"{name}(x)")
+        assert exc_info.value.check == "formula.functions_allowed"
+
+
 def test_failure_messages_never_echo_an_unbounded_model_token() -> None:
     source = "z" * 100
     with pytest.raises(VerificationError) as exc_info:
@@ -536,7 +988,7 @@ def test_failure_messages_never_echo_an_unbounded_model_token() -> None:
     assert len(message) < 160
 
 
-def test_module_uses_only_the_closed_parser_dependencies_and_no_execution_surface() -> None:
+def test_module_uses_only_the_closed_engine_dependencies_and_no_execution_surface() -> None:
     tree = ast.parse(inspect.getsource(expr_module))
     imported = {
         alias.name
@@ -548,11 +1000,14 @@ def test_module_uses_only_the_closed_parser_dependencies_and_no_execution_surfac
         node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     )
     assert imported == {
+        "collections.abc",
+        "decimal",
         "fractions",
         "typing",
         "msgspec",
         "verifier.errors",
         "verifier.limits",
+        "verifier.work",
     }
 
     forbidden = {

@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Formula corpus checks: decode shape and bounded expression parsing."""
+"""Formula corpus checks: decode, bounded parsing, and exact canonical evaluation."""
 
 import json
+from decimal import Decimal
 from fractions import Fraction
 from itertools import pairwise
 from pathlib import Path
@@ -10,7 +11,9 @@ from typing import Any
 import msgspec
 import pytest
 
+from verifier import canon
 from verifier.errors import VerificationError
+from verifier.eval import EvaluationError, evaluate_formula_run
 from verifier.expr import parse_expr, print_expr
 from verifier.limits import VerificationLimits
 from verifier.schema import FormulaPlotSpec, decode_formula_spec
@@ -78,12 +81,32 @@ _EXPECTED_GOOD_AST = {
     "f05_absolute_value.json": "(abs x)",
     "f06_quadratic.json": "(sub (add (neg (pow x 2)) (mul 3 x)) 2)",
 }
+_EXPECTED_EVAL_ANCHORS = {
+    "f01_square.json": (("-3.0", "9.00"), ("0.0", "0.00"), ("3.0", "9.00")),
+    "f02_linear.json": (("0", "1"), ("5", "11"), ("10", "21")),
+    "f03_cubic.json": (("-2.0", "-6.000"), ("0.0", "0.000"), ("2.0", "6.000")),
+    "f04_rational.json": (("-5.0", "0.0385"), ("0.0", "1.0000"), ("5.0", "0.0385")),
+    "f05_absolute_value.json": (("-4.0", "4.0"), ("0.0", "0.0"), ("4.0", "4.0")),
+    "f06_quadratic.json": (("0.0", "-2.00"), ("1.5", "0.25"), ("3.0", "-2.00")),
+}
 _BAD_PARSER = [entry for entry in _BAD_LATER if str(entry["caught_by"]).startswith("parser")]
 _BAD_AFTER_PARSER = [entry for entry in _BAD_LATER if entry not in _BAD_PARSER]
+_BAD_EVALUATOR = [
+    entry
+    for entry in _BAD_AFTER_PARSER
+    if entry["file"]
+    in {"fb17_reversed_domain.json", "fb18_division_by_zero.json", "fb20_sample_collision.json"}
+]
 
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
     return [Path(entry["file"]).stem for entry in entries]
+
+
+def _assert_decimal_raw(value: Decimal, expected: str) -> None:
+    target = Decimal(expected)
+    assert value.as_tuple() == target.as_tuple()
+    assert value.is_signed() is target.is_signed()
 
 
 def test_formula_corpus_meets_floor_and_inventory() -> None:
@@ -133,7 +156,7 @@ def test_formula_good_spec_schedule_is_exact_and_strictly_increasing(
     declared
     endpoint is exactly representable at x_scale, and quantizing the evenly-spaced schedule
     HALF_EVEN keeps it strictly increasing. Computed here from the spec alone — an
-    independent oracle, not the (not-yet-written) sampler."""
+    independent oracle, not the production sampler."""
     spec = decode_formula_spec((_GOOD_DIR / entry["file"]).read_bytes())
     domain = spec.domain
     quantum = Fraction(1, 10**domain.x_scale)
@@ -183,6 +206,33 @@ def test_formula_good_spec_parses_to_pinned_canonical_ast(entry: dict[str, Any])
     assert print_expr(parsed.ast) == _EXPECTED_GOOD_AST[entry["file"]]
 
 
+@pytest.mark.parametrize("entry", _GOOD, ids=_ids(_GOOD))
+def test_formula_good_spec_evaluates_to_its_canonical_table(entry: dict[str, Any]) -> None:
+    spec = decode_formula_spec((_GOOD_DIR / entry["file"]).read_bytes())
+    run = evaluate_formula_run(spec)
+    domain = spec.domain
+    assert run.table.columns == (
+        canon.NumericColumn(name="x", scale=domain.x_scale),
+        canon.NumericColumn(name="y", scale=domain.y_scale),
+    )
+    assert len(run.table.rows) == domain.samples
+    numeric_rows: list[tuple[Decimal, Decimal]] = []
+    for x_value, y_value in run.table.rows:
+        assert isinstance(x_value, Decimal)
+        assert isinstance(y_value, Decimal)
+        numeric_rows.append((x_value, y_value))
+    assert all(left[0] < right[0] for left, right in pairwise(numeric_rows))
+    anchors = (numeric_rows[0], numeric_rows[len(numeric_rows) // 2], numeric_rows[-1])
+    for (x_value, y_value), (expected_x, expected_y) in zip(
+        anchors,
+        _EXPECTED_EVAL_ANCHORS[entry["file"]],
+        strict=True,
+    ):
+        _assert_decimal_raw(x_value, expected_x)
+        _assert_decimal_raw(y_value, expected_y)
+    assert run.work_units > 0
+
+
 @pytest.mark.parametrize("entry", _BAD_PARSER, ids=_ids(_BAD_PARSER))
 def test_formula_bad_spec_parser_layer_rejected_by_declared_check(entry: dict[str, Any]) -> None:
     spec = decode_formula_spec((_BAD_DIR / entry["file"]).read_bytes())
@@ -204,3 +254,14 @@ def test_formula_bad_spec_deferred_past_parser_parses_cleanly(entry: dict[str, A
         limits=VerificationLimits(),
     )
     assert print_expr(parsed.ast)
+
+
+@pytest.mark.parametrize("entry", _BAD_EVALUATOR, ids=_ids(_BAD_EVALUATOR))
+def test_formula_bad_spec_evaluator_layer_rejected_by_first_declared_check(
+    entry: dict[str, Any],
+) -> None:
+    spec = decode_formula_spec((_BAD_DIR / entry["file"]).read_bytes())
+    with pytest.raises(EvaluationError) as exc_info:
+        evaluate_formula_run(spec)
+    assert exc_info.value.check == entry["check"]
+    assert exc_info.value.work_units >= 0

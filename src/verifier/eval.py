@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Deterministic VPlot evaluator — the trust spine's recompute step.
+"""Deterministic dataset and formula evaluators — the trust spine's recompute step.
 
 Given a validated VPlotSpec, the trusted per-column manifest, and the raw CSV bytes,
 evaluate() applies the spec's transform pipeline to the ingested source table and closes
 with the canonical total sort, returning the plotted canon.Table the renderer later inlines.
-The model proposes ONLY the spec; every plotted value is recomputed here, never model-supplied
-(see roadmap data-flow). This realizes VPlot_SEMANTICS.md sections 3-6 (transform pipeline +
-the section 6 closure); that document is the meaning, this module the implementation.
+Formula evaluation instead resolves exact rational endpoints, quantizes an exact uniform
+schedule HALF_EVEN, validates canonical endpoints and strict x order, interprets the closed AST
+at each canonical x, and quantizes y once into the same canonical table model. The model proposes
+ONLY a spec; every plotted value is recomputed here, never model-supplied.
 
 Decimal-exact throughout (no float, no NaN): numerics stay Decimal at the manifest scale and
 mean rounds ONCE HALF_EVEN via Fraction (no float, no double-round). Spec-semantic violations
@@ -29,18 +30,20 @@ import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 from fractions import Fraction
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
+from verifier.expr import GRAMMAR_VERSION, ParsedExpr, eval_expr, parse_expr, print_expr
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import (
     AggFn,
     Aggregate,
     CmpOp,
     Filter,
+    FormulaPlotSpec,
     GroupBy,
     Measure,
     Select,
@@ -48,6 +51,7 @@ from verifier.schema import (
     Transform,
     VPlotSpec,
 )
+from verifier.work import WorkBudget, WorkBudgetExceededError
 
 # Comparison operators by name (CmpOp closes the set). Each takes Any/Any because a cell is
 # Decimal | str | None; the call sites guard out None and coerce the literal to the column's
@@ -82,26 +86,44 @@ class EvaluationRun:
     work_units: int
 
 
+@dataclass(frozen=True, slots=True)
+class FormulaEvaluationRun:
+    """One resolved exact formula run, retaining parser and provenance inputs."""
+
+    table: canon.Table = dataclass_field(repr=False)
+    parsed: ParsedExpr
+    formula_source: canon.FormulaSource = dataclass_field(repr=False)
+    work_units: int
+
+
 @dataclass(slots=True)
 class _WorkBudget:
-    """One evaluator's cumulative inclusive work ceiling."""
+    """Dataset-error adapter over the shared consumer-neutral meter."""
 
     limit: int
-    consumed: int = 0
+    _meter: WorkBudget = dataclass_field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._meter = WorkBudget(limit=self.limit)
+
+    @property
+    def consumed(self) -> int:
+        return self._meter.consumed
 
     def charge(self, operation: str, required: int) -> None:
-        """Admit ``required`` atomically, or fail before ``operation`` starts."""
-        if required > self.limit - self.consumed:
+        """Admit ``required`` atomically, preserving dataset error bytes on refusal."""
+        try:
+            self._meter.charge(required)
+        except WorkBudgetExceededError as exc:
             msg = (
-                f"evaluator work limit {self.limit} would be exceeded before {operation}: "
-                f"{self.consumed} consumed + {required} required"
+                f"evaluator work limit {exc.limit} would be exceeded before {operation}: "
+                f"{exc.consumed} consumed + {exc.required} required"
             )
             raise EvaluationError(
                 msg,
                 check="resource.eval_work",
-                work_units=self.consumed,
-            )
-        self.consumed += required
+                work_units=exc.consumed,
+            ) from None
 
 
 def _linear_work(table: canon.Table, width: int) -> int:
@@ -150,6 +172,205 @@ def evaluate_run(
             check=exc.check,
             work_units=budget.consumed,
         ) from exc
+
+
+def _raise_formula_error(
+    message: str,
+    *,
+    check: str,
+    budget: WorkBudget,
+) -> NoReturn:
+    raise EvaluationError(message, check=check, work_units=budget.consumed)
+
+
+def _charge_formula(budget: WorkBudget, operation: str) -> None:
+    """Charge one formula-wrapper stage before any guarded exact work begins."""
+    try:
+        budget.charge(1)
+    except WorkBudgetExceededError as exc:
+        msg = (
+            f"formula work limit {exc.limit} would be exceeded before {operation}: "
+            f"{exc.consumed} consumed + {exc.required} required"
+        )
+        raise EvaluationError(
+            msg,
+            check="resource.formula_work",
+            work_units=exc.consumed,
+        ) from None
+
+
+def _formula_fraction_bits(value: Fraction) -> int:
+    return max(abs(value.numerator).bit_length(), value.denominator.bit_length())
+
+
+def _require_formula_fraction(
+    value: Fraction,
+    *,
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    bits = _formula_fraction_bits(value)
+    if bits > limits.max_formula_intermediate_bits:
+        msg = (
+            f"formula intermediate needs {bits} bits; "
+            f"limit is {limits.max_formula_intermediate_bits}"
+        )
+        _raise_formula_error(
+            msg,
+            check="resource.formula_intermediate_bits",
+            budget=budget,
+        )
+    return value
+
+
+def _quantize_fraction(value: Fraction, scale: int) -> Decimal:
+    """Quantize a finite rational HALF_EVEN by exact integer quotient/remainder arithmetic."""
+    scaled_numerator = abs(value.numerator) * 10**scale
+    whole, remainder = divmod(scaled_numerator, value.denominator)
+    twice_remainder = remainder * 2
+    if twice_remainder > value.denominator or (
+        twice_remainder == value.denominator and whole % 2 == 1
+    ):
+        whole += 1
+    scaled = -whole if value.numerator < 0 else whole
+    return _scaled_int_to_decimal(scaled, scale)
+
+
+def _formula_sample_positions(
+    bounds: tuple[Fraction, Fraction],
+    samples: int,
+    x_scale: int,
+    *,
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> tuple[Decimal, ...]:
+    start, stop = bounds
+    span = _require_formula_fraction(stop - start, limits=limits, budget=budget)
+    denominator = samples - 1
+    points: list[Decimal] = []
+    for index in range(samples):
+        _charge_formula(budget, "sample-position construction")
+        ratio = _require_formula_fraction(
+            Fraction(index, denominator),
+            limits=limits,
+            budget=budget,
+        )
+        offset = _require_formula_fraction(ratio * span, limits=limits, budget=budget)
+        position = _require_formula_fraction(start + offset, limits=limits, budget=budget)
+        _charge_formula(budget, "x quantization")
+        canonical = _quantize_fraction(position, x_scale)
+        _require_formula_fraction(Fraction(canonical), limits=limits, budget=budget)
+        points.append(canonical)
+    return tuple(points)
+
+
+def _admit_formula_sample_points(
+    points: tuple[Decimal, ...],
+    start: Fraction,
+    stop: Fraction,
+    *,
+    budget: WorkBudget,
+) -> None:
+    previous: Decimal | None = None
+    last_index = len(points) - 1
+    for index, point in enumerate(points):
+        _charge_formula(budget, "x admission")
+        exact = Fraction(point)
+        if (index == 0 and exact != start) or (index == last_index and exact != stop):
+            msg = "formula domain endpoints must be exactly representable at x_scale"
+            _raise_formula_error(msg, check="formula.domain_bounded", budget=budget)
+        if previous is not None and point <= previous:
+            msg = "formula sample points must be strictly increasing after x quantization"
+            _raise_formula_error(
+                msg,
+                check="formula.sample_points_strictly_increasing",
+                budget=budget,
+            )
+        previous = point
+
+
+def evaluate_formula_run(
+    spec: FormulaPlotSpec,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> FormulaEvaluationRun:
+    """Resolve one formula spec to its exact canonical sampled table and provenance input."""
+    budget = WorkBudget(limit=limits.max_formula_work_units)
+    try:
+        return _evaluate_formula(spec, limits=limits, budget=budget)
+    except EvaluationError:
+        raise
+    except VerificationError as exc:
+        raise EvaluationError(
+            str(exc),
+            check=exc.check,
+            work_units=budget.consumed,
+        ) from exc
+
+
+def _evaluate_formula(
+    spec: FormulaPlotSpec,
+    *,
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> FormulaEvaluationRun:
+    domain = spec.domain
+    start = Fraction(domain.start)
+    stop = Fraction(domain.stop)
+    if start >= stop:
+        msg = f"formula domain start {domain.start!r} must be less than stop {domain.stop!r}"
+        _raise_formula_error(msg, check="formula.domain_ordered", budget=budget)
+    if domain.samples > limits.max_formula_samples:
+        msg = (
+            f"formula sample limit {limits.max_formula_samples} exceeded: "
+            f"{domain.samples} requested"
+        )
+        _raise_formula_error(msg, check="resource.formula_samples", budget=budget)
+    _require_formula_fraction(start, limits=limits, budget=budget)
+    _require_formula_fraction(stop, limits=limits, budget=budget)
+    parsed = parse_expr(spec.formula, allowed_vars=frozenset({"x"}), limits=limits)
+    points = _formula_sample_positions(
+        (start, stop),
+        domain.samples,
+        domain.x_scale,
+        limits=limits,
+        budget=budget,
+    )
+    _admit_formula_sample_points(points, start, stop, budget=budget)
+
+    rows: list[tuple[canon.Cell, ...]] = []
+    for x_value in points:
+        exact_y = eval_expr(parsed.ast, {"x": x_value}, limits, budget=budget)
+        _charge_formula(budget, "y quantization")
+        y_value = _quantize_fraction(exact_y, domain.y_scale)
+        _require_formula_fraction(Fraction(y_value), limits=limits, budget=budget)
+        _charge_formula(budget, "row admission")
+        rows.append((x_value, y_value))
+
+    table = canon.Table(
+        columns=(
+            canon.NumericColumn(name="x", scale=domain.x_scale),
+            canon.NumericColumn(name="y", scale=domain.y_scale),
+        ),
+        rows=tuple(rows),
+    )
+    formula_source = canon.FormulaSource(
+        grammar_version=GRAMMAR_VERSION,
+        numeric_profile=spec.numeric_profile,
+        rounding=ROUND_HALF_EVEN,
+        ast=print_expr(parsed.ast),
+        start=points[0],
+        stop=points[-1],
+        samples=domain.samples,
+        x_scale=domain.x_scale,
+        y_scale=domain.y_scale,
+    )
+    return FormulaEvaluationRun(
+        table=table,
+        parsed=parsed,
+        formula_source=formula_source,
+        work_units=budget.consumed,
+    )
 
 
 def _evaluate(
@@ -398,9 +619,9 @@ def mean_at_scale(total: Decimal, count: int, scale: int) -> Decimal:
 
 
 def _scaled_int_to_decimal(scaled: int, scale: int) -> Decimal:
-    """An integer scaled by 10**scale back to a Decimal with exactly `scale` fractional places."""
+    """An integer scaled by 10**scale to a fixed-scale, context-free canonical Decimal."""
     sign = 1 if scaled < 0 else 0
-    digits = tuple(int(char) for char in str(abs(scaled)))
+    digits = Decimal(abs(scaled)).as_tuple().digits
     return Decimal((sign, digits, -scale))
 
 

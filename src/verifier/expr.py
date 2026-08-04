@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Closed, bounded expression grammar shared by formula and future derive modes.
+"""Closed, bounded expression engine for exact-value consumers.
 
 The grammar is ``sum -> product -> unary -> power -> primary`` with only decimal
 literals, caller-allowlisted variables, ``abs``, ``+ - * /``, and one signed-integer
-``**`` exponent. Formula text is parsed into verifier-owned nodes and later interpreted
-directly; no ``eval``, ``exec``, ``compile``, ``__import__``, Python ``ast``, or sympy
+``**`` exponent. Formula text is parsed into verifier-owned nodes and interpreted exactly
+in this module; no ``eval``, ``exec``, ``compile``, ``__import__``, Python ``ast``, or sympy
 API exists anywhere on that path.
 
 ``print_expr`` is the canonical AST form used by formula provenance. It normalizes exactly
@@ -13,13 +13,18 @@ source whitespace, redundant source grouping, decimal-literal spelling to a lowe
 spelling. It performs no constant folding or other algebraic rewrite. Parse cost is bounded
 by admitted source bytes and tokens/nodes plus the fixed literal-digit ceiling; trusted
 allowlist validation additionally depends on allowlist cardinality. No separate parse work
-meter is needed, so ``max_formula_work_units`` stays the exact evaluator's cumulative budget
-rather than a parser bound. The structured check names raised here become registered check
-IDs once the engine is wired into the verification spine; until then this leaf is called only
-by its tests. The variable allowlist is a caller parameter so a dataset-bound mode can reuse
-the same engine with column names bound instead of formula mode's ``x``.
+meter is needed, so ``max_formula_work_units`` stays the exact evaluator's cumulative budget.
+After structurally bounded parsing and domain/sample preflight, formula work charges 1 before
+each sample-position, x-quantization, x-admission, y-quantization, and row-admission stage; 1
+before each ``Number``, ``Variable``, ``Neg``, ``Abs``, and binary node; and
+``1 + abs(exponent)`` before ``Pow``; an admitted failing operation retains that full charge,
+while a refused atomic charge consumes nothing.
+The variable allowlist is caller-supplied: formula mode binds ``x``; other exact-value
+consumers bind their own names without changing the engine.
 """
 
+from collections.abc import Mapping
+from decimal import Decimal
 from fractions import Fraction
 from typing import Literal, NoReturn, cast
 
@@ -27,18 +32,22 @@ import msgspec
 
 from verifier.errors import VerificationError
 from verifier.limits import VerificationLimits
+from verifier.work import WorkBudget, WorkBudgetExceededError
 
 __all__ = [
     "FUNCTION_NAMES",
     "GRAMMAR_VERSION",
     "Abs",
     "Binary",
+    "ExactValue",
     "Expr",
+    "ExpressionEvaluationError",
     "Neg",
     "Number",
     "ParsedExpr",
     "Pow",
     "Variable",
+    "eval_expr",
     "parse_expr",
     "print_expr",
 ]
@@ -49,6 +58,15 @@ FUNCTION_NAMES: frozenset[str] = frozenset({"abs"})
 
 type Expr = Number | Variable | Neg | Abs | Pow | Binary
 type BinaryOp = Literal["add", "sub", "mul", "div"]
+type ExactValue = Decimal | Fraction
+
+
+class ExpressionEvaluationError(VerificationError):
+    """An interpreter failure carrying work consumed across the shared run budget."""
+
+    def __init__(self, message: str, *, check: str, work_units: int) -> None:
+        super().__init__(message, check=check)
+        self.work_units = work_units
 
 
 class Number(msgspec.Struct, frozen=True, kw_only=True):
@@ -617,6 +635,225 @@ def parse_expr(
     _validate_text_bytes(text, limits)
     tokens = _lex(text, limits)
     return _Parser(tokens, allowed_vars, limits, len(text)).parse()
+
+
+def _raise_expression_error(
+    message: str,
+    *,
+    check: str,
+    budget: WorkBudget,
+) -> NoReturn:
+    raise ExpressionEvaluationError(
+        message,
+        check=check,
+        work_units=budget.consumed,
+    )
+
+
+def _charge_expression(budget: WorkBudget, operation: str, required: int = 1) -> None:
+    """Charge before one AST-node operation, mapping neutral refusal to formula policy."""
+    try:
+        budget.charge(required)
+    except WorkBudgetExceededError as exc:
+        msg = (
+            f"formula work limit {exc.limit} would be exceeded before {operation}: "
+            f"{exc.consumed} consumed + {exc.required} required"
+        )
+        raise ExpressionEvaluationError(
+            msg,
+            check="resource.formula_work",
+            work_units=exc.consumed,
+        ) from None
+
+
+def _fraction_bits(value: Fraction) -> int:
+    """Maximum inclusive bit width of one reduced rational component."""
+    return max(abs(value.numerator).bit_length(), value.denominator.bit_length())
+
+
+def _bounded_fraction(
+    value: Fraction,
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    bits = _fraction_bits(value)
+    if bits > limits.max_formula_intermediate_bits:
+        msg = (
+            f"formula intermediate needs {bits} bits; "
+            f"limit is {limits.max_formula_intermediate_bits}"
+        )
+        _raise_expression_error(
+            msg,
+            check="resource.formula_intermediate_bits",
+            budget=budget,
+        )
+    return value
+
+
+def _binding_fraction(
+    name: str,
+    binding: Mapping[str, ExactValue],
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    try:
+        value = cast("object", binding[name])
+    except KeyError as exc:
+        msg = f"expression binding is missing variable {name!r}"
+        raise ValueError(msg) from exc
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            msg = f"expression binding for {name!r} must be finite"
+            raise ValueError(msg)
+        exact = Fraction(value)
+    elif isinstance(value, Fraction):
+        exact = value
+    else:
+        msg = f"expression binding for {name!r} must be Decimal or Fraction"
+        raise TypeError(msg)
+    return _bounded_fraction(exact, limits, budget)
+
+
+def _component_power_fits(component: int, exponent: int, limit: int) -> bool:
+    """Whether ``abs(component) ** exponent`` fits, without an over-limit product."""
+    magnitude = abs(component)
+    if exponent == 0 or magnitude <= 1:
+        return True
+    cap = (1 << limit) - 1
+    product = 1
+    factor = magnitude
+    remaining = exponent
+    while remaining:
+        if remaining & 1:
+            if product > cap // factor:
+                return False
+            product *= factor
+        remaining >>= 1
+        if remaining:
+            if factor > cap // factor:
+                return False
+            factor *= factor
+    return True
+
+
+def _pow_exact(base: Fraction, exponent: int) -> Fraction:
+    """The allocation point kept separate so tests can pin power preflight ordering."""
+    return base**exponent
+
+
+def _interpret_power(
+    node: Pow,
+    binding: Mapping[str, ExactValue],
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    exponent = node.exponent
+    if abs(exponent) > limits.max_formula_exponent:
+        msg = f"AST exponent magnitude {abs(exponent)} exceeds limit {limits.max_formula_exponent}"
+        _raise_expression_error(msg, check="formula.exponents_bounded", budget=budget)
+    base = _interpret_expr(node.base, binding, limits, budget)
+    _charge_expression(budget, "power", 1 + abs(exponent))
+    if base == 0 and exponent < 0:
+        msg = "formula value is undefined: zero to a negative power"
+        _raise_expression_error(msg, check="formula.values_defined", budget=budget)
+    magnitude = abs(exponent)
+    if not _component_power_fits(
+        base.numerator,
+        magnitude,
+        limits.max_formula_intermediate_bits,
+    ) or not _component_power_fits(
+        base.denominator,
+        magnitude,
+        limits.max_formula_intermediate_bits,
+    ):
+        msg = (
+            "formula power cannot fit intermediate bit limit "
+            f"{limits.max_formula_intermediate_bits}"
+        )
+        _raise_expression_error(
+            msg,
+            check="resource.formula_intermediate_bits",
+            budget=budget,
+        )
+    return _bounded_fraction(_pow_exact(base, exponent), limits, budget)
+
+
+def _apply_binary(
+    op: BinaryOp,
+    left: Fraction,
+    right: Fraction,
+    budget: WorkBudget,
+) -> Fraction:
+    """Apply one already-admitted binary node, retaining its cost on undefined division."""
+    if op == "add":
+        return left + right
+    if op == "sub":
+        return left - right
+    if op == "mul":
+        return left * right
+    if right == 0:
+        msg = "formula value is undefined: division by zero"
+        _raise_expression_error(msg, check="formula.values_defined", budget=budget)
+    return left / right
+
+
+def _interpret_binary(
+    node: Binary,
+    binding: Mapping[str, ExactValue],
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    left = _interpret_expr(node.left, binding, limits, budget)
+    right = _interpret_expr(node.right, binding, limits, budget)
+    _charge_expression(budget, node.op)
+    return _bounded_fraction(_apply_binary(node.op, left, right, budget), limits, budget)
+
+
+def _interpret_expr(
+    node: Expr,
+    binding: Mapping[str, ExactValue],
+    limits: VerificationLimits,
+    budget: WorkBudget,
+) -> Fraction:
+    if isinstance(node, Number):
+        _charge_expression(budget, "number")
+        return _bounded_fraction(node.value, limits, budget)
+    if isinstance(node, Variable):
+        _charge_expression(budget, "variable")
+        return _binding_fraction(node.name, binding, limits, budget)
+    if isinstance(node, Neg):
+        operand = _interpret_expr(node.operand, binding, limits, budget)
+        _charge_expression(budget, "negation")
+        return _bounded_fraction(-operand, limits, budget)
+    if isinstance(node, Abs):
+        operand = _interpret_expr(node.operand, binding, limits, budget)
+        _charge_expression(budget, "absolute value")
+        return _bounded_fraction(abs(operand), limits, budget)
+    if isinstance(node, Pow):
+        return _interpret_power(node, binding, limits, budget)
+    return _interpret_binary(node, binding, limits, budget)
+
+
+def eval_expr(
+    node: Expr,
+    binding: Mapping[str, ExactValue],
+    limits: VerificationLimits,
+    *,
+    budget: WorkBudget | None = None,
+) -> Fraction:
+    """Interpret one parser-owned AST exactly under an exact variable binding.
+
+    Omitting ``budget`` creates one-call accounting. Repeated consumers pass one shared meter,
+    making ``max_formula_work_units`` cumulative across repeated bindings.
+    """
+    active_budget = WorkBudget(limit=limits.max_formula_work_units) if budget is None else budget
+    if active_budget.limit != limits.max_formula_work_units:
+        msg = (
+            f"work budget limit {active_budget.limit} does not match "
+            f"max_formula_work_units {limits.max_formula_work_units}"
+        )
+        raise ValueError(msg)
+    return _interpret_expr(node, binding, limits, active_budget)
 
 
 def print_expr(node: Expr) -> str:
