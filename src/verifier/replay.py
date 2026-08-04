@@ -1001,7 +1001,7 @@ def _recompute_authenticated(
             "archived inputs no longer pass current core verification",
             trusted_keyid=authenticated.trusted_keyid,
         )
-    evidence = cast("checks.DatasetEvidence", run.evidence)
+    evidence = run.require_evidence()
 
     try:
         preparation = render.prepare_render(authenticated.spec, evidence, limits=limits)

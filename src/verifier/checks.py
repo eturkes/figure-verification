@@ -1,34 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Verification spine — recompute plotted data, retain bounded evidence, emit a verdict.
+"""Dataset and formula verification spines with bounded traces and gated evidence.
 
-The untrusted model proposes only a VPlotSpec. ``verify_run`` admits the exact trusted
-manifest bytes, bounded-reads the bound CSV under ``data_dir``, recomputes every plotted
-value from the declared transforms (verifier.eval), and returns three deliberately split
-views: a public results-only ``VerificationReport``; an internal ``VerificationTrace`` of
-successfully admitted raw inputs; and ``DatasetEvidence`` only after every check passes.
-``verify`` is the public core-report projection. This is the recomputation/evidence gate; final
-verification additionally checks the exact builder artifact before rendering. Meaning lives in
-VPlot_SEMANTICS.md.
+Dataset mode admits exact trusted manifest/CSV bytes, recomputes every plotted value from a
+``VPlotSpec``, and mints ``DatasetEvidence`` only after binding, evaluator, resource, and
+encoding checks pass. Its spec is pure data: the closed transform union carries no expression,
+script, or URL field.
 
-Check provenance — four deliberately distinct classes:
-- ACTIVE: computed here, one pass-or-fail result each — dataset.hash_matches_source (binding)
-  plus the encoding/label stage (fields exist, axis types match, quantitative units present).
-- SURFACED: any VerificationError from manifest admission/evaluate plus the plotted-cell
-  ceiling is wrapped as a fail under its own .check name. Check-agnostic: no eval-pass is
-  enumerated here.
-- AFFIRMED: true by construction (the trust argument), emitted as constant passes —
-  security.no_arbitrary_code, transform.ops_allowed, transform.filters_declared,
-  transform.aggregates_match_recomputation.
-- DOWNSTREAM FORMAL: the pre-render orchestrator checks canonical row order, quantitative-bar
-  zero baselines, and explicit discrete legend domains over this module's passing evidence + the
-  exact builder artifact; those SMT results are intentionally not fabricated here.
+Formula mode accepts a separate ``FormulaPlotSpec``. The formula string is parsed into the
+verifier-owned closed AST, interpreted exactly, and never executed as Python. It retains only
+cumulative evaluator work on failure; successful core verification binds the resolved canonical
+formula source, sampled table, hashes, and results into ``FormulaEvidence``. Formula preparation
+and SMT orchestration live in ``formula_prepare`` to keep this module independent of ``formal``.
 
-Control flow (short-circuit gates): manifest byte/shape policy -> pairing precondition
-(caller bug -> ValueError) -> affirmations -> dataset-binding/read gate -> eval gate ->
-plotted-cell gate -> encoding/label stage. Every failure returns immediately with no
-evidence; a successfully admitted input remains in the trace even when a later hash or
-semantic gate fails. Hashes and recomputed data cross the renderer boundary only through
-``DatasetEvidence``.
+Both modes expose results-only ``VerificationReport`` objects, keep internal lifecycle state in
+concrete run types, short-circuit before evidence on every failure, and use the exact method
+registry for every emitted check. Final artifact verification remains downstream. Meaning and
+claim boundaries live in ``VPlot_SEMANTICS.md`` and ``POC_SCOPE.md``.
 """
 
 from dataclasses import dataclass, field, replace
@@ -37,9 +24,9 @@ from typing import Literal, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
-from verifier.eval import EvaluationError, evaluate_run
+from verifier.eval import EvaluationError, evaluate_formula_run, evaluate_run
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
-from verifier.schema import Aggregate, ChannelType, VPlotSpec, _Base
+from verifier.schema import Aggregate, ChannelType, FormulaPlotSpec, VPlotSpec, _Base
 
 # --- structured verdict ------------------------------------------------------
 CheckMethod = Literal[
@@ -108,6 +95,8 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "formula.domain_bounded": "deterministic_recompute",
     "formula.sample_points_strictly_increasing": "deterministic_recompute",
     "formula.values_defined": "deterministic_recompute",
+    "formula.values_bounded": "deterministic_recompute",
+    "formula.hash_matches_source": "deterministic_recompute",
     "data.charset": "deterministic_recompute",
     "data.csv_syntax": "deterministic_recompute",
     "data.header": "deterministic_recompute",
@@ -128,6 +117,8 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "label.quantitative_units_present": "deterministic_recompute",
     # Constant trust-spine affirmations whose truth follows from the architecture.
     "security.no_arbitrary_code": "construction",
+    "formula.points_from_recomputation": "construction",
+    "formula.rounding_unambiguous": "construction",
     "transform.ops_allowed": "construction",
     "transform.filters_declared": "construction",
     "transform.aggregates_match_recomputation": "construction",
@@ -186,6 +177,13 @@ class VerificationTrace:
 
 
 @dataclass(frozen=True, slots=True)
+class FormulaVerificationTrace:
+    """Formula evaluator work retained without dataset-only byte fields."""
+
+    formula_work_units: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class DatasetEvidence:
     """A check-passed recomputation eligible for later builder/formal gates.
 
@@ -232,11 +230,34 @@ type Evidence = DatasetEvidence | FormulaEvidence
 
 @dataclass(frozen=True, slots=True)
 class VerificationRun:
-    """Internal verification result: public report + incremental trace + optional evidence."""
+    """Dataset verification result with lifecycle-checked concrete evidence."""
 
     report: VerificationReport
     trace: VerificationTrace
     evidence: DatasetEvidence | None = field(repr=False)
+
+    def require_evidence(self) -> DatasetEvidence:
+        """Return passing dataset evidence or reject a failed-run lifecycle access."""
+        if self.evidence is None:
+            message = "dataset verification run has no evidence"
+            raise ValueError(message)
+        return self.evidence
+
+
+@dataclass(frozen=True, slots=True)
+class FormulaVerificationRun:
+    """Formula verification result with work-only trace and concrete evidence."""
+
+    report: VerificationReport
+    trace: FormulaVerificationTrace
+    evidence: FormulaEvidence | None = field(repr=False)
+
+    def require_evidence(self) -> FormulaEvidence:
+        """Return passing formula evidence or reject a failed-run lifecycle access."""
+        if self.evidence is None:
+            message = "formula verification run has no evidence"
+            raise ValueError(message)
+        return self.evidence
 
 
 def _pass(check: str, message: str) -> CheckResult:
@@ -271,6 +292,43 @@ def _affirmations() -> list[CheckResult]:
             "transform.aggregates_match_recomputation",
             "the model proposes no values; verify recomputes the table into internal evidence, "
             "so no model aggregate exists to diverge — the renderer must inline this evidence",
+        ),
+    ]
+
+
+def _formula_affirmations() -> list[CheckResult]:
+    """Formula-only construction claim; formula specs have no transform affirmations."""
+    return [
+        _pass(
+            "security.no_arbitrary_code",
+            "formula text can reach evaluation only through the closed verifier-owned AST "
+            "interpreter; this path never executes it as Python",
+        )
+    ]
+
+
+def _formula_success_checks() -> list[CheckResult]:
+    """Disclose postconditions and constructions established by one successful evaluator run."""
+    return [
+        _pass(
+            "formula.values_bounded",
+            "successful evaluator completion disclosed that all admitted sampled and "
+            "intermediate values passed its configured bounds",
+        ),
+        _pass(
+            "formula.hash_matches_source",
+            "the verifier computed the formula hash from this run's exact canonical "
+            "resolved-source bytes",
+        ),
+        _pass(
+            "formula.points_from_recomputation",
+            "the sampled table contains evaluator-produced points; the spec supplies no "
+            "candidate point values",
+        ),
+        _pass(
+            "formula.rounding_unambiguous",
+            "the numeric profile fixes one rounding rule that the verifier applies "
+            "deterministically to x and y quantization",
         ),
     ]
 
@@ -433,11 +491,49 @@ def _encoding_checks(
     return results
 
 
+def _formula_encoding_checks(
+    spec: FormulaPlotSpec, plotted_table: canon.Table
+) -> list[CheckResult]:
+    """Check fixed formula channels against the evaluator-produced table; units are inapplicable."""
+    channels = (spec.encoding.x, spec.encoding.y)
+    columns = {column.name: column for column in plotted_table.columns}
+
+    check = "encoding.fields_exist_in_plotted_table"
+    missing = [channel.field for channel in channels if channel.field not in columns]
+    fields_result = (
+        _fail(check, f"channel field(s) {missing} absent from plotted columns {sorted(columns)}")
+        if missing
+        else _pass(check, "every channel field exists in the plotted table")
+    )
+
+    check = "encoding.axis_types_match_fields"
+    mismatched = [
+        f"{channel.field} ({channel.kind} over {columns[channel.field].kind})"
+        for channel in channels
+        if channel.field in columns
+        and columns[channel.field].kind not in _CHANNEL_COLUMN_COMPAT[channel.kind]
+    ]
+    types_result = (
+        _fail(check, f"channel type does not match the plotted-column kind: {mismatched}")
+        if mismatched
+        else _pass(check, "every present channel field's type matches its plotted-column kind")
+    )
+    return [fields_result, types_result]
+
+
 # --- entry points ------------------------------------------------------------
 def _failed_run(results: list[CheckResult], trace: VerificationTrace) -> VerificationRun:
     """Freeze one short-circuited failure; failed runs never carry recomputed evidence."""
     report = VerificationReport(results=tuple(results))
     return VerificationRun(report=report, trace=trace, evidence=None)
+
+
+def _failed_formula_run(
+    results: list[CheckResult], trace: FormulaVerificationTrace
+) -> FormulaVerificationRun:
+    """Freeze one short-circuited formula failure; failed runs never carry evidence."""
+    report = VerificationReport(results=tuple(results))
+    return FormulaVerificationRun(report=report, trace=trace, evidence=None)
 
 
 def _admit_manifest(
@@ -536,6 +632,55 @@ def verify_run(
 
     source_bytes = cast("bytes", raw)
     return _verify_admitted_source(spec, manifest, manifest_bytes, source_bytes, limits)
+
+
+def verify_formula_run(
+    spec: FormulaPlotSpec,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> FormulaVerificationRun:
+    """Evaluate and core-verify one decoded formula spec without dataset-shaped lifecycle state.
+
+    The evaluator is invoked exactly once. Its structured failure ID, message, method, and
+    cumulative work survive in the report/trace. Successful evaluation is followed by disclosed
+    evaluator/construction checks, the plotted-cell ceiling, and formula encoding checks. Evidence
+    is minted only when the complete report passes.
+    """
+    results = _formula_affirmations()
+    try:
+        evaluated = evaluate_formula_run(spec, limits=limits)
+    except EvaluationError as exc:
+        trace = FormulaVerificationTrace(formula_work_units=exc.work_units)
+        results.append(_fail(exc.check, str(exc)))
+        return _failed_formula_run(results, trace)
+
+    trace = FormulaVerificationTrace(formula_work_units=evaluated.work_units)
+    plotted = evaluated.table
+    formula_source_bytes = canon.formula_source_bytes(evaluated.formula_source)
+    formula_hash = canon.hash_formula_source(formula_source_bytes)
+    results.extend(_formula_success_checks())
+
+    plotted_cells = len(plotted.columns) * len(plotted.rows)
+    if plotted_cells > limits.max_plotted_cells:
+        message = f"plotted table has {plotted_cells} cells; limit is {limits.max_plotted_cells}"
+        results.append(_fail("resource.plotted_cells", message))
+        return _failed_formula_run(results, trace)
+
+    results.extend(_formula_encoding_checks(spec, plotted))
+    report = VerificationReport(results=tuple(results))
+    if not report.passed:
+        return FormulaVerificationRun(report=report, trace=trace, evidence=None)
+
+    evidence = FormulaEvidence(
+        formula_source=evaluated.formula_source,
+        formula_source_bytes=formula_source_bytes,
+        formula_hash=formula_hash,
+        spec_hash=canon.hash_spec(spec),
+        plotted_table=plotted,
+        plotted_table_hash=canon.hash_table(plotted),
+        results=report.results,
+    )
+    return FormulaVerificationRun(report=report, trace=trace, evidence=evidence)
 
 
 def verify_snapshot(

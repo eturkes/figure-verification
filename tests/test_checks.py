@@ -20,6 +20,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError, fields
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, NoReturn, get_args
 
@@ -108,6 +109,8 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "formula.domain_bounded",
             "formula.sample_points_strictly_increasing",
             "formula.values_defined",
+            "formula.values_bounded",
+            "formula.hash_matches_source",
             "data.charset",
             "data.csv_syntax",
             "data.header",
@@ -128,7 +131,13 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "label.quantitative_units_present",
         }
     ),
-    "construction": _AFFIRMATIONS,
+    "construction": _AFFIRMATIONS
+    | frozenset(
+        {
+            "formula.points_from_recomputation",
+            "formula.rounding_unambiguous",
+        }
+    ),
     "z3_smt": frozenset(
         {
             "sort.canonical_order",
@@ -502,6 +511,16 @@ def test_public_verify_serializes_results_only(tmp_path: Path) -> None:
     assert b'"evidence":' not in encoded
     assert b'"source_bytes":' not in encoded
     assert b'"manifest_bytes":' not in encoded
+
+
+def test_dataset_success_report_bytes_are_fixed() -> None:
+    spec = decode_spec((_GOOD_DIR / "g01_total_revenue_by_month.json").read_bytes())
+    report = verify(spec, _manifest_bytes_for(spec.dataset.name), data_dir=_DATA)
+    encoded = msgspec.json.encode(report)
+
+    assert sha256(encoded).hexdigest() == (
+        "29cebc8eb869b0f805a0d6795ef14bd8c7be8ff629985dd361126843b3e10a75"
+    )
 
 
 def test_manifest_byte_failure_stops_before_decode(
@@ -1036,11 +1055,13 @@ def test_check_id_method_matrix_is_exhaustive_and_closed() -> None:
     (
         "formula.future_unclassified",
         "resource.formula_future_unclassified",
-        "formula.hash_matches_source",
-        "formula.points_from_recomputation",
-        "formula.values_bounded",
-        "formula.rounding_unambiguous",
         "formula.points_match_recomputation",
+        "render.float64_fidelity",
+        "render.axes_linear",
+        "render.x_domain_exact",
+        "render.points_match_evidence",
+        "render.matplotlib_script_allowlisted",
+        "resource.matplotlib_script_bytes",
     ),
 )
 def test_formula_registry_rejects_unclassified_lookalikes(check: str) -> None:

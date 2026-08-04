@@ -265,3 +265,58 @@ def test_formula_bad_spec_evaluator_layer_rejected_by_first_declared_check(
         evaluate_formula_run(spec)
     assert exc_info.value.check == entry["check"]
     assert exc_info.value.work_units >= 0
+
+
+def test_formula_corpus_metadata_scopes_construction_and_formal_claims_by_mode() -> None:
+    constructed = _INDEX["enforced_by_construction"]
+    assert set(constructed) == {"dataset", "formula"}
+    assert set(constructed["dataset"]) == {
+        "security.no_arbitrary_code",
+        "transform.ops_allowed",
+        "transform.aggregates_match_recomputation",
+        "transform.filters_declared",
+        "derived_value_mismatch",
+    }
+    assert constructed["formula"] == {
+        "security.no_arbitrary_code": (
+            "formula text can reach evaluation only through the closed verifier-owned AST "
+            "interpreter; this path never executes it as Python"
+        ),
+        "formula.points_from_recomputation": (
+            "the verifier-owned evaluator produces the sampled table; formula specs carry no "
+            "candidate point values"
+        ),
+        "formula.rounding_unambiguous": (
+            "the rational-half-even-v1 profile fixes one HALF_EVEN rule applied "
+            "deterministically to x and y quantization"
+        ),
+    }
+
+    formally_checked = _INDEX["formally_checked"]
+    assert set(formally_checked) == {"dataset", "formula"}
+    assert set(formally_checked["dataset"]) == {
+        "sort.canonical_order",
+        "scale.bar_zero",
+        "encoding.legend_domain_exact",
+    }
+    assert formally_checked["formula"] == {
+        "sort.canonical_order": (
+            "SMT checks exact FormulaEvidence x ranks are nondecreasing in ascending order; "
+            "equality is allowed and evaluator sampling alone establishes strict increase"
+        ),
+        "scale.bar_zero": (
+            "inapplicable: formula mode admits only line/scatter and has no bar baseline"
+        ),
+        "encoding.legend_domain_exact": (
+            "inapplicable: formula mode has no color channel or legend domain"
+        ),
+    }
+
+    readme = (_EXAMPLES / "README.md").read_text(encoding="utf-8")
+    normalized = " ".join(readme.split())
+    assert readme.count("### Dataset mode") == 2
+    assert readme.count("### Formula mode") == 2
+    assert "formula text can reach evaluation through the" in normalized
+    assert "sampled x values are nondecreasing in ascending order" in normalized
+    assert "Equality is not an inversion" in normalized
+    assert "formula mode admits only line/scatter" in normalized

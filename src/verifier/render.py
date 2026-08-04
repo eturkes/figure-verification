@@ -906,9 +906,7 @@ def render(
     verification = checks.verify_run(spec, manifest_bytes, data_dir=data_dir, limits=limits)
     if not verification.report.passed:
         return None
-    # A passing report implies every checks gate passed, so evidence is populated; cast is the
-    # coverage-clean narrowing (an assert's never-taken branch fails the 100% gate).
-    evidence = cast("checks.DatasetEvidence", verification.evidence)
+    evidence = verification.require_evidence()
     preparation = prepare_render(spec, evidence, limits=limits)
     if not preparation.report.passed:
         return None

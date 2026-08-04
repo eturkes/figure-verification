@@ -23,20 +23,38 @@ Enforced by `tests/test_examples.py`.
 - `transform` (×3) → eval. group_by placement (§4), aggregate-`as`/group-key collision (§5), sort-field distinctness (§5).
 
 ## By construction — no bad spec (`index.json.enforced_by_construction`)
-`security.no_arbitrary_code` · `transform.ops_allowed` hold because a spec is data-only (no
-expr/code/url field) and the transform tagged-union admits only {select, filter, group_by,
-aggregate, sort} — an unlisted op or arbitrary-code path is unrepresentable at decode, so both
-emit as constant-pass affirmations.
-`transform.aggregates_match_recomputation` · `transform.filters_declared` are unrepresentable as a
-model spec because
-the verifier recomputes all data from declared transforms. `derived_value_mismatch` is dropped —
-the model emits no plotted values.
+
+### Dataset mode
+
+`security.no_arbitrary_code` · `transform.ops_allowed` hold because a `VPlotSpec` is data-only
+(no expression, code, or URL field) and the transform tagged union admits only {select, filter,
+group_by, aggregate, sort}. `transform.aggregates_match_recomputation` ·
+`transform.filters_declared` hold because the verifier recomputes all plotted data from declared
+transforms; dataset specs carry no plotted values.
+
+### Formula mode
+
+`security.no_arbitrary_code` records the only path: formula text can reach evaluation through the
+closed verifier-owned AST interpreter, which never executes it as Python.
+`formula.points_from_recomputation` records that the evaluator produces the sampled table and the
+spec carries no candidate points. `formula.rounding_unambiguous` records the single fixed
+rational-HALF_EVEN rule applied deterministically to x and y quantization.
 
 ## Pre-render formal checks (`index.json.formally_checked`)
+
+### Dataset mode
+
 `sort.canonical_order` · `scale.bar_zero` · `encoding.legend_domain_exact` consume the exact
-builder artifact and block row-order, bar-baseline, or discrete-domain corruption before native
-Vega. They protect trusted construction behavior; they are not bad model-spec fixtures.
-VCert v0.2 records these and every deterministic pass with the method that established it.
+Vega builder artifact and block row-order, bar-baseline, or discrete-domain corruption before
+native Vega. VCert v0.2 records these and every deterministic dataset pass with its method.
+
+### Formula mode
+
+`sort.canonical_order` consumes exact x ranks from `FormulaEvidence`; UNSAT establishes that sampled
+x values are nondecreasing in ascending order. Equality is not an inversion; evaluator sampling
+alone establishes strict increase. `scale.bar_zero` and `encoding.legend_domain_exact` are
+inapplicable because formula mode admits only line/scatter and has no color channel, bar baseline,
+or legend domain.
 
 ## Data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is

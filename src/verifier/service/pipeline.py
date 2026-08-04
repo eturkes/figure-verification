@@ -182,7 +182,7 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
     # A passing core report owns recomputation evidence. Preparation builds/serializes once, then
     # runs every applicable formal obligation over that exact builder object. Resource refusals at
     # either boundary remain ordinary failed verdicts; invariant/builder faults still escape -> 500.
-    evidence = cast("checks.DatasetEvidence", run.evidence)
+    evidence = run.require_evidence()
     try:
         preparation = render.prepare_render(spec, evidence, limits=settings.limits)
     except VerificationError as exc:
