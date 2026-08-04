@@ -20,7 +20,7 @@ and certificate halves consume -- stdlib json.dumps is never applied to builder 
 cannot serialize the Decimals build_vega_lite keeps in data.values).
 
 The orchestration boundary is deliberately two-stage. ``prepare_render`` consumes a decoded
-spec plus core-check-passed ``RecomputedEvidence`` (never a live data directory), binds the pair,
+spec plus core-check-passed ``DatasetEvidence`` (never a live data directory), binds the pair,
 builds/serializes once, derives formal facts from that exact builder object, and runs the bounded
 SMT gate. Only a complete passing report carries ``PreparedArtifact`` forward. ``render_prepared``
 mints and byte-admits the VCert before native work, renders that exact artifact, and admits the
@@ -219,7 +219,7 @@ class PreparedArtifact:
     """Internal formal-passed build carrying exact Vega-Lite bytes into native rendering."""
 
     spec: VPlotSpec = field(repr=False)
-    evidence: checks.RecomputedEvidence = field(repr=False)
+    evidence: checks.DatasetEvidence = field(repr=False)
     results: tuple[checks.CheckResult, ...] = field(repr=False)
     vega_lite: bytes = field(repr=False)
 
@@ -380,7 +380,7 @@ def admit_html(html_document: str, limits: VerificationLimits = DEFAULT_LIMITS) 
 
 def prepare_render(
     spec: VPlotSpec,
-    evidence: checks.RecomputedEvidence,
+    evidence: checks.DatasetEvidence,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> PreparationRun:
@@ -740,7 +740,7 @@ def _build_certificate(prepared: PreparedArtifact) -> VCert:
     are escaped later by ``badge_html``.
     """
     spec = prepared.spec
-    evidence = prepared.evidence
+    evidence: checks.DatasetEvidence = prepared.evidence
     certified_checks = tuple(
         CertifiedCheck(id=result.check, method=result.method, status="pass")
         for result in prepared.results
@@ -908,7 +908,7 @@ def render(
         return None
     # A passing report implies every checks gate passed, so evidence is populated; cast is the
     # coverage-clean narrowing (an assert's never-taken branch fails the 100% gate).
-    evidence = cast("checks.RecomputedEvidence", verification.evidence)
+    evidence = cast("checks.DatasetEvidence", verification.evidence)
     preparation = prepare_render(spec, evidence, limits=limits)
     if not preparation.report.passed:
         return None

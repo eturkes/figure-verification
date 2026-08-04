@@ -907,7 +907,7 @@ def materialize_plot_bundle(
     """Materialize exact successful-plot bytes from one evidence/render/signing chain.
 
     The function performs no I/O and invents no occurrence metadata. ``PreparedArtifact`` already
-    retains the one exact ``RecomputedEvidence`` that crossed the core + formal gates; this binds
+    retains the one exact ``DatasetEvidence`` that crossed the core + formal gates; this binds
     its raw snapshots and recomputation to the native result and signed certificate. The complete
     method-aware verdict is projected from that final passing result tuple, never accepted as a
     second independently pairable input.
@@ -930,7 +930,7 @@ def materialize_plot_bundle(
         msg = "rendered Vega-Lite bytes differ from the formal-passed prepared artifact"
         raise ValueError(msg)
 
-    evidence = prepared.evidence
+    evidence: checks.DatasetEvidence = prepared.evidence
     verdict = Verdict(verified=True, layer="verify", results=prepared.results)
     bundle = PlotBundle(
         plot_id=hashlib.sha256(envelope).hexdigest(),

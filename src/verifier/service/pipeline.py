@@ -20,7 +20,7 @@ The untrusted model controls only the dataset name, not what the trusted data_di
 that path, so a name with no manifest fails closed as a 200 Verdict.
 
 Outcome is an internal dataclass, never serialized: it carries inputs admitted so far,
-RecomputedEvidence after every core check passes, the bounded formal trace, and a prepared builder
+DatasetEvidence after every core check passes, the bounded formal trace, and a prepared builder
 artifact only after the final merged report passes. Sensitive bytes stay out of its repr and every
 route returns only Outcome.verdict or a separately built RenderVerdict.
 
@@ -78,7 +78,7 @@ class Outcome:
     verdict: Verdict
     spec: VPlotSpec | None = field(default=None, repr=False)
     trace: checks.VerificationTrace = field(default=_EMPTY_TRACE, repr=False)
-    evidence: checks.RecomputedEvidence | None = field(default=None, repr=False)
+    evidence: checks.DatasetEvidence | None = field(default=None, repr=False)
     formal_trace: tuple[formal.FormalTrace, ...] = field(default=(), repr=False)
     prepared: render.PreparedArtifact | None = field(default=None, repr=False)
 
@@ -182,7 +182,7 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
     # A passing core report owns recomputation evidence. Preparation builds/serializes once, then
     # runs every applicable formal obligation over that exact builder object. Resource refusals at
     # either boundary remain ordinary failed verdicts; invariant/builder faults still escape -> 500.
-    evidence = cast("checks.RecomputedEvidence", run.evidence)
+    evidence = cast("checks.DatasetEvidence", run.evidence)
     try:
         preparation = render.prepare_render(spec, evidence, limits=settings.limits)
     except VerificationError as exc:

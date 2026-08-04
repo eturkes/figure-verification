@@ -770,7 +770,7 @@ def test_formal_preparation_failure_is_bounded_diagnostic(
         fixture.snapshot.plot.raw_csv,
         limits=fixture.settings.limits,
     )
-    evidence = cast("checks.RecomputedEvidence", run.evidence)
+    evidence = cast("checks.DatasetEvidence", run.evidence)
     preparation = render.prepare_render(
         authenticated.spec,
         evidence,

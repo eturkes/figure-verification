@@ -57,7 +57,7 @@ source CSV --bounded read--> SHA-256 dataset re-binding
   construction      | z3_smt
        |
        v
-  RecomputedEvidence
+  DatasetEvidence
        |
        v
   positive-allowlist builder copies no model Vega key
@@ -106,7 +106,7 @@ evidence and states the boundary that keeps the claim modest.
 1. **The model cannot render a chart directly through the approved path.**
    **Evidence:** `POST /propose-spec` in `src/verifier/service/app.py` accepts a request, obtains raw
    model reply bytes, strictly decodes them, verifies them, and only then reaches
-   `render.prepare_render`; the render handoff requires `RecomputedEvidence`.
+   `render.prepare_render`; the render handoff requires `DatasetEvidence`.
    **Boundary:** `Verified Plot Guard` is bypassable and is never authority. This construction claim
    covers the approved verifier path, not every possible UI output channel.
 
@@ -125,7 +125,7 @@ evidence and states the boundary that keeps the claim modest.
    data or chart intent is representative or fair.
 
 4. **The renderer only receives verifier-computed data.**
-   **Evidence:** `render.prepare_render` consumes `RecomputedEvidence`; `render.build_vega_lite`
+   **Evidence:** `render.prepare_render` consumes `DatasetEvidence`; `render.build_vega_lite`
    copies no model Vega key and constructs `data.values` solely from `evidence.plotted_table`.
    **Boundary:** `vl-convert`, Vega, SVG rasterization, browser behavior, and pixels remain trusted
    display components, not verified components.

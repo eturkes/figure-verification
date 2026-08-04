@@ -13,11 +13,15 @@ Hypothesis property pins the spine invariant: successful evidence equals eval's 
 Matrices pin incremental input + evaluator-work trace retention across every resource gate.
 """
 
+import ast
+import inspect
 import json
 import tempfile
 from collections.abc import Callable
+from dataclasses import FrozenInstanceError, fields
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, get_args
 
 import msgspec
 import pytest
@@ -61,7 +65,16 @@ _AFFIRMATIONS = frozenset(
     }
 )
 _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
-    "schema_validation": frozenset({"spec.decode", "dataset.manifest_available"}),
+    "schema_validation": frozenset(
+        {
+            "spec.decode",
+            "dataset.manifest_available",
+            "formula.grammar_allowed",
+            "formula.functions_allowed",
+            "formula.names_allowed",
+            "formula.exponents_bounded",
+        }
+    ),
     "resource_policy": frozenset(
         {
             "resource.file_bytes",
@@ -69,6 +82,16 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "resource.source_rows",
             "resource.source_cells",
             "resource.eval_work",
+            "resource.formula_bytes",
+            "resource.formula_tokens",
+            "resource.formula_ast_nodes",
+            "resource.formula_ast_depth",
+            "resource.formula_paren_depth",
+            "resource.formula_digits",
+            "resource.formula_identifier_bytes",
+            "resource.formula_samples",
+            "resource.formula_work",
+            "resource.formula_intermediate_bits",
             "resource.plotted_cells",
             "resource.render_rows",
             "resource.smt_terms",
@@ -81,6 +104,10 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
     "deterministic_recompute": frozenset(
         {
             "dataset.hash_matches_source",
+            "formula.domain_ordered",
+            "formula.domain_bounded",
+            "formula.sample_points_strictly_increasing",
+            "formula.values_defined",
             "data.charset",
             "data.csv_syntax",
             "data.header",
@@ -112,6 +139,30 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
     ),
 }
 # decodes=false -> rejected at decode_spec; verify is never reached.
+# Independent exact inventory of every check ID already emitted by expr.py/eval.py.
+_FORMULA_EMITTER_CHECKS = frozenset(
+    {
+        "formula.grammar_allowed",
+        "formula.functions_allowed",
+        "formula.names_allowed",
+        "formula.exponents_bounded",
+        "formula.domain_ordered",
+        "formula.domain_bounded",
+        "formula.sample_points_strictly_increasing",
+        "formula.values_defined",
+        "resource.formula_bytes",
+        "resource.formula_tokens",
+        "resource.formula_ast_nodes",
+        "resource.formula_ast_depth",
+        "resource.formula_paren_depth",
+        "resource.formula_digits",
+        "resource.formula_identifier_bytes",
+        "resource.formula_samples",
+        "resource.formula_work",
+        "resource.formula_intermediate_bits",
+    }
+)
+
 _BAD_DECODE = [b for b in _BAD if not b["decodes"]]
 # Pre-table: decodes=true bad specs blocked before the recompute (binding + eval-surface).
 _PRE_TABLE_BAD = [b for b in _BAD if b["decodes"] and b["check"] not in _ENCODING_CHECKS]
@@ -121,6 +172,35 @@ _ENCODING_BAD = [b for b in _BAD if b["check"] in _ENCODING_CHECKS]
 
 def _ids(entries: list[dict[str, Any]]) -> list[str]:
     return [Path(e["file"]).stem for e in entries]
+
+
+def _formula_emitter_ids() -> frozenset[str]:
+    """Extract literal formula failure tags from the expression/evaluator emitters."""
+    emitted: set[str] = set()
+    positional_helpers = {"_resource_error", "_semantic_error"}
+    for path in (_ROOT / "src/verifier/expr.py", _ROOT / "src/verifier/eval.py"):
+        module = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(module):
+            if not isinstance(node, ast.Call):
+                continue
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in positional_helpers
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                emitted.add(node.args[0].value)
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "check"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, str)
+                ):
+                    emitted.add(keyword.value.value)
+    return frozenset(
+        check for check in emitted if check.startswith(("formula.", "resource.formula_"))
+    )
 
 
 def _manifest_for(name: str) -> ingest.Manifest:
@@ -236,7 +316,7 @@ def test_success_evidence_binds_exact_inputs_hashes_and_results(tmp_path: Path) 
     spec, raw = _resource_case(tmp_path)
     run = checks.verify_run(spec, _RESOURCE_MANIFEST_BYTES, data_dir=tmp_path)
     evidence = run.evidence
-    assert evidence is not None
+    assert isinstance(evidence, checks.DatasetEvidence)
     assert evidence.manifest == ingest.load_manifest(_RESOURCE_MANIFEST_BYTES)
     assert evidence.manifest_bytes == _RESOURCE_MANIFEST_BYTES
     assert evidence.source_bytes == raw
@@ -247,6 +327,88 @@ def test_success_evidence_binds_exact_inputs_hashes_and_results(tmp_path: Path) 
     assert evidence.results == run.report.results
     assert run.trace.eval_work_units == 4
     assert raw.decode() not in repr(run)  # sensitive snapshots are repr-suppressed
+
+
+def test_dataset_evidence_rename_preserves_alias_and_shape() -> None:
+    assert checks.RecomputedEvidence is checks.DatasetEvidence
+    assert get_args(checks.Evidence.__value__) == (
+        checks.DatasetEvidence,
+        checks.FormulaEvidence,
+    )
+    assert tuple(item.name for item in fields(checks.DatasetEvidence)) == (
+        "manifest",
+        "manifest_bytes",
+        "source_bytes",
+        "dataset_hash",
+        "manifest_hash",
+        "spec_hash",
+        "plotted_table",
+        "plotted_table_hash",
+        "results",
+    )
+
+
+def test_verify_run_signature_keeps_dataset_inputs_required() -> None:
+    parameters = inspect.signature(checks.verify_run).parameters
+    manifest_bytes = parameters["manifest_bytes"]
+    assert manifest_bytes.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+    assert manifest_bytes.default is inspect.Parameter.empty
+    data_dir = parameters["data_dir"]
+    assert data_dir.kind is inspect.Parameter.KEYWORD_ONLY
+    assert data_dir.default is inspect.Parameter.empty
+
+
+def test_formula_evidence_is_frozen_slotted_and_closed() -> None:
+    source = canon.FormulaSource(
+        grammar_version="expr-0.1",
+        numeric_profile="rational-half-even-v1",
+        rounding="ROUND_HALF_EVEN",
+        ast="x",
+        start=Decimal(0),
+        stop=Decimal(1),
+        samples=2,
+        x_scale=0,
+        y_scale=0,
+    )
+    table = canon.Table(
+        columns=(
+            canon.NumericColumn(name="x", scale=0),
+            canon.NumericColumn(name="y", scale=0),
+        ),
+        rows=((Decimal(0), Decimal(0)), (Decimal(1), Decimal(1))),
+    )
+    evidence = checks.FormulaEvidence(
+        formula_source=source,
+        formula_source_bytes=canon.formula_source_bytes(source),
+        formula_hash=canon.hash_formula(source),
+        spec_hash="sha256:" + "0" * 64,
+        plotted_table=table,
+        plotted_table_hash=canon.hash_table(table),
+        results=(
+            checks.make_result(
+                "formula.values_defined", status="pass", message="all sampled values are defined"
+            ),
+        ),
+    )
+
+    assert tuple(item.name for item in fields(checks.FormulaEvidence)) == (
+        "formula_source",
+        "formula_source_bytes",
+        "formula_hash",
+        "spec_hash",
+        "plotted_table",
+        "plotted_table_hash",
+        "results",
+    )
+    assert not hasattr(evidence, "__dict__")
+    frozen_field = "formula_hash"
+    with pytest.raises(FrozenInstanceError):
+        setattr(evidence, frozen_field, "sha256:" + "1" * 64)
+
+    constructor: Any = checks.FormulaEvidence
+    values = {item.name: getattr(evidence, item.name) for item in fields(evidence)}
+    with pytest.raises(TypeError, match="unexpected keyword argument 'manifest'"):
+        constructor(**values, manifest=None)
 
 
 def test_verify_snapshot_matches_filesystem_verification_exactly(tmp_path: Path) -> None:
@@ -867,6 +1029,39 @@ def test_check_id_method_matrix_is_exhaustive_and_closed() -> None:
         assert result.severity == "blocking"
     with pytest.raises(ValueError, match="no registered verification method"):
         checks.make_result("future.unclassified", status="fail", message="drift")
+
+
+@pytest.mark.parametrize(
+    "check",
+    (
+        "formula.future_unclassified",
+        "resource.formula_future_unclassified",
+        "formula.hash_matches_source",
+        "formula.points_from_recomputation",
+        "formula.values_bounded",
+        "formula.rounding_unambiguous",
+        "formula.points_match_recomputation",
+    ),
+)
+def test_formula_registry_rejects_unclassified_lookalikes(check: str) -> None:
+    with pytest.raises(ValueError, match="no registered verification method"):
+        checks.make_result(check, status="fail", message="deferred")
+
+
+def test_formula_emitter_ids_render_through_closed_registry() -> None:
+    assert _formula_emitter_ids() == _FORMULA_EMITTER_CHECKS
+    expected = {
+        check: method
+        for method, method_checks in _EXPECTED_CHECKS_BY_METHOD.items()
+        for check in method_checks
+        if check in _FORMULA_EMITTER_CHECKS
+    }
+    assert expected.keys() == _FORMULA_EMITTER_CHECKS
+    for check in sorted(_FORMULA_EMITTER_CHECKS):
+        result = checks.make_result(check, status="fail", message="emitter failure")
+        assert result.check == check
+        assert result.method == expected[check]
+        assert result.status == "fail"
 
 
 def test_report_records_all_affirmations_on_pass() -> None:

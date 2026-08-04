@@ -128,11 +128,11 @@ def _evaluated(name: str) -> tuple[VPlotSpec, ingest.Manifest, canon.Table]:
     return spec, manifest, table
 
 
-def _evidence(name: str, *, data_dir: Path = _DATA) -> tuple[VPlotSpec, checks.RecomputedEvidence]:
+def _evidence(name: str, *, data_dir: Path = _DATA) -> tuple[VPlotSpec, checks.DatasetEvidence]:
     """One good spec plus the check-passed evidence captured from ``data_dir``."""
     spec, _ = _good(name)
     run = checks.verify_run(spec, _manifest_bytes(name), data_dir=data_dir)
-    assert run.evidence is not None
+    assert isinstance(run.evidence, checks.DatasetEvidence)
     return spec, run.evidence
 
 
@@ -705,10 +705,10 @@ def _certificate_evidence(
     spec: VPlotSpec,
     table: canon.Table,
     results: tuple[checks.CheckResult, ...] = (),
-) -> checks.RecomputedEvidence:
+) -> checks.DatasetEvidence:
     """Coherent synthetic evidence for certificate-only predicate/disclosure tests."""
     manifest_bytes = b"{}"
-    return checks.RecomputedEvidence(
+    return checks.DatasetEvidence(
         manifest=ingest.Manifest(dataset=spec.dataset.name, columns=()),
         manifest_bytes=manifest_bytes,
         source_bytes=b"",
@@ -731,7 +731,7 @@ def _render(name: str) -> render.RenderResult:
 
 def _prepare(
     spec: VPlotSpec,
-    evidence: checks.RecomputedEvidence,
+    evidence: checks.DatasetEvidence,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> render.PreparedArtifact:
@@ -744,7 +744,7 @@ def _prepare(
 
 def _certificate(
     spec: VPlotSpec,
-    evidence: checks.RecomputedEvidence,
+    evidence: checks.DatasetEvidence,
     *,
     vega_lite: bytes = b"{}",
 ) -> render.VCert:

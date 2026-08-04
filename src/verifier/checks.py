@@ -5,7 +5,7 @@ The untrusted model proposes only a VPlotSpec. ``verify_run`` admits the exact t
 manifest bytes, bounded-reads the bound CSV under ``data_dir``, recomputes every plotted
 value from the declared transforms (verifier.eval), and returns three deliberately split
 views: a public results-only ``VerificationReport``; an internal ``VerificationTrace`` of
-successfully admitted raw inputs; and ``RecomputedEvidence`` only after every check passes.
+successfully admitted raw inputs; and ``DatasetEvidence`` only after every check passes.
 ``verify`` is the public core-report projection. This is the recomputation/evidence gate; final
 verification additionally checks the exact builder artifact before rendering. Meaning lives in
 VPlot_SEMANTICS.md.
@@ -28,7 +28,7 @@ Control flow (short-circuit gates): manifest byte/shape policy -> pairing precon
 plotted-cell gate -> encoding/label stage. Every failure returns immediately with no
 evidence; a successfully admitted input remains in the trace even when a later hash or
 semantic gate fails. Hashes and recomputed data cross the renderer boundary only through
-``RecomputedEvidence``.
+``DatasetEvidence``.
 """
 
 from dataclasses import dataclass, field, replace
@@ -74,12 +74,27 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     # Service-only schema prerequisites.
     "spec.decode": "schema_validation",
     "dataset.manifest_available": "schema_validation",
-    # Logical resource ceilings across core verification and rendering.
+    # Closed formula-language admission: syntax, allowlists, and exponent subset.
+    "formula.grammar_allowed": "schema_validation",
+    "formula.functions_allowed": "schema_validation",
+    "formula.names_allowed": "schema_validation",
+    "formula.exponents_bounded": "schema_validation",
+    # Logical resource ceilings across core, formula parsing/evaluation, and rendering.
     "resource.file_bytes": "resource_policy",
     "resource.manifest_columns": "resource_policy",
     "resource.source_rows": "resource_policy",
     "resource.source_cells": "resource_policy",
     "resource.eval_work": "resource_policy",
+    "resource.formula_bytes": "resource_policy",
+    "resource.formula_tokens": "resource_policy",
+    "resource.formula_ast_nodes": "resource_policy",
+    "resource.formula_ast_depth": "resource_policy",
+    "resource.formula_paren_depth": "resource_policy",
+    "resource.formula_digits": "resource_policy",
+    "resource.formula_identifier_bytes": "resource_policy",
+    "resource.formula_samples": "resource_policy",
+    "resource.formula_work": "resource_policy",
+    "resource.formula_intermediate_bits": "resource_policy",
     "resource.plotted_cells": "resource_policy",
     "resource.render_rows": "resource_policy",
     "resource.smt_terms": "resource_policy",
@@ -87,8 +102,12 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "resource.attestation_bytes": "resource_policy",
     "resource.svg_bytes": "resource_policy",
     "resource.html_bytes": "resource_policy",
-    # Active binding, data-integrity, evaluator, encoding, and label checks.
+    # Active binding, data-integrity, exact formula-domain/evaluator, encoding, and label checks.
     "dataset.hash_matches_source": "deterministic_recompute",
+    "formula.domain_ordered": "deterministic_recompute",
+    "formula.domain_bounded": "deterministic_recompute",
+    "formula.sample_points_strictly_increasing": "deterministic_recompute",
+    "formula.values_defined": "deterministic_recompute",
     "data.charset": "deterministic_recompute",
     "data.csv_syntax": "deterministic_recompute",
     "data.header": "deterministic_recompute",
@@ -167,7 +186,7 @@ class VerificationTrace:
 
 
 @dataclass(frozen=True, slots=True)
-class RecomputedEvidence:
+class DatasetEvidence:
     """A check-passed recomputation eligible for later builder/formal gates.
 
     This is evidence of core verification only: it is not a rendered or certified artifact.
@@ -186,13 +205,38 @@ class RecomputedEvidence:
     results: tuple[CheckResult, ...] = field(repr=False)
 
 
+RecomputedEvidence = DatasetEvidence
+
+
+@dataclass(frozen=True, slots=True)
+class FormulaEvidence:
+    """Passive formula-evidence container; coherence is a producer obligation.
+
+    The formula verification/minting path must construct this only after every core formula check
+    passes and bind
+    the resolved source, canonical source bytes/hash, spec hash, recomputed table/hash, and passed
+    results from one run. This dataclass stores those values without cross-field validation.
+    """
+
+    formula_source: canon.FormulaSource = field(repr=False)
+    formula_source_bytes: bytes = field(repr=False)
+    formula_hash: str
+    spec_hash: str
+    plotted_table: canon.Table = field(repr=False)
+    plotted_table_hash: str
+    results: tuple[CheckResult, ...] = field(repr=False)
+
+
+type Evidence = DatasetEvidence | FormulaEvidence
+
+
 @dataclass(frozen=True, slots=True)
 class VerificationRun:
     """Internal verification result: public report + incremental trace + optional evidence."""
 
     report: VerificationReport
     trace: VerificationTrace
-    evidence: RecomputedEvidence | None = field(repr=False)
+    evidence: DatasetEvidence | None = field(repr=False)
 
 
 def _pass(check: str, message: str) -> CheckResult:
@@ -447,7 +491,7 @@ def _verify_admitted_source(
     if not report.passed:
         return VerificationRun(report=report, trace=trace, evidence=None)
 
-    evidence = RecomputedEvidence(
+    evidence = DatasetEvidence(
         manifest=manifest,
         manifest_bytes=manifest_bytes,
         source_bytes=source_bytes,
