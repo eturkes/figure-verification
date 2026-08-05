@@ -54,7 +54,7 @@ demo/reports/
 
 # Agent research scratch (source PDFs/notes; findings distil into roadmap/memory, papers stay upstream)
 .agent/research-tmp/
-# Teammate scratch root (`/session-prompt` fan-out: `.scratch/agents/<name>.md` reports + roster, analysis staging trees, `.scratch/worktrees/` twin checkouts; MAIN harvests, then distils into roadmap/memory)
+# Teammate scratch root (`/session-prompt` fan-out: `.scratch/agents/<name>.md` reports + roster, `.scratch/worktrees/<name>` per-teammate checkouts; MAIN harvests, then distils into roadmap/memory)
 .scratch/
 
 # Claude Code machine-local (settings + private instructions)
