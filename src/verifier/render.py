@@ -29,33 +29,42 @@ verify -> prepare/formal-check -> render composition.
 """
 
 import functools
-import hashlib
 import html
-import importlib.metadata
-import importlib.resources
 from dataclasses import dataclass, field
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import msgspec
 import vl_convert
 
 from verifier import __version__, canon, checks, formal, ingest
+from verifier import vcert as _vcert
 from verifier.errors import VerificationError
 from verifier.eval import active_sort
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import Aggregate, Channel, Filter, SortOrder, VPlotSpec
+from verifier.schema import Aggregate, Channel, SortOrder, VPlotSpec
+
+_FONT_DIR = _vcert._FONT_DIR
+_FONT_FAMILY = _vcert._FONT_FAMILY
+_VCERT_VERSION = _vcert._VCERT_VERSION
+_VL_VERSION = _vcert._VL_VERSION
+CertifiedCheck = _vcert.CertifiedCheck
+DisclosedFilter = _vcert.DisclosedFilter
+DisclosedSort = _vcert.DisclosedSort
+Tcb = _vcert.Tcb
+VCert = _vcert.VCert
+_build_dataset_certificate = _vcert.build_dataset_certificate
+_dataset_tcb = _vcert.dataset_tcb
+disclosed_transforms = _vcert.disclosed_transforms
+hash_vega_lite = _vcert.hash_vega_lite
+vcert_bytes = _vcert.vcert_bytes
 
 # $schema is the Vega-Lite v5 MAJOR-version URI constant -- a fixed string, DECOUPLED from the
 # exact bundled minor (vl_version is the determinism lever), so this half needs no dep.
 _VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
-# The family name of the vendored font (the file + register_font_directory are below). Naming it
-# in every spec's config REQUESTS this family for all text; the registered vendored file guarantees
-# it RESOLVES (availability), and on a host without a same-named system font these exact bytes are
-# laid out -- byte SELECTION over an existing system DejaVu is not proven (see render_svg).
-_FONT_FAMILY = "DejaVu Sans"
+# The certificate module owns the display-version/font constants shared by builder + TCB.
 _COUNT_AXIS_TITLE = "count"
 # Vega-Lite has no scatter mark; scatter -> point.
 _MARK_MAP: dict[str, str] = {"bar": "bar", "line": "line", "scatter": "point"}
@@ -441,10 +450,9 @@ def prepare_render(
 # the cert). DejaVu Sans is the matplotlib-proven deterministic default and covers the corpus
 # glyphs (Latin plus the degree sign in "°C"). Vendoring + registration guarantee the family
 # RESOLVES regardless of the host's system fonts; on a host already carrying DejaVu Sans the
-# rendered metrics are identical either way (cross-machine identity is not claimed). v5.21 matches
-# the v5 $schema constant above.
-_VL_VERSION = "5.21"
-_FONT_DIR = importlib.resources.files("verifier") / "assets" / "fonts"
+# rendered metrics are identical either way (cross-machine identity is not claimed). Shared
+# display-version/font constants live in `verifier.vcert` so certificate TCB + renderer cannot
+# drift.
 
 # Register the vendored font directory ONCE at import: register_font_directory mutates vl-convert's
 # process-global font database, so this single call serves every later render_svg. It no-ops
@@ -578,109 +586,23 @@ def render_html(vega_lite_json: str) -> str:
     return _render_html_page(vega_lite_json, "", "")
 
 
-# --- provenance certificate (VCert v0.2 method + artifact binding) -----------
-# Core render returns the deterministic VCert PAYLOAD; the service wraps its exact bytes in signed
-# DSSE; durable archive and replay consume those signed bytes. It
-# stamps five hashes: dataset/spec/plotted-table/manifest plus the exact formal-passed Vega-Lite
-# bytes. Every passing result carries its verification method. The TCB identifies this verifier,
-# Z3, canon/interpreter dependencies, and the native display stack. SVG bytes remain outside the
-# certificate: the TCB disclosure narrows provenance but proves neither SVG byte identity nor
-# pixels (cross-machine SVG identity remains unclaimed).
-_VCERT_VERSION: Literal["vcert-0.2"] = "vcert-0.2"
-
-# The vendored font ASSET's content hash, computed once from the bytes we ship + register (ties
-# the cert's font provenance to the real asset, not a hardcoded constant). It identifies the
-# REQUESTED/available typeface; vl-convert is not proven to lay out with THIS copy over a
-# same-named system font (render_svg documents the same scope) -- hence vendored_font_sha256.
-_FONT_SHA256 = "sha256:" + hashlib.sha256((_FONT_DIR / "DejaVuSans.ttf").read_bytes()).hexdigest()
+# --- provenance certificate compatibility surface ---------------------------
+# `verifier.vcert` owns both certificate versions. These wrappers preserve the established
+# dataset API and its monkeypatch-visible verifier-version seam without importing the formula path.
+def _tcb() -> Tcb:
+    """Current dataset verifier/formal/Vega display TCB."""
+    return _dataset_tcb(verifier_version=__version__)
 
 
-class Tcb(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """The verifier/formal/display TCB stamped into VCert.
-
-    ``verifier_version`` identifies the package implementing the checks; ``z3_version`` the
-    solver behind ``z3_smt`` results. The remaining fields identify canonicalization and the
-    native display stack trusted to render verified data faithfully, NOT proven to do so. SVG is
-    not hashed by the VCert, and cross-machine byte identity is unclaimed.
-    ``vendored_font_sha256`` identifies
-    the registered font asset, not proof that vl-convert selected it over a same-named system
-    font (``render_svg`` documents the same scope).
-    """
-
-    verifier_version: str
-    z3_version: str
-    canon_version: str
-    python: str
-    msgspec: str
-    unidata: str
-    vl_convert_python: str
-    vl_version: str
-    font_family: str
-    vendored_font_sha256: str
-
-
-class DisclosedFilter(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary
-    text within FilterValue bounds) -> badge_html HTML-escapes it."""
-
-    field: str
-    cmp: str
-    value: int | str
-
-
-class DisclosedSort(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """One active-sort key, disclosed in the certificate in that transform's declared order."""
-
-    field: str
-    order: str
-
-
-class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """One passing final result recorded with the method that established it."""
-
-    id: str
-    method: checks.CheckMethod
-    status: Literal["pass"]
-
-
-class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """A VCert v0.2 provenance certificate: five bound artifact hashes, method-bearing passing
-    checks, disclosed applied filters and active-sort keys, and the verifier/formal/display TCB.
-    Core render produces a deterministic payload; the service signs its exact bytes into DSSE.
-    Attestation verification decodes an external copy only after its signature and application
-    type verify under an independently trusted public key. Durable archive/replay consumers use
-    that same authenticated payload.
-    """
-
-    version: Literal["vcert-0.2"]
-    dataset_hash: str
-    spec_hash: str
-    plotted_table_hash: str
-    manifest_hash: str
-    vega_lite_hash: str
-    checks: tuple[CertifiedCheck, ...]
-    filters: tuple[DisclosedFilter, ...]
-    sorts: tuple[DisclosedSort, ...]
-    tcb: Tcb
-
-
-# canon's determinism family (order="deterministic"): definition-order struct fields, sorted
-# dict/set keys (the cert has neither), no Unicode normalization. The VCert holds only str /
-# tuple / nested-struct fields (filter values are int | str, never float), so the encode is
-# total and deterministic in-process for the pinned build.
-_CERT_ENCODER = msgspec.json.Encoder(order="deterministic")
-
-
-def vcert_bytes(cert: VCert) -> bytes:
-    """The VCert's deterministic canonical bytes (_CERT_ENCODER, canon's family). The public
-    seam the service content-addresses: it hashes these bytes to the plot_id and serves them
-    verbatim as the certificate artifact. The same VCert yields byte-identical output."""
-    return _CERT_ENCODER.encode(cert)
-
-
-def hash_vega_lite(vega_lite: bytes) -> str:
-    """SHA-256 over the exact serialized Vega-Lite artifact, with the standard digest prefix."""
-    return "sha256:" + hashlib.sha256(vega_lite).hexdigest()
+def _build_certificate(prepared: PreparedArtifact) -> VCert:
+    """Mint VCert v0.2 from one immutable formal-passed artifact without rebuilding it."""
+    return _build_dataset_certificate(
+        prepared.spec,
+        prepared.evidence,
+        prepared.results,
+        prepared.vega_lite,
+        verifier_version=__version__,
+    )
 
 
 class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
@@ -694,71 +616,6 @@ class RenderResult(msgspec.Struct, frozen=True, kw_only=True):
     svg: str
     certificate: VCert
     html: str | None = None
-
-
-def _tcb() -> Tcb:
-    """The verifier/formal/render TCB disclosed for one certificate (see ``Tcb``)."""
-    versions = canon.runtime_versions()
-    return Tcb(
-        verifier_version=__version__,
-        z3_version=formal.solver_version(),
-        canon_version=versions.canon_version,
-        python=versions.python,
-        msgspec=versions.msgspec,
-        unidata=versions.unidata,
-        vl_convert_python=importlib.metadata.version("vl-convert-python"),
-        vl_version=_VL_VERSION,
-        font_family=_FONT_FAMILY,
-        vendored_font_sha256=_FONT_SHA256,
-    )
-
-
-def disclosed_transforms(
-    spec: VPlotSpec,
-) -> tuple[tuple[DisclosedFilter, ...], tuple[DisclosedSort, ...]]:
-    """Derive deterministic filter and active-sort disclosures from one VPlot spec."""
-
-    filters = tuple(
-        DisclosedFilter(field=transform.field, cmp=transform.cmp, value=transform.value)
-        for transform in spec.transform
-        if isinstance(transform, Filter)
-    )
-    active = active_sort(spec.transform)
-    sorts = (
-        tuple(DisclosedSort(field=key.field, order=key.order) for key in active.by)
-        if active is not None
-        else ()
-    )
-    return filters, sorts
-
-
-def _build_certificate(prepared: PreparedArtifact) -> VCert:
-    """Mint VCert from one immutable formal-passed artifact, without rebuilding any input.
-
-    Its exact Vega bytes are hashed directly; passing IDs/methods preserve final-report order.
-    Filters disclose every filter and sorts only the active sort. Model-controlled filter values
-    are escaped later by ``badge_html``.
-    """
-    spec = prepared.spec
-    evidence: checks.DatasetEvidence = prepared.evidence
-    certified_checks = tuple(
-        CertifiedCheck(id=result.check, method=result.method, status="pass")
-        for result in prepared.results
-        if result.status == "pass"
-    )
-    filters, sorts = disclosed_transforms(spec)
-    return VCert(
-        version=_VCERT_VERSION,
-        dataset_hash=evidence.dataset_hash,
-        spec_hash=evidence.spec_hash,
-        plotted_table_hash=evidence.plotted_table_hash,
-        manifest_hash=evidence.manifest_hash,
-        vega_lite_hash=hash_vega_lite(prepared.vega_lite),
-        checks=certified_checks,
-        filters=filters,
-        sorts=sorts,
-        tcb=_tcb(),
-    )
 
 
 def render_prepared(

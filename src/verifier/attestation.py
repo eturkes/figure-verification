@@ -33,8 +33,8 @@ from msgspec import Meta
 
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.render import VCert, vcert_bytes
 from verifier.schema import _reject_duplicate_keys
+from verifier.vcert import VCert, decode_vcert, vcert_bytes
 
 __all__ = [
     "MAX_KEYID_BYTES",
@@ -116,7 +116,6 @@ class _EncodedEnvelope(msgspec.Struct, frozen=True, kw_only=True):
 
 
 _ENVELOPE_DECODER = msgspec.json.Decoder(_DecodedEnvelope, strict=True)
-_VCERT_DECODER = msgspec.json.Decoder(VCert, strict=True)
 _ENVELOPE_ENCODER = msgspec.json.Encoder(order="deterministic")
 
 
@@ -272,12 +271,10 @@ def _parse_envelope(envelope_bytes: bytes) -> _DecodedEnvelope:
 def _decode_vcert_payload(payload: bytes) -> VCert:
     """Strictly parse the already-authenticated byte object, including duplicate rejection."""
     try:
-        certificate = _VCERT_DECODER.decode(payload)
-        json.loads(payload, object_pairs_hook=_reject_duplicate_keys)
+        return decode_vcert(payload)
     except (ValueError, RecursionError) as exc:
         msg = "authenticated payload is not a valid VCert v0.2"
         raise AttestationError(msg) from exc
-    return certificate
 
 
 def _sign_dsse(
