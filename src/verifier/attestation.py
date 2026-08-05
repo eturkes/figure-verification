@@ -2,9 +2,11 @@
 """DSSE v1.0.2 + Ed25519 profile for exact application payload bytes.
 
 This module is deliberately small and algorithm-closed. ``sign_dsse``/``verify_dsse`` authenticate
-arbitrary bounded bytes plus one caller-selected application payload type; the VCert wrappers
-canonicalize/strictly parse the certificate application type. Every envelope carries exactly one
-PyCA Ed25519 signature. Verification accepts standard or URL-safe RFC-4648 base64, tries only
+arbitrary bounded bytes plus one caller-selected application payload type; each VCert wrapper pairs
+one fixed certificate MIME with one strict schema codec. Two such profiles exist — v0.2 for dataset
+plots, v0.3 for source/artifact-aware plots — and the caller selects between them by calling the
+matching wrapper, so a schema is never chosen from envelope bytes. Every envelope carries exactly
+one PyCA Ed25519 signature. Verification accepts standard or URL-safe RFC-4648 base64, tries only
 explicitly trusted Ed25519 keys, and returns the SAME authenticated payload byte object for the
 application to parse. It never re-reads the envelope after authentication.
 
@@ -34,23 +36,38 @@ from msgspec import Meta
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import _reject_duplicate_keys
-from verifier.vcert import VCert, decode_vcert, vcert_bytes
+from verifier.vcert import (
+    VCert,
+    VCertV03,
+    decode_vcert,
+    decode_vcert_v03,
+    vcert_bytes,
+    vcert_v03_bytes,
+)
 
 __all__ = [
     "MAX_KEYID_BYTES",
     "VCERT_PAYLOAD_TYPE",
+    "VCERT_V03_PAYLOAD_TYPE",
     "AttestationError",
     "VerifiedPayload",
     "VerifiedVCert",
+    "VerifiedVCertV03",
     "envelope_byte_limit",
     "pae",
     "sign_dsse",
     "sign_vcert",
+    "sign_vcert_v03",
     "verify_dsse",
     "verify_vcert",
+    "verify_vcert_v03",
 ]
 
+# One fixed MIME per certificate schema. The admitted set is exactly these two constants: each
+# wrapper pins its own type before parsing and binds it to one strict decoder, so no envelope byte
+# selects a schema. Callers choose the version from trusted state (endpoint contract, bundle tag).
 VCERT_PAYLOAD_TYPE = "application/vnd.figure-verification.vcert.v0.2+json"
+VCERT_V03_PAYLOAD_TYPE = "application/vnd.figure-verification.vcert.v0.3+json"
 MAX_KEYID_BYTES = 128
 _ED25519_SIGNATURE_BYTES = 64
 
@@ -72,6 +89,14 @@ class VerifiedVCert:
 
     payload: bytes
     certificate: VCert
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedVCertV03:
+    """Authenticated exact payload bytes and the VCert v0.3 parsed from that same byte object."""
+
+    payload: bytes
+    certificate: VCertV03
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +302,20 @@ def _decode_vcert_payload(payload: bytes) -> VCert:
         raise AttestationError(msg) from exc
 
 
+def _decode_vcert_v03_payload(payload: bytes) -> VCertV03:
+    """Strictly parse the already-authenticated byte object as v0.3, duplicates included.
+
+    ``msgspec.ValidationError`` and the builtin ``UnicodeDecodeError`` both derive from
+    ``ValueError``, so every v0.3 shape, version, correlation, duplicate-key, and encoding failure
+    reaches callers as one ``AttestationError`` family rather than a raw codec exception.
+    """
+    try:
+        return decode_vcert_v03(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "authenticated payload is not a valid VCert v0.3"
+        raise AttestationError(msg) from exc
+
+
 def _sign_dsse(
     payload: bytes,
     private_key: Ed25519PrivateKey,
@@ -330,6 +369,23 @@ def sign_vcert(
         private_key,
         keyid=keyid,
         profile=_PayloadProfile(VCERT_PAYLOAD_TYPE, limits.max_attestation_bytes, "VCert"),
+    )
+
+
+def sign_vcert_v03(
+    certificate: VCertV03,
+    private_key: Ed25519PrivateKey,
+    *,
+    keyid: str,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> bytes:
+    """Sign canonical exact VCert v0.3 bytes into one canonical, keyid-bearing DSSE envelope."""
+    payload = vcert_v03_bytes(certificate)
+    return _sign_dsse(
+        payload,
+        private_key,
+        keyid=keyid,
+        profile=_PayloadProfile(VCERT_V03_PAYLOAD_TYPE, limits.max_attestation_bytes, "VCert"),
     )
 
 
@@ -453,6 +509,43 @@ def verify_dsse(  # noqa: PLR0913
     )
 
 
+def _verify_certificate_envelope(  # noqa: PLR0913
+    envelope_bytes: bytes,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    *,
+    payload_type: str,
+    limits: VerificationLimits,
+    require_canonical_envelope: bool,
+    expected_keyid_hint: str | None,
+) -> VerifiedPayload:
+    """Authenticate one envelope under a caller-fixed certificate MIME.
+
+    Both certificate wrappers centralize their common guard implementation here. That shares an
+    implementation, not a guarantee: each wrapper's MIME, limits, canonical-envelope, and keyid
+    forwarding stays independently pinned, since a caller can pass divergent arguments and one
+    edit here reaches both profiles. The fixed type is supplied before parsing and bounds the
+    envelope; the version-specific decoder then runs on the returned authenticated byte object
+    alone.
+    """
+    canonical_object: object = require_canonical_envelope
+    if type(canonical_object) is not bool:
+        msg = "require_canonical_envelope must be a bool"
+        raise TypeError(msg)
+    if expected_keyid_hint is not None:
+        _validate_required_keyid(expected_keyid_hint, subject="expected")
+    return _verify_dsse(
+        envelope_bytes,
+        trusted_keys,
+        _PayloadProfile(
+            payload_type,
+            limits.max_attestation_bytes,
+            "VCert",
+            require_canonical_envelope,
+            expected_keyid_hint,
+        ),
+    )
+
+
 def verify_vcert(
     envelope_bytes: bytes,
     trusted_keys: Mapping[str, Ed25519PublicKey],
@@ -467,23 +560,41 @@ def verify_vcert(
     consistency checks, never trust decisions. General DSSE verification remains
     forward-compatible by default; explicit ``trusted_keys`` alone control authentication.
     """
-    canonical_object: object = require_canonical_envelope
-    if type(canonical_object) is not bool:
-        msg = "require_canonical_envelope must be a bool"
-        raise TypeError(msg)
-    if expected_keyid_hint is not None:
-        _validate_required_keyid(expected_keyid_hint, subject="expected")
-    verified = _verify_dsse(
+    verified = _verify_certificate_envelope(
         envelope_bytes,
         trusted_keys,
-        _PayloadProfile(
-            VCERT_PAYLOAD_TYPE,
-            limits.max_attestation_bytes,
-            "VCert",
-            require_canonical_envelope,
-            expected_keyid_hint,
-        ),
+        payload_type=VCERT_PAYLOAD_TYPE,
+        limits=limits,
+        require_canonical_envelope=require_canonical_envelope,
+        expected_keyid_hint=expected_keyid_hint,
     )
     payload = verified.payload
     certificate = _decode_vcert_payload(payload)
     return VerifiedVCert(payload=payload, certificate=certificate)
+
+
+def verify_vcert_v03(
+    envelope_bytes: bytes,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+    require_canonical_envelope: bool = False,
+    expected_keyid_hint: str | None = None,
+) -> VerifiedVCertV03:
+    """Authenticate one DSSE envelope, then parse its SAME payload byte object as VCert v0.3.
+
+    A v0.2 payload carried under this MIME authenticates but fails the v0.3 decoder, and the
+    reverse fails the v0.2 decoder: the signature covers the declared type, so a version pair can
+    only be produced by the key holder and is refused before the certificate reaches a caller.
+    """
+    verified = _verify_certificate_envelope(
+        envelope_bytes,
+        trusted_keys,
+        payload_type=VCERT_V03_PAYLOAD_TYPE,
+        limits=limits,
+        require_canonical_envelope=require_canonical_envelope,
+        expected_keyid_hint=expected_keyid_hint,
+    )
+    payload = verified.payload
+    certificate = _decode_vcert_v03_payload(payload)
+    return VerifiedVCertV03(payload=payload, certificate=certificate)
