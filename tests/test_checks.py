@@ -100,6 +100,7 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "resource.attestation_bytes",
             "resource.svg_bytes",
             "resource.html_bytes",
+            "resource.matplotlib_script_bytes",
         }
     ),
     "deterministic_recompute": frozenset(
@@ -111,6 +112,7 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "formula.values_defined",
             "formula.values_bounded",
             "formula.hash_matches_source",
+            "render.float64_fidelity",
             "data.charset",
             "data.csv_syntax",
             "data.header",
@@ -136,6 +138,10 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
         {
             "formula.points_from_recomputation",
             "formula.rounding_unambiguous",
+            "render.axes_linear",
+            "render.x_domain_exact",
+            "render.points_match_evidence",
+            "render.matplotlib_script_allowlisted",
         }
     ),
     "z3_smt": frozenset(
@@ -169,6 +175,12 @@ _FORMULA_EMITTER_CHECKS = frozenset(
         "resource.formula_samples",
         "resource.formula_work",
         "resource.formula_intermediate_bits",
+        "resource.matplotlib_script_bytes",
+        "render.float64_fidelity",
+        "render.axes_linear",
+        "render.x_domain_exact",
+        "render.points_match_evidence",
+        "render.matplotlib_script_allowlisted",
     }
 )
 
@@ -184,10 +196,14 @@ def _ids(entries: list[dict[str, Any]]) -> list[str]:
 
 
 def _formula_emitter_ids() -> frozenset[str]:
-    """Extract literal formula failure tags from the expression/evaluator emitters."""
+    """Extract literal IDs from formula parsing, evaluation, and script emission."""
     emitted: set[str] = set()
     positional_helpers = {"_resource_error", "_semantic_error"}
-    for path in (_ROOT / "src/verifier/expr.py", _ROOT / "src/verifier/eval.py"):
+    for path in (
+        _ROOT / "src/verifier/expr.py",
+        _ROOT / "src/verifier/eval.py",
+        _ROOT / "src/verifier/matplotlib_script.py",
+    ):
         module = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(module):
             if not isinstance(node, ast.Call):
@@ -195,6 +211,16 @@ def _formula_emitter_ids() -> frozenset[str]:
             if (
                 isinstance(node.func, ast.Name)
                 and node.func.id in positional_helpers
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                emitted.add(node.args[0].value)
+            if (
+                isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "checks"
+                and node.func.attr == "make_result"
                 and node.args
                 and isinstance(node.args[0], ast.Constant)
                 and isinstance(node.args[0].value, str)
@@ -208,7 +234,10 @@ def _formula_emitter_ids() -> frozenset[str]:
                 ):
                     emitted.add(keyword.value.value)
     return frozenset(
-        check for check in emitted if check.startswith(("formula.", "resource.formula_"))
+        check
+        for check in emitted
+        if check.startswith(("formula.", "resource.formula_", "render."))
+        or check == "resource.matplotlib_script_bytes"
     )
 
 
@@ -1056,12 +1085,12 @@ def test_check_id_method_matrix_is_exhaustive_and_closed() -> None:
         "formula.future_unclassified",
         "resource.formula_future_unclassified",
         "formula.points_match_recomputation",
-        "render.float64_fidelity",
-        "render.axes_linear",
-        "render.x_domain_exact",
-        "render.points_match_evidence",
-        "render.matplotlib_script_allowlisted",
-        "resource.matplotlib_script_bytes",
+        "render.float64_fidelit",
+        "render.axes_log",
+        "render.x_domain_approximate",
+        "render.points_match_formula",
+        "render.matplotlib_script_allowed",
+        "resource.matplotlib_script_byte",
     ),
 )
 def test_formula_registry_rejects_unclassified_lookalikes(check: str) -> None:
