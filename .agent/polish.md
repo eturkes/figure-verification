@@ -10,4 +10,4 @@ Row (one line each, hottest `pri` first):
 
 ## Items
 
-(none)
+- [p1] pri=3 size=S scope=roadmap | M5 close text states the archive commits at `synchronous=FULL`; code forces + reads back `EXTRA` (`archive.py:1564`, `_EXTRA_SYNCHRONOUS = 3`) and `tests/test_service_archive.py:130` pins `3` | why: `.agent/roadmap.md` M5 section "journal_mode=DELETE + synchronous=FULL" vs `archive.py:1569`; drift found while mapping M9.7 | acc: `command grep -n 'synchronous' .agent/roadmap.md` names EXTRA, and no roadmap line claims FULL | open
