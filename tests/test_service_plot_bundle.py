@@ -23,7 +23,7 @@ from verifier.service.archive import (
     ArchiveStats,
     BlobKind,
     BlobWrite,
-    PlotBundle,
+    DatasetPlotBundle,
     PlotRole,
     PlotSourceKind,
     materialize_plot_bundle,
@@ -40,7 +40,7 @@ _RAW_SPEC = (_ROOT / "examples/good_specs/g01_total_revenue_by_month.json").read
 
 def _parts(
     tmp_path: Path,
-) -> tuple[Settings, Signer, render.PreparedArtifact, render.RenderResult, PlotBundle]:
+) -> tuple[Settings, Signer, render.PreparedArtifact, render.RenderResult, DatasetPlotBundle]:
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     signer = load_identity(settings).signer
     outcome = pipeline.verify_only(_RAW_SPEC, settings)
@@ -62,21 +62,21 @@ def _parts(
     return settings, signer, prepared, rendered, bundle
 
 
-def _bundle_bytes(bundle: PlotBundle) -> int:
+def _bundle_bytes(bundle: DatasetPlotBundle) -> int:
     return sum(
         len(cast("bytes", getattr(bundle, name)))
-        for name in archive_module._PLOT_BUNDLE_BYTE_FIELDS
+        for name in archive_module._DATASET_PLOT_BUNDLE_BYTE_FIELDS
     )
 
 
 def _resign_bundle(
-    bundle: PlotBundle,
+    bundle: DatasetPlotBundle,
     signer: Signer,
     certificate: render.VCert,
     *,
     payload: bytes | None = None,
     keyid: str | None = None,
-) -> PlotBundle:
+) -> DatasetPlotBundle:
     if payload is None:
         payload = render.vcert_bytes(certificate)
     if keyid is None:
@@ -219,7 +219,7 @@ def test_rotated_signature_creates_second_plot_while_shared_role_blobs_deduplica
 
     assert first.plot_id != second.plot_id
     assert first.keyid != second.keyid
-    for name in archive_module._PLOT_BUNDLE_BYTE_FIELDS:
+    for name in archive_module._DATASET_PLOT_BUNDLE_BYTE_FIELDS:
         if name not in {"vcert_envelope", "public_key"}:
             assert getattr(first, name) == getattr(second, name)
     shared_bytes = _bundle_bytes(first) - len(first.vcert_envelope) - len(first.public_key)
@@ -344,7 +344,7 @@ def test_bundle_api_runtime_shape_and_direct_materialization_invariants(
         )
 
     with pytest.raises(TypeError, match="bundle must be a PlotBundle"):
-        archive.publish_plot(cast("PlotBundle", object()))
+        archive.publish_plot(cast("DatasetPlotBundle", object()))
     with pytest.raises(TypeError, match="limits must be VerificationLimits"):
         archive.publish_plot(bundle, limits=cast("VerificationLimits", object()))
     with pytest.raises(ValueError, match="plot_id"):
@@ -681,7 +681,7 @@ def test_complete_plot_read_normalizes_sqlite_fault(
     settings, _signer, _prepared, _rendered, bundle = _parts(tmp_path)
     archive = open_archive(settings)
 
-    def fail_read(*_args: object, **_kwargs: object) -> PlotBundle:
+    def fail_read(*_args: object, **_kwargs: object) -> DatasetPlotBundle:
         msg = "read fault"
         raise sqlite3.DatabaseError(msg)
 

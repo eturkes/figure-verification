@@ -39,13 +39,18 @@ Narrow public reads avoid full plot materialization: certificate reads resolve o
 spec reads resolve one indexed canonical-spec blob then decode/re-encode/hash it; key reads require
 one exact raw 32-byte Ed25519 blob under its keyid. Archived keys prove self-consistency only.
 
-The high-level successful-plot API materializes one immutable ``PlotBundle`` from the exact
+The high-level successful-plot API materializes one immutable ``DatasetPlotBundle`` from the exact
 formal-passed evidence/render chain, publishes all eleven typed payloads atomically, and reads them
 only after aggregate-size admission. Publish + read recheck canonical spec/verdict/version forms,
 the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
 the bundle's archived public key establishes internal cryptographic consistency only; it never
 grants that key operator trust. Replay applies independently configured trust policy before
 recomputation. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
+
+``FormulaPlotBundle`` carries the formula mode's own nine carriers under VCert v0.3 and the same
+revalidation discipline; ``PlotBundle`` names the union of the two, so annotations spell it while
+every construction picks a concrete member. Formula bundles are construct + validate only here.
+Storage admits dataset roles alone, so the projection seam refuses them; persistence lands next.
 
 ``AttemptManifest`` adds that occurrence layer under a distinct DSSE application type: canonical
 UTC time, 128-bit CSPRNG nonce, route, status/outcome classifier, signer/verifier identifiers, every
@@ -77,10 +82,10 @@ from typing import Literal, cast
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from verifier import __version__, attestation, canon, checks, render
+from verifier import __version__, attestation, canon, checks, render, vcert
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
 from verifier.service.identity import (
     IdentityError,
     Signer,
@@ -116,6 +121,8 @@ __all__ = [
     "BlobKind",
     "BlobRef",
     "BlobWrite",
+    "DatasetPlotBundle",
+    "FormulaPlotBundle",
     "KeyRecord",
     "PlotBundle",
     "PlotRecord",
@@ -283,7 +290,7 @@ class AttemptOutcome(StrEnum):
     MODEL_EMPTY_CONTENT = "model_empty_content"
 
 
-_PLOT_BUNDLE_BYTE_FIELDS = (
+_DATASET_PLOT_BUNDLE_BYTE_FIELDS = (
     "raw_csv",
     "raw_manifest",
     "canonical_spec",
@@ -296,11 +303,22 @@ _PLOT_BUNDLE_BYTE_FIELDS = (
     "tool_versions",
     "public_key",
 )
+_FORMULA_PLOT_BUNDLE_BYTE_FIELDS = (
+    "canonical_spec",
+    "formula_source",
+    "plotted_table",
+    "verdict",
+    "matplotlib_script",
+    "vcert_payload",
+    "vcert_envelope",
+    "tool_versions",
+    "public_key",
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class PlotBundle:
-    """One successful plot's exact content-deduplicated provenance snapshot.
+class DatasetPlotBundle:
+    """One dataset plot's exact content-deduplicated provenance snapshot.
 
     Every byte field maps to one closed archive kind. ``plot_id`` addresses the signed VCert
     envelope; ``keyid`` addresses the raw Ed25519 key that actually verifies it. Occurrence data
@@ -326,11 +344,47 @@ class PlotBundle:
     def __post_init__(self) -> None:
         _require_address(self.plot_id, subject="plot bundle id")
         _require_sha256(self.keyid, subject="plot bundle keyid")
-        for name in _PLOT_BUNDLE_BYTE_FIELDS:
+        for name in _DATASET_PLOT_BUNDLE_BYTE_FIELDS:
             value = getattr(self, name)
             if not isinstance(value, bytes):
                 msg = f"plot bundle {name} must be bytes, got {type(value).__name__}"
                 raise TypeError(msg)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FormulaPlotBundle:
+    """One formula plot's exact authenticated provenance snapshot.
+
+    Same discipline as the dataset bundle over the formula mode's own carriers: the recomputed
+    plotted table, the resolved formula source, and the verifier-authored matplotlib script the
+    v0.3 certificate binds. No CSV, manifest, Vega-Lite, or SVG role exists here rather than being
+    fabricated empty. Persistence arrives in M9.7b-2; this class is construct + validate only.
+    """
+
+    plot_id: str
+    keyid: str
+    canonical_spec: bytes = field(repr=False)
+    formula_source: bytes = field(repr=False)
+    plotted_table: bytes = field(repr=False)
+    verdict: bytes = field(repr=False)
+    matplotlib_script: bytes = field(repr=False)
+    vcert_payload: bytes = field(repr=False)
+    vcert_envelope: bytes = field(repr=False)
+    tool_versions: bytes = field(repr=False)
+    public_key: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _require_address(self.plot_id, subject="plot bundle id")
+        _require_sha256(self.keyid, subject="plot bundle keyid")
+        for name in _FORMULA_PLOT_BUNDLE_BYTE_FIELDS:
+            value = getattr(self, name)
+            if not isinstance(value, bytes):
+                msg = f"formula plot bundle {name} must be bytes, got {type(value).__name__}"
+                raise TypeError(msg)
+
+
+# Either source mode's bundle. Annotation spelling only; construct a concrete member.
+type PlotBundle = DatasetPlotBundle | FormulaPlotBundle
 
 
 class BlobBinding(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
@@ -392,7 +446,7 @@ class AttemptDraft:
     http_status: int
     outcome: AttemptOutcome
     artifacts: AttemptArtifacts
-    plot: PlotBundle | None = field(default=None, repr=False)
+    plot: DatasetPlotBundle | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -411,7 +465,7 @@ class AttemptBundle:
     attempt_payload: bytes = field(repr=False)
     attempt_envelope: bytes = field(repr=False)
     public_key: bytes = field(repr=False)
-    plot: PlotBundle | None = field(default=None, repr=False)
+    plot: DatasetPlotBundle | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _require_address(self.attempt_id, subject="attempt bundle id")
@@ -431,8 +485,11 @@ class AttemptBundle:
                 f"got {type(self.artifacts).__name__}"
             )
             raise TypeError(msg)
-        if plot_object is not None and not isinstance(plot_object, PlotBundle):
-            msg = f"attempt bundle plot must be PlotBundle or None, got {type(self.plot).__name__}"
+        if plot_object is not None and type(plot_object) is not DatasetPlotBundle:
+            msg = (
+                "attempt bundle plot must be DatasetPlotBundle or None, "
+                f"got {type(self.plot).__name__}"
+            )
             raise TypeError(msg)
         for name in ("attempt_payload", "attempt_envelope", "public_key"):
             value = getattr(self, name)
@@ -672,6 +729,7 @@ _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
 _TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
 _TOOL_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
+_FORMULA_TOOL_VERSIONS_DECODER = msgspec.json.Decoder(vcert.FormulaTcb, strict=True)
 _ATTEMPT_DECODER = msgspec.json.Decoder(AttemptManifest, strict=True)
 _ATTEMPT_STATUS: dict[AttemptOutcome, int] = {
     AttemptOutcome.VERIFIED: 200,
@@ -789,6 +847,30 @@ def _decode_canonical_spec(payload: bytes) -> VPlotSpec:
     return spec
 
 
+def _decode_canonical_formula_spec(payload: bytes) -> FormulaPlotSpec:
+    try:
+        spec = decode_formula_spec(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "formula plot bundle canonical spec is not a valid formula VPlot specification"
+        raise ArchiveIntegrityError(msg) from exc
+    if canon.spec_bytes(spec) != payload:
+        msg = "formula plot bundle canonical spec bytes are not canonical"
+        raise ArchiveIntegrityError(msg)
+    return spec
+
+
+def _decode_canonical_formula_versions(payload: bytes) -> vcert.FormulaTcb:
+    try:
+        versions = _FORMULA_TOOL_VERSIONS_DECODER.decode(payload)
+    except (ValueError, RecursionError) as exc:
+        msg = "formula plot bundle tool versions are not valid structured JSON"
+        raise ArchiveIntegrityError(msg) from exc
+    if _BUNDLE_ENCODER.encode(versions) != payload:
+        msg = "formula plot bundle tool versions are not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    return versions
+
+
 def _authenticate_archive_certificate(
     *,
     plot_id: str,
@@ -832,7 +914,7 @@ def _authenticate_archive_certificate(
 
 
 def _authenticated_bundle_certificate(
-    bundle: PlotBundle, limits: VerificationLimits
+    bundle: DatasetPlotBundle, limits: VerificationLimits
 ) -> render.VCert:
     if len(bundle.vcert_payload) > limits.max_attestation_bytes:
         msg = (
@@ -853,7 +935,71 @@ def _authenticated_bundle_certificate(
     return verified.certificate
 
 
-def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> None:
+def _authenticated_formula_bundle_certificate(
+    bundle: FormulaPlotBundle, limits: VerificationLimits
+) -> vcert.VCertV03:
+    """Re-hold one formula bundle's addresses, producer form, signature, type, and payload.
+
+    Deliberately a twin of the dataset path rather than a shared parameterized helper: the two
+    fixed-MIME verify wrappers return different certificate types, so duplicating keeps verifier
+    selection explicit at each seam. The bundled key proves this snapshot's internal cryptographic
+    consistency only; it never enters the operator's independent trust policy.
+    """
+    if len(bundle.vcert_payload) > limits.max_attestation_bytes:
+        msg = (
+            f"formula plot bundle VCert payload has {len(bundle.vcert_payload)} bytes; "
+            f"limit is {limits.max_attestation_bytes}"
+        )
+        raise ArchiveReadLimitError(msg)
+    envelope_limit = attestation.envelope_byte_limit(
+        limits.max_attestation_bytes, payload_type=attestation.VCERT_V03_PAYLOAD_TYPE
+    )
+    if len(bundle.vcert_envelope) > envelope_limit:
+        msg = (
+            f"formula plot bundle VCert envelope has {len(bundle.vcert_envelope)} bytes; "
+            f"limit is {envelope_limit}"
+        )
+        raise ArchiveReadLimitError(msg)
+    if hashlib.sha256(bundle.vcert_envelope).hexdigest() != bundle.plot_id:
+        msg = "formula plot id does not address its exact canonical VCert envelope bytes"
+        raise ArchiveIntegrityError(msg)
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(bundle.public_key)
+        actual_keyid = keyid_for_public_key(bundle.public_key)
+        verified = attestation.verify_vcert_v03(
+            bundle.vcert_envelope,
+            {bundle.keyid: public_key},
+            limits=limits,
+            require_canonical_envelope=True,
+            expected_keyid_hint=bundle.keyid,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "formula plot bundle VCert envelope or signing public key failed verification"
+        raise ArchiveIntegrityError(msg) from exc
+    if actual_keyid != bundle.keyid:
+        msg = "formula plot bundle keyid does not address its signing public key bytes"
+        raise ArchiveIntegrityError(msg)
+    if vcert.vcert_v03_bytes(verified.certificate) != verified.payload:
+        msg = "formula plot bundle VCert payload is not in the canonical deterministic JSON form"
+        raise ArchiveIntegrityError(msg)
+    if verified.payload != bundle.vcert_payload:
+        msg = "formula plot bundle VCert payload differs from the authenticated envelope payload"
+        raise ArchiveIntegrityError(msg)
+    certificate = verified.certificate
+    # Redundant by design: VCertV03 correlates source/artifact/TCB on construct and on decode, so
+    # only a whole-family swap reaches here. Re-held anyway; the archive leans on no producer-side
+    # invariant. Neutering one conjunct alone is therefore unobservable, as T50 pins.
+    if (
+        type(certificate.source) is not vcert.FormulaSourceCert
+        or type(certificate.artifact) is not vcert.MatplotlibScriptArtifactCert
+        or type(certificate.tcb) is not vcert.FormulaTcb
+    ):
+        msg = "formula plot bundle certificate does not carry the exact formula certificate family"
+        raise ArchiveIntegrityError(msg)
+    return certificate
+
+
+def _validate_bundle_contents(bundle: DatasetPlotBundle, certificate: render.VCert) -> None:
     """Check canonical content + every VCert slot after envelope authentication."""
 
     spec = _decode_canonical_spec(bundle.canonical_spec)
@@ -916,11 +1062,88 @@ def _validate_bundle_contents(bundle: PlotBundle, certificate: render.VCert) -> 
         raise ArchiveIntegrityError(msg)
 
 
+def _validate_formula_bundle_contents(
+    bundle: FormulaPlotBundle, certificate: vcert.VCertV03
+) -> None:
+    """Check canonical formula content + every applicable v0.3 slot after authentication.
+
+    The four carrier digests bind exact stored bytes. No decoder for canonical formula-source
+    bytes exists here, so this re-derives no formula structure — cross-carrier coherence stays
+    the producing pipeline's admission obligation, exactly as VCert v0.3 scopes it.
+    """
+    spec = _decode_canonical_formula_spec(bundle.canonical_spec)
+    _decode_canonical_table(bundle.plotted_table)
+    verdict = _decode_canonical_verdict(bundle.verdict, subject="formula plot bundle")
+    versions = _decode_canonical_formula_versions(bundle.tool_versions)
+    try:
+        bundle.matplotlib_script.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        msg = "formula plot bundle matplotlib script is not valid UTF-8"
+        raise ArchiveIntegrityError(msg) from exc
+
+    source = cast("vcert.FormulaSourceCert", certificate.source)
+    artifact = cast("vcert.MatplotlibScriptArtifactCert", certificate.artifact)
+    actual_hashes = (
+        ("formula source", canon.hash_formula_source(bundle.formula_source), source.formula_hash),
+        ("spec", canon.hash_spec(spec), certificate.spec_hash),
+        (
+            "plotted table",
+            canon.hash_table_bytes(bundle.plotted_table),
+            certificate.plotted_table_hash,
+        ),
+        (
+            "matplotlib script",
+            canon.hash_matplotlib_script(bundle.matplotlib_script),
+            artifact.matplotlib_script_hash,
+        ),
+    )
+    for subject, actual, certified in actual_hashes:
+        if actual != certified:
+            msg = f"formula plot bundle {subject} bytes disagree with the certified hash"
+            raise ArchiveIntegrityError(msg)
+
+    if (
+        not verdict.verified
+        or verdict.layer != "verify"
+        or any(result.status != "pass" for result in verdict.results)
+    ):
+        msg = "formula plot bundle verdict must be a complete passing verification outcome"
+        raise ArchiveIntegrityError(msg)
+    certified_checks = tuple(
+        vcert.CertifiedCheck(id=result.check, method=result.method, status="pass")
+        for result in verdict.results
+    )
+    if certificate.checks != certified_checks:
+        msg = "formula plot bundle full method-aware verdict disagrees with certified checks"
+        raise ArchiveIntegrityError(msg)
+    for certified_check in certificate.checks:
+        if checks._CHECK_METHODS.get(certified_check.id) != certified_check.method:
+            msg = (
+                "formula plot bundle certified check disagrees with the registered "
+                "verification method"
+            )
+            raise ArchiveIntegrityError(msg)
+    if versions != certificate.tcb:
+        msg = "formula plot bundle tool versions disagree with the VCert TCB"
+        raise ArchiveIntegrityError(msg)
+
+
 def _validate_plot_bundle(bundle: PlotBundle, limits: VerificationLimits) -> None:
     """Revalidate one bundle's signature + full byte/hash graph before trust or persistence."""
     _require_limits(limits)
-    certificate = _authenticated_bundle_certificate(bundle, limits)
-    _validate_bundle_contents(bundle, certificate)
+    if type(bundle) is DatasetPlotBundle:
+        _validate_bundle_contents(bundle, _authenticated_bundle_certificate(bundle, limits))
+        return
+    if type(bundle) is FormulaPlotBundle:
+        _validate_formula_bundle_contents(
+            bundle, _authenticated_formula_bundle_certificate(bundle, limits)
+        )
+        return
+    msg = (
+        "bundle must be a PlotBundle (DatasetPlotBundle or FormulaPlotBundle), "
+        f"got {type(bundle).__name__}"
+    )
+    raise TypeError(msg)
 
 
 def materialize_plot_bundle(
@@ -930,7 +1153,7 @@ def materialize_plot_bundle(
     signer: Signer,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
-) -> PlotBundle:
+) -> DatasetPlotBundle:
     """Materialize exact successful-plot bytes from one evidence/render/signing chain.
 
     The function performs no I/O and invents no occurrence metadata. ``PreparedArtifact`` already
@@ -959,7 +1182,7 @@ def materialize_plot_bundle(
 
     evidence: checks.DatasetEvidence = prepared.evidence
     verdict = Verdict(verified=True, layer="verify", results=prepared.results)
-    bundle = PlotBundle(
+    bundle = DatasetPlotBundle(
         plot_id=hashlib.sha256(envelope).hexdigest(),
         keyid=signer.keyid,
         raw_csv=evidence.source_bytes,
@@ -994,7 +1217,7 @@ def _artifact_bindings(artifacts: AttemptArtifacts) -> tuple[BlobBinding, ...]:
     )
 
 
-def _plot_bindings(plot: PlotBundle | None) -> tuple[BlobBinding, ...]:
+def _plot_bindings(plot: DatasetPlotBundle | None) -> tuple[BlobBinding, ...]:
     if plot is None:
         return ()
     return tuple(
@@ -1329,8 +1552,8 @@ def materialize_attempt_bundle(
     if not isinstance(signer_object, Signer):
         msg = f"signer must be Signer, got {type(signer).__name__}"
         raise TypeError(msg)
-    if plot_object is not None and not isinstance(plot_object, PlotBundle):
-        msg = f"draft plot must be PlotBundle or None, got {type(draft.plot).__name__}"
+    if plot_object is not None and type(plot_object) is not DatasetPlotBundle:
+        msg = f"draft plot must be DatasetPlotBundle or None, got {type(draft.plot).__name__}"
         raise TypeError(msg)
     _require_limits(limits)
     occurred_at_text = _canonical_utc_timestamp(draft.occurred_at)
@@ -2107,6 +2330,11 @@ def _consume_blob(
 
 
 def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
+    if type(bundle) is FormulaPlotBundle:
+        # The bundle is valid and fully authenticated; only this build's storage capability is
+        # absent, so no ArchiveError family applies. M9.7b-2 replaces this with the formula arm.
+        msg = "formula plot bundle persistence arrives in M9.7b-2"
+        raise NotImplementedError(msg)
     role_blobs = {
         role: BlobWrite(BlobKind(role.value), cast("bytes", getattr(bundle, field_name)))
         for role, field_name in _PLOT_ROLE_FIELDS
@@ -2250,7 +2478,7 @@ def _read_complete_plot_bundle(
     plot_id: str,
     *,
     max_bytes: int,
-) -> PlotBundle:
+) -> DatasetPlotBundle:
     record_row = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
     if record_row is None:
         msg = "archive plot address was not found"
@@ -2283,7 +2511,7 @@ def _read_complete_plot_bundle(
     certificate_payload = read_entry(certificate_entry)
     public_key = read_entry(key_entry)
     role_payloads = {role: read_entry(role_rows[role]) for role in PlotRole}
-    return PlotBundle(
+    return DatasetPlotBundle(
         plot_id=plot_id,
         keyid=keyid,
         raw_csv=role_payloads[PlotRole.RAW_CSV],
@@ -2422,9 +2650,9 @@ class _PlotEntries:
     roles: dict[PlotRole, _BlobEntry]
 
 
-def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> PlotBundle:
+def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> DatasetPlotBundle:
     role_payloads = {role: payloads[entries.roles[role][0]] for role in PlotRole}
-    return PlotBundle(
+    return DatasetPlotBundle(
         plot_id=entries.plot_id,
         keyid=entries.keyid,
         raw_csv=role_payloads[PlotRole.RAW_CSV],
@@ -2911,8 +3139,11 @@ class Archive:
     ) -> None:
         """Revalidate and atomically publish one complete successful-plot bundle."""
         bundle_object: object = bundle
-        if not isinstance(bundle_object, PlotBundle):
-            msg = f"bundle must be a PlotBundle, got {type(bundle).__name__}"
+        if type(bundle_object) not in (DatasetPlotBundle, FormulaPlotBundle):
+            msg = (
+                "bundle must be a PlotBundle (DatasetPlotBundle or FormulaPlotBundle), "
+                f"got {type(bundle).__name__}"
+            )
             raise TypeError(msg)
         _validate_plot_bundle(bundle, limits)
         self.publish(_plot_bundle_batch(bundle))
@@ -3220,7 +3451,7 @@ class Archive:
         *,
         max_bytes: int,
         limits: VerificationLimits = DEFAULT_LIMITS,
-    ) -> PlotBundle:
+    ) -> DatasetPlotBundle:
         """Read one complete plot under an aggregate cap, then revalidate its signed hash graph."""
         _require_address(plot_id, subject="plot_id")
         _require_read_limit(max_bytes)

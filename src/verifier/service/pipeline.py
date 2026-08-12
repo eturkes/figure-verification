@@ -58,7 +58,7 @@ from verifier.service.archive import (
     AttemptDraft,
     AttemptOutcome,
     AttemptRoute,
-    PlotBundle,
+    DatasetPlotBundle,
     materialize_plot_bundle,
 )
 from verifier.service.identity import Signer
@@ -246,7 +246,7 @@ def _record_verdict_attempt(
     outcome: Outcome,
     verdict: Verdict,
     context: RenderContext,
-    plot: PlotBundle | None,
+    plot: DatasetPlotBundle | None,
 ) -> str:
     """Sign + commit one verified/rejected occurrence and return its derived address."""
     verdict_bytes = plot.verdict if plot is not None else _ENCODER.encode(verdict)

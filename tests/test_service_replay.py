@@ -57,7 +57,7 @@ class _Fixture:
     manifest_path: Path
 
 
-def _draft(plot: archive_module.PlotBundle) -> AttemptDraft:
+def _draft(plot: archive_module.DatasetPlotBundle) -> AttemptDraft:
     return AttemptDraft(
         occurred_at=_TIME,
         route=AttemptRoute.VERIFY_AND_RENDER,
@@ -122,7 +122,7 @@ def test_exact_replay_uses_archived_bytes_after_live_mutation_and_deletion(tmp_p
     verdict = service_replay.replay_plot(
         fixture.archive,
         _trusted(fixture),
-        cast("archive_module.PlotBundle", fixture.bundle.plot).plot_id,
+        cast("archive_module.DatasetPlotBundle", fixture.bundle.plot).plot_id,
         max_bytes=_bundle_size(fixture.bundle),
         limits=fixture.settings.limits,
     )
@@ -134,7 +134,7 @@ def test_exact_replay_uses_archived_bytes_after_live_mutation_and_deletion(tmp_p
 
 def test_replay_is_independent_of_chart_lru_state(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
 
     verdict = service_replay.replay_plot(
         fixture.archive,
@@ -153,7 +153,7 @@ def test_replay_survives_process_restart_and_foreign_cwd(
     tmp_path: Path,
 ) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
     reopened = open_archive(fixture.settings)
     assert (
         service_replay.replay_plot(
@@ -179,7 +179,7 @@ def test_replay_selects_lowest_attempt_and_passes_trust_mapping_unchanged(
     tmp_path: Path,
 ) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
     extra = tuple(
         materialize_attempt_bundle(
             _draft(plot),
@@ -223,7 +223,7 @@ def test_replay_selects_lowest_attempt_and_passes_trust_mapping_unchanged(
 
 def test_unpinned_archived_signer_returns_untrusted_verdict(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
     untrusted: dict[str, Ed25519PublicKey] = {}
 
     verdict = service_replay.replay_plot(
@@ -244,7 +244,7 @@ def test_missing_blob_and_corrupt_plot_association_raise_archive_errors(
     tmp_path: Path,
 ) -> None:
     missing = _fixture(tmp_path / "missing")
-    missing_plot = cast("archive_module.PlotBundle", missing.bundle.plot)
+    missing_plot = cast("archive_module.DatasetPlotBundle", missing.bundle.plot)
     connection = sqlite3.connect(missing.archive.database_path, autocommit=True)
     try:
         connection.execute("PRAGMA foreign_keys=OFF")
@@ -273,7 +273,7 @@ def test_missing_blob_and_corrupt_plot_association_raise_archive_errors(
     monkeypatch.undo()
 
     associated = _fixture(tmp_path / "association")
-    associated_plot = cast("archive_module.PlotBundle", associated.bundle.plot)
+    associated_plot = cast("archive_module.DatasetPlotBundle", associated.bundle.plot)
     corrupt_plot_id = "f" * 64 if associated_plot.plot_id != "f" * 64 else "e" * 64
     connection = sqlite3.connect(associated.archive.database_path, autocommit=True)
     try:
@@ -297,7 +297,7 @@ def test_missing_blob_and_corrupt_plot_association_raise_archive_errors(
 
 def test_archive_read_cap_and_unknown_plot_fail_closed(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
     with pytest.raises(ArchiveReadLimitError, match="aggregate read limit"):
         service_replay.replay_plot(
             fixture.archive,
@@ -320,7 +320,7 @@ def test_archive_read_cap_and_unknown_plot_fail_closed(tmp_path: Path) -> None:
 
 def test_adapter_runtime_guards_and_verified_plot_defense(tmp_path: Path) -> None:
     fixture = _fixture(tmp_path)
-    plot = cast("archive_module.PlotBundle", fixture.bundle.plot)
+    plot = cast("archive_module.DatasetPlotBundle", fixture.bundle.plot)
     trusted = _trusted(fixture)
 
     with pytest.raises(TypeError, match="archive must be Archive"):

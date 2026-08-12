@@ -32,7 +32,7 @@ from verifier.service.archive import (
     BlobBinding,
     BlobKind,
     BlobWrite,
-    PlotBundle,
+    DatasetPlotBundle,
     materialize_attempt_bundle,
     materialize_plot_bundle,
     open_archive,
@@ -47,7 +47,7 @@ _TIME = datetime(2026, 7, 17, 3, 4, 5, 678901, tzinfo=UTC)
 _ENCODER = msgspec.json.Encoder(order="deterministic")
 
 
-def _plot_parts(tmp_path: Path) -> tuple[Settings, Signer, PlotBundle]:
+def _plot_parts(tmp_path: Path) -> tuple[Settings, Signer, DatasetPlotBundle]:
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     signer = load_identity(settings).signer
     outcome = pipeline.verify_only(_RAW_SPEC, settings)
@@ -63,7 +63,7 @@ def _plot_parts(tmp_path: Path) -> tuple[Settings, Signer, PlotBundle]:
     return settings, signer, plot
 
 
-def _success_draft(plot: PlotBundle, *, route: AttemptRoute) -> AttemptDraft:
+def _success_draft(plot: DatasetPlotBundle, *, route: AttemptRoute) -> AttemptDraft:
     model = (
         {}
         if route is AttemptRoute.VERIFY_AND_RENDER
@@ -547,7 +547,7 @@ def test_wrong_signer_verdict_trace_and_version_relationships_fail_closed(tmp_pa
         with pytest.raises(ArchiveIntegrityError):
             materialize_attempt_bundle(draft, signer, nonce=f"{index:032x}")
 
-    wrong_version_manifest = replace(cast("PlotBundle", success.plot), tool_versions=b"{}")
+    wrong_version_manifest = replace(cast("DatasetPlotBundle", success.plot), tool_versions=b"{}")
     with pytest.raises(ArchiveIntegrityError):
         materialize_attempt_bundle(
             replace(success, plot=wrong_version_manifest), signer, nonce="9" * 32
@@ -576,7 +576,7 @@ def test_attempt_api_runtime_types_and_attestation_limits(tmp_path: Path) -> Non
         replace(draft, route=cast("AttemptRoute", "bad")),
         replace(draft, outcome=cast("AttemptOutcome", "bad")),
         replace(draft, artifacts=cast("AttemptArtifacts", object())),
-        replace(draft, plot=cast("PlotBundle", object())),
+        replace(draft, plot=cast("DatasetPlotBundle", object())),
     ):
         with pytest.raises(TypeError):
             materialize_attempt_bundle(malformed, signer, nonce="0" * 32)
@@ -642,7 +642,7 @@ def test_attempt_wire_constructors_and_manifest_validation_reject_hostile_runtim
     constructor_mutants = (
         {"manifest": cast("AttemptManifest", object())},
         {"artifacts": cast("AttemptArtifacts", object())},
-        {"plot": cast("PlotBundle", object())},
+        {"plot": cast("DatasetPlotBundle", object())},
         {"attempt_payload": cast("bytes", "bad")},
         {"attempt_envelope": cast("bytes", "bad")},
         {"public_key": cast("bytes", "bad")},

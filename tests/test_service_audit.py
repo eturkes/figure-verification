@@ -24,7 +24,7 @@ from verifier.service.archive import (
     AttemptOutcome,
     AttemptRoute,
     BlobKind,
-    PlotBundle,
+    DatasetPlotBundle,
     materialize_attempt_bundle,
     materialize_plot_bundle,
     open_archive,
@@ -39,7 +39,7 @@ _TIME = datetime(2026, 7, 17, 3, 4, 5, 678901, tzinfo=UTC)
 _ENCODER = msgspec.json.Encoder(order="deterministic")
 
 
-def _parts(tmp_path: Path) -> tuple[Settings, Signer, PlotBundle]:
+def _parts(tmp_path: Path) -> tuple[Settings, Signer, DatasetPlotBundle]:
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     signer = load_identity(settings).signer
     outcome = pipeline.verify_only(_RAW_SPEC, settings)
@@ -55,7 +55,7 @@ def _parts(tmp_path: Path) -> tuple[Settings, Signer, PlotBundle]:
     return settings, signer, plot
 
 
-def _verified_draft(plot: PlotBundle) -> AttemptDraft:
+def _verified_draft(plot: DatasetPlotBundle) -> AttemptDraft:
     return AttemptDraft(
         occurred_at=_TIME,
         route=AttemptRoute.VERIFY_AND_RENDER,

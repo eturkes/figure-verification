@@ -27,7 +27,7 @@ from verifier.service.archive import (
     AttemptRoute,
     BlobBinding,
     BlobKind,
-    PlotBundle,
+    DatasetPlotBundle,
     PlotRole,
     materialize_attempt_bundle,
     materialize_plot_bundle,
@@ -51,7 +51,7 @@ class _Fixture:
 
 
 def _snapshot(bundle: AttemptBundle) -> replay.ReplaySnapshot:
-    plot = cast("PlotBundle", bundle.plot)
+    plot = cast("DatasetPlotBundle", bundle.plot)
     artifacts = bundle.artifacts
     return replay.ReplaySnapshot(
         attempt_id=bundle.attempt_id,
