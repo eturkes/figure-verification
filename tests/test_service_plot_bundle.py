@@ -10,6 +10,7 @@ from typing import Any, cast
 import msgspec
 import pytest
 
+from schema_downgrade import downgrade_to_v3
 from verifier import attestation, canon, checks, render
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import decode_spec
@@ -24,6 +25,7 @@ from verifier.service.archive import (
     BlobWrite,
     PlotBundle,
     PlotRole,
+    PlotSourceKind,
     materialize_plot_bundle,
     open_archive,
 )
@@ -161,6 +163,7 @@ def test_version_one_archive_chains_spec_and_attempt_index_migrations_atomically
     archive.publish_plot(bundle, limits=settings.limits)
     connection = sqlite3.connect(archive.database_path, autocommit=True)
     try:
+        downgrade_to_v3(connection)
         connection.execute("DROP INDEX attempts_by_plot")
         connection.execute("DROP TABLE specs")
         connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")
@@ -175,10 +178,10 @@ def test_version_one_archive_chains_spec_and_attempt_index_migrations_atomically
     )
     connection = sqlite3.connect(reopened.database_path, autocommit=True)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (3,)
+        ).fetchone() == (4,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
         ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
@@ -584,7 +587,17 @@ def test_plot_record_and_reference_corruption_guards_cover_impossible_sql_shapes
         archive_module._validated_plot_record(None, plot_id)
     with pytest.raises(ArchiveIntegrityError, match="record types"):
         archive_module._validated_plot_record(
-            (certificate.ref.digest, BlobKind.VCERT_ENVELOPE.value, key.ref.digest),
+            (
+                certificate.ref.digest,
+                BlobKind.VCERT_ENVELOPE.value,
+                key.ref.digest,
+                PlotSourceKind.DATASET.value,
+            ),
+            plot_id,
+        )
+    with pytest.raises(ArchiveIntegrityError, match="source kind is outside"):
+        archive_module._validated_plot_record(
+            (f"sha256:{plot_id}", BlobKind.VCERT_ENVELOPE.value, key.ref.digest, "spreadsheet"),
             plot_id,
         )
 
@@ -699,6 +712,7 @@ def test_version_one_migration_rejects_corrupt_spec_index_inputs(
     archive.publish_plot(bundle, limits=settings.limits)
     connection = sqlite3.connect(archive.database_path, autocommit=True)
     try:
+        downgrade_to_v3(connection)
         connection.execute("DROP INDEX attempts_by_plot")
         connection.execute("DROP TABLE specs")
         connection.execute("UPDATE meta SET schema_version = 1 WHERE singleton = 1")

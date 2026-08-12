@@ -26,6 +26,10 @@ from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
 
+# Exact mirrors of the archive's role enums, duplicated so this module stays import-pure of the
+# service layer; the suite pins both against `BlobKind`/`PlotRole` by tuple equality. They are
+# drift sentinels only — `_BlobRole` below is the narrower decode vocabulary this replay path
+# actually admits, and stays dataset-scoped until a formula replay path exists.
 BLOB_ROLE_VALUES = (
     "raw_csv",
     "raw_manifest",
@@ -39,6 +43,8 @@ BLOB_ROLE_VALUES = (
     "vcert_envelope",
     "ed25519_public_key",
     "tool_versions",
+    "formula_source",
+    "matplotlib_script",
     "model_request",
     "model_response",
     "model_reply",

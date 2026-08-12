@@ -26,7 +26,13 @@ Application values use SQL parameters exclusively; the only literal SQL is fixed
 text owned by this module. Schema v2 adds an immutable domain-separated spec-address index; the
 atomic v1 migration reads only each plot's canonical-spec blob under the configured spec ceiling.
 Schema v3 adds a partial ``(plot_id, attempt_id)`` index for bounded lowest-attempt selection,
-without reading raw CSV, prompt, or model bytes.
+without reading raw CSV, prompt, or model bytes. Schema v4 widens the blob-kind and plot-reference
+role domains with the two formula byte roles and appends a backfilled ``plots.source_kind``
+discriminator plus a positive-allowlist trigger binding each reference role to its plot's mode; it
+rewrites three stored table definitions in place rather than rebuilding, so no content byte moves.
+That trigger admits no cross-mode reference through any INSERT; it does not defend against a direct
+UPDATE of already-stored rows. Only ``dataset`` rows are produced at this version — formula kinds,
+roles, and tags are representable in storage, and every decoding entry refuses a non-dataset row.
 
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
@@ -115,6 +121,7 @@ __all__ = [
     "PlotRecord",
     "PlotReference",
     "PlotRole",
+    "PlotSourceKind",
     "SpecRecord",
     "materialize_attempt_bundle",
     "materialize_plot_bundle",
@@ -122,7 +129,8 @@ __all__ = [
 ]
 
 _SCHEMA_VERSION_V2 = 2
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION_V3 = 3
+_SCHEMA_VERSION = 4
 _DATABASE_NAME = "archive.sqlite3"
 _BUSY_TIMEOUT_MS = 5_000
 _BLOB_CHUNK_BYTES = 64 * 1024
@@ -143,7 +151,7 @@ _ED25519_PUBLIC_KEY_BYTES = 32
 _DATABASE_MODE = 0o600
 _STATE_DIRECTORY_MODE = 0o700
 _CONNECTION_FACTORY: type[sqlite3.Connection] = sqlite3.Connection
-_PLOT_RECORD_COLUMNS = 3
+_PLOT_RECORD_COLUMNS = 4
 _PLOT_REFERENCE_COLUMNS = 5
 _ATTEMPT_RECORD_COLUMNS = 4
 _ATTEMPT_REFERENCE_COLUMNS = 5
@@ -202,6 +210,8 @@ class BlobKind(StrEnum):
     VCERT_ENVELOPE = "vcert_envelope"
     ED25519_PUBLIC_KEY = "ed25519_public_key"
     TOOL_VERSIONS = "tool_versions"
+    FORMULA_SOURCE = "formula_source"
+    MATPLOTLIB_SCRIPT = "matplotlib_script"
     MODEL_REQUEST = "model_request"
     MODEL_RESPONSE = "model_response"
     MODEL_REPLY = "model_reply"
@@ -221,6 +231,18 @@ class PlotRole(StrEnum):
     SVG = BlobKind.SVG
     VCERT_PAYLOAD = BlobKind.VCERT_PAYLOAD
     TOOL_VERSIONS = BlobKind.TOOL_VERSIONS
+
+
+class PlotSourceKind(StrEnum):
+    """Closed provenance modes a stored plot can carry; storage-level discriminator.
+
+    A row's mode decides which reference roles the schema admits for it and which decoder may
+    interpret it. Only ``DATASET`` rows are produced by this version; ``FORMULA`` is representable
+    in storage so the formula bundle model can land without a second migration.
+    """
+
+    DATASET = "dataset"
+    FORMULA = "formula"
 
 
 class AttemptRole(StrEnum):
@@ -520,10 +542,15 @@ class PlotRecord:
     plot_id: str
     certificate: BlobRef
     keyid: str
+    source_kind: PlotSourceKind
 
     def __post_init__(self) -> None:
         _require_address(self.plot_id, subject="plot_id")
         _require_sha256(self.keyid, subject="plot keyid")
+        source_kind_object: object = self.source_kind
+        if not isinstance(source_kind_object, PlotSourceKind):
+            msg = f"plot source kind must be a PlotSourceKind, got {self.source_kind!r}"
+            raise TypeError(msg)
         if self.certificate.kind is not BlobKind.VCERT_ENVELOPE:
             msg = "plot record must reference a vcert_envelope blob"
             raise ValueError(msg)
@@ -1364,14 +1391,26 @@ _CREATE_BLOBS = """CREATE TABLE blobs (
     kind TEXT NOT NULL CHECK (kind IN (
         'raw_csv', 'raw_manifest', 'canonical_spec', 'raw_spec', 'plotted_table',
         'verdict', 'vega_lite', 'svg', 'vcert_payload', 'vcert_envelope',
-        'ed25519_public_key', 'tool_versions', 'model_request', 'model_response',
-        'model_reply', 'attempt_payload', 'attempt_envelope'
+        'ed25519_public_key', 'tool_versions', 'formula_source', 'matplotlib_script',
+        'model_request', 'model_response', 'model_reply', 'attempt_payload',
+        'attempt_envelope'
     )),
     size INTEGER NOT NULL CHECK (size >= 0),
     content BLOB NOT NULL,
     UNIQUE (digest, kind),
     CHECK (size = length(content))
 ) STRICT"""
+_CREATE_BLOBS_V3 = _CREATE_BLOBS.replace(
+    (
+        "'tool_versions', 'formula_source', 'matplotlib_script',\n        "
+        "'model_request', 'model_response', 'model_reply', 'attempt_payload',\n        "
+        "'attempt_envelope'"
+    ),
+    (
+        "'tool_versions', 'model_request', 'model_response',\n        "
+        "'model_reply', 'attempt_payload', 'attempt_envelope'"
+    ),
+)
 
 _CREATE_KEYS = """CREATE TABLE keys (
     keyid TEXT PRIMARY KEY CHECK (
@@ -1392,10 +1431,14 @@ _CREATE_PLOTS = """CREATE TABLE plots (
     certificate_digest TEXT NOT NULL,
     certificate_kind TEXT NOT NULL CHECK (certificate_kind = 'vcert_envelope'),
     keyid TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('dataset', 'formula')),
     CHECK (certificate_digest = 'sha256:' || plot_id),
     FOREIGN KEY (certificate_digest, certificate_kind) REFERENCES blobs(digest, kind),
     FOREIGN KEY (keyid) REFERENCES keys(keyid)
 ) STRICT, WITHOUT ROWID"""
+_CREATE_PLOTS_V3 = _CREATE_PLOTS.replace(
+    "    source_kind TEXT NOT NULL CHECK (source_kind IN ('dataset', 'formula')),\n", ""
+)
 
 _CREATE_SPECS = """CREATE TABLE specs (
     spec_id TEXT PRIMARY KEY CHECK (
@@ -1424,7 +1467,8 @@ _CREATE_PLOT_REFERENCES = """CREATE TABLE plot_references (
     plot_id TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN (
         'raw_csv', 'raw_manifest', 'canonical_spec', 'plotted_table', 'verdict',
-        'vega_lite', 'svg', 'vcert_payload', 'tool_versions'
+        'vega_lite', 'svg', 'vcert_payload', 'tool_versions', 'formula_source',
+        'matplotlib_script'
     )),
     blob_digest TEXT NOT NULL,
     blob_kind TEXT NOT NULL CHECK (blob_kind = role),
@@ -1432,6 +1476,9 @@ _CREATE_PLOT_REFERENCES = """CREATE TABLE plot_references (
     FOREIGN KEY (plot_id) REFERENCES plots(plot_id),
     FOREIGN KEY (blob_digest, blob_kind) REFERENCES blobs(digest, kind)
 ) STRICT, WITHOUT ROWID"""
+_CREATE_PLOT_REFERENCES_V3 = _CREATE_PLOT_REFERENCES.replace(
+    ", 'formula_source',\n        'matplotlib_script'", ""
+)
 
 _CREATE_ATTEMPT_REFERENCES = """CREATE TABLE attempt_references (
     attempt_id TEXT NOT NULL,
@@ -1464,6 +1511,23 @@ BEGIN
     SELECT RAISE(ABORT, 'archive blobs are immutable');
 END"""
 
+_CREATE_PLOT_SOURCE_GUARD = """CREATE TRIGGER plot_references_match_source
+BEFORE INSERT ON plot_references
+BEGIN
+    SELECT RAISE(ABORT, 'plot reference role disagrees with plot source kind')
+    WHERE NOT EXISTS (
+        SELECT 1 FROM plots
+        WHERE plot_id = NEW.plot_id
+        AND ((source_kind = 'dataset' AND NEW.role IN (
+            'raw_csv', 'raw_manifest', 'canonical_spec', 'plotted_table', 'verdict',
+            'vega_lite', 'svg', 'vcert_payload', 'tool_versions'
+        )) OR (source_kind = 'formula' AND NEW.role IN (
+            'canonical_spec', 'formula_source', 'plotted_table', 'verdict',
+            'matplotlib_script', 'vcert_payload', 'tool_versions'
+        )))
+    );
+END"""
+
 # fmt: off
 _CREATE_ATTEMPTS_BY_PLOT = "CREATE INDEX attempts_by_plot ON attempts(plot_id, attempt_id) WHERE plot_id IS NOT NULL"  # noqa: E501
 # fmt: on
@@ -1480,9 +1544,24 @@ _SCHEMA_OBJECTS = (
     ("trigger", "blobs_track_logical_bytes", "blobs", _CREATE_BLOB_ACCOUNTING),
     ("trigger", "blobs_reject_update", "blobs", _CREATE_BLOB_UPDATE_GUARD),
     ("trigger", "blobs_reject_delete", "blobs", _CREATE_BLOB_DELETE_GUARD),
+    ("trigger", "plot_references_match_source", "plot_references", _CREATE_PLOT_SOURCE_GUARD),
     ("index", "attempts_by_plot", "attempts", _CREATE_ATTEMPTS_BY_PLOT),
 )
-_SCHEMA_OBJECTS_V2 = tuple(row for row in _SCHEMA_OBJECTS if row[1] != "attempts_by_plot")
+_SCHEMA_OBJECTS_V3 = (
+    ("table", "meta", "meta", _CREATE_META),
+    ("table", "blobs", "blobs", _CREATE_BLOBS_V3),
+    ("table", "keys", "keys", _CREATE_KEYS),
+    ("table", "plots", "plots", _CREATE_PLOTS_V3),
+    ("table", "specs", "specs", _CREATE_SPECS),
+    ("table", "attempts", "attempts", _CREATE_ATTEMPTS),
+    ("table", "plot_references", "plot_references", _CREATE_PLOT_REFERENCES_V3),
+    ("table", "attempt_references", "attempt_references", _CREATE_ATTEMPT_REFERENCES),
+    ("trigger", "blobs_track_logical_bytes", "blobs", _CREATE_BLOB_ACCOUNTING),
+    ("trigger", "blobs_reject_update", "blobs", _CREATE_BLOB_UPDATE_GUARD),
+    ("trigger", "blobs_reject_delete", "blobs", _CREATE_BLOB_DELETE_GUARD),
+    ("index", "attempts_by_plot", "attempts", _CREATE_ATTEMPTS_BY_PLOT),
+)
+_SCHEMA_OBJECTS_V2 = tuple(row for row in _SCHEMA_OBJECTS_V3 if row[1] != "attempts_by_plot")
 _SCHEMA_OBJECTS_V1 = tuple(row for row in _SCHEMA_OBJECTS_V2 if row[1] != "specs")
 
 _INSERT_BLOB = "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)"
@@ -1525,7 +1604,7 @@ _SELECT_ATTEMPT_ENVELOPE = """SELECT b.blob_id, b.digest, b.kind, b.size
 FROM attempts AS a
 JOIN blobs AS b ON b.digest = a.envelope_digest AND b.kind = a.envelope_kind
 WHERE a.attempt_id = ?"""
-_SELECT_PLOT_RECORD = """SELECT certificate_digest, certificate_kind, keyid
+_SELECT_PLOT_RECORD = """SELECT certificate_digest, certificate_kind, keyid, source_kind
 FROM plots
 WHERE plot_id = ?"""
 _SELECT_PLOT_REFERENCES = """SELECT r.role, b.blob_id, b.digest, b.kind, b.size
@@ -1728,9 +1807,76 @@ def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
     )
     connection.execute(_CREATE_ATTEMPTS_BY_PLOT)
     connection.execute(
-        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION_V3, 1)
     )
     connection.execute("PRAGMA user_version=3")
+
+
+def _rewrite_stored_schema_text(connection: sqlite3.Connection) -> None:
+    """Replace three stored table definitions in place, under a suspended schema-write guard.
+
+    SQLite cannot ``ALTER`` a ``CHECK``, and the exact-text validator compares live
+    ``sqlite_schema`` rows, so a widened constraint must reach the STORED text. Writing that text
+    directly moves no content byte, which keeps blob invariance true by construction rather than
+    verified after a copy.
+
+    The window deliberately suspends SQLite's defensive guard against direct ``sqlite_schema``
+    mutation on an exclusively-held connection. Containment rests on this function executing only
+    its own hardcoded statements, on the caller's ``BEGIN IMMEDIATE`` excluding other writers, and
+    on transaction ROLLBACK — not on the post-migration validator, which is blind to rootpage
+    remapping.
+    """
+    connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, _CONFIG_OFF)
+    try:
+        connection.execute("PRAGMA writable_schema=ON")
+        _require_connection_setting(
+            "writable_schema", _read_scalar(connection, "PRAGMA writable_schema"), 1
+        )
+        for name, statement in (
+            ("blobs", _CREATE_BLOBS),
+            ("plot_references", _CREATE_PLOT_REFERENCES),
+            ("plots", _CREATE_PLOTS),
+        ):
+            connection.execute(
+                "UPDATE sqlite_schema SET sql = ? WHERE type = 'table' AND name = ?",
+                (statement, name),
+            )
+        schema_cookie = cast("int", _read_scalar(connection, "PRAGMA schema_version"))
+        connection.execute(f"PRAGMA schema_version={schema_cookie + 1}")
+        connection.execute("PRAGMA writable_schema=RESET")
+    finally:
+        try:
+            connection.execute("PRAGMA writable_schema=OFF")
+        finally:
+            connection.setconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE, _CONFIG_ON)
+
+
+def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
+    """Widen plot provenance roles and append a backfilled plot source discriminator.
+
+    ``source_kind`` is appended physically last: ``ALTER TABLE ADD COLUMN`` assigns the next record
+    ordinal, so placing it earlier in the rewritten text would remap every stored field. The
+    temporary ``DEFAULT`` plus the explicit ``UPDATE`` are both required — ``ADD COLUMN`` does not
+    write the column into existing rows, so rewriting the default away without the backfill would
+    leave old rows reading NULL against a NOT NULL column.
+    """
+    _validate_schema_version(
+        connection,
+        schema_version=_SCHEMA_VERSION_V3,
+        schema_objects=_SCHEMA_OBJECTS_V3,
+        verify_accounting=True,
+    )
+    connection.execute(
+        "ALTER TABLE plots ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'dataset' "
+        "CHECK (source_kind IN ('dataset', 'formula'))"
+    )
+    connection.execute("UPDATE plots SET source_kind = ?", (PlotSourceKind.DATASET.value,))
+    _rewrite_stored_schema_text(connection)
+    connection.execute(_CREATE_PLOT_SOURCE_GUARD)
+    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )
+    connection.execute("PRAGMA user_version=4")
 
 
 def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes: int) -> None:
@@ -1747,12 +1893,16 @@ def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes
                 "INSERT INTO meta(singleton, schema_version, logical_blob_bytes) VALUES (?, ?, ?)",
                 (1, _SCHEMA_VERSION, 0),
             )
-            connection.execute("PRAGMA user_version=3")
+            connection.execute("PRAGMA user_version=4")
         elif version == 1:
             _migrate_v1_to_v2(connection, max_spec_bytes=max_spec_bytes)
             _migrate_v2_to_v3(connection)
+            _migrate_v3_to_v4(connection)
         elif version == _SCHEMA_VERSION_V2:
             _migrate_v2_to_v3(connection)
+            _migrate_v3_to_v4(connection)
+        elif version == _SCHEMA_VERSION_V3:
+            _migrate_v3_to_v4(connection)
         _validate_schema(connection, verify_accounting=True)
 
 
@@ -1968,7 +2118,7 @@ def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
     return ArchiveBatch(
         blobs=(*role_blobs.values(), envelope, public_key),
         keys=(KeyRecord(bundle.keyid, public_key.ref),),
-        plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid),),
+        plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid, PlotSourceKind.DATASET),),
         specs=(SpecRecord(spec_id, canonical_spec.ref),),
         plot_references=tuple(
             PlotReference(bundle.plot_id, role, role_blobs[role].ref)
@@ -2015,11 +2165,11 @@ def _attempt_bundle_batch(bundle: AttemptBundle) -> ArchiveBatch:
     )
 
 
-def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str]:
+def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str, PlotSourceKind]:
     if not isinstance(row, tuple) or len(row) != _PLOT_RECORD_COLUMNS:
         msg = "archive plot record is malformed"
         raise ArchiveIntegrityError(msg)
-    certificate_digest, certificate_kind, keyid = row
+    certificate_digest, certificate_kind, keyid, source_kind = row
     if (
         not isinstance(certificate_digest, str)
         or certificate_digest != f"sha256:{plot_id}"
@@ -2029,7 +2179,25 @@ def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str]:
     ):
         msg = "archive plot record types, address, certificate kind, or keyid are corrupt"
         raise ArchiveIntegrityError(msg)
-    return BlobRef(certificate_digest, BlobKind.VCERT_ENVELOPE), keyid
+    try:
+        mode = PlotSourceKind(source_kind)
+    except ValueError as error:
+        msg = "archive plot record source kind is outside the closed provenance modes"
+        raise ArchiveIntegrityError(msg) from error
+    return BlobRef(certificate_digest, BlobKind.VCERT_ENVELOPE), keyid, mode
+
+
+def _require_dataset_plot(source_kind: PlotSourceKind, *, subject: str) -> None:
+    """Refuse a non-dataset plot row before any decoder interprets it.
+
+    Formula-tagged rows become storable with schema v4, while every decoder here still reads the
+    dataset artifact shape. Each decoding entry calls this for itself: a sibling entry's guard is
+    not this entry's guard. ``read_plot_envelope`` is deliberately excluded — it returns stored
+    bytes and interprets nothing, so it cannot mis-read a source mode.
+    """
+    if source_kind is not PlotSourceKind.DATASET:
+        msg = f"archive {subject} carries a non-dataset source kind this reader cannot interpret"
+        raise ArchiveIntegrityError(msg)
 
 
 def _plot_bundle_blob_rows(
@@ -2087,7 +2255,8 @@ def _read_complete_plot_bundle(
     if record_row is None:
         msg = "archive plot address was not found"
         raise ArchiveNotFoundError(msg)
-    certificate, keyid = _validated_plot_record(record_row, plot_id)
+    certificate, keyid, source_kind = _validated_plot_record(record_row, plot_id)
+    _require_dataset_plot(source_kind, subject="plot bundle")
     certificate_entry, key_entry, role_rows = _plot_bundle_blob_rows(
         connection, plot_id, certificate, keyid
     )
@@ -2295,7 +2464,8 @@ def _read_complete_attempt_bundle(
         if plot_record is None:
             msg = "archive attempt's linked plot record is absent"
             raise ArchiveIntegrityError(msg)
-        certificate, plot_keyid = _validated_plot_record(plot_record, plot_id)
+        certificate, plot_keyid, plot_source_kind = _validated_plot_record(plot_record, plot_id)
+        _require_dataset_plot(plot_source_kind, subject="attempt's linked plot")
         certificate_entry, plot_key_entry, plot_role_rows = _plot_bundle_blob_rows(
             connection, plot_id, certificate, plot_keyid
         )
@@ -2422,17 +2592,19 @@ def _put_plot(connection: sqlite3.Connection, record: PlotRecord) -> None:
         record.certificate.digest,
         record.certificate.kind.value,
         record.keyid,
+        record.source_kind.value,
     )
     _put_immutable_row(
         connection,
         _ImmutableWrite(
             select_sql=(
-                "SELECT plot_id, certificate_digest, certificate_kind, keyid "
+                "SELECT plot_id, certificate_digest, certificate_kind, keyid, source_kind "
                 "FROM plots WHERE plot_id = ?"
             ),
             insert_sql=(
-                "INSERT INTO plots(plot_id, certificate_digest, certificate_kind, keyid) "
-                "VALUES (?, ?, ?, ?)"
+                "INSERT INTO plots"
+                "(plot_id, certificate_digest, certificate_kind, keyid, source_kind) "
+                "VALUES (?, ?, ?, ?, ?)"
             ),
             identity=(record.plot_id,),
             values=values,
@@ -2878,7 +3050,8 @@ class Archive:
             if record_row is None:
                 msg = "archive plot address was not found"
                 raise ArchiveNotFoundError(msg)
-            certificate, keyid = _validated_plot_record(record_row, plot_id)
+            certificate, keyid, source_kind = _validated_plot_record(record_row, plot_id)
+            _require_dataset_plot(source_kind, subject="plot certificate")
             certificate_row = _blob_row(connection, certificate)
             if certificate_row is None:
                 msg = "archive plot certificate relation is broken"
@@ -2999,7 +3172,9 @@ class Archive:
         """Read VCert-envelope bytes after typed relation/address and SHA-256 verification.
 
         This does not authenticate the DSSE signature, payload type/canonical form, or key
-        relation; higher-level certificate/replay paths perform that authentication.
+        relation; higher-level certificate/replay paths perform that authentication. It also
+        carries no plot source-kind guard by design: returning stored bytes interprets nothing,
+        so a byte reader cannot mis-read a formula-tagged row as a dataset artifact.
         """
         _require_address(plot_id, subject="plot_id")
         expected = _ExpectedBlob(BlobKind.VCERT_ENVELOPE, f"sha256:{plot_id}", max_bytes)

@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 
+from schema_downgrade import downgrade_to_v3
 from verifier.service import archive as archive_module
 from verifier.service.app import create_app
 from verifier.service.archive import (
@@ -34,6 +35,7 @@ from verifier.service.archive import (
     PlotRecord,
     PlotReference,
     PlotRole,
+    PlotSourceKind,
     SpecRecord,
     open_archive,
 )
@@ -87,7 +89,7 @@ def _complete_batch() -> tuple[ArchiveBatch, dict[str, BlobWrite]]:
     batch = ArchiveBatch(
         blobs=tuple(blobs.values()),
         keys=(KeyRecord(keyid, blobs["key"].ref),),
-        plots=(PlotRecord(plot_id, blobs["certificate"].ref, keyid),),
+        plots=(PlotRecord(plot_id, blobs["certificate"].ref, keyid, PlotSourceKind.DATASET),),
         attempts=(AttemptRecord(attempt_id, blobs["attempt"].ref, keyid, plot_id),),
         plot_references=(
             PlotReference(plot_id, PlotRole.RAW_CSV, blobs["csv"].ref),
@@ -146,10 +148,10 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
         assert not connection.getconfig(sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA)
         assert connection.getconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_FKEY)
         table_rows = connection.execute("PRAGMA table_list").fetchall()
-        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (3,)
+        ).fetchone() == (4,)
         assert archive_module._schema_rows(connection) == tuple(
             sorted(archive_module._SCHEMA_OBJECTS, key=lambda row: (row[0], row[1]))
         )
@@ -181,16 +183,17 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
 def test_version_two_archive_migrates_partial_attempt_index_atomically(tmp_path: Path) -> None:
     archive = _archive(tmp_path)
     with _database_connection(archive) as connection:
+        downgrade_to_v3(connection)
         connection.execute("DROP INDEX attempts_by_plot")
         connection.execute("UPDATE meta SET schema_version = 2 WHERE singleton = 1")
         connection.execute("PRAGMA user_version=2")
 
     reopened = _archive(tmp_path)
     with _database_connection(reopened) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (3,)
+        ).fetchone() == (4,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
         ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
@@ -431,7 +434,7 @@ def test_foreign_key_failure_rolls_back_preceding_blob_and_accounting(tmp_path: 
     archive = _archive(tmp_path)
     certificate = BlobWrite(BlobKind.VCERT_ENVELOPE, b"certificate")
     absent_keyid = "sha256:" + "a" * 64
-    plot = PlotRecord(_address(certificate), certificate.ref, absent_keyid)
+    plot = PlotRecord(_address(certificate), certificate.ref, absent_keyid, PlotSourceKind.DATASET)
     with pytest.raises(ArchiveIntegrityError, match="typed reference"):
         archive.publish(ArchiveBatch(blobs=(certificate,), plots=(plot,)))
     assert archive.stats() == archive_module.ArchiveStats(0, 0, 0, 0, 0)
@@ -448,6 +451,7 @@ def test_conflicting_immutable_record_rolls_back_new_key_and_blob(tmp_path: Path
         batch.plots[0].plot_id,
         blobs["certificate"].ref,
         second_key.ref.digest,
+        PlotSourceKind.DATASET,
     )
     with pytest.raises(ArchiveIntegrityError, match="immutable plot"):
         archive.publish(
@@ -526,7 +530,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 ) -> None:
     versioned = _archive(tmp_path / "versioned")
     with _database_connection(versioned) as connection:
-        connection.execute("PRAGMA user_version=4")
+        connection.execute("PRAGMA user_version=5")
     with pytest.raises(ArchiveSchemaError, match="schema version"):
         _archive(tmp_path / "versioned")
 
@@ -552,7 +556,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 
     meta = _archive(tmp_path / "meta")
     with _database_connection(meta) as connection:
-        connection.execute("UPDATE meta SET schema_version = 4 WHERE singleton = 1")
+        connection.execute("UPDATE meta SET schema_version = 5 WHERE singleton = 1")
     with pytest.raises(ArchiveSchemaError, match="meta row"):
         _archive(tmp_path / "meta")
 
@@ -650,11 +654,18 @@ def test_constructor_and_wire_record_runtime_validation(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="must equal"):
         KeyRecord("sha256:" + "b" * 64, key_blob.ref)
     with pytest.raises(ValueError, match="plot_id"):
-        PlotRecord(bad_id, cert_blob.ref, key_blob.ref.digest)
+        PlotRecord(bad_id, cert_blob.ref, key_blob.ref.digest, PlotSourceKind.DATASET)
     with pytest.raises(ValueError, match="vcert_envelope"):
-        PlotRecord(_address(csv_blob), csv_blob.ref, key_blob.ref.digest)
+        PlotRecord(_address(csv_blob), csv_blob.ref, key_blob.ref.digest, PlotSourceKind.DATASET)
     with pytest.raises(ValueError, match="VCert envelope"):
-        PlotRecord("b" * 64, cert_blob.ref, key_blob.ref.digest)
+        PlotRecord("b" * 64, cert_blob.ref, key_blob.ref.digest, PlotSourceKind.DATASET)
+    with pytest.raises(TypeError, match="PlotSourceKind"):
+        PlotRecord(
+            _address(cert_blob),
+            cert_blob.ref,
+            key_blob.ref.digest,
+            cast("PlotSourceKind", "dataset"),
+        )
     with pytest.raises(ValueError, match="attempt_id"):
         AttemptRecord(bad_id, attempt_blob.ref, key_blob.ref.digest)
     with pytest.raises(ValueError, match="attempt plot_id"):
@@ -664,8 +675,12 @@ def test_constructor_and_wire_record_runtime_validation(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="attempt envelope"):
         AttemptRecord("b" * 64, attempt_blob.ref, key_blob.ref.digest)
 
-    plot_id = _address(cert_blob)
-    attempt_id = _address(attempt_blob)
+
+def test_reference_record_runtime_validation() -> None:
+    key_blob = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, _PUBLIC_KEY_BYTES)
+    csv_blob = BlobWrite(BlobKind.RAW_CSV, b"x")
+    plot_id = _address(BlobWrite(BlobKind.VCERT_ENVELOPE, b"cert"))
+    attempt_id = _address(BlobWrite(BlobKind.ATTEMPT_ENVELOPE, b"attempt"))
     with pytest.raises(TypeError, match="PlotRole"):
         PlotReference(plot_id, cast("PlotRole", "raw_csv"), csv_blob.ref)
     with pytest.raises(ValueError, match="requires blob kind"):
@@ -954,3 +969,420 @@ def test_sqlite_faults_are_normalized_and_connections_close(
     with pytest.raises(ArchiveError, match="initializing"):
         _archive(tmp_path / "initialize")
     monkeypatch.setattr(archive_module, "_create_or_validate_schema", real_initialize)
+
+
+_V3_CREATE_BLOBS = """CREATE TABLE blobs (
+    blob_id INTEGER PRIMARY KEY,
+    digest TEXT NOT NULL CHECK (
+        length(digest) = 71
+        AND substr(digest, 1, 7) = 'sha256:'
+        AND substr(digest, 8) NOT GLOB '*[^0-9a-f]*'
+    ),
+    kind TEXT NOT NULL CHECK (kind IN (
+        'raw_csv', 'raw_manifest', 'canonical_spec', 'raw_spec', 'plotted_table',
+        'verdict', 'vega_lite', 'svg', 'vcert_payload', 'vcert_envelope',
+        'ed25519_public_key', 'tool_versions', 'model_request', 'model_response',
+        'model_reply', 'attempt_payload', 'attempt_envelope'
+    )),
+    size INTEGER NOT NULL CHECK (size >= 0),
+    content BLOB NOT NULL,
+    UNIQUE (digest, kind),
+    CHECK (size = length(content))
+) STRICT"""
+
+_V3_CREATE_PLOTS = """CREATE TABLE plots (
+    plot_id TEXT PRIMARY KEY CHECK (
+        length(plot_id) = 64 AND plot_id NOT GLOB '*[^0-9a-f]*'
+    ),
+    certificate_digest TEXT NOT NULL,
+    certificate_kind TEXT NOT NULL CHECK (certificate_kind = 'vcert_envelope'),
+    keyid TEXT NOT NULL,
+    CHECK (certificate_digest = 'sha256:' || plot_id),
+    FOREIGN KEY (certificate_digest, certificate_kind) REFERENCES blobs(digest, kind),
+    FOREIGN KEY (keyid) REFERENCES keys(keyid)
+) STRICT, WITHOUT ROWID"""
+
+_V3_CREATE_PLOT_REFERENCES = """CREATE TABLE plot_references (
+    plot_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN (
+        'raw_csv', 'raw_manifest', 'canonical_spec', 'plotted_table', 'verdict',
+        'vega_lite', 'svg', 'vcert_payload', 'tool_versions'
+    )),
+    blob_digest TEXT NOT NULL,
+    blob_kind TEXT NOT NULL CHECK (blob_kind = role),
+    PRIMARY KEY (plot_id, role),
+    FOREIGN KEY (plot_id) REFERENCES plots(plot_id),
+    FOREIGN KEY (blob_digest, blob_kind) REFERENCES blobs(digest, kind)
+) STRICT, WITHOUT ROWID"""
+
+_DATASET_ONLY_ROLES = ("raw_csv", "raw_manifest", "vega_lite", "svg")
+_FORMULA_ONLY_ROLES = ("formula_source", "matplotlib_script")
+_SHARED_ROLES = ("canonical_spec", "plotted_table", "verdict", "vcert_payload", "tool_versions")
+_RELATION_TABLES = ("plots", "specs", "attempts", "plot_references", "attempt_references", "keys")
+
+
+def _relation_snapshot(connection: sqlite3.Connection) -> dict[str, list[Any]]:
+    return {
+        table: connection.execute(f"SELECT * FROM {table} ORDER BY 1, 2").fetchall()  # noqa: S608
+        for table in _RELATION_TABLES
+    }
+
+
+def _blob_snapshot(connection: sqlite3.Connection) -> list[Any]:
+    return connection.execute(
+        "SELECT digest, kind, size, content FROM blobs ORDER BY digest, kind"
+    ).fetchall()
+
+
+def _rootpages(connection: sqlite3.Connection) -> dict[str, int]:
+    rows = connection.execute(
+        "SELECT name, rootpage FROM sqlite_schema WHERE sql IS NOT NULL"
+    ).fetchall()
+    return {cast("str", row[0]): cast("int", row[1]) for row in rows}
+
+
+def _is_exact_schema(
+    connection: sqlite3.Connection, objects: tuple[tuple[str, str, str, str], ...]
+) -> bool:
+    return archive_module._schema_rows(connection) == tuple(
+        sorted(objects, key=lambda row: (row[0], row[1]))
+    )
+
+
+def _install_recording_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[list[str], list[tuple[object, object]]]:
+    """Record every statement the archive executes, plus its guard state captured at close().
+
+    Both suspended settings are per-connection, so the archive's own connection is the only place
+    restoration is observable, and it is closed before construction returns either way.
+    """
+    statements: list[str] = []
+    closing_state: list[tuple[object, object]] = []
+
+    class RecordingConnection(sqlite3.Connection):
+        def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+            statements.append(sql)
+            return super().execute(sql, parameters)
+
+        def close(self) -> None:
+            closing_state.append(
+                (
+                    self.getconfig(sqlite3.SQLITE_DBCONFIG_DEFENSIVE),
+                    super().execute("PRAGMA writable_schema").fetchone()[0],
+                )
+            )
+            super().close()
+
+    monkeypatch.setattr(archive_module, "_CONNECTION_FACTORY", RecordingConnection)
+    return statements, closing_state
+
+
+def _downgraded_archive(tmp_path: Path) -> Archive:
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    with _database_connection(archive) as connection:
+        downgrade_to_v3(connection)
+    return archive
+
+
+def test_historic_v3_ddl_derivations_reproduce_the_shipped_v3_text() -> None:
+    """P25: v2/v1 validation derives from these, so a wrong derivation rejects real old archives."""
+    assert archive_module._CREATE_BLOBS_V3 == _V3_CREATE_BLOBS
+    assert archive_module._CREATE_PLOTS_V3 == _V3_CREATE_PLOTS
+    assert archive_module._CREATE_PLOT_REFERENCES_V3 == _V3_CREATE_PLOT_REFERENCES
+    assert archive_module._CREATE_BLOBS_V3 != archive_module._CREATE_BLOBS
+    assert archive_module._CREATE_PLOTS_V3 != archive_module._CREATE_PLOTS
+    assert archive_module._CREATE_PLOT_REFERENCES_V3 != archive_module._CREATE_PLOT_REFERENCES
+    guard = "plot_references_match_source"
+    assert not any(row[1] == guard for row in archive_module._SCHEMA_OBJECTS_V3)
+    assert any(row[1] == guard for row in archive_module._SCHEMA_OBJECTS)
+
+
+def test_version_three_archive_migrates_to_exact_v4_preserving_every_stored_byte(
+    tmp_path: Path,
+) -> None:
+    """P02-P05, P08, P10, P11, P23, P24, P31 on the direct v3 arm."""
+    archive = _archive(tmp_path)
+    batch, blobs = _complete_batch()
+    archive.publish(batch)
+    plot_id = batch.plots[0].plot_id
+    attempt_id = batch.attempts[0].attempt_id
+    before_stats = archive.stats()
+    before_envelope = archive.read_plot_envelope(plot_id, max_bytes=1_000)
+
+    with _database_connection(archive) as connection:
+        downgrade_to_v3(connection)
+        assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS_V3)
+        before_blobs = _blob_snapshot(connection)
+        before_relations = _relation_snapshot(connection)
+        before_rootpages = _rootpages(connection)
+        before_logical = connection.execute("SELECT logical_blob_bytes FROM meta").fetchone()
+
+    reopened = _archive(tmp_path)
+    assert reopened.stats() == before_stats
+    assert reopened.read_plot_envelope(plot_id, max_bytes=1_000) == before_envelope
+    assert reopened.read_attempt_envelope(attempt_id, max_bytes=1_000) == blobs["attempt"].payload
+    assert (
+        reopened.read_plot_blob(plot_id, PlotRole.RAW_CSV, max_bytes=1_000) == blobs["csv"].payload
+    )
+
+    with _database_connection(reopened) as connection:
+        assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS)
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+        assert connection.execute("SELECT schema_version FROM meta").fetchone() == (4,)
+        assert _blob_snapshot(connection) == before_blobs
+        after_relations = _relation_snapshot(connection)
+        assert after_relations["plots"] == [
+            (*cast("tuple[Any, ...]", row), "dataset") for row in before_relations["plots"]
+        ]
+        for table in _RELATION_TABLES[1:]:
+            assert after_relations[table] == before_relations[table]
+        assert (
+            connection.execute("SELECT logical_blob_bytes FROM meta").fetchone() == before_logical
+        )
+        after_rootpages = _rootpages(connection)
+        assert {name: after_rootpages[name] for name in before_rootpages} == before_rootpages
+        assert set(after_rootpages) - set(before_rootpages) == {"plot_references_match_source"}
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        columns = [cast("str", row[1]) for row in connection.execute("PRAGMA table_info(plots)")]
+        assert columns[-1] == "source_kind"
+        stored = connection.execute("SELECT sql FROM sqlite_schema WHERE name = 'plots'").fetchone()
+        assert "DEFAULT" not in stored[0]
+        null_rows = connection.execute("SELECT COUNT(*) FROM plots WHERE source_kind IS NULL")
+        assert null_rows.fetchone() == (0,)
+        with pytest.raises(sqlite3.IntegrityError, match="archive blobs are immutable"):
+            connection.execute("DELETE FROM blobs")
+
+    fresh = _archive(tmp_path / "fresh")
+    with (
+        _database_connection(fresh) as fresh_connection,
+        _database_connection(reopened) as migrated_connection,
+    ):
+        assert archive_module._schema_rows(fresh_connection) == archive_module._schema_rows(
+            migrated_connection
+        )
+        assert [tuple(row) for row in fresh_connection.execute("PRAGMA table_info(plots)")] == [
+            tuple(row) for row in migrated_connection.execute("PRAGMA table_info(plots)")
+        ]
+
+
+@pytest.mark.parametrize(
+    "target", ["_validate_schema_version", "_rewrite_stored_schema_text", "_validate_schema"]
+)
+def test_injected_migration_failure_rolls_back_to_exact_version_three(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """P09, P30: faults before, during, and after the mutations all restore the prior version."""
+    archive = _downgraded_archive(tmp_path)
+    with _database_connection(archive) as connection:
+        before_rows = archive_module._schema_rows(connection)
+        before_relations = _relation_snapshot(connection)
+
+    def explode(*_args: object, **_kwargs: object) -> None:
+        msg = "injected migration fault"
+        raise ArchiveIntegrityError(msg)
+
+    monkeypatch.setattr(archive_module, target, explode)
+    with pytest.raises(ArchiveIntegrityError, match="injected migration fault"):
+        _archive(tmp_path)
+
+    with _database_connection(archive) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+        assert connection.execute("SELECT schema_version FROM meta").fetchone() == (3,)
+        assert archive_module._schema_rows(connection) == before_rows
+        assert _relation_snapshot(connection) == before_relations
+        assert "source_kind" not in [
+            cast("str", row[1]) for row in connection.execute("PRAGMA table_info(plots)")
+        ]
+        guard_rows = connection.execute(
+            "SELECT COUNT(*) FROM sqlite_schema WHERE name = 'plot_references_match_source'"
+        )
+        assert guard_rows.fetchone() == (0,)
+
+
+def test_defensive_window_is_entered_before_any_schema_write_and_always_restored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P21, P22, P26: failing the in-window readback leaves zero rewrite work behind."""
+    archive = _downgraded_archive(tmp_path)
+    with _database_connection(archive) as connection:
+        before_rows = archive_module._schema_rows(connection)
+
+    _statements, closing_state = _install_recording_factory(monkeypatch)
+    original = archive_module._require_connection_setting
+
+    def refuse(name: str, actual: object, expected: object) -> None:
+        if name != "writable_schema":
+            original(name, actual, expected)
+            return
+        msg = "injected writable_schema refusal"
+        raise ArchiveError(msg)
+
+    monkeypatch.setattr(archive_module, "_require_connection_setting", refuse)
+    with pytest.raises(ArchiveError, match="injected writable_schema refusal"):
+        _archive(tmp_path)
+
+    assert closing_state[-1] == (True, 0)
+    with _database_connection(archive) as connection:
+        assert archive_module._schema_rows(connection) == before_rows
+
+
+def test_migration_statement_order_matches_the_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P26-P30: presence assertions cannot see order, so record the executed statements."""
+    archive = _downgraded_archive(tmp_path)
+    statements, closing_state = _install_recording_factory(monkeypatch)
+    _archive(tmp_path)
+
+    def first(fragment: str) -> int:
+        return next(index for index, sql in enumerate(statements) if fragment in sql)
+
+    order = [
+        first("ALTER TABLE plots ADD COLUMN source_kind"),
+        first("UPDATE plots SET source_kind"),
+        first("PRAGMA writable_schema=ON"),
+        first("UPDATE sqlite_schema SET sql"),
+        first("PRAGMA schema_version="),
+        first("PRAGMA writable_schema=RESET"),
+        first("PRAGMA writable_schema=OFF"),
+        first("CREATE TRIGGER plot_references_match_source"),
+        first("PRAGMA user_version=4"),
+        first("COMMIT"),
+    ]
+    assert order == sorted(order)
+    assert statements.index("BEGIN IMMEDIATE") < order[0]
+    assert sum(1 for sql in statements if "UPDATE sqlite_schema SET sql" in sql) == 3
+    assert closing_state[-1] == (True, 0)
+    assert archive.stats().plots == 1
+
+
+def test_widened_domains_still_reject_an_unknown_kind_and_role(tmp_path: Path) -> None:
+    """P12, P13: widening the CHECK domains must not open them.
+
+    The insert-time trigger refuses an unknown role first, so the role domain is only observable
+    once that trigger is out of the way on this throwaway connection.
+    """
+    archive = _archive(tmp_path)
+    batch, blobs = _complete_batch()
+    archive.publish(batch)
+    plot_id = batch.plots[0].plot_id
+    with _database_connection(archive) as connection:
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+            connection.execute(
+                "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)",
+                ("sha256:" + "e" * 64, "formula_script", 1, b"x"),
+            )
+        connection.execute("DROP TRIGGER plot_references_match_source")
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+            connection.execute(
+                "INSERT INTO plot_references VALUES (?, ?, ?, ?)",
+                (plot_id, "formula_table", blobs["csv"].ref.digest, "formula_table"),
+            )
+
+
+@pytest.mark.parametrize("mode", ["dataset", "formula"])
+def test_plot_reference_mode_guard_admits_exactly_that_modes_roles(
+    tmp_path: Path, mode: str
+) -> None:
+    """P14, P15: one case per role in both directions - a full matrix, not one sample."""
+    archive = _archive(tmp_path)
+    batch, blobs = _complete_batch()
+    archive.publish(batch)
+    admitted = _SHARED_ROLES + (_DATASET_ONLY_ROLES if mode == "dataset" else _FORMULA_ONLY_ROLES)
+    refused = _FORMULA_ONLY_ROLES if mode == "dataset" else _DATASET_ONLY_ROLES
+    with _database_connection(archive) as connection:
+        plot_id = "2" * 64
+        connection.execute(
+            "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)",
+            (f"sha256:{plot_id}", "vcert_envelope", 1, b"e"),
+        )
+        connection.execute(
+            "INSERT INTO plots VALUES (?, ?, ?, ?, ?)",
+            (plot_id, f"sha256:{plot_id}", "vcert_envelope", blobs["key"].ref.digest, mode),
+        )
+        for index, role in enumerate(admitted + refused):
+            digest = "sha256:" + f"{index:x}".rjust(64, "a")
+            connection.execute(
+                "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)",
+                (digest, role, 1, b"b"),
+            )
+            statement = "INSERT INTO plot_references VALUES (?, ?, ?, ?)"
+            values = (plot_id, role, digest, role)
+            if role in admitted:
+                connection.execute(statement, values)
+            else:
+                with pytest.raises(sqlite3.IntegrityError, match="disagrees with plot source kind"):
+                    connection.execute(statement, values)
+        stored = connection.execute(
+            "SELECT role FROM plot_references WHERE plot_id = ? ORDER BY role", (plot_id,)
+        ).fetchall()
+        assert [cast("str", row[0]) for row in stored] == sorted(admitted)
+
+
+def test_plot_reference_mode_guard_refuses_a_reference_without_its_plot(tmp_path: Path) -> None:
+    """P16: the guard's EXISTS arm is a distinct refusal from its role arm."""
+    archive = _archive(tmp_path)
+    batch, blobs = _complete_batch()
+    archive.publish(batch)
+    with (
+        _database_connection(archive) as connection,
+        pytest.raises(sqlite3.IntegrityError, match="disagrees with plot source kind"),
+    ):
+        connection.execute(
+            "INSERT INTO plot_references VALUES (?, ?, ?, ?)",
+            ("f" * 64, "raw_csv", blobs["csv"].ref.digest, "raw_csv"),
+        )
+
+
+def test_formula_tagged_plot_row_is_refused_at_every_decoding_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """P20 at all three entries, plus P20b: the byte reader stays deliberately excluded."""
+    archive = _archive(tmp_path)
+    batch, blobs = _complete_batch()
+    archive.publish(batch)
+    plot_id = batch.plots[0].plot_id
+    attempt_id = batch.attempts[0].attempt_id
+    with _database_connection(archive) as connection:
+        connection.execute("UPDATE plots SET source_kind = 'formula' WHERE plot_id = ?", (plot_id,))
+
+    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+        archive.read_plot(plot_id, max_bytes=100_000)
+    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+        archive.read_attempt(attempt_id, max_bytes=100_000)
+
+    def unreachable(*_args: object, **_kwargs: object) -> None:
+        msg = "certificate authentication ran on a formula-tagged plot"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(archive_module, "_authenticate_archive_certificate", unreachable)
+    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+        archive.read_certificate(plot_id, max_bytes=100_000)
+    monkeypatch.undo()
+
+    assert archive.read_plot_envelope(plot_id, max_bytes=1_000) == blobs["certificate"].payload
+
+
+def test_exact_schema_validator_refuses_near_miss_version_four_text(tmp_path: Path) -> None:
+    """P18: the validator must refuse a reordered role list, not merely accept the right text."""
+    archive = _archive(tmp_path)
+    near_miss = archive_module._CREATE_PLOT_REFERENCES.replace(
+        "'tool_versions', 'formula_source',", "'formula_source', 'tool_versions',"
+    )
+    assert near_miss != archive_module._CREATE_PLOT_REFERENCES
+    with _database_connection(archive) as connection:
+        connection.execute("PRAGMA writable_schema=ON")
+        connection.execute(
+            "UPDATE sqlite_schema SET sql = ? WHERE type = 'table' AND name = 'plot_references'",
+            (near_miss,),
+        )
+        cookie = cast("int", connection.execute("PRAGMA schema_version").fetchone()[0])
+        connection.execute(f"PRAGMA schema_version={cookie + 1}")
+        connection.execute("PRAGMA writable_schema=RESET")
+        connection.execute("PRAGMA writable_schema=OFF")
+    with pytest.raises(ArchiveSchemaError, match="schema objects disagree"):
+        _archive(tmp_path)
