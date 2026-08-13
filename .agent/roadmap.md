@@ -26,6 +26,8 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 
 Seed step 1 ("create the local stack") is split by gate: scaffold+data → M1, API → M2, model backend → M3, Open WebUI → M4. Plan each milestone only when it becomes active (prior one REVIEWED); M3/M4/M6/M7/M10 are gated — confirm preconditions functionally at their planning turn; bring generated/heavy inputs into scope only when the gate needs them. A gate unmet at that turn ⇒ set the milestone PARKED in the Status column with its named precondition verbatim, clearing the marker only when a functional recheck meets it; M11 is ungated + sequence-adjustable, so M10's live-OWUI gate parks rather than stalls the roadmap.
 
+**Host change — model tier only.** The proposer's live stack was built on the ORIGIN host (Intel NPU + OpenVINO); the CURRENT host has no NPU, so `MODEL_BACKEND_DEVICE=NPU` cannot load and the M3/M4/M6/M7/M8 live-stack gates are UNMET here. Those REVIEWED verdicts STAND — their evidence was validly taken on ORIGIN. The trusted core is host-free (verifier + bench + tests + demo gate fully on CURRENT), so M9 is unaffected and stays the active milestone. M10's gate therefore carries a SECOND precondition beyond browser-live OWUI: a working local proposer on the host of record. Host inventory, the measured runtime verdict (torch 2.7.1+cu126 + transformers + xgrammar = the sole GO on CURRENT), the two byte-exact backend contracts any replacement engine must reproduce, the evidence a swap does and does not invalidate, and the weak-proposer calibration constraint → `.agent/memory.md` "Host machines + model-tier runtime". A runtime port is its own UNPLANNED milestone, never an M9 unit.
+
 ---
 
 ## M9 — Verified formula-plot mode (headless)   (IN-PROGRESS)
