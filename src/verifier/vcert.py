@@ -476,9 +476,25 @@ def build_dataset_certificate(
     results: tuple[checks.CheckResult, ...],
     vega_lite: bytes,
     *,
-    verifier_version: str = __version__,
+    tcb: Tcb | None = None,
 ) -> VCert:
-    """Mint v0.2 from one prepared dataset artifact without rebuilding it."""
+    """Mint v0.2 from one prepared dataset artifact without rebuilding it.
+
+    ``tcb`` substitutes a caller-supplied TCB for live collection, so a canonical-form vector stays
+    byte-stable across interpreter patch releases that a ``>=3.13,<3.14`` floor admits. ``None``
+    collects live and shipped render injects its own live collection, so a non-live TCB is always
+    the caller stating its own provenance claim in full, never a normalization. A supplied TCB is
+    checked for exact type and NOTHING ELSE -- its values are a trusted caller assertion, never
+    validated against the running environment -- so "the TCB describes the running versions" holds
+    for shipped certificates by way of the collectors and call sites alone, not by construction.
+    Unlike
+    v0.3, ``VCert`` validates nothing at construction and ``vcert_bytes`` is a raw encoder, so a
+    wrong-family or subclass TCB would otherwise encode its own ``kind`` tag into a v0.2 payload --
+    hence the exact-type guard, which the formula builder deliberately omits because
+    ``VCertV03.__post_init__`` already refuses one by exact type.
+    """
+    resolved_tcb = dataset_tcb() if tcb is None else tcb
+    _require_exact_type(resolved_tcb, (Tcb,), path="tcb")
     filters, sorts = disclosed_transforms(spec)
     return VCert(
         version=_VCERT_VERSION,
@@ -490,15 +506,27 @@ def build_dataset_certificate(
         checks=_certified_checks(results),
         filters=filters,
         sorts=sorts,
-        tcb=dataset_tcb(verifier_version=verifier_version),
+        tcb=resolved_tcb,
     )
 
 
-def build_formula_certificate(artifact: MatplotlibScriptArtifact) -> VCertV03:
+def build_formula_certificate(
+    artifact: MatplotlibScriptArtifact,
+    *,
+    tcb: FormulaTcb | None = None,
+) -> VCertV03:
     """Rebind four carrier/digest pairs and mint formula v0.3.
 
     The admitted producer remains authoritative for cross-carrier derivation and complete results.
     This builder never parses, evaluates, samples, emits, solves, executes, or compares pixels.
+    ``tcb`` substitutes a caller-supplied TCB for live collection on the same terms as the dataset
+    builder -- trusted caller assertion, never validated against the running environment -- and
+    carries no guard of its own: ``VCertV03.__post_init__`` correlates source, artifact, and TCB by
+    exact type, so a wrong-family or subclass TCB is already refused. Profile correlation rests on
+    ``NumericProfile`` admitting exactly one value today, so given a valid pipeline artifact a TCB
+    disagreeing with its spec is unconstructible; a test pins that scope, so admitting a second
+    profile turns the gate red and forces an explicit
+    ``tcb.numeric_profile == artifact.spec.numeric_profile`` comparison here.
     """
     if any(result.status != "pass" for result in artifact.results):
         message = "formula certificate requires an all-passing matplotlib-script artifact"
@@ -540,5 +568,5 @@ def build_formula_certificate(artifact: MatplotlibScriptArtifact) -> VCertV03:
         plotted_table_hash=plotted_table_hash,
         artifact=MatplotlibScriptArtifactCert(matplotlib_script_hash=matplotlib_script_hash),
         checks=_formula_certified_checks(artifact.results),
-        tcb=_formula_tcb(artifact.spec.numeric_profile),
+        tcb=_formula_tcb(artifact.spec.numeric_profile) if tcb is None else tcb,
     )

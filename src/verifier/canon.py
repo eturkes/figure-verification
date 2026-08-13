@@ -41,8 +41,9 @@ from msgspec import Struct
 from verifier.schema import PlotSpec
 
 # Serialization-format pin: a CANON_VERSION bump invalidates stale domain-tagged hashes
-# (the raw dataset hash stays format-free). Golden hex vectors (tests) lock the canonical
-# bytes, so encoder/runtime drift under a fixed CANON_VERSION fails loudly.
+# (the raw dataset hash stays format-free). Fixed-input golden hex vectors (tests) lock the
+# canonical bytes, so encoder drift under a fixed CANON_VERSION fails loudly; the live TCB
+# sources those vectors deliberately hold fixed are pinned by separate wiring tests.
 CANON_VERSION = "canon-0.1"
 
 # order="deterministic" sorts dict/set keys and renders Decimal->string with no Unicode

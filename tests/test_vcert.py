@@ -1,20 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""VCert v0.3 schema/builder vectors plus v0.2 extracted-module compatibility."""
+"""VCert schemas and builders: fixed-TCB canonical vectors, live provenance wiring, v0.2 compat.
+
+Canonical FORM and provenance WIRING are decided separately. Every byte-pinned vector builds under
+the injected fixed TCB from ``vector_tcb``, so it stays reproducible on any interpreter the
+``>=3.13,<3.14`` floor admits; the tests that pin each collected field to its live source load no
+vector, so a mis-sourced field cannot hide behind a co-derived one.
+"""
 
 import hashlib
+import importlib.metadata
 import itertools
 import os
+import platform
 import subprocess
 import sys
+import unicodedata
 from collections.abc import Callable
 from dataclasses import replace
 from decimal import ROUND_UP, Decimal, Inexact, Rounded, localcontext
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast, get_args
 
 import msgspec
 import pytest
 
+from vector_tcb import DATASET_TCB, FORMULA_TCB
 from verifier import (
     __version__,
     canon,
@@ -26,7 +36,7 @@ from verifier import (
     render,
     vcert,
 )
-from verifier.schema import decode_formula_spec, decode_spec
+from verifier.schema import NumericProfile, VPlotSpec, decode_formula_spec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _FORMULA_GOOD = _ROOT / "examples" / "formula_good_specs"
@@ -58,10 +68,14 @@ _VCERT_STRUCTS: tuple[type[msgspec.Struct], ...] = (
 
 _DETERMINISM_PROGRAM = r"""
 import hashlib
+import sys
 from decimal import ROUND_UP, Inexact, Rounded, getcontext
 from pathlib import Path
 from verifier import checks, formula_prepare, matplotlib_script, vcert
 from verifier.schema import decode_formula_spec
+
+sys.path.insert(0, str(Path.cwd() / "tests"))
+from vector_tcb import FORMULA_TCB
 
 context = getcontext()
 context.prec = 2
@@ -82,7 +96,7 @@ emission = matplotlib_script.emit_matplotlib_script(prepared)
 artifact = emission.artifact
 if artifact is None:
     raise RuntimeError("matplotlib-script emission unexpectedly failed")
-payload = vcert.vcert_v03_bytes(vcert.build_formula_certificate(artifact))
+payload = vcert.vcert_v03_bytes(vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB))
 print(payload.hex())
 print(hashlib.sha256(payload).hexdigest())
 """
@@ -100,12 +114,19 @@ def _artifact(name: str) -> matplotlib_script.MatplotlibScriptArtifact:
     return cast("matplotlib_script.MatplotlibScriptArtifact", emission.artifact)
 
 
+def _dataset_spec_and_evidence() -> tuple[VPlotSpec, checks.DatasetEvidence]:
+    spec = decode_spec((_DATASET_GOOD / "g01_total_revenue_by_month.json").read_bytes())
+    manifest = (_SCHEMAS / f"{Path(spec.dataset.name).stem}.json").read_bytes()
+    return spec, checks.verify_run(spec, manifest, data_dir=_DATA).require_evidence()
+
+
 def _wire(payload: bytes) -> dict[str, Any]:
     return cast("dict[str, Any]", msgspec.json.decode(payload))
 
 
 def _payload(artifact: matplotlib_script.MatplotlibScriptArtifact) -> bytes:
-    return vcert.vcert_v03_bytes(vcert.build_formula_certificate(artifact))
+    """Canonical bytes under the fixed vector TCB, i.e. the interpreter-portable form."""
+    return vcert.vcert_v03_bytes(vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB))
 
 
 def _different_hash(value: str) -> str:
@@ -313,7 +334,7 @@ def test_formula_certificate_real_pipeline_canonical_vector(
     expected: dict[str, int | str],
 ) -> None:
     artifact = _artifact(name)
-    certificate = vcert.build_formula_certificate(artifact)
+    certificate = vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB)
     payload = vcert.vcert_v03_bytes(certificate)
     expected_payload = bytes.fromhex(cast("str", expected["canonical_hex"]))
     wire = _wire(payload)
@@ -350,17 +371,10 @@ def test_formula_certificate_real_pipeline_canonical_vector(
     ]
     assert "formula.points_match_recomputation" not in {check.id for check in certificate.checks}
 
-    assert isinstance(certificate.tcb, vcert.FormulaTcb)
-    versions = canon.runtime_versions()
-    assert certificate.tcb.verifier_version == __version__
-    assert certificate.tcb.z3_version == formal.solver_version()
-    assert certificate.tcb.canon_version == versions.canon_version
-    assert certificate.tcb.python == versions.python
-    assert certificate.tcb.msgspec == versions.msgspec
-    assert certificate.tcb.unidata == versions.unidata
-    assert certificate.tcb.grammar_version == expr.GRAMMAR_VERSION
-    assert certificate.tcb.numeric_profile == artifact.spec.numeric_profile
-    assert certificate.tcb.script_template_version == matplotlib_script.SCRIPT_TEMPLATE_VERSION
+    assert certificate.tcb is FORMULA_TCB
+    assert tcb_wire == {"kind": "formula"} | {
+        field: getattr(FORMULA_TCB, field) for field in FORMULA_TCB.__struct_fields__
+    }
     assert tuple(tcb_wire) == (
         "kind",
         "verifier_version",
@@ -385,6 +399,226 @@ def test_formula_certificate_real_pipeline_canonical_vector(
     }.isdisjoint(tcb_wire)
     assert vcert.decode_vcert_v03(payload) == certificate
     assert vcert.vcert_v03_bytes(vcert.decode_vcert_v03(payload)) == payload
+
+
+def test_formula_tcb_fields_equal_their_live_sources() -> None:
+    """Provenance WIRING, the twin of the canonical-form vector above.
+
+    This test loads no vector, so an interpreter bump cannot move it; the vector test injects a
+    fixed TCB, so a mis-sourced field cannot move that one. Each field is compared against its
+    ORIGINAL source rather than against ``canon.runtime_versions()``, which is the production
+    collector and would make the comparison circular.
+    """
+    artifact = _artifact("f02_linear.json")
+    tcb = vcert.build_formula_certificate(artifact).tcb
+
+    assert type(tcb) is vcert.FormulaTcb
+    assert tcb.verifier_version == __version__
+    assert tcb.z3_version == formal.solver_version()
+    assert tcb.canon_version == canon.CANON_VERSION
+    assert tcb.python == platform.python_version()
+    assert tcb.msgspec == msgspec.__version__
+    assert tcb.unidata == unicodedata.unidata_version
+    assert tcb.grammar_version == expr.GRAMMAR_VERSION
+    assert tcb.numeric_profile == artifact.spec.numeric_profile
+    assert tcb.script_template_version == matplotlib_script.SCRIPT_TEMPLATE_VERSION
+    assert set(tcb.__struct_fields__) == {
+        "verifier_version",
+        "z3_version",
+        "canon_version",
+        "python",
+        "msgspec",
+        "unidata",
+        "grammar_version",
+        "numeric_profile",
+        "script_template_version",
+    }
+
+
+def test_dataset_tcb_fields_equal_their_live_sources() -> None:
+    """The v0.2 twin of the formula wiring test, on the same non-circular terms."""
+    tcb = vcert.dataset_tcb()
+
+    assert type(tcb) is vcert.Tcb
+    assert tcb.verifier_version == __version__
+    assert tcb.z3_version == formal.solver_version()
+    assert tcb.canon_version == canon.CANON_VERSION
+    assert tcb.python == platform.python_version()
+    assert tcb.msgspec == msgspec.__version__
+    assert tcb.unidata == unicodedata.unidata_version
+    assert tcb.vl_convert_python == importlib.metadata.version("vl-convert-python")
+    assert tcb.vl_version == "5.21"
+    assert tcb.font_family == "DejaVu Sans"
+    font = _ROOT / "src" / "verifier" / "assets" / "fonts" / "DejaVuSans.ttf"
+    assert tcb.vendored_font_sha256 == "sha256:" + hashlib.sha256(font.read_bytes()).hexdigest()
+    assert set(tcb.__struct_fields__) == {
+        "verifier_version",
+        "z3_version",
+        "canon_version",
+        "python",
+        "msgspec",
+        "unidata",
+        "vl_convert_python",
+        "vl_version",
+        "font_family",
+        "vendored_font_sha256",
+    }
+
+
+def test_formula_tcb_forwards_each_source_seam(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wiring's second half: equal-to-live cannot separate a right source from a same-valued one.
+
+    Driving every seam to a DISTINCT sentinel decides which source each field actually reads, which
+    a live-value comparison cannot: a hardcoded constant and a mis-sourced field that happens to
+    agree both survive it.
+    """
+    versions = canon.Versions(
+        canon_version="seam-canon",
+        python="seam-python",
+        msgspec="seam-msgspec",
+        unidata="seam-unidata",
+    )
+    monkeypatch.setattr(vcert, "__version__", "seam-verifier")
+    monkeypatch.setattr(canon, "runtime_versions", lambda: versions)
+    monkeypatch.setattr(formal, "solver_version", lambda: "seam-z3")
+    monkeypatch.setattr(expr, "GRAMMAR_VERSION", "seam-grammar")
+    monkeypatch.setattr(matplotlib_script, "SCRIPT_TEMPLATE_VERSION", "seam-script-template")
+    tcb = vcert._formula_tcb("rational-half-even-v1")
+
+    assert tcb == vcert.FormulaTcb(
+        verifier_version="seam-verifier",
+        z3_version="seam-z3",
+        canon_version="seam-canon",
+        python="seam-python",
+        msgspec="seam-msgspec",
+        unidata="seam-unidata",
+        grammar_version="seam-grammar",
+        numeric_profile="rational-half-even-v1",
+        script_template_version="seam-script-template",
+    )
+
+
+def test_dataset_tcb_forwards_each_source_seam(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The v0.2 twin. ``verifier_version`` is passed rather than patched: it is a parameter default
+    bound at definition, so the module attribute no longer reaches it."""
+    versions = canon.Versions(
+        canon_version="seam-canon",
+        python="seam-python",
+        msgspec="seam-msgspec",
+        unidata="seam-unidata",
+    )
+    font = "sha256:" + "7" * 64
+    monkeypatch.setattr(canon, "runtime_versions", lambda: versions)
+    monkeypatch.setattr(formal, "solver_version", lambda: "seam-z3")
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: f"seam-{name}")
+    monkeypatch.setattr(vcert, "_VL_VERSION", "seam-vl")
+    monkeypatch.setattr(vcert, "_FONT_FAMILY", "seam-font-family")
+    monkeypatch.setattr(vcert, "_font_sha256", lambda: font)
+    tcb = vcert.dataset_tcb(verifier_version="seam-verifier")
+
+    assert tcb == vcert.Tcb(
+        verifier_version="seam-verifier",
+        z3_version="seam-z3",
+        canon_version="seam-canon",
+        python="seam-python",
+        msgspec="seam-msgspec",
+        unidata="seam-unidata",
+        vl_convert_python="seam-vl-convert-python",
+        vl_version="seam-vl",
+        font_family="seam-font-family",
+        vendored_font_sha256=font,
+    )
+
+
+def test_injected_tcb_skips_live_collection_entirely() -> None:
+    """Identity alone permits an eager collect-then-discard; a bomb decides the side effect.
+
+    The un-injected call is asserted to detonate as the positive control, so the pin cannot pass
+    vacuously against a builder that stopped collecting at all.
+    """
+
+    def _bomb(*args: object, **kwargs: object) -> NoReturn:
+        message = f"live collection ran despite an injected TCB: {args} {kwargs}"
+        raise AssertionError(message)
+
+    artifact = _artifact("f02_linear.json")
+    spec, evidence = _dataset_spec_and_evidence()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(vcert, "_formula_tcb", _bomb)
+        assert vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB).tcb is FORMULA_TCB
+        with pytest.raises(AssertionError, match=r"live collection ran"):
+            vcert.build_formula_certificate(artifact)
+
+        patch.setattr(vcert, "dataset_tcb", _bomb)
+        certificate = vcert.build_dataset_certificate(spec, evidence, (), b"{}", tcb=DATASET_TCB)
+        assert certificate.tcb is DATASET_TCB
+        with pytest.raises(AssertionError, match=r"live collection ran"):
+            vcert.build_dataset_certificate(spec, evidence, (), b"{}")
+
+
+def test_formula_builder_threads_its_injected_tcb() -> None:
+    """Threading pin with a DISAGREEMENT witness; a sibling builder's pin is not this one's."""
+    artifact = _artifact("f02_linear.json")
+    live = vcert.build_formula_certificate(artifact).tcb
+    injected = vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB).tcb
+
+    assert injected is FORMULA_TCB
+    assert type(live) is vcert.FormulaTcb
+    # numeric_profile is excluded: FormulaTcb admits exactly one value, so it cannot disagree.
+    differing = {
+        field
+        for field in FORMULA_TCB.__struct_fields__
+        if getattr(FORMULA_TCB, field) != getattr(live, field)
+    }
+    assert differing == set(FORMULA_TCB.__struct_fields__) - {"numeric_profile"}
+
+
+def test_dataset_builder_refuses_a_wrong_family_or_subclass_tcb() -> None:
+    """v0.2 has no ``__post_init__`` and ``vcert_bytes`` is a raw encoder, so the builder guards.
+
+    Without it a ``FormulaTcb`` encodes ``"kind":"formula"`` into a ``vcert-0.2`` payload and a
+    ``Tcb`` subclass encodes its own tag -- the silent dataset-identity drift ``DatasetTcb``
+    deliberately avoids by not being a ``Tcb`` subclass.
+    """
+
+    class _TcbSubclass(vcert.Tcb, frozen=True, kw_only=True):
+        pass
+
+    subclass = _TcbSubclass(
+        **{field: getattr(DATASET_TCB, field) for field in DATASET_TCB.__struct_fields__}
+    )
+    spec = decode_spec((_DATASET_GOOD / "g01_total_revenue_by_month.json").read_bytes())
+    # DatasetTcb is the likeliest mistake by name alone: it is v0.3's dataset TCB, not v0.2's.
+    for wrong in (FORMULA_TCB, _dataset_v03_tcb(), subclass, object()):
+        with pytest.raises(msgspec.ValidationError, match=r"expected exact Tcb at tcb"):
+            vcert.build_dataset_certificate(
+                spec,
+                cast("checks.DatasetEvidence", None),
+                (),
+                b"{}",
+                tcb=cast("vcert.Tcb", wrong),
+            )
+
+
+def test_formula_numeric_profile_stays_single_valued() -> None:
+    """Scope guard: the day a second profile lands, an injected TCB can disagree with its spec.
+
+    ``build_formula_certificate`` carries no profile-correlation guard precisely because that
+    disagreement is unconstructible today. This test fails at exactly the moment that stops being
+    true, forcing the decision then instead of shipping an unreachable branch now.
+    """
+    assert get_args(NumericProfile) == ("rational-half-even-v1",)
+
+
+def test_encode_seam_refuses_a_forged_numeric_profile() -> None:
+    """The refusal that makes the missing builder guard a duplicate rather than a gap."""
+    artifact = _artifact("f02_linear.json")
+    forged = msgspec.structs.replace(FORMULA_TCB)
+    msgspec.structs.force_setattr(forged, "numeric_profile", "bogus")
+    certificate = vcert.build_formula_certificate(artifact, tcb=forged)
+
+    with pytest.raises(msgspec.ValidationError, match=r"\$\.tcb\.numeric_profile"):
+        vcert.vcert_v03_bytes(certificate)
 
 
 @pytest.mark.parametrize("name", _FIXED_V03_VECTOR_NAMES)
@@ -1255,9 +1489,45 @@ def test_v02_real_dataset_payload_and_render_exports_remain_byte_identical() -> 
     manifest = (_SCHEMAS / f"{Path(spec.dataset.name).stem}.json").read_bytes()
     result = cast("render.RenderResult", render.render(spec, manifest, data_dir=_DATA))
     payload = render.vcert_bytes(result.certificate)
-    assert len(payload) == 1674
+    assert b'"kind":' not in payload
+    assert vcert.decode_vcert(payload) == result.certificate
+    assert type(result.certificate.tcb) is vcert.Tcb
+
+
+def test_v02_dataset_certificate_canonical_form_under_a_fixed_tcb(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The v0.2 byte pin, driven through the whole render path on an injected TCB.
+
+    Patching the collector rather than the built certificate keeps the pinned bytes a product of
+    ``build_dataset_certificate(tcb=...)`` on the real pipeline, and makes the pin double as the
+    render-level threading gate: a renderer that dropped ``tcb=`` would fall back to live
+    collection and move every byte.
+
+    ``_tcb`` is the patched seam and ``_dataset_tcb`` is armed to explode, because patching the
+    collector alone would let a ``_build_certificate`` that reached past ``_tcb()`` straight to
+    ``_dataset_tcb(...)`` return the same sentinel and keep this test green while the renderer's
+    monkeypatch-visible version seam quietly died.
+    """
+
+    def _seam() -> vcert.Tcb:
+        return DATASET_TCB
+
+    def _explode(*, verifier_version: str) -> vcert.Tcb:
+        message = f"render bypassed _tcb() and collected live for {verifier_version}"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(render, "_tcb", _seam)
+    monkeypatch.setattr(render, "_dataset_tcb", _explode)
+    spec = decode_spec((_DATASET_GOOD / "g01_total_revenue_by_month.json").read_bytes())
+    manifest = (_SCHEMAS / f"{Path(spec.dataset.name).stem}.json").read_bytes()
+    result = cast("render.RenderResult", render.render(spec, manifest, data_dir=_DATA))
+    payload = render.vcert_bytes(result.certificate)
+
+    assert result.certificate.tcb is DATASET_TCB
+    assert len(payload) == 1746
     assert hashlib.sha256(payload).hexdigest() == (
-        "f7410b2e9bb8fbae687c455618d025727b5986232778f1565f0f9aa31230e9a1"
+        "609a075efa2e0c5e4bcfeef8d92c5ad3d40879e4826d15eed92efcc59f6960ab"
     )
     assert b'"kind":' not in payload
     assert vcert.decode_vcert(payload) == result.certificate

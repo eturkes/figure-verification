@@ -587,8 +587,9 @@ def render_html(vega_lite_json: str) -> str:
 
 
 # --- provenance certificate compatibility surface ---------------------------
-# `verifier.vcert` owns both certificate versions. These wrappers preserve the established
-# dataset API and its monkeypatch-visible verifier-version seam without importing the formula path.
+# `verifier.vcert` owns both certificate versions. These wrappers preserve the established dataset
+# API and its monkeypatch-visible verifier-version seam without importing the formula path, and
+# collect the renderer's live TCB in full before injecting it into the version-neutral builder.
 def _tcb() -> Tcb:
     """Current dataset verifier/formal/Vega display TCB."""
     return _dataset_tcb(verifier_version=__version__)
@@ -601,7 +602,7 @@ def _build_certificate(prepared: PreparedArtifact) -> VCert:
         prepared.evidence,
         prepared.results,
         prepared.vega_lite,
-        verifier_version=__version__,
+        tcb=_tcb(),
     )
 
 

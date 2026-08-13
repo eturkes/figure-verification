@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""VCert v0.3 fixed-MIME routing, compatibility vectors, and refusal order."""
+"""VCert v0.3 fixed-MIME routing, fixed-TCB payload identity, and refusal order."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from vector_tcb import FORMULA_TCB
 from verifier import attestation, checks, formula_prepare, matplotlib_script, vcert
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
@@ -157,6 +158,7 @@ def _decoder_bomb(
 
 
 def _formula_certificate() -> vcert.VCertV03:
+    """Real f02 certificate under the fixed vector TCB, so its bytes are interpreter-portable."""
     spec = decode_formula_spec(_FORMULA_SPEC.read_bytes())
     evidence = checks.verify_formula_run(spec).require_evidence()
     prepared = cast(
@@ -167,7 +169,7 @@ def _formula_certificate() -> vcert.VCertV03:
         "matplotlib_script.MatplotlibScriptArtifact",
         matplotlib_script.emit_matplotlib_script(prepared).artifact,
     )
-    return vcert.build_formula_certificate(artifact)
+    return vcert.build_formula_certificate(artifact, tcb=FORMULA_TCB)
 
 
 def _v03_payload_failure(kind: str) -> bytes:  # noqa: PLR0911
@@ -286,9 +288,10 @@ def test_v03_real_f02_round_trip_preserves_decoder_payload_identity(
 ) -> None:
     certificate = _formula_certificate()
     payload = vcert.vcert_v03_bytes(certificate)
-    assert len(payload) == 1_801
+    assert certificate.tcb is FORMULA_TCB
+    assert len(payload) == 1_847
     assert hashlib.sha256(payload).hexdigest() == (
-        "b9c4f4a6274ca401dce5a7a22e951223d51cf308de4d4a6d18a62d74b676bdf0"
+        "8ebacb571133365af951ddc435f0d80765ce560235ba7a8253ea5121c28e5905"
     )
     envelope = attestation.sign_vcert_v03(certificate, _FIXED_PRIVATE_KEY, keyid=_FIXED_KEYID)
     assert _wire(envelope)["payloadType"] == attestation.VCERT_V03_PAYLOAD_TYPE
