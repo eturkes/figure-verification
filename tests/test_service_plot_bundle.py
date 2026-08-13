@@ -672,6 +672,7 @@ def test_plot_record_and_reference_corruption_guards_cover_impossible_sql_shapes
                 plot_id,
                 certificate.ref,
                 key.ref.digest,
+                archive_module.PlotSourceKind.DATASET,
             )
 
 

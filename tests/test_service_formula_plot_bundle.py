@@ -593,10 +593,10 @@ def test_t35_formula_source_hashes_exact_bytes_without_rederivation(
     assert seen == [parts.bundle.formula_source]
 
 
-def test_t36_formula_batch_choke_precedes_dataset_access(
+def test_t36_formula_batch_projects_without_reaching_the_dataset_decoder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T36: _plot_bundle_batch first-statement choke raises ratified NotImplementedError."""
+    """T36: the mode's decoder entry is what projection consults, so the dataset arm stays cold."""
     parts = formula_bundle_parts()
     calls = 0
 
@@ -606,16 +606,23 @@ def test_t36_formula_batch_choke_precedes_dataset_access(
         msg = "dataset decoder reached"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(archive_module, "_decode_canonical_spec", decoder_bomb)
-    with pytest.raises(NotImplementedError, match=r"M9\.7b-2"):
-        archive_module._plot_bundle_batch(parts.bundle)
+    monkeypatch.setitem(
+        archive_module._CANONICAL_SPEC_DECODERS,
+        archive_module.PlotSourceKind.DATASET,
+        decoder_bomb,
+    )
+    batch = archive_module._plot_bundle_batch(parts.bundle)
     assert calls == 0
+    assert batch.plots[0].source_kind is archive_module.PlotSourceKind.FORMULA
+    assert {reference.role for reference in batch.plot_references} == {
+        role for role, _name in archive_module._FORMULA_PLOT_ROLE_FIELDS
+    }
 
 
-def test_t37_publish_formula_reaches_sole_live_storage_choke(
+def test_t37_publish_formula_validates_then_commits_a_readable_plot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """T37: publish_plot validates formula then reaches the sole live choke with zero rows."""
+    """T37: publish_plot revalidates the formula bundle, projects it, and round-trips its bytes."""
     parts = formula_bundle_parts()
     settings, _dataset = dataset_bundle(tmp_path)
     archive = archive_module.open_archive(settings)
@@ -634,10 +641,19 @@ def test_t37_publish_formula_reaches_sole_live_storage_choke(
 
     monkeypatch.setattr(archive_module, "_validate_plot_bundle", validate_spy)
     monkeypatch.setattr(archive_module, "_plot_bundle_batch", batch_spy)
-    with pytest.raises(NotImplementedError, match=r"M9\.7b-2"):
-        archive.publish_plot(parts.bundle)
+    archive.publish_plot(parts.bundle)
     assert calls == {"validate": 1, "batch": 1}
-    assert archive.stats() == before
+    assert archive.stats().plots == before.plots + 1
+
+    budget = (
+        sum(
+            len(getattr(parts.bundle, name))
+            for _role, name in archive_module._FORMULA_PLOT_ROLE_FIELDS
+        )
+        + len(parts.bundle.vcert_envelope)
+        + len(parts.bundle.public_key)
+    )
+    assert archive.read_plot(parts.bundle.plot_id, max_bytes=budget) == parts.bundle
 
 
 def test_t39_dataset_validator_body_matches_baseline() -> None:

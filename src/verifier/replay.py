@@ -61,6 +61,8 @@ PLOT_ROLE_VALUES = (
     "svg",
     "vcert_payload",
     "tool_versions",
+    "formula_source",
+    "matplotlib_script",
 )
 
 _ATTEMPT_ARTIFACT_FIELDS = (

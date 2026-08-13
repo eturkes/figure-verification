@@ -31,8 +31,8 @@ role domains with the two formula byte roles and appends a backfilled ``plots.so
 discriminator plus a positive-allowlist trigger binding each reference role to its plot's mode; it
 rewrites three stored table definitions in place rather than rebuilding, so no content byte moves.
 That trigger admits no cross-mode reference through any INSERT; it does not defend against a direct
-UPDATE of already-stored rows. Only ``dataset`` rows are produced at this version — formula kinds,
-roles, and tags are representable in storage, and every decoding entry refuses a non-dataset row.
+UPDATE of already-stored rows. Both plot modes publish and read back through closed per-mode role,
+canonical-spec, and certificate-family dispatch; no pipeline here emits formula rows yet.
 
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
@@ -49,8 +49,8 @@ recomputation. Plot bundles contain no occurrence time, route, request, prompt, 
 
 ``FormulaPlotBundle`` carries the formula mode's own nine carriers under VCert v0.3 and the same
 revalidation discipline; ``PlotBundle`` names the union of the two, so annotations spell it while
-every construction picks a concrete member. Formula bundles are construct + validate only here.
-Storage admits dataset roles alone, so the projection seam refuses them; persistence lands next.
+every construction picks a concrete member. Complete reads return the member its stored mode
+selects; reference-role and certificate families stay disjoint across the two.
 
 ``AttemptManifest`` adds that occurrence layer under a distinct DSSE application type: canonical
 UTC time, 128-bit CSPRNG nonce, route, status/outcome classifier, signer/verifier identifiers, every
@@ -69,7 +69,7 @@ import re
 import secrets
 import sqlite3
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -77,7 +77,7 @@ from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from types import GenericAlias
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -85,7 +85,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from verifier import __version__, attestation, canon, checks, render, vcert
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
+from verifier.schema import (
+    FormulaPlotSpec,
+    PlotSpec,
+    VPlotSpec,
+    decode_formula_spec,
+    decode_spec,
+)
 from verifier.service.identity import (
     IdentityError,
     Signer,
@@ -227,7 +233,7 @@ class BlobKind(StrEnum):
 
 
 class PlotRole(StrEnum):
-    """Blob roles carried by a content-deduplicated successful plot."""
+    """Blob roles carried by either content-deduplicated successful-plot mode."""
 
     RAW_CSV = BlobKind.RAW_CSV
     RAW_MANIFEST = BlobKind.RAW_MANIFEST
@@ -238,14 +244,14 @@ class PlotRole(StrEnum):
     SVG = BlobKind.SVG
     VCERT_PAYLOAD = BlobKind.VCERT_PAYLOAD
     TOOL_VERSIONS = BlobKind.TOOL_VERSIONS
+    FORMULA_SOURCE = BlobKind.FORMULA_SOURCE
+    MATPLOTLIB_SCRIPT = BlobKind.MATPLOTLIB_SCRIPT
 
 
 class PlotSourceKind(StrEnum):
-    """Closed provenance modes a stored plot can carry; storage-level discriminator.
+    """Closed provenance modes a stored plot can carry: dataset or formula.
 
-    A row's mode decides which reference roles the schema admits for it and which decoder may
-    interpret it. Only ``DATASET`` rows are produced by this version; ``FORMULA`` is representable
-    in storage so the formula bundle model can land without a second migration.
+    The mode selects that plot's reference roles, canonical-spec decoder, and certificate family.
     """
 
     DATASET = "dataset"
@@ -358,7 +364,7 @@ class FormulaPlotBundle:
     Same discipline as the dataset bundle over the formula mode's own carriers: the recomputed
     plotted table, the resolved formula source, and the verifier-authored matplotlib script the
     v0.3 certificate binds. No CSV, manifest, Vega-Lite, or SVG role exists here rather than being
-    fabricated empty. Persistence arrives in M9.7b-2; this class is construct + validate only.
+    fabricated empty. Publish and complete reads re-hold each edge of its v0.3 signed hash graph.
     """
 
     plot_id: str
@@ -714,7 +720,7 @@ class ArchiveStats:
     attempts: int
 
 
-_PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
+_DATASET_PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
     (PlotRole.RAW_CSV, "raw_csv"),
     (PlotRole.RAW_MANIFEST, "raw_manifest"),
     (PlotRole.CANONICAL_SPEC, "canonical_spec"),
@@ -725,6 +731,26 @@ _PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
     (PlotRole.VCERT_PAYLOAD, "vcert_payload"),
     (PlotRole.TOOL_VERSIONS, "tool_versions"),
 )
+_FORMULA_PLOT_ROLE_FIELDS: tuple[tuple[PlotRole, str], ...] = (
+    (PlotRole.CANONICAL_SPEC, "canonical_spec"),
+    (PlotRole.FORMULA_SOURCE, "formula_source"),
+    (PlotRole.PLOTTED_TABLE, "plotted_table"),
+    (PlotRole.VERDICT, "verdict"),
+    (PlotRole.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (PlotRole.VCERT_PAYLOAD, "vcert_payload"),
+    (PlotRole.TOOL_VERSIONS, "tool_versions"),
+)
+# Total over the closed mode enum: every selection indexes it, so no mode can fall back to
+# another's role set. The signed envelope rides plots.certificate_digest and the public key rides
+# keys, so neither is a reference role in either mode.
+_PLOT_ROLE_FIELDS_BY_SOURCE: dict[PlotSourceKind, tuple[tuple[PlotRole, str], ...]] = {
+    PlotSourceKind.DATASET: _DATASET_PLOT_ROLE_FIELDS,
+    PlotSourceKind.FORMULA: _FORMULA_PLOT_ROLE_FIELDS,
+}
+_PLOT_ROLES_BY_SOURCE: dict[PlotSourceKind, frozenset[PlotRole]] = {
+    mode: frozenset(role for role, _name in fields)
+    for mode, fields in _PLOT_ROLE_FIELDS_BY_SOURCE.items()
+}
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
 _TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
@@ -859,6 +885,37 @@ def _decode_canonical_formula_spec(payload: bytes) -> FormulaPlotSpec:
     return spec
 
 
+def _decode_canonical_plot_spec(payload: bytes) -> PlotSpec:
+    """Decode one stored canonical spec whose plot mode the reader never learns.
+
+    Sound while the two spec languages carry disjoint ``version`` literals: at most one decoder
+    accepts any payload, so first success is the only success and the order states no policy. Only
+    a decode refusal falls through to the next mode; the canonical-form check runs once on the
+    accepted spec, so non-canonical bytes report themselves instead of the next mode's refusal.
+    """
+    spec: PlotSpec
+    try:
+        spec = decode_spec(payload)
+    except (ValueError, RecursionError):
+        try:
+            spec = decode_formula_spec(payload)
+        except (ValueError, RecursionError) as exc:
+            msg = "archive canonical spec is not a valid VPlot or formula VPlot specification"
+            raise ArchiveIntegrityError(msg) from exc
+    if canon.spec_bytes(spec) != payload:
+        msg = "archive canonical spec bytes are not canonical"
+        raise ArchiveIntegrityError(msg)
+    return spec
+
+
+# Total over the closed mode enum: a stored plot's own mode selects the schema its canonical spec
+# is read under, so no payload is ever interpreted by the other mode's decoder.
+_CANONICAL_SPEC_DECODERS: dict[PlotSourceKind, Callable[[bytes], PlotSpec]] = {
+    PlotSourceKind.DATASET: _decode_canonical_spec,
+    PlotSourceKind.FORMULA: _decode_canonical_formula_spec,
+}
+
+
 def _decode_canonical_formula_versions(payload: bytes) -> vcert.FormulaTcb:
     try:
         versions = _FORMULA_TOOL_VERSIONS_DECODER.decode(payload)
@@ -935,55 +992,50 @@ def _authenticated_bundle_certificate(
     return verified.certificate
 
 
-def _authenticated_formula_bundle_certificate(
-    bundle: FormulaPlotBundle, limits: VerificationLimits
-) -> vcert.VCertV03:
-    """Re-hold one formula bundle's addresses, producer form, signature, type, and payload.
+def _authenticate_archive_formula_certificate(
+    *,
+    plot_id: str,
+    keyid: str,
+    envelope: bytes,
+    public_key_bytes: bytes,
+    limits: VerificationLimits,
+) -> attestation.VerifiedVCertV03:
+    """Re-hold one archived formula certificate's addresses, form, signature, type, and family.
 
     Deliberately a twin of the dataset path rather than a shared parameterized helper: the two
     fixed-MIME verify wrappers return different certificate types, so duplicating keeps verifier
-    selection explicit at each seam. The bundled key proves this snapshot's internal cryptographic
-    consistency only; it never enters the operator's independent trust policy.
+    selection explicit at each seam. The digest-matching archived key proves archive
+    self-consistency only, never operator trust.
     """
-    if len(bundle.vcert_payload) > limits.max_attestation_bytes:
-        msg = (
-            f"formula plot bundle VCert payload has {len(bundle.vcert_payload)} bytes; "
-            f"limit is {limits.max_attestation_bytes}"
-        )
-        raise ArchiveReadLimitError(msg)
     envelope_limit = attestation.envelope_byte_limit(
         limits.max_attestation_bytes, payload_type=attestation.VCERT_V03_PAYLOAD_TYPE
     )
-    if len(bundle.vcert_envelope) > envelope_limit:
+    if len(envelope) > envelope_limit:
         msg = (
-            f"formula plot bundle VCert envelope has {len(bundle.vcert_envelope)} bytes; "
-            f"limit is {envelope_limit}"
+            f"archived formula VCert envelope has {len(envelope)} bytes; limit is {envelope_limit}"
         )
         raise ArchiveReadLimitError(msg)
-    if hashlib.sha256(bundle.vcert_envelope).hexdigest() != bundle.plot_id:
+    if hashlib.sha256(envelope).hexdigest() != plot_id:
         msg = "formula plot id does not address its exact canonical VCert envelope bytes"
         raise ArchiveIntegrityError(msg)
     try:
-        public_key = Ed25519PublicKey.from_public_bytes(bundle.public_key)
-        actual_keyid = keyid_for_public_key(bundle.public_key)
+        public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+        actual_keyid = keyid_for_public_key(public_key_bytes)
         verified = attestation.verify_vcert_v03(
-            bundle.vcert_envelope,
-            {bundle.keyid: public_key},
+            envelope,
+            {keyid: public_key},
             limits=limits,
             require_canonical_envelope=True,
-            expected_keyid_hint=bundle.keyid,
+            expected_keyid_hint=keyid,
         )
     except (ValueError, attestation.AttestationError, VerificationError) as exc:
-        msg = "formula plot bundle VCert envelope or signing public key failed verification"
+        msg = "archived formula VCert envelope or signing public key failed verification"
         raise ArchiveIntegrityError(msg) from exc
-    if actual_keyid != bundle.keyid:
-        msg = "formula plot bundle keyid does not address its signing public key bytes"
+    if actual_keyid != keyid:
+        msg = "archived formula keyid does not address its signing public key bytes"
         raise ArchiveIntegrityError(msg)
     if vcert.vcert_v03_bytes(verified.certificate) != verified.payload:
-        msg = "formula plot bundle VCert payload is not in the canonical deterministic JSON form"
-        raise ArchiveIntegrityError(msg)
-    if verified.payload != bundle.vcert_payload:
-        msg = "formula plot bundle VCert payload differs from the authenticated envelope payload"
+        msg = "archived formula VCert payload is not in the canonical deterministic JSON form"
         raise ArchiveIntegrityError(msg)
     certificate = verified.certificate
     # Redundant by design: VCertV03 correlates source/artifact/TCB on construct and on decode, so
@@ -996,7 +1048,52 @@ def _authenticated_formula_bundle_certificate(
     ):
         msg = "formula plot bundle certificate does not carry the exact formula certificate family"
         raise ArchiveIntegrityError(msg)
-    return certificate
+    return verified
+
+
+class _CertificateAuthenticator(Protocol):
+    """One mode's archived-certificate re-hold, raising on any broken edge and returning nothing."""
+
+    def __call__(
+        self,
+        *,
+        plot_id: str,
+        keyid: str,
+        envelope: bytes,
+        public_key_bytes: bytes,
+        limits: VerificationLimits,
+    ) -> object: ...
+
+
+# Selection is the whole guarantee here: each wrapper pins one fixed payload type, so the wrong arm
+# would hold an envelope against the other family's MIME. Both arms are called for effect only.
+_ARCHIVE_CERTIFICATE_AUTHENTICATORS: dict[PlotSourceKind, _CertificateAuthenticator] = {
+    PlotSourceKind.DATASET: _authenticate_archive_certificate,
+    PlotSourceKind.FORMULA: _authenticate_archive_formula_certificate,
+}
+
+
+def _authenticated_formula_bundle_certificate(
+    bundle: FormulaPlotBundle, limits: VerificationLimits
+) -> vcert.VCertV03:
+    """Authenticate one formula bundle's own envelope and bind its carried payload bytes."""
+    if len(bundle.vcert_payload) > limits.max_attestation_bytes:
+        msg = (
+            f"formula plot bundle VCert payload has {len(bundle.vcert_payload)} bytes; "
+            f"limit is {limits.max_attestation_bytes}"
+        )
+        raise ArchiveReadLimitError(msg)
+    verified = _authenticate_archive_formula_certificate(
+        plot_id=bundle.plot_id,
+        keyid=bundle.keyid,
+        envelope=bundle.vcert_envelope,
+        public_key_bytes=bundle.public_key,
+        limits=limits,
+    )
+    if verified.payload != bundle.vcert_payload:
+        msg = "formula plot bundle VCert payload differs from the authenticated envelope payload"
+        raise ArchiveIntegrityError(msg)
+    return verified.certificate
 
 
 def _validate_bundle_contents(bundle: DatasetPlotBundle, certificate: render.VCert) -> None:
@@ -2330,27 +2427,33 @@ def _consume_blob(
 
 
 def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
-    if type(bundle) is FormulaPlotBundle:
-        # The bundle is valid and fully authenticated; only this build's storage capability is
-        # absent, so no ArchiveError family applies. M9.7b-2 replaces this with the formula arm.
-        msg = "formula plot bundle persistence arrives in M9.7b-2"
-        raise NotImplementedError(msg)
+    """Assemble one mode's typed rows: its role blobs, envelope, key, plot, spec, references.
+
+    The row shape is identical across modes; the mode decides only which carriers become roles and
+    which decoder produced the spec whose canonical hash addresses the spec index.
+    """
+    source_kind = {
+        DatasetPlotBundle: PlotSourceKind.DATASET,
+        FormulaPlotBundle: PlotSourceKind.FORMULA,
+    }[type(bundle)]
+    role_fields = _PLOT_ROLE_FIELDS_BY_SOURCE[source_kind]
     role_blobs = {
         role: BlobWrite(BlobKind(role.value), cast("bytes", getattr(bundle, field_name)))
-        for role, field_name in _PLOT_ROLE_FIELDS
+        for role, field_name in role_fields
     }
     envelope = BlobWrite(BlobKind.VCERT_ENVELOPE, bundle.vcert_envelope)
     public_key = BlobWrite(BlobKind.ED25519_PUBLIC_KEY, bundle.public_key)
     canonical_spec = role_blobs[PlotRole.CANONICAL_SPEC]
-    spec_id = canon.hash_spec(_decode_canonical_spec(bundle.canonical_spec)).removeprefix("sha256:")
+    spec = _CANONICAL_SPEC_DECODERS[source_kind](bundle.canonical_spec)
+    spec_id = canon.hash_spec(spec).removeprefix("sha256:")
     return ArchiveBatch(
         blobs=(*role_blobs.values(), envelope, public_key),
         keys=(KeyRecord(bundle.keyid, public_key.ref),),
-        plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid, PlotSourceKind.DATASET),),
+        plots=(PlotRecord(bundle.plot_id, envelope.ref, bundle.keyid, source_kind),),
         specs=(SpecRecord(spec_id, canonical_spec.ref),),
         plot_references=tuple(
             PlotReference(bundle.plot_id, role, role_blobs[role].ref)
-            for role, _field_name in _PLOT_ROLE_FIELDS
+            for role, _field_name in role_fields
         ),
     )
 
@@ -2416,12 +2519,12 @@ def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str, Plo
 
 
 def _require_dataset_plot(source_kind: PlotSourceKind, *, subject: str) -> None:
-    """Refuse a non-dataset plot row before any decoder interprets it.
+    """Refuse a non-dataset plot row where only the dataset shape is interpretable.
 
-    Formula-tagged rows become storable with schema v4, while every decoder here still reads the
-    dataset artifact shape. Each decoding entry calls this for itself: a sibling entry's guard is
-    not this entry's guard. ``read_plot_envelope`` is deliberately excluded — it returns stored
-    bytes and interprets nothing, so it cannot mis-read a source mode.
+    Both modes are readable at this version, so this is no longer a blanket decoding guard: it
+    states one reader's own mode policy. The attempt layer keeps it because no attempt route
+    produces a formula plot, so a formula-linked occurrence is corrupt rather than unsupported.
+    ``read_plot_envelope`` remains excluded — it returns stored bytes and interprets nothing.
     """
     if source_kind is not PlotSourceKind.DATASET:
         msg = f"archive {subject} carries a non-dataset source kind this reader cannot interpret"
@@ -2433,6 +2536,7 @@ def _plot_bundle_blob_rows(
     plot_id: str,
     certificate: BlobRef,
     keyid: str,
+    source_kind: PlotSourceKind,
 ) -> tuple[
     tuple[BlobRef, _BlobRow],
     tuple[BlobRef, _BlobRow],
@@ -2467,7 +2571,7 @@ def _plot_bundle_blob_rows(
             msg = "archive plot role resolves to a wrong-kind or duplicate blob"
             raise ArchiveIntegrityError(msg)
         role_rows[role] = (reference, blob_row)
-    if set(role_rows) != set(PlotRole):
+    if set(role_rows) != _PLOT_ROLES_BY_SOURCE[source_kind]:
         msg = "archive plot does not carry every required role exactly once"
         raise ArchiveIntegrityError(msg)
     return (certificate, certificate_row), (key_ref, key_row), role_rows
@@ -2478,18 +2582,18 @@ def _read_complete_plot_bundle(
     plot_id: str,
     *,
     max_bytes: int,
-) -> DatasetPlotBundle:
+) -> PlotBundle:
     record_row = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
     if record_row is None:
         msg = "archive plot address was not found"
         raise ArchiveNotFoundError(msg)
     certificate, keyid, source_kind = _validated_plot_record(record_row, plot_id)
-    _require_dataset_plot(source_kind, subject="plot bundle")
+    role_fields = _PLOT_ROLE_FIELDS_BY_SOURCE[source_kind]
     certificate_entry, key_entry, role_rows = _plot_bundle_blob_rows(
-        connection, plot_id, certificate, keyid
+        connection, plot_id, certificate, keyid, source_kind
     )
 
-    entries = (certificate_entry, key_entry, *(role_rows[role] for role in PlotRole))
+    entries = (certificate_entry, key_entry, *(role_rows[role] for role, _name in role_fields))
     admitted_bytes = 0
     for _reference, row in entries:
         size = row[3]
@@ -2510,20 +2614,19 @@ def _read_complete_plot_bundle(
 
     certificate_payload = read_entry(certificate_entry)
     public_key = read_entry(key_entry)
-    role_payloads = {role: read_entry(role_rows[role]) for role in PlotRole}
-    return DatasetPlotBundle(
+    role_payloads = {role: read_entry(role_rows[role]) for role, _name in role_fields}
+    bundle_type: type[PlotBundle] = {
+        PlotSourceKind.DATASET: DatasetPlotBundle,
+        PlotSourceKind.FORMULA: FormulaPlotBundle,
+    }[source_kind]
+    # The mode's own role tuple names every carrier field, so the keyword expansion is exactly the
+    # selected class's byte fields; a missing or extra carrier raises on construction.
+    fields = {field_name: role_payloads[role] for role, field_name in role_fields}
+    return bundle_type(
         plot_id=plot_id,
         keyid=keyid,
-        raw_csv=role_payloads[PlotRole.RAW_CSV],
-        raw_manifest=role_payloads[PlotRole.RAW_MANIFEST],
-        canonical_spec=role_payloads[PlotRole.CANONICAL_SPEC],
-        plotted_table=role_payloads[PlotRole.PLOTTED_TABLE],
-        verdict=role_payloads[PlotRole.VERDICT],
-        vega_lite=role_payloads[PlotRole.VEGA_LITE],
-        svg=role_payloads[PlotRole.SVG],
-        vcert_payload=role_payloads[PlotRole.VCERT_PAYLOAD],
+        **fields,
         vcert_envelope=certificate_payload,
-        tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
         public_key=public_key,
     )
 
@@ -2651,7 +2754,9 @@ class _PlotEntries:
 
 
 def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> DatasetPlotBundle:
-    role_payloads = {role: payloads[entries.roles[role][0]] for role in PlotRole}
+    role_payloads = {
+        role: payloads[entries.roles[role][0]] for role, _name in _DATASET_PLOT_ROLE_FIELDS
+    }
     return DatasetPlotBundle(
         plot_id=entries.plot_id,
         keyid=entries.keyid,
@@ -2695,7 +2800,7 @@ def _read_complete_attempt_bundle(
         certificate, plot_keyid, plot_source_kind = _validated_plot_record(plot_record, plot_id)
         _require_dataset_plot(plot_source_kind, subject="attempt's linked plot")
         certificate_entry, plot_key_entry, plot_role_rows = _plot_bundle_blob_rows(
-            connection, plot_id, certificate, plot_keyid
+            connection, plot_id, certificate, plot_keyid, plot_source_kind
         )
         plot_parts = _PlotEntries(
             plot_id,
@@ -2707,7 +2812,7 @@ def _read_complete_attempt_bundle(
         plot_entries = (
             certificate_entry,
             plot_key_entry,
-            *(plot_role_rows[role] for role in PlotRole),
+            *(plot_role_rows[role] for role, _name in _DATASET_PLOT_ROLE_FIELDS),
         )
 
     entries = (
@@ -3282,7 +3387,6 @@ class Archive:
                 msg = "archive plot address was not found"
                 raise ArchiveNotFoundError(msg)
             certificate, keyid, source_kind = _validated_plot_record(record_row, plot_id)
-            _require_dataset_plot(source_kind, subject="plot certificate")
             certificate_row = _blob_row(connection, certificate)
             if certificate_row is None:
                 msg = "archive plot certificate relation is broken"
@@ -3306,7 +3410,8 @@ class Archive:
             )
             envelope = _collect_blob(connection, certificate, certificate_row)
             public_key = _collect_blob(connection, key_reference, key_row)
-            _authenticate_archive_certificate(
+            authenticate = _ARCHIVE_CERTIFICATE_AUTHENTICATORS[source_kind]
+            authenticate(
                 plot_id=plot_id,
                 keyid=keyid,
                 envelope=envelope,
@@ -3342,7 +3447,7 @@ class Archive:
                 raise ArchiveIntegrityError(msg)
             _admit_blob_row(blob_row, max_bytes=max_bytes, subject="canonical spec")
             payload = _collect_blob(connection, reference, blob_row)
-            spec = _decode_canonical_spec(payload)
+            spec = _decode_canonical_plot_spec(payload)
             if canon.hash_spec(spec) != f"sha256:{spec_id}":
                 msg = "archive spec_id does not address the decoded canonical spec"
                 raise ArchiveIntegrityError(msg)
@@ -3451,7 +3556,7 @@ class Archive:
         *,
         max_bytes: int,
         limits: VerificationLimits = DEFAULT_LIMITS,
-    ) -> DatasetPlotBundle:
+    ) -> PlotBundle:
         """Read one complete plot under an aggregate cap, then revalidate its signed hash graph."""
         _require_address(plot_id, subject="plot_id")
         _require_read_limit(max_bytes)

@@ -35,6 +35,9 @@ with tempfile.TemporaryDirectory() as td:
         keyid=keyid_for_public_key(public_key_bytes), public_key_bytes=public_key_bytes,
         public_key=public_key, private_key=private_key
     )
+    # One program runs in both trees, so it resolves the dataset role tuple under either name:
+    # the baseline's single `_PLOT_ROLE_FIELDS` or the per-mode split that replaced it.
+    dataset_role_fields = getattr(a, "_DATASET_PLOT_ROLE_FIELDS", None) or a._PLOT_ROLE_FIELDS
     raw = (root / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()
     outcome = pipeline.verify_only(raw, settings)
     prepared = outcome.prepared
@@ -76,7 +79,7 @@ with tempfile.TemporaryDirectory() as td:
             role.value: archive.read_plot_blob(
                 bundle.plot_id, role, max_bytes=len(getattr(bundle, name))
             ).hex()
-            for role, name in a._PLOT_ROLE_FIELDS
+            for role, name in dataset_role_fields
         },
         "attempt": "covered by the existing signed-attempt suite",
         "audit": "covered by the existing audit suite",

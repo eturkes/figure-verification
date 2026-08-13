@@ -88,6 +88,7 @@ def formula_bundle_parts() -> FormulaBundleParts:
 
 def dataset_bundle(tmp_path: Path) -> tuple[Settings, Any]:
     """Build today's real dataset bundle for exact-type and field-preservation probes."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
     settings = Settings(data_dir=_ROOT / "data", state_dir=tmp_path / "dataset-state")
     signing = load_identity(settings).signer
     raw_spec = (_ROOT / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()

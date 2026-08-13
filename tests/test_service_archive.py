@@ -1338,10 +1338,16 @@ def test_plot_reference_mode_guard_refuses_a_reference_without_its_plot(tmp_path
         )
 
 
-def test_formula_tagged_plot_row_is_refused_at_every_decoding_entry(
+def test_mode_flipped_plot_row_is_refused_by_each_reader_that_interprets_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """P20 at all three entries, plus P20b: the byte reader stays deliberately excluded."""
+    """P20: a direct UPDATE past the INSERT-only trigger leaves corrupt, not supported, state.
+
+    Both modes decode at this version, so the readers no longer share one blanket mode guard. Each
+    refuses on its own terms instead: the complete read against the formula role set the tag now
+    claims, the certificate read under the v0.3 wrapper that tag selects, and the attempt read on
+    its own dataset-only policy. P20b: the byte reader interprets nothing and stays excluded.
+    """
     archive = _archive(tmp_path)
     batch, blobs = _complete_batch()
     archive.publish(batch)
@@ -1350,17 +1356,19 @@ def test_formula_tagged_plot_row_is_refused_at_every_decoding_entry(
     with _database_connection(archive) as connection:
         connection.execute("UPDATE plots SET source_kind = 'formula' WHERE plot_id = ?", (plot_id,))
 
-    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+    with pytest.raises(ArchiveIntegrityError, match="every required role exactly once"):
         archive.read_plot(plot_id, max_bytes=100_000)
     with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
         archive.read_attempt(attempt_id, max_bytes=100_000)
 
     def unreachable(*_args: object, **_kwargs: object) -> None:
-        msg = "certificate authentication ran on a formula-tagged plot"
+        msg = "the dataset certificate wrapper ran on a formula-tagged plot"
         raise AssertionError(msg)
 
+    # The tag alone must move certificate authentication onto the v0.3 wrapper, where these stored
+    # v0.2 envelope bytes fail. Bombing the dataset wrapper proves selection, not merely refusal.
     monkeypatch.setattr(archive_module, "_authenticate_archive_certificate", unreachable)
-    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+    with pytest.raises(ArchiveIntegrityError, match="archived formula VCert envelope"):
         archive.read_certificate(plot_id, max_bytes=100_000)
     monkeypatch.undo()
 
