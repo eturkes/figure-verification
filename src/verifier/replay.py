@@ -313,7 +313,7 @@ type _BlobRole = Literal[
     "attempt_payload",
     "attempt_envelope",
 ]
-type _AttemptRoute = Literal["/verify-and-render", "/propose-spec"]
+type _AttemptRoute = Literal["/verify-and-render", "/propose-spec", "/verify-formula"]
 type _AttemptOutcome = Literal[
     "verified",
     "rejected",
@@ -396,6 +396,14 @@ _ATTEMPT_STATUS: dict[_AttemptOutcome, int] = {
 _EXPECTED_MODEL_ROLES: dict[_AttemptRoute, frozenset[_BlobRole]] = {
     "/verify-and-render": frozenset(),
     "/propose-spec": frozenset({"model_request", "model_response", "model_reply"}),
+    "/verify-formula": frozenset(),
+}
+# Mirrors the archive's route/plot-mode relation: a snapshot carries a plot by construction, so a
+# route that attaches none cannot have produced the occurrence this snapshot claims to replay.
+_ROUTE_ATTACHES_PLOT: dict[_AttemptRoute, bool] = {
+    "/verify-and-render": True,
+    "/propose-spec": True,
+    "/verify-formula": False,
 }
 _TCB_FIELDS: tuple[TcbField, ...] = (
     "verifier_version",
@@ -727,6 +735,12 @@ def _validate_attempt_graph(
         manifest.plot_id == snapshot.plot.plot_id,
         "attempt_plot",
         "authenticated attempt plot id disagrees with its nested plot",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        _ROUTE_ATTACHES_PLOT[manifest.route],
+        "attempt_outcome",
+        "authenticated attempt route cannot attach the replayed plot",
         trusted_keyid=trusted_keyid,
     )
     _require(

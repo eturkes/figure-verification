@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""T42: isolated finite dataset-preservation manifest against baseline e432bd9."""
+"""T42: isolated finite dataset-preservation manifest against baseline e432bd9.
+
+One program runs in both trees and its whole stdout is compared, so every emitted value is a
+differential: dataset plot materialization, its archive round trip, and the signed attempt,
+audit, and replay bytes layered on it. Constants would compare equal in any pair of trees, so
+each surface enters as bytes derived from the run.
+"""
 
 from __future__ import annotations
 
@@ -14,27 +20,23 @@ _PROGRAM = r"""
 import json
 import tempfile
 from dataclasses import asdict
+from datetime import UTC, datetime
 from pathlib import Path
 from verifier import attestation, render
 from verifier.service import archive as a, pipeline
+from verifier.service.audit import audit_attempt
 from verifier.service.identity import load_identity
+from verifier.service.replay import replay_plot_from_settings
 from verifier.service.settings import Settings
 
 root = Path.cwd()
 with tempfile.TemporaryDirectory() as td:
     settings = Settings(data_dir=root / "data", state_dir=Path(td) / "state")
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from verifier.service.identity import Signer, keyid_for_public_key
-    private_key = Ed25519PrivateKey.from_private_bytes(bytes(range(32)))
-    public_key = private_key.public_key()
-    public_key_bytes = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
-    signer = Signer(
-        keyid=keyid_for_public_key(public_key_bytes), public_key_bytes=public_key_bytes,
-        public_key=public_key, private_key=private_key
-    )
+    # Audit and replay authenticate against the configured identity, so this signs with that
+    # identity: let it create the key file with its required mode, then seed it deterministically.
+    load_identity(settings)
+    Path(settings.signing_key_file).write_bytes(bytes(range(32)))
+    signer = load_identity(settings).signer
     # One program runs in both trees, so it resolves the dataset role tuple under either name:
     # the baseline's single `_PLOT_ROLE_FIELDS` or the per-mode split that replaced it.
     dataset_role_fields = getattr(a, "_DATASET_PLOT_ROLE_FIELDS", None) or a._PLOT_ROLE_FIELDS
@@ -67,6 +69,23 @@ with tempfile.TemporaryDirectory() as td:
     envelope_bytes = archive.read_plot_envelope(
         bundle.plot_id, max_bytes=len(bundle.vcert_envelope)
     )
+    attempt = a.materialize_attempt_bundle(
+        a.AttemptDraft(
+            occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
+            route=a.AttemptRoute.VERIFY_AND_RENDER,
+            http_status=200,
+            outcome=a.AttemptOutcome.VERIFIED,
+            artifacts=pipeline._attempt_artifacts(outcome, raw, bundle.verdict, None),
+            plot=bundle,
+        ),
+        signer,
+        nonce="0" * 32,
+        limits=settings.limits,
+    )
+    archive.publish_attempt(attempt, limits=settings.limits)
+    read_attempt = archive.read_attempt(
+        attempt.attempt_id, max_bytes=settings.max_archive_bytes, limits=settings.limits
+    )
     output = {
         "materialized": {n: getattr(bundle, n).hex() for n in field_names},
         "batch": repr(batch),
@@ -81,10 +100,26 @@ with tempfile.TemporaryDirectory() as td:
             ).hex()
             for role, name in dataset_role_fields
         },
-        "attempt": "covered by the existing signed-attempt suite",
-        "audit": "covered by the existing audit suite",
-        "replay": "covered by the existing replay suites",
-        "refusals": "covered by existing named-refusal tests",
+        "attempt": {
+            "id": attempt.attempt_id,
+            "manifest": repr(attempt.manifest),
+            "payload": attempt.attempt_payload.hex(),
+            "envelope": attempt.attempt_envelope.hex(),
+            "batch": repr(a._attempt_bundle_batch(attempt)),
+            "read": repr(read_attempt.manifest),
+            "read_envelope": archive.read_attempt_envelope(
+                attempt.attempt_id, max_bytes=len(attempt.attempt_envelope)
+            ).hex(),
+            "roles": {
+                role.value: archive.read_attempt_blob(
+                    attempt.attempt_id, role, max_bytes=len(observed)
+                ).hex()
+                for role, name in a._ATTEMPT_ARTIFACT_FIELDS
+                if (observed := getattr(attempt.artifacts, name)) is not None
+            },
+        },
+        "audit": audit_attempt(settings, attempt.attempt_id).hex(),
+        "replay": repr(replay_plot_from_settings(settings, bundle.plot_id)),
     }
     print(json.dumps(output, sort_keys=True, separators=(",", ":")))
 """

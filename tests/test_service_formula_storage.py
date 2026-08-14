@@ -252,25 +252,21 @@ def test_p6_storage_choke_message_is_absent_from_source() -> None:
     assert any("class FormulaPlotBundle" in path.read_text() for path in sources)
 
 
-def test_rd8_no_production_formula_bundle_producer() -> None:
-    constructor_calls: list[str] = []
-    materializers: list[str] = []
-    for path in (_ROOT / "src").rglob("*.py"):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "FormulaPlotBundle"
-            ):
-                constructor_calls.append(f"{path}:{node.lineno}")
-            if (
-                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == "materialize_formula_plot_bundle"
-            ):
-                materializers.append(f"{path}:{node.lineno}")
-    assert constructor_calls == []
-    assert materializers == []
+def test_rd8_produced_formula_bundle_publishes_and_reads(tmp_path: Path) -> None:
+    parts = formula_bundle_parts()
+    producer = archive_module.__dict__.get("materialize_formula_plot_bundle")
+    assert callable(producer)
+    produced = producer(
+        parts.artifact,
+        parts.certificate,
+        parts.bundle.vcert_envelope,
+        parts.signer,
+    )
+    settings = Settings(data_dir=_ROOT / "data", state_dir=tmp_path / "produced-state")
+    archive = open_archive(settings)
+
+    archive.publish_plot(produced)
+    assert archive.read_plot(produced.plot_id, max_bytes=_bundle_bytes(produced)) == produced
 
 
 def test_d1_formula_publish_read_reopen_and_all_nine_carriers(tmp_path: Path) -> None:

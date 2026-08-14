@@ -32,16 +32,17 @@ discriminator plus a positive-allowlist trigger binding each reference role to i
 rewrites three stored table definitions in place rather than rebuilding, so no content byte moves.
 That trigger admits no cross-mode reference through any INSERT; it does not defend against a direct
 UPDATE of already-stored rows. Both plot modes publish and read back through closed per-mode role,
-canonical-spec, and certificate-family dispatch; no pipeline here emits formula rows yet.
+canonical-spec, and certificate-family dispatch, and each mode has its own materializer here.
 
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
 spec reads resolve one indexed canonical-spec blob then decode/re-encode/hash it; key reads require
 one exact raw 32-byte Ed25519 blob under its keyid. Archived keys prove self-consistency only.
 
-The high-level successful-plot API materializes one immutable ``DatasetPlotBundle`` from the exact
-formal-passed evidence/render chain, publishes all eleven typed payloads atomically, and reads them
-only after aggregate-size admission. Publish + read recheck canonical spec/verdict/version forms,
+The high-level successful-plot API materializes one immutable bundle from the exact formal-passed
+chain its mode ran -- eleven dataset payloads from evidence plus render, nine formula payloads from
+the emitted script artifact -- publishes them atomically, and reads them only after aggregate-size
+admission. Publish + read recheck canonical spec/verdict/version forms,
 the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
 the bundle's archived public key establishes internal cryptographic consistency only; it never
 grants that key operator trust. Replay applies independently configured trust policy before
@@ -82,7 +83,7 @@ from typing import Literal, Protocol, cast
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from verifier import __version__, attestation, canon, checks, render, vcert
+from verifier import __version__, attestation, canon, checks, matplotlib_script, render, vcert
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import (
@@ -137,6 +138,7 @@ __all__ = [
     "PlotSourceKind",
     "SpecRecord",
     "materialize_attempt_bundle",
+    "materialize_formula_plot_bundle",
     "materialize_plot_bundle",
     "open_archive",
 ]
@@ -272,10 +274,17 @@ class AttemptRole(StrEnum):
 
 
 class AttemptRoute(StrEnum):
-    """Artifact-producing service entry routes included in the occurrence ledger."""
+    """Closed route vocabulary the occurrence ledger authenticates and signs.
+
+    Each route declares its own model-trace obligation and the plot modes it may attach; both
+    relations are closed maps over exactly these members, never a default arm. Membership is the
+    archive's own vocabulary, not a claim that a service entry point serves every route: a route
+    enters here once occurrences can be recorded against it, and gains its HTTP entry separately.
+    """
 
     VERIFY_AND_RENDER = "/verify-and-render"
     PROPOSE_SPEC = "/propose-spec"
+    VERIFY_FORMULA = "/verify-formula"
 
 
 class AttemptOutcome(StrEnum):
@@ -751,6 +760,13 @@ _PLOT_ROLES_BY_SOURCE: dict[PlotSourceKind, frozenset[PlotRole]] = {
     mode: frozenset(role for role, _name in fields)
     for mode, fields in _PLOT_ROLE_FIELDS_BY_SOURCE.items()
 }
+# One owner for "which mode is this bundle": projection and the occurrence layer both index it.
+_PLOT_SOURCE_KIND_BY_TYPE: dict[
+    type[DatasetPlotBundle] | type[FormulaPlotBundle], PlotSourceKind
+] = {
+    DatasetPlotBundle: PlotSourceKind.DATASET,
+    FormulaPlotBundle: PlotSourceKind.FORMULA,
+}
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
 _TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
@@ -784,6 +800,30 @@ _MODEL_REQUEST_RESPONSE = {
     AttemptOutcome.MODEL_NO_CHOICES,
     AttemptOutcome.MODEL_EMPTY_CONTENT,
 }
+# Total over the closed route enum: which plot modes each route may attach to its occurrence.
+# The formula route attaches none at this version, so its occurrences are plotless and therefore
+# never verified; admitting the formula plot mode there is a later monotone widening of this map.
+_ROUTE_PLOT_SOURCES: dict[AttemptRoute, frozenset[PlotSourceKind]] = {
+    AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),
+    AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),
+    AttemptRoute.VERIFY_FORMULA: frozenset(),
+}
+# Total over the closed route enum: whether a route opens the trusted dataset inputs at all.
+# A route that reads no CSV cannot truthfully bind raw CSV or manifest observation bytes.
+_ROUTE_READS_DATASET_INPUTS: dict[AttemptRoute, bool] = {
+    AttemptRoute.VERIFY_AND_RENDER: True,
+    AttemptRoute.PROPOSE_SPEC: True,
+    AttemptRoute.VERIFY_FORMULA: False,
+}
+_DATASET_INPUT_ROLES = frozenset({BlobKind.RAW_CSV, BlobKind.RAW_MANIFEST})
+_MODEL_TRACE_ROLES = frozenset(
+    {BlobKind.MODEL_REQUEST, BlobKind.MODEL_RESPONSE, BlobKind.MODEL_REPLY}
+)
+# The declared bindings and the observed bytes are two views of one relation, so both the
+# pre-signing manifest check and the bundle check refuse it under one wording.
+_MODEL_TRACE_DISAGREEMENT = "attempt model trace presence disagrees with its route/outcome"
+_JUDGEMENT_OUTCOMES = frozenset({AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED})
+_RAW_SPEC_OUTCOMES = _JUDGEMENT_OUTCOMES | {AttemptOutcome.DATASET_MISMATCH}
 
 
 def _require_limits(limits: VerificationLimits) -> None:
@@ -1298,6 +1338,68 @@ def materialize_plot_bundle(
     return bundle
 
 
+def materialize_formula_plot_bundle(
+    artifact: matplotlib_script.MatplotlibScriptArtifact,
+    certificate: vcert.VCertV03,
+    envelope: bytes,
+    signer: Signer,
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> FormulaPlotBundle:
+    """Materialize exact formula-plot bytes from one evaluation/emission/signing chain.
+
+    Formula mode's analogue of the dataset materializer, under the same discipline: no I/O, no
+    invented occurrence metadata, and no recomputation. The artifact already retains the exact
+    ``FormulaEvidence`` that crossed the core, formal, and emission gates, so this binds that
+    recomputation and the emitted script to the signed v0.3 certificate. Pairing is a
+    certificate-bound projection rather than artifact identity: the emitted-script digest refuses
+    an unpaired certificate here as a caller error, exactly as the dataset materializer refuses
+    render bytes that differ from its prepared artifact, and ``_validate_plot_bundle`` then
+    re-derives every field v0.3 binds — source, spec, table, and script digests plus certified
+    check id/method/status. Result fields v0.3 leaves unbound, ``CheckResult.message`` among them,
+    travel on the caller's own chain.
+    """
+    typed_values: tuple[tuple[object, type[object], str], ...] = (
+        (artifact, matplotlib_script.MatplotlibScriptArtifact, "artifact"),
+        (certificate, vcert.VCertV03, "certificate"),
+        (signer, Signer, "signer"),
+    )
+    for value, expected_type, name in typed_values:
+        if not isinstance(value, expected_type):
+            msg = f"{name} must be {expected_type.__name__}, got {type(value).__name__}"
+            raise TypeError(msg)
+    envelope_object: object = envelope
+    if not isinstance(envelope_object, bytes):
+        msg = f"envelope must be bytes, got {type(envelope).__name__}"
+        raise TypeError(msg)
+    _require_limits(limits)
+    certified_artifact = certificate.artifact
+    if type(certified_artifact) is not vcert.MatplotlibScriptArtifactCert:
+        msg = f"certificate must bind a matplotlib script, got {type(certified_artifact).__name__}"
+        raise ValueError(msg)
+    if certified_artifact.matplotlib_script_hash != artifact.matplotlib_script_hash:
+        msg = "certified script digest differs from the emitted matplotlib script"
+        raise ValueError(msg)
+
+    evidence = artifact.evidence
+    verdict = Verdict(verified=True, layer="verify", results=artifact.results)
+    bundle = FormulaPlotBundle(
+        plot_id=hashlib.sha256(envelope).hexdigest(),
+        keyid=signer.keyid,
+        canonical_spec=canon.spec_bytes(artifact.spec),
+        formula_source=evidence.formula_source_bytes,
+        plotted_table=canon.serialize_table(evidence.plotted_table).encode("utf-8"),
+        verdict=_BUNDLE_ENCODER.encode(verdict),
+        matplotlib_script=artifact.matplotlib_script,
+        vcert_payload=vcert.vcert_v03_bytes(certificate),
+        vcert_envelope=envelope,
+        tool_versions=_BUNDLE_ENCODER.encode(certificate.tcb),
+        public_key=signer.public_key_bytes,
+    )
+    _validate_plot_bundle(bundle, limits)
+    return bundle
+
+
 def _canonical_utc_timestamp(occurred_at: datetime) -> str:
     occurred_object: object = occurred_at
     if not isinstance(occurred_object, datetime) or occurred_at.utcoffset() is None:
@@ -1390,6 +1492,67 @@ def _validate_manifest_route_status(manifest: AttemptManifest) -> None:
         raise ArchiveIntegrityError(msg)
 
 
+def _present_artifact_roles(artifacts: AttemptArtifacts) -> set[BlobKind]:
+    return {
+        BlobKind(role)
+        for role, name in _ATTEMPT_ARTIFACT_FIELDS
+        if getattr(artifacts, name) is not None
+    }
+
+
+def _validate_outcome_role_presence(outcome: AttemptOutcome, roles: set[BlobKind]) -> None:
+    """Refuse an occurrence whose artifact roles contradict the judgement it reports.
+
+    Declared manifest bindings and observed bundle bytes are two views of this relation, so the
+    check before signing and the check on a complete bundle share one decision and one wording.
+    """
+    if (BlobKind.VERDICT in roles) != (outcome in _JUDGEMENT_OUTCOMES):
+        msg = "attempt verdict presence disagrees with its outcome"
+        raise ArchiveIntegrityError(msg)
+    if (BlobKind.RAW_SPEC in roles) != (outcome in _RAW_SPEC_OUTCOMES):
+        msg = "attempt raw-spec presence disagrees with its outcome"
+        raise ArchiveIntegrityError(msg)
+
+
+def _validate_manifest_route_relations(manifest: AttemptManifest) -> None:
+    """Refuse an occurrence whose declared shape its own route could not have produced.
+
+    Every relation here is decidable from the manifest alone, so materialization settles them
+    before signing rather than minting an authentic statement it must then reject. A route
+    attaching no plot mode also cannot reach a verified judgement, since exactly the verified
+    outcome carries a plot; a route that opens no dataset cannot have observed dataset bytes.
+    A route's model-trace policy is decidable here too, so the route that calls no model settles
+    both its own outcome domain and its empty model trace before a signature exists, and the
+    outcome's own artifact obligations settle from the declared bindings in the same pass.
+
+    This is the single owner of the route/source relation. Manifest-shape validation runs on
+    both paths that reach an occurrence — materialization before signing, and every external
+    bundle ahead of its binding and plot-id equalities — so a second copy at the bundle layer
+    would sit behind those equalities and never decide anything.
+    """
+    admitted_modes = _ROUTE_PLOT_SOURCES[manifest.route]
+    if not admitted_modes:
+        if manifest.plot_id is not None or manifest.plot_artifacts:
+            msg = f"attempt manifest route {manifest.route.value} admits no plot"
+            raise ArchiveIntegrityError(msg)
+        if manifest.outcome is AttemptOutcome.VERIFIED:
+            msg = f"attempt manifest route {manifest.route.value} cannot reach a verified outcome"
+            raise ArchiveIntegrityError(msg)
+    if not _ROUTE_READS_DATASET_INPUTS[manifest.route] and any(
+        binding.role in _DATASET_INPUT_ROLES for binding in manifest.artifacts
+    ):
+        msg = f"attempt manifest route {manifest.route.value} observes no dataset input bytes"
+        raise ArchiveIntegrityError(msg)
+    declared_model_roles = {
+        binding.role for binding in manifest.artifacts if binding.role in _MODEL_TRACE_ROLES
+    }
+    if declared_model_roles != {BlobKind(role) for role in _expected_model_roles(manifest)}:
+        raise ArchiveIntegrityError(_MODEL_TRACE_DISAGREEMENT)
+    _validate_outcome_role_presence(
+        manifest.outcome, {binding.role for binding in manifest.artifacts}
+    )
+
+
 def _validate_manifest_identity(manifest: AttemptManifest) -> None:
     plot_id_object: object = manifest.plot_id
     version_object: object = manifest.verifier_version
@@ -1427,6 +1590,7 @@ def _validate_attempt_manifest_shape(manifest: AttemptManifest) -> None:
     _validate_manifest_identity(manifest)
     _validate_binding_tuple(manifest.artifacts, subject="artifacts")
     _validate_binding_tuple(manifest.plot_artifacts, subject="plot artifacts")
+    _validate_manifest_route_relations(manifest)
 
 
 def _present_model_roles(artifacts: AttemptArtifacts) -> set[AttemptRole]:
@@ -1438,12 +1602,23 @@ def _present_model_roles(artifacts: AttemptArtifacts) -> set[AttemptRole]:
     }
 
 
-def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
-    if manifest.route is AttemptRoute.VERIFY_AND_RENDER:
-        if manifest.outcome not in {AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED}:
-            msg = "direct render attempts may only carry verified or rejected outcomes"
-            raise ArchiveIntegrityError(msg)
-        return set()
+def _direct_model_roles(manifest: AttemptManifest, *, subject: str) -> set[AttemptRole]:
+    """A route calling no model observes no model trace, so only a judgement can be truthful."""
+    if manifest.outcome not in {AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED}:
+        msg = f"{subject} attempts may only carry verified or rejected outcomes"
+        raise ArchiveIntegrityError(msg)
+    return set()
+
+
+def _render_route_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
+    return _direct_model_roles(manifest, subject="direct render")
+
+
+def _formula_route_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
+    return _direct_model_roles(manifest, subject="direct formula verify")
+
+
+def _proposer_route_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
     if manifest.outcome in {
         AttemptOutcome.VERIFIED,
         AttemptOutcome.REJECTED,
@@ -1461,6 +1636,19 @@ def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
     return set()
 
 
+# Total over the closed route enum: each route names its own model-trace policy, so a new route
+# cannot inherit proposer semantics from a default arm. An unregistered route raises on lookup.
+_ROUTE_MODEL_ROLES: dict[AttemptRoute, Callable[[AttemptManifest], set[AttemptRole]]] = {
+    AttemptRoute.VERIFY_AND_RENDER: _render_route_model_roles,
+    AttemptRoute.PROPOSE_SPEC: _proposer_route_model_roles,
+    AttemptRoute.VERIFY_FORMULA: _formula_route_model_roles,
+}
+
+
+def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
+    return _ROUTE_MODEL_ROLES[manifest.route](manifest)
+
+
 def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
     manifest = bundle.manifest
     artifacts = bundle.artifacts
@@ -1468,23 +1656,10 @@ def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
     if has_plot != (manifest.outcome is AttemptOutcome.VERIFIED):
         msg = "attempt plot presence must exactly match a verified outcome"
         raise ArchiveIntegrityError(msg)
-    if (artifacts.verdict is not None) != (
-        manifest.outcome in {AttemptOutcome.VERIFIED, AttemptOutcome.REJECTED}
-    ):
-        msg = "attempt verdict presence disagrees with its outcome"
-        raise ArchiveIntegrityError(msg)
-    needs_raw_spec = manifest.outcome in {
-        AttemptOutcome.VERIFIED,
-        AttemptOutcome.REJECTED,
-        AttemptOutcome.DATASET_MISMATCH,
-    }
-    if (artifacts.raw_spec is not None) != needs_raw_spec:
-        msg = "attempt raw-spec presence disagrees with its outcome"
-        raise ArchiveIntegrityError(msg)
+    _validate_outcome_role_presence(manifest.outcome, _present_artifact_roles(artifacts))
 
     if _present_model_roles(artifacts) != _expected_model_roles(manifest):
-        msg = "attempt model trace presence disagrees with its route/outcome"
-        raise ArchiveIntegrityError(msg)
+        raise ArchiveIntegrityError(_MODEL_TRACE_DISAGREEMENT)
 
     if (
         manifest.route is AttemptRoute.PROPOSE_SPEC
@@ -2432,10 +2607,7 @@ def _plot_bundle_batch(bundle: PlotBundle) -> ArchiveBatch:
     The row shape is identical across modes; the mode decides only which carriers become roles and
     which decoder produced the spec whose canonical hash addresses the spec index.
     """
-    source_kind = {
-        DatasetPlotBundle: PlotSourceKind.DATASET,
-        FormulaPlotBundle: PlotSourceKind.FORMULA,
-    }[type(bundle)]
+    source_kind = _PLOT_SOURCE_KIND_BY_TYPE[type(bundle)]
     role_fields = _PLOT_ROLE_FIELDS_BY_SOURCE[source_kind]
     role_blobs = {
         role: BlobWrite(BlobKind(role.value), cast("bytes", getattr(bundle, field_name)))
@@ -2522,8 +2694,9 @@ def _require_dataset_plot(source_kind: PlotSourceKind, *, subject: str) -> None:
     """Refuse a non-dataset plot row where only the dataset shape is interpretable.
 
     Both modes are readable at this version, so this is no longer a blanket decoding guard: it
-    states one reader's own mode policy. The attempt layer keeps it because no attempt route
-    produces a formula plot, so a formula-linked occurrence is corrupt rather than unsupported.
+    states one reader's own mode policy. The attempt layer keeps it because the formula route is
+    plotless at this version and no other route attaches a formula plot, so a formula-linked
+    occurrence is corrupt rather than unsupported.
     ``read_plot_envelope`` remains excluded — it returns stored bytes and interprets nothing.
     """
     if source_kind is not PlotSourceKind.DATASET:

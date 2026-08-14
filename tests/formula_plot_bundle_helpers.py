@@ -55,7 +55,7 @@ def canonical_specs() -> tuple[VPlotSpec, FormulaPlotSpec]:
 
 
 def formula_bundle_parts() -> FormulaBundleParts:
-    """Build one bundle through the exact certified formula chain; no src producer exists."""
+    """Build one oracle bundle through the exact certified formula chain."""
     spec = decode_formula_spec(_FORMULA_SPEC.read_bytes())
     evidence = checks.verify_formula_run(spec).require_evidence()
     preparation = formula_prepare.prepare_formula(spec, evidence)

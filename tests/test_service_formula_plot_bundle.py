@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M9.7b-1 source-tagged formula plot-bundle acceptance probes."""
 
-import ast
 import subprocess
 import sys
 from dataclasses import fields, replace
@@ -664,27 +663,20 @@ def test_t39_dataset_validator_body_matches_baseline() -> None:
     subprocess.run([sys.executable, script], check=True)  # noqa: S603 — fixed interpreter
 
 
-def test_t40_no_production_formula_bundle_producer() -> None:
-    """T40: src has no FormulaPlotBundle producer or formula bundle materializer."""
-    root = __import__("pathlib").Path(__file__).resolve().parent.parent
-    calls: list[str] = []
-    materializers: list[str] = []
-    for path in (root / "src").rglob("*.py"):
-        tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "FormulaPlotBundle"
-            ):
-                calls.append(f"{path}:{node.lineno}")
-            if (
-                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and node.name == "materialize_formula_plot_bundle"
-            ):
-                materializers.append(f"{path}:{node.lineno}")
-    assert calls == []
-    assert materializers == []
+def test_t40_production_formula_bundle_producer() -> None:
+    """T40: production materialization rebinds the certified formula chain."""
+    parts = formula_bundle_parts()
+    producer = archive_module.__dict__.get("materialize_formula_plot_bundle")
+    assert callable(producer)
+    produced = producer(
+        parts.artifact,
+        parts.certificate,
+        parts.bundle.vcert_envelope,
+        parts.signer,
+    )
+
+    assert produced == parts.bundle
+    assert "materialize_formula_plot_bundle" in archive_module.__all__
 
 
 def test_t41_bundle_exports_and_field_orders() -> None:
@@ -755,7 +747,7 @@ def test_t43_formula_authentication_uses_bundle_self_consistency_only(
 def test_t44_attempt_layer_remains_dataset_concrete(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T44: formula plots refuse at both attempt guards before signing or persistence."""
+    """T44: formula plots refuse at both attempt guards, under every route, before signing."""
     parts = formula_bundle_parts()
     assert set(get_args(get_type_hints(archive_module.AttemptDraft)["plot"])) == {
         archive_module.DatasetPlotBundle,
@@ -768,18 +760,20 @@ def test_t44_attempt_layer_remains_dataset_concrete(
     assert tuple(archive_module.AttemptRoute) == (
         archive_module.AttemptRoute.VERIFY_AND_RENDER,
         archive_module.AttemptRoute.PROPOSE_SPEC,
+        archive_module.AttemptRoute.VERIFY_FORMULA,
     )
     monkeypatch.setattr(attestation, "sign_dsse", lambda *_args, **_kwargs: pytest.fail("signed"))
-    draft = archive_module.AttemptDraft(
-        occurred_at=datetime.now(UTC),
-        route=archive_module.AttemptRoute.VERIFY_AND_RENDER,
-        http_status=200,
-        outcome=archive_module.AttemptOutcome.VERIFIED,
-        artifacts=archive_module.AttemptArtifacts(),
-        plot=parts.bundle,
-    )
-    with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*FormulaPlotBundle"):
-        archive_module.materialize_attempt_bundle(draft, parts.signer, nonce="0" * 32)
+    for route in archive_module.AttemptRoute:
+        draft = archive_module.AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=route,
+            http_status=200,
+            outcome=archive_module.AttemptOutcome.VERIFIED,
+            artifacts=archive_module.AttemptArtifacts(),
+            plot=parts.bundle,
+        )
+        with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*FormulaPlotBundle"):
+            archive_module.materialize_attempt_bundle(draft, parts.signer, nonce="0" * 32)
     manifest = archive_module.AttemptManifest(
         version="attempt-0.1",
         nonce="0" * 32,
