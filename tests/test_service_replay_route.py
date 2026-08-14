@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Replay HTTP transport: bounded verdicts, trust/error split, chart regeneration, admission."""
 
+import json
 import logging
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -10,14 +12,28 @@ import httpx
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from formula_plot_bundle_helpers import formula_bundle_parts
+from verifier.attestation import VCERT_V03_PAYLOAD_TYPE
 from verifier.service.admission import AdmissionController
 from verifier.service.app import create_app
-from verifier.service.archive import Archive, ArchiveSchemaError, BlobKind
+from verifier.service.archive import (
+    Archive,
+    ArchiveSchemaError,
+    AttemptArtifacts,
+    AttemptDraft,
+    AttemptOutcome,
+    AttemptRoute,
+    BlobKind,
+    materialize_attempt_bundle,
+    open_archive,
+)
+from verifier.service.identity import load_identity
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "data"
 _GOOD_SPEC = _ROOT / "examples" / "good_specs" / "g01_total_revenue_by_month.json"
+_FORMULA_SPEC = _ROOT / "examples" / "formula_good_specs" / "f02_linear.json"
 _JSON = {"content-type": "application/json"}
 _PROBLEM_JSON = "application/problem+json"
 
@@ -263,6 +279,43 @@ def test_archive_schema_fault_is_logged_and_returns_generic_500(tmp_path: Path) 
     assert isinstance(cause, ArchiveSchemaError)
     assert str(cause)
     assert str(cause) not in response.text
+
+
+def test_archived_formula_plot_replay_answers_501_without_a_traceback(tmp_path: Path) -> None:
+    """An authentic archived formula plot has no replay engine here, and 500 would misreport it."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    plot = formula_bundle_parts(signing=signer).bundle
+    bundle = materialize_attempt_bundle(
+        AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=AttemptRoute.VERIFY_FORMULA,
+            http_status=200,
+            outcome=AttemptOutcome.VERIFIED,
+            artifacts=AttemptArtifacts(raw_spec=_FORMULA_SPEC.read_bytes(), verdict=plot.verdict),
+            plot=plot,
+        ),
+        signer,
+        nonce="e" * 32,
+        limits=settings.limits,
+    )
+    open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    handler = _ListHandler()
+    logger = logging.getLogger("verifier.service.app")
+
+    with TestClient(app=create_app(settings)) as client:
+        logger.addHandler(handler)
+        try:
+            response = client.get(f"/replay/{plot.plot_id}")
+        finally:
+            logger.removeHandler(handler)
+        certificate = client.get(f"/certificate/{plot.plot_id}")
+
+    _assert_problem(response, 501, "this version replays dataset plots only")
+    assert not [record for record in handler.records if record.levelno >= logging.ERROR]
+    # The same durable plot still serves its certificate, under the mode's own VCert type.
+    assert certificate.status_code == 200
+    assert json.loads(certificate.content)["payloadType"] == VCERT_V03_PAYLOAD_TYPE
 
 
 def test_replay_uses_shared_active_job_admission(tmp_path: Path) -> None:

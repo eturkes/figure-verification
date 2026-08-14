@@ -54,8 +54,12 @@ def canonical_specs() -> tuple[VPlotSpec, FormulaPlotSpec]:
     return decode_spec(_DATASET_SPEC.read_bytes()), decode_formula_spec(_FORMULA_SPEC.read_bytes())
 
 
-def formula_bundle_parts() -> FormulaBundleParts:
-    """Build one oracle bundle through the exact certified formula chain."""
+def formula_bundle_parts(*, signing: Signer | None = None) -> FormulaBundleParts:
+    """Build one oracle bundle through the exact certified formula chain.
+
+    ``signing`` binds the bundle to a caller-chosen key, which attempt-layer probes need: a
+    successful occurrence and its plot must carry one signer.
+    """
     spec = decode_formula_spec(_FORMULA_SPEC.read_bytes())
     evidence = checks.verify_formula_run(spec).require_evidence()
     preparation = formula_prepare.prepare_formula(spec, evidence)
@@ -63,7 +67,7 @@ def formula_bundle_parts() -> FormulaBundleParts:
     emission = matplotlib_script.emit_matplotlib_script(prepared)
     artifact = cast("matplotlib_script.MatplotlibScriptArtifact", emission.artifact)
     certificate = vcert.build_formula_certificate(artifact)
-    signing = signer()
+    signing = signer() if signing is None else signing
     envelope = attestation.sign_vcert_v03(
         certificate,
         signing.private_key,

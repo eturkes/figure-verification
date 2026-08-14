@@ -45,8 +45,10 @@ the emitted script artifact -- publishes them atomically, and reads them only af
 admission. Publish + read recheck canonical spec/verdict/version forms,
 the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
 the bundle's archived public key establishes internal cryptographic consistency only; it never
-grants that key operator trust. Replay applies independently configured trust policy before
-recomputation. Plot bundles contain no occurrence time, route, request, prompt, or model trace.
+grants that key operator trust. Dataset-plot replay applies an independently configured trust
+policy before recomputation; a formula plot is archived and certified here, and its replay engine
+arrives in a later milestone. Plot bundles contain no occurrence time, route, request, prompt, or
+model trace.
 
 ``FormulaPlotBundle`` carries the formula mode's own nine carriers under VCert v0.3 and the same
 revalidation discipline; ``PlotBundle`` names the union of the two, so annotations spell it while
@@ -55,7 +57,8 @@ selects; reference-role and certificate families stay disjoint across the two.
 
 ``AttemptManifest`` adds that occurrence layer under a distinct DSSE application type: canonical
 UTC time, 128-bit CSPRNG nonce, route, status/outcome classifier, signer/verifier identifiers, every
-available observed-byte digest, and all eleven optional plot-byte digests. Its payload omits the
+available observed-byte digest, and every plot-byte digest its plot's mode declares. Its payload
+omits the
 derived attempt ID to avoid a self-hash cycle; SHA-256 of the signed envelope becomes that ID.
 ``record_attempt`` retries a bounded generated-ID collision while holding archive uniqueness, and
 ``publish_attempt`` atomically adds the new occurrence plus a new or deduplicated plot. Complete
@@ -414,7 +417,8 @@ class AttemptManifest(msgspec.Struct, frozen=True, forbid_unknown_fields=True, k
 
     ``attempt_id`` is deliberately absent: it is the SHA-256 of the DSSE envelope created only
     after this payload is signed. ``artifacts`` binds every available attempt-observation byte;
-    ``plot_artifacts`` binds all eleven bytes of the optional complete plot bundle. The attempt
+    ``plot_artifacts`` binds every byte of the optional complete plot bundle, in the carrier order
+    its mode declares, so the sequence alone names that mode. The attempt
     payload/envelope cannot bind their own digest without a hash cycle, while DSSE directly
     authenticates the payload and the final ID directly addresses the envelope.
     """
@@ -461,7 +465,7 @@ class AttemptDraft:
     http_status: int
     outcome: AttemptOutcome
     artifacts: AttemptArtifacts
-    plot: DatasetPlotBundle | None = field(default=None, repr=False)
+    plot: PlotBundle | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -480,7 +484,7 @@ class AttemptBundle:
     attempt_payload: bytes = field(repr=False)
     attempt_envelope: bytes = field(repr=False)
     public_key: bytes = field(repr=False)
-    plot: DatasetPlotBundle | None = field(default=None, repr=False)
+    plot: PlotBundle | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         _require_address(self.attempt_id, subject="attempt bundle id")
@@ -500,12 +504,7 @@ class AttemptBundle:
                 f"got {type(self.artifacts).__name__}"
             )
             raise TypeError(msg)
-        if plot_object is not None and type(plot_object) is not DatasetPlotBundle:
-            msg = (
-                "attempt bundle plot must be DatasetPlotBundle or None, "
-                f"got {type(self.plot).__name__}"
-            )
-            raise TypeError(msg)
+        _require_attempt_plot(plot_object, subject="attempt bundle plot")
         for name in ("attempt_payload", "attempt_envelope", "public_key"):
             value = getattr(self, name)
             if not isinstance(value, bytes):
@@ -522,7 +521,7 @@ _ATTEMPT_ARTIFACT_FIELDS: tuple[tuple[AttemptRole, str], ...] = (
     (AttemptRole.MODEL_RESPONSE, "model_response"),
     (AttemptRole.MODEL_REPLY, "model_reply"),
 )
-_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (
+_DATASET_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (
     (BlobKind.RAW_CSV, "raw_csv"),
     (BlobKind.RAW_MANIFEST, "raw_manifest"),
     (BlobKind.CANONICAL_SPEC, "canonical_spec"),
@@ -535,6 +534,32 @@ _PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (
     (BlobKind.TOOL_VERSIONS, "tool_versions"),
     (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
 )
+_FORMULA_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.FORMULA_SOURCE, "formula_source"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
+# Total over the closed mode enum: which carriers one mode's occurrence manifest signs, in the
+# order the signed tuple carries them. These are the SIGNED bindings, deliberately wider than the
+# storage role maps: the certificate envelope and the public key ride plots.certificate_digest and
+# keys in storage, yet an occurrence binds their exact bytes like every other carrier.
+_PLOT_BINDING_FIELDS_BY_SOURCE: dict[PlotSourceKind, tuple[tuple[BlobKind, str], ...]] = {
+    PlotSourceKind.DATASET: _DATASET_PLOT_BINDING_FIELDS,
+    PlotSourceKind.FORMULA: _FORMULA_PLOT_BINDING_FIELDS,
+}
+# The two signed role sequences are disjoint in content, so the ordered role tuple a manifest
+# declares names at most one mode. That keeps the route/source relation decidable from the
+# manifest alone — before a signature exists — without adding a mode field to the signed payload.
+_PLOT_SOURCE_KIND_BY_BINDING_ROLES: dict[tuple[BlobKind, ...], PlotSourceKind] = {
+    tuple(role for role, _name in fields): mode
+    for mode, fields in _PLOT_BINDING_FIELDS_BY_SOURCE.items()
+}
 
 
 def _require_sha256(value: str, *, subject: str) -> None:
@@ -767,6 +792,28 @@ _PLOT_SOURCE_KIND_BY_TYPE: dict[
     DatasetPlotBundle: PlotSourceKind.DATASET,
     FormulaPlotBundle: PlotSourceKind.FORMULA,
 }
+# The inverse of the one discriminator above, so reconstruction and classification can never name
+# different modes for one bundle class.
+_PLOT_BUNDLE_TYPE_BY_SOURCE: dict[PlotSourceKind, type[PlotBundle]] = {
+    mode: bundle_type for bundle_type, mode in _PLOT_SOURCE_KIND_BY_TYPE.items()
+}
+
+
+def _require_attempt_plot(plot: object, *, subject: str) -> None:
+    """Admit exactly the two concrete plot modes, or no plot at all, at the occurrence layer.
+
+    Admission is the discriminator's own key set, so the guard cannot drift from the map that
+    classifies what it admits. Exact type, never ``isinstance``: a subclass would reopen a set
+    every downstream mode selection treats as closed.
+    """
+    if plot is not None and type(plot) not in _PLOT_SOURCE_KIND_BY_TYPE:
+        msg = (
+            f"{subject} must be DatasetPlotBundle, FormulaPlotBundle, or None, "
+            f"got {type(plot).__name__}"
+        )
+        raise TypeError(msg)
+
+
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
 _TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
@@ -801,12 +848,12 @@ _MODEL_REQUEST_RESPONSE = {
     AttemptOutcome.MODEL_EMPTY_CONTENT,
 }
 # Total over the closed route enum: which plot modes each route may attach to its occurrence.
-# The formula route attaches none at this version, so its occurrences are plotless and therefore
-# never verified; admitting the formula plot mode there is a later monotone widening of this map.
+# Each route produces exactly one mode, so an occurrence declaring another mode's carriers claims
+# a producer that could not have run.
 _ROUTE_PLOT_SOURCES: dict[AttemptRoute, frozenset[PlotSourceKind]] = {
     AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),
     AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),
-    AttemptRoute.VERIFY_FORMULA: frozenset(),
+    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA}),
 }
 # Total over the closed route enum: whether a route opens the trusted dataset inputs at all.
 # A route that reads no CSV cannot truthfully bind raw CSV or manifest observation bytes.
@@ -814,6 +861,15 @@ _ROUTE_READS_DATASET_INPUTS: dict[AttemptRoute, bool] = {
     AttemptRoute.VERIFY_AND_RENDER: True,
     AttemptRoute.PROPOSE_SPEC: True,
     AttemptRoute.VERIFY_FORMULA: False,
+}
+# Total over the closed mode enum: which observed occurrence bytes must equal the nested plot's
+# own carriers. A dataset occurrence reopens the trusted inputs its plot bound; a formula
+# occurrence opens no dataset, so the judgement is all the two views share. The formula mode's
+# ABSENCE of dataset input bytes is settled earlier and more cheaply at the manifest layer, by the
+# route's own dataset-input rule together with binding-to-bytes equality, so it needs no arm here.
+_ATTEMPT_PLOT_SHARED_FIELDS: dict[PlotSourceKind, tuple[str, ...]] = {
+    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),
+    PlotSourceKind.FORMULA: ("verdict",),
 }
 _DATASET_INPUT_ROLES = frozenset({BlobKind.RAW_CSV, BlobKind.RAW_MANIFEST})
 _MODEL_TRACE_ROLES = frozenset(
@@ -966,6 +1022,17 @@ def _decode_canonical_formula_versions(payload: bytes) -> vcert.FormulaTcb:
         msg = "formula plot bundle tool versions are not in the canonical deterministic JSON form"
         raise ArchiveIntegrityError(msg)
     return versions
+
+
+# Total over the closed mode enum: a nested plot's own mode selects the TCB schema its stored
+# tool-versions bytes are read under. Both families declare verifier_version, so a wrong selection
+# would compare a real value against a value the other schema refuses to produce.
+_PLOT_TCB_DECODERS_BY_SOURCE: dict[
+    PlotSourceKind, Callable[[bytes], render.Tcb | vcert.FormulaTcb]
+] = {
+    PlotSourceKind.DATASET: _decode_canonical_versions,
+    PlotSourceKind.FORMULA: _decode_canonical_formula_versions,
+}
 
 
 def _authenticate_archive_certificate(
@@ -1416,12 +1483,14 @@ def _artifact_bindings(artifacts: AttemptArtifacts) -> tuple[BlobBinding, ...]:
     )
 
 
-def _plot_bindings(plot: DatasetPlotBundle | None) -> tuple[BlobBinding, ...]:
+def _plot_bindings(plot: PlotBundle | None) -> tuple[BlobBinding, ...]:
+    """Bind every signed carrier of one plot mode, in that mode's declared tuple order."""
     if plot is None:
         return ()
+    binding_fields = _PLOT_BINDING_FIELDS_BY_SOURCE[_PLOT_SOURCE_KIND_BY_TYPE[type(plot)]]
     return tuple(
         BlobBinding(role=role, digest=_digest(cast("bytes", getattr(plot, name))))
-        for role, name in _PLOT_BINDING_FIELDS
+        for role, name in binding_fields
     )
 
 
@@ -1514,29 +1583,61 @@ def _validate_outcome_role_presence(outcome: AttemptOutcome, roles: set[BlobKind
         raise ArchiveIntegrityError(msg)
 
 
+def _declared_plot_source(manifest: AttemptManifest) -> PlotSourceKind:
+    """Name the one plot mode whose signed carrier sequence the manifest declares.
+
+    The mode is read off the declared bindings rather than carried as its own field, so the
+    signed payload keeps the shape every existing occurrence already has.
+    """
+    declared_roles = tuple(binding.role for binding in manifest.plot_artifacts)
+    mode = _PLOT_SOURCE_KIND_BY_BINDING_ROLES.get(declared_roles)
+    if mode is None:
+        msg = "attempt manifest plot bindings match no closed plot source mode"
+        raise ArchiveIntegrityError(msg)
+    return mode
+
+
+def _validate_manifest_plot_presence(manifest: AttemptManifest) -> None:
+    """Refuse an occurrence whose plot address, plot bindings, and judgement disagree.
+
+    Exactly the verified outcome carries a plot, and the address and the bindings are two views
+    of that one plot, so all three agree or the occurrence is not truthful. The rule is route
+    independent: a route that could reach no verified outcome is refused here through its own
+    admitted modes instead of through a second arm.
+    """
+    has_plot_id = manifest.plot_id is not None
+    has_plot_artifacts = bool(manifest.plot_artifacts)
+    is_verified = manifest.outcome is AttemptOutcome.VERIFIED
+    if has_plot_id != is_verified or has_plot_artifacts != is_verified:
+        msg = "attempt manifest plot presence disagrees with its outcome"
+        raise ArchiveIntegrityError(msg)
+
+
 def _validate_manifest_route_relations(manifest: AttemptManifest) -> None:
     """Refuse an occurrence whose declared shape its own route could not have produced.
 
     Every relation here is decidable from the manifest alone, so materialization settles them
     before signing rather than minting an authentic statement it must then reject. A route
-    attaching no plot mode also cannot reach a verified judgement, since exactly the verified
-    outcome carries a plot; a route that opens no dataset cannot have observed dataset bytes.
-    A route's model-trace policy is decidable here too, so the route that calls no model settles
-    both its own outcome domain and its empty model trace before a signature exists, and the
-    outcome's own artifact obligations settle from the declared bindings in the same pass.
+    produces exactly one plot mode, so an occurrence declaring another mode's carrier sequence
+    names a producer that could not have run; a route that opens no dataset cannot have observed
+    dataset bytes. A route's model-trace policy is decidable here too, so the route that calls no
+    model settles both its own outcome domain and its empty model trace before a signature
+    exists, and the outcome's own artifact obligations settle from the declared bindings in the
+    same pass.
 
     This is the single owner of the route/source relation. Manifest-shape validation runs on
     both paths that reach an occurrence — materialization before signing, and every external
     bundle ahead of its binding and plot-id equalities — so a second copy at the bundle layer
     would sit behind those equalities and never decide anything.
     """
-    admitted_modes = _ROUTE_PLOT_SOURCES[manifest.route]
-    if not admitted_modes:
-        if manifest.plot_id is not None or manifest.plot_artifacts:
-            msg = f"attempt manifest route {manifest.route.value} admits no plot"
-            raise ArchiveIntegrityError(msg)
-        if manifest.outcome is AttemptOutcome.VERIFIED:
-            msg = f"attempt manifest route {manifest.route.value} cannot reach a verified outcome"
+    _validate_manifest_plot_presence(manifest)
+    if manifest.plot_artifacts:
+        declared_mode = _declared_plot_source(manifest)
+        if declared_mode not in _ROUTE_PLOT_SOURCES[manifest.route]:
+            msg = (
+                f"attempt manifest route {manifest.route.value} "
+                f"cannot attach a {declared_mode.value} plot"
+            )
             raise ArchiveIntegrityError(msg)
     if not _ROUTE_READS_DATASET_INPUTS[manifest.route] and any(
         binding.role in _DATASET_INPUT_ROLES for binding in manifest.artifacts
@@ -1652,10 +1753,9 @@ def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
 def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
     manifest = bundle.manifest
     artifacts = bundle.artifacts
-    has_plot = bundle.plot is not None
-    if has_plot != (manifest.outcome is AttemptOutcome.VERIFIED):
-        msg = "attempt plot presence must exactly match a verified outcome"
-        raise ArchiveIntegrityError(msg)
+    # Plot presence is settled before this point and is not rechecked here: manifest shape ties
+    # plot_id and plot_artifacts to the verified outcome, and binding/id equality then ties both to
+    # the carried bytes, so a disagreeing bundle never arrives.
     _validate_outcome_role_presence(manifest.outcome, _present_artifact_roles(artifacts))
 
     if _present_model_roles(artifacts) != _expected_model_roles(manifest):
@@ -1782,14 +1882,14 @@ def _validate_attempt_bundle(bundle: AttemptBundle, limits: VerificationLimits) 
         if bundle.plot.keyid != bundle.keyid or bundle.plot.public_key != bundle.public_key:
             msg = "attempt signer differs from the successful plot signer"
             raise ArchiveIntegrityError(msg)
-        if (
-            bundle.artifacts.raw_csv != bundle.plot.raw_csv
-            or bundle.artifacts.raw_manifest != bundle.plot.raw_manifest
-            or bundle.artifacts.verdict != bundle.plot.verdict
+        plot_source = _PLOT_SOURCE_KIND_BY_TYPE[type(bundle.plot)]
+        shared_fields = _ATTEMPT_PLOT_SHARED_FIELDS[plot_source]
+        if any(
+            getattr(bundle.artifacts, name) != getattr(bundle.plot, name) for name in shared_fields
         ):
             msg = "attempt observed verifier bytes disagree with the successful plot bundle"
             raise ArchiveIntegrityError(msg)
-        versions = _decode_canonical_versions(bundle.plot.tool_versions)
+        versions = _PLOT_TCB_DECODERS_BY_SOURCE[plot_source](bundle.plot.tool_versions)
         if manifest.verifier_version != versions.verifier_version:
             msg = "attempt verifier version disagrees with the successful plot TCB"
             raise ArchiveIntegrityError(msg)
@@ -1824,9 +1924,7 @@ def materialize_attempt_bundle(
     if not isinstance(signer_object, Signer):
         msg = f"signer must be Signer, got {type(signer).__name__}"
         raise TypeError(msg)
-    if plot_object is not None and type(plot_object) is not DatasetPlotBundle:
-        msg = f"draft plot must be DatasetPlotBundle or None, got {type(draft.plot).__name__}"
-        raise TypeError(msg)
+    _require_attempt_plot(plot_object, subject="draft plot")
     _require_limits(limits)
     occurred_at_text = _canonical_utc_timestamp(draft.occurred_at)
     manifest = AttemptManifest(
@@ -2690,20 +2788,6 @@ def _validated_plot_record(row: object, plot_id: str) -> tuple[BlobRef, str, Plo
     return BlobRef(certificate_digest, BlobKind.VCERT_ENVELOPE), keyid, mode
 
 
-def _require_dataset_plot(source_kind: PlotSourceKind, *, subject: str) -> None:
-    """Refuse a non-dataset plot row where only the dataset shape is interpretable.
-
-    Both modes are readable at this version, so this is no longer a blanket decoding guard: it
-    states one reader's own mode policy. The attempt layer keeps it because the formula route is
-    plotless at this version and no other route attaches a formula plot, so a formula-linked
-    occurrence is corrupt rather than unsupported.
-    ``read_plot_envelope`` remains excluded — it returns stored bytes and interprets nothing.
-    """
-    if source_kind is not PlotSourceKind.DATASET:
-        msg = f"archive {subject} carries a non-dataset source kind this reader cannot interpret"
-        raise ArchiveIntegrityError(msg)
-
-
 def _plot_bundle_blob_rows(
     connection: sqlite3.Connection,
     plot_id: str,
@@ -2750,6 +2834,33 @@ def _plot_bundle_blob_rows(
     return (certificate, certificate_row), (key_ref, key_row), role_rows
 
 
+def _plot_bundle_from_payloads(  # noqa: PLR0913
+    source_kind: PlotSourceKind,
+    *,
+    plot_id: str,
+    keyid: str,
+    role_payloads: dict[PlotRole, bytes],
+    certificate_payload: bytes,
+    public_key: bytes,
+) -> PlotBundle:
+    """Rebuild one stored plot as its own mode's concrete bundle class.
+
+    The mode's own role tuple names every carrier field, so the keyword expansion is exactly the
+    selected class's byte fields; a missing or extra carrier raises on construction.
+    """
+    fields = {
+        field_name: role_payloads[role]
+        for role, field_name in _PLOT_ROLE_FIELDS_BY_SOURCE[source_kind]
+    }
+    return _PLOT_BUNDLE_TYPE_BY_SOURCE[source_kind](
+        plot_id=plot_id,
+        keyid=keyid,
+        **fields,
+        vcert_envelope=certificate_payload,
+        public_key=public_key,
+    )
+
+
 def _read_complete_plot_bundle(
     connection: sqlite3.Connection,
     plot_id: str,
@@ -2788,18 +2899,12 @@ def _read_complete_plot_bundle(
     certificate_payload = read_entry(certificate_entry)
     public_key = read_entry(key_entry)
     role_payloads = {role: read_entry(role_rows[role]) for role, _name in role_fields}
-    bundle_type: type[PlotBundle] = {
-        PlotSourceKind.DATASET: DatasetPlotBundle,
-        PlotSourceKind.FORMULA: FormulaPlotBundle,
-    }[source_kind]
-    # The mode's own role tuple names every carrier field, so the keyword expansion is exactly the
-    # selected class's byte fields; a missing or extra carrier raises on construction.
-    fields = {field_name: role_payloads[role] for role, field_name in role_fields}
-    return bundle_type(
+    return _plot_bundle_from_payloads(
+        source_kind,
         plot_id=plot_id,
         keyid=keyid,
-        **fields,
-        vcert_envelope=certificate_payload,
+        role_payloads=role_payloads,
+        certificate_payload=certificate_payload,
         public_key=public_key,
     )
 
@@ -2921,28 +3026,23 @@ def _read_unique_entries(
 class _PlotEntries:
     plot_id: str
     keyid: str
+    source_kind: PlotSourceKind
     certificate: _BlobEntry
     key: _BlobEntry
     roles: dict[PlotRole, _BlobEntry]
 
 
-def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> DatasetPlotBundle:
+def _plot_from_entries(entries: _PlotEntries, payloads: dict[BlobRef, bytes]) -> PlotBundle:
     role_payloads = {
-        role: payloads[entries.roles[role][0]] for role, _name in _DATASET_PLOT_ROLE_FIELDS
+        role: payloads[entries.roles[role][0]]
+        for role, _name in _PLOT_ROLE_FIELDS_BY_SOURCE[entries.source_kind]
     }
-    return DatasetPlotBundle(
+    return _plot_bundle_from_payloads(
+        entries.source_kind,
         plot_id=entries.plot_id,
         keyid=entries.keyid,
-        raw_csv=role_payloads[PlotRole.RAW_CSV],
-        raw_manifest=role_payloads[PlotRole.RAW_MANIFEST],
-        canonical_spec=role_payloads[PlotRole.CANONICAL_SPEC],
-        plotted_table=role_payloads[PlotRole.PLOTTED_TABLE],
-        verdict=role_payloads[PlotRole.VERDICT],
-        vega_lite=role_payloads[PlotRole.VEGA_LITE],
-        svg=role_payloads[PlotRole.SVG],
-        vcert_payload=role_payloads[PlotRole.VCERT_PAYLOAD],
-        vcert_envelope=payloads[entries.certificate[0]],
-        tool_versions=role_payloads[PlotRole.TOOL_VERSIONS],
+        role_payloads=role_payloads,
+        certificate_payload=payloads[entries.certificate[0]],
         public_key=payloads[entries.key[0]],
     )
 
@@ -2971,13 +3071,13 @@ def _read_complete_attempt_bundle(
             msg = "archive attempt's linked plot record is absent"
             raise ArchiveIntegrityError(msg)
         certificate, plot_keyid, plot_source_kind = _validated_plot_record(plot_record, plot_id)
-        _require_dataset_plot(plot_source_kind, subject="attempt's linked plot")
         certificate_entry, plot_key_entry, plot_role_rows = _plot_bundle_blob_rows(
             connection, plot_id, certificate, plot_keyid, plot_source_kind
         )
         plot_parts = _PlotEntries(
             plot_id,
             plot_keyid,
+            plot_source_kind,
             certificate_entry,
             plot_key_entry,
             plot_role_rows,
@@ -2985,7 +3085,10 @@ def _read_complete_attempt_bundle(
         plot_entries = (
             certificate_entry,
             plot_key_entry,
-            *(plot_role_rows[role] for role, _name in _DATASET_PLOT_ROLE_FIELDS),
+            *(
+                plot_role_rows[role]
+                for role, _name in _PLOT_ROLE_FIELDS_BY_SOURCE[plot_source_kind]
+            ),
         )
 
     entries = (

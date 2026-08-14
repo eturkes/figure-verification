@@ -96,6 +96,7 @@ from litestar.status_codes import (
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_501_NOT_IMPLEMENTED,
     HTTP_502_BAD_GATEWAY,
     HTTP_507_INSUFFICIENT_STORAGE,
 )
@@ -132,7 +133,7 @@ from verifier.service.pipeline import (
     verify_decoded,
     verify_only,
 )
-from verifier.service.replay import replay_plot_chart
+from verifier.service.replay import ReplayUnsupportedError, replay_plot_chart
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -464,11 +465,17 @@ def _replay_plot_worker(
 @get(
     "/replay/{plot_id:str}",
     operation_id="replayPlot",
-    summary="Replay an archived verified plot and report reproduction status",
+    summary="Replay an archived verified dataset plot and report reproduction status",
     status_code=HTTP_200_OK,
 )
 async def replay_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
-    """Replay one durable plot under configured trust; regenerate its chart only if exact."""
+    """Replay one durable dataset plot under configured trust; regenerate its chart if exact.
+
+    An archived formula plot with a signed verified attempt is authentic and has no replay
+    engine in this version, so it answers 501 rather than the generic 500 an unhandled fault
+    would produce. Attempt selection precedes mode selection, so a plot carrying no such
+    attempt answers 404 in either mode.
+    """
     if _HEX64.fullmatch(plot_id) is None:
         raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND)
     settings = cast("Settings", state["settings"])
@@ -487,6 +494,11 @@ async def replay_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
             )
         except ArchiveNotFoundError as exc:
             raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND) from exc
+        except ReplayUnsupportedError as exc:
+            raise HTTPException(
+                detail="this version replays dataset plots only",
+                status_code=HTTP_501_NOT_IMPLEMENTED,
+            ) from exc
     return Response(body, media_type="application/json", status_code=HTTP_200_OK)
 
 

@@ -15,6 +15,7 @@ change), NOT a cross-environment byte promise.
 
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,13 +26,23 @@ from jsonschema import Draft202012Validator
 from litestar.routes import HTTPRoute
 from litestar.testing import TestClient
 
-from verifier import __version__
-from verifier.attestation import VCERT_PAYLOAD_TYPE
+from formula_plot_bundle_helpers import formula_bundle_parts
+from verifier import __version__, canon
+from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.replay import ReplayVerdict
-from verifier.schema import json_schema
+from verifier.schema import decode_formula_spec, json_schema
 from verifier.service.app import create_app
+from verifier.service.archive import (
+    AttemptArtifacts,
+    AttemptDraft,
+    AttemptOutcome,
+    AttemptRoute,
+    materialize_attempt_bundle,
+    open_archive,
+)
+from verifier.service.identity import load_identity
 from verifier.service.models import (
     Problem,
     ProposeRequest,
@@ -46,6 +57,7 @@ _DOC = openapi_document()
 _ROOT = Path(__file__).parents[1]
 _DATA = _ROOT / "data"
 _GOOD_SPEC = _ROOT / "examples" / "good_specs" / "g01_total_revenue_by_month.json"
+_FORMULA_SPEC = _ROOT / "examples" / "formula_good_specs" / "f02_linear.json"
 _GOLDEN = _ROOT / "schema" / "openapi.json"
 _JSON = {"content-type": "application/json"}
 _HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "head"})
@@ -121,6 +133,55 @@ def test_documented_operations_match_live_routes(tmp_path: Path) -> None:
     assert "replayPlot" in {operation["operationId"] for _, _, operation in _operations()}
 
 
+def _response_validator(path: str, status: str) -> Draft202012Validator:
+    """A validator for one documented JSON response, with component pointers resolvable."""
+    schema = _DOC["paths"][path]["get"]["responses"][status]["content"]["application/json"][
+        "schema"
+    ]
+    return Draft202012Validator({**schema, "components": _DOC["components"]})
+
+
+def test_spec_response_schema_admits_both_stored_spec_modes() -> None:
+    """GET /spec serves whichever mode the stored spec declares, so the document admits both."""
+    validator = _response_validator("/spec/{spec_id}", "200")
+    dataset = json.loads(_GOOD_SPEC.read_bytes())
+    formula = json.loads(_FORMULA_SPEC.read_bytes())
+
+    assert validator.is_valid(dataset)
+    assert validator.is_valid(formula)
+    # Each mode is its own closed shape, so a cross-mode hybrid belongs to neither arm.
+    assert not validator.is_valid({**formula, "dataset": dataset["dataset"]})
+
+
+def test_live_formula_spec_response_matches_the_documented_schema(tmp_path: Path) -> None:
+    """A published formula attempt serves formula JSON from GET /spec under the same document."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    plot = formula_bundle_parts(signing=signer).bundle
+    bundle = materialize_attempt_bundle(
+        AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=AttemptRoute.VERIFY_FORMULA,
+            http_status=200,
+            outcome=AttemptOutcome.VERIFIED,
+            artifacts=AttemptArtifacts(raw_spec=_FORMULA_SPEC.read_bytes(), verdict=plot.verdict),
+            plot=plot,
+        ),
+        signer,
+        nonce="f" * 32,
+        limits=settings.limits,
+    )
+    open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    spec_id = canon.hash_spec(decode_formula_spec(plot.canonical_spec)).removeprefix("sha256:")
+
+    with TestClient(app=create_app(settings)) as client:
+        response = client.get(f"/spec/{spec_id}")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == "vplot-formula-0.1"
+    assert _response_validator("/spec/{spec_id}", "200").is_valid(response.json())
+
+
 def test_internal_pointers_resolve() -> None:
     components = _DOC["components"]["schemas"]
     pointers = _collect_pointers(_DOC)
@@ -194,7 +255,10 @@ def test_vcert_requires_method_aware_certified_checks() -> None:
 def test_certificate_response_documents_signed_dsse_profile() -> None:
     schemas = _DOC["components"]["schemas"]
     envelope = schemas["DSSEEnvelope"]
-    assert envelope["properties"]["payloadType"] == {"const": VCERT_PAYLOAD_TYPE}
+    assert envelope["properties"]["payloadType"] == {
+        "enum": [VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE]
+    }
+    assert "a formula plot carries VCert v0.3" in envelope["description"]
     assert envelope["properties"]["signatures"] == {
         "type": "array",
         "items": {"$ref": "#/components/schemas/DSSESignature"},
@@ -207,18 +271,28 @@ def test_certificate_response_documents_signed_dsse_profile() -> None:
 
     response = _DOC["paths"]["/certificate/{plot_id}"]["get"]["responses"]["200"]
     assert "SHA-256 digest of these exact bytes" in response["description"]
+    assert "either v0.2 for a dataset plot or v0.3 for a formula plot" in response["description"]
     schema = response["content"]["application/json"]["schema"]
     assert schema == {"$ref": "#/components/schemas/DSSEEnvelope"}
-    assert _validator(schema).is_valid(
+    validator = _validator(schema)
+    for payload_type in (VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE):
+        assert validator.is_valid(
+            {
+                "payload": "e30=",
+                "payloadType": payload_type,
+                "signatures": [
+                    {
+                        "keyid": "sha256:" + "a" * 64,
+                        "sig": "AA==",
+                    }
+                ],
+            }
+        )
+    assert not validator.is_valid(
         {
             "payload": "e30=",
-            "payloadType": VCERT_PAYLOAD_TYPE,
-            "signatures": [
-                {
-                    "keyid": "sha256:" + "a" * 64,
-                    "sig": "AA==",
-                }
-            ],
+            "payloadType": "application/vnd.figure-verification.vcert.v0.4+json",
+            "signatures": [{"keyid": "sha256:" + "a" * 64, "sig": "AA=="}],
         }
     )
 

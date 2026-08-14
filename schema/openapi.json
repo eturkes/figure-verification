@@ -358,7 +358,7 @@
     "/replay/{plot_id}": {
       "get": {
         "operationId": "replayPlot",
-        "summary": "Replay an archived verified plot and report reproduction status",
+        "summary": "Replay an archived verified dataset plot and report reproduction status",
         "parameters": [
           {
             "name": "plot_id",
@@ -401,6 +401,16 @@
               }
             }
           },
+          "501": {
+            "description": "The stored plot is an authentic formula plot. This version replays dataset plots only.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
           "500": {
             "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
             "content": {
@@ -431,7 +441,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The archive-authenticated canonical DSSE envelope bytes. Its plot_id is the SHA-256 digest of these exact bytes; the authenticated payload has the exact VCert v0.2 type. The archive key proves self-consistency, not signer trust or identity.",
+            "description": "The archive-authenticated canonical DSSE envelope bytes. Its plot_id is the SHA-256 digest of these exact bytes; the authenticated payload has the exact VCert type its plot mode selects, either v0.2 for a dataset plot or v0.3 for a formula plot. The archive key proves self-consistency, not signer trust or identity.",
             "content": {
               "application/json": {
                 "schema": {
@@ -480,11 +490,18 @@
         ],
         "responses": {
           "200": {
-            "description": "The archive-validated canonical spec bytes. spec_id is canon.hash_spec of the decoded exact bytes.",
+            "description": "The archive-validated canonical spec bytes, in the mode the stored spec declares: a dataset spec carries version vplot-0.1, and a formula spec carries version vplot-formula-0.1. spec_id is canon.hash_spec of the decoded exact bytes.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VPlotSpec"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/VPlotSpec"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FormulaPlotSpec"
+                    }
+                  ]
                 }
               }
             }
@@ -1122,6 +1139,144 @@
         ],
         "additionalProperties": false
       },
+      "FormulaDomain": {
+        "title": "FormulaDomain",
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "pattern": "^(?!.*[\\r\\n])-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,9})?$"
+          },
+          "stop": {
+            "type": "string",
+            "pattern": "^(?!.*[\\r\\n])-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,9})?$"
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 100000
+          },
+          "x_scale": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          },
+          "y_scale": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          }
+        },
+        "required": [
+          "start",
+          "stop",
+          "samples",
+          "x_scale",
+          "y_scale"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaEncoding": {
+        "title": "FormulaEncoding",
+        "type": "object",
+        "properties": {
+          "x": {
+            "$ref": "#/components/schemas/FormulaXChannel"
+          },
+          "y": {
+            "$ref": "#/components/schemas/FormulaYChannel"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaPlotSpec": {
+        "title": "FormulaPlotSpec",
+        "type": "object",
+        "properties": {
+          "version": {
+            "enum": [
+              "vplot-formula-0.1"
+            ]
+          },
+          "formula": {
+            "type": "string",
+            "maxLength": 1024,
+            "pattern": "^(?!.*[\\r\\n])[0-9A-Za-z_ ().*/+-]+$"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/FormulaDomain"
+          },
+          "numeric_profile": {
+            "enum": [
+              "rational-half-even-v1"
+            ]
+          },
+          "mark": {
+            "enum": [
+              "line",
+              "scatter"
+            ]
+          },
+          "encoding": {
+            "$ref": "#/components/schemas/FormulaEncoding"
+          }
+        },
+        "required": [
+          "version",
+          "formula",
+          "domain",
+          "numeric_profile",
+          "mark",
+          "encoding"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaXChannel": {
+        "title": "FormulaXChannel",
+        "type": "object",
+        "properties": {
+          "field": {
+            "enum": [
+              "x"
+            ]
+          },
+          "type": {
+            "enum": [
+              "quantitative"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaYChannel": {
+        "title": "FormulaYChannel",
+        "type": "object",
+        "properties": {
+          "field": {
+            "enum": [
+              "y"
+            ]
+          },
+          "type": {
+            "enum": [
+              "quantitative"
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "type"
+        ],
+        "additionalProperties": false
+      },
       "Problem": {
         "title": "Problem",
         "description": "RFC 9457 detail for a non-verification HTTP outcome.\n\n`type` defaults to the RFC's \"about:blank\" (omitted when default), `title` is the HTTP\nstatus reason phrase, `status` the code, `detail` the occurrence-specific message. Transport\nmisuse, work/prompt-policy refusal, upstream failure, and server faults use this shape.\n`attempt_id` is present only for an admitted, classified proposer fault whose signed occurrence\ncommitted successfully; pre-admission refusals and archive/internal faults omit it. A\nverification outcome never travels as a Problem — it is always a 200 Verdict.",
@@ -1475,7 +1630,7 @@
       },
       "DSSEEnvelope": {
         "title": "DSSEEnvelope",
-        "description": "A deterministic DSSE v1 envelope authenticating the exact base64-decoded VCert v0.2 payload bytes and application-specific payload type. Verify it against an independently pinned Ed25519 public key before parsing the payload.",
+        "description": "A deterministic DSSE v1 envelope authenticating the exact base64-decoded VCert payload bytes and application-specific payload type. The plot mode selects the type: a dataset plot carries VCert v0.2, and a formula plot carries VCert v0.3. Read payloadType before you parse the payload. Verify the envelope against an independently pinned Ed25519 public key first.",
         "type": "object",
         "properties": {
           "payload": {
@@ -1483,7 +1638,10 @@
             "contentEncoding": "base64"
           },
           "payloadType": {
-            "const": "application/vnd.figure-verification.vcert.v0.2+json"
+            "enum": [
+              "application/vnd.figure-verification.vcert.v0.2+json",
+              "application/vnd.figure-verification.vcert.v0.3+json"
+            ]
           },
           "signatures": {
             "type": "array",

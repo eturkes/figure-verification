@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Archive-backed replay orchestration under independently configured operator trust.
+"""Archive-backed dataset-plot replay orchestration under independently configured operator trust.
+
+The archive holds dataset and formula plots; this adapter recomputes dataset plots alone and
+raises ``ReplayUnsupportedError`` for an authentic archived formula plot it can select. Selection
+reads the lowest signed verified attempt first, so a plot carrying none raises
+``ArchiveNotFoundError`` in either mode, before any mode test.
 
 Archive reads authenticate signed attempt and plot bytes under their embedded archived key only to
 establish internal self-consistency. That archived key never grants trust. The caller's explicit
@@ -32,16 +37,31 @@ from verifier.service.archive import (
     ArchiveIntegrityError,
     ArchiveNotFoundError,
     AttemptBundle,
+    DatasetPlotBundle,
     open_archive,
 )
 from verifier.service.identity import load_identity
 from verifier.service.settings import Settings
 
-__all__ = ["PlotReplay", "replay_plot", "replay_plot_chart", "replay_plot_from_settings"]
+__all__ = [
+    "PlotReplay",
+    "ReplayUnsupportedError",
+    "replay_plot",
+    "replay_plot_chart",
+    "replay_plot_from_settings",
+]
 
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _ADDRESS_LENGTH = 64
 _MAX_SQLITE_INTEGER = 2**63 - 1
+
+
+class ReplayUnsupportedError(NotImplementedError):
+    """The archived plot is authentic, and its mode has no replay engine in this version.
+
+    Callers that expose replay publicly must answer this separately from an integrity fault: the
+    archived graph is sound, and only the recomputation route is absent.
+    """
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -90,6 +110,11 @@ def _snapshot_from_bundle(bundle: AttemptBundle) -> ReplaySnapshot:
     if plot is None:
         msg = "archived verified attempt does not carry its required plot"
         raise ArchiveIntegrityError(msg)
+    # AttemptBundle admits exact plot classes alone, so this decides the plot's mode rather than
+    # its subtype: no subclass reaches here to separate this spelling from an isinstance test.
+    if type(plot) is not DatasetPlotBundle:
+        msg = "archived formula plot replay arrives in M9.9/M9.11"
+        raise ReplayUnsupportedError(msg)
     artifacts = bundle.artifacts
     return ReplaySnapshot(
         attempt_id=bundle.attempt_id,
@@ -131,7 +156,7 @@ def _replay_lowest(
     max_bytes: int,
     limits: VerificationLimits,
 ) -> tuple[ReplayVerdict, ReplaySnapshot]:
-    """Read and replay the lowest signed successful attempt for one validated plot address."""
+    """Read and replay the lowest signed dataset attempt for one validated plot address."""
     attempt_id = archive.lowest_verified_attempt_id(plot_id)
     if attempt_id is None:
         msg = "archive plot has no replayable signed verified attempt"
@@ -149,7 +174,7 @@ def replay_plot(
     max_bytes: int,
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> ReplayVerdict:
-    """Replay the lowest signed successful attempt associated with one archived plot."""
+    """Replay the lowest signed successful attempt associated with one archived dataset plot."""
     archive, trusted_keys, plot_id, max_bytes, limits = _require_replay_inputs(
         archive,
         trusted_keys,
@@ -188,7 +213,7 @@ def replay_plot_chart(  # noqa: PLR0913
     max_bytes: int,
     limits: VerificationLimits = DEFAULT_LIMITS,
 ) -> PlotReplay:
-    """Replay one archived plot and rebuild its chart page only on exact reproduction."""
+    """Replay one archived dataset plot and rebuild its chart page only on exact reproduction."""
     archive, trusted_keys, plot_id, max_bytes, limits = _require_replay_inputs(
         archive,
         trusted_keys,
@@ -211,7 +236,7 @@ def replay_plot_chart(  # noqa: PLR0913
 
 
 def replay_plot_from_settings(settings: Settings, plot_id: str) -> ReplayVerdict:
-    """Open one operator archive/identity snapshot and replay a plot under configured trust."""
+    """Open one operator archive/identity snapshot and replay a dataset plot under trust."""
     settings_object: object = settings
     if not isinstance(settings_object, Settings):
         msg = "settings must be a validated service Settings instance"

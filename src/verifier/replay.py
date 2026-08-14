@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Pure replay of one archived successful plot occurrence from exact snapshot bytes.
+"""Pure replay of one archived successful dataset-plot occurrence from exact snapshot bytes.
 
 The caller's explicit ``trusted_keys`` mapping is the only trust anchor. Snapshot ``keyid`` and
 ``public_key`` bytes are self-consistency addresses only: archive presence, a digest-matching
@@ -167,7 +167,7 @@ class ReplayAttemptArtifacts:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ReplayPlotSnapshot:
-    """Every exact byte required to authenticate one archived successful plot."""
+    """Every exact byte required to authenticate one archived successful dataset plot."""
 
     plot_id: str
     keyid: str
@@ -398,9 +398,10 @@ _EXPECTED_MODEL_ROLES: dict[_AttemptRoute, frozenset[_BlobRole]] = {
     "/propose-spec": frozenset({"model_request", "model_response", "model_reply"}),
     "/verify-formula": frozenset(),
 }
-# Mirrors the archive's route/plot-mode relation: a snapshot carries a plot by construction, so a
-# route that attaches none cannot have produced the occurrence this snapshot claims to replay.
-_ROUTE_ATTACHES_PLOT: dict[_AttemptRoute, bool] = {
+# Mirrors the archive's route/plot-mode relation from this dataset engine's side: every snapshot
+# carries a dataset plot by construction, and the formula route attaches its own formula plot, so a
+# route outside this column cannot have produced the occurrence this snapshot claims to replay.
+_ROUTE_ATTACHES_DATASET_PLOT: dict[_AttemptRoute, bool] = {
     "/verify-and-render": True,
     "/propose-spec": True,
     "/verify-formula": False,
@@ -738,7 +739,7 @@ def _validate_attempt_graph(
         trusted_keyid=trusted_keyid,
     )
     _require(
-        _ROUTE_ATTACHES_PLOT[manifest.route],
+        _ROUTE_ATTACHES_DATASET_PLOT[manifest.route],
         "attempt_outcome",
         "authenticated attempt route cannot attach the replayed plot",
         trusted_keyid=trusted_keyid,

@@ -349,8 +349,11 @@ def test_t18_formula_bundle_subclass_refuses_at_publish_admission(
     assert calls == {"validate": 0, "batch": 0}
 
 
+_SUBCLASS_REFUSAL = r"DatasetPlotBundle, FormulaPlotBundle, or None, got DatasetChild"
+
+
 def test_t19_dataset_bundle_subclass_refuses_in_attempt_bundle(tmp_path: Path) -> None:
-    """T19: AttemptBundle admits exact DatasetPlotBundle or None only."""
+    """T19: AttemptBundle admits an exact archived plot class or None only."""
     _settings, bundle = dataset_bundle(tmp_path)
     child_type = type("DatasetChild", (type(bundle),), {})
     child = child_type(**{field.name: getattr(bundle, field.name) for field in fields(bundle)})
@@ -368,7 +371,7 @@ def test_t19_dataset_bundle_subclass_refuses_in_attempt_bundle(tmp_path: Path) -
         keyid=bundle.keyid,
         verifier_version="test",
     )
-    with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*DatasetChild"):
+    with pytest.raises(TypeError, match=_SUBCLASS_REFUSAL):
         archive_module.AttemptBundle(
             attempt_id="0" * 64,
             keyid=bundle.keyid,
@@ -384,7 +387,7 @@ def test_t19_dataset_bundle_subclass_refuses_in_attempt_bundle(tmp_path: Path) -
 def test_t20_dataset_bundle_subclass_refuses_in_attempt_materializer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """T20: attempt materialization refuses a DatasetPlotBundle subclass before signing."""
+    """T20: attempt materialization refuses a plot-bundle subclass before signing."""
     settings, bundle = dataset_bundle(tmp_path)
     child_type = type("DatasetChild", (type(bundle),), {})
     child = child_type(**{field.name: getattr(bundle, field.name) for field in fields(bundle)})
@@ -397,7 +400,34 @@ def test_t20_dataset_bundle_subclass_refuses_in_attempt_materializer(
         plot=child,
     )
     monkeypatch.setattr(attestation, "sign_dsse", lambda *_args, **_kwargs: pytest.fail("signed"))
-    with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*DatasetChild"):
+    with pytest.raises(TypeError, match=_SUBCLASS_REFUSAL):
+        archive_module.materialize_attempt_bundle(
+            draft, load_identity(settings).signer, nonce="0" * 32
+        )
+
+
+def test_t51_formula_bundle_subclass_refuses_in_attempt_materializer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T51: the union guard refuses either member's subclass, so neither mode reopens the set."""
+    parts = formula_bundle_parts()
+    child_type = type("FormulaChild", (type(parts.bundle),), {})
+    child = child_type(
+        **{field.name: getattr(parts.bundle, field.name) for field in fields(parts.bundle)}
+    )
+    settings, _dataset = dataset_bundle(tmp_path)
+    draft = archive_module.AttemptDraft(
+        occurred_at=datetime.now(UTC),
+        route=archive_module.AttemptRoute.VERIFY_FORMULA,
+        http_status=200,
+        outcome=archive_module.AttemptOutcome.VERIFIED,
+        artifacts=archive_module.AttemptArtifacts(),
+        plot=child,
+    )
+    monkeypatch.setattr(attestation, "sign_dsse", lambda *_args, **_kwargs: pytest.fail("signed"))
+    with pytest.raises(
+        TypeError, match=r"DatasetPlotBundle, FormulaPlotBundle, or None, got FormulaChild"
+    ):
         archive_module.materialize_attempt_bundle(
             draft, load_identity(settings).signer, nonce="0" * 32
         )
@@ -744,41 +774,29 @@ def test_t43_formula_authentication_uses_bundle_self_consistency_only(
             archive_module._validate_plot_bundle(mutant, DEFAULT_LIMITS)
 
 
-def test_t44_attempt_layer_remains_dataset_concrete(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """T44: formula plots refuse at both attempt guards, under every route, before signing."""
+def test_t44_attempt_layer_admits_both_plot_classes(tmp_path: Path) -> None:
+    """T44: both attempt plot holders admit either exact plot class; route relations decide."""
     parts = formula_bundle_parts()
-    assert set(get_args(get_type_hints(archive_module.AttemptDraft)["plot"])) == {
+    for holder in (archive_module.AttemptDraft, archive_module.AttemptBundle):
+        assert set(get_args(get_type_hints(holder)["plot"])) == {
+            archive_module.PlotBundle,
+            type(None),
+        }
+    assert set(get_args(archive_module.PlotBundle.__value__)) == {
         archive_module.DatasetPlotBundle,
-        type(None),
-    }
-    assert set(get_args(get_type_hints(archive_module.AttemptBundle)["plot"])) == {
-        archive_module.DatasetPlotBundle,
-        type(None),
+        archive_module.FormulaPlotBundle,
     }
     assert tuple(archive_module.AttemptRoute) == (
         archive_module.AttemptRoute.VERIFY_AND_RENDER,
         archive_module.AttemptRoute.PROPOSE_SPEC,
         archive_module.AttemptRoute.VERIFY_FORMULA,
     )
-    monkeypatch.setattr(attestation, "sign_dsse", lambda *_args, **_kwargs: pytest.fail("signed"))
-    for route in archive_module.AttemptRoute:
-        draft = archive_module.AttemptDraft(
-            occurred_at=datetime.now(UTC),
-            route=route,
-            http_status=200,
-            outcome=archive_module.AttemptOutcome.VERIFIED,
-            artifacts=archive_module.AttemptArtifacts(),
-            plot=parts.bundle,
-        )
-        with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*FormulaPlotBundle"):
-            archive_module.materialize_attempt_bundle(draft, parts.signer, nonce="0" * 32)
+    _settings, dataset = dataset_bundle(tmp_path)
     manifest = archive_module.AttemptManifest(
         version="attempt-0.1",
         nonce="0" * 32,
         occurred_at="2026-01-01T00:00:00.000000Z",
-        route=archive_module.AttemptRoute.VERIFY_AND_RENDER,
+        route=archive_module.AttemptRoute.VERIFY_FORMULA,
         http_status=200,
         outcome=archive_module.AttemptOutcome.VERIFIED,
         plot_id=None,
@@ -787,16 +805,19 @@ def test_t44_attempt_layer_remains_dataset_concrete(
         keyid=parts.signer.keyid,
         verifier_version="test",
     )
-    with pytest.raises(TypeError, match=r"DatasetPlotBundle or None.*FormulaPlotBundle"):
-        archive_module.AttemptBundle(
-            attempt_id="0" * 64,
-            keyid=parts.signer.keyid,
-            manifest=manifest,
-            artifacts=archive_module.AttemptArtifacts(),
-            attempt_payload=b"{}",
-            attempt_envelope=b"{}",
-            public_key=parts.signer.public_key_bytes,
-            plot=parts.bundle,
+    for plot in (parts.bundle, dataset):
+        assert (
+            archive_module.AttemptBundle(
+                attempt_id="0" * 64,
+                keyid=parts.signer.keyid,
+                manifest=manifest,
+                artifacts=archive_module.AttemptArtifacts(),
+                attempt_payload=b"{}",
+                attempt_envelope=b"{}",
+                public_key=parts.signer.public_key_bytes,
+                plot=plot,
+            ).plot
+            is plot
         )
 
 

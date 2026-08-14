@@ -18,6 +18,7 @@ import pytest
 from msgspec.structs import replace as struct_replace
 
 from formula_plot_bundle_helpers import (
+    FormulaBundleParts,
     dataset_bundle,
     dataset_v03_certificate,
     formula_bundle_parts,
@@ -49,6 +50,7 @@ from verifier.service.settings import Settings
 _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "data"
 _RAW_DATASET_SPEC = (_ROOT / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()
+_RAW_FORMULA_SPEC = (_ROOT / "examples/formula_good_specs/f02_linear.json").read_bytes()
 _TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
 _ENCODER = msgspec.json.Encoder(order="deterministic")
 _FORMULA_ROUTE = "/verify-formula"
@@ -196,6 +198,24 @@ def _dataset_success_attempt(tmp_path: Path) -> tuple[Settings, Signer, AttemptB
     return settings, signer, materialize_attempt_bundle(draft, signer, nonce="1" * 32)
 
 
+def _formula_success_draft(
+    tmp_path: Path,
+) -> tuple[Settings, Signer, FormulaBundleParts, AttemptDraft]:
+    """Build one verified /verify-formula occurrence whose plot carries the attempt's own signer."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "formula-success")
+    signer = load_identity(settings).signer
+    parts = formula_bundle_parts(signing=signer)
+    draft = AttemptDraft(
+        occurred_at=_TIME,
+        route=_formula_route(),
+        http_status=_OUTCOME_STATUS[AttemptOutcome.VERIFIED],
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=AttemptArtifacts(raw_spec=_RAW_FORMULA_SPEC, verdict=parts.bundle.verdict),
+        plot=parts.bundle,
+    )
+    return settings, signer, parts, draft
+
+
 def _resign_bundle(
     base: AttemptBundle,
     signer: Signer,
@@ -315,14 +335,242 @@ def test_a3_formula_route_dataset_plot_refuses_before_signing(
     settings, raw_plot = dataset_bundle(tmp_path / "formula-route")
     plot = cast("DatasetPlotBundle", raw_plot)
     calls = _arm_signing_bombs(monkeypatch)
-    draft = _formula_draft(settings, plot=plot)
+    draft = _formula_draft(settings, outcome=AttemptOutcome.VERIFIED, plot=plot)
 
     with pytest.raises(
         ArchiveIntegrityError,
-        match=r"^attempt manifest route /verify-formula admits no plot$",
+        match=r"^attempt manifest route /verify-formula cannot attach a dataset plot$",
     ):
         materialize_attempt_bundle(draft, load_identity(settings).signer, nonce="2" * 32)
     assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+@pytest.mark.parametrize("route", [AttemptRoute.VERIFY_AND_RENDER, AttemptRoute.PROPOSE_SPEC])
+def test_a3_dataset_routes_refuse_a_formula_plot_before_signing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: AttemptRoute,
+) -> None:
+    """Cover the direction a dataset-only attempt layer left silent: formula plot, dataset route."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / f"formula-plot-{route.name}")
+    signer = load_identity(settings).signer
+    draft = AttemptDraft(
+        occurred_at=_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=_formula_rejected_artifacts(settings),
+        plot=formula_bundle_parts().bundle,
+    )
+    calls = _arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=rf"^attempt manifest route {route.value} cannot attach a formula plot$",
+    ):
+        materialize_attempt_bundle(draft, signer, nonce="5" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+def _route_plot_case(
+    route: AttemptRoute,
+    dataset_plot: DatasetPlotBundle,
+    formula_plot: FormulaPlotBundle,
+) -> tuple[AttemptArtifacts, PlotBundle]:
+    """Name the observations and plot one route accepts, so only plot presence can be at fault."""
+    if route is AttemptRoute.VERIFY_FORMULA:
+        return AttemptArtifacts(
+            raw_spec=_RAW_FORMULA_SPEC, verdict=formula_plot.verdict
+        ), formula_plot
+    dataset = AttemptArtifacts(
+        raw_csv=dataset_plot.raw_csv,
+        raw_manifest=dataset_plot.raw_manifest,
+        raw_spec=_RAW_DATASET_SPEC,
+        verdict=dataset_plot.verdict,
+    )
+    if route is AttemptRoute.PROPOSE_SPEC:
+        return replace(
+            dataset,
+            model_request=b"{}",
+            model_response=b"{}",
+            model_reply=_RAW_DATASET_SPEC,
+        ), dataset_plot
+    return dataset, dataset_plot
+
+
+@pytest.mark.parametrize("route", list(AttemptRoute))
+@pytest.mark.parametrize("verified", [True, False])
+def test_a3_plot_presence_must_match_the_verified_outcome_on_every_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: AttemptRoute,
+    *,
+    verified: bool,
+) -> None:
+    """Both mismatch directions refuse before signing on every route; nothing else is at fault."""
+    settings, raw_plot = dataset_bundle(tmp_path / f"presence-{route.name}-{verified}")
+    signer = load_identity(settings).signer
+    formula_plot = formula_bundle_parts(signing=signer).bundle
+    artifacts, plot = _route_plot_case(route, cast("DatasetPlotBundle", raw_plot), formula_plot)
+    outcome = AttemptOutcome.VERIFIED if verified else AttemptOutcome.REJECTED
+    draft = AttemptDraft(
+        occurred_at=_TIME,
+        route=route,
+        http_status=_OUTCOME_STATUS[outcome],
+        outcome=outcome,
+        artifacts=artifacts,
+        plot=None if verified else plot,
+    )
+    calls = _arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt manifest plot presence disagrees with its outcome$",
+    ):
+        materialize_attempt_bundle(draft, signer, nonce="6" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+def test_a3_declared_plot_and_carried_bytes_disagree_at_one_owner(tmp_path: Path) -> None:
+    """Both presence directions die at binding equality, so the bundle layer rechecks nothing."""
+    settings, signer, base = _dataset_success_attempt(tmp_path)
+    archive = open_archive(settings)
+    disagreement = r"^attempt manifest plot bindings disagree with the complete plot bytes$"
+
+    with pytest.raises(ArchiveIntegrityError, match=disagreement):
+        archive.publish_attempt(replace(base, plot=None))
+
+    undeclared = _resign_bundle(
+        base,
+        signer,
+        msgspec.structs.replace(
+            base.manifest,
+            outcome=AttemptOutcome.REJECTED,
+            plot_id=None,
+            plot_artifacts=(),
+        ),
+    )
+    with pytest.raises(ArchiveIntegrityError, match=disagreement):
+        archive.publish_attempt(undeclared)
+
+
+@pytest.mark.parametrize("dropped", ["plot_id", "plot_artifacts"])
+@pytest.mark.parametrize("verified", [True, False])
+def test_a3_plot_address_and_bindings_each_refuse_alone(
+    tmp_path: Path,
+    dropped: str,
+    *,
+    verified: bool,
+) -> None:
+    """Dropping either view leaves the other agreeing, so each arm refuses on its own.
+
+    Materialization derives the address and the bindings from one drafted plot, so only an
+    external occurrence can split them; neither arm is redundant with the other.
+    """
+    settings, signer, base = _dataset_success_attempt(tmp_path)
+    outcome = AttemptOutcome.VERIFIED if verified else AttemptOutcome.REJECTED
+    manifest = msgspec.structs.replace(
+        base.manifest,
+        outcome=outcome,
+        http_status=_OUTCOME_STATUS[outcome],
+        plot_id=None if dropped == "plot_id" else base.manifest.plot_id,
+        plot_artifacts=() if dropped == "plot_artifacts" else base.manifest.plot_artifacts,
+    )
+    mutant = _resign_bundle(base, signer, manifest)
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt manifest plot presence disagrees with its outcome$",
+    ):
+        open_archive(settings).publish_attempt(mutant)
+
+
+def test_a4_signed_plot_binding_order_is_pinned_per_mode() -> None:
+    """The signed carrier order is stated here, so a reorder cannot ride the production tuple."""
+    kind = archive_module.BlobKind
+    dataset = (
+        (kind.RAW_CSV, "raw_csv"),
+        (kind.RAW_MANIFEST, "raw_manifest"),
+        (kind.CANONICAL_SPEC, "canonical_spec"),
+        (kind.PLOTTED_TABLE, "plotted_table"),
+        (kind.VERDICT, "verdict"),
+        (kind.VEGA_LITE, "vega_lite"),
+        (kind.SVG, "svg"),
+        (kind.VCERT_PAYLOAD, "vcert_payload"),
+        (kind.VCERT_ENVELOPE, "vcert_envelope"),
+        (kind.TOOL_VERSIONS, "tool_versions"),
+        (kind.ED25519_PUBLIC_KEY, "public_key"),
+    )
+    formula = (
+        (kind.CANONICAL_SPEC, "canonical_spec"),
+        (kind.FORMULA_SOURCE, "formula_source"),
+        (kind.PLOTTED_TABLE, "plotted_table"),
+        (kind.VERDICT, "verdict"),
+        (kind.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+        (kind.VCERT_PAYLOAD, "vcert_payload"),
+        (kind.VCERT_ENVELOPE, "vcert_envelope"),
+        (kind.TOOL_VERSIONS, "tool_versions"),
+        (kind.ED25519_PUBLIC_KEY, "public_key"),
+    )
+
+    assert dataset == archive_module._DATASET_PLOT_BINDING_FIELDS
+    assert formula == archive_module._FORMULA_PLOT_BINDING_FIELDS
+    expected = {PlotSourceKind.DATASET: dataset, PlotSourceKind.FORMULA: formula}
+    assert expected == archive_module._PLOT_BINDING_FIELDS_BY_SOURCE
+
+
+def test_a4_attempt_plot_shared_fields_are_pinned_per_mode() -> None:
+    """Each mode's attempt/plot byte equalities are stated here, so no deletion rides the map."""
+    expected = {
+        PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),
+        PlotSourceKind.FORMULA: ("verdict",),
+    }
+    assert expected == archive_module._ATTEMPT_PLOT_SHARED_FIELDS
+
+
+def test_a4_plot_source_topology_map_is_exact_and_derived() -> None:
+    expected = {
+        tuple(role for role, _name in archive_module._DATASET_PLOT_BINDING_FIELDS): (
+            PlotSourceKind.DATASET
+        ),
+        tuple(role for role, _name in archive_module._FORMULA_PLOT_BINDING_FIELDS): (
+            PlotSourceKind.FORMULA
+        ),
+    }
+    assert expected == archive_module._PLOT_SOURCE_KIND_BY_BINDING_ROLES
+
+
+def test_a4_unmatched_plot_binding_topology_refuses_at_source_inference(tmp_path: Path) -> None:
+    """A near-miss carrier sequence names no mode, so no default arm can admit it."""
+    settings, raw_plot = dataset_bundle(tmp_path / "near-miss")
+    plot = cast("DatasetPlotBundle", raw_plot)
+    signer = load_identity(settings).signer
+    manifest = AttemptManifest(
+        version="attempt-0.1",
+        nonce="0" * 32,
+        occurred_at="2026-01-01T00:00:00.000000Z",
+        route=AttemptRoute.VERIFY_AND_RENDER,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        plot_id=plot.plot_id,
+        artifacts=archive_module._artifact_bindings(
+            AttemptArtifacts(
+                raw_csv=plot.raw_csv,
+                raw_manifest=plot.raw_manifest,
+                raw_spec=_RAW_DATASET_SPEC,
+                verdict=plot.verdict,
+            )
+        ),
+        plot_artifacts=archive_module._plot_bindings(plot)[:-1],
+        keyid=signer.keyid,
+        verifier_version="test",
+    )
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt manifest plot bindings match no closed plot source mode$",
+    ):
+        archive_module._validate_attempt_manifest_shape(manifest)
 
 
 def test_a3_external_formula_route_dataset_plot_refuses_at_manifest_shape(
@@ -334,7 +582,7 @@ def test_a3_external_formula_route_dataset_plot_refuses_at_manifest_shape(
 
     with pytest.raises(
         ArchiveIntegrityError,
-        match=r"^attempt manifest route /verify-formula admits no plot$",
+        match=r"^attempt manifest route /verify-formula cannot attach a dataset plot$",
     ):
         open_archive(settings).publish_attempt(mutant)
 
@@ -376,7 +624,7 @@ def test_a3_formula_route_rejected_outcome_materializes(tmp_path: Path) -> None:
     assert bundle.plot is None
 
 
-def test_a3_formula_route_verified_outcome_refuses_before_signing(
+def test_a3_verified_outcome_without_a_plot_refuses_before_signing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -386,7 +634,7 @@ def test_a3_formula_route_verified_outcome_refuses_before_signing(
 
     with pytest.raises(
         ArchiveIntegrityError,
-        match=r"^attempt manifest route /verify-formula cannot reach a verified outcome$",
+        match=r"^attempt manifest plot presence disagrees with its outcome$",
     ):
         materialize_attempt_bundle(
             _formula_draft(settings, outcome=AttemptOutcome.VERIFIED),
@@ -553,7 +801,7 @@ def test_a4_route_plot_sources_map_is_total_and_exact() -> None:
     assert _route_plot_sources() == {
         AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),
         AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),
-        _formula_route(): frozenset(),
+        _formula_route(): frozenset({PlotSourceKind.FORMULA}),
     }
 
 
@@ -860,6 +1108,110 @@ def test_a7_plotless_formula_attempt_round_trips(tmp_path: Path) -> None:
         assert connection.execute("SELECT COUNT(*) FROM plot_references").fetchone() == (0,)
 
 
+def test_a9_verified_formula_attempt_binds_its_nine_carriers_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    settings, _signer, parts, draft = _formula_success_draft(tmp_path)
+    bundle = materialize_attempt_bundle(draft, _signer, nonce="a" * 32, limits=settings.limits)
+
+    assert bundle.manifest.plot_id == parts.bundle.plot_id
+    assert [binding.role for binding in bundle.manifest.plot_artifacts] == [
+        role for role, _name in archive_module._FORMULA_PLOT_BINDING_FIELDS
+    ]
+    assert len(bundle.manifest.plot_artifacts) == 9
+    assert _ENCODER.encode(bundle.manifest) == bundle.attempt_payload
+
+    archive = open_archive(settings)
+    archive.publish_attempt(bundle, limits=settings.limits)
+    reopened = open_archive(settings)
+    restored = reopened.read_attempt(
+        bundle.attempt_id,
+        max_bytes=settings.max_archive_bytes,
+        limits=settings.limits,
+    )
+
+    assert restored == bundle
+    assert type(restored.plot) is FormulaPlotBundle
+    assert restored.plot == parts.bundle
+    assert reopened.read_plot(parts.bundle.plot_id, max_bytes=settings.max_archive_bytes) == (
+        parts.bundle
+    )
+    assert reopened.lowest_verified_attempt_id(parts.bundle.plot_id) == bundle.attempt_id
+    assert reopened.stats().plots == 1
+
+
+def test_a9_repeat_formula_occurrence_reuses_the_stored_plot_bytes(tmp_path: Path) -> None:
+    settings, signer, parts, draft = _formula_success_draft(tmp_path)
+    archive = open_archive(settings)
+    first = materialize_attempt_bundle(draft, signer, nonce="a" * 32, limits=settings.limits)
+    archive.publish_attempt(first, limits=settings.limits)
+    before = archive.stats()
+    second = materialize_attempt_bundle(draft, signer, nonce="b" * 32, limits=settings.limits)
+    archive.publish_attempt(second, limits=settings.limits)
+    after = archive.stats()
+
+    assert second.attempt_id != first.attempt_id
+    assert second.manifest.plot_id == parts.bundle.plot_id
+    assert after.attempts == before.attempts + 1
+    assert after.plots == before.plots
+    assert after.blobs == before.blobs + 2
+    assert after.logical_blob_bytes - before.logical_blob_bytes == (
+        len(second.attempt_payload) + len(second.attempt_envelope)
+    )
+
+
+def test_a9_formula_attempt_and_plot_roll_back_together_on_commit_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, signer, _parts, draft = _formula_success_draft(tmp_path)
+    bundle = materialize_attempt_bundle(draft, signer, nonce="c" * 32, limits=settings.limits)
+    archive = open_archive(settings)
+
+    class InjectedError(Exception):
+        pass
+
+    def fail() -> None:
+        raise InjectedError
+
+    monkeypatch.setattr(archive_module, "_before_archive_commit", fail)
+    with pytest.raises(InjectedError):
+        archive.publish_attempt(bundle, limits=settings.limits)
+    assert archive.stats() == archive_module.ArchiveStats(0, 0, 0, 0, 0)
+
+
+def test_a9_formula_attempt_audit_selects_the_formula_certificate_and_carriers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The audit's per-mode maps decide: the v0.3 authenticator and the nine formula carriers."""
+    settings, signer, parts, draft = _formula_success_draft(tmp_path)
+    bundle = materialize_attempt_bundle(draft, signer, nonce="d" * 32, limits=settings.limits)
+    open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    calls = {"formula": 0}
+
+    def formula_spy(*args: Any, **kwargs: Any) -> object:
+        calls["formula"] += 1
+        return attestation.verify_vcert_v03(*args, **kwargs)
+
+    monkeypatch.setitem(
+        audit._PLOT_CERTIFICATE_VERIFIERS,
+        DatasetPlotBundle,
+        cast("Any", lambda *_args, **_kwargs: pytest.fail("dataset certificate verifier ran")),
+    )
+    monkeypatch.setitem(
+        audit._PLOT_CERTIFICATE_VERIFIERS, FormulaPlotBundle, cast("Any", formula_spy)
+    )
+    document = _decoded_audit(audit.audit_attempt(settings, bundle.attempt_id))
+
+    assert calls == {"formula": 1}
+    assert document["authentication"]["plot_vcert_dsse"] == "valid"
+    assert document["plot"]["id"] == parts.bundle.plot_id
+    assert [item["role"] for item in document["plot"]["artifacts"]] == [
+        role.value for role, _name in archive_module._FORMULA_PLOT_BINDING_FIELDS
+    ]
+
+
 def test_a8_replay_route_and_model_role_vocabulary_match_archive() -> None:
     expected_routes = {route.value for route in AttemptRoute}
     expected_model_roles = {
@@ -911,9 +1263,8 @@ def test_a8_formula_route_snapshot_decodes_then_refuses_at_attempt_outcome(
 
 def test_a10_formula_materialization_docstrings_are_truthful() -> None:
     module_doc = archive_module.__doc__ or ""
-    reader_doc = archive_module._require_dataset_plot.__doc__ or ""
 
     assert "each mode has its own materializer" in module_doc
     assert "no pipeline here emits formula rows yet" not in module_doc
-    assert "formula" in reader_doc.lower()
-    assert "plotless" in reader_doc.lower()
+    # The dataset-only reader policy is gone: both modes reconstruct through the source maps.
+    assert not hasattr(archive_module, "_require_dataset_plot")

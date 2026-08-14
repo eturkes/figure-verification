@@ -1345,8 +1345,9 @@ def test_mode_flipped_plot_row_is_refused_by_each_reader_that_interprets_it(
 
     Both modes decode at this version, so the readers no longer share one blanket mode guard. Each
     refuses on its own terms instead: the complete read against the formula role set the tag now
-    claims, the certificate read under the v0.3 wrapper that tag selects, and the attempt read on
-    its own dataset-only policy. P20b: the byte reader interprets nothing and stays excluded.
+    claims, the certificate read under the v0.3 wrapper that tag selects, and the attempt read
+    against that same role set through its nested plot. P20b: the byte reader interprets nothing
+    and stays excluded.
     """
     archive = _archive(tmp_path)
     batch, blobs = _complete_batch()
@@ -1358,7 +1359,7 @@ def test_mode_flipped_plot_row_is_refused_by_each_reader_that_interprets_it(
 
     with pytest.raises(ArchiveIntegrityError, match="every required role exactly once"):
         archive.read_plot(plot_id, max_bytes=100_000)
-    with pytest.raises(ArchiveIntegrityError, match="non-dataset source kind"):
+    with pytest.raises(ArchiveIntegrityError, match="every required role exactly once"):
         archive.read_attempt(attempt_id, max_bytes=100_000)
 
     def unreachable(*_args: object, **_kwargs: object) -> None:

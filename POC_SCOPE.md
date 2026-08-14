@@ -176,8 +176,10 @@ historical key IDs. Archive key presence never grants trust. Its bounded `Replay
 reproduction status, trusted keyid, per-artifact hash matches, version drift, and diagnostic-only SVG
 equality - never raw source, prompt, snapshot, or rendered bytes. An exact reproduction repopulates
 the ephemeral chart LRU from the authenticated archived inputs, so `GET /chart/{plot_id}` serves the
-regenerated page. An unknown or malformed id returns 404; process-local rate/active-job refusal
-returns 429; a SQLite, schema, archive-read, or implementation fault becomes generic 500. A signed
+regenerated page. An unknown or malformed id returns 404, and so does any plot
+with no signed verified attempt; an archived formula plot with such an attempt returns 501,
+because this version replays dataset plots alone; process-local rate/active-job refusal returns 429;
+a SQLite, schema, archive-read, or implementation fault becomes generic 500. A signed
 attestation, blob, key, version, or recomputation mismatch instead returns a bounded 200 diagnostic
 with no chart. Replay does not re-run the weak model; pixels and browser rendering remain trusted
 display, not replay proof. Certificate, spec, and public-key retrieval remain durable and

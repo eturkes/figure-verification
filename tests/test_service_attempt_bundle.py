@@ -180,7 +180,7 @@ def test_success_manifest_binds_every_observed_and_plot_blob_then_round_trips(
         BlobKind.VERDICT,
     ]
     assert [binding.role for binding in first.manifest.plot_artifacts] == [
-        role for role, _name in archive_module._PLOT_BINDING_FIELDS
+        role for role, _name in archive_module._DATASET_PLOT_BINDING_FIELDS
     ]
     assert len(first.manifest.plot_artifacts) == 11
     assert b"attempt_id" not in first.attempt_payload

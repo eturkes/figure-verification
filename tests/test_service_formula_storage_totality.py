@@ -163,29 +163,36 @@ def test_p2_site3_payload_reads_use_dataset_roles_not_whole_enum(tmp_path: Path)
         )
 
 
-def test_p2_site4_attempt_reconstruction_uses_dataset_roles(tmp_path: Path) -> None:
-    assert hasattr(archive_module, "_DATASET_PLOT_ROLE_FIELDS")
+def test_p2_site4_attempt_reconstruction_uses_source_roles(tmp_path: Path) -> None:
+    assert hasattr(archive_module, "_PLOT_ROLE_FIELDS_BY_SOURCE")
     module = _load_mutant(
         tmp_path,
         "site4",
         r"\{\s*role: payloads\[entries\.roles\[role\]\[0\]\]\s*"
-        r"for role, _[A-Za-z_]+ in _DATASET_PLOT_ROLE_FIELDS\s*\}",
+        r"for role, _[A-Za-z_]+ in _PLOT_ROLE_FIELDS_BY_SOURCE\[entries\.source_kind\]\s*\}",
         "{role: payloads[entries.roles[role][0]] for role in PlotRole}",
     )
     certificate, key, role_rows = _plot_entries(module, module.PlotSourceKind.DATASET)
-    entries = module._PlotEntries("a" * 64, key[0].digest, certificate, key, role_rows)
+    entries = module._PlotEntries(
+        "a" * 64,
+        key[0].digest,
+        module.PlotSourceKind.DATASET,
+        certificate,
+        key,
+        role_rows,
+    )
     payloads = {reference: b"x" for reference, _row in (certificate, key, *role_rows.values())}
     with pytest.raises(KeyError):
         module._plot_from_entries(entries, payloads)
 
 
-def test_p2_site5_attempt_aggregate_entries_use_dataset_roles(tmp_path: Path) -> None:
-    assert hasattr(archive_module, "_DATASET_PLOT_ROLE_FIELDS")
+def test_p2_site5_attempt_aggregate_entries_use_source_roles(tmp_path: Path) -> None:
+    assert hasattr(archive_module, "_PLOT_ROLE_FIELDS_BY_SOURCE")
     module = _load_mutant(
         tmp_path,
         "site5",
         r"\*\(\s*plot_role_rows\[role\]\s*for role, _[A-Za-z_]+\s*"
-        r"in _DATASET_PLOT_ROLE_FIELDS\s*\)",
+        r"in _PLOT_ROLE_FIELDS_BY_SOURCE\[plot_source_kind\]\s*\)",
         "*(plot_role_rows[role] for role in PlotRole)",
     )
     plot_entries = _plot_entries(module, module.PlotSourceKind.DATASET)
@@ -234,10 +241,15 @@ def test_p2_site5_attempt_aggregate_entries_use_dataset_roles(tmp_path: Path) ->
         )
 
 
-def test_rd5_formula_linked_attempt_refuses_before_plot_reconstruction(
+class _ReachedPlotRowsError(Exception):
+    """Raised by the plot-row spy to end the read at the seam under test."""
+
+
+def test_rd7_formula_linked_attempt_reads_through_its_own_source_kind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls = {"rows": 0, "reconstruct": 0}
+    """The attempt reader carries the plot record's stored mode into the row read."""
+    captured: dict[str, Any] = {}
     attempt_ref = archive_module.BlobRef(
         "sha256:" + "d" * 64, archive_module.BlobKind.ATTEMPT_ENVELOPE
     )
@@ -267,26 +279,27 @@ def test_rd5_formula_linked_attempt_refuses_before_plot_reconstruction(
         lambda *_args: (certificate, key_ref.digest, PlotSourceKind.FORMULA),
     )
 
-    def rows_bomb(*_args: Any, **_kwargs: Any) -> object:
-        calls["rows"] += 1
-        pytest.fail("plot role rows read")
+    def rows_spy(
+        _connection: object,
+        _plot_id: str,
+        _certificate: object,
+        _keyid: str,
+        source_kind: Any,
+    ) -> object:
+        captured["source_kind"] = source_kind
+        raise _ReachedPlotRowsError
 
-    def reconstruction_bomb(*_args: Any, **_kwargs: Any) -> object:
-        calls["reconstruct"] += 1
-        pytest.fail("plot reconstruction ran")
-
-    monkeypatch.setattr(archive_module, "_plot_bundle_blob_rows", rows_bomb)
-    monkeypatch.setattr(archive_module, "_plot_from_entries", reconstruction_bomb)
+    monkeypatch.setattr(archive_module, "_plot_bundle_blob_rows", rows_spy)
 
     class Connection:
         def execute(self, _statement: str, _parameters: object) -> _Result:
             return _Result((1,))
 
-    with pytest.raises(archive_module.ArchiveIntegrityError, match="non-dataset source kind"):
+    with pytest.raises(_ReachedPlotRowsError):
         archive_module._read_complete_attempt_bundle(
             cast("Any", Connection()),
             "f" * 64,
             max_bytes=1_000_000,
             limits=DEFAULT_LIMITS,
         )
-    assert calls == {"rows": 0, "reconstruct": 0}
+    assert captured == {"source_kind": PlotSourceKind.FORMULA}

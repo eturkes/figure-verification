@@ -19,6 +19,7 @@ from verifier.service.archive import (
     AttemptBundle,
     AttemptOutcome,
     AttemptRoute,
+    DatasetPlotBundle,
     open_archive,
 )
 from verifier.service.model_client import (
@@ -111,11 +112,12 @@ def test_direct_success_and_decode_failure_commit_before_response_then_survive_r
     assert successful.manifest.route is AttemptRoute.VERIFY_AND_RENDER
     assert successful.manifest.outcome is AttemptOutcome.VERIFIED
     assert successful.manifest.plot_id == success["plot_id"]
-    assert successful.plot is not None
+    successful_plot = successful.plot
+    assert type(successful_plot) is DatasetPlotBundle
     assert successful.artifacts.raw_spec == _GOOD
-    assert successful.artifacts.raw_csv == successful.plot.raw_csv
-    assert successful.artifacts.raw_manifest == successful.plot.raw_manifest
-    assert successful.artifacts.verdict == successful.plot.verdict
+    assert successful.artifacts.raw_csv == successful_plot.raw_csv
+    assert successful.artifacts.raw_manifest == successful_plot.raw_manifest
+    assert successful.artifacts.verdict == successful_plot.verdict
     assert b"attempt_id" not in successful.artifacts.verdict
 
     rejected = _reopened_attempt(settings, failure_id)

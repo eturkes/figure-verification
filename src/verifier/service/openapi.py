@@ -17,7 +17,8 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
   2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert,
-     ReplayVerdict, and ProposeRequest, plus their nested structs transitively), via
+     ReplayVerdict, and ProposeRequest, plus their nested structs transitively), and
+     FormulaPlotSpec, which GET /spec serves whenever the stored spec is a formula spec, via
      msgspec.json.schema_components;
   3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
      hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
@@ -41,11 +42,11 @@ from typing import Any
 import msgspec
 
 from verifier import __version__
-from verifier.attestation import VCERT_PAYLOAD_TYPE
+from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.replay import ReplayVerdict
-from verifier.schema import json_schema
+from verifier.schema import FormulaPlotSpec, json_schema
 from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
 
 __all__ = ["openapi_document", "openapi_document_text", "openapi_json_bytes"]
@@ -153,13 +154,15 @@ def _dsse_schemas() -> dict[str, dict[str, Any]]:
         "title": "DSSEEnvelope",
         "description": (
             "A deterministic DSSE v1 envelope authenticating the exact base64-decoded VCert "
-            "v0.2 payload bytes and application-specific payload type. Verify it against an "
-            "independently pinned Ed25519 public key before parsing the payload."
+            "payload bytes and application-specific payload type. The plot mode selects the "
+            "type: a dataset plot carries VCert v0.2, and a formula plot carries VCert v0.3. "
+            "Read payloadType before you parse the payload. Verify the envelope against an "
+            "independently pinned Ed25519 public key first."
         ),
         "type": "object",
         "properties": {
             "payload": {"type": "string", "contentEncoding": "base64"},
-            "payloadType": {"const": VCERT_PAYLOAD_TYPE},
+            "payloadType": {"enum": [VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE]},
             "signatures": {
                 "type": "array",
                 "items": {"$ref": f"{_COMPONENTS}/DSSESignature"},
@@ -181,7 +184,7 @@ def _components() -> dict[str, Any]:
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict],
+        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict, FormulaPlotSpec],
         ref_template=f"{_COMPONENTS}/{{name}}",
     )
     for name in sorted(generated):
@@ -428,7 +431,9 @@ def _paths() -> dict[str, Any]:
         "/replay/{plot_id}": {
             "get": {
                 "operationId": "replayPlot",
-                "summary": "Replay an archived verified plot and report reproduction status",
+                "summary": (
+                    "Replay an archived verified dataset plot and report reproduction status"
+                ),
                 "parameters": [_id_parameter("plot_id")],
                 "responses": {
                     "200": _json_response(
@@ -444,6 +449,10 @@ def _paths() -> dict[str, Any]:
                         "before verification or render execution. Each service process owns an "
                         "independent gate."
                     ),
+                    "501": _problem_response(
+                        "The stored plot is an authentic formula plot. This version replays "
+                        "dataset plots only."
+                    ),
                     **public_archive_fault,
                 },
             }
@@ -457,8 +466,9 @@ def _paths() -> dict[str, Any]:
                     "200": _json_response(
                         "The archive-authenticated canonical DSSE envelope bytes. Its plot_id is "
                         "the SHA-256 digest of these exact bytes; the authenticated payload has "
-                        "the exact VCert v0.2 type. The archive key proves self-consistency, not "
-                        "signer trust or identity.",
+                        "the exact VCert type its plot mode selects, either v0.2 for a dataset "
+                        "plot or v0.3 for a formula plot. The archive key proves "
+                        "self-consistency, not signer trust or identity.",
                         {"$ref": f"{_COMPONENTS}/DSSEEnvelope"},
                     ),
                     **not_found,
@@ -473,9 +483,16 @@ def _paths() -> dict[str, Any]:
                 "parameters": [_id_parameter("spec_id")],
                 "responses": {
                     "200": _json_response(
-                        "The archive-validated canonical spec bytes. spec_id is canon.hash_spec "
-                        "of the decoded exact bytes.",
-                        {"$ref": f"{_COMPONENTS}/VPlotSpec"},
+                        "The archive-validated canonical spec bytes, in the mode the stored spec "
+                        "declares: a dataset spec carries version vplot-0.1, and a formula spec "
+                        "carries version vplot-formula-0.1. spec_id is canon.hash_spec of the "
+                        "decoded exact bytes.",
+                        {
+                            "anyOf": [
+                                {"$ref": f"{_COMPONENTS}/VPlotSpec"},
+                                {"$ref": f"{_COMPONENTS}/FormulaPlotSpec"},
+                            ]
+                        },
                     ),
                     **not_found,
                     **public_archive_fault,

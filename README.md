@@ -175,7 +175,7 @@ committed evidence. It also states the boundary that keeps the claim modest.
    **Boundary:** The classifier is heuristic, bypassable, and false-positive-prone. It is a usability
    guardrail only and never evidence of verification.
 
-10. **Every rendered plot is replayable to a certificate.**
+10. **Every plot the dataset service renders is replayable to a certificate.**
 
     **Evidence:** Every verified service render emits a DSSE-signed VCert v0.2. It commits its plot
     bundle to the SQLite provenance archive. `GET /certificate/{plot_id}` serves the envelope.
@@ -183,6 +183,9 @@ committed evidence. It also states the boundary that keeps the claim modest.
     service restart.
     **Boundary:** Replay does not rerun the weak model or prove browser pixels. A chart is regenerated
     only for exact replay under configured trust. Drift and integrity failures return diagnostics.
+    Formula plots are archived and certified under VCert v0.3. `GET /replay/{plot_id}` answers
+    501 for a formula plot that has a signed verified attempt. A plot without such an attempt
+    answers 404 in both modes. A later milestone adds the formula replay engine.
 
 ## Quickstart
 

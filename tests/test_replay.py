@@ -199,7 +199,7 @@ def _replace_plot_bytes(
 def _plot_bindings(plot: replay.ReplayPlotSnapshot) -> tuple[BlobBinding, ...]:
     return tuple(
         BlobBinding(role=role, digest=_digest(cast("bytes", getattr(plot, name))))
-        for role, name in archive_module._PLOT_BINDING_FIELDS
+        for role, name in archive_module._DATASET_PLOT_BINDING_FIELDS
     )
 
 

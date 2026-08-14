@@ -18,8 +18,10 @@ import base64
 import hashlib
 import json
 import sys
-from collections.abc import Sequence
-from typing import cast
+from collections.abc import Mapping, Sequence
+from typing import Protocol, cast
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from verifier import attestation
 from verifier.errors import VerificationError
@@ -30,6 +32,9 @@ from verifier.service.archive import (
     AttemptBundle,
     BlobBinding,
     BlobKind,
+    DatasetPlotBundle,
+    FormulaPlotBundle,
+    PlotBundle,
     open_archive,
 )
 from verifier.service.identity import IdentityError, SigningIdentity, load_identity
@@ -50,7 +55,7 @@ _ATTEMPT_FIELDS: tuple[tuple[BlobKind, str], ...] = (
     (BlobKind.MODEL_RESPONSE, "model_response"),
     (BlobKind.MODEL_REPLY, "model_reply"),
 )
-_PLOT_FIELDS: tuple[tuple[BlobKind, str], ...] = (
+_DATASET_PLOT_FIELDS: tuple[tuple[BlobKind, str], ...] = (
     (BlobKind.RAW_CSV, "raw_csv"),
     (BlobKind.RAW_MANIFEST, "raw_manifest"),
     (BlobKind.CANONICAL_SPEC, "canonical_spec"),
@@ -63,6 +68,41 @@ _PLOT_FIELDS: tuple[tuple[BlobKind, str], ...] = (
     (BlobKind.TOOL_VERSIONS, "tool_versions"),
     (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
 )
+
+_FORMULA_PLOT_FIELDS: tuple[tuple[BlobKind, str], ...] = (
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.FORMULA_SOURCE, "formula_source"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
+# Total over the two concrete plot classes: the mode selects which carriers this report names and
+# which certificate family authenticates its envelope. A default arm would summarize one mode's
+# bundle under the other mode's vocabulary, or authenticate v0.3 bytes as v0.2.
+_PLOT_FIELDS_BY_TYPE: dict[type[PlotBundle], tuple[tuple[BlobKind, str], ...]] = {
+    DatasetPlotBundle: _DATASET_PLOT_FIELDS,
+    FormulaPlotBundle: _FORMULA_PLOT_FIELDS,
+}
+
+
+class _CertificateVerifier(Protocol):
+    def __call__(
+        self,
+        envelope_bytes: bytes,
+        trusted_keys: Mapping[str, Ed25519PublicKey],
+        *,
+        limits: VerificationLimits,
+    ) -> object: ...
+
+
+_PLOT_CERTIFICATE_VERIFIERS: dict[type[PlotBundle], _CertificateVerifier] = {
+    DatasetPlotBundle: attestation.verify_vcert,
+    FormulaPlotBundle: attestation.verify_vcert_v03,
+}
 
 
 class AuditError(RuntimeError):
@@ -124,7 +164,7 @@ def _plot_document(bundle: AttemptBundle) -> dict[str, object] | None:
     plot = bundle.plot
     if plot is None:
         return None
-    payloads = _payload_map(plot, _PLOT_FIELDS)
+    payloads = _payload_map(plot, _PLOT_FIELDS_BY_TYPE[type(plot)])
     return {
         "id": plot.plot_id,
         "keyid": plot.keyid,
@@ -191,7 +231,7 @@ def _authenticate_configured_key(
     )
     plot = bundle.plot
     if plot is not None:
-        attestation.verify_vcert(plot.vcert_envelope, trusted_key, limits=limits)
+        _PLOT_CERTIFICATE_VERIFIERS[type(plot)](plot.vcert_envelope, trusted_key, limits=limits)
 
 
 def audit_attempt(
