@@ -23,7 +23,7 @@ ProposeRequest and ProposeResult frame the /propose-spec endpoint that runs the
 untrusted local model in front of this same pipeline: the request carries the user's ask plus
 the dataset name to plot; the result pairs the model's raw reply with the verify-and-render
 verdict on it. The model proposes only a spec, never plotted values, so the claim boundary is
-unchanged — a malformed proposal simply rides a failing verdict like any other blocked spec.
+unchanged — a malformed proposal rides a failing verdict like any other blocked spec.
 """
 
 from typing import Annotated, Literal

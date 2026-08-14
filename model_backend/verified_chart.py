@@ -15,8 +15,8 @@ success summary ``Verified chart for {dataset}: all {N} checks passed.``; Open W
 chart Location as the message embed and str()-ifies that summary into this turn's citation context
 (a ``<source ...>...</source>`` block in the system prompt). We match the summary SHAPE here without
 importing the verifier -- this is the untrusted proposer, so the two packages stay decoupled, and
-matching the summary (not Open WebUI's citation wrapper) keeps recognition robust to Open WebUI
-changing that wrapper. The summary exists only AFTER verification, so it appears in NEITHER the
+matching the summary (not Open WebUI's citation wrapper) keeps recognition intact when Open WebUI
+changes that wrapper. The summary exists only AFTER verification, so it appears in NEITHER the
 tool-selector turn, the verifier's own pre-verify guided generation turn, nor ordinary chat -- only
 this post-chart turn. A crafted user message echoing the exact summary would also trip it; harmless
 in this demo backend, since the verifier re-decodes and re-verifies every real proposal regardless.

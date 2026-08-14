@@ -22,11 +22,13 @@ from typing import Final
 FILTER_ID: Final = "verified_plot_guard"
 FILTER_NAME: Final = "Verified Plot Guard"
 FILTER_DESCRIPTION: Final = (
-    "Routes common direct-chart replies back through Figure Verifier; heuristic guardrail only."
+    "This filter replaces common direct-chart replies with a notice. "
+    "The filter is a heuristic guardrail, not a verification step."
 )
 BLOCKED_NOTICE: Final = (
-    "This chart was blocked because it bypassed Figure Verifier. Ask me to create it through "
-    "Figure Verifier so its data and provenance can be checked."
+    "Figure Verifier did not check this chart, so the guard removed it. "
+    "Ask me to make the chart with Figure Verifier. "
+    "Figure Verifier checks the data and the provenance of each chart."
 )
 
 _LOGGER = logging.getLogger(FILTER_ID)

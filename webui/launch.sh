@@ -9,7 +9,7 @@
 #     verifier (:8000)  ->  model tier (:8001)  ->  Open WebUI (:8080)
 #
 # The model tier is EITHER the real local OpenVINO model_backend (default; hardware-gated;
-# device NPU per CLAUDE.local.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
+# device NPU per .agent/memory.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
 # its function runner, the iframe/browser, and pixels stay trusted display/orchestration -- the
 # verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB).
 # This launcher is orchestration only; every service, provisioning step, and the chart/embed
@@ -31,14 +31,15 @@ Usage:
   webui/launch.sh [--stub] [--fresh]
 
 Options:
-  --stub      Use the deterministic hardware-free model stub instead of the real local
-              OpenVINO model_backend (no NPU / accel farm required).
-  --fresh     Wipe the persisted Open WebUI instance (.webui-data) before starting.
+  --stub      Use the deterministic hardware-free model stub. The stub replaces the real
+              local OpenVINO model_backend. The stub needs no NPU and no accel farm.
+  --fresh     Wipe the persisted Open WebUI instance (.webui-data) first.
   -h, --help  Show this help and exit.
 
-Brings up verifier (:8000), the model tier (:8001), and Open WebUI (:8080), provisions
-Open WebUI, then blocks until Ctrl-C (which frees all three ports). Every default is
-overridable via environment variables (see the header of this script).
+This script starts the verifier (:8000), the model tier (:8001), and Open WebUI (:8080).
+The script provisions Open WebUI, then waits until you press Ctrl-C. Ctrl-C frees all
+three ports. Environment variables override the configuration defaults. The
+configuration section of this script lists the variables.
 USAGE
 }
 
@@ -60,7 +61,7 @@ WEBUI_PROVISION_WEBUI_BIN="${WEBUI_PROVISION_WEBUI_BIN:-.venv-webui/bin/open-web
 WEBUI_PROVISION_VERIFIER_URL="${WEBUI_PROVISION_VERIFIER_URL:-http://${HEALTH_HOST}:${VERIFIER_PORT}}"
 WEBUI_PROVISION_MODEL_BACKEND_URL="${WEBUI_PROVISION_MODEL_BACKEND_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
 VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
-# Real-model device preference (CLAUDE.local.md: NPU>GPU>CPU) and the host-coupled accel farm
+# Real-model device preference (.agent/memory.md: NPU>GPU>CPU) and the host-coupled accel farm
 # (bench/README "OpenVINO wiring"): sourced + prepended ONLY for the real model_backend child.
 MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-NPU}"
 INTEL_ACCEL_ENV="${INTEL_ACCEL_ENV:-/var/home/eturkes/.local/app/intel-accel/env.sh}"
@@ -256,33 +257,34 @@ blocked_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
   printf -v try_typing '%s\n' \
-    "    Try typing (either prompt):" \
+    "    Type either prompt:" \
     "      1) ${succeeds_prompt}" \
     "      2) ${blocked_prompt}" \
     "" \
-    "           Both VERIFY -- the stub proposes a FIXED known-good spec for any request (ignoring prompt" \
-    "           intent), so each renders that same demo figure inline, not the chart your prompt describes." \
-    "           It cannot show the blocked path; relaunch on the real model (drop --stub) to watch prompt 2" \
-    "           get BLOCKED."
+    "           Both prompts VERIFY. The stub proposes one fixed known-good spec for every" \
+    "           request. The stub ignores your prompt intent, so both prompts render the same" \
+    "           demo figure. The stub cannot show the blocked path. To see a blocked chart," \
+    "           start this script again without --stub."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
   printf -v try_typing '%s\n' \
-    "    Try typing:" \
+    "    Type these prompts:" \
     "      1) ${succeeds_prompt}" \
     "" \
-    "           VERIFIES -- the model proposes the spec, the verifier recomputes the data, and every check passes," \
-    "           so a real figure renders inline (a sandboxed frame), not just its code." \
+    "           Expect VERIFIED. The model proposes the spec. The verifier recomputes the data." \
+    "           If every check passes, a real figure renders inline in a sandboxed frame." \
     "" \
     "      2) ${blocked_prompt}" \
     "" \
-    "           BLOCKED -- this request is too elaborate for any verifiable spec, so the model answers" \
-    "           with its own unverified chart code, which the Verified Plot Guard rewrites to the blocked notice."
+    "           Expect BLOCKED. No verifiable spec can express this request. The model can" \
+    "           answer with its own unverified chart code. If the model does, the Verified" \
+    "           Plot Guard replaces that code with the blocked notice."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER
 
   ============================================================
-  READY -- verified-plot instance is up.
+  READY -- the verified-plot instance is up.
 
     Open       ${browser_url}
     Log in     ${WEBUI_PROVISION_ADMIN_EMAIL}  /  ${WEBUI_PROVISION_ADMIN_PASSWORD}

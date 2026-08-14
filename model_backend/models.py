@@ -4,7 +4,7 @@
 A minimal subset of the OpenAI Chat Completions + Models schema — enough for the verifier's
 verifier client (and, later, Open WebUI) to talk to the local proposer. The REQUEST struct
 deliberately does NOT forbid unknown fields: this is an OpenAI-compatible endpoint and
-callers send extra params (stream, top_p, ...) the backend simply ignores. That tolerance is
+callers send extra params (stream, top_p, ...) the backend ignores. That tolerance is
 NOT a trust weakening — this backend is the untrusted proposer; the verifier re-decodes every
 reply with the strict VPlot decoder (POC_SCOPE). RESPONSE structs are built here and
 serialized by Litestar's msgspec encoder.

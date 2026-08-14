@@ -162,7 +162,7 @@ def verify_decoded(spec: VPlotSpec, settings: Settings) -> Outcome:
         verdict = _single(exc.check, str(exc), layer="verify")
         return Outcome(verdict=verdict, spec=spec)
     except FileNotFoundError:
-        # ENOENT = genuine absence (this dataset is simply not provisioned; a dangling
+        # ENOENT = genuine absence (this dataset is not provisioned; a dangling
         # symlink resolves here too) -> the 200 verdict the model expects. Any OTHER
         # filesystem fault (a directory or regular-file collision, a permission or
         # symlink-loop error) is broken operator config like a malformed manifest, so it
