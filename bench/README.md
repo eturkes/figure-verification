@@ -1,158 +1,205 @@
 # bench — weak-proposer eval (raw baseline + schema-guided default)
 
-Out-of-tree observer of the weak NPU proposer. Drives ONLY the verifier's public HTTP surface
-(`/propose-spec` + `/verify-only`), never imports `verifier` internals → adds no trust. Sync
-`httpx.Client`, RNG-free, fixed ordered prompts → byte-reproducible per (device, config).
+This benchmark is an out-of-tree observer of the weak NPU proposer.
+It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-only`.
+It never imports `verifier` internals, so it adds no trust.
+It uses a synchronous `httpx.Client`, no random-number generator, and a fixed prompt order.
+For each `(device, config)`, its output is byte-reproducible.
 
 ## What it measures — two things, never conflated
-- **GUARANTEE** (deterministic, the ONLY bounds): re-POST the 18 bad goldens AND the 10 good
-  ones to `/verify-only` → `bad_corpus_false_accept_count` MUST = 0 AND
-  `good_corpus_false_reject_count` MUST = 0. Either nonzero = a real verifier regression → the
-  run is INVALID (exit 1). The good leg closes the reject-everything vacuity: without it a
-  verifier that blocked ALL specs would satisfy the bad bound trivially. Each corpus is pinned
-  two ways — size (18/10) AND an identity digest, a SHA-256 over the sorted (filename,
-  content-hash) pairs — so a short/empty corpus OR a wrong `--examples-dir` (even one holding
-  same-sized sets of OTHER specs, which size alone cannot catch) fails LOUD (never a vacuous
-  pass). Recompute `_EXPECTED_*_CORPUS_DIGEST` (`bench/__main__.py`) after any deliberate corpus
-  edit; `tests/test_bench_harness.py` re-derives both from the tree, so drift also fails the
-  portable gate. The good goldens bake `data/`'s live CSV hashes → the verifier under eval must
-  serve the repo's own `VERIFIER_DATA_DIR=data`.
-- **OBSERVATIONS** (statistical, characterize the model — NOT a bound): over the `n` HTTP-200
-  `/propose-spec` verdicts → `json_object_rate` / `json_validity_rate` /
-  schema|semantic|policy failure / verified-render rates + top-5 failing checks, overall + per
-  category (normal · ambiguous · adversarial · bad_aggregation · hidden_filter, 20 each).
-  `json_object_rate` = fraction of 200-replies parsing as a JSON object; it says nothing about
-  tool calls. NO automatic model "false_accept" — a
-  chart verified for an unfair request needs manual labels, out of scope (POC_SCOPE).
+- **GUARANTEE:** This deterministic check provides the only bounds.
+  Bench re-posts the `18` bad goldens and the `10` good goldens to `/verify-only`.
+  `bad_corpus_false_accept_count` and `good_corpus_false_reject_count` must both equal `0`.
+  Either nonzero value is a real verifier regression and makes the run INVALID (`exit 1`).
+  The good leg prevents reject-everything vacuity.
+  Without this leg, a verifier that blocks all specs satisfies the bad bound trivially.
+  Each corpus is pinned by its size (`18/10`) and an identity digest.
+  The digest is a SHA-256 over the sorted `(filename, content-hash)` pairs.
+  These pins make a short or empty corpus fail loudly.
+  They also catch a wrong `--examples-dir`, even if it contains same-sized sets of other specs.
+  Such a mismatch never produces a vacuous pass.
+  After any deliberate corpus edit, recompute `_EXPECTED_*_CORPUS_DIGEST` in `bench/__main__.py`.
+  `tests/test_bench_harness.py` re-derives both digests from the tree, so drift also fails the portable gate.
+  The good goldens contain the live CSV hashes from `data/`.
+  The verifier under evaluation must serve the repository's own `VERIFIER_DATA_DIR=data`.
+- **OBSERVATIONS:** These statistical values characterize the model; they are not bounds.
+  Bench calculates them over the `n` HTTP-200 `/propose-spec` verdicts.
+  It reports `json_object_rate`, `json_validity_rate`, and the `schema`, `semantic`, and `policy` failure rates.
+  It also reports verified-render rates and the top-5 failing checks.
+  These results appear overall and by category.
+  The categories are normal · ambiguous · adversarial · bad_aggregation · hidden_filter, with `20` prompts each.
+  `json_object_rate` is the fraction of HTTP-200 replies that parse as a JSON object.
+  It says nothing about tool calls.
+  Bench does not calculate an automatic model "false_accept".
+  Classifying a verified chart as unfair requires manual labels.
+  That classification is outside this benchmark and `POC_SCOPE`.
 
-Buckets partition the 200 denominator (`verified + schema + semantic + policy = 1.0`). Non-200
-faults sit OUTSIDE `n`: `off_request` (a 502 pin-mismatch = model named a different dataset, a
-MODEL failure) · `prompt_policy` (a 422 context or pre-generation token-policy refusal) ·
-`upstream_fault` (any other 5xx = backend infra) · `harness_error` (remaining 4xx = a harness bug,
-expect 0).
-Bucket ≠ check family: the `schema` bucket = a decode-LAYER failure; the
-`schema.*`/`dataset.*`/`encoding.*`/`transform.*` check families all bucket SEMANTIC; only
-`label`/`security`/`scale` or a result whose method is `resource_policy` = POLICY. Every result
-must carry one method from the 0.2 wire vocabulary; a missing/unknown method invalidates decode
-instead of silently misclassifying an older response.
+The buckets partition the HTTP-200 denominator: `verified + schema + semantic + policy = 1.0`.
+Non-200 faults are outside `n`.
+Bench uses `off_request` for a 502 pin-mismatch.
+It means that the model named a different dataset, which is a MODEL failure.
+`prompt_policy` covers a 422 context refusal or pre-generation token-policy refusal.
+`upstream_fault` covers any other 5xx and indicates backend infrastructure.
+`harness_error` covers the remaining 4xx responses.
+It indicates a harness bug, and its expected value is `0`.
+
+A bucket and a check family are different classifications.
+The `schema` bucket records a decode-layer failure.
+The `schema.*`, `dataset.*`, `encoding.*`, and `transform.*` check families all enter SEMANTIC.
+Only the `label`, `security`, and `scale` check families enter POLICY.
+A result whose method is `resource_policy` also enters POLICY.
+Every result must carry one method from the 0.2 wire vocabulary.
+A missing or unknown method invalidates decode.
+It never silently misclassifies an older response.
 
 ## Run provenance (`report.json` → `meta`)
 
-Every report explicitly records `git_commit` (or `null`), `git_dirty` (tracked OR untracked),
-bench's own raw-byte `vplot_schema_sha256` for `schema/vplot-0.1.schema.json`, and the exact
-`model_probe_url` supplied by `--model-url`. `backend` is either `null` (unreachable, non-200, or
-undecodable probe) or the backend root `/health` block: `model_name`, `device`,
-`structured_output`, `vplot_schema_sha256`. When bench and backend both report a schema digest,
-`_log_summary` warns on divergence; provenance remains observational and never changes exit
-status.
+Every report records `git_commit`, which can be `null`.
+It records `git_dirty` for tracked or untracked changes.
+It records bench's raw-byte `vplot_schema_sha256` for `schema/vplot-0.1.schema.json`.
+It also records the exact `model_probe_url` supplied by `--model-url`.
 
-`--model-url` selects ONLY the backend that bench probes (`/v1/models` + root `/health`). The
-verifier independently selects its proposal backend with `VERIFIER_MODEL_BASE_URL`. Point both at
-the same backend so `meta.backend` describes the actual proposer; the schema-digest cross-check
-surfaces schema-version divergence, but cannot prove endpoint identity when equal digests are
-served.
+`backend` is `null` when the probe is unreachable, non-200, or undecodable.
+Otherwise, it contains these root `/health` fields: `model_name`, `device`, `structured_output`, and `vplot_schema_sha256`.
+When bench and backend both report a schema digest, `_log_summary` warns about divergence.
+This provenance is observational and never changes the exit status.
 
-**Reply shape** (`reply_shape` block — a first-class classifier over the same `n` replies)
-partitions each by SURFACE FORM — `fenced` (carries a markdown code fence) · `bare_object` (no
-fence; the stripped reply opens with `{`) · `empty` · `other` (prose / a truncated fragment) —
-plus `defenced_json_valid` = how many parse as JSON once de-fenced. De-fence = the first fence
-match's inner text (else the whole reply), stripped, then `msgspec.json.decode`; fence pattern
-(indented so the backticks read literally):
+`--model-url` selects only the backend that bench probes through `/v1/models` and root `/health`.
+The verifier independently selects its proposal backend with `VERIFIER_MODEL_BASE_URL`.
+To make `meta.backend` describe the actual proposer, point both settings at the same backend.
+The schema-digest cross-check surfaces schema-version divergence.
+However, equal served digests cannot prove that the endpoints are identical.
 
-    ```(?:json)?\s*(.*?)```
+**Reply shape:** The `reply_shape` block is a first-class classifier over the same `n` replies.
+It partitions the replies by surface form.
+It uses `fenced` for a reply that carries a markdown code fence.
+It uses `bare_object` when no fence exists and the stripped reply opens with `{`.
+The remaining classes are `empty` and `other`; `other` covers prose or a truncated fragment.
+It also reports `defenced_json_valid`, which counts replies that parse as JSON after de-fencing.
+De-fencing selects the first fence match's inner text.
+If no fence matches, it selects the whole reply.
+It strips the selected text and applies `msgspec.json.decode`.
+The fence pattern is ```` ```(?:json)?\s*(.*?)``` ````.
 
-This isolates the SYNTACTIC failure (fence-wrapping, which `decode_spec` rejects) from deeper
-malformation — e.g. an unguided run's `fenced=97 defenced_json_valid=24` against the
-schema-guided default's `fenced=0`.
+Fence-wrapping is a syntactic failure that `decode_spec` rejects.
+The classifier separates it from deeper malformation.
+For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-guided default had `fenced=0`.
 
 ## OpenVINO wiring (this Debian container)
 
-- OpenVINO + GenAI live outside the repo at
-  `/var/home/eturkes/.local/app/openvino_genai`; Python resolves that build through
-  `PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python`. They stay absent from
-  `pyproject.toml`; `.venv-model` supplies numpy + the Python web stack. The installed bindings
-  support CPython 3.10–3.13; this repo uses 3.13.
-- Source `/var/home/eturkes/.local/app/intel-accel/env.sh` **before** Python starts. It points
-  `LD_LIBRARY_PATH` at the host-driver symlink farm, registers the GPU OpenCL ICD through
-  `OCL_ICD_VENDORS`, and registers the GPU + NPU Level Zero drivers through
-  `ZE_ENABLE_ALT_DRIVERS`. Loader paths are consumed at process exec; changing `os.environ`
-  after Python starts is too late. Run the venv interpreter directly: `-E`, `-I`, and isolated
-  `uv run` modes can discard `PYTHONPATH`.
-- The live self-test must enumerate `CPU,GPU,NPU` and report `correct=True` for each:
+- OpenVINO and GenAI are outside the repository at `/var/home/eturkes/.local/app/openvino_genai`.
+  Python resolves that build through `PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python`.
+  They remain absent from `pyproject.toml`.
+  `.venv-model` supplies NumPy and the Python web stack.
+  The installed bindings support CPython 3.10–3.13.
+  This repository uses CPython 3.13.
+- Before Python starts, source `/var/home/eturkes/.local/app/intel-accel/env.sh`.
+  It points `LD_LIBRARY_PATH` at the host-driver symlink farm.
+  It registers the GPU OpenCL ICD through `OCL_ICD_VENDORS`.
+  It registers the GPU and NPU Level Zero drivers through `ZE_ENABLE_ALT_DRIVERS`.
+  Process execution consumes the loader paths.
+  Changing `os.environ` after Python starts is too late.
+  Run the virtual-environment interpreter directly.
+  The `-E`, `-I`, and isolated `uv run` modes can discard `PYTHONPATH`.
+- The live self-test must enumerate `CPU,GPU,NPU` and report `correct=True` for each.
   ```
   source /var/home/eturkes/.local/app/intel-accel/env.sh
   export PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python:$PYTHONPATH
   .venv-model/bin/python /var/home/eturkes/.local/app/intel-accel/selftest.py
   ```
-- Keep benchmark observations pinned to the default `MODEL_BACKEND_DEVICE=NPU` for one-device
-  reproducibility. `AUTO:GPU,CPU` is the documented dynamic-shape fallback. Generic
-  `AUTO:NPU,GPU,CPU` orders candidates but AUTO may temporarily execute on CPU while compiling an
-  accelerator; `HETERO:NPU,GPU,CPU` requests graph partitioning rather than fallback selection,
-  and NPU HETERO support is model-specific. Treat either as a probed experiment, not this
-  benchmark's default.
-- The driver farm is host+container-coupled and stays outside git. After a host Intel-driver
-  update, rebuild it with
-  `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`, then rerun the self-test.
+- Keep benchmark observations pinned to the default `MODEL_BACKEND_DEVICE=NPU` for one-device reproducibility.
+  `AUTO:GPU,CPU` is the documented dynamic-shape fallback.
+  `AUTO:NPU,GPU,CPU` orders candidates, but AUTO may temporarily use the CPU while it compiles an accelerator.
+  `HETERO:NPU,GPU,CPU` requests graph partitioning instead of fallback selection.
+  NPU HETERO support is model-specific.
+  Treat either configuration as a probed experiment, not this benchmark's default.
+- The driver farm is host+container-coupled and remains outside Git.
+  After a host Intel-driver update, rebuild it with `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`.
+  Then rerun the self-test.
 
 ## Run recipe (hardware-gated — needs both servers up)
-Backend :8001 (NPU; accel env + OpenVINO `PYTHONPATH`, call the venv python DIRECTLY — never
-isolated `-E`/`-I`/`uv run`, which strip `PYTHONPATH`):
+Start the NPU backend on :8001 with the accelerator environment and OpenVINO `PYTHONPATH`.
+Call the virtual-environment Python directly.
+Do not use isolated `-E`, `-I`, or `uv run`. These modes strip `PYTHONPATH`.
 ```
 source /var/home/eturkes/.local/app/intel-accel/env.sh
 export PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python:$PYTHONPATH
 .venv-model/bin/python -m model_backend        # wait for GET /health = 200 (~7s cold compile)
 ```
-Verifier :8000 (defaults already point `VERIFIER_MODEL_BASE_URL` → :8001/v1; imports no OpenVINO):
+Start the verifier on :8000.
+Defaults already point `VERIFIER_MODEL_BASE_URL` to :8001/v1. The verifier imports no OpenVINO.
 ```
 VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
   .venv/bin/python -m verifier.service
 ```
-The explicit high admission rate keeps this 128-request measurement recipe from classifying an
-operator throttle as model behavior; production defaults remain unchanged.
-Eval:
+The explicit high admission rate prevents this 128-request measurement recipe from classifying an operator throttle as model behavior.
+It does not change the production defaults.
+Run the evaluation:
 ```
 .venv/bin/python -m bench                      # ~10 min: 100 prompts, greedy, ~6s each on NPU
 ```
 
 ## Paired raw-vs-guided A/B (same commit)
 
-Hold git commit, verifier config, prompts, model, and device fixed; restart only the backend between
-arms (source the accelerator environment exactly as above in each backend shell):
+Keep the Git commit, verifier configuration, prompts, model, and device fixed.
+Restart only the backend between the two arms.
+In each backend shell, source the accelerator environment exactly as shown above.
 
-RAW arm — schema guidance OFF; the verifier's hardcoded `guided_json` request becomes a no-op:
+Run the RAW arm with schema guidance off.
+The verifier's hardcoded `guided_json` request then becomes a no-op:
 ```
 MODEL_BACKEND_STRUCTURED_OUTPUT=false .venv-model/bin/python -m model_backend
 # In the eval shell, after /health is ready:
 .venv/bin/python -m bench --out bench/reports/report-raw.json \
   --details bench/reports/details-raw.jsonl
 ```
-Stop that backend, then launch the GUIDED arm — default `structured_output=true`:
+Stop that backend.
+Then launch the GUIDED arm with the default `structured_output=true`:
 ```
 .venv-model/bin/python -m model_backend
 # In the eval shell, after /health is ready:
 .venv/bin/python -m bench --out bench/reports/report-guided.json \
   --details bench/reports/details-guided.jsonl
 ```
-Compare `observations.overall.verified_render_rate` in the two reports. This paired ablation
-isolates schema guidance; an unpaired cross-run comparison cannot. Each report records `meta.git_commit`,
-`git_dirty`, and `backend.structured_output`, so diffing the two `meta` blocks surfaces accidental
-drift in commit, tree state, or the guidance flag — but only for the backend `--model-url` probes;
-keep it on the verifier's proposal backend (per Run provenance above) or `backend.structured_output`
-describes the wrong server.
+Compare `observations.overall.verified_render_rate` in the two reports.
+This paired ablation isolates schema guidance.
+An unpaired cross-run comparison cannot isolate it.
+Each report records `meta.git_commit`, `git_dirty`, and `backend.structured_output`.
+Diff the two `meta` blocks to find accidental drift in the commit, tree state, or guidance flag.
+This evidence covers only the backend that `--model-url` probes.
+Keep `--model-url` on the verifier's proposal backend, as the Run provenance section describes.
+Otherwise, `backend.structured_output` describes the wrong server.
 
 ## Defaults (all overridable, see `python -m bench --help`)
-`--verifier-url http://127.0.0.1:8000` · `--model-url http://127.0.0.1:8001/v1` ·
-`--examples-dir examples` (golden-corpora root, bad + good) · `--out bench/reports/report.json` ·
-`--details bench/reports/details.jsonl` · `--timeout 180`. Datasets resolve from the verifier's
-`VERIFIER_DATA_DIR` (default `data/`) — the prompts reference `sales.csv` + `weather.csv`.
+- `--verifier-url http://127.0.0.1:8000`.
+- `--model-url http://127.0.0.1:8001/v1`.
+- `--examples-dir examples`: the golden-corpora root for the bad and good corpora.
+- `--out bench/reports/report.json`.
+- `--details bench/reports/details.jsonl`.
+- `--timeout 180`.
+
+The verifier resolves datasets from `VERIFIER_DATA_DIR`, which defaults to `data/`.
+The prompts reference `sales.csv` and `weather.csv`.
 
 ## Outputs (`bench/reports/`, gitignored — host+model-coupled)
-- `report.json` — `meta` (git/schema/backend provenance above) + `guarantee` (incl. both corpus
-  digests) + `observations{overall, by_category, top_failure_modes, reply_shape}`.
-- `details.jsonl` — one row per prompt (`category`/`dataset_name`/`user_request`/`http_status`/
-  `bucket`/`model_reply`). Non-200 rows carry the problem `detail` as `model_reply`.
+- `report.json` contains `meta`, `guarantee`, and `observations{overall, by_category, top_failure_modes, reply_shape}`.
+  `meta` contains the Git, schema, and backend provenance described above.
+  `guarantee` includes both corpus digests.
+- `details.jsonl` contains one row for each prompt.
+  Each row contains `category`, `dataset_name`, `user_request`, `http_status`, `bucket`, and `model_reply`.
+  Non-200 rows store the problem `detail` as `model_reply`.
 
-Headline numbers live in `.agent/roadmap.md` as durable evidence — `reports/` is not committed. Exit 0 = valid run (a weak model failing most prompts is the EXPECTED success); exit 1
-= INVALID run only: the guarantee broken (`false_accept > 0`, `false_reject > 0`, or transport
-errors) or NOT exercised (either corpus size or identity digest mismatches),
-`prompt_policy > 0`, `harness_error > 0`, or `n == 0` void.
+Headline numbers remain in `.agent/roadmap.md` as durable evidence.
+The `reports/` directory is not committed.
+
+Exit 0 means a valid run.
+A weak model that fails most prompts is the EXPECTED success.
+Exit 1 means an INVALID run only.
+It never means that the weak model failed prompts.
+These conditions make a run INVALID:
+
+- The guarantee is broken: `false_accept > 0`, `false_reject > 0`, or transport errors.
+- The guarantee is not exercised: either corpus size or identity digest mismatches.
+- `prompt_policy > 0`.
+- `harness_error > 0`.
+- `n == 0`, which makes the observation void.
