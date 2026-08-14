@@ -804,7 +804,13 @@ def _configure_logging() -> None:
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="python -m demo.e2e",
+        description=(
+            "Run three deterministic end-to-end cases against a disposable verifier service. "
+            "The optional legs add observations against a separately running production stack."
+        ),
+    )
     leg = parser.add_mutually_exclusive_group()
     leg.add_argument("--with-webui", action="store_true")
     leg.add_argument("--with-model", action="store_true")

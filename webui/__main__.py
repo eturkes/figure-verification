@@ -95,7 +95,10 @@ def _non_empty_prompt(value: str) -> str:
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="python -m webui",
+        description="Run one Open WebUI harness command: serve, bootstrap, stub, or chat.",
+    )
     parser.add_argument("command", choices=("serve", "bootstrap", "stub", "chat"))
     parser.add_argument("--prompt", type=_non_empty_prompt)
     args = parser.parse_args(argv)
