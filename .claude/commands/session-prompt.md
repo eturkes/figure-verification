@@ -1,4 +1,4 @@
-User-directed session: execute exactly the supplied task, with full project context loaded. Read `.agent/roadmap.md` + `.agent/memory.md` where present; roadmap MODE dispatch belongs to `/session-roadmap`, so this session's scope = the task alone.
+User-directed session: execute exactly the supplied task, with full project context loaded. State arrives attached: @.agent/roadmap.md @.agent/memory.md — an unexpanded path = that file is absent; roadmap MODE dispatch belongs to `/session-roadmap`, so this session's scope = the task alone.
 
 - The task runs MAIN-direct; teammates fan out on it. Machinery = session-roadmap rules throughout: execution map + roles, briefs, roster, worktree isolation, hygiene, verification, Close order, commit convention.
 - Update roadmap, memory + other files as needed for consistency with what the task changes; off-task improvements → `.agent/polish.md` entries, acceptance check written at deferral.
