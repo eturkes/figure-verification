@@ -9,7 +9,7 @@ allocation, the single compiled pipeline / lock, and response size, never a veri
 Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target the
 NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: OpenVINO's NPU LLM path
 wants symmetric int4 (the stock asymmetric -int4-ov IR fails the NPU VCL compiler — the
-leading, not isolated, reason; see .agent/memory.md) and compiles to static shapes, so
+leading, not isolated, reason; see .agent/archive/m3.md) and compiles to static shapes, so
 max_prompt_len caps the prompt the pipeline accepts.
 """
 

@@ -189,7 +189,7 @@ The prompts reference `sales.csv` and `weather.csv`.
   Each row contains `category`, `dataset_name`, `user_request`, `http_status`, `bucket`, and `model_reply`.
   Non-200 rows store the problem `detail` as `model_reply`.
 
-Headline numbers remain in `.agent/roadmap.md` as durable evidence.
+Headline numbers remain in `.agent/archive/m3.md` and `.agent/archive/m8.md` as durable evidence.
 The `reports/` directory is not committed.
 
 Exit 0 means a valid run.

@@ -8,5 +8,5 @@ PROPOSES a chart spec; the verifier re-decodes and independently checks every re
 verifier's strict decode, not this server. Hardware-gated (OpenVINO resolves via PYTHONPATH,
 the intel-accel env sourced) and shipped separately from the verifier package: type-checked
 under mypy --strict but excluded from coverage and the wheel. Run recipe: bench/README.md;
-durable OpenVINO facts: .agent/memory.md.
+durable OpenVINO facts: .agent/archive/m3.md.
 """

@@ -1343,7 +1343,7 @@ def test_render_html_self_reports_height_for_iframe_embed() -> None:
     # A sandboxed-iframe embed has no intrinsic height -> the page must self-report or render
     # tiny. The trusted-template reporter posts {type:"iframe:height",height} to the parent on load
     # AND on every ResizeObserver tick (async vega render grows the DOM after load). Open WebUI's
-    # listener applies our height VERBATIM (.agent/memory.md), so it must be the viewport-
+    # listener applies our height VERBATIM (.agent/archive/m4.md), so it must be the viewport-
     # INDEPENDENT content box (getBoundingClientRect), never the frame-viewport-floored scrollHeight
     # -- else a chart shorter than its frame reports inflated and can never shrink. Fixed
     # self-contained JS, off the cert hash chain -- it adds no fetchable ref (scaffold audit clean).

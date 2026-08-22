@@ -6,8 +6,8 @@ workspace model -> smoke: the whole hardware-free provisioning act. The admin us
 workspace model config are DB-persisted; every rerun updates the filter to this repo's exact source,
 proves it active/global, and idempotently converges the model's ``meta.toolIds``. The tool server +
 served model ride the launcher env, and the signin fallback makes reruns idempotent
-(.agent/memory.md provisioning contract). smoke reads back the three facts that prove provisioning
-took:
+(.agent/archive/m4.md provisioning contract). smoke reads back the three facts that prove
+provisioning took:
 
 - model_enumerated: the configured model id appears in GET /api/models (OPENAI_API_BASE_URL wired +
   ENABLE_OPENAI_API on);

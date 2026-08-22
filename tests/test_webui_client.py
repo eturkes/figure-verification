@@ -3,7 +3,7 @@
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
 test_webui_settings.py) rather than a 100%-branch gate. The OWUI request shapes are the reviewed
-0.10.2 contracts summarized in .agent/memory.md, not re-probed; here they are pinned against an
+0.10.2 contracts summarized in .agent/archive/m4.md, not re-probed; here they are pinned against an
 httpx.MockTransport (no socket binds, every branch deterministic), plus a structural fake for the
 bootstrap orchestration. Locked:
 

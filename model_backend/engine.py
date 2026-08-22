@@ -4,7 +4,7 @@
 Isolates the one untyped native import (openvino_genai; a mypy override in pyproject makes it
 resolve to Any so `mypy --strict` type-checks this package without the native runtime present)
 and serializes generation behind a single lock: one compiled LLMPipeline, one accelerator (the
-NPU by default). OpenVINO facts this module encodes (durable copies: .agent/memory.md):
+NPU by default). OpenVINO facts this module encodes (durable copies: .agent/archive/m3.md):
 
 - Chat is STATELESS: apply the chat template to the full messages array each call (never
   start_chat/finish_chat, which keep server-side history — wrong for OpenAI /v1).
@@ -74,7 +74,7 @@ class Engine:
         self._guidance_schema = guidance_schema
         self._schema_sha256 = schema_sha256
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
-        # probed (see .agent/memory.md); the lock is the safe default.
+        # probed (see .agent/archive/m3.md); the lock is the safe default.
         self._lock = threading.Lock()
 
     @property

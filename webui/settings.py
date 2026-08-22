@@ -73,7 +73,8 @@ _CLEAN_HOST = re.compile(r"[A-Za-z0-9._-]+")
 
 # The verifier tool-server registration OWUI reads from TOOL_SERVER_CONNECTIONS. The id becomes the
 # OWUI tool group "server:<id>"; the name is the readback label. The verifier's OpenAPI lives at
-# schema/openapi.json; proposeSpec is the one exposed op (.agent/memory.md persistent-off contract).
+# schema/openapi.json; proposeSpec is the one exposed op (.agent/archive/m4.md persistent-off
+# contract).
 _TOOL_SERVER_ID = "verifier"
 _TOOL_SERVER_NAME = "Figure Verifier"
 _TOOL_SERVER_DESCRIPTION = (
@@ -142,7 +143,7 @@ _FIXED_ENV: dict[str, str] = {
     "ENABLE_API_OUTLET_FILTERS": "true",
     # Legacy (prompt-template) function calling: the weak model's tool selection runs inline in the
     # chat request. Native FC is gated on the UI event emitter and does not execute headless
-    # (.agent/memory.md), so the one-shot headless flow needs legacy.
+    # (.agent/archive/m4.md), so the one-shot headless flow needs legacy.
     "DEFAULT_MODEL_PARAMS": '{"function_calling": "legacy"}',
 }
 
@@ -264,7 +265,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     def tool_server_connections(self) -> str:
         """The TOOL_SERVER_CONNECTIONS env value: a one-element JSON array registering the verifier.
 
-        Shape is the settled 0.10.2 connection (.agent/memory.md persistent-off contract): OWUI
+        Shape is the settled 0.10.2 connection (.agent/archive/m4.md persistent-off contract): OWUI
         fetches {url}/{path} as OpenAPI, exposes only the proposeSpec op (the allowlist), and needs
         config.enable truthy or the server is skipped.
         """

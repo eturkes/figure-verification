@@ -511,7 +511,7 @@ _EMBED_SNIPPET = "window.vegaEmbed = vegaEmbed;"
 # WebUI's same-origin auto-measure throws on a no-same-origin child -> self-report is mandatory). So
 # the page posts its rendered CONTENT height; Open WebUI sizes the frame on the
 # {type:"iframe:height",height} message (its listener source-matches the frame + applies height
-# VERBATIM -> the value must be right; `.agent/memory.md` pins the contract). Height =
+# VERBATIM -> the value must be right; `.agent/archive/m4.md` pins the contract). Height =
 # ceil(documentElement.getBoundingClientRect().height) = the viewport-INDEPENDENT content box;
 # scrollHeight is WRONG (floors at the frame's viewport -> a chart shorter than its frame reports
 # inflated + can never shrink; verified headless). Fires on load AND every ResizeObserver tick (the

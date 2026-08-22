@@ -2,9 +2,9 @@
 """Provisioning and persisted-chat REST client for Open WebUI.
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
-settled against 0.10.2 (.agent/memory.md provisioning + filter contracts) -- TRANSCRIBED here, not
-re-probed. Every step fails closed via WebUIProvisionError so a misconfigured deploy raises loud
-rather than leaving a half-provisioned, silently-unauthenticated client.
+settled against 0.10.2 (.agent/archive/m4.md provisioning + filter contracts) -- TRANSCRIBED
+here, not re-probed. Every step fails closed via WebUIProvisionError so a misconfigured deploy
+raises loud rather than leaving a half-provisioned, silently-unauthenticated client.
 
 The client is injected an httpx.Client (base_url + request_timeout wired by the launcher; a
 test injects a MockTransport-backed one), and holds the admin JWT after authenticate(). Responses
@@ -180,7 +180,7 @@ class WebUIClient:
     def authenticate(self) -> str:
         """Sign up the first-run admin (else sign in); store + return the JWT.
 
-        Idempotent across restarts (.agent/memory.md provisioning contract): a first signup on a
+        Idempotent across restarts (.agent/archive/m4.md provisioning contract): a first signup on a
         fresh DATA_DIR auto-promotes admin (200 + token); a re-run hits a closed signup (403
         same-process, 400 EMAIL_TAKEN post-restart), so ANY non-200 signup falls back to signin.
         Both non-200, or a 200 with an empty token, raise WebUIProvisionError (no

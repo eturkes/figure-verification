@@ -9,7 +9,7 @@
 #     verifier (:8000)  ->  model tier (:8001)  ->  Open WebUI (:8080)
 #
 # The model tier is EITHER the real local OpenVINO model_backend (default; hardware-gated;
-# device NPU per .agent/memory.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
+# device NPU per .agent/archive/m3.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
 # its function runner, the iframe/browser, and pixels stay trusted display/orchestration -- the
 # verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB).
 # This launcher is orchestration only; every service, provisioning step, and the chart/embed
@@ -61,7 +61,7 @@ WEBUI_PROVISION_WEBUI_BIN="${WEBUI_PROVISION_WEBUI_BIN:-.venv-webui/bin/open-web
 WEBUI_PROVISION_VERIFIER_URL="${WEBUI_PROVISION_VERIFIER_URL:-http://${HEALTH_HOST}:${VERIFIER_PORT}}"
 WEBUI_PROVISION_MODEL_BACKEND_URL="${WEBUI_PROVISION_MODEL_BACKEND_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
 VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
-# Real-model device preference (.agent/memory.md: NPU>GPU>CPU) and the host-coupled accel farm
+# Real-model device preference (.agent/archive/m3.md: NPU>GPU>CPU) and the host-coupled accel farm
 # (bench/README "OpenVINO wiring"): sourced + prepended ONLY for the real model_backend child.
 MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-NPU}"
 INTEL_ACCEL_ENV="${INTEL_ACCEL_ENV:-/var/home/eturkes/.local/app/intel-accel/env.sh}"
