@@ -1,16 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Pure replay of one archived successful dataset-plot occurrence from exact snapshot bytes.
+"""Pure replay of one archived successful plot occurrence, dataset or formula, from exact bytes.
 
 The caller's explicit ``trusted_keys`` mapping is the only trust anchor. Snapshot ``keyid`` and
 ``public_key`` bytes are self-consistency addresses only: archive presence, a digest-matching
 embedded public key, or a valid self-signed envelope never grants trust. Replay authenticates the
-signed attempt association and VCert under caller-pinned keys before any recomputation.
+signed attempt association and certificate under caller-pinned keys before any recomputation.
 
-Recomputation consumes only archived ``raw_csv``, ``raw_manifest``, and ``canonical_spec`` bytes.
-Stored plotted-table, Vega-Lite, verdict, SVG, and certificate bytes are authenticated comparison
-artifacts, never computation inputs. Native SVG equality is diagnostic because display remains in
-the TCB; the exact verdict is gated by the five certified hashes, TCB versions, and VCert payload.
-This module deliberately imports no ``verifier.service`` module.
+Two engines, no shared classification path. ``replay_snapshot`` replays a dataset occurrence
+against VCert v0.2; ``replay_formula_snapshot`` replays a formula occurrence against VCert v0.3.
+Each takes its own concrete snapshot type, compares its own certified hashes, and returns its own
+bounded verdict. What they share is the attempt layer, the failure vocabulary, and the byte guards.
+Nothing dispatches on mode at run time, so a caller cannot hand one engine the other's occurrence,
+and widening one mode's member set cannot reach the other mode's published schema.
+
+Dataset recomputation consumes only archived ``raw_csv``, ``raw_manifest``, and ``canonical_spec``
+bytes. Stored plotted-table, Vega-Lite, verdict, SVG, and certificate bytes are authenticated
+comparison artifacts, never computation inputs. Native SVG equality is diagnostic because display
+remains in the TCB; the exact verdict is gated by the five certified hashes, TCB versions, and
+VCert payload.
+
+Formula recomputation takes the authenticated ``canonical_spec`` as its only ARCHIVED input: no
+stored table, script, verdict, or certificate is in scope where the rebuild happens, so none can
+steer it even by mistake. Caller ``limits``, the running verifier, and live TCB collection are
+inputs as well, and that is precisely what makes drift observable. The canonical formula source
+has no decoder here -- those bytes are bound by digest and the source is re-derived from the spec
+-- and the emitted matplotlib script is never executed. The exact verdict is gated by the four
+certified hashes, TCB versions, and VCert v0.3 payload.
+
+``exact`` is a claim about the certified edge, not about full verdict-byte reproduction. A
+certificate carries each check's id, method, and status alone, so recomputation never re-derives
+the archived verdict's ``message`` bytes. Those bytes are signer-committed through the attempt
+manifest and the plot bindings, which means a message rewritten before signing replays ``exact``
+in either mode.
+
+A formula replay loads neither ``verifier.render`` nor ``vl_convert``; a dataset replay loads both
+by design, at recomputation, through the only function-local import in this module. Both modes load
+Z3, which the dataset renderer and the formula preparer each require. This module deliberately
+imports no ``verifier.service`` module.
 """
 
 import hashlib
@@ -21,7 +47,16 @@ from typing import Annotated, Literal, cast
 import msgspec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from verifier import attestation, canon, checks, errors, render, schema
+from verifier import (
+    attestation,
+    canon,
+    checks,
+    errors,
+    formula_prepare,
+    matplotlib_script,
+    schema,
+    vcert,
+)
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 
 ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
@@ -29,7 +64,9 @@ ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
 # Exact mirrors of the archive's role enums, duplicated so this module stays import-pure of the
 # service layer; the suite pins both against `BlobKind`/`PlotRole` by tuple equality. They are
 # drift sentinels only — `_BlobRole` below is the narrower decode vocabulary this replay path
-# actually admits, and stays dataset-scoped until a formula replay path exists.
+# actually admits, and now carries both modes' carrier roles because one shared manifest schema
+# decodes dataset and formula occurrences alike. Mode separation is enforced by the per-mode
+# binding tuples an engine compares against, never by what the shared decoder admits.
 BLOB_ROLE_VALUES = (
     "raw_csv",
     "raw_manifest",
@@ -74,7 +111,16 @@ _ATTEMPT_ARTIFACT_FIELDS = (
     ("model_response", "model_response"),
     ("model_reply", "model_reply"),
 )
-_PLOT_BINDING_FIELDS = (
+_ATTEMPT_BYTE_FIELDS = (
+    "attempt_payload",
+    "attempt_envelope",
+    "public_key",
+)
+# One mode's signed plot-carrier sequence, in the exact order that mode's occurrence manifest
+# declares. The two sequences are disjoint in content, so a manifest declaring one mode's roles can
+# never satisfy the other's binding comparison — which is what keeps the modes separated after the
+# shared `_BlobRole` decode vocabulary widened to admit both.
+_DATASET_PLOT_BINDING_FIELDS = (
     ("raw_csv", "raw_csv"),
     ("raw_manifest", "raw_manifest"),
     ("canonical_spec", "canonical_spec"),
@@ -87,12 +133,18 @@ _PLOT_BINDING_FIELDS = (
     ("tool_versions", "tool_versions"),
     ("ed25519_public_key", "public_key"),
 )
-_ATTEMPT_BYTE_FIELDS = (
-    "attempt_payload",
-    "attempt_envelope",
-    "public_key",
+_FORMULA_PLOT_BINDING_FIELDS = (
+    ("canonical_spec", "canonical_spec"),
+    ("formula_source", "formula_source"),
+    ("plotted_table", "plotted_table"),
+    ("verdict", "verdict"),
+    ("matplotlib_script", "matplotlib_script"),
+    ("vcert_payload", "vcert_payload"),
+    ("vcert_envelope", "vcert_envelope"),
+    ("tool_versions", "tool_versions"),
+    ("ed25519_public_key", "public_key"),
 )
-_PLOT_BYTE_FIELDS = (
+_DATASET_PLOT_BYTE_FIELDS = (
     "raw_csv",
     "raw_manifest",
     "canonical_spec",
@@ -100,6 +152,17 @@ _PLOT_BYTE_FIELDS = (
     "verdict",
     "vega_lite",
     "svg",
+    "vcert_payload",
+    "vcert_envelope",
+    "tool_versions",
+    "public_key",
+)
+_FORMULA_PLOT_BYTE_FIELDS = (
+    "canonical_spec",
+    "formula_source",
+    "plotted_table",
+    "verdict",
+    "matplotlib_script",
     "vcert_payload",
     "vcert_envelope",
     "tool_versions",
@@ -186,7 +249,7 @@ class ReplayPlotSnapshot:
     def __post_init__(self) -> None:
         _require_address(self.plot_id, subject="replay plot id")
         _require_keyid(self.keyid, subject="replay plot keyid")
-        for name in _PLOT_BYTE_FIELDS:
+        for name in _DATASET_PLOT_BYTE_FIELDS:
             _require_bytes(getattr(self, name), subject=f"replay plot {name}")
 
 
@@ -218,6 +281,66 @@ class ReplaySnapshot:
             raise TypeError(msg)
         for name in _ATTEMPT_BYTE_FIELDS:
             _require_bytes(getattr(self, name), subject=f"replay attempt {name}")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReplayFormulaPlotSnapshot:
+    """Every exact byte required to authenticate one archived successful formula plot."""
+
+    plot_id: str
+    keyid: str
+    canonical_spec: bytes = field(repr=False)
+    formula_source: bytes = field(repr=False)
+    plotted_table: bytes = field(repr=False)
+    verdict: bytes = field(repr=False)
+    matplotlib_script: bytes = field(repr=False)
+    vcert_payload: bytes = field(repr=False)
+    vcert_envelope: bytes = field(repr=False)
+    tool_versions: bytes = field(repr=False)
+    public_key: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _require_address(self.plot_id, subject="replay formula plot id")
+        _require_keyid(self.keyid, subject="replay formula plot keyid")
+        for name in _FORMULA_PLOT_BYTE_FIELDS:
+            _require_bytes(getattr(self, name), subject=f"replay formula plot {name}")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReplayFormulaSnapshot:
+    """One signed successful formula attempt with a required formula plot.
+
+    Member guards are EXACT type, not ``isinstance``: a subclass carries an attribute set this
+    engine never validated, and admitting one reopens a member set the per-mode design closes.
+    """
+
+    attempt_id: str
+    keyid: str
+    artifacts: ReplayAttemptArtifacts
+    attempt_payload: bytes = field(repr=False)
+    attempt_envelope: bytes = field(repr=False)
+    public_key: bytes = field(repr=False)
+    plot: ReplayFormulaPlotSnapshot = field(repr=False)
+
+    def __post_init__(self) -> None:
+        _require_address(self.attempt_id, subject="replay formula attempt id")
+        _require_keyid(self.keyid, subject="replay formula attempt keyid")
+        artifacts_object: object = self.artifacts
+        plot_object: object = self.plot
+        if type(artifacts_object) is not ReplayAttemptArtifacts:
+            msg = (
+                "replay formula artifacts must be exactly ReplayAttemptArtifacts, "
+                f"got {type(self.artifacts).__name__}"
+            )
+            raise TypeError(msg)
+        if type(plot_object) is not ReplayFormulaPlotSnapshot:
+            msg = (
+                "replay formula plot must be exactly ReplayFormulaPlotSnapshot, "
+                f"got {type(self.plot).__name__}"
+            )
+            raise TypeError(msg)
+        for name in _ATTEMPT_BYTE_FIELDS:
+            _require_bytes(getattr(self, name), subject=f"replay formula attempt {name}")
 
 
 type ReplayStatus = Literal[
@@ -294,6 +417,61 @@ class ReplayVerdict(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_
     exact: bool
 
 
+type FormulaTcbField = Literal[
+    "verifier_version",
+    "z3_version",
+    "canon_version",
+    "python",
+    "msgspec",
+    "unidata",
+    "grammar_version",
+    "numeric_profile",
+    "script_template_version",
+]
+
+
+class FormulaArtifactHashMatches(
+    msgspec.Struct,
+    frozen=True,
+    forbid_unknown_fields=True,
+    kw_only=True,
+):
+    """Fresh-vs-authenticated VCert v0.3 hash equality for each certified formula artifact."""
+
+    formula: bool | None = None
+    spec: bool | None = None
+    plotted_table: bool | None = None
+    matplotlib_script: bool | None = None
+
+
+class FormulaVersionDrift(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """One bounded formula TCB field whose archived and current values differ."""
+
+    field: FormulaTcbField
+    archived: str
+    current: str
+
+
+class FormulaReplayVerdict(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """Bounded formula replay result; carries hashes/flags/versions but no source or script bytes.
+
+    There is no ``svg_match`` sibling: the emitted matplotlib script is verifier-authored and its
+    exact bytes are already one of the certified hashes, so the separate display comparison the
+    dataset verdict carries has no formula analogue. Replay emits script bytes, never runs them.
+    """
+
+    status: ReplayStatus
+    integrity_ok: bool
+    trusted_keyid: str | None
+    failure_stage: ReplayFailureStage | None
+    diagnostic: str
+    artifact_matches: FormulaArtifactHashMatches
+    payload_match: bool | None
+    version_match: bool | None
+    drift: tuple[FormulaVersionDrift, ...]
+    exact: bool
+
+
 type _BlobRole = Literal[
     "raw_csv",
     "raw_manifest",
@@ -307,6 +485,8 @@ type _BlobRole = Literal[
     "vcert_envelope",
     "ed25519_public_key",
     "tool_versions",
+    "formula_source",
+    "matplotlib_script",
     "model_request",
     "model_response",
     "model_reply",
@@ -406,7 +586,13 @@ _ROUTE_ATTACHES_DATASET_PLOT: dict[_AttemptRoute, bool] = {
     "/propose-spec": True,
     "/verify-formula": False,
 }
-_TCB_FIELDS: tuple[TcbField, ...] = (
+# The formula engine's own column of the same relation: only the formula route attaches one.
+_ROUTE_ATTACHES_FORMULA_PLOT: dict[_AttemptRoute, bool] = {
+    "/verify-and-render": False,
+    "/propose-spec": False,
+    "/verify-formula": True,
+}
+_DATASET_TCB_FIELDS: tuple[TcbField, ...] = (
     "verifier_version",
     "z3_version",
     "canon_version",
@@ -418,10 +604,25 @@ _TCB_FIELDS: tuple[TcbField, ...] = (
     "font_family",
     "vendored_font_sha256",
 )
+_FORMULA_TCB_FIELDS: tuple[FormulaTcbField, ...] = (
+    "verifier_version",
+    "z3_version",
+    "canon_version",
+    "python",
+    "msgspec",
+    "unidata",
+    "grammar_version",
+    "numeric_profile",
+    "script_template_version",
+)
+_MODEL_TRACE_ROLES: frozenset[_BlobRole] = frozenset(
+    {"model_request", "model_response", "model_reply"}
+)
 _ENCODER = msgspec.json.Encoder(order="deterministic")
 _ATTEMPT_DECODER = msgspec.json.Decoder(_AttemptManifest, strict=True)
 _VERDICT_DECODER = msgspec.json.Decoder(_ArchivedVerdict, strict=True)
-_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
+_VERSIONS_DECODER = msgspec.json.Decoder(vcert.Tcb, strict=True)
+_FORMULA_VERSIONS_DECODER = msgspec.json.Decoder(vcert.FormulaTcb, strict=True)
 
 
 class _ReplayFailureError(Exception):
@@ -463,8 +664,31 @@ class _AuthenticatedSnapshot:
     snapshot: ReplaySnapshot = field(repr=False)
     manifest: _AttemptManifest = field(repr=False)
     spec: schema.VPlotSpec = field(repr=False)
-    certificate: render.VCert
+    certificate: vcert.VCert
     archived_svg: str = field(repr=False)
+    trusted_keyid: str
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthenticatedFormulaCertificate:
+    """One caller-trusted VCert v0.3 with its correlated formula family narrowed exactly once.
+
+    The exact-family guard runs at the authentication seam and its result is carried here, so every
+    downstream reader consumes concrete formula types instead of re-narrowing the open unions.
+    """
+
+    certificate: vcert.VCertV03
+    source: vcert.FormulaSourceCert = field(repr=False)
+    artifact: vcert.MatplotlibScriptArtifactCert = field(repr=False)
+    tcb: vcert.FormulaTcb = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _AuthenticatedFormulaSnapshot:
+    snapshot: ReplayFormulaSnapshot = field(repr=False)
+    manifest: _AttemptManifest = field(repr=False)
+    spec: schema.FormulaPlotSpec = field(repr=False)
+    certificate: _AuthenticatedFormulaCertificate
     trusted_keyid: str
 
 
@@ -497,7 +721,7 @@ def _plot_bindings(plot: ReplayPlotSnapshot) -> tuple[_BlobBinding, ...]:
             role=cast("_BlobRole", role),
             digest=_raw_digest(cast("bytes", getattr(plot, name))),
         )
-        for role, name in _PLOT_BINDING_FIELDS
+        for role, name in _DATASET_PLOT_BINDING_FIELDS
     )
 
 
@@ -613,7 +837,7 @@ def _decode_verdict(payload: bytes, *, trusted_keyid: str) -> _ArchivedVerdict:
     return verdict
 
 
-def _decode_versions(payload: bytes, *, trusted_keyid: str) -> render.Tcb:
+def _decode_versions(payload: bytes, *, trusted_keyid: str) -> vcert.Tcb:
     try:
         versions = _VERSIONS_DECODER.decode(payload)
     except (ValueError, RecursionError) as exc:
@@ -655,8 +879,27 @@ def _trusted_key(
     return trusted_keys[keyid]
 
 
+def _present_model_roles(artifacts: ReplayAttemptArtifacts) -> frozenset[_BlobRole]:
+    """Which model-trace carriers this attempt actually observed, by authenticated blob role."""
+    return frozenset(
+        role
+        for role, name in _ATTEMPT_ARTIFACT_FIELDS
+        # Membership in the typed role set narrows `role` to `_BlobRole` outright, so this
+        # comprehension needs no cast to reach the declared return type.
+        if role in _MODEL_TRACE_ROLES and getattr(artifacts, name) is not None
+    )
+
+
+def _certified_checks(verdict: _ArchivedVerdict) -> tuple[vcert.CertifiedCheck, ...]:
+    """The certified check sequence the archived method-aware verdict implies, in verdict order."""
+    return tuple(
+        vcert.CertifiedCheck(id=result.check, method=result.method, status="pass")
+        for result in verdict.results
+    )
+
+
 def _authenticate_attempt(
-    snapshot: ReplaySnapshot,
+    snapshot: ReplaySnapshot | ReplayFormulaSnapshot,
     trusted_keys: Mapping[str, Ed25519PublicKey],
     limits: VerificationLimits,
 ) -> tuple[_AttemptManifest, Ed25519PublicKey]:
@@ -757,14 +1000,8 @@ def _validate_attempt_graph(
         "verified attempt is missing its verdict or raw spec observation",
         trusted_keyid=trusted_keyid,
     )
-    present_model_roles = frozenset(
-        cast("_BlobRole", role)
-        for role, name in _ATTEMPT_ARTIFACT_FIELDS
-        if role in {"model_request", "model_response", "model_reply"}
-        and getattr(artifacts, name) is not None
-    )
     _require(
-        present_model_roles == _EXPECTED_MODEL_ROLES[manifest.route],
+        _present_model_roles(artifacts) == _EXPECTED_MODEL_ROLES[manifest.route],
         "attempt_outcome",
         "attempt model trace presence disagrees with its authenticated route",
         trusted_keyid=trusted_keyid,
@@ -806,7 +1043,7 @@ def _authenticate_plot(
     limits: VerificationLimits,
     *,
     trusted_keyid: str,
-) -> tuple[schema.VPlotSpec, render.VCert, render.Tcb, str]:
+) -> tuple[schema.VPlotSpec, vcert.VCert, vcert.Tcb, str]:
     _require(
         hashlib.sha256(plot.vcert_envelope).hexdigest() == plot.plot_id,
         "plot_address",
@@ -848,7 +1085,7 @@ def _authenticate_plot(
         raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid) from exc
     certificate = verified.certificate
     _require(
-        render.vcert_bytes(certificate) == verified.payload,
+        vcert.vcert_bytes(certificate) == verified.payload,
         "plot_signature",
         "authenticated VCert payload is not canonical deterministic JSON",
         trusted_keyid=trusted_keyid,
@@ -878,7 +1115,7 @@ def _authenticate_plot(
         canon.hash_manifest(plot.raw_manifest) == certificate.manifest_hash,
         canon.hash_spec(spec) == certificate.spec_hash,
         canon.hash_table_bytes(plot.plotted_table) == certificate.plotted_table_hash,
-        render.hash_vega_lite(plot.vega_lite) == certificate.vega_lite_hash,
+        vcert.hash_vega_lite(plot.vega_lite) == certificate.vega_lite_hash,
     )
     _require(
         all(archived_hashes),
@@ -898,12 +1135,8 @@ def _authenticate_plot(
         "archived verdict is not a complete passing verification outcome",
         trusted_keyid=trusted_keyid,
     )
-    certified_checks = tuple(
-        render.CertifiedCheck(id=result.check, method=result.method, status="pass")
-        for result in verdict.results
-    )
     _require(
-        certificate.checks == certified_checks,
+        certificate.checks == _certified_checks(verdict),
         "plot_contents",
         "archived method-aware verdict disagrees with certified checks",
         trusted_keyid=trusted_keyid,
@@ -990,14 +1223,14 @@ def _recomputation_failure(diagnostic: str, *, trusted_keyid: str) -> ReplayVerd
     )
 
 
-def _version_drift(archived: render.Tcb, current: render.Tcb) -> tuple[VersionDrift, ...]:
+def _version_drift(archived: vcert.Tcb, current: vcert.Tcb) -> tuple[VersionDrift, ...]:
     return tuple(
         VersionDrift(
             field=name,
             archived=cast("str", getattr(archived, name)),
             current=cast("str", getattr(current, name)),
         )
-        for name in _TCB_FIELDS
+        for name in _DATASET_TCB_FIELDS
         if getattr(archived, name) != getattr(current, name)
     )
 
@@ -1006,6 +1239,11 @@ def _recompute_authenticated(
     authenticated: _AuthenticatedSnapshot,
     limits: VerificationLimits,
 ) -> ReplayVerdict:
+    # Function-local so importing this module, and every formula replay through it, stays free of
+    # the renderer import graph: `verifier.render` pulls in `vl_convert` and Z3. Dataset replay
+    # genuinely needs both, and pays for them here alone.
+    from verifier import render  # noqa: PLC0415
+
     plot = authenticated.snapshot.plot
     try:
         run = checks.verify_snapshot(
@@ -1066,7 +1304,7 @@ def _recompute_authenticated(
     all_artifacts_match = all(value is True for value in artifact_values)
     drift = _version_drift(archived.tcb, fresh.tcb)
     version_match = not drift
-    payload_match = render.vcert_bytes(fresh) == authenticated.snapshot.plot.vcert_payload
+    payload_match = vcert.vcert_bytes(fresh) == authenticated.snapshot.plot.vcert_payload
     svg_match = result.svg == authenticated.archived_svg
     exact = all_artifacts_match and version_match and payload_match
     status: ReplayStatus
@@ -1115,3 +1353,481 @@ def replay_snapshot(
     except _ReplayFailureError as failure:
         return _failure_verdict(failure)
     return _recompute_authenticated(authenticated, limits)
+
+
+def _formula_plot_bindings(plot: ReplayFormulaPlotSnapshot) -> tuple[_BlobBinding, ...]:
+    return tuple(
+        _BlobBinding(
+            role=cast("_BlobRole", role),
+            digest=_raw_digest(cast("bytes", getattr(plot, name))),
+        )
+        for role, name in _FORMULA_PLOT_BINDING_FIELDS
+    )
+
+
+def _decode_formula_spec(payload: bytes, *, trusted_keyid: str) -> schema.FormulaPlotSpec:
+    try:
+        spec = schema.decode_formula_spec(payload)
+    except (ValueError, RecursionError) as exc:
+        stage: ReplayFailureStage = "plot_contents"
+        diagnostic = "archived canonical spec is not a valid formula specification"
+        raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid) from exc
+    _require(
+        canon.spec_bytes(spec) == payload,
+        "plot_contents",
+        "archived canonical formula spec bytes are not canonical",
+        trusted_keyid=trusted_keyid,
+    )
+    return spec
+
+
+def _decode_formula_versions(payload: bytes, *, trusted_keyid: str) -> vcert.FormulaTcb:
+    try:
+        versions = _FORMULA_VERSIONS_DECODER.decode(payload)
+    except (ValueError, RecursionError) as exc:
+        stage: ReplayFailureStage = "plot_contents"
+        diagnostic = "archived formula tool versions are not valid structured JSON"
+        raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid) from exc
+    _require(
+        _ENCODER.encode(versions) == payload,
+        "plot_contents",
+        "archived formula tool versions are not canonical deterministic JSON",
+        trusted_keyid=trusted_keyid,
+    )
+    return versions
+
+
+def _validate_formula_attempt_graph(
+    snapshot: ReplayFormulaSnapshot,
+    manifest: _AttemptManifest,
+    *,
+    trusted_keyid: str,
+) -> _ArchivedVerdict:
+    _require(
+        manifest.artifacts == _artifact_bindings(snapshot.artifacts),
+        "attempt_artifacts",
+        "authenticated attempt artifact bindings disagree with observed bytes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        manifest.plot_artifacts == _formula_plot_bindings(snapshot.plot),
+        "plot_artifacts",
+        "authenticated plot artifact bindings disagree with complete formula plot bytes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        manifest.plot_id == snapshot.plot.plot_id,
+        "attempt_plot",
+        "authenticated attempt plot id disagrees with its nested formula plot",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        _ROUTE_ATTACHES_FORMULA_PLOT[manifest.route],
+        "attempt_outcome",
+        "authenticated attempt route cannot attach the replayed formula plot",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        manifest.outcome == "verified",
+        "attempt_outcome",
+        "replay requires an authenticated verified attempt outcome",
+        trusted_keyid=trusted_keyid,
+    )
+    artifacts = snapshot.artifacts
+    _require(
+        artifacts.verdict is not None and artifacts.raw_spec is not None,
+        "attempt_outcome",
+        "verified attempt is missing its verdict or raw spec observation",
+        trusted_keyid=trusted_keyid,
+    )
+    # The formula route reads no dataset inputs, so a verified formula attempt that observed CSV or
+    # manifest bytes describes an execution the routing table makes impossible. Only a key holder
+    # can mint one, which is exactly the archive replay exists to catch.
+    _require(
+        artifacts.raw_csv is None and artifacts.raw_manifest is None,
+        "attempt_outcome",
+        "formula attempt observed dataset input bytes its route never reads",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        _present_model_roles(artifacts) == _EXPECTED_MODEL_ROLES[manifest.route],
+        "attempt_outcome",
+        "attempt model trace presence disagrees with its authenticated route",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        snapshot.plot.keyid == snapshot.keyid and snapshot.plot.public_key == snapshot.public_key,
+        "attempt_plot",
+        "attempt signer differs from the successful formula plot signer",
+        trusted_keyid=trusted_keyid,
+    )
+    # The verdict is the only carrier both layers hold for a formula occurrence: the attempt
+    # observes no dataset inputs, so there is nothing else to cross-compare here.
+    _require(
+        artifacts.verdict == snapshot.plot.verdict,
+        "attempt_plot",
+        "attempt observed verifier bytes disagree with the successful formula plot",
+        trusted_keyid=trusted_keyid,
+    )
+    verdict = _decode_verdict(cast("bytes", artifacts.verdict), trusted_keyid=trusted_keyid)
+    _require(
+        verdict.verified,
+        "attempt_outcome",
+        "authenticated attempt verdict disagrees with its verified outcome",
+        trusted_keyid=trusted_keyid,
+    )
+    return verdict
+
+
+def _authenticate_formula_plot(
+    plot: ReplayFormulaPlotSnapshot,
+    verdict: _ArchivedVerdict,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    limits: VerificationLimits,
+    *,
+    trusted_keyid: str,
+) -> tuple[schema.FormulaPlotSpec, _AuthenticatedFormulaCertificate]:
+    _require(
+        hashlib.sha256(plot.vcert_envelope).hexdigest() == plot.plot_id,
+        "plot_address",
+        "formula plot id does not address the exact VCert v0.3 envelope bytes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        len(plot.public_key) == _ED25519_PUBLIC_KEY_BYTES
+        and _raw_digest(plot.public_key) == plot.keyid,
+        "plot_address",
+        "formula plot keyid does not address a raw Ed25519 public key",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        len(plot.vcert_payload) <= limits.max_attestation_bytes,
+        "plot_address",
+        "VCert v0.3 payload exceeds the attestation byte limit",
+        trusted_keyid=trusted_keyid,
+    )
+    # Both VCert payload-type strings happen to be the same length today, so this ceiling is
+    # numerically equal to the dataset one and no verdict could reveal a wrong choice. Naming the
+    # v0.3 type is what keeps the ceiling correct once that coincidence ends.
+    envelope_limit = attestation.envelope_byte_limit(
+        limits.max_attestation_bytes,
+        payload_type=attestation.VCERT_V03_PAYLOAD_TYPE,
+    )
+    _require(
+        len(plot.vcert_envelope) <= envelope_limit,
+        "plot_address",
+        "VCert v0.3 envelope exceeds its canonical byte limit",
+        trusted_keyid=trusted_keyid,
+    )
+    plot_key = _trusted_key(plot.keyid, trusted_keys)
+    try:
+        verified = attestation.verify_vcert_v03(
+            plot.vcert_envelope,
+            {plot.keyid: plot_key},
+            limits=limits,
+            require_canonical_envelope=True,
+            expected_keyid_hint=plot.keyid,
+        )
+    except (TypeError, ValueError, attestation.AttestationError, errors.VerificationError) as exc:
+        stage: ReplayFailureStage = "plot_signature"
+        diagnostic = "VCert v0.3 envelope failed caller-pinned signature verification"
+        raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid) from exc
+    certificate = verified.certificate
+    _require(
+        vcert.vcert_v03_bytes(certificate) == verified.payload,
+        "plot_signature",
+        "authenticated VCert v0.3 payload is not canonical deterministic JSON",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        verified.payload == plot.vcert_payload,
+        "plot_signature",
+        "stored VCert v0.3 payload differs from its authenticated envelope payload",
+        trusted_keyid=trusted_keyid,
+    )
+    # A v0.3 envelope authenticates either certificate family. Refusing the dataset family here is
+    # what makes this engine's remaining narrowings total rather than hopeful.
+    _require(
+        type(certificate.source) is vcert.FormulaSourceCert
+        and type(certificate.artifact) is vcert.MatplotlibScriptArtifactCert
+        and type(certificate.tcb) is vcert.FormulaTcb,
+        "plot_signature",
+        "authenticated VCert v0.3 does not carry the formula certificate family",
+        trusted_keyid=trusted_keyid,
+    )
+    authenticated = _AuthenticatedFormulaCertificate(
+        certificate=certificate,
+        source=cast("vcert.FormulaSourceCert", certificate.source),
+        artifact=cast("vcert.MatplotlibScriptArtifactCert", certificate.artifact),
+        tcb=cast("vcert.FormulaTcb", certificate.tcb),
+    )
+    spec = _decode_formula_spec(plot.canonical_spec, trusted_keyid=trusted_keyid)
+    versions = _decode_formula_versions(plot.tool_versions, trusted_keyid=trusted_keyid)
+    try:
+        plot.matplotlib_script.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        content_stage: ReplayFailureStage = "plot_contents"
+        diagnostic = "archived matplotlib script is not valid UTF-8"
+        raise _integrity_error(
+            content_stage,
+            diagnostic,
+            trusted_keyid=trusted_keyid,
+        ) from exc
+    # The canonical formula source has no decoder: replay binds those bytes by digest alone and
+    # re-derives the source from the authenticated spec during recomputation.
+    _require(
+        canon.hash_formula_source(plot.formula_source) == authenticated.source.formula_hash
+        and canon.hash_spec(spec) == certificate.spec_hash
+        and canon.hash_table_bytes(plot.plotted_table) == certificate.plotted_table_hash
+        and canon.hash_matplotlib_script(plot.matplotlib_script)
+        == authenticated.artifact.matplotlib_script_hash,
+        "plot_contents",
+        "archived formula plot artifact bytes disagree with one or more certified hashes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        verdict.layer == "verify" and all(result.status == "pass" for result in verdict.results),
+        "plot_contents",
+        "archived verdict is not a complete passing verification outcome",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        certificate.checks == _certified_checks(verdict),
+        "plot_contents",
+        "archived method-aware verdict disagrees with certified checks",
+        trusted_keyid=trusted_keyid,
+    )
+    # Sequence equality above only ties the two authenticated carriers to each other; both can name
+    # a check the verifier does not implement. The registry is the third party that settles whether
+    # the certified method is the one this build would actually have run.
+    _require(
+        all(
+            certified_check.id in checks._CHECK_METHODS
+            and checks._CHECK_METHODS[certified_check.id] == certified_check.method
+            for certified_check in certificate.checks
+        ),
+        "plot_contents",
+        "certified check disagrees with the registered verification method",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        versions == authenticated.tcb,
+        "plot_contents",
+        "archived formula tool versions disagree with the VCert v0.3 TCB",
+        trusted_keyid=trusted_keyid,
+    )
+    return spec, authenticated
+
+
+def _authenticate_formula_snapshot(
+    snapshot: ReplayFormulaSnapshot,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    limits: VerificationLimits,
+) -> _AuthenticatedFormulaSnapshot:
+    manifest, _attempt_key = _authenticate_attempt(snapshot, trusted_keys, limits)
+    trusted_keyid = snapshot.keyid
+    verdict = _validate_formula_attempt_graph(snapshot, manifest, trusted_keyid=trusted_keyid)
+    spec, certificate = _authenticate_formula_plot(
+        snapshot.plot,
+        verdict,
+        trusted_keys,
+        limits,
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        manifest.verifier_version == certificate.tcb.verifier_version,
+        "attempt_plot",
+        "attempt verifier version disagrees with the successful formula plot TCB",
+        trusted_keyid=trusted_keyid,
+    )
+    return _AuthenticatedFormulaSnapshot(
+        snapshot=snapshot,
+        manifest=manifest,
+        spec=spec,
+        certificate=certificate,
+        trusted_keyid=trusted_keyid,
+    )
+
+
+class _FormulaRecomputationError(Exception):
+    """Internal carrier for a recomputation that stopped; converted to one bounded verdict."""
+
+    def __init__(self, diagnostic: str) -> None:
+        super().__init__(diagnostic)
+        self.diagnostic = diagnostic
+
+
+def _formula_failure_verdict(failure: _ReplayFailureError) -> FormulaReplayVerdict:
+    return FormulaReplayVerdict(
+        status=failure.status,
+        integrity_ok=False,
+        trusted_keyid=failure.trusted_keyid,
+        failure_stage=failure.stage,
+        diagnostic=failure.diagnostic,
+        artifact_matches=FormulaArtifactHashMatches(),
+        payload_match=None,
+        version_match=None,
+        drift=(),
+        exact=False,
+    )
+
+
+def _formula_recomputation_failure(diagnostic: str, *, trusted_keyid: str) -> FormulaReplayVerdict:
+    return FormulaReplayVerdict(
+        status="recomputation_failed",
+        integrity_ok=True,
+        trusted_keyid=trusted_keyid,
+        failure_stage="recomputation",
+        diagnostic=diagnostic,
+        artifact_matches=FormulaArtifactHashMatches(),
+        payload_match=None,
+        version_match=None,
+        drift=(),
+        exact=False,
+    )
+
+
+def _formula_version_drift(
+    archived: vcert.FormulaTcb,
+    current: vcert.FormulaTcb,
+) -> tuple[FormulaVersionDrift, ...]:
+    return tuple(
+        FormulaVersionDrift(
+            field=name,
+            archived=cast("str", getattr(archived, name)),
+            current=cast("str", getattr(current, name)),
+        )
+        for name in _FORMULA_TCB_FIELDS
+        if getattr(archived, name) != getattr(current, name)
+    )
+
+
+def _recompute_formula_certificate(
+    spec: schema.FormulaPlotSpec,
+    limits: VerificationLimits,
+) -> vcert.VCertV03:
+    """Rebuild the whole formula chain from one authenticated spec and nothing else.
+
+    The signature is the guarantee. No archived carrier is in scope inside this function, so an
+    archived table, script, verdict, or certificate cannot steer recomputation even by mistake; the
+    fresh certificate is derived, never influenced. It is built with no ``tcb=`` argument so it
+    collects the live TCB: supplying the archived one would make stored provenance describe the
+    running build and silently erase every version drift replay exists to report.
+    """
+    try:
+        run = checks.verify_formula_run(spec, limits=limits)
+    except (ValueError, errors.VerificationError, RecursionError) as exc:
+        message = f"archived inputs could not be recomputed: {type(exc).__name__}"
+        raise _FormulaRecomputationError(message) from exc
+    if not run.report.passed:
+        message = "archived inputs no longer pass current core verification"
+        raise _FormulaRecomputationError(message)
+    evidence = run.require_evidence()
+
+    try:
+        preparation = formula_prepare.prepare_formula(spec, evidence, limits=limits)
+    except (ValueError, errors.VerificationError) as exc:
+        message = f"archived inputs could not be prepared: {type(exc).__name__}"
+        raise _FormulaRecomputationError(message) from exc
+    if preparation.prepared is None:
+        message = "archived inputs no longer pass current formal verification"
+        raise _FormulaRecomputationError(message)
+
+    try:
+        emission = matplotlib_script.emit_matplotlib_script(preparation.prepared, limits=limits)
+    except (ValueError, errors.VerificationError) as exc:
+        message = f"archived inputs could not be emitted: {type(exc).__name__}"
+        raise _FormulaRecomputationError(message) from exc
+    if emission.artifact is None:
+        message = "archived inputs no longer emit an admitted matplotlib script"
+        raise _FormulaRecomputationError(message)
+
+    try:
+        return vcert.build_formula_certificate(emission.artifact)
+    except ValueError as exc:
+        message = f"archived inputs could not be certified: {type(exc).__name__}"
+        raise _FormulaRecomputationError(message) from exc
+
+
+def _recompute_authenticated_formula(
+    authenticated: _AuthenticatedFormulaSnapshot,
+    limits: VerificationLimits,
+) -> FormulaReplayVerdict:
+    try:
+        fresh = _recompute_formula_certificate(authenticated.spec, limits)
+    except _FormulaRecomputationError as failure:
+        return _formula_recomputation_failure(
+            failure.diagnostic,
+            trusted_keyid=authenticated.trusted_keyid,
+        )
+
+    archived = authenticated.certificate
+    fresh_source = cast("vcert.FormulaSourceCert", fresh.source)
+    fresh_artifact = cast("vcert.MatplotlibScriptArtifactCert", fresh.artifact)
+    fresh_tcb = cast("vcert.FormulaTcb", fresh.tcb)
+    matches = FormulaArtifactHashMatches(
+        formula=fresh_source.formula_hash == archived.source.formula_hash,
+        spec=fresh.spec_hash == archived.certificate.spec_hash,
+        plotted_table=fresh.plotted_table_hash == archived.certificate.plotted_table_hash,
+        matplotlib_script=(
+            fresh_artifact.matplotlib_script_hash == archived.artifact.matplotlib_script_hash
+        ),
+    )
+    artifact_values = (
+        matches.formula,
+        matches.spec,
+        matches.plotted_table,
+        matches.matplotlib_script,
+    )
+    all_artifacts_match = all(value is True for value in artifact_values)
+    drift = _formula_version_drift(archived.tcb, fresh_tcb)
+    version_match = not drift
+    # The TCB is a field of the v0.3 payload, so any drift necessarily moves these bytes too:
+    # `payload_match` is an independent conjunct of `exact`, never a restatement of `version_match`.
+    payload_match = vcert.vcert_v03_bytes(fresh) == authenticated.snapshot.plot.vcert_payload
+    exact = all_artifacts_match and version_match and payload_match
+    status: ReplayStatus
+    diagnostic: str
+    failure_stage: ReplayFailureStage | None
+    if exact:
+        status = "exact"
+        diagnostic = "authenticated formula snapshot recomputed exactly"
+        failure_stage = None
+    elif all_artifacts_match and not version_match:
+        status = "drift"
+        diagnostic = "authenticated artifacts match but the current TCB versions drifted"
+        failure_stage = None
+    else:
+        status = "recomputation_failed"
+        diagnostic = "current recomputation disagrees with the authenticated certificate"
+        failure_stage = "recomputation"
+    return FormulaReplayVerdict(
+        status=status,
+        integrity_ok=True,
+        trusted_keyid=authenticated.trusted_keyid,
+        failure_stage=failure_stage,
+        diagnostic=diagnostic,
+        artifact_matches=matches,
+        payload_match=payload_match,
+        version_match=version_match,
+        drift=drift,
+        exact=exact,
+    )
+
+
+def replay_formula_snapshot(
+    snapshot: ReplayFormulaSnapshot,
+    trusted_keys: Mapping[str, Ed25519PublicKey],
+    *,
+    limits: VerificationLimits = DEFAULT_LIMITS,
+) -> FormulaReplayVerdict:
+    """Authenticate and replay one required-formula-plot snapshot under caller trust pins."""
+    snapshot_object: object = snapshot
+    if type(snapshot_object) is not ReplayFormulaSnapshot:
+        msg = f"snapshot must be exactly ReplayFormulaSnapshot, got {type(snapshot).__name__}"
+        raise TypeError(msg)
+    try:
+        authenticated = _authenticate_formula_snapshot(snapshot, trusted_keys, limits)
+    except _ReplayFailureError as failure:
+        return _formula_failure_verdict(failure)
+    return _recompute_authenticated_formula(authenticated, limits)
