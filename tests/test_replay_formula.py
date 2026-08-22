@@ -108,6 +108,12 @@ def _formula_snapshot_type() -> type[Any]:
     return value
 
 
+def _formula_struct_type(name: str) -> type[Any]:
+    value = replay.__dict__.get(name)
+    assert isinstance(value, type), f"{name} is absent"
+    return value
+
+
 def _formula_replay() -> _ReplayCallable:
     value = replay.__dict__.get("replay_formula_snapshot")
     assert callable(value), "replay_formula_snapshot is absent"
@@ -1747,12 +1753,9 @@ def test_v49_formula_public_types_are_concrete_exact_and_dataset_preserving(tmp_
     fixture = _fixture(tmp_path)
     plot_type = _formula_plot_type()
     snapshot_type = _formula_snapshot_type()
-    matches_type = replay.__dict__.get("FormulaArtifactHashMatches")
-    verdict_type = replay.__dict__.get("FormulaReplayVerdict")
-    drift_type = replay.__dict__.get("FormulaVersionDrift")
-    assert isinstance(matches_type, type)
-    assert isinstance(verdict_type, type)
-    assert isinstance(drift_type, type)
+    matches_type = _formula_struct_type("FormulaArtifactHashMatches")
+    verdict_type = _formula_struct_type("FormulaReplayVerdict")
+    drift_type = _formula_struct_type("FormulaVersionDrift")
     assert tuple(field.name for field in fields(plot_type)) == (
         "plot_id",
         "keyid",
