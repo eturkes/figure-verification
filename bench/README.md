@@ -60,7 +60,8 @@ It records bench's raw-byte `vplot_schema_sha256` for `schema/vplot-0.1.schema.j
 It also records the exact `model_probe_url` supplied by `--model-url`.
 
 `backend` is `null` when the probe is unreachable, non-200, or undecodable.
-Otherwise, it contains these root `/health` fields: `model_name`, `device`, `structured_output`, and `vplot_schema_sha256`.
+Otherwise, it contains these four root `/health` fields: `model_name`, `device`, `structured_output`, and `vplot_schema_sha256`.
+The backend also serves `formula_schema_sha256` for the formula proposer schema, which bench ignores.
 When bench and backend both report a schema digest, `_log_summary` warns about divergence.
 This provenance is observational and never changes the exit status.
 

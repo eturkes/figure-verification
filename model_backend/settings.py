@@ -11,19 +11,30 @@ NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: OpenVINO's NPU
 wants symmetric int4 (the stock asymmetric -int4-ov IR fails the NPU VCL compiler — the
 leading, not isolated, reason; see .agent/archive/m3.md) and compiles to static shapes, so
 max_prompt_len caps the prompt the pipeline accepts.
+
+Guided decoding is backed by operator-pinned schema FILES, one per proposer mode. This module
+owns both halves of that pin — the closed id vocabulary and guidance_schema_paths, the single
+map from id to path — so a caller can only ever name an id, never supply a schema document.
 """
 
 import os
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 import msgspec
+
+# Each id is its own schema's `version` literal, so the wire value names the pinned document.
+type GuidanceSchemaId = Literal["vplot-0.1", "vplot-formula-0.1"]
+
+DATASET_SCHEMA_ID: GuidanceSchemaId = "vplot-0.1"
+FORMULA_SCHEMA_ID: GuidanceSchemaId = "vplot-formula-0.1"
 
 _DEFAULT_MODEL_DIR = "models/Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
 _DEFAULT_DEVICE = "NPU"
 _DEFAULT_STRUCTURED_OUTPUT = True
 _DEFAULT_VPLOT_SCHEMA_PATH = "schema/vplot-0.1.schema.json"
+_DEFAULT_FORMULA_SCHEMA_PATH = "schema/vplot-formula-0.1.schema.json"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8001
 _DEFAULT_MAX_BODY_BYTES = 128 * 1024
@@ -66,6 +77,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     device: str = _DEFAULT_DEVICE
     structured_output: bool = _DEFAULT_STRUCTURED_OUTPUT
     vplot_schema_path: Path = Path(_DEFAULT_VPLOT_SCHEMA_PATH)
+    formula_schema_path: Path = Path(_DEFAULT_FORMULA_SCHEMA_PATH)
     max_prompt_len: int = _DEFAULT_MAX_PROMPT_LEN
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     host: str = _DEFAULT_HOST
@@ -92,6 +104,18 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             msg = f"max_prompt_len must be >= 1, got {self.max_prompt_len}"
             raise ValueError(msg)
 
+    def guidance_schema_paths(self) -> dict[GuidanceSchemaId, Path]:
+        """Return the total id -> operator schema path map guided decoding is pinned to.
+
+        Total over GuidanceSchemaId by construction: the engine loads exactly these entries and
+        subscripts this map's keys directly, so an unmapped id is a type error here rather than a
+        silent fallback at generation time.
+        """
+        return {
+            DATASET_SCHEMA_ID: self.vplot_schema_path,
+            FORMULA_SCHEMA_ID: self.formula_schema_path,
+        }
+
     @classmethod
     def from_env(cls) -> Self:
         """Build from MODEL_BACKEND_* environment variables, falling back to field defaults."""
@@ -106,6 +130,9 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             ),
             vplot_schema_path=Path(
                 env.get("MODEL_BACKEND_VPLOT_SCHEMA_PATH", _DEFAULT_VPLOT_SCHEMA_PATH)
+            ),
+            formula_schema_path=Path(
+                env.get("MODEL_BACKEND_FORMULA_SCHEMA_PATH", _DEFAULT_FORMULA_SCHEMA_PATH)
             ),
             max_prompt_len=int(
                 env.get("MODEL_BACKEND_MAX_PROMPT_LEN", str(_DEFAULT_MAX_PROMPT_LEN))

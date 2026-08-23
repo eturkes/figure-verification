@@ -11,17 +11,24 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_args
 
+import msgspec
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 from litestar.testing import TestClient
 
 from model_backend.schema_guidance import load_guidance_schema, schema_digest, strip_guidance
-from model_backend.settings import Settings
+from model_backend.settings import DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID, GuidanceSchemaId, Settings
+
+# The strict formula decoder is imported here on purpose: the weak-guidance claim is the PAIR
+# "guidance admits it, strict decode rejects it", and a pair split across two files asserts
+# something weaker than the claim. verifier.schema needs no native runtime.
+from verifier.schema import decode_formula_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = _ROOT / "schema" / "vplot-0.1.schema.json"
+_FORMULA_SCHEMA_PATH = _ROOT / "schema" / "vplot-formula-0.1.schema.json"
 _GOOD_SPECS_DIR = _ROOT / "examples" / "good_specs"
 
 _LENGTH = object()
@@ -222,6 +229,91 @@ def test_guidance_schema_is_valid_and_accepts_all_good_goldens() -> None:
         validator.validate(_read_json_object(spec_path))
 
 
+def _formula_spec(**overrides: Any) -> dict[str, Any]:
+    """A shape-valid FormulaPlotSpec instance, overridable field by field."""
+    spec: dict[str, Any] = {
+        "version": "vplot-formula-0.1",
+        "formula": "x * x",
+        "domain": {"start": "0", "stop": "10", "samples": 64, "x_scale": 2, "y_scale": 2},
+        "numeric_profile": "rational-half-even-v1",
+        "mark": "line",
+        "encoding": {
+            "x": {"field": "x", "type": "quantitative"},
+            "y": {"field": "y", "type": "quantitative"},
+        },
+    }
+    spec.update(overrides)
+    return spec
+
+
+def _guidance_object(path: Path) -> dict[str, Any]:
+    """The exact guidance the engine installs for that schema, decoded as a JSON object."""
+    loaded: Any = json.loads(load_guidance_schema(path))
+    assert isinstance(loaded, dict)
+    return cast("dict[str, Any]", loaded)
+
+
+def test_formula_guidance_keeps_structure_while_admitting_text_strict_decode_rejects() -> None:
+    guidance_text = load_guidance_schema(_FORMULA_SCHEMA_PATH)
+    guidance = _guidance_object(_FORMULA_SCHEMA_PATH)
+    Draft202012Validator.check_schema(guidance)
+    validator = Draft202012Validator(guidance)
+    assert '"pattern"' not in guidance_text
+    assert '"format"' not in guidance_text
+
+    # What survives stripping: the six-field closed object, every closed enum, the length cap,
+    # and the integer ranges. This is the "weak but not empty" half of the guidance claim.
+    spec_def = guidance["$defs"]["FormulaPlotSpec"]
+    assert spec_def["required"] == [
+        "version",
+        "formula",
+        "domain",
+        "numeric_profile",
+        "mark",
+        "encoding",
+    ]
+    assert spec_def["additionalProperties"] is False
+    assert spec_def["properties"]["version"]["enum"] == ["vplot-formula-0.1"]
+    assert spec_def["properties"]["mark"]["enum"] == ["line", "scatter"]
+    assert spec_def["properties"]["formula"] == {"type": "string", "maxLength": 1024}
+    domain_def = guidance["$defs"]["FormulaDomain"]
+    assert domain_def["properties"]["samples"] == {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 100000,
+    }
+    assert domain_def["properties"]["x_scale"] == {"type": "integer", "minimum": 0, "maximum": 12}
+
+    validator.validate(_formula_spec())
+    assert decode_formula_spec(json.dumps(_formula_spec())).mark == "line"
+    for broken in (
+        _formula_spec(title="chart"),
+        {k: v for k, v in _formula_spec().items() if k != "mark"},
+        _formula_spec(mark="bar"),
+        _formula_spec(version="vplot-0.1"),
+        _formula_spec(
+            domain={"start": "0", "stop": "10", "samples": 1, "x_scale": 2, "y_scale": 2}
+        ),
+        _formula_spec(
+            domain={"start": "0", "stop": "10", "samples": 64, "x_scale": 13, "y_scale": 2}
+        ),
+    ):
+        with pytest.raises(ValidationError):
+            validator.validate(broken)
+
+    # The weakness itself: the three stripped patterns leave `formula`, `start`, and `stop` as bare
+    # strings, so guidance ADMITS prose and Python that strict decode then REJECTS. Guidance steers
+    # structure; rejection stays the verifier's decoder, never the proposer's grammar.
+    for formula in ("plot y = sin(x), please!", "__import__('os').system('id')"):
+        admitted = _formula_spec(
+            formula=formula,
+            domain={"start": "zero", "stop": "ten", "samples": 64, "x_scale": 2, "y_scale": 2},
+        )
+        validator.validate(admitted)
+        with pytest.raises(msgspec.ValidationError):
+            decode_formula_spec(json.dumps(admitted))
+
+
 def test_load_guidance_schema_round_trips_and_fails_closed(tmp_path: Path) -> None:
     strict = _read_json_object(_SCHEMA_PATH)
     guidance_text = load_guidance_schema(_SCHEMA_PATH)
@@ -297,9 +389,11 @@ def test_structured_output_settings_defaults_and_env(
 ) -> None:
     assert Settings().structured_output is True
     assert Settings().vplot_schema_path == Path("schema/vplot-0.1.schema.json")
+    assert Settings().formula_schema_path == Path("schema/vplot-formula-0.1.schema.json")
 
     monkeypatch.delenv("MODEL_BACKEND_STRUCTURED_OUTPUT", raising=False)
     monkeypatch.delenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", raising=False)
+    monkeypatch.delenv("MODEL_BACKEND_FORMULA_SCHEMA_PATH", raising=False)
     assert Settings.from_env().structured_output is True
 
     monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "TrUe")
@@ -309,11 +403,30 @@ def test_structured_output_settings_defaults_and_env(
 
     monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "yes")
     monkeypatch.setenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", "custom/vplot.json")
+    monkeypatch.setenv("MODEL_BACKEND_FORMULA_SCHEMA_PATH", "custom/formula.json")
     assert Settings.from_env().vplot_schema_path == Path("custom/vplot.json")
+    assert Settings.from_env().formula_schema_path == Path("custom/formula.json")
 
     monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "sometimes")
     with pytest.raises(ValueError, match="invalid boolean value"):
         Settings.from_env()
+
+
+def test_guidance_schema_paths_is_total_over_the_closed_selector_set() -> None:
+    settings = Settings(
+        vplot_schema_path=Path("pinned/dataset.json"),
+        formula_schema_path=Path("pinned/formula.json"),
+    )
+
+    paths = settings.guidance_schema_paths()
+
+    # Both sets are hand-stated literals, never derived from the production alias or map: a new
+    # selector id must break this test rather than inherit an unreviewed path binding.
+    assert set(get_args(GuidanceSchemaId.__value__)) == {"vplot-0.1", "vplot-formula-0.1"}
+    assert set(paths) == {"vplot-0.1", "vplot-formula-0.1"}
+    assert (DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID) == ("vplot-0.1", "vplot-formula-0.1")
+    assert paths[DATASET_SCHEMA_ID] == Path("pinned/dataset.json")
+    assert paths[FORMULA_SCHEMA_ID] == Path("pinned/formula.json")
 
 
 def test_health_reports_loaded_schema_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -330,13 +443,19 @@ def test_health_reports_loaded_schema_provenance(monkeypatch: pytest.MonkeyPatch
         "device": settings.device,
         "structured_output": True,
         "vplot_schema_sha256": schema_digest(settings.vplot_schema_path),
+        "formula_schema_sha256": schema_digest(settings.formula_schema_path),
     }
+    # Two pinned documents, two distinct digests: a health body reporting one digest twice would
+    # mean both modes are guided by the same schema.
+    body = response.json()
+    assert body["vplot_schema_sha256"] != body["formula_schema_sha256"]
 
 
 def test_health_reports_disabled_structured_output(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings(
         structured_output=False,
         vplot_schema_path=Path("missing-but-disabled.json"),
+        formula_schema_path=Path("also-missing-but-disabled.json"),
     )
     _patch_pipeline(monkeypatch)
 
@@ -350,29 +469,46 @@ def test_health_reports_disabled_structured_output(monkeypatch: pytest.MonkeyPat
         "device": settings.device,
         "structured_output": False,
         "vplot_schema_sha256": None,
+        "formula_schema_sha256": None,
     }
 
 
-def test_engine_applies_structured_output_config_when_enabled_and_guided(
+@pytest.mark.parametrize(
+    ("schema_id", "schema_path", "other_path"),
+    [
+        (DATASET_SCHEMA_ID, _SCHEMA_PATH, _FORMULA_SCHEMA_PATH),
+        (FORMULA_SCHEMA_ID, _FORMULA_SCHEMA_PATH, _SCHEMA_PATH),
+    ],
+    ids=["dataset", "formula"],
+)
+def test_engine_applies_the_named_schemas_structured_output_config(
     monkeypatch: pytest.MonkeyPatch,
+    schema_id: GuidanceSchemaId,
+    schema_path: Path,
+    other_path: Path,
 ) -> None:
     settings = Settings()
     engine, pipe = _loaded_engine(monkeypatch, settings)
 
     engine.generate(
-        [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=True
+        [{"role": "user", "content": "hello"}],
+        temperature=0.0,
+        max_tokens=7,
+        guided_schema=schema_id,
     )
 
     assert pipe.last_config is not None
     structured = pipe.last_config.structured_output_config
     assert isinstance(structured, _FakeOpenVinoGenAI.StructuredOutputConfig)
-    expected = load_guidance_schema(Path("schema/vplot-0.1.schema.json"))
-    assert structured.json_schema == expected
+    assert structured.json_schema == load_guidance_schema(schema_path)
+    # Naming one mode may never install the other mode's structure: that is the whole failure the
+    # closed selector exists to prevent (HEAD guided every request with the dataset schema).
+    assert structured.json_schema != load_guidance_schema(other_path)
     assert '"pattern"' not in structured.json_schema
     assert '"format"' not in structured.json_schema
 
 
-def test_engine_omits_structured_output_config_when_not_guided(
+def test_engine_omits_structured_output_config_when_no_schema_is_named(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings()
@@ -382,35 +518,82 @@ def test_engine_omits_structured_output_config_when_not_guided(
         [{"role": "user", "content": "hello"}],
         temperature=0.0,
         max_tokens=7,
-        guided=False,
+        guided_schema=None,
     )
 
     assert pipe.last_config is not None
     assert pipe.last_config.structured_output_config is None
 
 
-def test_engine_omits_structured_output_config_when_disabled_even_if_guided(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("schema_id", [DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID])
+def test_engine_omits_structured_output_config_when_disabled_even_if_named(
+    monkeypatch: pytest.MonkeyPatch, schema_id: GuidanceSchemaId
 ) -> None:
     settings = Settings(
         structured_output=False,
         vplot_schema_path=Path("missing-but-disabled.json"),
+        formula_schema_path=Path("also-missing-but-disabled.json"),
     )
     engine, pipe = _loaded_engine(monkeypatch, settings)
 
     engine.generate(
-        [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=True
+        [{"role": "user", "content": "hello"}],
+        temperature=0.0,
+        max_tokens=7,
+        guided_schema=schema_id,
     )
 
     assert pipe.last_config is not None
     assert pipe.last_config.structured_output_config is None
+    assert engine.schema_sha256(schema_id) is None
+
+
+def test_engine_load_reads_every_pinned_schema_and_a_missing_one_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    engine, _pipe = _loaded_engine(monkeypatch, Settings())
+
+    assert engine.schema_sha256(DATASET_SCHEMA_ID) == schema_digest(_SCHEMA_PATH)
+    assert engine.schema_sha256(FORMULA_SCHEMA_ID) == schema_digest(_FORMULA_SCHEMA_PATH)
+
+    # A pinned schema that will not load aborts the compile rather than serving that mode
+    # unguided: guidance strength is an operator pin, never a best-effort per-mode degradation.
+    _patch_pipeline(monkeypatch)
+    with pytest.raises(FileNotFoundError):
+        Engine.load(Settings(formula_schema_path=tmp_path / "missing.json"))
+
+
+def test_engine_guidance_lookup_has_no_default_arm() -> None:
+    """A partial map must raise, never fall back to another mode's schema or to unguided."""
+    tokenizer = _Tokenizer(1)
+    pipe = _Pipe(tokenizer)
+    engine = Engine(
+        pipe,
+        tokenizer,
+        max_prompt_len=3,
+        max_response_bytes=1024,
+        guidance_schemas={DATASET_SCHEMA_ID: "{}"},
+        schema_digests={DATASET_SCHEMA_ID: "sha256:" + "0" * 64},
+    )
+
+    with pytest.raises(KeyError):
+        engine.generate(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.0,
+            max_tokens=7,
+            guided_schema=FORMULA_SCHEMA_ID,
+        )
+    with pytest.raises(KeyError):
+        engine.schema_sha256(FORMULA_SCHEMA_ID)
+    assert engine.schema_sha256(DATASET_SCHEMA_ID) == "sha256:" + "0" * 64
+    assert pipe.generate_calls == 0
 
 
 def test_engine_admits_exact_token_boundary_without_duplicate_special_tokens() -> None:
     engine, tokenizer, pipe = _engine(3)
     messages = [{"role": "user", "content": "hello"}]
 
-    result = engine.generate(messages, temperature=0.0, max_tokens=7, guided=False)
+    result = engine.generate(messages, temperature=0.0, max_tokens=7, guided_schema=None)
 
     prompt = f"templated:{messages!r}"
     assert tokenizer.encode_calls == [(prompt, False, 4)]
@@ -427,7 +610,10 @@ def test_engine_rejects_overlong_prompt_before_native_generation(token_count: in
 
     with pytest.raises(BackendError, match=r"prompt.*token ceiling") as exc_info:
         engine.generate(
-            [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=False
+            [{"role": "user", "content": "hello"}],
+            temperature=0.0,
+            max_tokens=7,
+            guided_schema=None,
         )
 
     assert exc_info.value.status == 400
@@ -460,7 +646,10 @@ def test_engine_load_retains_prompt_cap_and_npu_static_shape_config(
 
     with pytest.raises(BackendError):
         engine.generate(
-            [{"role": "user", "content": "hello"}], temperature=0.0, max_tokens=7, guided=False
+            [{"role": "user", "content": "hello"}],
+            temperature=0.0,
+            max_tokens=7,
+            guided_schema=None,
         )
     assert calls == [("model", "NPU", {"MAX_PROMPT_LEN": 5})]
     assert pipe.generate_calls == 0
@@ -469,7 +658,7 @@ def test_engine_load_retains_prompt_cap_and_npu_static_shape_config(
 class _AppEngine:
     def __init__(self) -> None:
         self.generate_calls = 0
-        self.last_guided: bool | None = None
+        self.last_guided_schema: GuidanceSchemaId | None = None
 
     def generate(
         self,
@@ -477,13 +666,13 @@ class _AppEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided: bool,
+        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         assert messages == [{"role": "user", "content": "hello"}]
         assert temperature == 0.0
         assert max_tokens >= 1
         self.generate_calls += 1
-        self.last_guided = guided
+        self.last_guided_schema = guided_schema
         return GenResult(text="{}", prompt_tokens=1, completion_tokens=1, finish_reason="stop")
 
 
@@ -494,11 +683,11 @@ class _RejectingAppEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided: bool,
+        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         assert temperature == 0.0
         assert max_tokens >= 1
-        assert guided is False
+        assert guided_schema is None
         msg = "prompt is too long"
         raise BackendError(msg, status=400, error_type="prompt_too_long")
 
@@ -526,24 +715,60 @@ def test_backend_body_cap_accepts_boundary_and_rejects_plus_one_before_decode(
     assert engine.generate_calls == 1
 
 
-def test_backend_threads_guided_json_per_request(monkeypatch: pytest.MonkeyPatch) -> None:
-    guided_engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: guided_engine))
-    guided_payload = b'{"messages":[{"role":"user","content":"hello"}],"guided_json":true}'
+_MESSAGES_FIELD = b'"messages":[{"role":"user","content":"hello"}]'
+
+
+@pytest.mark.parametrize(
+    ("selector_field", "expected"),
+    [
+        (b',"guided_schema":"vplot-0.1"', DATASET_SCHEMA_ID),
+        (b',"guided_schema":"vplot-formula-0.1"', FORMULA_SCHEMA_ID),
+        (b"", None),
+        (b',"guided_schema":null', None),
+        # The retired spelling is now an unknown field on an OpenAI-compatible request, so it is
+        # tolerated and IGNORED. A stale caller therefore goes unguided instead of silently
+        # installing the dataset schema over whatever mode it meant.
+        (b',"guided_json":true', None),
+    ],
+    ids=["dataset", "formula", "omitted", "explicit-null", "retired-guided-json"],
+)
+def test_backend_threads_the_named_guided_schema_per_request(
+    monkeypatch: pytest.MonkeyPatch, selector_field: bytes, expected: GuidanceSchemaId | None
+) -> None:
+    engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
+
     with TestClient(app=create_app(Settings())) as client:
-        guided_response = client.post("/v1/chat/completions", content=guided_payload)
+        response = client.post(
+            "/v1/chat/completions", content=b"{" + _MESSAGES_FIELD + selector_field + b"}"
+        )
 
-    assert guided_response.status_code == 200
-    assert guided_engine.last_guided is True
+    assert response.status_code == 200
+    assert engine.generate_calls == 1
+    assert engine.last_guided_schema == expected
 
-    unguided_engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: unguided_engine))
-    unguided_payload = b'{"messages":[{"role":"user","content":"hello"}]}'
+
+@pytest.mark.parametrize(
+    "selector",
+    [b'"vplot-0.2"', b'"vplot-formula-0.2"', b'""', b'{"type":"object"}', b"true"],
+    ids=["unknown-dataset-id", "unknown-formula-id", "empty-id", "schema-document", "boolean"],
+)
+def test_backend_refuses_a_guided_schema_the_operator_did_not_pin(
+    monkeypatch: pytest.MonkeyPatch, selector: bytes
+) -> None:
+    engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
+
     with TestClient(app=create_app(Settings())) as client:
-        unguided_response = client.post("/v1/chat/completions", content=unguided_payload)
+        response = client.post(
+            "/v1/chat/completions",
+            content=b"{" + _MESSAGES_FIELD + b',"guided_schema":' + selector + b"}",
+        )
 
-    assert unguided_response.status_code == 200
-    assert unguided_engine.last_guided is False
+    # The closed Literal is the whole admission rule: an unpinned id and a caller-supplied schema
+    # DOCUMENT are both refused at decode, before any generation is scheduled.
+    assert response.status_code == 400
+    assert engine.generate_calls == 0
 
 
 def test_backend_request_body_setting_default_env_and_validation(

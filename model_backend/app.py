@@ -36,20 +36,26 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
-from model_backend.settings import Settings
+from model_backend.settings import DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID, Settings
 from model_backend.verified_chart import VERIFIED_CHART_REPLY, is_verified_chart_summary
 
 
 @get("/health", sync_to_thread=False)
 def health(state: State) -> HealthResponse:
-    """Report backend liveness and loaded model/schema provenance."""
+    """Report backend liveness and loaded model/schema provenance.
+
+    One digest per operator-pinned schema: an operator reading /health can tell which pinned
+    document each proposer mode is actually guided by, and both go None together when
+    structured_output is disabled.
+    """
     settings = cast("Settings", state["settings"])
     engine = cast("Engine", state["engine"])
     return HealthResponse(
         model_name=settings.model_name,
         device=settings.device,
         structured_output=settings.structured_output,
-        vplot_schema_sha256=engine.schema_sha256,
+        vplot_schema_sha256=engine.schema_sha256(DATASET_SCHEMA_ID),
+        formula_schema_sha256=engine.schema_sha256(FORMULA_SCHEMA_ID),
     )
 
 
@@ -91,7 +97,7 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
 
     Open WebUI's post-verified-chart summarize turn short-circuits to a fixed reply without running
     the model (model_backend.verified_chart); every other turn generates. Schema guidance applies
-    only when guided_json is true.
+    only when guided_schema names an operator-pinned schema.
 
     The requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
     single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
@@ -119,7 +125,7 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
         messages,
         temperature=data.temperature,
         max_tokens=max_tokens,
-        guided=data.guided_json,
+        guided_schema=data.guided_schema,
     )
     return _completion(
         settings,

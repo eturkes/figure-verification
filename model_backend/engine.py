@@ -24,13 +24,14 @@ NPU by default). OpenVINO facts this module encodes (durable copies: .agent/arch
 """
 
 import threading
+from collections.abc import Mapping
 from typing import Any, Literal, Self
 
 import msgspec
 import openvino_genai as ov_genai
 
 from model_backend.schema_guidance import load_guidance_schema, schema_digest
-from model_backend.settings import Settings
+from model_backend.settings import GuidanceSchemaId, Settings
 
 
 class BackendError(Exception):
@@ -64,23 +65,30 @@ class Engine:
         *,
         max_prompt_len: int,
         max_response_bytes: int,
-        guidance_schema: str | None = None,
-        schema_sha256: str | None = None,
+        guidance_schemas: Mapping[GuidanceSchemaId, str] | None = None,
+        schema_digests: Mapping[GuidanceSchemaId, str] | None = None,
     ) -> None:
         self._pipe = pipe
         self._tok = tokenizer
         self._max_prompt_len = max_prompt_len
         self._max_response_bytes = max_response_bytes
-        self._guidance_schema = guidance_schema
-        self._schema_sha256 = schema_sha256
+        # Both maps are total over GuidanceSchemaId or both are None: None means guidance is
+        # disabled wholesale (settings.structured_output false), never that one mode is missing.
+        self._guidance_schemas = guidance_schemas
+        self._schema_digests = schema_digests
         # One compiled pipeline on one accelerator: serialize generation. Re-entrancy was not
         # probed (see .agent/archive/m3.md); the lock is the safe default.
         self._lock = threading.Lock()
 
-    @property
-    def schema_sha256(self) -> str | None:
-        """Return the loaded operator schema's raw-byte digest, if guidance is enabled."""
-        return self._schema_sha256
+    def schema_sha256(self, schema_id: GuidanceSchemaId) -> str | None:
+        """Return that operator schema's raw-byte digest, or None while guidance is disabled.
+
+        Subscripts the loaded map directly: a member of the closed id set is always present, so
+        there is no default arm to hide a mode whose schema silently failed to load.
+        """
+        if self._schema_digests is None:
+            return None
+        return self._schema_digests[schema_id]
 
     @classmethod
     def load(cls, settings: Settings) -> Self:
@@ -92,17 +100,20 @@ class Engine:
         dynamic shapes and reject the compile property, so it is passed only for an NPU device;
         the logical preflight still applies there.
 
-        Structured guidance is derived once at load when settings.structured_output is enabled. A
-        missing, unreadable, or invalid JSON schema aborts loading rather than silently serving
-        unconstrained output; the derived capability is applied only to requests that opt in.
+        Structured guidance is derived once at load when settings.structured_output is enabled —
+        for EVERY operator-pinned schema, so a mode can never be selected at request time and find
+        its schema unloaded. A missing, unreadable, or invalid JSON schema aborts loading rather
+        than silently serving unconstrained output; the derived capability is applied only to
+        requests that name a schema.
         """
         if settings.structured_output:
-            guidance_schema = load_guidance_schema(settings.vplot_schema_path)
-            # Intentionally re-read raw bytes after parsing: tiny static file, blocking load path.
-            schema_sha256 = schema_digest(settings.vplot_schema_path)
+            paths = settings.guidance_schema_paths()
+            guidance_schemas = {sid: load_guidance_schema(path) for sid, path in paths.items()}
+            # Intentionally re-read raw bytes after parsing: tiny static files, blocking load path.
+            schema_digests = {sid: schema_digest(path) for sid, path in paths.items()}
         else:
-            guidance_schema = None
-            schema_sha256 = None
+            guidance_schemas = None
+            schema_digests = None
         pipeline_config: dict[str, int] = {}
         if "NPU" in settings.device:
             pipeline_config["MAX_PROMPT_LEN"] = settings.max_prompt_len
@@ -113,8 +124,8 @@ class Engine:
             tokenizer,
             max_prompt_len=settings.max_prompt_len,
             max_response_bytes=settings.max_response_bytes,
-            guidance_schema=guidance_schema,
-            schema_sha256=schema_sha256,
+            guidance_schemas=guidance_schemas,
+            schema_digests=schema_digests,
         )
 
     def generate(
@@ -123,13 +134,14 @@ class Engine:
         *,
         temperature: float,
         max_tokens: int,
-        guided: bool,
+        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         """Generate one completion for the full messages array (stateless chat template).
 
         Guidance is derived at load under settings.structured_output and applied only when this
-        request's guided flag is true. It constrains VPlot structure only; verifier semantics and
-        provenance remain authoritative, while unconstrained OWUI chat/tool selection is unaffected.
+        request NAMES one of the operator-pinned schemas. It constrains that mode's structure only;
+        verifier semantics and provenance remain authoritative, while unconstrained OWUI chat/tool
+        selection is unaffected.
 
         Serialized behind the lock (one tokenizer/pipeline/accelerator). Greedy when temperature
         == 0. Raises BackendError before native generation if the exact templated prompt exceeds
@@ -157,12 +169,15 @@ class Engine:
             cfg.do_sample = temperature > 0
             if cfg.do_sample:
                 cfg.temperature = temperature
-            if guided and self._guidance_schema is not None:
-                # Constrain VPlot structure only; semantics and provenance remain verifier-owned.
-                # The guidance schema is derived once at load; a caller opts in per request via
-                # `guided`, so unconstrained traffic (OWUI chat/tool-selection) is unaffected.
+            if guided_schema is not None and self._guidance_schemas is not None:
+                # Constrain that mode's structure only; semantics and provenance remain
+                # verifier-owned. Guidance is derived once at load; a caller opts in per request by
+                # naming a schema, so unconstrained traffic (OWUI chat/tool-selection) is
+                # unaffected. Direct subscript, never a defaulted lookup: the map is total over the
+                # closed id set, so a default arm could only mask a load-time gap by silently
+                # guiding one mode with another mode's schema.
                 cfg.structured_output_config = ov_genai.StructuredOutputConfig(
-                    json_schema=self._guidance_schema
+                    json_schema=self._guidance_schemas[guided_schema]
                 )
             # TokenizedInputs is the load-bearing handoff: a string overload may apply a chat
             # template again or otherwise retokenize after this method admitted a different

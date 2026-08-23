@@ -18,6 +18,8 @@ from typing import Annotated, Literal
 
 import msgspec
 
+from model_backend.settings import GuidanceSchemaId
+
 __all__ = [
     "ChatCompletionRequest",
     "ChatCompletionResponse",
@@ -47,10 +49,13 @@ class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
 class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     """An OpenAI chat-completion request (unknown fields tolerated — see module docstring).
 
-    Schema-guided (constrained) decoding is opt-in per request via guided_json: the verifier's
-    proposeSpec sets it true to steer output toward a schema-representable VPlot structure (strict
-    decode still owns rejection), while generic OpenAI/OWUI callers omit it (default false) and stay
-    unconstrained.
+    Schema-guided (constrained) decoding is opt-in per request via guided_schema, which NAMES one
+    operator-pinned schema (settings.GuidanceSchemaId): the verifier's proposeSpec selects
+    "vplot-0.1" and proposeFormula selects "vplot-formula-0.1", each steering output toward that
+    mode's schema-representable structure (strict decode still owns rejection), while generic
+    OpenAI/OWUI callers omit it (default None) and stay unconstrained. The closed Literal is the
+    whole admission rule: an unknown id and a caller-supplied schema DOCUMENT are both rejected 400
+    at decode, so a request can never install a schema the operator did not pin.
     Best-effort: the backend honors it only while structured_output is enabled.
 
     messages is required and non-empty; model/temperature/max_tokens are optional (the server
@@ -64,7 +69,7 @@ class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     model: str | None = None
     temperature: Annotated[float, msgspec.Meta(ge=0.0, le=2.0)] = 0.0
     max_tokens: int | None = None
-    guided_json: bool = False
+    guided_schema: GuidanceSchemaId | None = None
 
 
 class Choice(msgspec.Struct, frozen=True, kw_only=True):
@@ -95,12 +100,13 @@ class ChatCompletionResponse(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class HealthResponse(msgspec.Struct, frozen=True, kw_only=True):
-    """Backend liveness plus model and operator-schema provenance."""
+    """Backend liveness plus model provenance and one digest per operator-pinned schema."""
 
     model_name: str
     device: str
     structured_output: bool
     vplot_schema_sha256: str | None
+    formula_schema_sha256: str | None
     status: Literal["ok"] = "ok"
 
 

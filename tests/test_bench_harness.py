@@ -63,6 +63,10 @@ from bench.harness import (
     _tally_fault,
     fetch_backend_provenance,
 )
+
+# model_backend.models is pure msgspec — importing it here needs no native OpenVINO runtime, and
+# it keeps the bench-tolerance proof bound to the bytes the backend actually serves.
+from model_backend.models import HealthResponse
 from verifier.service.app import _PIN_MISMATCH_DETAIL
 
 _EXAMPLES = Path(__file__).parents[1] / "examples"
@@ -259,6 +263,35 @@ def test_fetch_backend_provenance_uses_backend_root_health() -> None:
         device="NPU",
         structured_output=True,
         vplot_schema_sha256=schema_digest,
+    )
+
+
+def test_fetch_backend_provenance_tolerates_every_served_health_field() -> None:
+    """Decode the backend's OWN HealthResponse bytes, not a hand-written dict.
+
+    The backend serves one digest per operator-pinned schema. Bench records the dataset digest and
+    ignores the rest, so a new pinned mode must never turn `meta.backend` into null.
+    """
+    served = HealthResponse(
+        model_name="model-id",
+        device="NPU",
+        structured_output=True,
+        vplot_schema_sha256="sha256:" + "a" * 64,
+        formula_schema_sha256="sha256:" + "b" * 64,
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/health"
+        return httpx.Response(200, content=msgspec.json.encode(served))
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        provenance = fetch_backend_provenance(client, "http://backend.test/v1")
+
+    assert provenance == BackendProvenance(
+        model_name="model-id",
+        device="NPU",
+        structured_output=True,
+        vplot_schema_sha256="sha256:" + "a" * 64,
     )
 
 
