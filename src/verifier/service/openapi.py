@@ -51,6 +51,8 @@ from verifier.schema import FormulaPlotSpec, json_schema
 from verifier.service.models import (
     FormulaScriptVerdict,
     Problem,
+    ProposeFormulaRequest,
+    ProposeFormulaResult,
     ProposeRequest,
     ProposeResult,
     RenderVerdict,
@@ -182,6 +184,29 @@ def _propose_result_schema() -> dict[str, Any]:
     }
 
 
+def _propose_formula_result_schema() -> dict[str, Any]:
+    """ProposeFormulaResult's schema, hand-derived for the reason _propose_result_schema gives —
+    its `verdict` field is the Verdict | FormulaScriptVerdict union, and FormulaScriptVerdict is
+    itself hand-derived. `model_reply` is the raw model reply string; `verdict` is anyOf
+    FormulaScriptVerdict|Verdict (a FormulaScriptVerdict payload also satisfies Verdict — anyOf,
+    not oneOf, the /verify-formula 200 precedent). Both fields are required."""
+    return {
+        "title": "ProposeFormulaResult",
+        "description": inspect.getdoc(ProposeFormulaResult),
+        "type": "object",
+        "properties": {
+            "model_reply": {"type": "string"},
+            "verdict": {
+                "anyOf": [
+                    {"$ref": f"{_COMPONENTS}/FormulaScriptVerdict"},
+                    {"$ref": f"{_COMPONENTS}/Verdict"},
+                ]
+            },
+        },
+        "required": ["model_reply", "verdict"],
+    }
+
+
 def _dsse_schemas() -> dict[str, dict[str, Any]]:
     """Canonical one-signature service envelope; DSSE ``keyid`` remains only a lookup hint."""
     signature = {
@@ -237,6 +262,7 @@ def _components() -> dict[str, Any]:
             CheckResult,
             VCert,
             ProposeRequest,
+            ProposeFormulaRequest,
             ReplayVerdict,
             FormulaReplayVerdict,
             FormulaPlotSpec,
@@ -249,6 +275,7 @@ def _components() -> dict[str, Any]:
     schemas["RenderVerdict"] = _render_verdict_schema(generated["Verdict"])
     schemas["FormulaScriptVerdict"] = _formula_verdict_schema(generated["Verdict"])
     schemas["ProposeResult"] = _propose_result_schema()
+    schemas["ProposeFormulaResult"] = _propose_formula_result_schema()
     return schemas
 
 
@@ -523,6 +550,61 @@ def _paths() -> dict[str, Any]:
                         "(any other non-success status, an oversized or malformed body, or no "
                         "usable message content), or it proposed a specification for a different "
                         "dataset than requested."
+                    ),
+                    "503": _problem_response("The model backend was unreachable or timed out."),
+                },
+            }
+        },
+        "/propose-formula": {
+            "post": {
+                "operationId": "proposeFormula",
+                "summary": "Propose a formula plot spec with the local model, then verify it",
+                # Model-visible tool text, like proposeSpec. It names the one request field and
+                # the kind of curve the closed grammar admits, so the weak local model gets a
+                # grounded, example-led prompt.
+                "description": (
+                    "Draft and verify a chart of a mathematical formula. Given a "
+                    "natural-language request, the local model proposes a formula plot "
+                    "specification, which the verifier independently checks. The verifier "
+                    "computes every plotted point itself from the formula. Provide "
+                    '`user_request` (the curve to plot, for example "plot x squared from -3 to '
+                    '3"). This operation needs no dataset. A verified proposal returns the '
+                    "certified plot script; an unverifiable one returns the failing verdict "
+                    "instead."
+                ),
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": f"{_COMPONENTS}/ProposeFormulaRequest"}
+                        }
+                    },
+                },
+                "responses": {
+                    "200": _json_response(
+                        "The bare result on every outcome — the model's raw reply paired with the "
+                        "formula verdict (a FormulaScriptVerdict carrying the certified "
+                        "matplotlib script when the proposal verified, a plain Verdict "
+                        "otherwise). Every admitted classified outcome carries its durably "
+                        "committed attempt_id. The verifier authored the script and did not run "
+                        "it, so this operation serves no chart page and sends no Location header.",
+                        {"$ref": f"{_COMPONENTS}/ProposeFormulaResult"},
+                    ),
+                    "400": _problem_response(
+                        "The propose request body was malformed or failed validation."
+                    ),
+                    "422": _problem_response(
+                        "The user request, assembled prompt, or exact backend-tokenized prompt "
+                        "exceeded proposer resource policy. No native model generation or "
+                        "verification occurred. The UTF-8 byte ceiling and the backend token "
+                        "ceiling are independent and inclusive."
+                    ),
+                    **problems_post,
+                    **archive_quota,
+                    "502": _problem_response(
+                        "The model backend replied, but not with a usable chat completion "
+                        "(any other non-success status, an oversized or malformed body, or no "
+                        "usable message content)."
                     ),
                     "503": _problem_response("The model backend was unreachable or timed out."),
                 },

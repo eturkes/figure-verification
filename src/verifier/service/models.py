@@ -40,6 +40,8 @@ from verifier.schema import DatasetName
 __all__ = [
     "FormulaScriptVerdict",
     "Problem",
+    "ProposeFormulaRequest",
+    "ProposeFormulaResult",
     "ProposeRequest",
     "ProposeResult",
     "RenderVerdict",
@@ -200,3 +202,32 @@ class ProposeResult(msgspec.Struct, frozen=True, kw_only=True):
 
     model_reply: str
     verdict: Verdict | RenderVerdict
+
+
+class ProposeFormulaRequest(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
+    """A /propose-formula request: the free-text ask alone.
+
+    Formula mode plots a closed expression the verifier evaluates itself, so it opens no dataset
+    and the request names none. `user_request` is admitted by its UTF-8 encoding under the same
+    operator-configurable ceiling /propose-spec uses; an over-policy request receives 422 before
+    any model call. forbid_unknown_fields rejects any extra key at decode (a 400), so a dataset
+    name sent to this route is refused rather than ignored.
+    """
+
+    user_request: str
+
+
+class ProposeFormulaResult(msgspec.Struct, frozen=True, kw_only=True):
+    """A /propose-formula outcome: the model's raw reply plus the verifier's verdict on it.
+
+    `model_reply` is the backend's reply content verbatim, carried so a caller sees exactly what
+    the untrusted model produced. `verdict` is the same Verdict | FormulaScriptVerdict the
+    /verify-formula pipeline returns: the certified matplotlib script and its provenance hashes
+    when the proposal verified, a plain Verdict otherwise. The verifier authors those script bytes
+    and never executes them, so no chart page exists to link and this result carries no summary
+    string and no Location header. Response-only, so no forbid_unknown_fields; openapi.py
+    hand-derives its schema for the reason ProposeResult's docstring gives.
+    """
+
+    model_reply: str
+    verdict: Verdict | FormulaScriptVerdict

@@ -60,7 +60,7 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 import msgspec
 
@@ -123,6 +123,29 @@ class FormulaOutcome:
 type Outcome = DatasetOutcome | FormulaOutcome
 
 
+class _ModelTraceRoles(TypedDict):
+    """The three model-trace byte roles, named exactly as `AttemptArtifacts` carries them."""
+
+    model_request: bytes | None
+    model_response: bytes | None
+    model_reply: bytes | None
+
+
+def _model_trace_roles(proposal_trace: ProposalTrace | None) -> _ModelTraceRoles:
+    """Project one observed model exchange onto its three archived roles.
+
+    A route that called no model has no trace, and then all three roles are absent together. Every
+    occurrence writer shares this projection so the two proposer routes cannot drift into
+    describing the same exchange with different role sets."""
+    if proposal_trace is None:
+        return {"model_request": None, "model_response": None, "model_reply": None}
+    return {
+        "model_request": proposal_trace.request_body,
+        "model_response": proposal_trace.response_body,
+        "model_reply": proposal_trace.reply_bytes,
+    }
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AttemptWriter:
     """One app's durable occurrence writer: archive + signer + exact active limits."""
@@ -133,21 +156,20 @@ class AttemptWriter:
 
     def record_problem(
         self,
+        route: AttemptRoute,
         outcome: AttemptOutcome,
         http_status: int,
         proposal_trace: ProposalTrace | None = None,
         raw_spec: bytes | None = None,
     ) -> str:
-        """Sign + commit one classified admitted proposer fault before its Problem returns."""
-        artifacts = AttemptArtifacts(
-            raw_spec=raw_spec,
-            model_request=None if proposal_trace is None else proposal_trace.request_body,
-            model_response=None if proposal_trace is None else proposal_trace.response_body,
-            model_reply=None if proposal_trace is None else proposal_trace.reply_bytes,
-        )
+        """Sign + commit one classified admitted proposer fault before its Problem returns.
+
+        The caller names its own route: a formula proposer fault is recorded against
+        `/propose-formula`, never against the dataset proposer that once was the only caller."""
+        artifacts = AttemptArtifacts(raw_spec=raw_spec, **_model_trace_roles(proposal_trace))
         draft = AttemptDraft(
             occurred_at=datetime.now(UTC),
-            route=AttemptRoute.PROPOSE_SPEC,
+            route=route,
             http_status=http_status,
             outcome=outcome,
             artifacts=artifacts,
@@ -352,20 +374,24 @@ def _dataset_attempt_artifacts(
         raw_manifest=outcome.trace.manifest_bytes,
         raw_spec=raw_spec,
         verdict=verdict,
-        model_request=None if proposal_trace is None else proposal_trace.request_body,
-        model_response=None if proposal_trace is None else proposal_trace.response_body,
-        model_reply=None if proposal_trace is None else proposal_trace.reply_bytes,
+        **_model_trace_roles(proposal_trace),
     )
 
 
-def _formula_attempt_artifacts(raw_spec: bytes, verdict: bytes) -> AttemptArtifacts:
-    """Project one final formula verdict onto the only two byte families its route observes.
+def _formula_attempt_artifacts(
+    raw_spec: bytes, verdict: bytes, proposal_trace: ProposalTrace | None
+) -> AttemptArtifacts:
+    """Project one final formula verdict onto the byte families its route observes.
 
-    Formula mode reads no CSV and no manifest, and M9.10 exposes no formula proposer, so raw_csv,
-    raw_manifest, and all three model-trace roles are absent by construction. This takes no
-    FormulaOutcome at all — there is no trace to project — which is also what makes a cross-mode
-    misroute a type error rather than a runtime lookup that could silently pick the wrong arm."""
-    return AttemptArtifacts(raw_spec=raw_spec, verdict=verdict)
+    Formula mode reads no CSV and no manifest, so raw_csv and raw_manifest stay absent by
+    construction on both formula routes. The three model-trace roles follow the caller's trace:
+    direct /verify-formula carries none, and /propose-formula carries the exchange that produced
+    raw_spec. This takes no FormulaOutcome at all — a formula verdict projects no dataset trace —
+    which is what makes a cross-mode misroute a type error rather than a runtime lookup that could
+    silently pick the wrong arm."""
+    return AttemptArtifacts(
+        raw_spec=raw_spec, verdict=verdict, **_model_trace_roles(proposal_trace)
+    )
 
 
 def _verdict_bytes(verdict: Verdict, plot: PlotBundle | None) -> bytes:
@@ -419,7 +445,9 @@ def _record_formula_attempt(
     The concrete bundle annotation is the static half of the cross-mode closure: passing a
     DatasetPlotBundle here is a type error, so the archive's pre-sign route/source refusal
     never has to be the only thing standing between a misroute and a signed occurrence."""
-    artifacts = _formula_attempt_artifacts(context.raw_spec, _verdict_bytes(verdict, plot))
+    artifacts = _formula_attempt_artifacts(
+        context.raw_spec, _verdict_bytes(verdict, plot), context.proposal_trace
+    )
     return _record_attempt(context, artifacts, plot)
 
 

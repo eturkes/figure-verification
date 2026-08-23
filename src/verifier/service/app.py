@@ -134,11 +134,14 @@ from verifier.service.model_client import (
     ModelUpstreamError,
     ProposalFault,
     ProposerPolicyError,
+    propose_formula,
     propose_spec,
 )
 from verifier.service.models import (
     FormulaScriptVerdict,
     Problem,
+    ProposeFormulaRequest,
+    ProposeFormulaResult,
     ProposeRequest,
     ProposeResult,
     RenderVerdict,
@@ -330,6 +333,21 @@ def _decode_propose_request(raw: bytes) -> ProposeRequest:
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
 
+# The same typed-object treatment for /propose-formula, whose body carries the ask alone: formula
+# mode opens no dataset, so a dataset name here is an unknown field and a 400.
+_PROPOSE_FORMULA_DECODER = msgspec.json.Decoder(ProposeFormulaRequest)
+
+
+def _decode_propose_formula_request(raw: bytes) -> ProposeFormulaRequest:
+    """Strictly decode a /propose-formula body; a malformed or invalid body is a 400 (transport
+    misuse), never a spec proposal — the model has not run yet, so there is no verdict to ride."""
+    try:
+        return _PROPOSE_FORMULA_DECODER.decode(raw)
+    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
+        msg = f"malformed propose formula request body: {exc}"
+        raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
+
+
 # checks._check_dataset_binding hashes the file NAMED IN THE SPEC, so absent this pin the model
 # could propose a spec for a DIFFERENT provisioned dataset (its own valid name + hash) and verify
 # honestly-but-off-request. The pin refuses that 502 right after decode, BEFORE verify_decoded
@@ -361,6 +379,7 @@ def _verify_render_pinned(
         )
     if decoded.dataset.name != dataset_name:
         attempt_id = context.writer.record_problem(
+            context.route,
             AttemptOutcome.DATASET_MISMATCH,
             HTTP_502_BAD_GATEWAY,
             proposal_trace=context.proposal_trace,
@@ -413,6 +432,7 @@ async def propose_spec_route(
             _LOGGER.info("propose-spec named an unknown dataset: %r", not_found.dataset_name)
             attempt_id = await permit.run_sync(
                 writer.record_problem,
+                AttemptRoute.PROPOSE_SPEC,
                 AttemptOutcome.DATASET_NOT_FOUND,
                 HTTP_404_NOT_FOUND,
             )
@@ -426,6 +446,7 @@ async def propose_spec_route(
             )
             attempt_id = await permit.run_sync(
                 writer.record_problem,
+                AttemptRoute.PROPOSE_SPEC,
                 attempt_outcome,
                 HTTP_422_UNPROCESSABLE_ENTITY,
                 policy.trace,
@@ -444,6 +465,7 @@ async def propose_spec_route(
             )
             attempt_id = await permit.run_sync(
                 writer.record_problem,
+                AttemptRoute.PROPOSE_SPEC,
                 _FAULT_OUTCOME[fault],
                 upstream.status,
                 upstream.trace,
@@ -490,6 +512,89 @@ async def propose_spec_route(
             "location": f"{base}/chart/{verdict.plot_id}",
         },
     )
+
+
+@post(
+    "/propose-formula",
+    operation_id="proposeFormula",
+    summary="Propose a formula plot spec with the local model, then verify it",
+    status_code=HTTP_200_OK,
+)
+async def propose_formula_route(
+    request: Request[Any, Any, Any], state: State
+) -> ProposeFormulaResult | Response[Problem]:
+    """Ask the untrusted local model to propose a formula plot spec for the request, then verify
+    that proposal (verify_formula_and_emit) and archive the signed occurrence. The model supplies
+    only a closed arithmetic expression and its domain, never plotted values, so the claim
+    boundary is unmoved: a malformed proposal rides a failing verdict (a 200), and a fault outside
+    that flow (an unreachable or unusable backend, an over-policy or malformed body) answers
+    problem+json. The exact reply bytes flow on to strict decode unchanged, which is what the
+    archived occurrence binds.
+
+    Unlike /propose-spec this route names no dataset, so it has no dataset pin and no not-found
+    answer, and unlike a verified dataset proposal it returns a bare ProposeFormulaResult on every
+    outcome: the verifier AUTHORS the certified matplotlib script and never executes it, so there
+    is no chart page to cache, no Location to link, and no summary string to feed a chat UI. The
+    model call is async; the admitted permit spans it, then transfers to the CPU-bound
+    verify+emit/archive worker off the event loop.
+    """
+    _require_json(request)
+    raw = await request.body()
+    settings = cast("Settings", state["settings"])
+    identity = cast("SigningIdentity", state["identity"])
+    archive = cast("Archive", state["archive"])
+    writer = AttemptWriter(settings=settings, archive=archive, signer=identity.signer)
+    req = _decode_propose_formula_request(raw)
+    with _admit_work(state) as permit:
+        try:
+            proposal = await propose_formula(req.user_request, settings)
+        except ProposerPolicyError as policy:
+            _LOGGER.info("formula proposer resource policy refusal (%s)", policy.resource)
+            attempt_outcome = (
+                AttemptOutcome.PROPOSER_POLICY
+                if policy.trace is None
+                else _FAULT_OUTCOME[cast("ProposalFault", policy.trace.fault)]
+            )
+            attempt_id = await permit.run_sync(
+                writer.record_problem,
+                AttemptRoute.PROPOSE_FORMULA,
+                attempt_outcome,
+                HTTP_422_UNPROCESSABLE_ENTITY,
+                policy.trace,
+            )
+            return _problem_response(
+                HTTP_422_UNPROCESSABLE_ENTITY,
+                _PROPOSER_POLICY_DETAIL,
+                attempt_id=attempt_id,
+            )
+        except ModelUpstreamError as upstream:
+            fault = cast("ProposalFault", upstream.trace.fault)
+            _LOGGER.warning(
+                "model backend upstream fault serving /propose-formula (status=%d, fault=%s)",
+                upstream.status,
+                fault.value,
+            )
+            attempt_id = await permit.run_sync(
+                writer.record_problem,
+                AttemptRoute.PROPOSE_FORMULA,
+                _FAULT_OUTCOME[fault],
+                upstream.status,
+                upstream.trace,
+            )
+            return _problem_response(
+                upstream.status,
+                "the model backend did not return a usable proposal",
+                attempt_id=attempt_id,
+            )
+        content = proposal.reply_bytes
+        context = FormulaContext(
+            writer=writer,
+            route=AttemptRoute.PROPOSE_FORMULA,
+            raw_spec=content,
+            proposal_trace=proposal.trace,
+        )
+        verdict = await permit.run_sync(verify_formula_and_emit, context)
+    return ProposeFormulaResult(model_reply=content.decode("utf-8"), verdict=verdict)
 
 
 # An archive-integrity fault carries no bundle, so the occurrence's own stored provenance row is
@@ -823,6 +928,7 @@ def create_app(settings: Settings) -> Litestar:
             verify_and_render_route,
             verify_formula_route,
             propose_spec_route,
+            propose_formula_route,
             replay_route,
             certificate_route,
             spec_route,

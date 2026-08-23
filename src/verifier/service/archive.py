@@ -290,6 +290,7 @@ class AttemptRoute(StrEnum):
     VERIFY_AND_RENDER = "/verify-and-render"
     PROPOSE_SPEC = "/propose-spec"
     VERIFY_FORMULA = "/verify-formula"
+    PROPOSE_FORMULA = "/propose-formula"
 
 
 class AttemptOutcome(StrEnum):
@@ -856,6 +857,7 @@ _ROUTE_PLOT_SOURCES: dict[AttemptRoute, frozenset[PlotSourceKind]] = {
     AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),
     AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),
     AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA}),
+    AttemptRoute.PROPOSE_FORMULA: frozenset({PlotSourceKind.FORMULA}),
 }
 # Total over the closed route enum: whether a route opens the trusted dataset inputs at all.
 # A route that reads no CSV cannot truthfully bind raw CSV or manifest observation bytes.
@@ -863,7 +865,15 @@ _ROUTE_READS_DATASET_INPUTS: dict[AttemptRoute, bool] = {
     AttemptRoute.VERIFY_AND_RENDER: True,
     AttemptRoute.PROPOSE_SPEC: True,
     AttemptRoute.VERIFY_FORMULA: False,
+    AttemptRoute.PROPOSE_FORMULA: False,
 }
+# The two outcomes that can only be reached by opening the trusted dataset inputs: one reports a
+# name the store does not hold, the other a name the model contradicted. A route that reads no
+# dataset can reach neither.
+_DATASET_OUTCOMES = frozenset({AttemptOutcome.DATASET_NOT_FOUND, AttemptOutcome.DATASET_MISMATCH})
+# The proposer routes hand the model's exact reply bytes to strict decode, so the archived reply
+# and the archived decoder input are one observation under two names.
+_REPLY_IS_DECODER_INPUT = frozenset({AttemptRoute.PROPOSE_SPEC, AttemptRoute.PROPOSE_FORMULA})
 # Total over the closed mode enum: which observed occurrence bytes must equal the nested plot's
 # own carriers. A dataset occurrence reopens the trusted inputs its plot bound; a formula
 # occurrence opens no dataset, so the judgement is all the two views share. The formula mode's
@@ -1739,17 +1749,48 @@ def _proposer_route_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
     return set()
 
 
+def _formula_proposer_route_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
+    """The formula proposer opens no dataset, so a dataset outcome names work it never did.
+
+    Its model-trace obligation is the dataset proposer's, because both routes run the same
+    exchange; only the reachable outcome vocabulary narrows. Refusing here rather than in the
+    caller keeps the narrowing on the signing path itself, so a key holder minting the occurrence
+    by hand meets it too."""
+    if manifest.outcome in _DATASET_OUTCOMES:
+        msg = "formula proposer attempts may not carry a dataset outcome"
+        raise ArchiveIntegrityError(msg)
+    return _proposer_route_model_roles(manifest)
+
+
 # Total over the closed route enum: each route names its own model-trace policy, so a new route
 # cannot inherit proposer semantics from a default arm. An unregistered route raises on lookup.
 _ROUTE_MODEL_ROLES: dict[AttemptRoute, Callable[[AttemptManifest], set[AttemptRole]]] = {
     AttemptRoute.VERIFY_AND_RENDER: _render_route_model_roles,
     AttemptRoute.PROPOSE_SPEC: _proposer_route_model_roles,
     AttemptRoute.VERIFY_FORMULA: _formula_route_model_roles,
+    AttemptRoute.PROPOSE_FORMULA: _formula_proposer_route_model_roles,
 }
 
 
 def _expected_model_roles(manifest: AttemptManifest) -> set[AttemptRole]:
     return _ROUTE_MODEL_ROLES[manifest.route](manifest)
+
+
+def _validate_occurrence_claim(route: AttemptRoute, artifacts: AttemptArtifacts) -> None:
+    """Refuse an occurrence whose archived reply disagrees with its archived decoder input.
+
+    The predicate reads draft-level bytes alone, so `materialize_attempt_bundle` settles it before
+    it encodes and signs: the signing key never operates on a statement already known to be false.
+    The bundle validator repeats it because an externally supplied bundle arrives already signed.
+    Route/outcome legality is settled separately and earlier, by each route's own entry in
+    `_ROUTE_MODEL_ROLES`."""
+    if (
+        route in _REPLY_IS_DECODER_INPUT
+        and artifacts.model_reply is not None
+        and artifacts.model_reply != artifacts.raw_spec
+    ):
+        msg = "attempt model reply differs from the exact raw spec handed to decode"
+        raise ArchiveIntegrityError(msg)
 
 
 def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
@@ -1763,13 +1804,7 @@ def _validate_attempt_outcome(bundle: AttemptBundle) -> None:
     if _present_model_roles(artifacts) != _expected_model_roles(manifest):
         raise ArchiveIntegrityError(_MODEL_TRACE_DISAGREEMENT)
 
-    if (
-        manifest.route is AttemptRoute.PROPOSE_SPEC
-        and artifacts.model_reply is not None
-        and artifacts.model_reply != artifacts.raw_spec
-    ):
-        msg = "attempt model reply differs from the exact raw spec handed to decode"
-        raise ArchiveIntegrityError(msg)
+    _validate_occurrence_claim(manifest.route, artifacts)
     if artifacts.verdict is not None:
         verdict = _decode_canonical_verdict(artifacts.verdict, subject="attempt bundle")
         expected_verified = manifest.outcome is AttemptOutcome.VERIFIED
@@ -1928,6 +1963,7 @@ def materialize_attempt_bundle(
         raise TypeError(msg)
     _require_attempt_plot(plot_object, subject="draft plot")
     _require_limits(limits)
+    _validate_occurrence_claim(draft.route, draft.artifacts)
     occurred_at_text = _canonical_utc_timestamp(draft.occurred_at)
     manifest = AttemptManifest(
         version=_ATTEMPT_VERSION,

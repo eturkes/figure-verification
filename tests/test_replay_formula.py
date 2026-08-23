@@ -791,6 +791,59 @@ def test_v19_resigned_formula_attempt_refuses_dataset_observations(
     )
 
 
+def test_v19b_resigned_formula_proposer_attempt_binds_its_reply_to_the_decoder_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Archive refuses this shape before signing, so only a re-signed occurrence reaches replay.
+
+    That is exactly the key holder the replay guard exists for: the two engines authenticate
+    independently, so replay may not inherit the publish path's refusal.
+    """
+    fixture = _fixture(tmp_path)
+    calls = _arm_downstream_bombs(monkeypatch)
+    artifacts = replace(
+        fixture.snapshot.artifacts,
+        model_request=b"request",
+        model_response=b"response",
+        model_reply=b"a reply the decoder never saw",
+    )
+    snapshot = replace(fixture.snapshot, artifacts=artifacts)
+    manifest = msgspec.structs.replace(
+        fixture.bundle.manifest,
+        route=AttemptRoute.PROPOSE_FORMULA,
+        artifacts=_artifact_bindings(artifacts),
+    )
+    resigned = _resign_manifest(fixture, manifest, snapshot=snapshot)
+
+    _assert_integrity_failure(
+        _run(fixture, resigned),
+        "attempt_outcome",
+        calls,
+        diagnostic="attempt model reply differs from the exact raw spec handed to decode",
+    )
+
+
+def test_v19b_control_the_same_proposer_occurrence_replays_when_the_reply_is_the_spec(
+    tmp_path: Path,
+) -> None:
+    """Isolate the refusal above to `model_reply` alone: the route swap itself must replay clean."""
+    fixture = _fixture(tmp_path)
+    artifacts = replace(
+        fixture.snapshot.artifacts,
+        model_request=b"request",
+        model_response=b"response",
+        model_reply=fixture.snapshot.artifacts.raw_spec,
+    )
+    snapshot = replace(fixture.snapshot, artifacts=artifacts)
+    manifest = msgspec.structs.replace(
+        fixture.bundle.manifest,
+        route=AttemptRoute.PROPOSE_FORMULA,
+        artifacts=_artifact_bindings(artifacts),
+    )
+
+    assert _run(fixture, _resign_manifest(fixture, manifest, snapshot=snapshot)).status == "exact"
+
+
 def test_v20_authenticated_attempt_plot_id_must_name_nested_formula_plot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1693,6 +1746,7 @@ def test_v48_closed_formula_and_dataset_selectors_are_hand_stated() -> None:
         "/verify-and-render": False,
         "/propose-spec": False,
         "/verify-formula": True,
+        "/propose-formula": True,
     }
     assert replay._FORMULA_TCB_FIELDS == (
         "verifier_version",
@@ -1722,6 +1776,7 @@ def test_v48_closed_formula_and_dataset_selectors_are_hand_stated() -> None:
         "/verify-and-render": True,
         "/propose-spec": True,
         "/verify-formula": False,
+        "/propose-formula": False,
     }
     # `_BlobRole` is a PEP 695 alias, so the literal members live behind `__value__`.
     assert get_args(replay._BlobRole.__value__) == (

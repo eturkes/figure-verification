@@ -440,6 +440,125 @@
         }
       }
     },
+    "/propose-formula": {
+      "post": {
+        "operationId": "proposeFormula",
+        "summary": "Propose a formula plot spec with the local model, then verify it",
+        "description": "Draft and verify a chart of a mathematical formula. Given a natural-language request, the local model proposes a formula plot specification, which the verifier independently checks. The verifier computes every plotted point itself from the formula. Provide `user_request` (the curve to plot, for example \"plot x squared from -3 to 3\"). This operation needs no dataset. A verified proposal returns the certified plot script; an unverifiable one returns the failing verdict instead.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeFormulaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The bare result on every outcome — the model's raw reply paired with the formula verdict (a FormulaScriptVerdict carrying the certified matplotlib script when the proposal verified, a plain Verdict otherwise). Every admitted classified outcome carries its durably committed attempt_id. The verifier authored the script and did not run it, so this operation serves no chart page and sends no Location header.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposeFormulaResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The propose request body was malformed or failed validation.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The user request, assembled prompt, or exact backend-tokenized prompt exceeded proposer resource policy. No native model generation or verification occurred. The UTF-8 byte ceiling and the backend token ceiling are independent and inclusive.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeded the configured size cap.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused the work before model, verification, or render execution. Each service process owns an independent gate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The verifier hit an internal operator-config, implementation, or archive fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The model backend replied, but not with a usable chat completion (any other non-success status, an oversized or malformed body, or no usable message content).",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The model backend was unreachable or timed out.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/replay/{plot_id}": {
       "get": {
         "operationId": "replayPlot",
@@ -1679,6 +1798,20 @@
           "detail"
         ]
       },
+      "ProposeFormulaRequest": {
+        "title": "ProposeFormulaRequest",
+        "description": "A /propose-formula request: the free-text ask alone.\n\nFormula mode plots a closed expression the verifier evaluates itself, so it opens no dataset\nand the request names none. `user_request` is admitted by its UTF-8 encoding under the same\noperator-configurable ceiling /propose-spec uses; an over-policy request receives 422 before\nany model call. forbid_unknown_fields rejects any extra key at decode (a 400), so a dataset\nname sent to this route is refused rather than ignored.",
+        "type": "object",
+        "properties": {
+          "user_request": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_request"
+        ],
+        "additionalProperties": false
+      },
       "ProposeRequest": {
         "title": "ProposeRequest",
         "description": "A /propose-spec request: the free-text ask plus the dataset to plot.\n\n`user_request` is admitted by its UTF-8 encoding (4 KiB by default, operator-configurable),\nnot JSON Schema's code-point `maxLength`; an over-policy request receives 422 before any model\ncall. The complete system + user message content has its own independent byte ceiling.\n\n`dataset_name` is the VPlot DatasetName — path-safe by construction (a traversal or a\nnon-`.csv` name cannot decode), so the untrusted caller cannot escape the trusted data\ndirectory through it. forbid_unknown_fields rejects any extra key at decode (a 400), like\nevery decoded request the service accepts.",
@@ -2181,6 +2314,30 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RenderVerdict"
+              },
+              {
+                "$ref": "#/components/schemas/Verdict"
+              }
+            ]
+          }
+        },
+        "required": [
+          "model_reply",
+          "verdict"
+        ]
+      },
+      "ProposeFormulaResult": {
+        "title": "ProposeFormulaResult",
+        "description": "A /propose-formula outcome: the model's raw reply plus the verifier's verdict on it.\n\n`model_reply` is the backend's reply content verbatim, carried so a caller sees exactly what\nthe untrusted model produced. `verdict` is the same Verdict | FormulaScriptVerdict the\n/verify-formula pipeline returns: the certified matplotlib script and its provenance hashes\nwhen the proposal verified, a plain Verdict otherwise. The verifier authors those script bytes\nand never executes them, so no chart page exists to link and this result carries no summary\nstring and no Location header. Response-only, so no forbid_unknown_fields; openapi.py\nhand-derives its schema for the reason ProposeResult's docstring gives.",
+        "type": "object",
+        "properties": {
+          "model_reply": {
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FormulaScriptVerdict"
               },
               {
                 "$ref": "#/components/schemas/Verdict"

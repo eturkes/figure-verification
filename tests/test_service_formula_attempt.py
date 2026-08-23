@@ -107,6 +107,10 @@ def _formula_route() -> AttemptRoute:
     return AttemptRoute(_FORMULA_ROUTE)
 
 
+def _formula_proposer_route() -> AttemptRoute:
+    return AttemptRoute("/propose-formula")
+
+
 def _formula_materializer() -> _FormulaMaterializer:
     value: object = archive_module.__dict__.get("materialize_formula_plot_bundle")
     assert callable(value), "production formula plot materializer is absent"
@@ -307,6 +311,7 @@ def test_a1_attempt_route_is_exact() -> None:
         ("VERIFY_AND_RENDER", "/verify-and-render"),
         ("PROPOSE_SPEC", "/propose-spec"),
         ("VERIFY_FORMULA", "/verify-formula"),
+        ("PROPOSE_FORMULA", "/propose-formula"),
     }
 
 
@@ -775,6 +780,7 @@ def test_a4_route_model_roles_map_is_total_and_exact() -> None:
         AttemptRoute.VERIFY_AND_RENDER: _model_role_selector("_render_route_model_roles"),
         AttemptRoute.PROPOSE_SPEC: _model_role_selector("_proposer_route_model_roles"),
         _formula_route(): _model_role_selector("_formula_route_model_roles"),
+        _formula_proposer_route(): _model_role_selector("_formula_proposer_route_model_roles"),
     }
 
 
@@ -802,6 +808,7 @@ def test_a4_route_plot_sources_map_is_total_and_exact() -> None:
         AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),
         AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),
         _formula_route(): frozenset({PlotSourceKind.FORMULA}),
+        _formula_proposer_route(): frozenset({PlotSourceKind.FORMULA}),
     }
 
 
@@ -827,6 +834,7 @@ def test_a4_route_reads_dataset_inputs_map_is_total_and_exact() -> None:
         AttemptRoute.VERIFY_AND_RENDER: True,
         AttemptRoute.PROPOSE_SPEC: True,
         _formula_route(): False,
+        _formula_proposer_route(): False,
     }
 
 
@@ -1218,6 +1226,7 @@ def test_a8_replay_route_and_model_role_vocabulary_match_archive() -> None:
         "/verify-and-render": frozenset(),
         "/propose-spec": frozenset({"model_request", "model_response", "model_reply"}),
         "/verify-formula": frozenset(),
+        "/propose-formula": frozenset({"model_request", "model_response", "model_reply"}),
     }
     route_alias: Any = replay._AttemptRoute
 

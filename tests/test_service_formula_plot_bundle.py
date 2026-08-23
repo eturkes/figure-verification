@@ -802,6 +802,7 @@ def test_t44_attempt_layer_admits_both_plot_classes(tmp_path: Path) -> None:
         archive_module.AttemptRoute.VERIFY_AND_RENDER,
         archive_module.AttemptRoute.PROPOSE_SPEC,
         archive_module.AttemptRoute.VERIFY_FORMULA,
+        archive_module.AttemptRoute.PROPOSE_FORMULA,
     )
     _settings, dataset = dataset_bundle(tmp_path)
     manifest = archive_module.AttemptManifest(

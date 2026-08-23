@@ -119,8 +119,7 @@ Formula mode keeps that spine and replaces the source and the artifact:
 
 ```text
 UNTRUSTED
-  caller-supplied formula spec
-  (no model proposer on this route yet; a later milestone adds one)
+  caller-supplied formula spec, or one proposed by the model at POST /propose-formula
        |
        | carries ONLY vplot-formula-0.1:
        | formula + domain + encoding

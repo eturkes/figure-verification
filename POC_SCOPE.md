@@ -1,7 +1,8 @@
 # POC_SCOPE — verified-plot PoC
 
-A caller submits a restricted JSON plot spec; in DATASET MODE a weak local LLM can propose that
-spec instead, and FORMULA MODE has no model front end. A separate trusted verifier independently
+A caller submits a restricted JSON plot spec; in DATASET MODE and in FORMULA MODE a weak local LLM
+can propose that spec instead. Each mode keeps its own direct entry point, which stays
+caller-fed. A separate trusted verifier independently
 recomputes the plotted data — from the source CSV in dataset mode, by exact rational evaluation of
 the submitted expression in formula mode — runs structured checks, blocks plots whose spec, data
 binding, or encoding fail those checks, and releases only the rest under a provenance certificate:
@@ -200,13 +201,15 @@ through the open state-directory FD; replacement in that interval remains an acc
 filesystem TOCTOU boundary. The pre-COMMIT fault hook proves explicit rollback only, not COMMIT
 failure, hot-journal recovery, process termination, or power loss.
 
-Every admitted, classified `/verify-and-render`, `/verify-formula`, or `/propose-spec` outcome
-commits one signed
+Every admitted, classified `/verify-and-render`, `/verify-formula`, `/propose-spec`, or
+`/propose-formula` outcome commits one signed
 occurrence before response and before the chart LRU mutates. A successful occurrence atomically adds
 the complete plot bundle too — the dataset bundle or the formula bundle, each holding only its own
 mode's carriers; rejected verdicts and proposer faults bind only bytes actually
-observed. A formula occurrence binds its raw spec and canonical verdict alone: no CSV, no manifest,
-and no model trace exists on that route. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
+observed. Every formula occurrence binds no CSV and no manifest, because neither formula route
+opens a dataset. Direct `/verify-formula` binds its raw spec and canonical verdict alone and
+carries no model trace; `/propose-formula` additionally binds the model exchange that produced
+that raw spec. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
 from that occurrence envelope. `/verify-only`, pre-admission transport/rate/capacity refusal,
 disconnect before an outcome, process crash, unclassified operator/implementation fault, and
 archive failure are intentionally outside this non-completeness claim. `VERIFIER_MAX_ARCHIVE_BYTES`
@@ -287,8 +290,11 @@ curl -sS http://127.0.0.1:8000/schema/openapi.json
 
 ## Model proposer
 
-`verifier.service` puts a weak local model in front of that same verifier through one more
-endpoint, `POST /propose-spec`. The request is a small `{user_request, dataset_name}` object;
+`verifier.service` puts a weak local model in front of that same verifier through one endpoint per
+mode: `POST /propose-spec` and `POST /propose-formula`. Each proposer feeds its mode's own direct
+entry point, so neither adds a verification path.
+
+The dataset proposer's request is a small `{user_request, dataset_name}` object;
 the service builds the VPlot proposer prompt, asks the local backend for a spec, and feeds
 whatever it returns through `verify-and-render` above, pinned to the requested dataset: a
 proposal that decodes but names a different dataset than the request is refused (`502`) right
@@ -298,10 +304,21 @@ does not move: the model proposes only a spec, never plotted values, and the ver
 the whole plotted table and re-binds the source CSV by hash exactly as before — so the model
 earns no new trust, and a chart still rides only a verified, on-request outcome.
 
-Schema-guided decoding is the shipped default for `/propose-spec` generation: the service asks the
+The formula proposer's request is a smaller `{user_request}` object, because formula mode opens no
+dataset: it has no dataset name to pin, and it can give no not-found answer. The service builds the
+formula proposer prompt, asks the same backend for a spec, and feeds the exact reply bytes through
+`verify-formula` above. The result is the raw reply plus that verdict, and nothing else. The
+verifier authors the certified matplotlib script and never executes it, so this endpoint serves no
+chart page, sends no `Location` header, and adds no summary string. The claim boundary does not
+move here either: the model proposes only an expression and its domain, and the verifier evaluates
+every plotted point itself by exact rational arithmetic.
+
+Schema-guided decoding is the shipped default for both proposers: the service asks the
 untrusted backend for structure-constrained ("guided") output, steering the weak model toward
-schema-representable structure instead of markdown-fenced prose. The guidance schema is derived from
-the authoritative VPlot schema with the unsupported `pattern` and `format` constraints stripped;
+schema-representable structure instead of markdown-fenced prose. Each mode selects its own
+operator-pinned guidance schema — the VPlot schema for `/propose-spec`, the VPlot formula schema
+for `/propose-formula`. The guidance schema is derived from
+the authoritative schema with the unsupported `pattern` and `format` constraints stripped;
 ordinary chat and Open WebUI tool selection omit the flag and stay unconstrained. This constrains
 output STRUCTURE ONLY — it does not establish semantic correctness, dataset binding, recomputation,
 provenance, or acceptance — and is a generation convenience, not a trust grant or boundary change.

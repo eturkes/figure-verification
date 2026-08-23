@@ -358,6 +358,39 @@ def test_proposer_verified_and_rejected_outcomes_bind_lossless_model_exchange(
         )
 
 
+@pytest.mark.parametrize("route", [AttemptRoute.PROPOSE_SPEC, AttemptRoute.PROPOSE_FORMULA])
+def test_proposer_reply_identity_refuses_before_the_signing_key_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: AttemptRoute,
+) -> None:
+    """The bundle validator repeats this predicate, so only a bomb decides WHERE it first fires.
+
+    Signing a statement already known to be false is the defect, and every observable byte is
+    identical either way, so the ordering claim needs a call count rather than an exception.
+    """
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / f"presign-{route.name}")
+    signer = load_identity(settings).signer
+    draft = _rejected_draft(settings, route=route)
+    materialize_attempt_bundle(draft, signer, nonce="6" * 32)
+
+    calls = {"sign": 0}
+
+    def sign_bomb(*_args: object, **_kwargs: object) -> bytes:
+        calls["sign"] += 1
+        pytest.fail("attempt signing ran before the reply-identity refusal")
+
+    monkeypatch.setattr(attestation, "sign_dsse", sign_bomb)
+    forged = replace(draft, artifacts=replace(draft.artifacts, model_reply=b"never decoded"))
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt model reply differs from the exact raw spec handed to decode$",
+    ):
+        materialize_attempt_bundle(forged, signer, nonce="7" * 32)
+    assert calls == {"sign": 0}
+
+
 def test_collision_retries_are_bounded_and_never_alias_occurrences(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

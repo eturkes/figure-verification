@@ -19,7 +19,9 @@ document's own bytes are pinned by the committed OpenAPI golden.
 Determinism comes from three pins the HTTP path otherwise leaves free: a seeded signing key, a
 frozen occurrence clock, and a fixed attempt nonce. All three patch targets exist in both trees.
 The proposer backend is stubbed to one fixed reply, so /propose-spec exercises its whole
-downstream verify/commit/encode path without a model.
+downstream verify/commit/encode path without a model. That stub is what makes the dataset
+proposer's own bytes a real pin: adding a second proposer route and rewriting the occurrence
+writer's signature must leave every /propose-spec response exactly where it was.
 """
 
 import json
@@ -33,11 +35,18 @@ _ROOT = Path(__file__).resolve().parent.parent
 _BASELINE = "bc5664b"
 
 # The document's permitted drift, hand-stated so an unannounced extra change fails. The two
-# artifact GETs and the formula replay verdict with its two nested structs are the unit's whole
-# OpenAPI ADDITION surface; no baseline schema drifts even in prose here.
-_ADDED_PATHS = frozenset({"/table/{plot_id}", "/script/{plot_id}"})
+# artifact GETs, the formula proposer POST, the formula replay verdict with its two nested
+# structs, and the proposer's own request/result pair are the whole OpenAPI ADDITION surface
+# accumulated since the baseline; no baseline schema drifts even in prose here.
+_ADDED_PATHS = frozenset({"/table/{plot_id}", "/script/{plot_id}", "/propose-formula"})
 _ADDED_SCHEMAS = frozenset(
-    {"FormulaReplayVerdict", "FormulaArtifactHashMatches", "FormulaVersionDrift"}
+    {
+        "FormulaReplayVerdict",
+        "FormulaArtifactHashMatches",
+        "FormulaVersionDrift",
+        "ProposeFormulaRequest",
+        "ProposeFormulaResult",
+    }
 )
 _PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset()
 

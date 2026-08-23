@@ -495,7 +495,9 @@ type _BlobRole = Literal[
     "attempt_payload",
     "attempt_envelope",
 ]
-type _AttemptRoute = Literal["/verify-and-render", "/propose-spec", "/verify-formula"]
+type _AttemptRoute = Literal[
+    "/verify-and-render", "/propose-spec", "/verify-formula", "/propose-formula"
+]
 type _AttemptOutcome = Literal[
     "verified",
     "rejected",
@@ -579,6 +581,7 @@ _EXPECTED_MODEL_ROLES: dict[_AttemptRoute, frozenset[_BlobRole]] = {
     "/verify-and-render": frozenset(),
     "/propose-spec": frozenset({"model_request", "model_response", "model_reply"}),
     "/verify-formula": frozenset(),
+    "/propose-formula": frozenset({"model_request", "model_response", "model_reply"}),
 }
 # Mirrors the archive's route/plot-mode relation from this dataset engine's side: every snapshot
 # carries a dataset plot by construction, and the formula route attaches its own formula plot, so a
@@ -587,13 +590,21 @@ _ROUTE_ATTACHES_DATASET_PLOT: dict[_AttemptRoute, bool] = {
     "/verify-and-render": True,
     "/propose-spec": True,
     "/verify-formula": False,
+    "/propose-formula": False,
 }
 # The formula engine's own column of the same relation: only the formula route attaches one.
 _ROUTE_ATTACHES_FORMULA_PLOT: dict[_AttemptRoute, bool] = {
     "/verify-and-render": False,
     "/propose-spec": False,
     "/verify-formula": True,
+    "/propose-formula": True,
 }
+# Mirrors the archive's proposer-identity relation. A proposer route hands the model's exact reply
+# bytes to strict decode, so the archived reply and the archived decoder input are one observation
+# under two names. Both engines ask this of every route they admit rather than of one named route:
+# a proposer route added to only one engine's column is exactly the drift that would otherwise let
+# a re-signed snapshot authenticate a decode its own archived bytes never fed.
+_REPLY_IS_DECODER_INPUT: frozenset[_AttemptRoute] = frozenset({"/propose-spec", "/propose-formula"})
 _DATASET_TCB_FIELDS: tuple[TcbField, ...] = (
     "verifier_version",
     "z3_version",
@@ -1009,7 +1020,8 @@ def _validate_attempt_graph(
         trusted_keyid=trusted_keyid,
     )
     _require(
-        manifest.route != "/propose-spec" or artifacts.model_reply == artifacts.raw_spec,
+        manifest.route not in _REPLY_IS_DECODER_INPUT
+        or artifacts.model_reply == artifacts.raw_spec,
         "attempt_outcome",
         "attempt model reply differs from the exact raw spec handed to decode",
         trusted_keyid=trusted_keyid,
@@ -1455,6 +1467,13 @@ def _validate_formula_attempt_graph(
         _present_model_roles(artifacts) == _EXPECTED_MODEL_ROLES[manifest.route],
         "attempt_outcome",
         "attempt model trace presence disagrees with its authenticated route",
+        trusted_keyid=trusted_keyid,
+    )
+    _require(
+        manifest.route not in _REPLY_IS_DECODER_INPUT
+        or artifacts.model_reply == artifacts.raw_spec,
+        "attempt_outcome",
+        "attempt model reply differs from the exact raw spec handed to decode",
         trusted_keyid=trusted_keyid,
     )
     _require(
