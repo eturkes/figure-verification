@@ -16,7 +16,15 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from verifier import schema
-from verifier.schema import Filter, VPlotSpec, decode_spec, json_schema, json_schema_text
+from verifier.schema import (
+    Filter,
+    VPlotSpec,
+    decode_spec,
+    formula_json_schema,
+    formula_json_schema_text,
+    json_schema,
+    json_schema_text,
+)
 
 HASH = "sha256:" + "0" * 64
 
@@ -593,3 +601,41 @@ def test_golden_schema_is_draft_2020_12_valid_and_byte_stable() -> None:
     Draft202012Validator.check_schema(json_schema())  # raises if not a valid 2020-12 schema
     golden_path = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.1.schema.json"
     assert golden_path.read_bytes() == json_schema_text().encode("utf-8")  # byte-exact
+
+
+def test_formula_golden_schema_is_draft_2020_12_valid_and_byte_stable() -> None:
+    Draft202012Validator.check_schema(formula_json_schema())
+    golden_path = (
+        Path(__file__).resolve().parent.parent / "schema" / "vplot-formula-0.1.schema.json"
+    )
+    assert golden_path.read_bytes() == formula_json_schema_text().encode("utf-8")
+
+
+def test_formula_schema_carries_the_six_field_closed_shape() -> None:
+    """The advisory export mirrors the strict decoder's shape: exactly six required fields,
+    no additional properties, and the two closed literal domains a proposer must hit."""
+    doc = formula_json_schema()
+    spec = doc["$defs"]["FormulaPlotSpec"]
+    assert spec["required"] == [
+        "version",
+        "formula",
+        "domain",
+        "numeric_profile",
+        "mark",
+        "encoding",
+    ]
+    assert spec["additionalProperties"] is False
+    assert spec["properties"]["version"]["enum"] == ["vplot-formula-0.1"]
+    assert spec["properties"]["mark"]["enum"] == ["line", "scatter"]
+    assert spec["properties"]["numeric_profile"]["enum"] == ["rational-half-even-v1"]
+    domain = doc["$defs"]["FormulaDomain"]
+    assert domain["required"] == ["start", "stop", "samples", "x_scale", "y_scale"]
+    assert domain["properties"]["samples"]["minimum"] == 2
+
+
+def test_formula_and_dataset_schemas_are_distinct_documents() -> None:
+    """A single export API serves both modes, so a wrong-struct regression would silently
+    publish one schema under both names."""
+    assert formula_json_schema() != json_schema()
+    assert formula_json_schema()["$ref"] == "#/$defs/FormulaPlotSpec"
+    assert json_schema()["$ref"] == "#/$defs/VPlotSpec"

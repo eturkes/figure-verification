@@ -251,19 +251,42 @@ def decode_formula_spec(raw: bytes | str) -> FormulaPlotSpec:
     return _decode(raw, _FORMULA_DECODER)
 
 
-def json_schema() -> dict[str, Any]:
-    """The VPlot JSON Schema, Draft 2020-12 — an ADVISORY mirror of decode_spec, not the
-    gate. JSON Schema's `integer` admits zero-fraction floats (1.0, 1e3) that strict
-    decode rejects and cannot express the float-token rejection, so the schema is
-    slightly more permissive; decode_spec is authoritative. The $schema URI is popped
-    and re-appended so it sorts last even if a future msgspec emits its own (finding 5)."""
-    doc = msgspec.json.schema(VPlotSpec)
+def _schema_doc(spec: type[Struct]) -> dict[str, Any]:
+    """One spec struct's Draft 2020-12 document. The $schema URI is popped and
+    re-appended so it sorts last even if a future msgspec emits its own (finding 5)."""
+    doc = msgspec.json.schema(spec)
     doc.pop("$schema", None)
     doc["$schema"] = _DRAFT_2020_12
     return doc
 
 
+def _schema_text(spec: type[Struct]) -> str:
+    """_schema_doc(spec) as deterministic, newline-terminated UTF-8 JSON."""
+    return json.dumps(_schema_doc(spec), indent=2, ensure_ascii=False) + "\n"
+
+
+def json_schema() -> dict[str, Any]:
+    """The dataset VPlot JSON Schema, Draft 2020-12 — an ADVISORY mirror of decode_spec,
+    not the gate. JSON Schema's `integer` admits zero-fraction floats (1.0, 1e3) that
+    strict decode rejects and cannot express the float-token rejection, so the schema is
+    slightly more permissive; decode_spec is authoritative."""
+    return _schema_doc(VPlotSpec)
+
+
 def json_schema_text() -> str:
     """json_schema() as deterministic, newline-terminated UTF-8 JSON — the
     byte-exact form committed as schema/vplot-0.1.schema.json."""
-    return json.dumps(json_schema(), indent=2, ensure_ascii=False) + "\n"
+    return _schema_text(VPlotSpec)
+
+
+def formula_json_schema() -> dict[str, Any]:
+    """The formula VPlot JSON Schema, Draft 2020-12 — ADVISORY exactly like json_schema():
+    decode_formula_spec stays authoritative, and formula semantics (grammar, domain
+    ordering, sample distinctness) are verifier checks no JSON Schema can express."""
+    return _schema_doc(FormulaPlotSpec)
+
+
+def formula_json_schema_text() -> str:
+    """formula_json_schema() as deterministic, newline-terminated UTF-8 JSON — the
+    byte-exact form committed as schema/vplot-formula-0.1.schema.json."""
+    return _schema_text(FormulaPlotSpec)

@@ -1,0 +1,144 @@
+{
+  "$ref": "#/$defs/FormulaPlotSpec",
+  "$defs": {
+    "FormulaPlotSpec": {
+      "title": "FormulaPlotSpec",
+      "type": "object",
+      "properties": {
+        "version": {
+          "enum": [
+            "vplot-formula-0.1"
+          ]
+        },
+        "formula": {
+          "type": "string",
+          "maxLength": 1024,
+          "pattern": "^(?!.*[\\r\\n])[0-9A-Za-z_ ().*/+-]+$"
+        },
+        "domain": {
+          "$ref": "#/$defs/FormulaDomain"
+        },
+        "numeric_profile": {
+          "enum": [
+            "rational-half-even-v1"
+          ]
+        },
+        "mark": {
+          "enum": [
+            "line",
+            "scatter"
+          ]
+        },
+        "encoding": {
+          "$ref": "#/$defs/FormulaEncoding"
+        }
+      },
+      "required": [
+        "version",
+        "formula",
+        "domain",
+        "numeric_profile",
+        "mark",
+        "encoding"
+      ],
+      "additionalProperties": false
+    },
+    "FormulaDomain": {
+      "title": "FormulaDomain",
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "pattern": "^(?!.*[\\r\\n])-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,9})?$"
+        },
+        "stop": {
+          "type": "string",
+          "pattern": "^(?!.*[\\r\\n])-?(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,9})?$"
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 100000
+        },
+        "x_scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "y_scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        }
+      },
+      "required": [
+        "start",
+        "stop",
+        "samples",
+        "x_scale",
+        "y_scale"
+      ],
+      "additionalProperties": false
+    },
+    "FormulaEncoding": {
+      "title": "FormulaEncoding",
+      "type": "object",
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/FormulaXChannel"
+        },
+        "y": {
+          "$ref": "#/$defs/FormulaYChannel"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false
+    },
+    "FormulaXChannel": {
+      "title": "FormulaXChannel",
+      "type": "object",
+      "properties": {
+        "field": {
+          "enum": [
+            "x"
+          ]
+        },
+        "type": {
+          "enum": [
+            "quantitative"
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "type"
+      ],
+      "additionalProperties": false
+    },
+    "FormulaYChannel": {
+      "title": "FormulaYChannel",
+      "type": "object",
+      "properties": {
+        "field": {
+          "enum": [
+            "y"
+          ]
+        },
+        "type": {
+          "enum": [
+            "quantitative"
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

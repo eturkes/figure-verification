@@ -213,21 +213,32 @@ def test_float_filter_value_rejected(value: float, cmp: str) -> None:
 
 
 # --- golden determinism across processes (memory: PYTHONHASHSEED subprocess check) --------
-_GOLDEN = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.1.schema.json"
+_SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
+_GOLDEN = _SCHEMA_DIR / "vplot-0.1.schema.json"
+_FORMULA_GOLDEN = _SCHEMA_DIR / "vplot-formula-0.1.schema.json"
 _EMIT_GOLDEN = (
     "import sys; from verifier.schema import json_schema_text; "
     "sys.stdout.buffer.write(json_schema_text().encode('utf-8'))"
 )
+_EMIT_FORMULA_GOLDEN = (
+    "import sys; from verifier.schema import formula_json_schema_text; "
+    "sys.stdout.buffer.write(formula_json_schema_text().encode('utf-8'))"
+)
 
 
 @pytest.mark.parametrize("seed", ["0", "1", "12345"])
-def test_golden_schema_byte_identical_across_hash_seeds(seed: str) -> None:
-    """json_schema_text() is byte-identical regardless of PYTHONHASHSEED (no set/dict hash
-    ordering leaks into the golden), and equals the committed file across fresh processes."""
+@pytest.mark.parametrize(
+    ("emit", "golden"),
+    [(_EMIT_GOLDEN, _GOLDEN), (_EMIT_FORMULA_GOLDEN, _FORMULA_GOLDEN)],
+    ids=["dataset", "formula"],
+)
+def test_golden_schema_byte_identical_across_hash_seeds(emit: str, golden: Path, seed: str) -> None:
+    """Each exported schema text is byte-identical regardless of PYTHONHASHSEED (no set/dict
+    hash ordering leaks into a golden), and equals its committed file across fresh processes."""
     proc = subprocess.run(  # noqa: S603 — fixed argv, sys.executable, trusted literal code
-        [sys.executable, "-c", _EMIT_GOLDEN],
+        [sys.executable, "-c", emit],
         capture_output=True,
         check=True,
         env={**os.environ, "PYTHONHASHSEED": seed},
     )
-    assert proc.stdout == _GOLDEN.read_bytes()
+    assert proc.stdout == golden.read_bytes()
