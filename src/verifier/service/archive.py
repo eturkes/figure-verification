@@ -37,7 +37,9 @@ canonical-spec, and certificate-family dispatch, and each mode has its own mater
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
 spec reads resolve one indexed canonical-spec blob then decode/re-encode/hash it; key reads require
-one exact raw 32-byte Ed25519 blob under its keyid. Archived keys prove self-consistency only.
+one exact raw 32-byte Ed25519 blob under its keyid; plot-role reads resolve one typed role blob at
+its digest address and return those exact bytes under the typed-relation and digest checks alone,
+never a certificate-graph authentication. Archived keys prove self-consistency only.
 
 The high-level successful-plot API materializes one immutable bundle from the exact formal-passed
 chain its mode ran -- eleven dataset payloads from evidence plus render, nine formula payloads from
@@ -46,9 +48,9 @@ admission. Publish + read recheck canonical spec/verdict/version forms,
 the DSSE signature, plot/key content addresses, and every VCert hash/check edge. Verification under
 the bundle's archived public key establishes internal cryptographic consistency only; it never
 grants that key operator trust. Dataset-plot replay applies an independently configured trust
-policy before recomputation; a formula plot is archived and certified here, and its replay engine
-arrives in a later milestone. Plot bundles contain no occurrence time, route, request, prompt, or
-model trace.
+policy before recomputation; a formula plot is archived and certified here, and its own pure replay
+engine recomputes it without a renderer. Plot bundles contain no occurrence time, route, request,
+prompt, or model trace.
 
 ``FormulaPlotBundle`` carries the formula mode's own nine carriers under VCert v0.3 and the same
 revalidation discipline; ``PlotBundle`` names the union of the two, so annotations spell it while
@@ -3850,6 +3852,31 @@ class Archive:
             return bundle
         finally:
             connection.close()
+
+    def plot_source_kind(self, plot_id: str) -> PlotSourceKind:
+        """Read one plot's stored provenance mode without reading or interpreting its bytes.
+
+        A caller that must shape a result per mode establishes the mode here first. A corrupt or
+        out-of-domain record raises ``ArchiveIntegrityError`` instead of resolving to a mode, so
+        an occurrence that cannot be classified is never labelled as either one.
+        """
+        _require_address(plot_id, subject="plot_id")
+        connection = self._connect()
+        try:
+            _validate_schema(connection, verify_accounting=False)
+            row = connection.execute(_SELECT_PLOT_RECORD, (plot_id,)).fetchone()
+            if row is None:
+                msg = "archive plot address was not found"
+                raise ArchiveNotFoundError(msg)
+            _, _, mode = _validated_plot_record(row, plot_id)
+        except ArchiveError:
+            raise
+        except sqlite3.Error as exc:
+            msg = "SQLite failed while selecting a plot provenance mode"
+            raise ArchiveError(msg) from exc
+        finally:
+            connection.close()
+        return mode
 
     def lowest_verified_attempt_id(self, plot_id: str) -> str | None:
         """Return the lexicographically lowest signed verified attempt for one plot."""

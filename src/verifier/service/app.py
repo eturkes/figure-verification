@@ -10,8 +10,8 @@ trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only, POST /verify-and-render + GET
 /certificate/{plot_id} + GET /spec/{spec_id} + GET /chart/{plot_id}, POST /verify-formula, POST
-/propose-spec, GET /key/{keyid}, GET /replay/{plot_id}, GET
-/schema/openapi.json. The
+/propose-spec, GET /key/{keyid}, GET /replay/{plot_id}, GET /table/{plot_id}, GET
+/script/{plot_id}, GET /schema/openapi.json. The
 verify POST handlers read the RAW request body via request.body() before any verifier work, so
 decode_spec's strict decode stays authoritative (a framework-parsed `data: bytes` would
 JSON-decode first, collapsing duplicate keys), and Litestar's body cap raises 413 the moment that
@@ -26,6 +26,9 @@ signature + exact VCert payload type under the digest-matching archived key. Tha
 self-consistency only, never identity or operator trust. A malformed or truly absent address
 answers the same 404 problem+json; archive, SQLite, relation, hash, signature, or type faults escape
 to the logged content-free 500. No process-local cache can bypass these checks.
+GET /table/{plot_id} and GET /script/{plot_id} read that same archive for one addressed blob role
+and serve its exact bytes under a role-specific media type; an absent role answers the same 404, and
+neither handler inspects the plot's source mode, so role presence alone decides.
 GET /chart/{plot_id} deliberately remains independent and ephemeral: it serves only the chart
 LRU's offline HTML under Content-Security-Policy: sandbox
 allow-scripts, and restart/eviction may 404 even while the durable public artifacts resolve.
@@ -107,7 +110,6 @@ from litestar.status_codes import (
     HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
-    HTTP_501_NOT_IMPLEMENTED,
     HTTP_502_BAD_GATEWAY,
     HTTP_507_INSUFFICIENT_STORAGE,
 )
@@ -122,6 +124,8 @@ from verifier.service.archive import (
     ArchiveQuotaError,
     AttemptOutcome,
     AttemptRoute,
+    PlotRole,
+    PlotSourceKind,
     open_archive,
 )
 from verifier.service.identity import SigningIdentity, load_identity
@@ -153,7 +157,7 @@ from verifier.service.pipeline import (
     verify_formula_and_emit,
     verify_only,
 )
-from verifier.service.replay import ReplayUnsupportedError, replay_plot_chart
+from verifier.service.replay import ModeReplayVerdict, replay_plot_chart
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -488,6 +492,22 @@ async def propose_spec_route(
     )
 
 
+# An archive-integrity fault carries no bundle, so the occurrence's own stored provenance row is
+# the only mode signal left; it shapes the verdict, and the fault never does. Closed over
+# PlotSourceKind: a mode this map cannot name raises instead of defaulting to either arm.
+#
+# Mode authority differs by path, deliberately. A successful replay takes its mode from the
+# authenticated attempt bundle's own plot class, so a tampered provenance row cannot move it. This
+# fault path cannot reach that evidence, because reading it is precisely what failed, so it falls
+# back to the stored row, which no signature covers. A row tampered in the same window as a real
+# integrity fault therefore reports that failure in the other mode's schema; every such report
+# still carries integrity_ok false with null matches, so no verification claim rides on the shape.
+_INTEGRITY_VERDICTS: dict[PlotSourceKind, Callable[[], ModeReplayVerdict]] = {
+    PlotSourceKind.DATASET: replay_core.archive_integrity_verdict,
+    PlotSourceKind.FORMULA: replay_core.formula_archive_integrity_verdict,
+}
+
+
 def _replay_plot_worker(
     plot_id: str,
     settings: Settings,
@@ -506,7 +526,10 @@ def _replay_plot_worker(
             limits=settings.limits,
         )
     except ArchiveIntegrityError:
-        return msgspec.json.encode(replay_core.archive_integrity_verdict())
+        # Establish the mode before shaping any verdict, so a formula occurrence never receives
+        # dataset-shaped members. A record whose own mode cannot be established raises out of
+        # here and reaches the logged generic 500 rather than a confidently mislabelled 200.
+        return msgspec.json.encode(_INTEGRITY_VERDICTS[archive.plot_source_kind(plot_id)]())
     if replay.chart_html is not None:
         store.put_chart(plot_id, replay.chart_html)
     return msgspec.json.encode(replay.verdict)
@@ -515,16 +538,18 @@ def _replay_plot_worker(
 @get(
     "/replay/{plot_id:str}",
     operation_id="replayPlot",
-    summary="Replay an archived verified dataset plot and report reproduction status",
+    summary="Replay an archived verified plot and report reproduction status",
     status_code=HTTP_200_OK,
 )
 async def replay_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
-    """Replay one durable dataset plot under configured trust; regenerate its chart if exact.
+    """Replay one durable plot under configured trust; regenerate a dataset chart if exact.
 
-    An archived formula plot with a signed verified attempt is authentic and has no replay
-    engine in this version, so it answers 501 rather than the generic 500 an unhandled fault
-    would produce. Attempt selection precedes mode selection, so a plot carrying no such
-    attempt answers 404 in either mode.
+    Both source modes replay, and the 200 body carries that mode's own verdict shape. Attempt
+    selection precedes mode selection, so a plot carrying no signed verified attempt answers 404
+    in either mode. A formula replay recomputes the occurrence from its archived canonical spec
+    alone: it re-derives the certified hashes, re-encodes the VCert v0.3 payload, and compares
+    the archived TCB. It reproduces no artifact bytes, signs nothing, and stores no chart page;
+    the certified table, script, spec, and certificate stay retrievable through their own GETs.
     """
     if _HEX64.fullmatch(plot_id) is None:
         raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND)
@@ -544,11 +569,6 @@ async def replay_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
             )
         except ArchiveNotFoundError as exc:
             raise HTTPException(detail="no such plot", status_code=HTTP_404_NOT_FOUND) from exc
-        except ReplayUnsupportedError as exc:
-            raise HTTPException(
-                detail="this version replays dataset plots only",
-                status_code=HTTP_501_NOT_IMPLEMENTED,
-            ) from exc
     return Response(body, media_type="application/json", status_code=HTTP_200_OK)
 
 
@@ -612,6 +632,69 @@ def spec_route(spec_id: FromPath[str], state: State) -> Response[bytes]:
     return _fetch_artifact(
         spec_id,
         lambda address: archive.read_spec(address, max_bytes=max_bytes),
+    )
+
+
+# Both artifact GETs below serve typed-relation, digest-addressed stored bytes. They are NOT
+# certificate-graph authenticated: each re-holds the requested address, the typed plot relation,
+# and the exact SHA-256 of the bytes it returns, and verifies neither the DSSE signature nor the
+# VCert payload that binds the artifact to its occurrence. A caller needing that binding reads
+# GET /certificate/{plot_id} and compares the certified hash itself. The certified hashes are
+# domain-tagged rather than raw blob digests, so no content-digest address is constructible and
+# the address stays plot_id plus a fixed role. Relation rows remain UPDATE-mutable (polish p2).
+
+
+@get(
+    "/table/{plot_id:str}",
+    operation_id="getPlottedTable",
+    summary="Fetch a durable verified plot's certified plotted table by plot_id",
+    sync_to_thread=True,
+)
+def plotted_table_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
+    """Serve the exact archived plotted-table bytes, in either source mode.
+
+    ``plotted_table`` is a certified role of both modes, so this route is source-neutral and
+    carries no mode test. It serves typed-relation bytes, not certificate-graph authenticated
+    ones.
+    """
+    archive = cast("Archive", state["archive"])
+    settings = cast("Settings", state["settings"])
+    return _fetch_artifact(
+        plot_id,
+        lambda address: archive.read_plot_blob(
+            address,
+            PlotRole.PLOTTED_TABLE,
+            max_bytes=settings.max_archive_bytes,
+        ),
+        media_type="application/x-ndjson",
+    )
+
+
+@get(
+    "/script/{plot_id:str}",
+    operation_id="getMatplotlibScript",
+    summary="Fetch a durable verified formula plot's certified matplotlib script by plot_id",
+    sync_to_thread=True,
+)
+def matplotlib_script_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
+    """Serve the exact archived verifier-authored matplotlib script bytes.
+
+    This carries no mode test either: a dataset plot owns no ``matplotlib_script`` relation, so
+    the relation lookup resolves nothing and the shipped fail-closed path answers the same 404 an
+    unknown address answers. The verifier authored these bytes and certified their hash; serving
+    them executes nothing. It serves typed-relation bytes, not certificate-graph authenticated
+    ones.
+    """
+    archive = cast("Archive", state["archive"])
+    settings = cast("Settings", state["settings"])
+    return _fetch_artifact(
+        plot_id,
+        lambda address: archive.read_plot_blob(
+            address,
+            PlotRole.MATPLOTLIB_SCRIPT,
+            max_bytes=settings.limits.max_matplotlib_script_bytes,
+        ),
+        media_type="text/x-python",
     )
 
 
@@ -743,6 +826,8 @@ def create_app(settings: Settings) -> Litestar:
             replay_route,
             certificate_route,
             spec_route,
+            plotted_table_route,
+            matplotlib_script_route,
             public_key_route,
             chart_route,
             openapi_route,

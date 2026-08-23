@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
@@ -29,6 +30,7 @@ from verifier.service.archive import (
 )
 from verifier.service.identity import load_identity
 from verifier.service.settings import Settings
+from verifier.service.store import ArtifactStore
 
 _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "data"
@@ -281,8 +283,15 @@ def test_archive_schema_fault_is_logged_and_returns_generic_500(tmp_path: Path) 
     assert str(cause) not in response.text
 
 
-def test_archived_formula_plot_replay_answers_501_without_a_traceback(tmp_path: Path) -> None:
-    """An authentic archived formula plot has no replay engine here, and 500 would misreport it."""
+def test_archived_formula_plot_replay_reports_an_exact_formula_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An authentic archived formula occurrence replays exactly, in the formula verdict shape.
+
+    It writes no chart, so the chart route answers 404 on both sides of the replay, while the
+    durable certificate keeps serving under the mode's own VCert type.
+    """
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     signer = load_identity(settings).signer
     plot = formula_bundle_parts(signing=signer).bundle
@@ -302,16 +311,43 @@ def test_archived_formula_plot_replay_answers_501_without_a_traceback(tmp_path: 
     open_archive(settings).publish_attempt(bundle, limits=settings.limits)
     handler = _ListHandler()
     logger = logging.getLogger("verifier.service.app")
+    stored_charts: list[str] = []
+    monkeypatch.setattr(
+        ArtifactStore,
+        "put_chart",
+        lambda _self, plot_id, _html: stored_charts.append(plot_id),
+    )
 
     with TestClient(app=create_app(settings)) as client:
+        before = client.get(f"/chart/{plot.plot_id}")
         logger.addHandler(handler)
         try:
             response = client.get(f"/replay/{plot.plot_id}")
         finally:
             logger.removeHandler(handler)
+        after = client.get(f"/chart/{plot.plot_id}")
         certificate = client.get(f"/certificate/{plot.plot_id}")
 
-    _assert_problem(response, 501, "this version replays dataset plots only")
+    assert response.status_code == 200
+    verdict = json.loads(response.content)
+    assert verdict["status"] == "exact"
+    assert verdict["exact"] is True
+    assert verdict["integrity_ok"] is True
+    assert verdict["payload_match"] is True
+    assert verdict["version_match"] is True
+    assert verdict["drift"] == []
+    assert verdict["artifact_matches"] == {
+        "formula": True,
+        "spec": True,
+        "plotted_table": True,
+        "matplotlib_script": True,
+    }
+    # The formula arm carries none of the dataset verdict's members.
+    assert "svg_match" not in verdict
+    # A formula replay recomputes no display bytes, so nothing is ever offered to the chart LRU.
+    assert stored_charts == []
+    assert before.status_code == 404
+    assert after.status_code == 404
     assert not [record for record in handler.records if record.levelno >= logging.ERROR]
     # The same durable plot still serves its certificate, under the mode's own VCert type.
     assert certificate.status_code == 200

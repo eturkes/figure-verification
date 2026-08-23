@@ -31,8 +31,8 @@ from verifier import __version__, canon
 from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
-from verifier.replay import ReplayVerdict
-from verifier.schema import decode_formula_spec, json_schema
+from verifier.replay import FormulaReplayVerdict, ReplayVerdict
+from verifier.schema import FormulaPlotSpec, decode_formula_spec, json_schema
 from verifier.service.app import create_app
 from verifier.service.archive import (
     AttemptArtifacts,
@@ -199,16 +199,44 @@ def test_component_namespaces_disjoint() -> None:
     # gate instead of corrupting the document.
     vplot = set(json_schema()["$defs"])
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict],
+        [
+            Verdict,
+            Problem,
+            CheckResult,
+            VCert,
+            ProposeRequest,
+            ReplayVerdict,
+            FormulaReplayVerdict,
+            FormulaPlotSpec,
+        ],
         ref_template="#/components/schemas/{name}",
     )
+    formula_replay_names = {
+        "FormulaReplayVerdict",
+        "FormulaArtifactHashMatches",
+        "FormulaVersionDrift",
+    }
+    assert formula_replay_names <= set(generated)
     response_names = set(generated) | {
         "DSSEEnvelope",
         "DSSESignature",
         "RenderVerdict",
+        "FormulaScriptVerdict",
         "ProposeResult",
     }
     assert vplot.isdisjoint(response_names), vplot & response_names
+
+
+def test_replay_200_uses_ordered_exclusive_concrete_union() -> None:
+    schema = _DOC["paths"]["/replay/{plot_id}"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert schema == {
+        "oneOf": [
+            {"$ref": "#/components/schemas/ReplayVerdict"},
+            {"$ref": "#/components/schemas/FormulaReplayVerdict"},
+        ]
+    }
 
 
 @pytest.mark.parametrize("name", sorted(_DOC["components"]["schemas"]))
@@ -462,7 +490,9 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
     assert Draft202012Validator(health_schema).is_valid({"status": "ok", "version": __version__})
 
 
-def test_real_replay_response_matches_replay_verdict_component(tmp_path: Path) -> None:
+def test_real_dataset_replay_response_matches_published_exclusive_union(
+    tmp_path: Path,
+) -> None:
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     with TestClient(app=create_app(settings)) as client:
         rendered = client.post(
@@ -475,9 +505,37 @@ def test_real_replay_response_matches_replay_verdict_component(tmp_path: Path) -
         replay = client.get(f"/replay/{plot_id}")
 
     assert replay.status_code == 200
-    schema = _validator({"$ref": "#/components/schemas/ReplayVerdict"})
-    errors = list(schema.iter_errors(replay.json()))
-    assert errors == []
+    payload = replay.json()
+    published = _response_validator("/replay/{plot_id}", "200")
+    dataset = _validator({"$ref": "#/components/schemas/ReplayVerdict"})
+    formula = _validator({"$ref": "#/components/schemas/FormulaReplayVerdict"})
+    assert list(published.iter_errors(payload)) == []
+    assert dataset.is_valid(payload)
+    assert not formula.is_valid(payload)
+
+
+def test_real_formula_replay_response_matches_published_exclusive_union(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    with TestClient(app=create_app(settings)) as client:
+        verified = client.post(
+            "/verify-formula",
+            content=_FORMULA_SPEC.read_bytes(),
+            headers=_JSON,
+        )
+        assert verified.status_code == 200
+        plot_id = cast("str", cast("dict[str, Any]", verified.json())["plot_id"])
+        replay = client.get(f"/replay/{plot_id}")
+
+    assert replay.status_code == 200
+    payload = replay.json()
+    published = _response_validator("/replay/{plot_id}", "200")
+    dataset = _validator({"$ref": "#/components/schemas/ReplayVerdict"})
+    formula = _validator({"$ref": "#/components/schemas/FormulaReplayVerdict"})
+    assert list(published.iter_errors(payload)) == []
+    assert formula.is_valid(payload)
+    assert not dataset.is_valid(payload)
 
 
 def test_propose_payloads_match_schemas() -> None:

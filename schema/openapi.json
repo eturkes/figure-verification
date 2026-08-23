@@ -443,7 +443,7 @@
     "/replay/{plot_id}": {
       "get": {
         "operationId": "replayPlot",
-        "summary": "Replay an archived verified dataset plot and report reproduction status",
+        "summary": "Replay an archived verified plot and report reproduction status",
         "parameters": [
           {
             "name": "plot_id",
@@ -457,11 +457,18 @@
         ],
         "responses": {
           "200": {
-            "description": "A bounded reproduction verdict under the configured independent trust policy; it contains no raw snapshot, prompt, or rendered bytes. An exact reproduction repopulates the ephemeral chart LRU so GET /chart/{plot_id} serves the regenerated page.",
+            "description": "A bounded reproduction verdict under the configured independent trust policy, in the shape of the stored plot's own source mode; it contains no raw snapshot, prompt, artifact, or rendered bytes, and no signature. The two arms are mutually exclusive and each forbids unknown fields, so exactly one validates. An exact DATASET reproduction repopulates the ephemeral chart LRU so GET /chart/{plot_id} serves the regenerated page; a formula replay stores no chart and GET /chart/{plot_id} keeps answering 404 for it. A formula replay reproduces no artifact bytes: it re-derives the four certified hashes, re-encodes the VCert v0.3 payload, and compares the archived TCB, while the certified table, script, spec, and certificate stay retrievable through their own GETs.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReplayVerdict"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ReplayVerdict"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FormulaReplayVerdict"
+                    }
+                  ]
                 }
               }
             }
@@ -478,16 +485,6 @@
           },
           "429": {
             "description": "The process-local rate or active-job admission gate refused replay before verification or render execution. Each service process owns an independent gate.",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "The stored plot is an authentic formula plot. This version replays dataset plots only.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -587,6 +584,104 @@
                       "$ref": "#/components/schemas/FormulaPlotSpec"
                     }
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/table/{plot_id}": {
+      "get": {
+        "operationId": "getPlottedTable",
+        "summary": "Fetch a durable verified plot's certified plotted table by plot_id",
+        "parameters": [
+          {
+            "name": "plot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact archived plotted-table bytes, as the typed NDJSON canon hashes. plotted_table is a certified role of both source modes, so this operation is source-neutral. These bytes are typed-relation, digest-addressed stored bytes; they are NOT certificate-graph authenticated here. The certified hash is domain-tagged rather than a raw blob digest, so the address is plot_id plus this fixed role. A caller that needs the certificate binding reads GET /certificate/{plot_id} and compares.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No stored artifact for that id, or a malformed id.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The provenance archive, stored relation, content address, or artifact authentication check failed. The cause is logged and withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/script/{plot_id}": {
+      "get": {
+        "operationId": "getMatplotlibScript",
+        "summary": "Fetch a durable verified formula plot's certified matplotlib script by plot_id",
+        "parameters": [
+          {
+            "name": "plot_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The exact archived verifier-authored matplotlib script bytes. Only a formula plot owns this role: a dataset plot resolves no such relation and answers 404, the same answer an unknown id gets. Serving these bytes executes nothing. They are typed-relation, digest-addressed stored bytes; they are NOT certificate-graph authenticated here.",
+            "content": {
+              "text/x-python": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -1224,6 +1319,59 @@
         ],
         "additionalProperties": false
       },
+      "FormulaArtifactHashMatches": {
+        "title": "FormulaArtifactHashMatches",
+        "description": "Fresh-vs-authenticated VCert v0.3 hash equality for each certified formula artifact.",
+        "type": "object",
+        "properties": {
+          "formula": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "plotted_table": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "matplotlib_script": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
       "FormulaDomain": {
         "title": "FormulaDomain",
         "type": "object",
@@ -1317,6 +1465,138 @@
           "numeric_profile",
           "mark",
           "encoding"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaReplayVerdict": {
+        "title": "FormulaReplayVerdict",
+        "description": "Bounded formula replay result; carries hashes/flags/versions but no source or script bytes.\n\nThere is no ``svg_match`` sibling: the emitted matplotlib script is verifier-authored and its\nexact bytes are already one of the certified hashes, so the separate display comparison the\ndataset verdict carries has no formula analogue. Replay recomputes those script bytes to hash\nthem, never executes them, and never places them in this verdict; ``GET /script/{plot_id}``\nserves the archived bytes instead.",
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "drift",
+              "exact",
+              "integrity_failed",
+              "recomputation_failed",
+              "untrusted_key"
+            ]
+          },
+          "integrity_ok": {
+            "type": "boolean"
+          },
+          "trusted_keyid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "attempt_address",
+                  "attempt_artifacts",
+                  "attempt_manifest",
+                  "attempt_outcome",
+                  "attempt_plot",
+                  "attempt_signature",
+                  "plot_address",
+                  "plot_artifacts",
+                  "plot_contents",
+                  "plot_signature",
+                  "recomputation",
+                  "trust"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "diagnostic": {
+            "type": "string"
+          },
+          "artifact_matches": {
+            "$ref": "#/components/schemas/FormulaArtifactHashMatches"
+          },
+          "payload_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_match": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drift": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormulaVersionDrift"
+            }
+          },
+          "exact": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "integrity_ok",
+          "trusted_keyid",
+          "failure_stage",
+          "diagnostic",
+          "artifact_matches",
+          "payload_match",
+          "version_match",
+          "drift",
+          "exact"
+        ],
+        "additionalProperties": false
+      },
+      "FormulaVersionDrift": {
+        "title": "FormulaVersionDrift",
+        "description": "One bounded formula TCB field whose archived and current values differ.",
+        "type": "object",
+        "properties": {
+          "field": {
+            "enum": [
+              "canon_version",
+              "grammar_version",
+              "msgspec",
+              "numeric_profile",
+              "python",
+              "script_template_version",
+              "unidata",
+              "verifier_version",
+              "z3_version"
+            ]
+          },
+          "archived": {
+            "type": "string"
+          },
+          "current": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "archived",
+          "current"
         ],
         "additionalProperties": false
       },

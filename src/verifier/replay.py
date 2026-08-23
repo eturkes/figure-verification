@@ -457,7 +457,9 @@ class FormulaReplayVerdict(msgspec.Struct, frozen=True, forbid_unknown_fields=Tr
 
     There is no ``svg_match`` sibling: the emitted matplotlib script is verifier-authored and its
     exact bytes are already one of the certified hashes, so the separate display comparison the
-    dataset verdict carries has no formula analogue. Replay emits script bytes, never runs them.
+    dataset verdict carries has no formula analogue. Replay recomputes those script bytes to hash
+    them, never executes them, and never places them in this verdict; ``GET /script/{plot_id}``
+    serves the archived bytes instead.
     """
 
     status: ReplayStatus
@@ -1669,6 +1671,21 @@ def _formula_failure_verdict(failure: _ReplayFailureError) -> FormulaReplayVerdi
         version_match=None,
         drift=(),
         exact=False,
+    )
+
+
+def formula_archive_integrity_verdict() -> FormulaReplayVerdict:
+    """Bound an archive integrity fault occurring before a formula replay snapshot can be built.
+
+    Formula twin of ``archive_integrity_verdict``. The two carry the same stage and diagnostic and
+    differ only in verdict shape, so the caller selects on the occurrence's stored provenance mode
+    rather than on the fault.
+    """
+    return _formula_failure_verdict(
+        _integrity_error(
+            "attempt_artifacts",
+            "archived replay artifacts failed integrity validation",
+        )
     )
 
 

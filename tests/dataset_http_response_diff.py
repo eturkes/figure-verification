@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Dataset HTTP response bytes against baseline 7491481.
+"""Dataset HTTP response bytes against baseline bc5664b.
 
 T42 proves the dataset bundle/archive/audit/replay bytes; it never builds an app, so it cannot
 decide the TRANSPORT surface. This runs the identical program in both trees over every dataset
 POST and every GET. Seventeen of the eighteen surfaces are compared as exact status, header, and
-response body BYTES.
+response body BYTES — the dataset /replay 200 among them, so widening replay to both plot modes
+must leave the dataset arm byte-for-byte where it was.
 
-/schema/openapi.json is the eighteenth and cannot be, because the unit publishes a new path and a
-new schema into that one document: byte equality there is false by construction, and asserting it
-would leave a differential that can only be deleted or falsified. It is compared as a PROJECTION
-instead — every baseline path, schema, and envelope value must survive intact, the added keys are
-hand-stated so an unannounced third one fails, and the single prose-only allowance still pins the
-wire shape it covers. The new document's own bytes are pinned by the committed OpenAPI golden.
+/schema/openapi.json is the eighteenth and cannot be, because the unit publishes new paths and
+new schemas into that one document and CHANGES the replay operation it already published: byte
+equality there is false by construction, and asserting it would leave a differential that can
+only be deleted or falsified. It is compared as a PROJECTION instead — every baseline path,
+schema, and envelope value must survive intact, the added keys are hand-stated so an unannounced
+extra one fails, the one changed operation is hand-stated down to the shape of its permitted
+change, and the single prose-only allowance still pins the wire shape it covers. The new
+document's own bytes are pinned by the committed OpenAPI golden.
 
 Determinism comes from three pins the HTTP path otherwise leaves free: a seeded signing key, a
 frozen occurrence clock, and a fixed attempt nonce. All three patch targets exist in both trees.
@@ -27,16 +30,24 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 _ROOT = Path(__file__).resolve().parent.parent
-_BASELINE = "7491481"
+_BASELINE = "bc5664b"
 
-# The document's permitted drift, hand-stated so an unannounced fourth change fails. /verify-formula
-# and FormulaScriptVerdict are the unit's whole OpenAPI surface. Verdict is prose-only: the envelope
-# now serves both plot modes, so its docstring — which openapi.py publishes as `description` — was
-# rewritten source-neutral while its WIRE SHAPE stayed byte-identical, and the shape is what the
-# preservation claim covers.
-_ADDED_PATHS = frozenset({"/verify-formula"})
-_ADDED_SCHEMAS = frozenset({"FormulaScriptVerdict"})
-_PROSE_ONLY_SCHEMAS = frozenset({"Verdict"})
+# The document's permitted drift, hand-stated so an unannounced extra change fails. The two
+# artifact GETs and the formula replay verdict with its two nested structs are the unit's whole
+# OpenAPI ADDITION surface; no baseline schema drifts even in prose here.
+_ADDED_PATHS = frozenset({"/table/{plot_id}", "/script/{plot_id}"})
+_ADDED_SCHEMAS = frozenset(
+    {"FormulaReplayVerdict", "FormulaArtifactHashMatches", "FormulaVersionDrift"}
+)
+_PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset()
+
+# The one baseline path this unit CHANGES rather than adds, hand-stated down to the shape of its
+# permitted change so any other drift inside it still fails: the 200 schema becomes a two-arm
+# oneOf whose FIRST arm is the baseline's own dataset $ref unchanged, the formula-only 501 is
+# removed, and every remaining response object stays byte-identical.
+_REPLAY_PATH = "/replay/{plot_id}"
+_REMOVED_REPLAY_RESPONSES = frozenset({"501"})
+_REPLAY_ARMS = 2
 
 _PROGRAM = """
 import itertools
@@ -232,6 +243,41 @@ def _compare_subtrees(
         _fail(f"{kind} {name} changed" if shape_held else f"{kind} {name} changed shape")
 
 
+def _compare_replay_path(candidate: dict[str, Any], expected: dict[str, Any]) -> None:
+    """The replay operation keeps its identity, its dataset arm, and every other response.
+
+    Widening replay to both plot modes is a CHANGE to a published operation, not an addition, so
+    projecting it away would silently license any other edit inside it. Instead the permitted
+    change is spelled out: identity and parameters unchanged, exactly the declared response
+    removed and none added, every surviving non-200 response byte-identical, and the 200 schema a
+    bare two-arm oneOf whose first arm is the baseline dataset reference verbatim.
+    """
+    got, want = candidate["get"], expected["get"]
+    if set(got) != set(want):
+        _fail(f"replay operation keys changed: {sorted(set(got) ^ set(want))}")
+    if got["operationId"] != want["operationId"] or got["parameters"] != want["parameters"]:
+        _fail("replay operation identity or parameters changed")
+    got_responses, want_responses = got["responses"], want["responses"]
+    removed = set(want_responses) - set(got_responses)
+    if removed != _REMOVED_REPLAY_RESPONSES:
+        _fail(f"replay removed undeclared responses: {sorted(removed ^ _REMOVED_REPLAY_RESPONSES)}")
+    if set(got_responses) - set(want_responses):
+        _fail(f"replay added responses: {sorted(set(got_responses) - set(want_responses))}")
+    for status in sorted((set(got_responses) & set(want_responses)) - {"200"}):
+        if _ordered(got_responses[status]) != _ordered(want_responses[status]):
+            _fail(f"replay {status} response changed")
+    if set(got_responses["200"]) != set(want_responses["200"]) or set(
+        got_responses["200"]["content"]
+    ) != set(want_responses["200"]["content"]):
+        _fail("replay 200 response envelope changed")
+    schema = got_responses["200"]["content"]["application/json"]["schema"]
+    baseline_arm = want_responses["200"]["content"]["application/json"]["schema"]
+    if list(schema) != ["oneOf"] or len(schema["oneOf"]) != _REPLAY_ARMS:
+        _fail("replay 200 is not a bare two-arm oneOf")
+    if schema["oneOf"][0] != baseline_arm:
+        _fail("replay 200 no longer publishes the baseline dataset arm first")
+
+
 def _compare_openapi(candidate: dict[str, Any], expected: dict[str, Any]) -> None:
     """Every baseline path, schema, and top-level value survives; only the declared keys appear.
 
@@ -249,7 +295,15 @@ def _compare_openapi(candidate: dict[str, Any], expected: dict[str, Any]) -> Non
         _fail("openapi headers changed")
     got = json.loads(bytes.fromhex(candidate["body"]))
     want = json.loads(bytes.fromhex(expected["body"]))
-    _compare_subtrees("path", got["paths"], want["paths"], _ADDED_PATHS)
+    if _REPLAY_PATH not in got["paths"]:
+        _fail(f"path removed: ['{_REPLAY_PATH}']")
+    _compare_subtrees(
+        "path",
+        {name: value for name, value in got["paths"].items() if name != _REPLAY_PATH},
+        {name: value for name, value in want["paths"].items() if name != _REPLAY_PATH},
+        _ADDED_PATHS,
+    )
+    _compare_replay_path(got["paths"][_REPLAY_PATH], want["paths"][_REPLAY_PATH])
     _compare_subtrees(
         "schema",
         got["components"]["schemas"],

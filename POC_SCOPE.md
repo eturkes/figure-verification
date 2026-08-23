@@ -226,11 +226,13 @@ bytes stay operator-local; no HTTP surface exposes them.
 spec bytes under the operator's independent trust policy: the current signer plus explicitly pinned
 historical key IDs. Archive key presence never grants trust. Its bounded `ReplayVerdict` reports
 reproduction status, trusted keyid, per-artifact hash matches, version drift, and diagnostic-only SVG
-equality - never raw source, prompt, snapshot, or rendered bytes. An exact reproduction repopulates
-the ephemeral chart LRU from the authenticated archived inputs, so `GET /chart/{plot_id}` serves the
-regenerated page. An unknown or malformed id returns 404, and so does any plot
-with no signed verified attempt; an archived formula plot with such an attempt returns 501,
-because this version replays dataset plots alone; process-local rate/active-job refusal returns 429;
+equality - never raw source, prompt, snapshot, or rendered bytes. An exact dataset reproduction
+repopulates the ephemeral chart LRU from the authenticated archived inputs, so
+`GET /chart/{plot_id}` serves the regenerated page. An archived formula plot with a signed verified
+attempt instead answers a bounded `FormulaReplayVerdict` carrying integrity, payload, and version
+outcomes plus per-artifact hash matches and version drift; that mode builds no chart, so it leaves
+the chart LRU untouched and reports no SVG equality. An unknown or malformed id returns 404, and so
+does any plot with no signed verified attempt; process-local rate/active-job refusal returns 429;
 a SQLite, schema, archive-read, or implementation fault becomes generic 500. A signed
 attestation, blob, key, version, or recomputation mismatch instead returns a bounded 200 diagnostic
 with no chart. Replay does not re-run the weak model; pixels and browser rendering remain trusted
@@ -269,8 +271,12 @@ curl -sS "http://127.0.0.1:8000/certificate/${plot_id}"
 curl -sS "http://127.0.0.1:8000/spec/${spec_id}"
 
 # replay the archived inputs under current-or-explicitly-pinned trust;
-# an exact result regenerates the ephemeral chart page
+# an exact dataset result regenerates the ephemeral chart page, a formula result never does
 curl -sS "http://127.0.0.1:8000/replay/${plot_id}"
+
+# fetch the archived plotted table (either mode) and matplotlib script (formula mode only)
+curl -sS "http://127.0.0.1:8000/table/${plot_id}"
+curl -sS "http://127.0.0.1:8000/script/${plot_id}"
 
 # fetch the independently bounded offline chart page Open WebUI embeds
 curl -sS "http://127.0.0.1:8000/chart/${plot_id}"

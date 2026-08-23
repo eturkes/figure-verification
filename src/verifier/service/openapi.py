@@ -17,9 +17,9 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      as $ref values AND as the Transform union's discriminator.mapping values — a key-only
      rewrite would leave the mapping dangling);
   2. the introspectable request/response models (Verdict, Problem, CheckResult, VCert,
-     ReplayVerdict, and ProposeRequest, plus their nested structs transitively), and
-     FormulaPlotSpec, which GET /spec serves whenever the stored spec is a formula spec, via
-     msgspec.json.schema_components;
+     ReplayVerdict, FormulaReplayVerdict, and ProposeRequest, plus their nested structs
+     transitively), and FormulaPlotSpec, which GET /spec serves whenever the stored spec is a
+     formula spec, via msgspec.json.schema_components;
   3. the three models msgspec cannot introspect (each holds a Literal[True] arm): RenderVerdict
      and its formula-mode sibling FormulaScriptVerdict, both hand-derived from Verdict's generated
      schema as independent twins (a deepcopy of its properties, so the const override never
@@ -46,7 +46,7 @@ from verifier import __version__
 from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
-from verifier.replay import ReplayVerdict
+from verifier.replay import FormulaReplayVerdict, ReplayVerdict
 from verifier.schema import FormulaPlotSpec, json_schema
 from verifier.service.models import (
     FormulaScriptVerdict,
@@ -224,14 +224,23 @@ def _dsse_schemas() -> dict[str, dict[str, Any]]:
 
 def _components() -> dict[str, Any]:
     """The components/schemas block: VPlot request-body defs (pointers rebased) + the
-    introspectable response/request models (sorted, including ProposeRequest and ReplayVerdict) +
-    hand-derived
+    introspectable response/request models (sorted, including ProposeRequest and both replay
+    verdicts) + hand-derived
     transport schemas. The three key spaces are disjoint, so insertion never collides."""
     schemas: dict[str, Any] = {
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
     _, generated = msgspec.json.schema_components(
-        [Verdict, Problem, CheckResult, VCert, ProposeRequest, ReplayVerdict, FormulaPlotSpec],
+        [
+            Verdict,
+            Problem,
+            CheckResult,
+            VCert,
+            ProposeRequest,
+            ReplayVerdict,
+            FormulaReplayVerdict,
+            FormulaPlotSpec,
+        ],
         ref_template=f"{_COMPONENTS}/{{name}}",
     )
     for name in sorted(generated):
@@ -260,6 +269,11 @@ def _html_response(description: str) -> dict[str, Any]:
     """A text/html response object — the chart page is an opaque HTML string (its inner structure
     is the trusted render's, not part of this contract)."""
     return {"description": description, "content": {"text/html": {"schema": {"type": "string"}}}}
+
+
+def _text_response(description: str, media_type: str) -> dict[str, Any]:
+    """A text-typed response whose exact stored bytes are the contract, not their inner shape."""
+    return {"description": description, "content": {media_type: {"schema": {"type": "string"}}}}
 
 
 def _binary_response(description: str) -> dict[str, Any]:
@@ -308,7 +322,7 @@ def _keyid_parameter() -> dict[str, Any]:
 
 
 def _paths() -> dict[str, Any]:
-    """The ten documented operations, each with an explicit operationId + summary (Open WebUI
+    """The twelve documented operations, each with an explicit operationId + summary (Open WebUI
     maps operationId -> tool name; the model reads description, else summary — proposeSpec, the
     model-invoked proposal tool, carries the description). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
@@ -517,27 +531,33 @@ def _paths() -> dict[str, Any]:
         "/replay/{plot_id}": {
             "get": {
                 "operationId": "replayPlot",
-                "summary": (
-                    "Replay an archived verified dataset plot and report reproduction status"
-                ),
+                "summary": "Replay an archived verified plot and report reproduction status",
                 "parameters": [_id_parameter("plot_id")],
                 "responses": {
                     "200": _json_response(
                         "A bounded reproduction verdict under the configured independent trust "
-                        "policy; it contains no raw snapshot, prompt, or rendered bytes. An exact "
-                        "reproduction repopulates the ephemeral chart LRU so GET "
-                        "/chart/{plot_id} serves the regenerated page.",
-                        {"$ref": f"{_COMPONENTS}/ReplayVerdict"},
+                        "policy, in the shape of the stored plot's own source mode; it contains "
+                        "no raw snapshot, prompt, artifact, or rendered bytes, and no signature. "
+                        "The two arms are mutually exclusive and each forbids unknown fields, so "
+                        "exactly one validates. An exact DATASET reproduction repopulates the "
+                        "ephemeral chart LRU so GET /chart/{plot_id} serves the regenerated page; "
+                        "a formula replay stores no chart and GET /chart/{plot_id} keeps "
+                        "answering 404 for it. A formula replay reproduces no artifact bytes: it "
+                        "re-derives the four certified hashes, re-encodes the VCert v0.3 payload, "
+                        "and compares the archived TCB, while the certified table, script, spec, "
+                        "and certificate stay retrievable through their own GETs.",
+                        {
+                            "oneOf": [
+                                {"$ref": f"{_COMPONENTS}/ReplayVerdict"},
+                                {"$ref": f"{_COMPONENTS}/FormulaReplayVerdict"},
+                            ]
+                        },
                     ),
                     **not_found,
                     "429": _problem_response(
                         "The process-local rate or active-job admission gate refused replay "
                         "before verification or render execution. Each service process owns an "
                         "independent gate."
-                    ),
-                    "501": _problem_response(
-                        "The stored plot is an authentic formula plot. This version replays "
-                        "dataset plots only."
                     ),
                     **public_archive_fault,
                 },
@@ -579,6 +599,49 @@ def _paths() -> dict[str, Any]:
                                 {"$ref": f"{_COMPONENTS}/FormulaPlotSpec"},
                             ]
                         },
+                    ),
+                    **not_found,
+                    **public_archive_fault,
+                },
+            }
+        },
+        "/table/{plot_id}": {
+            "get": {
+                "operationId": "getPlottedTable",
+                "summary": "Fetch a durable verified plot's certified plotted table by plot_id",
+                "parameters": [_id_parameter("plot_id")],
+                "responses": {
+                    "200": _text_response(
+                        "The exact archived plotted-table bytes, as the typed NDJSON canon "
+                        "hashes. plotted_table is a certified role of both source modes, so this "
+                        "operation is source-neutral. These bytes are typed-relation, "
+                        "digest-addressed stored bytes; they are NOT certificate-graph "
+                        "authenticated here. The certified hash is domain-tagged rather than a "
+                        "raw blob digest, so the address is plot_id plus this fixed role. A "
+                        "caller that needs the certificate binding reads GET "
+                        "/certificate/{plot_id} and compares.",
+                        "application/x-ndjson",
+                    ),
+                    **not_found,
+                    **public_archive_fault,
+                },
+            }
+        },
+        "/script/{plot_id}": {
+            "get": {
+                "operationId": "getMatplotlibScript",
+                "summary": (
+                    "Fetch a durable verified formula plot's certified matplotlib script by plot_id"
+                ),
+                "parameters": [_id_parameter("plot_id")],
+                "responses": {
+                    "200": _text_response(
+                        "The exact archived verifier-authored matplotlib script bytes. Only a "
+                        "formula plot owns this role: a dataset plot resolves no such relation "
+                        "and answers 404, the same answer an unknown id gets. Serving these "
+                        "bytes executes nothing. They are typed-relation, digest-addressed "
+                        "stored bytes; they are NOT certificate-graph authenticated here.",
+                        "text/x-python",
                     ),
                     **not_found,
                     **public_archive_fault,

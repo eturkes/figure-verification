@@ -329,6 +329,31 @@ def test_lowest_verified_attempt_id_is_indexed_bounded_and_corruption_safe(
         archive.lowest_verified_attempt_id(plot_id)
 
 
+def test_plot_source_kind_reads_stored_mode_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    plot_id = batch.plots[0].plot_id
+
+    assert archive.plot_source_kind(plot_id) is batch.plots[0].source_kind
+    with pytest.raises(ValueError, match="64 lowercase"):
+        archive.plot_source_kind("bad")
+    absent_plot_id = "0" * 64 if plot_id != "0" * 64 else "1" * 64
+    with pytest.raises(ArchiveNotFoundError, match="archive plot address"):
+        archive.plot_source_kind(absent_plot_id)
+
+    monkeypatch.setattr(
+        archive_module,
+        "_SELECT_PLOT_RECORD",
+        "SELECT absent_column FROM plots",
+    )
+    with pytest.raises(ArchiveError, match="selecting a plot provenance mode"):
+        archive.plot_source_kind(plot_id)
+
+
 def test_blob_dedup_is_typed_idempotent_and_cross_kind_equal_bytes_are_representable(
     tmp_path: Path,
 ) -> None:

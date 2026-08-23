@@ -371,7 +371,7 @@ def test_adapter_runtime_guards_and_verified_plot_defense(tmp_path: Path) -> Non
     with pytest.raises(TypeError, match="validated service Settings"):
         service_replay.replay_plot_from_settings(cast("Settings", object()), plot.plot_id)
     with pytest.raises(ArchiveIntegrityError, match="does not carry"):
-        service_replay._snapshot_from_bundle(replace(fixture.bundle, plot=None))
+        service_replay._require_attempt_plot(replace(fixture.bundle, plot=None))
 
 
 def test_service_replay_has_no_model_client_or_data_dir_dependency() -> None:

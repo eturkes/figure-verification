@@ -263,11 +263,14 @@ committed evidence. It also states the boundary that keeps the claim modest.
     `GET /replay/{plot_id}` re-executes archived inputs. Demo case 1 proves exact replay after a
     service restart.
     **Boundary:** Replay does not rerun the weak model or prove browser pixels. A chart is regenerated
-    only for exact replay under configured trust. Drift and integrity failures return diagnostics.
-    Formula plots are archived and certified under VCert v0.3. `POST /verify-formula` mints them.
-    The pure formula replay engine is already shipped and renderer-free. `GET /replay/{plot_id}`
-    still answers 501 for a formula plot that has a signed verified attempt. A plot without such an
-    attempt answers 404 in both modes. A later milestone connects that engine to the HTTP surface.
+    only for an exact dataset replay under configured trust. Drift and integrity failures return
+    diagnostics. Formula plots are archived and certified under VCert v0.3. `POST /verify-formula`
+    mints them. The pure formula replay engine is renderer-free. `GET /replay/{plot_id}` answers a
+    bounded formula verdict for an archived formula plot that has a signed verified attempt. That
+    verdict reports per-artifact hash matches and version drift. A formula replay builds no chart,
+    so it never repopulates the chart cache. A plot without such an attempt answers 404 in both
+    modes. `GET /table/{plot_id}` serves the archived plotted-table bytes for either mode.
+    `GET /script/{plot_id}` serves the archived matplotlib script, which only a formula plot carries.
 
 ## Quickstart
 
