@@ -10,6 +10,14 @@ identical bytes flow on to schema.decode_spec downstream, so a
 malformed-but-extracted spec still reaches a 200 verdict (the model-failure mode bench
 meters), exactly mirroring the pipeline's raw-body discipline.
 
+propose_formula is the second entry and differs from propose_spec in exactly two things: the
+messages it assembles (the formula grammar + rules as system, the request alone as user -- formula
+mode reads no dataset, so there is no binding, column schema, or sample block) and the guidance
+schema it names. Everything after prompt assembly is _complete, one shared transport: the same
+byte ceilings, encoding rule, fault classification, trace shape, and raw-reply discipline serve
+both modes, so no mode can acquire a private failure semantics. Its reply flows to
+schema.decode_formula_spec downstream, equally undecoded here.
+
 The proposal also carries a lossless, sensitive ``ProposalTrace``: the exact HTTPX-serialized
 request body (including both messages), the complete bounded raw response body, and the extracted
 reply bytes. HTTPX builds the request once; the same request object is sent and traced. A closed
@@ -85,6 +93,7 @@ __all__ = [
     "ProposalFault",
     "ProposalTrace",
     "ProposerPolicyError",
+    "propose_formula",
     "propose_spec",
 ]
 
@@ -243,6 +252,44 @@ _SYSTEM_PROMPT = "\n".join(
 )
 
 
+# Formula system = the expr.py grammar the verifier actually parses (decimal literals, the single
+# variable x, abs, + - * /, parentheses, ** with a signed integer exponent) plus the same output
+# rules. Enum options keep the dataset prompt's "one of: a, b, c" spelling, never "a|b|c": the pipe
+# form is the placeholder a weak model echoes back. Naming the supported grammar positively beats
+# listing rejected functions, which merely puts sin/cos/log in front of the model.
+_FORMULA_SYSTEM_PROMPT = "\n".join(
+    [
+        "You are proposing a VPlot formula chart specification.",
+        "Return exactly one JSON object and nothing else.",
+        "Top-level keys: version, formula, domain, numeric_profile, mark, encoding.",
+        'version is the string "vplot-formula-0.1".',
+        "formula is a string holding one arithmetic expression in the single variable x.",
+        "An expression uses decimal numbers, x, parentheses, and the operators + - * /.",
+        "The only function is abs; the only power form is ** with a whole-number exponent.",
+        'Build formula from those characters alone, as in "abs(x - 2) * 3" or "x ** 2 + 1".',
+        "domain is an object with keys start, stop, samples, x_scale, and y_scale.",
+        'start and stop are decimal numbers written as strings, such as "0", "-2.5", or "10".',
+        "samples is a whole number from 2 to 100000.",
+        "x_scale and y_scale are whole numbers from 0 to 12, giving the decimal places to keep.",
+        'numeric_profile is the string "rational-half-even-v1".',
+        "mark is one of: line, scatter.",
+        "encoding is an object with keys x and y.",
+        'x is exactly {"field": "x", "type": "quantitative"}.',
+        'y is exactly {"field": "y", "type": "quantitative"}.',
+        "Rules you must follow:",
+        "Output only JSON: no prose, Markdown, fences, SQL, Python, JavaScript, or Vega-Lite.",
+        "Describe the curve with the formula alone; the verifier computes every point itself.",
+        'Write concrete values, never placeholders such as "line or scatter" or "<expression>".',
+    ]
+)
+
+# The backend's closed guidance selector (model_backend request field `guided_schema`), each value
+# a schema's own `version` literal. Hand-stated WIRE bytes: the untrusted backend is a protocol
+# peer, never a library the trusted verifier links against, so no import crosses that boundary.
+_DATASET_GUIDED_SCHEMA = "vplot-0.1"
+_FORMULA_GUIDED_SCHEMA = "vplot-formula-0.1"
+
+
 def _utf8_size_at_most(text: str, max_bytes: int) -> int | None:
     """Exact UTF-8 size when <= ``max_bytes``; stop without encoding the over-limit suffix.
 
@@ -262,12 +309,14 @@ class _PromptAssembler:
 
     __slots__ = ("_item_count", "_limit", "_parts", "_size")
 
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int, system_prompt: str) -> None:
         self._limit = limit
         self._size = 0
         self._parts: list[str] = []
         self._item_count = 0
-        self._account(_SYSTEM_PROMPT)
+        # The caller's system prompt is charged first: the budget covers the whole exchange, so a
+        # mode with a longer grammar buys its user message less room, never extra headroom.
+        self._account(system_prompt)
 
     def _account(self, text: str) -> None:
         size = _utf8_size_at_most(text, self._limit - self._size)
@@ -341,7 +390,7 @@ def _build_messages(
     carrying the dataset name, the verbatim binding to copy, the column schema, the sample
     rows, and the request. The binding's hash is canon.hash_dataset over the real bytes, so a
     faithful copy passes the verifier's re-check and a corrupted one fails closed."""
-    builder = _PromptAssembler(settings.max_prompt_bytes)
+    builder = _PromptAssembler(settings.max_prompt_bytes, _SYSTEM_PROMPT)
 
     def item(text: str) -> None:
         builder.start_item()
@@ -365,6 +414,34 @@ def _build_messages(
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": builder.finish()},
     ]
+
+
+def _build_formula_messages(user_request: str, settings: Settings) -> list[dict[str, str]]:
+    """Assemble the formula chat messages: the fixed grammar/rules system prompt, then a user
+    prompt carrying the request and the reply instruction. Formula mode reads no dataset, so
+    there is no binding, column schema, or sample block to admit -- only the shared prompt-byte
+    budget still applies, and it charges the formula system prompt exactly as the dataset one."""
+    builder = _PromptAssembler(settings.max_prompt_bytes, _FORMULA_SYSTEM_PROMPT)
+    builder.start_item()
+    builder.append(f"User request: {user_request}")
+    builder.start_item()
+    builder.append("Reply with only the VPlot formula JSON spec.")
+    return [
+        {"role": "system", "content": _FORMULA_SYSTEM_PROMPT},
+        {"role": "user", "content": builder.finish()},
+    ]
+
+
+def _admit_user_request(user_request: str, settings: Settings) -> None:
+    """Admit the caller's request text against resource policy before any model work.
+
+    Shared by both proposers: the bound is on request BYTES, so it cannot depend on which mode
+    consumes them. There is no minimum-content rule -- an empty request is admitted and sent,
+    exactly as on the dataset route.
+    """
+    if _utf8_size_at_most(user_request, settings.max_user_request_bytes) is None:
+        msg = f"proposer user request exceeds UTF-8 byte limit of {settings.max_user_request_bytes}"
+        raise ProposerPolicyError(msg, resource="resource.user_request_bytes")
 
 
 def _load_dataset_context(dataset_name: str, settings: Settings) -> tuple[ingest.Manifest, bytes]:
@@ -476,31 +553,30 @@ def _is_backend_prompt_policy(response: httpx.Response, response_bytes: bytes) -
     return msgspec.json.encode(policy) == response_bytes
 
 
-async def propose_spec(user_request: str, dataset_name: str, settings: Settings) -> ModelProposal:
-    """Propose a VPlot spec and return its exact reply plus lossless model-exchange trace.
+async def _complete(
+    messages: list[dict[str, str]], guided_schema: str, settings: Settings
+) -> ModelProposal:
+    """POST one assembled exchange and return its exact reply plus lossless trace.
 
-    The reply is never decoded here. Raises DatasetNotFoundError (unknown/escaping name),
-    ProposerPolicyError (422 before a model call/native generation), or ModelUpstreamError
-    (503 unreachable / 502 unusable reply). Any exception after request construction carries its
-    bounded trace. See the module docstring for the trust and error-split contract.
+    The one transport both proposers share. Every byte ceiling, encoding rule, fault
+    classification, and trace shape below is mode-neutral, so no mode can acquire a private
+    failure semantics; the modes differ only in the messages they assemble and the schema they
+    name here. The reply is never decoded. Raises ProposerPolicyError (422 on the exact backend
+    token-policy protocol) or ModelUpstreamError (503 unreachable / 502 unusable reply); every
+    exception after request construction carries its bounded trace.
     """
-    if _utf8_size_at_most(user_request, settings.max_user_request_bytes) is None:
-        msg = f"proposer user request exceeds UTF-8 byte limit of {settings.max_user_request_bytes}"
-        raise ProposerPolicyError(msg, resource="resource.user_request_bytes")
-
-    manifest, csv_bytes = _load_dataset_context(dataset_name, settings)
-    messages = _build_messages(user_request, dataset_name, manifest, csv_bytes, settings)
     payload: dict[str, object] = {
         "model": settings.model_name,
         "messages": messages,
         "temperature": 0,
         "max_tokens": settings.model_max_tokens,
-        # Request schema-guided decoding so the backend steers output toward a
-        # schema-representable VPlot structure. Structure only: the verifier still re-decodes
+        # Name the operator-pinned schema this mode is guided by, so the backend steers output
+        # toward a schema-representable structure. Structure only: the verifier still re-decodes
         # strictly and owns every semantic + provenance check. Guidance biases the weak model
-        # toward a decodable VPlot (it eliminates the markdown-fence failure mode); strict
-        # decode still rejects the truncated or value-invalid replies guidance cannot prevent.
-        "guided_json": True,
+        # toward a decodable spec (it eliminates the markdown-fence failure mode); strict decode
+        # still rejects the truncated or value-invalid replies guidance cannot prevent. Naming the
+        # schema is what keeps a formula request off the dataset grammar.
+        "guided_schema": guided_schema,
     }
     url = f"{settings.model_base_url.rstrip('/')}/chat/completions"
     async with _build_async_client(settings) as client:
@@ -589,3 +665,30 @@ async def propose_spec(user_request: str, dataset_name: str, settings: Settings)
             )
             msg = "model backend is unreachable"
             raise ModelUpstreamError(msg, status=503, trace=trace) from None
+
+
+async def propose_spec(user_request: str, dataset_name: str, settings: Settings) -> ModelProposal:
+    """Propose a VPlot spec and return its exact reply plus lossless model-exchange trace.
+
+    The reply is never decoded here. Raises DatasetNotFoundError (unknown/escaping name),
+    ProposerPolicyError (422 before a model call/native generation), or ModelUpstreamError
+    (503 unreachable / 502 unusable reply). Any exception after request construction carries its
+    bounded trace. See the module docstring for the trust and error-split contract.
+    """
+    _admit_user_request(user_request, settings)
+    manifest, csv_bytes = _load_dataset_context(dataset_name, settings)
+    messages = _build_messages(user_request, dataset_name, manifest, csv_bytes, settings)
+    return await _complete(messages, _DATASET_GUIDED_SCHEMA, settings)
+
+
+async def propose_formula(user_request: str, settings: Settings) -> ModelProposal:
+    """Propose a VPlot formula spec and return its exact reply plus lossless trace.
+
+    The reply is never decoded here; the identical bytes flow on to schema.decode_formula_spec.
+    Raises ProposerPolicyError (422 before a model call/native generation) or ModelUpstreamError
+    (503 unreachable / 502 unusable reply). DatasetNotFoundError is UNREACHABLE: formula mode
+    names no dataset, reads no store, and so has no not-found answer to give.
+    """
+    _admit_user_request(user_request, settings)
+    messages = _build_formula_messages(user_request, settings)
+    return await _complete(messages, _FORMULA_GUIDED_SCHEMA, settings)

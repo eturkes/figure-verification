@@ -27,6 +27,7 @@ from verifier.service.model_client import (
     ModelUpstreamError,
     ProposalFault,
     ProposerPolicyError,
+    propose_formula,
     propose_spec,
 )
 from verifier.service.settings import Settings
@@ -165,7 +166,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
     assert sent["temperature"] == 0
     assert sent["max_tokens"] == 512
-    assert sent["guided_json"] is True
+    assert sent["guided_schema"] == "vplot-0.1"
 
     system, user = sent["messages"]
     assert system["role"] == "system"
@@ -224,7 +225,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
             "messages": [system, user],
             "temperature": 0,
             "max_tokens": 512,
-            "guided_json": True,
+            "guided_schema": "vplot-0.1",
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -772,6 +773,184 @@ def test_propose_spec_manifest_missing_raises_not_found(tmp_path: Path) -> None:
     (tmp_path / "orphan.csv").write_bytes(b"a,b\n1,2\n")
     with pytest.raises(DatasetNotFoundError):
         asyncio.run(propose_spec("req", "orphan.csv", Settings(data_dir=tmp_path)))
+
+
+_FORMULA_CONTENT = '{"version": "vplot-formula-0.1", "formula": "x * x"}'
+
+
+def test_propose_formula_sends_the_formula_prompt_and_names_the_formula_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, httpx.Request] = {}
+    response_body = _chat_response(_FORMULA_CONTENT)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        return httpx.Response(200, content=response_body, headers={"content-encoding": "identity"})
+
+    _install(monkeypatch, handler)
+    result = asyncio.run(propose_formula("Plot x squared from 0 to 10", _settings()))
+
+    assert _reply(result) == _FORMULA_CONTENT.encode("utf-8")
+    assert result.trace.fault is None
+    assert "Plot x squared" not in repr(result.trace)
+
+    request = captured["request"]
+    sent = json.loads(request.content)
+    assert str(request.url) == "http://127.0.0.1:8001/v1/chat/completions"
+    assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
+    assert sent["temperature"] == 0
+    assert sent["max_tokens"] == 512
+    # The whole point of the unit: a formula request names the FORMULA schema. Naming the dataset
+    # schema here would steer a weak model toward a VPlot dataset spec it can never satisfy.
+    assert sent["guided_schema"] == "vplot-formula-0.1"
+
+    system, user = sent["messages"]
+    assert system["role"] == "system"
+    assert "vplot-formula-0.1" in system["content"]
+    assert user["role"] == "user"
+    # Byte-exact user message: the request and the reply instruction, nothing else. Formula mode
+    # reads no dataset, so a binding, column schema, or sample block appearing here would mean
+    # dataset context leaked into a route that must not touch the store.
+    assert user["content"] == "\n".join(
+        [
+            "User request: Plot x squared from 0 to 10",
+            "Reply with only the VPlot formula JSON spec.",
+        ]
+    )
+    for dataset_only in ("Dataset name:", "Columns (use these exact names):", "Sample rows", ","):
+        assert dataset_only not in user["content"]
+
+    old_wire_body = json.dumps(
+        {
+            "model": "Qwen2-0.5B-Instruct-int4-sym-ov",
+            "messages": [system, user],
+            "temperature": 0,
+            "max_tokens": 512,
+            "guided_schema": "vplot-formula-0.1",
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    assert request.content == result.trace.request_body == old_wire_body
+
+
+def test_formula_system_prompt_teaches_exactly_the_supported_grammar() -> None:
+    prompt = model_client._FORMULA_SYSTEM_PROMPT
+
+    # R7: prompt CONTENT is its own fact. What the model then returns is rejected or accepted by
+    # decode_formula_spec alone, and that rejection is pinned separately (tests/test_model_backend).
+    for taught in (
+        "Top-level keys: version, formula, domain, numeric_profile, mark, encoding.",
+        "An expression uses decimal numbers, x, parentheses, and the operators + - * /.",
+        "The only function is abs; the only power form is ** with a whole-number exponent.",
+        "samples is a whole number from 2 to 100000.",
+        "mark is one of: line, scatter.",
+        "Describe the curve with the formula alone; the verifier computes every point itself.",
+    ):
+        assert taught in prompt
+    # The pipe form is exactly the placeholder a weak model echoes back, so no enum may spell it.
+    assert "|" not in prompt
+    # expr.py binds x alone and offers one function, so the prompt shows no call the parser
+    # refuses. Match the call form: bare "sin" also occurs inside "proposing".
+    for absent in ("sin(", "cos(", "tan(", "log(", "exp(", "sqrt(", "numpy", "matplotlib"):
+        assert absent not in prompt
+    assert "abs(x - 2)" in prompt
+
+
+def test_propose_formula_admits_an_empty_request_and_refuses_an_oversize_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_chat_response(_FORMULA_CONTENT))
+
+    _install(monkeypatch, handler)
+
+    # No minimum-content policy exists on either proposer: an empty request is admitted and sent.
+    assert _reply(asyncio.run(propose_formula("", _settings()))) == _FORMULA_CONTENT.encode("utf-8")
+    assert calls == 1
+
+    over = Settings(data_dir=_DATA, max_user_request_bytes=3)
+    with pytest.raises(ProposerPolicyError, match="user request") as exc_info:
+        asyncio.run(propose_formula("plot something long", over))
+    assert exc_info.value.resource == "resource.user_request_bytes"
+    # The byte bound is admitted BEFORE any model work, so the backend saw no second request.
+    assert calls == 1
+
+
+def test_propose_formula_prompt_byte_overflow_refuses_before_the_model_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    baseline = _settings()
+    messages = model_client._build_formula_messages("req", baseline)
+    prompt_bytes = sum(len(message["content"].encode("utf-8")) for message in messages)
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_chat_response(_FORMULA_CONTENT))
+
+    _install(monkeypatch, handler)
+
+    exact = Settings(data_dir=_DATA, max_prompt_bytes=prompt_bytes)
+    assert _reply(asyncio.run(propose_formula("req", exact))) == _FORMULA_CONTENT.encode("utf-8")
+    assert calls == 1
+
+    # One byte tighter: the formula system prompt is charged into the same budget as the dataset
+    # one, so assembly fails and no backend call is dispatched.
+    tight = Settings(data_dir=_DATA, max_prompt_bytes=prompt_bytes - 1)
+    with pytest.raises(ProposerPolicyError, match="assembled proposer prompt") as exc_info:
+        asyncio.run(propose_formula("req", tight))
+    assert exc_info.value.resource == "resource.prompt_bytes"
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("response", "status", "fault"),
+    [
+        (httpx.Response(500, content=b"boom"), 502, ProposalFault.HTTP_STATUS),
+        (httpx.Response(200, content=b"{}"), 502, ProposalFault.INVALID_ENVELOPE),
+        (httpx.Response(200, content=_chat_response("")), 502, ProposalFault.EMPTY_CONTENT),
+    ],
+    ids=["http-status", "invalid-envelope", "empty-content"],
+)
+def test_propose_formula_reuses_the_shared_transport_fault_classification(
+    monkeypatch: pytest.MonkeyPatch, response: httpx.Response, status: int, fault: ProposalFault
+) -> None:
+    # One _complete serves both proposers, so formula mode cannot acquire a private failure
+    # semantics: each fault classifies, carries its bounded trace, and never becomes a 200.
+    _install(monkeypatch, _returns(response))
+
+    with pytest.raises(ModelUpstreamError) as exc_info:
+        asyncio.run(propose_formula("req", _settings()))
+
+    assert exc_info.value.status == status
+    assert exc_info.value.trace.fault is fault
+    assert exc_info.value.trace.reply_bytes is None
+    assert exc_info.value.trace.request_body != b""
+
+
+def test_propose_formula_transport_failure_is_unreachable_not_unusable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        msg = "connection refused"
+        raise httpx.ConnectError(msg)
+
+    _install(monkeypatch, handler)
+
+    with pytest.raises(ModelUpstreamError) as exc_info:
+        asyncio.run(propose_formula("req", _settings()))
+
+    assert exc_info.value.status == 503
+    assert exc_info.value.trace.fault is ProposalFault.TRANSPORT
+    assert exc_info.value.trace.response_body is None
 
 
 def test_build_async_client_applies_timeout() -> None:

@@ -147,7 +147,7 @@ Restart only the backend between the two arms.
 In each backend shell, source the accelerator environment exactly as shown above.
 
 Run the RAW arm with schema guidance off.
-The verifier's hardcoded `guided_json` request then becomes a no-op:
+The verifier's hardcoded `guided_schema` request then becomes a no-op:
 ```
 MODEL_BACKEND_STRUCTURED_OUTPUT=false .venv-model/bin/python -m model_backend
 # In the eval shell, after /health is ready:
