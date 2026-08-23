@@ -1,14 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Serialized response models for the verifier service.
 
-Three shapes cross the transport boundary. Verdict is the verification-outcome envelope,
+Four shapes cross the transport boundary. Verdict is the verification-outcome envelope,
 answered HTTP 200 whether the spec verified, decoded but failed a check, or failed to
 decode (a decode failure is an expected model failure mode bench meters, not transport
-misuse). RenderVerdict extends that envelope with the render artifacts POST
+misuse). It serves both plot modes: a failing /verify-formula answers this same envelope.
+RenderVerdict extends that envelope with the render artifacts POST
 /verify-and-render adds on a PASSING verdict (the SVG, an optional HTML view, the
 content-addressed ids, the durable attempt id, and the five cert-verbatim hashes); a FAILING
 verify-and-render
-answers a plain Verdict, so a chart never rides an unverified outcome. Problem is the RFC
+answers a plain Verdict, so a chart never rides an unverified outcome. FormulaScriptVerdict is
+the formula-mode sibling POST /verify-formula answers on a PASSING verdict: the same envelope
+plus the content-addressed ids, the four VCert v0.3 cert-verbatim hashes, and the canonical
+verifier-authored matplotlib script the service emits but never executes. Problem is the RFC
 9457 application/problem+json body the app's exception handlers emit for transport misuse,
 process-local admission refusal, or a server-config fault (wrong content-type, oversize body,
 work gate exhausted, a broken trusted manifest) —
@@ -33,7 +37,14 @@ import msgspec
 from verifier.checks import CheckResult
 from verifier.schema import DatasetName
 
-__all__ = ["Problem", "ProposeRequest", "ProposeResult", "RenderVerdict", "Verdict"]
+__all__ = [
+    "FormulaScriptVerdict",
+    "Problem",
+    "ProposeRequest",
+    "ProposeResult",
+    "RenderVerdict",
+    "Verdict",
+]
 
 type AttemptId = Annotated[str, msgspec.Meta(pattern="^[0-9a-f]{64}$")]
 
@@ -41,9 +52,12 @@ type AttemptId = Annotated[str, msgspec.Meta(pattern="^[0-9a-f]{64}$")]
 class Verdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
     """The verification outcome (HTTP 200 regardless of the judgement).
 
-    `layer` names the stage that produced it: "decode" when the raw body failed to decode
-    (a lone synthetic spec.decode result), "verify" once decoding passed and the trusted
-    pipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).
+    Both plot modes answer this same envelope, so `layer` is SOURCE-NEUTRAL: "decode" when the raw
+    body failed to decode (a lone synthetic spec.decode result), "verify" once decoding passed and
+    the trusted pipeline ran. Which stages "verify" covers depends on the mode — dataset binding,
+    recomputation, encoding/label, and the exact builder + SMT for a dataset spec; exact rational
+    evaluation, the formula core checks, formal x-order preparation, script emission, and
+    attestation for a formula spec.
     `verified` is true only when every final result passed. `attempt_id` is present only after an
     artifact-producing route durably commits the signed occurrence; stateless `/verify-only`
     leaves it absent. The archived canonical verdict omits it too because the signed attempt
@@ -94,6 +108,46 @@ class RenderVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=Tru
     vega_lite_hash: str
     svg: str
     html: str | None = None
+
+
+class FormulaScriptVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):
+    """A passing /verify-formula outcome: the Verdict fields plus the certified script.
+
+    Formula mode's sibling of RenderVerdict, under the same never-a-chart discipline and the
+    same `Literal[True]` static pin: a failing /verify-formula answers a plain Verdict, which is
+    structurally incapable of carrying a script. A DISTINCT struct rather than a RenderVerdict
+    subclass, so the handler's Verdict | FormulaScriptVerdict return stays a real union for mypy
+    and the OpenAPI surface, and so no dataset field (svg, html, dataset_hash, manifest_hash,
+    vega_lite_hash) is even representable here.
+    `attempt_id` = SHA-256 hexdigest of the signed occurrence envelope committed atomically with
+    the complete formula plot bundle. `plot_id` = SHA-256 hexdigest of the deterministic signed
+    DSSE envelope bytes; `spec_id` = `spec_hash` minus its `sha256:` prefix (bare 64-hex).
+    The FOUR `*_hash` fields are the authenticated VCert v0.3 payload's verbatim
+    `sha256:`-prefixed digests, one per certified carrier — RESOLVED formula source, spec, plotted
+    table, and emitted script. There is no fifth. `formula_hash` covers the verifier's own
+    canonical rendering of nine fixed fields — grammar version, numeric profile, rounding mode,
+    printed AST, resolved domain endpoints, sample count, and both axis scales — NOT the submitted
+    formula string, so two equivalent respellings share one `formula_hash` while a changed domain
+    or scale does not. That hash ALONE is respelling-invariant: the canonical spec preserves the
+    submitted text, so `spec_hash`, the certificate payload, and the derived `plot_id`/`spec_id`
+    still differ between two spellings of the same function.
+    `matplotlib_script` is the exact canonical script text whose domain-separated digest is
+    `matplotlib_script_hash` (`canon.hash_matplotlib_script`, not a bare SHA-256 of the text).
+    The verifier AUTHORED these bytes and never ran them: matplotlib,
+    the interpreter, and the pixels stay display trust, outside the verified claim.
+    """
+
+    verified: Literal[True]
+    layer: Literal["decode", "verify"]
+    results: tuple[CheckResult, ...]
+    attempt_id: AttemptId
+    plot_id: str
+    spec_id: str
+    formula_hash: str
+    spec_hash: str
+    plotted_table_hash: str
+    matplotlib_script_hash: str
+    matplotlib_script: str
 
 
 class Problem(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True):

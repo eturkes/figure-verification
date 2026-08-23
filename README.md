@@ -2,18 +2,31 @@
 
 ## What the PoC is
 
-A weak local LLM may propose only a restricted VPlot JSON chart specification. A separate trusted
-verifier re-binds the named source CSV by hash. It deterministically recomputes every plotted value
-and runs structured checks. It blocks failures and renders only verified charts with a signed
+A caller submits a restricted JSON plot specification. In dataset mode a weak local LLM may propose
+that specification. A separate trusted verifier deterministically recomputes every plotted value
+and runs structured checks. It blocks failures and certifies only verified plots with a signed
 provenance certificate.
+
+The verifier has two plot modes. Dataset mode re-binds the named source CSV by hash and renders a
+verified chart. Formula mode evaluates a closed-form expression exactly and emits a matplotlib
+script. The verifier writes that script and never runs it.
 
 ## The modest claim
 
 The verification claim is exactly the boundary stated in [POC_SCOPE.md](POC_SCOPE.md):
 
+> The verifier has TWO plot modes with DISJOINT carriers. DATASET MODE is the original: a source
+> CSV plus a trusted column manifest, emitted as Vega-Lite, certified by VCert v0.2. FORMULA MODE
+> plots a closed-form expression over an explicit domain: no CSV, no manifest, no Vega-Lite, no SVG,
+> and a verifier-authored matplotlib script the service NEVER executes, certified by VCert v0.3.
+> Every sentence below naming a CSV, manifest, Vega-Lite, SVG, renderer, or chart is a DATASET-MODE
+> sentence.
+
+Dataset mode binds four artifacts:
+
 > The untrusted model proposes ONLY a VPlot spec — transforms, encoding, and a declared
-> source-dataset hash — never plotted values. "Verified" means these four artifacts are
-> mutually consistent and every check passed:
+> source-dataset hash — never plotted values. In dataset mode, "verified" means these four artifacts
+> are mutually consistent and every check passed:
 >
 > 1. the spec validated against the VPlot v0.1 DSL (unknown fields, ops, and marks are
 >    rejected before any computation runs);
@@ -23,15 +36,37 @@ The verification claim is exactly the boundary stated in [POC_SCOPE.md](POC_SCOP
 >    canonical-spec, recomputed-table, and exact emitted-Vega hashes; every passing check with its
 >    method; and the verifier, Z3, canonicalization, and display-tool versions in the trusted base.
 
+Formula mode binds four different artifacts:
+
+> Formula mode verifies its own four artifacts instead: the spec validated against the
+> `vplot-formula-0.1` DSL; the plotted table the verifier recomputed by EXACT rational evaluation of
+> the declared formula over the declared domain, never floating point; the canonical matplotlib
+> script the verifier itself authored from that table; and the VCert v0.3 provenance record binding
+> exactly four hashes — RESOLVED formula source, canonical spec, recomputed table, and emitted
+> script. The resolved formula source is the verifier's own canonical rendering of nine fixed fields
+> — grammar version, numeric profile, rounding mode, printed AST, resolved domain endpoints, sample
+> count, and both axis scales — never the submitted formula string verbatim, so two equivalent
+> respellings share one formula source hash while a changed domain or scale does not. Only that
+> hash is respelling-invariant: the canonical spec preserves the submitted text, so the spec hash,
+> the certificate payload, and the derived plot and spec ids still differ between two spellings of
+> the same function. There is no fifth. The same structured checks, resource ceilings, and Z3 second-checking apply, over
+> formula-mode obligations. matplotlib, the interpreter that would run the script, and the resulting
+> pixels are display trust, exactly as SVG rasterization is for dataset mode.
+
 The trusted-computing-base boundary is also unchanged:
 
 > Z3 is a trusted second checker for three bounded, concrete obligations; it does not prove the
 > evaluator, builder, renderer, or whole verifier. `vl-convert` and the Vega runtime, SVG
 > rasterization, the browser, and the final pixels are likewise trusted, not formally verified -
-> trusted to render verified data faithfully, not proven to. The claim is about the mutually bound
-> data, spec, emitted Vega-Lite, and certificate layer, not what reaches the screen.
+> trusted to render verified data faithfully, not proven to. In formula mode, matplotlib and the
+> Python interpreter that would execute the emitted script hold exactly that position; the verifier
+> authors those bytes and never runs them, so nothing downstream of the script is proven. The claim
+> is about the mutually bound data, spec, emitted artifact, and certificate layer, not what reaches
+> the screen.
 
 ## Trust spine
+
+Dataset mode:
 
 ```text
 UNTRUSTED
@@ -79,6 +114,52 @@ source CSV --bounded read--> SHA-256 dataset re-binding
 ```
 
 The certificate binds the exact emitted Vega-Lite bytes, not SVG rasterization or final pixels.
+
+Formula mode keeps that spine and replaces the source and the artifact:
+
+```text
+UNTRUSTED
+  caller-supplied formula spec
+  (no model proposer on this route yet; a later milestone adds one)
+       |
+       | carries ONLY vplot-formula-0.1:
+       | formula + domain + encoding
+       | THE SPEC SUPPLIES NO PLOTTED VALUES
+       v
+TRUSTED VERIFIER
+  strict decode + schema/resource gates
+       |
+       v
+  closed AST parse; NO source CSV and NO manifest is read
+       |
+       v
+  EXACT rational evaluation of every plotted point
+       |
+       v
+  core structured checks + Z3 second-checking over formula obligations
+       |
+       v
+  fixed-template emitter: float64-fidelity gate, construction checks,
+  and script-size admission over the bytes it AUTHORS
+       |
+       v
+  VCert v0.3 payload: RESOLVED-formula-source + canonical-spec
+       + recomputed-table + emitted-script hashes
+       (resolved source = nine canonical fields: grammar, numeric profile,
+        rounding, printed AST, endpoints, samples, and both scales —
+        not the submitted formula string)
+       |
+       v
+  Ed25519 DSSE envelope --> certificate
+       |
+       +--> script TEXT answered inline by POST /verify-formula
+       |      the verifier NEVER executes those bytes
+       |
+       +--> matplotlib / interpreter / figure pixels
+              trusted display only; outside the verified claim
+```
+
+The v0.3 certificate binds four hashes and the exact script bytes, not the rendered figure.
 
 ## Repo layout
 
@@ -183,9 +264,10 @@ committed evidence. It also states the boundary that keeps the claim modest.
     service restart.
     **Boundary:** Replay does not rerun the weak model or prove browser pixels. A chart is regenerated
     only for exact replay under configured trust. Drift and integrity failures return diagnostics.
-    Formula plots are archived and certified under VCert v0.3. `GET /replay/{plot_id}` answers
-    501 for a formula plot that has a signed verified attempt. A plot without such an attempt
-    answers 404 in both modes. A later milestone adds the formula replay engine.
+    Formula plots are archived and certified under VCert v0.3. `POST /verify-formula` mints them.
+    The pure formula replay engine is already shipped and renderer-free. `GET /replay/{plot_id}`
+    still answers 501 for a formula plot that has a signed verified attempt. A plot without such an
+    attempt answers 404 in both modes. A later milestone connects that engine to the HTTP surface.
 
 ## Quickstart
 

@@ -209,6 +209,91 @@
         }
       }
     },
+    "/verify-formula": {
+      "post": {
+        "operationId": "verifyFormula",
+        "summary": "Verify a formula plot spec and, only if verified, emit the certified plot script",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FormulaPlotSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A FormulaScriptVerdict with the certified matplotlib script on a passing verdict, or a plain Verdict on a failing one — each carrying its durably committed attempt_id, and never a script on an unverified outcome. The verifier authored the script and did not run it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/FormulaScriptVerdict"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Verdict"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeded the configured size cap.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The Content-Type was not application/json.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The process-local rate or active-job admission gate refused the work before model, verification, or render execution. Each service process owns an independent gate.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The verifier hit an internal operator-config, implementation, or archive fault.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/propose-spec": {
       "post": {
         "operationId": "proposeSpec",
@@ -1558,7 +1643,7 @@
       },
       "Verdict": {
         "title": "Verdict",
-        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\n`layer` names the stage that produced it: \"decode\" when the raw body failed to decode\n(a lone synthetic spec.decode result), \"verify\" once decoding passed and the trusted\npipeline ran (dataset binding, recomputation, encoding/label, exact builder + SMT).\n`verified` is true only when every final result passed. `attempt_id` is present only after an\nartifact-producing route durably commits the signed occurrence; stateless `/verify-only`\nleaves it absent. The archived canonical verdict omits it too because the signed attempt\nenvelope - and therefore its content-derived id - does not exist until after those bytes are\nfixed.",
+        "description": "The verification outcome (HTTP 200 regardless of the judgement).\n\nBoth plot modes answer this same envelope, so `layer` is SOURCE-NEUTRAL: \"decode\" when the raw\nbody failed to decode (a lone synthetic spec.decode result), \"verify\" once decoding passed and\nthe trusted pipeline ran. Which stages \"verify\" covers depends on the mode — dataset binding,\nrecomputation, encoding/label, and the exact builder + SMT for a dataset spec; exact rational\nevaluation, the formula core checks, formal x-order preparation, script emission, and\nattestation for a formula spec.\n`verified` is true only when every final result passed. `attempt_id` is present only after an\nartifact-producing route durably commits the signed occurrence; stateless `/verify-only`\nleaves it absent. The archived canonical verdict omits it too because the signed attempt\nenvelope - and therefore its content-derived id - does not exist until after those bytes are\nfixed.",
         "type": "object",
         "properties": {
           "verified": {
@@ -1742,6 +1827,66 @@
           "manifest_hash",
           "vega_lite_hash",
           "svg"
+        ]
+      },
+      "FormulaScriptVerdict": {
+        "title": "FormulaScriptVerdict",
+        "description": "A passing /verify-formula outcome: the Verdict fields plus the certified script.\n\nFormula mode's sibling of RenderVerdict, under the same never-a-chart discipline and the\nsame `Literal[True]` static pin: a failing /verify-formula answers a plain Verdict, which is\nstructurally incapable of carrying a script. A DISTINCT struct rather than a RenderVerdict\nsubclass, so the handler's Verdict | FormulaScriptVerdict return stays a real union for mypy\nand the OpenAPI surface, and so no dataset field (svg, html, dataset_hash, manifest_hash,\nvega_lite_hash) is even representable here.\n`attempt_id` = SHA-256 hexdigest of the signed occurrence envelope committed atomically with\nthe complete formula plot bundle. `plot_id` = SHA-256 hexdigest of the deterministic signed\nDSSE envelope bytes; `spec_id` = `spec_hash` minus its `sha256:` prefix (bare 64-hex).\nThe FOUR `*_hash` fields are the authenticated VCert v0.3 payload's verbatim\n`sha256:`-prefixed digests, one per certified carrier — RESOLVED formula source, spec, plotted\ntable, and emitted script. There is no fifth. `formula_hash` covers the verifier's own\ncanonical rendering of nine fixed fields — grammar version, numeric profile, rounding mode,\nprinted AST, resolved domain endpoints, sample count, and both axis scales — NOT the submitted\nformula string, so two equivalent respellings share one `formula_hash` while a changed domain\nor scale does not. That hash ALONE is respelling-invariant: the canonical spec preserves the\nsubmitted text, so `spec_hash`, the certificate payload, and the derived `plot_id`/`spec_id`\nstill differ between two spellings of the same function.\n`matplotlib_script` is the exact canonical script text whose domain-separated digest is\n`matplotlib_script_hash` (`canon.hash_matplotlib_script`, not a bare SHA-256 of the text).\nThe verifier AUTHORED these bytes and never ran them: matplotlib,\nthe interpreter, and the pixels stay display trust, outside the verified claim.",
+        "type": "object",
+        "properties": {
+          "verified": {
+            "const": true
+          },
+          "layer": {
+            "enum": [
+              "decode",
+              "verify"
+            ]
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckResult"
+            }
+          },
+          "attempt_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "plot_id": {
+            "type": "string"
+          },
+          "spec_id": {
+            "type": "string"
+          },
+          "formula_hash": {
+            "type": "string"
+          },
+          "spec_hash": {
+            "type": "string"
+          },
+          "plotted_table_hash": {
+            "type": "string"
+          },
+          "matplotlib_script_hash": {
+            "type": "string"
+          },
+          "matplotlib_script": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "verified",
+          "layer",
+          "results",
+          "attempt_id",
+          "plot_id",
+          "spec_id",
+          "formula_hash",
+          "spec_hash",
+          "plotted_table_hash",
+          "matplotlib_script_hash",
+          "matplotlib_script"
         ]
       },
       "ProposeResult": {

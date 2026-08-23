@@ -20,9 +20,10 @@ Components come from three sources, zero hand-drift beyond the transport-only re
      ReplayVerdict, and ProposeRequest, plus their nested structs transitively), and
      FormulaPlotSpec, which GET /spec serves whenever the stored spec is a formula spec, via
      msgspec.json.schema_components;
-  3. the two models msgspec cannot introspect (both hold a Literal[True] arm): RenderVerdict,
-     hand-derived from Verdict's generated schema (a deepcopy of its properties, so the const
-     override never bleeds into Verdict's own `verified`); and ProposeResult, whose
+  3. the three models msgspec cannot introspect (each holds a Literal[True] arm): RenderVerdict
+     and its formula-mode sibling FormulaScriptVerdict, both hand-derived from Verdict's generated
+     schema as independent twins (a deepcopy of its properties, so the const override never
+     bleeds into Verdict's own `verified`); and ProposeResult, whose
      `verdict` field is the Verdict | RenderVerdict union; plus the canonical DSSE envelope served
      as JSON bytes and the raw Ed25519 key served as application/octet-stream (neither decoded into
      a transport response model).
@@ -47,7 +48,14 @@ from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.replay import ReplayVerdict
 from verifier.schema import FormulaPlotSpec, json_schema
-from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
+from verifier.service.models import (
+    FormulaScriptVerdict,
+    Problem,
+    ProposeRequest,
+    ProposeResult,
+    RenderVerdict,
+    Verdict,
+)
 
 __all__ = ["openapi_document", "openapi_document_text", "openapi_json_bytes"]
 
@@ -69,6 +77,21 @@ _RENDER_STRING_FIELDS = (
     "vega_lite_hash",
     "svg",
     "html",
+)
+# FormulaScriptVerdict's eight script-only fields on top of the Verdict envelope; every one is a
+# plain string and every one is required (this model declares no omit_defaults field). A
+# hand-stated tuple, deliberately not derived from RenderVerdict's: the two modes certify
+# different carriers, so a shared derivation would let one mode's drift reach the other's
+# published contract.
+_FORMULA_STRING_FIELDS = (
+    "attempt_id",
+    "plot_id",
+    "spec_id",
+    "formula_hash",
+    "spec_hash",
+    "plotted_table_hash",
+    "matplotlib_script_hash",
+    "matplotlib_script",
 )
 
 
@@ -109,6 +132,30 @@ def _render_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
         "type": "object",
         "properties": properties,
         "required": [name for name in properties if name != "html"],
+    }
+
+
+def _formula_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
+    """FormulaScriptVerdict's schema, hand-derived from Verdict's generated schema for the same
+    reason as RenderVerdict (Literal[True] blocks introspection).
+
+    A hand-derived TWIN of _render_verdict_schema, never a parameterization of it: this response
+    is judgment-bearing, the two modes certify different carriers, and one generic derivation
+    would make a drift in either mode's published contract silent in the other. Its
+    `verified/layer/results` come from a DEEPCOPY of Verdict's properties (an in-place override
+    would rewrite Verdict's own `verified`), with `verified` overridden to {"const": True}. All
+    eight script fields are plain required strings."""
+    properties: dict[str, Any] = copy.deepcopy(verdict_schema["properties"])
+    properties["verified"] = {"const": True}
+    for name in _FORMULA_STRING_FIELDS:
+        properties[name] = {"type": "string"}
+    properties["attempt_id"]["pattern"] = _ID_PATTERN
+    return {
+        "title": "FormulaScriptVerdict",
+        "description": inspect.getdoc(FormulaScriptVerdict),
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
     }
 
 
@@ -191,6 +238,7 @@ def _components() -> dict[str, Any]:
         schemas[name] = generated[name]
     schemas.update(_dsse_schemas())
     schemas["RenderVerdict"] = _render_verdict_schema(generated["Verdict"])
+    schemas["FormulaScriptVerdict"] = _formula_verdict_schema(generated["Verdict"])
     schemas["ProposeResult"] = _propose_result_schema()
     return schemas
 
@@ -223,10 +271,19 @@ def _binary_response(description: str) -> dict[str, Any]:
 
 
 def _spec_request_body() -> dict[str, Any]:
-    """The required VPlot-spec JSON request body shared by both POST routes."""
+    """The required VPlot-spec JSON request body shared by both dataset POST routes."""
     return {
         "required": True,
         "content": {"application/json": {"schema": {"$ref": f"{_COMPONENTS}/VPlotSpec"}}},
+    }
+
+
+def _formula_spec_request_body() -> dict[str, Any]:
+    """The required formula-spec JSON request body for POST /verify-formula. A separate helper,
+    since the two modes decode strictly disjoint bodies — neither spec can satisfy the other."""
+    return {
+        "required": True,
+        "content": {"application/json": {"schema": {"$ref": f"{_COMPONENTS}/FormulaPlotSpec"}}},
     }
 
 
@@ -251,7 +308,7 @@ def _keyid_parameter() -> dict[str, Any]:
 
 
 def _paths() -> dict[str, Any]:
-    """The nine documented operations, each with an explicit operationId + summary (Open WebUI
+    """The ten documented operations, each with an explicit operationId + summary (Open WebUI
     maps operationId -> tool name; the model reads description, else summary — proposeSpec, the
     model-invoked proposal tool, carries the description). Intentionally outside the per-operation
     contract: the self-describing GET /schema/openapi.json route (the route-drift test drops it)
@@ -350,6 +407,35 @@ def _paths() -> dict[str, Any]:
                     # (raw body, no typed params) never emits it, so it stays out of problems_post.
                     "400": _problem_response(
                         "The include_html query parameter was not a valid boolean."
+                    ),
+                    **problems_post,
+                    **archive_quota,
+                },
+            }
+        },
+        "/verify-formula": {
+            "post": {
+                "operationId": "verifyFormula",
+                "summary": (
+                    "Verify a formula plot spec and, only if verified, emit the certified "
+                    "plot script"
+                ),
+                "requestBody": _formula_spec_request_body(),
+                "responses": {
+                    "200": _json_response(
+                        "A FormulaScriptVerdict with the certified matplotlib script on a passing "
+                        "verdict, or a plain Verdict on a failing one — each carrying its durably "
+                        "committed attempt_id, and never a script on an unverified outcome. The "
+                        "verifier authored the script and did not run it.",
+                        # anyOf, NOT oneOf: a FormulaScriptVerdict payload also satisfies Verdict
+                        # (which carries no additionalProperties:false), so the two are not
+                        # mutually exclusive — the /verify-and-render precedent.
+                        {
+                            "anyOf": [
+                                {"$ref": f"{_COMPONENTS}/FormulaScriptVerdict"},
+                                {"$ref": f"{_COMPONENTS}/Verdict"},
+                            ]
+                        },
                     ),
                     **problems_post,
                     **archive_quota,

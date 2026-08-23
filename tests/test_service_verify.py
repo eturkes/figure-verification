@@ -237,16 +237,18 @@ def test_oversize_body_413_content_length() -> None:
     assert response.headers["content-type"] == _PROBLEM_JSON
 
 
-def test_oversize_body_413_chunked() -> None:
+@pytest.mark.parametrize("route", ["/verify-only", "/verify-and-render", "/verify-formula"])
+def test_oversize_body_413_chunked(route: str) -> None:
     # A generator body sends no content-length (chunked), so the cap enforces on the
     # streamed byte total instead — the raw-body read still catches it before any decode.
+    # Every admitted raw-body POST inherits the app-level cap; none adds a handler-local read.
     def _chunks() -> Iterator[bytes]:
         for _ in range(16):
             yield b"x" * 8  # 128 bytes total, over the 16-byte cap
 
     app = create_app(Settings(data_dir=_DATA, max_body_bytes=16))
     with TestClient(app=app) as client:
-        response = client.post("/verify-only", content=_chunks(), headers=_JSON)
+        response = client.post(route, content=_chunks(), headers=_JSON)
     assert response.status_code == 413
     assert response.headers["content-type"] == _PROBLEM_JSON
 

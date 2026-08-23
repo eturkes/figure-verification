@@ -752,6 +752,18 @@ def test_t42_dataset_preservation_manifest_matches_baseline() -> None:
     subprocess.run([sys.executable, script], check=True)  # noqa: S603 — fixed interpreter
 
 
+def test_dataset_http_responses_match_baseline() -> None:
+    """Dataset transport bytes match baseline 7491481 over every POST and GET.
+
+    T42 above decides bundle/archive/audit/replay bytes and never builds an app, so it cannot
+    see a transport regression. This one compares status, headers, and exact response bodies.
+    """
+    script = __file__.replace(
+        "test_service_formula_plot_bundle.py", "dataset_http_response_diff.py"
+    )
+    subprocess.run([sys.executable, script], check=True)  # noqa: S603 — fixed interpreter
+
+
 def test_t43_formula_authentication_uses_bundle_self_consistency_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -21,8 +21,9 @@ from litestar.testing import TestClient
 from verifier.checks import CheckResult
 from verifier.service import app as app_module
 from verifier.service.admission import AdmissionController, JobPermit
+from verifier.service.archive import Archive
 from verifier.service.models import Verdict
-from verifier.service.pipeline import Outcome
+from verifier.service.pipeline import DatasetOutcome
 from verifier.service.settings import Settings
 
 _JSON = {"content-type": "application/json"}
@@ -49,7 +50,7 @@ def _take_and_release(admission: AdmissionController) -> bool:
     return True
 
 
-def _failed_outcome() -> Outcome:
+def _failed_outcome() -> DatasetOutcome:
     result = CheckResult(
         check="spec.decode",
         method="schema_validation",
@@ -57,7 +58,7 @@ def _failed_outcome() -> Outcome:
         severity="blocking",
         message="test refusal",
     )
-    return Outcome(verdict=Verdict(verified=False, layer="decode", results=(result,)))
+    return DatasetOutcome(verdict=Verdict(verified=False, layer="decode", results=(result,)))
 
 
 def test_token_bucket_refill_is_exact_and_burst_bounded() -> None:
@@ -276,7 +277,7 @@ def test_cancelled_route_holds_slot_until_native_worker_finishes(
     finish = threading.Event()
     returned = threading.Event()
 
-    def slow_verify(_raw: bytes, _settings: Settings) -> Outcome:
+    def slow_verify(_raw: bytes, _settings: Settings) -> DatasetOutcome:
         entered.set()
         if not finish.wait(timeout=5):
             msg = "test worker was never released"
@@ -321,8 +322,8 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
 ) -> None:
     called: list[str] = []
 
-    def unexpected(name: str) -> Callable[..., Outcome]:
-        def call(*_args: object, **_kwargs: object) -> Outcome:
+    def unexpected(name: str) -> Callable[..., DatasetOutcome]:
+        def call(*_args: object, **_kwargs: object) -> DatasetOutcome:
             called.append(name)
             return _failed_outcome()
 
@@ -332,11 +333,17 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
         called.append("propose")
         return b"{}"
 
+    def unexpected_formula(*_args: object, **_kwargs: object) -> Verdict:
+        called.append("verify-formula")
+        return _failed_outcome().verdict
+
     monkeypatch.setattr(app_module, "verify_only", unexpected("verify-only"))
     monkeypatch.setattr(app_module, "verify_and_render", unexpected("verify-and-render"))
+    monkeypatch.setattr(app_module, "verify_formula_and_emit", unexpected_formula)
     monkeypatch.setattr(app_module, "propose_spec", unexpected_propose)
     settings = Settings(
         data_dir=tmp_path,
+        state_dir=tmp_path / "state",
         max_body_bytes=64,
         max_active_jobs=1,
         work_rate_per_minute=1,
@@ -352,6 +359,7 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
         refused = (
             client.post("/verify-only", content=b"{}", headers=_JSON),
             client.post("/verify-and-render", content=b"{}", headers=_JSON),
+            client.post("/verify-formula", content=b"{}", headers=_JSON),
             client.post("/propose-spec", content=propose_body, headers=_JSON),
         )
         for response in refused:
@@ -373,6 +381,13 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
             == 415
         )
         assert client.post("/verify-only", content=b"x" * 65, headers=_JSON).status_code == 413
+        assert (
+            client.post(
+                "/verify-formula", content=b"{}", headers={"content-type": "text/plain"}
+            ).status_code
+            == 415
+        )
+        assert client.post("/verify-formula", content=b"x" * 65, headers=_JSON).status_code == 413
         assert client.post("/propose-spec", content=b"{}", headers=_JSON).status_code == 400
         assert (
             client.post(
@@ -381,6 +396,9 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
             == 400
         )
     assert called == []
+    # Zero worker calls is not the whole guarantee: a pre-admission refusal must also commit no
+    # occurrence, so a future handler-side or Problem-recording write would break this too.
+    assert cast("Archive", app.state["archive"]).stats().attempts == 0
 
 
 def test_rate_exhaustion_returns_429_without_second_worker_call(
@@ -388,7 +406,7 @@ def test_rate_exhaustion_returns_429_without_second_worker_call(
 ) -> None:
     calls = 0
 
-    def fast_verify(_raw: bytes, _settings: Settings) -> Outcome:
+    def fast_verify(_raw: bytes, _settings: Settings) -> DatasetOutcome:
         nonlocal calls
         calls += 1
         return _failed_outcome()

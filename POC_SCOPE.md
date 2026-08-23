@@ -1,16 +1,21 @@
 # POC_SCOPE — verified-plot PoC
 
-A weak local LLM proposes a restricted JSON chart spec (VPlot). A separate trusted
-verifier independently recomputes the plotted data from the source CSV, runs
-structured checks, blocks charts whose spec, data binding, or encoding fail those
-checks, and renders only the rest with a provenance certificate. This document fixes
-the boundary.
+A caller submits a restricted JSON plot spec; in DATASET MODE a weak local LLM can propose that
+spec instead, and FORMULA MODE has no model front end. A separate trusted verifier independently
+recomputes the plotted data — from the source CSV in dataset mode, by exact rational evaluation of
+the submitted expression in formula mode — runs structured checks, blocks plots whose spec, data
+binding, or encoding fail those checks, and releases only the rest under a provenance certificate:
+a rendered chart in dataset mode, a verifier-authored matplotlib script the service never executes
+in formula mode. This document fixes the boundary.
 
 ## What kinds of plots are allowed?
 
-`bar` · `line` · `scatter`
+Dataset mode: `bar` · `line` · `scatter`. Formula mode: one closed-form expression sampled over an
+explicit domain.
 
 ## What transformations are allowed?
+
+Dataset mode only — formula mode declares no transforms, because the expression IS the computation.
 
 - `select` — choose fields
 - `filter` — keep rows by an explicit, declared predicate
@@ -20,9 +25,16 @@ the boundary.
 
 ## What does verification mean for this PoC?
 
+The verifier has TWO plot modes with DISJOINT carriers. DATASET MODE is the original: a source
+CSV plus a trusted column manifest, emitted as Vega-Lite, certified by VCert v0.2. FORMULA MODE
+plots a closed-form expression over an explicit domain: no CSV, no manifest, no Vega-Lite, no SVG,
+and a verifier-authored matplotlib script the service NEVER executes, certified by VCert v0.3.
+Every sentence below naming a CSV, manifest, Vega-Lite, SVG, renderer, or chart is a DATASET-MODE
+sentence.
+
 The untrusted model proposes ONLY a VPlot spec — transforms, encoding, and a declared
-source-dataset hash — never plotted values. "Verified" means these four artifacts are
-mutually consistent and every check passed:
+source-dataset hash — never plotted values. In dataset mode, "verified" means these four artifacts
+are mutually consistent and every check passed:
 
 1. the spec validated against the VPlot v0.1 DSL (unknown fields, ops, and marks are
    rejected before any computation runs);
@@ -31,6 +43,21 @@ mutually consistent and every check passed:
 4. the VCert v0.2 provenance record and badge representation: source-dataset, trusted-manifest,
    canonical-spec, recomputed-table, and exact emitted-Vega hashes; every passing check with its
    method; and the verifier, Z3, canonicalization, and display-tool versions in the trusted base.
+
+Formula mode verifies its own four artifacts instead: the spec validated against the
+`vplot-formula-0.1` DSL; the plotted table the verifier recomputed by EXACT rational evaluation of
+the declared formula over the declared domain, never floating point; the canonical matplotlib
+script the verifier itself authored from that table; and the VCert v0.3 provenance record binding
+exactly four hashes — RESOLVED formula source, canonical spec, recomputed table, and emitted
+script. The resolved formula source is the verifier's own canonical rendering of nine fixed fields
+— grammar version, numeric profile, rounding mode, printed AST, resolved domain endpoints, sample
+count, and both axis scales — never the submitted formula string verbatim, so two equivalent
+respellings share one formula source hash while a changed domain or scale does not. Only that
+hash is respelling-invariant: the canonical spec preserves the submitted text, so the spec hash,
+the certificate payload, and the derived plot and spec ids still differ between two spellings of
+the same function. There is no fifth. The same structured checks, resource ceilings, and Z3 second-checking apply, over
+formula-mode obligations. matplotlib, the interpreter that would run the script, and the resulting
+pixels are display trust, exactly as SVG rasterization is for dataset mode.
 
 For a service render, the persistent Ed25519 signer wraps the exact VCert payload bytes and their
 application-specific type in deterministic DSSE. `plot_id` is SHA-256 over the complete envelope
@@ -78,14 +105,20 @@ override) · map charts · faceting · interaction · dashboards · multi-source
 Z3 is a trusted second checker for three bounded, concrete obligations; it does not prove the
 evaluator, builder, renderer, or whole verifier. `vl-convert` and the Vega runtime, SVG
 rasterization, the browser, and the final pixels are likewise trusted, not formally verified -
-trusted to render verified data faithfully, not proven to. The claim is about the mutually bound
-data, spec, emitted Vega-Lite, and certificate layer, not what reaches the screen.
+trusted to render verified data faithfully, not proven to. In formula mode, matplotlib and the
+Python interpreter that would execute the emitted script hold exactly that position; the verifier
+authors those bytes and never runs them, so nothing downstream of the script is proven. The claim
+is about the mutually bound data, spec, emitted artifact, and certificate layer, not what reaches
+the screen.
 
 One quantization inside that trusted zone is KNOWN, not merely unproven: the JS runtime
 parses the inlined JSON numbers as IEEE-754 doubles, so a value beyond exact-double range
 (integer part past 2^53, or more than ~16 significant digits — the DECIMAL(38) data model
 admits both) can display rounded, even though the certificate hashes both the exact emitted
-Vega-Lite bytes and the exact recomputed plotted table.
+Vega-Lite bytes and the exact recomputed plotted table. Formula mode takes the opposite position on
+the same hazard: the emitter REFUSES a spec whose exact rational values do not survive the float64
+literals a matplotlib script must carry, blocking that outcome with a
+`render.float64_fidelity` failure instead of certifying a script that would display rounded.
 
 ## Service boundary
 
@@ -94,9 +127,21 @@ to `127.0.0.1` by default. Its persistent signer attests successful VCert payloa
 verification check: a verify request runs the pipeline above unchanged and the service serializes
 the result, mapping a decode failure or an unprovisioned manifest to its own fail-closed verdict
 that can never falsely verify. The
-metadata and artifact GETs serve what a prior verified render already produced, so the
-verification claim and the trusted-computing-base line both hold verbatim. `data_dir` stays trusted operator config,
-supplied through the environment before the process binds — never anything a caller sends.
+metadata and artifact GETs are SOURCE-NEUTRAL: they serve exactly what a prior verified outcome of
+either mode already produced, so the verification claim and the trusted-computing-base line both
+hold verbatim. `data_dir` stays trusted operator config,
+supplied through the environment before the process binds — never anything a caller sends. It is
+read in dataset mode alone; formula mode reads no trusted file.
+
+`POST /verify-formula` is formula mode's transport. A verified outcome answers the canonical
+matplotlib script TEXT inline, next to the four VCert v0.3 hashes and the durable ids. ONLY A
+VERIFIED 200 RETURNS OR ARCHIVES A SCRIPT ARTIFACT; EVERY FAILED VERDICT DOES NEITHER. The claim is
+stated over VERDICTS, not over non-2xx responses, because emission, certification, and signing
+necessarily precede the archive's transactional commit: a capacity 507 or an archive 500 can land
+AFTER a script was built and signed in memory. Those answer a Problem, never a verdict and never a
+script, and the atomic commit is what keeps the signed bytes from becoming durable or observable.
+The service emits script bytes and never runs them, so formula mode writes no chart page and no
+display cache on any path: `GET /chart/{plot_id}` never resolves a formula plot.
 
 The transport reports two kinds of outcome and never confuses them:
 
@@ -112,7 +157,11 @@ The transport reports two kinds of outcome and never confuses them:
   (500) — answers an RFC 9457
   `application/problem+json` document. Resource ceilings are verification outcomes, so they
   return a failed verdict before artifact storage once a spec entered verification; proposer
-  context/token ceilings instead return 422 because no model content exists to verify. A 500
+  context/token ceilings instead return 422 because no model content exists to verify. ONE ceiling
+  escapes that rule in both modes: `VERIFIER_MAX_ATTESTATION_BYTES` bounds the signed OCCURRENCE as
+  well as the certificate, so a value too small to sign even the rejection record replaces that
+  verification outcome with a generic 500 carrying no attempt. Sizing it above the largest signable
+  occurrence is operator configuration; the service enforces no minimum. A 500
   remains outside the verification contract; its cause stays in the server log, never in the
   caller's response.
 
@@ -151,17 +200,20 @@ through the open state-directory FD; replacement in that interval remains an acc
 filesystem TOCTOU boundary. The pre-COMMIT fault hook proves explicit rollback only, not COMMIT
 failure, hot-journal recovery, process termination, or power loss.
 
-Every admitted, classified `/verify-and-render` or `/propose-spec` outcome commits one signed
+Every admitted, classified `/verify-and-render`, `/verify-formula`, or `/propose-spec` outcome
+commits one signed
 occurrence before response and before the chart LRU mutates. A successful occurrence atomically adds
-the complete plot bundle too; rejected verdicts and proposer faults bind only bytes actually
-observed. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
+the complete plot bundle too — the dataset bundle or the formula bundle, each holding only its own
+mode's carriers; rejected verdicts and proposer faults bind only bytes actually
+observed. A formula occurrence binds its raw spec and canonical verdict alone: no CSV, no manifest,
+and no model trace exists on that route. The returned verdict or admitted-fault Problem carries the non-secret `attempt_id` derived
 from that occurrence envelope. `/verify-only`, pre-admission transport/rate/capacity refusal,
 disconnect before an outcome, process crash, unclassified operator/implementation fault, and
 archive failure are intentionally outside this non-completeness claim. `VERIFIER_MAX_ARCHIVE_BYTES`
 gates logical typed payload bytes transactionally without eviction; SQLite pages, indexes, rollback
 journals, and filesystem overhead remain outside that accounting. Quota refusal replaces the
 original outcome with 507; another archive fault replaces it with generic 500. Neither response
-carries an attempt ID or leaks an unarchived chart.
+carries an attempt ID or leaks an unarchived artifact of either mode — no chart, and no script.
 
 Owner-local audit is `python -m verifier.service audit ATTEMPT_ID [--reveal-sensitive]`. It
 revalidates the complete signed graph reachable from the named attempt and authenticates under the
@@ -204,6 +256,12 @@ curl -sS http://127.0.0.1:8000/verify-only \
 curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
   -H 'Content-Type: application/json' \
   --data-binary @examples/good_specs/g01_total_revenue_by_month.json
+
+# verify a formula spec and, only if verified, return the certified matplotlib script
+# (the verifier authors that script and never runs it)
+curl -sS http://127.0.0.1:8000/verify-formula \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/formula_good_specs/f02_linear.json
 
 # fetch a stored signed DSSE certificate envelope / spec by the ids returned above
 # (plot_id and spec_id come from that response; shown here as shell variables)

@@ -18,10 +18,12 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 _PROGRAM = r"""
 import json
+import os
 import tempfile
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+import verifier
 from verifier import attestation, render
 from verifier.service import archive as a, pipeline
 from verifier.service.audit import audit_attempt
@@ -30,6 +32,14 @@ from verifier.service.replay import replay_plot_from_settings
 from verifier.service.settings import Settings
 
 root = Path.cwd()
+# Vacuity guard. cwd is the PRIMARY tree in BOTH runs, so it is not the reference here: PYTHONPATH
+# alone selects which tree supplies the code. The editable install's .pth entry resolves
+# `verifier` to the primary src, so a lost PYTHONPATH would silently compare that tree against
+# itself and pass. Fail loudly instead.
+_expected_src = Path(os.environ["PYTHONPATH"]).resolve()
+_loaded = Path(verifier.__file__).resolve()
+if not _loaded.is_relative_to(_expected_src):
+    raise SystemExit(f"imported {_loaded}, expected a module under {_expected_src}")
 with tempfile.TemporaryDirectory() as td:
     settings = Settings(data_dir=root / "data", state_dir=Path(td) / "state")
     # Audit and replay authenticate against the configured identity, so this signs with that
@@ -37,9 +47,13 @@ with tempfile.TemporaryDirectory() as td:
     load_identity(settings)
     Path(settings.signing_key_file).write_bytes(bytes(range(32)))
     signer = load_identity(settings).signer
-    # One program runs in both trees, so it resolves the dataset role tuple under either name:
-    # the baseline's single `_PLOT_ROLE_FIELDS` or the per-mode split that replaced it.
+    # One program runs in both trees, so it resolves each renamed dataset seam under either name:
+    # the baseline's single `_PLOT_ROLE_FIELDS`/`_attempt_artifacts` or the per-mode split that
+    # replaced them.
     dataset_role_fields = getattr(a, "_DATASET_PLOT_ROLE_FIELDS", None) or a._PLOT_ROLE_FIELDS
+    dataset_artifacts = getattr(
+        pipeline, "_dataset_attempt_artifacts", None
+    ) or pipeline._attempt_artifacts
     raw = (root / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()
     outcome = pipeline.verify_only(raw, settings)
     prepared = outcome.prepared
@@ -75,7 +89,7 @@ with tempfile.TemporaryDirectory() as td:
             route=a.AttemptRoute.VERIFY_AND_RENDER,
             http_status=200,
             outcome=a.AttemptOutcome.VERIFIED,
-            artifacts=pipeline._attempt_artifacts(outcome, raw, bundle.verdict, None),
+            artifacts=dataset_artifacts(outcome, raw, bundle.verdict, None),
             plot=bundle,
         ),
         signer,

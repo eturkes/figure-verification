@@ -9,7 +9,7 @@ a signed attempt there before its response or cache publication. Transport only:
 trust lives here (POC_SCOPE service boundary).
 
 Routes: /health (liveness), POST /verify-only, POST /verify-and-render + GET
-/certificate/{plot_id} + GET /spec/{spec_id} + GET /chart/{plot_id}, POST
+/certificate/{plot_id} + GET /spec/{spec_id} + GET /chart/{plot_id}, POST /verify-formula, POST
 /propose-spec, GET /key/{keyid}, GET /replay/{plot_id}, GET
 /schema/openapi.json. The
 verify POST handlers read the RAW request body via request.body() before any verifier work, so
@@ -38,9 +38,20 @@ VERIFIED proposal is returned as the Open WebUI Location-variant chart embed (a 
 summary] array under Content-Disposition: inline + a Location at GET /chart/{plot_id}; see
 propose_spec_route); every committed success/failure carries its signed occurrence address.
 
+POST /verify-formula runs the same raw-body-first discipline over the OTHER plot mode: the
+untrusted proposer supplies only a formula, a domain, and an encoding, and the verifier parses
+that formula into its own closed AST, recomputes every plotted point exactly, and AUTHORS the
+matplotlib script it certifies. It reads no dataset file and executes no script, so the route
+stores no chart page and serves none; a verified outcome answers a FormulaScriptVerdict carrying
+the inline script plus its four VCert v0.3 hashes, and a failing one answers a plain Verdict.
+
 Error split: a verification outcome (verified, semantic/resource-failed, or decode-failed)
-is a 200 Verdict (or, when verified, a 200 RenderVerdict — a failing render answers a plain
-Verdict, so a chart never rides an unverified outcome); transport misuse (wrong
+is a 200 Verdict (or, when verified, a 200 RenderVerdict or FormulaScriptVerdict — a failing
+render or emission answers a plain Verdict, so no artifact ever rides an unverified outcome).
+That 200 rule has ONE operator-configuration exception, identical in both modes and documented in
+POC_SCOPE.md: max_attestation_bytes bounds the signed OCCURRENCE as well as the certificate, so a
+value too small to sign even the rejection record turns that outcome into a generic 500 with no
+attempt. Otherwise, transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
 404, a malformed /propose-spec body -> 400), proposer input/token policy refusal (422),
 process-local admission refusal (429), or a trusted config / implementation fault (a broken
@@ -121,16 +132,25 @@ from verifier.service.model_client import (
     ProposerPolicyError,
     propose_spec,
 )
-from verifier.service.models import Problem, ProposeRequest, ProposeResult, RenderVerdict, Verdict
+from verifier.service.models import (
+    FormulaScriptVerdict,
+    Problem,
+    ProposeRequest,
+    ProposeResult,
+    RenderVerdict,
+    Verdict,
+)
 from verifier.service.openapi import openapi_json_bytes
 from verifier.service.pipeline import (
     AttemptWriter,
-    Outcome,
+    DatasetOutcome,
+    FormulaContext,
     RenderContext,
     decode_stage,
     render_outcome,
     verify_and_render,
     verify_decoded,
+    verify_formula_and_emit,
     verify_only,
 )
 from verifier.service.replay import ReplayUnsupportedError, replay_plot_chart
@@ -260,6 +280,36 @@ async def verify_and_render_route(
         )
 
 
+@post(
+    "/verify-formula",
+    operation_id="verifyFormula",
+    summary="Verify a formula plot spec and, only if verified, emit the certified plot script",
+    status_code=HTTP_200_OK,
+)
+async def verify_formula_route(
+    request: Request[Any, Any, Any], state: State
+) -> Verdict | FormulaScriptVerdict:
+    """Verify a raw formula-plot spec body; on a passing verdict return the certified matplotlib
+    script plus its four provenance hashes and content-addressed ids, archiving the signed
+    occurrence. A failing verdict returns a plain Verdict — never a script. The verifier owns
+    every plotted point and AUTHORS the script bytes; it never executes them, so no chart page is
+    rendered, cached, or served by this route. Raw-body-first like the dataset POSTs; the
+    verify+emit work (CPU-bound) runs off the event loop in a worker thread.
+    """
+    _require_json(request)
+    raw = await request.body()
+    settings = cast("Settings", state["settings"])
+    identity = cast("SigningIdentity", state["identity"])
+    archive = cast("Archive", state["archive"])
+    context = FormulaContext(
+        writer=AttemptWriter(settings=settings, archive=archive, signer=identity.signer),
+        route=AttemptRoute.VERIFY_FORMULA,
+        raw_spec=raw,
+    )
+    with _admit_work(state) as permit:
+        return await permit.run_sync(verify_formula_and_emit, context)
+
+
 # The /propose-spec request body is a small typed JSON object (unlike the raw-body POSTs, whose
 # body IS the untrusted spec decode_spec must own). Decode it strictly here — an unknown field,
 # a missing field, or a traversal/non-.csv dataset name is transport misuse, not a spec proposal.
@@ -301,7 +351,7 @@ def _verify_render_pinned(
     decoded = decode_stage(raw)
     if isinstance(decoded, Verdict):
         return render_outcome(
-            Outcome(verdict=decoded),
+            DatasetOutcome(verdict=decoded),
             context,
             include_html=False,
         )
@@ -688,6 +738,7 @@ def create_app(settings: Settings) -> Litestar:
             health,
             verify_only_route,
             verify_and_render_route,
+            verify_formula_route,
             propose_spec_route,
             replay_route,
             certificate_route,
