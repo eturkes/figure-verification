@@ -26,7 +26,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from demo import formula_walkthrough
-from demo.walkthrough import WalkthroughReport
+from demo.walkthrough import DemoError, WalkthroughReport
 from verifier import attestation, canon, vcert
 from verifier.service import model_client
 from verifier.service.app import create_app
@@ -72,6 +72,15 @@ _SCENARIO_NAMES = {
     "formula proposed flow",
     "formula certificate check shape",
 }
+# Hand-stated so a later rewrite cannot quietly upgrade a hedged claim into one the run never
+# establishes. `/table` and `/script` are digest-addressed, so no detail may call them
+# authenticated.
+_SCENARIO_DETAILS = {
+    "direct formula verify, restart, exact replay, certificate-matched table and script",
+    "stubbed formula proposal verified, archived, and replayed exactly after a restart",
+    "fetched VCert v0.3 exposed non-empty {id, method, status} triples across three methods",
+}
+_FORGED_DIGEST = "sha256:" + "0" * 64
 
 
 def _settings(tmp_path: Path, name: str) -> Settings:
@@ -389,12 +398,42 @@ def test_formula_certificate_methods_are_the_exact_declared_set(tmp_path: Path) 
     assert {check.method for check in certificate.checks} == _CERTIFIED_METHODS
 
 
+def test_archived_bytes_are_matched_against_the_authenticated_certificate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The comparison authority must be the fetched VCert, never the unsigned POST verdict.
+
+    Forging one digest inside the authenticated certificate has to fail the scenario. A
+    walkthrough that compares archived bytes against the verdict's own `*_hash` fields passes
+    this mutation, because those fields carry no signature and nothing cross-checks them.
+    """
+    control = tmp_path / "control"
+    forged_root = tmp_path / "forged"
+    control.mkdir()
+    forged_root.mkdir()
+
+    assert formula_walkthrough._scenario_formula_direct_flow(control)
+    real = formula_walkthrough._certificate
+
+    def forged(client: TestClient[Litestar], app: Litestar, plot_id: str) -> vcert.VCertV03:
+        certificate = real(client, app, plot_id)
+        return msgspec.structs.replace(certificate, plotted_table_hash=_FORGED_DIGEST)
+
+    monkeypatch.setattr(formula_walkthrough, "_certificate", forged)
+    with pytest.raises(DemoError) as caught:
+        formula_walkthrough._scenario_formula_direct_flow(forged_root)
+
+    assert "authenticated certificate" in str(caught.value)
+
+
 def test_formula_walkthrough_runs_every_scenario_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     report = formula_walkthrough.run_formula_walkthrough()
     assert report.status == "PASS"
     assert (report.total, report.passed, report.failed) == (3, 3, 0)
     assert {result.name for result in report.results} == _SCENARIO_NAMES
-    assert all(result.status == "PASS" and result.detail for result in report.results)
+    assert all(result.status == "PASS" for result in report.results)
+    assert {result.detail for result in report.results} == _SCENARIO_DETAILS
+    assert not [result for result in report.results if "authenticated" in result.detail]
 
     def boom(_tmp_path: Path) -> str:
         raise RuntimeError(_INJECTED_FAULT)

@@ -69,6 +69,7 @@ _ARTIFACT_MATCHES = {
 }
 
 type _Hashes = tuple[str, str, str, str]
+type _CertifiedArtifacts = tuple[str, str]
 
 
 def _verify_formula(client: TestClient[Litestar], spec: bytes) -> dict[str, Any]:
@@ -112,6 +113,19 @@ def _certificate(client: TestClient[Litestar], app: Litestar, plot_id: str) -> v
     return attestation.verify_vcert_v03(response.content, identity.trusted_keys).certificate
 
 
+def _certified_artifact_hashes(certificate: vcert.VCertV03) -> _CertifiedArtifacts:
+    """Take the table and script digests from the AUTHENTICATED certificate, never the verdict."""
+    artifact = certificate.artifact
+    _require(
+        isinstance(artifact, vcert.MatplotlibScriptArtifactCert),
+        "the formula certificate did not carry a matplotlib-script artifact",
+    )
+    return (
+        certificate.plotted_table_hash,
+        cast("vcert.MatplotlibScriptArtifactCert", artifact).matplotlib_script_hash,
+    )
+
+
 def _check_exact_replay(client: TestClient[Litestar], plot_id: str) -> None:
     """Replay reports the recomputation only: no artifact bytes and no signature are reproduced."""
     response = client.get(f"/replay/{plot_id}")
@@ -129,9 +143,16 @@ def _check_exact_replay(client: TestClient[Litestar], plot_id: str) -> None:
     _require(body.get("exact") is True, "formula replay did not recompute exactly")
 
 
-def _check_archived_artifacts(client: TestClient[Litestar], plot_id: str, hashes: _Hashes) -> None:
-    """Each route serves the exact archived bytes whose certified digest the verdict published."""
-    _, _, table_hash, script_hash = hashes
+def _check_archived_artifacts(
+    client: TestClient[Litestar], plot_id: str, certified: _CertifiedArtifacts
+) -> None:
+    """Each route serves the exact archived bytes the AUTHENTICATED certificate binds.
+
+    The comparison authority is the fetched VCert v0.3, never the POST verdict, whose digest
+    fields carry no signature. The digests are domain-tagged, so a raw ``sha256`` of the body
+    would fail on correct bytes.
+    """
+    table_hash, script_hash = certified
     table = client.get(f"/table/{plot_id}")
     _expect_status(table, _HTTP_OK, "post-restart plotted table")
     _require(canon.hash_table_bytes(table.content) == table_hash, "archived table bytes drifted")
@@ -144,11 +165,23 @@ def _check_archived_artifacts(client: TestClient[Litestar], plot_id: str, hashes
 
 
 def _check_restart_retrieval(settings: Settings, plot_id: str, hashes: _Hashes) -> None:
-    """Drive a NEW app instance over the SAME state directory the first instance wrote."""
-    with TestClient(app=create_app(settings)) as restarted:
+    """Drive a NEW app instance over the SAME state directory the first instance wrote.
+
+    The chain closes here: the restarted instance authenticates the certificate, that certificate
+    settles the two artifact digests, and the archived bytes are matched against those. The POST
+    verdict's own digest fields are checked to AGREE with the authenticated ones rather than
+    standing in for them.
+    """
+    app = create_app(settings)
+    with TestClient(app=app) as restarted:
         _expect_no_chart(restarted, plot_id)
         _check_exact_replay(restarted, plot_id)
-        _check_archived_artifacts(restarted, plot_id, hashes)
+        certified = _certified_artifact_hashes(_certificate(restarted, app, plot_id))
+        _require(
+            certified == hashes[2:],
+            "the verdict's artifact digests disagreed with the authenticated certificate",
+        )
+        _check_archived_artifacts(restarted, plot_id, certified)
         _expect_no_chart(restarted, plot_id)
 
 
@@ -180,7 +213,7 @@ def _scenario_formula_direct_flow(tmp_path: Path) -> str:
 
     _check_restart_retrieval(settings, plot_id, hashes)
     _verified_attempt(settings, body, AttemptRoute.VERIFY_FORMULA)
-    return "direct formula verify, restart, exact replay, and digest-matched table and script"
+    return "direct formula verify, restart, exact replay, certificate-matched table and script"
 
 
 def _scenario_formula_proposed_flow(tmp_path: Path) -> str:
