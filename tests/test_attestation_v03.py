@@ -158,7 +158,7 @@ def _decoder_bomb(
 
 
 def _formula_certificate() -> vcert.VCertV03:
-    """Real f02 certificate under the fixed vector TCB, so its bytes are interpreter-portable."""
+    """Real f02 certificate under the fixed vector TCB, byte-stable across measured interpreters."""
     spec = decode_formula_spec(_FORMULA_SPEC.read_bytes())
     evidence = checks.verify_formula_run(spec).require_evidence()
     prepared = cast(

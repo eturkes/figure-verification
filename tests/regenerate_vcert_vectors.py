@@ -4,8 +4,10 @@
 Run from the repository root: ``uv run --locked python tests/regenerate_vcert_vectors.py``.
 
 Only the two real-pipeline formula entries are derived here, each under the injected fixed TCB from
-``vector_tcb`` so the bytes stay identical across every interpreter the project's ``>=3.13,<3.14``
-floor admits. The hand-authored ``synthetic_*`` entries are copied through verbatim: they pin field
+``vector_tcb`` so the bytes stay identical across the interpreter patches MEASURED there -- CPython
+3.13.5 and 3.13.14, never the whole ``>=3.13,<3.14`` band the floor admits. Injection buys that
+portability, never independent authority. The hand-authored ``synthetic_*`` entries are copied
+through verbatim: they pin field
 order and every tag discriminator INDEPENDENTLY of the builder, which is what keeps a co-derived
 real-pipeline vector honest. Rerunning against an unchanged pipeline rewrites the same bytes.
 

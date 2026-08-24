@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Fixed TCB values that make canonical-form vectors interpreter-portable.
+"""Fixed TCB values that hold canonical-form vectors byte-stable across MEASURED interpreters.
 
 VCert stamps ``platform.python_version()``, while the project pins only the 3.13 line, so a vector
 compared against a live TCB fails on any host whose patch release differs from the authoring host's.
 Injecting these values decides canonical FORM alone; live provenance WIRING is decided by separate
 tests that load no vector.
+
+That portability is MEASURED, never general: the vectors are proven byte-identical across CPython
+3.13.5 and 3.13.14 alone. Claim no further patch, host or platform without measuring it.
 
 Every field is a synthetic constant no live source can produce, so one pair of objects serves both
 roles: the fixed basis a vector is byte-pinned against, and the disagreement witness proving an
