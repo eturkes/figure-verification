@@ -15,9 +15,10 @@ function decodes, then blocks. Neither renders.
 
 **Mode split.** Part A = DATASET meaning (`§1`–`§11` + settled decisions): a proposed transform
 pipeline over a trusted CSV + manifest. Part B = FORMULA meaning (`§F1`–`§F9`): a proposed
-expression sampled over a declared domain. Every section names its mode in its own heading and
-nothing here is mode-neutral. A dataset rule NEVER transfers to formula mode by default — where
-the modes agree, Part B states the agreement explicitly.
+expression sampled over a declared domain. Every NUMBERED section names its mode in its own
+heading; the shared H1 and this introduction are deliberately mode-neutral and are the only text
+that is. A dataset rule NEVER transfers to formula mode by default — where the modes agree, Part B
+states the agreement explicitly.
 
 ## Part A — dataset mode (`vplot-0.1`)
 
@@ -300,7 +301,9 @@ section below says so and names it.
   parse → exact evaluation → sampling → quantization → semantic + SMT checks → script emission →
   certificate construction → signing → archive (`service/pipeline.py:317-672`). A model-supplied
   PLOTTED value cannot reach the script, because the verifier computes every point it emits —
-  impossible by construction, not a check.
+  impossible by construction, not a check. THIS FILE's authority ends at script emission; the
+  stages after it are named here only to close the spine, and their meaning is `POC_SCOPE.md`'s
+  except for the certificate propositions `§F1` and `§F7` state explicitly.
 - **Formula input is executable expression DATA.** Part A's `security.no_arbitrary_code`
   affirmation — "pure data, no executable path" — does NOT transfer. Formula mode states its own
   claim: the text is LEXED and PARSED into a frozen, allowlisted, verifier-owned AST
@@ -308,14 +311,27 @@ section below says so and names it.
   `eval`, `exec`, `compile` or `ast` path is reachable from the formula surface. The model
   supplies a program the verifier reads; it never supplies a program the host runs.
 - The emitted artifact is a matplotlib SCRIPT the VERIFIER authors from a fixed byte template
-  (`matplotlib_script.py:39-61`). Only verifier-derived x/y/domain literals vary between two
-  emissions of the same template, so model-authored Python cannot enter the script.
+  (`matplotlib_script.py:39-61`). Two things vary between emissions: verifier-derived x/y/domain
+  literals, and ONE allowlisted verifier-owned mark fragment chosen by table lookup from the
+  decoded `line|scatter` enum — `ax.plot(...)` or `ax.scatter(...)`, both fixed strings the
+  verifier authors (`matplotlib_script.py:39-42`, `matplotlib_script.py:147`). The model SELECTS
+  from a closed pair; it never supplies bytes. So no model-authored Python enters the script, and
+  the reason is closed dispatch plus computed literals — not literals alone.
 - VCert v0.3 binds exactly four hashes for a formula plot — `formula_hash`, `spec_hash`,
   `plotted_table_hash`, `matplotlib_script_hash` — and `FormulaTcb` stamps nine fields:
   `verifier_version`, `z3_version`, `canon_version`, `python`, `msgspec`, `unidata`,
   `grammar_version`, `numeric_profile`, `script_template_version` (`vcert.py:118-268`). It
   EXCLUDES Vega, fonts, matplotlib, the browser and pixels, because the verifier neither renders
-  nor executes in this mode.
+  nor executes in this mode. v0.3 structurally represents BOTH modes, but only formula production
+  emits it; dataset production still emits v0.2, so a v0.3 certificate in hand is a formula
+  certificate.
+- **What building a formula certificate does and does not certify.** `build_formula_certificate`
+  refuses any non-passing artifact, then RE-HASHES all four supplied carriers with the same
+  domain-tagged functions and refuses on any mismatch (`vcert.py:531-562`). It performs no SEMANTIC
+  recomputation: it never reparses, re-evaluates, re-samples, re-emits, re-solves or executes
+  (`vcert.py:513-521`). So a certificate attests that the four digests bind the exact carrier bytes
+  handed to it AND that the pipeline reported all-pass — never that an independent second evaluator
+  reproduced the points. Replay, not certificate construction, is what re-derives them.
 - **The claim, stated at its true scope.** At every declared SAMPLED x, the closed evaluator
   produced the certified y under the declared numeric + rounding profile, and the emitted script
   inlines exactly those certified points. The claim covers nothing else. It does NOT assert
@@ -323,8 +339,8 @@ section below says so and names it.
   matches any natural-language intent the model was asked to satisfy.
 - **TCB.** matplotlib, Pyodide, the browser and the pixels stay TRUSTED, never proven. The
   executed script is verifier-authored, so its pixels are trusted-not-proven for exactly the
-  reason Part A's SVG pixels are. M9 ships no execution at all — the verifier emits script bytes
-  and imports no matplotlib, and no component of this milestone runs the script anywhere.
+  reason Part A's SVG pixels are. Those carriers are trusted for FIDELITY only; `§F6` states the
+  operational no-execution rule for M9.
 
 ### F2. Carriers + sampled domain — formula mode
 
@@ -340,15 +356,21 @@ section below says so and names it.
   `2 ≤ n ≤ 100_000`), `x_scale` and `y_scale` (`int`, `0 ≤ s ≤ 12`) (`schema.py:156-161`).
 - **Sample schedule.** For `i = 0 … samples-1`, `xᵢ = quantize(start + i·(stop-start)/(samples-1),
   x_scale)` (`eval.py:240-268`). Both endpoints are sampled: `x₀ = quantize(start)` and
-  `x_{samples-1} = quantize(stop)`. Those are the QUANTIZED endpoints — where `start` carries more
-  decimal places than `x_scale`, `x₀ ≠ start`, by design.
+  `x_{samples-1} = quantize(stop)`. Admission then REQUIRES both quantized endpoints to equal the
+  exact declared endpoints: a `start` or `stop` carrying more decimal places than `x_scale` is NOT
+  rounded into range, it BLOCKS on `formula.domain_bounded` (`start=0.04`, `stop=1.04`,
+  `x_scale=1` blocks; `§F6`'s `render.x_domain_exact` rests on this).
 - **Decode settles SHAPE alone.** Domain ordering, decimal representability, grammar,
   name/function/exponent admissibility and sample distinctness are all SEMANTIC checks, never
   struct post-init validation (`schema.py:154-155`). A domain whose `stop` precedes its `start`
   decodes cleanly, then blocks at `§F5`.
-- **Decode bounds are not the operative ceilings.** The decoder's `samples ≤ 100_000` and
-  `FormulaText ≤ 1024` are shape bounds; the operator's resource policy binds tighter and refuses
-  first (`§F7`).
+- **Decode bounds are HARD outer ceilings; DEFAULT resource policy is what refuses first.** The
+  decoder's `samples ≤ 100_000` and `FormulaText ≤ 1024` (`schema.py:31`, `schema.py:159`) are
+  non-configurable shape bounds. At the shipped defaults the operator's resource policy binds
+  tighter, so a run refuses at `§F7`'s resource layer before decode could. Raising
+  `max_formula_bytes` or `max_formula_samples` — neither carries an absolute ceiling — moves that
+  first refusal back to the DECODER; it never widens the admitted envelope, because 1025 bytes and
+  100_001 samples block at decode under ANY policy.
 - **Formula mode reads no dataset.** The formula schema declares no CSV, manifest or
   `dataset.hash` field, and the formula pipeline accepts only a spec plus settings
   (`service/pipeline.py:317-324`). The formula attempt projection carries no `raw_csv` and no
@@ -356,9 +378,10 @@ section below says so and names it.
   column manifest is therefore ABSENT here, not reinterpreted.
 - **Canonical source.** `canon.FormulaSource` carries nine fields — `grammar_version`,
   `numeric_profile`, `rounding`, `ast`, `start`, `stop`, `samples`, `x_scale`, `y_scale`
-  (`canon.py:102-118`). Two domain-tagged hash identities serve formula mode: `formula` over the
-  resolved canonical source, and `matplotlib-script` over the exact emitted script bytes
-  (`canon.py:202-293`).
+  (`canon.py:102-118`). Two FORMULA-SPECIFIC domain-tagged hash identities augment the shared
+  `spec` and `table` identities: `formula` over the resolved canonical source, and
+  `matplotlib-script` over the exact emitted script bytes (`canon.py:202-293`). All four digests a
+  formula certificate binds are domain-tagged; none is a raw SHA-256 of a body.
 - **Plotted table.** Two numeric columns, `x` then `y`, at the declared `x_scale`/`y_scale`, one
   row per admitted sample, in sample-schedule order (`eval.py:329-355`).
 
@@ -377,9 +400,12 @@ section below says so and names it.
 - **Float enters once, after verification.** The only float in the mode appears when the verified
   exact points project into the emitted script's literals (`matplotlib_script.py:95-105`). `§F6`
   states exactly what is and is not claimed about that projection.
-- **One cumulative `WorkBudget` spans the whole run.** Tariff: a successful sample costs 5 units
-  plus the AST tariff; a formula `x` reference costs 6 units per sample; `Pow` costs
-  `1 + abs(exponent)` (`expr.py:17-21`, `expr.py:744-761`).
+- **One cumulative `WorkBudget` spans the whole run.** Tariff: each admitted sample costs 5
+  wrapper units PLUS the AST tariff, where every node costs 1 and `Pow` costs `1 + abs(exponent)`
+  (`expr.py:17-21`, `expr.py:744-761`). The per-node rule is what sets the total, not the variable:
+  over 11 samples the one-node expressions `x` and `1` each cost 66, three-node `x+x` costs 88, and
+  five-node `x*x+x` costs 110. So the one-node `x` costs `6 × samples`, and reading that as "6 per
+  variable occurrence" overstates every multi-node formula.
 - **Charge precedes the guarded operation.** An over-limit charge raises BEFORE incrementing, so
   refused work consumes zero units; an operation that is admitted and then fails retains its full
   charge (`work.py:37-52`).
@@ -397,13 +423,15 @@ section below says so and names it.
 - **Admitted constructs.** Decimal literals, the allowed variable, grouping, `abs`, unary `+`/`-`,
   binary `+ - * /`, and `**` with a signed INTEGER exponent (`expr.py:462-614`). `abs` is the SOLE
   admitted function.
-- **Transcendentals are refused in v0.1** because they are irrational and therefore not exact in
-  the declared rational/decimal profile. `sin`, `cos`, `tan`, `exp`, `log` and `sqrt` block on
-  `formula.functions_allowed`; `pi` and `e` block on `formula.names_allowed`; both raise
+- **Transcendentals are refused in v0.1** because they are not closed under exact rational
+  evaluation. The refusal is by NAME at parse time, so an argument that happens to yield a rational
+  value changes nothing — irrationality at general arguments is the reason, never a per-argument
+  test. `sin`, `cos`, `tan`, `exp`, `log` and `sqrt` block on `formula.functions_allowed`; `pi` and
+  `e` block on `formula.names_allowed`; both raise
   `VerificationError` (`expr.py:535-556`). **`sqrt` is refused UNCONDITIONALLY** — `sqrt(4)` blocks
   exactly like `sqrt(2)`, because refusal is by NAME at parse time and never inspects the argument.
-- **Parse limits: eight, each a policy DEFAULT under an ABSOLUTE ceiling** (`limits.py:49-58`,
-  `expr.py:152-162`):
+- **Parse limits: eight policy DEFAULTS, of which exactly THREE carry an absolute ceiling**
+  (`limits.py:49-58`, `expr.py:152-162`). The other five are bounded by operator policy alone:
 
   | limit | default | absolute ceiling |
   |---|---|---|
@@ -416,10 +444,17 @@ section below says so and names it.
   | `max_formula_exponent` | 64 | none |
   | `max_formula_identifier_bytes` | 32 | none |
 
-- The ceilings are TRUSTED-CALLER POLICY BOUNDS, not clamps. `_validate_limits` is the first call
-  in `parse_expr`, ahead of allowlist, byte and lexing work, and a policy above a ceiling raises a
-  native `ValueError` naming the field rather than silently lowering it (`expr.py:199-231`,
-  `expr.py:621-637`).
+- Those three ceilings are TRUSTED-CALLER POLICY BOUNDS, not clamps. `_validate_limits` is the first
+  call in `parse_expr`, ahead of allowlist, byte and lexing work, and a policy above a ceiling
+  raises a native `ValueError` naming the field rather than silently lowering it (`expr.py:199-231`,
+  `expr.py:621-637`). The 512-digit ceiling sits deliberately below CPython's own
+  integer-conversion threshold, whose LEGAL MINIMUM is 640 (`sys.set_int_max_str_digits(639)`
+  raises `ValueError`), so no legal interpreter setting makes a native conversion refusal reachable
+  ahead of the parser's own digit guard. Two further qualifications ride those ceilings: stack
+  safety ASSUMES CPython's default
+  1000-frame recursion limit and a process lowering it below about 527 frames invalidates the basis,
+  and a hand-built AST deeper than the parser admits is unsupported trusted-caller misuse, not a
+  supported input.
 - **Effective envelope.** A left-associative chain's AST height equals its term count, so
   `max_formula_ast_depth` binds a long flat sum FIRST — at the defaults, 32 terms parse and term 33
   raises `resource.formula_ast_depth`. Tokens are not the binding ceiling there: 33 terms spend 65
@@ -430,6 +465,14 @@ section below says so and names it.
   algebraic rewrite. That list is a PROVENANCE claim, not a convenience:
   `canon.FormulaSource.ast` hashes this printed text, so printer injectivity and determinism are
   provenance-critical.
+- **Refusal precedence is PINNED, and it is not the success order.** `_evaluate_formula` guards in
+  exactly this sequence, so a multi-fault input reports the FIRST one and never a later ID
+  (`eval.py:311-352`): domain ordering (`formula.domain_ordered`) → sample cap
+  (`resource.formula_samples`) → both endpoint bit-widths (`resource.formula_intermediate_bits`) →
+  `parse_expr` (every grammar, allowlist and parse-resource refusal) → schedule construction →
+  endpoint-exactness and strictness admission → per-row `eval_expr` → y quantization → y bit-width
+  and row admission. A reversed domain therefore outranks an unparsable formula, and a disallowed
+  function outranks a collapsed sample.
 - **Stage order.** A formula run evaluates `security.no_arbitrary_code`, then the four formula
   postconditions, then the two encoding checks, then `sort.canonical_order`, then the five render
   checks — 13 checks on the success path (`checks.py:643-689`, `formula_prepare.py:75-110`,
@@ -444,8 +487,7 @@ section below says so and names it.
 - **The formula table hash is order-sensitive.** Part A `§6` closes the DATASET table under a
   canonical TOTAL ORDER, which is what makes its hash permutation-invariant under input-row
   permutation. Formula mode needs no such closure and does not have one: typed-NDJSON preserves row
-  sequence (`canon.py:174-190`), so reordering two rows changes `plotted_table_hash` — swapping
-  f02's first two rows moved it from `6f9187…` to `0a17b7…`.
+  sequence (`canon.py:174-190`), so reordering two rows changes `plotted_table_hash`.
 - **Two ordering authorities, deliberately different strengths.**
   - `formula.sample_points_strictly_increasing` (`deterministic_recompute`) is the SOLE
     strictly-increasing authority. It rejects every quantized `xᵢ` that is not greater than its
@@ -456,15 +498,21 @@ section below says so and names it.
     `formula_prepare.py:44-72`, `formal.py:285-296`). It proves nothing about y and nothing about
     behavior between samples.
 - **Check order is a corpus obligation.** `formula.domain_ordered` runs before schedule
-  construction (`eval.py:309-337`). Every reversed domain also yields a descending schedule, so no
-  supported fixture isolates a strictness failure from an ordering failure. That is an
-  input-coupled REACHABILITY limit, not a weaker ordering guarantee.
+  construction (`eval.py:309-337`). Every reversed domain ALSO yields a descending schedule, so a
+  reversed-domain input would reach the strictness check too if `formula.domain_ordered` did not
+  run first — that direction is exactly what the order pins, and `fb17_reversed_domain.json` fails
+  `formula.domain_ordered`. Strictness stays independently reachable from the other side: an
+  ORDERED domain whose quantization collapses two positions fails strictness alone
+  (`fb20_sample_collision.json`). Both fixtures are load-bearing; neither substitutes for the
+  other.
 
 ### F6. Fixed quantitative encoding + script emission — formula mode
 
 - **Encoding is FIXED**, not proposed: `x` and `y`, both `quantitative`, with the literal field
   names `x` and `y` (`schema.py:82-95`). Formula mode admits no color channel, no
-  ordinal/nominal/temporal channel type, and no model-supplied title, unit, scale or format. `mark`
+  ordinal/nominal/temporal channel type, and no model-supplied title, unit, DISPLAY-scale
+  configuration or format. `x_scale`/`y_scale` are a different thing and ARE model-declared: they
+  are decimal PLACE counts governing quantization (`§F2`, `§F3`), never axis-scale policy. `mark`
   is `line` or `scatter` — never `bar`.
 - **Three dataset checks have NO formula counterpart** because their inputs do not exist here
   (`schema.py:52-95`, `formula_prepare.py:92-99`): `label.quantitative_units_present` (no manifest,
@@ -518,8 +566,9 @@ The three-layer split of Part A `§9` holds, but each layer has different member
   emitting that ID, so a planned-but-unemitted ID stays unregistered and refusal-pinned.
 - **A verified formula certificate is all-pass by construction.** The builder refuses every
   non-passing formula artifact, so a mixed-STATUS certificate is unreachable through any supported
-  flow and reaching one needs forgery. The certified set is 13 checks over exactly three methods:
-  `{construction, deterministic_recompute, z3_smt}`.
+  flow and reaching one needs forgery. The certified set is exactly `§F4`'s success path — every
+  check on it, over exactly three methods: `{construction, deterministic_recompute, z3_smt}`.
+  `§F4` alone states that count.
 - A failing formula run blocks the artifact. The verdict-level claim about which responses return
   or archive a script belongs to the service boundary and is stated in `POC_SCOPE.md`; this file
   does not restate it.
@@ -534,10 +583,12 @@ The three-layer split of Part A `§9` holds, but each layer has different member
   (`tests/formula_oracle.py:1-12`, `tests/formula_oracle.py:155-236`). It deliberately SHARES the
   production parser AST and the contract carrier types, so it is an independent EVALUATOR and not
   an independent parser.
-- **What agreement evidences.** The campaign compares end-to-end public evaluator output — the
-  table and the check results. Agreement therefore evidences public-entry outcome equality and says
-  nothing about any individual internal admission site
-  (`tests/test_eval_formula_oracle.py:2-9`, `tests/test_eval_formula_oracle.py:421-458`).
+- **What agreement evidences, at the measured surface.** The campaign compares exactly two things:
+  canonical TABLE CELLS for an admitted run, and the exception's CHECK ID for a rejected one
+  (`tests/test_eval_formula_oracle.py:2-9`, `tests/test_eval_formula_oracle.py:421-458`). It never
+  compares full `CheckResult` tuples, methods, statuses, messages, traces or work units. Agreement
+  therefore evidences public-entry outcome equality on those two surfaces alone, and says nothing
+  about any individual internal admission site, nor about report serialization or method provenance.
 - **The oracle ignores work accounting on purpose**, so it computes no tariff and no `work_units`.
   A run the production evaluator refuses with `resource.formula_work` while the oracle completes is
   an EXPECTED ONE-SIDED outcome, and the suite classifies it as such
@@ -546,19 +597,24 @@ The three-layer split of Part A `§9` holds, but each layer has different member
 
 ### F9. Settled decisions — formula mode (never re-litigate)
 
-- **Transcendentals stay out of v0.1** because they are irrational and therefore not exact in a
-  Decimal/rational profile. Polynomial and rational expressions — the "basic math plot" case — are
-  fully covered. A transcendental profile is a separately VERSIONED, interval-certified future
-  profile: evaluate directed lower and upper bounds, quantize both, accept only on agreement, and
-  otherwise raise precision within budget or fail. **Agreement between two precisions is NOT a
-  correct-rounding proof**, which is why the profile must be versioned rather than bolted on.
+- **Transcendentals stay out of v0.1** because they are not closed under exact rational evaluation,
+  so no Decimal/rational profile can certify them. Polynomial and rational expressions — the "basic
+  math plot" case — are supported WITHIN the admitted grammar, the resource policy and the
+  sampled-domain checks; a rational expression undefined at a sampled x still blocks, and
+  certification stays sampled-point-only. A transcendental profile is a separately VERSIONED,
+  interval-certified future profile: evaluate directed lower and upper bounds, quantize both, accept
+  only on agreement, and otherwise raise precision within budget or fail. **Agreement between two
+  precisions is NOT a correct-rounding proof**, which is why the profile must be versioned rather
+  than bolted on.
 - **The expression engine is REUSABLE, not formula-only.** `parse_expr` + `eval_expr`, the frozen
   AST, exact `Fraction` semantics, the caller-supplied allowlist and the cumulative work budget are
   consumer-neutral (`expr.py:2-23`, `expr.py:621-637`, `expr.py:837-853`). Domain sampling, the `x`
   binding, table construction, canonical-source construction, the SMT obligation and script
   emission are FORMULA-ONLY wrappers (`eval.py:309-371`). A future consumer that binds different
-  names inherits the same exactness, quantization and allowlist discipline without inheriting the
-  sampling wrapper.
+  names inherits the same exactness and allowlist discipline without inheriting the sampling
+  wrapper. It does NOT inherit quantization: HALF_EVEN `_quantize_fraction` is private to `eval.py`
+  and sits OUTSIDE the expression-engine API, so a second consumer must reuse it deliberately or
+  extract it.
 - **An equivalent respelling does not certify identically, and the reason is narrow.** `2*x + 1`
   and `2 * x+1` produce the same canonical AST, so they share THREE of the four certified
   digests — `formula_hash`, `plotted_table_hash` and `matplotlib_script_hash` — because each
@@ -567,8 +623,8 @@ The three-layer split of Part A `§9` holds, but each layer has different member
   the canonical spec preserves the SUBMITTED text (`eval.py:350-369`, `canon.py:252-281`).
   `spec_hash` is the SOLE spelling-sensitive certified digest.
 - **Canonicalization normalizes spelling, never algebra.** `x*2` and `2*x` are DIFFERENT canonical
-  sources, because normalization performs no commutative reordering and no constant folding
-  (`§F4`). Only the five listed rewrites collapse two texts onto one canonical form.
+  sources: commutative reordering is not among the rewrites `§F4` enumerates, and those
+  rewrites are the only way two texts collapse onto one canonical form.
 - **The evaluator owns the only work meter.** The parser is bounded structurally — bytes, tokens,
   nodes, depth, parentheses, digits, and the fixed digit ceiling — and charges nothing to
   `max_formula_work_units`. A second parser meter adds no guarantee and would collide with the

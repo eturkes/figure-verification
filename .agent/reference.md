@@ -13,6 +13,7 @@ Every rule here fires from an unmissable trigger: you are editing the named subs
 | a ruff `S603`/`ARG001`/format surprise, `httpx` clients, a second-interpreter run, VCert vector regeneration | Tooling mechanics |
 | planning M10 (OWUI sandbox execution) or M11 (`derive` columns) | Future-milestone design seeds |
 | a README, CLI help, launcher banner, filter notice, badge/chart label or OpenAPI `summary=` | Human-facing surface list + authoring pins |
+| `VPlot_SEMANTICS.md` — any heading, section number or `§` citation | `VPlot_SEMANTICS.md` structure + citation pins |
 | `.claude/settings.json` `permissions.deny`, `.serena/project.yml` `ignored_paths`, consuming a persisted design recipe | Read-exclusion set + blueprint-recipe discharge |
 
 ## msgspec pinned behaviours
@@ -90,6 +91,14 @@ Transcribe, never re-derive; `schema.py` cites these BY NUMBER.
 ## Human-facing surface list + authoring pins
 
 - Authoring audience split (`CLAUDE.md` Authoring). HUMAN-FACING ⇒ ASD-STE100 binds: the four shipped READMEs (`README.md` + `webui`/`bench`/`demo` operator recipes) + product/operator strings — `webui/launch.sh` `usage()` + READY banner, `enforcement_filter` `FILTER_NAME`/`FILTER_DESCRIPTION`/`BLOCKED_NOTICE`, `render.badge_html`/`signed_chart_html` labels + `<title>`, `VERIFIED_CHART_REPLY`, `app.py` OpenAPI `summary=` + chat success summary, CLI `description=`/`help=` literals, `audit._CLI_FAILURE`. `--help` is human-facing, a docstring is not ⇒ give `ArgumentParser` an explicit register-conformant `description=` + leave the docstring agent-optimized. A `README.md` block quote of an internal doc is a QUOTATION first: quoted claim/TCB lines stay byte-identical to the cited `POC_SCOPE.md` lines, so the register binds the README's OWN prose alone — re-diff the quoted substring after editing either file. Re-registering is free EXCEPT three pins: `audit._CLI_FAILURE` byte-pinned; `app.py`'s success summary regex-pinned by `verified_chart._SUMMARY_RE`; each OpenAPI `summary=` triplicated across `app.py` + `service/openapi.py` + the `schema/openapi.json` golden. `tests/test_webui_client.py` `_CHAT_TEXT` mirrors `VERIFIED_CHART_REPLY` as an INDEPENDENT fake-server fixture, not a pin.
+
+## `VPlot_SEMANTICS.md` structure + citation pins
+
+- **NOT human-facing.** It is an agent-consumed meaning contract that the evaluator, checks, renderer, script emitter and both dev/test oracles conform to ⇒ the `CLAUDE.md` dense/symbol-forward default governs it, NOT ASD-STE100. Do not "fix" its sentence lengths; Part A carries 26 sentences over 25 words by design and has passed two milestone reviews that way. The four shipped READMEs remain human-facing — the split above still binds them.
+- **Structure.** One shared H1 + intro (the ONLY mode-neutral text) → `## Part A — dataset mode (vplot-0.1)` → `## Part B — formula mode (vplot-formula-0.1)`. 21 `###` sections: 12 dataset (`§1`–`§11` + `Settled decisions`), 9 formula (`§F1`–`§F9`). EVERY `###` heading contains its mode label, `— dataset mode` or `— formula mode`, so the invariant is one script away.
+- **Section NUMBERS are load-bearing; heading TEXT is not.** No citation anywhere uses a `#anchor` fragment, so titles are free to reword. Numbers are cited from 7 external sites — `examples/index.json`, `examples/README.md` (×3), `tests/test_checks.py`, `tests/test_examples.py`, `tests/test_schema_properties.py` — pointing at Part A `§2`/`§4`/`§5`/`§7`/`§9`. Renumbering requires sweeping all 7.
+- **Two consumers cite number + PROSE TITLE** — `src/verifier/errors.py:9` and `src/verifier/ingest.py:8` ⇒ a Part A TITLE rename must sweep those two even though anchors are unused.
+- **Single-authority rule.** Each ruling is stated exactly once at true scope; a second statement is a defect because the copies drift independently. Current pointers rather than copies: `§F7` → `§F4` for the 13-check success count, `§F9` → `§F4` for the normalization contract, `§F1` → `§F6` for the operational no-execution rule, `§F7` → `POC_SCOPE.md` for verdict/route/storage claims. This file's authority ENDS at script emission.
 
 ## Future-milestone design seeds (read at M10 / M11 PLANNING)
 
