@@ -27,7 +27,7 @@ From the repository root, run the hardware-free driver:
 uv run --locked python -m demo.e2e
 ```
 
-The driver starts its own verifier subprocess. It exercises three cases over real loopback sockets:
+The driver starts its own verifier subprocess. It exercises four cases over real loopback sockets:
 
 1. `g01` renders a verified chart and verifies its DSSE-signed certificate.
    The driver restarts the service and replays the archived plot exactly.
@@ -35,9 +35,14 @@ The driver starts its own verifier subprocess. It exercises three cases over rea
    `field 'profit' does not exist in the table`.
 3. `b13` is blocked by `label.quantitative_units_present`.
    A crafted `scale.zero:false` variant is separately decode-refused because that misleading baseline is unrepresentable in VPlot v0.1.
+4. `f02` verifies a formula spec and authenticates its VCert v0.3.
+   The driver takes the signing key from the service over HTTP.
+   It matches the archived table and script against the digests that certificate binds.
+   The driver then restarts the service and replays the plot exactly.
+   `/chart` answers 404 throughout, because formula mode builds no chart page.
 
 The command writes the machine-readable report to `demo/reports/e2e_report.json` (gitignored).
-It exits with `0` only if all three outcomes match those expectations.
+It exits with `0` only if all four outcomes match those expectations.
 
 The opt-in `--with-webui` and `--with-model` legs are disabled by default. Both legs require the live
 stack in [webui/README.md](../webui/README.md). Run the legs as separate passes.

@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Deterministic real-socket three-case verifier demo: ``python -m demo.e2e``.
+"""Deterministic real-socket four-case verifier demo: ``python -m demo.e2e``.
 
 The driver always owns a disposable verifier service, talks to it only over loopback TCP, and uses
-no model backend, Open WebUI instance, or accelerator for its three deterministic cases. Optional
+no model backend, Open WebUI instance, or accelerator for its four deterministic cases. Optional
 flags add observations against a separately running production stack without weakening those cases.
+
+Three cases drive dataset mode. The fourth drives formula mode over the same sockets: it verifies
+a formula spec, authenticates the VCert v0.3 under the key the SERVER advertises, matches the
+archived table and script against the digests that certificate binds, restarts the service, and
+replays exactly. ``/chart`` stays 404 throughout, because formula mode builds no chart page.
 """
 
 import argparse
@@ -32,6 +37,7 @@ from demo.walkthrough import (
     ScenarioStatus,
     WalkthroughReport,
     _attempt_id,
+    _expect_problem,
     _expect_status,
     _object,
     _object_list,
@@ -39,7 +45,7 @@ from demo.walkthrough import (
     _response_object,
     encode_report,
 )
-from verifier import attestation
+from verifier import attestation, canon, vcert
 from webui.client import WebUIClient, WebUIProvisionError
 from webui.settings import Settings as WebUISettings
 
@@ -49,9 +55,11 @@ _DATA = _ROOT / "data"
 _GOOD_SPEC = _ROOT / "examples" / "good_specs" / "g01_total_revenue_by_month.json"
 _BAD_FIELD_SPEC = _ROOT / "examples" / "bad_specs" / "b07_nonexistent_field.json"
 _MISSING_UNIT_SPEC = _ROOT / "examples" / "bad_specs" / "b13_missing_y_unit.json"
+_FORMULA_SPEC = _ROOT / "examples" / "formula_good_specs" / "f02_linear.json"
 _REPORT_PATH = _ROOT / "demo" / "reports" / "e2e_report.json"
 _JSON = {"content-type": "application/json"}
 _HTTP_OK = 200
+_HTTP_NOT_FOUND = 404
 _STARTUP_DEADLINE_S = 20.0
 _POLL_INTERVAL_S = 0.1
 _REQUEST_TIMEOUT_S = 20.0
@@ -63,6 +71,37 @@ _HASH_FIELDS = (
     "manifest_hash",
     "vega_lite_hash",
 )
+# Formula mode certifies FOUR carriers and there is no fifth: resolved source, spec, plotted table,
+# and the verifier-authored script. Hand-stated rather than read from the verdict struct, so the
+# tuple pins that field set instead of restating whatever the struct currently declares.
+_FORMULA_HASH_FIELDS = (
+    "formula_hash",
+    "spec_hash",
+    "plotted_table_hash",
+    "matplotlib_script_hash",
+)
+_FORMULA_ARTIFACT_MATCHES = {
+    "formula": True,
+    "spec": True,
+    "plotted_table": True,
+    "matplotlib_script": True,
+}
+# Replay carries hashes, flags and versions only. The absence of any artifact-bytes or signature
+# key is the point of the exact-set assertion, so this is stated as a literal.
+_FORMULA_REPLAY_KEYS = {
+    "status",
+    "integrity_ok",
+    "trusted_keyid",
+    "failure_stage",
+    "diagnostic",
+    "artifact_matches",
+    "payload_match",
+    "version_match",
+    "drift",
+    "exact",
+}
+_VCERT_V03_VERSION = "vcert-0.3"
+_NO_ARTIFACT = "no such artifact"
 _B07_REASON = "field 'profit' does not exist in the table"
 _B13_REASON = "quantitative channel 'aqi' traces to manifest column 'aqi', which declares no unit"
 _DEFAULT_VERIFIER_URL = "http://127.0.0.1:8000"
@@ -538,15 +577,213 @@ def _case_b13_and_scale_blocked(service: _VerifierService) -> str:
     )
 
 
+def _formula_hashes(body: dict[str, Any], context: str) -> tuple[str, str, str, str]:
+    """Read the four certified digests a formula verdict carries. There is no fifth."""
+    _require(
+        tuple(name for name in body if name.endswith("_hash")) == _FORMULA_HASH_FIELDS,
+        f"{context} did not carry exactly the four certified hashes",
+    )
+    values = tuple(_string_field(body, name, context) for name in _FORMULA_HASH_FIELDS)
+    _require(
+        all(value.startswith("sha256:") for value in values),
+        f"{context} carried a certified hash without its sha256 prefix",
+    )
+    return cast("tuple[str, str, str, str]", values)
+
+
+def _expect_no_chart(service: _VerifierService, plot_id: str, context: str) -> None:
+    """Assert the 404 only where the same plot_id is already serving its archived artifacts.
+
+    A bare 404 here proves nothing: the route reads an ephemeral LRU, and a malformed id, an
+    unknown id and an evicted chart all answer identically. The discriminator is the co-located
+    200s the caller has just taken from ``/certificate``, ``/table`` and ``/script``.
+    """
+    _expect_problem(_get(service, f"/chart/{plot_id}"), _HTTP_NOT_FOUND, _NO_ARTIFACT)
+    _LOGGER.info("  %s: /chart 404 while the archived artifact routes serve 200", context)
+
+
+def _fetch_and_verify_formula_certificate(
+    service: _VerifierService, plot_id: str
+) -> tuple[str, tuple[str, str, str, str]]:
+    """Authenticate the v0.3 certificate under the key the SERVER advertises over HTTP.
+
+    Returns the keyid plus ALL FOUR digests that certificate binds, in ``_FORMULA_HASH_FIELDS``
+    order. Returning only the two artifact digests would let the verdict's ``formula_hash`` or
+    ``spec_hash`` drift while every remaining assertion still passed. An out-of-process client
+    cannot reach the signing identity, so the key arrives from ``/key/{keyid}`` and the envelope's
+    own keyid is what selects it.
+    """
+    response = _get(service, f"/certificate/{plot_id}")
+    _expect_status(response, _HTTP_OK, "formula certificate fetch")
+    envelope = _response_object(response, "formula certificate DSSE envelope")
+    _require(
+        envelope.get("payloadType") == attestation.VCERT_V03_PAYLOAD_TYPE,
+        "formula certificate DSSE payload type drifted",
+    )
+    signatures = _object_list(envelope.get("signatures"), "formula certificate signatures")
+    _require(len(signatures) == 1, "formula certificate did not carry exactly one signature")
+    keyid = _string_field(signatures[0], "keyid", "formula certificate signature")
+    _require(bool(keyid), "formula certificate keyid was empty")
+
+    key_response = _get(service, f"/key/{keyid}")
+    _expect_status(key_response, _HTTP_OK, "formula public-key fetch")
+    _require(
+        key_response.headers.get("content-type", "").startswith("application/octet-stream"),
+        "formula public-key endpoint did not return application/octet-stream",
+    )
+    try:
+        public_key = Ed25519PublicKey.from_public_bytes(key_response.content)
+    except ValueError as exc:
+        msg = "formula public-key endpoint did not return one raw Ed25519 key"
+        raise DemoError(msg) from exc
+    try:
+        verified = attestation.verify_vcert_v03(
+            response.content,
+            {keyid: public_key},
+            require_canonical_envelope=True,
+            expected_keyid_hint=keyid,
+        )
+    except attestation.AttestationError as exc:
+        msg = "formula certificate did not verify under the server-advertised key"
+        raise DemoError(msg) from exc
+
+    certificate = verified.certificate
+    _require(certificate.version == _VCERT_V03_VERSION, "formula certificate version drifted")
+    source = certificate.source
+    _require(
+        type(source) is vcert.FormulaSourceCert,
+        "formula certificate did not carry a formula source",
+    )
+    artifact = certificate.artifact
+    _require(
+        type(artifact) is vcert.MatplotlibScriptArtifactCert,
+        "formula certificate did not carry a matplotlib-script artifact",
+    )
+    certified = (
+        cast("vcert.FormulaSourceCert", source).formula_hash,
+        certificate.spec_hash,
+        certificate.plotted_table_hash,
+        cast("vcert.MatplotlibScriptArtifactCert", artifact).matplotlib_script_hash,
+    )
+    return keyid, certified
+
+
+def _check_formula_artifacts(
+    service: _VerifierService,
+    plot_id: str,
+    certified: tuple[str, str, str, str],
+    inline_script: str,
+    context: str,
+) -> None:
+    """Match each archived artifact against the digest the AUTHENTICATED certificate binds.
+
+    Both digests are domain-tagged, so a raw SHA-256 of the body would fail on correct bytes. The
+    script check closes one further link: the bytes this route serves are the same bytes the POST
+    verdict handed the caller inline.
+    """
+    _, _, table_hash, script_hash = certified
+    table = _get(service, f"/table/{plot_id}")
+    _expect_status(table, _HTTP_OK, f"{context} plotted table")
+    _require(
+        canon.hash_table_bytes(table.content) == table_hash,
+        f"{context} archived plotted-table bytes drifted",
+    )
+    script = _get(service, f"/script/{plot_id}")
+    _expect_status(script, _HTTP_OK, f"{context} matplotlib script")
+    _require(
+        canon.hash_matplotlib_script(script.content) == script_hash,
+        f"{context} archived matplotlib-script bytes drifted",
+    )
+    _require(
+        script.content.decode("utf-8") == inline_script,
+        f"{context} archived script text diverged from the verdict's inline script",
+    )
+
+
+def _check_formula_replay(service: _VerifierService, plot_id: str) -> None:
+    """Assert the replay outcome and the SHAPE of the body that carries it.
+
+    The key set is hand-stated, never read back from the response or a production schema. It pins
+    shape drift alone: a fixed key set constrains no value, so this is not evidence that artifact
+    bytes or a signature are absent. ``tests/test_formula_e2e_hardening.py`` owns that obligation
+    by scanning the raw response bytes.
+    """
+    response = _get(service, f"/replay/{plot_id}")
+    _expect_status(response, _HTTP_OK, "formula replay")
+    body = _response_object(response, "formula replay response")
+    _require(set(body) == _FORMULA_REPLAY_KEYS, "formula replay key set drifted")
+    _require(body.get("status") == "exact", "formula replay was not exact")
+    _require(body.get("integrity_ok") is True, "formula replay integrity failed")
+    _require(
+        body.get("artifact_matches") == _FORMULA_ARTIFACT_MATCHES,
+        "formula replay artifact matches drifted",
+    )
+    _require(body.get("payload_match") is True, "replayed VCert payload did not re-encode equal")
+    _require(body.get("version_match") is True, "formula replay reported a TCB version mismatch")
+    _require(body.get("drift") == [], "formula replay reported live TCB drift")
+    _require(body.get("exact") is True, "formula replay did not recompute exactly")
+
+
+def _case_f02_formula_verified(service: _VerifierService) -> str:
+    _LOGGER.info("CASE 4 f02 -> VERIFIED formula + certificate + restart/replay; never a chart")
+    verdict = _post_spec(
+        service,
+        "/verify-formula",
+        _FORMULA_SPEC.read_bytes(),
+        context="f02 verify-formula",
+    )
+    _require(verdict.get("verified") is True, "f02 did not verify")
+    _require(verdict.get("layer") == "verify", "f02 did not reach the verify layer")
+    _attempt_id(verdict)
+    plot_id = _string_field(verdict, "plot_id", "f02 verdict")
+    inline_script = _string_field(verdict, "matplotlib_script", "f02 verdict")
+    hashes = _formula_hashes(verdict, "f02 verdict")
+    _LOGGER.info("  verified formula plot_id=%s", plot_id)
+
+    keyid, certified = _fetch_and_verify_formula_certificate(service, plot_id)
+    _require(
+        certified == hashes,
+        "the f02 verdict's digests disagreed with the authenticated certificate",
+    )
+    _check_formula_artifacts(service, plot_id, certified, inline_script, "f02")
+    _expect_no_chart(service, plot_id, "f02 before restart")
+    _LOGGER.info("  VCert v0.3 verified against advertised key %s", keyid)
+
+    # The restart hands this case a fresh chart LRU. Checking /chart on BOTH sides of the replay
+    # is what separates "formula mode builds no chart" from "the chart was evicted": the dataset
+    # case's replay repopulates its chart, and this one must still answer 404 afterwards.
+    service.restart()
+    _expect_no_chart(service, plot_id, "f02 on the restarted service, before replay")
+    _check_formula_replay(service, plot_id)
+    replayed_keyid, replayed = _fetch_and_verify_formula_certificate(service, plot_id)
+    _require(
+        (replayed_keyid, replayed) == (keyid, certified),
+        "the f02 certificate did not re-authenticate to the same bindings after the restart",
+    )
+    _check_formula_artifacts(service, plot_id, replayed, inline_script, "f02 replayed")
+    _expect_no_chart(service, plot_id, "f02 after replay")
+    _LOGGER.info("  replay: exact; archived table and script re-matched their certified digests")
+
+    hash_detail = "; ".join(
+        f"{field}={value}" for field, value in zip(_FORMULA_HASH_FIELDS, hashes, strict=True)
+    )
+    return (
+        f"verified formula plot_id={plot_id}; {hash_detail}; VCert v0.3 verified against "
+        f"advertised key {keyid}; archived table and script matched their certified digests; "
+        "replay: exact; /chart stayed 404 across the restart, before and after the replay"
+    )
+
+
 _CASES: tuple[tuple[str, Case], ...] = (
     ("g01_verified_certificate_replay", _case_g01_verified),
     ("b07_nonexistent_field_blocked", _case_b07_blocked),
     ("b13_units_and_scale_guarded", _case_b13_and_scale_blocked),
+    ("f02_formula_verified_certificate_replay", _case_f02_formula_verified),
 )
 
 
 def run_e2e() -> WalkthroughReport:
-    """Run all three cases against one owned service, retaining explicit case failures."""
+    """Run all four cases against one owned service, retaining explicit case failures."""
     results: list[ScenarioResult] = []
     with TemporaryDirectory(prefix="figure-verification-e2e-") as temp_dir:
         work_dir = Path(temp_dir)
@@ -807,7 +1044,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m demo.e2e",
         description=(
-            "Run three deterministic end-to-end cases against a disposable verifier service. "
+            "Run four deterministic end-to-end cases against a disposable verifier service. "
             "The optional legs add observations against a separately running production stack."
         ),
     )

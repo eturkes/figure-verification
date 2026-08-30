@@ -296,7 +296,7 @@ A clean checkout requires no model backend or accelerator:
    uv run --locked python -m demo
    ```
 
-4. Run the real-socket three-case end-to-end demo. It starts and stops its own verifier subprocess.
+4. Run the real-socket four-case end-to-end demo. It starts and stops its own verifier subprocess.
 
    ```sh
    uv run --locked python -m demo.e2e

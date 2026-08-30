@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""End-to-end test for the hardware-free real-socket three-case demo driver."""
+"""End-to-end test for the hardware-free real-socket four-case demo driver."""
 
 import subprocess
 import sys
@@ -18,6 +18,7 @@ _CASE_NAMES = {
     "g01_verified_certificate_replay",
     "b07_nonexistent_field_blocked",
     "b13_units_and_scale_guarded",
+    "f02_formula_verified_certificate_replay",
 }
 _B07_REASON = "field 'profit' does not exist in the table"
 _B13_REASON = "quantitative channel 'aqi' traces to manifest column 'aqi', which declares no unit"
@@ -61,8 +62,8 @@ def test_demo_e2e_subprocess_writes_passing_report(tmp_path: Path) -> None:
 
     report = _REPORT_DECODER.decode(_REPORT_PATH.read_bytes())
     assert report.status == "PASS"
-    assert report.total == 3
-    assert report.passed == 3
+    assert report.total == 4
+    assert report.passed == 4
     assert report.failed == 0
     assert all(result.status == "PASS" for result in report.results)
     assert {result.name for result in report.results} == _CASE_NAMES
@@ -90,3 +91,20 @@ def test_demo_e2e_subprocess_writes_passing_report(tmp_path: Path) -> None:
     assert _B13_REASON in case_three
     assert "spec.decode" in case_three
     assert "scale" in case_three
+
+    case_four = by_name["f02_formula_verified_certificate_replay"]
+    for field in (
+        "formula_hash",
+        "spec_hash",
+        "plotted_table_hash",
+        "matplotlib_script_hash",
+    ):
+        assert field in case_four
+    for absent in ("dataset_hash", "manifest_hash", "vega_lite_hash"):
+        assert absent not in case_four
+    assert "VCert v0.3 verified against advertised key " in case_four
+    assert "archived table and script matched their certified digests" in case_four
+    assert "replay: exact; /chart stayed 404 across the restart, before and after the replay" in (
+        case_four
+    )
+    assert "chart repopulated" not in case_four
