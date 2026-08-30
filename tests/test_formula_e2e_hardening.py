@@ -13,9 +13,14 @@ bytes; their digests are DOMAIN-TAGGED, never a raw SHA-256 of the body.
 """
 
 import hashlib
+import json
+import logging
+import sqlite3
 import subprocess
 import sys
 from collections.abc import AsyncIterator
+from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -29,8 +34,18 @@ from demo import formula_walkthrough
 from demo.walkthrough import DemoError, WalkthroughReport
 from verifier import attestation, canon, vcert
 from verifier.service import model_client
+from verifier.service.__main__ import main as service_main
 from verifier.service.app import create_app
-from verifier.service.archive import AttemptOutcome, AttemptRoute, open_archive
+from verifier.service.archive import (
+    Archive,
+    ArchiveIntegrityError,
+    ArchiveSchemaError,
+    ArchiveStats,
+    AttemptBundle,
+    AttemptOutcome,
+    AttemptRoute,
+    open_archive,
+)
 from verifier.service.identity import SigningIdentity
 from verifier.service.settings import Settings
 
@@ -71,7 +86,10 @@ _SCENARIO_NAMES = {
     "formula direct flow",
     "formula proposed flow",
     "formula certificate check shape",
+    "formula failed attempt audit cli",
+    "formula archive integrity guards",
 }
+_SCENARIO_COUNT = 5
 # Hand-stated so a later rewrite cannot quietly upgrade a hedged claim into one the run never
 # establishes. `/table` and `/script` are digest-addressed, so no detail may call them
 # authenticated.
@@ -79,8 +97,38 @@ _SCENARIO_DETAILS = {
     "direct formula verify, restart, exact replay, certificate-matched table and script",
     "stubbed formula proposal verified, archived, and replayed exactly after a restart",
     "fetched VCert v0.3 exposed non-empty {id, method, status} triples across three methods",
+    "real audit CLI explained a durable rejected formula attempt, redacted by default",
+    "rotated signer, schema damage, and formula signature tampering all failed closed",
 }
 _FORGED_DIGEST = "sha256:" + "0" * 64
+_MALFORMED_SPEC = b"{"
+_REJECTED_VERDICT_KEYS = {"attempt_id", "layer", "results", "verified"}
+_REJECTED_RESULT = ("spec.decode", "schema_validation", "blocking")
+_DAMAGED_INDEX = "attempts_by_plot"
+_SIGNATURE_MARKER = b'"sig":"'
+_CONNECT_BOMB = "publish_attempt connected before authenticating the bundle"
+# A rejected formula occurrence carries exactly these two carriers, in this order.
+_FORMULA_AUDIT_ROLES = ("raw_spec", "verdict")
+_DATASET_AUDIT_ROLES = ("raw_csv", "raw_manifest", "vega_lite", "svg")
+# Trust fails ahead of recomputation, so every formula artifact key is present and None. The key
+# set is what makes the verdict formula-shaped; a mode-neutral failure would not carry it.
+_UNMATCHED_ARTIFACTS = {
+    "formula": None,
+    "spec": None,
+    "plotted_table": None,
+    "matplotlib_script": None,
+}
+
+
+class _ListHandler(logging.Handler):
+    """Collect expected service error records without printing their tracebacks."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
 
 
 def _settings(tmp_path: Path, name: str) -> Settings:
@@ -249,10 +297,16 @@ def test_direct_formula_replay_after_restart_is_exact(tmp_path: Path) -> None:
         plot_id = cast("str", body["plot_id"])
         published = _hash_fields(body)
 
-    with TestClient(app=create_app(_reopened(settings))) as restarted:
+    restarted_app = create_app(_reopened(settings))
+    with TestClient(app=restarted_app) as restarted:
         _assert_exact_replay(_replay(restarted, plot_id))
-        assert canon.hash_table_bytes(_table(restarted, plot_id)) == published[2]
-        assert canon.hash_matplotlib_script(_script(restarted, plot_id)) == published[3]
+        _envelope, certificate = _certificate(restarted, restarted_app, plot_id)
+        certified = _certified_bindings(certificate)
+        # The POST verdict's digests carry no signature, so they must AGREE with the
+        # authenticated certificate rather than stand in for it as the comparison authority.
+        assert published == certified
+        assert canon.hash_table_bytes(_table(restarted, plot_id)) == certified[2]
+        assert canon.hash_matplotlib_script(_script(restarted, plot_id)) == certified[3]
 
 
 def test_formula_replay_body_carries_no_artifact_bytes_or_signature(tmp_path: Path) -> None:
@@ -354,10 +408,15 @@ def test_proposed_formula_survives_restart_replay_and_artifact_reads(
         plot_id = cast("str", body["plot_id"])
         published = _hash_fields(body)
 
-    with TestClient(app=create_app(_reopened(settings))) as restarted:
+    restarted_app = create_app(_reopened(settings))
+    with TestClient(app=restarted_app) as restarted:
         _assert_exact_replay(_replay(restarted, plot_id))
-        assert canon.hash_table_bytes(_table(restarted, plot_id)) == published[2]
-        assert canon.hash_matplotlib_script(_script(restarted, plot_id)) == published[3]
+        _envelope, certificate = _certificate(restarted, restarted_app, plot_id)
+        certified = _certified_bindings(certificate)
+        # Same authority rule as the direct arm: the unsigned verdict agrees, never decides.
+        assert published == certified
+        assert canon.hash_table_bytes(_table(restarted, plot_id)) == certified[2]
+        assert canon.hash_matplotlib_script(_script(restarted, plot_id)) == certified[3]
 
 
 def test_proposed_formula_chart_is_404_before_and_after_restart(
@@ -426,10 +485,210 @@ def test_archived_bytes_are_matched_against_the_authenticated_certificate(
     assert "authenticated certificate" in str(caught.value)
 
 
+def _read_bundle(settings: Settings, attempt_id: str) -> AttemptBundle:
+    return open_archive(settings).read_attempt(
+        attempt_id,
+        max_bytes=settings.max_archive_bytes,
+        limits=settings.limits,
+    )
+
+
+def _audit_artifacts(output: str) -> list[dict[str, Any]]:
+    document = cast("dict[str, Any]", json.loads(output))
+    assert document["plot"] is None
+    return cast("list[dict[str, Any]]", document["attempt"]["artifacts"])
+
+
+def _audit_roles(output: str) -> tuple[str, ...]:
+    return tuple(cast("str", item["role"]) for item in _audit_artifacts(output))
+
+
+def _revealed_verdict(output: str) -> dict[str, Any]:
+    """Decode the verdict the revealed audit discloses, so it can be compared with the POST."""
+    verdict = next(item for item in _audit_artifacts(output) if item["role"] == "verdict")
+    content = cast("dict[str, Any]", verdict["content"])
+    assert content["encoding"] == "utf-8"
+    return cast("dict[str, Any]", json.loads(cast("str", content["value"])))
+
+
+def _tamper_signature(bundle: AttemptBundle) -> AttemptBundle:
+    """Flip one byte inside the DSSE signature and re-address the occurrence.
+
+    An occurrence address is a RAW digest of the envelope, not a domain-tagged artifact digest,
+    so `hashlib.sha256` is the correct instrument here and only here.
+    """
+    index = bundle.attempt_envelope.index(_SIGNATURE_MARKER) + len(_SIGNATURE_MARKER)
+    original_byte = bundle.attempt_envelope[index : index + 1]
+    replacement_byte = b"A" if original_byte != b"A" else b"B"
+    tampered_envelope = (
+        bundle.attempt_envelope[:index] + replacement_byte + bundle.attempt_envelope[index + 1 :]
+    )
+    assert tampered_envelope != bundle.attempt_envelope
+    return replace(
+        bundle,
+        attempt_id=hashlib.sha256(tampered_envelope).hexdigest(),
+        attempt_envelope=tampered_envelope,
+    )
+
+
+def test_rejected_formula_attempt_survives_restart_and_the_real_audit_cli_explains_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A refused formula spec still archives durably, and the CLI stays redacted by default."""
+    settings = _settings(tmp_path, "audit-state")
+    with TestClient(app=create_app(settings)) as client:
+        verified = _verify_formula(client)
+        response = client.post("/verify-formula", content=_MALFORMED_SPEC, headers=_JSON)
+
+    assert response.status_code == 200
+    rejected = cast("dict[str, Any]", response.json())
+    # A rejected occurrence OMITS the plot keys rather than nulling them, so the exact key set is
+    # the pin: a present-and-null `plot_id` would satisfy any `is None` assertion.
+    assert set(rejected) == _REJECTED_VERDICT_KEYS
+    assert rejected["verified"] is False
+    assert rejected["layer"] == "decode"
+    result = cast("dict[str, Any]", rejected["results"][0])
+    assert (result["check"], result["method"], result["severity"]) == _REJECTED_RESULT
+    failure_reason = cast("str", result["message"])
+    assert failure_reason
+    rejected_id = cast("str", rejected["attempt_id"])
+    assert rejected_id != cast("str", verified["attempt_id"])
+
+    attempt = _read_bundle(_reopened(settings), rejected_id)
+    assert attempt.manifest.route is AttemptRoute.VERIFY_FORMULA
+    assert attempt.manifest.outcome is AttemptOutcome.REJECTED
+
+    # The audit must read a durable archive: the first app is gone before the CLI runs.
+    with TestClient(app=create_app(_reopened(settings))) as restarted:
+        assert restarted.get(f"/certificate/{verified['plot_id']}").status_code == 200
+
+    monkeypatch.setattr(Settings, "from_env", staticmethod(lambda: settings))
+    capfd.readouterr()
+    assert service_main(("audit", rejected_id)) == 0
+    default_cli = capfd.readouterr()
+    assert default_cli.err == ""
+    assert '"content"' not in default_cli.out
+    default_document = cast("dict[str, Any]", json.loads(default_cli.out))
+    assert default_document["disclosure"] == "redacted"
+    assert default_document["attempt"]["id"] == rejected_id
+
+    assert service_main(("audit", rejected_id, "--reveal-sensitive")) == 0
+    revealed_cli = capfd.readouterr()
+    assert revealed_cli.err == ""
+    assert len(revealed_cli.out) > len(default_cli.out)
+    assert '"content"' in revealed_cli.out
+
+    # The redaction list is one SHARED attempt list, so this exercises a mode-neutral guarantee
+    # on a formula occurrence. Both arms carry the same two carriers and no dataset carrier.
+    for output in (default_cli.out, revealed_cli.out):
+        roles = _audit_roles(output)
+        assert roles == _FORMULA_AUDIT_ROLES
+        assert not set(roles) & set(_DATASET_AUDIT_ROLES)
+        # The audit names carriers in `role` values, so there is no slot a dataset carrier could
+        # occupy as JSON null. Absence is therefore checked over the emitted bytes as well.
+        assert not [name for name in _DATASET_AUDIT_ROLES if name in output]
+
+    # Close the loop: the durable verdict must explain the SAME failure the caller was shown.
+    # Without this the audit could disclose a well-formed verdict about a different rejection.
+    audited = cast("dict[str, Any]", _revealed_verdict(revealed_cli.out)["results"][0])
+    assert (audited["check"], audited["method"], audited["severity"]) == _REJECTED_RESULT
+    assert audited["message"] == failure_reason
+
+
+def test_rotated_signer_formula_replay_is_untrusted_and_formula_shaped(tmp_path: Path) -> None:
+    """Archived public material is self-consistency evidence, never a trust anchor."""
+    settings = _settings(tmp_path, "rotated-state")
+    with TestClient(app=create_app(settings)) as first:
+        plot_id = cast("str", _verify_formula(first)["plot_id"])
+
+    rotated = Settings(
+        data_dir=_DATA,
+        state_dir=settings.state_dir,
+        signing_key_file=settings.state_dir / "rotated.key",
+    )
+    with TestClient(app=create_app(rotated)) as client:
+        body = _replay(client, plot_id)
+
+    assert set(body) == _REPLAY_KEYS
+    assert body["status"] == "untrusted_key"
+    assert body["integrity_ok"] is False
+    assert body["exact"] is False
+    assert body["failure_stage"] == "trust"
+    assert body["trusted_keyid"] is None
+    assert body["payload_match"] is None
+    assert body["version_match"] is None
+    assert body["artifact_matches"] == _UNMATCHED_ARTIFACTS
+
+
+def test_formula_schema_damage_logs_the_cause_and_returns_a_generic_500(tmp_path: Path) -> None:
+    """Replay fails closed on schema damage, disclosing neither the object nor the cause."""
+    app = create_app(_settings(tmp_path, "schema-state"))
+    archive = cast("Archive", app.state["archive"])
+    handler = _ListHandler()
+    logger = logging.getLogger("verifier.service.app")
+
+    with TestClient(app=app) as client:
+        plot_id = cast("str", _verify_formula(client)["plot_id"])
+        with closing(sqlite3.connect(archive.database_path)) as connection:
+            connection.execute(f"DROP INDEX {_DAMAGED_INDEX}")
+            connection.commit()
+
+        logger.addHandler(handler)
+        try:
+            response = client.get(f"/replay/{plot_id}")
+        finally:
+            logger.removeHandler(handler)
+
+    assert response.status_code == 500
+    assert response.headers["content-type"] == _PROBLEM_JSON
+    assert response.json() == {
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "the verifier encountered an internal error",
+    }
+    assert _DAMAGED_INDEX not in response.text
+    assert handler.records
+    record = handler.records[-1]
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
+    cause = record.exc_info[1]
+    assert isinstance(cause, ArchiveSchemaError)
+    assert str(cause) and str(cause) not in response.text
+
+
+def test_tampered_formula_attempt_is_refused_before_the_archive_transaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One changed signature byte is refused, and the refusal precedes any connection."""
+    source = _settings(tmp_path, "signature-source")
+    with TestClient(app=create_app(source)) as client:
+        body = _verify_formula(client)
+    tampered = _tamper_signature(_read_bundle(_reopened(source), cast("str", body["attempt_id"])))
+
+    target_settings = _settings(tmp_path, "signature-target")
+    target = open_archive(target_settings)
+    with pytest.raises(ArchiveIntegrityError):
+        target.publish_attempt(tampered, limits=target_settings.limits)
+    assert target.stats() == ArchiveStats(0, 0, 0, 0, 0)
+
+    # Ordering bomb on the layer BENEATH validation. An implementation that opened its connection
+    # before authenticating the bundle surfaces AssertionError here, and no outcome assertion
+    # above would have noticed: the refused publication looks identical either way.
+    def _connect_bomb(_self: Archive) -> sqlite3.Connection:
+        raise AssertionError(_CONNECT_BOMB)
+
+    monkeypatch.setattr(Archive, "_connect", _connect_bomb)
+    with pytest.raises(ArchiveIntegrityError):
+        target.publish_attempt(tampered, limits=target_settings.limits)
+
+
 def test_formula_walkthrough_runs_every_scenario_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     report = formula_walkthrough.run_formula_walkthrough()
     assert report.status == "PASS"
-    assert (report.total, report.passed, report.failed) == (3, 3, 0)
+    assert len(_SCENARIO_NAMES) == _SCENARIO_COUNT
+    assert (report.total, report.passed, report.failed) == (5, 5, 0)
     assert {result.name for result in report.results} == _SCENARIO_NAMES
     assert all(result.status == "PASS" for result in report.results)
     assert {result.detail for result in report.results} == _SCENARIO_DETAILS
@@ -451,7 +710,7 @@ def test_formula_walkthrough_runs_every_scenario_pass(monkeypatch: pytest.Monkey
         failure_report.unlink(missing_ok=True)
 
     assert written.status == "FAIL"
-    assert (written.total, written.passed, written.failed) == (4, 3, 1)
+    assert (written.total, written.passed, written.failed) == (6, 5, 1)
     assert written.results[0].detail == "RuntimeError: injected scenario fault"
     assert {result.name for result in written.results[1:]} == _SCENARIO_NAMES
 
@@ -471,5 +730,6 @@ def test_formula_walkthrough_subprocess_exits_zero_and_writes_report() -> None:
 
     report = msgspec.json.Decoder(WalkthroughReport).decode(_REPORT_PATH.read_bytes())
     assert report.status == "PASS"
-    assert (report.total, report.passed, report.failed) == (3, 3, 0)
+    assert (report.total, report.passed, report.failed) == (5, 5, 0)
     assert {result.name for result in report.results} == _SCENARIO_NAMES
+    assert {result.detail for result in report.results} == _SCENARIO_DETAILS
