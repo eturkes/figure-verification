@@ -53,12 +53,15 @@ exactly four hashes — RESOLVED formula source, canonical spec, recomputed tabl
 script. The resolved formula source is the verifier's own canonical rendering of nine fixed fields
 — grammar version, numeric profile, rounding mode, printed AST, resolved domain endpoints, sample
 count, and both axis scales — never the submitted formula string verbatim, so two equivalent
-respellings share one formula source hash while a changed domain or scale does not. Only that
-hash is respelling-invariant: the canonical spec preserves the submitted text, so the spec hash,
-the certificate payload, and the derived plot and spec ids still differ between two spellings of
-the same function. There is no fifth. The same structured checks, resource ceilings, and Z3 second-checking apply, over
-formula-mode obligations. matplotlib, the interpreter that would run the script, and the resulting
-pixels are display trust, exactly as SVG rasterization is for dataset mode.
+respellings share one formula source hash while a changed domain or scale does not. THREE of the
+four are respelling-invariant — formula source, recomputed table, and emitted script all derive
+from the canonical AST and the recomputed points, and the script embeds no submitted text. The
+canonical spec preserves the submitted text, so the spec hash is the SOLE spelling-sensitive
+certified digest; the certificate payload and the derived plot and spec ids still differ between
+two spellings of the same function. There is no fifth. The same structured checks, resource
+ceilings, and Z3 second-checking apply, over formula-mode obligations. matplotlib, the interpreter
+that would run the script, and the resulting pixels are display trust, exactly as SVG rasterization
+is for dataset mode.
 
 For a service render, the persistent Ed25519 signer wraps the exact VCert payload bytes and their
 application-specific type in deterministic DSSE. `plot_id` is SHA-256 over the complete envelope
@@ -67,7 +70,10 @@ certificate, canonical-spec, and raw-public-key bytes durably across process res
 rechecks its address and typed archive relation; certificate retrieval also verifies the canonical
 DSSE signature/type under the digest-matching archived key as a self-consistency check.
 Archive and key-endpoint presence are never trust. Authentication under an independently pinned public key means
-only that the holder of the corresponding private key produced the envelope. The envelope's
+only that the holder of the corresponding private key produced the envelope. Attestation therefore
+establishes canonical strict payload encoding, exact bytes and MIME, and a trusted-key signature —
+nothing more. Artifact coherence and semantic truth belong to archive/replay, and a trusted key
+holder can re-sign a DIFFERENT authentic claim. The envelope's
 `keyid` is an unauthenticated lookup hint - it does not establish operator identity, PKI
 membership, time, completeness, or transparency log inclusion. Chart liveness remains process-local
 and ephemeral. The chart page
@@ -121,6 +127,12 @@ the same hazard: the emitter REFUSES a spec whose exact rational values do not s
 literals a matplotlib script must carry, blocking that outcome with a
 `render.float64_fidelity` failure instead of certifying a script that would display rounded.
 
+Determinism is ASSERTED by golden hex vectors under an INJECTED fixed TCB, and that assertion is
+MEASURED, never general: the canonical vectors are patch-portable across CPython 3.13.5 and
+CPython 3.13.14 ONLY. This is not an all-patch, host, or platform guarantee. Vector regeneration
+stays idempotent and preserves hand-authored vectors. `requires-python = ">=3.13,<3.14"` and the
+committed `.python-version` pin the line; they are necessary, not sufficient.
+
 ## Service boundary
 
 `verifier.service` wraps this same verifier in a local HTTP transport - one uvicorn worker, bound
@@ -135,14 +147,14 @@ supplied through the environment before the process binds — never anything a c
 read in dataset mode alone; formula mode reads no trusted file.
 
 `POST /verify-formula` is formula mode's transport. A verified outcome answers the canonical
-matplotlib script TEXT inline, next to the four VCert v0.3 hashes and the durable ids. ONLY A
-VERIFIED 200 RETURNS OR ARCHIVES A SCRIPT ARTIFACT; EVERY FAILED VERDICT DOES NEITHER. The claim is
-stated over VERDICTS, not over non-2xx responses, because emission, certification, and signing
-necessarily precede the archive's transactional commit: a capacity 507 or an archive 500 can land
-AFTER a script was built and signed in memory. Those answer a Problem, never a verdict and never a
-script, and the atomic commit is what keeps the signed bytes from becoming durable or observable.
-The service emits script bytes and never runs them, so formula mode writes no chart page and no
-display cache on any path: `GET /chart/{plot_id}` never resolves a formula plot.
+matplotlib script TEXT inline, next to the four VCert v0.3 hashes and the durable ids.
+ONLY A VERIFIED 200 RETURNS OR ARCHIVES A SCRIPT ARTIFACT; EVERY FAILED VERDICT DOES NEITHER.
+The claim is stated over VERDICTS, not over non-2xx responses, because emission, certification, and
+signing necessarily precede the archive's transactional commit: a capacity 507 or an archive 500 can
+land AFTER a script was built and signed in memory. Those answer a Problem, never a verdict and
+never a script, and the atomic commit is what keeps the signed bytes from becoming durable or
+observable. The service emits script bytes and never runs them, so formula mode writes no chart page
+and no display cache on any path: `GET /chart/{plot_id}` never resolves a formula plot.
 
 The transport reports two kinds of outcome and never confuses them:
 
@@ -292,7 +304,8 @@ curl -sS http://127.0.0.1:8000/schema/openapi.json
 
 `verifier.service` puts a weak local model in front of that same verifier through one endpoint per
 mode: `POST /propose-spec` and `POST /propose-formula`. Each proposer feeds its mode's own direct
-entry point, so neither adds a verification path.
+entry point, so neither adds a verification path — no proposer adds a verification stage, a
+verifier schema, or an artifact role. A proposer is transport plus a signed route, nothing else.
 
 The dataset proposer's request is a small `{user_request, dataset_name}` object;
 the service builds the VPlot proposer prompt, asks the local backend for a spec, and feeds
@@ -319,7 +332,9 @@ schema-representable structure instead of markdown-fenced prose. Each mode selec
 operator-pinned guidance schema — the VPlot schema for `/propose-spec`, the VPlot formula schema
 for `/propose-formula`. The guidance schema is derived from
 the authoritative schema with the unsupported `pattern` and `format` constraints stripped;
-ordinary chat and Open WebUI tool selection omit the flag and stay unconstrained. This constrains
+ordinary chat and Open WebUI tool selection omit the flag and stay unconstrained. Selection is a
+CLOSED operator-pinned selector — dataset schema, formula schema, or unguided — and an explicit
+null equals omission and selects unguided. Prompting and guidance never guarantee compliance. This constrains
 output STRUCTURE ONLY — it does not establish semantic correctness, dataset binding, recomputation,
 provenance, or acceptance — and is a generation convenience, not a trust grant or boundary change.
 Guided bytes are still subject to the full strict VPlot decode and every semantic, resource, and SMT
@@ -379,6 +394,10 @@ the allowlisted `proposeSpec` tool, and displays the result. Open WebUI, its fun
 runner, the browser, iframe handling, and the final pixels therefore join the trusted
 computing base described above; only the verifier's validated spec, recomputed table,
 emitted Vega-Lite, and certificate are mutually checked.
+
+The whole `proposeSpec` + iframe flow described here is DATASET MODE alone. NO certified formula
+script has executed in the Open WebUI sandbox; M10 gates that execution. Until then formula mode's
+shipped surface ends at the verifier-authored script BYTES, which no shipped path runs.
 
 The verifier tool is global and executes in the Open WebUI backend. Open WebUI fetches
 the verifier's OpenAPI document and posts tool requests server-to-server, so the

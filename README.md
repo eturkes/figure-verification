@@ -46,12 +46,23 @@ Formula mode binds four different artifacts:
 > script. The resolved formula source is the verifier's own canonical rendering of nine fixed fields
 > — grammar version, numeric profile, rounding mode, printed AST, resolved domain endpoints, sample
 > count, and both axis scales — never the submitted formula string verbatim, so two equivalent
-> respellings share one formula source hash while a changed domain or scale does not. Only that
-> hash is respelling-invariant: the canonical spec preserves the submitted text, so the spec hash,
-> the certificate payload, and the derived plot and spec ids still differ between two spellings of
-> the same function. There is no fifth. The same structured checks, resource ceilings, and Z3 second-checking apply, over
-> formula-mode obligations. matplotlib, the interpreter that would run the script, and the resulting
-> pixels are display trust, exactly as SVG rasterization is for dataset mode.
+> respellings share one formula source hash while a changed domain or scale does not. THREE of the
+> four are respelling-invariant — formula source, recomputed table, and emitted script all derive
+> from the canonical AST and the recomputed points, and the script embeds no submitted text. The
+> canonical spec preserves the submitted text, so the spec hash is the SOLE spelling-sensitive
+> certified digest; the certificate payload and the derived plot and spec ids still differ between
+> two spellings of the same function. There is no fifth. The same structured checks, resource
+> ceilings, and Z3 second-checking apply, over formula-mode obligations. matplotlib, the interpreter
+> that would run the script, and the resulting pixels are display trust, exactly as SVG rasterization
+> is for dataset mode.
+
+Formula mode also bounds what the service can return:
+
+> ONLY A VERIFIED 200 RETURNS OR ARCHIVES A SCRIPT ARTIFACT; EVERY FAILED VERDICT DOES NEITHER.
+
+That claim covers verdicts, not every non-2xx response. A capacity `507` or an archive `500` can
+follow an in-memory build. Those responses answer a Problem, never a verdict. The atomic commit
+keeps those bytes out of the archive.
 
 The trusted-computing-base boundary is also unchanged:
 
