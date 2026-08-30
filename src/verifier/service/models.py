@@ -130,9 +130,12 @@ class FormulaScriptVerdict(msgspec.Struct, frozen=True, kw_only=True, omit_defau
     canonical rendering of nine fixed fields — grammar version, numeric profile, rounding mode,
     printed AST, resolved domain endpoints, sample count, and both axis scales — NOT the submitted
     formula string, so two equivalent respellings share one `formula_hash` while a changed domain
-    or scale does not. That hash ALONE is respelling-invariant: the canonical spec preserves the
-    submitted text, so `spec_hash`, the certificate payload, and the derived `plot_id`/`spec_id`
-    still differ between two spellings of the same function.
+    or scale does not. THREE of the four are respelling-invariant, not one: `formula_hash`,
+    `plotted_table_hash` and `matplotlib_script_hash` all derive from the canonical AST and the
+    recomputed points, and the emitted script embeds no submitted text. `spec_hash` is the sole
+    spelling-sensitive digest, because the canonical spec preserves the submitted text — so
+    `spec_hash`, the certificate payload, and the derived `plot_id`/`spec_id` still differ between
+    two spellings of the same function.
     `matplotlib_script` is the exact canonical script text whose domain-separated digest is
     `matplotlib_script_hash` (`canon.hash_matplotlib_script`, not a bare SHA-256 of the text).
     The verifier AUTHORED these bytes and never ran them: matplotlib,

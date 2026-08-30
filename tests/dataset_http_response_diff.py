@@ -48,7 +48,10 @@ _ADDED_SCHEMAS = frozenset(
         "ProposeFormulaResult",
     }
 )
-_PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset()
+# FormulaScriptVerdict's description carried a FALSE claim — "That hash ALONE is
+# respelling-invariant" — when three of its four certified digests are. The corrected prose is an
+# announced description-only change; `shape_held` still fails any structural drift underneath it.
+_PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset({"FormulaScriptVerdict"})
 
 # The one baseline path this unit CHANGES rather than adds, hand-stated down to the shape of its
 # permitted change so any other drift inside it still fails: the 200 schema becomes a two-arm
