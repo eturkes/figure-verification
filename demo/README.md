@@ -19,6 +19,23 @@ Each scenario logs one `PASS` or `FAIL` line. The command writes the final machi
 `demo/reports/report.json` (gitignored). It exits with `0` only if every scenario passes.
 If a scenario fails, the command records all results and exits with `1`.
 
+## Formula-mode hardening walkthrough
+
+From the repository root, run the formula walkthrough:
+
+```console
+uv run --locked python -m demo.formula_walkthrough
+```
+
+The walkthrough runs five in-process formula scenarios: direct flow, proposed flow, certificate
+check shape, failed-attempt audit CLI, and archive integrity guards. It covers certificate checks,
+durable rejection audit, restart, exact replay, typed table and script retrieval, and three
+archive-integrity guards. The command writes the report to `demo/reports/formula_report.json`
+(gitignored). It exits with `0` only if all five scenarios pass.
+
+The verifier authors each matplotlib script and never runs it. No certified formula script has run
+in the Open WebUI sandbox. M10 gates that execution.
+
 ## Real-socket end-to-end demo
 
 From the repository root, run the hardware-free driver:
@@ -39,7 +56,11 @@ The driver starts its own verifier subprocess. It exercises four cases over real
    The driver takes the signing key from the service over HTTP.
    It matches the archived table and script against the digests that certificate binds.
    The driver then restarts the service and replays the plot exactly.
-   `/chart` answers 404 throughout, because formula mode builds no chart page.
+   A `/chart` 404 proves nothing by itself, because malformed, unknown, and evicted plot
+   identifiers share that one answer. The driver therefore gets 200 responses from `/certificate`,
+   `/table`, and `/script` both before and after the restart and replay. `/chart` stays 404 before
+   the restart, before the replay, and after the replay. Together those observations show that
+   formula mode builds no chart page, rather than that a chart was evicted.
 
 The command writes the machine-readable report to `demo/reports/e2e_report.json` (gitignored).
 It exits with `0` only if all four outcomes match those expectations.

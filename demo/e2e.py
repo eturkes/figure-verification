@@ -9,6 +9,17 @@ Three cases drive dataset mode. The fourth drives formula mode over the same soc
 a formula spec, authenticates the VCert v0.3 under the key the SERVER advertises, matches the
 archived table and script against the digests that certificate binds, restarts the service, and
 replays exactly. ``/chart`` stays 404 throughout, because formula mode builds no chart page.
+
+This module must not import ``demo.formula_walkthrough``: that module imports ``litestar``,
+``litestar.testing.TestClient``, ``unittest.mock.patch`` and ``create_app`` at MODULE scope, so
+importing it would contradict the loopback-TCP-only claim above at IMPORT level, called or not.
+Socket formula logic stays hand-written against ``verifier.attestation``/``canon``/``vcert`` plus
+the mode-neutral ``demo.walkthrough`` seam, and is STRICTER than the in-process helper: it passes
+``require_canonical_envelope`` and ``expected_keyid_hint``, which that helper does not.
+
+A ``/chart`` 404 also proves nothing alone — malformed, unknown and evicted ids share one answer —
+so case 4 discriminates twice: co-located 200s on ``/certificate``/``/table``/``/script`` establish
+the plot exists, and ``/chart`` is checked BOTH before and after the post-restart replay.
 """
 
 import argparse

@@ -1,14 +1,21 @@
 # bench — weak-proposer eval (raw baseline + schema-guided default)
 
 This benchmark is an out-of-tree observer of the weak NPU proposer.
+It covers the dataset proposer only, and it makes no measured formula error-gradient claim.
+The pinned formula live smoke stays unmet.
 It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-only`.
 It never imports `verifier` internals, so it adds no trust.
 It uses a synchronous `httpx.Client`, no random-number generator, and a fixed prompt order.
 For each `(device, config)`, its output is byte-reproducible.
 
 ## What it measures — two things, never conflated
+
+Both arms measure dataset mode alone.
+Neither arm posts the 20 formula-bad or the six formula-good goldens.
+Neither arm calls `/propose-formula`.
+
 - **GUARANTEE:** This deterministic check provides the only bounds.
-  Bench re-posts the `18` bad goldens and the `10` good goldens to `/verify-only`.
+  Bench re-posts the `18` bad dataset goldens and the `10` good dataset goldens to `/verify-only`.
   `bad_corpus_false_accept_count` and `good_corpus_false_reject_count` must both equal `0`.
   Either nonzero value is a real verifier regression and makes the run INVALID (`exit 1`).
   The good leg prevents reject-everything vacuity.
@@ -86,7 +93,13 @@ Fence-wrapping is a syntactic failure that `decode_spec` rejects.
 The classifier separates it from deeper malformation.
 For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-guided default had `fenced=0`.
 
-## OpenVINO wiring (this Debian container)
+## OpenVINO wiring on the ORIGIN host
+
+This section records ORIGIN-host evidence.
+Its Debian paths and its NPU self-test do not apply on the CURRENT host.
+The CURRENT host has no NPU.
+Before you start model-tier work on the CURRENT host, read `.agent/reference.md`, section
+"Host machines + model-tier runtime".
 
 - OpenVINO and GenAI are outside the repository at `/var/home/eturkes/.local/app/openvino_genai`.
   Python resolves that build through `PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python`.
@@ -118,7 +131,11 @@ For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-
   After a host Intel-driver update, rebuild it with `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`.
   Then rerun the self-test.
 
-## Run recipe (hardware-gated — needs both servers up)
+## ORIGIN-only run recipe (hardware-gated — needs both servers up)
+
+Run this recipe on the ORIGIN host only.
+The CURRENT host cannot run it, because the CURRENT host has no NPU.
+A run of this recipe does not satisfy the unmet formula live smoke.
 Start the NPU backend on :8001 with the accelerator environment and OpenVINO `PYTHONPATH`.
 Call the virtual-environment Python directly.
 Do not use isolated `-E`, `-I`, or `uv run`. These modes strip `PYTHONPATH`.

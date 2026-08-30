@@ -228,7 +228,14 @@ def _replay_lowest(
     max_bytes: int,
     limits: VerificationLimits,
 ) -> _ModeReplay:
-    """Read and replay the lowest signed attempt for one validated plot address, under its mode."""
+    """Read and replay the lowest signed attempt for one validated plot address, under its mode.
+
+    Stage order is LOAD-BEARING: attempt selection/read -> source-mode classification -> verdict
+    construction. Hoisting classification ahead of ``read_attempt`` flips a dangling attempt from a
+    bounded 200 to a 404 and charges every replay a second connection plus schema validation. A plot
+    with no signed verified attempt therefore answers 404 in BOTH modes, before any mode test runs,
+    so no mode-specific replay outcome can attach to such a plot.
+    """
     attempt_id = archive.lowest_verified_attempt_id(plot_id)
     if attempt_id is None:
         msg = "archive plot has no replayable signed verified attempt"

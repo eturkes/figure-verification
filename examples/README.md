@@ -2,10 +2,11 @@
 
 Goldens for eval · checks · render. `index.json` = machine source of
 truth: decode/bind expectations, per-bad-spec `layer`/`check`/`reason`, the by-construction
-list. Specs decode via `verifier.schema.decode_spec`; meaning = `VPlot_SEMANTICS.md`.
-Enforced by `tests/test_examples.py`.
+list. Dataset specs decode via `verifier.schema.decode_spec`, formula specs via
+`verifier.schema.decode_formula_spec`; meaning = `VPlot_SEMANTICS.md` Part A (dataset) + Part B
+(formula). Enforced by `tests/test_examples.py` + `tests/test_examples_formula.py`.
 
-## Layout
+## Dataset-mode layout
 - `good_specs/g01..g10` — 1 per NL chart intent; decode-valid AND semantically valid (eval + checks pass-goldens).
 - `bad_specs/b01..b18` — each fails exactly ONE way (`index.json.bad_specs[].layer/check/reason`).
 - `../data/{sales,weather,deliberately_dirty}.csv` + `../data/schemas/<stem>.json` — CSVs + trusted per-column manifest (`type`, numeric `scale`, optional `unit`/`label`, temporal `granularity`).
@@ -15,8 +16,9 @@ Enforced by `tests/test_examples.py`.
 - `formula_bad_specs/fb01..fb20` — each fails exactly one declared layer (`index.json.formula_bad_specs[].layer/check/reason`).
 - Rejection points: `decode` (×14) → `decode_formula_spec`, `decodes=false`; later (×6), still decode by design → parser (×2), evaluation/sampling (×2), domain (×1), exponent policy (×1).
 - Check ORDER is load-bearing, so `check` names the FIRST failing check: `formula.domain_ordered` precedes `formula.sample_points_strictly_increasing`, since a reversed domain always produces a descending schedule and no fixture can isolate one from the other. Evaluation must check ordering first, or fb17 stops discriminating.
+- The verifier AUTHORS the matplotlib script and never runs it. No certified formula script has run in the Open WebUI sandbox; M10 gates that execution.
 
-## Bad-spec layers (rejection point)
+## Dataset-mode bad-spec layers (rejection point)
 - `decode` (×8) → now, at `decode_spec`. `decodes=false`. Bad enum/op/fn, float value, unknown key, wrong version, Vega-Lite injection keys (`encoding.aggregate`, top-level `url`) refused by `forbid_unknown_fields`.
 - `dataset-binding` (×4) → eval + checks. Missing field, `dataset.hash` mismatch, sum-on-string, int-vs-string filter. `decodes=true`.
 - `encoding` (×3) → checks. Axis-type mismatch, field absent from plotted table, missing y-unit.
@@ -56,7 +58,7 @@ alone establishes strict increase. `scale.bar_zero` and `encoding.legend_domain_
 inapplicable because formula mode admits only line/scatter and has no color channel, bar baseline,
 or legend domain.
 
-## Data notes
+## Dataset-mode data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is
 `YYYY-MM-DD`/datetime only, §2). `weather.date` exercises `temporal`. `region`/`city` value
 `NA` = literal string, never null (only an empty cell is null, §2). `aqi` is deliberately

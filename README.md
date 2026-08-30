@@ -2,7 +2,7 @@
 
 ## What the PoC is
 
-A caller submits a restricted JSON plot specification. In dataset mode a weak local LLM may propose
+A caller submits a restricted JSON plot specification. In either mode, a weak local LLM may propose
 that specification. A separate trusted verifier deterministically recomputes every plotted value
 and runs structured checks. It blocks failures and certifies only verified plots with a signed
 provenance certificate.
@@ -182,17 +182,25 @@ The v0.3 certificate binds four hashes and the exact script bytes, not the rende
 ├── webui/                 Open WebUI provisioning, guardrail, stub, and persisted-chat harness
 ├── demo/                  hardware-free hardening and real-socket end-to-end walkthroughs
 ├── tests/                 hardware-free pytest unit and integration suite
-├── examples/              10 known-good and 18 known-bad VPlot specifications
+├── examples/              10/18 dataset and 6/20 formula good/bad specifications
 ├── data/                  synthetic source CSVs and trusted column manifests
-├── schema/                exported VPlot JSON Schema golden
+├── schema/                exported dataset and formula JSON Schema goldens, and the OpenAPI golden
 ├── POC_SCOPE.md           claim, service, replay, and display trust boundaries
-└── VPlot_SEMANTICS.md     executable VPlot semantics and determinism contract
+└── VPlot_SEMANTICS.md     dataset and formula semantics and determinism contract
 ```
 
 ## PoC acceptance
 
 This section is the single acceptance record for the PoC's ten criteria. Each item identifies the
 committed evidence. It also states the boundary that keeps the claim modest.
+
+Criteria 1 to 9 describe the dataset path unless an item names formula mode. Formula mode ships six
+good and 20 bad corpus specifications. `POST /verify-formula` and `POST /propose-formula` verify,
+certify, archive, and replay canonical matplotlib scripts. The verifier never runs those scripts.
+`python -m demo.formula_walkthrough` runs five in-process formula scenarios. Demo case 4 of
+`python -m demo.e2e` repeats the certificate, table, script, restart, replay, and no-chart evidence
+over real sockets. No certified formula script has run in the Open WebUI sandbox. M10 gates that
+execution.
 
 1. **The model cannot render a chart directly through the approved path.**
 
@@ -314,6 +322,9 @@ A clean checkout requires no model backend or accelerator:
    ```
 
 ## Try it in your browser
+
+This browser recipe covers dataset mode. No certified formula script has run in the Open WebUI
+sandbox. M10 gates that execution.
 
 Use one command to start and fully provision the whole instance. The instance includes the verifier,
 a local model, and Open WebUI. Then use the verified-plot pipeline from a browser:
