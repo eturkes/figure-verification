@@ -481,7 +481,9 @@ def build_dataset_certificate(
     """Mint v0.2 from one prepared dataset artifact without rebuilding it.
 
     ``tcb`` substitutes a caller-supplied TCB for live collection, so a canonical-form vector stays
-    byte-stable across interpreter patch releases that a ``>=3.13,<3.14`` floor admits. ``None``
+    byte-stable across interpreter patch releases. The mechanism removes the only patch-varying
+    input; the MEASURED evidence is the CPython 3.13.5 + 3.13.14 pair the second-interpreter gate
+    runs, not every patch a ``>=3.13,<3.14`` floor admits. ``None``
     collects live and shipped render injects its own live collection, so a non-live TCB is always
     the caller stating its own provenance claim in full, never a normalization. A supplied TCB is
     checked for exact type and NOTHING ELSE -- its values are a trusted caller assertion, never

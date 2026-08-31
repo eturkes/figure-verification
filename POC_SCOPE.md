@@ -323,8 +323,9 @@ formula proposer prompt, asks the same backend for a spec, and feeds the exact r
 `verify-formula` above. The result is the raw reply plus that verdict, and nothing else. The
 verifier authors the certified matplotlib script and never executes it, so this endpoint serves no
 chart page, sends no `Location` header, and adds no summary string. The claim boundary does not
-move here either: the model proposes only an expression and its domain, and the verifier evaluates
-every plotted point itself by exact rational arithmetic.
+move here either: the model proposes a complete restricted `FormulaPlotSpec` — version, formula,
+domain, numeric profile, mark and encoding. The spec carries no plotted values and no Python. The
+verifier evaluates every plotted point itself by exact rational arithmetic.
 
 Schema-guided decoding is the shipped default for both proposers: the service asks the
 untrusted backend for structure-constrained ("guided") output, steering the weak model toward

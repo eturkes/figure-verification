@@ -133,7 +133,7 @@ UNTRUSTED
   caller-supplied formula spec, or one proposed by the model at POST /propose-formula
        |
        | carries ONLY vplot-formula-0.1:
-       | formula + domain + encoding
+       | version + formula + domain + numeric_profile + mark + encoding
        | THE SPEC SUPPLIES NO PLOTTED VALUES
        v
 TRUSTED VERIFIER
@@ -195,8 +195,11 @@ This section is the single acceptance record for the PoC's ten criteria. Each it
 committed evidence. It also states the boundary that keeps the claim modest.
 
 Criteria 1 to 9 describe the dataset path unless an item names formula mode. Formula mode ships six
-good and 20 bad corpus specifications. `POST /verify-formula` and `POST /propose-formula` verify,
-certify, archive, and replay canonical matplotlib scripts. The verifier never runs those scripts.
+good and 20 bad corpus specifications. `POST /verify-formula` and `POST /propose-formula` verify and
+certify a canonical matplotlib script, then archive it. Each route archives a script only on a
+verified result. `GET /replay/{plot_id}` recomputes the occurrence from the archived canonical spec.
+Replay reproduces no script bytes and no signature. The `/script` route serves those bytes
+independently. The verifier never runs those scripts.
 `python -m demo.formula_walkthrough` runs five in-process formula scenarios. Demo case 4 of
 `python -m demo.e2e` repeats the certificate, table, script, restart, replay, and no-chart evidence
 over real sockets. No certified formula script has run in the Open WebUI sandbox. M10 gates that
