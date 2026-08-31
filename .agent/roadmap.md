@@ -23,14 +23,14 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M9 | Verified formula-plot mode (headless) | — (user request) | none (headless verifier core) | REVIEWED — M9R1/M9R2/M9R3 open |
 | M10 | Model-authored Python in the OWUI sandbox + calibrated demo | — (user request) | M12 + M13 DONE; browser-live OWUI `execute:python`; local proposer on the host of record | UNPLANNED |
 | M11 | Derived/computed columns (dataset mode) | — (user request) | none (headless; reuses M9 expr engine) | UNPLANNED — DEPRIORITIZED behind M12/M13/M10 |
-| M12 | dGPU proposer runtime port + model-authored-Python corpus | — (user request) | NVIDIA MX150 reachable by a torch CUDA build — CONFIRM at plan | UNPLANNED — ACTIVE NEXT |
+| M12 | dGPU proposer runtime port + model-authored-Python corpus | — (user request) | torch CUDA build reaches MX150 — MET at plan | IN-PROGRESS |
 | M13 | Python-source verification mode (headless) | — (user request) | none (headless verifier core); consumes M12's captured corpus | UNPLANNED |
 
 Plan each milestone only when it becomes active (prior one REVIEWED). M3/M4/M6/M7/M10 are gated — confirm preconditions functionally at the planning turn, and bring generated/heavy inputs into scope only when the gate needs them. A gate unmet there ⇒ set the milestone PARKED with its named precondition verbatim, clearing the marker only when a functional recheck meets it; M11 is ungated + sequence-adjustable, so M10's live-OWUI gate parks rather than stalls the roadmap.
 
 **Host change — model tier only.** The proposer's live stack was built on the ORIGIN host (Intel NPU + OpenVINO); CURRENT has no NPU ⇒ `MODEL_BACKEND_DEVICE=NPU` cannot load and every REAL-MODEL arm of the M3/M4/M6/M7/M8 live-stack gates + M9.12's live formula smoke is UNMET here. Those REVIEWED verdicts STAND — their evidence was validly taken on ORIGIN. The trusted core is host-free (verifier + bench + tests + demo gate fully on CURRENT) ⇒ M9 is unaffected and stays active, while **M10 carries a SECOND precondition beyond browser-live OWUI: a working local proposer on the host of record**. **M10 precondition 1 = MET on CURRENT**: `webui/launch.sh --stub` stands all three services up and a verified chart renders inline in the browser; precondition 2 stays UNMET, so M10's live-proposer arms park while its sandbox-execution arms are probeable today. A runtime port is its own UNPLANNED milestone, never an M9 unit. Host inventory, the measured runtime verdict, the two byte-exact backend contracts any replacement engine must reproduce, the evidence a swap does and does not invalidate + the weak-proposer calibration constraint → `.agent/reference.md`.
 
-**Demo acceptance (user-stated; binds the runtime-port milestone + M10).** The demo must show, with a REAL model on CURRENT, `Plot a scatter chart of revenue versus orders.` VERIFYING and the 2×2 dashboard prompt FAILING — probabilistically, as a general tendency. This SUPERSEDES the hold-model/quant-class-fixed reading of the weak-proposer rule: the stated gradient IS the acceptance criterion, so the port tunes toward it and measures PER CATEGORY. Three obstacles, only the third ever measured: the demo prompt OMITS `dataset_name`, which `ProposeRequest` requires (`service/models.py:190`) and bench supplies out-of-band as a separate corpus field; OWUI tool selection was 5/10 UNGUIDED pre-M8 and is unmeasured under guidance; end-to-end `verified_render` was **26/100 GUIDED vs 0/100 RAW**, dominated by `spec.decode`(51) + `encoding.fields_exist_in_plotted_table`(22). The harness computes `by_category` but ONLY the overall rate was archived and `bench/reports/` is ORIGIN-only ⇒ the `normal`-category rate that predicts this demo is UNKNOWN (bounded 6/20–20/20) and re-measuring it is unit 1. The corpus holds NO revenue-vs-orders scatter ⇒ add the exact demo prompt so the optimized number is the demoed number. **Numeric target, user-stated and now CLOSED: ≥ 70% of SIMPLE prompts verify AND ≥ 70% of COMPLICATED prompts fail, measured PER CATEGORY over ~20 committed prompts each on the host of record.** The FAIL arm's structural reading is SUPERSEDED by the pivot below: under model-authored Python the fail arm is probabilistic, because the model may write anything and the allowlist is what refuses it.
+**Demo acceptance (user-stated; binds the runtime-port milestone + M10).** The demo must show, with a REAL model on CURRENT, `Plot a scatter chart of revenue versus orders.` VERIFYING and the 2×2 dashboard prompt FAILING — probabilistically, as a general tendency. This SUPERSEDES the hold-model/quant-class-fixed reading of the weak-proposer rule: the stated gradient IS the acceptance criterion, so the port tunes toward it and measures PER CATEGORY. Three obstacles, only the third ever measured: the demo prompt OMITS `dataset_name`, which `ProposeRequest` requires (`service/models.py:190`) and bench supplies out-of-band as a separate corpus field; OWUI tool selection was 5/10 UNGUIDED pre-M8 and is unmeasured under guidance; end-to-end `verified_render` was **26/100 GUIDED vs 0/100 RAW**, dominated by `spec.decode`(51) + `encoding.fields_exist_in_plotted_table`(22). The harness computes `by_category` (a `Report` field, so `report.json` archives it) but `bench/reports/` is gitignored + ORIGIN-only ⇒ committed evidence needs a tracked path. **Numeric target, user-stated and now CLOSED: ≥ 70% of SIMPLE prompts verify AND ≥ 70% of COMPLICATED prompts fail, measured PER CATEGORY over the SEALED 20+20 held-out corpus on the host of record; the demo pair (exact scatter prompt + exact 2×2 dashboard prompt) = PUBLIC SENTINELS outside both corpora and both denominators, their outcomes required SEPARATELY at M10** — a sentinel inside the sealed sample would block pre-demo qualification while contributing only 1/20, and revealing it after a failure would invalidate the seal. The FAIL arm's structural reading is SUPERSEDED by the pivot below: under model-authored Python the fail arm is probabilistic, because the model may write anything and the allowlist is what refuses it.
 
 **Closed-milestone records** — M1–M8 ranges · shipped surfaces · gauge bands → `.agent/archive/closed-milestones.md`; per-milestone detail → `.agent/archive/m<m>.md`. Status → the ledger above.
 
@@ -54,7 +54,7 @@ Opposite sizing verdicts from two independent owners ⇒ arbitrate on measuremen
 
 ## Active track — model-authored Python (M12 → M13 → M10)
 
-User pivot. It SUPERSEDES the formula-mode demo plan and binds M10, M12 and M13. Five rulings:
+User pivot (re-affirmed with the OWUI message contract verbatim). It SUPERSEDES the formula-mode demo plan and binds M10, M12 and M13. Six rulings:
 
 1. **The model authors the EXECUTED Python.** The model writes real matplotlib code from a
    free-form prompt; the verifier statically checks it; on pass, THE MODEL'S OWN BYTES run in
@@ -91,6 +91,15 @@ User pivot. It SUPERSEDES the formula-mode demo plan and binds M10, M12 and M13.
    measures this arm; the two-branch number stands only as the recorded upper bound of a rejected
    design. Guided decoding stays available for the JSON-spec modes, whose grammar is a TRANSPORT
    schema and never the safety boundary.
+6. **Prompt surfaces carry TASK + FORMAT + dataset binding only — admission vocabulary is banned
+   everywhere** (system prompts + few-shots, python mode, capture AND M10 calibration). Banned:
+   allowlist terms, supported/unsupported framing, refusal/sentinel branches, negative examples
+   that classify requests. A boundary-teaching prompt relocates the decision out of the verifier
+   (soft form of the rejected two-branch CFG) AND collapses the fail arm the same way the
+   subset-CFG did — the model answers a dashboard prompt with an admissible line plot, which then
+   VERIFIES (`res-port` F6 measured exactly this). Calibration levers that remain: model choice,
+   `max_new_tokens`, temperature, task phrasing, positive style examples registered as measured
+   levers with a per-category re-read.
 
 **Why the port precedes the new mode, despite M13 being hardware-free.** M13's allowlisted subset
 IS the pass/fail boundary, and the ≥70% simple arm holds only if the subset covers the idioms a real
@@ -101,7 +110,13 @@ both prompt categories.
 **Anti-overfit ruling (protects the user's "not hardcoded" requirement).** The subset is designed by
 IDIOM CLASS, never against memorized sample outputs. M12 reserves a HELD-OUT prompt set the subset
 design never sees, and acceptance is measured there. A ≥70% figure taken on the design set alone is
-not evidence and may not be recorded as the acceptance number.
+not evidence and may not be recorded as the acceptance number. The seal is ENFORCED, not
+instruction-only: the held-out corpus is committed as authenticated CIPHERTEXT with the private key
+escrowed OFF-SESSION (user-held; plaintext + local key deleted after sealing), a committed manifest
+{per-prompt id, category, sha256(normalized text)} + validator prove counts/disjointness WITHOUT
+decryption, and reveal happens once against a frozen M13 config — any post-reveal tuning
+invalidates the set and demands a freshly sealed one. NO generation is run against held-out prompts
+before that reveal. Protocol mechanics → `.agent/reference.md` "Python corpus + held-out seal".
 
 ### Claim change — lands in `POC_SCOPE.md` at M13; stated here so no session ships the old wording
 
@@ -132,21 +147,34 @@ nesting pre-scan AHEAD of `ast.parse`, not only a post-parse depth check. This r
 `eval`/`exec`/`compile`/`ast` reachable" property for the NEW module only; `expr.py` keeps it. Also
 Pyodide's own `matplotlib`/`numpy`/`pandas` builds, whose versions the verifier does not control.
 
-### M12 scope sketch
+### M12 plan (gate MET at plan: env rebuilt from pins → `cuda_available True`, MX150 cc(6,1), fp16 matmul OK, driver 580.178.04 — probe logs recorded 580.173.02, userspace stack unaffected; `.venv-model` pre-staged with the exact stack, py3.12)
 
-Port `model_backend/engine.py` from OpenVINO GenAI to an in-process torch/transformers engine on the
-MX150 (GP108M, Pascal sm_61, ~1.95 GiB VRAM, driver 580.173.02), on the measured stack above. The
-seam is small and already isolated: `app.py` touches only `Engine.load`, `engine.generate(messages,
-*, temperature, max_tokens, guided_schema)`, `engine.schema_sha256` and `BackendError`, and needs no
-behavioral edit if that spelling holds. Port touch set: `model_backend/{engine,settings,
-schema_guidance,models,__init__,__main__}.py`, `tests/test_model_backend.py`, `pyproject.toml`.
-Model-identity sweep (duplicated outside the backend package):
-`src/verifier/service/settings.py`, `webui/{settings.py,launch.sh,README.md}`,
-`tests/{test_service_model_client,test_service,test_webui_model_stub}.py`, `bench/README.md`,
-`POC_SCOPE.md`, plus any new model-environment lock artifact. A per-category bench re-baseline is a
-UNIT, not a footnote: every proposer OBSERVATION is `(device, config)`-scoped and every ORIGIN
-number is invalidated by the swap. Second deliverable = the captured raw-generation corpus, with a
-held-out split reserved per the anti-overfit ruling.
+Seam + touch set + stack → "Measured port facts" above. All units MAIN-implemented; dGPU + ports
+8000/8001/8080 + `.venv-model` + `.venv-webui` + `.webui-data` = MAIN-held every wave. Identity is a
+SEARCH-DERIVED manifest (~24 active files incl. `models.py:119` `owned_by="openvino"`,
+`webui/model_stub.py`, `bench/__init__.py`, `demo/e2e.py`, `.gitignore`), never a fixed list;
+`POC_SCOPE.md` = proven NO-edit for M12 (zero identity matches; its claim lines 83/117/278/324 are
+M13's). Evidence paths must be TRACKED (`bench/reports/` + `models/` are gitignored). Fresh numbers
+are NOT ORIGIN-comparable (model family changed); frame every run as a new `(device, config)`
+baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture artifacts labeled
+`python_raw_unconstrained` vs `vplot_json_guided`; validators refuse cross-mode aggregation.
+
+| unit | tier | scope | DONE gate |
+|---|---|---|---|
+| M12.1 | kernel | Runtime lock + settings port: `model_backend/runtime/{pyproject.toml,uv.lock,README.md}` — py3.12, `torch==2.7.1+cu126` via `[[tool.uv.index]]`+`tool.uv.sources`, transformers 5.16.1 · accelerate 1.14.0 · tokenizers 0.23.1 · xgrammar 0.2.3, FULL transitive lock → gitignored `.venv-model`; model snapshot → gitignored `models/Qwen2.5-Coder-0.5B-Instruct/` + committed HF revision SHA + per-file sha256 manifest; `model_backend/settings.py` defaults (device `cuda`, new model dir/name, env var NAMES unchanged, bounds 1536/512/65536 kept); pyproject mypy overrides `torch.*`/`transformers.*`/`xgrammar.*` (+`accelerate`/`tokenizers` iff imported); adapted settings pins | full gate green + `uv sync --locked` rebuild + `uv pip check` + snapshot hash verify |
+| M12.2 | kernel | Engine core port, UNGUIDED: `engine.py` → torch/transformers (F5 recipe; suffix-slice decode, EOS-at-cap→`stop`/cap-no-EOS→`length`, scalar/list eos+pad ids, usage from generated suffix as literals, response ceiling after generation, lock serialization, identity-preserving `.to("cuda")` + same-object `generate` handoff); `guided_schema` naming → LOUD temporary `BackendError` (pinned, replaced in M12.3); `tests/test_model_backend.py` fake torch/transformers seams + canonical refusal bytes; committed smoke probe (from `7c9e408:probes/probe_stack.py`): live `:8001` serve → `/v1/models` + one completion + live over-cap refusal byte-compare, records device/cc/dtype/model/tok-s. FALLBACK at 45% before test rework: close on engine+adapted fakes green, contract battery → successor | full gate + smoke probe rc 0 with recorded tuple |
+| M12.3 | kernel | xgrammar guidance + both-ways oracle: `schema_guidance.py` compile-at-load — `TokenizerInfo.from_huggingface` → `GrammarCompiler(...).compile_json_schema(schema, strict_mode=True, any_order=True)` (v0.2.3 API) → fresh `xgrammar.contrib.hf.LogitsProcessor` per generate; engine application block replaces the M12.2 refusal; hardware-free threading pins (per-id selection by identity, `None` ⇒ ZERO processor constructions, fresh processor across 2 calls); live oracle per schema: (a) guided generation strict-validates, (b) schema-specific negative that generic JSON accepts is refused, (c) other mode's strict-valid object refused (selector identity), (d) adversarial generation stays in-schema; + 3/3 greedy determinism + JOINT-corner probe (1536 prompt + 512 new; else lower a bound + record the tuple) | full gate + oracle rc 0 |
+| M12.4 | kernel | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `model_stub`+`models.py` `owned_by` → backend-neutral literal, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
+| M12.5 | kernel | Corpus spec + SEAL: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, frozen category+idiom labels, dataset binding, sha256); held-out 20+20 as authenticated ciphertext + manifest + no-decrypt validator; `sentinels.json` (the 2 public demo prompts, outside both sets); contamination validators (exact counts, byte+normalized disjointness, bounded template similarity, zero prompt-surface overlap, family balance, label freeze); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row. Seal keys: user-escrowed (fallback = plaintext + seal labeled UNENFORCEABLE — user picks at handoff). FALLBACK at 45%: spec+seal close first, validators → successor | full gate + validators green pre-generation |
+| M12.6 | kernel | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
+| M12.7 | data | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); offline replay reproduces stats byte-identically; held-out NOT generated (seal) | replay reproduces committed stats |
+| M12.8 | data | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation) | full gate + committed baseline replayable |
+| M12.9 | docs | Prose sweep + register audit: search-manifest remainder (root/`webui`/`bench`/`demo` READMEs — ORIGIN OpenVINO recipes labeled historical, byte-preserved; STE register on the four READMEs + launcher `usage()`/banner; REAL-model outcomes stay conditional); zero-unruled-match final search with per-line historical allowlist; README↔`POC_SCOPE.md` block quotes re-diffed | consistency pass + final search clean |
+
+Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 · 12.4←12.3 ·
+12.6←12.5+12.2 · 12.7←12.6 · 12.8←12.3+12.4 · 12.9 last · **M13 planning ← 12.7 committed** ·
+capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = 12.2 close;
+interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
 ### M13 scope sketch (unit split decided at M13 PLANNING)
 
@@ -169,10 +197,10 @@ verify an authentic verifier result → `execute:python` the ADMITTED script →
 additionally see the new python-mode operation. `webui/model_stub.py` classifies only the dataset
 system prompt ⇒ it needs a python-mode arm or the stub tier cannot exercise the new path.
 
-### Measured port facts (`res-port`; every probe + log path → `.scratch/agents/res-port.md`)
+### Measured port facts (`res-port`; report tracked at `.agent/archive/m9-review/res-port.md`, probe sources at `7c9e408:probes/*` on `wt/res-port`)
 
-Six probes on the host of record. M12 PLANNING reads the report before splitting units; the probe
-environment was deleted after verification and rebuilds from `probes/runtime-pins.txt`.
+Six probes on the host of record. The probe environment was deleted after verification and rebuilds
+from `7c9e408:probes/runtime-pins.txt` + F5's CUDA-index command.
 
 - **Stack.** `torch==2.7.1+cu126` (cu126 index) · `transformers==5.16.1` · `accelerate==1.14.0` ·
   `tokenizers==0.23.1` · `xgrammar==0.2.3`, on Python 3.12. Both byte-exact backend contracts
