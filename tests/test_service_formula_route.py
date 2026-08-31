@@ -19,7 +19,7 @@ from httpx import Response
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from verifier import attestation, checks, formal, matplotlib_script, vcert
+from verifier import attestation, checks, formal, formula_prepare, matplotlib_script, vcert
 from verifier import eval as eval_module
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import decode_formula_spec
@@ -42,6 +42,26 @@ from verifier.service.store import ArtifactStore
 _ROOT = Path(__file__).resolve().parent.parent
 _FORMULA_GOOD = _ROOT / "examples" / "formula_good_specs"
 _JSON = {"content-type": "application/json"}
+
+
+def _refusing_attestation_cap() -> int:
+    """One byte under the LIVE f02 v0.3 payload, so the refusal is CPython-patch-neutral.
+
+    The certificate's TCB embeds the running interpreter version, so this payload measures 1802
+    bytes on CPython 3.13.14 and 1801 on 3.13.5. A literal ceiling therefore refuses on one
+    admitted patch of ``>=3.13,<3.14`` and ADMITS on the other, which is what turned the recorded
+    second-interpreter gate red.
+    """
+    spec = decode_formula_spec((_FORMULA_GOOD / "f02_linear.json").read_bytes())
+    evidence = checks.verify_formula_run(spec).require_evidence()
+    preparation = formula_prepare.prepare_formula(spec, evidence)
+    prepared = cast("formula_prepare.PreparedFormula", preparation.prepared)
+    emission = matplotlib_script.emit_matplotlib_script(prepared)
+    artifact = cast("matplotlib_script.MatplotlibScriptArtifact", emission.artifact)
+    return len(vcert.vcert_v03_bytes(vcert.build_formula_certificate(artifact))) - 1
+
+
+_ATTESTATION_CAP_REFUSING = _refusing_attestation_cap()
 _SUCCESS_FIELDS = (
     "verified",
     "layer",
@@ -912,7 +932,9 @@ def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_500(
     with monkeypatch.context() as cap_patch:
         calls, _returned, store_calls = _observe_formula_stages(cap_patch)
         drafts = _capture_attempt_drafts(cap_patch)
-        settings = _settings(tmp_path / "cap-1801", max_attestation_bytes=1801)
+        settings = _settings(
+            tmp_path / "cap-under-payload", max_attestation_bytes=_ATTESTATION_CAP_REFUSING
+        )
         app = create_app(settings)
         private_v03_signs = _install_v03_signature_counter(cap_patch)
         with TestClient(app=app) as client:
@@ -984,7 +1006,7 @@ def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_500(
         (
             "attestation",
             (_FORMULA_GOOD / "f02_linear.json").read_bytes(),
-            {"max_attestation_bytes": 1801},
+            {"max_attestation_bytes": _ATTESTATION_CAP_REFUSING},
             False,
             1,
             1,

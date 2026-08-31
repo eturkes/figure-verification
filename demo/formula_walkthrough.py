@@ -85,6 +85,9 @@ _USER_REQUEST = "Plot the line 2x + 1 from 0 to 10"
 # Hand-stated rather than read from the check registry: a test or demo that derives its own
 # expectation from the production constant pins nothing about that constant.
 _CERTIFIED_METHODS = frozenset({"construction", "deterministic_recompute", "z3_smt"})
+# Hand-stated beside the method labels: dropping one construction check preserves all three
+# methods, so the method set alone cannot detect an under-reported certificate.
+_CERTIFIED_CHECK_COUNT = 13
 _ARTIFACT_MATCHES = {
     "formula": True,
     "spec": True,
@@ -291,7 +294,11 @@ def _scenario_formula_certificate_check_shape(tmp_path: Path) -> str:
         certificate = _certificate(client, app, _plot_id(body))
 
     triples = {(check.id, check.method, check.status) for check in certificate.checks}
-    _require(bool(triples), "fetched formula VCert carried no checks")
+    _require(
+        len(certificate.checks) == _CERTIFIED_CHECK_COUNT == len(triples),
+        f"fetched formula VCert carried {len(certificate.checks)} checks "
+        f"({len(triples)} distinct), not {_CERTIFIED_CHECK_COUNT}",
+    )
     _require(
         {method for _check_id, method, _status in triples} == _CERTIFIED_METHODS,
         "fetched formula VCert method labels drifted",
@@ -300,7 +307,10 @@ def _scenario_formula_certificate_check_shape(tmp_path: Path) -> str:
         all(check_id and status == "pass" for check_id, _method, status in triples),
         "fetched formula VCert carried an empty check id or a non-passing status",
     )
-    return "fetched VCert v0.3 exposed non-empty {id, method, status} triples across three methods"
+    return (
+        f"fetched VCert v0.3 exposed {_CERTIFIED_CHECK_COUNT} distinct non-empty "
+        "{id, method, status} triples across three methods"
+    )
 
 
 def _rejected_formula_attempt(client: TestClient[Litestar]) -> dict[str, Any]:

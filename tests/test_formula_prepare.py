@@ -206,6 +206,34 @@ def test_formula_render_row_boundary_and_ceiling_plus_one(
     assert formal_calls == 0
 
 
+def test_formula_preparation_forwards_the_caller_limits_object_to_the_formal_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`smt_timeout_ms` reaches Z3 only here: pin the caller's own object, not an equal default."""
+    spec = _two_point_spec()
+    evidence = _evidence(spec)
+    caller_limits = msgspec.structs.replace(DEFAULT_LIMITS, smt_timeout_ms=17)
+    assert caller_limits.smt_timeout_ms != DEFAULT_LIMITS.smt_timeout_ms
+    observed: list[VerificationLimits] = []
+    verify_formal = formal.verify_formal
+
+    def spy(
+        facts: formal.FormalFacts,
+        *,
+        limits: VerificationLimits = DEFAULT_LIMITS,
+    ) -> formal.FormalRun:
+        observed.append(limits)
+        return verify_formal(facts, limits=limits)
+
+    monkeypatch.setattr(formal, "verify_formal", spy)
+    preparation = formula_prepare.prepare_formula(spec, evidence, limits=caller_limits)
+
+    assert preparation.report.passed
+    assert len(observed) == 1
+    assert observed[0] is caller_limits
+    assert observed[0].smt_timeout_ms == 17
+
+
 def test_formula_smt_term_boundary_and_ceiling_plus_one_precede_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

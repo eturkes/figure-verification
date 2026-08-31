@@ -83,6 +83,18 @@ def _record_connection(module: ModuleType, mode: Any) -> Any:
     return Connection()
 
 
+def test_mode_dispatch_maps_stay_exactly_total_over_the_closed_source_kind_enum() -> None:
+    """Both maps are documented total; pin the hand-stated key set so widening either fails."""
+    expected = {PlotSourceKind.DATASET, PlotSourceKind.FORMULA}
+    assert set(PlotSourceKind) == expected
+    assert set(archive_module._CANONICAL_SPEC_DECODERS) == expected
+    assert set(archive_module._ARCHIVE_CERTIFICATE_AUTHENTICATORS) == expected
+    assert len({id(arm) for arm in archive_module._CANONICAL_SPEC_DECODERS.values()}) == 2
+    assert (
+        len({id(arm) for arm in archive_module._ARCHIVE_CERTIFICATE_AUTHENTICATORS.values()}) == 2
+    )
+
+
 def test_p2_site1_totality_uses_formula_roles_not_whole_enum(tmp_path: Path) -> None:
     assert hasattr(archive_module, "_PLOT_ROLES_BY_SOURCE")
     module = _load_mutant(

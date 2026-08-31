@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Transactional SQLite archive, typed references, quotas, and corruption gates."""
 
+import json
 import os
 import sqlite3
 import stat
@@ -1420,3 +1421,21 @@ def test_exact_schema_validator_refuses_near_miss_version_four_text(tmp_path: Pa
         connection.execute("PRAGMA writable_schema=OFF")
     with pytest.raises(ArchiveSchemaError, match="schema objects disagree"):
         _archive(tmp_path)
+
+
+def test_v4_schema_objects_match_the_bytes_shipped_at_schema_version_4() -> None:
+    """Pin `_SCHEMA_OBJECTS` to the v4 DDL text actually shipped, not to a hand-retyped copy.
+
+    `_validate_schema_version` compares a live archive's `sqlite_schema` rows against this exact
+    DDL TEXT, so an incidental formatting or wording edit that leaves `_SCHEMA_VERSION == 4` makes
+    every v4 archive already on disk refuse to open, while every fresh-archive test stays green.
+    The golden was extracted from `bcecfd1:src/verifier/service/archive.py`, the commit that
+    shipped v4. An intentional DDL change must bump the version and ship a migration instead of
+    editing this fixture.
+    """
+    golden = json.loads(
+        (Path(__file__).parent / "golden" / "archive_schema_v4.json").read_text(encoding="utf-8")
+    )
+    assert archive_module._SCHEMA_VERSION == 4
+    assert len(golden) == 13
+    assert tuple(tuple(row) for row in golden) == tuple(archive_module._SCHEMA_OBJECTS)

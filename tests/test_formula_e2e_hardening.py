@@ -80,6 +80,7 @@ _ARTIFACT_MATCHES = {
     "matplotlib_script": True,
 }
 _CERTIFIED_METHODS = {"construction", "deterministic_recompute", "z3_smt"}
+_CERTIFIED_CHECK_COUNT = 13
 _INJECTED_FAULT = "injected scenario fault"
 _CHECK_FIELDS = ("id", "method", "status")
 _SCENARIO_NAMES = {
@@ -96,7 +97,8 @@ _SCENARIO_COUNT = 5
 _SCENARIO_DETAILS = {
     "direct formula verify, restart, exact replay, certificate-matched table and script",
     "stubbed formula proposal verified, archived, and replayed exactly after a restart",
-    "fetched VCert v0.3 exposed non-empty {id, method, status} triples across three methods",
+    "fetched VCert v0.3 exposed 13 distinct non-empty {id, method, status} triples "
+    "across three methods",
     "real audit CLI explained a durable rejected formula attempt, redacted by default",
     "rotated signer, schema damage, and formula signature tampering all failed closed",
 }
@@ -455,6 +457,10 @@ def test_formula_certificate_methods_are_the_exact_declared_set(tmp_path: Path) 
         _envelope, certificate = _certificate(client, app, cast("str", body["plot_id"]))
 
     assert {check.method for check in certificate.checks} == _CERTIFIED_METHODS
+    # Cardinality carries what the method set cannot: dropping one construction check leaves all
+    # three labels intact, so the certificate can under-report while this set stays exact.
+    assert len(certificate.checks) == _CERTIFIED_CHECK_COUNT
+    assert len({check.id for check in certificate.checks}) == _CERTIFIED_CHECK_COUNT
 
 
 def test_archived_bytes_are_matched_against_the_authenticated_certificate(

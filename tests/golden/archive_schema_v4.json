@@ -1,0 +1,80 @@
+[
+  [
+    "table",
+    "meta",
+    "meta",
+    "CREATE TABLE meta (\n    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),\n    schema_version INTEGER NOT NULL CHECK (schema_version > 0),\n    logical_blob_bytes INTEGER NOT NULL CHECK (logical_blob_bytes >= 0)\n) STRICT"
+  ],
+  [
+    "table",
+    "blobs",
+    "blobs",
+    "CREATE TABLE blobs (\n    blob_id INTEGER PRIMARY KEY,\n    digest TEXT NOT NULL CHECK (\n        length(digest) = 71\n        AND substr(digest, 1, 7) = 'sha256:'\n        AND substr(digest, 8) NOT GLOB '*[^0-9a-f]*'\n    ),\n    kind TEXT NOT NULL CHECK (kind IN (\n        'raw_csv', 'raw_manifest', 'canonical_spec', 'raw_spec', 'plotted_table',\n        'verdict', 'vega_lite', 'svg', 'vcert_payload', 'vcert_envelope',\n        'ed25519_public_key', 'tool_versions', 'formula_source', 'matplotlib_script',\n        'model_request', 'model_response', 'model_reply', 'attempt_payload',\n        'attempt_envelope'\n    )),\n    size INTEGER NOT NULL CHECK (size >= 0),\n    content BLOB NOT NULL,\n    UNIQUE (digest, kind),\n    CHECK (size = length(content))\n) STRICT"
+  ],
+  [
+    "table",
+    "keys",
+    "keys",
+    "CREATE TABLE keys (\n    keyid TEXT PRIMARY KEY CHECK (\n        length(keyid) = 71\n        AND substr(keyid, 1, 7) = 'sha256:'\n        AND substr(keyid, 8) NOT GLOB '*[^0-9a-f]*'\n    ),\n    public_key_digest TEXT NOT NULL,\n    public_key_kind TEXT NOT NULL CHECK (public_key_kind = 'ed25519_public_key'),\n    CHECK (keyid = public_key_digest),\n    FOREIGN KEY (public_key_digest, public_key_kind) REFERENCES blobs(digest, kind)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "table",
+    "plots",
+    "plots",
+    "CREATE TABLE plots (\n    plot_id TEXT PRIMARY KEY CHECK (\n        length(plot_id) = 64 AND plot_id NOT GLOB '*[^0-9a-f]*'\n    ),\n    certificate_digest TEXT NOT NULL,\n    certificate_kind TEXT NOT NULL CHECK (certificate_kind = 'vcert_envelope'),\n    keyid TEXT NOT NULL,\n    source_kind TEXT NOT NULL CHECK (source_kind IN ('dataset', 'formula')),\n    CHECK (certificate_digest = 'sha256:' || plot_id),\n    FOREIGN KEY (certificate_digest, certificate_kind) REFERENCES blobs(digest, kind),\n    FOREIGN KEY (keyid) REFERENCES keys(keyid)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "table",
+    "specs",
+    "specs",
+    "CREATE TABLE specs (\n    spec_id TEXT PRIMARY KEY CHECK (\n        length(spec_id) = 64 AND spec_id NOT GLOB '*[^0-9a-f]*'\n    ),\n    canonical_spec_digest TEXT NOT NULL,\n    canonical_spec_kind TEXT NOT NULL CHECK (canonical_spec_kind = 'canonical_spec'),\n    FOREIGN KEY (canonical_spec_digest, canonical_spec_kind) REFERENCES blobs(digest, kind)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "table",
+    "attempts",
+    "attempts",
+    "CREATE TABLE attempts (\n    attempt_id TEXT PRIMARY KEY CHECK (\n        length(attempt_id) = 64 AND attempt_id NOT GLOB '*[^0-9a-f]*'\n    ),\n    envelope_digest TEXT NOT NULL,\n    envelope_kind TEXT NOT NULL CHECK (envelope_kind = 'attempt_envelope'),\n    keyid TEXT NOT NULL,\n    plot_id TEXT,\n    CHECK (envelope_digest = 'sha256:' || attempt_id),\n    FOREIGN KEY (envelope_digest, envelope_kind) REFERENCES blobs(digest, kind),\n    FOREIGN KEY (keyid) REFERENCES keys(keyid),\n    FOREIGN KEY (plot_id) REFERENCES plots(plot_id)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "table",
+    "plot_references",
+    "plot_references",
+    "CREATE TABLE plot_references (\n    plot_id TEXT NOT NULL,\n    role TEXT NOT NULL CHECK (role IN (\n        'raw_csv', 'raw_manifest', 'canonical_spec', 'plotted_table', 'verdict',\n        'vega_lite', 'svg', 'vcert_payload', 'tool_versions', 'formula_source',\n        'matplotlib_script'\n    )),\n    blob_digest TEXT NOT NULL,\n    blob_kind TEXT NOT NULL CHECK (blob_kind = role),\n    PRIMARY KEY (plot_id, role),\n    FOREIGN KEY (plot_id) REFERENCES plots(plot_id),\n    FOREIGN KEY (blob_digest, blob_kind) REFERENCES blobs(digest, kind)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "table",
+    "attempt_references",
+    "attempt_references",
+    "CREATE TABLE attempt_references (\n    attempt_id TEXT NOT NULL,\n    role TEXT NOT NULL CHECK (role IN (\n        'raw_csv', 'raw_manifest', 'raw_spec', 'verdict', 'model_request',\n        'model_response', 'model_reply', 'attempt_payload'\n    )),\n    blob_digest TEXT NOT NULL,\n    blob_kind TEXT NOT NULL CHECK (blob_kind = role),\n    PRIMARY KEY (attempt_id, role),\n    FOREIGN KEY (attempt_id) REFERENCES attempts(attempt_id),\n    FOREIGN KEY (blob_digest, blob_kind) REFERENCES blobs(digest, kind)\n) STRICT, WITHOUT ROWID"
+  ],
+  [
+    "trigger",
+    "blobs_track_logical_bytes",
+    "blobs",
+    "CREATE TRIGGER blobs_track_logical_bytes\nAFTER INSERT ON blobs\nBEGIN\n    UPDATE meta SET logical_blob_bytes = logical_blob_bytes + NEW.size WHERE singleton = 1;\nEND"
+  ],
+  [
+    "trigger",
+    "blobs_reject_update",
+    "blobs",
+    "CREATE TRIGGER blobs_reject_update\nBEFORE UPDATE ON blobs\nBEGIN\n    SELECT RAISE(ABORT, 'archive blobs are immutable');\nEND"
+  ],
+  [
+    "trigger",
+    "blobs_reject_delete",
+    "blobs",
+    "CREATE TRIGGER blobs_reject_delete\nBEFORE DELETE ON blobs\nBEGIN\n    SELECT RAISE(ABORT, 'archive blobs are immutable');\nEND"
+  ],
+  [
+    "trigger",
+    "plot_references_match_source",
+    "plot_references",
+    "CREATE TRIGGER plot_references_match_source\nBEFORE INSERT ON plot_references\nBEGIN\n    SELECT RAISE(ABORT, 'plot reference role disagrees with plot source kind')\n    WHERE NOT EXISTS (\n        SELECT 1 FROM plots\n        WHERE plot_id = NEW.plot_id\n        AND ((source_kind = 'dataset' AND NEW.role IN (\n            'raw_csv', 'raw_manifest', 'canonical_spec', 'plotted_table', 'verdict',\n            'vega_lite', 'svg', 'vcert_payload', 'tool_versions'\n        )) OR (source_kind = 'formula' AND NEW.role IN (\n            'canonical_spec', 'formula_source', 'plotted_table', 'verdict',\n            'matplotlib_script', 'vcert_payload', 'tool_versions'\n        )))\n    );\nEND"
+  ],
+  [
+    "index",
+    "attempts_by_plot",
+    "attempts",
+    "CREATE INDEX attempts_by_plot ON attempts(plot_id, attempt_id) WHERE plot_id IS NOT NULL"
+  ]
+]
