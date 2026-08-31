@@ -190,6 +190,29 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = 12.2 close;
 interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
+**Unit status.** M12.1 = OPEN, prep wave COMPLETE + banked, implementation NOT started. M12.2–M12.9
+= OPEN, untouched. Resume M12.1 from `.scratch/STATE-M12.1.md`, whose read order is authoritative;
+the acceptance contract is `.scratch/agents/contract-m12u1.md` and **its §7 + §8 amend §2–§6**. The
+red suite lives on retained branch `wt/test-m12u1` (worktree `.scratch/worktrees/test-m12u1`) and is
+RED by design — never merge it to `main` before the implementation makes it green.
+
+**M12.1 prep-wave deltas (bind the plan; the wave holds sizing authority).**
+- `ModelCard.owned_by="openvino"` + the `tests/test_webui_model_stub.py` owner pin move **M12.4 →
+  M12.2**: the literal becomes false at the engine swap, so it must travel with the engine.
+- `model_backend/__init__.py` + `__main__.py` OpenVINO docstrings gain an owner: **M12.2** (they had
+  none — outside both R7 and M12.9).
+- M12.1 is **intentionally NON-LAUNCHABLE** between 12.1 and 12.2: its defaults name a CUDA device
+  and a raw HF snapshot while `engine.py` still imports `openvino_genai`. That is the serial edge
+  `12.2←12.1` working as planned; M12.1's DONE gate contains no live serve, and the first live
+  completion stays M12.2's smoke probe.
+- **Declared FALLBACK split seam with a numeric trigger** (dissent from the prep wave's tier lens,
+  recorded rather than discarded): if MAIN's implementing window passes **60%** before
+  `model_backend/snapshot.py` is green, split M12.1 there — M12.1a = runtime project + settings +
+  root config (tier `data`/`docs`), M12.1b = snapshot verifier (tier `kernel`).
+- Prep-wave cost, measured: MAIN reached **~73%** on contract authoring + 3-teammate fan-out + 55
+  ruled findings with **zero production lines** — the "prep wave is its own window" driver, now on
+  its tenth consecutive unit. Budget it separately at every M12 unit.
+
 ### M13 scope sketch (unit split decided at M13 PLANNING)
 
 New mode `pysrc-0.1` beside `vplot-0.1` and `vplot-formula-0.1`: bytes admission + nesting pre-scan ·
@@ -341,7 +364,9 @@ at the M9 review close — 16 branches, no worktree checked out for any of them:
 `wt/test-m9u10` `845d49f` (`p25`) · `wt/rev-m9u10` `a1171dc` · `wt/test-m9u13a` `6c1bd49` ·
 `wt/rev-m9-1` `db833f3` (M9R1) · `wt/rev-m9-4` `e18bcfb` (M9R2) ·
 `wt/rev-m9-2` `8093b0a` · `wt/rev-m9-5` `6dac756` · `wt/rev-m9-6` `814e513` ·
-`wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed).
+`wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed) ·
+**`wt/test-m12u1` `9f24a2b` (M12.1 red suite — 18 predicates, 13 RED / 5 green-by-design; its
+worktree `.scratch/worktrees/test-m12u1` stays checked out until M12.1 implements)**.
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
 never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
