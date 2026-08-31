@@ -20,15 +20,17 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M6 | End-to-end demo | 15 | full stack (M3+M4) — CONFIRMED live at plan | REVIEWED |
 | M7 | Interactive local-model browser instance | — (user request) | live stack (verifier+model+OWUI) — CONFIRMED at plan | REVIEWED |
 | M8 | Reliable real-model figures (schema-guided decoding) | — (user request) | live NPU stack + OV structured output — CONFIRMED at plan | REVIEWED |
-| M9 | Verified formula-plot mode (headless) | — (user request) | none (headless verifier core) | IMPLEMENTED |
-| M10 | Formula plot in OWUI sandbox + demo | — (user request) | browser-live OWUI `execute:python` — source-confirmed; live proof at M10 plan | UNPLANNED |
-| M11 | Derived/computed columns (dataset mode) | — (user request) | none (headless; reuses M9 expr engine) | UNPLANNED |
+| M9 | Verified formula-plot mode (headless) | — (user request) | none (headless verifier core) | REVIEWED — M9R1/M9R2/M9R3 open |
+| M10 | Model-authored Python in the OWUI sandbox + calibrated demo | — (user request) | M12 + M13 DONE; browser-live OWUI `execute:python`; local proposer on the host of record | UNPLANNED |
+| M11 | Derived/computed columns (dataset mode) | — (user request) | none (headless; reuses M9 expr engine) | UNPLANNED — DEPRIORITIZED behind M12/M13/M10 |
+| M12 | dGPU proposer runtime port + model-authored-Python corpus | — (user request) | NVIDIA MX150 reachable by a torch CUDA build — CONFIRM at plan | UNPLANNED — ACTIVE NEXT |
+| M13 | Python-source verification mode (headless) | — (user request) | none (headless verifier core); consumes M12's captured corpus | UNPLANNED |
 
 Plan each milestone only when it becomes active (prior one REVIEWED). M3/M4/M6/M7/M10 are gated — confirm preconditions functionally at the planning turn, and bring generated/heavy inputs into scope only when the gate needs them. A gate unmet there ⇒ set the milestone PARKED with its named precondition verbatim, clearing the marker only when a functional recheck meets it; M11 is ungated + sequence-adjustable, so M10's live-OWUI gate parks rather than stalls the roadmap.
 
 **Host change — model tier only.** The proposer's live stack was built on the ORIGIN host (Intel NPU + OpenVINO); CURRENT has no NPU ⇒ `MODEL_BACKEND_DEVICE=NPU` cannot load and every REAL-MODEL arm of the M3/M4/M6/M7/M8 live-stack gates + M9.12's live formula smoke is UNMET here. Those REVIEWED verdicts STAND — their evidence was validly taken on ORIGIN. The trusted core is host-free (verifier + bench + tests + demo gate fully on CURRENT) ⇒ M9 is unaffected and stays active, while **M10 carries a SECOND precondition beyond browser-live OWUI: a working local proposer on the host of record**. **M10 precondition 1 = MET on CURRENT**: `webui/launch.sh --stub` stands all three services up and a verified chart renders inline in the browser; precondition 2 stays UNMET, so M10's live-proposer arms park while its sandbox-execution arms are probeable today. A runtime port is its own UNPLANNED milestone, never an M9 unit. Host inventory, the measured runtime verdict, the two byte-exact backend contracts any replacement engine must reproduce, the evidence a swap does and does not invalidate + the weak-proposer calibration constraint → `.agent/reference.md`.
 
-**Demo acceptance (user-stated; binds the runtime-port milestone + M10).** The demo must show, with a REAL model on CURRENT, `Plot a scatter chart of revenue versus orders.` VERIFYING and the 2×2 dashboard prompt FAILING — probabilistically, as a general tendency. This SUPERSEDES the hold-model/quant-class-fixed reading of the weak-proposer rule: the stated gradient IS the acceptance criterion, so the port tunes toward it and measures PER CATEGORY. Three obstacles, only the third ever measured: the demo prompt OMITS `dataset_name`, which `ProposeRequest` requires (`service/models.py:190`) and bench supplies out-of-band as a separate corpus field; OWUI tool selection was 5/10 UNGUIDED pre-M8 and is unmeasured under guidance; end-to-end `verified_render` was **26/100 GUIDED vs 0/100 RAW**, dominated by `spec.decode`(51) + `encoding.fields_exist_in_plotted_table`(22). The harness computes `by_category` but ONLY the overall rate was archived and `bench/reports/` is ORIGIN-only ⇒ the `normal`-category rate that predicts this demo is UNKNOWN (bounded 6/20–20/20) and re-measuring it is unit 1. The corpus holds NO revenue-vs-orders scatter ⇒ add the exact demo prompt so the optimized number is the demoed number. The FAIL arm is structural, not probabilistic — VPlot v0.1 expresses no subplot grid, theme, annotation or per-region bubble composition — so any later grammar widening must re-check that it still fails. Numeric target pending user confirmation.
+**Demo acceptance (user-stated; binds the runtime-port milestone + M10).** The demo must show, with a REAL model on CURRENT, `Plot a scatter chart of revenue versus orders.` VERIFYING and the 2×2 dashboard prompt FAILING — probabilistically, as a general tendency. This SUPERSEDES the hold-model/quant-class-fixed reading of the weak-proposer rule: the stated gradient IS the acceptance criterion, so the port tunes toward it and measures PER CATEGORY. Three obstacles, only the third ever measured: the demo prompt OMITS `dataset_name`, which `ProposeRequest` requires (`service/models.py:190`) and bench supplies out-of-band as a separate corpus field; OWUI tool selection was 5/10 UNGUIDED pre-M8 and is unmeasured under guidance; end-to-end `verified_render` was **26/100 GUIDED vs 0/100 RAW**, dominated by `spec.decode`(51) + `encoding.fields_exist_in_plotted_table`(22). The harness computes `by_category` but ONLY the overall rate was archived and `bench/reports/` is ORIGIN-only ⇒ the `normal`-category rate that predicts this demo is UNKNOWN (bounded 6/20–20/20) and re-measuring it is unit 1. The corpus holds NO revenue-vs-orders scatter ⇒ add the exact demo prompt so the optimized number is the demoed number. **Numeric target, user-stated and now CLOSED: ≥ 70% of SIMPLE prompts verify AND ≥ 70% of COMPLICATED prompts fail, measured PER CATEGORY over ~20 committed prompts each on the host of record.** The FAIL arm's structural reading is SUPERSEDED by the pivot below: under model-authored Python the fail arm is probabilistic, because the model may write anything and the allowlist is what refuses it.
 
 **Closed-milestone records** — M1–M8 ranges · shipped surfaces · gauge bands → `.agent/archive/closed-milestones.md`; per-milestone detail → `.agent/archive/m<m>.md`. Status → the ledger above.
 
@@ -44,55 +46,198 @@ Four cost drivers the statement-count estimate does NOT see; price each one expl
 - **A multi-teammate PREP WAVE is its own window.** Contract authoring + fan-out + finding rulings consumed a full MAIN window with ZERO production lines nine times running. Budget it separately, bank the certified contract + evidence on disk, and let implementation start fresh against it; a `STATE-<unit>.md` naming mode, accepted-but-unimplemented rulings and the next actions in order is what makes that boundary free. The wave also holds effective SIZING authority — it re-prices, deletes and adds scope, so re-split at WORK-UNIT entry on its evidence rather than defending the planned boundary.
 - **ATTACHED STATE is a first-class window cost.** `.agent/` rides every session before the first tool call and re-attaches the project `CLAUDE.md` on every teammate dispatch and external-change echo; at 288 KB it alone bound a window in which one of five planned steps landed. Measure it at every planning turn; keep closed-unit detail in `.agent/archive/` and subsystem-conditional mechanics in `.agent/reference.md`.
 - **A DUPLICATED-TWIN unit prices the TWIN, not the delta.** M9.9 predicted ~103 new production statements and shipped +236, because its own duplicate-don't-parameterize ruling made every formula guard a hand-written twin of a dataset guard — so the count scales with the EXISTING engine, not with the new decisions. Where a ruling mandates duplication, estimate from the surface being twinned.
-- **A compaction boundary destroys the datum.** A unit that crossed one records the SUCCESSOR window's occupancy, not its cost ⇒ record it as ">1 window" and never cite the raw number as a fit.
+- **A compaction boundary destroys the datum.** A unit that crossed one records the SUCCESSOR window's occupancy, not its cost ⇒ record it as ">1 window" and never cite the raw number as a fit. Over-window units, re-derived from every closed body at the M9 review: **M9.6b · M9.11 · M9.12a · M9.12b · M9.12c · M9.13b · M9.13d · M9.13e**. M9.11 belongs there and its `main=95%` must NOT be reused as a fit analog — the reading is a successor window that also spent ~20% on teardown, and M9.12's sizing rationale cited it as one. M9.13d (~1.6 windows) and M9.13e (~1.5) are chained, so their closing 52%/53% are likewise not fits.
 
 Opposite sizing verdicts from two independent owners ⇒ arbitrate on measurement BASIS and record the loser's seam as a declared FALLBACK split point with a NUMERIC trigger rather than discarding it; a dissent priced in statements is reusable the moment the implementation window misbehaves (M9.12's A→B trigger fired at 94% and split the unit as declared).
 
 ---
 
-## M9 — Verified formula-plot mode (headless)   (IN-PROGRESS)
+## Active track — model-authored Python (M12 → M13 → M10)
 
-**User pivot (binds M10).** The OWUI demo must (1) render a PASSING plot as real inline Python in OWUI's own sandbox, not the verifier-served HTML iframe; (2) show a BLOCKED case as a real verifier rejection, not a confused-model passthrough; (3) use self-contained FORMULA prompts, not dataset references. User's two calls: the sandbox runs the VERIFIER's canonical script (model authors intent, verifier authors the executed bytes → guarantee intact); KEEP both formula + dataset modes first-class. M9 = headless verified-formula pipeline; M10 = OWUI sandbox execution + demo (gated).
+User pivot. It SUPERSEDES the formula-mode demo plan and binds M10, M12 and M13. Five rulings:
 
-**Thesis (formula mode — same discipline, sharpened).** The untrusted model proposes ONLY `{formula, domain, encoding}` — no point values, no Python. The verifier PARSES the formula into a closed verifier-owned AST, EVALUATES exact (`Fraction`) over the declared domain, quantizes once (HALF_EVEN) into the plotted table, verifies, and EMITS its own fixed-template matplotlib SCRIPT inlining only the recomputed point literals. "Model lies about plotted values" → impossible (the verifier owns every point); "model smuggles code" → impossible (the formula is parsed, never Python-executed, and the emitted script is verifier-authored positive-allowlist). Claim: *at every declared sampled x the closed evaluator produced the certified y under the declared numeric + rounding profile* — NOT finiteness/continuity/monotonicity BETWEEN samples, NOT formula-vs-NL-intent. TCB unmoved: matplotlib/Pyodide/browser/pixels stay trusted display, and because the executed script is verifier-authored its pixels are trusted-not-proven exactly like today's SVG.
+1. **The model authors the EXECUTED Python.** The model writes real matplotlib code from a
+   free-form prompt; the verifier statically checks it; on pass, THE MODEL'S OWN BYTES run in
+   OWUI's Pyodide sandbox. Rejected, do not re-litigate: verifier-authored script (the M9/M10
+   status quo) and verifier-RE-authored script after parsing the model's.
+2. **Simple arm = CSV charts.** Bar/line/scatter over columns of a source CSV. NOT closed-form
+   curves — formula mode stays shipped and unbroken but does not answer demo prompts.
+3. **Acceptance = ≥70% / ≥70%, measured** per category over ~20 committed prompts each, on the host
+   of record.
+4. **OWUI operator surface.** Pass ⇒ inline PNG + the message `Figure verification passed`, the
+   message NOT rendered into the image. Fail ⇒ output blocked + `Figure verification failed, no
+   image produced`.
+5. **The grammar may constrain FORMAT; it may never constrain ADMISSION.** The user's words bind
+   here: *the model should attempt to write arbitrary Python that will then go through verification
+   check*, and *these outcomes should not be hardcoded*. A grammar whose language IS the allowlisted
+   subset moves the pass/fail boundary out of the verifier and into the decoder, so nothing can fail
+   for a substantive reason. `res-port` measured all three arms on the port stack (`n=5`/category,
+   greedy, toy AST subset — NOT the required ~20/category end-to-end run):
+   - **Subset-only CFG** → simple 5/5 verify, complicated **0/5** fail. The dashboard prompt became
+     an ordinary line plot. The gradient collapses exactly as predicted.
+   - **Two-branch CFG** (`program | "# unsupported\\n"`) + 3 positive + 5 boundary-negative
+     few-shots → simple 5/5 AND complicated 5/5 fail. It hits the numbers, but the MODEL decides the
+     outcome by picking a branch and the verifier only rejects a sentinel comment. It also cannot
+     emit arbitrary Python. **REJECTED against ruling 1 and the user's "not hardcoded" requirement**
+     — recorded here with its measurement so it is not re-proposed as a win.
+   - **Unconstrained** → 0/3 replies `ast.parse`-able. The cause is FORMAT, not capability: Markdown
+     fences plus 256-token truncation. Neither was mitigated in the probe.
 
-**Gate: none (headless verifier core).** The formula core (schema/parser/eval/checks/cert/archive/replay/service) is hardware-free + pytest-gated, and no new verifier runtime dep enters — matplotlib/sympy/mpmath stay OUT, since the verifier emits script bytes and the sandbox owns matplotlib. M10's OWUI execution is gated on browser-live `execute:python` plus a working local proposer on the host of record.
+   Ruling: the primary arm constrains format only — de-fence the reply before `ast.parse` (bench
+   already owns this rule as `_defenced_json_valid`) and raise `max_new_tokens` past truncation;
+   optionally enforce "bare Python, no fence" with a grammar over PYTHON SYNTAX, never over the
+   admitted subset. The verifier's allowlist stays the sole admission authority, so a complicated
+   prompt fails because the program overreaches, not because the model declared defeat. M12
+   measures this arm; the two-branch number stands only as the recorded upper bound of a rejected
+   design. Guided decoding stays available for the JSON-spec modes, whose grammar is a TRANSPORT
+   schema and never the safety boundary.
 
-**Key decisions — CONSUMED by M9.1–M9.12b; full planned text → `.agent/archive/m9.md` "Plan".** Shipped semantics live in code + `VPlot_SEMANTICS.md` + `POC_SCOPE.md` + module docstrings, locked by the suites. Three carry forward: the parser/evaluator envelope + `expr.py` reuse contract and the VCert v0.3 source/artifact algebra (both under *Forward-binding rulings*), plus the transcendental exclusion here.
+**Why the port precedes the new mode, despite M13 being hardware-free.** M13's allowlisted subset
+IS the pass/fail boundary, and the ≥70% simple arm holds only if the subset covers the idioms a real
+model actually writes. Designing it before observing real generations is designing blind. So M12
+ships a SECOND deliverable beside the engine: a captured corpus of RAW model-authored Python across
+both prompt categories.
 
-- **Shared expression engine (binds M11).** `parse_expr(text, allowed_vars) → AST` + `eval_expr(ast, binding, limits) → exact value` are a REUSABLE subsystem, NOT formula-only: formula mode binds `{x}` over a sampled domain; M11's `derive` transform binds column names per row. Domain sampling + matplotlib emission are a formula-ONLY wrapper — keep them OUT of the engine core so M11 reuses it unchanged. Same exactness + allowlist for both consumers. Quantization is NOT inherited: HALF_EVEN `_quantize_fraction` is private to `eval.py`, outside the expression-engine API, so M11 must reuse it deliberately or extract it.
-- **TRANSCENDENTALS (sin/cos/tan/exp/log/sqrt/pi/e) REJECTED in v0.1** — irrational, not Decimal-exact. `sqrt` is refused UNCONDITIONALLY, perfect-square arguments included: `sqrt(4)` blocks on `formula.functions_allowed` exactly like `sqrt(2)`. `abs` is the SOLE admitted function. Deferred to a later separately-versioned interval-certified profile (directed lower/upper bounds, quantize both, accept only on agreement else raise precision within budget or fail; two-precision agreement is NOT a correct-rounding proof). USER NOTE: "basic math plot" = polynomial/rational (covered); trig deferred — surfaced to user; a trig profile is a later unit/milestone if prioritized. The same gate binds M11.
+**Anti-overfit ruling (protects the user's "not hardcoded" requirement).** The subset is designed by
+IDIOM CLASS, never against memorized sample outputs. M12 reserves a HELD-OUT prompt set the subset
+design never sees, and acceptance is measured there. A ≥70% figure taken on the design set alone is
+not evidence and may not be recorded as the acceptance number.
 
-### Units — ALL DONE (M9.1–M9.12c + M9.7p + M9.13a–M9.13e) · milestone IMPLEMENTED, review pending
+### Claim change — lands in `POC_SCOPE.md` at M13; stated here so no session ships the old wording
 
-Closed unit records → `.agent/archive/m9.md`, one `## M9.<u>` heading each, carrying that unit's delivery record, design rulings, review findings, mutation campaigns + sizing datums. The MILESTONE-REVIEW `audit` replayer re-derives every recorded number from there; the ledger below carries status + shipped surface, while an archived unit's `main=`/`mate=`/`impl=` gauges ride its body (PLANNING reads them there). M9.6b, M9.12a, M9.12b and M9.12c read as ">1 window" (sizing rule, 4th cost driver). Tier undeclared = `kernel` (default: formula core is judgment-bearing with no downstream re-check); M9.12c = `docs`.
+**RETIRED:** *"model smuggles code" is impossible by construction.* True only while the verifier
+authored the executed bytes. Under ruling 1 it no longer does.
 
-| unit | shipped surface |
-|---|---|
-| M9.1 | `FormulaPlotSpec`/`FormulaDomain`/`FormulaEncoding`, `decode_formula_spec`, `PlotSpec` union; 12 limits; canon `FormulaSource` + `formula`/`matplotlib-script` hash domains; corpus f01–f06 + fb01–fb20 |
-| M9.2 | `expr.py` bounded recursive-descent parser, frozen AST, `parse_expr`/`print_expr`, `GRAMMAR_VERSION="expr-0.1"`; no `eval`/`exec`/`compile`/`ast` reachable |
-| M9.3 | `work.py` `WorkBudget`; exact-`Fraction` `eval_expr`; `evaluate_formula_run` + HALF_EVEN `_quantize_fraction`; 64,480-point oracle cross-product |
-| M9.4a | `DatasetEvidence`/`FormulaEvidence` + `Evidence` union; 18 formula check IDs registered; dataset consumers narrowed |
-| M9.4b | `verify_formula_run` + `formula_prepare.py`; 4 further check IDs; z3 ascending-x obligation |
-| M9.5 | `matplotlib_script.py`: `emit_matplotlib_script`, fixed byte template, `SCRIPT_TEMPLATE_VERSION="matplotlib-script-0.1"`, 6 check IDs |
-| M9.6a | `vcert.py` owns the certificate subsystem: v0.2 relocated byte-unchanged, v0.3 tagged source/artifact/TCB algebra, `build_formula_certificate`; closed `attestation → render → vl_convert` |
-| M9.6b | `VCERT_V03_PAYLOAD_TYPE`, `sign_vcert_v03`/`verify_vcert_v03`, shared envelope guard; v0.2 back-compat byte-identical |
-| M9.7 | SPLIT at WORK-UNIT entry → M9.7a + M9.7b (order forced: CHECK domains before any formula publish) |
-| M9.7a | archive schema v4 via `PRAGMA writable_schema` rewrite: `BlobKind`/`plot_references.role` widening, `PlotSourceKind`, `plots.source_kind`, `plot_references_match_source`, `_migrate_v3_to_v4` |
-| M9.7b | SPLIT at WORK-UNIT entry → M9.7b-1 + M9.7b-2 (seam = `PlotRole` widening ⟺ formula reference rows exist) |
-| M9.7b-1 | `DatasetPlotBundle` + `FormulaPlotBundle`, `PlotBundle` union alias, per-mode `_PLOT_BINDING_FIELDS`, formula v0.3 authentication twin, exact-type guards |
-| M9.7p | cross-interpreter portability: keyword-only `tcb=` on both certificate builders, `tests/vector_tcb.py`, regenerated vectors, FORM-vs-WIRING split |
-| M9.7b-2 | formula storage round-trip: `PlotRole` 9→11 + `replay` mirror, `_PLOT_ROLE_FIELDS`, 5 totality sites, closed `read_certificate`/`read_spec` dispatch |
-| M9.8 | SPLIT at WORK-UNIT entry → M9.8a + M9.8b (seam = route literal vs attempt-plot union) |
-| M9.8a | `AttemptRoute.VERIFY_FORMULA` + 4 total route-keyed maps; `materialize_formula_plot_bundle`; plotless formula attempts; pre-sign route relations |
-| M9.8b | attempt-plot union: per-mode binding/role/TCB/audit maps, source from binding ROLE TOPOLOGY, `_validate_manifest_plot_presence` |
-| M9.9 | pure formula replay in `replay.py` (+236 stmts): v0.3 snapshot authentication, independent reparse/recompute/re-emit, 14-row layer matrix, function-local `render` import |
-| M9.10 | service formula verify pipeline: `FormulaScriptVerdict`, `DatasetOutcome`/`FormulaOutcome`, `POST /verify-formula`, `_formula_verdict_schema` |
-| M9.11 | archive replay adapter, `/table/{plot_id}` + `/script/{plot_id}`, per-mode `ModeReplayVerdict`, `/replay` 200 `oneOf`, `ReplayUnsupportedError` deleted |
-| M9.12 → M9.12a | `schema/vplot-formula-0.1.schema.json` (3024 B `sha256:62d0a6b8…`); `guided_json: bool` → closed `guided_schema` selector; shared bounded transport + `propose_formula` |
-| M9.12b | `AttemptRoute.PROPOSE_FORMULA` at all 9 route sites; pre-sign `_REPLY_IS_DECODER_INPUT` identity guard; `POST /propose-formula` + OpenAPI +157/−0 |
-| M9.13b | formula registry 3→5: `_scenario_formula_failed_attempt_audit_cli` + `_scenario_formula_archive_integrity_guards` (3 guards); 4 dedicated tests; `Archive._connect` ordering bomb |
-| M9.13c | `demo/e2e.py` case 4 `f02_formula_verified_certificate_replay` + 5 socket-transport formula helpers; wire-advertised-key VCert v0.3 authentication; `tests/test_demo_e2e.py` widened to four cases |
+**REPLACEMENT — three claims at three different strengths:**
+- **Recomputation (unchanged, strong).** The verifier independently recomputes every plotted number
+  from the source CSV. Model-supplied plotted values stay impossible: the model supplies a program,
+  never data.
+- **Code admission (new, positive allowlist).** The submitted source parses to an AST whose every
+  node, call target, attribute chain and literal kind is on a closed allowlist. Refusal is BY
+  ALLOWLIST, not by construction.
+- **Containment (new, TRUSTED not proven).** The Pyodide sandbox iframe (`allow-scripts`, no
+  `allow-same-origin`) is trusted to contain the admitted script. It joins vl-convert/Vega,
+  rasterization, browser and pixels in the TCB.
+
+**THE PROJECTION GAP — M13's central design obligation.** The verifier proves properties of the AST
+it PROJECTED; the sandbox executes the same bytes. *What the projection says the script plots* ≡
+*what the script plots when executed* is an EQUIVALENCE that must either be closed by construction
+(a subset narrow enough that projection is total and injective, with the subset's runtime semantics
+pinned) or declared TRUSTED. It may not be left unstated. M13 planning rules which, per construct,
+and the shipped claim must match the ruling.
+
+**TCB additions M13 must declare.** `ast.parse` over untrusted bytes — it executes nothing but runs
+the CPython parser on adversarial input, so deep nesting is a resource risk needing a byte cap AND a
+nesting pre-scan AHEAD of `ast.parse`, not only a post-parse depth check. This reverses M9.2's "no
+`eval`/`exec`/`compile`/`ast` reachable" property for the NEW module only; `expr.py` keeps it. Also
+Pyodide's own `matplotlib`/`numpy`/`pandas` builds, whose versions the verifier does not control.
+
+### M12 scope sketch
+
+Port `model_backend/engine.py` from OpenVINO GenAI to an in-process torch/transformers engine on the
+MX150 (GP108M, Pascal sm_61, ~1.95 GiB VRAM, driver 580.173.02), on the measured stack above. The
+seam is small and already isolated: `app.py` touches only `Engine.load`, `engine.generate(messages,
+*, temperature, max_tokens, guided_schema)`, `engine.schema_sha256` and `BackendError`, and needs no
+behavioral edit if that spelling holds. Port touch set: `model_backend/{engine,settings,
+schema_guidance,models,__init__,__main__}.py`, `tests/test_model_backend.py`, `pyproject.toml`.
+Model-identity sweep (duplicated outside the backend package):
+`src/verifier/service/settings.py`, `webui/{settings.py,launch.sh,README.md}`,
+`tests/{test_service_model_client,test_service,test_webui_model_stub}.py`, `bench/README.md`,
+`POC_SCOPE.md`, plus any new model-environment lock artifact. A per-category bench re-baseline is a
+UNIT, not a footnote: every proposer OBSERVATION is `(device, config)`-scoped and every ORIGIN
+number is invalidated by the swap. Second deliverable = the captured raw-generation corpus, with a
+held-out split reserved per the anti-overfit ruling.
+
+### M13 scope sketch (unit split decided at M13 PLANNING)
+
+New mode `pysrc-0.1` beside `vplot-0.1` and `vplot-formula-0.1`: bytes admission + nesting pre-scan ·
+AST allowlist + refusal corpus · idiom projection to a dataset-mode plot spec · recomputation reusing
+the shipped dataset evaluator and checks · certificate (`python-source` source kind, `python-script`
+artifact kind under the VCert tagged algebra) · archive (`PlotSourceKind` + `PlotRole` widening, 5
+totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route surfaces ·
+replay · `POST /verify-python` + `POST /propose-python` · corpus. The archived AND executed artifact
+is the EXACT submitted bytes, hashed under a new domain tag. No canonical re-emission —
+canonicalizing would make the executed bytes no longer the model's, contradicting ruling 1.
+
+### M10 re-scope
+
+`enforcement_filter.py` currently treats matplotlib as an UNVERIFIED signal and blocks it — the
+user-reported bug, and now doubly wrong since matplotlib is what the demo must publish. Rework to:
+verify an authentic verifier result → `execute:python` the ADMITTED script → publish inline PNG +
+`Figure verification passed` → else block + `Figure verification failed, no image produced`.
+`webui/settings.py` `function_name_filter_list` allowlists `proposeSpec` alone ⇒ OWUI must
+additionally see the new python-mode operation. `webui/model_stub.py` classifies only the dataset
+system prompt ⇒ it needs a python-mode arm or the stub tier cannot exercise the new path.
+
+### Measured port facts (`res-port`; every probe + log path → `.scratch/agents/res-port.md`)
+
+Six probes on the host of record. M12 PLANNING reads the report before splitting units; the probe
+environment was deleted after verification and rebuilds from `probes/runtime-pins.txt`.
+
+- **Stack.** `torch==2.7.1+cu126` (cu126 index) · `transformers==5.16.1` · `accelerate==1.14.0` ·
+  `tokenizers==0.23.1` · `xgrammar==0.2.3`, on Python 3.12. Both byte-exact backend contracts
+  survive in-process: the SAME `BatchEncoding` is length-checked then handed to `model.generate`
+  (sha256 unchanged across the call), and an over-ceiling buffer refuses with spy call count 0 and
+  the canonical `prompt_too_long` envelope. **The seam is spelled `engine.generate(...,
+  guided_schema=...)`, not `guided`** — an earlier sketch had it wrong.
+- **Quantization — corrects the "Pascal cannot do sub-fp16" premise.** NF4 loads and generates
+  (520.8 MiB, 0.589 tok/s) and LLM.int8 does too (718.8 MiB, 3.340 tok/s, 21,504 fallback-cast
+  warnings, and OUTSIDE its documented cc 7.5+ support). Both are slower than fp16 (1038.8 MiB,
+  5.967 tok/s). GPTQModel, AutoAWQ and torchao all FAIL this stack by actual import or precondition.
+  **fp16 is the supported primary path and the ~0.9B ceiling stands**; INT8/~1B is an explicit
+  experimental fallback, never the reproducible stack.
+- **Model.** `Qwen/Qwen2.5-Coder-0.5B-Instruct` fp16 (494M params, 942.3 MiB weights, Apache-2.0,
+  5.52–5.71 tok/s, ~572.8 MiB free at a real 1536-total-token generation). Qwen3-0.6B is second but
+  leaves 14.8 MiB of margin — operationally unsafe. LFM2-700M OOMs; Llama-3.2-1B and SmolLM2-1.7B
+  exceed VRAM in weights alone.
+- **Pyodide — CSV need NOT be inlined, and `pandas` IS present.** OWUI 0.10.2 bundles Pyodide
+  `0.28.0.dev0` (CPython 3.13.2, wasm32) with `matplotlib 3.8.4`, `pandas 2.3.1`, `numpy 2.2.5`.
+  Chat file metadata is forwarded, the browser fetches each file by id, and the sandbox writes the
+  exact bytes to `/mnt/uploads/<filename>` ⇒ the admitted subset MAY use
+  `pd.read_csv('/mnt/uploads/<verified-name>.csv')` and model-authored numbers never enter the
+  executed bytes, which keeps the recomputation claim intact. The custom `execute:python` RPC must
+  carry the `files` payload; a code-only RPC has no CSV despite the package being present. The
+  worker sets `MPLBACKEND=AGG`, rewrites `plt.show()` to a `savefig(BytesIO, format="png")` and
+  prints a base64 PNG data URI.
+- **Grammar.** XGrammar 0.2.3 compiles a full EBNF CFG via `Grammar.from_ebnf(...)` →
+  `TokenizerInfo.from_huggingface(...)` → `GrammarCompiler(...).compile_grammar(...)` → a fresh
+  `xgrammar.contrib.hf.LogitsProcessor` per `generate`. Enforcement proved BOTH ways: a matcher fed
+  `import os` returned `False`, and an adversarial prompt demanding `import os` still emitted only
+  the admitted language. Cost is 2.8% per token (guided/free 0.972). Outlines 1.3.3 + llguidance
+  1.8.0 are viable alternatives; `guidance` 0.3.1 conflicts with transformers 5.x.
+
+---
+
+## M9 — Verified formula-plot mode (headless)   (REVIEWED)
+
+Shipped: 25 units over `2aa1ce5`..`4357c55`. The milestone record — pivot, thesis, gate, key
+decisions, per-unit shipped surfaces, the M9.13 split ruling, the retained-branch inventory, and the
+9-lens review wave with its full finding disposition — is at `.agent/archive/m9.md`
+(`## M9 — milestone record`, `## M9.12c`, `## M9.13`, `## M9 review`). Read it on demand for
+evidence; every ruling a later session must obey unprompted is promoted below.
+
+**Review verdict.** 54 findings across 9 lenses. 13 applied in the close (2 HIGH · 8 MED · 3 LOW),
+each credited by MAIN's own mutation rerun with sources restored and sha256-verified. The two HIGH
+fixes: both demo scenario registries could be emptied while `run_walkthrough()` reported PASS over
+0/0 with the whole suite green, and the recorded CPython 3.13.5 portability gate was RED because a
+literal `1801`-byte attestation ceiling is patch-bound (the TCB embeds the interpreter version, so
+the live payload is 1802 B on 3.13.14 and 1801 B on 3.13.5). Everything else is a named remediation
+unit below or a `.agent/polish.md` entry.
+
+**Coverage limit, declared.** `xcut-m9` saturated at 99% context after 4 of its 5 lenses ⇒ the
+OBSOLESCENCE lens (stale-fact sweep across the repo) was NEVER MEASURED. It is unrun, not clean.
+
+### M9 remediation — three named units, ordered BEHIND the active track
+
+Kept out of the active track deliberately: none of them blocks M12 or M13, and the user's stated
+priority is a real-model demo. They are units, not polish, because each one falsifies a claim the
+project currently makes.
+
+| unit | tier | scope | executable spec |
+|---|---|---|---|
+| M9R1 | kernel | Runtime closure of the formula typed API. Direct construction and `msgspec.structs.replace` admit near-miss literals/enums on `FormulaPlotSpec`/`FormulaXChannel`/`FormulaYChannel`/`FormulaDomain`, all five concrete formula structs admit undeclared SUBCLASSES (whose extra fields the deterministic encoder serializes and the strict decoder then refuses — a self-inconsistent archive/replay state), `Binary.op` is unguarded with a Binary-shaped catch-all in `print_expr`, `_interpret_expr` sends every unrecognised node to `_interpret_binary` and `_apply_binary` treats every non-add/sub/mul operator as division, and `_admit_formula_sample_points` orders endpoint-boundedness after strictness so production and the oracle disagree on a valid joint-failure input. Decode is unaffected; the falsified claims are "closed interpreter" and "direct-construction guards admit exactly parser-admitted nodes". | `wt/rev-m9-1` `db833f3` — 39 red tests over three files |
+| M9R2 | kernel | Formula replay binds the plotted table by DIGEST alone and never proves canonical typed NDJSON, so a re-signed malformed table returns `recomputation_failed` with `integrity_ok=True` instead of `integrity_failed` at `plot_contents`. Reachable only by a trusted-key holder. `canon` has `serialize_table` and NO inverse ⇒ the fix needs a canonical-table parser, which is new kernel surface and a new TCB entry, not a review-close edit. | `wt/rev-m9-4` `e18bcfb` |
+| M9R3 | docs | Claim + register hygiene, 20 findings (audited disposition of all 54 → `.agent/archive/m9.md`; per-finding text → `.agent/archive/m9-review/<lens>.md`). Archive prose conflates source-text identity with emitted-byte identity (M9.6a) and keeps process chronology the authoring rules prune; `.agent/roadmap.md` retains snapshot sizes and gate cardinalities without a snapshot qualifier; the trigger split is false in both directions (roadmap and memory still carry named-subsystem mechanics that belong behind `reference.md`, at 109,308 B attached across the three registers); two archived rulings are stranded with no live home (M9.1's no-`max_length` `DecimalText` reason, M9.4b's rejection of a widened generic `VerificationRun`); M9.12a has no direct archive heading; and 13 recorded gate/count/size/gauge values disagree with re-derivation from committed state or are unreproducible without a stated qualifier. The formula-carrier narrowing and the README POST-replay overclaim were FIXED at the close. | — |
 
 ### Forward-binding rulings promoted from the closed bodies
 
@@ -108,7 +253,7 @@ A session acting without the archive would get these wrong. Everything else abou
 - **Formula input is executable expression DATA (M9.4b)** ⇒ dataset mode's "pure data, no executable path" affirmation NEVER transfers to formula mode. The two modes need separately worded safety claims.
 - **Float64 fidelity = round-tripping each projected point at its declared decimal scale + strictly increasing projected x (M9.5).** NOT binary64 identity, NOT pixels, NOT execution. The verifier imports no matplotlib and executes no script; M10's sandbox may execute ONLY the verifier-authored canonical `matplotlib-script-0.1` carrier.
 - **An equivalent respelling does NOT certify identically (M9.10 F28).** `2*x + 1` and `2 * x+1` share THREE of the four certified digests — `formula_hash`, `plotted_table_hash` and `matplotlib_script_hash`, whose inputs are the canonical AST and the recomputed points, the emitted script embedding no submitted text — but differ in `spec_hash`, VCert payload and every derived id, because the canonical spec preserves the submitted text. `spec_hash` is the SOLE spelling-sensitive certified digest; wording that makes `formula_hash` the only respelling-invariant one is false.
-- **`/table` + `/script` serve typed-relation, digest-addressed bytes and are NOT certificate-graph authenticated (M9.11 R3/F09).** Say exactly that; `p27` owns the residual.
+- **`/table` + `/script` serve typed-relation, digest-addressed bytes and are NOT certificate-graph authenticated (M9.11 R3/F09).** Say exactly that; `p2` owns the residual (`p27` is the certificate-route MIME item).
 - **Certified digests are DOMAIN-TAGGED, never a raw SHA-256 of the body (M9.13a).** Compare archived artifact bytes with `canon.hash_table_bytes` / `canon.hash_matplotlib_script` against the AUTHENTICATED VCert v0.3 bindings — never `hashlib.sha256(body)`, which fails on correct bytes, and never the POST verdict's unauthenticated fields. Any doc or test restating this as "SHA-256 of the returned bytes" is wrong.
 - **A verified certificate is all-pass by construction (M9.13a).** `CertifiedCheck.status` is `Literal["pass"]` and the builder refuses every non-passing formula artifact, so a mixed-STATUS witness is unreachable through any supported flow and reaching it needs forgery. Mix by METHOD instead: the measured formula set is `{construction, deterministic_recompute, z3_smt}` over 13 checks, hand-stated as a literal.
 - **Interpreter portability is measured, not general (M9.7p).** Canonical vectors are patch-portable through INJECTED exact TCBs across CPython 3.13.5↔3.13.14 ONLY — never claim all patches, hosts or platforms. Vector regeneration stays idempotent and preserves hand-authored vectors.
@@ -139,17 +284,17 @@ A session acting without the archive would get these wrong. Everything else abou
 - **Self-scan of the emitted script (M9.5)** — it duplicates authority without adding independent assurance.
 - **A third verdict shape (M9.11).** Formula faults stay formula-shaped; an unclassifiable occurrence mode becomes a logged generic 500.
 
-**Retained `wt/` branches** — every formula unit's teammate contracts + probe instruments are gitignored `.scratch/` or local-only branches. Branches carrying the only tracked copy of an artifact: `wt/scout-m9u11` `c0022de`, `wt/map-m9u12` `f851789`, `wt/scout-m9u12` `1635d3c`, `wt/rev-m9u12` `53b898b` (`p33`), `wt/test-m9u7b2` `54fe1d4` (`p8`), `wt/test-m9u10` `845d49f` (`p25`), `wt/rev-m9u10` `a1171dc` (salvaged WIP F22 OpenAPI twin), `wt/test-m9u13a` `6c1bd49` (M9.13a 8/13 differential; also copied to `.scratch/agents/test-m9u13a-suite.py`). `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Audit this list against `git branch --list 'wt/*'` at every milestone close — it drifted by two entries before M9.13b.
-
-- **M9.12c — attached-state reduction (DONE, tier=`docs`).** `main=` 100% 239K/240K · `mate=` 89% 214K/240K. Attached state, not code volume, forced two consecutive over-window units: `.agent/` measured **287,738 B** at promotion, of which the closed M9.1–M9.12b unit bodies were 85% of the roadmap. Shipped a THREE-REGISTER split keyed on TRIGGER — `roadmap.md` (trajectory + unprompted rulings) · `memory.md` (subsystem-free rules) · NEW `reference.md` (ten sections of mechanics behind a trigger table) — over `.agent/archive/m9.md`, carrying all 22 closed unit bodies verbatim, extracted by the self-validating `.scratch/archive_m9.py` (heading-stripped archive == source slice byte-exact, else abort). Rewording alone yielded 3% across two passes ⇒ the reduction came from relocation, not from prose. The 15-ruling draft grew to a 4-group section once the census cross-check found the VCert v0.3 algebra, live-TCB, route-surface, source-topology, claim-scope and REJECTED items unstated — the correctness obligation outranked the byte target and cost 5.3 KB. Measured: roadmap 170,444 → 30,870 B, memory 84,033 → 29,125 B, combined **59,995 B** against a < 60 KB target; `reference.md` 23,951 B + `archive/m9.md` 243,475 B stay off the attached path. Gate rerun edit-free and unchanged: 129 files, 2882 passed, 100% branch. Rule: promotion precedes the move — an archived pointer serves evidence, never a ruling a future session must obey unprompted.
-- **M9.13 — SPLIT at WORK-UNIT entry → M9.13a–M9.13e.** The planned single unit priced at ~714 new statements under its literal reading and ~450 under the assurance-minimum reading, against M9.9's +236 which itself ran >1 window ⇒ the BOUNDARY was mis-sized, not the work. Prep-wave evidence: `.scratch/agents/map-m9u13.md` (capstone surface, AST call-closure census, fork evidence), `scout-m9u13.md` (70-row doc census), `audit-m9u13.md` (claim-truth audit). Two wave rulings bind every sub-unit:
-  - **Formula capstone legs ship as a NEW module pair** — `demo/formula_walkthrough.py` + `tests/test_formula_e2e_hardening.py` — importing the mode-neutral seam from `demo/walkthrough.py` (`Scenario` :69, `ScenarioResult` :76, `WalkthroughReport` :84, `_require` :121, `_expect_problem` :147, `_read_attempt` :197, `_run_audit_cli` :649; private-import precedent = `demo/e2e.py:29`). Extending the existing pair projects 1,458- and 1,041-line MIXED-MODE files, and this repo's mutation campaigns already pay an anchor-ambiguity tax wherever dataset/formula twins share a file. Operator surface = a third command beside `python -m demo` + `python -m demo.e2e`; `demo/__init__.py` + `demo/__main__.py` stay UNEDITED. Alt-1's one-command/one-report advantage is the accepted cost.
-  - **The capstone twins ONLY rows a formula analog actually assures.** Of the 13 dataset scenarios: NEEDED = A2, A6, A7, A10, A11; COVERED by shipped formula suites = A1, A3, A5, A8, A9, A12, A13; VACUOUS = A4 (formula facts set `bar_zero=None` + `legend_domain=None`, so only ascending-x reaches Z3). Re-twinning a COVERED row buys scope, not assurance — each sub-unit's contract must DELETE those rows by name.
-
-- **M9.13a — formula capstone flow (DONE, tier=`kernel`).** `e46d927` · `demo/formula_walkthrough.py` + `tests/test_formula_e2e_hardening.py`, third operator command `python -m demo.formula_walkthrough` · detail → `.agent/archive/m9.md`.
-- **M9.13b — formula corruption + audit corpus (DONE, tier=`kernel`).** Formula registry 3→5; A10 audit-CLI scenario + A11 three-guard aggregator, 4 dedicated tests, `Archive._connect` ordering bomb · detail → `.agent/archive/m9.md`.
-- **M9.13c — real-socket formula leg (DONE, tier=`kernel`).** `e9e3471` · fourth e2e case with wire-advertised-key VCert v0.3 authentication; +103 statements against ~92–102; `p40` filed · detail → `.agent/archive/m9.md`.
-- **M9.13d — formula semantics contract (DONE, tier=`docs`).** `VPlot_SEMANTICS.md` 18,512 → 46,749 B: Part A/B split over one shared H1, 12 dataset sections renumber-free at `###`, 9 new formula sections `§F1`–`§F9`; 5 false claims corrected (3 of them already-shipped text in `models.py` + `schema/openapi.json` + this roadmap); 21 of 25 review findings applied · detail → `.agent/archive/m9.md`; structure + citation pins → `.agent/reference.md`.
-- **M9.13e — doc sweep + M9 close (DONE, tier=`docs`).** Five shipped docs swept + two module docstrings; the M9.10 R8 sentence made byte-identical at three sites; the narrow respelling claim corrected in `POC_SCOPE.md` + `README.md`; measured NO-EDIT 11 · REPAIR 7 · PLACE 5 over the 23 non-semantics rulings, refuting the planned universal-placement premise; two rulings promoted to `.agent/reference.md` and five relocated there; `p41` filed · detail → `.agent/archive/m9.md`.
-
+**Retained `wt/` branches** — the only tracked copy of their artifacts; full inventory with
+per-branch evidence → `.agent/archive/m9.md`. Live tips, audited against `git branch --list 'wt/*'`
+at the M9 review close — 16 branches, no worktree checked out for any of them:
+`wt/scout-m9u11` `c0022de` · `wt/map-m9u12` `f851789` · `wt/scout-m9u12` `1635d3c` ·
+`wt/rev-m9u12` `53b898b` (`p33`) · `wt/test-m9u7b2` `54fe1d4` (`p8`) ·
+`wt/test-m9u10` `845d49f` (`p25`) · `wt/rev-m9u10` `a1171dc` · `wt/test-m9u13a` `6c1bd49` ·
+`wt/rev-m9-1` `db833f3` (M9R1) · `wt/rev-m9-4` `e18bcfb` (M9R2) ·
+`wt/rev-m9-2` `8093b0a` · `wt/rev-m9-5` `6dac756` · `wt/rev-m9-6` `814e513` ·
+`wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed).
+`wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
+never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
+carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
+close — it drifted by two entries before M9.13b.
 **M10 + M11 design seeds** — the source-confirmed OWUI sandbox mechanism (trusted outlet filter → signature check → direct `execute:python` RPC → Pyodide → inline PNG), its settings/gating constraints, the `enforcement_filter.py` rework, the 3-unit split, and M11's `Derive` transform design + its open questions → `.agent/reference.md` "Future-milestone design seeds". Read it at that milestone's PLANNING turn.
