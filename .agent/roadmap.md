@@ -25,7 +25,7 @@ Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON char
 | M11 | Derived/computed columns (dataset mode) | — (user request) | none (headless; reuses M9 expr engine) | UNPLANNED — DEPRIORITIZED behind M12/M13/M10 |
 | M12 | dGPU proposer runtime port + model-authored-Python corpus | — (user request) | torch CUDA build reaches MX150 — MET at plan | IN-PROGRESS |
 | M13 | Python-source verification mode (headless) | — (user request) | none (headless verifier core); consumes M12's captured corpus | UNPLANNED |
-| M14 | Portable OWUI artifact — admin paste-in install (ruling 7) | — (user request) | M10 DONE (demo established) | UNPLANNED |
+| M14 | Portable OWUI artifact — embedded paste-in, air-gap-safe (ruling 7) | — (user request) | M10 DONE (demo established) | UNPLANNED |
 
 Plan each milestone only when it becomes active (prior one REVIEWED). M3/M4/M6/M7/M10/M14 are gated — confirm preconditions functionally at the planning turn, and bring generated/heavy inputs into scope only when the gate needs them. A gate unmet there ⇒ set the milestone PARKED with its named precondition verbatim, clearing the marker only when a functional recheck meets it; M11 is ungated + sequence-adjustable, so M10's live-OWUI gate parks rather than stalls the roadmap.
 
@@ -108,10 +108,14 @@ User pivot (re-affirmed with the OWUI message contract verbatim). It SUPERSEDES 
    below). Production artifact AFTER the demo: something an ADMIN places into an EXISTING OWUI
    instance through the web interface, installed manually by the user — that instance has Pyodide
    available and accepts added skills + tools. The repo's own stack (launcher, local model,
-   verifier service) = demo harness, not the deliverable shape. Binds M13/M10 design toward
-   self-contained portable artifacts and seeds M14; packaging mechanics (embedded single-file
-   tool/function vs tool-server URL) = decided at that planning turn, biased toward easiest admin
-   install.
+   verifier service) = demo harness, not the deliverable shape. Packaging DECIDED (user): the
+   verifier is EMBEDDED in the pasted file — ONE artifact that works on instances with NO outside
+   network access; a separately-maintained networked variant is REJECTED. Consequences: the
+   artifact makes zero outbound calls and needs zero install-time fetches (OWUI frontmatter
+   `requirements:` pip-installs ⇒ banned; imports = stdlib + packages the OWUI backend already
+   bundles); single-source rule — the pysrc verification core is written ONCE and M14 inlines it
+   (generated bundle OK, hand-maintained fork banned), the repo service wrapping the same core for
+   the demo. Binds M13 layering (see sketch) + seeds M14.
 
 **Why the port precedes the new mode, despite M13 being hardware-free.** M13's allowlisted subset
 IS the pass/fail boundary, and the ≥70% simple arm holds only if the subset covers the idioms a real
@@ -196,6 +200,13 @@ totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE r
 replay · `POST /verify-python` + `POST /propose-python` · corpus. The archived AND executed artifact
 is the EXACT submitted bytes, hashed under a new domain tag. No canonical re-emission —
 canonicalizing would make the executed bytes no longer the model's, contradicting ruling 1.
+
+**Embeddability (ruling 7) = M13 DESIGN INPUT, not an M14 retrofit.** Layer the mode so {bytes
+admission + pre-scan · AST allowlist · projection · recomputation consistency} form a PORTABLE CORE
+— dependency-light (target stdlib-only; no msgspec/litestar/archive imports), inlinable into one
+pasted file — with {certificate · archive · replay · routes} as demo-side wrappers. Where "reuse
+the shipped dataset evaluator" conflicts with core isolation, embeddability WINS (user word):
+extract/adapt into the core rather than import the service stack.
 
 ### M10 re-scope
 
