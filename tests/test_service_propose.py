@@ -121,6 +121,27 @@ def _propose(client: TestClient[Litestar], user_request: str, dataset_name: str)
     return client.post("/propose-spec", content=body, headers=_JSON)
 
 
+@pytest.mark.parametrize(
+    ("route", "body"),
+    [
+        (
+            "/propose-spec",
+            b'{"user_request":"first","user_request":"second","dataset_name":"sales.csv"}',
+        ),
+        ("/propose-formula", b'{"user_request":"first","user_request":"second"}'),
+    ],
+)
+def test_proposer_body_with_duplicate_member_is_400_before_the_model_runs(
+    client: TestClient[Litestar], route: str, body: bytes
+) -> None:
+    """Reading the body as raw bytes stops Litestar collapsing duplicates, but msgspec then keeps
+    the LAST repeat silently, so an ambiguous body would reach the model under parser-dependent
+    intent and the signed occurrence would retain the generated request instead of these bytes."""
+    response = client.post(route, content=body, headers=_JSON)
+    assert response.status_code == 400
+    assert "duplicate object key: 'user_request'" in response.json()["detail"]
+
+
 def _without_attempt_id(body: dict[str, Any]) -> dict[str, Any]:
     """Remove and validate the committed occurrence address from one Problem body."""
     attempt_id = body.pop("attempt_id")

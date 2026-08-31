@@ -948,6 +948,7 @@ def _authenticate_attempt(
             {snapshot.keyid: trusted_key},
             payload_type=ATTEMPT_PAYLOAD_TYPE,
             max_payload_bytes=limits.max_attestation_bytes,
+            require_canonical_envelope=True,
         )
     except (TypeError, ValueError, attestation.AttestationError, errors.VerificationError) as exc:
         stage: ReplayFailureStage = "attempt_signature"
@@ -1254,8 +1255,9 @@ def _recompute_authenticated(
     limits: VerificationLimits,
 ) -> ReplayVerdict:
     # Function-local so importing this module, and every formula replay through it, stays free of
-    # the renderer import graph: `verifier.render` pulls in `vl_convert` and Z3. Dataset replay
-    # genuinely needs both, and pays for them here alone.
+    # `vl_convert` -- the one heavy dependency `verifier.render` adds that nothing else here needs.
+    # Z3 is NOT deferred by this seam: module-level `formula_prepare` imports `formal`, so
+    # importing this module already loads z3. Dataset replay pays for vl_convert here alone.
     from verifier import render  # noqa: PLC0415
 
     plot = authenticated.snapshot.plot

@@ -21,8 +21,7 @@ __all__ = ["load_guidance_schema", "schema_digest", "strip_guidance"]
 # named "pattern"/"format" (v0.1: none). A future such property would need context-aware stripping.
 _STRIPPED_GUIDANCE_KEYS = frozenset({"pattern", "format"})
 
-# Draft 2020-12 vocabulary names. This is structural recognition, not semantic validation;
-# the dependency-free loader rejects empty/arbitrary JSON objects before xgrammar sees them.
+# Draft 2020-12 vocabulary names, recognised without a meta-schema dependency.
 _JSON_SCHEMA_KEYWORDS = frozenset(
     {
         "$anchor",
@@ -85,6 +84,33 @@ _JSON_SCHEMA_KEYWORDS = frozenset(
     }
 )
 
+# The only dialect this loader admits. Guidance is derived by keyword name, so a root declaring a
+# different draft would be stripped and shaped under 2020-12 rules it never agreed to.
+_DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
+
+# Identifier and annotation keywords constrain no instance. A root carrying only these validates
+# every document, so xgrammar would receive a vacuous grammar from a syntactically valid schema:
+# recognising one keyword is not enough, and the root must also assert something.
+_VACUOUS_KEYWORDS = frozenset(
+    {
+        "$anchor",
+        "$comment",
+        "$defs",
+        "$dynamicAnchor",
+        "$id",
+        "$schema",
+        "$vocabulary",
+        "default",
+        "deprecated",
+        "description",
+        "examples",
+        "readOnly",
+        "title",
+        "writeOnly",
+    }
+)
+_STRUCTURAL_KEYWORDS = _JSON_SCHEMA_KEYWORDS - _VACUOUS_KEYWORDS
+
 
 def _reject_non_finite_constant(token: str) -> object:
     msg = f"non-finite JSON constant is not permitted: {token}"
@@ -112,6 +138,13 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> object:
 def _require_json_schema(schema: dict[str, JSON]) -> None:
     if not schema or not any(key in _JSON_SCHEMA_KEYWORDS for key in schema):
         msg = "VPlot schema root must be a non-empty JSON Schema object"
+        raise ValueError(msg)
+    dialect = schema.get("$schema")
+    if dialect != _DRAFT_2020_12:
+        msg = f"VPlot schema root must declare $schema {_DRAFT_2020_12}, got {dialect!r}"
+        raise ValueError(msg)
+    if not any(key in _STRUCTURAL_KEYWORDS for key in schema):
+        msg = "VPlot schema root must carry at least one structural JSON Schema keyword"
         raise ValueError(msg)
 
 

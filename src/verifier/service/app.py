@@ -91,6 +91,7 @@ these route-level copies — openapi.py hand-authors the operationIds it serves 
 each handler self-describing and would feed auto-gen if it were ever re-enabled.
 """
 
+import json
 import logging
 import re
 from collections.abc import Callable
@@ -116,6 +117,7 @@ from litestar.status_codes import (
 
 from verifier import __version__, attestation
 from verifier import replay as replay_core
+from verifier.schema import _reject_duplicate_keys
 from verifier.service.admission import AdmissionController, JobPermit
 from verifier.service.archive import (
     Archive,
@@ -323,12 +325,30 @@ async def verify_formula_route(
 _PROPOSE_DECODER = msgspec.json.Decoder(ProposeRequest)
 
 
+def _reject_duplicate_members(raw: bytes) -> None:
+    """Pre-scan a proposer body for repeated object keys.
+
+    Reading the body as RAW BYTES stops Litestar from collapsing duplicates, but msgspec then
+    keeps the LAST of any repeat silently (schema.py finding 4), so an ambiguous body would be
+    admitted under parser-dependent intent and the signed occurrence would retain the generated
+    model request rather than the caller's real bytes. Re-scan through the stdlib parser, whose
+    ``object_pairs_hook`` sees every member.
+    """
+    json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
+
+
 def _decode_propose_request(raw: bytes) -> ProposeRequest:
     """Strictly decode a /propose-spec body; a malformed or invalid body is a 400 (transport
     misuse), never a spec proposal — the model has not run yet, so there is no verdict to ride."""
     try:
+        _reject_duplicate_members(raw)
         return _PROPOSE_DECODER.decode(raw)
-    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
+    except (
+        msgspec.DecodeError,
+        msgspec.ValidationError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
         msg = f"malformed propose request body: {exc}"
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
@@ -342,8 +362,14 @@ def _decode_propose_formula_request(raw: bytes) -> ProposeFormulaRequest:
     """Strictly decode a /propose-formula body; a malformed or invalid body is a 400 (transport
     misuse), never a spec proposal — the model has not run yet, so there is no verdict to ride."""
     try:
+        _reject_duplicate_members(raw)
         return _PROPOSE_FORMULA_DECODER.decode(raw)
-    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeDecodeError) as exc:
+    except (
+        msgspec.DecodeError,
+        msgspec.ValidationError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
         msg = f"malformed propose formula request body: {exc}"
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
@@ -525,11 +551,12 @@ async def propose_formula_route(
 ) -> ProposeFormulaResult | Response[Problem]:
     """Ask the untrusted local model to propose a formula plot spec for the request, then verify
     that proposal (verify_formula_and_emit) and archive the signed occurrence. The model supplies
-    only a closed arithmetic expression and its domain, never plotted values, so the claim
-    boundary is unmoved: a malformed proposal rides a failing verdict (a 200), and a fault outside
-    that flow (an unreachable or unusable backend, an over-policy or malformed body) answers
-    problem+json. The exact reply bytes flow on to strict decode unchanged, which is what the
-    archived occurrence binds.
+    a complete restricted FormulaPlotSpec (version, formula, domain, numeric_profile, mark,
+    encoding) but never plotted values and never Python, so the claim boundary is unmoved: a
+    malformed proposal rides a failing verdict (a 200), and a fault outside that flow (an
+    unreachable or unusable backend, an over-policy or malformed body) answers problem+json. The
+    exact reply bytes flow on to strict decode unchanged, which is what the archived occurrence
+    binds.
 
     Unlike /propose-spec this route names no dataset, so it has no dataset pin and no not-found
     answer, and unlike a verified dataset proposal it returns a bare ProposeFormulaResult on every

@@ -20,9 +20,11 @@ synthetic-payload exercise was a one-off script, never committed). Locked here:
 - the exit-code validity matrix (every single violation flips a valid run to exit 1).
 """
 
+import argparse
 import hashlib
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -37,6 +39,8 @@ from bench.__main__ import (
     _SCHEMA_PATH,
     _exit_code,
     _git_provenance,
+    _parse_args,
+    _positive_seconds,
     _schema_digest,
 )
 from bench.harness import (
@@ -538,3 +542,32 @@ def test_exit_code_prompt_policy_harness_error_and_void_run_are_invalid() -> Non
     void = msgspec.structs.replace(report.observations.overall, n=0)
     observations = msgspec.structs.replace(report.observations, overall=void)
     assert _exit_code(msgspec.structs.replace(report, observations=observations)) == 1
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["0", "-0", "-1", "nan", "-nan", "inf", "-inf", "1e400"],
+    ids=["zero", "negative-zero", "negative", "nan", "negative-nan", "inf", "-inf", "overflow"],
+)
+def test_timeout_option_rejects_non_positive_and_non_finite_seconds(token: str) -> None:
+    """A bare `type=float` admitted 0/negative/inf/nan; every other client path guards them."""
+    with pytest.raises(argparse.ArgumentTypeError, match="finite positive number of seconds"):
+        _positive_seconds(token)
+
+
+def test_timeout_option_admits_finite_positive_seconds() -> None:
+    assert _positive_seconds("2.5") == 2.5
+
+
+def test_timeout_option_is_wired_to_the_guard_not_only_defined_beside_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Pin the argparse wiring: reverting `--timeout` to a bare `type=float` must fail HERE."""
+    monkeypatch.setattr(sys, "argv", ["bench", "--timeout", "0"])
+    with pytest.raises(SystemExit) as excinfo:
+        _parse_args()
+
+    assert excinfo.value.code == 2
+    assert "finite positive number of seconds" in capsys.readouterr().err
+    monkeypatch.setattr(sys, "argv", ["bench", "--timeout", "2.5"])
+    assert _parse_args().timeout == 2.5

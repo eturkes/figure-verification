@@ -533,6 +533,24 @@ def test_authenticated_invalid_and_noncanonical_attempt_payloads_fail_closed(
     assert not noncanonical_verdict.exact
 
 
+def test_authenticated_noncanonical_attempt_envelope_fails_closed(tmp_path: Path) -> None:
+    # DSSE signs the payload, so one appended space leaves the signature valid and only the
+    # caller-pinned require_canonical_envelope refuses it. Without that pin replay reports exact.
+    fixture = _fixture(tmp_path)
+    envelope = fixture.snapshot.attempt_envelope + b" "
+    snapshot = replace(
+        fixture.snapshot,
+        attempt_id=hashlib.sha256(envelope).hexdigest(),
+        attempt_envelope=envelope,
+    )
+
+    verdict = replay.replay_snapshot(snapshot, _trusted(fixture))
+
+    assert verdict.status == "integrity_failed"
+    assert verdict.failure_stage == "attempt_signature"
+    assert not verdict.exact
+
+
 def test_authenticated_manifest_shape_rejects_impossible_time_status_and_duplicate_role(
     tmp_path: Path,
 ) -> None:

@@ -14,6 +14,7 @@ build itself is gate-free.
 import argparse
 import hashlib
 import logging
+import math
 import shutil
 import subprocess
 from pathlib import Path
@@ -95,6 +96,15 @@ def _git_provenance() -> tuple[str | None, bool]:
     return (git_commit, git_dirty)
 
 
+def _positive_seconds(token: str) -> float:
+    """Admit a finite, strictly positive timeout; every other client path carries this guard."""
+    seconds = float(token)
+    if not math.isfinite(seconds) or seconds <= 0:
+        msg = f"timeout must be a finite positive number of seconds, got {token!r}"
+        raise argparse.ArgumentTypeError(msg)
+    return seconds
+
+
 def _parse_args() -> argparse.Namespace:
     """Parse the harness CLI; every argument has a loopback-default so a bare run works."""
     parser = argparse.ArgumentParser(
@@ -108,7 +118,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--out", default=_DEFAULT_OUT, help="report.json output path")
     parser.add_argument("--details", default=_DEFAULT_DETAILS, help="details.jsonl output path")
-    parser.add_argument("--timeout", type=float, default=_DEFAULT_TIMEOUT, help="HTTP timeout (s)")
+    parser.add_argument(
+        "--timeout", type=_positive_seconds, default=_DEFAULT_TIMEOUT, help="HTTP timeout (s)"
+    )
     return parser.parse_args()
 
 

@@ -18,7 +18,12 @@ import pytest
 from jsonschema import Draft202012Validator, ValidationError
 from litestar.testing import TestClient
 
-from model_backend.schema_guidance import load_guidance_schema, schema_digest, strip_guidance
+from model_backend.schema_guidance import (
+    _DRAFT_2020_12,
+    load_guidance_schema,
+    schema_digest,
+    strip_guidance,
+)
 from model_backend.settings import DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID, GuidanceSchemaId, Settings
 
 # The strict formula decoder is imported here on purpose: the weak-guidance claim is the PAIR
@@ -357,6 +362,36 @@ def test_load_guidance_schema_rejects_non_schema_objects(tmp_path: Path, source:
     schema_path.write_text(source, encoding="utf-8")
 
     with pytest.raises(ValueError, match="non-empty JSON Schema"):
+        load_guidance_schema(schema_path)
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ('{"type": "object"}', r"must declare \$schema"),
+        (
+            '{"$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}',
+            r"must declare \$schema",
+        ),
+        (
+            f'{{"$schema": "{_DRAFT_2020_12}", "title": "vacuous"}}',
+            "structural JSON Schema keyword",
+        ),
+        (
+            f'{{"$schema": "{_DRAFT_2020_12}", "$defs": {{"a": {{"type": "string"}}}}}}',
+            "structural JSON Schema keyword",
+        ),
+    ],
+    ids=["absent-dialect", "draft-07", "annotation-only", "definitions-only"],
+)
+def test_load_guidance_schema_rejects_foreign_dialects_and_vacuous_roots(
+    tmp_path: Path, source: str, message: str
+) -> None:
+    """Recognising one keyword is not a schema: pin the dialect AND an asserting root."""
+    schema_path = tmp_path / "dialect.json"
+    schema_path.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
         load_guidance_schema(schema_path)
 
 
