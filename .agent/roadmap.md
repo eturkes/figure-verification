@@ -190,10 +190,63 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = 12.2 close;
 interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 DONE (record → `.agent/archive/m12.md`). M12.2 = the active unit; M12.3–M12.9
-untouched. The repo is **intentionally NON-LAUNCHABLE until M12.2 lands**: settings now name a CUDA
-device and a raw HF snapshot while `engine.py` still imports `openvino_genai`. That is the serial
-edge `12.2←12.1` working as planned, and the first live completion stays M12.2's smoke probe.
+**Unit status.** M12.1 DONE (record → `.agent/archive/m12.md`). M12.2 = the active unit, **prep wave
+BANKED, implementation OPEN**; M12.3–M12.9 untouched. The repo is **intentionally NON-LAUNCHABLE
+until M12.2 lands**: settings now name a CUDA device and a raw HF snapshot while `engine.py` still
+imports `openvino_genai`. That is the serial edge `12.2←12.1` working as planned, and the first live
+completion stays M12.2's smoke probe.
+
+**M12.2 prep wave — banked artifacts.** Acceptance contract at `.scratch/agents/contract-m12u2.md`
+(§1–§6 MAIN-authored; §7 = 17 rulings A1–A17 amending them; §8 reserved for review). Supporting
+reports: `.scratch/agents/map-m12u2.md` (11 sections — per-test disposition of the 928-line suite:
+**21 SURVIVES · 6 FAKE-REWRITE · 3 SEMANTIC-REWRITE · 1 DELETE**, plus the anchored normative
+checklist) and `.scratch/agents/res-m12u2.md` (12 transformers-5.16.1 answers, every claim
+`file:line`-cited). The durable API mechanics are promoted to `.agent/reference.md`
+"transformers 5.16.1 pinned behaviours" — read that section, not the reports, before touching a
+`transformers`/`torch` call site. Gate baseline at `dccbda1`: all four commands rc 0, 100% branch,
+6807 stmt / 1406 br. `.scratch/` is gitignored ⇒ these survive on disk, not in git.
+
+**Where the implementing window starts.** Read `contract-m12u2.md` §1–§8 whole, §8 first — it
+overrides §7. Then `git diff main..wt/test-m12u2` for the banked red suite and
+`main..wt/rev-m12u2` for the R01–R05 acceptance checks. **The red suite is PARTIAL and was authored
+against §7 before §8 existed**, so re-derive each red against §8 rather than crediting it: a red
+encoding the reversed EOS authority or the 2-D suffix index is WRONG and must be corrected, not
+implemented against. `test-m12u2` never wrote its `## Phase 2 delivery` sheet, so no per-predicate
+red/green inventory exists — MAIN's own baseline run of the suite is the stronger credential and
+should be taken first. Predicates P1–P30 plus P31 (the transitional `openvino_genai` test scaffold
+is deleted at implementation) are the target set; §4 carries P1–P25, §7 A17 adds P26–P30.
+
+**§8 review — 5 findings, ALL ACCEPTED (2 HIGH · 3 MED), and §8 OVERRIDES §7.** Two are defects in
+MAIN's own §7 rulings, which is prep-phase review paying for its slot. **R01 (HIGH): EOS authority
+is the MODEL's `generation_config`, never the tokenizer** — the pinned revision carries EOS
+`{151645, 151643}` while the tokenizer names `151645` alone, so §7 A4 would have dropped
+`<|endoftext|>` from the stopping set and turned a terminal `151643` at the cap into a false
+`length`, a live behaviour change inside a TRANSCRIBE-scope unit. Consequence: do NOT forward
+`eos_token_id` to `generate`, and EOS/PAD normalization moves POST-load, which narrows the
+pre-load ordering bomb to schema and tokenizer faults. **R02 (HIGH): the suffix is 1-D** —
+`output[0, prompt_len:]` means the terminal read is `suffix[-1]`; §7 A5's `suffix[0, -1]` would
+raise on every non-empty completion. R03/R04/R05 (MED): §2 I2 overclaimed `BatchEncoding` CONTAINER
+identity that `**` unpacking makes impossible (value identity is the real, and sufficient, claim);
+the token-ID validator must be CLOSED against `str`/`bytes`/generators/`int()` coercion rather than
+"iterable of int"; and §7 A7's required docstring sentence about an expected greedy warning is
+FALSE and must not ship.
+
+**Four M12.2 prep rulings that bind beyond the unit.**
+1. **`engine.py` imports NO torch.** `dtype=` accepts the string `"float16"`, `generate` is already
+   `@torch.no_grad()`, and `from_pretrained` already returns an eval-mode module ⇒ the sole native
+   import is `transformers`, and the test seam installs one fake, not two. `torch` enters
+   `model_backend/` only through `smoke.py`.
+2. **`pad_token_id=tokenizer.eos_token_id` is a LATENT BUG carried by the F5 probe** — PAD is
+   scalar-only and a list raises `TypeError`. The port normalizes instead: EOS ids must be non-bool
+   `int >= 0` or the engine refuses at load; a bad PAD degrades to `min(eos_ids)`. The asymmetry is
+   deliberate — EOS drives both classification and stopping, PAD has a principled fallback.
+3. **Guidance refusal fires AFTER admission, at the former application site.** M12.3 restores
+   guidance at that same point, so this order keeps a request's wire outcome identical across the
+   two units; refusing first would silently flip an over-cap-plus-guided request from 502 to 422
+   the moment M12.3 landed.
+4. **D6 declares a KNOWN-BROKEN window**: between M12.2 and M12.3 the verifier's guided proposer
+   route answers 502, because every named `guided_schema` raises a loud temporary
+   `guidance_unavailable`. Expected, not a regression — same shape as M12.1's non-launchable window.
 
 **M12.2 inherits three surfaces reassigned out of other units** (prep-wave rulings, still unshipped):
 `ModelCard.owned_by="openvino"` at `model_backend/models.py:119` + the `tests/test_webui_model_stub.py`
@@ -211,6 +264,23 @@ was green well before it, so the unit shipped whole. **New cost driver, measured
 teardown), so a unit that reaches the gate at ~82% still finishes near the ceiling — size the next
 unit against the CLOSE reading, never the gate-green one. A prep wave still holds sizing authority
 — re-split at WORK-UNIT entry on its evidence, not on the planned boundary.
+
+**Prep-wave WIDTH is itself a budget, measured at M12.2 — the twelfth consecutive prep window.** A
+THREE-teammate wave (M12.1: `map`+`test`+`rev`) harvests inside one MAIN window at ~76%. A FOUR-
+teammate wave does NOT: M12.2 added `res` for the transformers-5.16.1 API and MAIN reached ~70%
+after harvesting `map`+`res` ALONE, leaving `test`+`rev` to be dispatched against a window that
+could not also harvest them. Cost split, all four of one window's quarters: reading two dense
+reports ≈ 26 KB, authoring §7's 17 rulings, batch-ruling `test` phase 1, and the close. Rule for
+every remaining unit: **cap a prep wave at three teammates, or plan the fourth's harvest into a
+SECOND prep window from the start.** A `res` role earns its slot only where the unit turns on
+external-API facts the repo does not already record — M12.2's did, and the answers are now permanent
+in `.agent/reference.md`, so no later unit pays for them again.
+
+**Poll the DELIVERABLE, never the gauge — re-confirmed on 2 of 4 M12.2 teammates.** `res-m12u2` and
+`rev-m12u2` both sat at their seed byte count while their gauges climbed 20+ points. One flush
+directive moved `res` immediately; `rev` did not flush even after it, and its findings were at risk
+at the close. Seeding the report skeleton and grading it both ways at seed is what made the stall
+VISIBLE within two polls (`grep -c '^unknown$'` on a seeded file is the counter that moves).
 
 ### M13 scope sketch (unit split decided at M13 PLANNING)
 
@@ -365,7 +435,12 @@ at the M9 review close — 16 branches, no worktree checked out for any of them:
 `wt/rev-m9-2` `8093b0a` · `wt/rev-m9-5` `6dac756` · `wt/rev-m9-6` `814e513` ·
 `wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed).
 `wt/test-m12u1` was CONSUMED at the M12.1 close — its suite ships in `main` as
-`tests/test_model_backend_runtime.py`, so worktree + branch are removed and 16 branches remain.
+`tests/test_model_backend_runtime.py`, so worktree + branch are removed. M12.2's prep wave ADDS two,
+both with LIVE worktrees deliberately left in place for the implementing session:
+`wt/test-m12u2` `093ec32` (partial red suite, `tests/test_model_backend.py` +841/-279 — authored
+against §7, so §8's R01/R02 overrides may not be reflected; re-read §8 before crediting any red) ·
+`wt/rev-m12u2` `da7e47a` (`tests/test_rev_m12u2_contract.py`, +272, the R01–R05 acceptance checks).
+18 branches now.
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
 never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
