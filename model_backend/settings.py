@@ -6,11 +6,11 @@ pattern: field defaults and from_env fallbacks share one set of constants (no dr
 __post_init__ rejects non-positive bounds so a misconfigured deploy fails closed.
 This server is the UNTRUSTED proposer, not the trusted verifier, so these bounds guard request
 allocation, the single compiled pipeline / lock, and response size, never a verification claim.
-Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target the
-NPU (device "NPU") running a symmetric-INT4 export of Qwen2-0.5B: OpenVINO's NPU LLM path
-wants symmetric int4 (the stock asymmetric -int4-ov IR fails the NPU VCL compiler — the
-leading, not isolated, reason; see .agent/archive/m3.md) and compiles to static shapes, so
-max_prompt_len caps the prompt the pipeline accepts.
+Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target device
+"cuda" running an fp16 Qwen2.5-Coder-0.5B-Instruct snapshot, pinned by content in
+model_backend/runtime/snapshot.json (verifier: model_backend/snapshot.py). That tuple is a fresh
+(device, config) baseline — the model family AND the quant class both changed with the runtime
+port, so no earlier proposer measurement transfers to it.
 
 Guided decoding is backed by operator-pinned schema FILES, one per proposer mode. This module
 owns both halves of that pin — the closed id vocabulary and guidance_schema_paths, the single
@@ -29,21 +29,20 @@ type GuidanceSchemaId = Literal["vplot-0.1", "vplot-formula-0.1"]
 DATASET_SCHEMA_ID: GuidanceSchemaId = "vplot-0.1"
 FORMULA_SCHEMA_ID: GuidanceSchemaId = "vplot-formula-0.1"
 
-_DEFAULT_MODEL_DIR = "models/Qwen2-0.5B-Instruct-int4-sym-ov"
-_DEFAULT_MODEL_NAME = "Qwen2-0.5B-Instruct-int4-sym-ov"
-_DEFAULT_DEVICE = "NPU"
+_DEFAULT_MODEL_DIR = "models/Qwen2.5-Coder-0.5B-Instruct"
+_DEFAULT_MODEL_NAME = "Qwen2.5-Coder-0.5B-Instruct"
+_DEFAULT_DEVICE = "cuda"
 _DEFAULT_STRUCTURED_OUTPUT = True
 _DEFAULT_VPLOT_SCHEMA_PATH = "schema/vplot-0.1.schema.json"
 _DEFAULT_FORMULA_SCHEMA_PATH = "schema/vplot-formula-0.1.schema.json"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8001
 _DEFAULT_MAX_BODY_BYTES = 128 * 1024
-# The NPU compiles to static shapes: max_prompt_len is the largest prompt (in tokens) the
-# pipeline accepts. Engine pre-tokenizes every templated prompt and returns prompt_too_long before
-# native generation; the verifier maps only that exact protocol shape to policy 422. 1536 clears
-# the ~770-token proposer prompt with wide headroom while
-# keeping the static allocation small. Passed only for an NPU device (GPU/CPU use dynamic
-# shapes and reject the compile property, though Engine still enforces the logical cap there).
+# max_prompt_len is the largest prompt (in tokens) the engine admits — a LOGICAL cap, held on
+# every device: Engine pre-tokenizes each templated prompt and returns prompt_too_long before
+# native generation, and the verifier maps only that exact protocol shape to policy 422. 1536
+# clears the ~770-token proposer prompt with wide headroom while keeping the per-request
+# allocation small.
 _DEFAULT_MAX_PROMPT_LEN = 1536
 # A weak proposer's VPlot JSON spec is small; this caps generation both as the per-request
 # ceiling and as the fallback when a caller omits max_tokens (the engine always sets
@@ -99,7 +98,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         if self.max_body_bytes < 1:
             msg = f"max_body_bytes must be >= 1, got {self.max_body_bytes}"
             raise ValueError(msg)
-        # A non-positive NPU prompt cap would compile a pipeline that accepts no prompt.
+        # A non-positive prompt cap would refuse every prompt before generation.
         if self.max_prompt_len < 1:
             msg = f"max_prompt_len must be >= 1, got {self.max_prompt_len}"
             raise ValueError(msg)

@@ -132,6 +132,23 @@ ignore_missing_imports = true
 module = ["z3", "z3.*"]
 ignore_missing_imports = true
 
+# The proposer runtime (torch + Transformers + XGrammar) resolves from the SEPARATE py3.12 project
+# at model_backend/runtime/, never into this py3.13 gate venv, and its stubs are absent or partial.
+# model_backend is their only importer; the engine isolates the resulting Any behind typed
+# boundaries. accelerate and tokenizers stay OUT: they are transitive runtime deps that no module
+# imports, and an override for an unimported module states a dependency the code does not have.
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["transformers", "transformers.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["xgrammar", "xgrammar.*"]
+ignore_missing_imports = true
+
 # --- tests / coverage --------------------------------------------------------
 [tool.pytest.ini_options]
 minversion = "8.0"

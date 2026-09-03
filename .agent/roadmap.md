@@ -173,45 +173,41 @@ are NOT ORIGIN-comparable (model family changed); frame every run as a new `(dev
 baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture artifacts labeled
 `python_raw_unconstrained` vs `vplot_json_guided`; validators refuse cross-mode aggregation.
 
-| unit | tier | scope | DONE gate |
-|---|---|---|---|
-| M12.1 | kernel | Runtime lock + settings port: `model_backend/runtime/{pyproject.toml,uv.lock,README.md}` — py3.12, `torch==2.7.1+cu126` via `[[tool.uv.index]]`+`tool.uv.sources`, transformers 5.16.1 · accelerate 1.14.0 · tokenizers 0.23.1 · xgrammar 0.2.3, FULL transitive lock → gitignored `.venv-model`; model snapshot → gitignored `models/Qwen2.5-Coder-0.5B-Instruct/` + committed HF revision SHA + per-file sha256 manifest; `model_backend/settings.py` defaults (device `cuda`, new model dir/name, env var NAMES unchanged, bounds 1536/512/65536 kept); pyproject mypy overrides `torch.*`/`transformers.*`/`xgrammar.*` (+`accelerate`/`tokenizers` iff imported); adapted settings pins | full gate green + `uv sync --locked` rebuild + `uv pip check` + snapshot hash verify |
-| M12.2 | kernel | Engine core port, UNGUIDED: `engine.py` → torch/transformers (F5 recipe; suffix-slice decode, EOS-at-cap→`stop`/cap-no-EOS→`length`, scalar/list eos+pad ids, usage from generated suffix as literals, response ceiling after generation, lock serialization, identity-preserving `.to("cuda")` + same-object `generate` handoff); `guided_schema` naming → LOUD temporary `BackendError` (pinned, replaced in M12.3); `tests/test_model_backend.py` fake torch/transformers seams + canonical refusal bytes; committed smoke probe (from `7c9e408:probes/probe_stack.py`): live `:8001` serve → `/v1/models` + one completion + live over-cap refusal byte-compare, records device/cc/dtype/model/tok-s. FALLBACK at 45% before test rework: close on engine+adapted fakes green, contract battery → successor | full gate + smoke probe rc 0 with recorded tuple |
-| M12.3 | kernel | xgrammar guidance + both-ways oracle: `schema_guidance.py` compile-at-load — `TokenizerInfo.from_huggingface` → `GrammarCompiler(...).compile_json_schema(schema, strict_mode=True, any_order=True)` (v0.2.3 API) → fresh `xgrammar.contrib.hf.LogitsProcessor` per generate; engine application block replaces the M12.2 refusal; hardware-free threading pins (per-id selection by identity, `None` ⇒ ZERO processor constructions, fresh processor across 2 calls); live oracle per schema: (a) guided generation strict-validates, (b) schema-specific negative that generic JSON accepts is refused, (c) other mode's strict-valid object refused (selector identity), (d) adversarial generation stays in-schema; + 3/3 greedy determinism + JOINT-corner probe (1536 prompt + 512 new; else lower a bound + record the tuple) | full gate + oracle rc 0 |
-| M12.4 | kernel | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `model_stub`+`models.py` `owned_by` → backend-neutral literal, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
-| M12.5 | data | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
-| M12.6 | kernel | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
-| M12.7 | data | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); offline replay reproduces stats byte-identically; held-out NOT generated (ruling-7 discipline) | replay reproduces committed stats |
-| M12.8 | data | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation) | full gate + committed baseline replayable |
-| M12.9 | docs | Prose sweep + register audit: search-manifest remainder (root/`webui`/`bench`/`demo` READMEs — ORIGIN OpenVINO recipes labeled historical, byte-preserved; STE register on the four READMEs + launcher `usage()`/banner; REAL-model outcomes stay conditional); zero-unruled-match final search with per-line historical allowlist; README↔`POC_SCOPE.md` block quotes re-diffed | consistency pass + final search clean |
+| unit | tier | status | scope | DONE gate |
+|---|---|---|---|---|
+| M12.1 | kernel | **DONE** | Runtime lock + settings port. Shipped `model_backend/runtime/{pyproject.toml,uv.lock,snapshot.json,README.md}` · `model_backend/snapshot.py` (4-class verifier, `--verify`/`--write`) · settings defaults → `cuda` + `models/Qwen2.5-Coder-0.5B-Instruct` · root mypy overrides · `tests/test_model_backend_runtime.py` (23 predicates). Record → `.agent/archive/m12.md` | met |
+| M12.2 | kernel | OPEN | Engine core port, UNGUIDED: `engine.py` → torch/transformers (F5 recipe; suffix-slice decode, EOS-at-cap→`stop`/cap-no-EOS→`length`, scalar/list eos+pad ids, usage from generated suffix as literals, response ceiling after generation, lock serialization, identity-preserving `.to("cuda")` + same-object `generate` handoff); `guided_schema` naming → LOUD temporary `BackendError` (pinned, replaced in M12.3); `tests/test_model_backend.py` fake torch/transformers seams + canonical refusal bytes; committed smoke probe (from `7c9e408:probes/probe_stack.py`): live `:8001` serve → `/v1/models` + one completion + live over-cap refusal byte-compare, records device/cc/dtype/model/tok-s. FALLBACK at 45% before test rework: close on engine+adapted fakes green, contract battery → successor | full gate + smoke probe rc 0 with recorded tuple |
+| M12.3 | kernel | OPEN | xgrammar guidance + both-ways oracle: `schema_guidance.py` compile-at-load — `TokenizerInfo.from_huggingface` → `GrammarCompiler(...).compile_json_schema(schema, strict_mode=True, any_order=True)` (v0.2.3 API) → fresh `xgrammar.contrib.hf.LogitsProcessor` per generate; engine application block replaces the M12.2 refusal; hardware-free threading pins (per-id selection by identity, `None` ⇒ ZERO processor constructions, fresh processor across 2 calls); live oracle per schema: (a) guided generation strict-validates, (b) schema-specific negative that generic JSON accepts is refused, (c) other mode's strict-valid object refused (selector identity), (d) adversarial generation stays in-schema; + 3/3 greedy determinism + JOINT-corner probe (1536 prompt + 512 new; else lower a bound + record the tuple) | full gate + oracle rc 0 |
+| M12.4 | kernel | OPEN | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `model_stub`+`models.py` `owned_by` → backend-neutral literal, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
+| M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
+| M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
+| M12.7 | data | OPEN | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); offline replay reproduces stats byte-identically; held-out NOT generated (ruling-7 discipline) | replay reproduces committed stats |
+| M12.8 | data | OPEN | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation) | full gate + committed baseline replayable |
+| M12.9 | docs | OPEN | Prose sweep + register audit: search-manifest remainder (root/`webui`/`bench`/`demo` READMEs — ORIGIN OpenVINO recipes labeled historical, byte-preserved; STE register on the four READMEs + launcher `usage()`/banner; REAL-model outcomes stay conditional); zero-unruled-match final search with per-line historical allowlist; README↔`POC_SCOPE.md` block quotes re-diffed | consistency pass + final search clean |
 
 Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 · 12.4←12.3 ·
 12.6←12.5+12.2 · 12.7←12.6 · 12.8←12.3+12.4 · 12.9 last · **M13 planning ← 12.7 committed** ·
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = 12.2 close;
 interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 = OPEN, prep wave COMPLETE + banked, implementation NOT started. M12.2–M12.9
-= OPEN, untouched. Resume M12.1 from `.scratch/STATE-M12.1.md`, whose read order is authoritative;
-the acceptance contract is `.scratch/agents/contract-m12u1.md` and **its §7 + §8 amend §2–§6**. The
-red suite lives on retained branch `wt/test-m12u1` (worktree `.scratch/worktrees/test-m12u1`) and is
-RED by design — never merge it to `main` before the implementation makes it green.
+**Unit status.** M12.1 DONE (record → `.agent/archive/m12.md`). M12.2 = the active unit; M12.3–M12.9
+untouched. The repo is **intentionally NON-LAUNCHABLE until M12.2 lands**: settings now name a CUDA
+device and a raw HF snapshot while `engine.py` still imports `openvino_genai`. That is the serial
+edge `12.2←12.1` working as planned, and the first live completion stays M12.2's smoke probe.
 
-**M12.1 prep-wave deltas (bind the plan; the wave holds sizing authority).**
-- `ModelCard.owned_by="openvino"` + the `tests/test_webui_model_stub.py` owner pin move **M12.4 →
-  M12.2**: the literal becomes false at the engine swap, so it must travel with the engine.
-- `model_backend/__init__.py` + `__main__.py` OpenVINO docstrings gain an owner: **M12.2** (they had
-  none — outside both R7 and M12.9).
-- M12.1 is **intentionally NON-LAUNCHABLE** between 12.1 and 12.2: its defaults name a CUDA device
-  and a raw HF snapshot while `engine.py` still imports `openvino_genai`. That is the serial edge
-  `12.2←12.1` working as planned; M12.1's DONE gate contains no live serve, and the first live
-  completion stays M12.2's smoke probe.
-- **Declared FALLBACK split seam with a numeric trigger** (dissent from the prep wave's tier lens,
-  recorded rather than discarded): if MAIN's implementing window passes **60%** before
-  `model_backend/snapshot.py` is green, split M12.1 there — M12.1a = runtime project + settings +
-  root config (tier `data`/`docs`), M12.1b = snapshot verifier (tier `kernel`).
-- Prep-wave cost, measured: MAIN reached **~73%** on contract authoring + 3-teammate fan-out + 55
-  ruled findings with **zero production lines** — the "prep wave is its own window" driver, now on
-  its tenth consecutive unit. Budget it separately at every M12 unit.
+**M12.2 inherits three surfaces reassigned out of other units** (prep-wave rulings, still unshipped):
+`ModelCard.owned_by="openvino"` at `model_backend/models.py:119` + the `tests/test_webui_model_stub.py`
+owner pin (was M12.4 — the literal becomes false at the engine swap, so it travels with the engine),
+and the OpenVINO docstrings in `model_backend/__init__.py` + `__main__.py` (they had no owner —
+outside both R7 and M12.9).
+
+**Prep-wave budgeting, re-confirmed at M12.1.** MAIN spent ~73% of one window on contract authoring +
+3-teammate fan-out + 55 ruled findings with ZERO production lines, then implemented in a SECOND
+window — the eleventh consecutive unit to split that way. Budget the two windows separately at every
+remaining M12 unit. M12.1's implementation window closed at 84% with the declared 60% fallback seam
+NOT taken: the trigger fired against `model_backend/snapshot.py` being green, and the verifier was
+green well before it, so the unit shipped whole. A prep wave still holds sizing authority — re-split
+at WORK-UNIT entry on its evidence, not on the planned boundary.
 
 ### M13 scope sketch (unit split decided at M13 PLANNING)
 
@@ -364,9 +360,9 @@ at the M9 review close — 16 branches, no worktree checked out for any of them:
 `wt/test-m9u10` `845d49f` (`p25`) · `wt/rev-m9u10` `a1171dc` · `wt/test-m9u13a` `6c1bd49` ·
 `wt/rev-m9-1` `db833f3` (M9R1) · `wt/rev-m9-4` `e18bcfb` (M9R2) ·
 `wt/rev-m9-2` `8093b0a` · `wt/rev-m9-5` `6dac756` · `wt/rev-m9-6` `814e513` ·
-`wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed) ·
-**`wt/test-m12u1` `9f24a2b` (M12.1 red suite — 18 predicates, 13 RED / 5 green-by-design; its
-worktree `.scratch/worktrees/test-m12u1` stays checked out until M12.1 implements)**.
+`wt/xcut-m9` `a2abd82` · `wt/audit-m9` `d2592e3` · `wt/res-port` `7c9e408` (M12 seed).
+`wt/test-m12u1` was CONSUMED at the M12.1 close — its suite ships in `main` as
+`tests/test_model_backend_runtime.py`, so worktree + branch are removed and 16 branches remain.
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
 never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone

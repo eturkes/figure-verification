@@ -18,10 +18,11 @@ htmlcov/
 # uv virtualenvs (project-local layers)
 .venv/
 .venv-host/
-# Backend model server venv (numpy + web stack, OpenVINO via PYTHONPATH; host-coupled)
+# Backend model server venv (CUDA runtime; rebuild: uv sync --locked --project model_backend/runtime)
 .venv-model/
 
-# Local model weights (downloaded via huggingface_hub, host+container-coupled, large)
+# Local model weights (fetched per model_backend/runtime/README.md; large, host-portable).
+# Identity IS tracked: model_backend/runtime/snapshot.json pins revision + per-file sha256.
 models/
 
 # Open WebUI: app venv + runtime state (sqlite/uploads/cache; regenerable, recipe in webui/)

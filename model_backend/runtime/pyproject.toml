@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Isolated proposer runtime. NOT a member of the root uv project: the root declares no
+# [tool.uv.workspace], so this project locks and syncs on its own into .venv-model. The split is
+# load-bearing — the root gate runs py3.13 while torch cu126 wheels stop at py3.12, and the root
+# lock must stay free of 14 nvidia-* wheels.
+#
+# Nothing imports this project from the gate. model_backend/*.py runs against .venv-model in
+# production and against fake seams under the root .venv in tests.
+
+[project]
+name = "model-backend-runtime"
+version = "0.1.0"
+description = "Pinned CUDA runtime for the untrusted model_backend proposer."
+requires-python = "==3.12.*"
+# Exact pins, no floors: the lock, not a floor-satisfying newer release, defines the runtime.
+dependencies = [
+    "torch==2.7.1+cu126",
+    "transformers==5.16.1",
+    "accelerate==1.14.0",
+    "tokenizers==0.23.1",
+    "xgrammar==0.2.3",
+]
+
+# torch resolves from the CUDA 12.6 wheel index alone; explicit = true keeps every other package
+# on PyPI, so a CPU-only torch can never satisfy this project.
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
