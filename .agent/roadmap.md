@@ -204,10 +204,13 @@ outside both R7 and M12.9).
 **Prep-wave budgeting, re-confirmed at M12.1.** MAIN spent ~73% of one window on contract authoring +
 3-teammate fan-out + 55 ruled findings with ZERO production lines, then implemented in a SECOND
 window — the eleventh consecutive unit to split that way. Budget the two windows separately at every
-remaining M12 unit. M12.1's implementation window closed at 84% with the declared 60% fallback seam
-NOT taken: the trigger fired against `model_backend/snapshot.py` being green, and the verifier was
-green well before it, so the unit shipped whole. A prep wave still holds sizing authority — re-split
-at WORK-UNIT entry on its evidence, not on the planned boundary.
+remaining M12 unit. M12.1's implementation window closed at **94%** with the declared 60% fallback
+seam NOT taken: that trigger fired against `model_backend/snapshot.py` being green, and the verifier
+was green well before it, so the unit shipped whole. **New cost driver, measured here: the CLOSE is
+~12% of a window on its own** (archive authoring + roadmap surgery + register fixes + worktree
+teardown), so a unit that reaches the gate at ~82% still finishes near the ceiling — size the next
+unit against the CLOSE reading, never the gate-green one. A prep wave still holds sizing authority
+— re-split at WORK-UNIT entry on its evidence, not on the planned boundary.
 
 ### M13 scope sketch (unit split decided at M13 PLANNING)
 
