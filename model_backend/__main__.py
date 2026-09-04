@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Backend entry point — `python -m model_backend`.
 
-Reads MODEL_BACKEND_* config, compiles the model, and serves the OpenAI /v1 surface with a
-single uvicorn worker (loopback by default). One worker keeps the single compiled pipeline and
-its lock coherent. Requires the intel-accel env sourced and the OpenVINO PYTHONPATH present —
-hardware-gated, NOT the portable uv gate (authoritative run recipe: bench/README.md).
+Reads MODEL_BACKEND_* config, loads the model, and serves the OpenAI /v1 surface with a single
+uvicorn worker (loopback by default). One worker keeps the single loaded model and its lock
+coherent. Requires the isolated .venv-model runtime project and an accelerator settings.device
+resolves to — hardware-gated, NOT the portable uv gate (run recipe:
+model_backend/runtime/README.md).
 """
 
 import uvicorn

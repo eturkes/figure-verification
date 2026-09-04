@@ -14,7 +14,12 @@ version = "0.1.0"
 description = "Pinned CUDA runtime for the untrusted model_backend proposer."
 requires-python = "==3.12.*"
 # Exact pins, no floors: the lock, not a floor-satisfying newer release, defines the runtime.
+# The server stack repeats the root gate's own resolved versions: this project must SERVE the
+# same app the portable gate tests, so a version split here would ship untested request handling.
 dependencies = [
+    "msgspec==0.21.1",
+    "litestar==2.24.0",
+    "uvicorn==0.49.0",
     "torch==2.7.1+cu126",
     "transformers==5.16.1",
     "accelerate==1.14.0",

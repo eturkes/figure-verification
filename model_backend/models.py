@@ -116,7 +116,7 @@ class ModelCard(msgspec.Struct, frozen=True, kw_only=True):
     id: str
     created: int
     object: Literal["model"] = "model"
-    owned_by: str = "openvino"
+    owned_by: str = "local"
 
 
 class ModelList(msgspec.Struct, frozen=True, kw_only=True):

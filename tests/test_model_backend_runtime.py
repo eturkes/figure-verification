@@ -711,6 +711,9 @@ def test_p15_runtime_pyproject_pins() -> None:
     assert isinstance(dependencies, list)
     assert all(isinstance(dependency, str) for dependency in dependencies)
     assert set(dependencies) == {
+        "msgspec==0.21.1",
+        "litestar==2.24.0",
+        "uvicorn==0.49.0",
         "torch==2.7.1+cu126",
         "transformers==5.16.1",
         "accelerate==1.14.0",

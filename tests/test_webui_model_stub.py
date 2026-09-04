@@ -42,7 +42,7 @@ def test_models_lists_only_the_configured_id() -> None:
     assert set(card) == {"id", "created", "object", "owned_by"}
     assert card["id"] == "stub-model"
     assert card["object"] == "model"
-    assert card["owned_by"] == "openvino"
+    assert card["owned_by"] == "local"
     assert isinstance(card["created"], int)
 
 

@@ -79,7 +79,11 @@ The values below come from this host. Read them as one `(device, config)` baseli
 | Device | NVIDIA MX150, compute capability 6.1, 1994 MiB |
 | Precision | fp16, the supported path on this device |
 | Model | `Qwen/Qwen2.5-Coder-0.5B-Instruct`, 494M parameters, Apache-2.0 |
-| Weights | 942.3 MiB resident, 5.5-5.7 tokens per second |
+| Weights | 942.3 MiB resident |
+| Rate | 5.5-5.7 tokens per second at a full 1536-token context |
+
+A rate depends on the context length. A short prompt measures faster. The smoke probe records 10.3
+tokens per second on an 8-token reply. Always state the context length beside a rate.
 
 The model family and the number format both changed with this port. Earlier proposer measurements
 used a different family and INT4 weights, so they do not compare with numbers taken here. Measure
