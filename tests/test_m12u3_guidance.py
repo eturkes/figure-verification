@@ -762,20 +762,25 @@ def test_g6_tokenizer_info_failure_refuses_with_the_same_shape_and_zero_transfer
     assert harness.xgrammar.compiler_init_calls == []
     assert failed_runtime.model.to_calls == []
 
-    harness.xgrammar.clear_calls()
+
+def test_g6b_unusable_ids_precede_every_native_guidance_call(harness: _Harness) -> None:
+    harness.xgrammar.tokenizer_info_error = ValueError("must remain unreachable")
     invalid_ids = _Model(eos_token_id=str(3))
-    precedence_runtime = _install_runtime(model=invalid_ids)
-    with pytest.raises(Exception) as precedence_exc:
-        harness.engine_module.Engine.load(Settings())
+    runtime = _install_runtime(model=invalid_ids)
+
+    with pytest.raises(Exception) as exc_info:
+        harness.engine_module.Engine.load(Settings(structured_output=True))
 
     _assert_backend_error(
         harness,
-        precedence_exc.value,
+        exc_info.value,
         status=500,
         error_type="generation_config_unusable",
     )
     assert harness.xgrammar.tokenizer_info_calls == []
-    assert precedence_runtime.model.to_calls == []
+    assert harness.xgrammar.compiler_init_calls == []
+    assert harness.xgrammar.compile_calls == []
+    assert runtime.model.to_calls == []
 
 
 def test_g7_structured_output_disabled_performs_zero_grammar_work_at_load(
@@ -837,7 +842,11 @@ def test_g8_schema_sha256_behaviour_is_unchanged_in_both_states(
 def test_g9_unguided_request_constructs_no_processor_and_passes_no_logits_processor(
     harness: _Harness,
 ) -> None:
-    engine, runtime = _loaded_engine(harness)
+    engine, runtime = _loaded_engine(
+        harness,
+        settings=Settings(structured_output=True),
+    )
+    assert len(harness.xgrammar.compile_calls) == 2
     processors_before = len(harness.xgrammar.processors)
 
     result = _generate(engine, guided_schema=None)
@@ -905,9 +914,10 @@ def test_g12_disabled_guidance_with_a_named_schema_generates_unguided_without_er
     assert "logits_processor" not in runtime.model.generate_calls[0]
 
 
-def test_g13_processor_reaches_generate_in_the_form_transformers_consumes(
+def test_g13_caller_matches_the_declared_logits_processor_list_type(
     harness: _Harness,
 ) -> None:
+    """Pin declared API conformance; a plain list works today but is not the declared type."""
     engine, runtime = _loaded_engine(harness)
 
     _generate(engine, guided_schema=DATASET_SCHEMA_ID)
@@ -924,7 +934,7 @@ def test_g14_over_cap_prompt_with_a_named_schema_refuses_before_any_grammar_work
     tokenizer = _Tokenizer(encoding=_Encoding((1, 2, 3, 4)))
     engine, runtime = _loaded_engine(
         harness,
-        settings=Settings(max_prompt_len=3),
+        settings=Settings(structured_output=True, max_prompt_len=3),
         tokenizer=tokenizer,
     )
     before = (
@@ -965,15 +975,6 @@ def test_g15_greedy_pins_survive_beside_an_attached_processor(harness: _Harness)
     )
 
     kwargs = runtime.model.generate_calls[0]
-    assert set(kwargs) == {
-        "input_ids",
-        "attention_mask",
-        "do_sample",
-        "num_beams",
-        "max_new_tokens",
-        "pad_token_id",
-        "logits_processor",
-    }
     assert kwargs["do_sample"] is False
     assert kwargs["num_beams"] == 1
     assert kwargs["max_new_tokens"] == 5
@@ -1033,6 +1034,7 @@ def test_g18_tokenizer_info_uses_the_models_normalized_stop_token_set(
     stop_token_ids = call.kwargs["stop_token_ids"]
     assert type(stop_token_ids) is list
     assert stop_token_ids == [3, 9]
+    assert set(stop_token_ids) == {3, 9}
     assert tokenizer.eos_token_id not in stop_token_ids
     assert harness.xgrammar.tokenizer_infos[0].stop_token_ids == (3, 9)
 

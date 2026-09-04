@@ -159,6 +159,17 @@ class _GenerationConfig:
         self.pad_token_id = pad_token_id
 
 
+class _ModelConfig:
+    """The model's declared vocabulary width: the engine's sole authority for the mask width.
+
+    Deliberately DISAGREES with the tokenizer's length, exactly as the pinned snapshot does.
+    Reading the tokenizer's width instead is silent and leaves the excess logits unmasked.
+    """
+
+    def __init__(self, vocab_size: object = 151936) -> None:
+        self.vocab_size = vocab_size
+
+
 class _Model:
     def __init__(
         self,
@@ -170,6 +181,7 @@ class _Model:
     ) -> None:
         self.suffixes = suffixes
         self.generation_config = _GenerationConfig(eos_token_id, pad_token_id)
+        self.config = _ModelConfig()
         self.generate_hook = generate_hook
         self.to_calls: list[str] = []
         self.generate_calls: list[dict[str, object]] = []
@@ -203,10 +215,79 @@ class _FakeAutoModelForCausalLM:
         pytest.fail("test must install a model loader")
 
 
+class _LogitsProcessorList(list[object]):
+    """Stands in for transformers' own container; the real one is a plain list subclass."""
+
+
+class _TokenizerInfo:
+    """Reports back exactly the width it was handed, which is what the real API promises."""
+
+    def __init__(self, vocab_size: object, stop_token_ids: object) -> None:
+        self.vocab_size = vocab_size
+        self.stop_token_ids = stop_token_ids
+
+
+class _FakeTokenizerInfo:
+    @classmethod
+    def from_huggingface(
+        cls,
+        _tokenizer: object,
+        *,
+        vocab_size: object = None,
+        stop_token_ids: object = None,
+    ) -> _TokenizerInfo:
+        return _TokenizerInfo(vocab_size, stop_token_ids)
+
+
+class _CompiledGrammar:
+    def __init__(self, schema: str) -> None:
+        self.schema = schema
+
+
+class _FakeGrammarCompiler:
+    def __init__(self, tokenizer_info: object) -> None:
+        self.tokenizer_info = tokenizer_info
+
+    def compile_json_schema(
+        self,
+        schema: str,
+        *,
+        strict_mode: bool = True,
+        any_order: bool = False,
+    ) -> _CompiledGrammar:
+        del strict_mode, any_order
+        return _CompiledGrammar(schema)
+
+
+class _FakeLogitsProcessor:
+    def __init__(self, compiled_grammar: object) -> None:
+        self.compiled_grammar = compiled_grammar
+
+
+# engine.py imports transformers AND xgrammar, so this seam installs BOTH fakes. Importing the
+# real xgrammar would pull torch into a test environment that deliberately has neither. These
+# fakes stay PERMISSIVE on purpose: the guidance predicates live in tests/test_m12u3_guidance.py,
+# which builds its own strict fakes under an isolated import, and duplicating that strictness
+# here would fork one contract across two harnesses.
 _TRANSFORMERS = ModuleType("transformers")
 _TRANSFORMERS.AutoTokenizer = _FakeAutoTokenizer  # type: ignore[attr-defined]
 _TRANSFORMERS.AutoModelForCausalLM = _FakeAutoModelForCausalLM  # type: ignore[attr-defined]
+_TRANSFORMERS.LogitsProcessorList = _LogitsProcessorList  # type: ignore[attr-defined]
 sys.modules["transformers"] = _TRANSFORMERS
+
+_XGRAMMAR = ModuleType("xgrammar")
+_XGRAMMAR.__path__ = []
+_XGRAMMAR.TokenizerInfo = _FakeTokenizerInfo  # type: ignore[attr-defined]
+_XGRAMMAR.GrammarCompiler = _FakeGrammarCompiler  # type: ignore[attr-defined]
+_XGRAMMAR_CONTRIB = ModuleType("xgrammar.contrib")
+_XGRAMMAR_CONTRIB.__path__ = []
+_XGRAMMAR_HF = ModuleType("xgrammar.contrib.hf")
+_XGRAMMAR_HF.LogitsProcessor = _FakeLogitsProcessor  # type: ignore[attr-defined]
+_XGRAMMAR_CONTRIB.hf = _XGRAMMAR_HF  # type: ignore[attr-defined]
+_XGRAMMAR.contrib = _XGRAMMAR_CONTRIB  # type: ignore[attr-defined]
+sys.modules["xgrammar"] = _XGRAMMAR
+sys.modules["xgrammar.contrib"] = _XGRAMMAR_CONTRIB
+sys.modules["xgrammar.contrib.hf"] = _XGRAMMAR_HF
 
 import model_backend.engine as engine_module  # noqa: E402
 from model_backend.app import create_app  # noqa: E402
@@ -863,41 +944,11 @@ def test_p12_response_ceiling_is_exact_and_checked_after_lock_release(
     assert second_result.text == "ok"
 
 
-@pytest.mark.parametrize(
-    ("structured_output", "schema_id"),
-    [
-        (True, DATASET_SCHEMA_ID),
-        (True, FORMULA_SCHEMA_ID),
-        (False, DATASET_SCHEMA_ID),
-        (False, FORMULA_SCHEMA_ID),
-    ],
-    ids=["enabled-dataset", "enabled-formula", "disabled-dataset", "disabled-formula"],
-)
-def test_p13_named_guidance_is_a_loud_pre_generation_refusal(
-    monkeypatch: pytest.MonkeyPatch,
-    structured_output: object,
-    schema_id: GuidanceSchemaId,
-) -> None:
-    assert isinstance(structured_output, bool)
-    settings = Settings(structured_output=structured_output)
-    engine, runtime = _loaded_engine(monkeypatch, settings=settings)
-
-    with pytest.raises(BackendError) as exc_info:
-        engine.generate(
-            [{"role": "user", "content": "hello"}],
-            temperature=0.0,
-            max_tokens=7,
-            guided_schema=schema_id,
-        )
-
-    _assert_backend_error(
-        exc_info.value,
-        status=500,
-        error_type="guidance_unavailable",
-        message=f"schema guidance is not available on this backend build: {schema_id}",
-    )
-    assert runtime.tokenizer.apply_calls != []
-    assert runtime.model.generate_calls == []
+# P13 is DELETED, not repaired: it pinned "a named guidance schema is a loud pre-generation
+# refusal", which M12.3a reverses on purpose. Guidance now applies when enabled and generates
+# UNGUIDED when disabled, per the best-effort wire contract. Replacements live in
+# tests/test_m12u3_guidance.py as G10 (enabled selects that id's grammar), G12 (disabled plus a
+# named schema succeeds unguided) and G14 (admission still precedes guidance).
 
 
 def test_p14_null_guidance_generates_without_guidance_objects(
