@@ -7,6 +7,7 @@ Every rule here fires from an unmissable trigger: you are editing the named subs
 | `schema.py`, decode of untrusted bytes, the tagged Transform union (M11 `Derive`), the exported JSON Schema | msgspec pinned behaviours |
 | `model_backend/`, `service/model_client.py`, `bench/`, proposer runtime, any engine port, M10 planning | Host machines + model-tier runtime |
 | `model_backend/engine.py`, `smoke.py`, any `transformers`/`torch` call site | transformers 5.16.1 pinned behaviours |
+| schema-guided decoding, `schema_guidance.py`, any grammar/logits-processor call site | xgrammar 0.2.3 pinned behaviours |
 | `archive.py`, any schema migration, `replay.py` storage reads | SQLite provenance archive |
 | `attestation.py`, `vcert.py` envelope sizing, `formal.py`, capacity/permits | DSSE · z3 · capacity |
 | `render.py`, Vega-Lite spec building, offline HTML, badges | Renderer + Vega-Lite |
@@ -109,6 +110,56 @@ and contradicts several of these — the installed bytes win.
   unsafe".
 - **A single unpadded sequence needs no `attention_mask`** — `generate` synthesizes one
   (`generation/utils.py:778-807,2509-2513`) — but forward the one the tokenizer produced anyway.
+
+## xgrammar 0.2.3 pinned behaviours
+
+Read BEFORE editing any guidance call site. Cited into
+`.venv-model/lib/python3.12/site-packages/xgrammar/`; paths below are relative to it.
+
+- **`import xgrammar` ALONE pulls `torch` into `sys.modules`**, before `contrib.hf` is touched. The
+  root `.venv` (py3.13, where the gate suite runs) has no torch/transformers/xgrammar ⇒ any
+  `model_backend` module importing xgrammar needs a `sys.modules` FAKE in tests, exactly like
+  `transformers`. This is why `schema_guidance.py` stays pure stdlib: its pure-JSON tests import it
+  before any fake is installed.
+- **`TokenizerInfo.from_huggingface(tokenizer, *, vocab_size=None, stop_token_ids=None)` fails OPEN
+  on vocab width.** The default `vocab_size` is `max(len(get_vocab()), max_token_id + 1)` — 151665
+  for the pinned Qwen snapshot — while `config.json` declares 151936. The processor then allocates a
+  151665-bit mask and applies it to 151936-wide scores **with no width check**, leaving the excess
+  logits UNMASKED. Silent, never an exception (`tokenizer_info.py:172-252`, `contrib/hf.py:50-92`).
+  Always pass `vocab_size=model.config.vocab_size` AND verify the built
+  `TokenizerInfo.vocab_size` equals it.
+- **`compile_json_schema(schema, *, any_whitespace=True, indent=None, separators=None,
+  strict_mode=True, max_whitespace_cnt=None, any_order=False)`** (`compiler.py:144-211`). `str` is
+  accepted unchanged and is not pre-validated. `strict_mode=True` acts as
+  `unevaluatedProperties/items=false`. **`any_order=True` is markedly WEAKER than order-freedom
+  alone** — it also drops required-key presence and uniqueness, keeping only key/value validity and
+  an entry-count interval, recursively. Under the calibration ruling that is the CORRECT setting,
+  and it is why guided output can be schema-shaped yet strict-invalid.
+- **Unsupported/unknown JSON-Schema keywords raise NOTHING and are silently ignored** (per-keyword
+  fail-open); structurally malformed schemas and malformed JSON raise a bare `RuntimeError`, never
+  the registered `xgrammar.exception.InvalidJSONError` (`compiler.py:144-214`). ⇒ **"the grammar
+  enforces the guidance schema" is FALSE and may not be shipped.** What it enforces is evidenced by
+  a both-ways live oracle; strict verifier re-decode stays the sole admission authority.
+- **`contrib.hf.LogitsProcessor(compiled_grammar)` is STATEFUL and single-`generate` only** —
+  matchers, bitmask, `prefilled`, `batch_size`; no reset; its own note says EOS can bypass
+  `__call__` (`contrib/hf.py:14-41,43-114`) ⇒ construct a FRESH one per call. It subclasses
+  transformers' `LogitsProcessor`. `CompiledGrammar` is immutable and expressly shareable across
+  matchers (`compiler.py:19-42`) ⇒ compile ONCE per schema id at load.
+- **`GrammarCompiler(tokenizer_info, *, max_threads=8, cache_enabled=True, cache_limit_bytes=-1)`**
+  owns an enabled-by-default native compile cache (`compiler.py:100-140,349-364`) ⇒ a test that
+  compiles the same schema twice on one compiler may observe a cache hit, not a second compile.
+- **Processor plumbing.** `generate` forwards a non-None `logits_processor` unchanged
+  (`transformers/generation/utils.py:2508,2647-2652`) and merges it at `:1293` via
+  `_merge_criteria_processor_list` (`:1396-1430`): defaults first, a custom instance REPLACING a
+  same-type default, remaining customs APPENDED LAST. Sampling warpers are appended after the merge
+  (`:1296-1297`) and only when `do_sample`; a `-inf` mask survives temperature/top-k/top-p, so no
+  warper re-admits a masked token. The declared type is `LogitsProcessorList` throughout ⇒ pass
+  `LogitsProcessorList([processor])`, never a bare list.
+- **Cross-mode discrimination measured** (`Draft202012Validator` over the two STRIPPED guidance
+  schemas): `examples/good_specs/g01_*.json` is valid under dataset guidance and INVALID under
+  formula guidance, and `examples/formula_good_specs/f01_square.json` mirrors it. The discriminator
+  is property NAMES plus the `version` const, which survives `any_order=True`. Schema-level
+  discrimination is NOT grammar-level discrimination — measure the grammar separately.
 
 ## SQLite provenance archive
 

@@ -177,7 +177,7 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 |---|---|---|---|---|
 | M12.1 | kernel | **DONE** | Runtime lock + settings port. Shipped `model_backend/runtime/{pyproject.toml,uv.lock,snapshot.json,README.md}` · `model_backend/snapshot.py` (4-class verifier, `--verify`/`--write`) · settings defaults → `cuda` + `models/Qwen2.5-Coder-0.5B-Instruct` · root mypy overrides · `tests/test_model_backend_runtime.py` (23 predicates). Record → `.agent/archive/m12.md` | met |
 | M12.2 | kernel | **DONE** | Engine core port, UNGUIDED. Shipped `model_backend/engine.py` (torch/transformers, no torch import) · `model_backend/smoke.py` (live probe) · `owned_by` → `local` · docstrings de-OpenVINO'd · `tests/test_model_backend.py` 92 tests. First live dGPU completion: `tok_s=10.291` on MX150 cc 6.1 fp16. Record → `.agent/archive/m12.md` | met |
-| M12.3 | kernel | OPEN | xgrammar guidance + both-ways oracle: `schema_guidance.py` compile-at-load — `TokenizerInfo.from_huggingface` → `GrammarCompiler(...).compile_json_schema(schema, strict_mode=True, any_order=True)` (v0.2.3 API) → fresh `xgrammar.contrib.hf.LogitsProcessor` per generate; engine application block replaces the M12.2 refusal; hardware-free threading pins (per-id selection by identity, `None` ⇒ ZERO processor constructions, fresh processor across 2 calls); live oracle per schema: (a) guided generation strict-validates, (b) schema-specific negative that generic JSON accepts is refused, (c) other mode's strict-valid object refused (selector identity), (d) adversarial generation stays in-schema; + 3/3 greedy determinism + JOINT-corner probe (1536 prompt + 512 new; else lower a bound + record the tuple) | full gate + oracle rc 0 |
+| M12.3 | kernel | IN-PROGRESS (prep banked) | xgrammar guidance + both-ways oracle. Contract RULED + banked → `.agent/m12u3_contract.md` (non-attached; 18 hardware-free predicates `G*`, 7 live-oracle predicates `O*`, 8 invariants, 10 design rulings, session state in its §7). Prep corrections to the planned text are listed below the table. | full gate + oracle rc 0 |
 | M12.4 | kernel | OPEN | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `webui/model_stub.py`, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates — `models.py` `owned_by` already landed at M12.2; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
 | M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
 | M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
@@ -190,9 +190,33 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = **LANDED at the
 12.2 close**; interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 + M12.2 DONE (records → `.agent/archive/m12.md`); M12.3 = the active unit;
-M12.4–M12.9 untouched. The repo LAUNCHES again — M12.2 closed the non-launchable window with the
-project's first live dGPU completion.
+**Unit status.** M12.1 + M12.2 DONE (records → `.agent/archive/m12.md`); M12.3 = the active unit,
+prep wave banked, implementation not started; M12.4–M12.9 untouched. The repo LAUNCHES again —
+M12.2 closed the non-launchable window with the project's first live dGPU completion.
+
+**M12.3 prep corrections to the planned row** (the prep wave holds sizing + scope authority; full
+reasoning + evidence in the contract, library mechanics in `.agent/reference.md` "xgrammar 0.2.3
+pinned behaviours"):
+- **Guidance compilation lives in `engine.py`, NOT `schema_guidance.py`.** `import xgrammar` alone
+  pulls torch into `sys.modules`, and the gate suite runs on the root `.venv` which has none of it;
+  `schema_guidance.py` must stay pure stdlib because its pure-JSON tests import it before any fake
+  is installed. Touch set is `engine.py` ALONE unless a no-edit claim is falsified.
+- **A measured silent fail-open drives new scope.** `TokenizerInfo.from_huggingface` defaults
+  `vocab_size` to 151665 against a 151936-wide score tensor and the mask is applied with no width
+  check. The unit therefore passes `vocab_size=model.config.vocab_size` AND verifies the built
+  `TokenizerInfo.vocab_size` equals it, refusing `guidance_unusable` 500 on mismatch.
+- **Guidance faults refuse LOUDLY at load with zero device transfers**; a silent unguided degrade is
+  the defect class the reference register warns about.
+- `LogitsProcessorList([processor])`, never a bare list — the declared transformers type.
+- **Oracle predicate (a) is CORRECTED**: guided output must validate against the STRIPPED GUIDANCE
+  schema it was compiled from; strict-schema validity is RECORDED per id, not required. Requiring it
+  would assert a claim the project deliberately does not make, and the shipped suite already proves
+  formula guidance admits text strict decode rejects.
+- **Claim boundary tightened**: xgrammar silently ignores unsupported JSON-Schema keywords and
+  `any_order=True` drops required-key enforcement ⇒ *"the grammar enforces the guidance schema"* is
+  FALSE and may not be shipped in any docstring, README line or health-surface description.
+- **Declared FALLBACK split, numeric trigger 65%**: crossing it before the live oracle script exists
+  splits the unit into M12.3a (guidance + hardware-free suite + gate) and M12.3b (live oracle).
 
 **Engine rulings still binding after M12.2.**
 1. **`engine.py` imports NO torch.** `dtype=` accepts the string `"float16"`, `generate` is already
@@ -386,7 +410,9 @@ removed: `wt/test-m12u1` (M12.1 → `tests/test_model_backend_runtime.py`) and `
 checks the teammate's own commit never executed). **Trap: 10 of its 15 checks encode readings §8
 OVERRIDES — `eos_token_id` forwarded to `generate`, the `tokenizer_unusable` label, a bad-PAD
 refusal. Never credit or implement against them.** The 5 that pass are corroboration and were the
-source of two shipped pins. 17 branches now, no worktree checked out for any of them.
+source of two shipped pins. M12.3's prep adds two IN-FLIGHT branches with worktrees checked out —
+`wt/test-m12u3` (red-suite seed `827784a`) and `wt/rev-m12u3` — both slated for consumption at the
+M12.3 close: **19 branches, 2 worktrees live.**
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
 never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
