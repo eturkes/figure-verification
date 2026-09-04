@@ -128,6 +128,12 @@ Read BEFORE editing any guidance call site. Cited into
   logits UNMASKED. Silent, never an exception (`tokenizer_info.py:172-252`, `contrib/hf.py:50-92`).
   Always pass `vocab_size=model.config.vocab_size` AND verify the built
   `TokenizerInfo.vocab_size` equals it.
+- **The unmasked count is exactly 256, and the naive vocab difference 271 is WRONG.** The bitmask is
+  int32-packed, so 151665 bits round UP to 4740 words = 151680 describable positions;
+  `fill_next_token_bitmask` writes padding bits 151665–151679 as DENIED, and
+  `apply_token_bitmask_inplace` accepts a WIDER logits tensor silently, touching only its first
+  151680 columns. Unmasked = 151936 − 151680 = 256, every one an id ≥ 151680. Any citation of 271
+  double-counts the 15 padding bits.
 - **`compile_json_schema(schema, *, any_whitespace=True, indent=None, separators=None,
   strict_mode=True, max_whitespace_cnt=None, any_order=False)`** (`compiler.py:144-211`). `str` is
   accepted unchanged and is not pre-validated. `strict_mode=True` acts as

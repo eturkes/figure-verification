@@ -40,8 +40,8 @@ Four `map-m12u3` findings that MOVED this contract (MAIN-validated against the c
 - **Measured silent fail-open on vocab width.** `TokenizerInfo.from_huggingface`'s DEFAULT
   `vocab_size` is `max(len(get_vocab()), max_token_id + 1)` — here **151665** — while
   `models/Qwen2.5-Coder-0.5B-Instruct/config.json:29` declares **151936**. The processor then
-  allocates a 151665-bit mask and applies it to 151936-wide scores **with no width check**: the 271
-  padded logits go UNMASKED. Silent, not an exception. (`xgrammar/tokenizer_info.py:172-252`,
+  allocates a 151665-bit mask and applies it to 151936-wide scores **with no width check**: exactly
+  **256** logits go UNMASKED. Silent, not an exception. (`xgrammar/tokenizer_info.py:172-252`,
   `xgrammar/contrib/hf.py:50-92`.) This is the reference register's fail-open class, measured
   inside the chosen library ⇒ D6 plus the new D10 guard.
 - **`any_order=True` is weaker than order-freedom alone.** It ALSO drops required-key presence and
@@ -104,8 +104,9 @@ search + rc + a positive control)
 | G2b | A built `TokenizerInfo` whose `vocab_size` disagrees with `model.config.vocab_size` ⇒ `BackendError` 500 `guidance_unusable` and ZERO device transfers (D10). Witness: a fake `TokenizerInfo` that IGNORES the passed `vocab_size` and reports the tokenizer-derived one — i.e. the exact silent-fail-open shape, reproduced. |
 | G3 | The text handed to `compile_json_schema` for an id equals `load_guidance_schema(<that id's path>)` — the pattern/format-STRIPPED guidance, never the raw strict schema bytes. Witness: the two differ (`'"pattern"' not in guidance_text`). |
 | G4 | `compile_json_schema` receives `strict_mode=True` AND `any_order=True` as explicit keyword arguments, asserted on the RECORDED call. Both are hand-stated literals, not read back from a production constant. |
-| G5 | A `compile_json_schema` failure ⇒ `BackendError` status 500, `error_type="guidance_unusable"`, AND `model.to_calls == []` (D2/D3). Distinct assertion: zero device transfers, not merely "it raised". |
+| G5 | A `compile_json_schema` failure ⇒ `BackendError` status 500, `error_type="guidance_unusable"`, AND `model.to_calls == []` (D2/D3). Distinct assertion: zero device transfers, not merely "it raised". **AMENDED (rev B-02): a `GrammarCompiler(...)` CONSTRUCTOR failure gets the SAME assertion.** One fault class, one surface — a constructor fault must not escape as a bare exception. |
 | G6 | A `TokenizerInfo.from_huggingface` failure produces the same loud refusal shape as G5 (one fault class, one surface) and likewise zero device transfers. |
+| G6b | **ADDED (rev B-02): D2's order is pinned POSITIVELY, not merely by `to_calls == []`.** Unusable EOS/id metadata ⇒ the existing shipped refusal, with ZERO `TokenizerInfo.from_huggingface` calls, ZERO `GrammarCompiler` constructions and ZERO `compile_json_schema` calls. Zero device transfers alone cannot distinguish "id normalization ran first" from "grammar work ran first and the transfer never happened"; call counts can. |
 | G7 | `structured_output=False` ⇒ ZERO `TokenizerInfo.from_huggingface` calls, ZERO `GrammarCompiler` constructions, ZERO `compile_json_schema` calls. |
 | G8 | `schema_sha256(id)` behavior is unchanged in both states (present digest when enabled, `None` when disabled) — the existing pins still pass untouched. |
 
@@ -113,15 +114,16 @@ search + rc + a positive control)
 
 | id | predicate |
 |---|---|
-| G9 | `guided_schema=None` ⇒ ZERO `LogitsProcessor` constructions AND no `logits_processor` key in the recorded `generate` kwargs. Both halves asserted; a present-but-empty list would pass the first alone. |
+| G9 | **On an engine loaded with `structured_output=True`** (precondition ADDED, rev B-03 — without it the shipped disabled-state helper satisfies this row while enabled guidance is wholly broken), `guided_schema=None` ⇒ ZERO `LogitsProcessor` constructions AND no `logits_processor` key in the recorded `generate` kwargs. Both halves asserted; a present-but-empty list would pass the first alone. |
 | G10 | `guided_schema=<id>` with guidance enabled ⇒ exactly ONE `LogitsProcessor` construction, its `compiled_grammar` argument being THAT id's compiled object BY IDENTITY (`is`), and that processor reaching `generate`. Witness: the two ids compile to DISTINCT fake objects, so a wrong-id selection is observable. |
 | G11 | Two successive `generate` calls with the SAME id construct TWO DISTINCT processor objects (`is not`). Objects retained through the assertion (an `id()`-only witness lets CPython reuse the address). |
 | G12 | `structured_output=False` + `guided_schema=<id>` ⇒ generation SUCCEEDS, ZERO processor constructions, no `logits_processor` key, no error (D4). |
 | G13 | The recorded `generate` call's `logits_processor` value is a `transformers.LogitsProcessorList` (exact type assertion, RULED in §0) holding exactly one element — the processor constructed for this call. A bare `list` must FAIL this test. |
-| G14 | Over-cap prompt + named schema ⇒ `BackendError` 400 `prompt_too_long`, ZERO processor constructions, ZERO `generate` calls (I3). Call-counting bomb, not an outcome assertion — the outcome is identical whichever order the guards run in. |
-| G15 | With a processor attached, the recorded `generate` call still carries `do_sample`, `num_beams=1`, `max_new_tokens`, `pad_token_id`, and still carries NO `eos_token_id` (I4/I7). |
+| G14 | **On an engine loaded with `structured_output=True`** (precondition ADDED, rev B-03 — the shipped disabled-state pin P28 already passes and would mask a broken enabled path), over-cap prompt + named schema ⇒ `BackendError` 400 `prompt_too_long`, ZERO processor constructions, ZERO `generate` calls (I3). Call-counting bomb, not an outcome assertion — the outcome is identical whichever order the guards run in. |
+| G15 | With a processor attached, the recorded `generate` call still carries `do_sample`, `num_beams=1`, `max_new_tokens`, `pad_token_id`, and still carries NO `eos_token_id` (I4/I7). **AMENDED (rev B-04): assert VALUES, not key presence.** Key-set equality lets sampling mode, token cap or PAD authority drift under guidance alone while every assertion passes. Each expected value is a HAND-STATED literal matching the fixture's request — never read back from a production constant (same discipline as G4). |
 | G16 | Guided generation still enforces the response-byte ceiling: an over-ceiling guided reply raises `response_too_large` 500 (I8). |
 | G17 | The engine module's source contains no `torch` import (I2), asserted by a word-bounded regex over `model_backend/engine.py` with a pattern positive control (a bare substring scan matches `torch` inside unrelated words — M12.2 ruling A20 paid for this). |
+| G18 | `TokenizerInfo.from_huggingface` receives `stop_token_ids=sorted(eos_ids)` derived from `model.generation_config`, asserted on the RECORDED call as a real `list` whose SET equals the fixture's full EOS set (live values: `{151643, 151645}`). Omitting the kwarg must FAIL: xgrammar's default derives stop ids from the TOKENIZER (live: `[151645]`), which NARROWS the authoritative stop set and can mask model EOS 151643 — §8 R01's defect resurfacing through a different library, and the one place the grammar's termination authority can silently disagree with the engine's (I4). Witness: the fake tokenizer's `eos_token_id` DISAGREES with the fake model's `generation_config.eos_token_id`. |
 
 ### Live oracle (`kernel` evidence; MAIN-run on the host of record; rc 0 required)
 
@@ -130,10 +132,11 @@ search + rc + a positive control)
 | O1 | Per schema id: guided generation output parses as JSON and validates against the STRIPPED GUIDANCE schema the grammar was compiled from (D8). Strict-schema validity RECORDED per id as an observation. |
 | O2 | Per schema id: a schema-specific negative that a GENERIC JSON grammar would accept is REFUSED. The refusal is proved by direct matcher rejection, not by a generation that merely happened not to emit it. `OPEN(map)` — S1 must name the matcher API that decides accept/reject for a given string. |
 | O3 | Selector identity: the OTHER mode's golden object is refused by this mode's grammar. **Risk RETIRED at the schema level, MAIN-measured:** with `Draft202012Validator` over the two STRIPPED guidance schemas, `examples/good_specs/g01_total_revenue_by_month.json` is valid under dataset guidance and INVALID under formula guidance, and `examples/formula_good_specs/f01_square.json` is the mirror image. The discriminator is property NAMES plus the `version` const, which survives `any_order=True` (that flag drops required-key and uniqueness enforcement, not property-name admission under `strict_mode=True`). The oracle still measures it at GRAMMAR level, because schema-level discrimination is not grammar-level discrimination; a grammar-level failure here is a finding about xgrammar's coverage, not a reason to drop O3. |
-| O4 | Adversarial prompt explicitly demanding out-of-schema output still yields in-schema output. |
+| O4 | Adversarial prompt explicitly demanding out-of-schema output still yields in-schema output. **"In-schema" DEFINED (rev B-08): parses as JSON AND validates against the STRIPPED GUIDANCE schema — the same standard as O1 — with strict validity recorded as an observation.** An undefined "in-schema" would let natural model compliance be reported as live processor causality. |
 | O5 | 3/3 greedy generations byte-identical under guidance. |
-| O6 | JOINT-corner probe: 1536-token prompt + 512 new tokens under guidance. If VRAM refuses, lower ONE bound, record the exact tuple that ran, and state the refused one. |
-| O7 | Guided-vs-free per-token cost recorded as an observation on this `(device, config)`. Never framed as ORIGIN-comparable. |
+| O6 | JOINT-corner probe: 1536-token prompt + 512 new tokens under guidance. If VRAM refuses, lower ONE bound, record the exact tuple that ran, and state the refused one. **AMENDED (rev B-05): the corner is credited ONLY on measured `prompt_tokens == 1536` AND ACTUAL `completion_tokens == 512`.** The cache grows with real decode length, so an early EOS reaches the corner in neither dimension — and under guidance a valid JSON object terminating well short of 512 is the EXPECTED outcome, which makes this the likely path. Early EOS ⇒ record "corner NOT reached at N tokens" plainly, never a pass. `min_new_tokens` is NOT used under guidance (it fights the matcher's own EOS decision); establish the allocation envelope with a companion UNGUIDED run at `min_new_tokens=512`, labelled as the unguided corner. "Guided 1536+512 passed" may be written only when the guided run itself emitted 512. |
+| O7 | Guided-vs-free per-token cost recorded as an observation on this `(device, config)`. Never framed as ORIGIN-comparable. **Method stated (rev A-O7 `WEAK`): discard a warm-up run, repeat ≥3, divide by ACTUAL completion tokens, and time the generate call alone.** Absent those four, report no per-token number at all. |
+| O8 | **ADDED — ports the vocab-width measurement into committed, rerunnable form (§9 ruling 2).** With the DEFAULT `vocab_size`, the bitmask is int32-rounded to 151680 describable positions, the 15 padding bits 151665–151679 are written DENIED, `apply_token_bitmask_inplace` accepts a WIDER logits tensor without complaint, and exactly **256** logits (all ids ≥ 151680) survive unmasked. With `vocab_size=model.config.vocab_size` the count is ZERO. Both arms measured in one run; the 256 is the number every doc may cite. |
 
 ---
 
@@ -160,10 +163,15 @@ are its only coverage.
 - **"The grammar enforces the guidance schema" is FALSE as stated and may not be shipped.**
   xgrammar 0.2.3 SILENTLY IGNORES JSON-Schema keywords it does not support (S1-08b), and
   `any_order=True` additionally drops required-key and uniqueness enforcement (S1-02). The
-  shippable claim is: *the grammar constrains generation to the subset of the guidance schema
-  xgrammar supports under these options; what it actually enforces is evidenced by the live
-  oracle, and strict verifier re-decode remains the sole authority on admission.* Every docstring,
-  README line and health-surface description this unit writes must match that wording.
+  shippable claim is: *the grammar constrains generation toward the guidance schema; what it
+  actually enforces is evidenced by the named live-oracle witnesses, and strict verifier re-decode
+  remains the sole authority on admission.* Every docstring, README line and health-surface
+  description this unit writes must match that wording.
+- **"the subset xgrammar supports" is WITHDRAWN from the shippable claim (rev B-08).** That phrase
+  reads as exhaustive coverage of a delimited keyword set, while the actual evidence is a handful
+  of witnesses: O2 proves ONE refusal per schema and O1/O4 sample generated outputs. Nothing in
+  this unit enumerates which keywords survive the silent-ignore path. Credit only the exact
+  admitted and refused witnesses, by name.
 - The load-time refusal (D3/D10) covers compile ERRORS and vocab-width mismatch. It does NOT and
   cannot cover per-keyword silent ignoring. Do not let a green load stand in for enforcement.
 
@@ -234,11 +242,15 @@ outright that the fake deliberately violates the installed API contract.
    uniqueness). Folded into §6: guided output may carry duplicate object keys, and this repo's
    msgspec finding is that duplicate keys silently LAST-WIN with no switch. The verifier's strict
    decode path owns that, not this unit — but no doc may imply guidance prevents it.
-2. **The unmasked-logit count is 271, NOT 256.** MAIN re-derived it directly rather than trusting
-   either report: `len(get_vocab())` = 151665, `max_token_id + 1` = 151665, so xgrammar's default
-   `vocab_size` is 151665 against `config.vocab_size` 151936 ⇒ gap 271. `map-m12u3`'s closing
-   summary said 256 and is FALSIFIED; `.agent/reference.md`'s committed 271 STANDS. Do not
-   propagate 256.
+2. **The unmasked-logit count is 256. `map-m12u3` was RIGHT and MAIN's earlier 271 is WITHDRAWN.**
+   271 is the naive vocab difference (151936 − 151665) and it OVERCOUNTS by exactly the 15 bitmask
+   padding bits. Measured on the installed library: the bitmask is int32-packed, so 151665 bits
+   round UP to 4740 words = **151680** describable positions, `fill_next_token_bitmask` writes the
+   15 padding bits 151665–151679 as DENIED, and `apply_token_bitmask_inplace` accepts a WIDER
+   logits tensor without complaint, touching only its first 151680 columns. Unmasked = 151936 −
+   151680 = **256**, all of them ids ≥ 151680. Probe (`.scratch/probe_mask_width.py`, `.venv-model`)
+   printed `finite=262` = 6 grammar-allowed tokens + 0 padding + 256 beyond the mask. Ported to
+   M12.3b as predicate **O8** so the number reruns from committed state. Do not propagate 271.
 3. Transitive `torch` + `transformers` import on `import xgrammar` — already recorded, no change.
 4. **`AutoConfig` REJECTED; D2's order stands unchanged.** The proposal was to read `vocab_size`
    via `AutoConfig` so a grammar-compile failure costs zero model loads, honouring the module's
@@ -290,3 +302,36 @@ harvest item of the implementation window, alongside table A's `WEAK`/`UNREACHAB
 is already known WEAK: zero `.to()` pins compile-before-transfer only, not grammar-before-EOS
 normalization). `rev-m12u3` shipped NO red tests — its worktree is clean at `e56ec40` with no
 commits — so every finding above is judgment-only and none carries an executable credential.
+
+---
+
+## §11 — `rev-m12u3` MED findings + table-A verdicts (all 5 MEDs ACCEPTED; prep wave CLOSED)
+
+- **B-02 → G5 amended + G6b ADDED.** `to_calls == []` cannot distinguish "ids normalized first" from
+  "grammar ran first and the transfer never happened"; call counts can. Unusable id metadata now
+  costs ZERO `TokenizerInfo`/`GrammarCompiler`/`compile_json_schema` calls, and a `GrammarCompiler`
+  CONSTRUCTOR fault gets G5's assertion so it cannot escape as a bare exception.
+- **B-03 → G9 + G14 gained a `structured_output=True` precondition. The sharpest MED.** Both rows
+  were satisfiable by the SHIPPED disabled-state helpers, so both would have gone green with enabled
+  guidance wholly broken — table A independently rated both `VACUOUS`. A vacuous predicate in a red
+  suite is worse than a missing one: it retires the risk on paper.
+- **B-04 → G15 asserts hand-stated VALUES.** Key-set equality lets `do_sample`, the token cap or PAD
+  authority drift under guidance alone while every assertion passes.
+- **B-05 → O6 credits the corner only on ACTUAL `completion_tokens == 512`** (M12.3b). Under
+  guidance an early EOS is the EXPECTED outcome, so the unamended row would have been reported as a
+  pass after allocating a tiny suffix. Companion unguided `min_new_tokens=512` run carries the
+  allocation envelope; `min_new_tokens` is never used under guidance.
+- **B-08 → §6 drops "the subset xgrammar supports"; O4 defines "in-schema"** as stripped-guidance
+  validity with strict recorded as observation (M12.3b).
+
+Table-A dispositions beyond the B rows: `A-G2b UNREACHABLE` was already ruled (G2b reachable only
+through an API-violating fake, kept as a documented-fake pin, not credited as library behaviour).
+`A-O7 WEAK` folded into O7's amended method line. **`A-G13 MISPLACED` is OVERRULED and the dissent
+is recorded**: rev and `test-m12u3` P1-05 both argue transformers accepts a plain `list`, so the
+exact-type assertion buys no behavioral difference. Correct, and the ruling stands anyway — G13
+pins CONFORMANCE to `generate`'s DECLARED parameter type, which duck-typing tolerance does not make
+optional. G13's claim is therefore "the caller matches the declared API type", never "a plain list
+would misbehave".
+
+**Prep wave closes here.** Predicate set is FROZEN at G1–G18 + G2b + G6b (M12.3a) and O1–O8
+(M12.3b). Implementation reads §§1–3 as amended; §§8–11 are the ruling history behind them.
