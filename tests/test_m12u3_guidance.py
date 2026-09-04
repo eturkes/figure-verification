@@ -693,16 +693,24 @@ def test_g3_compiled_text_is_the_stripped_guidance_never_the_strict_schema(
         assert guidance_text != strict_text
 
 
-def test_g4_compile_json_schema_receives_strict_mode_true_and_any_order_true(
+def test_g4_compile_json_schema_receives_the_measured_format_bounds(
     harness: _Harness,
 ) -> None:
+    # Hand-stated literals, never read back from the engine's constants. any_order=True was
+    # measured to admit an endless run of one property, and unbounded whitespace lets a finished
+    # document be padded instead of terminated; neither schema stopped inside 768 tokens under
+    # them. Both bounds constrain FORMAT alone.
     _loaded_engine(harness)
 
     assert len(harness.xgrammar.compile_calls) == 2
     for call in harness.xgrammar.compile_calls:
         assert len(call.args) == 1
         assert isinstance(call.args[0], str)
-        assert call.kwargs == {"strict_mode": True, "any_order": True}
+        assert call.kwargs == {
+            "strict_mode": True,
+            "any_order": False,
+            "max_whitespace_cnt": 8,
+        }
 
 
 @pytest.mark.parametrize(

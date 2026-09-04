@@ -44,6 +44,11 @@ _FORMULA_SCHEMA_PATH = _ROOT / "schema" / "vplot-formula-0.1.schema.json"
 _GOOD_SPECS_DIR = _ROOT / "examples" / "good_specs"
 _ENGINE_PATH = _ROOT / "model_backend" / "engine.py"
 _SMOKE_PATH = _ROOT / "model_backend" / "smoke.py"
+_ORACLE_PATH = _ROOT / "model_backend" / "guidance_oracle.py"
+# The package's two probes. Both run only on the isolated .venv-model runtime and both import
+# packages the served app never carries: torch, and the oracle's jsonschema validator.
+_PROBE_PATHS = (_SMOKE_PATH, _ORACLE_PATH)
+_PROBE_ONLY_IMPORTS = re.compile(r"^\s*(?:import|from)\s+(?:torch|jsonschema)\b", re.MULTILINE)
 
 
 class _Vector:
@@ -254,8 +259,11 @@ class _FakeGrammarCompiler:
         *,
         strict_mode: bool = True,
         any_order: bool = False,
+        max_whitespace_cnt: int | None = None,
     ) -> _CompiledGrammar:
-        del strict_mode, any_order
+        # Every keyword the real signature declares, with the real defaults: a fake that drops one
+        # leaves that argument unpinned here and raises on the live call instead.
+        del strict_mode, any_order, max_whitespace_cnt
         return _CompiledGrammar(schema)
 
 
@@ -1380,6 +1388,35 @@ def test_p30_load_order_costs_nothing_downstream_of_each_fault(
     assert len(id_runtime.tokenizer_load_calls) == 1
     assert len(id_runtime.model_load_calls) == 1
     assert id_runtime.model.to_calls == []
+
+
+def test_p31_probe_only_imports_never_reach_a_served_module() -> None:
+    # Positive control first: the pattern finds the real import inside each probe, so the empty
+    # results below are a measurement rather than a broken regex.
+    for path in _PROBE_PATHS:
+        assert path.is_file()
+        assert not path.name.startswith("test_")
+        assert _PROBE_ONLY_IMPORTS.findall(path.read_text(encoding="utf-8")) != []
+
+    # Hand-stated closed set: a new module here must be classified as probe or served before it
+    # inherits this pin, rather than joining a derived set that would cover it silently.
+    served = {path.name for path in (_ROOT / "model_backend").glob("*.py")} - {
+        path.name for path in _PROBE_PATHS
+    }
+    assert served == {
+        "__init__.py",
+        "__main__.py",
+        "app.py",
+        "engine.py",
+        "models.py",
+        "schema_guidance.py",
+        "settings.py",
+        "snapshot.py",
+        "verified_chart.py",
+    }
+    for name in sorted(served):
+        text = (_ROOT / "model_backend" / name).read_text(encoding="utf-8")
+        assert _PROBE_ONLY_IMPORTS.findall(text) == [], name
 
 
 class _AppEngine:

@@ -178,12 +178,12 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 | M12.1 | kernel | **DONE** | Runtime lock + settings port. Shipped `model_backend/runtime/{pyproject.toml,uv.lock,snapshot.json,README.md}` · `model_backend/snapshot.py` (4-class verifier, `--verify`/`--write`) · settings defaults → `cuda` + `models/Qwen2.5-Coder-0.5B-Instruct` · root mypy overrides · `tests/test_model_backend_runtime.py` (23 predicates). Record → `.agent/archive/m12.md` | met |
 | M12.2 | kernel | **DONE** | Engine core port, UNGUIDED. Shipped `model_backend/engine.py` (torch/transformers, no torch import) · `model_backend/smoke.py` (live probe) · `owned_by` → `local` · docstrings de-OpenVINO'd · `tests/test_model_backend.py` 92 tests. First live dGPU completion: `tok_s=10.291` on MX150 cc 6.1 fp16. Record → `.agent/archive/m12.md` | met |
 | M12.3a | kernel | **DONE** | xgrammar guidance restored in `engine.py` (`_compile_guidance` + per-call processor + load-time `guidance_unusable`); `tests/test_m12u3_guidance.py` 20 predicates `G1`–`G18`+`G2b`+`G6b`; `tests/test_rev_m12u3_contract.py` 3 subprocess checks; seam grew the xgrammar fake, P13 deleted. Gate rc 0 ×4, 3013 passed, 100% cov. Record → `.agent/archive/m12.md` | full gate |
-| M12.3b | kernel | OPEN | Live both-ways enforcement oracle, new `model_backend/guidance_oracle.py` (sibling to `smoke.py`, not pytest-collected, lint+type gated, `.venv-model`). Predicates `O1`–`O8` → `.agent/m12u3_contract.md` §3 (non-attached; DELETE at this unit's close). Two carry rulings a fresh session must not re-derive: **O1/O4 validate against the STRIPPED GUIDANCE schema**, with strict validity RECORDED per id, never required — requiring it would assert a claim the project deliberately does not make, and the shipped suite already proves formula guidance admits text strict decode rejects; **O6 credits the joint corner only on ACTUAL `completion_tokens == 512`**, since under guidance an early EOS is the expected outcome. | oracle rc 0 on the host of record |
+| M12.3b | kernel | **DONE** | `model_backend/guidance_oracle.py` — live both-ways oracle, `O1`–`O8` rc 0 on the host of record. It FOUND a non-terminating grammar config M12.3a had shipped: `engine.py` now pins `any_order=False` + `max_whitespace_cnt=_MAX_GUIDANCE_WHITESPACE` (=8, measured), `G4` re-pinned to that exact-dict literal, `O2b` re-based onto the `pattern`/`format`-stripping witness. Runtime dev group + P15b + P31. Gate rc 0 ×4, 3015 passed, 100% cov. Record → `.agent/archive/m12.md` | oracle rc 0 on the host of record |
 | M12.4 | kernel | OPEN | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `webui/model_stub.py`, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates — `models.py` `owned_by` already landed at M12.2; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
 | M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
 | M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
 | M12.7 | data | OPEN | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); offline replay reproduces stats byte-identically; held-out NOT generated (ruling-7 discipline) | replay reproduces committed stats |
-| M12.8 | data | OPEN | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation) | full gate + committed baseline replayable |
+| M12.8 | data | OPEN | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation). **Expect the M12-CUDA rate to MOVE and do not treat ORIGIN's `26/100` as the comparand**: M12.3b measured that xgrammar's library-default whitespace policy lets a greedy model pad a finished document to the token cap, and ORIGIN's guided arm ran OpenVINO GenAI's `StructuredOutputConfig` over xgrammar with unknown, plausibly-default bounds — a HYPOTHESIS (never measured on ORIGIN, unmeasurable now) that its `spec.decode`(51) residual was partly cap-truncation rather than model error. Report the new number standalone; any ORIGIN delta needs the two-host + two-stack caveat | full gate + committed baseline replayable |
 | M12.9 | docs | OPEN | Prose sweep + register audit: search-manifest remainder (root/`webui`/`bench`/`demo` READMEs — ORIGIN OpenVINO recipes labeled historical, byte-preserved; STE register on the four READMEs + launcher `usage()`/banner; REAL-model outcomes stay conditional); zero-unruled-match final search with per-line historical allowlist; README↔`POC_SCOPE.md` block quotes re-diffed | consistency pass + final search clean |
 
 Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 · 12.4←12.3 ·
@@ -191,16 +191,17 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = **LANDED at the
 12.2 close**; interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 + M12.2 + M12.3a DONE (records → `.agent/archive/m12.md`); M12.3b = the
-active unit, contract already written; M12.4–M12.9 untouched. The repo LAUNCHES again — M12.2
-closed the non-launchable window with the project's first live dGPU completion, and M12.3a restored
-schema guidance on top of it.
+**Unit status.** M12.1 + M12.2 + M12.3a + M12.3b DONE (records → `.agent/archive/m12.md`);
+M12.4 is next, M12.4–M12.9 untouched. The repo LAUNCHES again — M12.2 closed the non-launchable
+window with the project's first live dGPU completion, M12.3a restored schema guidance on top of it,
+and M12.3b proved LIVE that guided generation terminates and yields parseable, guidance-valid
+documents on both schema ids under both task and adversarial prompts.
 
 **Guidance claim boundary — binds every surface, forever, not just guidance code.** *"The grammar
 enforces the guidance schema"* is FALSE and may not be shipped in any docstring, README line,
 health-surface description, commit body or report. xgrammar silently ignores JSON-Schema keywords
-it does not support, and `any_order=True` additionally drops required-key presence, uniqueness and
-duplicate-key rejection. The shippable claim is: *the grammar constrains generation TOWARD the
+it does not support, and the guidance schemas additionally STRIP `pattern`/`format` before
+compilation. The shippable claim is: *the grammar constrains generation TOWARD the
 guidance schema; what it actually enforces is evidenced by the named live-oracle witnesses, and
 strict verifier re-decode remains the sole authority on admission.* Never credit "the subset
 xgrammar supports" either — that reads as exhaustive coverage of a delimited keyword set, while the
@@ -407,9 +408,10 @@ removed: `wt/test-m12u1` (M12.1 → `tests/test_model_backend_runtime.py`) and `
 checks the teammate's own commit never executed). **Trap: 10 of its 15 checks encode readings §8
 OVERRIDES — `eos_token_id` forwarded to `generate`, the `tokenizer_unusable` label, a bad-PAD
 refusal. Never credit or implement against them.** The 5 that pass are corroboration and were the
-source of two shipped pins. M12.3's prep adds two IN-FLIGHT branches with worktrees checked out —
-`wt/test-m12u3` (red-suite seed `827784a`) and `wt/rev-m12u3` — both slated for consumption at the
-M12.3 close: **19 branches, 2 worktrees live.**
+source of two shipped pins. M12.3a CONSUMED its two prep branches — `wt/test-m12u3` (red-suite seed
+`827784a` → `tests/test_m12u3_guidance.py`) and `wt/rev-m12u3` (→
+`tests/test_rev_m12u3_contract.py`) — suites shipped in `main`, worktree + branch removed:
+**17 branches, 0 worktrees live.**
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite a branch TIP,
 never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone

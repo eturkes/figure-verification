@@ -27,6 +27,12 @@ dependencies = [
     "xgrammar==0.2.3",
 ]
 
+# Probe-only, never served: model_backend/guidance_oracle.py holds guided output to the guidance
+# and strict schemas with the same validator the root gate uses, so the pin repeats the root's
+# resolved version. Kept OUT of project.dependencies so that set stays exactly the served app.
+[dependency-groups]
+dev = ["jsonschema==4.26.0"]
+
 # torch resolves from the CUDA 12.6 wheel index alone; explicit = true keeps every other package
 # on PyPI, so a CPU-only torch can never satisfy this project.
 [[tool.uv.index]]

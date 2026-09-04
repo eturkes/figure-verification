@@ -32,10 +32,10 @@ statements — `import xgrammar` pulls torch in transitively and always has. Dur
   load, then applied per request as a fresh logits processor. A compilation fault refuses loudly
   at load rather than degrading to unconstrained output. What the grammar buys is bounded: it
   constrains generation TOWARD the guidance schema, evidenced by the live oracle's named
-  witnesses, while strict verifier re-decode remains the sole authority on admission. xgrammar
-  silently ignores schema keywords it does not support, and this build's any_order setting also
-  drops required-key presence and uniqueness, so guided output can be schema-shaped and still
-  strict-invalid — never describe the grammar as enforcing the schema.
+  witnesses, while strict verifier re-decode remains the sole authority on admission. The grammar
+  is compiled from the pattern/format-STRIPPED guidance schema, so guided output can satisfy that
+  schema and still be strict-invalid; xgrammar also silently ignores schema keywords it does not
+  support — never describe the grammar as enforcing the schema.
 """
 
 import threading
@@ -56,6 +56,10 @@ _DTYPE = "float16"
 # Closed container domain for token-id metadata. str and bytes are iterable and a generator is
 # single-shot; none of them carries token ids, so all three refuse rather than being coerced.
 _TOKEN_ID_CONTAINERS = (list, tuple, set, frozenset)
+# Longest whitespace run the grammar admits between elements. Unbounded whitespace lets a greedy
+# model pad a finished document instead of emitting EOS; 8 still admits ordinary separators and
+# shallow indentation, and every measured arm terminated under it.
+_MAX_GUIDANCE_WHITESPACE = 8
 
 
 def _is_token_id(value: object) -> TypeGuard[int]:
@@ -132,11 +136,15 @@ def _compile_guidance(
       NARROWER here — the grammar's termination authority would then disagree with the
       stopping criterion's and could mask an EOS the model relies on.
 
-    any_order=True is the library NON-default and the WEAKER grammar: it admits properties in
-    any order and additionally drops required-key presence and uniqueness. That is the correct
-    setting under the calibration ruling — a canonical property order would steer harder than
-    the proposer is meant to be steered. strict_mode=True matches the current library default
-    and is spelled so a default change cannot silently move guidance strength.
+    The two FORMAT bounds are measured, not chosen. any_order=True reads weaker — properties in
+    any order — but it also drops uniqueness and leaves the entry count unbounded above, so an
+    endless run of one property is admissible; greedy decoding walks straight into it and neither
+    schema terminated within 768 tokens. Unbounded whitespace is the other half: at the library
+    default a finished document can still be padded with spaces instead of an EOS. Under
+    any_order=False with an 8-character whitespace bound every measured arm stopped inside 217
+    tokens and parsed. Both bounds constrain FORMAT alone: strict verifier re-decode still owns
+    admission, and the model still chooses every value. strict_mode=True matches the current
+    library default and is spelled so a default change cannot silently move guidance strength.
     """
     vocab_size: Any = model.config.vocab_size
     try:
@@ -157,7 +165,12 @@ def _compile_guidance(
     try:
         compiler: Any = GrammarCompiler(tokenizer_info)
         compiled = {
-            schema_id: compiler.compile_json_schema(text, strict_mode=True, any_order=True)
+            schema_id: compiler.compile_json_schema(
+                text,
+                strict_mode=True,
+                any_order=False,
+                max_whitespace_cnt=_MAX_GUIDANCE_WHITESPACE,
+            )
             for schema_id, text in guidance_schemas.items()
         }
     except Exception as exc:

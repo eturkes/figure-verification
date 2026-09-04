@@ -152,15 +152,42 @@ Read BEFORE editing any guidance call site. Cited into
 - **`compile_json_schema(schema, *, any_whitespace=True, indent=None, separators=None,
   strict_mode=True, max_whitespace_cnt=None, any_order=False)`** (`compiler.py:144-211`). `str` is
   accepted unchanged and is not pre-validated. `strict_mode=True` acts as
-  `unevaluatedProperties/items=false`. **`any_order=True` is markedly WEAKER than order-freedom
-  alone** — it also drops required-key presence and uniqueness, keeping only key/value validity and
-  an entry-count interval, recursively. Under the calibration ruling that is the CORRECT setting,
-  and it is why guided output can be schema-shaped yet strict-invalid.
+  `unevaluatedProperties/items=false`.
+- **TWO of those defaults DO NOT TERMINATE under greedy decode; both are measured, both are now
+  spelled explicitly at the call site.** (a) **`any_order=True` is markedly WEAKER than
+  order-freedom alone** — it drops required-key presence and uniqueness, keeping key/value validity
+  and an entry-count interval whose UPPER end is open, recursively; an endless run of one property
+  is therefore grammar-admissible and greedy decode walks into it (`vplot-0.1`: `"hash"` repeated to
+  the 768-token cap; both schemas cap-truncated, neither parsed). (b) **`any_whitespace=True` with
+  `max_whitespace_cnt=None` admits an unbounded whitespace run AFTER a complete document**, so a
+  greedy model pads with spaces instead of emitting EOS (`vplot-0.1` capped this way even under
+  `any_order=False`). Shipped call = `strict_mode=True, any_order=False,
+  max_whitespace_cnt=_MAX_GUIDANCE_WHITESPACE` (=8, `engine.py`); the sweep {1, 8} × both schemas ×
+  {task, adversarial} prompt = 8/8 `finish_reason="stop"` + parseable, 127–217 tokens, and 8 is the
+  weaker of the two bounds that works. **Never re-enable `any_order=True` for calibration reasons:
+  it does not terminate.** Its residual cost is real and stands — key ORDER in guided output is now
+  the grammar's, not the proposer's, so ordering is not evidence about the model.
+- **Under `any_order=False` the grammar measurably ENFORCES required-key presence, `maxItems`,
+  `maxLength`, `minimum` and `maximum`** on the shipped guidance schemas ⇒ the classic
+  dropped-key/duplicate-key witness does NOT exist there. The live gap is what the guidance schemas
+  themselves dropped: `pattern`/`format` are STRIPPED before compilation, so `"formula": "x^2"` is
+  grammar-admitted + guidance-valid + strict-REJECTED. That is the standing O2b witness, and the
+  model emits it unprompted.
 - **Unsupported/unknown JSON-Schema keywords raise NOTHING and are silently ignored** (per-keyword
   fail-open); structurally malformed schemas and malformed JSON raise a bare `RuntimeError`, never
   the registered `xgrammar.exception.InvalidJSONError` (`compiler.py:144-214`). ⇒ **"the grammar
   enforces the guidance schema" is FALSE and may not be shipped.** What it enforces is evidenced by
-  a both-ways live oracle; strict verifier re-decode stays the sole admission authority.
+  a both-ways live oracle; strict verifier re-decode stays the sole admission authority. The
+  load-time `guidance_unusable` refusal covers compile ERRORS and the vocab-width mismatch and
+  NOTHING else — per-keyword silent ignoring is unreachable from it, so **a green load is never
+  evidence of enforcement**, and enforcement is credited ONLY from both-ways witnesses (a document
+  admitted AND a document refused), never from a successful return.
+- **The standing instrument is `model_backend/guidance_oracle.py`** — predicates `O1`–`O8`, run
+  `./.venv-model/bin/python -m model_backend.guidance_oracle` on the host of record, rc 0 required.
+  It loads `Engine` in-process and holds the accelerator for its whole run ⇒ stop any serving
+  backend first. Rerun it after ANY change to a guidance call site; the hardware-free suite asserts
+  about the CALL (arguments, attachment, construction count) and by construction cannot observe
+  what a grammar does to a real decode.
 - **`contrib.hf.LogitsProcessor(compiled_grammar)` is STATEFUL and single-`generate` only** —
   matchers, bitmask, `prefilled`, `batch_size`; no reset; its own note says EOS can bypass
   `__call__` (`contrib/hf.py:14-41,43-114`) ⇒ construct a FRESH one per call. It subclasses
@@ -179,7 +206,7 @@ Read BEFORE editing any guidance call site. Cited into
 - **Cross-mode discrimination measured** (`Draft202012Validator` over the two STRIPPED guidance
   schemas): `examples/good_specs/g01_*.json` is valid under dataset guidance and INVALID under
   formula guidance, and `examples/formula_good_specs/f01_square.json` mirrors it. The discriminator
-  is property NAMES plus the `version` const, which survives `any_order=True`. Schema-level
+  is property NAMES plus the `version` const, neither of which the stripping touches. Schema-level
   discrimination is NOT grammar-level discrimination — measure the grammar separately.
 
 ## SQLite provenance archive

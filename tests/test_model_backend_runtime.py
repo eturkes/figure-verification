@@ -699,7 +699,7 @@ def test_p13_four_fault_classes_are_disjoint_and_independent(tmp_path: Path) -> 
 
 
 def test_p15_runtime_pyproject_pins() -> None:
-    """P15 pins the isolated Python 3.12 runtime and its five direct packages."""
+    """P15 pins the isolated Python 3.12 runtime and its eight direct packages."""
     runtime_project_path = Path("model_backend/runtime/pyproject.toml")
     assert runtime_project_path.is_file(), "P15 feature absent: runtime pyproject.toml"
     source = runtime_project_path.read_text(encoding="utf-8")
@@ -733,6 +733,41 @@ def test_p15_runtime_pyproject_pins() -> None:
     sources = _string_table(uv["sources"])
     torch_source = _string_table(sources["torch"])
     assert torch_source["index"] == "pytorch-cu126"
+
+
+def test_p15b_runtime_dev_group_pins_the_oracle_validator() -> None:
+    """P15b keeps the guidance oracle's validator declared and resolved, and off the served app.
+
+    The oracle holds live guided output to the guidance and strict schemas, so an undeclared
+    jsonschema would leave that gate depending on whatever the environment happened to carry.
+    The pin lives in a dev group, never in project.dependencies: that set stays exactly the
+    packages the server itself needs.
+    """
+    document = cast(
+        "dict[str, object]",
+        tomllib.loads(Path("model_backend/runtime/pyproject.toml").read_text(encoding="utf-8")),
+    )
+    groups = _string_table(document["dependency-groups"])
+    development = groups["dev"]
+    assert isinstance(development, list)
+    assert set(development) == {"jsonschema==4.26.0"}
+    served = _string_table(document["project"])["dependencies"]
+    assert isinstance(served, list)
+    assert [pin for pin in served if "jsonschema" in str(pin)] == []
+
+    lock = cast(
+        "dict[str, object]",
+        tomllib.loads(Path("model_backend/runtime/uv.lock").read_text(encoding="utf-8")),
+    )
+    packages = lock["package"]
+    assert isinstance(packages, list)
+    resolved = [
+        _string_table(package)
+        for package in packages
+        if _string_table(package).get("name") == "jsonschema"
+    ]
+    assert len(resolved) == 1
+    assert resolved[0]["version"] == "4.26.0"
 
 
 def test_p16_runtime_lock_pins_torch_cu126() -> None:

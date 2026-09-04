@@ -109,7 +109,7 @@ def _check_over_cap_refusal(client: httpx.Client, settings: Settings) -> None:
 
 def _accelerator_report(settings: Settings) -> str:
     """Describe the accelerator this probe just exercised, as key=value fields."""
-    import torch  # noqa: PLC0415 — the probe is the only place in this package that needs torch
+    import torch  # noqa: PLC0415 — only the two probes in this package may import torch
 
     if not settings.device.startswith("cuda") or not torch.cuda.is_available():
         return f'gpu="none" capability="none" cuda_available={torch.cuda.is_available()}'

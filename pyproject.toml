@@ -75,6 +75,10 @@ ignore = [
 "tests/**" = ["S101", "PLR2004", "TID251"]
 # The sole production boundary around z3-solver's dynamic API.
 "src/verifier/formal.py" = ["TID251"]
+# The guidance oracle is a probe, never shipped code and never imported by the server: it holds
+# live guided output to the same validator the gate uses, and the isolated runtime project pins
+# jsonschema in a dev group for exactly that.
+"model_backend/guidance_oracle.py" = ["TID251"]
 
 [tool.ruff.lint.isort]
 # model_backend (hardware-gated local model server), bench (failure-eval harness), demo
@@ -86,8 +90,9 @@ known-first-party = ["verifier", "model_backend", "bench", "demo", "webui"]
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-# jsonschema is a dev/test-only dep (no py.typed). Ban it outside tests/ so a stray src
-# import fails the gate instead of silently becoming Any under the global mypy override.
+# jsonschema is a dev/test-only dep (no py.typed). Ban it outside tests/ and the guidance
+# oracle so a stray src import fails the gate instead of silently becoming Any under the
+# global mypy override.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "jsonschema".msg = "test-only (golden assertion); do not import from src/"
 "duckdb".msg = "test-only (dual-engine oracle); do not import from src/"
