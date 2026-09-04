@@ -52,10 +52,11 @@ class _Vector:
         self.shape = (len(tokens),)
 
     def __getitem__(self, key: object) -> Any:
+        # Integer indexing ONLY, matching a real 1-D tensor. Admitting the 2-D `(0, -1)` spelling
+        # here would let the terminal read regress to the form R02 reversed: green against a
+        # tolerant fake, IndexError against every real completion.
         if isinstance(key, int):
             return self.tokens[key]
-        if isinstance(key, tuple) and key == (0, -1):
-            return self.tokens[-1]
         raise TypeError(key)
 
 
@@ -782,6 +783,26 @@ def test_p11_usage_counts_are_hand_stated_from_prompt_and_suffix(
 
     assert result.prompt_tokens == 4
     assert result.completion_tokens == 2
+
+
+def test_p11b_decode_reads_the_suffix_once_with_special_tokens_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The fake returns its canned reply whichever ids it is handed, so the RECORDED call is the
+    # only witness here. Without it, skip_special_tokens=False survives the whole suite while
+    # leaking <|im_end|> into the text the verifier parses.
+    engine, runtime = _loaded_engine(
+        monkeypatch,
+        tokenizer=_Tokenizer(encoding=_Encoding((21, 22, 23, 24))),
+        model=_Model(suffixes=((8, 2),), eos_token_id=2),
+    )
+
+    _generate(engine, max_tokens=7)
+
+    assert len(runtime.tokenizer.decode_calls) == 1
+    decoded_ids, skip_special_tokens = runtime.tokenizer.decode_calls[0]
+    assert _tensor_tokens(decoded_ids) == (8, 2)
+    assert skip_special_tokens is True
 
 
 class _BlockingText(str):
