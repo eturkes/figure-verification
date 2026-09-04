@@ -225,3 +225,34 @@ real API contract — a guard reachable only by forgery pins forgery mechanics, 
 behaviour. The runtime equality guard STAYS implemented (silent, catastrophic failure mode; two
 lines), but its test is named for the guard's presence and refusal SHAPE, and its docstring states
 outright that the fake deliberately violates the installed API contract.
+
+---
+
+## §9 — rulings on `map-m12u3`'s five routed decisions (map DONE, 24/24, validator rc 0)
+
+1. **`any_order=True` also permits DUPLICATE KEYS** (beyond dropping required-key presence and
+   uniqueness). Folded into §6: guided output may carry duplicate object keys, and this repo's
+   msgspec finding is that duplicate keys silently LAST-WIN with no switch. The verifier's strict
+   decode path owns that, not this unit — but no doc may imply guidance prevents it.
+2. **The unmasked-logit count is 271, NOT 256.** MAIN re-derived it directly rather than trusting
+   either report: `len(get_vocab())` = 151665, `max_token_id + 1` = 151665, so xgrammar's default
+   `vocab_size` is 151665 against `config.vocab_size` 151936 ⇒ gap 271. `map-m12u3`'s closing
+   summary said 256 and is FALSIFIED; `.agent/reference.md`'s committed 271 STANDS. Do not
+   propagate 256.
+3. Transitive `torch` + `transformers` import on `import xgrammar` — already recorded, no change.
+4. **`AutoConfig` REJECTED; D2's order stands unchanged.** The proposal was to read `vocab_size`
+   via `AutoConfig` so a grammar-compile failure costs zero model loads, honouring the module's
+   own "faults decidable from metadata cost zero model loads" principle. Rejected because the
+   trade is backwards: it adds a THIRD native entry point, a SECOND vocab-size source that must
+   then be proven to agree with `model.config`, and a second fake — permanent complexity on the
+   SUCCESS path — to save a one-time wasted load on a startup path that aborts immediately. The
+   fault is also near-unreachable in practice: schema FILE faults already precede every model load,
+   so what moves after it is only the compilation of an already-parsed, already-valid schema, and
+   `map-m12u3` measured both real stripped schemas compiling successfully. Record the narrow
+   departure honestly in the docstring — a grammar-compile fault costs one model load — rather than
+   engineering it away.
+5. **Live oracle lands in a NEW `model_backend/guidance_oracle.py`**, sibling to `smoke.py`, same
+   posture: not pytest-collected, lint + type gated, run against `.venv-model`. Not folded into
+   `smoke.py` — that module answers "does the backend serve?" and is the cheap liveness check,
+   while the oracle answers "does the grammar actually enforce, both ways?" and is heavyweight.
+   Bundling would make every smoke run pay for the oracle and blur two different claims.
