@@ -196,3 +196,32 @@ disk in this working tree — read it, do not assume it was committed.
 **Sizing.** D9's fallback split is LIVE: cross 65% before the live oracle script exists ⇒ split into
 M12.3a (guidance + hardware-free suite + gate) and M12.3b (live oracle). Prep cost this unit: one
 full MAIN window, the thirteenth consecutive unit to spend one that way.
+
+---
+
+## §8 — prep rulings on `test-m12u3` phase 1 (12 readings ruled; these BIND the suite)
+
+Full table + evidence: `.scratch/agents/test-m12u3.md`. Where MAIN overruled, the predicate wins
+and the suite is corrected, not chased.
+
+| row | ruling |
+|---|---|
+| P1-01 | Id normalization stays AHEAD of tokenizer-info construction (D2's cheaper-fault precedence). |
+| P1-02 | ONE guidance fault class: every xgrammar setup failure — tokenizer-info build/read/check, compiler construction, schema compile — maps to `BackendError(500, "guidance_unusable")`. Catch `Exception`, never `BaseException`. `compile_json_schema` raises a bare `RuntimeError`, so a narrow catch misses the library's real failure. |
+| P1-03 | Assert the EXACT `compile_json_schema` kwarg mapping: schema positional plus `strict_mode=True` and `any_order=True`, nothing else. An unclaimed `any_whitespace`/`max_whitespace_cnt` change is a silent guidance-strength change. |
+| P1-04 | **ACCEPTED AS NEW SCOPE → predicate G18.** xgrammar's default derives stop ids from the TOKENIZER — §8 R01's defect resurfacing through a different library, with the grammar's termination authority disagreeing with the stopping + classification sets. `stop_token_ids=sorted(eos_ids)` is passed explicitly; witness = the fake tokenizer's disagreeing `eos_token_id`, so omitting the kwarg must FAIL. |
+| P1-05 | **OVERRULED.** Both a plain `list` and `LogitsProcessorList` work today — which is why "does it work" cannot decide it. `LogitsProcessorList` is the DECLARED type throughout `transformers/generation/utils.py:2265,1129,1398`; a bare list works by duck typing the library never promised. Same principle as P1-04's EOS authority: declared beats incidental. |
+| P1-06 | Exact singleton contents by identity. "Reaches `generate`" is not enforcement. |
+| P1-07 | Width check at the EARLIEST decidable seam, before `GrammarCompiler` construction ⇒ a mismatch records zero compiler constructions and zero compile calls. |
+| P1-08 | Parameterize the compile failure over BOTH call positions; the second-call edge is what detects partial-initialization leakage. |
+| P1-09 | Guidance attaches independent of `temperature` — one greedy and one sampled call. G10 carries no temperature exemption. |
+| P1-10 | ONE `TokenizerInfo` and ONE `GrammarCompiler` per load, both ids compiled on that shared compiler; assert both cardinalities. The compiler owns the native compile cache, so per-id compilers would silently change caching. |
+| P1-11 | Literal id order, dataset then formula, matching the pinned schema-load order. |
+| P1-12 | **G14 REWRITTEN — its "ZERO grammar work" was ambiguous.** It is REQUEST-LOCAL, measured as deltas against an ENABLED engine that already compiled at load: over-cap plus a named schema ⇒ 400 `prompt_too_long`, zero processor constructions, zero additional compile calls, zero `generate` calls. The lifetime-totals reading would pass without ever exercising admission ahead of an available grammar. |
+
+**G2b DOWNGRADED** on `rev-m12u3`'s independent A-G2b finding: with the installed API,
+`from_huggingface(..., vocab_size=n)` reports `n`, so G2b's only witness is a fake that VIOLATES the
+real API contract — a guard reachable only by forgery pins forgery mechanics, not contract
+behaviour. The runtime equality guard STAYS implemented (silent, catastrophic failure mode; two
+lines), but its test is named for the guard's presence and refusal SHAPE, and its docstring states
+outright that the fake deliberately violates the installed API contract.
