@@ -297,11 +297,24 @@ outright that the fake deliberately violates the installed API contract.
   falsified by this unit. The ruling now carries only its surviving literal obligation — no torch
   import statement in `engine.py`, tensors opaque — and explicitly retires the rest.
 
-Five MED findings (B-02..B-05, B-08) remain UNREAD by MAIN at the prep close; they are the first
-harvest item of the implementation window, alongside table A's `WEAK`/`UNREACHABLE` verdicts (A-G5
-is already known WEAK: zero `.to()` pins compile-before-transfer only, not grammar-before-EOS
-normalization). `rev-m12u3` shipped NO red tests — its worktree is clean at `e56ec40` with no
-commits — so every finding above is judgment-only and none carries an executable credential.
+All five MEDs are ruled in §11.
+
+**CORRECTION — `rev-m12u3` DID ship red tests, and an earlier claim here that it shipped none was
+FALSE.** `git status --porcelain` on its worktree returned EMPTY, which I read as "no content"; the
+content was COMMITTED, so a clean tree was exactly what a delivering agent looks like. `git log`
+is the deciding evidence, and status alone must never license a prune.
+
+  `wt/rev-m12u3` = `a592b86` "tests (M12.3): contract gaps escaped predicates → bank adversarial
+  checks", one file, `tests/test_rev_m12u3_contract.py`, +321 lines, 3 red on `e56ec40`.
+
+So B-01/B-02/B-03/B-04 each carry an EXECUTABLE credential, not judgment alone. The design is
+independently valuable: each scenario runs in a SUBPROCESS that installs the `transformers` +
+`xgrammar` fakes before importing `model_backend.engine`, so the parent pytest process keeps a
+clean `sys.modules` and the pure-stdlib `schema_guidance` tests are untouched. Its fake sets
+`LogitsProcessorList = list`, so it does NOT pin G13's declared-type requirement — `test-m12u3`'s
+G13 remains the only cover there. Disposition deferred to suite harvest: merge both red suites in
+ONE bank commit, deduplicating any predicate both cover, keeping rev's where its subprocess lens is
+independent. Branch and worktree stay INTACT until then.
 
 ---
 
