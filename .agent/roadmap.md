@@ -177,7 +177,8 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 |---|---|---|---|---|
 | M12.1 | kernel | **DONE** | Runtime lock + settings port. Shipped `model_backend/runtime/{pyproject.toml,uv.lock,snapshot.json,README.md}` · `model_backend/snapshot.py` (4-class verifier, `--verify`/`--write`) · settings defaults → `cuda` + `models/Qwen2.5-Coder-0.5B-Instruct` · root mypy overrides · `tests/test_model_backend_runtime.py` (23 predicates). Record → `.agent/archive/m12.md` | met |
 | M12.2 | kernel | **DONE** | Engine core port, UNGUIDED. Shipped `model_backend/engine.py` (torch/transformers, no torch import) · `model_backend/smoke.py` (live probe) · `owned_by` → `local` · docstrings de-OpenVINO'd · `tests/test_model_backend.py` 92 tests. First live dGPU completion: `tok_s=10.291` on MX150 cc 6.1 fp16. Record → `.agent/archive/m12.md` | met |
-| M12.3 | kernel | IN-PROGRESS (prep banked) | xgrammar guidance + both-ways oracle. Contract RULED + banked → `.agent/m12u3_contract.md` (non-attached; 18 hardware-free predicates `G*`, 7 live-oracle predicates `O*`, 8 invariants, 10 design rulings, session state in its §7). Prep corrections to the planned text are listed below the table. | full gate + oracle rc 0 |
+| M12.3a | kernel | IN-PROGRESS (prep banked) | xgrammar guidance in `engine.py`: compile-at-load per schema id + fresh-processor-per-generate + the loud load-time refusals. Hardware-free suite = predicates `G1`–`G18`. Contract → `.agent/m12u3_contract.md` (non-attached; §7 session state, §8–§10 rulings). | full gate |
+| M12.3b | kernel | OPEN | Live both-ways enforcement oracle, new `model_backend/guidance_oracle.py` (sibling to `smoke.py`, not pytest-collected, lint+type gated, `.venv-model`). Predicates `O1`–`O7`: per-id admitted + refused, selector identity, adversarial, 3/3 greedy determinism, JOINT corner, guided-vs-free cost. | oracle rc 0 on the host of record |
 | M12.4 | kernel | OPEN | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `webui/model_stub.py`, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates — `models.py` `owned_by` already landed at M12.2; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
 | M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
 | M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
@@ -215,15 +216,23 @@ pinned behaviours"):
 - **Claim boundary tightened**: xgrammar silently ignores unsupported JSON-Schema keywords and
   `any_order=True` drops required-key enforcement ⇒ *"the grammar enforces the guidance schema"* is
   FALSE and may not be shipped in any docstring, README line or health-surface description.
-- **Declared FALLBACK split, numeric trigger 65%**: crossing it before the live oracle script exists
-  splits the unit into M12.3a (guidance + hardware-free suite + gate) and M12.3b (live oracle).
+- **SPLIT APPLIED at prep, replacing the 65% fallback trigger MAIN first declared.** `rev-m12u3`
+  B-06 carried it on two grounds MAIN accepted: the sizing rule above already binds — an oracle
+  MAIN must author is its OWN unit, never bundled — so a fallback trigger was hedging a rule that
+  does not bend; and the trigger was self-disabling, because it fired only "before the live oracle
+  script is written", which the first line of that file would have falsified. 65% also leaves only
+  ~23% once M12.1's measured 12% close cost is paid. M12.3a and M12.3b are now separate units.
 
 **Engine rulings still binding after M12.2.**
-1. **`engine.py` imports NO torch.** `dtype=` accepts the string `"float16"`, `generate` is already
-   `@torch.no_grad()`, and `from_pretrained` already returns an eval-mode module ⇒ the sole native
-   import is `transformers`, and the test seam installs one fake, not two. `torch` enters
-   `model_backend/` only through `smoke.py`. **M12.3 must keep this true** — reach xgrammar's
-   processor without pulling torch into the module.
+1. **`engine.py` writes NO `import torch` — and that is now the WHOLE of the rule.** `dtype=`
+   accepts the string `"float16"`, `generate` is already `@torch.no_grad()`, and `from_pretrained`
+   already returns an eval-mode module, so tensors stay opaque. **M12.3 REVERSES the rest of this
+   ruling as originally written**, on measurement: `engine.py` also imports `xgrammar`, so the test
+   seam installs TWO fakes rather than one, and `import xgrammar` ALONE pulls `torch` AND
+   `transformers` into `sys.modules` — so torch no longer enters `model_backend/` through
+   `smoke.py` alone. The surviving obligation is narrow and literal: no torch import statement in
+   `engine.py`, tensors handled only through `.shape`, slicing and `int()`. Do not restate the
+   retired "sole native import" or "one fake, not two" wording.
 2. **EOS/PAD authority is `model.generation_config`, never the tokenizer, and no `eos_token_id`
    reaches `generate`** (§8 R01). The classification set and the stopping set are one value. EOS
    refuses at load (`generation_config_unusable`, 500); PAD degrades to `min(eos_ids)` — EOS drives

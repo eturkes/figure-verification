@@ -256,3 +256,37 @@ outright that the fake deliberately violates the installed API contract.
    `smoke.py` — that module answers "does the backend serve?" and is the cheap liveness check,
    while the oracle answers "does the grammar actually enforce, both ways?" and is heavyweight.
    Bundling would make every smoke run pay for the oracle and blur two different claims.
+
+---
+
+## §10 — `rev-m12u3` HIGH findings (3/3 ACCEPTED; report 37/37, validator rc 0)
+
+- **B-01 ACCEPTED — and it is INDEPENDENT CONFIRMATION of `test-m12u3`'s P1-04.** Two blind roles
+  reached the same defect from opposite directions, which is the council rule's accept condition.
+  Real xgrammar derives `stop_token_ids=[151645]` while `model.generation_config.eos_token_id` is
+  `[151645, 151643]`, so the processor would NARROW the authoritative stop set and could mask model
+  EOS 151643. Already carried as predicate G18; rev sharpens the acceptance check — the recorded
+  call's stop set must be exactly `{151643, 151645}`.
+- **B-06 ACCEPTED — the unit is SPLIT NOW, and D9's 65% fallback trigger is WITHDRAWN.** Two
+  grounds. The roadmap's sizing rule already binds ("an oracle MAIN must author is its OWN unit,
+  never bundled"), so a fallback trigger was hedging a rule that does not bend. And the trigger was
+  SELF-DISABLING: it fired only "before the live oracle script is written", a condition the first
+  line of that file falsifies. 65% also leaves ~23% once M12.1's measured 12% close cost is paid.
+  ⇒ **M12.3a** = guidance + hardware-free suite + full gate. **M12.3b** = the live oracle in a new
+  `model_backend/guidance_oracle.py`. Predicates `G1`–`G18` belong to 12.3a, `O1`–`O7` to 12.3b;
+  the red suite already under construction is entirely 12.3a and is unaffected.
+- **B-07 ACCEPTED IN PART.** Its claim is that the contract knowingly reverses three attached
+  rulings while the roadmap still asserts the stale ones, so a fresh session receives contradictory
+  binding state and may follow the stale authority. Two of the three were already repaired in the
+  roadmap's prep-corrections block (compile module; oracle validating guidance-schema with strict
+  recorded as observation). The THIRD was live and is now fixed: "Engine rulings still binding after
+  M12.2" §1 claimed `transformers` was the sole native import, that the seam installs one fake not
+  two, and that torch enters `model_backend/` only through `smoke.py`. All three clauses are
+  falsified by this unit. The ruling now carries only its surviving literal obligation — no torch
+  import statement in `engine.py`, tensors opaque — and explicitly retires the rest.
+
+Five MED findings (B-02..B-05, B-08) remain UNREAD by MAIN at the prep close; they are the first
+harvest item of the implementation window, alongside table A's `WEAK`/`UNREACHABLE` verdicts (A-G5
+is already known WEAK: zero `.to()` pins compile-before-transfer only, not grammar-before-EOS
+normalization). `rev-m12u3` shipped NO red tests — its worktree is clean at `e56ec40` with no
+commits — so every finding above is judgment-only and none carries an executable credential.
