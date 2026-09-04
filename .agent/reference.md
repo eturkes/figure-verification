@@ -134,6 +134,21 @@ Read BEFORE editing any guidance call site. Cited into
   `apply_token_bitmask_inplace` accepts a WIDER logits tensor silently, touching only its first
   151680 columns. Unmasked = 151936 − 151680 = 256, every one an id ≥ 151680. Any citation of 271
   double-counts the 15 padding bits.
+- **The coupling lives in `model_backend/engine.py` and nowhere else.** Compilation needs the loaded
+  tokenizer AND `model.config.vocab_size`, which exist only inside `Engine.load`. `schema_guidance.py`
+  stays PURE stdlib: `tests/test_model_backend.py` imports it before installing any fake, so a native
+  import there forces a fake onto every pure-JSON test. Shipped shape (M12.3a): `_compile_guidance`
+  builds one grammar per `GuidanceSchemaId` at load, `generate` attaches a FRESH
+  `xgrammar.contrib.hf.LogitsProcessor` per call inside `transformers.LogitsProcessorList` — the
+  declared parameter type, not a bare list — selected by direct subscript on a map total over the
+  closed id set. Load order: schemas → tokenizer → model → id normalization → grammar compile →
+  `.to(device)`. Every preparation fault raises 500 `guidance_unusable`; the vocab-width check sits
+  BETWEEN two `try` blocks so its own refusal cannot be swallowed by the handler around it, and only
+  `Exception` is caught so a `BaseException` still escapes.
+- **Always pass `stop_token_ids=sorted(eos_ids)` from `model.generation_config`.** Omitted, xgrammar
+  derives stop ids from the TOKENIZER — `[151645]` here against the model's `[151645, 151643]` — so
+  the grammar's termination authority would NARROW the stopping criterion's set and could mask an
+  EOS the model relies on.
 - **`compile_json_schema(schema, *, any_whitespace=True, indent=None, separators=None,
   strict_mode=True, max_whitespace_cnt=None, any_order=False)`** (`compiler.py:144-211`). `str` is
   accepted unchanged and is not pre-validated. `strict_mode=True` acts as

@@ -177,8 +177,8 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 |---|---|---|---|---|
 | M12.1 | kernel | **DONE** | Runtime lock + settings port. Shipped `model_backend/runtime/{pyproject.toml,uv.lock,snapshot.json,README.md}` · `model_backend/snapshot.py` (4-class verifier, `--verify`/`--write`) · settings defaults → `cuda` + `models/Qwen2.5-Coder-0.5B-Instruct` · root mypy overrides · `tests/test_model_backend_runtime.py` (23 predicates). Record → `.agent/archive/m12.md` | met |
 | M12.2 | kernel | **DONE** | Engine core port, UNGUIDED. Shipped `model_backend/engine.py` (torch/transformers, no torch import) · `model_backend/smoke.py` (live probe) · `owned_by` → `local` · docstrings de-OpenVINO'd · `tests/test_model_backend.py` 92 tests. First live dGPU completion: `tok_s=10.291` on MX150 cc 6.1 fp16. Record → `.agent/archive/m12.md` | met |
-| M12.3a | kernel | IN-PROGRESS (prep banked) | xgrammar guidance in `engine.py`: compile-at-load per schema id + fresh-processor-per-generate + the loud load-time refusals. Hardware-free suite = predicates `G1`–`G18`. Contract → `.agent/m12u3_contract.md` (non-attached; §7 session state, §8–§10 rulings). | full gate |
-| M12.3b | kernel | OPEN | Live both-ways enforcement oracle, new `model_backend/guidance_oracle.py` (sibling to `smoke.py`, not pytest-collected, lint+type gated, `.venv-model`). Predicates `O1`–`O7`: per-id admitted + refused, selector identity, adversarial, 3/3 greedy determinism, JOINT corner, guided-vs-free cost. | oracle rc 0 on the host of record |
+| M12.3a | kernel | **DONE** | xgrammar guidance restored in `engine.py` (`_compile_guidance` + per-call processor + load-time `guidance_unusable`); `tests/test_m12u3_guidance.py` 20 predicates `G1`–`G18`+`G2b`+`G6b`; `tests/test_rev_m12u3_contract.py` 3 subprocess checks; seam grew the xgrammar fake, P13 deleted. Gate rc 0 ×4, 3013 passed, 100% cov. Record → `.agent/archive/m12.md` | full gate |
+| M12.3b | kernel | OPEN | Live both-ways enforcement oracle, new `model_backend/guidance_oracle.py` (sibling to `smoke.py`, not pytest-collected, lint+type gated, `.venv-model`). Predicates `O1`–`O8` → `.agent/m12u3_contract.md` §3 (non-attached; DELETE at this unit's close). Two carry rulings a fresh session must not re-derive: **O1/O4 validate against the STRIPPED GUIDANCE schema**, with strict validity RECORDED per id, never required — requiring it would assert a claim the project deliberately does not make, and the shipped suite already proves formula guidance admits text strict decode rejects; **O6 credits the joint corner only on ACTUAL `completion_tokens == 512`**, since under guidance an early EOS is the expected outcome. | oracle rc 0 on the host of record |
 | M12.4 | kernel | OPEN | Launcher CUDA arm + code identity + live OWUI loop: `launch.sh` default arm (CUDA preflights — `.venv-model` python + torch-cuda probe; drop `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON`; `--stub` intact); code-identity manifest subset (`src/verifier/service/settings.py`, `webui/settings.py`, `webui/model_stub.py`, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py`) + byte-pin test updates — `models.py` `owned_by` already landed at M12.2; hardware-free launcher tests (default=cuda, refusal-before-traps, `--stub` bypass, teardown, foreign-port non-adoption); LIVE: identity asserts (backend `/v1/models` + verifier health + schema digests) BEFORE browser dataset round-trip; 3 ports closed after | full gate + live round-trip; roadmap flips M10 precondition 2 → MET |
 | M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
 | M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
@@ -191,37 +191,22 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = **LANDED at the
 12.2 close**; interactive real-model OWUI = 12.4 close; M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 + M12.2 DONE (records → `.agent/archive/m12.md`); M12.3 = the active unit,
-prep wave banked, implementation not started; M12.4–M12.9 untouched. The repo LAUNCHES again —
-M12.2 closed the non-launchable window with the project's first live dGPU completion.
+**Unit status.** M12.1 + M12.2 + M12.3a DONE (records → `.agent/archive/m12.md`); M12.3b = the
+active unit, contract already written; M12.4–M12.9 untouched. The repo LAUNCHES again — M12.2
+closed the non-launchable window with the project's first live dGPU completion, and M12.3a restored
+schema guidance on top of it.
 
-**M12.3 prep corrections to the planned row** (the prep wave holds sizing + scope authority; full
-reasoning + evidence in the contract, library mechanics in `.agent/reference.md` "xgrammar 0.2.3
-pinned behaviours"):
-- **Guidance compilation lives in `engine.py`, NOT `schema_guidance.py`.** `import xgrammar` alone
-  pulls torch into `sys.modules`, and the gate suite runs on the root `.venv` which has none of it;
-  `schema_guidance.py` must stay pure stdlib because its pure-JSON tests import it before any fake
-  is installed. Touch set is `engine.py` ALONE unless a no-edit claim is falsified.
-- **A measured silent fail-open drives new scope.** `TokenizerInfo.from_huggingface` defaults
-  `vocab_size` to 151665 against a 151936-wide score tensor and the mask is applied with no width
-  check. The unit therefore passes `vocab_size=model.config.vocab_size` AND verifies the built
-  `TokenizerInfo.vocab_size` equals it, refusing `guidance_unusable` 500 on mismatch.
-- **Guidance faults refuse LOUDLY at load with zero device transfers**; a silent unguided degrade is
-  the defect class the reference register warns about.
-- `LogitsProcessorList([processor])`, never a bare list — the declared transformers type.
-- **Oracle predicate (a) is CORRECTED**: guided output must validate against the STRIPPED GUIDANCE
-  schema it was compiled from; strict-schema validity is RECORDED per id, not required. Requiring it
-  would assert a claim the project deliberately does not make, and the shipped suite already proves
-  formula guidance admits text strict decode rejects.
-- **Claim boundary tightened**: xgrammar silently ignores unsupported JSON-Schema keywords and
-  `any_order=True` drops required-key enforcement ⇒ *"the grammar enforces the guidance schema"* is
-  FALSE and may not be shipped in any docstring, README line or health-surface description.
-- **SPLIT APPLIED at prep, replacing the 65% fallback trigger MAIN first declared.** `rev-m12u3`
-  B-06 carried it on two grounds MAIN accepted: the sizing rule above already binds — an oracle
-  MAIN must author is its OWN unit, never bundled — so a fallback trigger was hedging a rule that
-  does not bend; and the trigger was self-disabling, because it fired only "before the live oracle
-  script is written", which the first line of that file would have falsified. 65% also leaves only
-  ~23% once M12.1's measured 12% close cost is paid. M12.3a and M12.3b are now separate units.
+**Guidance claim boundary — binds every surface, forever, not just guidance code.** *"The grammar
+enforces the guidance schema"* is FALSE and may not be shipped in any docstring, README line,
+health-surface description, commit body or report. xgrammar silently ignores JSON-Schema keywords
+it does not support, and `any_order=True` additionally drops required-key presence, uniqueness and
+duplicate-key rejection. The shippable claim is: *the grammar constrains generation TOWARD the
+guidance schema; what it actually enforces is evidenced by the named live-oracle witnesses, and
+strict verifier re-decode remains the sole authority on admission.* Never credit "the subset
+xgrammar supports" either — that reads as exhaustive coverage of a delimited keyword set, while the
+evidence is a handful of named witnesses. This is attached rather than filed under the guidance
+trigger because a session writing a README or a health surface does not know it is touching
+guidance. Mechanics → `.agent/reference.md` "xgrammar 0.2.3 pinned behaviours".
 
 **Engine rulings still binding after M12.2.**
 1. **`engine.py` writes NO `import torch` — and that is now the WHOLE of the rule.** `dtype=`
@@ -237,13 +222,16 @@ pinned behaviours"):
    reaches `generate`** (§8 R01). The classification set and the stopping set are one value. EOS
    refuses at load (`generation_config_unusable`, 500); PAD degrades to `min(eos_ids)` — EOS drives
    classification AND stopping, PAD only fills positions a single unpadded sequence never reaches.
-3. **Guidance refusal fires AFTER admission, at the former application site.** M12.3 restores
-   guidance at that same point, so a request's wire outcome stays identical across the two units.
-   Measured live at the M12.2 close: over-cap + guided → 400 `prompt_too_long`, never the guidance
-   fault. Refusing first would silently flip that request from 502 to 422 the moment M12.3 lands.
-4. **D6's KNOWN-BROKEN window is OPEN until M12.3**: every named `guided_schema` answers 500
-   `guidance_unavailable`, so the verifier's guided proposer route answers 502. Confirmed live for
-   both ids. Expected, not a regression — M12.3 closes it.
+3. **ADMISSION PRECEDES GUIDANCE, at the same site the M12.2 build refused from.** An over-cap
+   prompt naming a schema answers 400 `prompt_too_long` with zero processor constructions and zero
+   `generate` calls — never a guidance fault. Measured live at the M12.2 close and pinned by G14.
+   Guiding first would silently reclassify that request from a 422 policy refusal to a 502.
+4. **D6's KNOWN-BROKEN window is CLOSED (M12.3a).** A named `guided_schema` now attaches that id's
+   compiled grammar; naming one while `structured_output` is disabled generates UNGUIDED and does
+   NOT raise, which is the shipped best-effort wire contract (`models.py:59`). `guidance_unavailable`
+   no longer exists anywhere in the tree. Guidance faults refuse LOUDLY at LOAD instead — one
+   surface, 500 `guidance_unusable`, with zero device transfers — because a silent unguided degrade
+   is the fail-open class the reference register warns about.
 
 **Prep-wave budgeting (M12.1 + M12.2 measurements; binds every remaining unit).** A prep wave is its
 OWN window — twelve consecutive units have split that way, MAIN spending a full window on contract

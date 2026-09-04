@@ -1,10 +1,13 @@
-# M12.3 acceptance contract (prep-ruled; NON-attached, delete at unit close)
+# M12.3b acceptance contract (NON-attached; DELETE at the M12.3b close)
 
-Unit: restore schema-guided decoding to `model_backend` on the torch/transformers engine using
-xgrammar 0.2.3, plus a live both-ways enforcement oracle. Tier `kernel`.
+M12.3a is SHIPPED and its predicates `G1`-`G18` + `G2b` + `G6b` live in `tests/test_m12u3_guidance.py`
+and `tests/test_rev_m12u3_contract.py`. What remains here is the LIVE ORACLE unit: predicates
+`O1`-`O8` in §3, run on the host of record against `.venv-model`, gate = oracle rc 0.
 
-Status legend: `RULED` = MAIN has decided, downstream artifacts decide against it. `OPEN(map)` =
-waiting on `map-m12u3` evidence. Every predicate id below is stable; test names cite it.
+Read §0 (measured API facts), §3's oracle rows, §6 (claim boundary) and §7 (session state). §1's
+invariant surfaces and §2's design rulings are retained because the oracle must not silently
+contradict shipped behaviour, but they are now DESCRIPTIONS of the shipped engine rather than
+instructions - `model_backend/engine.py` is the authority wherever the two disagree.
 
 ---
 
@@ -177,174 +180,37 @@ are its only coverage.
 
 ---
 
-## §7 — session state (read FIRST on resume; the prep window closed here)
+## §7 — session state (read FIRST on resume)
 
-MODE = WORK-UNIT, unit M12.3, prep wave BANKED, implementation NOT started.
+MODE = WORK-UNIT, unit **M12.3b**. M12.3a is DONE and SHIPPED at `4c2b9ef`; every prep teammate is
+harvested, stopped, and its worktree and `wt/` branch removed. Nothing is in flight.
 
-**Where things stand.** MAIN's prep window closed at 79% with the contract ruled and three
-teammates still running. `.scratch/` is gitignored, so every teammate report below survives only on
-disk in this working tree — read it, do not assume it was committed.
+**What M12.3b builds.** `model_backend/guidance_oracle.py` — a sibling to `smoke.py`: NOT
+pytest-collected, still lint- and type-gated, run by MAIN on the host of record against
+`.venv-model` (py3.12, torch 2.7.1+cu126 / transformers 5.16.1 / xgrammar 0.2.3, MX150 cc 6.1
+fp16, ~1.95 GiB VRAM). Gate = oracle rc 0. Predicates `O1`-`O8` in §3.
 
-**Next actions, in order.**
-1. Poll + harvest the three prep teammates. Validators:
-   `python3 .scratch/validate_{map,test,rev}_m12u3.py`; reports at `.scratch/agents/<name>.md`;
-   gauges via `context-gauge <name>`. Roster at `.scratch/agents/roster.md`.
-2. `test-m12u3` is PHASE 1 and is WAITING on MAIN. Batch-rule its P1 table, then `SendMessage` the
-   rulings so it writes the suite into `wt/test-m12u3`'s `tests/test_m12u3_guidance.py` (seed
-   commit `827784a`, 18 stubs). Relay G13's ruling with them — its brief still called G13 OPEN.
-3. Harvest `rev-m12u3`'s findings; accept/reject each; its red tests live on `wt/rev-m12u3`.
-4. Implement in the primary tree against the delivered red suite. Touch set is `model_backend/engine.py`
-   ALONE unless §1's no-edit claims are falsified by evidence.
-5. Close order per `session-roadmap.md`: per-worktree `git status --porcelain` in its OWN call BEFORE
-   pruning (a stopped agent's last commit may never have executed), then remove worktrees + `wt/`
-   branches, then the decisive gate rerun, then commit.
+**Start here.**
+1. Read `model_backend/engine.py` `_compile_guidance` + the `generate` apply site. The oracle
+   drives the SHIPPED engine, never a re-implementation of it.
+2. Read `model_backend/smoke.py` — it is the working precedent for a `.venv-model` entry point,
+   including how it is excluded from collection and still passes `ruff` and `mypy`.
+3. O8 is the cheapest and is already written: `.scratch/probe_mask_width.py` is the throwaway MAIN
+   used to measure 256. Port it, do not re-derive it - the point of O8 is that the number stops
+   living in a scratch file.
+4. O2 needs the matcher API that decides accept/reject for a concrete string
+   (`GrammarMatcher.accept_string`) - confirm the exact spelling against the installed bytes before
+   building predicates on it.
 
-**Accepted-but-unimplemented rulings** = every row of §1 and §2 above, plus §0's G13 ruling.
+**Live-stack binder.** `.venv-model` and the dGPU are single-holder resources; no other wave may
+hold them concurrently.
 
-**Sizing.** D9's fallback split is LIVE: cross 65% before the live oracle script exists ⇒ split into
-M12.3a (guidance + hardware-free suite + gate) and M12.3b (live oracle). Prep cost this unit: one
-full MAIN window, the thirteenth consecutive unit to spend one that way.
+**Sizing.** M12.3a spent one full prep window plus one implementation window. M12.3b is a single
+new file with no test-suite fan-out, so a prep wave is likely unnecessary — but every predicate
+here is measured on hardware, and hardware measurement is the cost driver, not the code.
 
----
+## §8–§11 — REMOVED at the M12.3a close
 
-## §8 — prep rulings on `test-m12u3` phase 1 (12 readings ruled; these BIND the suite)
-
-Full table + evidence: `.scratch/agents/test-m12u3.md`. Where MAIN overruled, the predicate wins
-and the suite is corrected, not chased.
-
-| row | ruling |
-|---|---|
-| P1-01 | Id normalization stays AHEAD of tokenizer-info construction (D2's cheaper-fault precedence). |
-| P1-02 | ONE guidance fault class: every xgrammar setup failure — tokenizer-info build/read/check, compiler construction, schema compile — maps to `BackendError(500, "guidance_unusable")`. Catch `Exception`, never `BaseException`. `compile_json_schema` raises a bare `RuntimeError`, so a narrow catch misses the library's real failure. |
-| P1-03 | Assert the EXACT `compile_json_schema` kwarg mapping: schema positional plus `strict_mode=True` and `any_order=True`, nothing else. An unclaimed `any_whitespace`/`max_whitespace_cnt` change is a silent guidance-strength change. |
-| P1-04 | **ACCEPTED AS NEW SCOPE → predicate G18.** xgrammar's default derives stop ids from the TOKENIZER — §8 R01's defect resurfacing through a different library, with the grammar's termination authority disagreeing with the stopping + classification sets. `stop_token_ids=sorted(eos_ids)` is passed explicitly; witness = the fake tokenizer's disagreeing `eos_token_id`, so omitting the kwarg must FAIL. |
-| P1-05 | **OVERRULED.** Both a plain `list` and `LogitsProcessorList` work today — which is why "does it work" cannot decide it. `LogitsProcessorList` is the DECLARED type throughout `transformers/generation/utils.py:2265,1129,1398`; a bare list works by duck typing the library never promised. Same principle as P1-04's EOS authority: declared beats incidental. |
-| P1-06 | Exact singleton contents by identity. "Reaches `generate`" is not enforcement. |
-| P1-07 | Width check at the EARLIEST decidable seam, before `GrammarCompiler` construction ⇒ a mismatch records zero compiler constructions and zero compile calls. |
-| P1-08 | Parameterize the compile failure over BOTH call positions; the second-call edge is what detects partial-initialization leakage. |
-| P1-09 | Guidance attaches independent of `temperature` — one greedy and one sampled call. G10 carries no temperature exemption. |
-| P1-10 | ONE `TokenizerInfo` and ONE `GrammarCompiler` per load, both ids compiled on that shared compiler; assert both cardinalities. The compiler owns the native compile cache, so per-id compilers would silently change caching. |
-| P1-11 | Literal id order, dataset then formula, matching the pinned schema-load order. |
-| P1-12 | **G14 REWRITTEN — its "ZERO grammar work" was ambiguous.** It is REQUEST-LOCAL, measured as deltas against an ENABLED engine that already compiled at load: over-cap plus a named schema ⇒ 400 `prompt_too_long`, zero processor constructions, zero additional compile calls, zero `generate` calls. The lifetime-totals reading would pass without ever exercising admission ahead of an available grammar. |
-
-**G2b DOWNGRADED** on `rev-m12u3`'s independent A-G2b finding: with the installed API,
-`from_huggingface(..., vocab_size=n)` reports `n`, so G2b's only witness is a fake that VIOLATES the
-real API contract — a guard reachable only by forgery pins forgery mechanics, not contract
-behaviour. The runtime equality guard STAYS implemented (silent, catastrophic failure mode; two
-lines), but its test is named for the guard's presence and refusal SHAPE, and its docstring states
-outright that the fake deliberately violates the installed API contract.
-
----
-
-## §9 — rulings on `map-m12u3`'s five routed decisions (map DONE, 24/24, validator rc 0)
-
-1. **`any_order=True` also permits DUPLICATE KEYS** (beyond dropping required-key presence and
-   uniqueness). Folded into §6: guided output may carry duplicate object keys, and this repo's
-   msgspec finding is that duplicate keys silently LAST-WIN with no switch. The verifier's strict
-   decode path owns that, not this unit — but no doc may imply guidance prevents it.
-2. **The unmasked-logit count is 256. `map-m12u3` was RIGHT and MAIN's earlier 271 is WITHDRAWN.**
-   271 is the naive vocab difference (151936 − 151665) and it OVERCOUNTS by exactly the 15 bitmask
-   padding bits. Measured on the installed library: the bitmask is int32-packed, so 151665 bits
-   round UP to 4740 words = **151680** describable positions, `fill_next_token_bitmask` writes the
-   15 padding bits 151665–151679 as DENIED, and `apply_token_bitmask_inplace` accepts a WIDER
-   logits tensor without complaint, touching only its first 151680 columns. Unmasked = 151936 −
-   151680 = **256**, all of them ids ≥ 151680. Probe (`.scratch/probe_mask_width.py`, `.venv-model`)
-   printed `finite=262` = 6 grammar-allowed tokens + 0 padding + 256 beyond the mask. Ported to
-   M12.3b as predicate **O8** so the number reruns from committed state. Do not propagate 271.
-3. Transitive `torch` + `transformers` import on `import xgrammar` — already recorded, no change.
-4. **`AutoConfig` REJECTED; D2's order stands unchanged.** The proposal was to read `vocab_size`
-   via `AutoConfig` so a grammar-compile failure costs zero model loads, honouring the module's
-   own "faults decidable from metadata cost zero model loads" principle. Rejected because the
-   trade is backwards: it adds a THIRD native entry point, a SECOND vocab-size source that must
-   then be proven to agree with `model.config`, and a second fake — permanent complexity on the
-   SUCCESS path — to save a one-time wasted load on a startup path that aborts immediately. The
-   fault is also near-unreachable in practice: schema FILE faults already precede every model load,
-   so what moves after it is only the compilation of an already-parsed, already-valid schema, and
-   `map-m12u3` measured both real stripped schemas compiling successfully. Record the narrow
-   departure honestly in the docstring — a grammar-compile fault costs one model load — rather than
-   engineering it away.
-5. **Live oracle lands in a NEW `model_backend/guidance_oracle.py`**, sibling to `smoke.py`, same
-   posture: not pytest-collected, lint + type gated, run against `.venv-model`. Not folded into
-   `smoke.py` — that module answers "does the backend serve?" and is the cheap liveness check,
-   while the oracle answers "does the grammar actually enforce, both ways?" and is heavyweight.
-   Bundling would make every smoke run pay for the oracle and blur two different claims.
-
----
-
-## §10 — `rev-m12u3` HIGH findings (3/3 ACCEPTED; report 37/37, validator rc 0)
-
-- **B-01 ACCEPTED — and it is INDEPENDENT CONFIRMATION of `test-m12u3`'s P1-04.** Two blind roles
-  reached the same defect from opposite directions, which is the council rule's accept condition.
-  Real xgrammar derives `stop_token_ids=[151645]` while `model.generation_config.eos_token_id` is
-  `[151645, 151643]`, so the processor would NARROW the authoritative stop set and could mask model
-  EOS 151643. Already carried as predicate G18; rev sharpens the acceptance check — the recorded
-  call's stop set must be exactly `{151643, 151645}`.
-- **B-06 ACCEPTED — the unit is SPLIT NOW, and D9's 65% fallback trigger is WITHDRAWN.** Two
-  grounds. The roadmap's sizing rule already binds ("an oracle MAIN must author is its OWN unit,
-  never bundled"), so a fallback trigger was hedging a rule that does not bend. And the trigger was
-  SELF-DISABLING: it fired only "before the live oracle script is written", a condition the first
-  line of that file falsifies. 65% also leaves ~23% once M12.1's measured 12% close cost is paid.
-  ⇒ **M12.3a** = guidance + hardware-free suite + full gate. **M12.3b** = the live oracle in a new
-  `model_backend/guidance_oracle.py`. Predicates `G1`–`G18` belong to 12.3a, `O1`–`O7` to 12.3b;
-  the red suite already under construction is entirely 12.3a and is unaffected.
-- **B-07 ACCEPTED IN PART.** Its claim is that the contract knowingly reverses three attached
-  rulings while the roadmap still asserts the stale ones, so a fresh session receives contradictory
-  binding state and may follow the stale authority. Two of the three were already repaired in the
-  roadmap's prep-corrections block (compile module; oracle validating guidance-schema with strict
-  recorded as observation). The THIRD was live and is now fixed: "Engine rulings still binding after
-  M12.2" §1 claimed `transformers` was the sole native import, that the seam installs one fake not
-  two, and that torch enters `model_backend/` only through `smoke.py`. All three clauses are
-  falsified by this unit. The ruling now carries only its surviving literal obligation — no torch
-  import statement in `engine.py`, tensors opaque — and explicitly retires the rest.
-
-All five MEDs are ruled in §11.
-
-**CORRECTION — `rev-m12u3` DID ship red tests, and an earlier claim here that it shipped none was
-FALSE.** `git status --porcelain` on its worktree returned EMPTY, which I read as "no content"; the
-content was COMMITTED, so a clean tree was exactly what a delivering agent looks like. `git log`
-is the deciding evidence, and status alone must never license a prune.
-
-  `wt/rev-m12u3` = `a592b86` "tests (M12.3): contract gaps escaped predicates → bank adversarial
-  checks", one file, `tests/test_rev_m12u3_contract.py`, +321 lines, 3 red on `e56ec40`.
-
-So B-01/B-02/B-03/B-04 each carry an EXECUTABLE credential, not judgment alone. The design is
-independently valuable: each scenario runs in a SUBPROCESS that installs the `transformers` +
-`xgrammar` fakes before importing `model_backend.engine`, so the parent pytest process keeps a
-clean `sys.modules` and the pure-stdlib `schema_guidance` tests are untouched. Its fake sets
-`LogitsProcessorList = list`, so it does NOT pin G13's declared-type requirement — `test-m12u3`'s
-G13 remains the only cover there. Disposition deferred to suite harvest: merge both red suites in
-ONE bank commit, deduplicating any predicate both cover, keeping rev's where its subprocess lens is
-independent. Branch and worktree stay INTACT until then.
-
----
-
-## §11 — `rev-m12u3` MED findings + table-A verdicts (all 5 MEDs ACCEPTED; prep wave CLOSED)
-
-- **B-02 → G5 amended + G6b ADDED.** `to_calls == []` cannot distinguish "ids normalized first" from
-  "grammar ran first and the transfer never happened"; call counts can. Unusable id metadata now
-  costs ZERO `TokenizerInfo`/`GrammarCompiler`/`compile_json_schema` calls, and a `GrammarCompiler`
-  CONSTRUCTOR fault gets G5's assertion so it cannot escape as a bare exception.
-- **B-03 → G9 + G14 gained a `structured_output=True` precondition. The sharpest MED.** Both rows
-  were satisfiable by the SHIPPED disabled-state helpers, so both would have gone green with enabled
-  guidance wholly broken — table A independently rated both `VACUOUS`. A vacuous predicate in a red
-  suite is worse than a missing one: it retires the risk on paper.
-- **B-04 → G15 asserts hand-stated VALUES.** Key-set equality lets `do_sample`, the token cap or PAD
-  authority drift under guidance alone while every assertion passes.
-- **B-05 → O6 credits the corner only on ACTUAL `completion_tokens == 512`** (M12.3b). Under
-  guidance an early EOS is the EXPECTED outcome, so the unamended row would have been reported as a
-  pass after allocating a tiny suffix. Companion unguided `min_new_tokens=512` run carries the
-  allocation envelope; `min_new_tokens` is never used under guidance.
-- **B-08 → §6 drops "the subset xgrammar supports"; O4 defines "in-schema"** as stripped-guidance
-  validity with strict recorded as observation (M12.3b).
-
-Table-A dispositions beyond the B rows: `A-G2b UNREACHABLE` was already ruled (G2b reachable only
-through an API-violating fake, kept as a documented-fake pin, not credited as library behaviour).
-`A-O7 WEAK` folded into O7's amended method line. **`A-G13 MISPLACED` is OVERRULED and the dissent
-is recorded**: rev and `test-m12u3` P1-05 both argue transformers accepts a plain `list`, so the
-exact-type assertion buys no behavioral difference. Correct, and the ruling stands anyway — G13
-pins CONFORMANCE to `generate`'s DECLARED parameter type, which duck-typing tolerance does not make
-optional. G13's claim is therefore "the caller matches the declared API type", never "a plain list
-would misbehave".
-
-**Prep wave closes here.** Predicate set is FROZEN at G1–G18 + G2b + G6b (M12.3a) and O1–O8
-(M12.3b). Implementation reads §§1–3 as amended; §§8–11 are the ruling history behind them.
+Prep ruling history (12 `test-m12u3` readings, `map-m12u3`'s five routed decisions, `rev-m12u3`'s
+3 HIGH + 5 MED findings). Every one of them is now encoded in the shipped suite or in shipped code.
+Read them only for provenance: `.agent/archive/m12.md` "M12.3a", or `git log e56ec40..4c2b9ef`.
