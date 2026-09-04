@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Derive structure-only OpenVINO xgrammar guidance from the strict VPlot schema.
+"""Derive structure-only xgrammar guidance from the strict VPlot schema.
 
 xgrammar rejects the schema's negative-lookahead ``pattern`` values and ignores
 ``minLength``/``maxLength``/``format`` when a pattern is present. Guidance therefore strips only

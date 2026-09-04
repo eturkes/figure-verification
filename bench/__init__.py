@@ -10,7 +10,7 @@ be conflated:
   goldens (bad_corpus_false_accept_count == 0) AND accepts all 10 good ones
   (good_corpus_false_reject_count == 0). Either non-zero is a real regression.
 
-  OBSERVATIONS (statistical) -- rates that characterize the weak NPU proposer (tool-call,
+  OBSERVATIONS (statistical) -- rates that characterize the weak local proposer (tool-call,
   json-validity, schema/semantic/policy failure, verified-render) plus its top failing checks.
   These do NOT bound the verifier; a weak model failing most prompts is the expected outcome.
 

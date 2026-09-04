@@ -163,7 +163,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert str(request.url) == "http://127.0.0.1:8001/v1/chat/completions"
     sent = json.loads(request.content)
     assert request.headers["accept-encoding"] == "identity"
-    assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
+    assert sent["model"] == "Qwen2.5-Coder-0.5B-Instruct"
     assert sent["temperature"] == 0
     assert sent["max_tokens"] == 512
     assert sent["guided_schema"] == "vplot-0.1"
@@ -221,7 +221,7 @@ def test_propose_spec_happy(monkeypatch: pytest.MonkeyPatch) -> None:
     # client now builds once, traces request.content, and sends that exact request object.
     old_wire_body = json.dumps(
         {
-            "model": "Qwen2-0.5B-Instruct-int4-sym-ov",
+            "model": "Qwen2.5-Coder-0.5B-Instruct",
             "messages": [system, user],
             "temperature": 0,
             "max_tokens": 512,
@@ -798,7 +798,7 @@ def test_propose_formula_sends_the_formula_prompt_and_names_the_formula_schema(
     request = captured["request"]
     sent = json.loads(request.content)
     assert str(request.url) == "http://127.0.0.1:8001/v1/chat/completions"
-    assert sent["model"] == "Qwen2-0.5B-Instruct-int4-sym-ov"
+    assert sent["model"] == "Qwen2.5-Coder-0.5B-Instruct"
     assert sent["temperature"] == 0
     assert sent["max_tokens"] == 512
     # The whole point of the unit: a formula request names the FORMULA schema. Naming the dataset
@@ -823,7 +823,7 @@ def test_propose_formula_sends_the_formula_prompt_and_names_the_formula_schema(
 
     old_wire_body = json.dumps(
         {
-            "model": "Qwen2-0.5B-Instruct-int4-sym-ov",
+            "model": "Qwen2.5-Coder-0.5B-Instruct",
             "messages": [system, user],
             "temperature": 0,
             "max_tokens": 512,

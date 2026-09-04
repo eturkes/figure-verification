@@ -22,8 +22,8 @@ this post-chart turn. A crafted user message echoing the exact summary would als
 in this demo backend, since the verifier re-decodes and re-verifies every real proposal regardless.
 
 VERIFIED_CHART_REPLY is the single source of truth shared with the hardware-free E2E stub
-(webui/model_stub.py adopts it as its final-summary reply), so the live NPU backend and the scripted
-stub close the verified-plot demo with the identical line.
+(webui/model_stub.py adopts it as its final-summary reply), so the live dGPU backend and the
+scripted stub close the verified-plot demo with the identical line.
 """
 
 import re

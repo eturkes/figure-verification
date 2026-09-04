@@ -53,7 +53,7 @@ _DEFAULT_ADMIN_EMAIL = "operator@localhost"
 _DEFAULT_ADMIN_PASSWORD = "loopback-dev-password"  # noqa: S105
 _DEFAULT_VERIFIER_URL = "http://127.0.0.1:8000"
 _DEFAULT_MODEL_BACKEND_URL = "http://127.0.0.1:8001/v1"
-_DEFAULT_MODEL_ID = "Qwen2-0.5B-Instruct-int4-sym-ov"
+_DEFAULT_MODEL_ID = "Qwen2.5-Coder-0.5B-Instruct"
 _DEFAULT_WEBUI_BIN = ".venv-webui/bin/open-webui"
 # request_timeout bounds each provisioning REST call; ready_timeout bounds the /ready poll for a
 # cold OWUI boot (~7-10s here, so 60s leaves wide headroom).

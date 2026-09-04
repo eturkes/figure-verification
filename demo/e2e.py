@@ -124,7 +124,7 @@ _MODEL_PROMPTS = (
 )
 _ATTEMPT_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 _AUDIT_TIMEOUT_S = 20.0
-# Live NPU greedy decode per propose can take many seconds (cold-shape recompile plus
+# Live dGPU greedy decode per propose can take many seconds (cold weight load plus
 # per-token latency), far exceeding the hardware-free hang-guard used for local GETs.
 _MODEL_REQUEST_TIMEOUT_S = 180.0
 

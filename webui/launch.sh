@@ -8,15 +8,15 @@
 #
 #     verifier (:8000)  ->  model tier (:8001)  ->  Open WebUI (:8080)
 #
-# The model tier is EITHER the real local OpenVINO model_backend (default; hardware-gated;
-# device NPU per .agent/archive/m3.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
+# The model tier is EITHER the real local model_backend (default; hardware-gated; CUDA dGPU per
+# model_backend/runtime/README.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
 # its function runner, the iframe/browser, and pixels stay trusted display/orchestration -- the
 # verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB).
 # This launcher is orchestration only; every service, provisioning step, and the chart/embed
 # contract already exists (model_backend, webui/, the verifier, persisted chat + demo).
 #
 # Run from the repository root:
-#     webui/launch.sh            # real local model on the NPU
+#     webui/launch.sh            # real local model on the dGPU
 #     webui/launch.sh --stub     # deterministic, hardware-free
 #     webui/launch.sh --fresh    # wipe the persisted Open WebUI instance first
 #
@@ -32,7 +32,7 @@ Usage:
 
 Options:
   --stub      Use the deterministic hardware-free model stub. The stub replaces the real
-              local OpenVINO model_backend. The stub needs no NPU and no accel farm.
+              local model_backend. The stub needs no GPU and no model weights.
   --fresh     Wipe the persisted Open WebUI instance (.webui-data) first.
   -h, --help  Show this help and exit.
 
@@ -61,11 +61,11 @@ WEBUI_PROVISION_WEBUI_BIN="${WEBUI_PROVISION_WEBUI_BIN:-.venv-webui/bin/open-web
 WEBUI_PROVISION_VERIFIER_URL="${WEBUI_PROVISION_VERIFIER_URL:-http://${HEALTH_HOST}:${VERIFIER_PORT}}"
 WEBUI_PROVISION_MODEL_BACKEND_URL="${WEBUI_PROVISION_MODEL_BACKEND_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
 VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
-# Real-model device preference (.agent/archive/m3.md: NPU>GPU>CPU) and the host-coupled accel farm
-# (bench/README "OpenVINO wiring"): sourced + prepended ONLY for the real model_backend child.
-MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-NPU}"
-INTEL_ACCEL_ENV="${INTEL_ACCEL_ENV:-/var/home/eturkes/.local/app/intel-accel/env.sh}"
-OPENVINO_GENAI_PYTHON="${OPENVINO_GENAI_PYTHON:-/var/home/eturkes/.local/app/openvino_genai/python}"
+# Real-model device + its interpreter. The backend venv is a SEPARATE uv project
+# (model_backend/runtime) carrying the CUDA torch stack, so the real arm runs on its own python and
+# never through `uv run`, which resolves the container venv. `-m model_backend` resolves the package
+# from the repository root, so no PYTHONPATH is prepended.
+MODEL_BACKEND_DEVICE="${MODEL_BACKEND_DEVICE:-cuda}"
 MODEL_BACKEND_PYTHON="${MODEL_BACKEND_PYTHON:-.venv-model/bin/python}"
 # Per-service logs (*.log + launch.pid; the dir is gitignored).
 LOG_DIR="${LAUNCH_LOG_DIR:-.launch-logs}"
@@ -194,9 +194,14 @@ done
 [[ -d "$UV_PROJECT_ENVIRONMENT" ]] || die "project venv ${UV_PROJECT_ENVIRONMENT} missing -- run: uv sync --locked"
 [[ -x "$WEBUI_PROVISION_WEBUI_BIN" ]] || die "${WEBUI_PROVISION_WEBUI_BIN} missing -- see webui/README.md one-time setup"
 if (( ! USE_STUB )); then
-  [[ -x "$MODEL_BACKEND_PYTHON" ]] || die "${MODEL_BACKEND_PYTHON} missing -- see bench/README.md (or run --stub)"
-  [[ -f "$INTEL_ACCEL_ENV" ]] || die "accel env not found: ${INTEL_ACCEL_ENV} (set INTEL_ACCEL_ENV, or run with --stub)"
-  [[ -d "$OPENVINO_GENAI_PYTHON" ]] || die "OpenVINO GenAI python dir not found: ${OPENVINO_GENAI_PYTHON} (set OPENVINO_GENAI_PYTHON, or run with --stub)"
+  [[ -x "$MODEL_BACKEND_PYTHON" ]] || die "${MODEL_BACKEND_PYTHON} missing -- rebuild it with: uv sync --locked --project model_backend/runtime (or run with --stub)"
+  # Fail here rather than 180s later in the readiness poll: a backend that cannot reach the dGPU
+  # still binds :8001 and then answers every completion 500. Capturing the probe keeps stdout clean
+  # on success while the failure text (ModuleNotFoundError vs the assertion) names WHICH half broke.
+  if ! cuda_probe=$("$MODEL_BACKEND_PYTHON" -c 'import torch; assert torch.cuda.is_available(), "torch reports no CUDA device"; print(torch.cuda.get_device_name(0))' 2>&1); then
+    die "CUDA preflight failed via ${MODEL_BACKEND_PYTHON}: ${cuda_probe##*$'\n'} (rebuild: uv sync --locked --project model_backend/runtime, or run with --stub)"
+  fi
+  log "CUDA preflight ok: ${cuda_probe}"
 fi
 
 # Refuse to start if a target port is already taken: keeps the readiness poll from adopting a
@@ -224,15 +229,11 @@ start_bg verifier "${LOG_DIR}/verifier.log" uv run --locked python -m verifier.s
 wait_http verifier "http://${HEALTH_HOST}:${VERIFIER_PORT}/health" "$VERIFIER_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/verifier.log" \
   || die "verifier did not become ready"
 
-# 2) model tier -- deterministic stub XOR the real accel-backed model_backend
+# 2) model tier -- deterministic stub XOR the real dGPU-backed model_backend
 if (( USE_STUB )); then
   start_bg model "${LOG_DIR}/model.log" uv run --locked python -m webui stub
 else
-  # The single-quoted child script intentionally expands only inside the child bash.
-  # shellcheck disable=SC2016
-  start_bg model "${LOG_DIR}/model.log" \
-    bash -c 'source "$1"; export PYTHONPATH="$2${PYTHONPATH:+:$PYTHONPATH}"; exec "$3" -m model_backend' \
-    _accel "$INTEL_ACCEL_ENV" "$OPENVINO_GENAI_PYTHON" "$MODEL_BACKEND_PYTHON"
+  start_bg model "${LOG_DIR}/model.log" "$MODEL_BACKEND_PYTHON" -m model_backend
 fi
 wait_http model "http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1/models" "$MODEL_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/model.log" \
   || die "model tier did not become ready"
@@ -266,7 +267,7 @@ if (( USE_STUB )); then
     "           demo figure. The stub cannot show the blocked path. To see a blocked chart," \
     "           start this script again without --stub."
 else
-  model_desc="real local model on ${MODEL_BACKEND_DEVICE}"
+  model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
     "    Type these prompts:" \
     "      1) ${succeeds_prompt}" \

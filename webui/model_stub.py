@@ -2,14 +2,14 @@
 """Hardware-free OpenAI /v1 stub — provisioning stand-in + scripted E2E fixture.
 
 The three-service smoke needs an OpenAI-compatible backend on :8001, but the live model_backend is
-NPU-gated (OpenVINO resolves via PYTHONPATH, the intel-accel env sourced). This stub serves the two
+dGPU-gated (torch CUDA + model weights, in its own .venv-model runtime). This stub serves the two
 routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it into /api/models)
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
-structs only, no openvino import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
+structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
 prompt-classified (see _scripted_reply): exact legacy tool selection -> one known-good VPlot -> a
 lean final summary. This makes tool execution, Location embed persistence, and browser rendering
-deterministically testable after the NPU model's reliability is measured separately.
+deterministically testable after the real model's reliability is measured separately.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,

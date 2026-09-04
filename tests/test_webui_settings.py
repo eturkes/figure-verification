@@ -25,7 +25,16 @@ from pathlib import Path
 
 import pytest
 
+from model_backend.settings import _DEFAULT_MODEL_NAME as _BACKEND_MODEL_NAME
+from verifier.service.settings import _DEFAULT_MODEL_NAME as _VERIFIER_MODEL_NAME
 from webui.settings import _FIXED_ENV, Settings
+
+# The three-tier model identity. model_backend SERVES this name on /v1/models; webui SELECTS it as
+# OWUI's completion model; the verifier SENDS it as the `model` field of /propose-spec. Only the
+# first pair is launch-blocking (the backend decodes `model` and then ignores it), but a divergent
+# verifier default is a latent trap the day any backend starts validating it, so all three are held
+# equal and stated here as a literal rather than read off any of the three constants.
+_SERVED_MODEL_NAME = "Qwen2.5-Coder-0.5B-Instruct"
 
 _PROVISION_ENV_VARS = (
     "WEBUI_PROVISION_HOST",
@@ -107,6 +116,18 @@ def test_defaults_construct() -> None:
     settings = Settings()
     assert settings.base_url == "http://127.0.0.1:8080"
     assert settings.tool_server_id == "verifier"
+    # Hand-stated, never read off the production constant: OWUI selects the completion model by
+    # this exact id (webui/client.py:380) and bootstrap refuses an id the backend does not
+    # advertise, so a drift from model_backend's served name breaks launch, not a later request.
+    assert settings.model_id == _SERVED_MODEL_NAME
+
+
+def test_model_identity_agrees_across_the_three_tiers() -> None:
+    # Compared against the hand-stated literal, not against each other: a same-value assertion
+    # between two production constants passes just as happily when both drift together.
+    assert _BACKEND_MODEL_NAME == _SERVED_MODEL_NAME
+    assert Settings().model_id == _SERVED_MODEL_NAME
+    assert _VERIFIER_MODEL_NAME == _SERVED_MODEL_NAME
 
 
 def test_accepts_clean_endpoint_authorities() -> None:

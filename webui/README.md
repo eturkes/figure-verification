@@ -284,7 +284,7 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_ADMIN_PASSWORD` | fixed loopback dev value | Sets the signup and signin password.
 `WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | Sets the canonical global verifier tool-server origin without a path.
 `WEBUI_PROVISION_MODEL_BACKEND_URL` | `http://127.0.0.1:8001/v1` | Sets the canonical OpenAI-compatible backend `/v1` base URL.
-`WEBUI_PROVISION_MODEL_ID` | `Qwen2-0.5B-Instruct-int4-sym-ov` | Sets the model that the smoke requires.
+`WEBUI_PROVISION_MODEL_ID` | `Qwen2.5-Coder-0.5B-Instruct` | Sets the model that the smoke requires.
 `WEBUI_PROVISION_WEBUI_BIN` | `.venv-webui/bin/open-webui` | Sets the binary execution target.
 `WEBUI_PROVISION_REQUEST_TIMEOUT` | `30` | Sets the timeout in seconds for each provisioning request.
 `WEBUI_PROVISION_READY_TIMEOUT` | `60` | Sets the seconds allowed for `/ready`.
