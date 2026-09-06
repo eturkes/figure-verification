@@ -7,280 +7,280 @@
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-01"
+      "prompt": "Compare the regions by total order volume in a bar chart."
     },
     {
       "id": "heldout-simple-02",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-02"
+      "prompt": "Draw a bar for each city's mean temperature."
     },
     {
       "id": "heldout-simple-03",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-03"
+      "prompt": "Show the largest revenue value in each region using bars."
     },
     {
       "id": "heldout-simple-04",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-04"
+      "prompt": "Plot daily precipitation totals as a column chart."
     },
     {
       "id": "heldout-simple-05",
       "category": "simple",
       "idiom": "line_time_series",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-05"
+      "prompt": "Chart revenue over month with one continuous line."
     },
     {
       "id": "heldout-simple-06",
       "category": "simple",
       "idiom": "line_time_multi_series",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-06"
+      "prompt": "Make separate city lines for air quality across the dates."
     },
     {
       "id": "heldout-simple-07",
       "category": "simple",
       "idiom": "scatter_xy",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-07"
+      "prompt": "Can you plot order count versus revenue with dots?"
     },
     {
       "id": "heldout-simple-08",
       "category": "simple",
       "idiom": "scatter_xy_grouped",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-08"
+      "prompt": "Create a scatter of air quality against temperature, grouped by city."
     },
     {
       "id": "heldout-simple-09",
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-09"
+      "prompt": "Use horizontal bars for each region's combined revenue."
     },
     {
       "id": "heldout-simple-10",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-10"
+      "prompt": "Compare cities by average air quality in a bar graph."
     },
     {
       "id": "heldout-simple-11",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-11"
+      "prompt": "Make one bar per region for its minimum order count."
     },
     {
       "id": "heldout-simple-12",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-12"
+      "prompt": "Summarize rainfall by date in a simple bar chart."
     },
     {
       "id": "heldout-simple-13",
       "category": "simple",
       "idiom": "line_time_series",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-13"
+      "prompt": "Let me see the monthly order totals as a line plot."
     },
     {
       "id": "heldout-simple-14",
       "category": "simple",
       "idiom": "line_time_multi_series",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-14"
+      "prompt": "Plot temperature through time with distinct lines for London and Cairo."
     },
     {
       "id": "heldout-simple-15",
       "category": "simple",
       "idiom": "scatter_xy",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-15"
+      "prompt": "Show revenue and orders together in a scatter diagram."
     },
     {
       "id": "heldout-simple-16",
       "category": "simple",
       "idiom": "scatter_xy_grouped",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-16"
+      "prompt": "Graph precipitation against air quality with point colors denoting city."
     },
     {
       "id": "heldout-simple-17",
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-17"
+      "prompt": "Bar the summed order count for each sales region."
     },
     {
       "id": "heldout-simple-18",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-18"
+      "prompt": "What are the mean rainfall levels by city? Show bars."
     },
     {
       "id": "heldout-simple-19",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-simple-19"
+      "prompt": "Use a bar plot for each region's top revenue figure."
     },
     {
       "id": "heldout-simple-20",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-simple-20"
+      "prompt": "For each date, use one bar for the total rainfall."
     },
     {
       "id": "heldout-complicated-01",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-01"
+      "prompt": "Give me a dashboard with a revenue-by-month area panel, grouped regional order bars, a revenue-to-orders scatter, and a text summary panel; align the panels, reuse regional colors, and label the best month."
     },
     {
       "id": "heldout-complicated-02",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-02"
+      "prompt": "Draw daily temperature on the primary y-axis and air quality on the secondary y-axis, with separate city lines, precipitation shown as background shading, two legends, and notes at the hottest and dirtiest points."
     },
     {
       "id": "heldout-complicated-03",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-03"
+      "prompt": "Model revenue as a function of orders for each region, overlay fitted lines and 95% confidence bands on the scatter, display correlation values, and identify observations that sit farthest from their fits."
     },
     {
       "id": "heldout-complicated-04",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-04"
+      "prompt": "For every city, compute temperature change from the prior date and a cumulative rainfall series; show both in a two-row figure with diverging colors, zero lines, final-value labels, and synchronized dates."
     },
     {
       "id": "heldout-complicated-05",
       "category": "complicated",
       "idiom": "distribution_plot",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-05"
+      "prompt": "Compare regional revenue with notched box plots and jittered raw values, scale point size by orders, label medians and interquartile ranges, and place an overall revenue histogram beside them."
     },
     {
       "id": "heldout-complicated-06",
       "category": "complicated",
       "idiom": "styled_annotation",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-06"
+      "prompt": "Please make a poster-like air-quality timeline with a midnight-blue background, luminous city lines, marker size tied to rainfall, custom date labels, and arrow annotations on the cleanest and poorest readings."
     },
     {
       "id": "heldout-complicated-07",
       "category": "complicated",
       "idiom": "composite_marks",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-07"
+      "prompt": "Overlay regional revenue as grouped bars, monthly orders as stepped lines, and cumulative revenue as translucent areas; keep each mark visually distinct, add dual legends, and annotate the largest order jump."
     },
     {
       "id": "heldout-complicated-08",
       "category": "complicated",
       "idiom": "external_or_interactive",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-08"
+      "prompt": "Build a clickable weather chart where selecting a city redraws temperature, precipitation, and air quality, hovering reveals exact values, a range control filters dates, and a download button writes an SVG."
     },
     {
       "id": "heldout-complicated-09",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-09"
+      "prompt": "Create a small-multiple report with one panel per region for monthly revenue, a shared order-volume panel below, and a final scatter panel comparing both measures; harmonize scales and annotate regional peaks."
     },
     {
       "id": "heldout-complicated-10",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-10"
+      "prompt": "Chart air quality and rainfall together over date using left and right y-axes, distinguish cities through color and markers, add a temperature-colored backdrop, and call out each city's largest rainfall reading."
     },
     {
       "id": "heldout-complicated-11",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-11"
+      "prompt": "Estimate a region-specific revenue trend over orders with robust regression, add raw points and residual panels, show fitted equations with goodness-of-fit values, and label the most influential observation."
     },
     {
       "id": "heldout-complicated-12",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-12"
+      "prompt": "Calculate each city's temperature anomaly from its own mean and the percentage of total daily rainfall it contributes, then chart both quantities with reference bands, direct labels, and highlighted extremes."
     },
     {
       "id": "heldout-complicated-13",
       "category": "complicated",
       "idiom": "distribution_plot",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-13"
+      "prompt": "Show order-volume distributions for each region as split violins with embedded box plots, scatter every observation with jitter, annotate quartiles, and add a top marginal histogram colored by revenue band."
     },
     {
       "id": "heldout-complicated-14",
       "category": "complicated",
       "idiom": "styled_annotation",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-14"
+      "prompt": "Turn the temperature series into a magazine-style graphic with a warm-to-cool palette, bold city labels at line ends, rainfall droplets as markers, subtle grid lines, and callouts for the sharpest daily changes."
     },
     {
       "id": "heldout-complicated-15",
       "category": "complicated",
       "idiom": "composite_marks",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-15"
+      "prompt": "Mix regional revenue columns, monthly order lines, and a filled band for cumulative orders in one layered composition; vary texture as well as color, label maxima, and include a revenue-share pie inset."
     },
     {
       "id": "heldout-complicated-16",
       "category": "complicated",
       "idiom": "external_or_interactive",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-16"
+      "prompt": "Animate the city weather through time on a geographic map using externally fetched coordinates, size symbols by rainfall, color them by air quality, show temperature on hover, and save both GIF and HTML outputs."
     },
     {
       "id": "heldout-complicated-17",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-17"
+      "prompt": "Could I get a 3x2 analytical grid covering monthly revenue, monthly orders, regional totals for both measures, their scatter relationship, and a final cumulative-revenue panel, with shared colors and concise captions?"
     },
     {
       "id": "heldout-complicated-18",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-18"
+      "prompt": "Use paired vertical axes to contrast temperature curves with air-quality bars across dates, distinguish cities within the same axes, shade precipitation events, label temperature in Celsius, and keep air quality unitless."
     },
     {
       "id": "heldout-complicated-19",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-heldout-complicated-19"
+      "prompt": "Fit a nonlinear revenue curve against orders for each region, compare it with a straight-line baseline, plot residuals beneath the main scatter, annotate fit scores, and flag the point with the widest prediction error."
     },
     {
       "id": "heldout-complicated-20",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-heldout-complicated-20"
+      "prompt": "Compute a daily city score from normalized temperature and air quality, plus each city's cumulative precipitation; plot both derived results over date with rank labels, threshold shading, and end-state annotations."
     }
   ]
 }

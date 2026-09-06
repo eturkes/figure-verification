@@ -31,8 +31,8 @@ from capture.corpus import (
     validate,
 )
 
-# Emptied when prod-m12u5 fills the 88 prompt cells; the seed grades every other predicate green.
-_SEED_PENDING: frozenset[str] = frozenset({"C9"})
+# Empty since the corpus was filled; kept as the seed mechanism for any future corpus extension.
+_SEED_PENDING: frozenset[str] = frozenset()
 
 _VALID_ROW: dict[str, Any] = {
     "id": "design-simple-01",

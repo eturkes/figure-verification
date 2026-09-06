@@ -7,336 +7,336 @@
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-01"
+      "prompt": "Make a bar chart of total revenue for each region."
     },
     {
       "id": "design-simple-02",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-02"
+      "prompt": "Show the average temperature for each city in a bar chart."
     },
     {
       "id": "design-simple-03",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-03"
+      "prompt": "Draw bars for the highest order count in each region."
     },
     {
       "id": "design-simple-04",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-04"
+      "prompt": "Chart total rainfall for each date with vertical bars."
     },
     {
       "id": "design-simple-05",
       "category": "simple",
       "idiom": "line_time_series",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-05"
+      "prompt": "Plot monthly revenue as a single line chart."
     },
     {
       "id": "design-simple-06",
       "category": "simple",
       "idiom": "line_time_multi_series",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-06"
+      "prompt": "Trace temperature over date with a separate line for each city."
     },
     {
       "id": "design-simple-07",
       "category": "simple",
       "idiom": "scatter_xy",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-07"
+      "prompt": "Create a scatter plot comparing orders with revenue."
     },
     {
       "id": "design-simple-08",
       "category": "simple",
       "idiom": "scatter_xy_grouped",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-08"
+      "prompt": "Scatter temperature against air quality, using a color for each city."
     },
     {
       "id": "design-simple-09",
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-09"
+      "prompt": "Could you graph summed orders by region as bars?"
     },
     {
       "id": "design-simple-10",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-10"
+      "prompt": "Use bars to compare mean air quality across cities."
     },
     {
       "id": "design-simple-11",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-11"
+      "prompt": "For every region, show its maximum revenue as one bar."
     },
     {
       "id": "design-simple-12",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-12"
+      "prompt": "Make a bar plot of total precipitation on each date."
     },
     {
       "id": "design-simple-13",
       "category": "simple",
       "idiom": "line_time_series",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-13"
+      "prompt": "I want a line showing orders across the months."
     },
     {
       "id": "design-simple-14",
       "category": "simple",
       "idiom": "line_time_multi_series",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-14"
+      "prompt": "Draw rainfall over time, with one line per city."
     },
     {
       "id": "design-simple-15",
       "category": "simple",
       "idiom": "scatter_xy",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-15"
+      "prompt": "How about a scatter chart with revenue on x and orders on y?"
     },
     {
       "id": "design-simple-16",
       "category": "simple",
       "idiom": "scatter_xy_grouped",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-16"
+      "prompt": "Plot rainfall versus temperature as city-colored scatter points."
     },
     {
       "id": "design-simple-17",
       "category": "simple",
       "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-17"
+      "prompt": "Display total revenue by region in a horizontal bar chart."
     },
     {
       "id": "design-simple-18",
       "category": "simple",
       "idiom": "bar_category_mean",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-18"
+      "prompt": "Can I see average rainfall per city as a bar plot?"
     },
     {
       "id": "design-simple-19",
       "category": "simple",
       "idiom": "bar_category_extremum",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-19"
+      "prompt": "Graph the lowest monthly order count for every region with bars."
     },
     {
       "id": "design-simple-20",
       "category": "simple",
       "idiom": "bar_time_sum",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-20"
+      "prompt": "Use a bar chart to show daily combined precipitation."
     },
     {
       "id": "design-simple-21",
       "category": "simple",
       "idiom": "line_time_series",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-21"
+      "prompt": "Show how total revenue changes month by month with a line."
     },
     {
       "id": "design-simple-22",
       "category": "simple",
       "idiom": "line_time_multi_series",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-22"
+      "prompt": "Could you chart air quality by date, drawing a line for every city?"
     },
     {
       "id": "design-simple-23",
       "category": "simple",
       "idiom": "scatter_xy",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-simple-23"
+      "prompt": "Draw orders against revenue as a scatter plot."
     },
     {
       "id": "design-simple-24",
       "category": "simple",
       "idiom": "scatter_xy_grouped",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-simple-24"
+      "prompt": "Give me a city-grouped scatter plot of rainfall and air quality."
     },
     {
       "id": "design-complicated-01",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-01"
+      "prompt": "Arrange a 2x2 sales dashboard: monthly revenue lines by region, order totals as regional bars, a revenue-versus-orders scatter, and a final panel that lists the strongest month with coordinated colors and labels."
     },
     {
       "id": "design-complicated-02",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-02"
+      "prompt": "Make a dual-axis time chart with temperature lines for each city on the left scale and precipitation bars on the right, then mark the wettest date, add separate legends, and format the dates for quick comparison."
     },
     {
       "id": "design-complicated-03",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-03"
+      "prompt": "Explore the relationship between orders and revenue with a scatter plot, fit a regression line for each region, print each slope and R-squared on the figure, and emphasize the observation with the largest residual."
     },
     {
       "id": "design-complicated-04",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-04"
+      "prompt": "Compute each city's day-to-day temperature change and cumulative precipitation, then plot both derived series over date in aligned panels with zero reference lines, endpoint labels, and a shared legend."
     },
     {
       "id": "design-complicated-05",
       "category": "complicated",
       "idiom": "distribution_plot",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-05"
+      "prompt": "Compare the distribution of revenue across regions with side-by-side violin plots, overlay individual observations and medians, label sample counts, and add a small inset histogram of order values."
     },
     {
       "id": "design-complicated-06",
       "category": "complicated",
       "idiom": "styled_annotation",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-06"
+      "prompt": "Design a dark weather graphic with temperature over date for each city, rainfall encoded by translucent bands, custom typography and a perceptual color palette, plus callouts on the hottest and most polluted observations."
     },
     {
       "id": "design-complicated-07",
       "category": "complicated",
       "idiom": "composite_marks",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-07"
+      "prompt": "Combine monthly revenue as a filled area, order counts as overlaid points and lines, and regional totals as stacked bars in one coordinated figure; add a compact legend and label each monthly peak."
     },
     {
       "id": "design-complicated-08",
       "category": "complicated",
       "idiom": "external_or_interactive",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-08"
+      "prompt": "Turn the weather series into an animated timeline that advances by date, updates city-colored temperature and air-quality points, includes play and pause controls, and exports the finished animation as an HTML file."
     },
     {
       "id": "design-complicated-09",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-09"
+      "prompt": "Build three coordinated panels: revenue trends by region, monthly order bars, and an orders-versus-revenue scatter; share the month axis where useful, use consistent regional colors, and place a summary title above the layout."
     },
     {
       "id": "design-complicated-10",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-10"
+      "prompt": "Place temperature and air quality on separate y-axes over date, draw one city at a time with matched colors but distinct line styles, shade rainy dates, and annotate each city's worst air-quality reading."
     },
     {
       "id": "design-complicated-11",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-11"
+      "prompt": "Fit both linear and quadratic trends to revenue versus orders, show the raw points by region, include confidence-style bands, report the fit equations in the legend, and mark any point whose residual is unusually large."
     },
     {
       "id": "design-complicated-12",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-12"
+      "prompt": "Calculate a three-day rolling mean of temperature and each city's precipitation share per date, then chart the two derived measures in stacked panels with direct labels and highlighted turning points."
     },
     {
       "id": "design-complicated-13",
       "category": "complicated",
       "idiom": "distribution_plot",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-13"
+      "prompt": "Show how orders vary by region using box plots with jittered observations, color the boxes by median revenue, annotate quartiles and outliers, and include a marginal density curve for all orders."
     },
     {
       "id": "design-complicated-14",
       "category": "complicated",
       "idiom": "styled_annotation",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-14"
+      "prompt": "Create a publication-style temperature chart with a custom serif theme, city-specific line textures, a muted background, and arrowed notes for the hottest day, wettest day, and highest air-quality value."
     },
     {
       "id": "design-complicated-15",
       "category": "complicated",
       "idiom": "composite_marks",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-15"
+      "prompt": "Layer monthly revenue bars with order-count lines and a translucent cumulative-revenue area, split colors by region, add a second legend for mark types, and label the final cumulative value."
     },
     {
       "id": "design-complicated-16",
       "category": "complicated",
       "idiom": "external_or_interactive",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-16"
+      "prompt": "Make an interactive weather explorer with city checkboxes, a date-range slider, hover details for temperature, rainfall, and air quality, and a button that saves the current view as a high-resolution PNG."
     },
     {
       "id": "design-complicated-17",
       "category": "complicated",
       "idiom": "subplot_grid",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-17"
+      "prompt": "Could you lay out a wide overview with four axes: regional revenue totals, regional order totals, monthly revenue by region, and an order-revenue relationship panel, all sharing one legend and a common visual theme?"
     },
     {
       "id": "design-complicated-18",
       "category": "complicated",
       "idiom": "twin_axis",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-18"
+      "prompt": "On one plot, pair city temperature curves with precipitation columns on a second vertical scale; synchronize colors, offset overlapping bars, highlight rain-free dates, and label both axes with their units."
     },
     {
       "id": "design-complicated-19",
       "category": "complicated",
       "idiom": "statistical_fit",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-19"
+      "prompt": "Analyze revenue against order volume with region-colored points, a robust trend line, a rolling local average, and uncertainty ribbons; annotate the highest-leverage observation and summarize correlation in the title."
     },
     {
       "id": "design-complicated-20",
       "category": "complicated",
       "idiom": "derived_metric",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-20"
+      "prompt": "Derive a comfort score from temperature and air quality plus a running rainfall total for every city, then plot both metrics over date with threshold bands, endpoint callouts, and separate city legends."
     },
     {
       "id": "design-complicated-21",
       "category": "complicated",
       "idiom": "distribution_plot",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-21"
+      "prompt": "Use ridgeline density plots to compare revenue distributions by region, overlay rug marks for each observation, mark regional means and medians, and add a compact inset showing the order-count distribution."
     },
     {
       "id": "design-complicated-22",
       "category": "complicated",
       "idiom": "styled_annotation",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-22"
+      "prompt": "Render air quality over time as a polished editorial graphic: use a custom colormap tied to temperature, textured markers for cities, shaded precipitation intervals, and labeled callouts for every extreme."
     },
     {
       "id": "design-complicated-23",
       "category": "complicated",
       "idiom": "composite_marks",
       "dataset_name": "sales.csv",
-      "prompt": "unknown-design-complicated-23"
+      "prompt": "Compose a single sales figure from stacked regional revenue bars, an order-volume line with markers, and a donut inset for each region's revenue share; connect the peak bar to an explanatory note."
     },
     {
       "id": "design-complicated-24",
       "category": "complicated",
       "idiom": "external_or_interactive",
       "dataset_name": "weather.csv",
-      "prompt": "unknown-design-complicated-24"
+      "prompt": "Enrich the weather observations with live sunrise and sunset times for each city, then build an animated date sequence that shades daylight, updates temperature and rain traces, and writes the result to a video file."
     }
   ]
 }
