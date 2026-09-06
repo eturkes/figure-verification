@@ -37,7 +37,29 @@ paths:
   digest change does not. A caller decodes `/health` into its OWN loose struct and constructs
   `ServiceProvenance` from three fields — that struct forbids unknown fields on purpose.
   Golden = `tests/golden/capture-golden-v1/`, HAND-AUTHORED with stdlib `json` as an independent
-  encoder, so it pins msgspec's bytes rather than mirroring them. Edit it by hand.
+  encoder, so it pins msgspec's bytes rather than mirroring them. Edit it by hand; its `stats.json`
+  is DERIVED (`python -m capture stats --write`), never hand-edited.
+- `capture/harness.py` owns the INSTRUMENT and predicates S1–S4 (`.agent/contracts/m12u6b.md`):
+  the live driver over `POST {base}/v1/chat/completions` + the offline statistics, entered as
+  `python -m capture run --run <name>` and `python -m capture stats [<run-dir>…]` (grades R1–R11
+  AND S1–S4; `--write` re-derives `stats.json` from committed records). It imports `capture.record`
+  and never the reverse, spells no outbound body, and emits no record outside `build_record` +
+  `write_run`.
+  Binding rules: `http_status` 200 is RESERVED for a complete decoded reply — a transport error, an
+  undecodable body, an empty `choices` and a `finish_reason` outside `FINISH_REASONS` all record
+  `NO_STATUS` (0) with the observed status named in `error`, which is what keeps a 90-minute run
+  gradeable under R6. ONE de-fence authority, and `fenced` MEANS it extracted an inner block, so
+  fence rate and parse rate cannot disagree; it must survive an UNTERMINATED fence, since that is
+  the truncation shape. `parsed` needs ≥1 statement (`ast.parse("")` succeeds on an empty module)
+  and is total over adversarial bytes (byte cap ahead of the parse; `SyntaxError`/`ValueError`/
+  `MemoryError`/`RecursionError` score not-parsed). `ast.parse` here is a TCB addition for
+  `capture/` ALONE — `src/verifier/expr.py` keeps its no-`ast` property. Rates count REPLIES not
+  records, an undefined rate is `None` never `0.0`, and sentinels are per-row facts outside every
+  category denominator (one per category ⇒ a rate over n=1 is a category error). The directory is a
+  complete gradeable run after EVERY row; `--resume` refuses whenever the rebuilt manifest
+  disagrees with the committed one in any field but `record_count`; `--kind heldout` refuses
+  without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
+  lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
 - Extending the corpus: seed rows with `unknown-<id>` in `prompt` alone, add the affected predicate
   ids to `_SEED_PENDING` in `tests/test_python_corpus.py` so the seed commit gates green, and empty
   it again at the fill. `id`/`category`/`idiom`/`dataset_name` are assigned by script before
