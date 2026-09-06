@@ -40,7 +40,7 @@ import ast
 import math
 import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import Final, Literal
 
@@ -263,7 +263,10 @@ def defence(content: str) -> tuple[bool, str]:
     closing-fence-required pattern would score every truncated fenced reply unparseable.
     """
     opened = _FENCE_OPEN_RE.search(content)
-    if opened is None:
+    # The opener must be the FIRST fence marker in the reply. Without this a trailing closer
+    # answers the search and opens an empty block, discarding a whole program whose real opener
+    # sat mid-line and was correctly refused.
+    if opened is None or content.find("```") < opened.start():
         return (False, content)
     rest = content[opened.end() :]
     closed = _FENCE_CLOSE_RE.search(rest)
@@ -416,10 +419,17 @@ def check_stats_reproduce(loaded: StatsRun) -> list[str]:
 
 
 def check_stats_scope(loaded: StatsRun) -> list[str]:
-    """S4 -- categories are the closed set and no sentinel reaches a category denominator."""
+    """S4 -- the reported blocks PARTITION the run: closed category set, the run's own sentinel
+    rows, and every record counted exactly once across the two.
+
+    Membership, not key order: order is a canonical-bytes property S3 decides byte-for-byte, and
+    duplicating it here left a key swap without a specific diagnosis. The arithmetic is measured
+    against the RUN's records rather than the statistics' own ``record_count``, which is S2's
+    field alone -- summing against it made S4 a second S2 and a second S3 at once.
+    """
     stats = loaded.stats
     failures: list[str] = []
-    if tuple(stats.by_category) != CATEGORIES:
+    if set(stats.by_category) != set(CATEGORIES):
         failures.append(f"{STATS_NAME}: categories {tuple(stats.by_category)} != {CATEGORIES}")
     committed = tuple(
         sorted(record.prompt_id for record in loaded.run.records if record.kind == _SENTINELS)
@@ -428,9 +438,9 @@ def check_stats_scope(loaded: StatsRun) -> list[str]:
     if reported != committed:
         failures.append(f"{STATS_NAME}: sentinel rows {reported} != run's {committed}")
     counted = sum(block.records for block in stats.by_category.values()) + len(stats.sentinels)
-    if counted != stats.record_count:
+    if counted != len(loaded.run.records):
         failures.append(
-            f"{STATS_NAME}: rows + sentinels {counted} != record_count {stats.record_count}"
+            f"{STATS_NAME}: blocks count {counted} of {len(loaded.run.records)} records"
         )
     return failures
 
@@ -686,7 +696,12 @@ def _stats_command(directories: Sequence[Path], *, write: bool) -> int:
 
 
 def _resolve_existing(
-    directory: Path, *, resume: bool, overwrite: bool, fresh: RunManifest
+    directory: Path,
+    *,
+    resume: bool,
+    overwrite: bool,
+    fresh: RunManifest,
+    selected: Collection[str],
 ) -> tuple[tuple[CaptureRecord, ...], str | None]:
     """R-resume: decide what an already-populated run directory contributes, or refuse it."""
     if not (directory / "run.json").exists():
@@ -699,6 +714,15 @@ def _resolve_existing(
     conflict = manifest_conflict(committed.manifest, fresh)
     if conflict is not None:
         return ((), f"{directory} was captured under a different {conflict}; refusing to resume")
+    # A committed id outside the freshly selected rows has no sound resolution: keeping it widens
+    # the run past its own scope, dropping it breaks resume's byte-preservation promise. Prompt ids
+    # are not manifest fields, so the conflict check above cannot see this.
+    outside = sorted(
+        record.prompt_id for record in committed.records if record.prompt_id not in selected
+    )
+    if outside:
+        joined = ", ".join(outside)
+        return ((), f"{directory} holds rows outside the selected scope: {joined}")
     return (committed.records, None)
 
 
@@ -714,6 +738,11 @@ def _run_command(args: argparse.Namespace) -> int:
         sys.stderr.write(f"timeout must be finite and positive, got {args.timeout}\n")
         return _USAGE_ARGS
     directory = Path(args.root) / args.run
+    # Refuse a populated directory BEFORE any network call: the default refusal is unconditional,
+    # so probing /health first would spend a request on a run that was never going to start.
+    if (directory / "run.json").exists() and not (args.resume or args.overwrite):
+        sys.stderr.write(f"{directory} already holds a run; pass --resume or --overwrite\n")
+        return _USAGE_ARGS
     rows = select_rows(load_corpus(), kind, sentinels=not args.no_sentinels)
     with httpx.Client(timeout=args.timeout) as client:
         service = fetch_service_provenance(client, args.base_url)
@@ -737,6 +766,7 @@ def _run_command(args: argparse.Namespace) -> int:
             fresh=build_manifest(
                 args.run, kind=kind, config=config, provenance=provenance, record_count=0
             ),
+            selected=frozenset(prompt.id for _, prompt in rows),
         )
         if refusal is not None:
             sys.stderr.write(f"{refusal}\n")

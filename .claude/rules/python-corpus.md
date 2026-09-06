@@ -55,10 +55,13 @@ paths:
   `MemoryError`/`RecursionError` score not-parsed). `ast.parse` here is a TCB addition for
   `capture/` ALONE — `src/verifier/expr.py` keeps its no-`ast` property. Rates count REPLIES not
   records, an undefined rate is `None` never `0.0`, and sentinels are per-row facts outside every
-  category denominator (one per category ⇒ a rate over n=1 is a category error). The directory is a
-  complete gradeable run after EVERY row; `--resume` refuses whenever the rebuilt manifest
-  disagrees with the committed one in any field but `record_count`; `--kind heldout` refuses
-  without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
+  category denominator (one per category ⇒ a rate over n=1 is a category error). S4 = the PARTITION
+  predicate (category SET + the run's own sentinel rows + every record counted once against
+  `len(run.records)`); key ORDER and the statistics' own `record_count` belong to S3 and S2, so one
+  mutation yields one diagnosis. The directory is a complete gradeable run after EVERY row;
+  `--resume` refuses whenever the rebuilt manifest disagrees with the committed one in any field
+  but `record_count`, or a committed `prompt_id` sits outside the freshly selected rows; the
+  default refusal precedes every request; `--kind heldout` refuses without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
   lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
 - Extending the corpus: seed rows with `unknown-<id>` in `prompt` alone, add the affected predicate
   ids to `_SEED_PENDING` in `tests/test_python_corpus.py` so the seed commit gates green, and empty
