@@ -1,0 +1,47 @@
+{
+  "version": "python-capture-stats-1",
+  "mode": "python_raw_unconstrained",
+  "run": "m12-design",
+  "kind": "design",
+  "record_count": 50,
+  "by_category": {
+    "simple": {
+      "records": 24,
+      "replies": 24,
+      "fenced": 24,
+      "parsed": 24,
+      "truncated": 0,
+      "fence_rate": 1.0,
+      "parse_rate": 1.0,
+      "truncation_rate": 0.0
+    },
+    "complicated": {
+      "records": 24,
+      "replies": 24,
+      "fenced": 24,
+      "parsed": 24,
+      "truncated": 1,
+      "fence_rate": 1.0,
+      "parse_rate": 1.0,
+      "truncation_rate": 0.0417
+    }
+  },
+  "sentinels": [
+    {
+      "prompt_id": "sentinel-complicated",
+      "category": "complicated",
+      "http_status": 200,
+      "fenced": true,
+      "parsed": true,
+      "truncated": false
+    },
+    {
+      "prompt_id": "sentinel-simple",
+      "category": "simple",
+      "http_status": 200,
+      "fenced": true,
+      "parsed": true,
+      "truncated": false
+    }
+  ]
+}

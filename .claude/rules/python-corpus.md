@@ -63,6 +63,16 @@ paths:
   but `record_count`, or a committed `prompt_id` sits outside the freshly selected rows; the
   default refusal precedes every request; `--kind heldout` refuses without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
   lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
+- Driving a live capture (`.agent/contracts/m12u7.md`): start the backend with
+  `MODEL_BACKEND_MAX_TOKENS` **≥ the client `--max-tokens`** — the backend clamps silently and the
+  manifest records what was SENT, so a client cap above the server's commits a manifest that
+  misstates the effective ceiling. Pick the cap so it does NOT bind (measured band on
+  `Qwen2.5-Coder-0.5B-Instruct` fp16 greedy: 148–470 natural completion tokens), else the
+  truncation statistic measures the budget instead of the model. The run must complete in ONE
+  invocation: provenance samples `git_dirty` once before row 1, writing row 1 makes the tree dirty,
+  so `--resume` then refuses on the `git_dirty` field. A failed run restarts under `--overwrite`.
+  `tests/test_python_capture_run.py` grades every COMMITTED run (T1–T4) and is what a new run must
+  pass: it calls R1–R11 + S1–S4 and adds completeness, tracked-ness and held-out absence.
 - Extending the corpus: seed rows with `unknown-<id>` in `prompt` alone, add the affected predicate
   ids to `_SEED_PENDING` in `tests/test_python_corpus.py` so the seed commit gates green, and empty
   it again at the fill. `id`/`category`/`idiom`/`dataset_name` are assigned by script before

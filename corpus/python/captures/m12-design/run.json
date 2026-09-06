@@ -1,0 +1,33 @@
+{
+  "version": "python-capture-1",
+  "mode": "python_raw_unconstrained",
+  "run": "m12-design",
+  "kind": "design",
+  "model": "Qwen2.5-Coder-0.5B-Instruct",
+  "model_base_url": "http://127.0.0.1:8001",
+  "max_tokens": 1024,
+  "temperature": 0.0,
+  "record_count": 50,
+  "provenance": {
+    "repo": {
+      "git_commit": "b04e3d698821876e339139fb209819124e34cb3b",
+      "git_dirty": false,
+      "model_repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "model_revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+      "engine_dtype": "float16",
+      "runtime_lock_sha256": "c5c2c2458b8de334b7341134d0b00a5397f298c68d9a8469e35d953da6fbe94e",
+      "capture_prompt_sha256": "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+    },
+    "service": {
+      "model_name": "Qwen2.5-Coder-0.5B-Instruct",
+      "device": "cuda",
+      "structured_output": true
+    },
+    "host": {
+      "driver_version": "580.178.04",
+      "compute_cap": "6.1",
+      "gpu_name": "NVIDIA GeForce MX150",
+      "memory_total_mib": 2048
+    }
+  }
+}

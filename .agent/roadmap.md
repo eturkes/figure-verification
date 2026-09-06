@@ -185,7 +185,7 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 | M12.5 | data | **DONE** | Corpus + its gate. Shipped `capture/` (new repo-root package — `corpus/` cannot hold Python, `tests/corpus.py` owns that module name) · `capture/corpus.py` = strict schema + loader + `render_capture_prompt` + closed idiom vocabulary + predicates C1–C10 implemented ONCE, `python -m capture.corpus` rc 1 on any failure · `corpus/python/{design,heldout}/manifest.json` 24+24 and 20+20 · `sentinels.json` (both demo prompts verbatim from `webui/launch.sh`) · `capture_prompt_v1.txt` 189 B sha `a18162f7…` hand-pinned · `tests/test_python_corpus.py` (predicate calls + 10 near-miss decode refusals + closed predicate set + vocabulary literal + matcher band both ways + I1/I5). Measured: 8/8 idioms in BOTH sets per category, dataset splits 50/50 everywhere, simple 44–72 B, complicated 190–226 B. Gate rc 0 ×4, 3065 passed, 0 skipped, 100% cov. Contract + verdict table → `.agent/contracts/m12u5.md`. `est 110K → cal 136K` (data tier, uncalibrated at entry) · `harvest≈71% 193K/273K` (gauge at dispatch — MAIN built the validator, then delegated) · `main=78% 214K/273K` · `mate=27% 74K/273K` | met |
 | M12.6a | kernel | **DONE** | Capture EVIDENCE format. Shipped `capture/record.py` (758 lines) — record + manifest structs (msgspec, frozen, `forbid_unknown_fields`), canonical encodings (`run.json` indent-2 + trailing newline, `records.ndjson` compact one-per-line sorted by `prompt_id`), `build_request_body` as the SOLE outbound-body speller (`{max_tokens, messages, model, temperature}`, `guided_schema` ABSENT not null; backend `structured_output=true` stays on), `build_record` reading `request_keys` back OUT of the encoded body, three-block provenance (repo declared via source scan of `_DTYPE` + git / service via `/health` / host via `nvidia-smi`, injected `CommandRunner` seam, degrade never raise), writer + loader, predicates R1–R11 implemented ONCE, `python -m capture.record [<run-dir>…]` rc 1 on any failure · `tests/test_python_capture_record.py` 19 tests (diff-blind, `test-m12u6a`) · `tests/golden/capture-golden-v1/` HAND-AUTHORED with stdlib `json` as an independent encoder, 3 records spanning 200/`stop`, 200/`length`+non-ASCII, non-200 fault. Rulings: **R-keyorder** (declaration order at every level, never sorted) added at merge. Two implementation defects the diff-blind suite caught: `_git_facts` accepted any stdout as a commit id; `_discover_runs` froze `CAPTURES_ROOT` at import. Gate rc 0 ×4, 3084 passed, 0 skipped. MAIN mutants: R9 neutered → 3 red; `guided_schema` smuggled into the body → 5 red. Contract + verdict table (19/19 `pass`) → `.agent/contracts/m12u6.md`. `est 140K → cal 174K` · `harvest≈63% 173K/273K` · `main=` one full window (auto-compacted mid-close) + `40% 108K/273K` after ⇒ **≈330K, of which ≈25K was recovery from a `git checkout --` over the uncommitted implementation** · `mate=51% 140K/273K` | full gate + golden byte-pin + `python -m capture.record` rc 0 |
 | M12.6b | kernel | **DONE** | Capture INSTRUMENT. Shipped `capture/harness.py` (~790 lines) — live driver over `POST /v1/chat/completions` (bodies ONLY from 6a's `build_request_body`, records ONLY through `build_record` + `write_run`), R-status fault mapping (transport error / undecodable body / empty `choices` / out-of-band `finish_reason` → `NO_STATUS` naming the observed status, so a 90-minute run stays R6-gradeable), R-flush per row, `--resume`/`--overwrite`/`--heldout-acknowledged`, ONE de-fence authority surviving an UNTERMINATED fence, `parses` total over adversarial bytes, rates over REPLIES with `None` never `0.0`, sentinels as per-row facts, predicates S1–S4 implemented ONCE · `capture/__main__.py` shim ⇒ `python -m capture stats` grades **R1–R11 AND S1–S4** in one command, `--write` re-derives from committed records with no backend · `tests/golden/capture-golden-v1/stats.json` (derived; matches an independent hand-derivation exactly) · `tests/test_python_capture_harness.py` 15 tests (diff-blind, `test-m12u6b`, 15/15 flushed over 5 commits, ZERO steering). **Four implementation defects the diff-blind suite caught**: S4 summed against the stats file's own `record_count` ⇒ no mutation had a specific diagnosis (re-aimed at `len(run.records)`, key order handed to S3); `_FENCE_OPEN_RE` took a trailing CLOSER as the opener, discarding whole programs; `/health` was fetched before the default run-directory refusal; `--resume` silently widened a run when a committed `prompt_id` sat outside the selected rows (NEW refusal, added to R-resume). Contract corrections MAIN ruled: `Outcome.request_body` (the sketch was incomplete) + the S4 narrowing. Gate rc 0 ×4, 3099 passed, 100% cov; `python -m capture stats tests/golden/capture-golden-v1` → `sound`; `--write` byte-identical (`8b2eca53…`). MAIN mutants: 4, one per post-harvest fix, all killed, sha256-verified restore. Contract + verdict table (15/15 `pass`) → `.agent/contracts/m12u6b.md`; teammate tip → tag `archive/m12u6b-test`. **FALLBACK trigger (190K) FIRED and was deliberately NOT invoked** — both halves were already implemented and gate-green, so splitting would have shipped less for one extra close; a gauge-only trigger cannot see completeness. `est 105K → cal 200K` · `harvest≈73% 199K/273K` · `main=` 82% 223K/273K pre-compaction + 45% 124K/273K after ⇒ **≈347K raw** (auto-compacted mid-close; the successor window re-reads ~30K of summary + overhead, so the true cost is nearer ≈320K) · `mate=59% 161K/273K` | full gate + `python -m capture stats` rc 0 + golden `stats.json` re-derives byte-identically |
-| M12.7 | data | OPEN | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); `python -m capture.record` rc 0 on the committed run + a `git check-ignore --no-index` negative test proving the captures path is TRACKED (`bench/reports/` is not — that is why evidence moved here); offline replay reproduces stats byte-identically; held-out NOT generated (ruling-7 discipline) | replay reproduces committed stats |
+| M12.7 | data | **DONE** | Design capture RUN — the observation M13's subset is designed against. Shipped `corpus/python/captures/m12-design/` (50 records, 95 KB: 24+24 design + both sentinels; `Qwen2.5-Coder-0.5B-Instruct`@`ea3f2471…` fp16, greedy, `max_tokens 1024`, taken from `b04e3d69…` with `git_dirty false`) · `tests/test_python_capture_run.py` — T1–T4, calling R1–R11 + S1–S4 and adding only what they cannot say (completeness, tracked-ness, held-out absence, non-vacuous run list). **50/50 answered 200; fence 24/24 + 24/24; parse-after-defence 24/24 + 24/24; truncation 0/24 + 1/24; both sentinels 200/fenced/parsed.** Ruling: **R-cap** — a 6-row pilot measured 148–470 natural tokens all at `stop`, so the run sent a NON-BINDING 1024 (server `MODEL_BACKEND_MAX_TOKENS=1024`) and the truncation statistic measures the model, not the budget; the shipped 512 would have clipped the longest natural replies. Gate rc 0 ×4, 3103 passed, 100% cov; `capture.record` + `capture stats` `sound` with the backend DOWN and :8001 free; `--write` byte-identical (`9863918d…`). Contract + verdict table (6/6 `pass`) + the derived M13 inputs → `.agent/contracts/m12u7.md`. `est 45K → cal 135K` · no prep wave (`harvest=` n/a — zero teammates) · `main=68% 186K/273K` · `mate=` none | met |
 | M12.8 | data | OPEN | GUIDED JSON bench re-baseline: writer pre-ruled UNCHANGED (`by_category` = `Report` field, `harness.py:239`); add category-key-set+nonzero pin to `test_bench_harness`; ONE GUIDED dataset-corpus run → tracked `bench/baselines/m12-cuda/` (report + details + provenance sidecar) + `git check-ignore` negative test. RAW arm dropped (off-spine; the python arm owns the unconstrained observation). **Expect the M12-CUDA rate to MOVE and do not treat ORIGIN's `26/100` as the comparand**: M12.3b measured that xgrammar's library-default whitespace policy lets a greedy model pad a finished document to the token cap, and ORIGIN's guided arm ran OpenVINO GenAI's `StructuredOutputConfig` over xgrammar with unknown, plausibly-default bounds — a HYPOTHESIS (never measured on ORIGIN, unmeasurable now) that its `spec.decode`(51) residual was partly cap-truncation rather than model error. Report the new number standalone; any ORIGIN delta needs the two-host + two-stack caveat | full gate + committed baseline replayable |
 | M12.9 | docs | OPEN | Prose sweep + register audit: search-manifest remainder (root/`webui`/`bench`/`demo` READMEs — ORIGIN OpenVINO recipes labeled historical, byte-preserved; STE register on the four READMEs + launcher `usage()`/banner; REAL-model outcomes stay conditional); zero-unruled-match final search with per-line historical allowlist; README↔`POC_SCOPE.md` block quotes re-diffed | consistency pass + final search clean |
 
@@ -194,14 +194,14 @@ Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 
 capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = **LANDED at the
 12.2 close**; real-model stack live on CURRENT = **LANDED at the 12.4a close**; browser-typed inline
 render = **LANDED at the 12.4b close** (stub arm, deterministic; the real arm is 0/3 and belongs to
-M10's calibration); M13 unblocked = 12.7 close.
+M10's calibration); **M13 planning UNBLOCKED = LANDED at the 12.7 close.**
 
-**Unit status.** M12.1 + M12.2 + M12.3a + M12.3b + M12.4a + M12.4b + M12.5 + M12.6a + **M12.6b**
-DONE (12.1–12.3b records → `.agent/archive/m12.md`; 12.4a + 12.4b → `.agent/contracts/m12u4.md`;
-12.5 → `.agent/contracts/m12u5.md`; 12.6a → `.agent/contracts/m12u6.md`; 12.6b →
-`.agent/contracts/m12u6b.md`); **M12.7 is next** — the design capture RUN, the first unit needing
-the live backend on the host of record, driven entirely by `python -m capture run` with no new
-instrument code — then M12.8 + M12.9 untouched. **M13 planning unblocks at the M12.7 close.**
+**Unit status.** M12.1 + M12.2 + M12.3a + M12.3b + M12.4a + M12.4b + M12.5 + M12.6a + M12.6b +
+**M12.7** DONE (12.1–12.3b records → `.agent/archive/m12.md`; 12.4a + 12.4b →
+`.agent/contracts/m12u4.md`; 12.5 → `.agent/contracts/m12u5.md`; 12.6a →
+`.agent/contracts/m12u6.md`; 12.6b → `.agent/contracts/m12u6b.md`; 12.7 →
+`.agent/contracts/m12u7.md`); **M12.8 is next** — the GUIDED JSON bench re-baseline — then M12.9.
+**M13 planning is UNBLOCKED** and opens on the M12.7 findings paragraph below.
 **M12.6 was re-split at WORK-UNIT entry** (prep waves hold sizing
 authority): bottom-up ≈ 220K raw × 1.24 clears the ~190K trigger, and the scope is two instruments
 — the committed EVIDENCE FORMAT (6a: schema, canonical bytes, body builder, provenance, validator,
@@ -222,6 +222,33 @@ verdict BYTE-IDENTICALLY (`raw_spec f85701d4…`, `verdict 3ee63b81…`) from a 
 SIMPLE arm needs ≥70% and the sentinel currently sits at 0/3, so M10 must budget calibration work
 (ruling-6 levers only: model choice, `max_new_tokens`, temperature, task phrasing, positive style
 examples) rather than assume the arm lands. The FAIL arm is not the risk; the PASS arm is.
+
+**M13 risk landed at the M12.7 close, in the numbers M13 planning must open with** (full derivation
++ evidence → `.agent/contracts/m12u7.md` "Derived observations"). Format is SOLVED and semantics is
+the whole problem:
+
+- **Fencing 50/50 and parse-after-defence 50/50**, both categories, one truncation in 50. Ruling 5
+  is confirmed — `res-port`'s 0/3 was FORMAT (fences + a 256-token cap), never capability. The
+  de-fencer is load-bearing: without it the parse rate is 0.
+- **24/50 replies reference an UNBOUND name and 23 of those are `pd`** — the model writes
+  `pd.read_csv('/mnt/uploads/<dataset>.csv')` having imported matplotlib ALONE. Per category:
+  **simple 16/24, complicated 7/24, and the SIMPLE SENTINEL is one of them.** Each such program
+  parses and would pass a node/call/attribute allowlist, then raise `NameError` in the sandbox.
+  **If M13 admission requires bound names, the simple arm reads 8/24 = 33%** against the ≥70%
+  target. M13 must rule this explicitly — admit-and-let-it-fail, a bound-name predicate, or a
+  ruling-6-legal generation lever (task phrasing, positive style examples; admission vocabulary
+  stays banned). It is the single largest threat to the demo's PASS arm.
+- **The simple sentinel also plots the WRONG columns** (`plt.scatter(data['month'],
+  data['orders'])` titled `Revenue vs Orders`) — the same month/region-versus-orders/revenue
+  confusion M12.4a's blocking verdict recorded in JSON-spec mode, reproduced in python mode.
+- **FAIL-arm risk is real but opposite.** `sentinel-complicated` wrote a clean, correctly-imported
+  2×2 `plt.subplots` grid that does NOT obviously overreach ⇒ the fail arm depends on the subset
+  refusing something that program CONTAINS (`cmap=`, `c=<series>`, dark theme, KPI panel,
+  annotation), never on the model declining the task.
+- **3 complicated replies import packages the OWUI Pyodide bundle does not carry** (sklearn, scipy,
+  seaborn against a measured matplotlib/pandas/numpy). **All 50 read the CSV through `read_csv`**,
+  so the recomputation claim's binding surface is uniform; 46/48 call `plt.show()`, which the OWUI
+  worker already rewrites.
 
 **Calibration probe result (M12.4a; the multiplier is now COMPUTABLE for kernel units).**
 `est 195K → main=215K` ⇒ measured `main=`/`est` = 1.10. **M12.4b is the SECOND kernel datum and it
@@ -273,6 +300,17 @@ because the instrument sits on top of three already-shipped modules (`record.py`
 a read tax proportional to its dependency count, and the bottom-up figure counts only what it
 writes.** Recurring and confirmed: merging a diff-blind suite is a RULING pass (9 reds / 6 causes /
 4 genuine defects — the mechanism paid for itself twice over, in MAIN window).
+
+**Fifth datum (M12.7, `data`) — ×3.0 under-shot too; the multiplier moves to 4.0.** `est 45K →
+main=186K` ⇒ **4.1×** against a 3.0-calibrated 135K that under-shot by 38%. Six points now read
+1.10 · 1.39 · 1.95 · 2.18 · 3.3 · 4.1, still monotone, so **size at ×4.0 and split any unit whose
+RAW bottom-up figure clears ~50K.** This unit ran with ZERO teammates and still over-ran, which
+isolates the cause: the bottom-up figure counted the authored code (one 4-test file) while the
+window went to ORIENTATION (contracts + rules + two shipped modules, ~20K before any decision), the
+PILOT that set the token cap, and — dominant — the DERIVATIONS + spot-check over the delivered
+artifact, which are what produced the unit's actual value. **A LIVE-RUN unit's wall time is free
+and its READINGS are the cost** (M12.4b's lesson, now measured a second time); a `data` tier's
+mandated spot-check IS a full analytic pass over the artifact, never a glance.
 
 **A numeric FALLBACK trigger must be conditioned on remaining WORK, not on gauge (M12.6b).** 6b's
 190K trigger fired and was correctly ignored: both halves were implemented and gate-green, so the
@@ -511,7 +549,8 @@ refusal. Never credit or implement against them.** The 5 that pass are corrobora
 source of two shipped pins. M12.3a CONSUMED its two prep branches — `wt/test-m12u3` (red-suite seed
 `827784a` → `tests/test_m12u3_guidance.py`) and `wt/rev-m12u3` (→
 `tests/test_rev_m12u3_contract.py`) — suites shipped in `main`, worktree + branch removed untagged:
-**17 tags, 0 `wt/` branches, 0 worktrees live.**
+M12.6b ADDS `archive/m12u6b-test` `0cab7de` (its diff-blind red suite). M12.7 ran with NO teammates
+and adds none. Audited at the M12.7 close: **18 tags, 0 `wt/` branches, 0 worktrees live.**
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite the TAGGED
 tip, never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
