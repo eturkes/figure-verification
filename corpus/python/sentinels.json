@@ -1,0 +1,20 @@
+{
+  "version": "python-corpus-1",
+  "kind": "sentinels",
+  "prompts": [
+    {
+      "id": "sentinel-simple",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "Plot a scatter chart of revenue versus orders."
+    },
+    {
+      "id": "sentinel-complicated",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
+    }
+  ]
+}

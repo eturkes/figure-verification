@@ -1,0 +1,6 @@
+{task}
+
+Use the CSV file at /mnt/uploads/{dataset}. Its columns are {columns}.
+Draw the figure with matplotlib.
+
+Return one complete Python program as bare source text, no Markdown fences.

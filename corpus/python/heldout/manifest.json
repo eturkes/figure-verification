@@ -1,0 +1,286 @@
+{
+  "version": "python-corpus-1",
+  "kind": "heldout",
+  "prompts": [
+    {
+      "id": "heldout-simple-01",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-01"
+    },
+    {
+      "id": "heldout-simple-02",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-02"
+    },
+    {
+      "id": "heldout-simple-03",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-03"
+    },
+    {
+      "id": "heldout-simple-04",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-04"
+    },
+    {
+      "id": "heldout-simple-05",
+      "category": "simple",
+      "idiom": "line_time_series",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-05"
+    },
+    {
+      "id": "heldout-simple-06",
+      "category": "simple",
+      "idiom": "line_time_multi_series",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-06"
+    },
+    {
+      "id": "heldout-simple-07",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-07"
+    },
+    {
+      "id": "heldout-simple-08",
+      "category": "simple",
+      "idiom": "scatter_xy_grouped",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-08"
+    },
+    {
+      "id": "heldout-simple-09",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-09"
+    },
+    {
+      "id": "heldout-simple-10",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-10"
+    },
+    {
+      "id": "heldout-simple-11",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-11"
+    },
+    {
+      "id": "heldout-simple-12",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-12"
+    },
+    {
+      "id": "heldout-simple-13",
+      "category": "simple",
+      "idiom": "line_time_series",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-13"
+    },
+    {
+      "id": "heldout-simple-14",
+      "category": "simple",
+      "idiom": "line_time_multi_series",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-14"
+    },
+    {
+      "id": "heldout-simple-15",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-15"
+    },
+    {
+      "id": "heldout-simple-16",
+      "category": "simple",
+      "idiom": "scatter_xy_grouped",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-16"
+    },
+    {
+      "id": "heldout-simple-17",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-17"
+    },
+    {
+      "id": "heldout-simple-18",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-18"
+    },
+    {
+      "id": "heldout-simple-19",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-simple-19"
+    },
+    {
+      "id": "heldout-simple-20",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-simple-20"
+    },
+    {
+      "id": "heldout-complicated-01",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-01"
+    },
+    {
+      "id": "heldout-complicated-02",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-02"
+    },
+    {
+      "id": "heldout-complicated-03",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-03"
+    },
+    {
+      "id": "heldout-complicated-04",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-04"
+    },
+    {
+      "id": "heldout-complicated-05",
+      "category": "complicated",
+      "idiom": "distribution_plot",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-05"
+    },
+    {
+      "id": "heldout-complicated-06",
+      "category": "complicated",
+      "idiom": "styled_annotation",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-06"
+    },
+    {
+      "id": "heldout-complicated-07",
+      "category": "complicated",
+      "idiom": "composite_marks",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-07"
+    },
+    {
+      "id": "heldout-complicated-08",
+      "category": "complicated",
+      "idiom": "external_or_interactive",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-08"
+    },
+    {
+      "id": "heldout-complicated-09",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-09"
+    },
+    {
+      "id": "heldout-complicated-10",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-10"
+    },
+    {
+      "id": "heldout-complicated-11",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-11"
+    },
+    {
+      "id": "heldout-complicated-12",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-12"
+    },
+    {
+      "id": "heldout-complicated-13",
+      "category": "complicated",
+      "idiom": "distribution_plot",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-13"
+    },
+    {
+      "id": "heldout-complicated-14",
+      "category": "complicated",
+      "idiom": "styled_annotation",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-14"
+    },
+    {
+      "id": "heldout-complicated-15",
+      "category": "complicated",
+      "idiom": "composite_marks",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-15"
+    },
+    {
+      "id": "heldout-complicated-16",
+      "category": "complicated",
+      "idiom": "external_or_interactive",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-16"
+    },
+    {
+      "id": "heldout-complicated-17",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-17"
+    },
+    {
+      "id": "heldout-complicated-18",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-18"
+    },
+    {
+      "id": "heldout-complicated-19",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-heldout-complicated-19"
+    },
+    {
+      "id": "heldout-complicated-20",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-heldout-complicated-20"
+    }
+  ]
+}

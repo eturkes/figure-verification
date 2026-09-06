@@ -85,7 +85,7 @@ ignore = [
 # (hardware-free hardening walkthrough), and webui (Open WebUI integration harness) are
 # repo-root packages, not under src/ — declare them first-party so their imports sort with
 # verifier's.
-known-first-party = ["verifier", "model_backend", "bench", "demo", "webui"]
+known-first-party = ["verifier", "model_backend", "bench", "capture", "demo", "webui"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -104,7 +104,7 @@ python_version = "3.13"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
-files = ["src", "tests", "model_backend", "bench", "demo", "webui"]
+files = ["src", "tests", "model_backend", "bench", "capture", "demo", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true

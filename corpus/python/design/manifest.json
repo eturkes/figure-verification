@@ -1,0 +1,342 @@
+{
+  "version": "python-corpus-1",
+  "kind": "design",
+  "prompts": [
+    {
+      "id": "design-simple-01",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-01"
+    },
+    {
+      "id": "design-simple-02",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-02"
+    },
+    {
+      "id": "design-simple-03",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-03"
+    },
+    {
+      "id": "design-simple-04",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-04"
+    },
+    {
+      "id": "design-simple-05",
+      "category": "simple",
+      "idiom": "line_time_series",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-05"
+    },
+    {
+      "id": "design-simple-06",
+      "category": "simple",
+      "idiom": "line_time_multi_series",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-06"
+    },
+    {
+      "id": "design-simple-07",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-07"
+    },
+    {
+      "id": "design-simple-08",
+      "category": "simple",
+      "idiom": "scatter_xy_grouped",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-08"
+    },
+    {
+      "id": "design-simple-09",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-09"
+    },
+    {
+      "id": "design-simple-10",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-10"
+    },
+    {
+      "id": "design-simple-11",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-11"
+    },
+    {
+      "id": "design-simple-12",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-12"
+    },
+    {
+      "id": "design-simple-13",
+      "category": "simple",
+      "idiom": "line_time_series",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-13"
+    },
+    {
+      "id": "design-simple-14",
+      "category": "simple",
+      "idiom": "line_time_multi_series",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-14"
+    },
+    {
+      "id": "design-simple-15",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-15"
+    },
+    {
+      "id": "design-simple-16",
+      "category": "simple",
+      "idiom": "scatter_xy_grouped",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-16"
+    },
+    {
+      "id": "design-simple-17",
+      "category": "simple",
+      "idiom": "bar_category_sum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-17"
+    },
+    {
+      "id": "design-simple-18",
+      "category": "simple",
+      "idiom": "bar_category_mean",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-18"
+    },
+    {
+      "id": "design-simple-19",
+      "category": "simple",
+      "idiom": "bar_category_extremum",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-19"
+    },
+    {
+      "id": "design-simple-20",
+      "category": "simple",
+      "idiom": "bar_time_sum",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-20"
+    },
+    {
+      "id": "design-simple-21",
+      "category": "simple",
+      "idiom": "line_time_series",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-21"
+    },
+    {
+      "id": "design-simple-22",
+      "category": "simple",
+      "idiom": "line_time_multi_series",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-22"
+    },
+    {
+      "id": "design-simple-23",
+      "category": "simple",
+      "idiom": "scatter_xy",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-simple-23"
+    },
+    {
+      "id": "design-simple-24",
+      "category": "simple",
+      "idiom": "scatter_xy_grouped",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-simple-24"
+    },
+    {
+      "id": "design-complicated-01",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-01"
+    },
+    {
+      "id": "design-complicated-02",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-02"
+    },
+    {
+      "id": "design-complicated-03",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-03"
+    },
+    {
+      "id": "design-complicated-04",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-04"
+    },
+    {
+      "id": "design-complicated-05",
+      "category": "complicated",
+      "idiom": "distribution_plot",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-05"
+    },
+    {
+      "id": "design-complicated-06",
+      "category": "complicated",
+      "idiom": "styled_annotation",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-06"
+    },
+    {
+      "id": "design-complicated-07",
+      "category": "complicated",
+      "idiom": "composite_marks",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-07"
+    },
+    {
+      "id": "design-complicated-08",
+      "category": "complicated",
+      "idiom": "external_or_interactive",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-08"
+    },
+    {
+      "id": "design-complicated-09",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-09"
+    },
+    {
+      "id": "design-complicated-10",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-10"
+    },
+    {
+      "id": "design-complicated-11",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-11"
+    },
+    {
+      "id": "design-complicated-12",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-12"
+    },
+    {
+      "id": "design-complicated-13",
+      "category": "complicated",
+      "idiom": "distribution_plot",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-13"
+    },
+    {
+      "id": "design-complicated-14",
+      "category": "complicated",
+      "idiom": "styled_annotation",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-14"
+    },
+    {
+      "id": "design-complicated-15",
+      "category": "complicated",
+      "idiom": "composite_marks",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-15"
+    },
+    {
+      "id": "design-complicated-16",
+      "category": "complicated",
+      "idiom": "external_or_interactive",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-16"
+    },
+    {
+      "id": "design-complicated-17",
+      "category": "complicated",
+      "idiom": "subplot_grid",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-17"
+    },
+    {
+      "id": "design-complicated-18",
+      "category": "complicated",
+      "idiom": "twin_axis",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-18"
+    },
+    {
+      "id": "design-complicated-19",
+      "category": "complicated",
+      "idiom": "statistical_fit",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-19"
+    },
+    {
+      "id": "design-complicated-20",
+      "category": "complicated",
+      "idiom": "derived_metric",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-20"
+    },
+    {
+      "id": "design-complicated-21",
+      "category": "complicated",
+      "idiom": "distribution_plot",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-21"
+    },
+    {
+      "id": "design-complicated-22",
+      "category": "complicated",
+      "idiom": "styled_annotation",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-22"
+    },
+    {
+      "id": "design-complicated-23",
+      "category": "complicated",
+      "idiom": "composite_marks",
+      "dataset_name": "sales.csv",
+      "prompt": "unknown-design-complicated-23"
+    },
+    {
+      "id": "design-complicated-24",
+      "category": "complicated",
+      "idiom": "external_or_interactive",
+      "dataset_name": "weather.csv",
+      "prompt": "unknown-design-complicated-24"
+    }
+  ]
+}
