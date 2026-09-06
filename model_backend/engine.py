@@ -9,7 +9,7 @@ therefore install TWO `sys.modules` fakes here, not one. The module states NO to
 `@torch.no_grad()`, and `from_pretrained` already returns an eval-mode module, so tensors stay
 opaque behind `.shape`, slicing and `int()`. That is a rule about this module's own import
 statements — `import xgrammar` pulls torch in transitively and always has. Durable API facts:
-.agent/reference.md "transformers 5.16.1 pinned behaviours" + "xgrammar 0.2.3 pinned behaviours".
+.claude/rules/transformers.md + .claude/rules/xgrammar.md.
 
 - Chat is STATELESS: apply the chat template to the full messages array each call, in ONE
   tokenizing call (`tokenize=True, return_dict=True`). That form tokenizes its own rendered text

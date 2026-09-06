@@ -98,8 +98,7 @@ For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-
 This section records ORIGIN-host evidence.
 Its Debian paths and its NPU self-test do not apply on the CURRENT host.
 The CURRENT host has no NPU.
-Before you start model-tier work on the CURRENT host, read `.agent/reference.md`, section
-"Host machines + model-tier runtime".
+Before you start model-tier work on the CURRENT host, read `.claude/rules/host-runtime.md`.
 
 - OpenVINO and GenAI are outside the repository at `/var/home/eturkes/.local/app/openvino_genai`.
   Python resolves that build through `PYTHONPATH=/var/home/eturkes/.local/app/openvino_genai/python`.

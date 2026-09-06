@@ -115,7 +115,7 @@ Zero findings overall ⇒ write the literal token NO-FINDINGS on its own line he
 
 ### F14 | sev=LOW | BRANCHES | .agent/polish.md:25
 
-- divergence: RECORDED p8 command = `git diff --stat main..wt/test-m9u7b2` yields `11 files, +565/−318`; CURRENT exact command = `88 files, +2283/−16609` because `main` advanced. The historical value reproduces only at `35397e0^..54fe1d4`; the current branch-only merge-base comparison is `5 files, +1611/−22`.
+- divergence: RECORDED p8 command = `git diff --stat main..archive/m9u7b2-test` yields `11 files, +565/−318`; CURRENT exact command = `88 files, +2283/−16609` because `main` advanced. The historical value reproduces only at `35397e0^..54fe1d4`; the current branch-only merge-base comparison is `5 files, +1611/−22`.
 - impact: the retained test remainder still exists, but the unpinned two-tip command no longer inventories it and now mixes years of mainline drift into the branch justification.
 - acceptance-check: bind the 11/+565/−318 snapshot to `35397e0^`, and use an explicit merge-base or path manifest for the current unique remainder.
 - red-test: judgment-only.
@@ -231,25 +231,28 @@ Zero findings overall ⇒ write the literal token NO-FINDINGS on its own line he
 - DRIFTED — the live four-unit over-window index predates M9.13b/M9.13d/M9.13e and conflicts with M9.11; see F11.
 - MISSING classifications are limited to delivered records: M9.10's prep MAIN number and M9.12c's whole archive body. Gauge-free M9.7/M9.7b/M9.8 headings are split umbrellas, not delivered units.
 
-### BRANCHES
+### RETAINED REFS
 
-- REPRODUCED — all eight retained branch tips resolve exactly:
+(Refs carried `wt/<role>-m<m>u<u>` branch names at audit time; the tips below are unchanged and now
+carry `archive/*` tags.)
 
-| branch | recorded tip | current tip | retained artifact evidence |
+- REPRODUCED — all eight retained tips resolve exactly:
+
+| tag | recorded tip | current tip | retained artifact evidence |
 |---|---|---|---|
-| `wt/scout-m9u11` | `c0022de` | `c0022de` | 33 branch-only paths; 6 parseable probe scripts (30,670 B) + 9 SQLite probe archives (634,880 B) |
-| `wt/map-m9u12` | `f851789` | `f851789` | 24 branch-only paths; `measure_static.py`/JSON + 22 parseable generated Python files |
-| `wt/scout-m9u12` | `1635d3c` | `1635d3c` | 9 parseable P01–P09 scripts (54,126 B) + the 3024-byte formula schema |
-| `wt/rev-m9u12` | `53b898b` | `53b898b` | 10,677-byte review matrix + parseable 7,117-byte contract-review test; both absent from main |
-| `wt/test-m9u7b2` | `54fe1d4` | `54fe1d4` | 5 parseable test files, all byte-different from main; branch-only merge-base diff `+1611/−22` |
-| `wt/test-m9u10` | `845d49f` | `845d49f` | retained route suite differs from main, has 40 `test_` definitions, and collects 55 items; current merged suite has 28 definitions |
-| `wt/rev-m9u10` | `a1171dc` | `a1171dc` | 4 parseable review tests; F22's `test_m9u10_formula_openapi.py` is absent from main and reachability twin differs |
-| `wt/test-m9u13a` | `6c1bd49` | `6c1bd49` | one byte-different test file; exact scratch copy confirmed below |
+| `archive/m9u11-scout` | `c0022de` | `c0022de` | 33 branch-only paths; 6 parseable probe scripts (30,670 B) + 9 SQLite probe archives (634,880 B) |
+| `archive/m9u12-map` | `f851789` | `f851789` | 24 branch-only paths; `measure_static.py`/JSON + 22 parseable generated Python files |
+| `archive/m9u12-scout` | `1635d3c` | `1635d3c` | 9 parseable P01–P09 scripts (54,126 B) + the 3024-byte formula schema |
+| `archive/m9u12-rev` | `53b898b` | `53b898b` | 10,677-byte review matrix + parseable 7,117-byte contract-review test; both absent from main |
+| `archive/m9u7b2-test` | `54fe1d4` | `54fe1d4` | 5 parseable test files, all byte-different from main; branch-only merge-base diff `+1611/−22` |
+| `archive/m9u10-test` | `845d49f` | `845d49f` | retained route suite differs from main, has 40 `test_` definitions, and collects 55 items; current merged suite has 28 definitions |
+| `archive/m9u10-rev` | `a1171dc` | `a1171dc` | 4 parseable review tests; F22's `test_m9u10_formula_openapi.py` is absent from main and reachability twin differs |
+| `archive/m9u13a-test` | `6c1bd49` | `6c1bd49` | one byte-different test file; exact scratch copy confirmed below |
 
-- REPRODUCED — every retained branch still owns unique tracked content: branch-only absent/different-vs-main path counts are respectively `33/24/10/2/5/1/2/1`; no stated retention justification has become empty.
-- REPRODUCED — `.scratch/agents/test-m9u13a-suite.py` exists and is byte-identical to `wt/test-m9u13a:tests/test_formula_e2e_hardening.py`: `13,270 B`, full `sha256:4beb4b7806a96fb2d0695186f95dba2478a88856e57c1f8d14dd3b149c1ef615` on both sides.
-- REPRODUCED — `refs/heads/wt/orc-m9u7a` verification returns rc=1 with empty stdout/stderr. `git rev-list --all --objects` has zero reachable paths ending `differential.py`, `oracle_corpus.py`, or `oracle_migrate_v4.py`; positive controls resolve `wt/scout-m9u11` at `c0022de` and find reachable `.probe/p01.py`. The lost commit SHA is not recorded, so the proof covers the branch ref and every named artifact path, not unidentified dangling objects.
-- REPRODUCED with a dynamic exclusion — after the eight retained branches and the brief's eight review-wave branches (`wt/audit-m9`, `wt/rev-m9-1`…`-6`, `wt/xcut-m9`), the sole extra `wt/*` ref is active current-wave `wt/res-port`. It has an attached worktree, equals `main` at `c8f308c`, and is zero commits ahead; it is not a retained M9 artifact branch.
-- DRIFTED — p8's unpinned `main..wt/test-m9u7b2` stat no longer describes the remainder; see F14. The recorded `11 files, +565/−318` does reproduce at `35397e0^..54fe1d4`.
-- Coverage limit: branch verification checked refs, tree uniqueness, sizes, Python syntax, one 55-item collection, and the exact M9.13a copy. It did not execute every historical probe or old branch suite against its original dependency state.
+- REPRODUCED — every retained ref still owns unique tracked content: ref-only absent/different-vs-main path counts are respectively `33/24/10/2/5/1/2/1`; no stated retention justification has become empty.
+- REPRODUCED — `.scratch/agents/test-m9u13a-suite.py` exists and is byte-identical to `archive/m9u13a-test:tests/test_formula_e2e_hardening.py`: `13,270 B`, full `sha256:4beb4b7806a96fb2d0695186f95dba2478a88856e57c1f8d14dd3b149c1ef615` on both sides.
+- REPRODUCED — `refs/heads/wt/orc-m9u7a` verification returns rc=1 with empty stdout/stderr. `git rev-list --all --objects` has zero reachable paths ending `differential.py`, `oracle_corpus.py`, or `oracle_migrate_v4.py`; positive controls resolve `archive/m9u11-scout` at `c0022de` and find reachable `.probe/p01.py`. The lost commit SHA is not recorded, so the proof covers the branch ref and every named artifact path, not unidentified dangling objects.
+- REPRODUCED with a dynamic exclusion — after the eight retained refs and the brief's eight review-wave refs (`archive/m9-audit`, `archive/m9-rev-1`…`-6`, `archive/m9-xcut`), the sole extra `wt/*` ref was then-active `archive/m12-res-port`. It had an attached worktree, equalled `main` at `c8f308c`, and was zero commits ahead; it is not a retained M9 artifact ref.
+- DRIFTED — p8's unpinned `main..archive/m9u7b2-test` stat no longer describes the remainder; see F14. The recorded `11 files, +565/−318` does reproduce at `35397e0^..54fe1d4`.
+- Coverage limit: ref verification checked refs, tree uniqueness, sizes, Python syntax, one 55-item collection, and the exact M9.13a copy. It did not execute every historical probe or old suite against its original dependency state.
 
