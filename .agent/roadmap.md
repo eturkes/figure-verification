@@ -181,7 +181,7 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 | M12.3a | kernel | **DONE** | xgrammar guidance restored in `engine.py` (`_compile_guidance` + per-call processor + load-time `guidance_unusable`); `tests/test_m12u3_guidance.py` 20 predicates `G1`–`G18`+`G2b`+`G6b`; `tests/test_rev_m12u3_contract.py` 3 subprocess checks; seam grew the xgrammar fake, P13 deleted. Gate rc 0 ×4, 3013 passed, 100% cov. Record → `.agent/archive/m12.md` | full gate |
 | M12.3b | kernel | **DONE** | `model_backend/guidance_oracle.py` — live both-ways oracle, `O1`–`O8` rc 0 on the host of record. It FOUND a non-terminating grammar config M12.3a had shipped: `engine.py` now pins `any_order=False` + `max_whitespace_cnt=_MAX_GUIDANCE_WHITESPACE` (=8, measured), `G4` re-pinned to that exact-dict literal, `O2b` re-based onto the `pattern`/`format`-stripping witness. Runtime dev group + P15b + P31. Gate rc 0 ×4, 3015 passed, 100% cov. Record → `.agent/archive/m12.md` | oracle rc 0 on the host of record |
 | M12.4a | kernel | **DONE** | Launcher CUDA arm + code identity + live standup. Shipped `webui/launch.sh` CUDA default arm (device `cuda`; `INTEL_ACCEL_ENV`/`OPENVINO_GENAI_PYTHON` deleted; captured torch-CUDA preflight, 1.62 s, silent on success; real child = bare `"$MODEL_BACKEND_PYTHON" -m model_backend`) · identity `Qwen2-0.5B-Instruct-int4-sym-ov` → `Qwen2.5-Coder-0.5B-Instruct` across `service/settings.py`, `webui/settings.py`, `webui/README.md` + 5 byte-pins · de-NPU'd `model_stub.py`, `verified_chart.py`, `bench/__init__.py`, `demo/e2e.py` + search-found `schema_guidance.py:2` · NEW three-tier identity pin, mutation-credited. LIVE on the host of record: full stack READY, 4/4 identity asserts, real-model `/propose-spec` 200, ports freed. Gate rc 0 ×4, 3016 passed, 100% cov. Contract + verdict table → `.agent/contracts/m12u4.md`. `est 195K` (calibration probe, uncalibrated) · `harvest≈31% 75K/240K` · `main=90% 215K/240K` · `mate=57% 138K/240K` | met |
-| M12.4b | kernel | OPEN | `est 150K → cal 165K` (×1.10, M12.4a's kernel multiplier). Launcher assurance + browser-inline arm, both carried from 12.4a: hardware-free launcher suite encoding `L1`–`L9` of `.agent/contracts/m12u4.md` (default=cuda, refusal-BEFORE-trap as a call-counting bomb on teardown, `--stub` preflight bypass, teardown, foreign-port non-adoption + survival, `--help`/unknown-arg, shellcheck) — `map-m12u4` D3/D4 supply the probe design + the PATH/env interposition seams, report at `.scratch/agents/map-m12u4.md`; then `V3`'s browser-inline render, which needs a WORKING browser route settled first (this BrowserOS build returns a refless `snapshot`, swallows `run` returns, and never focuses the OWUI composer by coordinate click; keyboard events do dispatch) | full gate + one browser-typed prompt rendering a verified chart inline |
+| M12.4b | kernel | **DONE** | Launcher assurance + browser-inline arm. Shipped `tests/test_webui_launch.py` — 9 subprocess predicates `L1`–`L9`, hardware-free, strict PATH fakes (`uv`/`fuser`/model interpreter, all rc 64 on unrecognised argv) + real loopback listeners + real `setsid`; every predicate mutation-credited, `L4`/`L6` by MAIN's OWN trap-hoist mutant. `L9` contract disagreement RULED for the teammate — the launcher carries ZERO `shellcheck disable=` directives; §2 corrected. Browser route settled as direct CDP (`.scratch/cdp.py`), recipe promoted to `.claude/rules/host-runtime.md`. Live: stub arm rendered a verified chart inline (badge `10 checks passed`); real arm V1/V2 4/4/V4 pass, 3 browser-typed draws → 3 archived attempts → 0 verified. Gate rc 0 ×4, 3025 passed, 100% cov. Contract + verdict table → `.agent/contracts/m12u4.md` §10. `est 150K → cal 165K` · `main=76% 208K/273K` · `mate=41% 112K/273K` | met |
 | M12.5 | data | OPEN | Corpus authoring: `corpus/python/` — design manifest+prompts (24 simple + 24 complicated; ids, category+idiom labels, dataset binding); held-out 20+20 PLAINTEXT under `heldout/` (ruling-7 discipline: read only at the frozen-config acceptance run); `sentinels.json` (the 2 public demo prompts, outside both sets); ONE structural validator (counts, unique ids, category balance, design↔held-out prompt disjointness, zero admission vocabulary in any prompt per ruling 6); capture prompt v1 byte-pinned per ruling 6 (task line + dataset path/columns + `Return one complete Python program as bare source text, no Markdown fences.`, ZERO few-shots) + sha256 recorded in every capture row | full gate + validator green pre-generation |
 | M12.6 | kernel | OPEN | Capture harness: HTTP-only, `/v1/chat/completions` direct; outbound body pinned WITHOUT `guided_schema` key (backend `structured_output=true` stays on; M12.3's `None`⇒0-processors pin proves omission suffices); versioned record schema + golden — exact model-content UTF-8 bytes, status/finish/usage, prompt sha, provenance tuple (model rev, device, cc, dtype, driver, lock digest, caps, commit+dirty); de-fence = DERIVED stat only, raw bytes canonical; hardware-free tests | full gate + golden |
 | M12.7 | data | OPEN | Design capture run: greedy over design 48 + the 2 sentinels (labeled, OUTSIDE category stats) → committed `corpus/python/captures/m12-design/` records + per-category stats (fence rate, `ast.parse`-after-defence rate, truncation rate); offline replay reproduces stats byte-identically; held-out NOT generated (ruling-7 discipline) | replay reproduces committed stats |
@@ -190,23 +190,37 @@ baseline. Mode isolation: NO python `GuidanceSchemaId` member in M12; capture ar
 
 Order = 12.1→12.9 serial (MAIN implements). Edges: 12.2←12.1 · 12.3←12.2 · 12.4←12.3 ·
 12.6←12.5+12.2 · 12.7←12.6 · 12.8←12.3+12.4a · 12.9 last · **M13 planning ← 12.7 committed** ·
-capture ← backend only (never OWUI). **12.4b is sequence-loose**: nothing downstream consumes it —
-12.8 needs the CUDA arm that 12.4a shipped, not the launcher suite — so it may be re-ordered behind
-12.5–12.7 if the browser route stays unsettled, and it must NOT block M13's unblocking. ASAP
-landmarks: first live dGPU completion = **LANDED at the 12.2 close**; real-model stack live on
-CURRENT = **LANDED at the 12.4a close**; browser-typed inline render = 12.4b; M13 unblocked = 12.7
-close.
+capture ← backend only (never OWUI). ASAP landmarks: first live dGPU completion = **LANDED at the
+12.2 close**; real-model stack live on CURRENT = **LANDED at the 12.4a close**; browser-typed inline
+render = **LANDED at the 12.4b close** (stub arm, deterministic; the real arm is 0/3 and belongs to
+M10's calibration); M13 unblocked = 12.7 close.
 
-**Unit status.** M12.1 + M12.2 + M12.3a + M12.3b + **M12.4a** DONE (12.1–12.3b records →
-`.agent/archive/m12.md`; 12.4a → `.agent/contracts/m12u4.md`); M12.4b is next, then M12.5–M12.9
-untouched. The STACK launches again, not just the backend — M12.2 gave the project its first live
-dGPU completion, M12.3a restored schema guidance, M12.3b proved LIVE that guided generation
-terminates, and M12.4a made `webui/launch.sh` stand the whole three-service instance up on CURRENT
-with the real model answering `/propose-spec` end to end.
+**Unit status.** M12.1 + M12.2 + M12.3a + M12.3b + M12.4a + **M12.4b** DONE (12.1–12.3b records →
+`.agent/archive/m12.md`; 12.4a + 12.4b → `.agent/contracts/m12u4.md`); **M12.5 is next**, then
+M12.6–M12.9 untouched. The STACK launches again, not just the backend — M12.2 gave the project its
+first live dGPU completion, M12.3a restored schema guidance, M12.3b proved LIVE that guided
+generation terminates, M12.4a made `webui/launch.sh` stand the whole three-service instance up on
+CURRENT with the real model answering `/propose-spec` end to end, and M12.4b put the launcher under
+a 9-predicate mutation-credited suite and settled the browser route the demo runs on.
+
+**M10 risk landed at the M12.4b close, in the numbers M10 planning must open with.** Three
+browser-typed phrasings of the SIMPLE sentinel prompt produced three archived `/propose-spec`
+attempts and ZERO verified charts on the CUDA stack, one of them reproducing M12.4a's blocking
+verdict BYTE-IDENTICALLY (`raw_spec f85701d4…`, `verdict 3ee63b81…`) from a different
+`user_request`. That is an observation of one `(device, config)`, never a rate — but the demo's
+SIMPLE arm needs ≥70% and the sentinel currently sits at 0/3, so M10 must budget calibration work
+(ruling-6 levers only: model choice, `max_new_tokens`, temperature, task phrasing, positive style
+examples) rather than assume the arm lands. The FAIL arm is not the risk; the PASS arm is.
 
 **Calibration probe result (M12.4a; the multiplier is now COMPUTABLE for kernel units).**
-`est 195K → main=215K` ⇒ measured **`main=`/`est` = 1.10**. Size M12.5–M12.9 bottom-up, then
-multiply by 1.10 and record both as `est <raw>K → <cal>K`. Three qualifiers bind that number:
+`est 195K → main=215K` ⇒ measured `main=`/`est` = 1.10. **M12.4b is the SECOND kernel datum and it
+widens the band: `est 150K → main=208K` ⇒ 1.39, so the 1.10-calibrated 165K under-shot by 26%.**
+Size M12.5–M12.9 bottom-up, then multiply by **1.24** (the two-point mean) and record both as
+`est <raw>K → <cal>K`; treat any unit whose calibrated figure clears ~190K as a split candidate,
+because the 1.10 end of the band is the optimistic one. What M12.4b under-priced is instructive and
+recurs: a LIVE leg's wall time is free but its *readings* are not — three real-model draws plus a
+route to settle cost more window than the whole delegated suite, whose harvest was one table, one
+gate rerun and one MAIN mutant. Three qualifiers still bind the 1.10 end:
 (1) the estimate was MAIN-authored at unit entry with the surface already censused, so it is not a
 blind figure; (2) the unit closed on a SPLIT — the 215K bought the launcher port, the identity
 sweep, one live standup and the close, but NOT the launcher suite, so the ratio prices this scope,
@@ -219,7 +233,13 @@ being stopped; `test-m12u4` flushed ZERO bytes, ignored its one flush directive,
 phase-1 analysis died with its transcript at 35%. The deliverable-first rule already demands a seed
 artifact for `prod`; extend it to `test` — MAIN commits the phase-1 table skeleton (one row per
 contract predicate, every cell `unknown`) so the teammate's first tool call is a FILL, never a
-create.
+create. **VALIDATED at M12.4b, now standing law.** The seed was a committed
+`tests/test_webui_launch.py` holding nine `@pytest.mark.skip` predicates, each docstring stating its
+OWN acceptance check. `test-m12u4b` filled 9/9 over four in-worktree commits with ZERO steering
+messages, peaked at 112K, and caught the one contract error MAIN's skeleton had copied forward.
+The seed shape is what worked: skip-marked so the seed itself gates green, one function per
+predicate so progress reads as `grep -c 'pytest.mark.skip'`, and the acceptance check written INTO
+each docstring so the brief did not have to carry it.
 
 **Guidance claim boundary — binds every surface, forever, not just guidance code.** *"The grammar
 enforces the guidance schema"* is FALSE and may not be shipped in any docstring, README line,
