@@ -13,7 +13,7 @@ paths:
   20+20 (ruling 7: never generated against until the M13 config is frozen; subset design + tuning
   read the design set + its captures alone) · `sentinels.json` (2 public demo prompts, outside both
   sets + both denominators) · `capture_prompt_v1.txt` · `captures/<run>/` records, TRACKED.
-- `capture/corpus.py` is the SOLE implementation of predicates C1–C10 (`.agent/contracts/m12u5.md`),
+- `capture/corpus.py` is the SOLE implementation of predicates C1–C10 (`.agent/archive/contracts/m12u5.md`),
   the strict schema, the loader, `render_capture_prompt` and the closed idiom vocabulary.
   `python -m capture.corpus` grades the committed corpus, rc 1 on any failure;
   `tests/test_python_corpus.py` calls the predicates and restates none of them.
@@ -22,7 +22,7 @@ paths:
   ONE user message, zero few-shots, `/mnt/uploads/<dataset>` path, matplotlib named as the output
   MEDIUM, CSV-reading library deliberately unnamed so captures observe the model's own idiom choice.
 - `capture/record.py` owns the CAPTURE-RUN format and predicates R1–R11
-  (`.agent/contracts/m12u6.md`): `corpus/python/captures/<run>/{run.json,records.ndjson}`, both in
+  (`.agent/archive/contracts/m12u6.md`): `corpus/python/captures/<run>/{run.json,records.ndjson}`, both in
   canonical form (`run.json` = msgspec indent-2 + trailing newline; `records.ndjson` = one compact
   object per line, sorted by `prompt_id`), graded by `python -m capture.record [<run-dir>…]`.
   Key order is msgspec DECLARATION order at EVERY level, never sorted — including the request
@@ -39,7 +39,7 @@ paths:
   Golden = `tests/golden/capture-golden-v1/`, HAND-AUTHORED with stdlib `json` as an independent
   encoder, so it pins msgspec's bytes rather than mirroring them. Edit it by hand; its `stats.json`
   is DERIVED (`python -m capture stats --write`), never hand-edited.
-- `capture/harness.py` owns the INSTRUMENT and predicates S1–S4 (`.agent/contracts/m12u6b.md`):
+- `capture/harness.py` owns the INSTRUMENT and predicates S1–S4 (`.agent/archive/contracts/m12u6b.md`):
   the live driver over `POST {base}/v1/chat/completions` + the offline statistics, entered as
   `python -m capture run --run <name>` and `python -m capture stats [<run-dir>…]` (grades R1–R11
   AND S1–S4; `--write` re-derives `stats.json` from committed records). It imports `capture.record`
@@ -63,7 +63,7 @@ paths:
   but `record_count`, or a committed `prompt_id` sits outside the freshly selected rows; the
   default refusal precedes every request; `--kind heldout` refuses without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
   lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
-- Driving a live capture (`.agent/contracts/m12u7.md`): start the backend with
+- Driving a live capture (`.agent/archive/contracts/m12u7.md`): start the backend with
   `MODEL_BACKEND_MAX_TOKENS` **≥ the client `--max-tokens`** — the backend clamps silently and the
   manifest records what was SENT, so a client cap above the server's commits a manifest that
   misstates the effective ceiling. Pick the cap so it does NOT bind (measured band on

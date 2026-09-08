@@ -65,3 +65,5 @@ and contradicts several of these — the installed bytes win.
   unsafe".
 - **A single unpadded sequence needs no `attention_mask`** — `generate` synthesizes one
   (`generation/utils.py:778-807,2509-2513`) — but forward the one the tokenizer produced anyway.
+
+Engine rulings (`engine.py`): EOS/PAD authority is `model.generation_config`, never the tokenizer, and no `eos_token_id` reaches `generate` (EOS refuses at load → `generation_config_unusable` 500; PAD degrades to `min(eos_ids)`). ADMISSION PRECEDES GUIDANCE at one site: an over-cap prompt naming a schema answers 400 `prompt_too_long` with zero processor constructions + zero `generate` calls. Naming a `guided_schema` while `structured_output` is disabled generates UNGUIDED without raising (`models.py` wire contract); guidance faults refuse LOUDLY at load as 500 `guidance_unusable` — a silent unguided degrade is the fail-open class.

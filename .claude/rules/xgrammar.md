@@ -76,6 +76,7 @@ Read BEFORE editing any guidance call site. Cited into
   NOTHING else — per-keyword silent ignoring is unreachable from it, so **a green load is never
   evidence of enforcement**, and enforcement is credited ONLY from both-ways witnesses (a document
   admitted AND a document refused), never from a successful return.
+- A full EBNF CFG compiles via `Grammar.from_ebnf` → `TokenizerInfo.from_huggingface` → `GrammarCompiler.compile_grammar` → a fresh `contrib.hf.LogitsProcessor` per `generate`; measured cost 2.8%/token. Outlines 1.3.3 + llguidance 1.8.0 are viable alternatives; `guidance` 0.3.1 conflicts with transformers 5.x. A CFG is a FORMAT lever only (ruling 5): never let its language be the admitted subset.
 - **The standing instrument is `model_backend/guidance_oracle.py`** — predicates `O1`–`O8`, run
   `./.venv-model/bin/python -m model_backend.guidance_oracle` on the host of record, rc 0 required.
   It loads `Engine` in-process and holds the accelerator for its whole run ⇒ stop any serving

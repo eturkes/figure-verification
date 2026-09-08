@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Structural gate for the python-mode capture record format (contract .agent/contracts/m12u6.md).
+"""Structural gate for the python-mode capture record format.
+
+Contract: .agent/archive/contracts/m12u6.md.
 
 Predicates R1-R11 live in capture.record and are called here, never restated: a test that
 re-implements a check pins its own copy instead of the shipped one. What this file adds on top of

@@ -20,3 +20,6 @@ Transcribe, never re-derive; `schema.py` cites these BY NUMBER.
 7. A frozen struct holding a `list` is only SHALLOWLY immutable and unhashable ⇒ model every JSON array as a bounded `tuple[T, ...]`.
 8. `Encoder(order="deterministic")` keeps struct field order while sorting dict/set keys, renders Decimal→string, does NO Unicode normalization.
 9. `Decoder.decode` raises the BUILTIN `UnicodeDecodeError` on invalid UTF-8 inside a JSON string ⇒ any guard over UNTRUSTED bytes must catch it alongside `DecodeError`/`ValidationError`, or the fault escapes its intended mapping.
+10. `Literal` + `Meta` bind DECODE only: direct construction sets any value + a bare `Encoder` re-checks nothing ⇒ a version literal, an enum-ish field + a tagged-union member each need a `__post_init__` guard plus an exact-type gate at the public encode seam (`p6` = the open v0.2 gap).
+
+Stack: msgspec over Pydantic for strict fail-closed decode — `forbid_unknown_fields` everywhere, transform ops = tagged union, `Literal` enums, module-level `Decoder`, `json.schema` export golden-snapshotted; spec numerics `int | str`, JSON arrays as bounded `tuple[T, ...]`; strings byte-faithful (NO NFC — folding can collide different filters).

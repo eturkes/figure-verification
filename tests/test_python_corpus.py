@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Structural gate for the python-mode prompt corpus (contract .agent/contracts/m12u5.md).
+"""Structural gate for the python-mode prompt corpus (contract .agent/archive/contracts/m12u5.md).
 
 Predicates C1-C10 live in capture.corpus and are called here, never restated: a test that
 re-implements a check pins its own copy instead of the shipped one. What this file adds on top of

@@ -1,3 +1,5 @@
+> Retired: live rows moved to `.agent/spec.md` `Deferred`, grouped by theme; each row there cites its `p<n>` ids, whose full text + evidence stay here.
+
 # polish register — deferred perfection (off-spine)
 
 Producers = every session, writing the row at deferral time while the evidence is fresh. Consumer = `/session-polish` alone; selection, staleness + close rules live there. Empty register = nothing deferred.

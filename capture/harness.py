@@ -31,7 +31,7 @@ Rates count REPLIES, never records: a transport fault is not a model behaviour. 
 is None, never 0.0. Sentinels are reported as per-row facts outside every category denominator --
 there is one per category, and a rate over n=1 is a category error.
 
-Predicates S1-S4 of .agent/contracts/m12u6b.md are implemented HERE and nowhere else;
+Predicates S1-S4 of .agent/archive/contracts/m12u6b.md are implemented HERE and nowhere else;
 tests/test_python_capture_harness.py calls them and restates none of them.
 """
 

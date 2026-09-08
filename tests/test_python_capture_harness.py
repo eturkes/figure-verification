@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Red suite for M12.6b — the capture INSTRUMENT (live driver + offline derived stats).
 
-One test per check-set row of .agent/contracts/m12u6b.md; each docstring states that row's OWN
-acceptance check. Authored diff-blind against the contract, never against capture/harness.py.
+One test per check-set row of .agent/archive/contracts/m12u6b.md; each docstring states that
+row's OWN acceptance check. Authored diff-blind against the contract, never against
+capture/harness.py.
 
 Hardware-free: every live-transport row drives httpx.MockTransport, so no backend, no accelerator
 and no network are reachable from this file. The positive control is the committed golden run

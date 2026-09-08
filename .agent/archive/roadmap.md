@@ -1,3 +1,5 @@
+> Retired at the phase-flow migration: live state = `.agent/spec.md`; this = the last roadmap snapshot (M12.7 DONE; M12.8/M12.9 open; M13 planning unblocked). Unit-sizing calibration + prep-wave budgeting below are roadmap-era mechanics, superseded by `/goal` checkpointing under a 1M window.
+
 # figure-verification — roadmap
 
 Local "verified-plot" PoC. A weak local LLM only PROPOSES a restricted JSON chart spec (VPlot); a separate trusted verifier deterministically recomputes the plotted data from the source CSV, runs structured checks, blocks charts whose spec, encoding, policy, or dataset binding fail those checks, and renders only verified charts with a provenance certificate (dataset hash, spec hash, plotted-table hash, passed checks).

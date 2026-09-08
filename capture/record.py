@@ -28,7 +28,7 @@ format-graded only -- a dependency bump moves neither the model nor the calibrat
 No field anywhere carries a wall clock: a run must re-encode byte-identically from its own decoded
 contents (R9), and a timestamp would make every committed run undiffable.
 
-Predicates R1-R11 of .agent/contracts/m12u6.md are implemented HERE and nowhere else;
+Predicates R1-R11 of .agent/archive/contracts/m12u6.md are implemented HERE and nowhere else;
 tests/test_python_capture_record.py calls them and restates none of them.
 """
 

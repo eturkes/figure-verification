@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Hardware-free subprocess suite over `webui/launch.sh` — contract `.agent/contracts/m12u4.md` §L.
+"""Hardware-free subprocess suite over `webui/launch.sh`.
+
+Contract: `.agent/archive/contracts/m12u4.md` §L.
 
 The launcher is the only orchestration surface no in-process suite reaches: it selects the model
 tier, preflights the CUDA runtime, refuses foreign listeners, and tears three process groups down.
@@ -14,7 +16,7 @@ real loopback HTTP listener so the launcher's own `curl` readiness poll runs unm
 Two design rules bind every case here:
 
 - A fake must refuse whatever the real command refuses. A tolerant fake un-pins the predicate it
-  was built for (`.agent/memory.md`, test design).
+  was built for (`.claude/rules/assurance.md`, test design).
 - L4 is an ORDERING predicate, so it needs a call-counting bomb on the teardown, never an exit
   code: hoisting `trap cleanup EXIT` above the port refusal leaves every exit status unchanged
   while the launcher starts `fuser -k`-ing a listener it never bound.

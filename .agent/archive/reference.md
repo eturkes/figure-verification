@@ -1,3 +1,5 @@
+> Retired: the M10 + M11 design seeds below carry into `.agent/spec.md` `Decisions` + `Deferred`; the OWUI mechanism is restated in `.claude/rules/owui.md`.
+
 # Reference — read-on-demand project mechanics
 
 Subsystem mechanics live in `.claude/rules/<topic>.md`: each file carries `paths:` frontmatter and

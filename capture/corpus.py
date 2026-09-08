@@ -12,7 +12,7 @@ module is the only code that knows the corpus shape.
     corpus/python/capture_prompt_v1.txt   byte-pinned; its sha256 rides every capture record
     corpus/python/captures/<run>/         M12.6+ records, TRACKED (unlike bench/reports/)
 
-Predicates C1-C10 of .agent/contracts/m12u5.md are implemented HERE and nowhere else;
+Predicates C1-C10 of .agent/archive/contracts/m12u5.md are implemented HERE and nowhere else;
 tests/test_python_corpus.py calls them and restates none of them.
 """
 

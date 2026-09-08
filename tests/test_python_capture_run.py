@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Gate for the COMMITTED capture runs (contract .agent/contracts/m12u7.md).
+"""Gate for the COMMITTED capture runs (contract .agent/archive/contracts/m12u7.md).
 
 R1-R11 and S1-S4 live in capture.record and capture.harness and are called here, never restated.
 What this file adds is what neither predicate set can say about a committed run: that the run is
