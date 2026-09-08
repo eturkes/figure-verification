@@ -32,7 +32,7 @@ dependencies = [
     "uvicorn>=0.49,<1",
     "httpx>=0.28,<1",
     "z3-solver>=4.16,<5",
-    "cryptography>=49,<50",
+    "cryptography>=50,<51",
 ]
 
 [dependency-groups]
@@ -44,10 +44,19 @@ dev = [
     "hypothesis>=6.110",
     "jsonschema>=4.21", # test-only: assert the exported golden is Draft-2020-12 valid
     "duckdb>=1.1",
+    # Gate scanners, resolved from this lock so the local gate and CI cannot drift apart.
+    # detect-secrets runs against a SLIM baseline (no line numbers) -- a full baseline
+    # demands a rewrite on any line drift, which breaks gate idempotence on a clean tree.
+    "detect-secrets>=1.5",
+    # zizmor audits the workflows themselves: SHA pinning, token scope, Dependabot cooldown.
+    "zizmor>=1.10",
+    # test-only: tests/test_gate.py parses the committed workflow + Dependabot YAML.
+    "pyyaml>=6",
+    "types-pyyaml>=6",
 ]
 
 [build-system]
-requires = ["uv_build>=0.11,<0.12"]
+requires = ["uv_build>=0.11,<0.13"]
 build-backend = "uv_build"
 
 # --- lint / format -----------------------------------------------------------

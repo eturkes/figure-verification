@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# CI runs the SAME command a human and an agent run: tools/gate.sh. Calling any tool
+# directly here would let CI and the local gate drift into two different claims.
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Advisory databases move under a frozen lockfile, so a clean audit decays with time
+  # rather than with commits. A weekly run is what surfaces that.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The gate needs no credentials; leaving them in .git/config would expose
+          # them to every later step (zizmor: artipacked).
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync the locked environment
+        run: uv sync --locked
+
+      - name: Run the gate
+        run: bash tools/gate.sh

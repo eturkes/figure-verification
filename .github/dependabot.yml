@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# `uv audit` reads the committed lock at gate time; Dependabot moves the lock itself.
+# The two are deliberately independent advisory paths, so neither is a single point of
+# failure for supply-chain findings.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      dev-tooling:
+        patterns: ["ruff", "mypy", "pytest*", "hypothesis", "detect-secrets", "zizmor"]
+
+  # The proposer runtime is a SEPARATE py3.12 CUDA project with its own lock; the gate
+  # venv never resolves it, so it needs its own update stream.
+  - package-ecosystem: "uv"
+    directory: "/model_backend/runtime"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
