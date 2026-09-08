@@ -14,7 +14,9 @@ surface -- the one place this project must never let the model write.
 from typing import Literal
 
 # Closed set. A new member needs a distinct fault shape, not a new phrasing of an existing one.
+# Grouped by the stage that can raise it; a stage never raises another stage's code.
 RefusalCode = Literal[
+    # prescan
     "source_too_large",
     "source_not_utf8",
     "source_has_nul",
@@ -24,6 +26,18 @@ RefusalCode = Literal[
     "nesting_too_deep",
     "unbalanced_brackets",
     "indent_too_deep",
+    # admit
+    "source_not_parsable",
+    "statement_not_admitted",
+    "expression_not_admitted",
+    "import_not_admitted",
+    "assign_target_not_admitted",
+    "call_target_not_admitted",
+    "keyword_not_admitted",
+    "attribute_not_admitted",
+    "operator_not_admitted",
+    "literal_not_admitted",
+    "name_not_bound",
 ]
 
 

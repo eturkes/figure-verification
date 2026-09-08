@@ -39,4 +39,4 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Phase
 
-IMPLEMENT. Spine: M13 python-source verification (math-function arm) → M10 OWUI integration + calibrated demo → M14 paste-in artifact. M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). Next = M13.2: the AST allowlist by idiom class, over the text `prescan` returns.
+IMPLEMENT. Spine: M13 python-source verification (math-function arm) → M10 OWUI integration + calibrated demo → M14 paste-in artifact. M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). M13.2 CLOSED (`admit.py` positive AST allowlist, 11 more refusal codes, 13/13 mutants killed). Next = M13.3, BLOCKED on the class-II truth-source fork: projection + recomputation compare the code to itself, so what the complicated arm fails against is undecided and it sets M13.3's scope.

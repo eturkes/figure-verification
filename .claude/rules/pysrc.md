@@ -94,3 +94,23 @@ z3 cannot be inlined.
   frozen. A ≥70% figure taken on the design set is not evidence.
 - No prompt text, prompt hash, sample-specific field list or raw model reply may appear in
   production code — one committed search test. Admission is justified by AST idiom class.
+
+## Mutation evidence (the allowlist is kernel tier; coverage alone credits nothing)
+
+`admit.py` = 13/13 killed. Driver `.scratch/mutate_admit.py` (gitignored ⇒ regenerate; port =
+Deferred p3/p4/p43/p44, one committed driver reproducing every kill count). Each mutant neuters a
+PREDICATE: call-target set opened · exact-type literal check degraded to `isinstance` · call-alias
+bound check dropped · constant-attribute alias bound check dropped · assignment binding moved ahead
+of its right-hand side · `**kwargs` conjunct dropped · private-attribute check dropped · expression
+tail turned catch-all · import alias conjunct dropped · statement tail turned catch-all ·
+chained-assignment check dropped · attribute depth bound removed · constant-attribute allowlist
+opened.
+
+`name_not_bound` guards TWO functions ⇒ its anchor carries a successor line to name the enclosing
+one; a whole-file anchor matches both and applies to neither, and the driver reports that as
+ANCHOR-MISS rather than as a kill.
+
+`isinstance` vs exact type over the literal tuple is an EQUIVALENT mutant while `bool` is listed:
+`bool` subclasses `int`, so the two spellings diverge only once the set is narrowed. Its pin
+withdraws `bool` by `monkeypatch` and demands `True` refuse — the general shape for any allowlist
+whose membership test could be subclass-closed.
