@@ -190,17 +190,18 @@ Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<modu
 test that must go red and only that test runs under it, so attribution cannot drift to whichever
 red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
 SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
-writes. `tools/mutants/project.toml` = 22 mutants over the projection predicates, with the two
+writes. `tools/mutants/project.toml` = 23 mutants over the projection predicates, with the two
 EQUIVALENT mutants documented in the file rather than listed.
 
 `admit.py` = 13/13 killed. Driver was `.scratch/mutate_admit.py` (gitignored ⇒ port its 13 mutants
-into `tools/mutants/admit.toml`; Deferred p3/p4/p43/p44). Each mutant neuters a
-PREDICATE: call-target set opened · exact-type literal check degraded to `isinstance` · call-alias
-bound check dropped · constant-attribute alias bound check dropped · assignment binding moved ahead
-of its right-hand side · `**kwargs` conjunct dropped · private-attribute check dropped · expression
-tail turned catch-all · import alias conjunct dropped · statement tail turned catch-all ·
-chained-assignment check dropped · attribute depth bound removed · constant-attribute allowlist
-opened.
+into `tools/mutants/admit.toml`; queued in `.agent/deferred.md`, superseding the driver half of
+p3/p4/p43/p44). Each
+mutant neuters a PREDICATE: call-target set opened · exact-type literal check degraded to
+`isinstance` · call-alias bound check dropped · constant-attribute alias bound check dropped ·
+assignment binding moved ahead of its right-hand side · `**kwargs` conjunct dropped ·
+private-attribute check dropped · expression tail turned catch-all · import alias conjunct dropped ·
+statement tail turned catch-all · chained-assignment check dropped · attribute depth bound removed ·
+constant-attribute allowlist opened.
 
 `name_not_bound` guards TWO functions ⇒ its anchor carries a successor line to name the enclosing
 one; a whole-file anchor matches both and applies to neither, and the driver reports that as

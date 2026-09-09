@@ -6,11 +6,11 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S5, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S6, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
-# since three tests carry two probes each -- one per conjunct of a compound guard. Targets are
+# since four tests carry two probes each -- one per conjunct of a compound guard. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
 #
@@ -112,8 +112,13 @@ plant_uncovered_check() {
 }
 
 plant_unarchived_closed_unit() {
-    # `Phase` is the last section, so an appended line lands inside it.
-    printf ' M%s.%s CLOSED (probe).\n' 99 9 >>"$SPEC"
+    # `Phase` is the last section, so an appended line lands inside it. The letter suffix is the
+    # firing input for the id shape (`M12.6b` -> `m12u6b.md`) that a suffix-blind pattern skips.
+    printf ' M%s.%sz CLOSED (probe).\n' 99 9 >>"$SPEC"
+}
+
+plant_open_unit_in_phase() {
+    printf ' M%s.%s OPEN (probe).\n' 99 8 >>"$SPEC"
 }
 
 probe g6-ci-gate-step tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
@@ -181,8 +186,16 @@ probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archi
     sed -i 's|\.claude/rules/ops\.md|.claude/rules/absent.md|' "$SPEC"
 
 probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_its_contract_archived \
-    'm99u9.md absent from .agent/archive/contracts/' \
+    'm99u9z.md absent from .agent/archive/contracts/' \
     plant_unarchived_closed_unit
+
+probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units \
+    'Phase names units that are not CLOSED' \
+    plant_open_unit_in_phase
+
+probe s6-closed-unit-in-deferred tests/test_spec.py::test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units \
+    'Deferred names closed units' \
+    sed -i 's|^## Deferred$|## Deferred\n\n**M99.7** CLOSED (probe).|' "$SPEC"
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.

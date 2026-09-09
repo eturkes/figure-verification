@@ -379,8 +379,8 @@ sizing rules fall out:
   ~12% of a window by themselves.
 - **Cap a prep wave at THREE teammates, or plan the fourth's harvest into a SECOND prep window from
   the start.** M12.1's three (`map`+`test`+`rev`) harvested inside one window at ~76%; M12.2's four
-  did not — MAIN reached ~70% after harvesting `map`+`res` alone. A `res` role earns its slot only
-  where the unit turns on external-API facts the repo does not already record.
+  did not — MAIN reached ~70% after harvesting `map`+`res` alone. Which roles a wave funds is
+  global `CLAUDE.md` `Subagents` b1's call; this row prices only how many harvests fit one window.
 
 A prep wave still holds sizing authority — re-split at WORK-UNIT entry on its evidence, not on the
 planned boundary.

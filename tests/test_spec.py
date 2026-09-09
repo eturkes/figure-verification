@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""S1-S5: liveness invariants of the attached state.
+"""S1-S6: liveness invariants of the attached state.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
 and read every line as current law. Liveness itself is a judgment no test can make. What IS
 decidable is whether the file still points at things that exist, and a dead row is the one most
 likely to point at something that does not: a retired corpus, an unwritten archive record, a
-deferral whose acceptance check was never stated.
+deferral whose acceptance check was never stated. Also decidable is which section a row sits in,
+which is what keeps the spine in one place (S6).
 
 The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
 those paths stay absent by design until the row closes.
@@ -39,6 +40,11 @@ _UNTRACKED_BY_DESIGN = frozenset({".venv-model/bin/python"})
 
 _PLACEHOLDER = ("<", "…", "*", "?")
 
+# Unit ids carry an optional letter suffix (`M12.6b` closed with `m12u6b.md`), and a pattern
+# without it reads `M12.6b CLOSED` as `M12.6` followed by junk: S5 then skips the unit and S6
+# reads it as open.
+_UNIT = re.compile(r"M(\d+)\.(\d+)([a-z]?)")
+
 
 def _tracked() -> frozenset[str]:
     assert _GIT is not None, "git is absent from PATH"
@@ -70,6 +76,12 @@ def _path_tokens(text: str) -> list[str]:
             if "/" in token or token.endswith(".md"):
                 tokens.append(token)
     return tokens
+
+
+def _closed(section: str, unit: re.Match[str]) -> bool:
+    """Emphasis is stripped with the whitespace: `Deferred` writes its unit ids as `**M13.3**`
+    headings, so a tail test that stops at `**` is blind in the one form the section uses."""
+    return section[unit.end() :].lstrip("* \t\n").startswith("CLOSED")
 
 
 def _section(name: str) -> str:
@@ -126,13 +138,26 @@ def test_s5_every_closed_unit_has_its_contract_archived() -> None:
     """S5: a unit marked CLOSED in `Phase` finished its close. Acceptance: a contract still in
     `.agent/contracts/`, or missing from `.agent/archive/contracts/`, fails -- CLOSED in the
     attached state and an unmoved contract are the same green until this fires."""
-    units = re.findall(r"M(\d+)\.(\d+) CLOSED", _section("Phase"))
+    phase = _section("Phase")
+    units = [match.groups() for match in _UNIT.finditer(phase) if _closed(phase, match)]
     assert units, "no closed units found in Phase"
     unfinished: list[str] = []
-    for milestone, unit in units:
-        name = f"m{milestone}u{unit}.md"
+    for milestone, unit, suffix in units:
+        name = f"m{milestone}u{unit}{suffix}.md"
         if not (_ARCHIVE_CONTRACTS / name).exists():
             unfinished.append(f"{name} absent from .agent/archive/contracts/")
         if (_CONTRACTS / name).exists():
             unfinished.append(f"{name} still in .agent/contracts/")
     assert not unfinished, unfinished
+
+
+def test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units() -> None:
+    """S6: `Deferred` owns the unfinished units -- the spine -- and `Phase` records the phase plus
+    the units already closed. Acceptance: a unit written into `Phase` without CLOSED fails, and so
+    does a unit marked CLOSED inside `Deferred`; either one splits what is left to do across two
+    sections, and a reader navigating to one of them reads a spine that is missing a unit."""
+    phase, deferred = _section("Phase"), _section("Deferred")
+    open_in_phase = [m.group(0) for m in _UNIT.finditer(phase) if not _closed(phase, m)]
+    assert not open_in_phase, f"Phase names units that are not CLOSED: {open_in_phase}"
+    closed_in_deferred = [m.group(0) for m in _UNIT.finditer(deferred) if _closed(deferred, m)]
+    assert not closed_in_deferred, f"Deferred names closed units: {closed_in_deferred}"

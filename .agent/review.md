@@ -1,9 +1,11 @@
 # Review ledger — IMPLEMENT close
 
-Adversarial pass over the phase diff. Rows are adjudicated against a check set fixed BEFORE the
-diff is read; an accepted ruling holds until new evidence reverses it, and a fix earns one
-re-review round against its acceptance check alone. Findings outside an artifact's acceptance
-contract report as register entries, never as blockers.
+Adversarial pass over the phase diff, run under `CLAUDE.md` `Engineering` review law: the check
+set is fixed BEFORE the diff is read, every row is adjudicated, and the table is the deliverable.
+Bindings this ledger adds: a `finding` cell recorded from here on carries its evidence at the
+global `Subagents` bar -- a red test for behavior, or the disputed bytes as a greppable anchor
+plus `file:line` for an artifact's text; an absence claim carries its command, rc and positive
+control.
 
 Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (with reason) ·
 `register` (outside contract, recorded not fixed) · `closed` (fix landed + re-reviewed).

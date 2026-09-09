@@ -27,14 +27,22 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Deferred
 
-Queue = `.agent/deferred.md`, 12 rows, one line + acceptance check each; nothing there blocks the current spine.
+Queue = `.agent/deferred.md`, 12 rows, one line + acceptance check each; nothing there blocks the units below.
+
+Spine = the unfinished units, in order: M13.3 close → M13.4 → M10 → M14.
+
+**M13.3** — python-source projection + integrity. OPEN, gate-green, one merge short of close; contract + verdicts = `.agent/contracts/m13u3.md`.
+
+- SHIPPED. `spec.py` + `project.py` = the formula-arm projection, 13 refusal codes, structural grid identity, integer-only `arange`. `tests/test_pysrc_project.py` (P1-P12 + P13 reachability) + `tests/test_pysrc_integrity.py` (G1/G2/G3/G6) merged from `wt/m13u3-test` with three MAIN rulings applied. Gate rc=0 on all 8 stages, `verifier` at 100% branch, probes 21/21, `tools/mutants/project.toml` at 23/23 killed.
+- RESUME. One harvest remains: `wt/m13u3-orc` @ `edaa682` — an independent oracle + Hypothesis differential (`tests/oracle_project.py`, `tests/test_pysrc_project_differential.py`, 1244 lines), UNMERGED. Run from the PRIMARY tree, since its vacuity guard resolves both sides against the tree the files sit in. Last measured there: 25 failed / 77 passed, of which exactly ONE is a semantic disagreement (the oracle's `cap=10_000` against `max_grid_samples` = 100_000) and 24 are form noise in its `normalize` — node-class names, field names, field order, and the `kind`/`step` fields the Grid ruling removes. The fix (one explicit translation map onto a canonical tuple) was messaged but not applied before the teammate stopped, so a resumed session either applies it directly or re-dispatches an `orc` successor from that branch. Its corpora predate the integer-only `arange` ruling and the structural grid-identity ruling. Both worktrees are clean and still checked out under `.scratch/worktrees/`.
+- CLOSE. Verdict table into the contract, archive it under `.agent/archive/contracts/`, then record the close in `Phase` and drop this unit from the spine.
+
+**M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose.
+
+**M10** — OWUI integration + calibrated demo; mechanism + calibration risk = `.claude/rules/owui.md`.
+
+**M14** — paste-in artifact; shape = `Intent` + the single-source ruling in `Decisions` (inlined by generation, hand fork banned).
 
 ## Phase
 
-IMPLEMENT. Spine: M13 python-source verification (projection → integrity → verdict) → M10 OWUI integration + calibrated demo → M14 paste-in artifact. M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). M13.2 CLOSED (`admit.py` positive AST allowlist, 11 more refusal codes, 13/13 mutants killed). M13.3 OPEN, gate-green, one merge short of close; contract + verdicts = `.agent/contracts/m13u3.md`.
-
-SHIPPED. `spec.py` + `project.py` = the formula-arm projection, 13 refusal codes, structural grid identity, integer-only `arange`. `tests/test_pysrc_project.py` (P1-P12 + P13 reachability) + `tests/test_pysrc_integrity.py` (G1/G2/G3/G6) merged from `wt/m13u3-test` with three MAIN rulings applied. Gate rc=0 on all 8 stages, `verifier` at 100% branch, probes 19/19, `tools/mutants/project.toml` at 23/23 killed.
-
-RESUME. One harvest remains: `wt/m13u3-orc` @ `edaa682` — an independent oracle + Hypothesis differential (`tests/oracle_project.py`, `tests/test_pysrc_project_differential.py`, 1244 lines), UNMERGED. Run from the PRIMARY tree, since its vacuity guard resolves both sides against the tree the files sit in. Last measured there: 25 failed / 77 passed, of which exactly ONE is a semantic disagreement (the oracle's `cap=10_000` against `max_grid_samples` = 100_000) and 24 are form noise in its `normalize` — node-class names, field names, field order, and the `kind`/`step` fields the Grid ruling removes. The fix (one explicit translation map onto a canonical tuple) was messaged but not applied before the teammate stopped, so a resumed session either applies it directly or re-dispatches an `orc` successor from that branch. Its corpora predate the integer-only `arange` ruling and the structural grid-identity ruling. Both worktrees are clean and still checked out under `.scratch/worktrees/`.
-
-Then: verdict table into the contract, archive it under `.agent/archive/contracts/`, close M13.3, and open M13.4 (dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose).
+IMPLEMENT, milestone M13 — python-source verification (projection → integrity → verdict). M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). M13.2 CLOSED (`admit.py` positive AST allowlist, 11 more refusal codes, 13/13 mutants killed).
