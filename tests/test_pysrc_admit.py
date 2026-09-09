@@ -347,8 +347,9 @@ def test_a11_every_admission_refusal_code_is_reachable() -> None:
     }
 
 
-def test_a11_the_refusal_vocabulary_is_exactly_its_two_halves() -> None:
-    """A11: `RefusalCode` is the union of the pre-scan and admission sets and nothing more.
+def test_a11_the_refusal_vocabulary_is_exactly_its_three_stages() -> None:
+    """A11: `RefusalCode` is the union of the pre-scan, admission and projection sets, and nothing
+    more.
 
     Acceptance: exact set equality against hand-stated literals. Widening an enum in a language
     without exhaustiveness checking leaves every consumer green, so a code added with no witness is
@@ -377,8 +378,24 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_two_halves() -> None:
         "literal_not_admitted",
         "name_not_bound",
     }
-    assert set(get_args(RefusalCode)) == prescan_codes | admit_codes
+    project_codes = {
+        "no_mark",
+        "multiple_marks",
+        "mark_arity_not_projected",
+        "mark_not_valid_for_arm",
+        "x_not_a_grid",
+        "y_not_over_grid",
+        "grid_not_representable",
+        "expression_not_projected",
+        "label_not_literal",
+        "name_rebound",
+        "no_terminal",
+        "statement_after_terminal",
+        "statement_not_projected",
+    }
+    assert set(get_args(RefusalCode)) == prescan_codes | admit_codes | project_codes
     assert not (prescan_codes & admit_codes)
+    assert not (project_codes & (prescan_codes | admit_codes))
 
 
 def test_a12_admission_never_evaluates() -> None:

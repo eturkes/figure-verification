@@ -36,9 +36,13 @@ class Num:
 
 @dataclass(frozen=True, slots=True)
 class Var:
-    """A reference to the grid variable. The only free name a projected expression may carry."""
+    """The grid variable -- the sample point. Nameless on purpose.
 
-    name: str
+    A projected expression has exactly one free variable, so carrying the model's chosen spelling
+    would make two programs that compute the same thing project to unequal specs. It also lets the
+    bound form (`x = np.linspace(...)`) and the inline form (`plt.plot(np.linspace(...), ...)`)
+    compare equal, which is what makes the two spellings one projection.
+    """
 
 
 @dataclass(frozen=True, slots=True)

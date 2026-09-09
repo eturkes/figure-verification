@@ -111,6 +111,7 @@ class _Projector:
         self._text: dict[str, str] = {}
         self._flags: dict[str, bool] = {}
         self._series: str | None = None
+        self._grid_in_scope: Grid | None = None
         self._terminal = False
 
     # --- expressions ---------------------------------------------------------
@@ -143,10 +144,7 @@ class _Projector:
                 _refuse("expression_not_projected")
             return Const(constant)
         if isinstance(node, ast.Call):
-            function = _FUNCTIONS.get(_call_target(node))
-            if function is None or len(node.args) != 1 or node.keywords:
-                _refuse("expression_not_projected")
-            return Fn(function, self._expr(node.args[0], grid_name))
+            return self._call_expr(node, grid_name)
         if isinstance(node, ast.BinOp):
             operator = _BINOPS.get(type(node.op))
             if operator is None:  # pragma: no cover - admission closes the operator set
@@ -157,13 +155,31 @@ class _Projector:
             return Neg(self._expr(node.operand, grid_name))
         _refuse("expression_not_projected")  # pragma: no cover - admission closes the tail
 
+    def _call_expr(self, node: ast.Call, grid_name: str | None) -> Expr:
+        target = _call_target(node)
+        if target in _GRID_CALLS:
+            # The grid call written twice -- once as x, once inside y -- names the same sample
+            # points, so it projects to the grid variable exactly when the two grids are equal.
+            if self._grid(node) != self._grid_in_scope:
+                _refuse("y_not_over_grid")
+            return Var()
+        function = _FUNCTIONS.get(target)
+        if function is None or len(node.args) != 1 or node.keywords:
+            _refuse("expression_not_projected")
+        return Fn(function, self._expr(node.args[0], grid_name))
+
     def _name(self, name: str, grid_name: str | None) -> Expr:
         if name == grid_name:
-            return Var(name)
-        if name in self._grids:
-            # A grid used as a value: either a second grid, or the x grid where an inline call
-            # left no name to bind. Both mean y is not a function of THE grid.
-            _refuse("y_not_over_grid")
+            return Var()
+        bound_grid = self._grids.get(name)
+        if bound_grid is not None:
+            # A grid reached by a route other than the mark's x argument. Structural equality
+            # decides it: the same sample points ARE the grid variable, however the model spelled
+            # them, and different points mean y is not a function of THE grid.
+            if bound_grid != self._grid_in_scope:
+                _refuse("y_not_over_grid")
+            self._used.add(name)
+            return Var()
         bound = self._exprs.get(name)
         if bound is None:
             # An alias (`np`, `plt`) in value position, or a name admission bound but projection
@@ -340,6 +356,7 @@ class _Projector:
             grid = self._grid(x_node)
         else:
             _refuse("x_not_a_grid")
+        self._grid_in_scope = grid
         return FormulaPlot(
             mark=mark, grid=grid, y=self._expr(node.args[1], grid_name), labels=self._labels()
         )
