@@ -80,8 +80,8 @@ def test_g6_ci_runs_the_gate_script_and_no_tool_directly() -> None:
     `tools/gate.sh`, and no `run:` names a tool the gate runs behind it."""
     paths = _workflow_paths()
     assert paths, "no workflows found"
-    # str(): YAML types a bare `run: true` as a bool, which would crash the membership test
-    # instead of reporting the missing gate step it actually is.
+    # YAML types a bare `run: true` as a bool; str() keeps the membership test reporting the
+    # missing gate step rather than crashing on it.
     invocations = [
         step["run"]
         for path in paths

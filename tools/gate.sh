@@ -82,7 +82,7 @@ main() {
 }
 
 # Sourcing exposes the stage helpers without running the gate, which is how tools/gate-probe.sh
-# fires secret_scan and shell_lint themselves rather than reimplementing what they check.
+# fires the shipped shell_lint itself.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     main
 fi

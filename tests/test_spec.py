@@ -2,14 +2,13 @@
 """S1-S5: liveness invariants of the attached state.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
-and read every line as current law. It carries no size budget -- the rule is that every line binds
-current or future work -- and liveness itself is a judgment no test can make. What IS decidable is
-whether the file still points at things that exist, and a dead row is the one most likely to point
-at something that does not: a retired corpus, an unwritten archive record, a deferral whose
-acceptance check was never stated.
+and read every line as current law. Liveness itself is a judgment no test can make. What IS
+decidable is whether the file still points at things that exist, and a dead row is the one most
+likely to point at something that does not: a retired corpus, an unwritten archive record, a
+deferral whose acceptance check was never stated.
 
-`Accept:` clauses are excluded from the pointer sweep on purpose -- a deferral names the artifact
-it will CREATE, so those paths are absent by design until the row closes.
+The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
+those paths stay absent by design until the row closes.
 
 Each expectation is hand-stated rather than read back from the artifact it guards. This file
 imports no `verifier` symbol: coverage source stays `verifier` only.

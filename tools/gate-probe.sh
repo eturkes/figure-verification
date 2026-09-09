@@ -9,8 +9,8 @@
 # script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S5, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
-# demands a nonzero rc whose output names the expected cause -- rc alone cannot say WHICH
-# conjunct of a compound guard fired, and two probes here share a test on purpose. Targets are
+# demands a nonzero rc whose output names the expected cause: attribution rides the message,
+# since three tests carry two probes each -- one per conjunct of a compound guard. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
 #
@@ -96,9 +96,9 @@ append_direct_tool_step() {
 }
 
 plant_blanket_disable() {
-    # Assembled at run time: the literal would trip the very ban this probe fires. The trailing
-    # function is load-bearing -- a directive with no command after it is SC1072, which would
-    # fail shell_lint one step before its ban and leave the ban itself unproven.
+    # Assembled at run time: this file sits inside the surface the ban scans. The trailing
+    # function keeps shellcheck clean -- a directive with no command after it is SC1072, which
+    # fails shell_lint one step before its ban and leaves the ban unproven.
     printf '# %s %s=SC2086\nprobe_target() { :; }\n' shellcheck 'disable' >>"$1"
 }
 
@@ -107,8 +107,7 @@ plant_shellcheck_finding() {
 }
 
 plant_uncovered_check() {
-    # The name is assembled at run time: spelled in full here it would appear in this very file
-    # and G12 would read it as covered.
+    # Name assembled at run time: G12 scans this file, so a literal would read as covered.
     printf '\n\ndef test_g%s_uncovered_probe() -> None:\n    """Probe."""\n' 99 >>"$TEST_GATE"
 }
 

@@ -1,6 +1,6 @@
 # Deferral queue
 
-One line + acceptance check each. `p<n>` rows = the archived polish register in `.agent/archive/polish.md` (full text + evidence). Whatever blocks the current spine is named in `.agent/spec.md` `Phase`, not here.
+One line + acceptance check each. `p<n>` rows = the archived polish register in `.agent/archive/polish.md` (full text + evidence). Whatever blocks the current spine is named in `.agent/spec.md` `Phase`.
 
 - M12.8 guided-JSON bench re-baseline. Accept: tracked `bench/baselines/m12-cuda/` + `by_category` pin + ignore test.
 - M12.9 prose sweep. Accept: ORIGIN recipes labeled historical; STE on the READMEs; identity search clean.
