@@ -26,6 +26,8 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _GATE = _REPO_ROOT / "tools" / "gate.sh"
 _GATE_PROBE = _REPO_ROOT / "tools" / "gate-probe.sh"
+# Both purpose-built static suites: neither has a downstream re-check, so both owe firing inputs.
+_PROBED_SUITES = (Path(__file__).resolve(), _REPO_ROOT / "tests" / "test_spec.py")
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _DEPENDABOT = _REPO_ROOT / ".github" / "dependabot.yml"
 _OPS_RULES = _REPO_ROOT / ".claude" / "rules" / "ops.md"
@@ -185,12 +187,16 @@ def test_g11_ops_rules_record_the_gate_invocation() -> None:
 
 
 def test_g12_every_static_config_check_ships_a_positive_control() -> None:
-    """G12: every check in this file is named by `tools/gate-probe.sh`, which mutates the tree
-    until each one fires. Acceptance: adding a check here without its firing input fails -- a
-    check that cannot fire and a clean tree emit the same green."""
-    source = Path(__file__).resolve().read_text(encoding="utf-8")
+    """G12: every check in this file and in `tests/test_spec.py` is named by
+    `tools/gate-probe.sh`, which mutates the tree until each one fires. Acceptance: adding a check
+    to either suite without its firing input fails -- a check that cannot fire and a clean tree
+    emit the same green."""
     probe = _GATE_PROBE.read_text(encoding="utf-8")
-    checks = re.findall(r"^def (test_g\w+)", source, re.MULTILINE)
+    checks = [
+        name
+        for path in _PROBED_SUITES
+        for name in re.findall(r"^def (test_\w+)", path.read_text(encoding="utf-8"), re.MULTILINE)
+    ]
     assert checks, "no checks found to cover"
     missing = [name for name in checks if name not in probe]
     assert not missing, f"no positive control in gate-probe.sh for {missing}"

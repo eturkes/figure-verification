@@ -5,8 +5,8 @@
 #
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
-# checks written HERE have no such backstop, so each ships the input that makes it fail and
-# this script fires it: tests/test_gate.py G6-G11 plus shell_lint's blanket-disable ban.
+# checks written HERE have no such backstop, so each ships the input that makes it fail and this
+# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S5, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause -- rc alone cannot say WHICH
@@ -29,7 +29,9 @@ WORKFLOW=.github/workflows/gate.yml
 DEPENDABOT=.github/dependabot.yml
 OPS=.claude/rules/ops.md
 TEST_GATE=tests/test_gate.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE")
+SPEC=.agent/spec.md
+DEFERRED=.agent/deferred.md
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -70,7 +72,7 @@ verdict() {
     printf '%s\n' "$output" | tail -20
 }
 
-# probe <name> <test_gate.py node> <expected cause in the output> <mutation command...>
+# probe <name> <suite::node> <expected cause in the output> <mutation command...>
 probe() {
     local name="$1" node="$2" expect="$3"
     shift 3
@@ -82,7 +84,7 @@ probe() {
         return 0
     fi
     local output rc
-    output="$(uv run --locked pytest "tests/test_gate.py::$node" -x -q --no-cov -p no:cacheprovider 2>&1)"
+    output="$(uv run --locked pytest "$node" -x -q --no-cov -p no:cacheprovider 2>&1)"
     rc=$?
     restore
     verdict "$name" "$rc" "$expect" "$output"
@@ -110,58 +112,83 @@ plant_uncovered_check() {
     printf '\n\ndef test_g%s_uncovered_probe() -> None:\n    """Probe."""\n' 99 >>"$TEST_GATE"
 }
 
-probe g6-ci-gate-step test_g6_ci_runs_the_gate_script_and_no_tool_directly \
+plant_unarchived_closed_unit() {
+    # `Phase` is the last section, so an appended line lands inside it.
+    printf ' M%s.%s CLOSED (probe).\n' 99 9 >>"$SPEC"
+}
+
+probe g6-ci-gate-step tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
     'expected exactly one gate invocation' \
     sed -i 's|run: bash tools/gate.sh|run: true|' "$WORKFLOW"
 
-probe g6-ci-direct-tool test_g6_ci_runs_the_gate_script_and_no_tool_directly \
+probe g6-ci-direct-tool tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
     "calls 'pytest' outside the gate" \
     append_direct_tool_step
 
-probe g6-stage-list test_g6_gate_script_runs_every_expected_stage \
+probe g6-stage-list tests/test_gate.py::test_g6_gate_script_runs_every_expected_stage \
     'assert declared == _EXPECTED_STAGES' \
     sed -i 's|^\( *\)stage secrets |\1# stage secrets |' "$GATE"
 
-probe g7-ecosystem test_g7_dependabot_covers_every_lock_and_cools_down \
+probe g7-ecosystem tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert covered == {' \
     sed -i 's|package-ecosystem: "github-actions"|package-ecosystem: "npm"|' "$DEPENDABOT"
 
-probe g7-cooldown test_g7_dependabot_covers_every_lock_and_cools_down \
+probe g7-cooldown tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert update["cooldown"]["default-days"] >= 7' \
     sed -i '0,/default-days: 7/s//default-days: 1/' "$DEPENDABOT"
 
-probe g8-sha-pin test_g8_every_action_reference_is_sha_pinned \
+probe g8-sha-pin tests/test_gate.py::test_g8_every_action_reference_is_sha_pinned \
     'is not SHA-pinned' \
     sed -i 's|actions/checkout@[0-9a-f]\{40\}|actions/checkout@v7|' "$WORKFLOW"
 
-probe g9-permissions test_g9_workflows_declare_least_privilege_permissions \
+probe g9-permissions tests/test_gate.py::test_g9_workflows_declare_least_privilege_permissions \
     'assert workflow["permissions"] == {"contents": "read"}' \
     sed -i 's|^  contents: read$|  contents: write|' "$WORKFLOW"
 
-probe g9-persist-credentials test_g9_checkout_does_not_persist_credentials \
+probe g9-persist-credentials tests/test_gate.py::test_g9_checkout_does_not_persist_credentials \
     'assert step["with"]["persist-credentials"] is False' \
     sed -i 's|persist-credentials: false|persist-credentials: true|' "$WORKFLOW"
 
-probe g10-exec-bit test_g10_gate_script_is_executable_and_free_of_blanket_disables \
+probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \
     chmod -x "$GATE"
 
-probe g10-blanket-disable test_g10_gate_script_is_executable_and_free_of_blanket_disables \
+probe g10-blanket-disable tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'not in _GATE.read_text' \
     plant_blanket_disable "$GATE"
 
-probe g11-ops-records-the-gate test_g11_ops_rules_record_the_gate_invocation \
+probe g11-ops-records-the-gate tests/test_gate.py::test_g11_ops_rules_record_the_gate_invocation \
     'assert "tools/gate.sh" in _OPS_RULES.read_text' \
     sed -i 's|tools/gate\.sh|tools/gate-renamed.sh|g' "$OPS"
 
-probe g12-probe-coverage test_g12_every_static_config_check_ships_a_positive_control \
+probe g12-probe-coverage tests/test_gate.py::test_g12_every_static_config_check_ships_a_positive_control \
     'no positive control in gate-probe.sh for' \
     plant_uncovered_check
+
+probe s1-section-set tests/test_spec.py::test_s1_spec_carries_the_five_sections_in_order \
+    'assert headings == _EXPECTED_SECTIONS' \
+    sed -i 's|^## Deferred$|## Backlog|' "$SPEC"
+
+probe s2-artifacts-path tests/test_spec.py::test_s2_every_artifacts_path_is_tracked \
+    'Artifacts names untracked paths' \
+    sed -i 's|tools/gate-probe\.sh|tools/gate-absent.sh|' "$SPEC"
+
+probe s3-acceptance-check tests/test_spec.py::test_s3_every_deferral_carries_an_acceptance_check \
+    'deferral rows with no acceptance check' \
+    sed -i '0,/Accept:/s//Someday:/' "$DEFERRED"
+
+probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'dangling pointers' \
+    sed -i 's|\.claude/rules/ops\.md|.claude/rules/absent.md|' "$SPEC"
+
+probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_its_contract_archived \
+    'm99u9.md absent from .agent/archive/contracts/' \
+    plant_unarchived_closed_unit
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.
 if command -v shellcheck >/dev/null 2>&1; then
-    probe g10-shellcheck test_g10_gate_script_passes_shellcheck \
+    probe g10-shellcheck tests/test_gate.py::test_g10_gate_script_passes_shellcheck \
         'assert completed.returncode == 0' \
         plant_shellcheck_finding
 
