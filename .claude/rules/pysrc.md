@@ -8,22 +8,53 @@ paths:
 
 # `pysrc-0.1` — model-authored Python verification (M13 law)
 
-## Demo re-scope (user ruling; supersedes "simple arm = CSV bar/line/scatter")
+## Verification model (user ruling; supersedes the math-function-only re-scope)
 
-Demo prompts plot MATH FUNCTIONS and import no data. A program that forgets an import is broken and
-fails outright without the verifier — not the verifier's concern, and not a calibration lever, which
-retires the unbound-`pd` problem (`archive/contracts/m12u7.md` § Derived: 24/50 design replies used
-`pd` unbound, reading the simple arm at 33% under a bound-name predicate).
+BOTH arms ship. Dataset arm (`read_csv` over the user's uploaded file) = the clinical spine; formula
+arm (`f(x)` over a stated interval) = the high-resolution special case, the one where the request
+sentence IS the specification. One core, one allowlist, two projections.
 
-- Simple arm = `f(x)` over a stated interval.
-- Complicated arm = tricky formulas, or math to perform and then plot, where the verifier can catch
-  the RESULT being wrong.
-- Motivation: under a clinician's complex specification even an intelligent model may plot something
-  disingenuous to the data.
-- Consequences: `corpus/python/` (88 prompts) and the 50-record `m12-design` capture are INVALIDATED
-  and re-authored against math prompts; the projection targets the FORMULA plot spec, not the
-  dataset one; OWUI `files`-payload plumbing is no longer needed; `capture_prompt_v1.txt` and its
-  pinned sha256 need a v2 (the template names `/mnt/uploads/<dataset>`).
+Three tiers, ordered by what each needs to know about the user:
+
+1. **Provenance** — every plotted number recomputed from the user's artifact by an independent
+   engine. Needs NO intent. Kills hallucinated values. Total within the admitted subset.
+2. **Integrity** — the figure satisfies the closed per-mark rule set below. Needs NO intent. Kills
+   misrepresenting encodings. Total over the rule set.
+3. **Interpretation** — the certificate publishes in plain words exactly what was verified (`sum of
+   sales grouped by quarter · 4 groups · 1 null row dropped · y from 0`). It PUBLISHES the residual
+   intent gap instead of closing it; a human reads it in one glance.
+
+Fidelity to INTENT is never claimed: intent lives in a person's head, and a chat sentence is not a
+specification. Tier 3 makes that gap visible; nothing hides it. Coverage grows by adding a mark —
+projection + its integrity rules — and adding a mark costs NO new trust.
+
+Both failure profiles are covered, which is why the model tier does not move the design: a weak
+proposer hallucinates values (tier 1 catches it), a strong one truncates an axis or drops outliers
+to flatter the story (tier 2 catches it).
+
+## Integrity rule set — decidable, per mark, and MOSTLY ALREADY TRUE
+
+`admit.py` admits no `ylim`, `xlim`, `yscale`, `twinx` or `subplots`, so several rules hold BY
+CONSTRUCTION today and are unclaimed. Reading that narrowness as "small subset" understates it: it
+is graphical integrity, enforced by refusal.
+
+| id | scope | predicate | today |
+|---|---|---|---|
+| G1 | bar | length encodes magnitude ⇒ baseline at zero, axis limits unset | by construction |
+| G2 | all | one Axes, one y-scale — no dual or secondary axis | by construction |
+| G3 | all | linear scale only | by construction |
+| G4 | all | ticks monotonic + evenly spaced under a linear claim | by construction |
+| G5 | formula | sampled functions are line/scatter, never bar (`FormulaMark`) | shipped, unclaimed |
+| G6 | scatter | marker size encodes value by AREA, never radius | with the `s=` keyword |
+| G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | to implement |
+| G8 | all | plotted point count = non-null row count unless a drop is projected AND published | to implement |
+| G9 | line | x ordered and uniformly spaced — a connecting line asserts interpolation | to implement |
+| G10 | all | label/legend text consistent with the projected computation | `label=` admitted, unchecked |
+| G11 | aggregate | per-group counts published beside every aggregate | tier 3 |
+
+A by-construction rule is only as durable as the refusal under it ⇒ **every G-row pinned by a test
+that fails when the allowlist widens**. Admitting `plt.ylim` later must break G1's test, not silently
+delete G1. This is the closed-dispatch defect class applied to the claim surface.
 
 ## Comparison surfaces — what the verifier can compare AT ALL
 
@@ -35,19 +66,27 @@ from the model.
 | **I** admission | submitted AST vs closed allowlist | overreach: scipy/sklearn, `subplots(2,2)`, loops, themes, `cmap=` | anything wrong but admissible |
 | **II** recomputation vs out-of-model truth | plotted values vs values derived from an artifact the USER supplied (uploaded CSV, or a target stated in the `expr-0.1` grammar) | the figure misrepresents the thing of record | nothing, within its scope |
 | **III** internal consistency | projection vs projection | numeric-literal arrays (= model-supplied data), label/computation mismatch, grid/value length skew, `np.random` | a model that coherently plots the wrong function |
-| **IV** invariants | projection vs law | NaN/Inf, non-monotonic grid, negative data on a log axis, sample explosion | any plausible wrong answer |
+| **IV** integrity | projection vs the G-rules | truncated baselines, dual axes, silent row drops, radius-encoded area, interpolation asserted over unordered x | a well-formed figure of the wrong quantity |
 
-**Only class II catches coherent wrongness.** Removing the CSV removes source 1, so class II holds
-only if the user states the quantity of record in machine-readable form. Rejected as a class-II
-source: committed per-prompt expected answers — that moves the pass/fail boundary out of the
-verifier, against ruling 5.
+**Class II's truth source is the user's own artifact** — the uploaded CSV (dataset arm) or the
+formula stated in the request (formula arm). Both are bytes the user supplied; neither is derivable
+from the model. Rejected as class-II sources, each for a different reason: committed per-prompt
+expected answers move the boundary out of the verifier (ruling 5); a second model has no
+independence; back-translation self-consistency is the SAME model, consistently wrong.
 
-## Two forks left OPEN — they bind later, and the core is identical under all of them
+**The residual no class catches: task infidelity** — every number real and correctly computed, but
+of a different quantity than the request meant (grouped by `month` where the user said quarter;
+summed where they meant averaged). It is not mechanically decidable without a specification of
+intent, so tier 3 PUBLISHES the interpretation rather than pretending to check it. A verdict never
+implies the figure answers the question asked.
 
-- **(a) Declared target: absent | optional | mandatory.** `verify_python_source(src,
-  declared_target=None)` carries all three; only the demo surface and the certificate's stated
-  guarantee tier change.
-- **(b) Observed-execution confirmation.** The sandbox reports the arrays matplotlib actually
+## Forks
+
+- **(a) Declared target — RESOLVED.** The truth source is the user's artifact: the uploaded CSV in
+  the dataset arm, the formula in the request sentence in the formula arm. `verify_python_source(src,
+  declared_target=None)` keeps the parameter optional for headless callers; the demo supplies it from
+  the arm in play.
+- **(b) Observed-execution confirmation — OPEN.** The sandbox reports the arrays matplotlib actually
   received (`gcf().axes[*].lines[*].get_xydata()`), the outlet filter returns them, and the PNG is
   withheld until they match the verifier's own recomputation. This closes the projection gap
   EMPIRICALLY instead of by construction and costs no new trust: OWUI already rewrites `plt.show()`
@@ -59,6 +98,24 @@ verifier, against ruling 5.
 
 The verdict is decided statically either way — it must precede release — so the core is built on
 projection + exact recomputation and observation is additive.
+
+## Deployment facts that bind the design
+
+- Initial deployment = Japan, clinical. Production proposer = latest Kimi; the demo keeps
+  `Qwen2.5-Coder-0.5B-Instruct` on the host of record. The design must not depend on proposer
+  strength: tier 1 carries the weak arm, tier 2 the strong one.
+- Request language and CSV header language may differ arbitrarily ⇒ **lexical term anchoring is NOT
+  load-bearing**. It is a deferred refinement over tiers 1-3, never a prerequisite for a verdict.
+- Text normalization that is SAFE because the model gets no vote in it: `unicodedata.normalize
+  ("NFKC", …)` + full/half-width folding + bounded edit distance against the file's REAL header, a
+  unique match required and ties refused. The target set comes from the user's bytes, so a typo fix
+  cannot invent a column.
+- Japanese has no whitespace word boundaries ⇒ every request-side match is SUBSTRING containment,
+  never tokenization. This makes anchoring more robust in Japanese than in English, which needs
+  plural and possessive handling.
+- A model-produced translation of the request may never become the anchor: the model would then
+  control both sides of the comparison and class II would be deleted, not weakened. A translation
+  reaches the user through tier 3 publication only.
 
 ## Layering (ruling 7: embeddability is a DESIGN INPUT, not an M14 retrofit)
 
