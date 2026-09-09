@@ -1,0 +1,261 @@
+# Mutation catalogue for the formula-arm projection. Run: `uv run --locked python tools/mutate.py
+# tools/mutants/project.toml`. Each mutant neuters ONE predicate's CONDITION and names the ONE test
+# that must go red under it.
+#
+# Two mutants are deliberately ABSENT because they are EQUIVALENT, not because nothing kills them:
+#
+# - `type(num_node.value) is int` -> `isinstance(...)`. `bool` subclasses `int` and `True == 1`,
+#   which is below `min_grid_samples` = 2, so `num=True` refuses `grid_not_representable` under
+#   both spellings. The two diverge only once the minimum drops to 1 or below. Same shape as
+#   `admit.py`'s literal-tuple mutant, which is equivalent for the mirror-image reason.
+# - Naming the grid variable. `Var` lives in `spec.py`, a different module; P3's bound-vs-inline
+#   equality is what pins namelessness.
+#
+# `p4-unbound-name` mutates the guard's ACTION rather than deleting it, for the same reason:
+# deleting it drops `None` into `_expr`, which falls through every isinstance branch to the closed
+# tail and refuses with the IDENTICAL code. The guard earns its place by keeping that tail
+# unreachable -- which is what its `pragma: no cover` asserts -- so the mutant that distinguishes
+# is the one where an unresolvable name silently BECOMES the grid variable.
+
+module = "src/verifier/pysrc/project.py"
+tests = ["tests/test_pysrc_project.py", "tests/test_pysrc_integrity.py"]
+
+[[mutant]]
+id = "p1-no-mark"
+predicate = "a program with no mark is refused rather than projected"
+kills = "tests/test_pysrc_project.py::test_p1_no_mark_refuses"
+anchor = '''
+        if self._mark is None:
+            _refuse("no_mark")'''
+mutant = '''
+        if False:
+            _refuse("no_mark")'''
+
+[[mutant]]
+id = "p2-multiple-marks"
+predicate = "a second mark is refused, never silently overwritten"
+kills = "tests/test_pysrc_project.py::test_p2_exactly_one_mark"
+anchor = '''
+            if self._mark is not None:
+                _refuse("multiple_marks")'''
+mutant = '''
+            if False:
+                _refuse("multiple_marks")'''
+
+[[mutant]]
+id = "p3-x-not-a-grid"
+predicate = "a mark whose x is not a grid is refused, never given a grid the source never wrote"
+kills = "tests/test_pysrc_project.py::test_p3_x_resolves_to_grid"
+anchor = '''
+        else:
+            _refuse("x_not_a_grid")'''
+mutant = '''
+        else:
+            grid = Grid(start=Num(Fraction(0)), stop=Num(Fraction(1)), samples=2)'''
+
+[[mutant]]
+id = "p4-y-over-bound-grid"
+predicate = "a bound grid inside y must equal THE grid, by value"
+kills = "tests/test_pysrc_project.py::test_p4_y_over_grid_only"
+anchor = '''
+            if bound_grid != self._grid_in_scope:
+                _refuse("y_not_over_grid")'''
+mutant = '''
+            if False:
+                _refuse("y_not_over_grid")'''
+
+[[mutant]]
+id = "p4-y-over-inline-grid"
+predicate = "a grid CALL repeated inside y must equal THE grid, by value"
+kills = "tests/test_pysrc_project.py::test_p4_y_over_grid_only"
+anchor = '''
+        if target in _GRID_CALLS:'''
+mutant = '''
+        if target in _GRID_CALLS and self._grid_in_scope is None:'''
+
+[[mutant]]
+id = "p4-unbound-name"
+predicate = "a name denoting no number is refused, never resolved as one"
+kills = "tests/test_pysrc_project.py::test_p4_y_over_grid_only"
+anchor = '''
+        bound = self._exprs.get(name)
+        if bound is None:
+            # An alias (`np`, `plt`) in value position, or a name admission bound but projection
+            # never saw -- neither denotes a number.
+            _refuse("expression_not_projected")'''
+mutant = '''
+        bound = self._exprs.get(name)
+        if bound is None:
+            return Var()'''
+
+[[mutant]]
+id = "p5-arange-inclusive-stop"
+predicate = "arange's half-open bound normalizes onto an INCLUSIVE stop"
+kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
+anchor = "        return Grid(start=Num(start), stop=Num(start + (count - 1) * step), samples=count)"
+mutant = "        return Grid(start=Num(start), stop=Num(stop), samples=count)"
+
+[[mutant]]
+id = "p5-linspace-default-num"
+predicate = "an omitted `num` is numpy's 50, hand-stated in the test rather than read from here"
+kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
+anchor = "            count = 50  # numpy's own default; a program omitting `num` still draws 50 points."
+mutant = "            count = 51  # mutant"
+
+[[mutant]]
+id = "p5-arange-default-step"
+predicate = "an omitted arange step is 1"
+kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
+anchor = "        step = bounds[2] if len(bounds) == _ARANGE_MAX_ARITY else Fraction(1)"
+mutant = "        step = bounds[2] if len(bounds) == _ARANGE_MAX_ARITY else Fraction(2)"
+
+[[mutant]]
+id = "p5-symbolic-bound-refused"
+predicate = "an arange bound arithmetic cannot reach is refused, never coerced"
+kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
+anchor = '''
+        if not isinstance(projected, Num):
+            _refuse("grid_not_representable")'''
+mutant = '''
+        if False:
+            _refuse("grid_not_representable")'''
+
+[[mutant]]
+id = "p5-float-is-the-float64"
+predicate = "a source float projects as the float64 that executes, not the decimal it reads as"
+kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
+anchor = '''
+            if not math.isfinite(value):
+                _refuse("expression_not_projected")
+            return Num(Fraction(value))'''
+mutant = '''
+            if not math.isfinite(value):
+                _refuse("expression_not_projected")
+            return Num(Fraction(str(value)))'''
+
+[[mutant]]
+id = "p6-sample-bounds"
+predicate = "the sample count is held inside the limits record's range"
+kills = "tests/test_pysrc_project.py::test_p6_sample_count_representable"
+anchor = "        if not (self._limits.min_grid_samples <= count <= self._limits.max_grid_samples):"
+mutant = "        if False:"
+
+[[mutant]]
+id = "p6-count-is-a-literal"
+predicate = "the sample count is readable from the source, never from evaluation"
+kills = "tests/test_pysrc_project.py::test_p6_sample_count_representable"
+anchor = '''
+        else:
+            # A bound name resolving to 10 is still not a literal: the count has to be readable
+            # from the source, or the grid's size depends on evaluation.
+            _refuse("grid_not_representable")'''
+mutant = '''
+        else:
+            count = 2'''
+
+[[mutant]]
+id = "p6-num-given-twice"
+predicate = "`num` given positionally AND by keyword is refused, never silently resolved"
+kills = "tests/test_pysrc_project.py::test_p6_sample_count_representable"
+anchor = '''
+            if num_node is not None:
+                _refuse("grid_not_representable")'''
+mutant = '''
+            if False:
+                _refuse("grid_not_representable")'''
+
+[[mutant]]
+id = "p7-label-is-a-literal"
+predicate = "label text is a string literal in the source"
+kills = "tests/test_pysrc_project.py::test_p7_labels_are_literals"
+anchor = '''
+            if not isinstance(text, ast.Constant) or type(text.value) is not str:
+                _refuse("label_not_literal")
+            self._text[target] = text.value'''
+mutant = '''
+            if False:
+                _refuse("label_not_literal")
+            self._text[target] = text.value'''
+
+[[mutant]]
+id = "p7-flag-reaches-the-spec"
+predicate = "a decoration's effect reaches the spec rather than being collected and dropped"
+kills = "tests/test_pysrc_project.py::test_p7_labels_are_literals"
+anchor = '            legend=self._flags.get("plt.legend", False),'
+mutant = "            legend=False,"
+
+[[mutant]]
+id = "p7-duplicate-decoration"
+predicate = "a repeated decoration is refused, never overwritten with the later text"
+kills = "tests/test_pysrc_project.py::test_p7_labels_are_literals"
+anchor = '''
+        if target in self._decorated:
+            # The earlier call ran, and its text would vanish from the spec.
+            _refuse("statement_not_projected")'''
+mutant = '''
+        if False:
+            _refuse("statement_not_projected")'''
+
+[[mutant]]
+id = "p8-terminal-required"
+predicate = "a program that never shows is refused"
+kills = "tests/test_pysrc_project.py::test_p8_single_terminal_last"
+anchor = '''
+        if not self._terminal:
+            _refuse("no_terminal")'''
+mutant = '''
+        if False:
+            _refuse("no_terminal")'''
+
+[[mutant]]
+id = "p8-terminal-is-last"
+predicate = "no statement runs after the terminal"
+kills = "tests/test_pysrc_project.py::test_p8_single_terminal_last"
+anchor = '''
+        if self._terminal:
+            _refuse("statement_after_terminal")'''
+mutant = '''
+        if False:
+            _refuse("statement_after_terminal")'''
+
+[[mutant]]
+id = "p9-name-rebound"
+predicate = "a rebinding is refused, so one name denotes one thing"
+kills = "tests/test_pysrc_project.py::test_p9_no_rebinding"
+anchor = '''
+        if name in self._aliases or name in self._grids or name in self._exprs:
+            _refuse("name_rebound")'''
+mutant = '''
+        if False:
+            _refuse("name_rebound")'''
+
+[[mutant]]
+id = "p10-wrong-arm-mark"
+predicate = "bar is refused BY ARM, with its own code, not folded into the unprojectable tail"
+kills = "tests/test_pysrc_project.py::test_p10_bar_refused_in_formula_arm"
+anchor = '''
+        if target in _WRONG_ARM_MARKS:
+            _refuse("mark_not_valid_for_arm")'''
+mutant = '''
+        if False:
+            _refuse("mark_not_valid_for_arm")'''
+
+[[mutant]]
+id = "p11-total-statement-coverage"
+predicate = "every admitted statement contributes to the spec; the projection gap stays closed"
+kills = "tests/test_pysrc_project.py::test_p11_total_statement_coverage"
+anchor = '''
+        if unused:'''
+mutant = '''
+        if False:'''
+
+[[mutant]]
+id = "p11-statement-tail-closed"
+predicate = "an admitted call with no drawing effect is refused, never ignored"
+kills = "tests/test_pysrc_project.py::test_p11_total_statement_coverage"
+anchor = '''
+        # An admitted call with no drawing effect -- `np.sin(x)` as a statement computes and
+        # discards. Representing it is impossible; ignoring it would widen the gap.
+        _refuse("statement_not_projected")'''
+mutant = '''
+        return'''

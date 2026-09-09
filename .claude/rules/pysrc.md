@@ -137,6 +137,37 @@ Where "reuse the shipped evaluator" conflicts with core isolation, **embeddabili
 word): extract into the core rather than import the service stack. `formal.py` stays demo-side —
 z3 cannot be inlined.
 
+## Projection law (formula arm)
+
+- **Grid identity is STRUCTURAL, never lexical.** One `Grid` shape `(start, stop, samples)`, `stop`
+  INCLUSIVE, no `kind` and no `step` field ⇒ `np.arange(0, 5)` and `np.linspace(0, 4, 5)` project
+  EQUAL. Any reference to a grid structurally equal to the mark's x grid IS the grid variable,
+  whether spelled as the bound name or as a repeated call; a structurally unequal grid refuses
+  `y_not_over_grid`. `Var` carries no name, so renaming a bound grid cannot change a spec. This
+  supersedes "an inline grid binds no name, so a free name in y refuses": that program draws the
+  curve the projection states, and refusing it is a false refusal with no verification value.
+- **`np.arange` admits INTEGER bounds only** (`denominator == 1`, `|numerator| <= 2**52`), and it is
+  a faithfulness bound. numpy sizes `arange` as `ceil((stop - start) / step)` in float64 and
+  accumulates samples in float64, so a non-integer step makes the EXECUTED array disagree with the
+  exact-rational grid by a whole step. Measured, 5 of 15 non-integer cases disagree:
+  `arange(0, 3, 0.3)` draws 10 points ending 2.6999999999999997 where the exact grid says 11 ending
+  3; `arange(0.1, 0.4, 0.1)` draws 4 where the grid says 3; `arange(1, 2, 0.1)` ends
+  1.9000000000000008, not 1.9. Integer bounds: 115/115 cases faithful, integral-float spellings
+  (`0.0, 10.0, 1.0`) included. numpy's own reference calls non-integer steps inconsistent and points
+  at `linspace`, whose residual is a per-sample rounding rather than a different SAMPLE COUNT — the
+  comparison layer's business (M13.5), not a structural gap.
+- A source float projects as `Fraction(<the float64>)`: `0.1` → `Fraction(3602879701896397,
+  36028797018963968)`, never `Fraction(1, 10)`. Projection is faithful to EXECUTION; which spelling
+  a check compares against is M13.5's ruling.
+- `CorePlotSpec` is a ONE-MEMBER alias for `FormulaPlot`; `DatasetPlot` is declared by M13.4, not
+  before. A placeholder written ahead of the admitted dataset idioms would be written wrong and then
+  inherited as law, and the alias makes the widening a visible edit at the union.
+- A differential between two implementations of this contract compares MEANING: one named
+  translation maps both sides onto a canonical tuple through an EXPLICIT node-name and field-name
+  map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,
+  `expression`/`y`) and produced 24 of 25 false disagreements on first run. The map raises on a name
+  it does not cover — a generic lowercase-or-strip rule would absorb a real future divergence.
+
 ## Binding rules
 
 - The archived AND executed artifact is the EXACT submitted bytes, hashed under a new domain tag.
@@ -154,8 +185,16 @@ z3 cannot be inlined.
 
 ## Mutation evidence (the allowlist is kernel tier; coverage alone credits nothing)
 
-`admit.py` = 13/13 killed. Driver `.scratch/mutate_admit.py` (gitignored ⇒ regenerate; port =
-Deferred p3/p4/p43/p44, one committed driver reproducing every kill count). Each mutant neuters a
+Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<module>.toml`. Run
+`uv run --locked python tools/mutate.py tools/mutants/project.toml`. Each `[[mutant]]` names the ONE
+test that must go red and only that test runs under it, so attribution cannot drift to whichever
+red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
+SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
+writes. `tools/mutants/project.toml` = 22 mutants over the projection predicates, with the two
+EQUIVALENT mutants documented in the file rather than listed.
+
+`admit.py` = 13/13 killed. Driver was `.scratch/mutate_admit.py` (gitignored ⇒ port its 13 mutants
+into `tools/mutants/admit.toml`; Deferred p3/p4/p43/p44). Each mutant neuters a
 PREDICATE: call-target set opened · exact-type literal check degraded to `isinstance` · call-alias
 bound check dropped · constant-attribute alias bound check dropped · assignment binding moved ahead
 of its right-hand side · `**kwargs` conjunct dropped · private-attribute check dropped · expression

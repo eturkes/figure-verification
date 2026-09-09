@@ -113,7 +113,7 @@ python_version = "3.13"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
-files = ["src", "tests", "model_backend", "bench", "capture", "demo", "webui"]
+files = ["src", "tests", "tools", "model_backend", "bench", "capture", "demo", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true

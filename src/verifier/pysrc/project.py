@@ -66,6 +66,9 @@ _MARK_ARITY = 2
 _LINSPACE_BOUNDS_ARITY = 2
 _LINSPACE_FULL_ARITY = 3
 _ARANGE_MAX_ARITY = 3
+# Every integer up to 2**53 is exactly representable in float64; 2**52 leaves the difference of
+# two bounds inside that range, which is what makes `arange`'s float64 sizing provably exact.
+_EXACT_INT = 2**52
 
 _BINOPS: dict[type[ast.operator], BinOp] = {
     ast.Add: "add",
@@ -140,7 +143,7 @@ class _Projector:
             return self._name(node.id, grid_name)
         if isinstance(node, ast.Attribute):
             constant = _CONSTANTS.get(_dotted(node))
-            if constant is None:
+            if constant is None:  # pragma: no cover - `ADMITTED_CONSTANT_ATTRS` == `_CONSTANTS`
                 _refuse("expression_not_projected")
             return Const(constant)
         if isinstance(node, ast.Call):
@@ -191,6 +194,11 @@ class _Projector:
     def _rational(self, node: ast.expr) -> Fraction:
         """A grid bound that arithmetic must reach: symbolic constants have no exact value."""
         projected = self._expr(node, None)
+        # A source `-1` is `UnaryOp(USub, 1)`, so a descending `np.arange(5, 0, -1)` reaches here
+        # as `Neg(Num)`. Folding it is exact; anything wider (`2 + 3`, `np.pi`) stays refused,
+        # since a general folder needs its own ruling on division by zero and on `pow`.
+        if isinstance(projected, Neg) and isinstance(projected.operand, Num):
+            return -projected.operand.value
         if not isinstance(projected, Num):
             _refuse("grid_not_representable")
         return projected.value
@@ -231,6 +239,20 @@ class _Projector:
         bounds = [self._rational(arg) for arg in node.args]
         start, stop = (Fraction(0), bounds[0]) if len(bounds) == 1 else (bounds[0], bounds[1])
         step = bounds[2] if len(bounds) == _ARANGE_MAX_ARITY else Fraction(1)
+        # INTEGERS ONLY, and it is a faithfulness bound rather than a taste. numpy sizes `arange`
+        # as ceil((stop - start) / step) in float64 and accumulates its samples in float64, so a
+        # non-integer step makes the EXECUTED array disagree with the exact-rational grid by a
+        # whole step: measured, `arange(0, 3, 0.3)` draws 10 points ending at 2.6999999999999997
+        # where the exact grid says 11 ending at 3, and `arange(1, 2, 0.1)` ends at
+        # 1.9000000000000008, not 1.9. numpy's own reference calls non-integer steps inconsistent
+        # and points at `linspace`, which is the admitted tool for real-valued sampling and whose
+        # residual is a per-sample rounding rather than a different number of samples. Under
+        # `_EXACT_INT` every operation above is exact in float64, so the projection stays faithful
+        # BY CONSTRUCTION; over it, `ceil` could misround.
+        if any(value.denominator != 1 for value in (start, stop, step)) or any(
+            abs(value.numerator) > _EXACT_INT for value in (start, stop, step)
+        ):
+            _refuse("grid_not_representable")
         if step == 0:
             _refuse("grid_not_representable")
         span = (stop - start) / step
