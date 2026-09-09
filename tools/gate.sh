@@ -54,27 +54,35 @@ shell_lint() {
     return 0
 }
 
-stage format uv run --locked ruff format --check .
-stage lint uv run --locked ruff check .
-stage types uv run --locked mypy
-stage tests uv run --locked pytest
-stage audit uv audit --preview-features audit-command
-stage secrets secret_scan
-stage workflows uv run --locked zizmor .github/
+main() {
+    stage format uv run --locked ruff format --check .
+    stage lint uv run --locked ruff check .
+    stage types uv run --locked mypy
+    stage tests uv run --locked pytest
+    stage audit uv audit --preview-features audit-command
+    stage secrets secret_scan
+    stage workflows uv run --locked zizmor .github/
 
-if command -v shellcheck >/dev/null 2>&1; then
-    stage shell shell_lint
-else
-    skipped+=(shell)
-    printf '\n=== shell ===\nshell SKIPPED (shellcheck absent from PATH)\n'
-fi
+    if command -v shellcheck >/dev/null 2>&1; then
+        stage shell shell_lint
+    else
+        skipped+=(shell)
+        printf '\n=== shell ===\nshell SKIPPED (shellcheck absent from PATH)\n'
+    fi
 
-printf '\n=== gate ===\n'
-if [ "${#skipped[@]}" -ne 0 ]; then
-    printf 'skipped: %s\n' "${skipped[*]}"
+    printf '\n=== gate ===\n'
+    if [ "${#skipped[@]}" -ne 0 ]; then
+        printf 'skipped: %s\n' "${skipped[*]}"
+    fi
+    if [ "${#failed[@]}" -ne 0 ]; then
+        printf 'FAILED: %s\n' "${failed[*]}"
+        exit 1
+    fi
+    printf 'gate rc=0\n'
+}
+
+# Sourcing exposes the stage helpers without running the gate, which is how tools/gate-probe.sh
+# fires secret_scan and shell_lint themselves rather than reimplementing what they check.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    main
 fi
-if [ "${#failed[@]}" -ne 0 ]; then
-    printf 'FAILED: %s\n' "${failed[*]}"
-    exit 1
-fi
-printf 'gate rc=0\n'

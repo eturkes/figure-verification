@@ -7,7 +7,7 @@ A local Open WebUI instance where a weak local model writes the Python that draw
 ## Artifacts
 
 Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m …`. Shipped = JSON-spec dataset + headless formula modes; python mode = the spine.
-- Gate — `bash tools/gate.sh` (ONE command, 8 stages: format · lint · types · tests · audit · secrets · workflows · shell). CI = `.github/workflows/gate.yml` runs the same script; updates = `.github/dependabot.yml`.
+- Gate — `bash tools/gate.sh` (ONE command, 8 stages: format · lint · types · tests · audit · secrets · workflows · shell); positive controls = `bash tools/gate-probe.sh`. CI = `.github/workflows/gate.yml` runs the same script; updates = `.github/dependabot.yml`.
 - Demo instance — `webui/launch.sh` (real dGPU model) | `--stub` (hardware-free) → `http://127.0.0.1:8080`; sentinel prompts pinned there.
 - Verifier service — `-m verifier.service` (:8000; `audit <attempt_id>`); routes = `POC_SCOPE.md`.
 - Demos — `-m demo` · `-m demo.formula_walkthrough` · `-m demo.e2e`. Bench — `-m bench` (JSON-spec proposer eval; live :8000 + :8001).

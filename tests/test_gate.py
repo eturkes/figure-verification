@@ -25,6 +25,7 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _GATE = _REPO_ROOT / "tools" / "gate.sh"
+_GATE_PROBE = _REPO_ROOT / "tools" / "gate-probe.sh"
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _DEPENDABOT = _REPO_ROOT / ".github" / "dependabot.yml"
 _OPS_RULES = _REPO_ROOT / ".claude" / "rules" / "ops.md"
@@ -77,17 +78,19 @@ def test_g6_ci_runs_the_gate_script_and_no_tool_directly() -> None:
     `tools/gate.sh`, and no `run:` names a tool the gate runs behind it."""
     paths = _workflow_paths()
     assert paths, "no workflows found"
+    # str(): YAML types a bare `run: true` as a bool, which would crash the membership test
+    # instead of reporting the missing gate step it actually is.
     invocations = [
         step["run"]
         for path in paths
         for step in _run_steps(_load_yaml(path))
-        if "run" in step and "tools/gate.sh" in step["run"]
+        if "run" in step and "tools/gate.sh" in str(step["run"])
     ]
     assert len(invocations) == 1, f"expected exactly one gate invocation, got {invocations}"
 
     for path in paths:
         for step in _run_steps(_load_yaml(path)):
-            run = step.get("run", "")
+            run = str(step.get("run", ""))
             if "tools/gate.sh" in run:
                 continue
             for tool in _TOOLS_CI_MUST_NOT_CALL_DIRECTLY:
@@ -179,3 +182,15 @@ def test_g11_ops_rules_record_the_gate_invocation() -> None:
     """G11: the documented gate IS the committed gate. Acceptance: `.claude/rules/ops.md` names
     `tools/gate.sh`, so a session reading the rules runs the same command CI runs."""
     assert "tools/gate.sh" in _OPS_RULES.read_text(encoding="utf-8")
+
+
+def test_g12_every_static_config_check_ships_a_positive_control() -> None:
+    """G12: every check in this file is named by `tools/gate-probe.sh`, which mutates the tree
+    until each one fires. Acceptance: adding a check here without its firing input fails -- a
+    check that cannot fire and a clean tree emit the same green."""
+    source = Path(__file__).resolve().read_text(encoding="utf-8")
+    probe = _GATE_PROBE.read_text(encoding="utf-8")
+    checks = re.findall(r"^def (test_g\w+)", source, re.MULTILINE)
+    assert checks, "no checks found to cover"
+    missing = [name for name in checks if name not in probe]
+    assert not missing, f"no positive control in gate-probe.sh for {missing}"
