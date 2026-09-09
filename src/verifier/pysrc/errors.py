@@ -38,6 +38,23 @@ RefusalCode = Literal[
     "operator_not_admitted",
     "literal_not_admitted",
     "name_not_bound",
+    # project -- what an ADMITTED program fails to say about the figure it draws. Distinct from
+    # admission: these bytes may run, and the refusal is that the verifier cannot state what they
+    # would draw. A construct admitted without a projection rule lands on one of these, never on
+    # silence.
+    "no_mark",
+    "multiple_marks",
+    "mark_arity_not_projected",
+    "mark_not_valid_for_arm",
+    "x_not_a_grid",
+    "y_not_over_grid",
+    "grid_not_representable",
+    "expression_not_projected",
+    "label_not_literal",
+    "name_rebound",
+    "no_terminal",
+    "statement_after_terminal",
+    "statement_not_projected",
 ]
 
 

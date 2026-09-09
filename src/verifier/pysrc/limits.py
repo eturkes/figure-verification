@@ -25,6 +25,11 @@ class PysrcLimits:
     max_bracket_depth: int = 16
     max_indent_depth: int = 4
     max_line_bytes: int = 400
+    # Projection-stage ceiling, not a parse ceiling: a grid is what recomputation must evaluate
+    # point by point, so the bound matches the shipped `FormulaDomain.samples` cap rather than
+    # anything the parser cares about. Two points is the floor -- one point is not a curve.
+    min_grid_samples: int = 2
+    max_grid_samples: int = 100_000
 
 
 DEFAULT_LIMITS = PysrcLimits()
