@@ -48,7 +48,7 @@ is graphical integrity, enforced by refusal.
 | G6 | scatter | marker size encodes value by AREA, never radius | with the `s=` keyword |
 | G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | by construction (M13.5) |
 | G8 | all | plotted point count = non-null row count unless a drop is projected AND published | by construction (M13.5) |
-| G9 | line | x numeric and NON-DECREASING — a connecting line asserts interpolation | M13.5 |
+| G9 | line | x numeric NON-DECREASING, or categorical with UNIQUE categories in file order | M13.5 |
 | G10 | all | label/legend text consistent with the projected computation | `label=` admitted, unchecked |
 | G11 | aggregate | per-group counts published beside every aggregate | tier 3 |
 
@@ -65,11 +65,14 @@ resolved differently:
   backing refusals, each pinned against allowlist widening exactly as G1/G2/G3 are. G8 needs one
   added check to stay true: `bar` over a categorical x requires UNIQUE categories, else
   `category_not_unique` — duplicates overplot, so the figure would show fewer bars than rows.
-- **G9 drops "uniformly spaced" (user).** Ordering survives, uniform spacing does not. Irregular
-  spacing is LEGIBLE in the rendered figure, so it misrepresents nothing, while real clinical series
-  are irregularly sampled and a uniformity requirement would refuse most of them. Non-monotonic x is
-  the actual fault: it draws a path that reads as a function when it is not. Categorical x stays
-  refused for `line` and `scatter`, admitted for `bar`.
+- **G9 drops "uniformly spaced" and admits UNIQUE categorical x (user).** Ordering survives, uniform
+  spacing does not: irregular spacing is LEGIBLE in the rendered figure, so it misrepresents nothing,
+  while real clinical series are irregularly sampled and a uniformity requirement would refuse most
+  of them. Non-monotonic x is the actual fault — it draws a path that reads as a function when it is
+  not. A categorical x is admitted for `line` when every category appears EXACTLY ONCE, in file
+  order: with unique keys the path is a genuine sequence of distinct points, which is what a
+  categorical line chart means, and it is the shape a `groupby` key always has. A repeated category
+  refuses, because the line would double back over itself. `scatter` still requires numeric x.
 
 ## Comparison surfaces — what the verifier can compare AT ALL
 
@@ -212,6 +215,24 @@ z3 cannot be inlined.
   and aggregation is its own later unit. The width caps the FIRST release, never the ceiling:
   coverage grows one mark at a time at no new trust, and the same core ships in the M14 paste-in, so
   whatever M13.4 admits is what the production artifact admits on day one.
+- **Dataset-arm width, M13.6 (user ruling): the column-pair subset CANNOT meet the acceptance, and
+  the number is 10%.** Measured over `corpus/python/heldout/`'s 20 simple prompts against what
+  M13.4 admits: 12 need `groupby` + `sum`/`mean`/`min`/`max`, 2 need a line over the group key (a
+  month or date STRING), 2 need two marks on one Axes, 2 need colour-by-category scatter, and 2 are
+  plain column pairs. So 2/20 = 10% against `Intent`'s >=70%. Aggregation alone reaches 13/20 = 65%
+  and still fails; aggregation plus the categorical line reaches 15/20 = 75%, which clears the bar
+  with only 5 points of headroom. M13.6 therefore admits, in one unit: `groupby` aggregation,
+  `plt.barh`, and a SECOND mark sharing one x — ceiling 18/20 = 90%. Every such figure is a CEILING
+  that assumes the model writes the admitted idiom; the measured rate lands below it, which is why
+  the design does not sit at exactly 70%. Colour-by-category scatter stays refused: a colour channel
+  brings its own integrity rules (a categorical palette must not read as ordinal) and is the largest
+  jump in claim surface for the last 2 prompts.
+- **Multi-series is the structural change M13.6 carries.** `CorePlotSpec` stops holding ONE mark and
+  holds a mark LIST, so every total map over it moves in that unit's commit, and G2 (one Axes, one
+  y-scale) stops being true by the absence of a second mark and must be re-pinned deliberately
+  against `twinx`/`secondary_yaxis` rather than against mark count. G11 (per-group counts published
+  beside every aggregate) goes live in the same unit. M13.5's total maps are written knowing this,
+  so the widening is an edit at the union rather than a redesign.
 - A differential between two implementations of this contract compares MEANING: one named
   translation maps both sides onto a canonical tuple through an EXPLICIT node-name and field-name
   map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,

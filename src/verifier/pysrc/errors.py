@@ -62,6 +62,24 @@ RefusalCode = Literal[
     "source_not_literal",
     "column_not_literal",
     "column_not_from_source",
+    # bind -- the submitted program versus the artifact the USER supplied. One code covers both
+    # arms: the fault shape is "this program is not about your artifact", and which artifact is
+    # evident from the program itself.
+    "source_not_supplied",
+    "target_mismatch",
+    # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
+    # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
+    # domain and overflow fault arrives as a non-finite value and needs no classification.
+    "csv_too_large",
+    "csv_not_parsable",
+    "column_not_present",
+    "column_not_numeric",
+    "value_not_in_profile",
+    "value_not_finite",
+    "work_budget_exceeded",
+    # integrity -- what an otherwise-recomputable figure would misrepresent.
+    "category_not_unique",
+    "x_not_ordered",
 ]
 
 

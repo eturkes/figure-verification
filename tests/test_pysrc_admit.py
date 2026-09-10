@@ -294,12 +294,14 @@ def test_a9_dunder_and_private_names_refuse(source: str, expected: RefusalCode) 
     assert _code(source) == expected
 
 
-@pytest.mark.skip(reason="A10: needs the re-authored math corpus (M13.5); red until it exists")
+@pytest.mark.skip(reason="A10: needs M13.6's admitted width; red until it lands")
 def test_a10_the_admitted_set_round_trips_the_design_corpus() -> None:
     """A10: every simple-arm design program admits and sampled complicated ones refuse.
 
-    Acceptance: run over `corpus/python/` after M13.5 re-authors it against math prompts. Recorded
-    now so the suite is not silently narrowed when the corpus lands."""
+    Acceptance: run over `corpus/python/design/`. The blocker is WIDTH, not the corpus: measured
+    against what M13.4 admits, only 2 of the 20 held-out simple prompts are plain column pairs, so
+    this test cannot pass until M13.6 admits `groupby` aggregation, `plt.barh` and a second mark.
+    Recorded now so the suite is not silently narrowed when that width lands."""
     raise NotImplementedError
 
 
@@ -347,9 +349,8 @@ def test_a11_every_admission_refusal_code_is_reachable() -> None:
     }
 
 
-def test_a11_the_refusal_vocabulary_is_exactly_its_three_stages() -> None:
-    """A11: `RefusalCode` is the union of the pre-scan, admission and projection sets, and nothing
-    more.
+def test_a11_the_refusal_vocabulary_is_exactly_its_stages() -> None:
+    """A11: `RefusalCode` is the disjoint union of the per-stage sets, and nothing more.
 
     Acceptance: exact set equality against hand-stated literals. Widening an enum in a language
     without exhaustiveness checking leaves every consumer green, so a code added with no witness is
@@ -400,9 +401,38 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_three_stages() -> None:
         "column_not_literal",
         "column_not_from_source",
     }
-    assert set(get_args(RefusalCode)) == prescan_codes | admit_codes | project_codes
-    assert not (prescan_codes & admit_codes)
-    assert not (project_codes & (prescan_codes | admit_codes))
+    # M13.5. `bind` compares the program against the artifact the USER supplied; `recompute` reads
+    # those bytes and evaluates; `integrity` judges what the recomputed figure would misrepresent.
+    bind_codes = {
+        "source_not_supplied",
+        "target_mismatch",
+    }
+    recompute_codes = {
+        "csv_too_large",
+        "csv_not_parsable",
+        "column_not_present",
+        "column_not_numeric",
+        "value_not_in_profile",
+        "value_not_finite",
+        "work_budget_exceeded",
+    }
+    integrity_codes = {
+        "category_not_unique",
+        "x_not_ordered",
+    }
+    stages = [
+        prescan_codes,
+        admit_codes,
+        project_codes,
+        bind_codes,
+        recompute_codes,
+        integrity_codes,
+    ]
+    union: set[str] = set()
+    for stage in stages:
+        assert not (stage & union), "a code belongs to exactly one stage"
+        union |= stage
+    assert set(get_args(RefusalCode)) == union
 
 
 def test_a12_admission_never_evaluates() -> None:

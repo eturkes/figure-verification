@@ -32,7 +32,7 @@ import msgspec
 
 from verifier.errors import VerificationError
 from verifier.limits import VerificationLimits
-from verifier.work import WorkBudget, WorkBudgetExceededError
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 
 __all__ = [
     "FUNCTION_NAMES",

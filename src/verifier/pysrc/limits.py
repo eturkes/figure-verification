@@ -30,6 +30,18 @@ class PysrcLimits:
     # anything the parser cares about. Two points is the floor -- one point is not a curve.
     min_grid_samples: int = 2
     max_grid_samples: int = 100_000
+    # Recomputation ceilings. Every one bounds work the verifier does on UNTRUSTED bytes, and each
+    # is checked BEFORE the work it bounds -- a row cap read after materializing the rows buys
+    # nothing. Sized for a chat attachment, not for a data warehouse.
+    max_csv_bytes: int = 8_000_000
+    max_csv_rows: int = 100_000
+    max_csv_columns: int = 128
+    max_csv_cell_bytes: int = 512
+    max_table_rows: int = 100_000
+    max_expr_nodes: int = 1_000
+    # The binding ceiling in practice: the other caps multiply out to far more evaluation than a
+    # demo may spend, so this is what refuses a program that is admissible but not affordable.
+    max_work: int = 4_000_000
 
 
 DEFAULT_LIMITS = PysrcLimits()

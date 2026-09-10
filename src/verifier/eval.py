@@ -38,6 +38,7 @@ from verifier import canon, ingest
 from verifier.errors import VerificationError
 from verifier.expr import GRAMMAR_VERSION, ParsedExpr, eval_expr, parse_expr, print_expr
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.schema import (
     AggFn,
     Aggregate,
@@ -51,7 +52,6 @@ from verifier.schema import (
     Transform,
     VPlotSpec,
 )
-from verifier.work import WorkBudget, WorkBudgetExceededError
 
 # Comparison operators by name (CmpOp closes the set). Each takes Any/Any because a cell is
 # Decimal | str | None; the call sites guard out None and coerce the literal to the column's

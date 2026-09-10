@@ -31,7 +31,7 @@ from verifier.expr import (
     print_expr,
 )
 from verifier.limits import VerificationLimits
-from verifier.work import WorkBudget, WorkBudgetExceededError
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 
 _ALLOWED = frozenset({"x", "x_1"})
 _CANONICAL_CASES = [
@@ -929,7 +929,7 @@ from fractions import Fraction
 
 from verifier.expr import eval_expr, parse_expr
 from verifier.limits import VerificationLimits
-from verifier.work import WorkBudget
+from verifier.pysrc.budget import WorkBudget
 
 limits = VerificationLimits(
     max_formula_exponent=4095,
@@ -1007,7 +1007,7 @@ def test_module_uses_only_the_closed_engine_dependencies_and_no_execution_surfac
         "msgspec",
         "verifier.errors",
         "verifier.limits",
-        "verifier.work",
+        "verifier.pysrc.budget",
     }
 
     forbidden = {

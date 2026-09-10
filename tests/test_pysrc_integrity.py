@@ -67,3 +67,38 @@ def test_g6_scatter_size_keyword_unreachable() -> None:
     body = "x = np.arange(3)\ny = np.sin(x)\nv = 3\n"
     parse_admitted(_PRELUDE + body + 'plt.scatter(x, y, label="series")\nplt.show()\n')
     assert _admission_code(body + "plt.scatter(x, y, s=v)\nplt.show()\n") == "keyword_not_admitted"
+
+
+# --- M13.5: the three rules recomputation made decidable ---------------------------------------
+# Contract: `.agent/contracts/m13u5.md` § G. Skeleton bodies are `pytest.skip`.
+
+
+def test_g7_plotted_range_is_the_data_range() -> None:
+    """No filter, slice, mask or head/tail idiom exists, so the plotted column IS the column.
+
+    Accept: a pin that goes RED if `admit.py` ever admits `.loc .iloc .query .head .tail .dropna
+    .sample`, boolean masking or slicing -- the G1/G2/G3 both-halves shape.
+    """
+    pytest.skip("M13.5 skeleton")
+
+
+def test_g8_point_count_is_the_row_count() -> None:
+    """No null survives (C9) and `bar` over a categorical x requires UNIQUE categories.
+
+    Accept: the allowlist pin as in G7, plus a duplicate-category witness refusing
+    `category_not_unique` -- duplicates overplot, so the figure would show fewer bars than rows.
+    """
+    pytest.skip("M13.5 skeleton")
+
+
+def test_g9_line_x_is_ordered() -> None:
+    """`line` takes x numeric and NON-DECREASING, or categorical with UNIQUE categories in file
+    order. Uniform spacing is NOT required; `scatter` still requires numeric x.
+
+    Accept: ordered, unordered, duplicate-numeric-x-but-ordered, unique-categorical and
+    repeated-categorical witnesses. The IRREGULARLY-SPACED-but-ordered case must VERIFY --
+    irregular spacing is legible in the rendered figure, so it misrepresents nothing. Non-monotonic
+    x and a repeated category both refuse `x_not_ordered`: the second would double the line back
+    over itself.
+    """
+    pytest.skip("M13.5 skeleton")

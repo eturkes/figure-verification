@@ -512,8 +512,8 @@ def test_oracle_self_validation_has_no_production_or_rounding_helper_dependency(
         ("verifier.limits", "VerificationLimits"),
         ("verifier.schema", "FormulaPlotSpec"),
     }
-    assert imported_modules.isdisjoint({"verifier.eval", "verifier.work"})
-    assert imported_members.isdisjoint({("verifier", "eval"), ("verifier", "work")})
+    assert imported_modules.isdisjoint({"verifier.eval", "verifier.pysrc.budget"})
+    assert imported_members.isdisjoint({("verifier", "eval"), ("verifier", "pysrc")})
     assert "round" not in called_names
     assert "quantize" not in attributes
 

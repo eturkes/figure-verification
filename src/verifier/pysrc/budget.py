@@ -3,6 +3,10 @@
 
 A meter admits each consumer-defined non-negative charge atomically before the guarded work;
 refusal preserves the prior count and reports the exact limit, consumption, and requested cost.
+
+Lives in the portable core because `pysrc` may import no `verifier` sibling and the paste-in needs
+a meter. The legacy JSON mode imports it FROM here rather than keeping a copy: two hand-maintained
+meters is the fork the single-source ruling bans. The dependency runs sibling -> core only.
 """
 
 from dataclasses import dataclass

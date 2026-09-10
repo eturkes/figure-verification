@@ -154,3 +154,38 @@ class DatasetPlot:
 # The union M13.4 widened. Every total map over it needs its own exact-set pin: this repo has
 # shipped a defect where a union grew and a total map over it stayed green.
 type CorePlotSpec = FormulaPlot | DatasetPlot
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetTarget:
+    """The user's uploaded file, as BYTES -- never as a path the core would open.
+
+    Carrying the content is what makes dataset recomputation possible at all: the core is pure and
+    has no filesystem, so a bare path would name an artifact it could never read. `path` is
+    compared byte-for-byte against the string literal the program passed to `read_csv`; the caller
+    derives both fields from ONE authenticated upload, so the comparison is name-binding and the
+    content is byte-binding, and neither substitutes for the other.
+    """
+
+    path: str
+    content: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class FormulaTarget:
+    """An expression the USER stated, already parsed into the core's own tree.
+
+    Carrying a tree rather than text keeps the core parser-free: a caller that holds the user's
+    formula as `expr-0.1` source parses it demo-side and hands the result here. `grid` is optional
+    because a request may state the function without stating the interval.
+
+    The demo supplies this for no one: a chat sentence is not a specification, and a model-produced
+    reading of it may never become the target -- the model would then own both sides of the
+    comparison. Absent a target the formula arm claims internal consistency and publishes the gap.
+    """
+
+    y: Expr
+    grid: Grid | None = None
+
+
+type DeclaredTarget = DatasetTarget | FormulaTarget
