@@ -31,7 +31,7 @@ Queue = `.agent/deferred.md`, 13 rows, one line + acceptance check each; nothing
 
 Spine = the unfinished units, in order: M13.4 → M10 → M14.
 
-**M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose. Census = `map-m13u4`, whose findings bind the contract.
+**M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose. OPEN; contract = `.agent/contracts/m13u4.md`, tier kernel, D1-D12 + G1/G5/G2/G3/G6.
 
 - WIDTH RULED (user): column pairs only — `read_csv` → column selection → bar/line/scatter over two columns. NO `groupby`/`sum`/`mean`; G11 stays dormant and aggregation becomes its own later unit. Both committed sentinels are dataset-arm (`sales.csv`), so this unit unblocks the entire demo acceptance: the simple sentinel cannot pass until `read_csv` is admitted.
 - ADMISSION GAP, measured: a minimal `pd.read_csv` → `df["col"]` → `plt.bar` program fails at four points — `import pandas as pd` → `import_not_admitted`; `pd.read_csv(...)` → `call_target_not_admitted`; `df["col"]` → `expression_not_admitted`; `df.col` → `attribute_not_admitted`. Everything else in that shape already admits.
