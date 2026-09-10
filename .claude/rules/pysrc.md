@@ -194,7 +194,7 @@ imports, inlinable into one pasted file:
    outside signed 32 bits, and matplotlib bar erases the sign of `-0.0` (99/1,024 heights). Line and
    scatter altered nothing (0/40,000 each). A categorical bar maps unique labels to float64 centers
    in first-occurrence order, which is exactly why a duplicate category overplots and G8 refuses it.
-   Full profile + its closed refusal complement = `.agent/contracts/m13u5.md` § The C10 ruling.
+   Full profile + its closed refusal complement = `.agent/archive/contracts/m13u5.md` § The C10 ruling.
 
 Demo-side wrappers, outside the core: certificate kinds · archive (`PlotSourceKind` + `PlotRole`
 widening, 5 totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route

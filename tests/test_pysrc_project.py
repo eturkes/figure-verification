@@ -306,14 +306,24 @@ def test_p12_projection_is_pure() -> None:
                     imported_roots.add(node.module.partition(".")[0])
 
     intra_package = {"__intra_package__", "verifier"}
+    # Hand-stated so that widening it is a deliberate act: the paste-in inlines this package, so
+    # every root here is a root the pasted file carries. M13.5's four each answer to a predicate --
+    # `csv` is C6's `csv.reader(strict=True)`, `hashlib` is K2's digests, `json` is the
+    # certificate's canonical encoding, `re` is C10's profile pattern. `re` runs on untrusted text,
+    # safe here and not by luck: the patterns carry no nested quantifier, so they cannot backtrack
+    # catastrophically, and `max_csv_cell_bytes` bounds the input anyway.
     allowed_import_roots = {
         "__intra_package__",
         "ast",
         "collections",
+        "csv",
         "dataclasses",
         "fractions",
+        "hashlib",
         "io",
+        "json",
         "math",
+        "re",
         "tokenize",
         "typing",
         "verifier",

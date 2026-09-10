@@ -1,7 +1,7 @@
 # Measurement harnesses
 
 Frozen record of how each published number in `.claude/rules/pysrc.md` and
-`.agent/contracts/m13u5.md` was obtained. These are evidence, not project tooling: nothing imports
+`.agent/archive/contracts/m13u5.md` was obtained. These are evidence, not project tooling: nothing imports
 them, the gate does not run them, and they sit outside `mypy`'s `files` list on purpose. What makes
 a number here durable is that the script reproducing it is in committed state.
 

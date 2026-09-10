@@ -41,7 +41,12 @@ class PysrcLimits:
     max_expr_nodes: int = 1_000
     # The binding ceiling in practice: the other caps multiply out to far more evaluation than a
     # demo may spend, so this is what refuses a program that is admissible but not affordable.
-    max_work: int = 4_000_000
+    # Measured, not guessed: `tools/bench_pysrc_work.py` on a quiet host of record put the binding
+    # rate at 398,458 work/s -- the slowest of both arms, at cell width 31, where `len // 32`
+    # surcharges nothing yet the bytes are still read. One second of recomputation, two significant
+    # figures. Work binds before `max_table_rows` on purpose: it is size-aware and the row cap is
+    # not, so a wide-celled file must refuse on what it actually costs.
+    max_work: int = 390_000
 
 
 DEFAULT_LIMITS = PysrcLimits()

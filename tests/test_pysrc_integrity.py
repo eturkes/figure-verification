@@ -70,7 +70,7 @@ def test_g6_scatter_size_keyword_unreachable() -> None:
 
 
 # --- M13.5: the three rules recomputation made decidable ---------------------------------------
-# Contract: `.agent/contracts/m13u5.md` § G. Skeleton bodies are `pytest.skip`.
+# Contract: `.agent/archive/contracts/m13u5.md` § G. Skeleton bodies are `pytest.skip`.
 
 
 def test_g7_plotted_range_is_the_data_range() -> None:
@@ -79,7 +79,38 @@ def test_g7_plotted_range_is_the_data_range() -> None:
     Accept: a pin that goes RED if `admit.py` ever admits `.loc .iloc .query .head .tail .dropna
     .sample`, boolean masking or slicing -- the G1/G2/G3 both-halves shape.
     """
-    pytest.skip("M13.5 skeleton")
+    blocked_targets = {
+        "df.loc",
+        "df.iloc",
+        "df.query",
+        "df.head",
+        "df.tail",
+        "df.dropna",
+        "df.sample",
+    }
+    assert not (blocked_targets & ADMITTED_CALL_TARGETS)
+    prelude = (
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        'df = pd.read_csv("measurements.csv")\n'
+    )
+    tail = 'plt.bar(df["site"], df["value"])\nplt.show()\n'
+    parse_admitted(prelude + tail)
+    blocked = {
+        'filtered = df.loc["west"]\n': "expression_not_admitted",
+        "filtered = df.iloc[0]\n": "expression_not_admitted",
+        'filtered = df.query("value > 0")\n': "call_target_not_admitted",
+        "filtered = df.head(1)\n": "call_target_not_admitted",
+        "filtered = df.tail(1)\n": "call_target_not_admitted",
+        "filtered = df.dropna()\n": "call_target_not_admitted",
+        "filtered = df.sample(1)\n": "call_target_not_admitted",
+        'filtered = df["site"][0:1]\n': "expression_not_admitted",
+        'filtered = df[df["value"] > 0]\n': "column_not_literal",
+    }
+    for filtering, expected in blocked.items():
+        with pytest.raises(PysrcRefusalError) as caught:
+            parse_admitted(prelude + filtering + tail)
+        assert caught.value.code == expected, filtering
 
 
 def test_g8_point_count_is_the_row_count() -> None:
@@ -88,7 +119,36 @@ def test_g8_point_count_is_the_row_count() -> None:
     Accept: the allowlist pin as in G7, plus a duplicate-category witness refusing
     `category_not_unique` -- duplicates overplot, so the figure would show fewer bars than rows.
     """
-    pytest.skip("M13.5 skeleton")
+    from verifier.pysrc import Refused, Verified, verify_python_source  # noqa: PLC0415
+    from verifier.pysrc.spec import DatasetTarget  # noqa: PLC0415
+
+    blocked_targets = {"df.dropna", "df.query", "df.head", "df.tail"}
+    assert not (blocked_targets & ADMITTED_CALL_TARGETS)
+    prelude = (
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        'df = pd.read_csv("measurements.csv")\n'
+    )
+    tail = 'plt.bar(df["site"], df["value"])\nplt.show()\n'
+    for filtering, expected in (
+        ("clean = df.dropna()\n", "call_target_not_admitted"),
+        ('clean = df[df["value"] > 0]\n', "column_not_literal"),
+    ):
+        with pytest.raises(PysrcRefusalError) as caught:
+            parse_admitted(prelude + filtering + tail)
+        assert caught.value.code == expected
+
+    duplicate = verify_python_source(
+        prelude + tail,
+        declared_target=DatasetTarget(path="measurements.csv", content=b"site,value\na,1\na,2\n"),
+    )
+    unique = verify_python_source(
+        prelude + tail,
+        declared_target=DatasetTarget(path="measurements.csv", content=b"site,value\na,1\nb,2\n"),
+    )
+    assert isinstance(duplicate, Refused)
+    assert duplicate.code == "category_not_unique"
+    assert isinstance(unique, Verified)
 
 
 def test_g9_line_x_is_ordered() -> None:
@@ -97,8 +157,50 @@ def test_g9_line_x_is_ordered() -> None:
 
     Accept: ordered, unordered, duplicate-numeric-x-but-ordered, unique-categorical and
     repeated-categorical witnesses. The IRREGULARLY-SPACED-but-ordered case must VERIFY --
-    irregular spacing is legible in the rendered figure, so it misrepresents nothing. Non-monotonic
-    x and a repeated category both refuse `x_not_ordered`: the second would double the line back
-    over itself.
+    irregular spacing is legible in the rendered figure, so it misrepresents nothing. The two
+    refusals carry DIFFERENT codes and that split is the point: non-monotonic numeric x refuses
+    `x_not_ordered`, while a repeated category refuses `category_not_unique`, the same code G8
+    uses for `bar`. The fault there is the repetition itself -- the marks overplot -- and a line
+    additionally doubles back over itself; ordering is not what is wrong with it.
     """
-    pytest.skip("M13.5 skeleton")
+    from verifier.pysrc import Refused, Verified, verify_python_source  # noqa: PLC0415
+    from verifier.pysrc.spec import DatasetTarget  # noqa: PLC0415
+
+    source = (
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        'df = pd.read_csv("measurements.csv")\n'
+        'plt.plot(df["x"], df["y"])\n'
+        "plt.show()\n"
+    )
+
+    def verdict(content: bytes) -> object:
+        return verify_python_source(
+            source,
+            declared_target=DatasetTarget(path="measurements.csv", content=content),
+        )
+
+    ordered = verdict(b"x,y\n1,10\n2,20\n3,30\n")
+    irregular = verdict(b"x,y\n1,10\n2,20\n10,30\n")
+    duplicate_numeric = verdict(b"x,y\n1,10\n1,20\n2,30\n")
+    unique_categorical = verdict(b"x,y\nfirst,10\nthird,20\nsecond,30\n")
+    for result in (ordered, irregular, duplicate_numeric, unique_categorical):
+        assert isinstance(result, Verified)
+
+    for content, expected_code in (
+        (b"x,y\n1,10\n3,30\n2,20\n", "x_not_ordered"),
+        (b"x,y\nfirst,10\nsecond,20\nfirst,30\n", "category_not_unique"),
+    ):
+        result = verdict(content)
+        assert isinstance(result, Refused), content
+        assert result.code == expected_code, content
+
+    scatter = source.replace("plt.plot", "plt.scatter")
+    categorical_scatter = verify_python_source(
+        scatter,
+        declared_target=DatasetTarget(
+            path="measurements.csv", content=b"x,y\nfirst,10\nsecond,20\n"
+        ),
+    )
+    assert isinstance(categorical_scatter, Refused)
+    assert categorical_scatter.code == "column_not_numeric"
