@@ -46,15 +46,30 @@ is graphical integrity, enforced by refusal.
 | G4 | all | ticks monotonic + evenly spaced under a linear claim | by construction |
 | G5 | formula | sampled functions are line/scatter, never bar (`FormulaMark`) | shipped, unclaimed |
 | G6 | scatter | marker size encodes value by AREA, never radius | with the `s=` keyword |
-| G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | to implement |
-| G8 | all | plotted point count = non-null row count unless a drop is projected AND published | to implement |
-| G9 | line | x ordered and uniformly spaced — a connecting line asserts interpolation | to implement |
+| G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | by construction (M13.5) |
+| G8 | all | plotted point count = non-null row count unless a drop is projected AND published | by construction (M13.5) |
+| G9 | line | x numeric and NON-DECREASING — a connecting line asserts interpolation | M13.5 |
 | G10 | all | label/legend text consistent with the projected computation | `label=` admitted, unchecked |
 | G11 | aggregate | per-group counts published beside every aggregate | tier 3 |
 
 A by-construction rule is only as durable as the refusal under it ⇒ **every G-row pinned by a test
 that fails when the allowlist widens**. Admitting `plt.ylim` later must break G1's test, not silently
 delete G1. This is the closed-dispatch defect class applied to the claim surface.
+
+G7/G8/G9 became decidable only once M13.5's recomputation materialized the plotted table, and each
+resolved differently:
+
+- **G7 + G8 = by construction (user).** The admitted subset has no filter, slice, mask or
+  `head`/`tail`/`dropna` idiom, so the plotted column IS the whole column; and the CSV profile
+  refuses every empty cell and every pandas NA spelling, so no null can survive to be dropped. Two
+  backing refusals, each pinned against allowlist widening exactly as G1/G2/G3 are. G8 needs one
+  added check to stay true: `bar` over a categorical x requires UNIQUE categories, else
+  `category_not_unique` — duplicates overplot, so the figure would show fewer bars than rows.
+- **G9 drops "uniformly spaced" (user).** Ordering survives, uniform spacing does not. Irregular
+  spacing is LEGIBLE in the rendered figure, so it misrepresents nothing, while real clinical series
+  are irregularly sampled and a uniformity requirement would refuse most of them. Non-monotonic x is
+  the actual fault: it draws a path that reads as a function when it is not. Categorical x stays
+  refused for `line` and `scatter`, admitted for `bar`.
 
 ## Comparison surfaces — what the verifier can compare AT ALL
 
@@ -126,14 +141,37 @@ imports, inlinable into one pasted file:
 1. byte cap + nesting pre-scan AHEAD of `ast.parse`
 2. AST allowlist by idiom class
 3. projection to a formula plot spec
-4. recomputation. **A port of `expr.py` does NOT cover this and never could.** Its union is
-   `Number | Variable | Neg | Abs | Pow | Binary` — no function node — while the admitted formula
-   arm evaluates `sin cos tan exp log sqrt abs`. Exact over `Fraction`: the four arithmetic
-   operators, `Neg`, `Abs`, integer `Pow`, and `sqrt` of a perfect square. NEVER exact:
-   `sin cos tan exp log` and irrational `sqrt`, which have no rational representation, so their
-   numeric contract is a RULING (M13.5) rather than a port. `expr.py`'s lexer and parser are dead
-   weight here regardless: `project.py` already returns a `pysrc.spec.Expr` tree from the AST, so
-   only the evaluation half is a candidate, and it covers the arithmetic alone.
+4. recomputation. **`expr.py` is NOT ported, in whole or in part (M13.5 ruling).** Two independent
+   reasons, and the second is the deciding one. First, coverage: its union is `Number | Variable |
+   Neg | Abs | Pow | Binary`, no function node, while the formula arm evaluates
+   `sin cos tan exp log sqrt abs`. Second, FAITHFULNESS: `expr.py` is exact over `Fraction`, but the
+   executed program is numpy float64 and rounds at EVERY operator, so an exact engine that rounds
+   once at the end computes a number the program never computes. The more precise engine is the less
+   faithful one. Recomputation is therefore binary64, operator by operator, in the projected tree's
+   own shape — a small evaluator written for the job, not a port. `expr.py`'s lexer and parser are
+   dead weight here regardless: `project.py` already returns a `pysrc.spec.Expr` tree from the AST.
+
+   The numeric profile is NAMED `binary64-libm-v1` and splits every admitted operator in two.
+   **Standard-exact**, agreement guaranteed by IEEE-754: `add sub mul div`, unary minus, `abs`,
+   `sqrt`, decimal-literal conversion, `pi`, `e`, and both grid constructors. **libm-dependent**,
+   agreement a MEASURED band on a named environment pair rather than a proof: `sin cos tan exp log`
+   and `pow`. Measured host-of-record vs Pyodide-wasm numpy 2.2.5, 1,000,000 stratified inputs per
+   function: 56,929/6,000,000 disagreements, EVERY ONE exactly 1 ulp (`sin` 17,792 · `cos` 17,872 ·
+   `tan` 20,876 · `exp` 389 · `log` 0 · `sqrt` 0); grids agree at 0 ulp over 3.5M values. So bit-exact
+   y comparison is off the table and the 1-ulp band is forced by the ENVIRONMENT PAIR, not by
+   verifier precision — which is also the resolution limit M10's fork-(b) observation inherits.
+   Domain and overflow faults are never raised: the evaluator reproduces numpy's IEEE results
+   (`x/0` → `±inf`, `log(0)` → `-inf`, `sqrt(x<0)` → `nan`, …) and a single refusal,
+   `value_not_finite`, rejects any non-finite that reaches the table.
+
+   The DATASET arm's parse is a separate and harder problem: the sandbox calls plain
+   `pd.read_csv`, whose DEFAULT float parser is not correctly rounded. Measured against stdlib
+   `float` over 1,000,000 adversarial cells: 326,834 disagree (314,781 at 1 ulp, 12,053 at
+   2–7,262 ulp); only `float_precision="round_trip"` agrees fully; and NO significant-digit cap
+   repairs it — even `1e-23` disagrees. The verifier may not depend on pandas, so the profile must
+   either restrict admitted cell texts to a proven 0-disagreement region or reproduce pandas'
+   `xstrtod` in stdlib Python. Ruling pending in `.agent/contracts/m13u5.md` § Open ruling, whose
+   decision rule was fixed before the data.
 
 Demo-side wrappers, outside the core: certificate kinds · archive (`PlotSourceKind` + `PlotRole`
 widening, 5 totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route
