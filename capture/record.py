@@ -89,6 +89,7 @@ _ENGINE_DTYPE_RE: Final = re.compile(r'^_DTYPE\s*=\s*"([^"]+)"', re.MULTILINE)
 
 _SHA256_RE: Final = re.compile(r"[0-9a-f]{64}")
 _COMMIT_RE: Final = re.compile(r"[0-9a-f]{40}")
+_NVIDIA_SMI: Final = "nvidia-smi"
 _NVIDIA_SMI_QUERY: Final = "driver_version,compute_cap,name,memory.total"
 _NVIDIA_SMI_FIELDS: Final = 4
 _HTTP_OK: Final = 200
@@ -299,14 +300,25 @@ def _run_command(argv: Sequence[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(argv, capture_output=True, text=True, check=False)  # noqa: S603
 
 
-def _git_facts(root: Path, runner: CommandRunner) -> tuple[str | None, bool]:
+def _tool_path(name: str, runner: CommandRunner | None) -> str | None:
+    """Resolve a tool for argv, or None when the host lacks it.
+
+    An INJECTED runner is authoritative and never consults the host. Resolving first made both
+    collectors depend on the machine even under injection, so the seam tests passed only where
+    `git` and `nvidia-smi` happen to exist and went red on a CI runner with no GPU.
+    """
+    return name if runner is not None else shutil.which(name)
+
+
+def _git_facts(root: Path, runner: CommandRunner | None) -> tuple[str | None, bool]:
     """Return (HEAD commit, dirty). An absent or failing git degrades to (None, False)."""
-    git = shutil.which("git")
+    git = _tool_path("git", runner)
     if git is None:
         return (None, False)
+    run = runner or _run_command
     try:
-        commit = runner([git, "-C", str(root), "rev-parse", "HEAD"])
-        status = runner([git, "-C", str(root), "status", "--porcelain", "--untracked-files=normal"])
+        commit = run([git, "-C", str(root), "rev-parse", "HEAD"])
+        status = run([git, "-C", str(root), "status", "--porcelain", "--untracked-files=normal"])
     except OSError:
         return (None, False)
     # Shape-check here, not only in R10: a collector that stamps garbage builds a manifest the
@@ -331,7 +343,7 @@ def collect_repo_provenance(
     root: Path = REPO_ROOT, *, runner: CommandRunner | None = None
 ) -> RepoProvenance:
     """Read one tree's committed-state facts. A missing or failing git degrades, never raises."""
-    commit, dirty = _git_facts(root, runner or _run_command)
+    commit, dirty = _git_facts(root, runner)
     return RepoProvenance(
         git_commit=commit,
         git_dirty=dirty,
@@ -362,7 +374,7 @@ def _parse_smi_line(line: str) -> HostProvenance | None:
 
 def collect_host_provenance(*, runner: CommandRunner | None = None) -> HostProvenance | None:
     """Read accelerator facts from nvidia-smi; None when it is absent, fails or is unparseable."""
-    smi = shutil.which("nvidia-smi")
+    smi = _tool_path(_NVIDIA_SMI, runner)
     if smi is None:
         return None
     try:

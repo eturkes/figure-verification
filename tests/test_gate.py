@@ -158,6 +158,19 @@ def test_g9_checkout_does_not_persist_credentials() -> None:
                 assert step["with"]["persist-credentials"] is False, path.name
 
 
+def test_g6_checkout_fetches_full_history() -> None:
+    """G6: CI checks out the whole history, so its gate is the local gate's claim. Acceptance:
+    a missing or non-zero `fetch-depth` fails -- three baseline tests read a historical commit
+    through `git show` and `git worktree add`, which a depth-1 checkout cannot serve, and the
+    tempting repair is to skip them where the object is absent, turning CI green over a check
+    that no longer runs."""
+    for path in _workflow_paths():
+        for step in _run_steps(_load_yaml(path)):
+            uses = cast(str, step.get("uses", ""))
+            if "actions/checkout@" in uses:
+                assert step["with"]["fetch-depth"] == 0, path.name
+
+
 def test_g10_gate_script_is_executable_and_free_of_blanket_disables() -> None:
     """G10: the script is directly runnable and suppresses no shellcheck finding. Acceptance: a
     cleared execute bit or any `shellcheck disable=` fails."""

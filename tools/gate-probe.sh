@@ -171,6 +171,10 @@ probe g9-persist-credentials tests/test_gate.py::test_g9_checkout_does_not_persi
     'assert step["with"]["persist-credentials"] is False' \
     sed -i 's|persist-credentials: false|persist-credentials: true|' "$WORKFLOW"
 
+probe g6-fetch-depth tests/test_gate.py::test_g6_checkout_fetches_full_history \
+    'assert step["with"]["fetch-depth"] == 0' \
+    sed -i 's|fetch-depth: 0|fetch-depth: 1|' "$WORKFLOW"
+
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \
     chmod -x "$GATE"

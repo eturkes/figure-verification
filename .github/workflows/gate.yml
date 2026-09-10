@@ -32,6 +32,10 @@ jobs:
           # The gate needs no credentials; leaving them in .git/config would expose
           # them to every later step (zizmor: artipacked).
           persist-credentials: false
+          # Three baseline tests read a historical commit through `git show` and
+          # `git worktree add`. The default depth-1 checkout has no such object, so
+          # they fail in CI alone and the gate stops being one claim.
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
