@@ -5,7 +5,7 @@ The certificate is the surface a reader ACTS on, so what it does not establish i
 as what it does. `checks` is all-pass by construction, matching v0.3's
 `CertifiedCheck.status: Literal["pass"]`; everything unestablished lives in `declared_open`.
 
-Skeleton: each body is `pytest.skip` and its docstring carries the predicate's acceptance check.
+Each test's docstring carries its predicate's acceptance check.
 """
 
 import hashlib

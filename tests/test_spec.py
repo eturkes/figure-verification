@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""S1-S7: liveness invariants of the attached state and the law surface around it.
+"""S1-S8: liveness invariants of the attached state and the law surface around it.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
 and read every line as current law. Liveness itself is a judgment no test can make. What IS
@@ -18,14 +18,21 @@ every tracked file, archived records included, because its target does not vanis
 MOVES the contract, so a citation of the pre-archive path always has somewhere correct to point.
 Neither covers `.claude/rules/*.md`; that gap is queued, not overlooked.
 
+S8 reaches the other direction, into `tests/`: a disabled case is the one form of dead law a green
+run cannot show, since a skip and a pass print the same rc. It asks only what is decidable -- does
+the reason name the tracker that will re-enable the case.
+
 Each expectation is hand-stated rather than read back from the artifact it guards. This file
 imports no `verifier` symbol: coverage source stays `verifier` only.
 """
 
+import ast
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from typing import NamedTuple
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _REPO_ROOT / ".agent" / "spec.md"
@@ -79,6 +86,19 @@ _UNIT = re.compile(r"M(\d+)\.(\d+)([a-z]?)")
 _CONTRACT_CITATION = re.compile(
     r"\.agent/(?:archive/)?contracts/[A-Za-z0-9][A-Za-z0-9_.-]*\.md(?![A-Za-z0-9_/-])(?!\.[A-Za-z0-9])"
 )
+
+# S8's two tracker forms. A blocker inside an unfinished unit lives with that unit, so a spine id
+# counts; anything off-spine cites the queue. Spine ids are read in the `**M13.6**` heading form
+# alone, which is what makes a unit named in passing prose -- `Carried forward from M13.4` -- stop
+# counting once it closes: S6 already keeps only open units under a heading in `Deferred`.
+_SPINE_UNIT = re.compile(r"\*\*(M\d+(?:\.\d+)?[a-z]?)\*\*")
+_UNIT_CITATION = re.compile(r"M\d+(?:\.\d+)?[a-z]?")
+_QUEUE = ".agent/deferred.md"
+
+# `skip` and `xfail` disable outright. `skipif` is a dependency guard -- the case runs wherever its
+# dependency exists and `tools/gate.sh` announces the stage that skipped -- so it is read only when
+# its condition is a constant, the shape that disables the case on every host.
+_DISABLING_MARKERS = frozenset({"skip", "xfail"})
 
 
 def _tracked() -> frozenset[str]:
@@ -214,3 +234,147 @@ def test_s7_every_contract_citation_survives_the_archive_move() -> None:
             f"{name}: {token}" for token in _CONTRACT_CITATION.findall(text) if token not in tracked
         ]
     assert not stranded, f"stranded contract citations: {stranded}"
+
+
+class _PytestNames(NamedTuple):
+    """What `pytest` is called in ONE module. Every shape is rooted here rather than in the literal
+    name `pytest`: rooting is what reaches `from pytest import mark` and what keeps an unrelated
+    `other.mark.skip` -- a decorator pytest never sees -- from failing the gate."""
+
+    module: frozenset[str]
+    mark: frozenset[str]
+    skip: frozenset[str]
+
+
+def _pytest_names(tree: ast.Module) -> _PytestNames:
+    module: set[str] = set()
+    bound: dict[str, set[str]] = {"mark": set(), "skip": set()}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            module |= {alias.asname or alias.name for alias in node.names if alias.name == "pytest"}
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            for alias in node.names:
+                if alias.name in bound:
+                    bound[alias.name].add(alias.asname or alias.name)
+    return _PytestNames(frozenset(module), frozenset(bound["mark"]), frozenset(bound["skip"]))
+
+
+def _reason(node: ast.expr) -> str:
+    """Every string literal the marker or call carries. A bare `@pytest.mark.skip` states none,
+    and reads here as the empty reason it is."""
+    return " ".join(
+        found.value
+        for found in ast.walk(node)
+        if isinstance(found, ast.Constant) and isinstance(found.value, str)
+    )
+
+
+def _constant_true(node: ast.expr) -> bool:
+    """A condition no host can falsify, so what it guards is disabled everywhere."""
+    return isinstance(node, ast.Constant) and bool(node.value)
+
+
+def _disables(marker: ast.expr, names: _PytestNames) -> bool:
+    target = marker.func if isinstance(marker, ast.Call) else marker
+    if not isinstance(target, ast.Attribute):
+        return False
+    owner = target.value
+    rooted = (
+        isinstance(owner, ast.Attribute)
+        and owner.attr == "mark"
+        and isinstance(owner.value, ast.Name)
+        and owner.value.id in names.module
+    ) or (isinstance(owner, ast.Name) and owner.id in names.mark)
+    if not rooted:
+        return False
+    if target.attr in _DISABLING_MARKERS:
+        return True
+    if target.attr != "skipif" or not isinstance(marker, ast.Call) or not marker.args:
+        return False
+    return _constant_true(marker.args[0])
+
+
+def _markers(node: ast.expr) -> Iterator[ast.expr]:
+    """A marker SLOT (`pytestmark`, `marks=`) holds one marker or a sequence of them."""
+    if isinstance(node, ast.List | ast.Tuple):
+        yield from node.elts
+    else:
+        yield node
+
+
+def _unconditional_skips(body: list[ast.stmt], names: _PytestNames) -> Iterator[ast.Call]:
+    """A `pytest.skip()` no condition can spare: a direct child of the body, or nested under a
+    constant `if`. The same call under a real condition is a dependency guard -- the body runs
+    wherever its dependency exists -- and is not reached from here."""
+    for statement in body:
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+            target = statement.value.func
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "skip"
+                and isinstance(target.value, ast.Name)
+                and target.value.id in names.module
+            ) or (isinstance(target, ast.Name) and target.id in names.skip):
+                yield statement.value
+        elif isinstance(statement, ast.If) and _constant_true(statement.test):
+            yield from _unconditional_skips(statement.body, names)
+
+
+def _disabled_cases(path: Path) -> list[tuple[int, str]]:
+    """Each case in `path` that a green run never executes, as `(line, reason)`."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    names = _pytest_names(tree)
+    found: list[tuple[int, str]] = [
+        (marker.lineno, _reason(marker))
+        for statement in tree.body  # a module `pytestmark` disables every case in the file at once
+        if isinstance(statement, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "pytestmark"
+            for target in statement.targets
+        )
+        for marker in _markers(statement.value)
+        if _disables(marker, names)
+    ]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        if not node.name.startswith("test_"):
+            continue
+        for decorator in node.decorator_list:
+            if _disables(decorator, names):
+                found.append((decorator.lineno, _reason(decorator)))
+            found += [  # `pytest.param(..., marks=...)` disables ONE parametrized case
+                (marker.lineno, _reason(marker))
+                for slot in ast.walk(decorator)
+                if isinstance(slot, ast.keyword) and slot.arg == "marks"
+                for marker in _markers(slot.value)
+                if _disables(marker, names)
+            ]
+        found += [(call.lineno, _reason(call)) for call in _unconditional_skips(node.body, names)]
+    return found
+
+
+def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
+    """S8: every case `tests/` disables STATICALLY names its tracker -- a spine unit in `Deferred`,
+    or the `.agent/deferred.md` queue for an off-spine row. Read: a `skip`/`xfail` marker, a
+    constant-condition `skipif`, a `marks=` marker on a parametrized case, a module `pytestmark`,
+    and a `pytest.skip()` no condition can spare, each rooted in the module's OWN `pytest` binding.
+    Acceptance: a marker whose reason names neither tracker fails with its `file:line`, and so does
+    one citing a unit that has since closed; a skip outliving the unit that justified it is a
+    silently narrowed suite, and rc 0 is what a green run reports either way. Outside the claim,
+    deliberately: a skip a REAL condition guards, and anything disabled at runtime, which no AST
+    states -- the gate announces a run's skips by name, and that is where those surface."""
+    spine = frozenset(_SPINE_UNIT.findall(_section("Deferred")))
+    assert spine, "no spine units found in Deferred"
+    sources = sorted(
+        name for name in _tracked() if name.startswith("tests/") and name.endswith(".py")
+    )
+    assert sources, "no tracked test sources found"
+    untracked = [
+        f"{name}:{lineno}: {reason or '<no reason>'}"
+        for name in sources
+        for lineno, reason in _disabled_cases(_REPO_ROOT / name)
+        if _QUEUE not in reason
+        and not any(unit in spine for unit in _UNIT_CITATION.findall(reason))
+    ]
+    assert not untracked, f"untracked disabled cases: {untracked}"

@@ -70,7 +70,7 @@ def test_g6_scatter_size_keyword_unreachable() -> None:
 
 
 # --- M13.5: the three rules recomputation made decidable ---------------------------------------
-# Contract: `.agent/archive/contracts/m13u5.md` § G. Skeleton bodies are `pytest.skip`.
+# Contract: `.agent/archive/contracts/m13u5.md` § G.
 
 
 def test_g7_plotted_range_is_the_data_range() -> None:

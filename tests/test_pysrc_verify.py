@@ -6,7 +6,7 @@
 CSV arrives as bytes on `declared_target`, and the core never opens a path, reads a clock or draws
 a random number.
 
-Skeleton: each body is `pytest.skip` and its docstring carries the predicate's acceptance check.
+Each test's docstring carries its predicate's acceptance check.
 """
 
 import ast

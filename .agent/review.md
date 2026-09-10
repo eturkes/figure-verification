@@ -18,6 +18,7 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | L-CLAIM | claim soundness | is every sentence the project ships true at the strength it is stated? |
 | L-GAP | guarantee vs. claim | does a shipped guarantee outrun the mechanism that backs it? |
 | L-LAW | `CLAUDE.md` conformance | tiers, contracts, gate identity, claim discipline, authoring register |
+| L-HARD | verification integrity | does an admitted path return a fixture's expected value, or grade against an expected-output table its contract does not own? |
 
 ## Rows
 

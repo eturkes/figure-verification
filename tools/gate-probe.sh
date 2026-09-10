@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S7, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S8, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
@@ -110,6 +110,26 @@ plant_shellcheck_finding() {
 plant_uncovered_check() {
     # Name assembled at run time: G12 scans this file, so a literal would read as covered.
     printf '\n\ndef test_g%s_uncovered_probe() -> None:\n    """Probe."""\n' 99 >>"$TEST_GATE"
+}
+
+# Both S8 plants may carry literal names: S8 parses `.py` sources, so this script is outside its
+# sweep, and G12 reads names in one direction only -- a suite name must appear here, never the
+# reverse. The reason cites no unit and no queue path, which is the whole firing input.
+plant_untracked_skip_marker() {
+    printf '\n\n@pytest.mark.skip(reason="probe")\ndef test_g97_untracked_marker_probe() -> None:\n    """Probe."""\n' >>"$TEST_GATE"
+}
+
+plant_untracked_body_skip() {
+    printf '\n\ndef test_g96_untracked_body_probe() -> None:\n    """Probe."""\n    pytest.skip("probe")\n' >>"$TEST_GATE"
+}
+
+plant_untracked_param_marks() {
+    printf '\n\n@pytest.mark.parametrize("v", [pytest.param(1, marks=pytest.mark.skip(reason="probe"))])\ndef test_g95_untracked_param_probe(v: int) -> None:\n    """Probe."""\n' >>"$TEST_GATE"
+}
+
+# Disables the whole planted module, which is harmless: the probe runs the S8 node in test_spec.py.
+plant_untracked_module_pytestmark() {
+    printf '\n\npytestmark = pytest.mark.skip(reason="probe")\n' >>"$TEST_GATE"
 }
 
 plant_unarchived_closed_unit() {
@@ -228,6 +248,25 @@ probe s6-closed-unit-in-deferred tests/test_spec.py::test_s6_the_spine_lives_in_
 probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_citation_survives_the_archive_move \
     'stranded contract citations' \
     plant_stranded_contract_citation
+
+# Four detection paths, four controls. They are materially different reads -- a decorator, a call
+# statement, a keyword inside a parametrize list, a module-level assignment -- so deleting the
+# helper behind one leaves the other three probes green and the hole unproven.
+probe s8-untracked-skip-marker tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_skip_marker
+
+probe s8-untracked-body-skip tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_body_skip
+
+probe s8-untracked-param-marks tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_param_marks
+
+probe s8-untracked-module-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'untracked disabled cases' \
+    plant_untracked_module_pytestmark
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.

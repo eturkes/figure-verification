@@ -6,7 +6,7 @@ projected tree operator by operator in binary64. An exact-rational engine roundi
 would compute a number the program never computes; the more precise engine is the less faithful
 one. Every comparison here is on BIT PATTERNS, never with a tolerance.
 
-Skeleton: each body is `pytest.skip` and its docstring carries the predicate's acceptance check.
+Each test's docstring carries its predicate's acceptance check.
 """
 
 import math
