@@ -27,9 +27,9 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Deferred
 
-Queue = `.agent/deferred.md`, 13 rows, one line + acceptance check each; nothing there blocks the units below.
+Queue = `.agent/deferred.md`, 12 rows, one line + acceptance check each; nothing there blocks the units below.
 
-Spine = the unfinished units, in order: M13.4 → M10 → M14.
+Spine = the unfinished units, in order: M13.4 → M13.5 → M10 → M14.
 
 **M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose. OPEN; contract = `.agent/contracts/m13u4.md`, tier kernel, D1-D12 + G1/G5/G2/G3/G6.
 
@@ -39,7 +39,15 @@ Spine = the unfinished units, in order: M13.4 → M10 → M14.
 - WIDTH RULED (user): column pairs only — `read_csv` → column selection → bar/line/scatter over two columns. NO `groupby`/`sum`/`mean`; G11 stays dormant and aggregation becomes its own later unit. Both committed sentinels are dataset-arm (`sales.csv`), so this unit unblocks the entire demo acceptance: the simple sentinel cannot pass until `read_csv` is admitted.
 - DEMO-SIDE TOTALITY is the surface M10 inherits, and the roadmap's "5 totality sites" undercounts it: 5 role-total consumers in `archive.py`, plus 11 typed `PlotSourceKind` declarations across 8 dispatch families, 2 exact-union consumers, `replay.py`'s three mirrors, `service/replay.py` `_MODE_REPLAYS`, and `service/audit.py`'s bundle dispatch. SQLite is its own closed vocabulary — `source_kind IN (…)`, `role IN (…)`, trigger arms — so a third source needs a schema-version bump and migration, not just enum edits. The bare name `FormulaPlot` matches 44 tracked files but 39 are the LEGACY JSON-spec type — never sweep by substring.
 
-**M10** — OWUI integration + calibrated demo; mechanism + calibration risk = `.claude/rules/owui.md`.
+**M13.5** — verdict + certificate + recomputation, FULL ENGINE (user ruling: the engine ships here, not beside its consumer in M10). The core today is prescan → admit → project and stops: there is NO `verify_python_source`, no verdict, no recomputed table, no certificate, so M10 has nothing to integrate and `Intent`'s "recomputes every plotted number" is unbacked. Cited as the owner of five already-ruled obligations (`.agent/contracts/m13u4.md` G7/G8/`declared_target`, `.claude/rules/pysrc.md` arange/float comparison, `tests/test_pysrc_admit.py:297` A10's re-authored corpus), which is what makes its absence from the spine a defect rather than a scope choice.
+
+- Public entry `verify_python_source(src, declared_target=None)`, stdlib-only, both arms.
+- Exact recomputation: port `expr.py`'s parser + Decimal/Fraction arithmetic into the core, swapping its `msgspec.Struct` nodes for frozen dataclasses (`.claude/rules/pysrc.md` § Layering, item 4). Formula arm evaluates f over the grid; dataset arm reads the CSV and materializes the two selected columns.
+- Provenance binding: the projected `DatasetPlot.source.path` compared against `declared_target`; a mismatch blocks. This is the ONE tier-1 check that is decidable statically.
+- Certificate publishes tiers 1-3 in plain words, including the DECLARED-OPEN status of G7/G8 and the intent gap. Nothing in it may imply a row-count or range guarantee.
+- Structural note that shapes the unit: the model supplies a program, never values, so no *claimed* number exists to contradict statically. Recomputation's static product is the TABLE; `Intent`'s "code, recomputed table, emitted artifact and certificate mutually consistent" closes against the emitted artifact only through fork (b), which M10 owns. State that split in the certificate rather than letting the verdict imply it.
+
+**M10** — OWUI integration + calibrated demo; mechanism + calibration risk = `.claude/rules/owui.md`. Also owns fork (b), ADOPTED by the user (`.claude/rules/pysrc.md` § Forks): the sandbox returns `get_xydata()`, the outlet filter compares those arrays against M13.5's recomputation, and the PNG is withheld until they match — observation may only WITHHOLD, never admit. Accept: a planted projection defect is caught by the observed arrays and by nothing else.
 
 **M14** — paste-in artifact; shape = `Intent` + the single-source ruling in `Decisions` (inlined by generation, hand fork banned).
 
