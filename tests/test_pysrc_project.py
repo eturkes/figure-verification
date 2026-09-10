@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Diff-blind red suite for M13.3 projection. Contract: `.agent/contracts/m13u3.md`.
+"""Diff-blind red suite for M13.3 projection. Contract: `.agent/archive/contracts/m13u3.md`.
 
 Every test below carries its predicate's acceptance check in the docstring and is skipped until it
 is written. A test that asserts more than the ratified predicate loses to the predicate.

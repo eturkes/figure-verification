@@ -86,15 +86,16 @@ implies the figure answers the question asked.
   the dataset arm, the formula in the request sentence in the formula arm. `verify_python_source(src,
   declared_target=None)` keeps the parameter optional for headless callers; the demo supplies it from
   the arm in play.
-- **(b) Observed-execution confirmation — OPEN.** The sandbox reports the arrays matplotlib actually
-  received (`gcf().axes[*].lines[*].get_xydata()`), the outlet filter returns them, and the PNG is
-  withheld until they match the verifier's own recomputation. This closes the projection gap
-  EMPIRICALLY instead of by construction and costs no new trust: OWUI already rewrites `plt.show()`
-  to `savefig(BytesIO)`, so an environment layer around the model's bytes already exists and is
-  accepted, and admitted code provably cannot tamper with the observer because the allowlist admits
-  no idiom that could. It needs a user ruling, being the same category as ruling 1
-  (verifier-(re)authored scripts REJECTED); read the environment/observation layer as OUTSIDE that
-  ruling rather than inside it.
+- **(b) Observed-execution confirmation — RESOLVED: ADOPTED (user).** The sandbox reports the arrays
+  matplotlib actually received (`gcf().axes[*].lines[*].get_xydata()`), the outlet filter returns
+  them, and the PNG is withheld until they match the verifier's own recomputation. This closes the
+  projection gap EMPIRICALLY instead of by construction and costs no new trust: OWUI already
+  rewrites `plt.show()` to `savefig(BytesIO)`, so an environment layer around the model's bytes
+  already exists and is accepted, and admitted code provably cannot tamper with the observer because
+  the allowlist admits no idiom that could. The environment/observation layer reads as OUTSIDE
+  ruling 1 (verifier-(re)authored scripts REJECTED): the EXECUTED bytes stay the model's, and the
+  epilogue observes rather than re-authors. Observation may only WITHHOLD, never admit — a
+  comparison it cannot perform blocks. M10 owns the implementation.
 
 The verdict is decided statically either way — it must precede release — so the core is built on
 projection + exact recomputation and observation is additive.
@@ -162,11 +163,23 @@ z3 cannot be inlined.
 - `CorePlotSpec` is a ONE-MEMBER alias for `FormulaPlot`; `DatasetPlot` is declared by M13.4, not
   before. A placeholder written ahead of the admitted dataset idioms would be written wrong and then
   inherited as law, and the alias makes the widening a visible edit at the union.
+- **Dataset-arm width, M13.4 (user ruling): COLUMN PAIRS ONLY** — `read_csv` → column selection →
+  bar/line/scatter over two columns. No `groupby`/`sum`/`mean` in that unit, so G11 stays dormant
+  and aggregation is its own later unit. The width caps the FIRST release, never the ceiling:
+  coverage grows one mark at a time at no new trust, and the same core ships in the M14 paste-in, so
+  whatever M13.4 admits is what the production artifact admits on day one.
 - A differential between two implementations of this contract compares MEANING: one named
   translation maps both sides onto a canonical tuple through an EXPLICIT node-name and field-name
   map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,
-  `expression`/`y`) and produced 24 of 25 false disagreements on first run. The map raises on a name
+  `expression`/`y`) and produced 23 of 25 false disagreements on first run. The map raises on a name
   it does not cover — a generic lowercase-or-strip rule would absorb a real future divergence.
+  A semantic disagreement is ESCALATED to the lead, never absorbed into the map; both of M13.3's
+  were, and both resolved in production's favour.
+- **Refusal precedence: LOCAL before GLOBAL.** A fault local to one statement refuses before a fault
+  global to the program — `plt.plot(...)` then `plt.bar(...)` refuses `mark_not_valid_for_arm`, not
+  `multiple_marks`. In the formula arm this is structural rather than ordering-dependent: `plt.bar`
+  is in `_WRONG_ARM_MARKS` and never in `_MARKS`, so it cannot become a second mark. Keep it
+  structural as the dataset arm widens `_MARKS`.
 
 ## Binding rules
 

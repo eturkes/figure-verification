@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Graphical-integrity tripwires for the G-rules that hold BY CONSTRUCTION.
 
-Contract: `.agent/contracts/m13u3.md`. Each test asserts BOTH halves — the target is absent from the
-allowlist AND a program using it is refused — so widening `admit.py` breaks the rule's test instead
-of silently deleting the rule. Rule text: `.claude/rules/pysrc.md` § Integrity rule set.
+Contract: `.agent/archive/contracts/m13u3.md`. Each test asserts BOTH halves — the target is
+absent from the allowlist AND a program using it is refused — so widening `admit.py` breaks the
+rule's test instead of silently deleting the rule. Rule text: `.claude/rules/pysrc.md` § Integrity
+rule set.
 """
 
 import pytest

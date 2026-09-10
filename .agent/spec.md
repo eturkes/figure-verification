@@ -27,17 +27,17 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Deferred
 
-Queue = `.agent/deferred.md`, 12 rows, one line + acceptance check each; nothing there blocks the units below.
+Queue = `.agent/deferred.md`, 13 rows, one line + acceptance check each; nothing there blocks the units below.
 
-Spine = the unfinished units, in order: M13.3 close → M13.4 → M10 → M14.
+Spine = the unfinished units, in order: M13.4 → M10 → M14.
 
-**M13.3** — python-source projection + integrity. OPEN, gate-green, one merge short of close; contract + verdicts = `.agent/contracts/m13u3.md`.
+**M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose. Census = `map-m13u4`, whose findings bind the contract.
 
-- SHIPPED. `spec.py` + `project.py` = the formula-arm projection, 13 refusal codes, structural grid identity, integer-only `arange`. `tests/test_pysrc_project.py` (P1-P12 + P13 reachability) + `tests/test_pysrc_integrity.py` (G1/G2/G3/G6) merged from `wt/m13u3-test` with three MAIN rulings applied. Gate rc=0 on all 8 stages, `verifier` at 100% branch, probes 23/23, `tools/mutants/project.toml` at 23/23 killed.
-- RESUME. One harvest remains: `wt/m13u3-orc` @ `edaa682` — an independent oracle + Hypothesis differential (`tests/oracle_project.py`, `tests/test_pysrc_project_differential.py`, 1244 lines), UNMERGED. Run from the PRIMARY tree, since its vacuity guard resolves both sides against the tree the files sit in. Last measured there: 25 failed / 77 passed, of which exactly ONE is a semantic disagreement (the oracle's `cap=10_000` against `max_grid_samples` = 100_000) and 24 are form noise in its `normalize` — node-class names, field names, field order, and the `kind`/`step` fields the Grid ruling removes. The fix (one explicit translation map onto a canonical tuple) was messaged but not applied before the teammate stopped, so a resumed session either applies it directly or re-dispatches an `orc` successor from that branch. Its corpora predate the integer-only `arange` ruling and the structural grid-identity ruling. Both worktrees are clean and still checked out under `.scratch/worktrees/`.
-- CLOSE. Verdict table into the contract, archive it under `.agent/archive/contracts/`, then record the close in `Phase` and drop this unit from the spine.
-
-**M13.4** — dataset arm: `read_csv` idioms → `DatasetPlot` → the `CorePlotSpec` union widens, breaking the one-member alias pin on purpose.
+- WIDTH RULED (user): column pairs only — `read_csv` → column selection → bar/line/scatter over two columns. NO `groupby`/`sum`/`mean`; G11 stays dormant and aggregation becomes its own later unit. Both committed sentinels are dataset-arm (`sales.csv`), so this unit unblocks the entire demo acceptance: the simple sentinel cannot pass until `read_csv` is admitted.
+- ADMISSION GAP, measured: a minimal `pd.read_csv` → `df["col"]` → `plt.bar` program fails at four points — `import pandas as pd` → `import_not_admitted`; `pd.read_csv(...)` → `call_target_not_admitted`; `df["col"]` → `expression_not_admitted`; `df.col` → `attribute_not_admitted`. Everything else in that shape already admits.
+- UNION SURFACE is small and exact: `spec.py` (declare `DatasetPlot`, widen the alias), `project.py`, `tests/test_pysrc_project.py`, `.claude/rules/pysrc.md`. The bare name `FormulaPlot` matches 44 tracked files but 39 are the LEGACY JSON-spec type — never sweep by substring.
+- DEMO-SIDE TOTALITY is the large surface, and the roadmap's "5 totality sites" undercounts it: 5 role-total consumers in `archive.py`, plus 11 typed `PlotSourceKind` declarations across 8 dispatch families, 2 exact-union consumers, `replay.py`'s three mirrors, `service/replay.py` `_MODE_REPLAYS`, and `service/audit.py`'s bundle dispatch. SQLite is its own closed vocabulary — `source_kind IN (…)`, `role IN (…)`, trigger arms — so a third source needs a schema-version bump and migration, not just enum edits.
+- CONTRACT BLOCKERS to settle before code: G8 does not name which channels or which pipeline stage define "non-null row count"; G11 does not choose total rows vs non-null measure rows; G7's "data range" is undefined after aggregation or null removal. Tier-1 provenance additionally needs the dataset target contracted as EXACT BYTES plus an unambiguous upload binding — a path-only `DatasetPlot` leaves provenance unconnectable without reshaping the core.
 
 **M10** — OWUI integration + calibrated demo; mechanism + calibration risk = `.claude/rules/owui.md`.
 
@@ -45,4 +45,4 @@ Spine = the unfinished units, in order: M13.3 close → M13.4 → M10 → M14.
 
 ## Phase
 
-IMPLEMENT, milestone M13 — python-source verification (projection → integrity → verdict). M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). M13.2 CLOSED (`admit.py` positive AST allowlist, 11 more refusal codes, 13/13 mutants killed).
+IMPLEMENT, milestone M13 — python-source verification (projection → integrity → verdict). M13.0 CLOSED (one gate command + supply-chain scanning + CI). M13.1 CLOSED (`verifier.pysrc` pre-scan: byte cap + nesting pre-scan ahead of `ast.parse`, stdlib-only, 9 closed refusal codes). M13.2 CLOSED (`admit.py` positive AST allowlist, 11 more refusal codes, 13/13 mutants killed). M13.3 CLOSED (formula-arm projection `spec.py` + `project.py`, 13 refusal codes, P1-P12 + G1/G2/G3/G6, 23/23 mutants, independent oracle + differential at 108 passed with its firing control re-proven by source mutation).
