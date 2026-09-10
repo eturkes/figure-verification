@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """P1-P13 over `verifier.pysrc.prescan`.
 
-Contract: `.agent/contracts/m13u1.md`.
+Contract: `.agent/archive/contracts/m13u1.md`.
 
 This is the first surface untrusted model bytes touch, so every refusal path needs its own witness
 and the ORDER of the checks is itself a predicate: P1 arms bombs on the two downstream stages,

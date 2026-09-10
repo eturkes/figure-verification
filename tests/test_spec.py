@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""S1-S6: liveness invariants of the attached state.
+"""S1-S7: liveness invariants of the attached state and the law surface around it.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
 and read every line as current law. Liveness itself is a judgment no test can make. What IS
@@ -10,6 +10,13 @@ which is what keeps the spine in one place (S6).
 
 The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
 those paths stay absent by design until the row closes.
+
+S4 and S7 sweep past `spec.md` itself, each as far as its question stays decidable. S4 adds the
+ledger and the scope sources, which carry pointers that strand exactly as the spec's do, and stops
+at `.agent/archive/**`, where a record legitimately names a file since deleted outright. S7 covers
+every tracked file, archived records included, because its target does not vanish -- closing a unit
+MOVES the contract, so a citation of the pre-archive path always has somewhere correct to point.
+Neither covers `.claude/rules/*.md`; that gap is queued, not overlooked.
 
 Each expectation is hand-stated rather than read back from the artifact it guards. This file
 imports no `verifier` symbol: coverage source stays `verifier` only.
@@ -23,6 +30,22 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _REPO_ROOT / ".agent" / "spec.md"
 _DEFERRED = _REPO_ROOT / ".agent" / "deferred.md"
+_REVIEW = _REPO_ROOT / ".agent" / "review.md"
+
+# S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, and the two
+# scope sources `ops.md` names. This is NOT all live law -- `.claude/rules/*.md` carries project
+# law and stays out, because those files cite by bare basename (`ops.md`, `oracle.py`) and by
+# brace aggregate (`.agent/archive/{roadmap,polish,memory}.md`), neither of which this resolver
+# reads; widening to them is queued in `.agent/deferred.md`. Archived records stay out for a
+# different reason: a retired unit legitimately names a file later deleted outright, so there is
+# nothing to repoint at and history being history would fail the sweep.
+_POINTER_SURFACE = (
+    _SPEC,
+    _DEFERRED,
+    _REVIEW,
+    _REPO_ROOT / "POC_SCOPE.md",
+    _REPO_ROOT / "VPlot_SEMANTICS.md",
+)
 _CONTRACTS = _REPO_ROOT / ".agent" / "contracts"
 _ARCHIVE_CONTRACTS = _REPO_ROOT / ".agent" / "archive" / "contracts"
 
@@ -38,12 +61,24 @@ _POINTER_ROOTS = (".agent/", ".claude/rules/", "docs/")
 # lists it and the Artifacts entry naming its interpreter is still live.
 _UNTRACKED_BY_DESIGN = frozenset({".venv-model/bin/python"})
 
-_PLACEHOLDER = ("<", "…", "*", "?")
+# A token carrying one of these names a SET of paths, not a path: a shape (`<unit>.md`), a glob
+# (`m13*.md`) or a brace aggregate (`.agent/archive/{roadmap,polish,memory}.md`). Resolving one
+# means expanding it, which this resolver does not do, so it is skipped rather than reported dead.
+_PLACEHOLDER = ("<", "…", "*", "?", "{")
 
 # Unit ids carry an optional letter suffix (`M12.6b` closed with `m12u6b.md`), and a pattern
 # without it reads `M12.6b CLOSED` as `M12.6` followed by junk: S5 then skips the unit and S6
 # reads it as open.
 _UNIT = re.compile(r"M(\d+)\.(\d+)([a-z]?)")
+
+# A contract citation names one of the two directories S5 moves a contract between. The character
+# class admits no `<` and no `*`, so a shape token and a `paths:` glob are not citations. The two
+# lookaheads make the match end where the citation ends: without them a prefix match wins, and
+# `<id>.md.bak`, `<id>.md2` or `<id>.md/child` -- none of them files -- each collapse onto the
+# tracked `<id>.md` and report green for a path nothing carries.
+_CONTRACT_CITATION = re.compile(
+    r"\.agent/(?:archive/)?contracts/[A-Za-z0-9][A-Za-z0-9_.-]*\.md(?![A-Za-z0-9_/-])(?!\.[A-Za-z0-9])"
+)
 
 
 def _tracked() -> frozenset[str]:
@@ -118,12 +153,13 @@ def test_s3_every_deferral_carries_an_acceptance_check() -> None:
 
 
 def test_s4_every_rules_docs_and_archive_pointer_resolves() -> None:
-    """S4: rules, docs and archive pointers in the attached state resolve. Acceptance: a moved or
-    deleted target fails -- the pointer is how detail stays out of spec.md, so a dead one silently
-    deletes the detail instead of relocating it."""
+    """S4: rules, docs and archive pointers in the attached state, the ledger and the scope
+    sources resolve. Acceptance: a moved or deleted target fails -- the pointer is how detail
+    stays out of the citing file, so a dead one silently deletes the detail instead of relocating
+    it."""
     tracked = _tracked()
     dangling: list[str] = []
-    for path in (_SPEC, _DEFERRED):
+    for path in _POINTER_SURFACE:
         for line in path.read_text(encoding="utf-8").splitlines():
             live, _, _ = line.partition("Accept:")
             dangling += [
@@ -161,3 +197,20 @@ def test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units() ->
     assert not open_in_phase, f"Phase names units that are not CLOSED: {open_in_phase}"
     closed_in_deferred = [m.group(0) for m in _UNIT.finditer(deferred) if _closed(deferred, m)]
     assert not closed_in_deferred, f"Deferred names closed units: {closed_in_deferred}"
+
+
+def test_s7_every_contract_citation_survives_the_archive_move() -> None:
+    """S7: every contract path a tracked file cites is itself tracked. Acceptance: a citation left
+    at the pre-archive path fails -- S5 makes the close MOVE the contract, and that move is what
+    strands the citations, so the two checks are green together only when the close finished."""
+    tracked = _tracked()
+    stranded: list[str] = []
+    for name in sorted(tracked):
+        try:
+            text = (_REPO_ROOT / name).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):  # a tracked binary carries no citation
+            continue
+        stranded += [
+            f"{name}: {token}" for token in _CONTRACT_CITATION.findall(text) if token not in tracked
+        ]
+    assert not stranded, f"stranded contract citations: {stranded}"

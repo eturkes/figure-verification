@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """A1-A12 over `verifier.pysrc.admit`.
 
-Contract: `.agent/contracts/m13u2.md`.
+Contract: `.agent/archive/contracts/m13u2.md`.
 
 This module IS the pass/fail boundary, so the suite is written against the ALLOWLIST property
 rather than against a sample of bad programs: every admitted family gets a NEAR-MISS witness

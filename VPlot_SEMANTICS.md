@@ -257,7 +257,7 @@ DuckDB's DECIMAL(38)/HUGEINT domain — where eval's unbounded exact arithmetic 
 the oracle raises LOUDLY (filter-literal magnitude bound; SUM-accumulator or typed-reinsert
 overflow, both sites pinned by tests), never a silent divergence.
 
-### 11. Divergences from the outline — dataset mode (`.agent/outline.md`)
+### 11. Divergences from the outline — dataset mode
 
 - Labels + units = the trusted MANIFEST, not model- or policy-proposed.
 - NO `policy` block: policy folds into checks + the manifest (the model proposes no policy).

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """G6-G11: static-config invariants of the one gate command.
 
-Contract: `.agent/contracts/m13u0.md`.
+Contract: `.agent/archive/contracts/m13u0.md`.
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a

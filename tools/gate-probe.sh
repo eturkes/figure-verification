@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S6, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S7, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
@@ -31,7 +31,8 @@ OPS=.claude/rules/ops.md
 TEST_GATE=tests/test_gate.py
 SPEC=.agent/spec.md
 DEFERRED=.agent/deferred.md
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED")
+REVIEW=.agent/review.md
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -121,6 +122,23 @@ plant_open_unit_in_phase() {
     printf ' M%s.%s OPEN (probe).\n' 99 8 >>"$SPEC"
 }
 
+plant_dangling_live_law_pointer() {
+    # S4 reads backticked spans only, so the plant must carry backticks -- built from `\140`
+    # because a literal one inside single quotes is SC2016, which fails shell_lint one step
+    # before its ban and leaves that check unproven.
+    local bt
+    bt="$(printf '\140')"
+    printf '\n- Probe: %s.claude/rules/absent.md%s\n' "$bt" "$bt" >>"$REVIEW"
+}
+
+plant_stranded_contract_citation() {
+    # Path assembled at run time: S7 scans every tracked file, this script included, so a literal
+    # would strand permanently and fail the check it exists to fire. Planted unquoted -- a
+    # backtick inside single quotes is SC2016, which fails shell_lint before its ban is reached.
+    # ops.md rather than the spec, because S4 sweeps the spec too and each probe names ONE check.
+    printf '\n- Probe: .agent/contracts/m%su%s.md\n' 99 9 >>"$OPS"
+}
+
 probe g6-ci-gate-step tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
     'expected exactly one gate invocation' \
     sed -i 's|run: bash tools/gate.sh|run: true|' "$WORKFLOW"
@@ -182,8 +200,14 @@ probe s3-acceptance-check tests/test_spec.py::test_s3_every_deferral_carries_an_
     sed -i '0,/Accept:/s//Someday:/' "$DEFERRED"
 
 probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
-    'dangling pointers' \
+    'spec.md: .claude/rules/absent.md' \
     sed -i 's|\.claude/rules/ops\.md|.claude/rules/absent.md|' "$SPEC"
+
+# The widened half: S4 sweeps the live law surface, not the spec alone, so the files added to it
+# need their own control -- the spec probe passes whether or not they are swept at all.
+probe s4-live-law-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'review.md: .claude/rules/absent.md' \
+    plant_dangling_live_law_pointer
 
 probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_its_contract_archived \
     'm99u9z.md absent from .agent/archive/contracts/' \
@@ -196,6 +220,10 @@ probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_defer
 probe s6-closed-unit-in-deferred tests/test_spec.py::test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units \
     'Deferred names closed units' \
     sed -i 's|^## Deferred$|## Deferred\n\n**M99.7** CLOSED (probe).|' "$SPEC"
+
+probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_citation_survives_the_archive_move \
+    'stranded contract citations' \
+    plant_stranded_contract_citation
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.
