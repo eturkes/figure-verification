@@ -171,10 +171,15 @@ imports, inlinable into one pasted file:
    `pd.read_csv`, whose DEFAULT float parser is not correctly rounded. Measured against stdlib
    `float` over 1,000,000 adversarial cells: 326,834 disagree (314,781 at 1 ulp, 12,053 at
    2–7,262 ulp); only `float_precision="round_trip"` agrees fully; and NO significant-digit cap
-   repairs it — even `1e-23` disagrees. The verifier may not depend on pandas, so the profile must
-   either restrict admitted cell texts to a proven 0-disagreement region or reproduce pandas'
-   `xstrtod` in stdlib Python. Ruling pending in `.agent/contracts/m13u5.md` § Open ruling, whose
-   decision rule was fixed before the data.
+   repairs it — even `1e-23` disagrees. **RULED: restrict, not reimplement.** The admitted cell text
+   is canonical fixed point, `-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?`, ≤15 significant digits, finite,
+   in `[-2147483648, 2147483647]`, and not a sign-bearing zero — measured at 0/4,000,000 bit
+   mismatches against target Pyodide across plain and quoted fields. Two of those clauses are about
+   the RENDERER, not the parser: Pyodide's `plt.bar` keeps integer heights as `int32` and RAISES
+   outside signed 32 bits, and matplotlib bar erases the sign of `-0.0` (99/1,024 heights). Line and
+   scatter altered nothing (0/40,000 each). A categorical bar maps unique labels to float64 centers
+   in first-occurrence order, which is exactly why a duplicate category overplots and G8 refuses it.
+   Full profile + its closed refusal complement = `.agent/contracts/m13u5.md` § The C10 ruling.
 
 Demo-side wrappers, outside the core: certificate kinds · archive (`PlotSourceKind` + `PlotRole`
 widening, 5 totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route
