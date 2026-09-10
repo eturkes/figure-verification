@@ -302,11 +302,32 @@ id = "d2-no-source"
 predicate = "a dataset-arm mark with no bound frame is refused"
 kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
 anchor = '''
-            if not self._frames:
-                _refuse("no_source")'''
+        if not self._frames:
+            _refuse("no_source")'''
 mutant = '''
-            if False:
-                _refuse("no_source")'''
+        if False:
+            _refuse("no_source")'''
+
+[[mutant]]
+id = "d7-local-before-global"
+predicate = "a mark's own channels and arity refuse before the program-wide mark count"
+kills = "tests/test_pysrc_dataset.py::test_d7_exactly_one_mark"
+anchor = '''
+            build = (
+                self._resolve_dataset_mark(target, node)
+                if self._pandas
+                else self._resolve_mark(_MARKS[target], node)
+            )
+            if self._mark is not None:
+                _refuse("multiple_marks")'''
+mutant = '''
+            if self._mark is not None:
+                _refuse("multiple_marks")
+            build = (
+                self._resolve_dataset_mark(target, node)
+                if self._pandas
+                else self._resolve_mark(_MARKS[target], node)
+            )'''
 
 [[mutant]]
 id = "d2-rebind-dataset-names"

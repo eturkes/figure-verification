@@ -309,6 +309,7 @@ def test_p12_projection_is_pure() -> None:
     allowed_import_roots = {
         "__intra_package__",
         "ast",
+        "collections",
         "dataclasses",
         "fractions",
         "io",

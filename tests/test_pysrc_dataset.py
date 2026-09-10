@@ -222,6 +222,34 @@ def test_d7_exactly_one_mark() -> None:
     )
     assert _refusal_code(local_fault) == "column_not_literal"
 
+    # `df[c]` above is caught by ADMISSION, so it never exercises projection-stage precedence.
+    # `other["region"]` is admitted -- bound base, literal index -- and so is the witness that does:
+    # the FIRST mark's own channel must refuse before the SECOND mark's existence.
+    first_mark_bad_channel = _dataset_source(
+        "other = df\n"
+        'plt.plot(other["region"], df["revenue"])\n'
+        'plt.scatter(df["region"], df["revenue"])\n'
+        "plt.show()\n"
+    )
+    assert _refusal_code(first_mark_bad_channel) == "column_not_from_source"
+
+    # Same precedence, on the mark's own arity rather than its channels.
+    first_mark_bad_arity = _dataset_source(
+        'plt.plot(df["a"])\nplt.scatter(df["a"], df["b"])\nplt.show()\n'
+    )
+    assert _refusal_code(first_mark_bad_arity) == "mark_arity_not_projected"
+
+    # A statement is validated on its OWN terms before any program-wide count, including the
+    # statement that trips the count: the second mark's bad channel outranks its being a second
+    # mark. Both faults refuse either way; local names the one the author can act on.
+    second_mark_bad_channel = _dataset_source(
+        "other = df\n"
+        'plt.plot(df["region"], df["revenue"])\n'
+        'plt.scatter(other["region"], df["revenue"])\n'
+        "plt.show()\n"
+    )
+    assert _refusal_code(second_mark_bad_channel) == "column_not_from_source"
+
     formula_local_fault = (
         "import numpy as np\n"
         "import matplotlib.pyplot as plt\n"

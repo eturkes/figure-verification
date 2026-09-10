@@ -17,6 +17,7 @@ admissible in the dataset arm: what refuses it is the arm, not the call.
 
 import ast
 import math
+from collections.abc import Callable
 from fractions import Fraction
 from typing import NoReturn
 
@@ -66,6 +67,9 @@ _DATASET_MARKS: dict[str, DatasetMark] = {
     "plt.bar": "bar",
 }
 _SOURCE_CALL = "pd.read_csv"
+# A mark resolved at its own statement, still owing the decorations that may follow it. Holding the
+# builder rather than the node is what keeps LOCAL-before-GLOBAL true for channels and arity.
+type _MarkBuilder = Callable[[Labels], CorePlotSpec]
 
 
 def _uses_grid(tree: ast.Module) -> bool:
@@ -128,9 +132,7 @@ class _Projector:
         self._grids: dict[str, Grid] = {}
         self._exprs: dict[str, ast.expr] = {}
         self._used: set[str] = set()
-        # The mark is held by TARGET, not by projected mark: which meaning `plt.bar` carries depends
-        # on the arm, and the arm is settled before any statement runs.
-        self._mark: tuple[str, ast.Call] | None = None
+        self._mark: _MarkBuilder | None = None
         self._frames: dict[str, DatasetRef] = {}
         self._cols: dict[str, tuple[str, Column]] = {}
         self._pandas = False
@@ -396,14 +398,20 @@ class _Projector:
             self._terminal = True
             return
         if target in _DATASET_MARKS:
-            # Arm validity is LOCAL to this statement and is therefore decided before the
-            # program-wide mark count: `plt.bar` after a `plt.plot` refuses `mark_not_valid_for_arm`
-            # in the formula arm, not `multiple_marks`.
+            # EVERYTHING local to this statement -- arm, arity, keywords, channels -- decides before
+            # the program-wide mark count, because that is what LOCAL before GLOBAL means. Deferring
+            # channel resolution to assembly made a first mark naming a bad column refuse on the
+            # SECOND mark's existence instead. Only labels wait, since decorations may follow.
             if not self._pandas and target in _WRONG_ARM_MARKS:
                 _refuse("mark_not_valid_for_arm")
+            build = (
+                self._resolve_dataset_mark(target, node)
+                if self._pandas
+                else self._resolve_mark(_MARKS[target], node)
+            )
             if self._mark is not None:
                 _refuse("multiple_marks")
-            self._mark = (target, node)
+            self._mark = build
             return
         if target in _TEXT_LABELS or target in _FLAG_LABELS:
             self._label_call(target, node)
@@ -444,7 +452,11 @@ class _Projector:
                 _refuse("label_not_literal")
             self._series = text.value
 
-    def _resolve_dataset_mark(self, target: str, node: ast.Call) -> DatasetPlot:
+    def _resolve_dataset_mark(self, target: str, node: ast.Call) -> _MarkBuilder:
+        # The arm's precondition reads first: with no source bound, no channel can name a column,
+        # so `column_not_from_source` would report a symptom where `no_source` names the cause.
+        if not self._frames:
+            _refuse("no_source")
         self._mark_shape(node)
         x_frame, x = self._channel(node.args[0])
         y_frame, y = self._channel(node.args[1])
@@ -452,15 +464,11 @@ class _Projector:
             # Dead while exactly one source binds, and kept anyway: the day a second source is
             # admitted, this is the line that stops the figure being a join no projection states.
             _refuse("column_not_from_source")
-        return DatasetPlot(
-            mark=_DATASET_MARKS[target],
-            source=self._frames[x_frame],
-            x=x,
-            y=y,
-            labels=self._labels(),
-        )
+        mark = _DATASET_MARKS[target]
+        source = self._frames[x_frame]
+        return lambda labels: DatasetPlot(mark=mark, source=source, x=x, y=y, labels=labels)
 
-    def _resolve_mark(self, mark: FormulaMark, node: ast.Call) -> FormulaPlot:
+    def _resolve_mark(self, mark: FormulaMark, node: ast.Call) -> _MarkBuilder:
         self._mark_shape(node)
         x_node = node.args[0]
         grid_name: str | None = None
@@ -473,9 +481,8 @@ class _Projector:
         else:
             _refuse("x_not_a_grid")
         self._grid_in_scope = grid
-        return FormulaPlot(
-            mark=mark, grid=grid, y=self._expr(node.args[1], grid_name), labels=self._labels()
-        )
+        y = self._expr(node.args[1], grid_name)
+        return lambda labels: FormulaPlot(mark=mark, grid=grid, y=y, labels=labels)
 
     def run(self, tree: ast.Module) -> CorePlotSpec:
         # The arm is settled from the tree BEFORE any statement runs, because a mark statement's own
@@ -492,13 +499,8 @@ class _Projector:
             _refuse("no_mark")
         if not self._terminal:
             _refuse("no_terminal")
-        target, node = self._mark
-        if self._pandas:
-            if not self._frames:
-                _refuse("no_source")
-            plot: CorePlotSpec = self._resolve_dataset_mark(target, node)
-        else:
-            plot = self._resolve_mark(_MARKS[target], node)
+        # The mark resolved at its own statement; only the decorations, which may follow it, wait.
+        plot = self._mark(self._labels())
         unused = (
             self._grids.keys() | self._exprs.keys() | self._frames.keys() | self._cols.keys()
         ) - self._used

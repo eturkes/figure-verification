@@ -180,6 +180,16 @@ z3 cannot be inlined.
   `multiple_marks`. In the formula arm this is structural rather than ordering-dependent: `plt.bar`
   is in `_WRONG_ARM_MARKS` and never in `_MARKS`, so it cannot become a second mark. Keep it
   structural as the dataset arm widens `_MARKS`.
+- **A statement is validated on its OWN terms before any program-wide count, INCLUDING the statement
+  that trips the count.** The mark therefore resolves arity, keywords and channels AT ITS OWN
+  STATEMENT; only the decorations, which may legally follow it, wait for assembly. Holding an
+  unresolved `(target, node)` and assembling at the end silently inverted this: a FIRST mark naming
+  a bad column refused `multiple_marks` on the second mark's existence, because assembly never ran.
+  Both faults refuse either way, so no figure escaped — what was wrong is which fault the author was
+  told to fix. Found by the M13.4 differential oracle, not by the red suite, whose local-fault
+  witness (`df[c]`) is caught at ADMISSION and so never exercises projection-stage precedence: a
+  precedence witness must be a program admission ADMITS. The distinguishing mutant is the ORDER of
+  resolve-vs-count at a SECOND faulty mark; at a first faulty mark the two orders are equivalent.
 
 ## Binding rules
 
