@@ -223,22 +223,22 @@ id = "p9-name-rebound"
 predicate = "a rebinding is refused, so one name denotes one thing"
 kills = "tests/test_pysrc_project.py::test_p9_no_rebinding"
 anchor = '''
-        if name in self._aliases or name in self._grids or name in self._exprs:
-            _refuse("name_rebound")'''
+            name in self._aliases
+            or name in self._grids
+            or name in self._exprs'''
 mutant = '''
-        if False:
-            _refuse("name_rebound")'''
+            False
+            or False
+            or False'''
 
 [[mutant]]
 id = "p10-wrong-arm-mark"
 predicate = "bar is refused BY ARM, with its own code, not folded into the unprojectable tail"
 kills = "tests/test_pysrc_project.py::test_p10_bar_refused_in_formula_arm"
 anchor = '''
-        if target in _WRONG_ARM_MARKS:
-            _refuse("mark_not_valid_for_arm")'''
+                _refuse("mark_not_valid_for_arm")'''
 mutant = '''
-        if False:
-            _refuse("mark_not_valid_for_arm")'''
+                pass'''
 
 [[mutant]]
 id = "p11-total-statement-coverage"
@@ -259,3 +259,137 @@ anchor = '''
         _refuse("statement_not_projected")'''
 mutant = '''
         return'''
+
+# --- dataset arm (M13.4) ------------------------------------------------------------------------
+#
+# One mutant is deliberately ABSENT: `x_frame != y_frame` in `_resolve_dataset_mark`. It is dead
+# while `multiple_sources` keeps `_frames` a singleton, so no witness can distinguish the two
+# spellings; it is kept in the source for the unit that admits a second source, and pragma'd.
+
+[[mutant]]
+id = "d1-arm-ambiguous"
+predicate = "both arm selectors present is a refusal, never a silent precedence"
+kills = "tests/test_pysrc_dataset.py::test_d1_arm_selection_is_closed"
+anchor = '''
+        if self._pandas and _uses_grid(tree):
+            _refuse("arm_ambiguous")'''
+mutant = '''
+        if False:
+            _refuse("arm_ambiguous")'''
+
+[[mutant]]
+id = "d1-grid-selector-is-deep"
+predicate = "the formula selector sees a grid call anywhere, not only as a bare statement"
+kills = "tests/test_pysrc_dataset.py::test_d1_arm_selection_is_closed"
+anchor = '''
+        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in ast.walk(tree)'''
+mutant = '''
+        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in tree.body'''
+
+[[mutant]]
+id = "d2-multiple-sources"
+predicate = "a second read_csv is refused, never silently overwriting the first"
+kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
+anchor = '''
+            if self._frames:
+                _refuse("multiple_sources")'''
+mutant = '''
+            if False:
+                _refuse("multiple_sources")'''
+
+[[mutant]]
+id = "d2-no-source"
+predicate = "a dataset-arm mark with no bound frame is refused"
+kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
+anchor = '''
+            if not self._frames:
+                _refuse("no_source")'''
+mutant = '''
+            if False:
+                _refuse("no_source")'''
+
+[[mutant]]
+id = "d2-rebind-dataset-names"
+predicate = "the rebind guard covers the two name spaces this arm adds, not just the formula ones"
+kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
+anchor = '''
+            or name in self._frames
+            or name in self._cols
+        ):'''
+mutant = '''
+            or False
+            or False
+        ):'''
+
+[[mutant]]
+id = "d3-source-arity"
+predicate = "read_csv takes exactly one positional argument and no keyword"
+kills = "tests/test_pysrc_dataset.py::test_d3_source_argument_is_a_string_literal"
+anchor = '''
+        if len(node.args) != 1 or node.keywords:
+            _refuse("source_not_literal")'''
+mutant = '''
+        if False:
+            _refuse("source_not_literal")'''
+
+[[mutant]]
+id = "d3-source-is-a-string"
+predicate = "the source path is a STRING literal; another literal type is not a path"
+kills = "tests/test_pysrc_dataset.py::test_d3_source_argument_is_a_string_literal"
+anchor = '''
+        if not isinstance(arg, ast.Constant) or type(arg.value) is not str:
+            _refuse("source_not_literal")'''
+mutant = '''
+        if not isinstance(arg, ast.Constant):
+            _refuse("source_not_literal")'''
+
+[[mutant]]
+id = "d4-channel-tail-closed"
+predicate = "a channel that is neither a subscript nor a name bound to one is refused"
+kills = "tests/test_pysrc_dataset.py::test_d4_column_reference_shape"
+anchor = '''
+        else:
+            _refuse("column_not_from_source")
+        if frame not in self._frames:'''
+mutant = '''
+        else:
+            frame, column = next(iter(self._cols.values()))
+        if frame not in self._frames:'''
+
+[[mutant]]
+id = "d5-channel-frame-is-the-source"
+predicate = "a channel's frame must be the bound source, never any other subscripted name"
+kills = "tests/test_pysrc_dataset.py::test_d5_both_channels_share_one_frame"
+anchor = '''
+        if frame not in self._frames:
+            _refuse("column_not_from_source")'''
+mutant = '''
+        if frame not in self._frames:
+            frame = next(iter(self._frames))'''
+
+[[mutant]]
+id = "d6-dataset-bar"
+predicate = "bar reaches the spec AS bar in this arm, not folded into another mark"
+kills = "tests/test_pysrc_dataset.py::test_d6_dataset_mark_admits_bar"
+anchor = '''
+    "plt.bar": "bar",'''
+mutant = '''
+    "plt.bar": "line",'''
+
+[[mutant]]
+id = "g5-bar-is-arm-dependent"
+predicate = "bar is refused in the FORMULA arm alone -- the same call, two arms, two verdicts"
+kills = "tests/test_pysrc_dataset.py::test_g5_bar_is_arm_dependent"
+anchor = '''
+            if not self._pandas and target in _WRONG_ARM_MARKS:'''
+mutant = '''
+            if False and target in _WRONG_ARM_MARKS:'''
+
+[[mutant]]
+id = "d10-dataset-statement-coverage"
+predicate = "an unused frame or column binding is refused, like an unused grid or expression"
+kills = "tests/test_pysrc_dataset.py::test_d10_total_statement_coverage"
+anchor = '''
+            self._grids.keys() | self._exprs.keys() | self._frames.keys() | self._cols.keys()'''
+mutant = '''
+            self._grids.keys() | self._exprs.keys()'''

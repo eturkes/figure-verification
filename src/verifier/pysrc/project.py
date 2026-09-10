@@ -25,9 +25,13 @@ from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.spec import (
     Bin,
     BinOp,
+    Column,
     Const,
     ConstName,
     CorePlotSpec,
+    DatasetMark,
+    DatasetPlot,
+    DatasetRef,
     Expr,
     Fn,
     FnName,
@@ -54,6 +58,23 @@ _FUNCTIONS: dict[str, FnName] = {
 }
 _CONSTANTS: dict[str, ConstName] = {"np.pi": "pi", "np.e": "e"}
 _MARKS: dict[str, FormulaMark] = {"plt.plot": "line", "plt.scatter": "scatter"}
+# The same three targets, read under the other arm. Bar appears here and not above: G5 bans bar for
+# SAMPLED FUNCTIONS, not for CSV columns.
+_DATASET_MARKS: dict[str, DatasetMark] = {
+    "plt.plot": "line",
+    "plt.scatter": "scatter",
+    "plt.bar": "bar",
+}
+_SOURCE_CALL = "pd.read_csv"
+
+
+def _uses_grid(tree: ast.Module) -> bool:
+    """Whether a grid call appears anywhere -- the formula arm's structural selector."""
+    return any(
+        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in ast.walk(tree)
+    )
+
+
 # Admissible source, inadmissible for THIS arm: a sampled function has no categorical magnitude to
 # encode as a length from a zero baseline (G5).
 _WRONG_ARM_MARKS = frozenset({"plt.bar"})
@@ -107,7 +128,12 @@ class _Projector:
         self._grids: dict[str, Grid] = {}
         self._exprs: dict[str, ast.expr] = {}
         self._used: set[str] = set()
-        self._mark: tuple[FormulaMark, ast.Call] | None = None
+        # The mark is held by TARGET, not by projected mark: which meaning `plt.bar` carries depends
+        # on the arm, and the arm is settled before any statement runs.
+        self._mark: tuple[str, ast.Call] | None = None
+        self._frames: dict[str, DatasetRef] = {}
+        self._cols: dict[str, tuple[str, Column]] = {}
+        self._pandas = False
         # Decorations are collected keyed by their source target and assembled into `Labels` once,
         # so every field has exactly one origin and no branch has to guess which field it is.
         self._decorated: set[str] = set()
@@ -266,6 +292,40 @@ class _Projector:
     def _grid(self, node: ast.Call) -> Grid:
         return self._linspace(node) if _call_target(node) == "np.linspace" else self._arange(node)
 
+    # --- dataset arm ---------------------------------------------------------
+
+    def _source(self, node: ast.Call) -> DatasetRef:
+        if len(node.args) != 1 or node.keywords:
+            _refuse("source_not_literal")
+        arg = node.args[0]
+        if not isinstance(arg, ast.Constant) or type(arg.value) is not str:
+            _refuse("source_not_literal")
+        return DatasetRef(path=arg.value)
+
+    def _column_parts(self, node: ast.Subscript) -> tuple[str, Column]:
+        """`<frame>["<literal>"]` split into the frame it reads and the column it names."""
+        value = node.value
+        if not isinstance(value, ast.Name):  # pragma: no cover - admission refuses other bases
+            _refuse("column_not_from_source")
+        index = node.slice
+        if not isinstance(index, ast.Constant) or type(index.value) is not str:
+            _refuse("column_not_literal")  # pragma: no cover - admission refuses non-literal keys
+        return value.id, Column(name=index.value)
+
+    def _channel(self, node: ast.expr) -> tuple[str, Column]:
+        """One mark channel, from the inline subscript or the name a subscript was bound to."""
+        if isinstance(node, ast.Subscript):
+            frame, column = self._column_parts(node)
+        elif isinstance(node, ast.Name) and node.id in self._cols:
+            frame, column = self._cols[node.id]
+            self._used.add(node.id)
+        else:
+            _refuse("column_not_from_source")
+        if frame not in self._frames:
+            _refuse("column_not_from_source")
+        self._used.add(frame)
+        return frame, column
+
     # --- statements ----------------------------------------------------------
 
     def _assign(self, node: ast.Assign) -> None:
@@ -273,11 +333,23 @@ class _Projector:
         if not isinstance(target, ast.Name):  # pragma: no cover - admission refuses other targets
             _refuse("statement_not_projected")
         name = target.id
-        if name in self._aliases or name in self._grids or name in self._exprs:
+        if (
+            name in self._aliases
+            or name in self._grids
+            or name in self._exprs
+            or name in self._frames
+            or name in self._cols
+        ):
             _refuse("name_rebound")
         value = node.value
         if isinstance(value, ast.Call) and _call_target(value) in _GRID_CALLS:
             self._grids[name] = self._grid(value)
+        elif isinstance(value, ast.Call) and _call_target(value) == _SOURCE_CALL:
+            if self._frames:
+                _refuse("multiple_sources")
+            self._frames[name] = self._source(value)
+        elif isinstance(value, ast.Subscript):
+            self._cols[name] = self._column_parts(value)
         else:
             # Held unprojected: a bound expression is only meaningful once the grid it reads is
             # known, and that is decided at the mark.
@@ -323,14 +395,16 @@ class _Projector:
                 _refuse("statement_not_projected")
             self._terminal = True
             return
-        mark = _MARKS.get(target)
-        if mark is not None:
+        if target in _DATASET_MARKS:
+            # Arm validity is LOCAL to this statement and is therefore decided before the
+            # program-wide mark count: `plt.bar` after a `plt.plot` refuses `mark_not_valid_for_arm`
+            # in the formula arm, not `multiple_marks`.
+            if not self._pandas and target in _WRONG_ARM_MARKS:
+                _refuse("mark_not_valid_for_arm")
             if self._mark is not None:
                 _refuse("multiple_marks")
-            self._mark = (mark, node)
+            self._mark = (target, node)
             return
-        if target in _WRONG_ARM_MARKS:
-            _refuse("mark_not_valid_for_arm")
         if target in _TEXT_LABELS or target in _FLAG_LABELS:
             self._label_call(target, node)
             return
@@ -358,7 +432,8 @@ class _Projector:
 
     # --- assembly ------------------------------------------------------------
 
-    def _resolve_mark(self, mark: FormulaMark, node: ast.Call) -> FormulaPlot:
+    def _mark_shape(self, node: ast.Call) -> None:
+        """Arity and the one admitted keyword -- identical under both arms, so stated once."""
         if len(node.args) != _MARK_ARITY:
             _refuse("mark_arity_not_projected")
         for keyword in node.keywords:
@@ -368,6 +443,25 @@ class _Projector:
             if not isinstance(text, ast.Constant) or type(text.value) is not str:
                 _refuse("label_not_literal")
             self._series = text.value
+
+    def _resolve_dataset_mark(self, target: str, node: ast.Call) -> DatasetPlot:
+        self._mark_shape(node)
+        x_frame, x = self._channel(node.args[0])
+        y_frame, y = self._channel(node.args[1])
+        if x_frame != y_frame:  # pragma: no cover - `multiple_sources` keeps `_frames` a singleton
+            # Dead while exactly one source binds, and kept anyway: the day a second source is
+            # admitted, this is the line that stops the figure being a join no projection states.
+            _refuse("column_not_from_source")
+        return DatasetPlot(
+            mark=_DATASET_MARKS[target],
+            source=self._frames[x_frame],
+            x=x,
+            y=y,
+            labels=self._labels(),
+        )
+
+    def _resolve_mark(self, mark: FormulaMark, node: ast.Call) -> FormulaPlot:
+        self._mark_shape(node)
         x_node = node.args[0]
         grid_name: str | None = None
         if isinstance(x_node, ast.Name) and x_node.id in self._grids:
@@ -384,14 +478,30 @@ class _Projector:
         )
 
     def run(self, tree: ast.Module) -> CorePlotSpec:
+        # The arm is settled from the tree BEFORE any statement runs, because a mark statement's own
+        # validity depends on it. Both selectors present is a refusal, never a precedence.
+        self._pandas = any(
+            isinstance(node, ast.Import) and any(alias.name == "pandas" for alias in node.names)
+            for node in tree.body
+        )
+        if self._pandas and _uses_grid(tree):
+            _refuse("arm_ambiguous")
         for statement in tree.body:
             self._statement(statement)
         if self._mark is None:
             _refuse("no_mark")
         if not self._terminal:
             _refuse("no_terminal")
-        plot = self._resolve_mark(*self._mark)
-        unused = (self._grids.keys() | self._exprs.keys()) - self._used
+        target, node = self._mark
+        if self._pandas:
+            if not self._frames:
+                _refuse("no_source")
+            plot: CorePlotSpec = self._resolve_dataset_mark(target, node)
+        else:
+            plot = self._resolve_mark(_MARKS[target], node)
+        unused = (
+            self._grids.keys() | self._exprs.keys() | self._frames.keys() | self._cols.keys()
+        ) - self._used
         if unused:
             # Bound, admitted, executed, and absent from the spec: exactly the gap this module
             # exists to close.

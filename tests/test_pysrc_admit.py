@@ -392,6 +392,13 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_three_stages() -> None:
         "no_terminal",
         "statement_after_terminal",
         "statement_not_projected",
+        # M13.4 dataset arm. Each names a fault the formula arm cannot produce.
+        "arm_ambiguous",
+        "no_source",
+        "multiple_sources",
+        "source_not_literal",
+        "column_not_literal",
+        "column_not_from_source",
     }
     assert set(get_args(RefusalCode)) == prescan_codes | admit_codes | project_codes
     assert not (prescan_codes & admit_codes)
@@ -519,10 +526,11 @@ def test_the_admitted_maps_are_pinned_as_literals() -> None:
             "plt.legend",
             "plt.grid",
             "plt.show",
+            "pd.read_csv",
         }
     )
     expected_attrs = frozenset({"np.pi", "np.e"})
-    assert ADMITTED_IMPORTS == {"matplotlib.pyplot": "plt", "numpy": "np"}
+    assert ADMITTED_IMPORTS == {"matplotlib.pyplot": "plt", "numpy": "np", "pandas": "pd"}
     assert expected_attrs == ADMITTED_CONSTANT_ATTRS
     assert expected_targets == ADMITTED_CALL_TARGETS
     assert {t: sorted(k) for t, k in ADMITTED_KEYWORDS.items() if k} == {

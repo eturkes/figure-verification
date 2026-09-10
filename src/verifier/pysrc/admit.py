@@ -30,7 +30,7 @@ from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 
 # Module -> required alias. The alias is fixed, not merely required: admitting an arbitrary alias
 # would make every downstream target string depend on model-chosen text.
-ADMITTED_IMPORTS: dict[str, str] = {"matplotlib.pyplot": "plt", "numpy": "np"}
+ADMITTED_IMPORTS: dict[str, str] = {"matplotlib.pyplot": "plt", "numpy": "np", "pandas": "pd"}
 
 # Closed call-target set, spelled `<alias>.<attr>`, grouped by the idiom class each serves.
 _GRID_TARGETS = frozenset({"np.linspace", "np.arange"})
@@ -38,8 +38,17 @@ _MATH_TARGETS = frozenset({"np.sin", "np.cos", "np.tan", "np.exp", "np.log", "np
 _MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar"})
 _DECOR_TARGETS = frozenset({"plt.title", "plt.xlabel", "plt.ylabel", "plt.legend", "plt.grid"})
 _TERMINAL_TARGETS = frozenset({"plt.show"})
+# Exactly one reader. `read_table`, `read_excel` and friends stay out: each would need its own
+# projection rule for separators, sheets and header handling before the verifier could state what
+# the program reads.
+_SOURCE_TARGETS = frozenset({"pd.read_csv"})
 ADMITTED_CALL_TARGETS = (
-    _GRID_TARGETS | _MATH_TARGETS | _MARK_TARGETS | _DECOR_TARGETS | _TERMINAL_TARGETS
+    _GRID_TARGETS
+    | _MATH_TARGETS
+    | _MARK_TARGETS
+    | _DECOR_TARGETS
+    | _TERMINAL_TARGETS
+    | _SOURCE_TARGETS
 )
 
 # Keywords are closed PER TARGET: a keyword admitted on one call is not thereby admitted on
@@ -63,6 +72,9 @@ ADMITTED_KEYWORDS: dict[str, frozenset[str]] = {
     "plt.legend": frozenset(),
     "plt.grid": frozenset(),
     "plt.show": frozenset(),
+    # No `sep`, `header`, `usecols`, `dtype`: each changes what the file MEANS, so admitting one
+    # without a projection rule would let the program restate the user's artifact unchecked.
+    "pd.read_csv": frozenset(),
 }
 
 # Attribute reads that are values rather than call targets.
@@ -156,10 +168,28 @@ def _admit_expr(node: ast.expr, scope: _Scope) -> None:
         if not isinstance(node.op, _ADMITTED_UNARYOPS):
             _refuse("operator_not_admitted")
         _admit_expr(node.operand, scope)
+    elif isinstance(node, ast.Subscript):
+        _admit_column(node, scope)
     else:
-        # The closed tail: comprehensions, lambdas, f-strings, subscripts, list/dict/set/tuple
-        # displays, starred args, walrus, comparisons, boolean and conditional expressions.
+        # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
+        # starred args, walrus, comparisons, boolean and conditional expressions.
         _refuse("expression_not_admitted")
+
+
+def _admit_column(node: ast.Subscript, scope: _Scope) -> None:
+    """`<bound name>["<literal>"]` and nothing else.
+
+    Narrower than it looks by accident: a slice, a tuple index, `df[cols]` and `df.loc[...]` all
+    land on a refusal, because each selects something the projection has no rule for. `.loc`/`.iloc`
+    additionally fail at the attribute check, which is the near-miss this shape has to survive.
+    """
+    if not isinstance(node.value, ast.Name):
+        _refuse("expression_not_admitted")
+    if node.value.id not in scope.bound:
+        _refuse("name_not_bound")
+    index = node.slice
+    if not isinstance(index, ast.Constant) or type(index.value) is not str:
+        _refuse("column_not_literal")
 
 
 def _admit_import(node: ast.Import, scope: _Scope) -> None:

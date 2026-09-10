@@ -55,6 +55,13 @@ RefusalCode = Literal[
     "no_terminal",
     "statement_after_terminal",
     "statement_not_projected",
+    # project, dataset arm -- each names a fault shape the formula arm cannot produce.
+    "arm_ambiguous",
+    "no_source",
+    "multiple_sources",
+    "source_not_literal",
+    "column_not_literal",
+    "column_not_from_source",
 ]
 
 

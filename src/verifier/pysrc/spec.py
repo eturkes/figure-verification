@@ -25,6 +25,8 @@ type BinOp = Literal["add", "sub", "mul", "div", "pow"]
 # Sampled functions are line or scatter, never bar: a bar's length encodes a categorical magnitude
 # from a zero baseline, which a continuous sample has no claim to. Mirrors `schema.FormulaMark`.
 type FormulaMark = Literal["line", "scatter"]
+# The dataset arm adds bar: a CSV column carries the categorical magnitude a bar's length claims.
+type DatasetMark = Literal["line", "scatter", "bar"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,8 +115,42 @@ class FormulaPlot:
     labels: Labels
 
 
-# M13.4 widens this to `FormulaPlot | DatasetPlot`. It is an alias rather than a one-member union
-# so that the widening is a visible edit here: this repo has shipped a defect where a union grew
-# and a total map over it stayed green, so every consumer added at that point needs its own
-# exact-set pin.
-type CorePlotSpec = FormulaPlot
+@dataclass(frozen=True, slots=True)
+class DatasetRef:
+    """The user's file, as the program names it.
+
+    `path` is the EXACT string literal passed to `read_csv`, never a resolved or normalized path:
+    binding it to the bytes the user actually uploaded is a CHECK the comparison layer performs
+    against a caller-supplied target, not a fact the projection may invent. Keeping it verbatim is
+    what lets that check compare the program's own claim against the user's own artifact.
+    """
+
+    path: str
+
+
+@dataclass(frozen=True, slots=True)
+class Column:
+    """One column of the bound frame, named by the string literal that selected it."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetPlot:
+    """Two columns of the user's file: the clinical spine, and the demo's acceptance surface.
+
+    Bar is admitted here and refused in the formula arm. That asymmetry is G5, not an oversight: a
+    bar's length encodes a categorical magnitude from a zero baseline, which a CSV column supports
+    and a continuous sample has no claim to.
+    """
+
+    mark: DatasetMark
+    source: DatasetRef
+    x: Column
+    y: Column
+    labels: Labels
+
+
+# The union M13.4 widened. Every total map over it needs its own exact-set pin: this repo has
+# shipped a defect where a union grew and a total map over it stayed green.
+type CorePlotSpec = FormulaPlot | DatasetPlot
