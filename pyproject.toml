@@ -37,11 +37,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.9",
-    "mypy>=1.13",
+    "ruff>=0.16.5",
+    "mypy>=2.3.1",
     "pytest>=8",
     "pytest-cov>=6",
-    "hypothesis>=6.110",
+    "hypothesis>=6.167.1",
     "jsonschema>=4.21", # test-only: assert the exported golden is Draft-2020-12 valid
     "duckdb>=1.1",
     # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
