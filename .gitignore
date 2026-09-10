@@ -61,6 +61,15 @@ CLAUDE.local.md
 # Headroom wrap live-session marker (ephemeral: pid/port/env key; removed on exit)
 .claude/.headroom_wrap_marker.json
 
+# Measurement harness outputs: each script writes its corpus + result beside itself, and the
+# corpora run to hundreds of MB. Only the SOURCES are tracked -- rerunning them is the evidence.
+.agent/measurements/*-data/
+.agent/measurements/*.json
+!.agent/measurements/package.json
+.agent/measurements/*.log
+.agent/measurements/node_modules/
+.agent/measurements/pyodide-index/
+
 # OS
 .DS_Store
 Thumbs.db

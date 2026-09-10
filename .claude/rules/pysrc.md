@@ -160,12 +160,27 @@ imports, inlinable into one pasted file:
    agreement a MEASURED band on a named environment pair rather than a proof: `sin cos tan exp log`
    and `pow`. Measured host-of-record vs Pyodide-wasm numpy 2.2.5, 1,000,000 stratified inputs per
    function: 56,929/6,000,000 disagreements, EVERY ONE exactly 1 ulp (`sin` 17,792 · `cos` 17,872 ·
-   `tan` 20,876 · `exp` 389 · `log` 0 · `sqrt` 0); grids agree at 0 ulp over 3.5M values. So bit-exact
-   y comparison is off the table and the 1-ulp band is forced by the ENVIRONMENT PAIR, not by
-   verifier precision — which is also the resolution limit M10's fork-(b) observation inherits.
+   `tan` 20,876 · `exp` 389 · `log` 0 · `sqrt` 0); `pow` measured separately over 1,000,000
+   stratified (base, exponent) pairs at 238 disagreements, every one exactly 1 ulp, IDENTICAL on
+   Pyodide 0.28.0 and 0.28.1; grids agree at 0 ulp over 3.5M values. So bit-exact y comparison is off
+   the table and the 1-ulp band is forced by the ENVIRONMENT PAIR, not by verifier precision — which
+   is also the resolution limit M10's fork-(b) observation inherits.
+
    Domain and overflow faults are never raised: the evaluator reproduces numpy's IEEE results
    (`x/0` → `±inf`, `log(0)` → `-inf`, `sqrt(x<0)` → `nan`, …) and a single refusal,
-   `value_not_finite`, rejects any non-finite that reaches the table.
+   `value_not_finite`, rejects any non-finite that reaches the table. `pow` is the operator where
+   that reproduction takes real logic, and the ONE place a stdlib spelling must be chosen rather than
+   assumed. CPython's `**` is unusable: over the same corpus it returned a COMPLEX on 135,034 pairs
+   and raised `ZeroDivisionError` on 49,764 more. `math.pow` never leaves `float`, and wherever it
+   SUCCEEDS it is bit-identical to numpy (639,275/639,275, 0 disagreements) — but its exceptions are
+   ambiguous, `ValueError` alone covering `+inf` (45,528), `-inf` (4,236) and `nan` (176,382). A
+   blanket `exception → nan` therefore disagrees with numpy on 184,343/1,000,000. C99 resolves the
+   ambiguity from the operands, and that explicit rule measured 0/1,000,000: `OverflowError` →
+   `±inf`, negative only for a negative base under an odd-integer exponent; `ValueError` with a zero
+   base → the pole `±inf`, negative only for `-0.0` under an odd-integer exponent; every remaining
+   `ValueError` → `nan`. Category structure (`finite`/`±inf`/`nan`) never split across the
+   environment pair — 0 splits in 1,000,000 — so the REFUSAL decision is environment-independent and
+   only a finite value's last bit can differ.
 
    The DATASET arm's parse is a separate and harder problem: the sandbox calls plain
    `pd.read_csv`, whose DEFAULT float parser is not correctly rounded. Measured against stdlib

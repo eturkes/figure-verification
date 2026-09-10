@@ -94,6 +94,14 @@ ignore = [
 # live guided output to the same validator the gate uses, and the isolated runtime project pins
 # jsonschema in a dev group for exactly that.
 "model_backend/guidance_oracle.py" = ["TID251"]
+# Measurement harnesses: frozen records of how a published number was obtained, never imported by
+# anything. Each of these four rules is inapplicable BY CONSTRUCTION here, not merely inconvenient.
+# numpy/pandas ARE the subject under measurement (TID251); stdout IS the result (T201); the stratum
+# bounds and sample counts are literal by design and reading them from a constant would hide the
+# corpus shape (PLR2004); and the corpus invariants are asserted where they are built (S101). These
+# files sit outside mypy's `files` list on purpose -- typing frozen numpy record scripts under
+# --strict would buy a strictness hole or a pandas-stubs dependency for no gate value.
+".agent/measurements/**" = ["S101", "PLR2004", "T201", "TID251"]
 
 [tool.ruff.lint.isort]
 # model_backend (hardware-gated local model server), bench (failure-eval harness), demo
