@@ -43,7 +43,7 @@ dev = [
     "pytest-cov>=6",
     "hypothesis>=6.110",
     "jsonschema>=4.21", # test-only: assert the exported golden is Draft-2020-12 valid
-    "duckdb>=1.1",
+    "duckdb>=1.5.5",
     # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
     # sandbox executes numpy. A numeric test that cannot compare against numpy pins nothing.
     # Pinned EXACTLY to the version Pyodide 0.28.0 bundles, because the measured 1-ulp band is a
