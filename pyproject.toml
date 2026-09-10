@@ -44,6 +44,12 @@ dev = [
     "hypothesis>=6.110",
     "jsonschema>=4.21", # test-only: assert the exported golden is Draft-2020-12 valid
     "duckdb>=1.1",
+    # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
+    # sandbox executes numpy. A numeric test that cannot compare against numpy pins nothing.
+    # Pinned EXACTLY to the version Pyodide 0.28.0 bundles, because the measured 1-ulp band is a
+    # statement about that pair. A bump that changes a libm result must turn the numeric tests red
+    # rather than pass quietly under a band measured on different code.
+    "numpy==2.2.5",
     # Gate scanners, resolved from this lock so the local gate and CI cannot drift apart.
     # detect-secrets runs against a SLIM baseline (no line numbers) -- a full baseline
     # demands a rewrite on any line drift, which breaks gate idempotence on a clean tree.
@@ -105,6 +111,7 @@ ban-relative-imports = "all"
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "jsonschema".msg = "test-only (golden assertion); do not import from src/"
 "duckdb".msg = "test-only (dual-engine oracle); do not import from src/"
+"numpy".msg = "test-only (numeric differential); the core is stdlib-only and the paste-in has no deps"
 "z3".msg = "dynamic runtime boundary; import only from verifier.formal"
 
 # --- types -------------------------------------------------------------------

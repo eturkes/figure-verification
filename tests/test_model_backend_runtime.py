@@ -868,10 +868,13 @@ def test_p18_mypy_overrides_added_and_openvino_retained() -> None:
 
 
 def test_p19_root_lock_matches_ratified_digest() -> None:
-    """P19 compares the root lock with the ratified content digest (M13.0: cryptography 50 for
-    PYSEC-2026-3552, plus the gate scanners)."""
+    """P19 compares the root lock with the ratified content digest.
+
+    Re-ratified twice: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners) and
+    M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
+    no transitive package and no version change elsewhere)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "3dc3e48e96441e947f24077e2bc5fae13947840d9dfc81eebb532d23e48c7f5d"
+    assert digest == "eaacfa91af9dd03051ba1909d0488a0db9756e4cac043939e22714b039d3d842"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:
