@@ -126,8 +126,14 @@ imports, inlinable into one pasted file:
 1. byte cap + nesting pre-scan AHEAD of `ast.parse`
 2. AST allowlist by idiom class
 3. projection to a formula plot spec
-4. exact recomputation (the `expr.py` evaluator ported: its parser and Decimal/Fraction arithmetic
-   are pure stdlib, and only its `msgspec.Struct` node types need swapping for frozen dataclasses)
+4. recomputation. **A port of `expr.py` does NOT cover this and never could.** Its union is
+   `Number | Variable | Neg | Abs | Pow | Binary` — no function node — while the admitted formula
+   arm evaluates `sin cos tan exp log sqrt abs`. Exact over `Fraction`: the four arithmetic
+   operators, `Neg`, `Abs`, integer `Pow`, and `sqrt` of a perfect square. NEVER exact:
+   `sin cos tan exp log` and irrational `sqrt`, which have no rational representation, so their
+   numeric contract is a RULING (M13.5) rather than a port. `expr.py`'s lexer and parser are dead
+   weight here regardless: `project.py` already returns a `pysrc.spec.Expr` tree from the AST, so
+   only the evaluation half is a candidate, and it covers the arithmetic alone.
 
 Demo-side wrappers, outside the core: certificate kinds · archive (`PlotSourceKind` + `PlotRole`
 widening, 5 totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route
@@ -173,8 +179,13 @@ z3 cannot be inlined.
   map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,
   `expression`/`y`) and produced 23 of 25 false disagreements on first run. The map raises on a name
   it does not cover — a generic lowercase-or-strip rule would absorb a real future divergence.
-  A semantic disagreement is ESCALATED to the lead, never absorbed into the map; both of M13.3's
-  were, and both resolved in production's favour.
+  A semantic disagreement is ESCALATED to the lead, never absorbed into the map. Both of M13.3's
+  resolved in production's favour; M13.4's ONE resolved in the ORACLE's, and it was a real defect
+  no red suite had reached. So the prior is NOT "production is usually right" — escalate on the
+  disagreement, rule on the law, and expect the oracle to win often enough to be worth its cost.
+  An oracle also earns its keep by being based on the SAME tip as production: M13.4's was seeded
+  from the skeleton commit, so its first full run was 20 loud skips against an absent type and
+  proved nothing. Land the implementation before, or re-base the oracle onto, the code it grades.
 - **Refusal precedence: LOCAL before GLOBAL.** A fault local to one statement refuses before a fault
   global to the program — `plt.plot(...)` then `plt.bar(...)` refuses `mark_not_valid_for_arm`, not
   `multiple_marks`. In the formula arm this is structural rather than ordering-dependent: `plt.bar`

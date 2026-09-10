@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Diff-blind red suite for M13.4 dataset-arm projection.
 
-Contract: `.agent/contracts/m13u4.md`. Each test names ONE predicate and its docstring carries that
-predicate's acceptance check verbatim, so a red states which ruling it defends.
+Contract: `.agent/archive/contracts/m13u4.md`. Each test names ONE predicate and its docstring
+carries that predicate's acceptance check verbatim, so a red states which ruling it defends.
 """
 
 import ast
