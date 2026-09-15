@@ -47,7 +47,7 @@ _SENTINEL_SIMPLE_RENDERED = (
     "\n"
     "Use the CSV file at /mnt/uploads/sales.csv. "
     "Its columns are month, region, revenue, orders.\n"
-    "Draw the figure with matplotlib.\n"
+    "Read the CSV file with pandas. Draw the figure with matplotlib.\n"
     "\n"
     "Return one complete Python program as bare source text, no Markdown fences.\n"
 )
@@ -189,7 +189,7 @@ def test_corpus_tree_holds_no_python_module() -> None:
 
 def test_capture_records_are_tracked_not_ignored() -> None:
     """I5 -- M12.7 commits captures; bench/reports/ is the gitignored counter-example."""
-    probe = "corpus/python/captures/m12-design/row.json"
+    probe = "corpus/python/captures/m13-design/row.json"
     result = subprocess.run(  # noqa: S603
         ["git", "check-ignore", "--no-index", probe],  # noqa: S607
         capture_output=True,

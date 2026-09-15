@@ -20,7 +20,18 @@ paths:
 - The capture prompt is byte-pinned by a hand-stated sha256 literal in `capture/corpus.py`; every
   capture record carries it, so editing the template invalidates every capture taken before it.
   ONE user message, zero few-shots, `/mnt/uploads/<dataset>` path, matplotlib named as the output
-  MEDIUM, CSV-reading library deliberately unnamed so captures observe the model's own idiom choice.
+  MEDIUM, **pandas named as the CSV READER** (`Read the CSV file with pandas.`, M13.7). Leaving the
+  library unnamed was an OBSERVATION and the observation is in: the model picks pandas either way
+  and then omits `import pandas as pd`, so 17 of 25 simple captures refused `name_not_bound` at
+  `m12-design`. Naming it moved that to 0 of 25 at `m13-design`. The sentence is TASK phrasing and
+  carries none of the 19 `_BANNED_STEMS`, which is what keeps it inside ruling 6
+  (`.agent/archive/contracts/m13u7.md`). Editing the template invalidates EVERY capture taken before
+  it, `tests/golden/capture-golden-v1/` included: that fixture is hand-authored, so re-pin its
+  `capture_prompt_sha256` plus each record's `prompt_sha256` and `request_sha256` with an
+  INDEPENDENT stdlib encoder (`json.dumps(..., separators=(",", ":"), ensure_ascii=False)` over the
+  msgspec declaration order), and prove the encoder first by reproducing the pre-edit digests.
+  `tests/test_python_capture_record.py` hand-states the same six digits a second time, so the
+  fixture and its test move together.
 - `capture/record.py` owns the CAPTURE-RUN format and predicates R1–R11
   (`.agent/archive/contracts/m12u6.md`): `corpus/python/captures/<run>/{run.json,records.ndjson}`, both in
   canonical form (`run.json` = msgspec indent-2 + trailing newline; `records.ndjson` = one compact

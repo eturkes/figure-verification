@@ -65,7 +65,7 @@ from capture.record import (
 
 _RUN_ID = "capture-test-v1"
 _MODEL = "Qwen2.5-Coder-0.5B-Instruct"
-_CAPTURE_PROMPT_SHA256 = "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+_CAPTURE_PROMPT_SHA256 = "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
 _ZERO_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
 _GOLDEN_ROOT = Path(__file__).parent / "golden" / "capture-golden-v1"
 
@@ -225,7 +225,7 @@ def _golden_manifest() -> RunManifest:
                     "c5c2c2458b8de334b7341134d0b00a5397f298c68d9a8469e35d953da6fbe94e"
                 ),
                 capture_prompt_sha256=(
-                    "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+                    "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
                 ),
             ),
             service=ServiceProvenance(
@@ -254,8 +254,8 @@ def _golden_records() -> tuple[CaptureRecord, ...]:
             category="complicated",
             idiom="subplot_grid",
             dataset_name="sales.csv",
-            prompt_sha256="0de47c3d8194f671b63867f8ac983f4e4eaff6db89903dcd327eac9e45cc46f6",
-            request_sha256="2a928749bef2045b7da1564c157fb6d00ce78eeab5da1866d2db7413da43a9cc",
+            prompt_sha256="292a70b307499eb3547e1604fe222c63b9ee126b4b4e45d51471d261a6be6973",
+            request_sha256="8ee2d15512fb47b46502aa28484cb28de31fa712177046c19b1ae1cd903f9bc8",
             request_keys=("max_tokens", "messages", "model", "temperature"),
             http_status=200,
             content=(
@@ -282,8 +282,8 @@ def _golden_records() -> tuple[CaptureRecord, ...]:
             category="simple",
             idiom="bar_category_sum",
             dataset_name="sales.csv",
-            prompt_sha256="37e501a47bb9fb29b3f707d7325efab79a97ce9c4418dbd3d0b6432ba9ca7171",
-            request_sha256="e1003cc1869da4f111f1cfdbed18de006eb7b2de5bc8c73f4a34b5ad436bf898",
+            prompt_sha256="29e5d3fef3d1613fbcfb9e51dc0bcfd4fb9677aa339a0eed3abd32207c4f158c",
+            request_sha256="3d76569110ff748abf56ec4114de109be03d976f91d00425268432b0676c6f48",
             request_keys=("max_tokens", "messages", "model", "temperature"),
             http_status=200,
             content=(
@@ -312,8 +312,8 @@ def _golden_records() -> tuple[CaptureRecord, ...]:
             category="simple",
             idiom="scatter_xy",
             dataset_name="sales.csv",
-            prompt_sha256="6a0b87c92be9b91a413256ac6aea0dd3a85a52ae25a98cfb898c0f152c0a05df",
-            request_sha256="deef51161fbb02b1f09458c862b00abeb39187605b56dee024a50a775387471b",
+            prompt_sha256="0d7333467c7b789d46cc96d56adc3345782f2f52a3161c03b2fdacd76b174dcc",
+            request_sha256="1f2d8e8aaea008ec1d8a00a2c2516d5d30e9d72d606762c58e351b27bc280e83",
             request_keys=("max_tokens", "messages", "model", "temperature"),
             http_status=503,
             content=None,

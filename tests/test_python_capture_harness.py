@@ -110,7 +110,7 @@ def _provenance() -> Provenance:
             engine_dtype="float16",
             runtime_lock_sha256=_ZERO_SHA256,
             capture_prompt_sha256=(
-                "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+                "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
             ),
         ),
         service=ServiceProvenance(

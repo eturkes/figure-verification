@@ -41,7 +41,7 @@ DATA_ROOT: Final = REPO_ROOT / "data"
 CAPTURE_PROMPT_NAME: Final = "capture_prompt_v1.txt"
 # Hand-stated: the pin is worthless if it re-derives from the file it guards. Every M12.6 capture
 # record carries this value, so an edit to the template invalidates every capture taken before it.
-CAPTURE_PROMPT_SHA256: Final = "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+CAPTURE_PROMPT_SHA256: Final = "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
 CAPTURE_PROMPT_FORMAT_SENTENCE: Final = (
     "Return one complete Python program as bare source text, no Markdown fences."
 )

@@ -5,7 +5,7 @@ Two halves, one seam. The DRIVER talks to POST /v1/chat/completions and emits re
 are a pure function of a committed run directory, so every number here re-derives from committed
 bytes with no backend, no accelerator and no network.
 
-    python -m capture run --run m12-design      drive a corpus set, flushing after every row
+    python -m capture run --run m13-design      drive a corpus set, flushing after every row
     python -m capture stats [<run-dir>...]      grade R1-R11 AND S1-S4, or rewrite stats.json
 
 capture.record owns the record format and never imports this module. Nothing here spells an

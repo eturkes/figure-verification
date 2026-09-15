@@ -245,6 +245,21 @@ z3 cannot be inlined.
   literal `color=`/`marker=`/`linestyle=` ~20 uses — against `groupby` in 7. M13.6 therefore admits
   the data-effect-free cosmetic cluster, `groupby` aggregation, and `plt.barh`. The missing import
   is a PROPOSER defect, not a width defect, and its lever is the capture prompt (M13.7).
+- **What the M13.7 lever exposed, and it re-aims the NEXT width.** Naming pandas in the capture
+  prompt took `name_not_bound` from 17/25 to 0/25 over the simple design rows and left simple verify
+  at 0/25, so the M13.6 census is now stale and the blocker layer under it is a different shape
+  (`.agent/measurements/w1_width.py`, run against `m13-design`; per-row counts in `.agent/spec.md`).
+  Two width gaps carry real rows and NEITHER is cosmetic: 4 rows call the pandas plotting ACCESSOR,
+  `series.plot(kind="bar")`, instead of `plt.bar`; 2 append `.reset_index()` to the reduction, which
+  re-spells the channels and is exactly what `aggregation_not_projected` names. A third blocker is
+  not the verifier at all — `data/sales.csv` spells North America `NA`, which is one of the 19
+  pandas NA spellings the CSV profile refuses, so the two rows writing the exactly-admitted groupby
+  program refuse `value_not_in_profile`; substituting `NAM` in the CSV bytes alone flips both to
+  `Verified`. The refusal is CORRECT (pandas reads those cells as missing and `groupby` drops all 3
+  rows, so the drawn figure really would lose a bar), which makes this a CORPUS defect with a
+  one-token repair and no width consequence. The remaining 10 simple rows are proposer defects the
+  verifier is right to refuse; widening for them would move the pass/fail boundary out of the
+  verifier.
 - **The SECOND mark is CANCELLED (user ruling), and `CorePlotSpec` keeps ONE mark.** It converts
   zero held-out prompts. It existed for heldout simple 06/14 ("separate city lines"), but
   `weather.csv` is LONG — 8 rows = 4 dates x 2 cities — so two marks over two columns cannot draw

@@ -6,7 +6,8 @@ them, the gate does not run them, and they sit outside `mypy`'s `files` list on 
 a number here durable is that the script reproducing it is in committed state.
 
 Each script writes its corpus and its result JSON beside itself; both are gitignored, and the
-corpora run to hundreds of megabytes. Rerun to regenerate.
+corpora run to hundreds of megabytes. Rerun to regenerate. `w1_width.py` is the exception: it reads
+committed capture records and prints, writing nothing.
 
 ## Running
 
@@ -42,6 +43,7 @@ Generate the corpus before its sandbox leg — the `.mjs` reads what the `make_*
 | T5 | `t5.py` | the default NA spellings pandas recognises | C9's 19-spelling literal |
 | T6 | `t6_pyodide.mjs` | whether the RENDERER alters plotted values | C10 clause 6 — matplotlib bar's `-0.0`, Pyodide bar's int32 raise |
 | T7 | `t7_profile.py` · `t7_quoted.py` · `t7_pyodide.mjs` | the candidate admitted region, plain and quoted, against target Pyodide | § The C10 ruling's 0/4,000,000 |
+| W1 | `w1_width.py` | the shipped verifier's verdict over one committed capture run, per category, per idiom and per row | M13.6's measured width aim; M13.7's before/after on the capture prompt |
 
 `versions.mjs` prints the interpreter, platform, Pyodide, numpy and pandas versions of a build —
 run it first when a result needs its environment named.

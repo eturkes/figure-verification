@@ -16,7 +16,7 @@
       "model_revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
       "engine_dtype": "float16",
       "runtime_lock_sha256": "c5c2c2458b8de334b7341134d0b00a5397f298c68d9a8469e35d953da6fbe94e",
-      "capture_prompt_sha256": "a18162f788cce976a55458545c5761e2fd5b8b924e116ac137ffc4deb004964e"
+      "capture_prompt_sha256": "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
     },
     "service": {
       "model_name": "Qwen2.5-Coder-0.5B-Instruct",
