@@ -7,27 +7,34 @@ how a stale digest survives in the one file nobody greps. This script recomputes
 the CSV it names, so the repair is idempotent and replayable from a clean base rather than a
 remembered hex string -- run it on an already-correct tree and it writes nothing at all.
 
-Binding rule, textual and total: a citation belongs to the LAST `<name>.csv` spelled before it in
-the same file. That covers every shape the repo uses -- a JSON `dataset` object naming `name` one
-line above `hash`, `examples/index.json`'s `datasets` array, `model_backend/guidance_oracle.py`'s
-prose task prompt, `webui/model_stub.py`'s minified reply -- and it resolves to no dataset at all in
-the files citing digests of other things (both lockfiles), which are left untouched. A file naming
-no tracked CSV is skipped before any citation is read.
+OWNER RULE: a citation belongs to the last tracked `<name>.csv` spelled before it in the same file,
+or, when none precedes it, to the first spelled after it. The second clause is what makes the rule
+total over file ORDER: with the "before" clause alone, a citation written above its dataset name is
+silently skipped, and a stale digest there survives both this script and its validator. No tracked
+file has that shape today, so the clause moves nothing and exists to keep the law true. A file
+naming no tracked CSV resolves to no owner and is left untouched, which is what leaves both
+lockfiles alone.
 
-Three skips. `.agent/archive/**` is skipped because an archived record legitimately cites the digest
-that was live when it was written -- re-deriving one would rewrite history, which is the same reason
-`tests/test_spec.py`'s pointer sweep leaves the archive alone. The other two are measured rather
-than assumed. `sha256:0000...` is skipped BY VALUE:
-`examples/bad_specs/b08_dataset_hash_mismatch.json` and
-`examples/formula_bad_specs/fb02_dataset_key.json` declare it on purpose, to fail the
-`dataset.hash_matches_source` check, so re-deriving it would delete the negative case.
-`tests/test_canon.py` is skipped BY PATH: it names `sales.csv` and then pins eleven digests of the
-CANONICAL SPEC BYTES, which are digests of an encoding and not of any CSV. Of the 33 tracked files
-that both name a dataset and cite a digest, it is the only one whose citations are not dataset
-digests, and all eleven of its citations are non-live.
+Three skips, all BY PATH, because a by-value skip cannot tell a deliberate fixture from a defect:
 
-`tests/test_dataset_digests.py` states the same law independently and pins every clause of it,
-including that the skipped file cites no live dataset digest.
+- `.agent/archive/**` -- an archived record legitimately cites the digest that was live when it was
+  written, the same reason `tests/test_spec.py`'s pointer sweep leaves the archive alone.
+- the two deliberate-mismatch fixtures -- they declare a wrong digest on purpose, to FAIL
+  `dataset.hash_matches_source`. Scoping this by PATH rather than by the all-zeros VALUE matters: a
+  future vector written with a different wrong digest would otherwise be "repaired" into a passing
+  one, deleting the only negative case the check has.
+- `tests/test_canon.py` -- it names `sales.csv` and then pins digests of the canonical spec
+  ENCODING, which are digests of an encoding and not of any CSV.
+
+`tests/test_dataset_digests.py` states the same law independently, pins every clause of it, and
+sweeps BYTES so that a citation inside a non-UTF-8 tracked file is still covered. This script reads
+text because it must write text back; a tracked file that carries a citation and does not decode as
+UTF-8 is REPORTED and makes the run exit nonzero, rather than being skipped in silence.
+
+What this rule does NOT decide, stated so the guarantee is not read wider than it is: a citation
+whose nearest preceding CSV name is not its real owner, a `data/*.csv` basename outside
+`[A-Za-z0-9_-]+`, an upper-case or mixed-case hex token, and a citation split across adjacent source
+literals. None occurs in the tree today; each would need a different matcher, not a wider claim.
 """
 
 import hashlib
@@ -41,19 +48,42 @@ _ROOT = Path(__file__).resolve().parent.parent
 _DATA = _ROOT / "data"
 
 _CITATION = re.compile(r"sha256:[0-9a-f]{64}")
+_CITATION_BYTES = re.compile(rb"sha256:[0-9a-f]{64}")
 _CSV_NAME = re.compile(r"[A-Za-z0-9_-]+\.csv")
-_MISMATCH_FIXTURE = "sha256:" + "0" * 64
-_NOT_DATASET_DIGESTS = ("tests/test_canon.py",)
+_DATASET_PATH = re.compile(r"data/[A-Za-z0-9_-]+\.csv")
+# Declared wrong on purpose, to fail `dataset.hash_matches_source`. Skipped by PATH, never by value.
+_MISMATCH_FIXTURES = (
+    "examples/bad_specs/b08_dataset_hash_mismatch.json",
+    "examples/formula_bad_specs/fb02_dataset_key.json",
+)
+# Digests of the canonical spec ENCODING, not of a CSV. `test_canon.py` names sales.csv for its
+# fixtures; `test_dataset_digests.py` hand-states test_canon.py's digests as the pin that keeps the
+# exemption honest, which makes writing them down turn the pin itself into a citation site.
+_NOT_DATASET_DIGESTS = ("tests/test_canon.py", "tests/test_dataset_digests.py")
 _HISTORY = ".agent/archive/"
 
 
 @cache
 def _live_digest(name: str) -> str | None:
-    """The live `sha256:` citation for `data/<name>`, or None when no such dataset is tracked."""
-    path = _DATA / name
-    if not path.is_file():
+    """The live `sha256:` citation for `data/<name>`, or None when no such dataset is tracked.
+
+    TRACKED, not merely present: reading an untracked `data/*.csv` would let a stray local file
+    steer what this script writes into tracked ones, and the repair stops being replayable from a
+    clean base.
+    """
+    if f"data/{name}" not in _tracked_datasets():
         return None
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    return "sha256:" + hashlib.sha256((_DATA / name).read_bytes()).hexdigest()
+
+
+def _owner(text: str, start: int) -> str | None:
+    """The dataset a citation at `start` belongs to: last named before it, else first after it."""
+    names = _CSV_NAME.findall(text, 0, start)
+    before: list[str] = [n for n in names if _live_digest(n) is not None]
+    if before:
+        return before[-1]
+    after: list[str] = [n for n in _CSV_NAME.findall(text, start) if _live_digest(n) is not None]
+    return after[0] if after else None
 
 
 def _rederive(text: str) -> tuple[str, int]:
@@ -64,10 +94,10 @@ def _rederive(text: str) -> tuple[str, int]:
     cursor = 0
     moved = 0
     for match in _CITATION.finditer(text):
-        names = _CSV_NAME.findall(text, 0, match.start())
-        if match.group() == _MISMATCH_FIXTURE or not names:
+        owner = _owner(text, match.start())
+        if owner is None:
             continue
-        live = _live_digest(names[-1])
+        live = _live_digest(owner)
         if live is None or live == match.group():
             continue
         pieces.append(text[cursor : match.start()])
@@ -78,7 +108,12 @@ def _rederive(text: str) -> tuple[str, int]:
     return "".join(pieces), moved
 
 
-def _tracked_files() -> list[Path]:
+def _skipped(name: str) -> bool:
+    return name.startswith(_HISTORY) or name in _NOT_DATASET_DIGESTS or name in _MISMATCH_FIXTURES
+
+
+@cache
+def _tracked_names() -> tuple[str, ...]:
     listing = subprocess.run(
         ["git", "ls-files", "-z"],  # noqa: S607 -- fixed literal argv
         cwd=_ROOT,
@@ -86,19 +121,32 @@ def _tracked_files() -> list[Path]:
         check=True,
         text=True,
     ).stdout
-    return [_ROOT / name for name in listing.split("\0") if name]
+    return tuple(name for name in listing.split("\0") if name)
+
+
+@cache
+def _tracked_datasets() -> frozenset[str]:
+    return frozenset(name for name in _tracked_names() if _DATASET_PATH.fullmatch(name))
 
 
 def main() -> int:
     moved_total = 0
     report: list[str] = []
-    for path in _tracked_files():
-        name = path.relative_to(_ROOT).as_posix()
-        if name in _NOT_DATASET_DIGESTS or name.startswith(_HISTORY):
+    unreadable: list[str] = []
+    for name in _tracked_names():
+        if _skipped(name):
+            continue
+        path = _ROOT / name
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        if not _CITATION_BYTES.search(raw):
             continue
         try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            unreadable.append(name)
             continue
         rewritten, moved = _rederive(text)
         if moved:
@@ -107,6 +155,12 @@ def main() -> int:
             moved_total += moved
     sys.stdout.writelines(report)
     sys.stdout.write(f"re-derived {moved_total} citation(s) across {len(report)} file(s)\n")
+    if unreadable:
+        sys.stderr.write(
+            "citations in tracked files this script cannot rewrite as UTF-8 text; repair them by "
+            f"hand: {', '.join(unreadable)}\n"
+        )
+        return 1
     return 0
 
 

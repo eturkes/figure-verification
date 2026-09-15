@@ -61,9 +61,9 @@ or legend domain.
 ## Dataset-mode data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is
 `YYYY-MM-DD`/datetime only, §2). `weather.date` exercises `temporal`. `sales.region` spells North
-America `NAM`, not `NA`: `NA` is one of the 19 default pandas NA spellings, so python mode's CSV
-profile refuses such a cell and every `groupby("region")` program over the file would refuse. `aqi`
-is deliberately unit-less (the B13 missing-unit fixture). `deliberately_dirty.csv` = the null/edge
-fixture for eval (empty cells across numeric + string + group key; still loadable), and its
-`region` keeps the literal `NA` that proves a literal `NA` stays a string under JSON mode, where
-only an empty cell is null (§2).
+America `NAM`, not `NA`. `NA` is one of the 19 default pandas NA spellings. Python mode's CSV
+profile refuses such a cell. Every `groupby("region")` program over the file would therefore refuse.
+`aqi` is deliberately unit-less (the B13 missing-unit fixture). `deliberately_dirty.csv` is the
+null and edge fixture for eval. It holds empty cells across numeric, string and group-key columns,
+and it stays loadable. Its `region` column keeps the literal `NA`. That cell proves a literal `NA`
+stays a string under JSON mode, where only an empty cell is null (§2).

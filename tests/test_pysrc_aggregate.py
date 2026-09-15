@@ -812,8 +812,10 @@ def test_d1_the_committed_sales_csv_verifies_grouped() -> None:
     `table.x == ("EU", "NAM")` and `group_counts == (3, 3)`. This is M13.7b's whole point: the
     region code was `NA`, one of the 19 pandas NA spellings, so the exactly-admitted groupby
     program refused `value_not_in_profile` and six held-out simple rows were unreachable. It reads
-    the real committed bytes rather than a fixture, so it goes red again the moment any NA spelling
-    reappears in any column of that file."""
+    the real committed bytes rather than a fixture, so it goes red again the moment an NA spelling
+    reappears in a column this program SELECTS -- `region` or `revenue`. `read_columns` profiles the
+    selected indices alone, so an NA cell in `month` or `orders` cannot reach the figure and does
+    not refuse; the scope is the mark's own columns, which is the scope that decides the chart."""
     content = (_ROOT / "data" / "sales.csv").read_bytes()
     result = _aggregate_verdict(content, "sum")
     assert isinstance(result, Verified)

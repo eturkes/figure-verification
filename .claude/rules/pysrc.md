@@ -276,7 +276,15 @@ z3 cannot be inlined.
   `NA` for JSON mode's "only an empty cell is null" claim. The digest of `data/sales.csv` is cited
   in 25 tracked files, so a data edit is replayed by `uv run --locked python
   tools/rederive_dataset_hashes.py` — idempotent, recomputing each citation from the CSV — and
-  `tests/test_dataset_digests.py` fails on any stale one.
+  `tests/test_dataset_digests.py` states the same law independently. Read that law at its real
+  strength: a `sha256:<64 lower-case hex>` token in a tracked file naming a tracked `data/*.csv`
+  must equal that dataset's live digest, the owner being the last such name before the token or the
+  first after it, swept over BYTES so a non-UTF-8 file is covered. It does NOT decide a citation
+  whose nearest named CSV is not its owner, an upper-case token, a name outside `[A-Za-z0-9_-]+`,
+  or a token split across literals. Three exemptions, all BY PATH and each pinned rather than
+  trusted — the archive, the two deliberate-mismatch fixtures (pinned NON-LIVE, so a vector carrying
+  some other wrong digest is not silently repaired into a passing one), and the two files that
+  hand-state canonical-encoding digests.
 - **The SECOND mark is CANCELLED (user ruling), and `CorePlotSpec` keeps ONE mark.** It converts
   zero held-out prompts. It existed for heldout simple 06/14 ("separate city lines"), but
   `weather.csv` is LONG — 8 rows = 4 dates x 2 cities — so two marks over two columns cannot draw
