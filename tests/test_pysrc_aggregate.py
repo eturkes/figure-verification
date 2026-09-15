@@ -390,11 +390,41 @@ def test_r5_int_sum_overflow_is_unreachable_under_the_profile() -> None:
     assert max(largest_positive_sum, largest_negative_magnitude) < 2**63
 
 
+# Hand-stated, never read from `csvread.NA_SPELLINGS`: cases derived from the production allowlist
+# delete themselves with the member they were meant to pin, so removing a spelling would leave R6
+# green over a set that no longer covers it. The equality assertion below is the widening half.
+_NA_SPELLINGS = (
+    "",
+    "#N/A",
+    "#N/A N/A",
+    "#NA",
+    "-1.#IND",
+    "-1.#QNAN",
+    "-NaN",
+    "-nan",
+    "1.#IND",
+    "1.#QNAN",
+    "<NA>",
+    "N/A",
+    "NA",
+    "NULL",
+    "NaN",
+    "None",
+    "n/a",
+    "nan",
+    "null",
+)
+
+
 def test_r6_nan_never_reaches_a_reduction(monkeypatch: pytest.MonkeyPatch) -> None:
     """R6: every NA spelling refuses `value_not_in_profile` ahead of the reduction, with a
     call-counting bomb on the reduction proving it never runs. So pandas' NaN-skipping arm and its
     compensation reset are both unreachable and neither is implemented — an unreachable branch would
-    fail the 100% branch gate. A profile widening that admits NaN must add both arms."""
+    fail the 100% branch gate. A profile widening that admits NaN must add both arms.
+
+    The 19 spellings are hand-stated here and the production set is asserted EQUAL to them, so a
+    deletion and an addition both go red; iterating `csvread.NA_SPELLINGS` would pin neither."""
+    assert frozenset(_NA_SPELLINGS) == csvread_module.NA_SPELLINGS
     calls = 0
 
     def reduction_input_bomb(_text: str) -> float:
@@ -405,7 +435,7 @@ def test_r6_nan_never_reaches_a_reduction(monkeypatch: pytest.MonkeyPatch) -> No
 
     with monkeypatch.context() as patch:
         patch.setattr(csvread_module, "_numeric_value", reduction_input_bomb)
-        for spelling in csvread_module.NA_SPELLINGS:
+        for spelling in _NA_SPELLINGS:
             for cell in (spelling, f'"{spelling}"'):
                 content = f"region,revenue\none,{cell}\n".encode()
                 result = _aggregate_verdict(content, "sum")
@@ -606,8 +636,9 @@ def test_g11_per_group_counts_are_published() -> None:
 
 def test_g78r_group_counts_sum_to_the_data_row_count() -> None:
     """G78r: for every aggregate, the summed per-group counts equal the CSV's data-row count. A
-    `groupby` drops no row — every row joins exactly one group — which is what keeps G7 and G8
-    unconditional while aggregation is admitted."""
+    `groupby` drops no row — every row joins exactly one group — which is what keeps G7's range
+    claim and G8's ROW COVERAGE unconditional while aggregation is admitted. Coverage, not
+    point-count equality: these 6 rows draw 3 points."""
     content = b"region,revenue\na,1\nc,2\na,3\nb,4\nc,5\nc,6\n"
     expected_counts = (2, 1, 3)
     assert sum(expected_counts) == 6

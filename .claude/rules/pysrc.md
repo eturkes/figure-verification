@@ -47,7 +47,7 @@ is graphical integrity, enforced by refusal.
 | G5 | formula | sampled functions are line/scatter, never bar (`FormulaMark`) | shipped, unclaimed |
 | G6 | scatter | marker size encodes value by AREA, never radius | with the `s=` keyword |
 | G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | by construction (M13.5) |
-| G8 | all | plotted point count = non-null row count unless a drop is projected AND published | by construction (M13.5) |
+| G8 | all | every non-null row is covered by a plotted point — one point per row for a column pair, one group point per row set for an aggregate — unless a drop is projected AND published | by construction (M13.5) |
 | G9 | line | x numeric NON-DECREASING, or categorical with UNIQUE categories in file order | M13.5 |
 | G10 | all | label/legend text consistent with the projected computation | `label=` admitted, unchecked |
 | G11 | aggregate | per-group counts published beside every aggregate | tier 3 |
@@ -65,6 +65,11 @@ resolved differently:
   backing refusals, each pinned against allowlist widening exactly as G1/G2/G3 are. G8 needs one
   added check to stay true: `bar` over a categorical x requires UNIQUE categories, else
   `category_not_unique` — duplicates overplot, so the figure would show fewer bars than rows.
+  **G8 is ROW COVERAGE, never point-count equality** — the equality holds for a column pair alone.
+  An aggregate collapses its rows into one point per group, so a 3-row file over 2 groups verifies
+  with 2 plotted points and drops no row; G11's per-group counts, which SUM to the data-row count,
+  are what publish that collapse. Read G8 as "no row goes missing", and G11 as the ledger proving
+  where each row went.
 - **G9 drops "uniformly spaced" and admits UNIQUE categorical x (user).** Ordering survives, uniform
   spacing does not: irregular spacing is LEGIBLE in the rendered figure, so it misrepresents nothing,
   while real clinical series are irregularly sampled and a uniformity requirement would refuse most
@@ -345,10 +350,14 @@ writes. `tools/mutants/project.toml` = 46 mutants over the projection predicates
 at M13.4, +10 at M13.6), with the two EQUIVALENT mutants documented in the file rather than listed.
 `tools/mutants/aggregate.toml` = 14 over the grouped reduction engine, and it documents THREE
 deliberately unmutated predicates: R5 and R6 are absence claims the CSV profile refuses upstream, so
-there is no branch left to neuter and their tests carry call-counting bombs instead; and
+there is no branch left to neuter, and each witness takes the shape its own absence earns — R6 a
+call-counting bomb on `_numeric_value`, R5 an arithmetic bound under 2**63 that a `max_table_rows`
+widening reddens; and
 `_reduce_int`'s `float(sum(values))` is profile-equivalent, because C10's int32 cell bound times
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
-integer exactly to 2**53.
+integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
+computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
+what splits them. Run all three — a claim credited in one catalogue can sit unmutated in another.
 
 A widening INVALIDATES anchors silently until the driver runs: M13.6 edited four lines that M13.3
 and M13.4 mutants anchored on (`p4-y-over-inline-grid`, `d1-grid-selector-is-deep`,

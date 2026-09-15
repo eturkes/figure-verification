@@ -1,0 +1,27 @@
+# Mutation catalogue for the CSV read seam. Run: `uv run --locked python
+# tools/mutate.py tools/mutants/csvread.toml`. One mutant per predicate, each naming the ONE test
+# that must go red under it.
+#
+# G11 is why this catalogue exists at all. The counts are COMPUTED in `aggregate.py`, which
+# `aggregate.toml` mutates, but they are PUBLISHED from here, and the driver mutates one module per
+# catalogue. Publication is where the plausible defect sits: an implementation that reduces
+# correctly and then forgets to carry the counts forward ships a G11-less certificate for an
+# aggregate figure, and no aggregate-catalogue mutant reaches that line.
+#
+# `g11-counts-dropped-at-publication` kills by RAISING rather than by failing an assertion, and
+# that is the credit rather than a defect in the mutant: `certify` refuses a grouped spec whose
+# counts are absent (`PysrcCallerError`), so the drop cannot reach a certificate at all. The verdict
+# still differs, which is what the driver grades, and a future mutant carrying WRONG counts instead
+# of absent ones is the value-kill beside it.
+
+module = "src/verifier/pysrc/csvread.py"
+tests = ["tests/test_pysrc_aggregate.py"]
+
+[[mutant]]
+id = "g11-counts-dropped-at-publication"
+predicate = "an aggregate publishes its per-group counts -- reducing correctly is not enough"
+kills = "tests/test_pysrc_aggregate.py::test_g11_per_group_counts_are_published"
+anchor = '''
+        return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=reduced.counts)'''
+mutant = '''
+        return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=None)'''

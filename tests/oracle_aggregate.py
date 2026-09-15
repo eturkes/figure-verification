@@ -192,7 +192,8 @@ def aggregate(
 
     `key_cells` and `value_cells` are the raw CSV cell texts in file order, of equal length. The
     returned `counts` sum to `len(key_cells)` for every input — G78r's totality, and the reason a
-    `groupby` leaves G7 and G8 unconditional.
+    `groupby` leaves G7's range claim and G8's row COVERAGE unconditional. Coverage, not
+    point-count equality: fewer points than rows is the normal aggregate shape.
     """
     if not key_cells or len(key_cells) != len(value_cells):
         message = "aggregate columns must be non-empty and equal length"

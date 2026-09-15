@@ -32,7 +32,8 @@ __all__ = ["NA_SPELLINGS", "DatasetSeries", "read_columns"]
 
 # Every default NA spelling pandas recognises, measured on the target build. A cell matching one of
 # these -- quoted or plain -- refuses rather than becoming a null: the verifier has no null, and
-# that absence is what makes "plotted point count = non-null row count" true by construction.
+# that absence is what makes G8's row coverage true by construction. Coverage, not point-count
+# equality: an aggregate collapses its rows into one point per group and G11 publishes the counts.
 NA_SPELLINGS: frozenset[str] = frozenset(
     {
         "",

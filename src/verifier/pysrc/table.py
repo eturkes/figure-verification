@@ -36,9 +36,11 @@ def _field(value: CellValue) -> bytes:
 class PlottedTable:
     """One series: x against y, in the order the figure draws them.
 
-    Row order is SOURCE order -- file order in the dataset arm, grid order in the formula arm. The
-    legacy JSON mode's total sort is deliberately not reused: sorting would silently redraw a
-    figure whose point order is part of what the user submitted.
+    Row order is the order the SOURCE itself defines: file order for a column pair, grid order in
+    the formula arm, sorted key order for an aggregate -- pandas' `sort=True` default, which the
+    executed program would draw. The legacy JSON mode's total sort is deliberately not reused over
+    a column pair: sorting there would silently redraw a figure whose point order is part of what
+    the user submitted.
     """
 
     x: tuple[CellValue, ...]

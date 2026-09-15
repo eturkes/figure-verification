@@ -12,8 +12,11 @@
 # Three predicates are deliberately UNMUTATED, each for a stated reason:
 #
 # - R5 (an int64 sum cannot overflow) and R6 (NaN never reaches a reduction) are ABSENCE claims:
-#   the profile refuses the input ahead of this module, so there is no branch here to neuter. Their
-#   tests carry call-counting bombs on the reduction instead, which is the shape an absence earns.
+#   the profile refuses the input ahead of this module, so there is no branch here to neuter. Each
+#   witness takes the shape its OWN absence earns, and the two shapes differ: R6 arms a
+#   call-counting bomb on `_numeric_value` and proves the reduction never runs, while R5 computes
+#   the worst-case magnitude from C10's cell range times `max_table_rows` and asserts it below
+#   2**63 -- an arithmetic bound with no bomb, reddened by a `max_table_rows` widening.
 # - `_reduce_int`'s `float(sum(values))` is equivalent under the profile. C10 bounds each cell to
 #   int32 and `max_table_rows` bounds the count, so every admitted integer sum stays under 2**48
 #   and float64 carries it exactly; a mutant summing in float64 instead differs only on inputs the

@@ -48,8 +48,10 @@ class Aggregated:
     """One reduced series in PLOTTED order, with the evidence G11 publishes beside it.
 
     `counts` is aligned with `keys` and sums to the data-row count of the file for every input,
-    because every row joins exactly one group. That totality is what keeps G7 and G8 unconditional
-    while aggregation is admitted: a `groupby` drops nothing.
+    because every row joins exactly one group. That totality is what keeps G7's range claim and
+    G8's ROW COVERAGE unconditional while aggregation is admitted: a `groupby` drops no row. It
+    does collapse rows into fewer points than the file has rows, which is why G8 is coverage rather
+    than point-count equality and why `counts` is published rather than merely computed.
     """
 
     keys: tuple[CellValue, ...]
