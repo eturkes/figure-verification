@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Independent M13.4 dataset-arm AST projection oracle.
+"""Independent M13.4-M13.6 dataset-arm AST projection oracle.
 
 The oracle first classifies the arm and whole module, then projects a dataset chart through its own
 value model. ``normalize`` is the sole representation translation boundary.
 """
 
 import ast
+import math
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
+from fractions import Fraction
 from typing import Literal, NoReturn, cast
 
 from oracle_project import FormulaPlot
@@ -35,15 +37,29 @@ type OracleRefusalCode = Literal[
     "no_terminal",
     "statement_after_terminal",
     "statement_not_projected",
+    "aggregation_not_projected",
+    "attribute_not_admitted",
+    "keyword_not_admitted",
+    "name_not_bound",
+    "figure_orphans_mark",
 ]
-type DatasetMark = Literal["line", "scatter", "bar"]
+type DatasetMark = Literal["line", "scatter", "bar", "barh"]
+type Reduction = Literal["sum", "mean", "min", "max"]
 type _Arm = Literal["formula", "dataset"]
 
 _GRID_TARGETS = frozenset({"np.linspace", "np.arange"})
 _SOURCE_TARGET = "pd.read_csv"
-_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar"})
+_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar", "plt.barh"})
 _LABEL_TARGETS = frozenset({"plt.title", "plt.xlabel", "plt.ylabel"})
-_DECOR_TARGETS = _LABEL_TARGETS | {"plt.legend", "plt.grid"}
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})
+_DECOR_TARGETS = _LABEL_TARGETS | {"plt.legend", "plt.grid"} | _PRESENTATION_TARGETS
+_REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
+_STYLE_KEYWORDS = {
+    "plt.plot": frozenset({"label", "color", "marker", "linestyle"}),
+    "plt.scatter": frozenset({"label", "color", "marker"}),
+    "plt.bar": frozenset({"label", "color"}),
+    "plt.barh": frozenset({"label", "color"}),
+}
 
 
 class OracleDatasetProjectionError(Exception):
@@ -72,6 +88,9 @@ class ChartLabels:
     series_name: str | None = None
     has_legend: bool = False
     has_grid: bool = False
+    canvas_size: tuple[Fraction, Fraction] | None = None
+    tick_angle: Fraction | None = None
+    packed_layout: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +100,7 @@ class DatasetChart:
     horizontal: Field
     vertical: Field
     annotations: ChartLabels
+    reduction: Reduction | None = None
 
 
 type OraclePlotSpec = FormulaPlot | DatasetChart
@@ -113,11 +133,22 @@ class _Source:
 
 
 @dataclass(frozen=True, slots=True)
+class _Aggregate:
+    binding: str
+    statement_index: int
+    frame: str
+    key: Field
+    value: Field
+    reduction: Reduction
+
+
+@dataclass(frozen=True, slots=True)
 class _ProjectedMark:
     statement: _CallStatement
     kind: DatasetMark
     horizontal: Field
     vertical: Field
+    reduction: Reduction | None
     series_name: str | None
 
 
@@ -259,12 +290,118 @@ def _string_literal(node: ast.expr) -> str:
     return node.value
 
 
-def _mark_label(call: ast.Call) -> str | None:
-    if not call.keywords:
+def _fraction_literal(node: ast.expr) -> Fraction:
+    if not isinstance(node, ast.Constant):
+        _refuse("label_not_literal")
+    value = node.value
+    if type(value) is int:
+        return Fraction(value)
+    if type(value) is float and math.isfinite(value):
+        return Fraction(value)
+    _refuse("label_not_literal")
+
+
+def _contains_groupby(node: ast.expr) -> bool:
+    return any(
+        isinstance(candidate, ast.Call)
+        and isinstance(candidate.func, ast.Attribute)
+        and candidate.func.attr == "groupby"
+        for candidate in ast.walk(node)
+    )
+
+
+def _aggregation(binding_name: str, source: _Source, program: _Program) -> _Aggregate:
+    binding = program.bindings.get(binding_name)
+    if binding is None or not _contains_groupby(binding.value):
+        _refuse("column_not_from_source")
+    node = binding.value
+    if (
+        not isinstance(node, ast.Call)
+        or not isinstance(node.func, ast.Attribute)
+        or not isinstance(node.func.value, ast.Subscript)
+    ):
+        _refuse("aggregation_not_projected")
+    if node.func.attr not in _REDUCTIONS:
+        _refuse("attribute_not_admitted")
+    if node.args or node.keywords:
+        _refuse("keyword_not_admitted")
+    selection = node.func.value
+    group_call = selection.value
+    if (
+        not isinstance(group_call, ast.Call)
+        or not isinstance(group_call.func, ast.Attribute)
+        or group_call.func.attr != "groupby"
+        or not isinstance(group_call.func.value, ast.Name)
+    ):
+        _refuse("aggregation_not_projected")
+    if group_call.func.value.id != source.frame:
+        _refuse("name_not_bound")
+    if len(group_call.args) != 1 or group_call.keywords:
+        _refuse("keyword_not_admitted")
+    key = group_call.args[0]
+    if not isinstance(key, ast.Constant) or type(key.value) is not str:
+        _refuse("column_not_literal")
+    if not isinstance(selection.slice, ast.Constant) or type(selection.slice.value) is not str:
+        _refuse("column_not_literal")
+    return _Aggregate(
+        binding=binding_name,
+        statement_index=binding.statement_index,
+        frame=source.frame,
+        key=Field(key.value),
+        value=Field(selection.slice.value),
+        reduction=cast("Reduction", node.func.attr),
+    )
+
+
+def _validate_aggregations(source: _Source, program: _Program) -> None:
+    for name, binding in program.bindings.items():
+        if not _contains_groupby(binding.value):
+            continue
+        if (
+            isinstance(binding.value, ast.Call)
+            and _target(binding.value) == f"{source.frame}.groupby"
+        ):
+            continue
+        _aggregation(name, source, program)
+
+
+def _aggregate_channel(
+    node: ast.expr,
+    role: Literal["x", "y"],
+    source: _Source,
+    program: _Program,
+) -> _Aggregate | None:
+    binding_name: str | None = None
+    if role == "x" and isinstance(node, ast.Attribute) and node.attr == "index":
+        if isinstance(node.value, ast.Name):
+            binding_name = node.value.id
+    elif role == "y" and isinstance(node, ast.Name):
+        binding_name = node.id
+    elif (
+        role == "y"
+        and isinstance(node, ast.Attribute)
+        and node.attr == "values"
+        and isinstance(node.value, ast.Name)
+    ):
+        binding_name = node.value.id
+    if binding_name is None:
         return None
-    if len(call.keywords) != 1 or call.keywords[0].arg != "label":
-        _refuse("statement_not_projected")
-    return _string_literal(call.keywords[0].value)
+    binding = program.bindings.get(binding_name)
+    if binding is None or not _contains_groupby(binding.value):
+        return None
+    return _aggregation(binding_name, source, program)
+
+
+def _mark_series(call: ast.Call, target: str) -> str | None:
+    admitted = _STYLE_KEYWORDS[target]
+    series: str | None = None
+    for keyword in call.keywords:
+        if keyword.arg not in admitted:
+            _refuse("statement_not_projected")
+        text = _string_literal(keyword.value)
+        if keyword.arg == "label":
+            series = text
+    return series
 
 
 def _dataset_mark(target: str | None) -> DatasetMark:
@@ -274,6 +411,8 @@ def _dataset_mark(target: str | None) -> DatasetMark:
         return "scatter"
     if target == "plt.bar":
         return "bar"
+    if target == "plt.barh":
+        return "barh"
     _refuse("statement_not_projected")
 
 
@@ -284,17 +423,28 @@ def _project_mark(
     used: set[int],
 ) -> _ProjectedMark:
     statement = _top_level_call(program, call)
-    if statement is None:
+    if statement is None or statement.target is None:
         _refuse("statement_not_projected")
     kind = _dataset_mark(statement.target)
     if len(call.args) != 2:
         _refuse("mark_arity_not_projected")
     local_used: set[int] = {statement.statement_index}
-    horizontal = _column(call.args[0], source, program, local_used)
-    vertical = _column(call.args[1], source, program, local_used)
-    series_name = _mark_label(call)
+    x_aggregate = _aggregate_channel(call.args[0], "x", source, program)
+    y_aggregate = _aggregate_channel(call.args[1], "y", source, program)
+    if x_aggregate is not None or y_aggregate is not None:
+        if x_aggregate is None or y_aggregate is None or x_aggregate.binding != y_aggregate.binding:
+            _refuse("column_not_from_source")
+        local_used.add(x_aggregate.statement_index)
+        horizontal = x_aggregate.key
+        vertical = x_aggregate.value
+        reduction: Reduction | None = x_aggregate.reduction
+    else:
+        horizontal = _column(call.args[0], source, program, local_used)
+        vertical = _column(call.args[1], source, program, local_used)
+        reduction = None
+    series_name = _mark_series(call, statement.target)
     used.update(local_used)
-    return _ProjectedMark(statement, kind, horizontal, vertical, series_name)
+    return _ProjectedMark(statement, kind, horizontal, vertical, reduction, series_name)
 
 
 def _mark(
@@ -328,58 +478,94 @@ def _terminal(tree: ast.Module, program: _Program) -> _CallStatement:
     return statement
 
 
-def _labels(
+def _labels(  # noqa: PLR0912, PLR0915 — closed presentation dispatch stays explicit
     tree: ast.Module,
     program: _Program,
     used: set[int],
-    series_name: str | None,
+    mark: _ProjectedMark,
 ) -> ChartLabels:
-    values: dict[str, str | bool | None] = {
-        "heading": None,
-        "horizontal": None,
-        "vertical": None,
-        "has_legend": False,
-        "has_grid": False,
-    }
-    seen: set[str] = set()
+    heading: str | None = None
+    horizontal: str | None = None
+    vertical: str | None = None
+    has_legend = False
+    has_grid = False
+    canvas_size: tuple[Fraction, Fraction] | None = None
+    tick_angle: Fraction | None = None
+    packed_layout = False
+    effects: list[tuple[_CallStatement, str]] = []
     for call in _effect_calls(tree, frozenset(_DECOR_TARGETS)):
         statement = _top_level_call(program, call)
         target = _target(call)
-        if statement is None or target is None or target in seen:
+        if statement is None or target is None:
+            _refuse("statement_not_projected")
+        effects.append((statement, target))
+    seen: set[str] = set()
+    for statement, target in sorted(effects, key=lambda effect: effect[0].statement_index):
+        call = statement.call
+        if target == "plt.figure" and (
+            seen or statement.statement_index > mark.statement.statement_index
+        ):
+            _refuse("figure_orphans_mark")
+        if target in seen:
             _refuse("statement_not_projected")
         seen.add(target)
         used.add(statement.statement_index)
         if target in _LABEL_TARGETS:
             if len(call.args) != 1 or call.keywords:
                 _refuse("label_not_literal")
-            key = {
-                "plt.title": "heading",
-                "plt.xlabel": "horizontal",
-                "plt.ylabel": "vertical",
-            }[target]
-            values[key] = _string_literal(call.args[0])
+            text = _string_literal(call.args[0])
+            if target == "plt.title":
+                heading = text
+            elif target == "plt.xlabel":
+                horizontal = text
+            else:
+                vertical = text
         elif target == "plt.legend":
             if call.args or call.keywords:
                 _refuse("statement_not_projected")
-            values["has_legend"] = True
+            has_legend = True
         elif target == "plt.grid":
             if call.keywords or len(call.args) > 1:
                 _refuse("statement_not_projected")
             if not call.args:
-                values["has_grid"] = True
+                has_grid = True
             elif not isinstance(call.args[0], ast.Constant) or type(call.args[0].value) is not bool:
                 _refuse("statement_not_projected")
             else:
-                values["has_grid"] = call.args[0].value
+                has_grid = call.args[0].value
+        elif target == "plt.figure":
+            if call.args or len(call.keywords) > 1:
+                _refuse("statement_not_projected")
+            if call.keywords:
+                keyword = call.keywords[0]
+                size = keyword.value
+                if (
+                    keyword.arg != "figsize"
+                    or not isinstance(size, ast.Tuple)
+                    or len(size.elts) != 2
+                ):
+                    _refuse("label_not_literal")
+                canvas_size = (_fraction_literal(size.elts[0]), _fraction_literal(size.elts[1]))
+        elif target == "plt.tight_layout":
+            if call.args or call.keywords:
+                _refuse("statement_not_projected")
+            packed_layout = True
+        elif target == "plt.xticks":
+            if call.args or len(call.keywords) != 1 or call.keywords[0].arg != "rotation":
+                _refuse("statement_not_projected")
+            tick_angle = _fraction_literal(call.keywords[0].value)
         else:
             _refuse("statement_not_projected")
     return ChartLabels(
-        heading=cast("str | None", values["heading"]),
-        horizontal=cast("str | None", values["horizontal"]),
-        vertical=cast("str | None", values["vertical"]),
-        series_name=series_name,
-        has_legend=cast("bool", values["has_legend"]),
-        has_grid=cast("bool", values["has_grid"]),
+        heading=heading,
+        horizontal=horizontal,
+        vertical=vertical,
+        series_name=mark.series_name,
+        has_legend=has_legend,
+        has_grid=has_grid,
+        canvas_size=canvas_size,
+        tick_angle=tick_angle,
+        packed_layout=packed_layout,
     )
 
 
@@ -389,10 +575,11 @@ def _project_dataset(tree: ast.Module) -> DatasetChart:
         _refuse("no_mark")
     used = set(program.structural_statements)
     source = _dataset_source(tree, program, used)
+    _validate_aggregations(source, program)
     mark = _mark(tree, source, program, used)
     terminal = _terminal(tree, program)
     used.add(terminal.statement_index)
-    labels = _labels(tree, program, used, mark.series_name)
+    labels = _labels(tree, program, used, mark)
     if used != set(range(len(tree.body))):
         _refuse("statement_not_projected")
     return DatasetChart(
@@ -401,6 +588,7 @@ def _project_dataset(tree: ast.Module) -> DatasetChart:
         horizontal=mark.horizontal,
         vertical=mark.vertical,
         annotations=labels,
+        reduction=mark.reduction,
     )
 
 
@@ -438,6 +626,9 @@ _DATASET_FIELD_NAMES = {
         "series_name": "series",
         "has_legend": "legend",
         "has_grid": "grid",
+        "canvas_size": "figsize",
+        "tick_angle": "tick_rotation",
+        "packed_layout": "tight_layout",
     },
     "DatasetChart": {
         "kind": "mark",
@@ -445,20 +636,32 @@ _DATASET_FIELD_NAMES = {
         "horizontal": "x",
         "vertical": "y",
         "annotations": "labels",
+        "reduction": "group",
     },
     "DatasetPlot": {
         "mark": "mark",
         "source": "source",
         "x": "x",
         "y": "y",
+        "group": "group",
         "labels": "labels",
     },
 }
 _DATASET_FIELD_ORDER = {
     "DatasetRef": ("path",),
     "Column": ("name",),
-    "Labels": ("title", "xlabel", "ylabel", "series", "legend", "grid"),
-    "DatasetPlot": ("mark", "source", "x", "y", "labels"),
+    "Labels": (
+        "title",
+        "xlabel",
+        "ylabel",
+        "series",
+        "legend",
+        "grid",
+        "figsize",
+        "tick_rotation",
+        "tight_layout",
+    ),
+    "DatasetPlot": ("mark", "source", "x", "y", "group", "labels"),
 }
 
 

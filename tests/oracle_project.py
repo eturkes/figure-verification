@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Independent M13.3 AST-to-plot projection oracle.
+"""Independent M13.3-M13.6 AST-to-plot projection oracle.
 
 The oracle classifies the whole module before assembling a value model. Production is expected to
 use its own representation and traversal; ``normalize`` is the sole comparison boundary.
@@ -24,6 +24,7 @@ type OracleRefusalCode = Literal[
     "name_rebound",
     "mark_not_valid_for_arm",
     "statement_not_projected",
+    "figure_orphans_mark",
 ]
 
 type Mark = Literal["line", "scatter"]
@@ -35,9 +36,14 @@ _MIN_GRID_SAMPLES = 2
 _MAX_GRID_SAMPLES = 100_000
 _EXACT_GRID_INTEGER = 2**52
 _GRID_TARGETS = frozenset({"np.linspace", "np.arange"})
-_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar"})
+_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar", "plt.barh"})
 _LABEL_TARGETS = frozenset({"plt.title", "plt.xlabel", "plt.ylabel"})
-_DECOR_TARGETS = _LABEL_TARGETS | {"plt.legend", "plt.grid"}
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})
+_DECOR_TARGETS = _LABEL_TARGETS | {"plt.legend", "plt.grid"} | _PRESENTATION_TARGETS
+_STYLE_KEYWORDS = {
+    "plt.plot": frozenset({"label", "color", "marker", "linestyle"}),
+    "plt.scatter": frozenset({"label", "color", "marker"}),
+}
 _MATH_FUNCTIONS: dict[str, Function] = {
     "np.sin": "sin",
     "np.cos": "cos",
@@ -108,6 +114,9 @@ class Labels:
     series: str | None = None
     legend: bool = False
     grid: bool = False
+    figsize: tuple[Fraction, Fraction] | None = None
+    tick_rotation: Fraction | None = None
+    tight_layout: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,7 +419,7 @@ def _scalar(node: ast.expr, program: _Program, used: set[int]) -> _ProjectedExpr
 
 
 def _formula_mark(statement: _CallStatement) -> Mark:
-    if statement.target == "plt.bar":
+    if statement.target in {"plt.bar", "plt.barh"}:
         _refuse("mark_not_valid_for_arm")
     if statement.target == "plt.plot":
         return "line"
@@ -456,57 +465,112 @@ def _string_literal(node: ast.expr) -> str:
     return node.value
 
 
-def _mark_label(call: ast.Call) -> str | None:
-    if not call.keywords:
-        return None
-    keyword = call.keywords[0]
-    if keyword.arg != "label":
-        _refuse("statement_not_projected")
-    return _string_literal(keyword.value)
+def _fraction_literal(node: ast.expr) -> Fraction:
+    if not isinstance(node, ast.Constant):
+        _refuse("label_not_literal")
+    return _literal(node, "label_not_literal").value
 
 
-def _labels(tree: ast.Module, program: _Program, used: set[int], series: str | None) -> Labels:
-    values: dict[str, str | bool | None] = {
-        "title": None,
-        "xlabel": None,
-        "ylabel": None,
-        "legend": False,
-        "grid": False,
-    }
-    seen: set[str] = set()
+def _mark_label(call: ast.Call, target: str) -> str | None:
+    series: str | None = None
+    for keyword in call.keywords:
+        if keyword.arg not in _STYLE_KEYWORDS[target]:
+            _refuse("statement_not_projected")
+        text = _string_literal(keyword.value)
+        if keyword.arg == "label":
+            series = text
+    return series
+
+
+def _labels(  # noqa: PLR0912, PLR0915 — closed presentation dispatch stays explicit
+    tree: ast.Module,
+    program: _Program,
+    used: set[int],
+    series: str | None,
+    mark_statement: _CallStatement,
+) -> Labels:
+    title: str | None = None
+    xlabel: str | None = None
+    ylabel: str | None = None
+    legend = False
+    grid = False
+    figsize: tuple[Fraction, Fraction] | None = None
+    tick_rotation: Fraction | None = None
+    tight_layout = False
+    effects: list[tuple[_CallStatement, str]] = []
     for call in _effect_calls(tree, frozenset(_DECOR_TARGETS)):
         statement = _top_level_call(program, call)
         target = _target(call)
-        if statement is None or target is None or target in seen:
+        if statement is None or target is None:
+            _refuse("statement_not_projected")
+        effects.append((statement, target))
+    seen: set[str] = set()
+    for statement, target in sorted(effects, key=lambda effect: effect[0].statement_index):
+        call = statement.call
+        if target == "plt.figure" and (
+            seen or statement.statement_index > mark_statement.statement_index
+        ):
+            _refuse("figure_orphans_mark")
+        if target in seen:
             _refuse("statement_not_projected")
         seen.add(target)
         used.add(statement.statement_index)
         if target in _LABEL_TARGETS:
             if len(call.args) != 1 or call.keywords:
                 _refuse("label_not_literal")
-            values[target.removeprefix("plt.")] = _string_literal(call.args[0])
+            text = _string_literal(call.args[0])
+            if target == "plt.title":
+                title = text
+            elif target == "plt.xlabel":
+                xlabel = text
+            else:
+                ylabel = text
         elif target == "plt.legend":
             if call.args or call.keywords:
                 _refuse("statement_not_projected")
-            values["legend"] = True
+            legend = True
         elif target == "plt.grid":
             if call.keywords or len(call.args) > 1:
                 _refuse("statement_not_projected")
             if not call.args:
-                values["grid"] = True
+                grid = True
             elif not isinstance(call.args[0], ast.Constant) or type(call.args[0].value) is not bool:
                 _refuse("statement_not_projected")
             else:
-                values["grid"] = call.args[0].value
+                grid = call.args[0].value
+        elif target == "plt.figure":
+            if call.args or len(call.keywords) > 1:
+                _refuse("statement_not_projected")
+            if call.keywords:
+                keyword = call.keywords[0]
+                size = keyword.value
+                if (
+                    keyword.arg != "figsize"
+                    or not isinstance(size, ast.Tuple)
+                    or len(size.elts) != 2
+                ):
+                    _refuse("label_not_literal")
+                figsize = (_fraction_literal(size.elts[0]), _fraction_literal(size.elts[1]))
+        elif target == "plt.tight_layout":
+            if call.args or call.keywords:
+                _refuse("statement_not_projected")
+            tight_layout = True
+        elif target == "plt.xticks":
+            if call.args or len(call.keywords) != 1 or call.keywords[0].arg != "rotation":
+                _refuse("statement_not_projected")
+            tick_rotation = _fraction_literal(call.keywords[0].value)
         else:
             _refuse("statement_not_projected")
     return Labels(
-        title=cast("str | None", values["title"]),
-        xlabel=cast("str | None", values["xlabel"]),
-        ylabel=cast("str | None", values["ylabel"]),
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
         series=series,
-        legend=cast("bool", values["legend"]),
-        grid=cast("bool", values["grid"]),
+        legend=legend,
+        grid=grid,
+        figsize=figsize,
+        tick_rotation=tick_rotation,
+        tight_layout=tight_layout,
     )
 
 
@@ -514,7 +578,7 @@ def _assemble_mark(
     mark_statement: _CallStatement, mark: Mark, program: _Program, used: set[int]
 ) -> tuple[Grid, Expression, Mark, str | None]:
     call = mark_statement.call
-    if len(call.args) != 2 or len(call.keywords) > 1:
+    if len(call.args) != 2 or mark_statement.target not in _STYLE_KEYWORDS:
         _refuse("statement_not_projected")
     used.add(mark_statement.statement_index)
     grid = _grid(call.args[0], program, used, invalid="x_not_a_grid")
@@ -527,7 +591,7 @@ def _assemble_mark(
     )
     if not projected.over_grid:
         _refuse("y_not_over_grid")
-    return grid, projected.value, mark, _mark_label(call)
+    return grid, projected.value, mark, _mark_label(call, mark_statement.target)
 
 
 def project(tree: ast.Module) -> OraclePlotSpec:
@@ -538,7 +602,7 @@ def project(tree: ast.Module) -> OraclePlotSpec:
     used = set(program.structural_statements)
     used.add(terminal_statement.statement_index)
     grid, expression, mark, series = _assemble_mark(mark_statement, mark, program, used)
-    labels = _labels(tree, program, used, series)
+    labels = _labels(tree, program, used, series, mark_statement)
     if used != set(range(len(tree.body))):
         _refuse("statement_not_projected")
     return FormulaPlot(grid=grid, expression=expression, mark=mark, labels=labels)
@@ -582,6 +646,9 @@ _CANONICAL_FIELD_NAMES = {
         "series": "series",
         "legend": "legend",
         "grid": "grid",
+        "figsize": "figsize",
+        "tick_rotation": "tick_rotation",
+        "tight_layout": "tight_layout",
     },
     "FormulaPlot": {
         "mark": "mark",
@@ -599,7 +666,17 @@ _CANONICAL_FIELD_ORDER = {
     "Fn": ("name", "arg"),
     "Bin": ("op", "left", "right"),
     "Grid": ("start", "stop", "samples"),
-    "Labels": ("title", "xlabel", "ylabel", "series", "legend", "grid"),
+    "Labels": (
+        "title",
+        "xlabel",
+        "ylabel",
+        "series",
+        "legend",
+        "grid",
+        "figsize",
+        "tick_rotation",
+        "tight_layout",
+    ),
     "FormulaPlot": ("mark", "grid", "y", "labels"),
 }
 

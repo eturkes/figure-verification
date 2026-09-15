@@ -14,13 +14,15 @@ import hashlib
 import json
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Literal, assert_never
+from typing import Literal, assert_never, cast
 
+from verifier.pysrc.errors import PysrcCallerError
 from verifier.pysrc.numeric import NUMERIC_PROFILE
 from verifier.pysrc.spec import (
     Bin,
     Const,
     CorePlotSpec,
+    DatasetMark,
     DatasetPlot,
     DatasetTarget,
     DeclaredTarget,
@@ -99,6 +101,14 @@ _REDUCTION_WORDS: dict[Reduction, str] = {
     "mean": "mean",
     "min": "minimum",
     "max": "maximum",
+}
+
+# (first channel's axis, second channel's axis) as RENDERED, per mark.
+_AXIS_LETTERS: dict[DatasetMark, tuple[str, str]] = {
+    "line": ("X", "Y"),
+    "scatter": ("X", "Y"),
+    "bar": ("X", "Y"),
+    "barh": ("Y", "X"),
 }
 
 
@@ -250,19 +260,28 @@ def _append_labels(text: str, labels: Labels) -> str:
 def _dataset_text(
     spec: DatasetPlot, table: PlottedTable, group_counts: tuple[int, ...] | None
 ) -> str:
+    # `plt.barh` draws its first positional on the VERTICAL axis and its second on the horizontal
+    # one, so the axis letters swap with the mark. The sentence is a tier-3 claim about the figure
+    # a person is looking at, and naming the wrong axis misdescribes exactly the mark this width
+    # added. Closed on `DatasetMark`, never a default, so a fifth mark fails at the lookup.
+    first, second = _AXIS_LETTERS[spec.mark]
     source = f"Chart type: {spec.mark}. The data comes from the file {_quote(spec.source.path)}."
-    if spec.group is None or group_counts is None:
+    if spec.group is None:
         return (
-            f"{source} X shows the column {_quote(spec.x.name)}. "
-            f"Y shows the column {_quote(spec.y.name)}. The chart draws {len(table.x)} rows. "
-            f"Numbers follow the profile {NUMERIC_PROFILE}."
+            f"{source} {first} shows the column {_quote(spec.x.name)}. "
+            f"{second} shows the column {_quote(spec.y.name)}. "
+            f"The chart draws {len(table.x)} rows. Numbers follow the profile {NUMERIC_PROFILE}."
         )
     # G11's human half: the group count and the row count behind it, in the sentence a person
     # actually reads. Two numbers that disagree are what tells a reader rows went missing.
+    # `certify` has already refused a grouped spec whose counts are absent, so the cast is that
+    # guard's postcondition rather than a hope.
+    counts = cast("tuple[int, ...]", group_counts)
     return (
-        f"{source} X shows the groups of the column {_quote(spec.x.name)}. "
-        f"Y shows the {_REDUCTION_WORDS[spec.group]} of the column {_quote(spec.y.name)} in each "
-        f"group. The chart draws {len(table.x)} groups from {sum(group_counts)} rows. "
+        f"{source} {first} shows the groups of the column {_quote(spec.x.name)}. "
+        f"{second} shows the {_REDUCTION_WORDS[spec.group]} of the column "
+        f"{_quote(spec.y.name)} in each group. "
+        f"The chart draws {len(table.x)} groups from {sum(counts)} rows. "
         f"Numbers follow the profile {NUMERIC_PROFILE}."
     )
 
@@ -290,7 +309,20 @@ def certify(
     target: DeclaredTarget | None,
     group_counts: tuple[int, ...] | None,
 ) -> CoreCertificate:
-    """Bind the submitted bytes, projected spec and recomputed table into one statement."""
+    """Bind the submitted bytes, projected spec and recomputed table into one statement.
+
+    `group_counts` is REQUIRED to agree with the spec: G11 publishes per-group counts beside every
+    aggregate, and a branch that reads a grouped spec with absent counts as ungrouped would ship a
+    G11-less certificate for an aggregate figure instead of failing. That is a caller defect, not
+    an input fault, so it raises rather than refusing.
+    """
+    grouped = isinstance(spec, DatasetPlot) and spec.group is not None
+    if grouped is not (group_counts is not None):
+        message = (
+            f"group counts disagree with the spec: grouped={grouped}, "
+            f"counts={'absent' if group_counts is None else 'present'}"
+        )
+        raise PysrcCallerError(message)
     consumed = _target_consumed(spec, target)
     provenance: Provenance = "artifact" if consumed else "internal"
     declared_open = [_ARTIFACT_GAP]

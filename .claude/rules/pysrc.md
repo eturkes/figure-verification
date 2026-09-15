@@ -326,8 +326,19 @@ Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<modu
 test that must go red and only that test runs under it, so attribution cannot drift to whichever
 red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
 SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
-writes. `tools/mutants/project.toml` = 23 mutants over the projection predicates, with the two
-EQUIVALENT mutants documented in the file rather than listed.
+writes. `tools/mutants/project.toml` = 46 mutants over the projection predicates (23 at M13.3, +13
+at M13.4, +10 at M13.6), with the two EQUIVALENT mutants documented in the file rather than listed.
+`tools/mutants/aggregate.toml` = 14 over the grouped reduction engine, and it documents THREE
+deliberately unmutated predicates: R5 and R6 are absence claims the CSV profile refuses upstream, so
+there is no branch left to neuter and their tests carry call-counting bombs instead; and
+`_reduce_int`'s `float(sum(values))` is profile-equivalent, because C10's int32 cell bound times
+`max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
+integer exactly to 2**53.
+
+A widening INVALIDATES anchors silently until the driver runs: M13.6 edited four lines that M13.3
+and M13.4 mutants anchored on (`p4-y-over-inline-grid`, `d1-grid-selector-is-deep`,
+`d2-rebind-dataset-names`, `d10-dataset-statement-coverage`), and the driver reported ANCHOR-MISS
+rather than a kill. Rerun EVERY catalogue of a module a unit touches, not just the new one.
 
 `admit.py` = 13/13 killed. Driver was `.scratch/mutate_admit.py` (gitignored ⇒ port its 13 mutants
 into `tools/mutants/admit.toml`; queued in `.agent/deferred.md`, superseding the driver half of

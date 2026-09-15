@@ -423,7 +423,7 @@ def _admission_refusals(draw: DrawFn) -> str:
             [
                 "import numpy as onp\n",
                 _PRELUDE + "plt.plott(1, 2)\n",
-                _PRELUDE + "plt.plot(1, 2, color='r')\n",
+                _PRELUDE + "plt.plot(1, 2, cmap='viridis')\n",
                 _PRELUDE + "x = [1, 2]\n",
                 "x = 1 // 2\n",
             ]

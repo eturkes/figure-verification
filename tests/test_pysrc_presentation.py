@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M13.6 presentation: the data-effect-free cosmetic cluster, and the G-rows this width re-pins.
 
-Contract: `.agent/contracts/m13u6.md` predicate group W, plus G2r and G78r. Each docstring carries
-its predicate's acceptance check; the contract's wording wins wherever a body would assert more.
+Contract: `.agent/archive/contracts/m13u6.md` predicate group W, plus G2r and G78r. Each
+docstring carries its predicate's acceptance check; the contract's wording wins wherever a body
+would assert more.
 
 These calls are admitted WITHOUT amending the law that nothing is silently ignored: each is carried
 into `Labels`, so each still contributes to the spec, and the certificate may publish or omit it.

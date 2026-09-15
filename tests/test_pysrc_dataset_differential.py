@@ -38,7 +38,7 @@ _BAR = (
 _PATHS = ("sales.csv", "clinical.csv", "患者データ.csv")
 _COLUMNS = ("region", "revenue", "quarter", "患者数")
 _FRAME_NAMES = ("df", "data", "table")
-_MARK_CALLS = ("plot", "scatter", "bar")
+_MARK_CALLS = ("plot", "scatter", "bar", "barh")
 _DECORATIONS = ("title", "xlabel", "ylabel", "legend")
 
 
@@ -912,8 +912,7 @@ def test_g8_differential_carries_count_inputs_without_claiming_a_count() -> None
 
 
 def test_g11_dataset_aggregation_stays_dormant() -> None:
-    """G11: the column-pair width refuses aggregation before projection."""
-    _require_dataset_symbol()
+    """G11: an admitted groupby result that no mark uses still refuses as an unused statement."""
     source = (
         _DATASET_PRELUDE
         + 'df = pd.read_csv("sales.csv")\n'
@@ -921,9 +920,8 @@ def test_g11_dataset_aggregation_stays_dormant() -> None:
         + 'plt.bar(df["region"], df["revenue"])\n'
         + "plt.show()\n"
     )
-    with pytest.raises(PysrcRefusalError) as caught:
-        parse_admitted(source)
-    assert str(caught.value.code) == "call_target_not_admitted"
+    assert isinstance(parse_admitted(source), ast.Module)
+    _assert_agreement(source, expected_code="statement_not_projected")
 
 
 @given(_VALID_SOURCES)
@@ -989,6 +987,7 @@ def test_canonical_dataset_translation_is_explicit_and_ordered() -> None:
             ("source", ("DatasetRef", (("path", "sales.csv"),))),
             ("x", ("Column", (("name", "region"),))),
             ("y", ("Column", (("name", "revenue"),))),
+            ("group", None),
             (
                 "labels",
                 (
@@ -1000,6 +999,9 @@ def test_canonical_dataset_translation_is_explicit_and_ordered() -> None:
                         ("series", None),
                         ("legend", False),
                         ("grid", False),
+                        ("figsize", None),
+                        ("tick_rotation", None),
+                        ("tight_layout", False),
                     ),
                 ),
             ),

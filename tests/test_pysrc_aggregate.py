@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M13.6 aggregation: admission, projection, the reduction engine, `barh`, and the certificate.
 
-Contract: `.agent/contracts/m13u6.md` predicate groups A, R, B, plus G11/G9r and K1-K3. Each
+Contract: `.agent/archive/contracts/m13u6.md` predicate groups A, R, B, plus G11/G9r and K1-K3. Each
 docstring carries its predicate's acceptance check; the check is the test's specification and the
 contract's wording wins wherever a body would assert more.
 
@@ -23,9 +23,11 @@ import pytest
 from verifier.pysrc import Refused, Verified, spec, verify_python_source
 from verifier.pysrc import csvread as csvread_module
 from verifier.pysrc.admit import parse_admitted
-from verifier.pysrc.errors import PysrcRefusalError
+from verifier.pysrc.certificate import _AXIS_LETTERS, certify
+from verifier.pysrc.errors import PysrcCallerError, PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.project import project
+from verifier.pysrc.table import PlottedTable
 
 _DATASET_PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 
@@ -691,3 +693,78 @@ def test_k3_cosmetic_fields_stay_out_of_the_sentence() -> None:
     assert isinstance(sized, Verified)
     assert plain.spec != sized.spec
     assert plain.certificate.interpretation == sized.certificate.interpretation
+
+
+def test_k1r_barh_interpretation_names_the_rendered_axes() -> None:
+    """K1, re-pinned by the closing review: the sentence names the axis a reader is looking at.
+
+    `plt.barh(y, width)` puts its first positional on the VERTICAL axis, so a `barh` certificate
+    that says `X shows the groups` describes a chart nobody drew. The axis letters are a closed map
+    on `DatasetMark`, hand-stated here so a fifth mark cannot inherit a default. Acceptance: the
+    four marks' letter pairs are exactly as listed, and a live `barh` certificate reads `Y shows
+    the groups` with the magnitude on X."""
+    assert _AXIS_LETTERS == {
+        "line": ("X", "Y"),
+        "scatter": ("X", "Y"),
+        "bar": ("X", "Y"),
+        "barh": ("Y", "X"),
+    }
+    assert set(_AXIS_LETTERS) == set(get_args(spec.DatasetMark.__value__))
+    target = spec.DatasetTarget(
+        path="sales.csv", content=b"region,revenue\nwest,1\neast,2\nwest,3\n"
+    )
+    body = 'g = df.groupby("region")["revenue"].sum()\n'
+    horizontal = verify_python_source(
+        _dataset_source(body + "plt.barh(g.index, g.values)\nplt.show()\n"), declared_target=target
+    )
+    assert isinstance(horizontal, Verified)
+    assert horizontal.certificate.interpretation == (
+        'Chart type: barh. The data comes from the file "sales.csv". '
+        'Y shows the groups of the column "region". '
+        'X shows the sum of the column "revenue" in each group. '
+        "The chart draws 2 groups from 3 rows. "
+        "Numbers follow the profile binary64-libm-v1."
+    )
+    # The ungrouped sentence swaps too, and it needs unique categories: a repeated bar category
+    # overplots, which is what G8 refuses as `category_not_unique`.
+    flat = verify_python_source(
+        _dataset_source('plt.barh(df["region"], df["revenue"])\nplt.show()\n'),
+        declared_target=spec.DatasetTarget(
+            path="sales.csv", content=b"region,revenue\nwest,1\neast,2\nnorth,3\n"
+        ),
+    )
+    assert isinstance(flat, Verified)
+    assert flat.certificate.interpretation == (
+        'Chart type: barh. The data comes from the file "sales.csv". '
+        'Y shows the column "region". X shows the column "revenue". '
+        "The chart draws 3 rows. Numbers follow the profile binary64-libm-v1."
+    )
+
+
+def test_g11r_certify_refuses_a_grouped_spec_without_its_counts() -> None:
+    """G11, re-pinned by the closing review: the counts are REQUIRED, not merely accepted.
+
+    `certify`'s grouped branch once read `spec.group is None or group_counts is None`, so a grouped
+    spec whose counts were absent fell through to the ungrouped sentence and shipped a certificate
+    with `group_counts=None` for an aggregate figure. That is the catch-all-over-a-variant-space
+    class, and it turns G11's guarantee into a convention the callers happen to keep. Both
+    directions of the disagreement are a CALLER fault, so both raise `PysrcCallerError` rather than
+    refusing. Acceptance: grouped-without-counts raises, ungrouped-with-counts raises, and both
+    agreeing shapes still certify."""
+    table = PlottedTable(x=("east", "west"), y=(2.0, 4.0))
+    grouped = spec.DatasetPlot(
+        mark="bar",
+        source=spec.DatasetRef("sales.csv"),
+        x=spec.Column("region"),
+        y=spec.Column("revenue"),
+        labels=spec.Labels(),
+        group="sum",
+    )
+    ungrouped = replace(grouped, group=None)
+    target = spec.DatasetTarget(path="sales.csv", content=b"region,revenue\nwest,1\neast,2\n")
+    with pytest.raises(PysrcCallerError):
+        certify(grouped, table, b"", target, None)
+    with pytest.raises(PysrcCallerError):
+        certify(ungrouped, table, b"", target, (1, 1))
+    assert certify(grouped, table, b"", target, (1, 1)).group_counts == (1, 1)
+    assert certify(ungrouped, table, b"", target, None).group_counts is None

@@ -101,4 +101,5 @@ class PysrcRefusalError(Exception):
 
 
 class PysrcCallerError(Exception):
-    """The verifier was configured with limits it cannot honour. Never a verdict about source."""
+    """The verifier was called wrongly -- a limit it cannot honour, or arguments that disagree with
+    each other. Never a verdict about source, and never reachable from submitted bytes."""
