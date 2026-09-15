@@ -548,7 +548,7 @@ def test_dataset_success_report_bytes_are_fixed() -> None:
     encoded = msgspec.json.encode(report)
 
     assert sha256(encoded).hexdigest() == (
-        "29cebc8eb869b0f805a0d6795ef14bd8c7be8ff629985dd361126843b3e10a75"
+        "27b03dc8b430e2b1325dc3c2c3589600a0ef398b7faa6ca7f5ee238a41e0a537"
     )
 
 

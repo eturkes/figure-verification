@@ -1527,7 +1527,7 @@ def test_v02_dataset_certificate_canonical_form_under_a_fixed_tcb(
     assert result.certificate.tcb is DATASET_TCB
     assert len(payload) == 1746
     assert hashlib.sha256(payload).hexdigest() == (
-        "609a075efa2e0c5e4bcfeef8d92c5ad3d40879e4826d15eed92efcc59f6960ab"
+        "848c71da83defad3c4df5dac7b689fdc0bfcaad74c9888a95239a301b0f94c56"
     )
     assert b'"kind":' not in payload
     assert vcert.decode_vcert(payload) == result.certificate

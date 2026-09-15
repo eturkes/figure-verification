@@ -256,15 +256,27 @@ z3 cannot be inlined.
   (`.agent/measurements/w1_width.py`, run against `m13-design`; per-row counts in `.agent/spec.md`).
   Two width gaps carry real rows and NEITHER is cosmetic: 4 rows call the pandas plotting ACCESSOR,
   `series.plot(kind="bar")`, instead of `plt.bar`; 2 append `.reset_index()` to the reduction, which
-  re-spells the channels and is exactly what `aggregation_not_projected` names. A third blocker is
-  not the verifier at all — `data/sales.csv` spells North America `NA`, which is one of the 19
-  pandas NA spellings the CSV profile refuses, so the two rows writing the exactly-admitted groupby
-  program refuse `value_not_in_profile`; substituting `NAM` in the CSV bytes alone flips both to
-  `Verified`. The refusal is CORRECT (pandas reads those cells as missing and `groupby` drops all 3
-  rows, so the drawn figure really would lose a bar), which makes this a CORPUS defect with a
-  one-token repair and no width consequence. The remaining 10 simple rows are proposer defects the
-  verifier is right to refuse; widening for them would move the pass/fail boundary out of the
-  verifier.
+  re-spells the channels and is exactly what `aggregation_not_projected` names. The remaining simple
+  rows are proposer defects the verifier is right to refuse; widening for them would move the
+  pass/fail boundary out of the verifier. The largest such bucket is `category_not_unique` at 6 —
+  the proposer plots raw rows where the task said a total or an each-group figure.
+- **A DEMO DATASET MAY NEVER SPELL A GROUP KEY WITH A PANDAS NA SPELLING (M13.7b, closed).** The
+  third M13.7 blocker was not the verifier at all: `data/sales.csv` spelled North America `NA`, one
+  of the 19 default pandas NA spellings the CSV profile refuses, so every `groupby("region")`
+  program over it refused `value_not_in_profile` — 3 of the 25 simple design rows, and 6 of the 20
+  held-out simple rows, which capped the acceptance ceiling at 10/20 = 50% under `Intent`'s
+  required 70%. The refusal is CORRECT: pandas reads those cells as missing, `groupby` drops all 3
+  rows, and the drawn figure really would lose a bar. So the DATA carried the defect. The region
+  code is now `NAM` and every spelling in that column must stay outside `csvread.NA_SPELLINGS`;
+  measured over the same captures, simple VERIFIED went 0/25 → 2/25 and `value_not_in_profile`
+  3/25 → 0/25, with `column_not_numeric` 2 → 3 as one row's true fault stopped being masked. The
+  adversarial NA case is banked on fixtures that are NOT `data/sales.csv`, three ways:
+  `tests/test_pysrc_aggregate.py`'s 19 hand-stated spellings through the VALUE column, its
+  key-column end-to-end refusal (S2), and `data/deliberately_dirty.csv`, which keeps its literal
+  `NA` for JSON mode's "only an empty cell is null" claim. The digest of `data/sales.csv` is cited
+  in 25 tracked files, so a data edit is replayed by `uv run --locked python
+  tools/rederive_dataset_hashes.py` — idempotent, recomputing each citation from the CSV — and
+  `tests/test_dataset_digests.py` fails on any stale one.
 - **The SECOND mark is CANCELLED (user ruling), and `CorePlotSpec` keeps ONE mark.** It converts
   zero held-out prompts. It existed for heldout simple 06/14 ("separate city lines"), but
   `weather.csv` is LONG — 8 rows = 4 dates x 2 cities — so two marks over two columns cannot draw

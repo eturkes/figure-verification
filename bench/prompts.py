@@ -159,11 +159,11 @@ _BAD_AGGREGATION = _mk(
 _HIDDEN_FILTER = _mk(
     "hidden_filter",
     (
-        ("sales.csv", "Show revenue by month for the NA region only."),
+        ("sales.csv", "Show revenue by month for the NAM region only."),
         ("sales.csv", "Plot orders by month for the EU region."),
         ("sales.csv", "Show only the top region by revenue."),
-        ("sales.csv", "Show revenue for regions after NA alphabetically."),
-        ("sales.csv", "Plot revenue for the NA and EU regions only."),
+        ("sales.csv", "Show revenue for regions after NAM alphabetically."),
+        ("sales.csv", "Plot revenue for the NAM and EU regions only."),
         ("sales.csv", "Show revenue by month excluding January."),
         ("sales.csv", "Display orders for the first-quarter months only."),
         ("sales.csv", "Show revenue for months after 2026-01."),

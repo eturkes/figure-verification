@@ -16,6 +16,7 @@ import hashlib
 import math
 import struct
 from dataclasses import replace
+from pathlib import Path
 from typing import get_args
 
 import pytest
@@ -28,6 +29,8 @@ from verifier.pysrc.errors import PysrcCallerError, PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.project import project
 from verifier.pysrc.table import PlottedTable
+
+_ROOT = Path(__file__).resolve().parent.parent
 
 _DATASET_PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 
@@ -799,3 +802,30 @@ def test_g11r_certify_refuses_a_grouped_spec_without_its_counts() -> None:
         certify(ungrouped, table, b"", target, (1, 1))
     assert certify(grouped, table, b"", target, (1, 1)).group_counts == (1, 1)
     assert certify(ungrouped, table, b"", target, None).group_counts is None
+
+
+# --- D + S: the committed demo dataset (M13.7b) ------------------------------
+
+
+def test_d1_the_committed_sales_csv_verifies_grouped() -> None:
+    """D1: a grouped program over the COMMITTED `data/sales.csv` bytes verifies, with
+    `table.x == ("EU", "NAM")` and `group_counts == (3, 3)`. This is M13.7b's whole point: the
+    region code was `NA`, one of the 19 pandas NA spellings, so the exactly-admitted groupby
+    program refused `value_not_in_profile` and six held-out simple rows were unreachable. It reads
+    the real committed bytes rather than a fixture, so it goes red again the moment any NA spelling
+    reappears in any column of that file."""
+    content = (_ROOT / "data" / "sales.csv").read_bytes()
+    result = _aggregate_verdict(content, "sum")
+    assert isinstance(result, Verified)
+    assert result.table.x == ("EU", "NAM")
+    assert result.certificate.group_counts == (3, 3)
+
+
+def test_s2_an_na_group_key_refuses_value_not_in_profile() -> None:
+    """S2: `verify_python_source` over a grouped program whose KEY column holds `NA` refuses
+    `value_not_in_profile`. R6 sweeps all 19 spellings through the VALUE column; the key column is
+    a separate path and it is the one `data/sales.csv` used to exercise. Banked here because the
+    corpus gave the case up: it goes red if the profile ever stops refusing a key-column NA."""
+    result = _aggregate_verdict(b"region,revenue\nNA,1\nEU,2\nNA,3\n", "sum")
+    assert isinstance(result, Refused)
+    assert result.code == "value_not_in_profile"

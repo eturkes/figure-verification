@@ -867,7 +867,7 @@ def test_render_from_evidence_ignores_later_live_source_change(tmp_path: Path, a
     expected = render.render_prepared(_prepare(spec, evidence))
 
     if action == "mutate":
-        source.write_bytes(b"month,region,revenue,orders\n2099-01,NA,1,1\n")
+        source.write_bytes(b"month,region,revenue,orders\n2099-01,NAM,1,1\n")
     else:
         source.unlink()
 

@@ -83,7 +83,7 @@ _TASK_PROMPTS: dict[GuidanceSchemaId, str] = {
     DATASET_SCHEMA_ID: (
         "Chart total revenue by month as a bar chart. The dataset is sales.csv with columns "
         "month and revenue and hash "
-        "sha256:76356bebaa43bc76ee98fd6a1f1aa29cd7f127408fd43de87adcb7ed5df0478f. "
+        "sha256:a4e6f2456c778e9f55f9681911b60558aacc37e8eb0b79d5c216db7d3542af0a. "
         "Reply with one JSON object."
     ),
     FORMULA_SCHEMA_ID: (

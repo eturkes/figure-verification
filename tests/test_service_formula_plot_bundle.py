@@ -753,10 +753,13 @@ def test_t42_dataset_preservation_manifest_matches_baseline() -> None:
 
 
 def test_dataset_http_responses_match_baseline() -> None:
-    """Dataset transport bytes match baseline 7491481 over every POST and GET.
+    """Dataset transport bytes match baseline `bc5664b` over every POST and GET.
 
     T42 above decides bundle/archive/audit/replay bytes and never builds an app, so it cannot
     see a transport regression. This one compares status, headers, and exact response bodies.
+    Both runs read the CANDIDATE tree's `data/` and `examples/`, so it decides transport CODE and a
+    fixture edit does not move every body at once; the script's docstring names the three checks
+    that pin the fixture bytes instead.
     """
     script = __file__.replace(
         "test_service_formula_plot_bundle.py", "dataset_http_response_diff.py"

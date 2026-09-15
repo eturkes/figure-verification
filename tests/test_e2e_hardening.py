@@ -368,7 +368,7 @@ def test_06_archived_replay_ignores_live_dataset_mutation_and_deletion(
         original = cast("dict[str, Any]", original_response.json())
         assert original["verified"] is True
 
-        mutated_csv = original_csv + b"2099-01,NA,1,1\n"
+        mutated_csv = original_csv + b"2099-01,NAM,1,1\n"
         source.write_bytes(mutated_csv)
         mutated_document = cast("dict[str, Any]", json.loads(_GOOD_SPEC.read_bytes()))
         dataset = cast("dict[str, Any]", mutated_document["dataset"])

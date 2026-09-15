@@ -260,7 +260,7 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
     monkeypatch.setattr(service_app, "propose_spec", AsyncMock(return_value=_proposal(raw)))
     original_verify_run = checks.verify_run
     calls = 0
-    replacement = b"month,region,revenue,orders\n2099-01,NA,1.00,1\n"
+    replacement = b"month,region,revenue,orders\n2099-01,NAM,1.00,1\n"
 
     def capture_then_mutate(
         captured_spec: VPlotSpec,

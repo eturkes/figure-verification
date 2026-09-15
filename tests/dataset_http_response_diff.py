@@ -16,6 +16,14 @@ extra one fails, the one changed operation is hand-stated down to the shape of i
 change, and the single prose-only allowance still pins the wire shape it covers. The new
 document's own bytes are pinned by the committed OpenAPI golden.
 
+Both runs read the CANDIDATE tree's `data/` and `examples/`, copied into the baseline worktree
+before it runs. This differential decides transport CODE, and a fixture edit would otherwise move
+every dataset body at once and leave it with nothing to say: M13.7b renamed the region code in
+`data/sales.csv`, which changed each example spec's `dataset.hash` and fired all seven POST/GET
+surfaces at once. The fixture bytes are pinned elsewhere and three of those checks fired on the same
+edit -- `tests/test_dataset_digests.py`, `bench/__main__.py`'s two corpus identity digests, and
+`tests/test_checks.py`'s canonical-report byte pin -- so nothing here is left unguarded.
+
 Determinism comes from three pins the HTTP path otherwise leaves free: a seeded signing key, a
 frozen occurrence clock, and a fixed attempt nonce. All three patch targets exist in both trees.
 The proposer backend is stubbed to one fixed reply, so /propose-spec exercises its whole
@@ -25,6 +33,7 @@ writer's signature must leave every /propose-spec response exactly where it was.
 """
 
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -344,6 +353,8 @@ def main() -> None:
             capture_output=True,
         )
         try:
+            for fixtures in ("data", "examples"):
+                shutil.copytree(_ROOT / fixtures, baseline / fixtures, dirs_exist_ok=True)
             expected = _run(baseline)
         finally:
             subprocess.run(  # noqa: S603 — fixed literal argv
