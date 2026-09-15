@@ -26,7 +26,13 @@ type BinOp = Literal["add", "sub", "mul", "div", "pow"]
 # from a zero baseline, which a continuous sample has no claim to. Mirrors `schema.FormulaMark`.
 type FormulaMark = Literal["line", "scatter"]
 # The dataset arm adds bar: a CSV column carries the categorical magnitude a bar's length claims.
-type DatasetMark = Literal["line", "scatter", "bar"]
+# `barh` is the same claim rotated -- the length still encodes magnitude from a zero baseline, so it
+# carries bar's integrity rules unchanged and differs only in the axis the renderer draws it on.
+type DatasetMark = Literal["line", "scatter", "bar", "barh"]
+# Grouped reductions, closed. Each one is a total function from a group's cells to one number, which
+# is what lets recomputation reproduce it exactly; a reduction needing a parameter (quantile, std's
+# delta degrees of freedom) would need that parameter projected and is therefore not a member.
+type Reduction = Literal["sum", "mean", "min", "max"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +109,14 @@ class Labels:
     series: str | None = None
     legend: bool = False
     grid: bool = False
+    # Presentation, and DATA-EFFECT-FREE by construction: none of the three can change a value in
+    # the plotted table. They are carried rather than discarded because admission admits nothing it
+    # cannot represent -- a projection that dropped them would be silently ignoring a statement.
+    # `figsize` is exact `Fraction` for the same reason every other projected number is: the figure
+    # size the program passes is the size it passes, and a float would round it.
+    figsize: tuple[Fraction, Fraction] | None = None
+    tick_rotation: Fraction | None = None
+    tight_layout: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +163,12 @@ class DatasetPlot:
     x: Column
     y: Column
     labels: Labels
+    # `None` is the column pair M13.4 admitted: x and y are read row for row. A reduction means
+    # `x.groupby(<x>)[<y>].<group>()`, so the group KEY is the x channel and the REDUCED column is
+    # the y channel, and one row of the plotted table is one group rather than one file row. No new
+    # union member and no new total map: a reduction changes how the two named columns combine, not
+    # what the spec is.
+    group: Reduction | None = None
 
 
 # The union M13.4 widened. Every total map over it needs its own exact-set pin: this repo has

@@ -18,15 +18,17 @@ import csv
 import io
 import math
 import re
+from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
+from verifier.pysrc.aggregate import Aggregated, aggregate_series
 from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits
 from verifier.pysrc.spec import DatasetMark, DatasetPlot
 from verifier.pysrc.table import CellValue
 
-__all__ = ["NA_SPELLINGS", "read_columns"]
+__all__ = ["NA_SPELLINGS", "DatasetSeries", "read_columns"]
 
 # Every default NA spelling pandas recognises, measured on the target build. A cell matching one of
 # these -- quoted or plain -- refuses rather than becoming a null: the verifier has no null, and
@@ -60,6 +62,8 @@ _CR = ord("\r")
 _LF = ord("\n")
 _INT32_MIN = -(2**31)
 _INT32_MAX = 2**31 - 1
+# The marks whose magnitude is drawn as a LENGTH, which is the Pyodide integer path C10 bounds.
+_INT_HEIGHT_MARKS = frozenset({"bar", "barh"})
 _MAX_SIGNIFICANT_DIGITS = 15
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _BOOLEAN_TEXT = frozenset({"true", "false"})
@@ -192,15 +196,24 @@ def _numeric_value(text: str) -> float:
     return _profile_float(text, value)
 
 
-def _x_values(texts: tuple[str, ...], mark: DatasetMark) -> tuple[CellValue, ...]:
+def _x_values(
+    texts: tuple[str, ...], mark: DatasetMark, *, grouped: bool = False
+) -> tuple[CellValue, ...]:
+    """The x column as cells. `grouped` reads it as a GROUP KEY rather than as an axis.
+
+    That is the whole difference, and it is one clause: a raw x column refuses `mixed` because half
+    a numeric axis cannot be drawn, while a key column has no axis until it is reduced and pandas
+    groups `['2', 'a', '10', '2']` perfectly well -- measured, as the text keys `['10', '2', 'a']`.
+    `scatter` is unmoved either way, since its x IS a coordinate however it was produced.
+    """
     column_class = _classify_column(texts)
     match mark:
         case "scatter":
             if column_class == "categorical":
                 _refuse("column_not_numeric")
             return tuple(_numeric_value(text) for text in texts)
-        case "line" | "bar":
-            if column_class == "mixed":
+        case "line" | "bar" | "barh":
+            if column_class == "mixed" and not grouped:
                 _refuse("column_not_numeric")
             if column_class == "numeric":
                 return tuple(_numeric_value(text) for text in texts)
@@ -215,12 +228,41 @@ def _y_values(texts: tuple[str, ...]) -> tuple[float, ...]:
     return tuple(_numeric_value(text) for text in texts)
 
 
+@dataclass(frozen=True, kw_only=True, slots=True)
+class DatasetSeries:
+    """The plotted columns, plus the per-group evidence G11 publishes when there is any.
+
+    `group_counts` is `None` for an ungrouped plot and never an empty tuple: "this figure draws no
+    groups" and "this figure draws zero groups" are different statements, and the certificate says
+    only the first one.
+    """
+
+    x: tuple[CellValue, ...]
+    y: tuple[float, ...]
+    group_counts: tuple[int, ...] | None
+
+
+def _check_renderer_bound(reduced: Aggregated, mark: DatasetMark) -> None:
+    """C10's int32 clause, re-asserted on the REDUCTION rather than on the cells it came from.
+
+    A sum of in-profile cells leaves the range easily. Measured on both target Pyodide builds:
+    `bar` and `barh` raise `OverflowError: Python int too large to convert to C long` on the int64
+    heights `[4294967294, -4294967296]`, while in-range controls render. Dtype retention is what
+    keeps this narrow -- an integer `mean` is float64 and never reaches the renderer's integer
+    branch, and `plot`/`scatter` preserve their float64 bits either way.
+    """
+    if reduced.dtype != "int64" or mark not in _INT_HEIGHT_MARKS:
+        return
+    if any(not _INT32_MIN <= value <= _INT32_MAX for value in reduced.values):
+        _refuse("value_not_in_profile")
+
+
 def read_columns(
     content: bytes,
     plot: DatasetPlot,
     limits: PysrcLimits,
     budget: WorkBudget,
-) -> tuple[tuple[CellValue, ...], tuple[float, ...]]:
+) -> DatasetSeries:
     """The two selected columns of the user's CSV, in file order, or a refusal.
 
     Takes the whole projected `DatasetPlot` rather than loose names: the column names and the mark
@@ -232,6 +274,10 @@ def read_columns(
 
     Both selected columns are swept for inadmissible text before classification. stdlib `float`
     success decides numeric, categorical or mixed. The mark decides which class its role admits.
+
+    A projected `group` reduces the pair instead of plotting it: x becomes the sorted group keys
+    and y their reduced values. Every cell still passes the profile FIRST, so aggregation reduces
+    admitted numbers only.
     """
     header, rows = _read_csv(content, limits, budget)
     x_index, y_index = _column_indices(header, plot)
@@ -241,4 +287,15 @@ def read_columns(
         _check_selected_text(y_text)
     x_texts = tuple(x_text for x_text, _ in selected)
     y_texts = tuple(y_text for _, y_text in selected)
-    return _x_values(x_texts, plot.mark), _y_values(y_texts)
+    if plot.group is not None:
+        reduced = aggregate_series(
+            _x_values(x_texts, plot.mark, grouped=True),
+            y_texts,
+            _y_values(y_texts),
+            plot.group,
+            budget=budget,
+            max_groups=limits.max_groups,
+        )
+        _check_renderer_bound(reduced, plot.mark)
+        return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=reduced.counts)
+    return DatasetSeries(x=_x_values(x_texts, plot.mark), y=_y_values(y_texts), group_counts=None)

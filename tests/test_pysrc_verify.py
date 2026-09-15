@@ -561,6 +561,7 @@ def test_w4_limits_field_set() -> None:
         "max_csv_cell_bytes",
         "max_table_rows",
         "max_expr_nodes",
+        "max_groups",
         "max_work",
     }
     assert {item.name for item in fields(PysrcLimits)} == field_names

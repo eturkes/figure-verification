@@ -46,8 +46,8 @@ def _formula_target() -> spec.FormulaTarget:
 
 
 def test_k1_certificate_field_set() -> None:
-    """Exactly `version, source_sha256, spec_sha256, table_sha256, provenance, artifact_sha256,
-    numeric_profile, checks, declared_open, interpretation`.
+    """Exactly `version, source_sha256, spec_sha256, table_sha256, group_counts, provenance,
+    artifact_sha256, numeric_profile, checks, declared_open, interpretation`.
 
     Accept: `__dataclass_fields__` pinned as an exact hand-stated set; adding a field without
     updating the pin goes red.
@@ -59,6 +59,7 @@ def test_k1_certificate_field_set() -> None:
         "source_sha256",
         "spec_sha256",
         "table_sha256",
+        "group_counts",
         "provenance",
         "artifact_sha256",
         "numeric_profile",

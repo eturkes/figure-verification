@@ -69,6 +69,19 @@ class Refused:
     code: RefusalCode
 
 
+@dataclass(frozen=True, slots=True)
+class Recomputation:
+    """The plotted table, plus the per-group counts G11 publishes when the plot is an aggregate.
+
+    Kept OUT of `PlottedTable` deliberately: the table is what the figure draws and what every
+    comparison surface compares against, while the counts are evidence about how those rows were
+    produced. A field on the comparison surface that no comparison reads is how a claim rots.
+    """
+
+    table: PlottedTable
+    group_counts: tuple[int, ...] | None
+
+
 type Verdict = Verified | Refused
 
 
@@ -151,24 +164,27 @@ def _dataset_table(
     target: DeclaredTarget | None,
     limits: PysrcLimits,
     budget: WorkBudget,
-) -> PlottedTable:
+) -> Recomputation:
     if not isinstance(target, DatasetTarget):  # pragma: no cover - binding closes it
         _refuse("source_not_supplied")
-    x, y = read_columns(target.content, spec, limits, budget)
-    return _finish_table(x, y, budget)
+    series = read_columns(target.content, spec, limits, budget)
+    return Recomputation(
+        table=_finish_table(series.x, series.y, budget),
+        group_counts=series.group_counts,
+    )
 
 
 def recompute(
     spec: CorePlotSpec,
     target: DeclaredTarget | None,
     limits: PysrcLimits,
-) -> PlottedTable:
+) -> Recomputation:
     """Every plotted number, derived from the source rather than read from the program."""
     validate_limits(limits)
     budget = WorkBudget(limits.max_work)
     try:
         if isinstance(spec, FormulaPlot):
-            return _formula_table(spec, limits, budget)
+            return Recomputation(table=_formula_table(spec, limits, budget), group_counts=None)
         if isinstance(spec, DatasetPlot):
             return _dataset_table(spec, target, limits, budget)
         assert_never(spec)  # pragma: no cover - `CorePlotSpec` is closed
@@ -203,7 +219,7 @@ def _formula_integrity(spec: FormulaPlot, table: PlottedTable) -> None:
 
 def _dataset_integrity(spec: DatasetPlot, table: PlottedTable) -> None:
     match spec.mark:
-        case "bar":
+        case "bar" | "barh":
             categories = tuple(value for value in table.x if isinstance(value, str))
             if len(categories) == len(table.x) and len(set(categories)) != len(categories):
                 _refuse("category_not_unique")
@@ -247,9 +263,10 @@ def verify_python_source(
         tree = parse_admitted(text)
         spec = project(tree, limits)
         bound_target = bind_target(spec, declared_target)
-        table = recompute(spec, bound_target, limits)
+        recomputation = recompute(spec, bound_target, limits)
+        table = recomputation.table
         check_integrity(spec, table)
-        certificate = certify(spec, table, source_bytes, bound_target)
+        certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
         return Verified(spec=spec, table=table, certificate=certificate)
     except PysrcRefusalError as exc:
         return Refused(code=exc.code)

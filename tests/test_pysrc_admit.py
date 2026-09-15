@@ -24,6 +24,8 @@ from verifier.pysrc.admit import (
     ADMITTED_CONSTANT_ATTRS,
     ADMITTED_IMPORTS,
     ADMITTED_KEYWORDS,
+    ADMITTED_TUPLE_KEYWORDS,
+    ADMITTED_VALUE_ATTRS,
     parse_admitted,
 )
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
@@ -205,7 +207,7 @@ def test_a6_admitted_keywords_pass() -> None:
     "call",
     [
         # Unknown everywhere.
-        "plt.plot(1, color='r')",
+        "plt.plot(1, alpha=0.5)",
         "plt.plot(1, linewidth=2)",
         "plt.plot(1, cmap='viridis')",
         "np.linspace(0, 1, endpoint=False)",
@@ -214,6 +216,10 @@ def test_a6_admitted_keywords_pass() -> None:
         # Admitted on ANOTHER target: the per-target closure is the predicate.
         "plt.plot(1, num=5)",
         "np.linspace(0, 1, label='a')",
+        "plt.bar(1, 2, linestyle=':')",
+        "plt.scatter(1, 2, figsize=(8, 5))",
+        "plt.figure(rotation=45)",
+        "plt.xticks(figsize=(8, 5))",
         # No statically known keyword set at all.
         "plt.legend(**{})",
     ],
@@ -400,6 +406,10 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_stages() -> None:
         "source_not_literal",
         "column_not_literal",
         "column_not_from_source",
+        # M13.6 width. An admitted shape whose MEANING the projection cannot state, and an
+        # admitted call in a position that would orphan what the program already drew.
+        "aggregation_not_projected",
+        "figure_orphans_mark",
     }
     # M13.5. `bind` compares the program against the artifact the USER supplied; `recompute` reads
     # those bytes and evaluates; `integrity` judges what the recomputed figure would misrepresent.
@@ -550,11 +560,15 @@ def test_the_admitted_maps_are_pinned_as_literals() -> None:
             "plt.plot",
             "plt.scatter",
             "plt.bar",
+            "plt.barh",
             "plt.title",
             "plt.xlabel",
             "plt.ylabel",
             "plt.legend",
             "plt.grid",
+            "plt.figure",
+            "plt.tight_layout",
+            "plt.xticks",
             "plt.show",
             "pd.read_csv",
         }
@@ -563,9 +577,14 @@ def test_the_admitted_maps_are_pinned_as_literals() -> None:
     assert ADMITTED_IMPORTS == {"matplotlib.pyplot": "plt", "numpy": "np", "pandas": "pd"}
     assert expected_attrs == ADMITTED_CONSTANT_ATTRS
     assert expected_targets == ADMITTED_CALL_TARGETS
+    assert ADMITTED_VALUE_ATTRS == frozenset({"index", "values"})
+    assert ADMITTED_TUPLE_KEYWORDS == {("plt.figure", "figsize"): 2}
     assert {t: sorted(k) for t, k in ADMITTED_KEYWORDS.items() if k} == {
         "np.linspace": ["num"],
-        "plt.plot": ["label"],
-        "plt.scatter": ["label"],
-        "plt.bar": ["label"],
+        "plt.plot": ["color", "label", "linestyle", "marker"],
+        "plt.scatter": ["color", "label", "marker"],
+        "plt.bar": ["color", "label"],
+        "plt.barh": ["color", "label"],
+        "plt.figure": ["figsize"],
+        "plt.xticks": ["rotation"],
     }

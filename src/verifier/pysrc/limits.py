@@ -39,6 +39,11 @@ class PysrcLimits:
     max_csv_cell_bytes: int = 512
     max_table_rows: int = 100_000
     max_expr_nodes: int = 1_000
+    # Groups are PLOTTED MARKS, so this is a legibility ceiling before it is a cost one: a chart
+    # with a thousand bars is already unreadable, and the reduction charges work per group anyway.
+    # It binds ahead of the reduction rather than after, so a high-cardinality key column refuses
+    # before its groups are materialized.
+    max_groups: int = 1_000
     # The binding ceiling in practice: the other caps multiply out to far more evaluation than a
     # demo may spend, so this is what refuses a program that is admissible but not affordable.
     # Measured, not guessed: `tools/bench_pysrc_work.py` on a quiet host of record put the binding

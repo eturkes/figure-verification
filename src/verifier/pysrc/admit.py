@@ -35,8 +35,13 @@ ADMITTED_IMPORTS: dict[str, str] = {"matplotlib.pyplot": "plt", "numpy": "np", "
 # Closed call-target set, spelled `<alias>.<attr>`, grouped by the idiom class each serves.
 _GRID_TARGETS = frozenset({"np.linspace", "np.arange"})
 _MATH_TARGETS = frozenset({"np.sin", "np.cos", "np.tan", "np.exp", "np.log", "np.sqrt", "np.abs"})
-_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar"})
+_MARK_TARGETS = frozenset({"plt.plot", "plt.scatter", "plt.bar", "plt.barh"})
 _DECOR_TARGETS = frozenset({"plt.title", "plt.xlabel", "plt.ylabel", "plt.legend", "plt.grid"})
+# Presentation calls, admitted because the measured proposer writes them in 16 of 25 simple prompts
+# and none of them can change a plotted value. `plt.figure` is the exception that proves the class:
+# a SECOND one starts a new figure and would orphan whatever was already drawn, so projection binds
+# it to a position (`figure_orphans_mark`) rather than treating it as free.
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})
 _TERMINAL_TARGETS = frozenset({"plt.show"})
 # Exactly one reader. `read_table`, `read_excel` and friends stay out: each would need its own
 # projection rule for separators, sheets and header handling before the verifier could state what
@@ -47,6 +52,7 @@ ADMITTED_CALL_TARGETS = (
     | _MATH_TARGETS
     | _MARK_TARGETS
     | _DECOR_TARGETS
+    | _PRESENTATION_TARGETS
     | _TERMINAL_TARGETS
     | _SOURCE_TARGETS
 )
@@ -63,9 +69,19 @@ ADMITTED_KEYWORDS: dict[str, frozenset[str]] = {
     "np.log": frozenset(),
     "np.sqrt": frozenset(),
     "np.abs": frozenset(),
-    "plt.plot": frozenset({"label"}),
-    "plt.scatter": frozenset({"label"}),
-    "plt.bar": frozenset({"label"}),
+    # Style keywords are closed PER TARGET to match matplotlib's own signature: `plot` takes a
+    # linestyle, `bar` does not, and admitting one set for every mark would admit calls that would
+    # raise when executed. Each carries a string literal and therefore no data. `c=` and `cmap=`
+    # stay out: they are the colour-by-category channel, which encodes a column the projection
+    # does not state. `s=` stays out: it is G6's area-encoding channel. `alpha=` and
+    # `edgecolors=` stay out because nothing measured asks for them.
+    "plt.plot": frozenset({"label", "color", "marker", "linestyle"}),
+    "plt.scatter": frozenset({"label", "color", "marker"}),
+    "plt.bar": frozenset({"label", "color"}),
+    "plt.barh": frozenset({"label", "color"}),
+    "plt.figure": frozenset({"figsize"}),
+    "plt.tight_layout": frozenset(),
+    "plt.xticks": frozenset({"rotation"}),
     "plt.title": frozenset(),
     "plt.xlabel": frozenset(),
     "plt.ylabel": frozenset(),
@@ -79,6 +95,24 @@ ADMITTED_KEYWORDS: dict[str, frozenset[str]] = {
 
 # Attribute reads that are values rather than call targets.
 ADMITTED_CONSTANT_ATTRS = frozenset({"np.pi", "np.e"})
+# `<bound name>.index` and `<bound name>.values` -- ONE idiom class, because admission has no types
+# and cannot tell an aggregate from a frame. PROJECTION decides: an aggregate's index is its group
+# key, while `df.values` is the whole frame as an array and refuses `column_not_from_source` there.
+ADMITTED_VALUE_ATTRS = frozenset({"index", "values"})
+
+# `(target, keyword) -> element count`. A tuple display is refused everywhere else by the expression
+# tail, so this is the ONLY door a tuple enters the language by, and it is keyed per keyword rather
+# than opened globally: `figsize` is the one admitted tuple.
+ADMITTED_TUPLE_KEYWORDS: dict[tuple[str, str], int] = {("plt.figure", "figsize"): 2}
+# Targets admitting NO positional argument. `plt.figure(1)` selects a figure by number, which is a
+# figure-lifecycle effect the spec does not represent, so it refuses rather than being ignored.
+_NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
+
+# The `groupby` idiom, admitted as ONE atomic shape rather than link by link. `_dotted` bounds an
+# attribute chain to depth 1 against an `ast.Name`, so the outer `.sum` of a chain -- whose receiver
+# is a `Subscript` -- would refuse before the shape could be read at all.
+_GROUPBY = "groupby"
+_REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
 
 _ADMITTED_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)
 _ADMITTED_UNARYOPS = (ast.USub,)
@@ -122,10 +156,138 @@ def _dotted(node: ast.Attribute) -> tuple[str, str]:
 def _admit_constant_attr(node: ast.Attribute, scope: _Scope) -> None:
     """Admit a bare attribute READ, as opposed to a call target."""
     alias, dotted = _dotted(node)
-    if dotted not in ADMITTED_CONSTANT_ATTRS:
+    if node.attr not in ADMITTED_VALUE_ATTRS and dotted not in ADMITTED_CONSTANT_ATTRS:
         _refuse("attribute_not_admitted")
     if alias not in scope.bound:
         _refuse("name_not_bound")
+
+
+def _groupby_root(node: ast.expr) -> tuple[ast.Call, ast.Name] | None:
+    """The innermost `<name>.groupby(...)` call an expression is rooted in, with that name.
+
+    Recognizing the aggregation family by its ROOT is what makes the chain admissible atomically.
+    A chain rooted in anything else -- `np.random.rand`, whose spine ends at an alias attribute --
+    returns `None` and keeps the depth-1 bound that refuses it.
+    """
+    current = node
+    while True:
+        if isinstance(current, ast.Call):
+            func = current.func
+            if not isinstance(func, ast.Attribute):
+                return None
+            if func.attr == _GROUPBY and isinstance(func.value, ast.Name):
+                return current, func.value
+            current = func.value
+        elif isinstance(current, (ast.Attribute, ast.Subscript)):
+            current = current.value
+        else:
+            return None
+
+
+@dataclass(frozen=True, slots=True)
+class AggregationChain:
+    """The canonical `<frame>.groupby("<key>")["<column>"].<reduction>()`, read structurally."""
+
+    frame: str
+    key: str
+    column: str
+    reduction: str
+
+
+def aggregation_chain(node: ast.expr) -> AggregationChain | None:
+    """Read the canonical chain, or `None` for every other shape.
+
+    The spine is written down ONCE, here beside the admission that closes it, and projection reads
+    it back instead of restating it: two matchers over one shape drift apart silently, and only one
+    of them would be the boundary.
+    """
+    match node:
+        case ast.Call(
+            func=ast.Attribute(
+                value=ast.Subscript(
+                    value=ast.Call(
+                        func=ast.Attribute(value=ast.Name(id=frame), attr=str() as grouper),
+                        args=[ast.Constant(value=str() as key)],
+                        keywords=[],
+                    ),
+                    slice=ast.Constant(value=str() as column),
+                ),
+                attr=str() as reduction,
+            ),
+            args=[],
+            keywords=[],
+        ) if grouper == _GROUPBY and reduction in _REDUCTIONS:
+            return AggregationChain(frame=frame, key=key, column=column, reduction=reduction)
+        case _:
+            return None
+
+
+def _admit_string_index(node: ast.expr) -> None:
+    """A string-literal column name. A tuple selection (`[["a", "b"]]`) lands here and refuses."""
+    if not isinstance(node, ast.Constant) or type(node.value) is not str:
+        _refuse("column_not_literal")
+
+
+def _admit_reduction_chain(node: ast.expr, root: ast.Call) -> None:
+    """The two links above the root: `["<col>"]`, then `.<reduction>()` with no argument."""
+    if not isinstance(node, ast.Call):
+        _refuse("attribute_not_admitted")
+    if node.args or node.keywords:
+        # A reduction carrying `axis=` or a positional computes something else entirely.
+        _refuse("keyword_not_admitted")
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr not in _REDUCTIONS:
+        _refuse("attribute_not_admitted")
+    selection = func.value
+    if not isinstance(selection, ast.Subscript) or selection.value is not root:
+        _refuse("attribute_not_admitted")
+    _admit_string_index(selection.slice)
+
+
+def _admit_aggregation(node: ast.expr, root: ast.Call, frame: ast.Name, scope: _Scope) -> None:
+    """Admit the `groupby` idiom as one closed shape. Three spellings pass.
+
+    The bare `<frame>.groupby("<key>")`, the canonical
+    `<frame>.groupby("<key>")["<col>"].<reduction>()`, and that chain carrying ONE trailing call
+    (`.reset_index()`, which the design set writes once). Only the canonical chain has a projection
+    rule; the other two admit so `project.py` can name what is wrong with them, since
+    `attribute_not_admitted` would blame an attribute where the real fault is an unstatable meaning.
+    """
+    if frame.id not in scope.bound:
+        _refuse("name_not_bound")
+    if len(root.args) != 1 or root.keywords:
+        _refuse("column_not_literal")
+    _admit_string_index(root.args[0])
+    if node is root:
+        return
+    reduction = node
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        receiver = node.func.value
+        if isinstance(receiver, ast.Call) and receiver is not root:
+            if node.func.attr.startswith("_") or node.args or node.keywords:
+                _refuse("attribute_not_admitted")
+            reduction = receiver
+    _admit_reduction_chain(reduction, root)
+
+
+def _admit_call_or_aggregation(node: ast.Call, scope: _Scope) -> None:
+    """Route one call: the aggregation idiom closes on its own shape, everything else by target."""
+    rooted = _groupby_root(node)
+    if rooted is None:
+        _admit_call(node, scope)
+        return
+    root, frame = rooted
+    _admit_aggregation(node, root, frame, scope)
+
+
+def _admit_number_tuple(node: ast.expr, arity: int) -> None:
+    """A fixed-arity tuple of NUMERIC literals, admitted in one keyword slot and nowhere else."""
+    if not isinstance(node, ast.Tuple) or len(node.elts) != arity:
+        _refuse("literal_not_admitted")
+    for element in node.elts:
+        # Exact type: `bool` subclasses `int`, and `figsize=(True, 6)` is not a figure size.
+        if not isinstance(element, ast.Constant) or type(element.value) not in (int, float):
+            _refuse("literal_not_admitted")
 
 
 def _admit_call(node: ast.Call, scope: _Scope) -> None:
@@ -142,7 +304,13 @@ def _admit_call(node: ast.Call, scope: _Scope) -> None:
         # `arg is None` is `**kwargs`, whose keyword set is not statically known at all.
         if keyword.arg is None or keyword.arg not in admitted:
             _refuse("keyword_not_admitted")
-        _admit_expr(keyword.value, scope)
+        arity = ADMITTED_TUPLE_KEYWORDS.get((target, keyword.arg))
+        if arity is None:
+            _admit_expr(keyword.value, scope)
+        else:
+            _admit_number_tuple(keyword.value, arity)
+    if node.args and target in _NO_POSITIONAL_TARGETS:
+        _refuse("keyword_not_admitted")
     for arg in node.args:
         # `*args` arrives as `ast.Starred`, which the expression tail refuses.
         _admit_expr(arg, scope)
@@ -158,7 +326,7 @@ def _admit_expr(node: ast.expr, scope: _Scope) -> None:
     elif isinstance(node, ast.Attribute):
         _admit_constant_attr(node, scope)
     elif isinstance(node, ast.Call):
-        _admit_call(node, scope)
+        _admit_call_or_aggregation(node, scope)
     elif isinstance(node, ast.BinOp):
         if not isinstance(node.op, _ADMITTED_BINOPS):
             _refuse("operator_not_admitted")
@@ -224,7 +392,7 @@ def _admit_stmt(node: ast.stmt, scope: _Scope) -> None:
         value = node.value
         if not isinstance(value, ast.Call):
             _refuse("statement_not_admitted")
-        _admit_call(value, scope)
+        _admit_call_or_aggregation(value, scope)
     else:
         # The closed tail: loops, `def`, `class`, `try`, `with`, `del`, `global`, `nonlocal`,
         # `raise`, `assert`, `async`, `from x import y`, annotated and augmented assignment.

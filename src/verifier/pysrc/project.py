@@ -18,9 +18,11 @@ admissible in the dataset arm: what refuses it is the arm, not the call.
 import ast
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import NoReturn
 
+from verifier.pysrc.admit import aggregation_chain
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.spec import (
@@ -42,6 +44,7 @@ from verifier.pysrc.spec import (
     Labels,
     Neg,
     Num,
+    Reduction,
     Var,
 )
 
@@ -65,29 +68,62 @@ _DATASET_MARKS: dict[str, DatasetMark] = {
     "plt.plot": "line",
     "plt.scatter": "scatter",
     "plt.bar": "bar",
+    "plt.barh": "barh",
 }
+# Source spelling -> reduced meaning, mirroring `admit._REDUCTIONS`: admission decides which chains
+# exist, projection names what each one computes.
+_REDUCTIONS: dict[str, Reduction] = {"sum": "sum", "mean": "mean", "min": "min", "max": "max"}
 _SOURCE_CALL = "pd.read_csv"
 # A mark resolved at its own statement, still owing the decorations that may follow it. Holding the
 # builder rather than the node is what keeps LOCAL-before-GLOBAL true for channels and arity.
 type _MarkBuilder = Callable[[Labels], CorePlotSpec]
 
 
+@dataclass(frozen=True, slots=True)
+class _Aggregate:
+    """A projected `groupby` chain: the frame it reads, its two columns, and the reduction."""
+
+    frame: str
+    key: Column
+    column: Column
+    reduction: Reduction
+
+
 def _uses_grid(tree: ast.Module) -> bool:
-    """Whether a grid call appears anywhere -- the formula arm's structural selector."""
+    """Whether a grid call appears anywhere -- the formula arm's structural selector.
+
+    Reads the spelling INLINE and refuses nothing. This runs before any statement does, so a
+    refusal here would decide the ARM for every program merely holding a call whose receiver is not
+    a bare name -- and an aggregation chain is exactly that call.
+    """
     return any(
-        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in ast.walk(tree)
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and f"{node.func.value.id}.{node.func.attr}" in _GRID_CALLS
+        for node in ast.walk(tree)
     )
 
 
 # Admissible source, inadmissible for THIS arm: a sampled function has no categorical magnitude to
-# encode as a length from a zero baseline (G5).
-_WRONG_ARM_MARKS = frozenset({"plt.bar"})
+# encode as a length from a zero baseline (G5). Both bar spellings live here and in NEITHER
+# `_MARKS`, so the wrong arm can never index a formula mark that does not exist.
+_WRONG_ARM_MARKS = frozenset({"plt.bar", "plt.barh"})
 _TERMINAL = "plt.show"
 _TEXT_LABELS = frozenset({"plt.title", "plt.xlabel", "plt.ylabel"})
 _FLAG_LABELS = frozenset({"plt.legend", "plt.grid"})
+_FIGURE = "plt.figure"
+_TIGHT_LAYOUT = "plt.tight_layout"
+_XTICKS = "plt.xticks"
+# Cosmetic calls: none can move a plotted number, so each projects onto a `Labels` field and the
+# figure it describes is the same figure. Carrying them is what keeps "nothing is silently ignored"
+# true once they are admitted.
+_PRESENTATION = frozenset({_FIGURE, _TIGHT_LAYOUT, _XTICKS})
 
 # A mark draws one series: x and y, never an implicit x and never a third positional.
 _MARK_ARITY = 2
+# Width and height, the only tuple the language admits at all.
+_FIGSIZE_ARITY = 2
 _LINSPACE_BOUNDS_ARITY = 2
 _LINSPACE_FULL_ARITY = 3
 _ARANGE_MAX_ARITY = 3
@@ -116,11 +152,44 @@ def _dotted(node: ast.Attribute) -> str:
     return f"{value.id}.{node.attr}"
 
 
-def _call_target(node: ast.Call) -> str:
+def _target(node: ast.Call) -> str | None:
+    """`alias.attr` for a call on a bare name, `None` for every other receiver.
+
+    Non-refusing on purpose. An aggregation chain calls its reduction on a SUBSCRIPT, so every
+    caller here has to be able to recognize that shape and refuse it with its own stage's code --
+    a refusal inside this function would land the wrong one, or land it too early.
+    """
     func = node.func
-    if not isinstance(func, ast.Attribute):  # pragma: no cover - admission refuses bare calls
-        _refuse("expression_not_projected")
-    return _dotted(func)
+    if not isinstance(func, ast.Attribute) or not isinstance(func.value, ast.Name):
+        return None
+    return f"{func.value.id}.{func.attr}"
+
+
+def _exact(node: ast.expr) -> Fraction:
+    """A numeric literal's exact value. Non-finite refuses rather than raising inside `Fraction`.
+
+    Exact type, never `isinstance`: `bool` subclasses `int`, and `figsize=(True, 6)` is not a size.
+    """
+    if not isinstance(node, ast.Constant):  # pragma: no cover - admission requires the literal
+        _refuse("label_not_literal")
+    value = node.value
+    if type(value) is int:
+        return Fraction(value)
+    if type(value) is not float or not math.isfinite(value):
+        _refuse("label_not_literal")
+    return Fraction(value)
+
+
+def _figsize(node: ast.Call) -> tuple[Fraction, Fraction] | None:
+    """`figsize=(w, h)` exactly, or `None` for the bare call that opens a default-sized figure."""
+    if not node.keywords:
+        return None
+    size = node.keywords[0].value
+    if (
+        not isinstance(size, ast.Tuple) or len(size.elts) != _FIGSIZE_ARITY
+    ):  # pragma: no cover - admission requires the 2-tuple
+        _refuse("label_not_literal")
+    return _exact(size.elts[0]), _exact(size.elts[1])
 
 
 class _Projector:
@@ -135,6 +204,7 @@ class _Projector:
         self._mark: _MarkBuilder | None = None
         self._frames: dict[str, DatasetRef] = {}
         self._cols: dict[str, tuple[str, Column]] = {}
+        self._aggs: dict[str, _Aggregate] = {}
         self._pandas = False
         # Decorations are collected keyed by their source target and assembled into `Labels` once,
         # so every field has exactly one origin and no branch has to guess which field it is.
@@ -142,6 +212,12 @@ class _Projector:
         self._text: dict[str, str] = {}
         self._flags: dict[str, bool] = {}
         self._series: str | None = None
+        self._figsize: tuple[Fraction, Fraction] | None = None
+        self._tick_rotation: Fraction | None = None
+        self._tight_layout = False
+        # Anything already ON the figure -- a mark, a decoration, a layout call. `plt.figure` is
+        # the only call that reads it, and it is what makes that call positional rather than free.
+        self._drawn = False
         self._grid_in_scope: Grid | None = None
         self._terminal = False
 
@@ -187,13 +263,17 @@ class _Projector:
         _refuse("expression_not_projected")  # pragma: no cover - admission closes the tail
 
     def _call_expr(self, node: ast.Call, grid_name: str | None) -> Expr:
-        target = _call_target(node)
+        target = _target(node)
         if target in _GRID_CALLS:
             # The grid call written twice -- once as x, once inside y -- names the same sample
             # points, so it projects to the grid variable exactly when the two grids are equal.
             if self._grid(node) != self._grid_in_scope:
                 _refuse("y_not_over_grid")
             return Var()
+        if target is None:
+            # An aggregation chain in value position. It reduces a column rather than naming a
+            # number, and no formula-arm expression can hold one.
+            _refuse("expression_not_projected")
         function = _FUNCTIONS.get(target)
         if function is None or len(node.args) != 1 or node.keywords:
             _refuse("expression_not_projected")
@@ -292,7 +372,7 @@ class _Projector:
         return Grid(start=Num(start), stop=Num(start + (count - 1) * step), samples=count)
 
     def _grid(self, node: ast.Call) -> Grid:
-        return self._linspace(node) if _call_target(node) == "np.linspace" else self._arange(node)
+        return self._linspace(node) if _target(node) == "np.linspace" else self._arange(node)
 
     # --- dataset arm ---------------------------------------------------------
 
@@ -341,21 +421,56 @@ class _Projector:
             or name in self._exprs
             or name in self._frames
             or name in self._cols
+            or name in self._aggs
         ):
             _refuse("name_rebound")
         value = node.value
-        if isinstance(value, ast.Call) and _call_target(value) in _GRID_CALLS:
-            self._grids[name] = self._grid(value)
-        elif isinstance(value, ast.Call) and _call_target(value) == _SOURCE_CALL:
+        if isinstance(value, ast.Call):
+            self._assign_call(name, value)
+            return
+        if isinstance(value, ast.Subscript):
+            self._cols[name] = self._column_parts(value)
+            return
+        # Held unprojected: a bound expression is only meaningful once the grid it reads is known,
+        # and that is decided at the mark.
+        self._exprs[name] = value
+
+    def _assign_call(self, name: str, node: ast.Call) -> None:
+        target = _target(node)
+        if target in _GRID_CALLS:
+            self._grids[name] = self._grid(node)
+            return
+        if target == _SOURCE_CALL:
             if self._frames:
                 _refuse("multiple_sources")
-            self._frames[name] = self._source(value)
-        elif isinstance(value, ast.Subscript):
-            self._cols[name] = self._column_parts(value)
-        else:
-            # Held unprojected: a bound expression is only meaningful once the grid it reads is
-            # known, and that is decided at the mark.
-            self._exprs[name] = value
+            self._frames[name] = self._source(node)
+            return
+        if target is None:
+            # `None` is exactly the LINKED aggregation shapes: a reduction called on a subscript,
+            # or a trailing call on a reduction. A bare `<frame>.groupby("<key>")` keeps its target
+            # and falls through to `_exprs`, where it reduces nothing and is never used.
+            self._aggs[name] = self._aggregate(node)
+            return
+        self._exprs[name] = node
+
+    def _aggregate(self, node: ast.Call) -> _Aggregate:
+        """Decompose the one chain shape that HAS a projection.
+
+        `.reset_index()` is admitted and arrives here too. It re-spells the reduced series as a
+        frame whose channels are column subscripts -- a DIFFERENT projection rather than a
+        decoration of this one -- so it refuses by name instead of being read as the chain beneath.
+        """
+        chain = aggregation_chain(node)
+        if chain is None:
+            _refuse("aggregation_not_projected")
+        if chain.frame not in self._frames:
+            _refuse("column_not_from_source")
+        return _Aggregate(
+            frame=chain.frame,
+            key=Column(name=chain.key),
+            column=Column(name=chain.column),
+            reduction=_REDUCTIONS[chain.reduction],
+        )
 
     def _label_call(self, target: str, node: ast.Call) -> None:
         if target in self._decorated:
@@ -380,6 +495,38 @@ class _Projector:
             flag = arg.value
         self._flags[target] = flag
 
+    def _presentation_call(self, target: str, node: ast.Call) -> None:
+        """The three cosmetic calls. Each fills a `Labels` field and none moves a number."""
+        if target == _FIGURE:
+            # The one cosmetic call bound to a POSITION: a new figure is a new canvas, so whatever
+            # was already drawn -- a mark, a title, a layout call -- is not in the artifact this
+            # program emits, and the spec would describe a chart the PNG does not contain. A second
+            # `plt.figure` orphans the first for the same reason.
+            if self._drawn:
+                _refuse("figure_orphans_mark")
+            self._drawn = True
+            self._figsize = _figsize(node)
+            return
+        if target in self._decorated:
+            # The earlier call ran, and its effect would vanish from the spec.
+            _refuse("statement_not_projected")
+        self._decorated.add(target)
+        self._drawn = True
+        if target == _TIGHT_LAYOUT:
+            if node.args or node.keywords:
+                _refuse("statement_not_projected")
+            self._tight_layout = True
+            return
+        if target == _XTICKS:
+            # A bare `plt.xticks()` READS the current ticks and changes nothing, so there is
+            # nothing to represent; a positional SETS tick locations or labels, which restates what
+            # the x axis says about the data and is a projection this spec does not have.
+            if node.args or not node.keywords:
+                _refuse("statement_not_projected")
+            self._tick_rotation = _exact(node.keywords[0].value)
+            return
+        _refuse("statement_not_projected")  # pragma: no cover - `_PRESENTATION` is closed
+
     def _labels(self) -> Labels:
         return Labels(
             title=self._text.get("plt.title"),
@@ -388,10 +535,17 @@ class _Projector:
             series=self._series,
             legend=self._flags.get("plt.legend", False),
             grid=self._flags.get("plt.grid", False),
+            figsize=self._figsize,
+            tick_rotation=self._tick_rotation,
+            tight_layout=self._tight_layout,
         )
 
     def _call_statement(self, node: ast.Call) -> None:
-        target = _call_target(node)
+        target = _target(node)
+        if target is None:
+            # An aggregation chain as a bare statement: admitted, computed, and discarded without
+            # drawing anything. Representing it is impossible; ignoring it would widen the gap.
+            _refuse("statement_not_projected")
         if target == _TERMINAL:
             if node.args or node.keywords:
                 _refuse("statement_not_projected")
@@ -412,9 +566,14 @@ class _Projector:
             if self._mark is not None:
                 _refuse("multiple_marks")
             self._mark = build
+            self._drawn = True
             return
         if target in _TEXT_LABELS or target in _FLAG_LABELS:
             self._label_call(target, node)
+            self._drawn = True
+            return
+        if target in _PRESENTATION:
+            self._presentation_call(target, node)
             return
         # An admitted call with no drawing effect -- `np.sin(x)` as a statement computes and
         # discards. Representing it is impossible; ignoring it would widen the gap.
@@ -441,16 +600,50 @@ class _Projector:
     # --- assembly ------------------------------------------------------------
 
     def _mark_shape(self, node: ast.Call) -> None:
-        """Arity and the one admitted keyword -- identical under both arms, so stated once."""
+        """Arity, and each keyword routed BY NAME -- identical under both arms, so stated once.
+
+        Only `label` names the series. Style keywords are validated as text and then discarded:
+        they carry no data, so the figure they describe is the same figure. Routing every keyword
+        into the series is what would publish `steelblue` as the legend text of a chart whose
+        legend says something else entirely.
+        """
         if len(node.args) != _MARK_ARITY:
             _refuse("mark_arity_not_projected")
         for keyword in node.keywords:
-            if keyword.arg != "label":  # pragma: no cover - admission closes the keyword set
-                _refuse("label_not_literal")
             text = keyword.value
             if not isinstance(text, ast.Constant) or type(text.value) is not str:
+                # `color=df["city"]` is the colour-by-category channel in disguise: a data effect
+                # wearing a cosmetic keyword's name.
                 _refuse("label_not_literal")
-            self._series = text.value
+            if keyword.arg == "label":
+                self._series = text.value
+
+    def _aggregate_bound(self, node: ast.expr, attribute: str) -> str | None:
+        """The bound name behind `<name>.<attribute>`, when it names a projected aggregate."""
+        if not isinstance(node, ast.Attribute) or node.attr != attribute:
+            return None
+        base = node.value
+        if not isinstance(base, ast.Name) or base.id not in self._aggs:
+            return None
+        return base.id
+
+    def _aggregate_channels(self, node: ast.Call) -> _Aggregate | None:
+        """One mark reads ONE reduction: an `.index` x demands the SAME name's values as y.
+
+        Mixing a reduced channel with a raw column, or reading `.values` as x, would draw a figure
+        whose two axes come from different tables -- and their lengths would agree often enough for
+        it to look right.
+        """
+        name = self._aggregate_bound(node.args[0], "index")
+        if name is None:
+            return None
+        y = node.args[1]
+        if self._aggregate_bound(y, "values") != name and not (
+            isinstance(y, ast.Name) and y.id == name
+        ):
+            _refuse("column_not_from_source")
+        self._used.add(name)
+        return self._aggs[name]
 
     def _resolve_dataset_mark(self, target: str, node: ast.Call) -> _MarkBuilder:
         # The arm's precondition reads first: with no source bound, no channel can name a column,
@@ -458,13 +651,25 @@ class _Projector:
         if not self._frames:
             _refuse("no_source")
         self._mark_shape(node)
+        mark = _DATASET_MARKS[target]
+        aggregate = self._aggregate_channels(node)
+        if aggregate is not None:
+            self._used.add(aggregate.frame)
+            grouped = self._frames[aggregate.frame]
+            return lambda labels: DatasetPlot(
+                mark=mark,
+                source=grouped,
+                x=aggregate.key,
+                y=aggregate.column,
+                labels=labels,
+                group=aggregate.reduction,
+            )
         x_frame, x = self._channel(node.args[0])
         y_frame, y = self._channel(node.args[1])
         if x_frame != y_frame:  # pragma: no cover - `multiple_sources` keeps `_frames` a singleton
             # Dead while exactly one source binds, and kept anyway: the day a second source is
             # admitted, this is the line that stops the figure being a join no projection states.
             _refuse("column_not_from_source")
-        mark = _DATASET_MARKS[target]
         source = self._frames[x_frame]
         return lambda labels: DatasetPlot(mark=mark, source=source, x=x, y=y, labels=labels)
 
@@ -476,7 +681,7 @@ class _Projector:
             grid_name = x_node.id
             grid = self._grids[grid_name]
             self._used.add(grid_name)
-        elif isinstance(x_node, ast.Call) and _call_target(x_node) in _GRID_CALLS:
+        elif isinstance(x_node, ast.Call) and _target(x_node) in _GRID_CALLS:
             grid = self._grid(x_node)
         else:
             _refuse("x_not_a_grid")
@@ -502,7 +707,11 @@ class _Projector:
         # The mark resolved at its own statement; only the decorations, which may follow it, wait.
         plot = self._mark(self._labels())
         unused = (
-            self._grids.keys() | self._exprs.keys() | self._frames.keys() | self._cols.keys()
+            self._grids.keys()
+            | self._exprs.keys()
+            | self._frames.keys()
+            | self._cols.keys()
+            | self._aggs.keys()
         ) - self._used
         if unused:
             # Bound, admitted, executed, and absent from the spec: exactly the gap this module

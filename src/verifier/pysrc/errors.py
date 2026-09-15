@@ -62,6 +62,15 @@ RefusalCode = Literal[
     "source_not_literal",
     "column_not_literal",
     "column_not_from_source",
+    # An admitted `groupby` chain whose MEANING the projection cannot state. Distinct from
+    # `statement_not_projected`: the statement is a projectable kind, and distinct from
+    # `column_not_from_source`: the columns may be perfectly valid. What is missing is a rule for
+    # the shape -- `.reset_index()` re-spells the channels, a bare column selection reduces nothing.
+    "aggregation_not_projected",
+    # `plt.figure` after anything already drawn. The new figure would not contain it, so the
+    # emitted artifact and the spec would disagree about what the chart holds. Distinct from
+    # `statement_not_projected`: the call IS projectable, just not in that position.
+    "figure_orphans_mark",
     # bind -- the submitted program versus the artifact the USER supplied. One code covers both
     # arms: the fault shape is "this program is not about your artifact", and which artifact is
     # evident from the program itself.

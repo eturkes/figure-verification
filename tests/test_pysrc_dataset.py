@@ -189,20 +189,20 @@ def test_d5_both_channels_share_one_frame() -> None:
 
 
 def test_d6_dataset_mark_admits_bar() -> None:
-    """D6: `DatasetMark` is line | scatter | bar; bar is VALID in this arm.
+    """D6: `DatasetMark` is line | scatter | bar | barh; both bars are VALID in this arm.
 
     Accept: `plt.bar(df["region"], df["revenue"])` projects with `mark == "bar"`.
     """
-    assert set(get_args(spec.DatasetMark.__value__)) == {"line", "scatter", "bar"}
+    assert set(get_args(spec.DatasetMark.__value__)) == {"line", "scatter", "bar", "barh"}
 
-    marks = {"plot": "line", "scatter": "scatter", "bar": "bar"}
+    marks = {"plot": "line", "scatter": "scatter", "bar": "bar", "barh": "barh"}
     for target, expected in marks.items():
         source = _dataset_source(f'plt.{target}(df["region"], df["revenue"])\nplt.show()\n')
         projected = project(parse_admitted(source))
         assert isinstance(projected, spec.DatasetPlot)
         assert projected.mark == expected
 
-    for target in ("step", "barh", "hist"):
+    for target in ("step", "stem", "hist"):
         source = _dataset_source(f'plt.{target}(df["region"], df["revenue"])\nplt.show()\n')
         assert _refusal_code(source) == "call_target_not_admitted"
 
@@ -439,11 +439,12 @@ def test_g2_g3_g6_survive_the_widening() -> None:
     """G2/G3/G6: re-asserted against a DATASET program so the widening cannot silently delete them.
 
     Accept: `plt.twinx`, `plt.yscale` refuse `call_target_not_admitted`; `s=` on `plt.scatter`
-    refuses `keyword_not_admitted`.
+    refuses `keyword_not_admitted`. The scatter keyword set is hand-stated exactly, so M13.6's
+    style widening had to be ratified here rather than carrying `s=` in with it.
     """
     blocked_targets = {"plt.twinx", "plt.yscale"}
     assert not (blocked_targets & ADMITTED_CALL_TARGETS)
-    assert ADMITTED_KEYWORDS["plt.scatter"] == frozenset({"label"})
+    assert ADMITTED_KEYWORDS["plt.scatter"] == frozenset({"label", "color", "marker"})
 
     mark = 'plt.scatter(df["x"], df["y"])\n'
     blocked_calls = ("plt.twinx()", 'plt.yscale("log")')

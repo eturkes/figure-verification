@@ -13,6 +13,7 @@ the user meant is never claimed.
 import hashlib
 import json
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Literal, assert_never
 
 from verifier.pysrc.numeric import NUMERIC_PROFILE
@@ -31,6 +32,7 @@ from verifier.pysrc.spec import (
     Labels,
     Neg,
     Num,
+    Reduction,
     Var,
 )
 from verifier.pysrc.table import PlottedTable
@@ -58,6 +60,10 @@ class CoreCertificate:
     source_sha256: str
     spec_sha256: str
     table_sha256: str
+    # G11: one member count per plotted group, aligned with the table's x, and `None` when the plot
+    # is not an aggregate. The interpretation sentence carries the two TOTALS a human reads at a
+    # glance; the per-group detail lives here, where a machine consumer can check it row by row.
+    group_counts: tuple[int, ...] | None
     provenance: Provenance
     artifact_sha256: str | None
     numeric_profile: str
@@ -86,6 +92,14 @@ _NO_ARTIFACT = (
 )
 _UNUSED_DATA_FILE = "The supplied data file was not read by this chart."
 _SPEC_DOMAIN = b"pysrc-spec-0.1\n"
+# Reduction -> the word a person reads. `min`/`max` are abbreviations a reader has to expand;
+# `sum` and `mean` are already the English words for what they do.
+_REDUCTION_WORDS: dict[Reduction, str] = {
+    "sum": "sum",
+    "mean": "mean",
+    "min": "minimum",
+    "max": "maximum",
+}
 
 
 def _expr_value(expr: Expr) -> list[object]:
@@ -112,11 +126,24 @@ def _grid_value(grid: Grid) -> dict[str, object]:
     }
 
 
+def _fraction_value(value: Fraction) -> list[int]:
+    return [value.numerator, value.denominator]
+
+
 def _labels_value(labels: Labels) -> dict[str, object]:
+    # The cosmetic fields are hashed like every other one. A figure size changes no plotted number,
+    # but a spec digest that ignores a projected field is not a binding on that field, and the one
+    # thing this digest exists to say is "the spec you read is the spec that was verified".
+    figsize = labels.figsize
     return {
+        "figsize": None if figsize is None else [_fraction_value(part) for part in figsize],
         "grid": labels.grid,
         "legend": labels.legend,
         "series": labels.series,
+        "tick_rotation": (
+            None if labels.tick_rotation is None else _fraction_value(labels.tick_rotation)
+        ),
+        "tight_layout": labels.tight_layout,
         "title": labels.title,
         "xlabel": labels.xlabel,
         "ylabel": labels.ylabel,
@@ -133,6 +160,7 @@ def _spec_value(spec: CorePlotSpec) -> dict[str, object]:
         }
     if isinstance(spec, DatasetPlot):
         return {
+            "group": spec.group,
             "labels": _labels_value(spec.labels),
             "mark": spec.mark,
             "path": spec.source.path,
@@ -219,7 +247,29 @@ def _append_labels(text: str, labels: Labels) -> str:
     return " ".join((text, *sentences))
 
 
-def _interpretation(spec: CorePlotSpec, table: PlottedTable) -> str:
+def _dataset_text(
+    spec: DatasetPlot, table: PlottedTable, group_counts: tuple[int, ...] | None
+) -> str:
+    source = f"Chart type: {spec.mark}. The data comes from the file {_quote(spec.source.path)}."
+    if spec.group is None or group_counts is None:
+        return (
+            f"{source} X shows the column {_quote(spec.x.name)}. "
+            f"Y shows the column {_quote(spec.y.name)}. The chart draws {len(table.x)} rows. "
+            f"Numbers follow the profile {NUMERIC_PROFILE}."
+        )
+    # G11's human half: the group count and the row count behind it, in the sentence a person
+    # actually reads. Two numbers that disagree are what tells a reader rows went missing.
+    return (
+        f"{source} X shows the groups of the column {_quote(spec.x.name)}. "
+        f"Y shows the {_REDUCTION_WORDS[spec.group]} of the column {_quote(spec.y.name)} in each "
+        f"group. The chart draws {len(table.x)} groups from {sum(group_counts)} rows. "
+        f"Numbers follow the profile {NUMERIC_PROFILE}."
+    )
+
+
+def _interpretation(
+    spec: CorePlotSpec, table: PlottedTable, group_counts: tuple[int, ...] | None
+) -> str:
     if isinstance(spec, FormulaPlot):
         text = (
             f"Chart type: {spec.mark}. The data comes from the submitted program. "
@@ -229,12 +279,7 @@ def _interpretation(spec: CorePlotSpec, table: PlottedTable) -> str:
         )
         return _append_labels(text, spec.labels)
     if isinstance(spec, DatasetPlot):
-        text = (
-            f"Chart type: {spec.mark}. The data comes from the file {_quote(spec.source.path)}. "
-            f"X shows the column {_quote(spec.x.name)}. Y shows the column {_quote(spec.y.name)}. "
-            f"The chart draws {len(table.x)} rows. Numbers follow the profile {NUMERIC_PROFILE}."
-        )
-        return _append_labels(text, spec.labels)
+        return _append_labels(_dataset_text(spec, table, group_counts), spec.labels)
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is a closed union
 
 
@@ -243,6 +288,7 @@ def certify(
     table: PlottedTable,
     source: bytes,
     target: DeclaredTarget | None,
+    group_counts: tuple[int, ...] | None,
 ) -> CoreCertificate:
     """Bind the submitted bytes, projected spec and recomputed table into one statement."""
     consumed = _target_consumed(spec, target)
@@ -259,10 +305,11 @@ def certify(
         source_sha256=_digest(source),
         spec_sha256=_digest(canonical_spec_bytes(spec)),
         table_sha256=_digest(table.canonical_bytes()),
+        group_counts=group_counts,
         provenance=provenance,
         artifact_sha256=None,
         numeric_profile=NUMERIC_PROFILE,
         checks=_CHECKS,
         declared_open=tuple(declared_open),
-        interpretation=_interpretation(spec, table),
+        interpretation=_interpretation(spec, table, group_counts),
     )
