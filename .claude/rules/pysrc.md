@@ -235,24 +235,47 @@ z3 cannot be inlined.
   and aggregation is its own later unit. The width caps the FIRST release, never the ceiling:
   coverage grows one mark at a time at no new trust, and the same core ships in the M14 paste-in, so
   whatever M13.4 admits is what the production artifact admits on day one.
-- **Dataset-arm width, M13.6 (user ruling): the column-pair subset CANNOT meet the acceptance, and
-  the number is 10%.** Measured over `corpus/python/heldout/`'s 20 simple prompts against what
-  M13.4 admits: 12 need `groupby` + `sum`/`mean`/`min`/`max`, 2 need a line over the group key (a
-  month or date STRING), 2 need two marks on one Axes, 2 need colour-by-category scatter, and 2 are
-  plain column pairs. So 2/20 = 10% against `Intent`'s >=70%. Aggregation alone reaches 13/20 = 65%
-  and still fails; aggregation plus the categorical line reaches 15/20 = 75%, which clears the bar
-  with only 5 points of headroom. M13.6 therefore admits, in one unit: `groupby` aggregation,
-  `plt.barh`, and a SECOND mark sharing one x — ceiling 18/20 = 90%. Every such figure is a CEILING
-  that assumes the model writes the admitted idiom; the measured rate lands below it, which is why
-  the design does not sit at exactly 70%. Colour-by-category scatter stays refused: a colour channel
-  brings its own integrity rules (a categorical palette must not read as ordinal) and is the largest
-  jump in claim surface for the last 2 prompts.
-- **Multi-series is the structural change M13.6 carries.** `CorePlotSpec` stops holding ONE mark and
-  holds a mark LIST, so every total map over it moves in that unit's commit, and G2 (one Axes, one
-  y-scale) stops being true by the absence of a second mark and must be re-pinned deliberately
-  against `twinx`/`secondary_yaxis` rather than against mark count. G11 (per-group counts published
-  beside every aggregate) goes live in the same unit. M13.5's total maps are written knowing this,
-  so the widening is an edit at the union rather than a redesign.
+- **Dataset-arm width, M13.6 (user ruling): aimed by MEASURED proposer output, not by idiom
+  coverage.** An idiom-coverage ceiling over the held-out manifest says the column-pair subset
+  reaches 2/20 = 10%. That number is a CEILING and it is not the bottleneck. Measured over all 50
+  committed design captures against the shipped verifier: 0/25 simple verify; 17/25 refuse
+  `name_not_bound` because the proposer writes `pd.read_csv` with no `import pandas as pd`; repair
+  that hypothetically and it is STILL 0/25, blocked by constructs carrying NO data effect —
+  `plt.figure(figsize=)` in 16/25 prompts, `plt.tight_layout()` 6, `plt.xticks(rotation=)` 6,
+  literal `color=`/`marker=`/`linestyle=` ~20 uses — against `groupby` in 7. M13.6 therefore admits
+  the data-effect-free cosmetic cluster, `groupby` aggregation, and `plt.barh`. The missing import
+  is a PROPOSER defect, not a width defect, and its lever is the capture prompt (M13.7).
+- **The SECOND mark is CANCELLED (user ruling), and `CorePlotSpec` keeps ONE mark.** It converts
+  zero held-out prompts. It existed for heldout simple 06/14 ("separate city lines"), but
+  `weather.csv` is LONG — 8 rows = 4 dates x 2 cities — so two marks over two columns cannot draw
+  two city lines; those prompts need ROW SELECTION, and the design capture for that idiom writes
+  `for city in set(...): df[df['city'] == city]`, a loop plus a boolean mask. Consequences, all
+  binding: the seven `assert_never(spec)` sites do NOT move, `PlottedTable` stays one series,
+  `certificate.canonical_bytes` keeps its framing, G2 stays true BY CONSTRUCTION and is re-pinned
+  against `twinx`/`twiny`/`secondary_yaxis`/`subplots` rather than against mark count, and G7/G8
+  stay UNCONDITIONAL rather than moving to "a `Filter` projected AND published" — with no filter
+  admitted, the plotted column is still the whole column. Heldout 06/14 (multi-series) and 08/16
+  (colour-by-category) stay refused, for a ceiling of 16/20 = 80% with ten points of headroom. G11
+  (per-group counts published beside every aggregate) goes live in M13.6.
+- **Aggregation recomputation is Kahan, and this is measured, not chosen.** pandas reduces a
+  float64 group with ordered binary64 Kahan compensation in file-row order. Naive left-to-right
+  differs on 2,761 of 4,000 admitted-profile CSV groups, worst 8,192 ulp; `math.fsum` differs on
+  1,483, worst 5,252 ulp; Kahan matches on 0/16,062. `mean` is that Kahan sum over the non-NaN
+  count; an INT64 `mean` is per-value float cast then Kahan then divide, NOT the exact integer mean
+  (witness `[2**53, 1, 0]`, a 1-ulp split). `min`/`max` update on strict `<`/`>`, keeping the first
+  tied value's bits. Group key order IS the plotted x-order and is pandas' `sort=True` default:
+  ascending, by Unicode CODE POINT for strings and numerically for numbers, measured
+  locale-independent across `C`, `C.utf8` and `en_US.utf8` with an `en_US` collation control
+  ordering differently. `bottleneck` and `numexpr` change nothing (0 changed sections, present or
+  absent, enabled or disabled). Host vs BOTH Pyodide builds: 0 differences over 96,372 reduction
+  rows — so unlike the libm functions, the reduction carries NO measured ulp band.
+- **An integer aggregate needs the renderer bound re-asserted AFTER aggregation.** C10 bounds each
+  CELL to int32 because Pyodide's `plt.bar` integer path raises outside it; a SUM of in-profile
+  cells can leave the range. Measured: both Pyodide 0.28.0 and 0.28.1 raise `OverflowError: Python
+  int too large to convert to C long` on `bar` AND `barh` of int64 sums `[4294967294, -4294967296]`,
+  while in-int32 controls render and `plot`/`scatter` preserve their float64 bits. Reductions
+  therefore retain dtype, and the bound binds integer `sum`/`min`/`max` under `bar`/`barh` alone —
+  an integer `mean` is float64 and never reaches that branch.
 - A differential between two implementations of this contract compares MEANING: one named
   translation maps both sides onto a canonical tuple through an EXPLICIT node-name and field-name
   map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,
