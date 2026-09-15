@@ -24,7 +24,7 @@ committed search test pins that.
 
 import ast
 from dataclasses import dataclass, field
-from typing import NoReturn
+from typing import NoReturn, cast
 
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 
@@ -228,10 +228,8 @@ def _admit_string_index(node: ast.expr) -> None:
         _refuse("column_not_literal")
 
 
-def _admit_reduction_chain(node: ast.expr, root: ast.Call) -> None:
+def _admit_reduction_chain(node: ast.Call, root: ast.Call) -> None:
     """The two links above the root: `["<col>"]`, then `.<reduction>()` with no argument."""
-    if not isinstance(node, ast.Call):
-        _refuse("attribute_not_admitted")
     if node.args or node.keywords:
         # A reduction carrying `axis=` or a positional computes something else entirely.
         _refuse("keyword_not_admitted")
@@ -244,7 +242,7 @@ def _admit_reduction_chain(node: ast.expr, root: ast.Call) -> None:
     _admit_string_index(selection.slice)
 
 
-def _admit_aggregation(node: ast.expr, root: ast.Call, frame: ast.Name, scope: _Scope) -> None:
+def _admit_aggregation(node: ast.Call, root: ast.Call, frame: ast.Name, scope: _Scope) -> None:
     """Admit the `groupby` idiom as one closed shape. Three spellings pass.
 
     The bare `<frame>.groupby("<key>")`, the canonical
@@ -260,13 +258,16 @@ def _admit_aggregation(node: ast.expr, root: ast.Call, frame: ast.Name, scope: _
     _admit_string_index(root.args[0])
     if node is root:
         return
+    # `_groupby_root` reached `root` by walking `node.func`, so an `ast.Attribute` here is its
+    # postcondition rather than a hope. Casting instead of re-testing keeps the branch out of the
+    # module: an arm no input can take is one the coverage gate cannot price.
+    func = cast("ast.Attribute", node.func)
     reduction = node
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        receiver = node.func.value
-        if isinstance(receiver, ast.Call) and receiver is not root:
-            if node.func.attr.startswith("_") or node.args or node.keywords:
-                _refuse("attribute_not_admitted")
-            reduction = receiver
+    receiver = func.value
+    if isinstance(receiver, ast.Call) and receiver is not root:
+        if func.attr.startswith("_") or node.args or node.keywords:
+            _refuse("attribute_not_admitted")
+        reduction = receiver
     _admit_reduction_chain(reduction, root)
 
 

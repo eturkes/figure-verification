@@ -37,7 +37,7 @@ def test_g2_single_axes() -> None:
         "plt.subplots",
         "plt.subplot",
         "plt.gca",
-        "plt.figure",
+        "plt.twiny",
     }
     assert not (targets & ADMITTED_CALL_TARGETS)
     parse_admitted(_PRELUDE + _PLOT + "plt.show()\n")
@@ -63,7 +63,7 @@ def test_g3_linear_scale_only() -> None:
 
 def test_g6_scatter_size_keyword_unreachable() -> None:
     """Scatter admits only literal `label`; a bound `s=v` size refuses by keyword."""
-    assert ADMITTED_KEYWORDS["plt.scatter"] == frozenset({"label"})
+    assert ADMITTED_KEYWORDS["plt.scatter"] == frozenset({"label", "color", "marker"})
     body = "x = np.arange(3)\ny = np.sin(x)\nv = 3\n"
     parse_admitted(_PRELUDE + body + 'plt.scatter(x, y, label="series")\nplt.show()\n')
     assert _admission_code(body + "plt.scatter(x, y, s=v)\nplt.show()\n") == "keyword_not_admitted"

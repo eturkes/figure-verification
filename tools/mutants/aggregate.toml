@@ -1,0 +1,187 @@
+# Mutation catalogue for the grouped reduction engine. Run: `uv run --locked python
+# tools/mutate.py tools/mutants/aggregate.toml`. One mutant per R-predicate, each naming the ONE
+# test that must go red under it.
+#
+# R1 is what prices this unit. Every choice in `aggregate.py` is fixed by MEASUREMENT against
+# pandas rather than by what is arithmetically nicest, and a plausible implementation gets exactly
+# this one wrong: naive left-to-right summation differs from pandas on 2,761 of 4,000
+# admitted-profile CSV groups and `math.fsum` on 1,483, while Kahan matches on 0 of 16,062. So the
+# naive mutant and the `fsum` mutant BOTH ship, against the same test, because "not naive" and
+# "not more precise than pandas" are two different claims and a suite can pin one without the other.
+#
+# Three predicates are deliberately UNMUTATED, each for a stated reason:
+#
+# - R5 (an int64 sum cannot overflow) and R6 (NaN never reaches a reduction) are ABSENCE claims:
+#   the profile refuses the input ahead of this module, so there is no branch here to neuter. Their
+#   tests carry call-counting bombs on the reduction instead, which is the shape an absence earns.
+# - `_reduce_int`'s `float(sum(values))` is equivalent under the profile. C10 bounds each cell to
+#   int32 and `max_table_rows` bounds the count, so every admitted integer sum stays under 2**48
+#   and float64 carries it exactly; a mutant summing in float64 instead differs only on inputs the
+#   profile already refuses.
+#
+# `b4-dtype-reads-the-parsed-value` kills by RAISING rather than by failing an assertion, and that
+# is inherent rather than sloppy: the integer path reads `int(text)` directly, so any mutant that
+# types a decimal-bearing column as int64 reaches that call with `'2147483648.0'`. The verdict
+# still differs, which is the credit the driver grades, and `b4-no-integer-dtype` carries the same
+# predicate's clean value-kill beside it.
+
+module = "src/verifier/pysrc/aggregate.py"
+tests = ["tests/test_pysrc_aggregate.py"]
+
+[[mutant]]
+id = "r1-naive-sum"
+predicate = "a float64 group sum is ORDERED Kahan compensation, not naive left-to-right addition"
+kills = "tests/test_pysrc_aggregate.py::test_r1_float_sum_is_kahan_not_naive_or_fsum"
+anchor = '''
+    total = 0.0
+    compensation = 0.0
+    for value in values:
+        adjusted = value - compensation
+        running = total + adjusted
+        compensation = (running - total) - adjusted
+        total = running
+    return total'''
+mutant = '''
+    total = 0.0
+    for value in values:
+        total = total + value
+    return total'''
+
+[[mutant]]
+id = "r1-fsum"
+predicate = "the sum matches pandas, which means it is NOT the more precise engine either"
+kills = "tests/test_pysrc_aggregate.py::test_r1_float_sum_is_kahan_not_naive_or_fsum"
+anchor = '''
+    total = 0.0
+    compensation = 0.0
+    for value in values:
+        adjusted = value - compensation
+        running = total + adjusted
+        compensation = (running - total) - adjusted
+        total = running
+    return total'''
+mutant = '''
+    import math  # noqa: PLC0415 - a spelling the module refuses on purpose
+
+    return math.fsum(values)'''
+
+[[mutant]]
+id = "r2-running-mean"
+predicate = "a float64 mean is the Kahan sum THEN the divide, never a running mean"
+kills = "tests/test_pysrc_aggregate.py::test_r2_float_mean_is_kahan_sum_over_count"
+anchor = '''
+            return _kahan_sum(values) / len(values)'''
+mutant = '''
+            mean = 0.0
+            for count, value in enumerate(values, start=1):
+                mean += (value - mean) / count
+            return mean'''
+
+[[mutant]]
+id = "r3-exact-int-mean"
+predicate = "an int64 mean casts each value to float64 BEFORE summing -- it is not the exact one"
+kills = "tests/test_pysrc_aggregate.py::test_r3_int_mean_casts_before_summing"
+anchor = '''
+            return _kahan_sum(tuple(float(value) for value in values)) / len(values)'''
+mutant = '''
+            return sum(values) / len(values)'''
+
+[[mutant]]
+id = "r4-tie-takes-the-last"
+predicate = "min and max update on STRICT comparison, so a tie keeps the FIRST value's bits"
+kills = "tests/test_pysrc_aggregate.py::test_r4_extrema_keep_the_first_tied_value_bits"
+anchor = '''
+        if (value > best) if greater else (value < best):'''
+mutant = '''
+        if (value >= best) if greater else (value <= best):'''
+
+[[mutant]]
+id = "r7-keys-in-file-order"
+predicate = "group order is SORTED key order, pandas' `sort=True` default, not first-seen order"
+kills = "tests/test_pysrc_aggregate.py::test_r7_group_keys_sort_by_code_point"
+anchor = '''
+    ordered = sorted(members, key=_sort_key)'''
+mutant = '''
+    ordered = list(members)'''
+
+[[mutant]]
+id = "r7-normalizing-collation"
+predicate = "text keys order by raw CODE POINT -- no normalization and no collator in the path"
+kills = "tests/test_pysrc_aggregate.py::test_r7_group_keys_sort_by_code_point"
+anchor = '''
+    if isinstance(value, str):
+        return (1, 0.0, value)
+    return (0, value, "")'''
+mutant = '''
+    import unicodedata  # noqa: PLC0415 - a collation layer the module refuses on purpose
+
+    if isinstance(value, str):
+        return (1, 0.0, unicodedata.normalize("NFD", value))
+    return (0, value, "")'''
+
+[[mutant]]
+id = "r8-one-order-for-both-classes"
+predicate = "the key CLASS decides before the key order: numbers order numerically, text by text"
+kills = "tests/test_pysrc_aggregate.py::test_r8_key_dtype_decides_before_key_order"
+anchor = '''
+    if isinstance(value, str):
+        return (1, 0.0, value)
+    return (0, value, "")'''
+mutant = '''
+    return (0, 0.0, str(value))'''
+
+[[mutant]]
+id = "r9-rows-reversed-inside-a-group"
+predicate = "row order INSIDE a group is file order, which is what makes ordered summation defined"
+kills = "tests/test_pysrc_aggregate.py::test_r9_rows_keep_file_order_inside_a_group"
+anchor = '''
+        members.setdefault(key, []).append(index)'''
+mutant = '''
+        members.setdefault(key, []).insert(0, index)'''
+
+[[mutant]]
+id = "r10-group-count-unbounded"
+predicate = "a high-cardinality key column refuses on the group count it would cost"
+kills = "tests/test_pysrc_aggregate.py::test_r10_group_count_is_bounded_and_charged"
+anchor = '''
+    if len(members) > max_groups:
+        _refuse("work_budget_exceeded")'''
+mutant = '''
+    if False:
+        _refuse("work_budget_exceeded")'''
+
+[[mutant]]
+id = "r10-group-count-uncharged"
+predicate = "the groups are CHARGED to the work budget, not merely counted against their own cap"
+kills = "tests/test_pysrc_aggregate.py::test_r10_group_count_is_bounded_and_charged"
+anchor = '''
+    budget.charge(len(members))'''
+mutant = '''
+    budget.charge(0)'''
+
+[[mutant]]
+id = "b4-mean-retains-dtype"
+predicate = "`mean` is the ONE reduction that does not retain an integer dtype -- pandas gives float64"
+kills = "tests/test_pysrc_aggregate.py::test_b4_reductions_retain_dtype"
+anchor = '''
+_DTYPE_RETAINING = frozenset({"sum", "min", "max"})'''
+mutant = '''
+_DTYPE_RETAINING = frozenset({"sum", "mean", "min", "max"})'''
+
+[[mutant]]
+id = "b4-no-integer-dtype"
+predicate = "an integer source column IS typed int64, which is what puts it under B3's bound at all"
+kills = "tests/test_pysrc_aggregate.py::test_b4_reductions_retain_dtype"
+anchor = '''
+    return "float64" if any("." in text for text in texts) else "int64"'''
+mutant = '''
+    return "float64"'''
+
+[[mutant]]
+id = "b4-dtype-reads-the-parsed-value"
+predicate = "dtype inference reads the cell TEXT, as pandas does -- `5` and `5.0` type differently"
+kills = "tests/test_pysrc_aggregate.py::test_b4_reductions_retain_dtype"
+anchor = '''
+    return "float64" if any("." in text for text in texts) else "int64"'''
+mutant = '''
+    return "float64" if any(float(text) != int(float(text)) for text in texts) else "int64"'''

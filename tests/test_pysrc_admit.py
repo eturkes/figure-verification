@@ -13,12 +13,14 @@ build its expectation would ratify whatever the module happens to contain.
 """
 
 import ast
+import json
 from pathlib import Path
-from typing import get_args
+from typing import cast, get_args
 
 import pytest
 
 from verifier.pysrc import admit as admit_module
+from verifier.pysrc import spec
 from verifier.pysrc.admit import (
     ADMITTED_CALL_TARGETS,
     ADMITTED_CONSTANT_ATTRS,
@@ -31,6 +33,7 @@ from verifier.pysrc.admit import (
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.prescan import prescan
+from verifier.pysrc.project import project
 
 _PRELUDE = "import numpy as np\nimport matplotlib.pyplot as plt\n"
 
@@ -300,15 +303,133 @@ def test_a9_dunder_and_private_names_refuse(source: str, expected: RefusalCode) 
     assert _code(source) == expected
 
 
-@pytest.mark.skip(reason="A10: needs M13.6's admitted width; red until it lands")
 def test_a10_the_admitted_set_round_trips_the_design_corpus() -> None:
-    """A10: every simple-arm design program admits and sampled complicated ones refuse.
+    """A10: canonical programs cover every design idiom at the ruled M13.6 boundary.
 
-    Acceptance: run over `corpus/python/design/`. The blocker is WIDTH, not the corpus: measured
-    against what M13.4 admits, only 2 of the 20 held-out simple prompts are plain column pairs, so
-    this test cannot pass until M13.6 admits `groupby` aggregation, `plt.barh` and a second mark.
-    Recorded now so the suite is not silently narrowed when that width lands."""
-    raise NotImplementedError
+    Acceptance: `corpus/python/design/manifest.json` has eight three-prompt idioms per category.
+    Six simple idioms (18/24 = 75%) project; multi-series and colour-by-category refuse by ruling.
+    One canonical program per complicated idiom refuses with its owning closed code. The manifest
+    contains prompts, not programs, so each source witness is hand-stated here."""
+    manifest_path = Path(__file__).resolve().parents[1] / "corpus/python/design/manifest.json"
+    document = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
+    prompts = cast(list[dict[str, object]], document["prompts"])
+    counts: dict[tuple[str, str], int] = {}
+    for prompt in prompts:
+        key = (cast(str, prompt["category"]), cast(str, prompt["idiom"]))
+        counts[key] = counts.get(key, 0) + 1
+
+    simple_idioms = {
+        "bar_category_extremum",
+        "bar_category_mean",
+        "bar_category_sum",
+        "bar_time_sum",
+        "line_time_multi_series",
+        "line_time_series",
+        "scatter_xy",
+        "scatter_xy_grouped",
+    }
+    complicated_idioms = {
+        "composite_marks",
+        "derived_metric",
+        "distribution_plot",
+        "external_or_interactive",
+        "statistical_fit",
+        "styled_annotation",
+        "subplot_grid",
+        "twin_axis",
+    }
+    assert {idiom for (category, idiom) in counts if category == "simple"} == simple_idioms
+    assert {
+        idiom for (category, idiom) in counts if category == "complicated"
+    } == complicated_idioms
+    assert set(counts.values()) == {3}
+
+    prelude = (
+        'import pandas as pd\nimport matplotlib.pyplot as plt\ndf = pd.read_csv("sales.csv")\n'
+    )
+    supported = {
+        "bar_category_extremum": prelude
+        + 'g = df.groupby("region")["revenue"].max()\n'
+        + "plt.barh(g.index, g.values, color='steelblue')\nplt.show()\n",
+        "bar_category_mean": prelude
+        + 'g = df.groupby("region")["revenue"].mean()\n'
+        + "plt.bar(g.index, g.values)\nplt.tight_layout()\nplt.show()\n",
+        "bar_category_sum": prelude
+        + "plt.figure(figsize=(10, 6))\n"
+        + 'g = df.groupby("region")["revenue"].sum()\n'
+        + "plt.bar(g.index, g.values)\nplt.show()\n",
+        "bar_time_sum": prelude
+        + 'g = df.groupby("month")["revenue"].sum()\n'
+        + "plt.bar(g.index, g.values)\nplt.xticks(rotation=45)\nplt.show()\n",
+        "line_time_series": prelude
+        + 'plt.plot(df["month"], df["revenue"], color="blue", marker="o", linestyle="-")\n'
+        + "plt.show()\n",
+        "scatter_xy": prelude
+        + 'plt.scatter(df["orders"], df["revenue"], color="blue", marker="o")\n'
+        + "plt.show()\n",
+    }
+    for idiom, source in supported.items():
+        projected = project(parse_admitted(source))
+        assert isinstance(projected, spec.DatasetPlot), idiom
+    assert sum(counts[("simple", idiom)] for idiom in supported) == 18
+
+    ruled_out = {
+        "line_time_multi_series": (
+            prelude
+            + 'plt.plot(df["month"], df["north"])\n'
+            + 'plt.plot(df["month"], df["south"])\nplt.show()\n',
+            "multiple_marks",
+        ),
+        "scatter_xy_grouped": (
+            prelude + 'plt.scatter(df["orders"], df["revenue"], c=df["region"])\nplt.show()\n',
+            "keyword_not_admitted",
+        ),
+    }
+    complicated = {
+        "composite_marks": ruled_out["line_time_multi_series"],
+        "derived_metric": (
+            prelude
+            + 'ratio = df["revenue"] / df["orders"]\n'
+            + 'plt.scatter(df["orders"], ratio)\nplt.show()\n',
+            "column_not_from_source",
+        ),
+        "distribution_plot": (
+            prelude + 'plt.hist(df["revenue"])\nplt.show()\n',
+            "call_target_not_admitted",
+        ),
+        "external_or_interactive": (
+            "import seaborn as sns\n" + prelude + 'plt.bar(df["region"], df["revenue"])\n',
+            "import_not_admitted",
+        ),
+        "statistical_fit": (
+            "import numpy as np\n" + prelude + 'fit = np.polyfit(df["orders"], df["revenue"], 1)\n',
+            "call_target_not_admitted",
+        ),
+        "styled_annotation": (
+            prelude
+            + 'plt.bar(df["region"], df["revenue"])\n'
+            + 'plt.annotate("peak", (1, 2))\nplt.show()\n',
+            "call_target_not_admitted",
+        ),
+        "subplot_grid": (
+            prelude + "plt.subplots(2, 2)\n",
+            "call_target_not_admitted",
+        ),
+        "twin_axis": (
+            prelude + "plt.twinx()\n",
+            "call_target_not_admitted",
+        ),
+    }
+
+    def refusal_code(source: str) -> str:
+        with pytest.raises(PysrcRefusalError) as caught:
+            project(parse_admitted(source))
+        return str(caught.value.code)
+
+    for idiom, (source, expected) in ruled_out.items():
+        assert refusal_code(source) == expected, idiom
+    for idiom, (source, expected) in complicated.items():
+        assert refusal_code(source) == expected, idiom
 
 
 def test_a11_refusal_carries_no_source_bytes() -> None:
@@ -574,10 +695,11 @@ def test_the_admitted_maps_are_pinned_as_literals() -> None:
         }
     )
     expected_attrs = frozenset({"np.pi", "np.e"})
+    expected_value_attrs = frozenset({"index", "values"})
     assert ADMITTED_IMPORTS == {"matplotlib.pyplot": "plt", "numpy": "np", "pandas": "pd"}
     assert expected_attrs == ADMITTED_CONSTANT_ATTRS
     assert expected_targets == ADMITTED_CALL_TARGETS
-    assert ADMITTED_VALUE_ATTRS == frozenset({"index", "values"})
+    assert expected_value_attrs == ADMITTED_VALUE_ATTRS
     assert ADMITTED_TUPLE_KEYWORDS == {("plt.figure", "figsize"): 2}
     assert {t: sorted(k) for t, k in ADMITTED_KEYWORDS.items() if k} == {
         "np.linspace": ["num"],

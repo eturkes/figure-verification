@@ -18,7 +18,13 @@
 # is the one where an unresolvable name silently BECOMES the grid variable.
 
 module = "src/verifier/pysrc/project.py"
-tests = ["tests/test_pysrc_project.py", "tests/test_pysrc_integrity.py"]
+tests = [
+  "tests/test_pysrc_project.py",
+  "tests/test_pysrc_integrity.py",
+  "tests/test_pysrc_dataset.py",
+  "tests/test_pysrc_aggregate.py",
+  "tests/test_pysrc_presentation.py",
+]
 
 [[mutant]]
 id = "p1-no-mark"
@@ -69,9 +75,11 @@ id = "p4-y-over-inline-grid"
 predicate = "a grid CALL repeated inside y must equal THE grid, by value"
 kills = "tests/test_pysrc_project.py::test_p4_y_over_grid_only"
 anchor = '''
-        if target in _GRID_CALLS:'''
+        if target in _GRID_CALLS:
+            # The grid call written twice'''
 mutant = '''
-        if target in _GRID_CALLS and self._grid_in_scope is None:'''
+        if target in _GRID_CALLS and self._grid_in_scope is None:
+            # The grid call written twice'''
 
 [[mutant]]
 id = "p4-unbound-name"
@@ -282,9 +290,9 @@ id = "d1-grid-selector-is-deep"
 predicate = "the formula selector sees a grid call anywhere, not only as a bare statement"
 kills = "tests/test_pysrc_dataset.py::test_d1_arm_selection_is_closed"
 anchor = '''
-        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in ast.walk(tree)'''
+        for node in ast.walk(tree)'''
 mutant = '''
-        isinstance(node, ast.Call) and _call_target(node) in _GRID_CALLS for node in tree.body'''
+        for node in tree.body'''
 
 [[mutant]]
 id = "d2-multiple-sources"
@@ -336,9 +344,22 @@ kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
 anchor = '''
             or name in self._frames
             or name in self._cols
+            or name in self._aggs
         ):'''
 mutant = '''
             or False
+            or False
+            or name in self._aggs
+        ):'''
+
+[[mutant]]
+id = "a-rebind-aggregate-names"
+predicate = "the rebind guard covers the name space THIS unit adds, so one name still denotes one thing"
+kills = "tests/test_pysrc_aggregate.py::test_a2_admitted_chain_shape_projects"
+anchor = '''
+            or name in self._aggs
+        ):'''
+mutant = '''
             or False
         ):'''
 
@@ -411,6 +432,111 @@ id = "d10-dataset-statement-coverage"
 predicate = "an unused frame or column binding is refused, like an unused grid or expression"
 kills = "tests/test_pysrc_dataset.py::test_d10_total_statement_coverage"
 anchor = '''
-            self._grids.keys() | self._exprs.keys() | self._frames.keys() | self._cols.keys()'''
+            self._grids.keys()
+            | self._exprs.keys()
+            | self._frames.keys()
+            | self._cols.keys()
+            | self._aggs.keys()'''
 mutant = '''
             self._grids.keys() | self._exprs.keys()'''
+
+# --- M13.6: the cosmetic cluster and the aggregation chain -------------------
+
+[[mutant]]
+id = "w1-figsize-discarded"
+predicate = "`figsize` is CARRIED into the spec, not validated and dropped"
+kills = "tests/test_pysrc_presentation.py::test_w1_labels_gains_exactly_three_presentation_fields"
+anchor = '''
+            figsize=self._figsize,'''
+mutant = '''
+            figsize=None,'''
+
+[[mutant]]
+id = "w1-tick-rotation-discarded"
+predicate = "`tick_rotation` is CARRIED into the spec, not validated and dropped"
+kills = "tests/test_pysrc_presentation.py::test_w1_labels_gains_exactly_three_presentation_fields"
+anchor = '''
+            tick_rotation=self._tick_rotation,'''
+mutant = '''
+            tick_rotation=None,'''
+
+[[mutant]]
+id = "w1-tight-layout-discarded"
+predicate = "`tight_layout` is CARRIED into the spec, not validated and dropped"
+kills = "tests/test_pysrc_presentation.py::test_w1_labels_gains_exactly_three_presentation_fields"
+anchor = '''
+            tight_layout=self._tight_layout,'''
+mutant = '''
+            tight_layout=False,'''
+
+[[mutant]]
+id = "w3-figure-orphans-mark"
+predicate = "a `plt.figure` that would discard what is already drawn refuses"
+kills = "tests/test_pysrc_presentation.py::test_w3_figure_after_a_mark_refuses_figure_orphans_mark"
+anchor = '''
+            if self._drawn:
+                _refuse("figure_orphans_mark")'''
+mutant = '''
+            if False:
+                _refuse("figure_orphans_mark")'''
+
+[[mutant]]
+id = "w3-a-decoration-draws-too"
+predicate = "W3 counts DECORATIONS as drawn, not marks alone -- `plt.title` then `plt.figure` orphans"
+kills = "tests/test_pysrc_presentation.py::test_w3_figure_after_a_mark_refuses_figure_orphans_mark"
+anchor = '''
+        if target in _TEXT_LABELS or target in _FLAG_LABELS:
+            self._label_call(target, node)
+            self._drawn = True
+            return'''
+mutant = '''
+        if target in _TEXT_LABELS or target in _FLAG_LABELS:
+            self._label_call(target, node)
+            return'''
+
+[[mutant]]
+id = "w6b-every-keyword-names-the-series"
+predicate = "only `label=` names the series; a style keyword is validated then DISCARDED"
+kills = "tests/test_pysrc_presentation.py::test_w6_marks_admit_three_literal_only_keywords"
+anchor = '''
+            if keyword.arg == "label":
+                self._series = text.value'''
+mutant = '''
+            self._series = text.value'''
+
+[[mutant]]
+id = "a3-reset-index-read-as-a-decoration"
+predicate = "a trailing call on the chain is a DIFFERENT projection, never a decoration of it"
+kills = "tests/test_pysrc_aggregate.py::test_a3_reset_index_refuses_aggregation_not_projected"
+anchor = '''
+        chain = aggregation_chain(node)
+        if chain is None:
+            _refuse("aggregation_not_projected")'''
+mutant = '''
+        chain = aggregation_chain(node)
+        if chain is None and isinstance(node.func, ast.Attribute):
+            chain = aggregation_chain(node.func.value)
+        if chain is None:
+            _refuse("aggregation_not_projected")'''
+
+[[mutant]]
+id = "a4-channels-need-not-share-a-name"
+predicate = "one mark reads ONE reduction: an `.index` x demands the SAME name's values as y"
+kills = "tests/test_pysrc_aggregate.py::test_a4_mixing_aggregate_and_raw_channels_refuses"
+anchor = '''
+        if self._aggregate_bound(y, "values") != name and not (
+            isinstance(y, ast.Name) and y.id == name
+        ):
+            _refuse("column_not_from_source")'''
+mutant = '''
+        if False:
+            _refuse("column_not_from_source")'''
+
+[[mutant]]
+id = "a6-unplotted-aggregation"
+predicate = "a bound aggregation no mark reads is refused, exactly as an unused grid is"
+kills = "tests/test_pysrc_aggregate.py::test_a6_unplotted_aggregation_refuses"
+anchor = '''
+            | self._aggs.keys()'''
+mutant = '''
+            | set()'''
