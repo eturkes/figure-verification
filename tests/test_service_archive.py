@@ -618,7 +618,10 @@ def test_database_and_state_path_security_rejects_unsafe_final_entries(tmp_path:
         _archive(tmp_path / "mode")
 
     unsafe_state = _settings(tmp_path / "state-mode")
-    unsafe_state.state_dir.mkdir(mode=0o750, parents=True)
+    # chmod, not mkdir(mode=...): the umask masks mkdir's mode argument, so under a hardened
+    # umask the group bit this test is about never exists and the rejection cannot fire.
+    unsafe_state.state_dir.mkdir(parents=True)
+    unsafe_state.state_dir.chmod(0o750)
     with pytest.raises(ArchiveError, match="secure provenance"):
         open_archive(unsafe_state)
 

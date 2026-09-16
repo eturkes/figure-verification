@@ -129,7 +129,10 @@ def test_external_key_file_and_explicit_rotation_preserve_history_without_auto_t
 def test_external_key_parent_must_be_owner_private(tmp_path: Path) -> None:
     state_dir = tmp_path / "state"
     external = tmp_path / "operator-keys"
-    external.mkdir(mode=0o755)
+    # chmod, not mkdir(mode=...): the umask masks mkdir's mode argument, so under a hardened
+    # umask the group/world bits this test is about never exist and the rejection cannot fire.
+    external.mkdir()
+    external.chmod(0o755)
     with pytest.raises(IdentityError, match="signing-key parent grants group/world"):
         load_identity(_settings(state_dir, key_file=external / "signing.key"))
 
