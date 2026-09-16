@@ -13,7 +13,7 @@ either surface's configuration.
 
 import json
 from pathlib import Path
-from typing import Protocol, cast
+from typing import cast
 
 import httpx
 import pytest
@@ -24,28 +24,9 @@ from paste_in_support import (
     owui_tool_descriptions,
     public_tool_operation,
 )
-from webui.bootstrap import smoke
+from webui.bootstrap import SmokeResult, smoke
 from webui.client import WebUIClient
 from webui.settings import Settings
-
-
-class _ToolProvisioner(Protocol):
-    def ensure_tool(
-        self,
-        *,
-        tool_id: str,
-        name: str,
-        content: str,
-        description: str,
-    ) -> None: ...
-
-
-class _PythonToolSettings(Protocol):
-    tool_id: str
-
-
-class _PythonSmokeResult(Protocol):
-    python_tool_attached: bool
 
 
 class _SmokeClient:
@@ -202,7 +183,6 @@ def test_e2_tool_provisioning_converges_to_the_artifact_bytes() -> None:
     with httpx.Client(transport=transport, base_url="http://webui.test") as http:
         client = WebUIClient(http, Settings())
         client.authenticate()
-        ensure_tool = cast(_ToolProvisioner, client).ensure_tool
         artifact = (
             Path(__file__).resolve().parent.parent / "paste-in" / "figure_verification_tool.py"
         )
@@ -215,9 +195,9 @@ def test_e2_tool_provisioning_converges_to_the_artifact_bytes() -> None:
             "content": expected["content"],
             "description": description,
         }
-        ensure_tool(**kwargs)
+        client.ensure_tool(**kwargs)
         rows[tool_id]["content"] = expected["content"] + "# planted drift\n"
-        ensure_tool(**kwargs)
+        client.ensure_tool(**kwargs)
 
     assert writes == ["create", "update"]
     assert set(rows) == {tool_id}
@@ -244,16 +224,24 @@ def test_e4_bootstrap_smoke_reports_the_python_tool_attached() -> None:
     Smoke proves provisioning took, so a silent provisioning failure cannot read as a demo defect.
     """
     settings = Settings()
-    tool_id = cast(_PythonToolSettings, settings).tool_id
 
-    def attached(*, tool_row_present: bool) -> bool:
-        client = _SmokeClient(
-            model_id=settings.model_id,
-            tool_id=tool_id,
-            tool_row_present=tool_row_present,
+    def result(*, tool_row_present: bool) -> SmokeResult:
+        return smoke(
+            _SmokeClient(
+                model_id=settings.model_id,
+                tool_id=settings.tool_id,
+                tool_row_present=tool_row_present,
+            ),
+            settings,
         )
-        result = cast(_PythonSmokeResult, smoke(client, settings))
-        return result.python_tool_attached
 
-    assert not attached(tool_row_present=False)
-    assert attached(tool_row_present=True)
+    absent = result(tool_row_present=False)
+    present = result(tool_row_present=True)
+    assert not absent.tool_provisioned
+    assert present.tool_provisioned
+    # The model lists the tool id in BOTH readbacks, so a dangling attachment alone cannot make
+    # smoke green: the workspace row has to exist too.
+    assert absent.model_tool_attached
+    assert present.model_tool_attached
+    assert not absent.ok
+    assert present.ok

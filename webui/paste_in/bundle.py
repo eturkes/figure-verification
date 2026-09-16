@@ -112,9 +112,21 @@ def import_roots(tree: ast.AST) -> set[str]:
     return roots
 
 
+def _embeddable_source(name: str) -> str:
+    """The tracked bytes for `name`, refused before anything else reads them.
+
+    The check precedes the parse because a source ending in a backslash is not parsable at all:
+    `ast.parse` would raise a bare `SyntaxError` carrying no path, and generation must abort naming
+    the source it refused.
+    """
+    source = module_path(name).read_text(encoding="utf-8")
+    _check_embeddable(name, source)
+    return source
+
+
 def _first_party_deps(name: str) -> tuple[str, ...]:
     """The first-party modules `name` imports, resolved to the modules that must load before it."""
-    tree = ast.parse(module_path(name).read_text(encoding="utf-8"))
+    tree = ast.parse(_embeddable_source(name))
     deps: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -241,11 +253,7 @@ def offending_import_roots(text: str) -> list[str]:
 def render(root: str) -> str:
     """The complete artifact text for one paste target. Deterministic in the tracked sources."""
     names = closure(root)
-    blobs = []
-    for name in names:
-        source = module_path(name).read_text(encoding="utf-8")
-        _check_embeddable(name, source)
-        blobs.append(_ASSIGNMENT.format(name=name, source=source))
+    blobs = [_ASSIGNMENT.format(name=name, source=_embeddable_source(name)) for name in names]
     text = _PREAMBLE + "\n".join(blobs) + _EPILOGUE.format(root=root)
     offending = offending_import_roots(text)
     if offending:

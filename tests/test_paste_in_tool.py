@@ -13,19 +13,30 @@ normalization of the path the program named, no fall-back read of a file the cal
 
 import builtins
 import json
-import os
-import subprocess
-import textwrap
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Never, cast, get_args
 
 import pytest
 
-from paste_in_support import REPO_ROOT, invoke_tool, load_tool_module
+from paste_in_support import (
+    StoredFile,
+    fake_open_webui,
+    invoke_tool,
+    load_tool_module,
+    owui_driver_output,
+)
+from verifier.pysrc import DatasetTarget, RefusalCode, Refused, Verdict, Verified
+from verifier.pysrc import verify_python_source as core_verify
 
-# Hand-stated closed set: deriving this from `RefusalCode` would let the tool and test
-# drift together.
+# Hand-stated closed sets: deriving either from production would let the tool and the test drift
+# together. The two reply strings are the whole model-facing vocabulary (amendment T4-1), and the
+# refusal codes pin the unit's 52-member invariant surface.
+_CHART_PRODUCED = "The chart is ready."
+_CHART_NOT_PRODUCED = "No chart was produced."
+_TOOL_VERDICTS = frozenset({_CHART_PRODUCED, _CHART_NOT_PRODUCED})
+
 _REFUSAL_CODES = (
     "source_too_large",
     "source_not_utf8",
@@ -81,6 +92,27 @@ _REFUSAL_CODES = (
     "x_not_ordered",
 )
 
+_USER_ID = "user-1"
+_SALES_PATH = "/mnt/uploads/sales.csv"
+_SALES_BYTES = b"region,revenue\nUS,12\nEU,9\n"
+
+
+def _program(path: str, trailer: str = "") -> str:
+    """A program that verifies against `_SALES_BYTES` when it names the attached file."""
+    return (
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        f'df = pd.read_csv("{path}")\n'
+        'plt.bar(df["region"], df["revenue"])\n'
+        "plt.show()\n"
+        f"{trailer}"
+    )
+
+
+def _metadata(*file_ids: str) -> dict[str, object]:
+    """Open WebUI's chat metadata shape: the attachment list the browser forwards."""
+    return {"files": [{"id": file_id, "name": f"{file_id}.csv"} for file_id in file_ids]}
+
 
 def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
     """T1: OWUI's spec builder over the artifact returns one spec, reserved params absent.
@@ -88,11 +120,7 @@ def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
     The parameter set equals the declared non-reserved set, so `__metadata__` and its siblings
     never reach the model.
     """
-    artifact = REPO_ROOT / "paste-in" / "figure_verification_tool.py"
-    assert artifact.is_file()
-    isolated = tmp_path / "figure_verification_tool.py"
-    isolated.write_bytes(artifact.read_bytes())
-    driver = textwrap.dedent(
+    payload = owui_driver_output(
         """
         import asyncio
         import inspect
@@ -102,6 +130,13 @@ def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
         from open_webui.utils.plugin import load_tool_module_by_id
         from open_webui.utils.tools import get_functions_from_tool, get_tool_specs
 
+        def parameters(function, reserved):
+            return [
+                name
+                for name in inspect.signature(function).parameters
+                if name.startswith("__") == reserved
+            ]
+
         async def main():
             artifact = pathlib.Path(__file__).with_name("figure_verification_tool.py")
             tool, _frontmatter = await load_tool_module_by_id(
@@ -109,65 +144,33 @@ def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
             )
             functions = get_functions_from_tool(tool)
             specs = get_tool_specs(tool)
-            declared = {
-                function.__name__: [
-                    name
-                    for name in inspect.signature(function).parameters
-                    if not name.startswith("__")
-                ]
-                for function in functions
-            }
-            raw_properties = {
-                spec["name"]: list(spec["parameters"]["properties"])
-                for spec in specs
-            }
-            model_properties = {
-                name: [parameter for parameter in parameters if not parameter.startswith("__")]
-                for name, parameters in raw_properties.items()
-            }
             print(
                 "M10U0_RESULT="
                 + json.dumps(
                     {
-                        "function_names": [function.__name__ for function in functions],
+                        "function_names": [f.__name__ for f in functions],
                         "spec_names": [spec["name"] for spec in specs],
-                        "declared": declared,
-                        "raw_properties": raw_properties,
-                        "model_properties": model_properties,
+                        "declared": {
+                            f.__name__: parameters(f, False) for f in functions
+                        },
+                        "reserved": {
+                            f.__name__: parameters(f, True) for f in functions
+                        },
+                        "properties": {
+                            spec["name"]: list(spec["parameters"]["properties"])
+                            for spec in specs
+                        },
                     },
                     sort_keys=True,
                 )
             )
 
         asyncio.run(main())
-        """
+        """,
+        tmp_path,
+        "M10U0_RESULT",
     )
-    driver_path = tmp_path / "driver.py"
-    driver_path.write_text(driver, encoding="utf-8")
-    primary = REPO_ROOT if (REPO_ROOT / ".venv-webui").is_dir() else REPO_ROOT.parents[2]
-    interpreter = primary / ".venv-webui" / "bin" / "python"
-    assert interpreter.is_file()
-    env = os.environ.copy()
-    env.update(
-        {
-            "DATA_DIR": str(tmp_path / "data"),
-            "ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS": "false",
-            "OFFLINE_MODE": "true",
-            "PYTHONPATH": "",
-        }
-    )
-    result = subprocess.run(  # noqa: S603
-        [str(interpreter), str(driver_path)],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    line = next(line for line in result.stdout.splitlines() if line.startswith("M10U0_RESULT="))
-    observed: dict[str, dict[str, list[str]] | list[str]] = json.loads(line.partition("=")[2])
+    observed: dict[str, dict[str, list[str]] | list[str]] = json.loads(payload)
     function_names = observed["function_names"]
     spec_names = observed["spec_names"]
     assert isinstance(function_names, list)
@@ -176,327 +179,266 @@ def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
     assert spec_names == function_names
     operation = function_names[0]
     declared = observed["declared"]
-    raw_properties = observed["raw_properties"]
-    model_properties = observed["model_properties"]
+    reserved = observed["reserved"]
+    properties = observed["properties"]
     assert isinstance(declared, dict)
-    assert isinstance(raw_properties, dict)
-    assert isinstance(model_properties, dict)
+    assert isinstance(reserved, dict)
+    assert isinstance(properties, dict)
+    # The reserved parameters ARE declared on the method, which is what makes their absence from
+    # the schema a finding rather than a tautology.
+    assert reserved[operation] == ["__metadata__", "__user__"]
     assert len(declared[operation]) == 1
-    assert model_properties[operation] == declared[operation]
-    assert set(raw_properties[operation]) - set(model_properties[operation]) == {
-        "__metadata__",
-        "__request__",
-        "__user__",
-    }
+    assert properties[operation] == declared[operation]
+
+
+@dataclass(frozen=True, slots=True)
+class _Case:
+    """One scripted sequence of core verdicts and the reply the tool must derive from it."""
+
+    name: str
+    attachments: int
+    verdicts: tuple[Verdict, ...]
+    expected: str
+
+
+def _verified() -> Verified:
+    """A real `Verified`, taken from the core rather than hand-built."""
+    verdict = core_verify(
+        _program(_SALES_PATH),
+        declared_target=DatasetTarget(path=_SALES_PATH, content=_SALES_BYTES),
+    )
+    assert isinstance(verdict, Verified)
+    return verdict
+
+
+def _stored(count: int) -> list[StoredFile]:
+    return [
+        StoredFile(
+            file_id=f"file-{index}",
+            user_id=_USER_ID,
+            filename=f"file-{index}.csv",
+            content=_SALES_BYTES,
+        )
+        for index in range(count)
+    ]
 
 
 def test_t2_verdict_comes_from_verify_python_source_alone(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """T2: a mutant returning the pass string for a refused program goes red.
 
-    A second mutant that ignores the refusal code goes red too, so neither half of the verdict is
-    reachable without the core.
+    Two more mutants ignore the refusal code -- one stopping at the first verdict, one taking the
+    last -- and both go red, so neither half of the derivation is reachable without the core.
     """
-    from verifier.pysrc import (  # noqa: PLC0415
-        DatasetTarget,
-        RefusalCode,
-        Refused,
-        Verdict,
-        Verified,
-        verify_python_source,
-    )
-
     module = load_tool_module()
-    assert module.VERIFIED_TEXT == "verified"
-    assert module.REFUSED_PREFIX == "refused:"
-    program = (
-        "import pandas as pd\n"
-        "import matplotlib.pyplot as plt\n"
-        'df = pd.read_csv("/mnt/uploads/sales.csv")\n'
-        'plt.bar(df["region"], df["revenue"])\n'
-        "plt.show()\n"
+    program = _program(_SALES_PATH)
+    verified = _verified()
+    cases = (
+        _Case("verified", 1, (verified,), _CHART_PRODUCED),
+        _Case("refused", 1, (Refused("source_too_large"),), _CHART_NOT_PRODUCED),
+        # Only `target_mismatch` means "right program, wrong file", so only it may keep the scan
+        # going; every other refusal is this program's answer and ends it.
+        _Case("mismatch-then-verified", 2, (Refused("target_mismatch"), verified), _CHART_PRODUCED),
+        _Case(
+            "refused-then-verified",
+            2,
+            (Refused("column_not_numeric"), verified),
+            _CHART_NOT_PRODUCED,
+        ),
     )
-    content = b"region,revenue\nUS,12\nEU,9\n"
-    path = "/mnt/uploads/sales.csv"
-    target = DatasetTarget(path=path, content=content)
-    verified = verify_python_source(program, declared_target=target)
-    assert isinstance(verified, Verified)
-    verdicts: dict[RefusalCode | None, Verdict] = {
-        None: verified,
-        "source_too_large": Refused("source_too_large"),
-        "target_mismatch": Refused("target_mismatch"),
-    }
-    selected: RefusalCode | None = None
-    metadata: dict[str, object] = {"files": [{"id": "file-1", "name": "sales.csv"}]}
-    user: dict[str, object] = {"id": "user-1"}
-    request = object()
-    reader_calls = 0
-    verifier_calls = 0
+    targets: list[str] = []
 
-    async def fake_reader(*args: object, **kwargs: object) -> tuple[str, bytes]:
-        nonlocal reader_calls
-        reader_calls += 1
-        assert args == ()
-        assert kwargs == {"metadata": metadata, "user": user, "request": request}
-        return path, content
+    def actual(case: _Case) -> str:
+        remaining = list(case.verdicts)
 
-    def fake_verify(source: str, *, declared_target: object) -> Verdict:
-        nonlocal verifier_calls
-        verifier_calls += 1
-        assert source == program
-        assert declared_target == target
-        return verdicts[selected]
+        def scripted(source: str, *, declared_target: object) -> Verdict:
+            assert source == program
+            assert isinstance(declared_target, DatasetTarget)
+            targets.append(declared_target.path)
+            return remaining.pop(0)
 
-    monkeypatch.setattr(module, "read_attached_file", fake_reader)
-    monkeypatch.setattr(module, "verify_python_source", fake_verify)
+        monkeypatch.setattr(module, "verify_python_source", scripted)
+        stored = _stored(case.attachments)
+        with fake_open_webui(stored, tmp_path):
+            return invoke_tool(
+                module,
+                program,
+                metadata=_metadata(*(item.file_id for item in stored)),
+                user={"id": _USER_ID},
+            )
 
-    def actual(code: RefusalCode | None) -> str:
-        nonlocal selected
-        selected = code
-        return invoke_tool(
-            module,
-            program,
-            metadata=metadata,
-            user=user,
-            request=request,
-        )
+    def text(verdict: Verdict) -> str:
+        return _CHART_PRODUCED if isinstance(verdict, Verified) else _CHART_NOT_PRODUCED
 
-    def assert_derivation(render: Callable[[RefusalCode | None], str]) -> None:
-        assert render(None) == "verified"
-        assert render("source_too_large") == "refused:source_too_large"
-        assert render("target_mismatch") == "refused:target_mismatch"
+    def assert_derivation(render: Callable[[_Case], str]) -> None:
+        for case in cases:
+            assert render(case) == case.expected, case.name
 
     with pytest.raises(AssertionError):
-        assert_derivation(lambda _code: "verified")
+        assert_derivation(lambda _case: _CHART_PRODUCED)
     with pytest.raises(AssertionError):
-        assert_derivation(lambda code: "verified" if code is None else "refused")
+        assert_derivation(lambda case: text(case.verdicts[0]))
+    with pytest.raises(AssertionError):
+        assert_derivation(lambda case: text(case.verdicts[-1]))
+
     assert_derivation(actual)
-    assert reader_calls == 3
-    assert verifier_calls == 3
+    assert targets == [
+        "/mnt/uploads/file-0.csv",
+        "/mnt/uploads/file-0.csv",
+        "/mnt/uploads/file-0.csv",
+        "/mnt/uploads/file-1.csv",
+        "/mnt/uploads/file-0.csv",
+    ]
 
 
 def test_t3_core_receives_the_uploaded_bytes_for_the_named_path(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """T3: bytes handed to the core are byte-identical to the fake store's.
 
     A program naming a file the chat does not carry returns the refusal instead of verifying.
     """
-    from verifier.pysrc import DatasetTarget, Refused, Verdict  # noqa: PLC0415
-
     module = load_tool_module()
-    path = "/mnt/uploads/sales.csv"
+    # CRLF plus a byte no UTF-8 decoder accepts: a reader that decoded and re-encoded loses both.
     content = b"region,revenue\r\nUS,12\r\nEU,\xff\r\n"
-    program = (
-        "import pandas as pd\n"
-        "import matplotlib.pyplot as plt\n"
-        f'df = pd.read_csv("{path}")\n'
-        'plt.bar(df["region"], df["revenue"])\n'
-        "plt.show()\n"
-    )
-    present: dict[str, object] = {"files": [{"id": "file-1", "name": "sales.csv"}]}
-    absent: dict[str, object] = {"files": []}
-    user: dict[str, object] = {"id": "user-1"}
-    request = object()
+    program = _program(_SALES_PATH)
+    stored = [StoredFile(file_id="file-1", user_id=_USER_ID, filename="sales.csv", content=content)]
     calls: list[tuple[str, object]] = []
 
-    async def fake_reader(*args: object, **kwargs: object) -> tuple[str, bytes]:
-        assert args == ()
-        assert set(kwargs) == {"metadata", "user", "request"}
-        assert kwargs["user"] is user
-        assert kwargs["request"] is request
-        if kwargs["metadata"] is absent:
-            raise FileNotFoundError
-        assert kwargs["metadata"] is present
-        return path, content
-
-    def fake_verify(source: str, *, declared_target: object) -> Verdict:
+    def spy(source: str, *, declared_target: object) -> Verdict:
         calls.append((source, declared_target))
-        if declared_target is None:
-            return Refused("source_not_supplied")
-        assert isinstance(declared_target, DatasetTarget)
-        assert declared_target.path == path
-        assert declared_target.content == content
         return Refused("value_not_in_profile")
 
-    monkeypatch.setattr(module, "read_attached_file", fake_reader)
-    monkeypatch.setattr(module, "verify_python_source", fake_verify)
+    monkeypatch.setattr(module, "verify_python_source", spy)
+    with fake_open_webui(stored, tmp_path) as lookups:
+        present = invoke_tool(module, program, metadata=_metadata("file-1"), user={"id": _USER_ID})
+        absent = invoke_tool(module, program, metadata={"files": []}, user={"id": _USER_ID})
 
-    assert (
-        invoke_tool(module, program, metadata=present, user=user, request=request)
-        == "refused:value_not_in_profile"
-    )
-    assert (
-        invoke_tool(module, program, metadata=absent, user=user, request=request)
-        == "refused:source_not_supplied"
-    )
-    assert calls == [(program, DatasetTarget(path=path, content=content)), (program, None)]
+    assert present == _CHART_NOT_PRODUCED
+    assert absent == _CHART_NOT_PRODUCED
+    assert lookups == [("file-1", _USER_ID)]
+    # No attachment means no target the core could be asked about, so the second call never
+    # reaches it: an absent file cannot verify by any route.
+    assert calls == [(program, DatasetTarget(path=_SALES_PATH, content=content))]
 
 
 def test_t4_return_text_is_closed_and_echoes_no_model_bytes(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """T4: the return value is a member of the closed verdict set, refusal codes included.
+    """T4: the return value is a member of the closed verdict set.
 
-    A program whose source carries a marker string returns text that does not contain it.
+    A program whose source carries a marker string returns text that does not contain it. Refusal
+    codes are OUT of the reply by amendment T4-1: five of them carry a banned admission stem.
     """
-    from verifier.pysrc import (  # noqa: PLC0415
-        DatasetTarget,
-        RefusalCode,
-        Refused,
-        Verdict,
-        Verified,
-        verify_python_source,
-    )
-
     assert get_args(RefusalCode) == _REFUSAL_CODES
     module = load_tool_module()
     marker = "MODEL_BYTES_MUST_NOT_ECHO_71C9"
-    path = "/mnt/uploads/sales.csv"
-    content = b"region,revenue\nUS,12\nEU,9\n"
-    program = (
-        "import pandas as pd\n"
-        "import matplotlib.pyplot as plt\n"
-        f'df = pd.read_csv("{path}")\n'
-        'plt.bar(df["region"], df["revenue"])\n'
-        "plt.show()\n"
-        f"# {marker}\n"
-    )
-    target = DatasetTarget(path=path, content=content)
-    verified = verify_python_source(program, declared_target=target)
-    assert isinstance(verified, Verified)
+    program = _program(_SALES_PATH, trailer=f"# {marker}\n")
     verdicts: list[Verdict] = [
-        verified,
+        _verified(),
         *(Refused(cast(RefusalCode, code)) for code in _REFUSAL_CODES),
     ]
-    selected: Verdict = verified
-    metadata: dict[str, object] = {"files": [{"id": "file-1", "name": "sales.csv"}]}
-    user: dict[str, object] = {"id": "user-1"}
-    request = object()
-    reader_calls = 0
-    verifier_calls = 0
+    selected: Verdict = verdicts[0]
+    calls = 0
 
-    async def fake_reader(*args: object, **kwargs: object) -> tuple[str, bytes]:
-        nonlocal reader_calls
-        reader_calls += 1
-        assert args == ()
-        assert kwargs == {"metadata": metadata, "user": user, "request": request}
-        return path, content
-
-    def fake_verify(source: str, *, declared_target: object) -> Verdict:
-        nonlocal verifier_calls
-        verifier_calls += 1
+    def scripted(source: str, *, declared_target: object) -> Verdict:
+        nonlocal calls
+        calls += 1
         assert source == program
-        assert declared_target == target
+        assert isinstance(declared_target, DatasetTarget)
         return selected
 
-    monkeypatch.setattr(module, "read_attached_file", fake_reader)
-    monkeypatch.setattr(module, "verify_python_source", fake_verify)
+    monkeypatch.setattr(module, "verify_python_source", scripted)
     outputs: list[str] = []
-    for verdict in verdicts:
-        selected = verdict
-        outputs.append(invoke_tool(module, program, metadata=metadata, user=user, request=request))
+    with fake_open_webui(_stored(1), tmp_path):
+        for verdict in verdicts:
+            selected = verdict
+            outputs.append(
+                invoke_tool(module, program, metadata=_metadata("file-0"), user={"id": _USER_ID})
+            )
 
-    expected = {"verified", *(f"refused:{code}" for code in _REFUSAL_CODES)}
     assert len(outputs) == 53
-    assert set(outputs) == expected
+    assert calls == 53
+    assert set(outputs) == _TOOL_VERDICTS
     assert all(marker not in output for output in outputs)
-    assert reader_calls == 53
-    assert verifier_calls == 53
 
 
 def test_t5_target_is_the_named_path_with_the_uploaded_content(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """T5: `DatasetTarget(path=<read_csv literal>, content=<uploaded bytes>)`, unnormalized.
 
     A program reading `/mnt/uploads/other.csv` against an attached `sales.csv` refuses
-    `target_mismatch`; the path is compared byte-for-byte.
+    `target_mismatch`; the path is compared byte-for-byte inside the core.
     """
-    from verifier.pysrc import DatasetTarget, verify_python_source  # noqa: PLC0415
-
     module = load_tool_module()
-    attached_path = "/mnt/uploads/sales.csv"
-    content = b"region,revenue\nUS,12\nEU,9\n"
-    metadata: dict[str, object] = {"files": [{"id": "file-1", "name": "sales.csv"}]}
-    user: dict[str, object] = {"id": "user-1"}
-    request = object()
-    calls: list[tuple[str, object]] = []
+    stored = [
+        StoredFile(file_id="file-1", user_id=_USER_ID, filename="sales.csv", content=_SALES_BYTES)
+    ]
+    calls: list[tuple[str, object, Verdict]] = []
 
-    def source(path: str) -> str:
-        return (
-            "import pandas as pd\n"
-            "import matplotlib.pyplot as plt\n"
-            f'df = pd.read_csv("{path}")\n'
-            'plt.bar(df["region"], df["revenue"])\n'
-            "plt.show()\n"
+    def spy(source: str, *, declared_target: object) -> Verdict:
+        assert isinstance(declared_target, DatasetTarget)
+        verdict = core_verify(source, declared_target=declared_target)
+        calls.append((source, declared_target, verdict))
+        return verdict
+
+    monkeypatch.setattr(module, "verify_python_source", spy)
+    matching = _program(_SALES_PATH)
+    mismatch = _program("/mnt/uploads/other.csv")
+    with fake_open_webui(stored, tmp_path):
+        produced = invoke_tool(
+            module, matching, metadata=_metadata("file-1"), user={"id": _USER_ID}
+        )
+        withheld = invoke_tool(
+            module, mismatch, metadata=_metadata("file-1"), user={"id": _USER_ID}
         )
 
-    async def fake_reader(*args: object, **kwargs: object) -> tuple[str, bytes]:
-        assert args == ()
-        assert kwargs == {"metadata": metadata, "user": user, "request": request}
-        return attached_path, content
-
-    def spy_verify(program: str, *, declared_target: object) -> object:
-        calls.append((program, declared_target))
-        assert isinstance(declared_target, DatasetTarget)
-        return verify_python_source(program, declared_target=declared_target)
-
-    monkeypatch.setattr(module, "read_attached_file", fake_reader)
-    monkeypatch.setattr(module, "verify_python_source", spy_verify)
-
-    matching = source(attached_path)
-    mismatch = source("/mnt/uploads/other.csv")
-    assert (
-        invoke_tool(module, matching, metadata=metadata, user=user, request=request) == "verified"
-    )
-    assert (
-        invoke_tool(module, mismatch, metadata=metadata, user=user, request=request)
-        == "refused:target_mismatch"
-    )
-    target = DatasetTarget(path=attached_path, content=content)
-    assert calls == [(matching, target), (mismatch, target)]
+    assert produced == _CHART_PRODUCED
+    assert withheld == _CHART_NOT_PRODUCED
+    target = DatasetTarget(path=_SALES_PATH, content=_SALES_BYTES)
+    assert [(source, declared) for source, declared, _verdict in calls] == [
+        (matching, target),
+        (mismatch, target),
+    ]
+    assert isinstance(calls[0][2], Verified)
+    refused = calls[1][2]
+    assert isinstance(refused, Refused)
+    assert refused.code == "target_mismatch"
 
 
-def test_t6_file_access_is_ownership_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_t6_file_access_is_ownership_checked(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """T6: the ownership-checked accessor is the one called, with no fall-back path.
 
-    A fake raising on a foreign id makes the tool refuse rather than read the file another way.
+    A store that answers `None` for a foreign id makes the tool refuse rather than read the file
+    another way.
     """
-    from verifier.pysrc import Refused, Verdict  # noqa: PLC0415
-
     module = load_tool_module()
-    program = (
-        "import pandas as pd\n"
-        "import matplotlib.pyplot as plt\n"
-        'df = pd.read_csv("/mnt/uploads/foreign.csv")\n'
-        'plt.bar(df["region"], df["revenue"])\n'
-        "plt.show()\n"
-    )
-    metadata: dict[str, object] = {"files": [{"id": "foreign-file", "name": "foreign.csv"}]}
-    user: dict[str, object] = {"id": "requesting-user"}
-    request = object()
-    reader_calls = 0
-    verifier_calls = 0
+    program = _program("/mnt/uploads/foreign.csv")
+    stored = [
+        StoredFile(
+            file_id="foreign-file",
+            user_id="owning-user",
+            filename="foreign.csv",
+            content=_SALES_BYTES,
+        )
+    ]
 
-    foreign_file = "foreign file"
-    fallback_file_read = "tool attempted a fallback file read"
-    fallback_path_read = "tool attempted a fallback Path.read_bytes"
+    foreign_target = "the core was asked about a file the caller does not own"
+    fallback_file_read = "tool attempted a fall-back file read"
+    fallback_path_read = "tool attempted a fall-back Path.read_bytes"
 
-    async def foreign_reader(*args: object, **kwargs: object) -> tuple[str, bytes]:
-        nonlocal reader_calls
-        reader_calls += 1
-        assert args == ()
-        assert kwargs == {"metadata": metadata, "user": user, "request": request}
-        raise PermissionError(foreign_file)
-
-    def fake_verify(source: str, *, declared_target: object) -> Verdict:
-        nonlocal verifier_calls
-        verifier_calls += 1
-        assert source == program
-        assert declared_target is None
-        return Refused("source_not_supplied")
+    def bomb_verify(source: str, *, declared_target: object) -> Never:
+        del source, declared_target
+        raise AssertionError(foreign_target)
 
     def fallback_open(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError(fallback_file_read)
@@ -504,13 +446,23 @@ def test_t6_file_access_is_ownership_checked(monkeypatch: pytest.MonkeyPatch) ->
     def fallback_read_bytes(_path: Path) -> Never:
         raise AssertionError(fallback_path_read)
 
-    with monkeypatch.context() as patch:
-        patch.setattr(module, "read_attached_file", foreign_reader)
-        patch.setattr(module, "verify_python_source", fake_verify)
+    monkeypatch.setattr(module, "verify_python_source", bomb_verify)
+    # The bombs are withdrawn before the assertions: pytest reads `os.environ` through `open`
+    # while it writes the call-phase report, so one surviving the body kills the whole run.
+    with (
+        fake_open_webui(stored, tmp_path) as lookups,
+        monkeypatch.context() as patch,
+    ):
         patch.setattr(builtins, "open", fallback_open)
         patch.setattr(Path, "read_bytes", fallback_read_bytes)
-        output = invoke_tool(module, program, metadata=metadata, user=user, request=request)
+        output = invoke_tool(
+            module,
+            program,
+            metadata=_metadata("foreign-file"),
+            user={"id": "requesting-user"},
+        )
 
-    assert output == "refused:source_not_supplied"
-    assert reader_calls == 1
-    assert verifier_calls == 1
+    assert output == _CHART_NOT_PRODUCED
+    # One ownership-checked lookup, whose `None` is the whole access decision: no second route
+    # exists, which the two bombs above prove by never firing.
+    assert lookups == [("foreign-file", "requesting-user")]

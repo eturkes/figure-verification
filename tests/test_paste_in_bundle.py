@@ -5,8 +5,6 @@ Contract: `.agent/contracts/m10u0.md` predicate group B. Each docstring carries 
 acceptance check; the check is the test's specification and the contract's wording wins wherever a
 body would assert more.
 
-Skeleton: each body is `pytest.skip`, retired at M10.0's close together with this line.
-
 The single-source ruling is what these predicates defend. The verification core is written once
 under `src/verifier/pysrc/`; the pasted artifact embeds it BY GENERATION, and a hand fork is
 banned. A generator whose output drifts from its inputs recreates the fork silently, so freshness,
@@ -39,8 +37,6 @@ from paste_in_support import (
     run_generator,
     without_module_restore,
 )
-
-_TRACKER = "owned by **M10.0** (`.agent/spec.md` Deferred)"
 
 
 def test_b1_committed_artifact_equals_a_fresh_generation(tmp_path: Path) -> None:
@@ -232,8 +228,13 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
             )
 
         sys.path[:] = [entry for entry in sys.path if kept(entry)]
-        assert all("figure-verification" not in entry for entry in sys.path)
         assert "verifier" not in sys.modules
+        for absent in ("verifier", "msgspec"):
+            try:
+                __import__(absent)
+            except ModuleNotFoundError:
+                continue
+            raise AssertionError(f"{absent} is still reachable, so this proves nothing")
 
         class OpenWebUIStub(importlib.abc.MetaPathFinder, importlib.abc.Loader):
             def find_spec(self, fullname, path=None, target=None):
@@ -295,8 +296,11 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
     )
     driver_path = tmp_path / "driver.py"
     driver_path.write_text(driver, encoding="utf-8")
+    # Two flags, two halves of the isolation. `-I` drops the environment and the user site; `-S`
+    # skips `site`, without which the venv's editable `verifier.pth` and every installed
+    # third-party package stay importable and the driver's own controls above go silent.
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "-I", str(driver_path)],
+        [sys.executable, "-I", "-S", str(driver_path)],
         cwd=tmp_path,
         capture_output=True,
         text=True,

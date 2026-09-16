@@ -16,9 +16,14 @@ import sys
 import textwrap
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Protocol, cast
+
+import pytest
+
+from webui.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -35,25 +40,14 @@ class BundleAPI(Protocol):
     def embedded_sources(self, text: str) -> dict[str, str]: ...
 
 
-class ToolModuleAPI(Protocol):
-    """The fixed paste-in tool module surface used by the behavioral tests."""
+@dataclass(frozen=True, slots=True)
+class StoredFile:
+    """One row of the fake Open WebUI file store: what an upload looks like to the tool."""
 
-    Tools: type[object]
-    VERIFIED_TEXT: str
-    REFUSED_TEXT: str
-
-
-class OwuiFilesAPI(Protocol):
-    """The one Open WebUI-dependent file-access seam."""
-
-    def read_attached_file(
-        self,
-        filename: str,
-        *,
-        metadata: Mapping[str, object] | None,
-        user: Mapping[str, object] | None,
-        request: object | None,
-    ) -> bytes: ...
+    file_id: str
+    user_id: str
+    filename: str
+    content: bytes
 
 
 def load_bundle() -> BundleAPI:
@@ -66,13 +60,64 @@ def load_tool_module() -> ModuleType:
     return importlib.import_module("webui.paste_in.tool")
 
 
-def owui_tool_descriptions(tmp_path: Path) -> list[str]:
-    """Return OWUI 0.10.2's model-facing descriptions for the committed artifact."""
+def _owui_interpreter() -> Path:
+    """The `.venv-webui` interpreter, searched in this tree and in the primary tree above it.
+
+    `.venv-webui` is gitignored, so CI and a fresh clone have none and the predicates that need
+    Open WebUI's own loader skip. The condition is a dependency guard rather than a disabled case:
+    it runs wherever the dependency exists, and `tools/gate.sh` announces the skip by name.
+    """
+    # A teammate worktree sits at `<primary>/.scratch/worktrees/<name>`, which is where the second
+    # candidate comes from; the shared venv is never copied into one.
+    for base in (REPO_ROOT, REPO_ROOT.parents[2]):
+        interpreter = base / ".venv-webui" / "bin" / "python"
+        if interpreter.is_file():
+            return interpreter
+    pytest.skip(f"open-webui interpreter absent: {REPO_ROOT}/.venv-webui/bin/python")
+
+
+def owui_driver_output(driver: str, tmp_path: Path, marker: str) -> str:
+    """Run one driver under `.venv-webui` and return the payload of its `<marker>=` line.
+
+    The committed artifact is copied beside the driver, so Open WebUI's own loader reads the bytes
+    an admin pastes with no repo path in reach.
+    """
+    interpreter = _owui_interpreter()
     artifact = REPO_ROOT / "paste-in" / "figure_verification_tool.py"
     assert artifact.is_file()
-    isolated = tmp_path / artifact.name
-    isolated.write_bytes(artifact.read_bytes())
-    driver = textwrap.dedent(
+    (tmp_path / artifact.name).write_bytes(artifact.read_bytes())
+    driver_path = tmp_path / "owui_driver.py"
+    driver_path.write_text(textwrap.dedent(driver), encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATA_DIR": str(tmp_path / "data"),
+            "ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS": "false",
+            "OFFLINE_MODE": "true",
+            "PYTHONPATH": "",
+            # open_webui refuses to import with this unset, so the driver would die before it
+            # reached the artifact. The launcher's own key is what the demo runs under.
+            "WEBUI_SECRET_KEY": Settings().secret_key,
+        }
+    )
+    result = subprocess.run(  # noqa: S603
+        [str(interpreter), str(driver_path)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    prefix = f"{marker}="
+    line = next(line for line in result.stdout.splitlines() if line.startswith(prefix))
+    return line[len(prefix) :]
+
+
+def owui_tool_descriptions(tmp_path: Path) -> list[str]:
+    """Open WebUI 0.10.2's own model-facing descriptions for the committed artifact."""
+    payload = owui_driver_output(
         """
         import asyncio
         import json
@@ -90,36 +135,11 @@ def owui_tool_descriptions(tmp_path: Path) -> list[str]:
             print("M10U0_DESCRIPTIONS=" + json.dumps([spec["description"] for spec in specs]))
 
         asyncio.run(main())
-        """
+        """,
+        tmp_path,
+        "M10U0_DESCRIPTIONS",
     )
-    driver_path = tmp_path / "description_driver.py"
-    driver_path.write_text(driver, encoding="utf-8")
-    primary = REPO_ROOT if (REPO_ROOT / ".venv-webui").is_dir() else REPO_ROOT.parents[2]
-    interpreter = primary / ".venv-webui" / "bin" / "python"
-    assert interpreter.is_file()
-    env = os.environ.copy()
-    env.update(
-        {
-            "DATA_DIR": str(tmp_path / "data"),
-            "ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS": "false",
-            "OFFLINE_MODE": "true",
-            "PYTHONPATH": "",
-        }
-    )
-    result = subprocess.run(  # noqa: S603
-        [str(interpreter), str(driver_path)],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    line = next(
-        line for line in result.stdout.splitlines() if line.startswith("M10U0_DESCRIPTIONS=")
-    )
-    decoded: object = json.loads(line.partition("=")[2])
+    decoded: object = json.loads(payload)
     assert isinstance(decoded, list)
     assert all(isinstance(description, str) for description in decoded)
     return cast(list[str], decoded)
@@ -151,7 +171,6 @@ def invoke_tool(
     *,
     metadata: Mapping[str, object] | None = None,
     user: Mapping[str, object] | None = None,
-    request: object | None = None,
 ) -> str:
     """Call the sole tool operation with its one discovered model parameter + reserved context."""
     _name, operation = public_tool_operation(module)
@@ -161,7 +180,6 @@ def invoke_tool(
     reserved: dict[str, object] = {
         "__metadata__": metadata,
         "__user__": user,
-        "__request__": request,
     }
     kwargs = {
         model_parameters[0]: program,
@@ -172,6 +190,72 @@ def invoke_tool(
         result = asyncio.run(_complete(cast(Awaitable[object], result)))
     assert isinstance(result, str)
     return result
+
+
+@contextmanager
+def fake_open_webui(stored: Sequence[StoredFile], root: Path) -> Iterator[list[tuple[str, str]]]:
+    """Install a strict `open_webui` file + storage seam over a real on-disk store.
+
+    Strictness mirrors the real API so a tolerant fake cannot un-pin what it was built for. The
+    lookup is async, takes the id and the requesting user id, and answers `None` for a missing OR
+    foreign row rather than raising (`models/files.py:169-181`); `Storage.get_file` is synchronous
+    and returns the path unchanged, as the local provider does. The bytes therefore really sit on
+    disk and the tool's own read is the one that fetches them.
+
+    Yields the recorded `(file_id, user_id)` lookups, so a test can assert which rows were asked
+    for and that nothing was asked for twice.
+    """
+    lookups: list[tuple[str, str]] = []
+    rows = {item.file_id: item for item in stored}
+    assert len(rows) == len(stored), "duplicate file id in the fake store"
+    for item in stored:
+        (root / item.file_id).write_bytes(item.content)
+
+    async def get_file_by_id_and_user_id(file_id: str, user_id: str) -> object | None:
+        lookups.append((file_id, user_id))
+        item = rows.get(file_id)
+        if item is None or item.user_id != user_id:
+            return None
+        return SimpleNamespace(
+            id=item.file_id,
+            filename=item.filename,
+            path=str(root / item.file_id),
+            user_id=item.user_id,
+        )
+
+    def get_file(path: str) -> str:
+        assert isinstance(path, str)
+        return path
+
+    injected: dict[str, ModuleType] = {
+        name: ModuleType(name)
+        for name in (
+            "open_webui",
+            "open_webui.models",
+            "open_webui.models.files",
+            "open_webui.storage",
+            "open_webui.storage.provider",
+        )
+    }
+    for name, module in injected.items():
+        module.__dict__["__path__"] = []
+        parent, _, leaf = name.rpartition(".")
+        if parent:
+            injected[parent].__dict__[leaf] = module
+    injected["open_webui.models.files"].__dict__["Files"] = SimpleNamespace(
+        get_file_by_id_and_user_id=get_file_by_id_and_user_id
+    )
+    injected["open_webui.storage.provider"].__dict__["Storage"] = SimpleNamespace(get_file=get_file)
+    original = {name: sys.modules.get(name) for name in injected}
+    sys.modules.update(injected)
+    try:
+        yield lookups
+    finally:
+        for name, previous in original.items():
+            if previous is None:
+                del sys.modules[name]
+            else:
+                sys.modules[name] = previous
 
 
 def run_generator(root: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -317,9 +401,25 @@ def _parent_packages(module: str, index: Mapping[str, Path]) -> set[str]:
 
 
 def independent_closure(root: str) -> list[str]:
-    """Compute the exact first-party closure and package parents in dependency-first order."""
+    """The exact first-party closure of `root`, parents included, in dependency-first order.
+
+    Ancestry is MEMBERSHIP, never an edge. The artifact registers every embedded name before any
+    source runs, so a submodule resolves without its package `__init__` having executed -- and
+    `verifier/pysrc/__init__.py` imports from `verifier.pysrc.budget`, so reading ancestry as an
+    edge makes the graph cyclic and no topological order exists at all (contract amendment B4-1).
+    """
     index = module_index()
     assert root in index, f"root module is not tracked: {root}"
+    members: set[str] = set()
+    pending = [root]
+    while pending:
+        module = pending.pop()
+        if module in members:
+            continue
+        members.add(module)
+        pending.extend(direct_first_party_dependencies(module, index))
+        pending.extend(_parent_packages(module, index))
+
     ordered: list[str] = []
     visiting: set[str] = set()
     visited: set[str] = set()
@@ -329,16 +429,14 @@ def independent_closure(root: str) -> list[str]:
             return
         assert module not in visiting, f"first-party import cycle through {module}"
         visiting.add(module)
-        dependencies = direct_first_party_dependencies(module, index) | _parent_packages(
-            module, index
-        )
-        for dependency in sorted(dependencies):
+        for dependency in sorted(direct_first_party_dependencies(module, index)):
             visit(dependency)
         visiting.remove(module)
         visited.add(module)
         ordered.append(module)
 
-    visit(root)
+    for module in sorted(members):
+        visit(module)
     return ordered
 
 
@@ -488,15 +586,15 @@ def without_module_restore(text: str, path: Path) -> str:
 
 
 def assert_topological(order: Sequence[str]) -> None:
-    """Assert each direct import and package parent precedes its consumer."""
+    """Assert each direct first-party import precedes its consumer.
+
+    Import dependencies alone are edges; ancestry is membership (see `independent_closure`).
+    """
     index = module_index()
     positions = {name: position for position, name in enumerate(order)}
     assert len(positions) == len(order), "duplicate embedded module"
     for module in order:
-        dependencies = direct_first_party_dependencies(module, index) | _parent_packages(
-            module, index
-        )
-        for dependency in dependencies:
+        for dependency in direct_first_party_dependencies(module, index):
             assert dependency in positions, f"{module} depends on missing {dependency}"
             assert positions[dependency] < positions[module], (
                 f"{dependency} emitted after dependent {module}"
