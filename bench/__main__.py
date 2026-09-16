@@ -53,7 +53,7 @@ _EXPECTED_GOOD_CORPUS_SIZE = 10
 # F1). Recompute here after any deliberate corpus edit (tests/test_bench_harness.py re-derives
 # both from the tree, so a drift fails the portable gate too).
 _EXPECTED_BAD_CORPUS_DIGEST = "0a167fff44addcd9a2ae5f15bb0f87cbf60ee63f297a48f3a862940cf601a7fc"
-_EXPECTED_GOOD_CORPUS_DIGEST = "8d79e67966c1e8f833c2c5e6290d6de10a84f3313a77ffc3e95bca53d1b612df"
+_EXPECTED_GOOD_CORPUS_DIGEST = "72b15d1cb95b8e21440c2b6c5413a37298b3060f8d423bfe5e63f825e518f245"
 
 
 def _schema_digest() -> str | None:

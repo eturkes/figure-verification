@@ -69,7 +69,7 @@
       "summary": "select date, city, temp_c -> line with color=city"
     },
     {
-      "file": "g08_na_revenue_by_month.json",
+      "file": "g08_us_revenue_by_month.json",
       "intent": "Show total revenue by month for the US region.",
       "dataset": "sales.csv",
       "mark": "bar",

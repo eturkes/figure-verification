@@ -46,7 +46,7 @@ _GOLDENS = [
     ("g05_avg_revenue_by_region.json", "sales"),
     ("g06_max_temp_by_city.json", "weather"),
     ("g07_temp_over_time_by_city.json", "weather"),
-    ("g08_na_revenue_by_month.json", "sales"),
+    ("g08_us_revenue_by_month.json", "sales"),
     ("g09_min_revenue_by_month.json", "sales"),
     ("g10_temp_vs_precip.json", "weather"),
 ]

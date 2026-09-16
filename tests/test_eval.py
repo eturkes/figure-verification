@@ -799,9 +799,9 @@ def test_g07_temp_over_time_by_city() -> None:
     )
 
 
-def test_g08_na_revenue_by_month() -> None:
+def test_g08_us_revenue_by_month() -> None:
     # filter region eq US -> group_by month -> sum revenue -> sort month asc.
-    table = _evaluate_example("good_specs", "g08_na_revenue_by_month.json", "sales")
+    table = _evaluate_example("good_specs", "g08_us_revenue_by_month.json", "sales")
     assert table.columns == (
         canon.StringColumn(name="month"),
         canon.NumericColumn(name="total_revenue", scale=0),
