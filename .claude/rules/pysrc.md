@@ -110,15 +110,23 @@ implies the figure answers the question asked.
   declared_target=None)` keeps the parameter optional for headless callers; the demo supplies it from
   the arm in play.
 - **(b) Observed-execution confirmation — RESOLVED: ADOPTED (user).** The sandbox reports the arrays
-  matplotlib actually received (`gcf().axes[*].lines[*].get_xydata()`), the outlet filter returns
-  them, and the PNG is withheld until they match the verifier's own recomputation. This closes the
+  matplotlib actually received, the outlet filter returns them, and the PNG is withheld until they
+  match the verifier's own recomputation. The reader is a CLOSED PER-MARK map (user), one entry per
+  admitted mark and NO default arm, because matplotlib files each mark under a different artist:
+  `plt.bar` → `container.patches` read as `(get_x() + get_width()/2, get_height())`, `plt.barh` →
+  the same patches read as `(get_width(), get_y() + get_height()/2)`, `plt.plot` →
+  `line.get_xydata()`, `plt.scatter` → `collection.get_offsets()`. A lines-only reader would have
+  blocked the demo's own PASS arm the moment `sentinel-simple` became a bar prompt, and all three
+  readers are already characterised bit-for-bit against the shipped Pyodide build by
+  `.agent/measurements/t6_pyodide.mjs`. An unmapped mark yields no arrays and therefore BLOCKS,
+  which is the law below, not an exception to it. This closes the
   projection gap EMPIRICALLY instead of by construction and costs no new trust: OWUI already
   rewrites `plt.show()` to `savefig(BytesIO)`, so an environment layer around the model's bytes
   already exists and is accepted, and admitted code provably cannot tamper with the observer because
   the allowlist admits no idiom that could. The environment/observation layer reads as OUTSIDE
   ruling 1 (verifier-(re)authored scripts REJECTED): the EXECUTED bytes stay the model's, and the
   epilogue observes rather than re-authors. Observation may only WITHHOLD, never admit — a
-  comparison it cannot perform blocks. M10 owns the implementation.
+  comparison it cannot perform blocks. `M10.2` owns the implementation.
 
 The verdict is decided statically either way — it must precede release — so the core is built on
 projection + exact recomputation and observation is additive.
