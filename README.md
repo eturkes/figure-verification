@@ -345,7 +345,7 @@ to free all three ports.
 
 Open `http://127.0.0.1:8080`. Log in with the printed credentials. If you use the defaults, enter
 `operator@localhost` / `loopback-dev-password`. Type a chart request. For example, enter
-`Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`.
+`Chart the total revenue of each region using bars. dataset_name: sales.csv`.
 
 Bootstrap makes Figure Verifier a default tool on the configured model. Browser chats then offer it
 automatically, without a manual tool toggle. The result depends on the model tier. For the real model,
@@ -357,21 +357,31 @@ it also depends on the exact prompt:
   schema-guided. This guidance steers the weak model toward schema-representable structure instead of
   the raw model's markdown-fenced prose.
 
-  The `webui/launch.sh` banner pins both live outcomes. The verified prompt is
-  `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`. For the pinned model,
-  device, and config, this prompt drives `proposeSpec`. Under the same conditions, it renders a real
-  **verified chart inline**. This is a deterministic observation, not a reliability bound.
+  The `webui/launch.sh` banner pins both prompts. Neither arm is calibrated on the current build.
+  The results below were measured with the real model on the host of record.
 
-  The blocked example is deliberately over-elaborate:
+  The simple prompt is
+  `Chart the total revenue of each region using bars. dataset_name: sales.csv`. This prompt does
+  drive `proposeSpec`. The verifier then refuses the proposed spec at `transform.group_by_placement`,
+  so no figure renders. The prompt pinned before it,
+  `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`, refuses at
+  `encoding.fields_exist_in_plotted_table`. Four runs gave the same two results.
+
+  The elaborate example asks for much more:
 
   ```text
   Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated.
   ```
 
-  No verifiable VPlot spec can express that request. The weak model therefore answers with its own
-  unverified chart code. The bypassable `Verified Plot Guard` replaces that code with
-  `BLOCKED_NOTICE`. The exact blocked reply depends on the weak model. The guard never proves
-  verification.
+  No verifiable VPlot spec can express that request. The outcome is not stable. In one run the model
+  ignored the request. It proposed a plain whole-table spec, that spec verified, and a real chart
+  rendered. The numbers in that chart are correct and the figure does not answer the request. In two
+  more runs the model answered with prose. Prose carries no chart signal, so the bypassable
+  `Verified Plot Guard` passes it through. The guard replaces unverified chart code with
+  `BLOCKED_NOTICE`, and it never proves verification.
+
+  Milestone M10 replaces this JSON-spec path with python mode. M10 also calibrates both demo prompts.
+  To see the verified-render path today, start the launcher with `--stub`.
 
   A separate 100-prompt bench calls `/propose-spec` directly. It exercises neither Open WebUI tool
   selection nor the guard. It fully verified 26/100 of its fixed benchmark prompts. Another 51/100

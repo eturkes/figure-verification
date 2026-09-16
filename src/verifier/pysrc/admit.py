@@ -114,6 +114,27 @@ _NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
 _GROUPBY = "groupby"
 _REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
 
+# The pandas plotting ACCESSOR, `<data>.plot(kind="bar")`, written by 4 of the 25 simple design
+# captures. It is its own route rather than a dotted target: its receiver is a name the MODEL bound,
+# so admitting it through `ADMITTED_CALL_TARGETS` -- which is keyed by a FIXED import alias -- would
+# open every `<name>.plot` at once.
+_ACCESSOR_ATTR = "plot"
+# `kind` is TARGET IDENTITY, not a style keyword: each value names the mark the accessor draws, and
+# it maps onto that mark's own target string here so projection never defaults an unlisted spelling
+# onto a line the program does not draw.
+ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh"}
+# Closed exactly as `ADMITTED_KEYWORDS` is per target. `x=`/`y=` stay out: they select columns, and
+# the accessor's projection reads its channels from the receiver instead.
+ADMITTED_ACCESSOR_KEYWORDS = frozenset({"kind", "color"})
+# Trailing calls projection UNWRAPS off an admitted chain, BY NAME. `_admit_aggregation` admits ONE
+# trailing no-argument call, so `.sort_values()` arrives ALREADY ADMITTED and is refused only at
+# projection; an unwrap taking whatever trailing call it finds would admit a REORDERING with nothing
+# red, and both G8's row coverage and G9's ordering read off group-key order.
+ADMITTED_UNWRAPPED_ATTRS = frozenset({"reset_index"})
+# A fixed import alias is never an accessor receiver: `plt.plot` is a mark target and `pd.plot` /
+# `np.plot` are no target at all, so all three keep resolving through `ADMITTED_CALL_TARGETS`.
+_IMPORT_ALIASES = frozenset(ADMITTED_IMPORTS.values())
+
 _ADMITTED_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)
 _ADMITTED_UNARYOPS = (ast.USub,)
 
@@ -222,6 +243,82 @@ def aggregation_chain(node: ast.expr) -> AggregationChain | None:
             return None
 
 
+def accessor_receiver(node: ast.Call) -> ast.Name | None:
+    """The bound NAME an accessor call draws from, or `None` for every other call shape.
+
+    The shape is written down ONCE, here beside the admission that closes it, and projection reads
+    it back instead of restating it: two matchers over one shape drift apart silently, and only one
+    of them would be the boundary.
+
+    Shape alone, refusing nothing. `<name>.plot(...)` and `<name>["<col>"].plot(...)` both return
+    the ROOT name, because both are receivers the checks below have to price; deciding `kind` or
+    the keywords here would land `call_target_not_admitted` on a program whose fault is positional.
+    """
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr != _ACCESSOR_ATTR:
+        return None
+    root = func.value
+    if isinstance(root, ast.Subscript):
+        root = root.value
+    if not isinstance(root, ast.Name) or root.id in _IMPORT_ALIASES:
+        return None
+    return root
+
+
+def accessor_is_subscripted(node: ast.Call) -> bool:
+    """Whether an accessor call's receiver carries a column subscript.
+
+    Split from `accessor_receiver` rather than folded into its return, because the two stages price
+    different things about one subscript: admission prices its SLICE, projection prices its EFFECT,
+    and the ROOT name is what both have to reach first. Callable only where `accessor_receiver`
+    returned a name, which is what makes the cast a postcondition rather than a hope.
+    """
+    func = cast("ast.Attribute", node.func)
+    return isinstance(func.value, ast.Subscript)
+
+
+def accessor_kind(node: ast.Call) -> str | None:
+    """The accessor's `kind=` string literal, or `None` when it is absent or not a string."""
+    for keyword in node.keywords:
+        if keyword.arg == "kind":
+            value = keyword.value
+            if isinstance(value, ast.Constant) and type(value.value) is str:
+                return value.value
+            return None
+    return None
+
+
+def _admit_accessor(node: ast.Call, receiver: ast.Name, scope: _Scope) -> None:
+    """`<data>.plot(kind="<mark>")`, closed on its own shape.
+
+    Refusal order is the contract's: the keyword allowlist prices the call's SHAPE, `kind` then
+    prices its TARGET, and the receiver's binding is checked last -- the same target-before-bound
+    order `_admit_call` keeps, so the two routes tell an author the same thing about one program.
+    """
+    if node.args:
+        # The accessor's positional slot is `x`, which selects a column the projection reads from
+        # the receiver instead. Two channel sources for one mark is not a shape it can state.
+        _refuse("keyword_not_admitted")
+    for keyword in node.keywords:
+        # `arg is None` is `**kwargs`, whose keyword set is not statically known at all.
+        if keyword.arg is None or keyword.arg not in ADMITTED_ACCESSOR_KEYWORDS:
+            _refuse("keyword_not_admitted")
+    if accessor_kind(node) not in ADMITTED_ACCESSOR_KINDS:
+        # Unlisted, non-literal and ABSENT all land here: `kind` is the target, so a call whose
+        # target cannot be read names no admitted target at all. Absent defaults to a line in
+        # pandas, and defaulting is what a closed map exists to refuse.
+        _refuse("call_target_not_admitted")
+    if receiver.id not in scope.bound:
+        _refuse("name_not_bound")
+    # `accessor_receiver` reached `receiver` by walking `node.func`, so an `ast.Attribute` here is
+    # its postcondition rather than a hope.
+    func = cast("ast.Attribute", node.func)
+    if isinstance(func.value, ast.Subscript):
+        _admit_string_index(func.value.slice)
+    for keyword in node.keywords:
+        _admit_expr(keyword.value, scope)
+
+
 def _admit_string_index(node: ast.expr) -> None:
     """A string-literal column name. A tuple selection (`[["a", "b"]]`) lands here and refuses."""
     if not isinstance(node, ast.Constant) or type(node.value) is not str:
@@ -246,10 +343,11 @@ def _admit_aggregation(node: ast.Call, root: ast.Call, frame: ast.Name, scope: _
     """Admit the `groupby` idiom as one closed shape. Three spellings pass.
 
     The bare `<frame>.groupby("<key>")`, the canonical
-    `<frame>.groupby("<key>")["<col>"].<reduction>()`, and that chain carrying ONE trailing call
-    (`.reset_index()`, which the design set writes once). Only the canonical chain has a projection
-    rule; the other two admit so `project.py` can name what is wrong with them, since
-    `attribute_not_admitted` would blame an attribute where the real fault is an unstatable meaning.
+    `<frame>.groupby("<key>")["<col>"].<reduction>()`, and that chain carrying ONE trailing no-
+    argument call. The trailing call is admitted as a CLASS and unwrapped by name: projection reads
+    `ADMITTED_UNWRAPPED_ATTRS` and refuses every other spelling, `.sort_values()` included, so
+    `aggregation_not_projected` names an unstatable meaning where `attribute_not_admitted` would
+    blame the attribute. The bare `groupby` admits for the same reason and reduces nothing.
     """
     if frame.id not in scope.bound:
         _refuse("name_not_bound")
@@ -272,7 +370,11 @@ def _admit_aggregation(node: ast.Call, root: ast.Call, frame: ast.Name, scope: _
 
 
 def _admit_call_or_aggregation(node: ast.Call, scope: _Scope) -> None:
-    """Route one call: the aggregation idiom closes on its own shape, everything else by target."""
+    """Route one call: two idioms close on their own shape, everything else by target."""
+    receiver = accessor_receiver(node)
+    if receiver is not None:
+        _admit_accessor(node, receiver, scope)
+        return
     rooted = _groupby_root(node)
     if rooted is None:
         _admit_call(node, scope)

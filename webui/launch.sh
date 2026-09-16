@@ -250,17 +250,19 @@ uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
 # 5) banner. With the real model, outcomes are prompt-driven: naming `dataset_name` sends a
-#    request through the verifier to a rendered figure; a loose request yields a raw chart the guard
-#    blocks. The --stub fixture proposes a known-good spec for every request, so it demonstrates only
-#    the verified-render path.
-succeeds_prompt="Plot a scatter chart of revenue versus orders. dataset_name: sales.csv"
-blocked_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
+#    naming `dataset_name` is what makes the tool call well-formed. Neither real-model arm is
+#    calibrated: measured on this host, the simple prompt drives proposeSpec and the verifier then
+#    refuses the proposed spec, while the elaborate prompt's outcome varies run to run. M10 owns the
+#    calibration. The --stub fixture proposes a known-good spec for every request, so it demonstrates
+#    only the verified-render path.
+simple_prompt="Chart the total revenue of each region using bars. dataset_name: sales.csv"
+elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
   printf -v try_typing '%s\n' \
     "    Type either prompt:" \
-    "      1) ${succeeds_prompt}" \
-    "      2) ${blocked_prompt}" \
+    "      1) ${simple_prompt}" \
+    "      2) ${elaborate_prompt}" \
     "" \
     "           Both prompts VERIFY. The stub proposes one fixed known-good spec for every" \
     "           request. The stub ignores your prompt intent, so both prompts render the same" \
@@ -270,16 +272,19 @@ else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
     "    Type these prompts:" \
-    "      1) ${succeeds_prompt}" \
+    "      1) ${simple_prompt}" \
     "" \
-    "           Expect VERIFIED. The model proposes the spec. The verifier recomputes the data." \
-    "           If every check passes, a real figure renders inline in a sandboxed frame." \
+    "           The model proposes a spec. The verifier recomputes the data and rules on it." \
+    "           Measured on this host, the spec fails a check, so no figure renders." \
     "" \
-    "      2) ${blocked_prompt}" \
+    "      2) ${elaborate_prompt}" \
     "" \
-    "           Expect BLOCKED. No verifiable spec can express this request. The model can" \
-    "           answer with its own unverified chart code. If the model does, the Verified" \
-    "           Plot Guard replaces that code with the blocked notice."
+    "           No verifiable spec can express this request. The outcome is not stable. In three" \
+    "           measured runs the model answered twice with prose and once with a plain spec" \
+    "           that verified. Prose carries no chart signal, so the guard does not block it." \
+    "           The Verified Plot Guard replaces unverified chart code only." \
+    "" \
+    "           Milestone M10 calibrates both prompts. Use --stub for a verified render."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER

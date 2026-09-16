@@ -5,9 +5,9 @@
     {
       "id": "sentinel-simple",
       "category": "simple",
-      "idiom": "scatter_xy",
+      "idiom": "bar_category_sum",
       "dataset_name": "sales.csv",
-      "prompt": "Plot a scatter chart of revenue versus orders."
+      "prompt": "Chart the total revenue of each region using bars."
     },
     {
       "id": "sentinel-complicated",

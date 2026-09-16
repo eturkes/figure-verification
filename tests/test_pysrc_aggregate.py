@@ -184,16 +184,24 @@ def test_a2_chain_deviations_each_refuse() -> None:
     assert _projection_code(wrong_frame) == "column_not_from_source"
 
 
-def test_a3_reset_index_refuses_aggregation_not_projected() -> None:
-    """A3: `df.groupby('r')['o'].max().reset_index()` refuses `aggregation_not_projected`. It is a
-    different projection, not a decoration: it changes the channel spelling to a column
-    subscript."""
-    source = _dataset_source(
-        'g = df.groupby("region")["revenue"].max().reset_index()\n'
-        'plt.bar(g["region"], g["revenue"])\n'
-        "plt.show()\n"
+def test_a3_reset_index_projects_as_the_series_spelling() -> None:
+    """A3: `df.groupby('r')['o'].max().reset_index()` projects, EQUAL to the series spelling.
+
+    M13.8 moved this boundary. The reset re-spells one reduced series as a two-column frame, so it
+    computes the same numbers and must yield the same spec; the trailing call it rides on stays
+    refused for every other attribute name, which `tests/test_pysrc_accessor.py` pins as a set."""
+    reset = project(
+        parse_admitted(
+            _dataset_source(
+                'g = df.groupby("region")["revenue"].max().reset_index()\n'
+                'plt.bar(g["region"], g["revenue"])\n'
+                "plt.show()\n"
+            )
+        )
     )
-    assert _projection_code(source) == "aggregation_not_projected"
+    series = project(parse_admitted(_aggregate_source("max")))
+    assert isinstance(reset, spec.DatasetPlot)
+    assert reset == series
 
 
 def test_a4_aggregate_channels_project() -> None:

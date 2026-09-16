@@ -1,0 +1,76 @@
+# Mutation catalogue for the ADMISSION allowlist. Run: `uv run --locked python tools/mutate.py
+# tools/mutants/admit.toml`. Each mutant neuters ONE predicate's CONDITION and names the ONE test
+# that must go red under it.
+#
+# Scope today = M13.8's accessor route ALONE. The 13 mutants that credited `admit.py` at M13.2 were
+# driven by a gitignored script, and porting them here -- together with the M13.4/M13.6 admission
+# predicates that never earned mutation credit at all -- is a queued `.agent/deferred.md` row.
+# A claim credited in `project.toml` can sit unmutated here: `project.toml` covers only what
+# PROJECTION decides, and every refusal this route lands is decided before projection runs.
+#
+# `p2-kind-map-opened` is deliberately ABSENT as a mutant over the MAP: opening
+# `ADMITTED_ACCESSOR_KINDS` to a third key is a data edit, not a predicate neuter, and the exact-set
+# assertion on that literal is what fails. `p2-missing-kind-defaults` below is the predicate form --
+# absent `kind` becoming a line plot is pandas' own default and the fault the closed map exists for.
+
+module = "src/verifier/pysrc/admit.py"
+tests = [
+  "tests/test_pysrc_accessor.py",
+  "tests/test_pysrc_admit.py",
+  "tests/test_pysrc_aggregate.py",
+]
+
+[[mutant]]
+id = "p7-accessor-swallows-an-import-alias"
+predicate = "a fixed import alias is never an accessor receiver, so `plt.plot` stays a MARK target"
+kills = "tests/test_pysrc_accessor.py::test_p7_the_alias_allowlist_stays_closed_to_plot"
+anchor = '''
+    if not isinstance(root, ast.Name) or root.id in _IMPORT_ALIASES:'''
+mutant = '''
+    if not isinstance(root, ast.Name):'''
+
+[[mutant]]
+id = "p3-accessor-admits-a-positional"
+predicate = "the accessor takes NO positional argument: its `x` slot names a column it cannot state"
+kills = "tests/test_pysrc_accessor.py::test_p3_a_positional_argument_refuses_keyword_not_admitted"
+anchor = '''
+    if node.args:
+        # The accessor's positional slot is `x`, which selects a column the projection reads from
+        # the receiver instead. Two channel sources for one mark is not a shape it can state.
+        _refuse("keyword_not_admitted")'''
+mutant = '''
+    if False:
+        _refuse("keyword_not_admitted")'''
+
+[[mutant]]
+id = "p3-accessor-keyword-allowlist-opened"
+predicate = "the accessor's keyword set is closed to `{kind, color}` exactly as every target's is"
+kills = "tests/test_pysrc_accessor.py::test_p3_an_unadmitted_keyword_refuses_keyword_not_admitted"
+anchor = '''
+        if keyword.arg is None or keyword.arg not in ADMITTED_ACCESSOR_KEYWORDS:
+            _refuse("keyword_not_admitted")'''
+mutant = '''
+        if keyword.arg is None:
+            _refuse("keyword_not_admitted")'''
+
+[[mutant]]
+id = "p2-missing-kind-defaults"
+predicate = "`kind` IS the target: unlisted, non-literal and ABSENT are one fault, not three"
+kills = "tests/test_pysrc_accessor.py::test_p2_a_missing_kind_refuses_call_target_not_admitted"
+anchor = '''
+    if accessor_kind(node) not in ADMITTED_ACCESSOR_KINDS:'''
+mutant = '''
+    if accessor_kind(node) not in (*ADMITTED_ACCESSOR_KINDS, None):'''
+
+[[mutant]]
+id = "p7-accessor-receiver-need-not-be-bound"
+predicate = "the accessor's receiver is checked BOUND, after its target and before its keywords"
+kills = "tests/test_pysrc_accessor.py::test_p7_an_unbound_receiver_refuses_name_not_bound"
+anchor = '''
+    if receiver.id not in scope.bound:
+        _refuse("name_not_bound")
+    # `accessor_receiver` reached `receiver` by walking `node.func`, so an `ast.Attribute` here is'''
+mutant = '''
+    if False:
+        _refuse("name_not_bound")
+    # `accessor_receiver` reached `receiver` by walking `node.func`, so an `ast.Attribute` here is'''

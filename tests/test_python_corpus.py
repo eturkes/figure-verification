@@ -43,7 +43,7 @@ _VALID_ROW: dict[str, Any] = {
 }
 
 _SENTINEL_SIMPLE_RENDERED = (
-    "Plot a scatter chart of revenue versus orders.\n"
+    "Chart the total revenue of each region using bars.\n"
     "\n"
     "Use the CSV file at /mnt/uploads/sales.csv. "
     "Its columns are month, region, revenue, orders.\n"

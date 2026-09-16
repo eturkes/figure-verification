@@ -20,9 +20,16 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import NoReturn
+from typing import NoReturn, cast
 
-from verifier.pysrc.admit import aggregation_chain
+from verifier.pysrc.admit import (
+    ADMITTED_ACCESSOR_KINDS,
+    ADMITTED_UNWRAPPED_ATTRS,
+    accessor_is_subscripted,
+    accessor_kind,
+    accessor_receiver,
+    aggregation_chain,
+)
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.spec import (
@@ -87,6 +94,24 @@ class _Aggregate:
     key: Column
     column: Column
     reduction: Reduction
+
+
+def _reset_index_inner(node: ast.Call) -> ast.Call | None:
+    """The aggregation call under a trailing `.reset_index()`, or `None` for every other shape.
+
+    The unwrap is BY NAME against `admit.ADMITTED_UNWRAPPED_ATTRS`. Admission closes the trailing
+    link as a CLASS -- one no-argument, non-underscore call -- so `.sort_values()` arrives here
+    already admitted; unwrapping whatever it finds would read a REORDERED series as the chain
+    beneath it, and both G8's row coverage and G9's ordering are read off group-key order.
+    """
+    func = node.func
+    if (
+        not isinstance(func, ast.Attribute)
+        or func.attr not in ADMITTED_UNWRAPPED_ATTRS
+        or not isinstance(func.value, ast.Call)
+    ):
+        return None
+    return func.value
 
 
 def _uses_grid(tree: ast.Module) -> bool:
@@ -205,6 +230,11 @@ class _Projector:
         self._frames: dict[str, DatasetRef] = {}
         self._cols: dict[str, tuple[str, Column]] = {}
         self._aggs: dict[str, _Aggregate] = {}
+        # A chain re-spelled by `.reset_index()`, kept in its OWN table rather than flagged inside
+        # `_aggs`: the reset frame's `.index` is a fresh RangeIndex and not the group key, so the
+        # two spellings must not cross, and separate tables make that structural instead of a
+        # conjunct every later reader has to remember.
+        self._resets: dict[str, _Aggregate] = {}
         self._pandas = False
         # Decorations are collected keyed by their source target and assembled into `Labels` once,
         # so every field has exactly one origin and no branch has to guess which field it is.
@@ -422,6 +452,7 @@ class _Projector:
             or name in self._frames
             or name in self._cols
             or name in self._aggs
+            or name in self._resets
         ):
             _refuse("name_rebound")
         value = node.value
@@ -449,17 +480,18 @@ class _Projector:
             # `None` is exactly the LINKED aggregation shapes: a reduction called on a subscript,
             # or a trailing call on a reduction. A bare `<frame>.groupby("<key>")` keeps its target
             # and falls through to `_exprs`, where it reduces nothing and is never used.
-            self._aggs[name] = self._aggregate(node)
+            inner = _reset_index_inner(node)
+            if inner is None:
+                self._aggs[name] = self._aggregate(node)
+            else:
+                # Same reduction, DIFFERENT spelling of its channels: the reset re-publishes the
+                # series as a two-column frame, so it binds a reset name rather than an aggregate.
+                self._resets[name] = self._aggregate(inner)
             return
         self._exprs[name] = node
 
     def _aggregate(self, node: ast.Call) -> _Aggregate:
-        """Decompose the one chain shape that HAS a projection.
-
-        `.reset_index()` is admitted and arrives here too. It re-spells the reduced series as a
-        frame whose channels are column subscripts -- a DIFFERENT projection rather than a
-        decoration of this one -- so it refuses by name instead of being read as the chain beneath.
-        """
+        """Decompose the one chain shape that HAS a projection."""
         chain = aggregation_chain(node)
         if chain is None:
             _refuse("aggregation_not_projected")
@@ -541,6 +573,17 @@ class _Projector:
         )
 
     def _call_statement(self, node: ast.Call) -> None:
+        receiver = accessor_receiver(node)
+        if receiver is not None:
+            # The accessor enters the SAME seam `plt.bar` enters, count included. A parallel route
+            # would leave `multiple_marks` unfired, so an accessor beside a `plt.bar` would publish
+            # one of two figures with no refusal -- and the spec cannot say which one the PNG holds.
+            build = self._accessor_mark(receiver, node)
+            if self._mark is not None:
+                _refuse("multiple_marks")
+            self._mark = build
+            self._drawn = True
+            return
         target = _target(node)
         if target is None:
             # An aggregation chain as a bare statement: admitted, computed, and discarded without
@@ -600,15 +643,20 @@ class _Projector:
     # --- assembly ------------------------------------------------------------
 
     def _mark_shape(self, node: ast.Call) -> None:
-        """Arity, and each keyword routed BY NAME -- identical under both arms, so stated once.
-
-        Only `label` names the series. Style keywords are validated as text and then discarded:
-        they carry no data, so the figure they describe is the same figure. Routing every keyword
-        into the series is what would publish `steelblue` as the legend text of a chart whose
-        legend says something else entirely.
-        """
+        """Arity plus the keywords -- identical under both arms, so stated once."""
         if len(node.args) != _MARK_ARITY:
             _refuse("mark_arity_not_projected")
+        self._style_keywords(node)
+
+    def _style_keywords(self, node: ast.Call) -> None:
+        """Every mark keyword routed BY NAME; only `label` names the series.
+
+        Style keywords are validated as text and then discarded: they carry no data, so the figure
+        they describe is the same figure. Routing every keyword into the series is what would
+        publish `steelblue` as the legend text of a chart whose legend says something else entirely.
+        The accessor reaches this WITHOUT an arity check -- it takes no positional argument at all
+        -- and its `kind` passes through as the literal it is, having already named the mark.
+        """
         for keyword in node.keywords:
             text = keyword.value
             if not isinstance(text, ast.Constant) or type(text.value) is not str:
@@ -645,6 +693,37 @@ class _Projector:
         self._used.add(name)
         return self._aggs[name]
 
+    def _reset_subscript(self, node: ast.expr) -> tuple[str, Column] | None:
+        """`<name>["<column>"]` over a RESET frame, split into that name and the column."""
+        if not isinstance(node, ast.Subscript):
+            return None
+        name, column = self._column_parts(node)
+        if name not in self._resets:
+            return None
+        return name, column
+
+    def _reset_channels(self, node: ast.Call) -> _Aggregate | None:
+        """A reset frame's two channels: x is the chain KEY, y is the chain's reduced COLUMN.
+
+        The reset publishes one reduced series as a two-column frame, so the pair of channels is
+        FULLY determined: `(<name>["<key>"], <name>["<column>"])` and nothing else. Swapping them
+        draws the key as a magnitude, the key on both axes draws a chart of its own labels, and a
+        third column names one the reset frame does not carry. One predicate over the whole pair,
+        because every way of missing it is the same fault -- a channel the chain did not compute.
+        """
+        x = self._reset_subscript(node.args[0])
+        if x is None:
+            return None
+        name = x[0]
+        aggregate = self._resets[name]
+        if (x, self._reset_subscript(node.args[1])) != (
+            (name, aggregate.key),
+            (name, aggregate.column),
+        ):
+            _refuse("column_not_from_source")
+        self._used.add(name)
+        return aggregate
+
     def _resolve_dataset_mark(self, target: str, node: ast.Call) -> _MarkBuilder:
         # The arm's precondition reads first: with no source bound, no channel can name a column,
         # so `column_not_from_source` would report a symptom where `no_source` names the cause.
@@ -653,17 +732,10 @@ class _Projector:
         self._mark_shape(node)
         mark = _DATASET_MARKS[target]
         aggregate = self._aggregate_channels(node)
+        if aggregate is None:
+            aggregate = self._reset_channels(node)
         if aggregate is not None:
-            self._used.add(aggregate.frame)
-            grouped = self._frames[aggregate.frame]
-            return lambda labels: DatasetPlot(
-                mark=mark,
-                source=grouped,
-                x=aggregate.key,
-                y=aggregate.column,
-                labels=labels,
-                group=aggregate.reduction,
-            )
+            return self._aggregate_mark(mark, aggregate)
         x_frame, x = self._channel(node.args[0])
         y_frame, y = self._channel(node.args[1])
         if x_frame != y_frame:  # pragma: no cover - `multiple_sources` keeps `_frames` a singleton
@@ -672,6 +744,54 @@ class _Projector:
             _refuse("column_not_from_source")
         source = self._frames[x_frame]
         return lambda labels: DatasetPlot(mark=mark, source=source, x=x, y=y, labels=labels)
+
+    def _aggregate_mark(self, mark: DatasetMark, aggregate: _Aggregate) -> _MarkBuilder:
+        """The ONE builder every aggregate spelling ends at.
+
+        `plt.bar(g.index, g.values)`, the `.reset_index()` re-spelling and the accessor all reach
+        it, which is what makes the three project EQUAL rather than merely alike: the spelling is
+        decided in the resolution above and appears nowhere on the spec below.
+        """
+        self._used.add(aggregate.frame)
+        grouped = self._frames[aggregate.frame]
+        return lambda labels: DatasetPlot(
+            mark=mark,
+            source=grouped,
+            x=aggregate.key,
+            y=aggregate.column,
+            labels=labels,
+            group=aggregate.reduction,
+        )
+
+    def _accessor_mark(self, receiver: ast.Name, node: ast.Call) -> _MarkBuilder:
+        """`<reduced series>.plot(kind="<mark>")`, resolved at its own statement.
+
+        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`, so the
+        two lookups below are total rather than defaulted. The receiver carries the channels, and
+        only a reduced series states both of them: a frame, a raw column, a reset frame and a
+        SELECTED ELEMENT of a reduced series each name a table whose x and y the projection would
+        have to guess, so each refuses on the channel it cannot read.
+        """
+        # The arm's precondition reads first, exactly as `_resolve_dataset_mark` reads it: with no
+        # source bound, `column_not_from_source` would report a symptom where `no_source` names
+        # the cause. It carries the ARM too, and needs no `_pandas` test of its own: only
+        # `pd.read_csv` binds a frame, so the formula arm reaches this with `_frames` empty and an
+        # arm check would be a branch no program can take.
+        if not self._frames:
+            _refuse("no_source")
+        self._style_keywords(node)
+        # A receiver subscript is admitted as SHAPE and priced HERE: `g["revenue"]` selects one
+        # element of the reduced series BY GROUP KEY, never a column, so the executed receiver is a
+        # scalar and the spec this would state describes a figure the program never draws. Reading
+        # the root alone verifies `g` for a program that plots something else.
+        if accessor_is_subscripted(node) or receiver.id not in self._aggs:
+            _refuse("column_not_from_source")
+        self._used.add(receiver.id)
+        # Admission refused every unreadable `kind`, so casting rather than re-testing keeps the
+        # branch out of the module: an arm no input can take is one the coverage gate cannot price.
+        kind = cast("str", accessor_kind(node))
+        mark = _DATASET_MARKS[ADMITTED_ACCESSOR_KINDS[kind]]
+        return self._aggregate_mark(mark, self._aggs[receiver.id])
 
     def _resolve_mark(self, mark: FormulaMark, node: ast.Call) -> _MarkBuilder:
         self._mark_shape(node)
@@ -712,6 +832,7 @@ class _Projector:
             | self._frames.keys()
             | self._cols.keys()
             | self._aggs.keys()
+            | self._resets.keys()
         ) - self._used
         if unused:
             # Bound, admitted, executed, and absent from the spec: exactly the gap this module

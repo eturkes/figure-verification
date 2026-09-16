@@ -24,6 +24,7 @@ tests = [
   "tests/test_pysrc_dataset.py",
   "tests/test_pysrc_aggregate.py",
   "tests/test_pysrc_presentation.py",
+  "tests/test_pysrc_accessor.py",
 ]
 
 [[mutant]]
@@ -41,10 +42,14 @@ mutant = '''
 id = "p2-multiple-marks"
 predicate = "a second mark is refused, never silently overwritten"
 kills = "tests/test_pysrc_project.py::test_p2_exactly_one_mark"
+# M13.8 gave `multiple_marks` a SECOND site, the accessor's. The predecessor line names the
+# `plt.*` seam this mutant is about; a bare anchor matches both and applies to neither.
 anchor = '''
+            )
             if self._mark is not None:
                 _refuse("multiple_marks")'''
 mutant = '''
+            )
             if False:
                 _refuse("multiple_marks")'''
 
@@ -309,12 +314,16 @@ mutant = '''
 id = "d2-no-source"
 predicate = "a dataset-arm mark with no bound frame is refused"
 kills = "tests/test_pysrc_dataset.py::test_d2_exactly_one_source"
+# M13.8 gave `no_source` a SECOND site, the accessor's. The successor line names the enclosing
+# function, exactly as `name_not_bound`'s anchor does.
 anchor = '''
         if not self._frames:
-            _refuse("no_source")'''
+            _refuse("no_source")
+        self._mark_shape(node)'''
 mutant = '''
         if False:
-            _refuse("no_source")'''
+            _refuse("no_source")
+        self._mark_shape(node)'''
 
 [[mutant]]
 id = "d7-local-before-global"
@@ -345,11 +354,13 @@ anchor = '''
             or name in self._frames
             or name in self._cols
             or name in self._aggs
+            or name in self._resets
         ):'''
 mutant = '''
             or False
             or False
             or name in self._aggs
+            or name in self._resets
         ):'''
 
 [[mutant]]
@@ -358,9 +369,11 @@ predicate = "the rebind guard covers the name space THIS unit adds, so one name 
 kills = "tests/test_pysrc_aggregate.py::test_a2_admitted_chain_shape_projects"
 anchor = '''
             or name in self._aggs
+            or name in self._resets
         ):'''
 mutant = '''
             or False
+            or name in self._resets
         ):'''
 
 [[mutant]]
@@ -505,19 +518,124 @@ mutant = '''
             self._series = text.value'''
 
 [[mutant]]
-id = "a3-reset-index-read-as-a-decoration"
-predicate = "a trailing call on the chain is a DIFFERENT projection, never a decoration of it"
-kills = "tests/test_pysrc_aggregate.py::test_a3_reset_index_refuses_aggregation_not_projected"
+# M13.8 replaced `a3-reset-index-read-as-a-decoration`, whose predicate was "a trailing call is a
+# DIFFERENT projection, never a decoration". `.reset_index()` now projects, and the predicate that
+# replaces it is the one the widening actually rests on: the unwrap is BY NAME.
+id = "r3-unwrap-takes-any-trailing-call"
+predicate = "the trailing-call unwrap is BY NAME, `reset_index` alone -- never whatever call it finds"
+kills = "tests/test_pysrc_accessor.py::test_r3_sort_values_still_refuses_aggregation_not_projected"
 anchor = '''
-        chain = aggregation_chain(node)
-        if chain is None:
-            _refuse("aggregation_not_projected")'''
+        or func.attr not in ADMITTED_UNWRAPPED_ATTRS
+        or not isinstance(func.value, ast.Call)'''
 mutant = '''
-        chain = aggregation_chain(node)
-        if chain is None and isinstance(node.func, ast.Attribute):
-            chain = aggregation_chain(node.func.value)
-        if chain is None:
-            _refuse("aggregation_not_projected")'''
+        or not isinstance(func.value, ast.Call)'''
+
+[[mutant]]
+id = "r1-reset-binds-as-an-aggregate"
+predicate = "a reset frame binds its own name space: its `.index` is a RangeIndex, not the group key"
+kills = "tests/test_pysrc_accessor.py::test_r1_reset_index_projects_equal_to_the_series_spelling"
+anchor = '''
+                self._resets[name] = self._aggregate(inner)'''
+mutant = '''
+                self._aggs[name] = self._aggregate(inner)'''
+
+[[mutant]]
+id = "r2-reset-channels-unchecked"
+predicate = "a reset frame's channel PAIR is fully determined: the key as x, the reduced column as y"
+kills = "tests/test_pysrc_accessor.py::test_r2_swapped_channels_refuse_column_not_from_source"
+anchor = '''
+        if (x, self._reset_subscript(node.args[1])) != (
+            (name, aggregate.key),
+            (name, aggregate.column),
+        ):
+            _refuse("column_not_from_source")'''
+mutant = '''
+        if False:
+            _refuse("column_not_from_source")'''
+
+[[mutant]]
+id = "r4-reset-name-outside-the-rebind-guard"
+predicate = "a reset name is rebindable exactly as no other bound name is -- that is, not at all"
+kills = "tests/test_pysrc_accessor.py::test_r4_rebinding_a_reset_frame_refuses_name_rebound"
+anchor = '''
+            or name in self._aggs
+            or name in self._resets
+        ):'''
+mutant = '''
+            or name in self._aggs
+        ):'''
+
+[[mutant]]
+id = "p5-accessor-arm-precondition-dropped"
+predicate = "the accessor reads the ARM before the channels: no frame bound is `no_source`, not a symptom"
+kills = "tests/test_pysrc_accessor.py::test_p5_the_accessor_without_a_source_refuses_no_source"
+anchor = '''
+        if not self._frames:
+            _refuse("no_source")
+        self._style_keywords(node)'''
+mutant = '''
+        self._style_keywords(node)'''
+
+[[mutant]]
+id = "p5-accessor-receiver-unchecked"
+predicate = "the accessor draws from a REDUCED SERIES alone; a frame states neither of its channels"
+kills = "tests/test_pysrc_accessor.py::test_p5_the_frame_accessor_refuses_column_not_from_source"
+anchor = '''
+        if accessor_is_subscripted(node) or receiver.id not in self._aggs:
+            _refuse("column_not_from_source")
+        self._used.add(receiver.id)'''
+mutant = '''
+        if accessor_is_subscripted(node):
+            _refuse("column_not_from_source")
+        self._used.add(receiver.id)'''
+
+[[mutant]]
+id = "p5-accessor-subscript-erased"
+predicate = "a receiver SUBSCRIPT selects one element of the reduced series, never a column, so erasing it would verify the root for a figure the program never draws"
+kills = "tests/test_pysrc_accessor.py::test_p5_a_subscripted_aggregate_accessor_refuses_column_not_from_source"
+anchor = '''
+        if accessor_is_subscripted(node) or receiver.id not in self._aggs:
+            _refuse("column_not_from_source")
+        self._used.add(receiver.id)'''
+mutant = '''
+        if receiver.id not in self._aggs:
+            _refuse("column_not_from_source")
+        self._used.add(receiver.id)'''
+
+[[mutant]]
+id = "p6-accessor-outside-the-mark-count"
+predicate = "the accessor enters the SAME mark-counting seam `plt.bar` enters"
+kills = "tests/test_pysrc_accessor.py::test_p6_plt_bar_then_the_accessor_refuses_multiple_marks"
+anchor = '''
+            build = self._accessor_mark(receiver, node)
+            if self._mark is not None:
+                _refuse("multiple_marks")
+            self._mark = build'''
+mutant = '''
+            self._mark = self._accessor_mark(receiver, node)'''
+
+[[mutant]]
+id = "p4-accessor-keywords-unread"
+predicate = "the accessor's keywords are read as TEXT, so `color=df[c]` is a data effect in disguise"
+kills = "tests/test_pysrc_accessor.py::test_p4_a_non_literal_color_refuses_label_not_literal"
+anchor = '''
+        if not self._frames:
+            _refuse("no_source")
+        self._style_keywords(node)'''
+mutant = '''
+        if not self._frames:
+            _refuse("no_source")'''
+
+[[mutant]]
+# The closed-dispatch defect applied to `kind`: an exact-set assertion pins the MAP, and a hardcode
+# satisfies it while drawing the wrong chart from the right numbers. The pin is the OTHER kind.
+id = "p2-accessor-mark-hardcoded"
+predicate = "`kind` selects its own mark through the closed map, never a default"
+kills = "tests/test_pysrc_accessor.py::test_p2_the_admitted_kind_map_is_exactly_bar_and_barh"
+anchor = '''
+        mark = _DATASET_MARKS[ADMITTED_ACCESSOR_KINDS[kind]]'''
+mutant = '''
+        mark = _DATASET_MARKS["plt.bar"]'''
 
 [[mutant]]
 id = "a4-channels-need-not-share-a-name"

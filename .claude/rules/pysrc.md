@@ -260,6 +260,39 @@ z3 cannot be inlined.
   rows are proposer defects the verifier is right to refuse; widening for them would move the
   pass/fail boundary out of the verifier. The largest such bucket is `category_not_unique` at 6 —
   the proposer plots raw rows where the task said a total or an each-group figure.
+- **Dataset-arm width, M13.8: the two idioms the M13.7 census left on the table.** The pandas
+  plotting ACCESSOR, `<reduced series>.plot(kind="bar"|"barh")`, and a trailing `.reset_index()` on
+  the reduction. Both are RE-SPELLINGS of what M13.6 already projects, so each lands on the same
+  `DatasetPlot` as its `plt.bar` twin — structural equality, exactly as the formula arm's grid
+  identity rule requires, or a cosmetic rewrite would publish a different figure. Three things carry
+  that: `kind` is TARGET IDENTITY and maps onto `plt.bar`/`plt.barh` through a CLOSED map at
+  admission, never a `.get(k, default)` at projection; the accessor enters the same mark-counting
+  seam `plt.bar` enters, so `multiple_marks` still fires; and the `.reset_index()` unwrap is BY
+  NAME, `ADMITTED_UNWRAPPED_ATTRS = {"reset_index"}`. That last one is load-bearing and not obvious:
+  `_admit_aggregation` admits ONE trailing no-argument call as a CLASS, so `.sort_values()` arrives
+  ALREADY ADMITTED and is refused only at projection with the SAME `aggregation_not_projected` code
+  — an unwrap taking whatever trailing call it finds would therefore admit a REORDERING with nothing
+  red, and both G8's row coverage and G9's ordering are read off group-key order. A reset frame
+  binds its OWN name space rather than a flag on the aggregate: its `.index` is a fresh RangeIndex
+  and not the group key, so the two spellings must not cross, and separate tables make that
+  structural instead of a conjunct every later reader has to remember.
+- **The accessor's receiver is a BARE NAME bound to a reduced series, and a SUBSCRIPT on it
+  refuses `column_not_from_source` (M13.8).** `accessor_receiver` walks past one subscript on
+  purpose, so that `df["revenue"].plot(kind="bar")` is routed by its ROOT name and priced on the
+  channel it cannot state rather than landing `call_target_not_admitted` on a fault that is not its
+  target. That routing erases the subscript, so projection has to price it back: `g["revenue"]`
+  over a REDUCED `g` selects one element of the series BY GROUP KEY, never a column, so the
+  executed receiver is a scalar and reading the root alone would verify `g` for a figure the
+  program never draws. Admission prices the subscript's SLICE (`_admit_string_index`), projection
+  prices its EFFECT (`accessor_is_subscripted`), and the guard is compound with one mutant per
+  conjunct. This is the general shape wherever a router normalizes a receiver to reach a name: the
+  normalization is a claim the consumer must re-price, or it silently widens what verifies.
+- **The accessor's TICK PLACEMENT is a declared gap, ruled TRUSTED (M13.8).** For a NUMERIC group
+  key the two spellings place ticks differently: pandas draws the accessor CATEGORICALLY, at
+  positions 0..n-1 with the key as the label, while `plt.bar` draws at the data positions. The gap
+  lives inside the renderer, the recomputed table is identical either way, and no plotted VALUE
+  differs — so it is trusted rather than closed, and it is STATED here because the rule above says a
+  projection gap is closed by construction or declared TRUSTED, never left unstated.
 - **A DEMO DATASET MAY NEVER SPELL A GROUP KEY WITH A PANDAS NA SPELLING (M13.7b, closed).** The
   third M13.7 blocker was not the verifier at all: `data/sales.csv` spelled North America `NA`, one
   of the 19 default pandas NA spellings the CSV profile refuses, so every `groupby("region")`
@@ -366,8 +399,13 @@ Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<modu
 test that must go red and only that test runs under it, so attribution cannot drift to whichever
 red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
 SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
-writes. `tools/mutants/project.toml` = 46 mutants over the projection predicates (23 at M13.3, +13
-at M13.4, +10 at M13.6), with the two EQUIVALENT mutants documented in the file rather than listed.
+writes. `tools/mutants/project.toml` = 55 mutants over the projection predicates (23 at M13.3, +13
+at M13.4, +10 at M13.6, +9 at M13.8 against one REPLACED — `.reset_index()` now projects, so the
+mutant asserting it never could was retired for the by-name-unwrap predicate the widening rests on),
+with the two EQUIVALENT mutants documented in the file rather than listed. The accessor's receiver
+guard is a COMPOUND one and carries one mutant per conjunct: `p5-accessor-receiver-unchecked` drops
+the `_aggs` membership test, `p5-accessor-subscript-erased` drops the subscript test, and each
+names a different red.
 `tools/mutants/aggregate.toml` = 14 over the grouped reduction engine, and it documents THREE
 deliberately unmutated predicates: R5 and R6 are absence claims the CSV profile refuses upstream, so
 there is no branch left to neuter, and each witness takes the shape its own absence earns — R6 a
@@ -377,16 +415,18 @@ widening reddens; and
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
 integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
-what splits them. Run all three — a claim credited in one catalogue can sit unmutated in another.
+what splits them. `tools/mutants/admit.toml` = 5, M13.8's accessor ROUTE and nothing else yet: every
+refusal that route lands is decided before projection runs, so `project.toml` cannot reach it. Run
+all four — a claim credited in one catalogue can sit unmutated in another.
 
 A widening INVALIDATES anchors silently until the driver runs: M13.6 edited four lines that M13.3
 and M13.4 mutants anchored on (`p4-y-over-inline-grid`, `d1-grid-selector-is-deep`,
 `d2-rebind-dataset-names`, `d10-dataset-statement-coverage`), and the driver reported ANCHOR-MISS
 rather than a kill. Rerun EVERY catalogue of a module a unit touches, not just the new one.
 
-`admit.py` = 13/13 killed. Driver was `.scratch/mutate_admit.py` (gitignored ⇒ port its 13 mutants
-into `tools/mutants/admit.toml`; queued in `.agent/deferred.md`, superseding the driver half of
-p3/p4/p43/p44). Each
+`admit.py`'s M13.2 allowlist = 13/13 killed, under `.scratch/mutate_admit.py` (gitignored ⇒ port
+those 13 into the now-existing `tools/mutants/admit.toml`, which holds M13.8's five and nothing
+older; queued in `.agent/deferred.md`, superseding the driver half of p3/p4/p43/p44). Each
 mutant neuters a PREDICATE: call-target set opened · exact-type literal check degraded to
 `isinstance` · call-alias bound check dropped · constant-attribute alias bound check dropped ·
 assignment binding moved ahead of its right-hand side · `**kwargs` conjunct dropped ·
