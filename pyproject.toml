@@ -178,6 +178,14 @@ ignore_missing_imports = true
 module = ["xgrammar", "xgrammar.*"]
 ignore_missing_imports = true
 
+# open_webui resolves inside the target image and in the SEPARATE py3.12 .venv-webui, never into
+# this py3.13 gate venv, and it ships no stubs. webui/paste_in/owui_files.py is its only importer
+# and is the single module allowed to reach it (the paste-in's whole non-stdlib surface); it
+# projects the dynamic file/storage API into one frozen UploadedFile per attachment.
+[[tool.mypy.overrides]]
+module = ["open_webui", "open_webui.*"]
+ignore_missing_imports = true
+
 # --- tests / coverage --------------------------------------------------------
 [tool.pytest.ini_options]
 minversion = "8.0"

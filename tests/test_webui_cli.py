@@ -187,10 +187,11 @@ def test_bootstrap_returns_smoke_status(
     def fake_run_bootstrap(_client: object, _settings: Settings) -> SmokeResult:
         return SmokeResult(
             model_ids=(),
-            tool_server_ids=(),
+            tool_ids=(),
             model_tool_ids=(),
             model_enumerated=b,
-            tool_registered=b,
+            tool_provisioned=b,
+            no_tool_servers=b,
             model_tool_attached=b,
         )
 

@@ -80,10 +80,17 @@ class _ModelConfig(msgspec.Struct):
     is_active: bool = True
 
 
-class _ToolServer(msgspec.Struct):
+class _Tool(msgspec.Struct):
     """One entry of the BARE GET /api/v1/tools/ array (list[ToolUserResponse]); only id is read."""
 
     id: str
+
+
+class _ToolState(msgspec.Struct):
+    """Loose tool reply; create omits content (ToolResponse), while GET and update carry it."""
+
+    id: str
+    content: str | None = None
 
 
 class _FunctionState(msgspec.Struct):
@@ -232,19 +239,20 @@ class WebUIClient:
             raise WebUIProvisionError(msg) from exc
         return [model.id for model in envelope.data]
 
-    def tool_server_ids(self) -> list[str]:
-        """Authed GET /api/v1/tools/ -> the registered tool-SERVER ids (`server:`-prefixed).
+    def tool_ids(self) -> list[str]:
+        """Authed GET /api/v1/tools/ -> every workspace tool id, provisioned and server alike.
 
-        The body is a BARE `list[ToolUserResponse]` (routers/tools.py), NOT a `data` envelope; keep
-        only `server:`-prefixed ids so a python-function tool never counts as a registered server.
+        The body is a BARE `list[ToolUserResponse]` (routers/tools.py), NOT a `data` envelope. The
+        list is returned whole rather than filtered here, because bootstrap reads it twice with
+        opposite intent: the pasted tool must be PRESENT, and no `server:`-prefixed id may be.
         """
         body = self._authed_get("/api/v1/tools/")
         try:
-            tools = msgspec.json.decode(body, type=tuple[_ToolServer, ...])
+            tools = msgspec.json.decode(body, type=tuple[_Tool, ...])
         except (msgspec.DecodeError, UnicodeDecodeError) as exc:
             msg = f"GET /api/v1/tools/ returned an invalid response: {exc}"
             raise WebUIProvisionError(msg) from exc
-        return [tool.id for tool in tools if tool.id.startswith(_TOOL_SERVER_ID_PREFIX)]
+        return [tool.id for tool in tools]
 
     def model_tool_ids(self, model_id: str) -> list[str]:
         """Authed GET the workspace model config -> its default tool ids (``meta.toolIds``).
@@ -379,7 +387,7 @@ class WebUIClient:
             json_body={
                 "model": self._settings.model_id,
                 "stream": False,
-                "tool_ids": [f"{_TOOL_SERVER_ID_PREFIX}{self._settings.tool_server_id}"],
+                "tool_ids": [self._settings.tool_id],
                 "chat_id": chat_id,
                 "session_id": session_id,
                 "id": assistant_id,
@@ -442,6 +450,57 @@ class WebUIClient:
             raise WebUIProvisionError(msg)
         chart_url = message.embeds[0] if message.embeds else None
         return PersistedChatResult(final_text=final_text, chart_url=chart_url)
+
+    def ensure_tool(
+        self,
+        *,
+        tool_id: str,
+        name: str,
+        content: str,
+        description: str,
+    ) -> None:
+        """Create/update the pasted tool, then prove the stored source equals what was sent.
+
+        Open WebUI reports a missing tool as 404 (routers/tools.py), where a missing FUNCTION is
+        401 -- the two provisioning endpoints differ there, so this cannot share a helper with
+        ensure_global_filter. A present tool is always updated so a rerun deploys current bytes;
+        create and update share one exact payload, and the final GET is the readback that turns a
+        silent storage rewrite into a loud failure.
+
+        Byte equality is a real claim, not a formality: OWUI runs `replace_imports` over tool
+        content on every write, rewriting four `from …` prefixes. The generator refuses to emit a
+        source carrying any of them, so `stored == sent` holds; this check is what would catch it
+        if that ever stopped being true.
+        """
+        tool_path = f"/api/v1/tools/id/{tool_id}"
+        discovery = self._authed_request("GET", tool_path)
+        if discovery.status_code == httpx.codes.NOT_FOUND:
+            write_path = "/api/v1/tools/create"
+            phase = "create"
+        elif discovery.status_code == httpx.codes.OK:
+            self._checked_tool_state(discovery, phase="discovery", tool_id=tool_id)
+            write_path = f"{tool_path}/update"
+            phase = "update"
+        else:
+            self._raise_status(discovery)
+
+        payload: dict[str, object] = {
+            "id": tool_id,
+            "name": name,
+            "content": content,
+            "meta": {"description": description},
+        }
+        self._checked_tool_state(
+            self._authed_request("POST", write_path, json_body=payload),
+            phase=phase,
+            tool_id=tool_id,
+        )
+        self._checked_tool_state(
+            self._authed_request("GET", tool_path),
+            phase="final",
+            tool_id=tool_id,
+            content=content,
+        )
 
     def ensure_global_filter(
         self,
@@ -586,6 +645,38 @@ class WebUIClient:
         return [item for item in raw if isinstance(item, str)]
 
     @classmethod
+    def _checked_tool_state(
+        cls,
+        response: httpx.Response,
+        *,
+        phase: str,
+        tool_id: str,
+        content: str | None = None,
+    ) -> _ToolState:
+        """Require HTTP 200 + a decodable tool state, optionally the exact source that was sent."""
+        if response.status_code != httpx.codes.OK:
+            cls._raise_status(response)
+        try:
+            state = msgspec.json.decode(response.content, type=_ToolState)
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"{phase} returned invalid tool state: {exc}"
+            raise WebUIProvisionError(msg) from exc
+        cls._require_state_field(
+            condition=state.id == tool_id,
+            phase=phase,
+            field="id",
+            kind="tool",
+        )
+        if content is not None:
+            cls._require_state_field(
+                condition=state.content == content,
+                phase=phase,
+                field="content",
+                kind="tool",
+            )
+        return state
+
+    @classmethod
     def _checked_function_state(
         cls,
         response: httpx.Response,
@@ -617,10 +708,16 @@ class WebUIClient:
         return state
 
     @staticmethod
-    def _require_state_field(*, condition: bool, phase: str, field: str) -> None:
-        """Raise one stable fail-closed error for an inexact function-state field."""
+    def _require_state_field(
+        *,
+        condition: bool,
+        phase: str,
+        field: str,
+        kind: str = "function",
+    ) -> None:
+        """Raise one stable fail-closed error for an inexact provisioned-state field."""
         if not condition:
-            msg = f"{phase} function state mismatch: {field}"
+            msg = f"{phase} {kind} state mismatch: {field}"
             raise WebUIProvisionError(msg)
 
     @staticmethod

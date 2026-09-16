@@ -358,7 +358,10 @@ it also depends on the exact prompt:
   the raw model's markdown-fenced prose.
 
   The `webui/launch.sh` banner pins both prompts. Neither arm is calibrated on the current build.
-  The results below were measured with the real model on the host of record.
+  The results below were measured with the real model on the host of record, against the earlier
+  wiring that exposed `proposeSpec` through a registered tool server. The instance now exposes the
+  python-mode paste-in tool instead, so these two outcomes are a record of that earlier build and
+  not a prediction for this one.
 
   The simple prompt is
   `Chart the total revenue of each region using bars. dataset_name: sales.csv`. This prompt does

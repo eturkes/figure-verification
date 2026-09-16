@@ -48,18 +48,19 @@ def _bootstrap(settings: Settings) -> int:
 
     if not result.ok:
         _LOGGER.error(
-            "Open WebUI smoke check failed: model_enumerated=%s tool_registered=%s "
-            "model_tool_attached=%s",
+            "Open WebUI smoke check failed: model_enumerated=%s tool_provisioned=%s "
+            "no_tool_servers=%s model_tool_attached=%s",
             result.model_enumerated,
-            result.tool_registered,
+            result.tool_provisioned,
+            result.no_tool_servers,
             result.model_tool_attached,
         )
         return 1
 
     _LOGGER.info(
-        "Open WebUI provisioning smoke passed: models=%d tool_servers=%d model_tools=%d",
+        "Open WebUI provisioning smoke passed: models=%d tools=%d model_tools=%d",
         len(result.model_ids),
-        len(result.tool_server_ids),
+        len(result.tool_ids),
         len(result.model_tool_ids),
     )
     return 0

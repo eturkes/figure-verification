@@ -11,12 +11,13 @@ bootstrap orchestration. Locked:
 - authenticate: signup-200 stores the JWT; a non-200 signup falls back to signin; both non-200 or an
   empty/malformed token response raises; signup/signin transport failures normalize to the client
   error boundary; the stored token rides authed reads as a Bearer header;
-- model_ids / tool_server_ids / model_tool_ids: the served-model envelope, BARE tool array, and
-  workspace-model `meta.toolIds` readbacks; server filtering, Bearer wiring, 404-as-no-config, and
-  every other non-200/transport/malformed response failing loudly;
-- ensure_global_filter / ensure_model_tool: filter create/update/toggle convergence plus
-  model-config create-or-merge, exact payload/paths, operator-key preservation, final verification,
-  and idempotent no-write behavior;
+- model_ids / tool_ids / model_tool_ids: the served-model envelope, BARE tool array, and
+  workspace-model `meta.toolIds` readbacks; the unfiltered tool array, Bearer wiring,
+  404-as-no-config, and every other non-200/transport/malformed response failing loudly;
+- ensure_tool / ensure_global_filter / ensure_model_tool: pasted-tool create/update convergence
+  (404 as missing, not 401) with the stored source proven equal to the bytes sent, filter
+  create/update/toggle convergence plus model-config create-or-merge, exact payload/paths,
+  operator-key preservation, final verification, and idempotent no-write behavior;
 - run_persisted_chat: exact create/completion/poll wire shapes, pending/done extraction, optional
   embed, and transport/status/JSON/timeout/malformed-output failures;
 - smoke / run_bootstrap: membership + ok truth table, exact filter source/metadata,
@@ -42,6 +43,7 @@ from webui.enforcement_filter import (
     FILTER_NAME,
     function_source,
 )
+from webui.paste_in.bundle import TOOL_ARTIFACT, artifact_text
 from webui.settings import Settings
 
 _Handler = Callable[[httpx.Request], httpx.Response]
@@ -56,6 +58,18 @@ _FUNCTION_PAYLOAD: dict[str, object] = {
     "name": _FUNCTION_NAME,
     "content": _FUNCTION_CONTENT,
     "meta": {"description": _FUNCTION_DESCRIPTION},
+}
+
+_TOOL_ID = "figure_verification"
+_TOOL_NAME = "Figure Verification"
+_TOOL_CONTENT = "class Tools:\n    async def draw_figure(self) -> str:\n        return ''\n"
+_TOOL_DESCRIPTION = "Draws a chart from a Python program and an attached CSV file."
+_TOOL_PATH = f"/api/v1/tools/id/{_TOOL_ID}"
+_TOOL_PAYLOAD: dict[str, object] = {
+    "id": _TOOL_ID,
+    "name": _TOOL_NAME,
+    "content": _TOOL_CONTENT,
+    "meta": {"description": _TOOL_DESCRIPTION},
 }
 
 
@@ -131,6 +145,22 @@ def _function_state(
     return state
 
 
+def _tool_state(
+    *,
+    tool_id: str = _TOOL_ID,
+    content: str | None = _TOOL_CONTENT,
+) -> dict[str, object]:
+    """Minimal loose tool-state shape consumed by WebUIClient.
+
+    `content` is optional on purpose: a create reply is a ToolResponse and declares none, while an
+    update reply and the final GET both carry it.
+    """
+    state: dict[str, object] = {"id": tool_id}
+    if content is not None:
+        state["content"] = content
+    return state
+
+
 def _model_config(model_id: str, *tool_ids: str) -> dict[str, object]:
     """Minimal loose workspace-model config shape consumed by WebUIClient."""
     return {
@@ -160,19 +190,20 @@ class _FakeClient:
     def __init__(
         self,
         model_ids: list[str],
-        tool_server_ids: list[str],
+        tool_ids: list[str],
         model_tool_ids: list[str] | None = None,
         *,
         fail_filter: bool = False,
     ) -> None:
         self._model_ids = model_ids
-        self._tool_server_ids = tool_server_ids
+        self._tool_ids = tool_ids
         self._model_tool_ids = (
-            list(model_tool_ids) if model_tool_ids is not None else list(tool_server_ids)
+            list(model_tool_ids) if model_tool_ids is not None else list(tool_ids)
         )
         self._fail_filter = fail_filter
         self.calls: list[str] = []
         self.filter_calls: list[tuple[str, str, str, str]] = []
+        self.tool_calls: list[tuple[str, str, str, str]] = []
         self.model_tool_calls: list[tuple[str, str]] = []
 
     def wait_ready(self) -> None:
@@ -196,6 +227,17 @@ class _FakeClient:
             message = "filter convergence failed"
             raise WebUIProvisionError(message)
 
+    def ensure_tool(
+        self,
+        *,
+        tool_id: str,
+        name: str,
+        content: str,
+        description: str,
+    ) -> None:
+        self.calls.append("ensure_tool")
+        self.tool_calls.append((tool_id, name, content, description))
+
     def ensure_model_tool(self, *, model_id: str, tool_id: str) -> None:
         self.calls.append("ensure_model_tool")
         self.model_tool_calls.append((model_id, tool_id))
@@ -204,9 +246,9 @@ class _FakeClient:
         self.calls.append("model_ids")
         return list(self._model_ids)
 
-    def tool_server_ids(self) -> list[str]:
-        self.calls.append("tool_server_ids")
-        return list(self._tool_server_ids)
+    def tool_ids(self) -> list[str]:
+        self.calls.append("tool_ids")
+        return list(self._tool_ids)
 
     def model_tool_ids(self, model_id: str) -> list[str]:
         del model_id
@@ -222,11 +264,15 @@ class _BootstrapTransport:
         self.close_signup_after_first = close_signup_after_first
         self.signups = 0
         self.filter_writes = {"create": 0, "update": 0}
+        self.tool_writes = {"create": 0, "update": 0}
         self.model_writes = {"create": 0, "update": 0}
         self.filter_content = function_source()
+        self.tool_content = artifact_text(TOOL_ARTIFACT)
         self.filter_state: dict[str, object] | None = None
+        self.tool_state: dict[str, object] | None = None
         self.model_config: dict[str, object] | None = None
-        self.tool_id = f"server:{settings.tool_server_id}"
+        self.tool_id = settings.tool_id
+        self.tool_path = f"/api/v1/tools/id/{self.tool_id}"
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -253,6 +299,8 @@ class _BootstrapTransport:
                 )
             elif path == "/api/v1/tools/":
                 response = httpx.Response(200, json=[{"id": self.tool_id}])
+            elif path.startswith("/api/v1/tools/"):
+                response = self._handle_tool(request)
             else:
                 pytest.fail(f"unexpected path {path}")
         return response
@@ -296,6 +344,34 @@ class _BootstrapTransport:
         else:
             pytest.fail(f"unexpected filter path {path}")
         return httpx.Response(200, json=self.filter_state)
+
+    def _handle_tool(self, request: httpx.Request) -> httpx.Response:
+        """The tool half of provisioning: 404 for a missing tool, and OWUI's own reply shapes.
+
+        A create reply is a ToolResponse and declares no `content`; an update reply is a ToolModel
+        and carries it. The final GET returns ToolAccessResponse, whose `extra='allow'` preserves
+        content -- which is the readback ensure_tool compares against the bytes it sent.
+        """
+        path = request.url.path
+        if path == self.tool_path and request.method == "GET":
+            if self.tool_state is None:
+                return httpx.Response(404, json={"detail": "Tool not found"})
+            return httpx.Response(200, json=self.tool_state)
+        if path == "/api/v1/tools/create":
+            self.tool_writes["create"] += 1
+            assert json.loads(request.content) == {
+                "id": self.tool_id,
+                "name": self.settings.tool_name,
+                "content": self.tool_content,
+                "meta": {"description": self.settings.tool_description},
+            }
+            self.tool_state = {"id": self.tool_id, "content": self.tool_content}
+            return httpx.Response(200, json={"id": self.tool_id})
+        if path == f"{self.tool_path}/update":
+            self.tool_writes["update"] += 1
+            self.tool_state = {"id": self.tool_id, "content": self.tool_content}
+            return httpx.Response(200, json=self.tool_state)
+        pytest.fail(f"unexpected tool path {path}")
 
     def _handle_model(self, request: httpx.Request) -> httpx.Response:
         if request.method == "GET":
@@ -458,21 +534,23 @@ def test_model_ids_parses_data_envelope_with_bearer() -> None:
         assert client.model_ids() == ["m1", "m2"]
 
 
-def test_tool_server_ids_parses_bare_array_and_filters_non_server() -> None:
+def test_tool_ids_parses_bare_array_unfiltered() -> None:
+    # Every id is returned, `server:`-prefixed ones included: bootstrap reads this list twice with
+    # opposite intent (the pasted tool present, no tool server present), so a filter here would make
+    # the no_tool_servers flag unfalsifiable.
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer tok"
         return httpx.Response(
             200,
             json=[
-                {"id": "server:verifier", "name": "Figure Verifier"},
-                {"id": "server:other"},
-                {"id": "python-function-tool"},  # not a server: dropped
+                {"id": "figure_verification", "name": "Figure Verification"},
+                {"id": "server:verifier"},
             ],
         )
 
     with _webui_client(handler) as client:
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
-        assert client.tool_server_ids() == ["server:verifier", "server:other"]
+        assert client.tool_ids() == ["figure_verification", "server:verifier"]
 
 
 def test_model_tool_ids_returns_workspace_model_tools_with_bearer() -> None:
@@ -589,7 +667,7 @@ def test_run_persisted_chat_sends_exact_wire_and_returns_result() -> None:
             }
             assert body["model"] == settings.model_id
             assert body["stream"] is False
-            assert body["tool_ids"] == ["server:verifier"]
+            assert body["tool_ids"] == [settings.tool_id]
             assert body["chat_id"] == _CHAT_ID
             assert body["parent_id"] is None
             assert body["messages"] == [{"role": "user", "content": _CHAT_PROMPT}]
@@ -852,7 +930,7 @@ def test_run_persisted_chat_rejects_done_message_without_final_text() -> None:
         client.run_persisted_chat(_CHAT_PROMPT)
 
 
-@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+@pytest.mark.parametrize("readback", ["model_ids", "tool_ids"])
 def test_authed_read_before_authenticate_raises(readback: str) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         pytest.fail("no request should be sent before authenticate")
@@ -864,7 +942,7 @@ def test_authed_read_before_authenticate_raises(readback: str) -> None:
         getattr(client, readback)()
 
 
-@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+@pytest.mark.parametrize("readback", ["model_ids", "tool_ids"])
 def test_authed_read_raises_loud_on_non_200(readback: str) -> None:
     # A non-200 readback (401 rejected token) must raise, not decode an error body to [].
     def handler(_request: httpx.Request) -> httpx.Response:
@@ -876,7 +954,7 @@ def test_authed_read_raises_loud_on_non_200(readback: str) -> None:
             getattr(client, readback)()
 
 
-@pytest.mark.parametrize("readback", ["model_ids", "tool_server_ids"])
+@pytest.mark.parametrize("readback", ["model_ids", "tool_ids"])
 def test_authed_read_normalizes_transport_error(readback: str) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         msg = "connection reset"
@@ -890,7 +968,7 @@ def test_authed_read_normalizes_transport_error(readback: str) -> None:
 
 @pytest.mark.parametrize(
     ("readback", "path"),
-    [("model_ids", "/api/models"), ("tool_server_ids", "/api/v1/tools/")],
+    [("model_ids", "/api/models"), ("tool_ids", "/api/v1/tools/")],
 )
 @pytest.mark.parametrize(
     "body",
@@ -905,6 +983,134 @@ def test_authed_read_normalizes_malformed_response(readback: str, path: str, bod
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
         with pytest.raises(WebUIProvisionError, match=rf"GET {path} returned an invalid response"):
             getattr(client, readback)()
+
+
+# --- pasted tool convergence ----------------------------------------------------------------
+def _ensure_tool(client: WebUIClient) -> None:
+    """Call the unit surface with one canonical payload."""
+    client.ensure_tool(
+        tool_id=_TOOL_ID,
+        name=_TOOL_NAME,
+        content=_TOOL_CONTENT,
+        description=_TOOL_DESCRIPTION,
+    )
+
+
+def test_ensure_tool_creates_missing_tool_then_verifies_stored_source() -> None:
+    calls: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer tok"
+        call = (request.method, request.url.path)
+        calls.append(call)
+        if call == ("GET", _TOOL_PATH):
+            if calls == [call]:
+                # A missing TOOL is 404 where a missing FUNCTION is 401: OWUI's two provisioning
+                # endpoints differ, so reading 401 as missing here would never create the tool.
+                return httpx.Response(404, json={"detail": "Tool not found"})
+            return httpx.Response(200, json=_tool_state(content=_TOOL_CONTENT))
+        assert call == ("POST", "/api/v1/tools/create")
+        assert json.loads(request.content) == _TOOL_PAYLOAD
+        return httpx.Response(200, json=_tool_state(content=None))
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
+
+    assert calls == [
+        ("GET", _TOOL_PATH),
+        ("POST", "/api/v1/tools/create"),
+        ("GET", _TOOL_PATH),
+    ]
+
+
+def test_ensure_tool_updates_existing_tool_with_current_bytes() -> None:
+    calls: list[tuple[str, str]] = []
+    stored = "class Tools:\n    pass\n"  # whatever a previous paste left behind
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal stored
+        call = (request.method, request.url.path)
+        calls.append(call)
+        if call == ("POST", f"{_TOOL_PATH}/update"):
+            assert json.loads(request.content) == _TOOL_PAYLOAD
+            stored = _TOOL_CONTENT
+        return httpx.Response(200, json=_tool_state(content=stored))
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
+
+    # A present tool is always updated, so a rerun deploys the artifact's current bytes.
+    assert calls == [
+        ("GET", _TOOL_PATH),
+        ("POST", f"{_TOOL_PATH}/update"),
+        ("GET", _TOOL_PATH),
+    ]
+
+
+def test_ensure_tool_raises_when_stored_source_differs_from_sent() -> None:
+    # OWUI rewrites four `from …` prefixes in tool content on every write (replace_imports). The
+    # generator refuses to emit a source carrying one, so this readback is the loud failure if that
+    # ever stops holding.
+    reads = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            reads["n"] += 1
+            if reads["n"] == 1:
+                return httpx.Response(404, json={"detail": "Tool not found"})
+            return httpx.Response(200, json=_tool_state(content="from utils import x\n"))
+        return httpx.Response(200, json=_tool_state(content=None))
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="final tool state mismatch: content"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
+
+
+def test_ensure_tool_raises_on_discovered_id_mismatch() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_tool_state(tool_id="other_tool"))
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="discovery tool state mismatch: id"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
+
+
+def test_ensure_tool_raises_loud_on_unexpected_discovery_status() -> None:
+    # Only 404 means missing. A 401 or 5xx must fail closed rather than fall through to create.
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, json={"detail": "Not authenticated"})
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match=f"GET {_TOOL_PATH} returned HTTP 401"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"not JSON", b'{"id":"\xff"}'],
+    ids=["malformed-json", "invalid-utf8"],
+)
+def test_ensure_tool_normalizes_malformed_tool_state(body: bytes) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    with (
+        _webui_client(handler) as client,
+        pytest.raises(WebUIProvisionError, match="discovery returned invalid tool state"),
+    ):
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        _ensure_tool(client)
 
 
 # --- global filter convergence --------------------------------------------------------------
@@ -1475,31 +1681,47 @@ def test_ensure_model_tool_requires_authentication() -> None:
 
 
 @pytest.mark.parametrize(
-    ("model_enumerated", "tool_registered", "model_tool_attached", "expected_ok"),
+    (
+        "model_enumerated",
+        "tool_provisioned",
+        "no_tool_servers",
+        "model_tool_attached",
+        "expected_ok",
+    ),
     [
-        (True, True, True, True),
-        (True, True, False, False),
-        (True, False, True, False),
-        (True, False, False, False),
-        (False, True, True, False),
-        (False, True, False, False),
-        (False, False, True, False),
-        (False, False, False, False),
+        (True, True, True, True, True),
+        (True, True, True, False, False),
+        (True, True, False, True, False),
+        (True, True, False, False, False),
+        (True, False, True, True, False),
+        (True, False, True, False, False),
+        (True, False, False, True, False),
+        (True, False, False, False, False),
+        (False, True, True, True, False),
+        (False, True, True, False, False),
+        (False, True, False, True, False),
+        (False, True, False, False, False),
+        (False, False, True, True, False),
+        (False, False, True, False, False),
+        (False, False, False, True, False),
+        (False, False, False, False, False),
     ],
 )
 def test_smoke_result_ok_is_conjunction(
     *,
     model_enumerated: bool,
-    tool_registered: bool,
+    tool_provisioned: bool,
+    no_tool_servers: bool,
     model_tool_attached: bool,
     expected_ok: bool,
 ) -> None:
     result = SmokeResult(
         model_ids=(),
-        tool_server_ids=(),
+        tool_ids=(),
         model_tool_ids=(),
         model_enumerated=model_enumerated,
-        tool_registered=tool_registered,
+        tool_provisioned=tool_provisioned,
+        no_tool_servers=no_tool_servers,
         model_tool_attached=model_tool_attached,
     )
     assert result.ok is expected_ok
@@ -1509,59 +1731,88 @@ def test_smoke_derives_membership_without_wait_or_auth() -> None:
     settings = Settings()
     fake = _FakeClient(
         model_ids=["other-model", settings.model_id],
-        tool_server_ids=["server:x", f"server:{settings.tool_server_id}"],
+        tool_ids=["other_tool", settings.tool_id],
     )
     result = smoke(fake, settings)
     assert result.model_enumerated
-    assert result.tool_registered
+    assert result.tool_provisioned
+    assert result.no_tool_servers
     assert result.model_tool_attached
     assert result.model_ids == ("other-model", settings.model_id)
-    assert result.model_tool_ids == ("server:x", f"server:{settings.tool_server_id}")
+    assert result.tool_ids == ("other_tool", settings.tool_id)
+    assert result.model_tool_ids == ("other_tool", settings.tool_id)
     assert fake.calls == [
         "model_ids",
-        "tool_server_ids",
+        "tool_ids",
         "model_tool_ids",
     ]  # smoke alone: no wait_ready/authenticate
 
 
-def test_run_bootstrap_ok_in_order() -> None:
+def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
+    # The JSON-spec operation reached the model through a registered tool server, so one surviving
+    # `server:`-prefixed id means a second operation is exposed and the demo is no longer single-op.
     settings = Settings()
     fake = _FakeClient(
         model_ids=[settings.model_id],
-        tool_server_ids=[f"server:{settings.tool_server_id}"],
+        tool_ids=[settings.tool_id, "server:verifier"],
+        model_tool_ids=[settings.tool_id],
     )
+    result = smoke(fake, settings)
+    assert result.tool_provisioned
+    assert not result.no_tool_servers
+    assert not result.ok
+
+
+def test_run_bootstrap_ok_in_order() -> None:
+    settings = Settings()
+    fake = _FakeClient(model_ids=[settings.model_id], tool_ids=[settings.tool_id])
     result = run_bootstrap(fake, settings)
     assert result.ok
     assert fake.calls == [
         "wait_ready",
         "authenticate",
         "ensure_global_filter",
+        "ensure_tool",
         "ensure_model_tool",
         "model_ids",
-        "tool_server_ids",
+        "tool_ids",
         "model_tool_ids",
     ]
     assert fake.filter_calls == [(FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)]
-    assert fake.model_tool_calls == [(settings.model_id, f"server:{settings.tool_server_id}")]
+    # The tool is provisioned from the COMMITTED artifact: what the demo runs is byte-for-byte what
+    # an admin pastes, so a render-instead-of-read would hide artifact drift here.
+    assert fake.tool_calls == [
+        (
+            settings.tool_id,
+            settings.tool_name,
+            artifact_text(TOOL_ARTIFACT),
+            settings.tool_description,
+        )
+    ]
+    assert fake.model_tool_calls == [(settings.model_id, settings.tool_id)]
 
 
 def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
     settings = Settings()
-    fake = _FakeClient(
-        model_ids=[settings.model_id],
-        tool_server_ids=[f"server:{settings.tool_server_id}"],
-    )
+    fake = _FakeClient(model_ids=[settings.model_id], tool_ids=[settings.tool_id])
     expected_order = [
         "wait_ready",
         "authenticate",
         "ensure_global_filter",
+        "ensure_tool",
         "ensure_model_tool",
         "model_ids",
-        "tool_server_ids",
+        "tool_ids",
         "model_tool_ids",
     ]
     expected_filter_call = (FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)
-    expected_model_tool_call = (settings.model_id, f"server:{settings.tool_server_id}")
+    expected_tool_call = (
+        settings.tool_id,
+        settings.tool_name,
+        artifact_text(TOOL_ARTIFACT),
+        settings.tool_description,
+    )
+    expected_model_tool_call = (settings.model_id, settings.tool_id)
 
     first = run_bootstrap(fake, settings)
     second = run_bootstrap(fake, settings)
@@ -1570,6 +1821,7 @@ def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
     assert first.ok
     assert fake.calls == expected_order * 2
     assert fake.filter_calls == [expected_filter_call] * 2
+    assert fake.tool_calls == [expected_tool_call] * 2
     assert fake.model_tool_calls == [expected_model_tool_call] * 2
 
 
@@ -1577,7 +1829,7 @@ def test_run_bootstrap_does_not_smoke_after_filter_convergence_failure() -> None
     settings = Settings()
     fake = _FakeClient(
         model_ids=[settings.model_id],
-        tool_server_ids=[f"server:{settings.tool_server_id}"],
+        tool_ids=[settings.tool_id],
         fail_filter=True,
     )
 
@@ -1588,24 +1840,29 @@ def test_run_bootstrap_does_not_smoke_after_filter_convergence_failure() -> None
 
 
 @pytest.mark.parametrize(
-    ("model_present", "tool_registered", "model_tool_attached"),
+    ("model_present", "tool_provisioned", "tool_server_present", "model_tool_attached"),
     [
-        (False, True, True),
-        (True, False, True),
-        (True, True, False),
+        (False, True, False, True),
+        (True, False, False, True),
+        (True, True, True, True),
+        (True, True, False, False),
     ],
 )
 def test_run_bootstrap_not_ok_when_either_missing(
     *,
     model_present: bool,
-    tool_registered: bool,
+    tool_provisioned: bool,
+    tool_server_present: bool,
     model_tool_attached: bool,
 ) -> None:
     settings = Settings()
-    tool_id = f"server:{settings.tool_server_id}"
+    tool_id = settings.tool_id
+    tool_ids = ([tool_id] if tool_provisioned else []) + (
+        ["server:verifier"] if tool_server_present else []
+    )
     fake = _FakeClient(
         [settings.model_id] if model_present else [],
-        [tool_id] if tool_registered else [],
+        tool_ids,
         [tool_id] if model_tool_attached else [],
     )
     result = run_bootstrap(fake, settings)
@@ -1613,7 +1870,8 @@ def test_run_bootstrap_not_ok_when_either_missing(
 
 
 def test_run_bootstrap_rerun_is_idempotent_via_signin_and_filter_update() -> None:
-    # First run signs up + creates; rerun signs in, updates the filter, and does no model write.
+    # First run signs up + creates; rerun signs in, updates the filter and the tool, and does no
+    # model write.
     settings = Settings()
     state = _BootstrapTransport(settings, close_signup_after_first=True)
 
@@ -1627,6 +1885,7 @@ def test_run_bootstrap_rerun_is_idempotent_via_signin_and_filter_update() -> Non
     assert first.model_tool_attached
     assert state.signups == 2  # both runs attempted signup; the re-run fell back to signin
     assert state.filter_writes == {"create": 1, "update": 1}
+    assert state.tool_writes == {"create": 1, "update": 1}
     assert state.model_writes == {"create": 1, "update": 0}
 
 
@@ -1639,6 +1898,7 @@ def test_run_bootstrap_end_to_end_over_mock_transport() -> None:
 
     assert result.ok
     assert result.model_ids == (settings.model_id,)
-    assert result.tool_server_ids == (state.tool_id,)
+    assert result.tool_ids == (state.tool_id,)
     assert result.model_tool_ids == (state.tool_id,)
+    assert result.no_tool_servers
     assert result.model_tool_attached

@@ -30,7 +30,6 @@ out-of-tree harness like model_backend and bench: coverage-excluded, unshipped, 
 gate-venv deps.
 """
 
-import json
 import math
 import os
 import re
@@ -71,17 +70,16 @@ _MIN_SECRET_KEY_BYTES = 32
 _CLEAN_AUTHORITY = re.compile(r"[A-Za-z0-9._:\[\]-]+")
 _CLEAN_HOST = re.compile(r"[A-Za-z0-9._-]+")
 
-# The verifier tool-server registration OWUI reads from TOOL_SERVER_CONNECTIONS. The id becomes the
-# OWUI tool group "server:<id>"; the name is the readback label. The verifier's OpenAPI lives at
-# schema/openapi.json; proposeSpec is the one exposed op (.agent/archive/m4.md persistent-off
-# contract).
-_TOOL_SERVER_ID = "verifier"
-_TOOL_SERVER_NAME = "Figure Verifier"
-_TOOL_SERVER_DESCRIPTION = (
-    "Independently recomputes and verifies chart specs, then renders a certified figure."
-)
-_TOOL_SERVER_PATH = "schema/openapi.json"
-_PROPOSE_OPERATION_ID = "proposeSpec"
+# The provisioned paste-in tool: python mode is the demo's ONE operation (.agent/spec.md § Decisions
+# demo shape). The id must be a lower-case Python identifier -- OWUI rejects anything else and
+# lower-cases what it accepts (routers/tools.py). name + description are ADMIN-facing workspace
+# labels; the string the MODEL reads is the method docstring inside the artifact, which is why
+# ruling 6's banned-stem check runs over that and not over these.
+_TOOL_ID = "figure_verification"
+_TOOL_NAME = "Figure Verification"
+_TOOL_DESCRIPTION = "Draws a chart from a Python program and an attached CSV file."
+# The one model-visible callable the artifact exposes: `Tools.draw_figure` (webui/paste_in/tool.py).
+_TOOL_OPERATION_ID = "draw_figure"
 
 # The Open WebUI environment launch_env() emits verbatim, independent of any Settings field. OWUI
 # compares booleans as os.getenv(...).lower() == "true" (config.py / env.py), so "false" disables
@@ -258,43 +256,33 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         return f"http://{self.host}:{self.port}"
 
     @property
-    def tool_server_id(self) -> str:
-        """The verifier tool-server id; OWUI exposes its tools under group "server:<id>"."""
-        return _TOOL_SERVER_ID
+    def tool_id(self) -> str:
+        """The provisioned paste-in tool's OWUI id; bootstrap converges the row under it."""
+        return _TOOL_ID
 
-    def tool_server_connections(self) -> str:
-        """The TOOL_SERVER_CONNECTIONS env value: a one-element JSON array registering the verifier.
+    @property
+    def tool_name(self) -> str:
+        """The workspace label an admin reads beside the provisioned tool."""
+        return _TOOL_NAME
 
-        Shape is the settled 0.10.2 connection (.agent/archive/m4.md persistent-off contract): OWUI
-        fetches {url}/{path} as OpenAPI, exposes only the proposeSpec op (the allowlist), and needs
-        config.enable truthy or the server is skipped.
-        """
-        connection = {
-            "url": self.verifier_url,
-            "path": _TOOL_SERVER_PATH,
-            "type": "openapi",
-            "auth_type": "none",
-            "key": "",
-            "config": {
-                "enable": True,
-                "function_name_filter_list": [_PROPOSE_OPERATION_ID],
-            },
-            "info": {
-                "id": self.tool_server_id,
-                "name": _TOOL_SERVER_NAME,
-                "description": _TOOL_SERVER_DESCRIPTION,
-            },
-        }
-        return json.dumps([connection])
+    @property
+    def tool_description(self) -> str:
+        """The workspace description an admin reads beside the provisioned tool."""
+        return _TOOL_DESCRIPTION
+
+    @property
+    def tool_operation_id(self) -> str:
+        """The one callable the artifact publishes to the model."""
+        return _TOOL_OPERATION_ID
 
     def launch_env(self) -> dict[str, str]:
         """The Open WebUI config env to exec open-webui with (layered over the launcher base env).
 
         Reads no os.environ; DATA_DIR resolves against the process cwd, so the dict is a function of
-        this Settings and the cwd (a test recomputes the same resolve). The five derived keys
+        this Settings and the cwd (a test recomputes the same resolve). The four derived keys
         complete _FIXED_ENV per-instance -- an absolute DATA_DIR (OWUI resolves a relative one
         against its own cwd, so absolute keeps state in .webui-data regardless of exec cwd), the
-        secret, both OpenAI base-url forms, and the tool-server registration.
+        secret, and both OpenAI base-url forms.
         """
         return {
             **_FIXED_ENV,
@@ -302,7 +290,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             "WEBUI_SECRET_KEY": self.secret_key,
             "OPENAI_API_BASE_URL": self.model_backend_url,
             "OPENAI_API_BASE_URLS": self.model_backend_url,
-            "TOOL_SERVER_CONNECTIONS": self.tool_server_connections(),
         }
 
     def child_env(self) -> dict[str, str]:

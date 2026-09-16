@@ -391,14 +391,17 @@ curl -sS http://127.0.0.1:8000/propose-spec \
 
 Open WebUI is a trusted display and orchestration layer, not a verifier and not an
 extension of the verification claim. It asks the untrusted model what to do, executes
-the allowlisted `proposeSpec` tool, and displays the result. Open WebUI, its function
+the one operation the instance exposes, and displays the result. Open WebUI, its function
 runner, the browser, iframe handling, and the final pixels therefore join the trusted
 computing base described above; only the verifier's validated spec, recomputed table,
 emitted Vega-Lite, and certificate are mutually checked.
 
-The whole `proposeSpec` + iframe flow described here is DATASET MODE alone. NO certified formula
-script has executed in the Open WebUI sandbox; M10 gates that execution. Until then formula mode's
-shipped surface ends at the verifier-authored script BYTES, which no shipped path runs.
+The whole `proposeSpec` + iframe flow described here is DATASET MODE alone, and the launcher's own
+Open WebUI no longer exposes it: the demo instance now provisions the python-mode paste-in tool as
+its ONE operation, and `proposeSpec` reaches the model only where an operator registers the verifier
+as a tool server themselves. NO certified formula script has executed in the Open WebUI sandbox; M10
+gates that execution. Until then formula mode's shipped surface ends at the verifier-authored script
+BYTES, which no shipped path runs.
 
 The verifier tool is global and executes in the Open WebUI backend. Open WebUI fetches
 the verifier's OpenAPI document and posts tool requests server-to-server, so the

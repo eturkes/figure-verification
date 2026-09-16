@@ -7,14 +7,15 @@ regression net rather than a 100%-branch gate. Locked here:
 - every fail-closed bound (__post_init__): port range, >=32-byte secret, non-empty admin email /
   password, finite-positive request and ready timeouts, http(s) verifier / model-backend URLs,
   bare host;
-- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the five
+- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the four
   per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
   only the curated process base;
 - the load-bearing _FIXED_ENV values (persistent-config off, empty task model, legacy FC, every
   background-generation toggle off, API outlet filters on, plus the auth / bootstrap login model
   -- auth on, password login, public signup off, no boot auto-admin, no trusted-header) pinned
   directly, so a flip fails;
-- tool_server_connections() as the settled-live one-element verifier registration;
+- the provisioned paste-in tool's identity (id / name / description / operation id), stated as
+  literals because the id is what OWUI rows the tool under and what bootstrap attaches;
 - from_env() default and WEBUI_PROVISION_* override across int / str / Path / float fields.
 """
 
@@ -58,7 +59,6 @@ _DERIVED_ENV_KEYS = frozenset(
         "WEBUI_SECRET_KEY",
         "OPENAI_API_BASE_URL",
         "OPENAI_API_BASE_URLS",
-        "TOOL_SERVER_CONNECTIONS",
     }
 )
 
@@ -115,7 +115,6 @@ def test_rejects_bad_config(build: Callable[[], Settings], match: str) -> None:
 def test_defaults_construct() -> None:
     settings = Settings()
     assert settings.base_url == "http://127.0.0.1:8080"
-    assert settings.tool_server_id == "verifier"
     # Hand-stated, never read off the production constant: OWUI selects the completion model by
     # this exact id (webui/client.py:380) and bootstrap refuses an id the backend does not
     # advertise, so a drift from model_backend's served name breaks launch, not a later request.
@@ -159,14 +158,17 @@ def test_launch_env_is_fixed_plus_derived() -> None:
     # Every fixed toggle is emitted verbatim (a derived key must not shadow one).
     for key, value in _FIXED_ENV.items():
         assert env[key] == value
-    # The five per-instance derived keys.
+    # The four per-instance derived keys.
     assert env["DATA_DIR"] == str(settings.data_dir.resolve())
     assert env["WEBUI_SECRET_KEY"] == settings.secret_key
     assert env["OPENAI_API_BASE_URL"] == settings.model_backend_url
     assert env["OPENAI_API_BASE_URLS"] == settings.model_backend_url
-    assert env["TOOL_SERVER_CONNECTIONS"] == settings.tool_server_connections()
-    # launch_env is exactly _FIXED_ENV plus those five keys, no more, no less.
+    # launch_env is exactly _FIXED_ENV plus those four keys, no more, no less.
+    # TOOL_SERVER_CONNECTIONS is absent by ruling: a registered tool server is what published the
+    # JSON-spec operation, and python mode is the demo's ONE operation, so the registration is
+    # removed rather than filtered.
     assert set(env) == set(_FIXED_ENV) | _DERIVED_ENV_KEYS
+    assert "TOOL_SERVER_CONNECTIONS" not in env
 
 
 def test_fixed_env_pins_load_bearing_toggles() -> None:
@@ -236,20 +238,25 @@ def test_child_env_drops_ambient_keeps_base(monkeypatch: pytest.MonkeyPatch) -> 
     assert env["WEBUI_AUTH"] == "true"  # launch_env pin, not the ambient "false"
 
 
-def test_tool_server_connections_shape() -> None:
+def test_tool_identity_is_the_paste_in_python_operation() -> None:
+    # Hand-stated literals, never read off the production constants: the id is the DB key OWUI rows
+    # the tool under and the value bootstrap attaches to the workspace model, so a drift here
+    # provisions a second tool and leaves the first attached.
     settings = Settings()
-    connections = json.loads(settings.tool_server_connections())
-    assert isinstance(connections, list)
-    assert len(connections) == 1
-    conn = connections[0]
-    assert conn["url"] == settings.verifier_url
-    assert conn["path"] == "schema/openapi.json"
-    assert conn["type"] == "openapi"
-    assert conn["auth_type"] == "none"
-    assert conn["config"]["enable"] is True
-    assert conn["config"]["function_name_filter_list"] == ["proposeSpec"]
-    assert conn["info"]["id"] == settings.tool_server_id
-    assert conn["info"]["name"] == "Figure Verifier"
+    assert settings.tool_id == "figure_verification"
+    assert settings.tool_name == "Figure Verification"
+    assert (
+        settings.tool_description == "Draws a chart from a Python program and an attached CSV file."
+    )
+    assert settings.tool_operation_id == "draw_figure"
+
+
+def test_tool_id_satisfies_the_open_webui_id_rule() -> None:
+    # routers/tools.py rejects an id that is not .isidentifier() and lower-cases what it accepts, so
+    # an id OWUI would rewrite would be stored under a name bootstrap never reads back.
+    tool_id = Settings().tool_id
+    assert tool_id.isidentifier()
+    assert tool_id == tool_id.lower()
 
 
 def test_from_env_default(monkeypatch: pytest.MonkeyPatch) -> None:

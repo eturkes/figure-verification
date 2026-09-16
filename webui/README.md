@@ -1,17 +1,22 @@
 # webui - Open WebUI provisioning harness
 
 This out-of-tree, unshipped harness starts Open WebUI in a hermetic environment. It creates the
-first administrator and converges the repository-owned global outlet filter. It attaches the
-verifier server to the configured model's default tools. It then smoke-checks all three readbacks.
-The project type-checks and lint-checks this harness. The project excludes it from coverage, like
-`bench/` and `model_backend/`.
+first administrator and converges the repository-owned global outlet filter. It pastes in the
+generated figure-verification tool and attaches it to the configured model's default tools. It then
+smoke-checks all four readbacks. The project type-checks and lint-checks this harness. The project
+excludes it from coverage, like `bench/` and `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
              ├─ global Verified Plot Guard outlet filter
              ├─ OpenAI /v1 → model backend or stub :8001
-             └─ global proposeSpec tool → verifier :8000
+             └─ Figure Verification tool (the pasted-in artifact, in-process)
 ```
+
+The tool is the demo's one operation. The harness provisions it from the committed artifact
+`paste-in/figure_verification_tool.py`, so the demo runs the exact bytes an administrator pastes.
+The harness registers no tool server, so the JSON-spec `proposeSpec` operation does not reach the
+model.
 
 Open WebUI is a trusted display and orchestration layer. It is not part of the verifier claim. The
 filter is a bypassable and false-positive-prone guardrail. It is not a security boundary. Bootstrap
@@ -101,9 +106,9 @@ uv run --locked python -m webui serve
 curl -fsS http://127.0.0.1:8080/ready
 ```
 
-The order is load-bearing. `/api/v1/tools/` re-fetches each server's OpenAPI document. It drops an
-unreachable server. Therefore, the verifier must be ready before Open WebUI starts. Otherwise, the
-bootstrap readback fails.
+The pasted tool runs in the Open WebUI process and calls no server, so the bootstrap readback no
+longer depends on the verifier being up first. Start the verifier before Open WebUI anyway: the
+`/chart/<plot_id>` iframe the browser renders is served from `:8000`.
 
 In a fourth terminal, run the provisioning smoke-check:
 
@@ -114,22 +119,31 @@ uv run --locked python -m webui bootstrap
 
 Each command first creates or updates `Verified Plot Guard` from the exact
 `webui/enforcement_filter.py` source. It proves that the filter is active and global. It then creates
-or non-destructively updates the workspace model configuration. It ensures that the configuration's
-`meta.toolIds` includes `server:verifier`. It exits 0 only when all three readbacks succeed. The
-readbacks must enumerate the configured model ID. They must show the server registration. They must
-show that the model has the tool ID. On a clean instance, the success banner reports
-`models=1 tool_servers=1 model_tools=1`. On a clean instance, the first run signs up the
-administrator and creates the filter. It enables both flags and creates the model configuration.
-Expect 403 → signin on the second signup. That run updates the existing filter source. It does
-not invert flags that are already true. When the tool is already attached, it makes no model write.
+or updates the `Figure Verification` tool from the exact committed artifact, and reads the stored
+source back to prove that Open WebUI kept those bytes. It then creates or non-destructively updates
+the workspace model configuration. It ensures that the configuration's `meta.toolIds` includes
+`figure_verification`. It exits 0 only when all four readbacks succeed. The readbacks must enumerate
+the configured model ID. They must show the tool row. They must show no `server:`-prefixed tool ID.
+They must show that the model has the tool ID. On a clean instance, the success banner reports
+`models=1 tools=1 model_tools=1`. On a clean instance, the first run signs up the
+administrator and creates the filter. It enables both flags, creates the tool, and creates the
+model configuration. Expect 403 → signin on the second signup. That run updates the existing filter
+source and the existing tool source. It does not invert flags that are already true. When the tool
+is already attached, it makes no model write.
 The launcher disables persistent configuration for its settings. The launch environment supplies the
 tool, model, and legacy-function-calling configuration. The administrator user, owned function, and
 workspace model configuration persist in `.webui-data/`.
 
 ## Deterministic successful E2E (`--stub`)
 
-With the hardware-free stack provisioned, run this synchronous request. It proves the legacy
-selector, server tool, VPlot proposal, verifier, and clean verdict-context chain:
+This section records the JSON-spec chain measured on the earlier wiring, where a registered tool
+server published `proposeSpec`. The harness no longer registers that server, so these steps need an
+operator to register it first. Read them as evidence for the chain they measured, not as the current
+demo path. The python-mode arm the demo now exposes is measured in `README.md`.
+
+With the hardware-free stack provisioned and the verifier registered as a tool server, run this
+synchronous request. It proves the legacy selector, server tool, VPlot proposal, verifier, and clean
+verdict-context chain:
 
 ```sh
 uv run --locked python - <<'PY'
