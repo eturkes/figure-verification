@@ -52,8 +52,8 @@ _EXPECTED_GOOD_CORPUS_SIZE = 10
 # a wrong --examples-dir that happens to hold same-sized sets of other specs
 # F1). Recompute here after any deliberate corpus edit (tests/test_bench_harness.py re-derives
 # both from the tree, so a drift fails the portable gate too).
-_EXPECTED_BAD_CORPUS_DIGEST = "5a0b73575cfcd6887b169a972086edaa7c7a671c1817419d60d3d88ca71d5602"
-_EXPECTED_GOOD_CORPUS_DIGEST = "2aae979c3ffd49c0add494e130834ba5f4f4c1153259cd5b34cdfd319107fe0e"
+_EXPECTED_BAD_CORPUS_DIGEST = "0a167fff44addcd9a2ae5f15bb0f87cbf60ee63f297a48f3a862940cf601a7fc"
+_EXPECTED_GOOD_CORPUS_DIGEST = "8d79e67966c1e8f833c2c5e6290d6de10a84f3313a77ffc3e95bca53d1b612df"
 
 
 def _schema_digest() -> str | None:

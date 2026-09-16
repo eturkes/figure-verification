@@ -346,13 +346,13 @@ def test_g04_revenue_vs_orders() -> None:
 
 
 def test_g05_avg_revenue_by_region() -> None:
-    # NAM 40000/3 = 13333.33 -> 13333; EU 34000/3 = 11333.33 -> 11333 (HALF_EVEN at scale 0).
+    # US 40000/3 = 13333.33 -> 13333; EU 34000/3 = 11333.33 -> 11333 (HALF_EVEN at scale 0).
     table = _evaluate_example("good_specs", "g05_avg_revenue_by_region.json", "sales")
     assert table.columns == (
         canon.StringColumn(name="region"),
         canon.NumericColumn(name="avg_revenue", scale=0),
     )
-    assert table.rows == (("EU", Decimal(11333)), ("NAM", Decimal(13333)))
+    assert table.rows == (("EU", Decimal(11333)), ("US", Decimal(13333)))
 
 
 # --- distinctness + group_by placement ---------------------------------------
@@ -753,7 +753,7 @@ def test_g02_revenue_by_region() -> None:
         canon.StringColumn(name="region"),
         canon.NumericColumn(name="total_revenue", scale=0),
     )
-    assert table.rows == (("NAM", Decimal(40000)), ("EU", Decimal(34000)))
+    assert table.rows == (("US", Decimal(40000)), ("EU", Decimal(34000)))
 
 
 def test_g03_order_count_by_month() -> None:
@@ -800,7 +800,7 @@ def test_g07_temp_over_time_by_city() -> None:
 
 
 def test_g08_na_revenue_by_month() -> None:
-    # filter region eq NAM -> group_by month -> sum revenue -> sort month asc.
+    # filter region eq US -> group_by month -> sum revenue -> sort month asc.
     table = _evaluate_example("good_specs", "g08_na_revenue_by_month.json", "sales")
     assert table.columns == (
         canon.StringColumn(name="month"),

@@ -5,7 +5,7 @@
     {
       "name": "sales.csv",
       "manifest": "data/schemas/sales.json",
-      "hash": "sha256:a4e6f2456c778e9f55f9681911b60558aacc37e8eb0b79d5c216db7d3542af0a"
+      "hash": "sha256:b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4"
     },
     {
       "name": "weather.csv",
@@ -70,10 +70,10 @@
     },
     {
       "file": "g08_na_revenue_by_month.json",
-      "intent": "Show total revenue by month for the NAM region.",
+      "intent": "Show total revenue by month for the US region.",
       "dataset": "sales.csv",
       "mark": "bar",
-      "summary": "filter region eq NAM -> group_by month -> sum revenue -> sort month asc"
+      "summary": "filter region eq US -> group_by month -> sum revenue -> sort month asc"
     },
     {
       "file": "g09_min_revenue_by_month.json",

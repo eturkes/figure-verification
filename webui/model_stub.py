@@ -48,7 +48,7 @@ _TOOL_CALL_REPLY = (
 # independent; its test compares the decoded value to the tracked golden so a data/hash drift fails.
 _VPLOT_REPLY = (
     '{"version":"vplot-0.1","dataset":{"name":"sales.csv","hash":'
-    '"sha256:a4e6f2456c778e9f55f9681911b60558aacc37e8eb0b79d5c216db7d3542af0a"},'
+    '"sha256:b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4"},'
     '"transform":[{"op":"group_by","keys":["month"]},{"op":"aggregate","measures":['
     '{"field":"revenue","fn":"sum","as":"total_revenue"}]},{"op":"sort","by":['
     '{"field":"month","order":"ascending"}]}],"mark":"bar","encoding":{"x":'

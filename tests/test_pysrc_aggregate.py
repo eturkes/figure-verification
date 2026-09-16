@@ -817,7 +817,7 @@ def test_g11r_certify_refuses_a_grouped_spec_without_its_counts() -> None:
 
 def test_d1_the_committed_sales_csv_verifies_grouped() -> None:
     """D1: a grouped program over the COMMITTED `data/sales.csv` bytes verifies, with
-    `table.x == ("EU", "NAM")` and `group_counts == (3, 3)`. This is M13.7b's whole point: the
+    `table.x == ("EU", "US")` and `group_counts == (3, 3)`. This is M13.7b's whole point: the
     region code was `NA`, one of the 19 pandas NA spellings, so the exactly-admitted groupby
     program refused `value_not_in_profile` and six held-out simple rows were unreachable. It reads
     the real committed bytes rather than a fixture, so it goes red again the moment an NA spelling
@@ -827,7 +827,7 @@ def test_d1_the_committed_sales_csv_verifies_grouped() -> None:
     content = (_ROOT / "data" / "sales.csv").read_bytes()
     result = _aggregate_verdict(content, "sum")
     assert isinstance(result, Verified)
-    assert result.table.x == ("EU", "NAM")
+    assert result.table.x == ("EU", "US")
     assert result.certificate.group_counts == (3, 3)
 
 

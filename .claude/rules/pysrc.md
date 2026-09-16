@@ -308,7 +308,7 @@ z3 cannot be inlined.
   held-out simple rows, which capped the acceptance ceiling at 10/20 = 50% under `Intent`'s
   required 70%. The refusal is CORRECT: pandas reads those cells as missing, `groupby` drops all 3
   rows, and the drawn figure really would lose a bar. So the DATA carried the defect. The region
-  code is now `NAM` and every spelling in that column must stay outside `csvread.NA_SPELLINGS`;
+  code is now `US` and every spelling in that column must stay outside `csvread.NA_SPELLINGS`;
   measured over the same captures, simple VERIFIED went 0/25 → 2/25 and `value_not_in_profile`
   3/25 → 0/25, with `column_not_numeric` 2 → 3 as one row's true fault stopped being masked. The
   adversarial NA case is banked on fixtures that are NOT `data/sales.csv`, three ways:

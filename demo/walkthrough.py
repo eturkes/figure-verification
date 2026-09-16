@@ -517,7 +517,7 @@ def _check_archived_dataset_replay(tmp_path: Path) -> None:
 
     with TestClient(app=create_app(settings)) as client:
         original = _render_verified(client, _GOOD_SPEC.read_bytes())
-        mutated_csv = original_csv + b"2099-01,NAM,1,1\n"
+        mutated_csv = original_csv + b"2099-01,US,1,1\n"
         source.write_bytes(mutated_csv)
         document = cast("dict[str, Any]", json.loads(_GOOD_SPEC.read_bytes()))
         dataset = cast("dict[str, Any]", document["dataset"])

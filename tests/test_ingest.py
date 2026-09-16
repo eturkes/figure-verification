@@ -43,11 +43,11 @@ def test_sales_golden() -> None:
         canon.NumericColumn(name="orders", scale=0),
     )
     assert table.rows == (
-        ("2026-01", "NAM", Decimal(12000), Decimal(80)),
+        ("2026-01", "US", Decimal(12000), Decimal(80)),
         ("2026-01", "EU", Decimal(9000), Decimal(61)),
-        ("2026-02", "NAM", Decimal(15000), Decimal(93)),
+        ("2026-02", "US", Decimal(15000), Decimal(93)),
         ("2026-02", "EU", Decimal(11000), Decimal(70)),
-        ("2026-03", "NAM", Decimal(13000), Decimal(88)),
+        ("2026-03", "US", Decimal(13000), Decimal(88)),
         ("2026-03", "EU", Decimal(14000), Decimal(86)),
     )
 

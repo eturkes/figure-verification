@@ -60,9 +60,10 @@ or legend domain.
 
 ## Dataset-mode data notes
 `month` = `YYYY-MM` string → encoded `ordinal` (lexical = chronological; semantics temporal is
-`YYYY-MM-DD`/datetime only, §2). `weather.date` exercises `temporal`. `sales.region` spells North
-America `NAM`, not `NA`. `NA` is one of the 19 default pandas NA spellings. Python mode's CSV
-profile refuses such a cell. Every `groupby("region")` program over the file would therefore refuse.
+`YYYY-MM-DD`/datetime only, §2). `weather.date` exercises `temporal`. `sales.region` holds the codes
+`US` and `EU`. The data is mock, so these codes mix a country and a continent. That column must
+never hold `NA`. `NA` is one of the 19 default pandas NA spellings. Python mode's CSV profile
+refuses such a cell. Every `groupby("region")` program over the file would therefore refuse.
 `aqi` is deliberately unit-less (the B13 missing-unit fixture). `deliberately_dirty.csv` is the
 null and edge fixture for eval. It holds empty cells across numeric, string and group-key columns,
 and it stays loadable. Its `region` column keeps the literal `NA`. That cell proves a literal `NA`
