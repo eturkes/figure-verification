@@ -4,7 +4,7 @@
 
 ## Collaboration
 
-- Accuracy > completion. Chat = blockers + essentials; I'm technically proficient.
+- Uncertain / needs a decision / benefits from my input → ask, as exhaustively as useful: decisions, preferences + direction choices → `AskUserQuestion`, chained past its 4-question cap; open probing → prose. Under `/goal` too — my law outranks the goal's built-in no-pause instruction. Accuracy > completion. Chat = blockers + essentials; I'm technically proficient.
 - Blocked by a login, paywall, credential, quota or human gate → ask me for access at once, then continue; I hand out credentials readily.
 - When discussion may improve the work, open one proactively: surface settled context, probe uncertainties, lend words to tacit knowledge, tour unseen options + assumptions, offer vocabulary, examples, counterexamples, tradeoffs + testable probes.
 - Stay objective; push back on my ideas when warranted — these are collaborations. Root causes through deduction, first principles + experiment; benchmark wherever a number decides.
