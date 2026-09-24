@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.0 exposure: python mode is the demo's ONE operation and JSON mode is unreachable.
 
-Contract: `.agent/contracts/m10u0.md` predicate group E. Each docstring carries its predicate's
-acceptance check; the check is the test's specification and the contract's wording wins wherever a
-body would assert more.
+Contract: `.agent/archive/contracts/m10u0.md` predicate group E. Each docstring carries its
+predicate's acceptance check; the check is the test's specification and the contract's wording
+wins wherever a body would assert more.
 
 Open WebUI filters the model-visible callable set by `function_name_filter_list` for a tool server
 and by the workspace model's attached tool ids for a provisioned tool. Two independent surfaces can
@@ -30,10 +30,18 @@ from webui.settings import Settings
 
 
 class _SmokeClient:
-    def __init__(self, *, model_id: str, tool_id: str, tool_row_present: bool) -> None:
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        tool_id: str,
+        tool_row_present: bool,
+        attached: list[str] | None = None,
+    ) -> None:
         self._model_id = model_id
         self._tool_id = tool_id
         self._tool_row_present = tool_row_present
+        self._attached = [tool_id] if attached is None else attached
 
     def wait_ready(self) -> None:
         pytest.fail("smoke must not wait")
@@ -78,7 +86,7 @@ class _SmokeClient:
 
     def model_tool_ids(self, model_id: str) -> list[str]:
         assert model_id == self._model_id
-        return [self._tool_id]
+        return list(self._attached)
 
 
 def _enabled_server_operations(connections_text: str) -> set[str]:
@@ -125,6 +133,28 @@ def test_e1_model_visible_callable_set_is_exactly_the_python_operation() -> None
     assert planted == {operation_name, "proposeSpec"}
     with pytest.raises(AssertionError):
         assert planted == {operation_name}
+
+
+def test_e1_smoke_rejects_an_already_attached_non_server_tool() -> None:
+    """E1: another attached tool must make the demo's single-operation readback fail.
+
+    Preserving operator-set model config is permitted, but a bootstrap with two visible callables
+    cannot report success and launch the demo.
+    """
+    settings = Settings()
+    result = smoke(
+        _SmokeClient(
+            model_id=settings.model_id,
+            tool_id=settings.tool_id,
+            tool_row_present=True,
+            attached=["other_tool", settings.tool_id],
+        ),
+        settings,
+    )
+    assert result.model_tool_ids == ("other_tool", settings.tool_id)
+    assert result.model_tool_attached
+    assert not result.model_tool_exclusive
+    assert not result.ok
 
 
 def test_e2_tool_provisioning_converges_to_the_artifact_bytes() -> None:

@@ -243,18 +243,15 @@ start_bg webui "${LOG_DIR}/webui.log" uv run --locked python -m webui serve
 wait_http webui "http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}/ready" "$WEBUI_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/webui.log" \
   || die "Open WebUI did not become ready"
 
-# 4) provision Open WebUI (order is load-bearing: the verifier is up first so its OpenAPI is
-#    re-fetched and its proposeSpec tool server is not dropped as unreachable).
-log "provisioning Open WebUI (admin + model + verifier tool registration)..."
+# 4) provision Open WebUI. The pasted tool reads uploaded bytes in-process; its bootstrap readback
+#    no longer fetches the verifier's OpenAPI or registers a tool server.
+log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. With the real model, outcomes are prompt-driven: naming `dataset_name` sends a
-#    naming `dataset_name` is what makes the tool call well-formed. Neither real-model arm is
-#    calibrated: measured on this host, the simple prompt drives proposeSpec and the verifier then
-#    refuses the proposed spec, while the elaborate prompt's outcome varies run to run. M10 owns the
-#    calibration. The --stub fixture proposes a known-good spec for every request, so it demonstrates
-#    only the verified-render path.
+# 5) banner. Its JSON-spec outcomes predate the pasted python tool; the calibration unit owns
+#    re-measuring both prompts and replacing the banner's old outcome text. The stub still returns
+#    the retired proposeSpec reply, so its current python-tool outcome is unmeasured.
 simple_prompt="Chart the total revenue of each region using bars. dataset_name: sales.csv"
 elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.0 bundle: the generator that turns tracked sources into the production paste-in.
 
-Contract: `.agent/contracts/m10u0.md` predicate group B. Each docstring carries its predicate's
-acceptance check; the check is the test's specification and the contract's wording wins wherever a
-body would assert more.
+Contract: `.agent/archive/contracts/m10u0.md` predicate group B. Each docstring carries its
+predicate's acceptance check; the check is the test's specification and the contract's wording
+wins wherever a body would assert more.
 
 The single-source ruling is what these predicates defend. The verification core is written once
 under `src/verifier/pysrc/`; the pasted artifact embeds it BY GENERATION, and a hand fork is
@@ -120,10 +120,11 @@ def test_b4_emission_order_is_topological() -> None:
             assert_topological(list(reversed(order)))
 
 
-def test_b5_loading_the_artifact_leaves_sys_modules_untouched() -> None:
-    """B5: no key added, no value rebound, across an `exec_module` of the artifact.
+def test_b5_loading_restores_embedded_module_slots() -> None:
+    """B5-1: no embedded name remains and no existing value is rebound after `exec_module`.
 
-    Red under a loader whose restore step is removed.
+    Preload the imports before snapshotting; new standard-library keys may remain after a cold load.
+    Red under a loader whose embedded-name restore step is removed.
     """
     bundle = load_bundle()
     for index, (path, _root) in enumerate(artifact_items(bundle)):
@@ -333,3 +334,35 @@ def test_b8_generation_fails_closed_on_an_unembeddable_source(tmp_path: Path) ->
         result = run_generator(clone)
         assert result.returncode != 0, name
         assert relative.as_posix() in result.stdout + result.stderr, name
+
+
+@pytest.mark.parametrize("prefix", ["utils", "apps", "main", "config"])
+def test_b8_generation_rejects_a_source_open_webui_would_rewrite(
+    tmp_path: Path, prefix: str
+) -> None:
+    """B8-1: refuse each `from <prefix>` byte sequence before Open WebUI rewrites it."""
+    bundle = load_bundle()
+    root = next(iter(bundle.ARTIFACTS.values()))
+    relative = module_path(root).relative_to(REPO_ROOT)
+    clone = copy_tracked_tree(tmp_path / prefix)
+    victim = clone / relative
+    victim.write_bytes(victim.read_bytes() + f"\n# from {prefix}\n".encode())
+
+    result = run_generator(clone)
+    assert result.returncode != 0, prefix
+    assert relative.as_posix() in result.stdout + result.stderr, prefix
+
+
+def test_b8_generation_rejects_a_source_without_triple_double_quote(tmp_path: Path) -> None:
+    """B8-1: refuse a parseable source whose embedding delimiter ruff would rewrite."""
+    bundle = load_bundle()
+    root = next(iter(bundle.ARTIFACTS.values()))
+    relative = module_path(root).relative_to(REPO_ROOT)
+    clone = copy_tracked_tree(tmp_path / "no-triple-double-quote")
+    (clone / relative).write_bytes(
+        b"# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\nclass Tools:\n    pass\n"
+    )
+
+    result = run_generator(clone)
+    assert result.returncode != 0
+    assert relative.as_posix() in result.stdout + result.stderr

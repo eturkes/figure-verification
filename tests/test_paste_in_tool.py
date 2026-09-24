@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.0 tool: the ONE model-visible callable over python mode.
 
-Contract: `.agent/contracts/m10u0.md` predicate group T. Each docstring carries its predicate's
-acceptance check; the check is the test's specification and the contract's wording wins wherever a
-body would assert more.
+Contract: `.agent/archive/contracts/m10u0.md` predicate group T. Each docstring carries its
+predicate's acceptance check; the check is the test's specification and the contract's wording
+wins wherever a body would assert more.
 
 The tool is a transport, never an authority. It hands the model's exact bytes and the user's exact
 uploaded bytes to `verify_python_source` and reports what that returns. Every predicate here exists

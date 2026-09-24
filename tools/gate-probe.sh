@@ -32,7 +32,8 @@ TEST_GATE=tests/test_gate.py
 SPEC=.agent/spec.md
 DEFERRED=.agent/deferred.md
 REVIEW=.agent/review.md
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW")
+ARTIFACT=paste-in/figure_verification_tool.py
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -159,6 +160,39 @@ plant_stranded_contract_citation() {
     printf '\n- Probe: .agent/contracts/m%su%s.md\n' 99 9 >>"$OPS"
 }
 
+plant_artifact_byte() {
+    printf ' ' >>"$ARTIFACT"
+}
+
+plant_embedded_blob() {
+    # Preserve a valid wrapper while changing ONLY the tool's embedded source. B2 compares the
+    # bytes and B6 parses that source; the artifact remains the sole mutated tracked file.
+    "$UV_PROJECT_ENVIRONMENT/bin/python" - "$ARTIFACT" "$1" <<'PY'
+from pathlib import Path
+from sys import argv
+
+path = Path(argv[1])
+data = path.read_bytes()
+marker = b'_SOURCES["webui.paste_in.tool"] = r' + bytes([39]) * 3 + b"\n"
+assert data.count(marker) == 1
+path.write_bytes(data.replace(marker, marker + argv[2].encode() + b"\n", 1))
+PY
+}
+
+plant_model_description_stem() {
+    "$UV_PROJECT_ENVIRONMENT/bin/python" - "$ARTIFACT" <<'PY'
+from pathlib import Path
+from sys import argv
+
+path = Path(argv[1])
+data = path.read_bytes()
+old = b'        """Draw a chart from a complete Python program over the attached CSV file.'
+new = old.replace(b'Draw', b'Validate', 1)
+assert data.count(old) == 1
+path.write_bytes(data.replace(old, new, 1))
+PY
+}
+
 probe g6-ci-gate-step tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
     'expected exactly one gate invocation' \
     sed -i 's|run: bash tools/gate.sh|run: true|' "$WORKFLOW"
@@ -267,6 +301,22 @@ probe s8-untracked-param-marks tests/test_spec.py::test_s8_every_disabled_case_n
 probe s8-untracked-module-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_module_pytestmark
+
+probe b1-artifact-freshness tests/test_paste_in_bundle.py::test_b1_committed_artifact_equals_a_fresh_generation \
+    'committed artifact(s) differ from their sources' \
+    plant_artifact_byte
+
+probe b2-embedded-identity tests/test_paste_in_bundle.py::test_b2_each_embedded_source_is_its_tracked_file_plus_one_newline \
+    'webui.paste_in.tool' \
+    plant_embedded_blob '# planted embedded-source drift'
+
+probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_plus_open_webui \
+    'numpy' \
+    plant_embedded_blob 'import numpy'
+
+probe e3-description-stem tests/test_webui_python_exposure.py::test_e3_tool_description_carries_no_admission_vocabulary \
+    'Validate' \
+    plant_model_description_stem
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.

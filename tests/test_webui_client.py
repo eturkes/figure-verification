@@ -1723,6 +1723,7 @@ def test_smoke_result_ok_is_conjunction(
         tool_provisioned=tool_provisioned,
         no_tool_servers=no_tool_servers,
         model_tool_attached=model_tool_attached,
+        model_tool_exclusive=True,
     )
     assert result.ok is expected_ok
 

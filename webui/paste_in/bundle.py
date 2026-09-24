@@ -287,15 +287,16 @@ _ROOT = "{root}"
 
 
 def _load() -> types.ModuleType:
-    """Execute every embedded module in its own namespace and leave `sys.modules` as it was.
+    """Execute each embedded module in its own namespace and restore the embedded module slots.
 
     Registration comes first for every name, which is what lets a submodule import resolve before
     its package `__init__` has run; the blobs then execute in dependency order, so each `from X
     import Y` finds `Y` already bound. Each source is stored with one leading newline, stripped
     here so the executed bytes equal the tracked file's.
 
-    The registration is undone in `finally`. This file runs inside Open WebUI's own process, so a
-    leftover entry would shadow, or be shadowed by, whatever else that process imports.
+    The embedded-name registration is undone in `finally`; newly imported standard-library
+    modules remain loaded. This file runs inside Open WebUI's process, so an embedded-name residue
+    would shadow, or be shadowed by, whatever else that process imports.
     """
     saved = {{name: sys.modules.get(name) for name in _SOURCES}}
     modules = {{}}

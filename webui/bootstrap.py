@@ -6,7 +6,7 @@ tool -> attach that tool to the workspace model -> smoke: the whole hardware-fre
 The admin user, filter, tool and workspace model config are DB-persisted; every rerun updates the
 filter and the tool to this repo's exact bytes and idempotently converges the model's
 ``meta.toolIds``. The served model rides the launcher env, and the signin fallback makes reruns
-idempotent (.agent/archive/m4.md provisioning contract). smoke reads back the four facts that prove
+idempotent (.agent/archive/m4.md provisioning contract). smoke reads back five facts that prove
 provisioning took:
 
 - model_enumerated: the configured model id appears in GET /api/models (OPENAI_API_BASE_URL wired +
@@ -16,10 +16,11 @@ provisioning took:
 - no_tool_servers: NO ``server:``-prefixed id appears in the same readback. The JSON-spec
   ``proposeSpec`` operation reached the model through a registered tool server, so its absence is
   what makes that operation unreachable -- python mode is the demo's ONE operation;
-- model_tool_attached: the pasted tool's id appears in the workspace model's ``meta.toolIds``, so
-  the browser frontend offers it without a manual toggle.
+- model_tool_attached: the pasted tool's id appears in the workspace model's ``meta.toolIds``;
+- model_tool_exclusive: that list contains ONLY the pasted tool. Existing operator-set tool ids
+  remain untouched, but a persisted extra makes bootstrap fail rather than launch a second callable.
 
-SmokeResult.ok = all four held. smoke/run_bootstrap take the client as a structural _Provisioner
+SmokeResult.ok = all five held. smoke/run_bootstrap take the client as a structural _Provisioner
 (Protocol) so a test fake drives the orchestration without any HTTP.
 """
 
@@ -66,7 +67,7 @@ class _Provisioner(Protocol):
 
 
 class SmokeResult(msgspec.Struct, frozen=True, kw_only=True):
-    """Provisioning readback ids plus the four derived flags; ok = all four held."""
+    """Provisioning readback ids plus the five derived flags; ok = all five held."""
 
     model_ids: tuple[str, ...]
     tool_ids: tuple[str, ...]
@@ -75,6 +76,7 @@ class SmokeResult(msgspec.Struct, frozen=True, kw_only=True):
     tool_provisioned: bool
     no_tool_servers: bool
     model_tool_attached: bool
+    model_tool_exclusive: bool
 
     @property
     def ok(self) -> bool:
@@ -84,11 +86,12 @@ class SmokeResult(msgspec.Struct, frozen=True, kw_only=True):
             and self.tool_provisioned
             and self.no_tool_servers
             and self.model_tool_attached
+            and self.model_tool_exclusive
         )
 
 
 def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
-    """Read models + workspace tools + the model's attached tools; derive the four flags."""
+    """Read models + workspace tools + the model's attached tools; derive all five flags."""
     model_ids = client.model_ids()
     tool_ids = client.tool_ids()
     model_tool_ids = client.model_tool_ids(settings.model_id)
@@ -100,6 +103,7 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
         tool_provisioned=settings.tool_id in tool_ids,
         no_tool_servers=not any(i.startswith(_TOOL_SERVER_ID_PREFIX) for i in tool_ids),
         model_tool_attached=settings.tool_id in model_tool_ids,
+        model_tool_exclusive=model_tool_ids == [settings.tool_id],
     )
 
 

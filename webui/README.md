@@ -3,8 +3,8 @@
 This out-of-tree, unshipped harness starts Open WebUI in a hermetic environment. It creates the
 first administrator and converges the repository-owned global outlet filter. It pastes in the
 generated figure-verification tool and attaches it to the configured model's default tools. It then
-smoke-checks all four readbacks. The project type-checks and lint-checks this harness. The project
-excludes it from coverage, like `bench/` and `model_backend/`.
+checks five conditions from three readbacks. The project type-checks and lint-checks this harness.
+It excludes the harness from coverage, like `bench/` and `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
@@ -39,19 +39,19 @@ It never imports Open WebUI into the verifier environment.
 ## One-command interactive instance
 
 From the repository root, run `webui/launch.sh`. This single command automates the complete
-per-terminal recipe below. The launcher starts the verifier, the model tier, and Open WebUI in the
-load-bearing order. It waits for each readiness endpoint. It runs `bootstrap` and prints the browser
+per-terminal recipe below. The launcher starts the verifier, the model tier, and Open WebUI in that
+order. It waits for each readiness endpoint. It runs `bootstrap` and prints the browser
 URL and administrator login. It then blocks until an interrupt. At exit, it stops each child and
 frees all three ports. Bootstrap makes Figure Verifier a default tool on the configured model.
 Thus, browser chats offer it without a manual tool toggle.
 
 ```sh
-webui/launch.sh          # real local model on the NPU (needs .venv-model and the accel farm)
+webui/launch.sh          # real local model on the dGPU (needs .venv-model)
 webui/launch.sh --stub   # deterministic stub, no accelerator required
 webui/launch.sh --fresh  # wipe the persisted .webui-data instance before starting
 ```
 
-The model tier is the real OpenVINO `model_backend` on the NPU by default. Alternatively, use the
+The model tier is the CUDA `model_backend` on the dGPU by default. Alternatively, use the
 hardware-free stub with `--stub`. The alternatives are mutually exclusive on port `8001`. You can
 override every host path, device, credential, port, and timeout with an environment variable. The
 script header documents each default. For an interactive instance, press `Ctrl-C` to stop it. A
@@ -89,15 +89,13 @@ uv run --locked python -m webui stub
 curl -fsS http://127.0.0.1:8001/v1/models
 ```
 
-The stub is a deterministic integration fixture. It is not a model. It recognizes Open WebUI's
-legacy tool-selector and VPlot-proposer system prompts. It then returns an exact `proposeSpec` call,
-the tracked known-good `sales.csv` spec, and a lean final answer. This isolates tool execution,
-embed persistence, and browser rendering from model reliability. No stub result supports a
-tool-selection or generation-quality claim.
+The stub is a deterministic integration fixture. It is not a model. It still returns a legacy
+`proposeSpec` call for the earlier JSON-spec setup. That reply does not exercise the current python
+tool. The stub currently supports model enumeration and provisioning, not python-tool chart rendering.
+No stub result supports a tool-selection or generation-quality claim.
 
-For an NPU run, replace the stub with the live `model_backend` launch in the
-[bench recipe](../bench/README.md). Keep the backend URL and model ID aligned with the provisioner
-settings below.
+For a real-model run, use the CUDA backend through the launcher. Keep its URL and model ID aligned
+with the provisioner settings below.
 
 Only after both upstreams answer, start Open WebUI. Then wait for application readiness:
 
@@ -122,10 +120,11 @@ Each command first creates or updates `Verified Plot Guard` from the exact
 or updates the `Figure Verification` tool from the exact committed artifact, and reads the stored
 source back to prove that Open WebUI kept those bytes. It then creates or non-destructively updates
 the workspace model configuration. It ensures that the configuration's `meta.toolIds` includes
-`figure_verification`. It exits 0 only when all four readbacks succeed. The readbacks must enumerate
-the configured model ID. They must show the tool row. They must show no `server:`-prefixed tool ID.
-They must show that the model has the tool ID. On a clean instance, the success banner reports
-`models=1 tools=1 model_tools=1`. On a clean instance, the first run signs up the
+`figure_verification`. It exits 0 only when five checks over three readbacks pass. The readbacks
+must enumerate the configured model ID. They must show the tool row and no `server:`-prefixed tool
+ID. The model's attached tool IDs must equal `[figure_verification]`; an extra ID blocks startup.
+On a clean instance, the success banner reports `models=1 tools=1 model_tools=1`.
+The first run signs up the
 administrator and creates the filter. It enables both flags, creates the tool, and creates the
 model configuration. Expect 403 → signin on the second signup. That run updates the existing filter
 source and the existing tool source. It does not invert flags that are already true. When the tool
@@ -134,12 +133,12 @@ The launcher disables persistent configuration for its settings. The launch envi
 tool, model, and legacy-function-calling configuration. The administrator user, owned function, and
 workspace model configuration persist in `.webui-data/`.
 
-## Deterministic successful E2E (`--stub`)
+## Recorded JSON-spec E2E (earlier wiring)
 
 This section records the JSON-spec chain measured on the earlier wiring, where a registered tool
 server published `proposeSpec`. The harness no longer registers that server, so these steps need an
 operator to register it first. Read them as evidence for the chain they measured, not as the current
-demo path. The python-mode arm the demo now exposes is measured in `README.md`.
+demo path. The exposed python-mode arm has not yet been measured against the live demo.
 
 With the hardware-free stack provisioned and the verifier registered as a tool server, run this
 synchronous request. It proves the legacy selector, server tool, VPlot proposal, verifier, and clean
@@ -210,9 +209,10 @@ omitted a required argument. That observation is not a bound. The deterministic 
 proves only that the integration works when its untrusted proposer supplies valid protocol
 messages.
 
-The shipped default schema-guides a selected `proposeSpec` generation. It steers the weak model
-toward schema-representable structure instead of fenced prose. In the fixed 100-prompt live NPU
-run, `verified_render=0.26`, compared with `0.00` in the same-commit unguided arm. Every reply had
+On the earlier JSON-spec wiring, the default schema guided selected `proposeSpec` generations.
+It steered the weak model toward schema-representable structure instead of fenced prose. In the
+fixed 100-prompt live NPU run, `verified_render=0.26`, compared with `0.00` in the same-commit
+unguided arm. Every reply had
 the `bare_object` surface form and began `{`. The run had 0 fenced replies, compared with 52 in that
 arm. Also, 83/100 replies parsed as JSON. However, 51/100 replies still failed strict VPlot decode.
 Also, 23/100 replies failed a semantic check. Thus, the real model can render a verified chart
@@ -220,9 +220,9 @@ for some well-formed requests. However, the verifier blocks most attempts. These
 not bounds. They are reproducible only for the measured device and configuration. They do not
 expand what the deterministic fixture proves. The 100-prompt bench calls `/propose-spec` directly.
 Therefore, it measures neither Open WebUI tool selection nor guard coverage. The
-`webui/launch.sh` two-example banner gives the pinned verified and blocked prompts. The
-[bench recipe](../bench/README.md) documents reproduction and the session-logged, gitignored
-reports.
+`webui/launch.sh` still prints outcomes recorded on the earlier JSON-spec wiring. Its two prompts
+await re-measurement with the pasted python tool. The [bench recipe](../bench/README.md) documents
+reproduction and the session-logged, gitignored reports.
 
 ## Live outlet assertion
 
@@ -296,7 +296,7 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_ADMIN_NAME` | `operator` | Sets the first administrator's display name.
 `WEBUI_PROVISION_ADMIN_EMAIL` | `operator@localhost` | Sets the signup and signin identity.
 `WEBUI_PROVISION_ADMIN_PASSWORD` | fixed loopback dev value | Sets the signup and signin password.
-`WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | Sets the canonical global verifier tool-server origin without a path.
+`WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | Keeps the validated legacy verifier origin. It registers no tool server.
 `WEBUI_PROVISION_MODEL_BACKEND_URL` | `http://127.0.0.1:8001/v1` | Sets the canonical OpenAI-compatible backend `/v1` base URL.
 `WEBUI_PROVISION_MODEL_ID` | `Qwen2.5-Coder-0.5B-Instruct` | Sets the model that the smoke requires.
 `WEBUI_PROVISION_WEBUI_BIN` | `.venv-webui/bin/open-webui` | Sets the binary execution target.
