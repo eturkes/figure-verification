@@ -21,31 +21,11 @@ Publication is the outlet filter's, not this return value: only a backend-record
 publish a figure (transport ruling), and the filter re-derives the verdict from that record.
 """
 
-from verifier.pysrc.request import formula_target
-from verifier.pysrc.spec import DatasetTarget, FormulaTarget
-from verifier.pysrc.verify import Refused, Verdict, Verified, verify_python_source
-from webui.paste_in.owui_files import UploadedFile, uploaded_files
+from verifier.pysrc.verify import Verified
+from webui.paste_in.owui_files import uploaded_files
+from webui.paste_in.receipt import Receipt, write_receipt
+from webui.paste_in.selection import first_verdict
 from webui.paste_in.verdicts import CHART_NOT_PRODUCED, CHART_PRODUCED
-
-# The one code that says "right program, wrong file": it is the only verdict that another
-# attachment could still answer, so it alone keeps the loop going.
-_TARGET_MISMATCH = "target_mismatch"
-
-
-def _first_verdict(
-    program: str, attachments: tuple[UploadedFile, ...], formula: FormulaTarget | None
-) -> Verdict | None:
-    """Try owned files, then the user-stated formula; only a target mismatch continues."""
-    candidates: tuple[DatasetTarget | FormulaTarget, ...] = tuple(
-        DatasetTarget(path=attachment.path, content=attachment.content)
-        for attachment in attachments
-    ) + ((formula,) if formula is not None else ())
-    outcome: Verdict | None = None
-    for candidate in candidates:
-        outcome = verify_python_source(program, declared_target=candidate)
-        if not (isinstance(outcome, Refused) and outcome.code == _TARGET_MISMATCH):
-            return outcome
-    return outcome
 
 
 def _request_text(metadata: dict[str, object] | None) -> str | None:
@@ -64,16 +44,27 @@ class Tools:
         program: str,
         __metadata__: dict[str, object] | None = None,
         __user__: dict[str, object] | None = None,
+        __request__: object | None = None,
     ) -> str:
         """Draw a chart from a complete Python program over the attached CSV file.
 
         :param program: The complete Python program that draws the chart.
         """
         user_id = (__user__ or {}).get("id")
+        request_text = _request_text(__metadata__)
+        attachments = (
+            await uploaded_files(__metadata__, user_id) if isinstance(user_id, str) else ()
+        )
+        if __request__ is not None:
+            write_receipt(
+                __request__,
+                Receipt(
+                    program,
+                    tuple(attachment.file_id for attachment in attachments),
+                    request_text,
+                ),
+            )
         if not isinstance(user_id, str):
             return CHART_NOT_PRODUCED
-        attachments = await uploaded_files(__metadata__, user_id)
-        request = _request_text(__metadata__)
-        formula = formula_target(request) if request is not None else None
-        verdict = _first_verdict(program, attachments, formula)
+        verdict, _consumed = first_verdict(program, attachments, request_text)
         return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED

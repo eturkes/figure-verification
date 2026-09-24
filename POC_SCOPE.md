@@ -389,27 +389,30 @@ curl -sS http://127.0.0.1:8000/propose-spec \
 
 ## Open WebUI boundary
 
-Open WebUI is a trusted display and orchestration layer, not a verifier and not an
-extension of the verification claim. It asks the untrusted model what to do, executes
-the one operation the instance exposes, and displays the result. Open WebUI, its function
-runner, the browser, iframe handling, and the final pixels therefore join the trusted
-computing base described above; only the verifier's validated spec, recomputed table,
-emitted Vega-Lite, and certificate are mutually checked.
+Open WebUI is trusted display and orchestration, not a verifier. The demo exposes only the generated
+`draw_figure` tool and generated `Figure Verification Filter`; the model supplies Python, never plotted
+values. The tool writes a backend-owned receipt, and the filter independently fetches the user's owned
+files and re-runs the shared verifier against the submitted program. Only a `Verified` verdict plus
+exactly one PNG from the browser's Pyodide sandbox permits publication. The filter then attaches that
+image and writes `Figure verification passed` with the certificate interpretation. With no receipt,
+a refused verdict, or a failed render, it rewrites the final assistant reply to
+`Figure verification failed, no image produced`. Message text, fenced code and tool-result prose grant
+no publication authority. The verifier checks admitted code against the recomputed table and
+certificate; it does not independently check the arrays drawn in Pyodide. Backend request state,
+the sandbox, renderer and pixels remain trusted.
 
-The whole `proposeSpec` + iframe flow described here is DATASET MODE alone, and the launcher's own
-Open WebUI no longer exposes it: the demo instance now provisions the python-mode paste-in tool as
-its ONE operation, and `proposeSpec` reaches the model only where an operator registers the verifier
-as a tool server themselves. NO certified formula script has executed in the Open WebUI sandbox; M10
-gates that execution. Until then formula mode's shipped surface ends at the verifier-authored script
-BYTES, which no shipped path runs.
+The `proposeSpec` + iframe flow described above belongs to the separate JSON-spec dataset service.
+The demo registers no tool server; `proposeSpec` reaches a model only after an operator separately
+registers that service. The headless formula service emits a verifier-authored script and never runs
+it. The python tool's formula arm instead binds model-authored Python to the user's stated target;
+a passing program can run in the browser sandbox. These are distinct carriers and trust paths.
 
-The verifier tool is global and executes in the Open WebUI backend. Open WebUI fetches
-the verifier's OpenAPI document and posts tool requests server-to-server, so the
-verifier intentionally exposes no browser CORS surface. A verified tool response names
-an absolute chart `Location`; Open WebUI embeds that URL in a sandboxed iframe. The
-chart response adds its own `Content-Security-Policy: sandbox allow-scripts`, while the
-embedding sandbox grants no same-origin capability. This is defense in depth around a
-trusted display path, not a proof of rendered pixels.
+On the legacy JSON-spec route, Open WebUI fetches the verifier's OpenAPI document and calls the
+service server-to-server; the verifier exposes no browser CORS surface. A verified response names
+an absolute chart `Location` that Open WebUI embeds in a sandboxed iframe. The chart response adds
+`Content-Security-Policy: sandbox allow-scripts`; the embedding sandbox omits same-origin capability.
+The current paste-ins call no verifier service and attach a PNG produced in Pyodide instead. Both
+display paths trust browser rendering; neither proves pixels.
 
 The deployment recipe assumes a bare-metal, single-user machine: browser, Open WebUI,
 model backend, and verifier all resolve the same loopback interfaces. A container,
@@ -417,10 +420,9 @@ remote browser, or network-exposed deployment must replace those origins and und
 separate security review; the fixed PoC credentials and loopback URL assumptions are
 not suitable there.
 
-`Verified Plot Guard` is a global server-side outlet filter that replaces common
-direct-chart reply forms with a notice routing the user through Figure Verifier. Its
-classifier is intentionally heuristic: novel encodings can bypass it and ordinary text
-can trigger false positives. It is a usability guardrail only - never a security
-boundary, evidence that a reply was verified, or part of the verifier's correctness
-claim. The deterministic verifier remains the sole authority that can attach a chart
-and provenance certificate.
+`Figure Verification Filter` is the generated, global, active outlet; bootstrap confirms its exact
+bytes and that no second active filter exists. Its backend receipt is necessary but not sufficient:
+the filter re-derives `Verified` against the user's owned inputs and accepts only one PNG from the
+browser render. It authors both verdict strings; prose and fenced chart replies without a receipt
+receive the failure string. The verifier alone decides admission; render failure may only withhold.
+This outlet controls the configured completion path, not every Open WebUI output channel or pixels.

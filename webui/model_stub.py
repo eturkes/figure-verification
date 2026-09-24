@@ -7,15 +7,16 @@ routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it 
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
 structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
-prompt-classified (see _scripted_reply): exact legacy tool selection -> one known-good VPlot -> a
-lean final summary. This makes tool execution, Location embed persistence, and browser rendering
-deterministically testable after the real model's reliability is measured separately.
+prompt-classified (see _scripted_reply): the simple banner prompt selects one committed verified
+Python program; the complicated banner prompt stays prose. This makes both outlet verdicts
+repeatable without treating the stub as a model-quality measurement.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
 importing only gate-venv deps (msgspec / litestar / uvicorn), so the gate runs it with no hardware.
 """
 
+import json
 import time
 import uuid
 from typing import cast
@@ -35,38 +36,46 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
-from model_backend.verified_chart import VERIFIED_CHART_REPLY
 from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
-_VPLOT_MARKER = "You are proposing a VPlot v0.1 chart specification."
-_TOOL_CALL_REPLY = (
-    '{"tool_calls":[{"name":"proposeSpec","parameters":'
-    '{"user_request":"total revenue by month","dataset_name":"sales.csv"}}]}'
+_SIMPLE_PROMPT = "Chart the total revenue of each region using bars. dataset_name: sales.csv"
+# De-fenced `sentinel-simple` from the committed m13-design capture. The F9 test compares the
+# decoded tool call to that capture and verifies this source against data/sales.csv independently.
+_SIMPLE_PROGRAM = (
+    "import pandas as pd\n"
+    "import matplotlib.pyplot as plt\n"
+    "\n"
+    "# Read the CSV file\n"
+    "df = pd.read_csv('/mnt/uploads/sales.csv')\n"
+    "\n"
+    "# Group the data by region and calculate the total revenue\n"
+    "region_revenue = df.groupby('region')['revenue'].sum()\n"
+    "\n"
+    "# Plot the total revenue for each region\n"
+    "plt.figure(figsize=(10, 6))\n"
+    "plt.bar(region_revenue.index, region_revenue.values)\n"
+    "plt.xlabel('Region')\n"
+    "plt.ylabel('Total Revenue')\n"
+    "plt.title('Total Revenue by Region')\n"
+    "plt.xticks(rotation=45)\n"
+    "plt.tight_layout()\n"
+    "plt.show()\n"
 )
-# Minified examples/good_specs/g01_total_revenue_by_month.json. Keep this runtime fixture CWD-
-# independent; its test compares the decoded value to the tracked golden so a data/hash drift fails.
-_VPLOT_REPLY = (
-    '{"version":"vplot-0.1","dataset":{"name":"sales.csv","hash":'
-    '"sha256:b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4"},'
-    '"transform":[{"op":"group_by","keys":["month"]},{"op":"aggregate","measures":['
-    '{"field":"revenue","fn":"sum","as":"total_revenue"}]},{"op":"sort","by":['
-    '{"field":"month","order":"ascending"}]}],"mark":"bar","encoding":{"x":'
-    '{"field":"month","type":"ordinal"},"y":{"field":"total_revenue",'
-    '"type":"quantitative"}}}'
+_TOOL_CALL_REPLY = json.dumps(
+    {"tool_calls": [{"name": "draw_figure", "parameters": {"program": _SIMPLE_PROGRAM}}]},
+    separators=(",", ":"),
 )
-# Shared with the live backend so both close the verified-plot demo identically; the live backend
-# also returns this on the same turn instead of generating (model_backend.verified_chart).
-_FINAL_REPLY = VERIFIED_CHART_REPLY
+# The filter, not the stub's prose, publishes the final verdict on either path.
+_FINAL_REPLY = "Chart request completed."
 
 
 def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:
-    """Classify the two system prompts in the E2E chain; otherwise return the final summary."""
+    """Select the pinned simple call on the legacy selector turn; leave other requests as prose."""
     system = "\n".join(message.content for message in messages if message.role == "system")
-    if _SELECTOR_MARKER in system:
+    user = next((message.content for message in reversed(messages) if message.role == "user"), "")
+    if _SELECTOR_MARKER in system and user == _SIMPLE_PROMPT:
         return _TOOL_CALL_REPLY
-    if _VPLOT_MARKER in system:
-        return _VPLOT_REPLY
     return _FINAL_REPLY
 
 

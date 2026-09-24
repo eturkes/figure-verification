@@ -1,26 +1,27 @@
 # webui - Open WebUI provisioning harness
 
 This out-of-tree, unshipped harness starts Open WebUI in a hermetic environment. It creates the
-first administrator and converges the repository-owned global outlet filter. It pastes in the
-generated figure-verification tool and attaches it to the configured model's default tools. It then
-checks five conditions from three readbacks. The project type-checks and lint-checks this harness.
-It excludes the harness from coverage, like `bench/` and `model_backend/`.
+first administrator and installs the generated global outlet filter. It also installs the generated
+figure-verification tool and attaches it to the model's default tools. Bootstrap checks eight facts
+from four readbacks. The project type-checks and lint-checks this harness. It excludes the harness
+from coverage, like `bench/` and `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
-             ├─ global Verified Plot Guard outlet filter
+             ├─ global Figure Verification Filter (generated paste-in)
              ├─ OpenAI /v1 → model backend or stub :8001
-             └─ Figure Verification tool (the pasted-in artifact, in-process)
+             └─ Figure Verification tool (generated paste-in, in-process)
 ```
 
 The tool is the demo's one operation. The harness provisions it from the committed artifact
 `paste-in/figure_verification_tool.py`, so the demo runs the exact bytes an administrator pastes.
-The harness registers no tool server, so the JSON-spec `proposeSpec` operation does not reach the
-model.
+It provisions the filter from `paste-in/figure_verification_filter.py` in the same way. The harness
+registers no tool server, so the JSON-spec `proposeSpec` operation does not reach the model.
 
-Open WebUI is a trusted display and orchestration layer. It is not part of the verifier claim. The
-filter is a bypassable and false-positive-prone guardrail. It is not a security boundary. Bootstrap
-proves provisioning only. It sends no chat request and makes no model-reliability claim.
+Open WebUI is a trusted display and orchestration layer. The filter reads a backend-owned tool
+receipt and independently re-verifies the user's program and files. It only publishes a PNG after a
+successful browser render. Bootstrap proves provisioning only. It sends no chat request and makes
+no model-reliability claim.
 
 ## One-time setup
 
@@ -89,10 +90,9 @@ uv run --locked python -m webui stub
 curl -fsS http://127.0.0.1:8001/v1/models
 ```
 
-The stub is a deterministic integration fixture. It is not a model. It still returns a legacy
-`proposeSpec` call for the earlier JSON-spec setup. That reply does not exercise the current python
-tool. The stub currently supports model enumeration and provisioning, not python-tool chart rendering.
-No stub result supports a tool-selection or generation-quality claim.
+The stub is a deterministic integration fixture. It is not a model. On the legacy selector turn
+for the pinned simple prompt, it calls `draw_figure` with a committed Python program. Other requests
+receive prose. The stub tests wiring, not model selection or generation quality.
 
 For a real-model run, use the CUDA backend through the launcher. Keep its URL and model ID aligned
 with the provisioner settings below.
@@ -104,9 +104,9 @@ uv run --locked python -m webui serve
 curl -fsS http://127.0.0.1:8080/ready
 ```
 
-The pasted tool runs in the Open WebUI process and calls no server, so the bootstrap readback no
-longer depends on the verifier being up first. Start the verifier before Open WebUI anyway: the
-`/chart/<plot_id>` iframe the browser renders is served from `:8000`.
+The pasted tool runs in Open WebUI and calls no verifier server. Bootstrap does not need the
+verifier first. Start it before Open WebUI when you use the legacy JSON-spec iframe path; that path
+serves `/chart/<plot_id>` from `:8000`.
 
 In a fourth terminal, run the provisioning smoke-check:
 
@@ -115,18 +115,17 @@ uv run --locked python -m webui bootstrap
 uv run --locked python -m webui bootstrap
 ```
 
-Each command first creates or updates `Verified Plot Guard` from the exact
-`webui/enforcement_filter.py` source. It proves that the filter is active and global. It then creates
-or updates the `Figure Verification` tool from the exact committed artifact, and reads the stored
-source back to prove that Open WebUI kept those bytes. It then creates or non-destructively updates
-the workspace model configuration. It ensures that the configuration's `meta.toolIds` includes
-`figure_verification`. It exits 0 only when five checks over three readbacks pass. The readbacks
-must enumerate the configured model ID. They must show the tool row and no `server:`-prefixed tool
-ID. The model's attached tool IDs must equal `[figure_verification]`; an extra ID blocks startup.
-On a clean instance, the success banner reports `models=1 tools=1 model_tools=1`.
-The first run signs up the
-administrator and creates the filter. It enables both flags, creates the tool, and creates the
-model configuration. Expect 403 → signin on the second signup. That run updates the existing filter
+Each command creates or updates `Figure Verification Filter` from
+`paste-in/figure_verification_filter.py`. It reads back the exact generated bytes and confirms that
+this is the only active filter and that it is global. It creates or updates the `Figure Verification`
+tool from `paste-in/figure_verification_tool.py`. It reads back the tool bytes. It then attaches
+`figure_verification` to the workspace model without removing existing tool IDs. Bootstrap exits 0
+only when eight checks across four readbacks pass. The readbacks must enumerate the model and the
+tool. They must show no `server:`-prefixed tool ID. The model's attached tool IDs must equal
+`[figure_verification]`; an extra ID blocks startup. On a clean instance, the success banner
+reports `models=1 tools=1 model_tools=1`.
+The first run signs up the administrator and creates the filter. It enables both flags, creates
+the tool, and creates the model configuration. Expect 403 → signin on the second signup. That run updates the existing filter
 source and the existing tool source. It does not invert flags that are already true. When the tool
 is already attached, it makes no model write.
 The launcher disables persistent configuration for its settings. The launch environment supplies the
@@ -233,7 +232,7 @@ server-side outlet. Use this direct probe instead of model generation:
 uv run --locked python - <<'PY'
 import httpx
 
-from webui.enforcement_filter import BLOCKED_NOTICE
+from webui.paste_in.filter import FAIL_TEXT
 from webui.settings import Settings
 
 settings = Settings.from_env()
@@ -242,7 +241,7 @@ chart = """```python
 import matplotlib.pyplot as plt
 plt.plot([1, 2], [3, 4])
 ```"""
-prose = "Ordinary prose survives the global outlet unchanged."
+prose = "Ordinary prose has no backend tool receipt."
 
 with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as client:
     auth = client.post(
@@ -268,18 +267,16 @@ with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) 
         assert isinstance(result, str)
         return result
 
-    assert outlet("outlet-block", chart) == BLOCKED_NOTICE
-    assert outlet("outlet-pass", prose) == prose
+    assert outlet("outlet-chart", chart) == FAIL_TEXT
+    assert outlet("outlet-prose", prose) == FAIL_TEXT
 
-print("outlet block/pass differential: PASS")
+print("outlet no-receipt chart/prose: PASS")
 PY
 ```
 
-For the blocked call, the Open WebUI terminal must emit one content-free warning. It can resemble
-`signals=matplotlib chars=<n>`. The log must contain neither the reply nor its unique marker. For
-the prose call, the terminal emits no filter warning. This endpoint isolates the outlet contract.
-It does not test model generation, tool selection, chart embedding, or persisted-chat behavior.
-The steps above cover those.
+This direct endpoint sends no backend tool receipt. It checks that both a fenced chart and plain
+prose receive the exact failure text. It does not test tool selection, the pass path, browser
+rendering, model generation, or persisted-chat behavior.
 
 ## Operator inputs
 

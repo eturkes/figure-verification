@@ -92,6 +92,8 @@ _FIXED_ENV: dict[str, str] = {
     # Hermetic isolation: no outbound network, no ~90MB embedding-model download, no version ping.
     "OFFLINE_MODE": "true",
     "RAG_EMBEDDING_ENGINE": "openai",
+    # OWUI's offline upload otherwise calls its remote embedding endpoint before chat begins.
+    "BYPASS_EMBEDDING_AND_RETRIEVAL": "true",
     "ENABLE_VERSION_UPDATE_CHECK": "false",
     # Backend wiring: the OpenAI-compatible model backend only, Ollama off. The base-url is
     # completed per-instance in launch_env() (both singular and plural forms, since the plural

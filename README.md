@@ -179,7 +179,7 @@ The v0.3 certificate binds four hashes and the exact script bytes, not the rende
 │   └── service/           `verifier.service` local HTTP transport, archive, audit, and replay
 ├── model_backend/         hardware-gated OpenVINO NPU wrapper; unshipped
 ├── bench/                 weak-model proposer evaluation and deterministic verifier-corpus guarantee
-├── webui/                 Open WebUI provisioning, guardrail, stub, and persisted-chat harness
+├── webui/                 Open WebUI provisioning, generated outlet filter, stub, and chat harness
 ├── demo/                  hardware-free hardening and real-socket end-to-end walkthroughs
 ├── tests/                 hardware-free pytest unit and integration suite
 ├── examples/              10/18 dataset and 6/20 formula good/bad specifications
@@ -210,8 +210,9 @@ execution.
    **Evidence:** `POST /propose-spec` in `src/verifier/service/app.py` accepts a request and obtains
    the raw model reply bytes. It strictly decodes and verifies the reply. Only then does it reach
    `render.prepare_render`. The render handoff requires `DatasetEvidence`.
-   **Boundary:** `Verified Plot Guard` is bypassable and is never authority. This construction claim
-   covers the approved verifier path. It does not cover every possible UI output channel.
+   **Boundary:** This service claim covers its approved verifier path, not every UI output channel.
+   The generated Open WebUI filter separately requires a backend-recorded tool call and re-verifies
+   it before publication. Browser rendering and pixels remain trusted, not verified.
 
 2. **The model can only propose a restricted VPlot spec.**
 
@@ -271,11 +272,12 @@ execution.
 
 9. **Unverified chart-like output is blocked or clearly labeled.**
 
-   **Evidence:** The global `Verified Plot Guard` outlet replaces recognized direct-chart replies
-   with `BLOCKED_NOTICE`. Ordinary prose passes unchanged. [webui/README.md](webui/README.md) shows
-   the block/pass differential.
-   **Boundary:** The classifier is heuristic, bypassable, and false-positive-prone. It is a usability
-   guardrail only and never evidence of verification.
+   **Evidence:** The generated global outlet filter blocks replies without a backend-recorded
+   `draw_figure` call. It blocks prose and fenced chart code alike. Only a re-verified tool call
+   followed by one PNG from the browser sandbox can publish the pass text and certificate
+   interpretation. [webui/README.md](webui/README.md) probes the two no-receipt cases.
+   **Boundary:** The filter trusts backend request state and browser rendering. It does not prove
+   pixels or control every possible UI output channel.
 
 10. **Every plot the dataset service renders is replayable to a certificate.**
 
@@ -379,16 +381,15 @@ it also depends on the exact prompt:
   No verifiable VPlot spec can express that request. The outcome is not stable. In one run the model
   ignored the request. It proposed a plain whole-table spec, that spec verified, and a real chart
   rendered. The numbers in that chart are correct and the figure does not answer the request. In two
-  more runs the model answered with prose. Prose carries no chart signal, so the bypassable
-  `Verified Plot Guard` passes it through. The guard replaces unverified chart code with
-  `BLOCKED_NOTICE`, and it never proves verification.
+  more runs the model answered with prose. The earlier outlet let that prose through. The current
+  filter instead publishes `Figure verification failed, no image produced` without a backend tool
+  receipt. These observations predate that filter.
 
   Milestone M10 replaces this JSON-spec path with python mode. M10 also calibrates both demo prompts.
-  To see the verified-render path today, start the launcher with `--stub`.
 
   A separate 100-prompt bench calls `/propose-spec` directly. It exercises neither Open WebUI tool
-  selection nor the guard. It fully verified 26/100 of its fixed benchmark prompts. Another 51/100
-  failed strict decode, and 23/100 failed a semantic check.
+  selection nor the generated outlet filter. It fully verified 26/100 fixed benchmark prompts.
+  Another 51/100 failed strict decode, and 23/100 failed a semantic check.
 
   In a same-commit A/B, only schema guidance changes. The unguided arm is at 0/100. JSON validity
   changes from 0.01→0.83. Markdown fencing changes from 52→0. Both arms are observations, not bounds.
@@ -403,14 +404,13 @@ it also depends on the exact prompt:
 
 - **`--stub`.**
 
-  The deterministic stub proposes a known-good `sales.csv` spec. Therefore, a **verified chart
-  renders inline** with its provenance badge. The badge shows the dataset, manifest, spec,
-  recomputed-table, and emitted Vega-Lite hashes. It also shows every passing check with its method,
-  the signer keyid, and a certificate link. This is the verified happy path, and it is hardware-free.
+  The deterministic stub gives fixed replies and does not run a model. It tests the wiring between
+  Open WebUI, the pasted tool, and the outlet filter. This README states no stub outcome until a
+  recorded run exists.
 
-Open WebUI, its iframe, the browser, and the pixels stay trusted display components. The modest claim
-above and [POC_SCOPE.md](POC_SCOPE.md) hold this boundary. The `Verified Plot Guard` remains a
-bypassable usability guardrail. It is never evidence of verification.
+Open WebUI, its browser sandbox, and the pixels stay trusted display components. The modest claim
+above and [POC_SCOPE.md](POC_SCOPE.md) hold this boundary. The generated Figure Verification Filter
+re-verifies backend-recorded tool calls. It does not verify pixels or cover other UI output channels.
 
 ## Live full-stack recipes
 

@@ -215,8 +215,9 @@ def _production(
         calls.append((program, declared_target))
         return core_verify(program, declared_target=declared_target)
 
-    patch.setattr(module, "verify_python_source", spy)
-    original = vars(module).get("formula_target")
+    selection_ns = cast(dict[str, object], module.first_verdict.__globals__)
+    patch.setitem(selection_ns, "verify_python_source", spy)
+    original = selection_ns.get("formula_target")
     if callable(original):
         original_parser = cast(Callable[..., object], original)
 
@@ -225,7 +226,7 @@ def _production(
             parses.append(text)
             return original_parser(text, *args, **kwargs)
 
-        patch.setattr(module, "formula_target", parse_spy)
+        patch.setitem(selection_ns, "formula_target", parse_spy)
     with fake_open_webui(case.stored, root):
         result = invoke_tool(module, case.program, metadata=case.metadata, user=case.user)
     return result, tuple(calls), tuple(parses)

@@ -1,127 +1,354 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M10.1 the outlet filter authors the verdict on both paths.
+"""M10.1 F1-F3: backend receipt, authenticity and independent verdict re-derivation.
 
-Contract: `.agent/contracts/m10u1.md`. Each docstring carries its predicate's acceptance check; the
-check is the test's specification and the contract's wording wins wherever a body would assert
-more.
-
-Skeleton: each body is `pytest.skip`, retired at M10.1's close together with this line.
+Contract: `.agent/contracts/m10u1.md`. Each test pins a distinct public behavior; the outlet may
+publish only from a tool-written request receipt, never from the assistant's own words.
 """
+
+import asyncio
+import dataclasses
+import importlib
+from pathlib import Path
+from typing import cast
 
 import pytest
 
+from paste_in_support import (
+    StoredFile,
+    assert_filter_text,
+    fake_open_webui,
+    filter_body,
+    filter_request,
+    invoke_filter,
+    load_filter_module,
+    load_receipt_module,
+    load_tool_module,
+)
+from verifier.pysrc import DatasetTarget, Refused, Verified, verify_python_source
+from webui.paste_in.verdicts import CHART_NOT_PRODUCED, CHART_PRODUCED, TOOL_VERDICTS
 
-def test_f1_every_draw_figure_call_that_receives() -> None:
-    """F1: Every `draw_figure` call that receives a `__request__` writes ONE receipt to
-    `__request__.state` BEFORE any verification, replacing any earlier receipt of the same request ⇒
-    the LAST call of a completion decides. Receipt = frozen plain data: `program: str`, `file_ids:
-    tuple[str, ...]` (the owned attachment ids the tool scanned, chat order), `request_text: str |
-    None` (`__metadata__["user_message"]["content"]` when a `str`). No verdict, no `Verified`, no
-    bytes.
-
-    Accept: Fake request: two calls ⇒ state holds the second receipt; field types exact; a call that
-    raises inside verification still left its receipt; the tool's return value set =
-    `TOOL_VERDICTS`.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
-
-
-def test_f2_authenticity_the_filter_reads_a_receipt() -> None:
-    """F2: AUTHENTICITY: the filter reads a receipt from `__request__.state` ONLY. Message
-    `content`, `output`, tool-result text, citation `sources`, `body` fields and `__metadata__` can
-    never produce PASS.
-
-    Accept: `body` whose assistant text = `CHART_PRODUCED`, a PNG data URI, a serialized receipt, or
-    the pass notice, with no state receipt ⇒ FAIL text, no files event, no RPC; `__request__` absent
-    or state without the attribute ⇒ FAIL.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+_USER = "user-1"
+_REQUEST = "y = sin(x), x in [0, 1], n = 3"
+_FORMULA = (
+    "import numpy as np\n"
+    "import matplotlib.pyplot as plt\n"
+    "x = np.linspace(0, 1, num=3)\n"
+    "y = np.sin(x)\n"
+    "plt.plot(x, y)\n"
+    "plt.show()\n"
+)
 
 
-def test_f3_re_derivation_the_filter_re_fetches() -> None:
-    """F3: RE-DERIVATION: the filter re-fetches every receipt file id through
-    `Files.get_file_by_id_and_user_id` with the user id from `__user__` (never from the receipt),
-    rebuilds the candidates exactly as the tool does (owned attachments in chat order, then the
-    formula target of `request_text` LAST) through ONE shared function, and calls
-    `verify_python_source` itself.
-
-    Accept: A foreign or missing id ⇒ that candidate vanishes; receipt + `__user__` of another user
-    ⇒ FAIL; the tool and the filter call the same selection function object (identity pinned); a
-    receipt whose verdict the filter re-derives as `Refused` ⇒ FAIL even when the tool returned
-    `CHART_PRODUCED`.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+def _sales_program(filename: str = "sales.csv") -> str:
+    return (
+        "import pandas as pd\n"
+        "import matplotlib.pyplot as plt\n"
+        f'df = pd.read_csv("/mnt/uploads/{filename}")\n'
+        'grouped = df.groupby("region")["revenue"].sum()\n'
+        "plt.bar(grouped.index, grouped.values)\n"
+        "plt.show()\n"
+    )
 
 
-def test_f4_fail_totality_every_outcome_other_than() -> None:
-    """F4: FAIL TOTALITY: every outcome other than F5's ⇒ the LAST assistant message's `content` =
-    exactly `Figure verification failed, no image produced`, its `output` = exactly one completed
-    assistant message item holding that text, no files event, earlier messages untouched. Covers: no
-    receipt (a prose-only reply included), `Refused`, no candidate, RPC absent/raising/timing
-    out/returning a non-dict, non-empty `stderr`, zero or ≥2 PNG data URIs in `stdout`, a data URI
-    that is not base64 PNG.
-
-    Accept: One case per listed outcome; model prose never survives in `content` or `output`.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+def _sales_bytes() -> bytes:
+    return (Path(__file__).resolve().parent.parent / "data" / "sales.csv").read_bytes()
 
 
-def test_f5_pass_verified_exactly_one_well_formed() -> None:
-    r"""F5: PASS: `Verified` + exactly one well-formed PNG data URI in `stdout` + empty `stderr` ⇒
-    ONE `files` event `{'type': 'files', 'data': {'files': [{'type': 'image', 'url': <uri>}]}}` and
-    `content` = `Figure verification passed` + `\n\n` + `certificate.interpretation`, `output` = one
-    message item with the same text.
-
-    Accept: Fake `__event_call__` returning one data URI ⇒ exact event + exact text; the
-    interpretation bytes equal the re-derived certificate's.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+def _file(file_id: str, *, owner: str = _USER, content: bytes | None = None) -> StoredFile:
+    return StoredFile(file_id, owner, "sales.csv", _sales_bytes() if content is None else content)
 
 
-def test_f6_rpc_shape_type_execute_python_data() -> None:
-    """F6: RPC shape: `{'type': 'execute:python', 'data': {'id': <uuid4 str>, 'code': <str>,
-    'session_id': __metadata__['session_id'], 'files': <list>}}`; `files` = exactly the one
-    attachment the verified target consumed as `{'id', 'filename'}` (dataset arm) or `[]` (formula
-    arm); `code` holds no substring `matplotlib`; the program travels base64-encoded and the wrapper
-    decodes it to bytes equal to `receipt.program`; one RPC per completion at most; bounded by a
-    timeout ≤ 60 s.
-
-    Accept: Captured RPC per arm; decode(payload) == program; `'matplotlib' not in code`; a
-    `Refused` path issues zero RPCs.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+def _metadata(*ids: str, request_text: object = None) -> dict[str, object]:
+    return {
+        "files": [{"id": file_id, "path": "/never/trust/this"} for file_id in ids],
+        "user_message": {"content": request_text},
+    }
 
 
-def test_f7_the_wrapper_trusted_generated_into_the() -> None:
-    """F7: The wrapper (trusted, generated into the filter) loads the plotting stack without the
-    literal name, installs its OWN `plt.show` that saves the current figure as ONE PNG data URI line
-    then clears it, executes the decoded program, and calls that show once if the program never did.
-
-    Accept: Static checks in the gate (F6); behaviour = one Node run over the installed Pyodide
-    0.28.3 bundle (`.agent/measurements/`, outside the gate) on sentinel-simple + one line + one
-    scatter + one no-show program: exactly one PNG line each, zero stderr.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
-
-
-def test_f8_packaging_artifacts_tool_filter_generate_paste() -> None:
-    """F8: Packaging: `ARTIFACTS` = tool + filter; `generate_paste_in.py --check` covers both; the
-    filter's import closure = stdlib + `open_webui` + the embedded core (B6 law);
-    `webui/enforcement_filter.py` and every test importing it are deleted; bootstrap provisions the
-    generated filter bytes as the ONE global active function, and smoke reads back byte equality +
-    global + active.
-
-    Accept: `--check` rc=0; B-series tests extended to the second artifact; smoke fails closed on a
-    second active filter or drifted bytes.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+def _tool_call(
+    program: str,
+    *,
+    request: object,
+    metadata: dict[str, object],
+    user_id: str = _USER,
+) -> str:
+    result = asyncio.run(
+        load_tool_module()
+        .Tools()
+        .draw_figure(
+            program,
+            __metadata__=metadata,
+            __user__={"id": user_id},
+            __request__=request,
+        )
+    )
+    assert isinstance(result, str)
+    return result
 
 
-def test_f9_demo_wiring_webui_settings_py_sets() -> None:
-    """F9: Demo wiring: `webui/settings.py` sets `BYPASS_EMBEDDING_AND_RETRIEVAL=true`;
-    `webui/model_stub.py` answers a pinned demo prompt with a legacy-mode `draw_figure` call
-    carrying sentinel-simple's committed program, and a second pinned prompt with prose only.
+def _receipt(program: str, *file_ids: str, request_text: str | None = None) -> object:
+    module = load_receipt_module()
+    return module.Receipt(program=program, file_ids=tuple(file_ids), request_text=request_text)
 
-    Accept: Settings pin test; stub classification tests per prompt.
-    """
-    pytest.skip("owned by **M10.1** (`.agent/spec.md` Deferred)")
+
+def _request_with_receipt(program: str, *file_ids: str, request_text: str | None = None) -> object:
+    request = filter_request()
+    load_receipt_module().write_receipt(
+        request, _receipt(program, *file_ids, request_text=request_text)
+    )
+    return request
+
+
+def test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply(tmp_path: Path) -> None:
+    """F1: two calls overwrite ONE state attribute with the last program, owned ids and text."""
+    receipt_module = load_receipt_module()
+    assert receipt_module.RECEIPT_ATTR == "figure_verification_receipt"
+    request = filter_request()
+    program = _sales_program()
+    stored = [_file("owned-a"), _file("foreign", owner="other"), _file("owned-b")]
+    with fake_open_webui(stored, tmp_path) as lookups:
+        first = _tool_call(
+            "not valid Python",
+            request=request,
+            metadata=_metadata("owned-a", "foreign", request_text="first request"),
+        )
+        second = _tool_call(
+            program,
+            request=request,
+            metadata=_metadata("owned-a", "foreign", "owned-b", request_text=_REQUEST),
+        )
+    assert first in TOOL_VERDICTS
+    assert second in TOOL_VERDICTS
+    assert (first, second) == (CHART_NOT_PRODUCED, CHART_PRODUCED)
+    assert lookups == [
+        ("owned-a", _USER),
+        ("foreign", _USER),
+        ("owned-a", _USER),
+        ("foreign", _USER),
+        ("owned-b", _USER),
+    ]
+    saved = receipt_module.read_receipt(request)
+    assert type(saved) is receipt_module.Receipt
+    assert saved == _receipt(program, "owned-a", "owned-b", request_text=_REQUEST)
+    assert type(saved.program) is str
+    assert type(saved.file_ids) is tuple
+    assert type(saved.request_text) is str
+    assert saved.__dataclass_params__.frozen
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        saved.program = "changed"
+    assert not hasattr(saved, "__dict__")
+    assert dataclasses.is_dataclass(saved)
+    assert set(vars(request.state)) == {"figure_verification_receipt"}
+    assert getattr(request.state, receipt_module.RECEIPT_ATTR) == (
+        "figure-verification-receipt/1",
+        program,
+        ("owned-a", "owned-b"),
+        _REQUEST,
+    )
+
+
+def test_f1_receipt_precedes_failing_verification_and_non_string_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """F1: verification can raise after the receipt lands; a non-string request text stays None."""
+    module = load_tool_module()
+    request = filter_request()
+    program = _sales_program()
+
+    def failing_selection(*_args: object, **_kwargs: object) -> None:
+        error = "verification failed after receipt"
+        raise RuntimeError(error)
+
+    monkeypatch.setattr(module, "first_verdict", failing_selection)
+    with (
+        fake_open_webui([_file("owned")], tmp_path),
+        pytest.raises(RuntimeError, match="verification failed after receipt"),
+    ):
+        asyncio.run(
+            module.Tools().draw_figure(
+                program,
+                __metadata__=_metadata("owned", request_text=[_REQUEST]),
+                __user__={"id": _USER},
+                __request__=request,
+            )
+        )
+    assert load_receipt_module().read_receipt(request) == _receipt(program, "owned")
+
+
+def test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes() -> None:
+    """F1/A3: a strictly tagged tuple crosses two isolated embedded Receipt classes."""
+    module = load_receipt_module()
+    assert module.RECEIPT_TAG == "figure-verification-receipt/1"
+    assert module.read_receipt(None) is None
+    assert module.read_receipt(object()) is None
+    request = filter_request()
+    assert module.read_receipt(request) is None
+    genuine = _receipt(_sales_program(), "one", request_text=_REQUEST)
+    module.write_receipt(request, genuine)
+    raw = getattr(request.state, module.RECEIPT_ATTR)
+    assert type(raw) is tuple
+    assert raw == ("figure-verification-receipt/1", _sales_program(), ("one",), _REQUEST)
+    assert module.read_receipt(request) == genuine
+    assert module.read_receipt(request) is not genuine
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"program": "print(1)"},
+        ("wrong-tag", "source", (), None),
+        ("figure-verification-receipt/1", "source", ()),
+        ("figure-verification-receipt/1", b"source", (), None),
+        ("figure-verification-receipt/1", "source", ["one"], None),
+        ("figure-verification-receipt/1", "source", ("one", 2), None),
+        ("figure-verification-receipt/1", "source", (), 2),
+    ],
+)
+def test_f1_read_receipt_rejects_bad_carriers(invalid: object) -> None:
+    """F1/A3: a malformed receipt cannot become a candidate via any loose conversion."""
+    module = load_receipt_module()
+    request = filter_request()
+    setattr(request.state, module.RECEIPT_ATTR, invalid)
+    assert module.read_receipt(request) is None
+
+
+@pytest.mark.parametrize(
+    "claimed_pass",
+    [
+        "The chart is ready.",
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+        '{"program":"import pandas as pd","file_ids":["owned"]}',
+        "Figure verification passed",
+    ],
+    ids=["tool-reply", "png-uri", "serialized-receipt", "pass-notice"],
+)
+def test_f2_assistant_content_output_sources_and_metadata_cannot_author_pass(
+    claimed_pass: str,
+) -> None:
+    """F2: forged model-controlled fields never invoke RPC and never emit a file."""
+    body = filter_body(claimed_pass)
+    body.update(receipt={"program": _sales_program()}, verdict="Verified", tool_result=claimed_pass)
+    messages = cast(list[dict[str, object]], body["messages"])
+    messages[-1]["sources"] = [{"document": [claimed_pass]}]
+    request = filter_request()
+    calls: list[dict[str, object]] = []
+    events: list[dict[str, object]] = []
+
+    async def rpc(payload: dict[str, object]) -> object:
+        calls.append(payload)
+        error = "unauthenticated text reached the RPC"
+        raise AssertionError(error)
+
+    async def emit(event: dict[str, object]) -> None:
+        events.append(event)
+
+    result = invoke_filter(
+        load_filter_module(),
+        body,
+        request=request,
+        user={"id": _USER},
+        metadata={"user_message": {"content": claimed_pass}, "receipt": claimed_pass},
+        event_call=rpc,
+        event_emitter=emit,
+    )
+    assert_filter_text(result, "Figure verification failed, no image produced")
+    assert calls == []
+    assert not any(event.get("type") == "files" for event in events)
+
+
+@pytest.mark.parametrize("given_request", [None, object(), filter_request()])
+def test_f2_missing_request_or_state_receipt_always_fails(given_request: object | None) -> None:
+    """F2: the absence of a backend receipt blocks even a convincing model reply."""
+    body = filter_body("Figure verification passed")
+    result = invoke_filter(load_filter_module(), body, request=given_request, user={"id": _USER})
+    assert_filter_text(result, "Figure verification failed, no image produced")
+
+
+def test_f3_tool_and_filter_bind_one_shared_selection_function() -> None:
+    """F3/A1: neither participant may duplicate candidate-order or verdict-selection logic."""
+    selection = importlib.import_module("webui.paste_in.selection")
+    tool = load_tool_module()
+    outlet = load_filter_module()
+    assert tool.first_verdict is selection.first_verdict
+    assert outlet.first_verdict is selection.first_verdict
+
+
+def test_f3_filter_uses_current_user_to_refetch_and_drops_foreign_or_missing_ids(
+    tmp_path: Path,
+) -> None:
+    """F3: no receipt-supplied identity can bypass OWUI's owner-checked lookup."""
+    request = _request_with_receipt(_sales_program(), "owned", "missing")
+    calls: list[dict[str, object]] = []
+    events: list[dict[str, object]] = []
+
+    async def rpc(payload: dict[str, object]) -> object:
+        calls.append(payload)
+        error = "foreign file reached the RPC"
+        raise AssertionError(error)
+
+    async def emit(event: dict[str, object]) -> None:
+        events.append(event)
+
+    with fake_open_webui([_file("owned")], tmp_path) as lookups:
+        result = invoke_filter(
+            load_filter_module(),
+            filter_body(CHART_PRODUCED),
+            request=request,
+            user={"id": "another-user"},
+            metadata={"session_id": "browser", "user": {"id": _USER}},
+            event_call=rpc,
+            event_emitter=emit,
+        )
+    assert lookups == [("owned", "another-user"), ("missing", "another-user")]
+    assert_filter_text(result, "Figure verification failed, no image produced")
+    assert calls == []
+    assert not any(event.get("type") == "files" for event in events)
+
+
+def test_f3_new_store_bytes_rederives_a_refusal_despite_a_prior_tool_pass(tmp_path: Path) -> None:
+    """F3: a tool pass is not authority; the filter fetches the file again and re-verifies it."""
+    good = _sales_bytes()
+    bad = good.replace(b",US,", b",NA,", 1)
+    assert bad != good
+    program = _sales_program()
+    assert isinstance(
+        verify_python_source(
+            program,
+            declared_target=DatasetTarget("/mnt/uploads/sales.csv", good),
+        ),
+        Verified,
+    )
+    assert isinstance(
+        verify_python_source(
+            program,
+            declared_target=DatasetTarget("/mnt/uploads/sales.csv", bad),
+        ),
+        Refused,
+    )
+    request = filter_request()
+    with fake_open_webui([_file("sales-id", content=good)], tmp_path):
+        assert (
+            _tool_call(
+                program, request=request, metadata=_metadata("sales-id", request_text="plot totals")
+            )
+            == CHART_PRODUCED
+        )
+    requests: list[dict[str, object]] = []
+
+    async def rpc(payload: dict[str, object]) -> object:
+        requests.append(payload)
+        error = "a stale pass reached the sandbox"
+        raise AssertionError(error)
+
+    with fake_open_webui([_file("sales-id", content=bad)], tmp_path) as lookups:
+        result = invoke_filter(
+            load_filter_module(),
+            filter_body(CHART_PRODUCED),
+            request=request,
+            user={"id": _USER},
+            metadata={"session_id": "browser"},
+            event_call=rpc,
+        )
+    assert lookups == [("sales-id", _USER)]
+    assert_filter_text(result, "Figure verification failed, no image produced")
+    assert requests == []

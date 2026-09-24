@@ -1,0 +1,92 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Builtin carrier across separately generated artifact classes; no verdict or bytes in state.
+module = "webui/paste_in/receipt.py"
+tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_internal.py"]
+
+[[mutant]]
+id = "f1-first-call-persists"
+predicate = "the last tool call replaces every earlier receipt on the same request"
+kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
+anchor = '''    setattr(
+        state,
+        RECEIPT_ATTR,
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text),
+    )'''
+mutant = '''    if hasattr(state, RECEIPT_ATTR):
+        return
+    setattr(
+        state,
+        RECEIPT_ATTR,
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text),
+    )'''
+
+[[mutant]]
+id = "f1-file-ids-erased"
+predicate = "the request receipt carries owned file ids in chat order"
+kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
+anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text)'''
+mutant = '''(RECEIPT_TAG, receipt.program, (), receipt.request_text)'''
+
+[[mutant]]
+id = "f1-request-text-erased"
+predicate = "the request receipt carries user request text for formula binding"
+kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
+anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text)'''
+mutant = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, None)'''
+
+[[mutant]]
+id = "f1-read-other-state"
+predicate = "only backend request.state may supply a receipt"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes"
+anchor = '''    state = getattr(request, "state", None)
+    value = getattr(state, RECEIPT_ATTR, None)'''
+mutant = '''    value = getattr(request, RECEIPT_ATTR, None)'''
+
+[[mutant]]
+id = "f1-tag-unchecked"
+predicate = "a mismatched carrier tag is refused"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''or value[0] != RECEIPT_TAG:'''
+mutant = '''or False:'''
+
+[[mutant]]
+id = "f1-program-type-unchecked"
+predicate = "receipt program is exactly str, not arbitrary bytes"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        type(program) is not str'''
+mutant = '''        False'''
+
+[[mutant]]
+id = "f1-file-ids-tuple-unchecked"
+predicate = "receipt file_ids is exactly a tuple"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        or type(file_ids) is not tuple'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "f1-file-id-element-unchecked"
+predicate = "every receipt file id is exactly a str"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        or any(type(file_id) is not str for file_id in file_ids)'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "f1-request-text-type-unchecked"
+predicate = "receipt request_text is None or exactly str"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        or (request_text is not None and type(request_text) is not str)'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "f1-receipt-mutable"
+predicate = "receipt API object is frozen"
+kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
+anchor = '''@dataclass(frozen=True, slots=True)'''
+mutant = '''@dataclass(frozen=False, slots=True)'''
+
+[[mutant]]
+id = "f1-receipt-dict"
+predicate = "receipt API object is slotted"
+kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
+anchor = '''@dataclass(frozen=True, slots=True)'''
+mutant = '''@dataclass(frozen=True, slots=False)'''

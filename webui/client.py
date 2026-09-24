@@ -46,6 +46,16 @@ class PersistedChatResult(NamedTuple):
     chart_url: str | None
 
 
+class FunctionReadback(NamedTuple):
+    """One stored function's type, activation and exact source bytes."""
+
+    id: str
+    type: str
+    is_active: bool
+    is_global: bool
+    content: str
+
+
 class _AuthResponse(msgspec.Struct):
     """Loose OWUI signup/signin reply; only the JWT is load-bearing (empty default => we raise)."""
 
@@ -101,6 +111,12 @@ class _FunctionState(msgspec.Struct):
     is_active: bool
     is_global: bool
     content: str | None = None
+
+
+class _FunctionIndex(msgspec.Struct):
+    """One id from the function listing, whose API omits source content."""
+
+    id: str
 
 
 class _CreatedChat(msgspec.Struct):
@@ -253,6 +269,36 @@ class WebUIClient:
             msg = f"GET /api/v1/tools/ returned an invalid response: {exc}"
             raise WebUIProvisionError(msg) from exc
         return [tool.id for tool in tools]
+
+    def function_states(self) -> tuple[FunctionReadback, ...]:
+        """List every stored function, then fetch each id for its exact source bytes.
+
+        `/api/v1/functions/` omits content. A per-id GET is therefore required to distinguish a
+        drifted filter from a merely present one, and to see every other active filter.
+        """
+        path = "/api/v1/functions/"
+        body = self._authed_get(path)
+        try:
+            listed = msgspec.json.decode(body, type=tuple[_FunctionIndex, ...])
+        except (msgspec.DecodeError, UnicodeDecodeError) as exc:
+            msg = f"GET {path} returned an invalid response: {exc}"
+            raise WebUIProvisionError(msg) from exc
+        found: list[FunctionReadback] = []
+        for entry in listed:
+            state = self._checked_function_state(
+                self._authed_request("GET", f"/api/v1/functions/id/{quote(entry.id, safe='')}"),
+                phase="function readback",
+                function_id=entry.id,
+            )
+            if state.content is None:
+                msg = f"function readback {entry.id!r} omitted content"
+                raise WebUIProvisionError(msg)
+            found.append(
+                FunctionReadback(
+                    state.id, state.type, state.is_active, state.is_global, state.content
+                )
+            )
+        return tuple(found)
 
     def model_tool_ids(self, model_id: str) -> list[str]:
         """Authed GET the workspace model config -> its default tool ids (``meta.toolIds``).

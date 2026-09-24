@@ -25,7 +25,10 @@ the root development environment. Run a generator before its dependent host or s
 Run each Node command from `.agent/measurements/`. Replace `<P>` with `pyodide` (0.28.0) or
 `pyodide0281` (0.28.1), and `<v>` with `0280` or `0281`, respectively. Every `.mjs` takes `<P>` as
 its first argument and an optional result filename as its second. `s6_pyodide.mjs` alone also
-accepts a compatible local `indexURL` as its third argument. For example:
+accepts a compatible local `indexURL` as its third argument. `f7_wrapper.mjs` is the exception: it
+takes `<B>`, the installed Open WebUI Pyodide directory
+(`../../.venv-webui/lib/python3.12/site-packages/open_webui/frontend/pyodide`, 0.28.3), and a
+required result filename, and it calls `f7_export.py` through `uv run --locked` itself. For example:
 
 ```
 cd .agent/measurements
@@ -53,6 +56,7 @@ and pandas versions for the selected build.
 | T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs <P> t6-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
 | W1 | `w1_width.py [run-dir]` | none | host only |
+| F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 
 ## What each one backs
@@ -70,6 +74,7 @@ and pandas versions for the selected build.
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | W1 | shipped verifier's verdict over one committed capture run, per category, idiom, and row | M13.6's measured width aim; M13.7's capture-prompt delta |
+| F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7: exactly one PNG data-URI line, zero stderr bytes, per program |
 
 Each result JSON carries environment details and a per-region breakdown when regions apply. A
 region's `disagreements` is the count that matters. `max_ulp` applies only where both values are

@@ -194,6 +194,9 @@ def test_bootstrap_returns_smoke_status(
             no_tool_servers=b,
             model_tool_attached=b,
             model_tool_exclusive=b,
+            filter_current=b,
+            filter_global_active=b,
+            filter_exclusive=b,
         )
 
     monkeypatch.setattr(cli, "run_bootstrap", fake_run_bootstrap)

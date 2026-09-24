@@ -9,7 +9,6 @@ model_backend.models, so shape drift versus the live backend surfaces here witho
 """
 
 import json
-from pathlib import Path
 
 import pytest
 import uvicorn
@@ -19,9 +18,8 @@ from litestar.testing import TestClient
 from webui.model_stub import (
     _FINAL_REPLY,
     _SELECTOR_MARKER,
+    _SIMPLE_PROMPT,
     _TOOL_CALL_REPLY,
-    _VPLOT_MARKER,
-    _VPLOT_REPLY,
     create_app,
     serve,
 )
@@ -102,21 +100,23 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
 
 
 @pytest.mark.parametrize(
-    ("marker", "expected"),
+    ("selector", "prompt", "expected"),
     [
-        (_SELECTOR_MARKER, _TOOL_CALL_REPLY),
-        (_VPLOT_MARKER, _VPLOT_REPLY),
+        (_SELECTOR_MARKER, _SIMPLE_PROMPT, _TOOL_CALL_REPLY),
+        (_SELECTOR_MARKER, "Build a fancy sales.csv dashboard", _FINAL_REPLY),
+        ("ordinary chat", _SIMPLE_PROMPT, _FINAL_REPLY),
+        (_SELECTOR_MARKER, "other request", _FINAL_REPLY),
     ],
-    ids=["legacy-selector", "vplot-proposer"],
+    ids=["simple-tool", "complicated-prose", "no-selector", "other-prose"],
 )
-def test_chat_selects_scripted_e2e_reply(marker: str, expected: str) -> None:
+def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, expected: str) -> None:
     with TestClient(app=create_app("stub-model")) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
                 "messages": [
-                    {"role": "system", "content": f"prefix {marker} suffix"},
-                    {"role": "user", "content": "request"},
+                    {"role": "system", "content": selector},
+                    {"role": "user", "content": prompt},
                 ]
             },
         )
@@ -126,23 +126,19 @@ def test_chat_selects_scripted_e2e_reply(marker: str, expected: str) -> None:
     assert body["usage"]["completion_tokens"] == len(expected.split())
 
 
-def test_scripted_tool_call_is_exact_propose_request() -> None:
-    assert json.loads(_TOOL_CALL_REPLY) == {
-        "tool_calls": [
-            {
-                "name": "proposeSpec",
-                "parameters": {
-                    "user_request": "total revenue by month",
-                    "dataset_name": "sales.csv",
-                },
-            }
-        ]
-    }
-
-
-def test_scripted_vplot_matches_tracked_good_golden() -> None:
-    golden = Path("examples/good_specs/g01_total_revenue_by_month.json").read_text()
-    assert json.loads(_VPLOT_REPLY) == json.loads(golden)
+def test_scripted_tool_call_is_exact_draw_figure_request() -> None:
+    reply = json.loads(_TOOL_CALL_REPLY)
+    assert set(reply) == {"tool_calls"}
+    assert len(reply["tool_calls"]) == 1
+    call = reply["tool_calls"][0]
+    assert call["name"] == "draw_figure"
+    assert set(call["parameters"]) == {"program"}
+    program = call["parameters"]["program"]
+    assert isinstance(program, str)
+    assert program.startswith("import pandas as pd\nimport matplotlib.pyplot as plt\n")
+    assert "pd.read_csv('/mnt/uploads/sales.csv')" in program
+    assert "df.groupby('region')['revenue'].sum()" in program
+    assert program.endswith("plt.show()\n")
 
 
 # --- serve ----------------------------------------------------------------------------------

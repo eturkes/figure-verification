@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Outlet publication boundary: every mutant names one test whose verdict/effect changes.
+module = "webui/paste_in/filter.py"
+tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py"]
+
+[[mutant]]
+id = "f2-body-receipt"
+predicate = "model-controlled body receipt is never an authority for PASS"
+kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[no-receipt-body-field]"
+anchor = '''        receipt = read_receipt(__request__)'''
+mutant = '''        receipt = read_receipt(__request__) or body.get("receipt")'''
+
+[[mutant]]
+id = "f3-metadata-user"
+predicate = "owner-checked refetch uses __user__, never untrusted metadata identity"
+kills = "tests/test_paste_in_filter.py::test_f3_filter_uses_current_user_to_refetch_and_drops_foreign_or_missing_ids"
+anchor = '''        user_id = (__user__ or {}).get("id")'''
+mutant = '''        user_id = (__metadata__ or {}).get("user", {}).get("id") or (__user__ or {}).get("id")'''
+
+[[mutant]]
+id = "f3-selection-duplicate"
+predicate = "tool and filter bind the same selection function object"
+kills = "tests/test_paste_in_filter.py::test_f3_tool_and_filter_bind_one_shared_selection_function"
+anchor = '''from webui.paste_in.selection import first_verdict'''
+mutant = '''from webui.paste_in.selection import first_verdict as _selection_verdict
+
+def first_verdict(*args, **kwargs):
+    return _selection_verdict(*args, **kwargs)'''
+
+[[mutant]]
+id = "f4-two-png-accepted"
+predicate = "exactly one PNG line, not the first of several, may publish"
+kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[two-png]"
+anchor = '''    if len(lines) != 1 or _PNG_URI.fullmatch(lines[0]) is None:'''
+mutant = '''    if not lines or _PNG_URI.fullmatch(lines[0]) is None:'''
+
+[[mutant]]
+id = "f4-embedded-second-png"
+predicate = "a second URI inside other stdout prose blocks publication"
+kills = "tests/test_paste_in_filter_internal.py::test_png_uri_rejects_a_second_uri_embedded_in_prose"
+anchor = '''    lines = [line.strip() for line in stdout.splitlines() if _DATA_PREFIX.search(line)]'''
+mutant = '''    lines = [line.strip() for line in stdout.splitlines() if line.strip().startswith("data:")]'''
+
+[[mutant]]
+id = "f5-prose-suffix-not-uri"
+predicate = "a word ending in data: is not another URI token"
+kills = "tests/test_paste_in_filter_internal.py::test_png_uri_ignores_data_suffix_inside_unrelated_prose"
+anchor = '''    lines = [line.strip() for line in stdout.splitlines() if _DATA_PREFIX.search(line)]'''
+mutant = '''    lines = [line.strip() for line in stdout.splitlines() if "data:" in line]'''
+
+[[mutant]]
+id = "f5-unicode-word-boundary"
+predicate = "a Japanese word suffix ending in data: is not a URI token"
+kills = "tests/test_paste_in_filter_internal.py::test_png_uri_ignores_data_suffix_inside_unrelated_prose"
+anchor = '''_DATA_PREFIX = re.compile(r"(?<!\w)data:")'''
+mutant = '''_DATA_PREFIX = re.compile(r"(?<![A-Za-z0-9_])data:")'''
+
+[[mutant]]
+id = "f4-stderr-ignored"
+predicate = "sandbox stderr must be empty before any publication"
+kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[stderr]"
+anchor = '''        if not isinstance(response, dict) or response.get("stderr") != "":'''
+mutant = '''        if not isinstance(response, dict):'''
+
+[[mutant]]
+id = "f4-output-not-rewritten"
+predicate = "persistent output carries the same authored FAIL or PASS as content"
+kills = "tests/test_paste_in_filter.py::test_f2_missing_request_or_state_receipt_always_fails[None]"
+anchor = '''    assistant["output"] = ['''
+mutant = '''    assistant["unused_output"] = ['''
+
+[[mutant]]
+id = "f4-last-assistant-only"
+predicate = "a verdict rewrites the current assistant turn, leaving prior assistant turns untouched"
+kills = "tests/test_paste_in_filter_outlet.py::test_f4_multiturn_rewrites_only_last_assistant_on_fail_and_pass[fail]"
+anchor = '''            for message in reversed(messages)'''
+mutant = '''            for message in messages'''
+
+[[mutant]]
+id = "f4-files-on-fail"
+predicate = "a missing receipt emits no files event"
+kills = "tests/test_paste_in_filter.py::test_f2_assistant_content_output_sources_and_metadata_cannot_author_pass[tool-reply]"
+anchor = '''        if receipt is None or not isinstance(user_id, str):
+            return _rewrite(body, FAIL_TEXT)'''
+mutant = '''        if receipt is None or not isinstance(user_id, str):
+            if __event_emitter__ is not None:
+                await __event_emitter__({"type": "files", "data": {"files": []}})
+            return _rewrite(body, FAIL_TEXT)'''
+
+[[mutant]]
+id = "f4-refusal-rpc"
+predicate = "no verifier refusal may request sandbox execution"
+kills = "tests/test_paste_in_filter_outlet.py::test_f4_absent_refused_or_unbound_receipt_blocks_every_reply[refused]"
+anchor = '''        if not isinstance(verdict, Verified):
+            return _rewrite(body, FAIL_TEXT)'''
+mutant = '''        if verdict is None:
+            return _rewrite(body, FAIL_TEXT)'''
+
+[[mutant]]
+id = "f5-interpretation-dropped"
+predicate = "PASS publishes the re-derived certificate interpretation"
+kills = "tests/test_paste_in_filter_outlet.py::test_f5_verified_formula_publishes_one_file_and_recomputed_interpretation"
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+mutant = '''        return _rewrite(body, PASS_TEXT)'''
+
+[[mutant]]
+id = "f6-wrapper-literal-patch-trigger"
+predicate = "RPC source avoids OWUI's plotting-source trigger substring"
+kills = "tests/test_paste_in_filter_outlet.py::test_f7_wrapper_compiles_with_own_show_hook_and_no_literal_plotting_module"
+anchor = '''                "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",'''
+mutant = '''                "_plt = _imports.import_module('matplotlib.pyplot')",'''
+
+[[mutant]]
+id = "f6-all-files-in-rpc"
+predicate = "RPC receives only the one attachment consumed by verification"
+kills = "tests/test_paste_in_filter_outlet.py::test_f6_dataset_rpc_uses_only_the_owned_file_consumed_by_verification"
+anchor = '''                "files": (
+                    [{"id": consumed.file_id, "filename": consumed.path.rsplit("/", 1)[-1]}]
+                    if consumed is not None
+                    else []
+                ),'''
+mutant = '''                "files": [
+                    {"id": file.file_id, "filename": file.path.rsplit("/", 1)[-1]}
+                    for file in attachments
+                ],'''
+
+[[mutant]]
+id = "f6-timeout-unbounded"
+predicate = "browser callback has an explicit deadline of no more than sixty seconds"
+kills = "tests/test_paste_in_filter_outlet.py::test_f6_rpc_timeout_is_bounded_by_sixty_seconds"
+anchor = '''RPC_TIMEOUT_SECONDS: Final = 60'''
+mutant = '''RPC_TIMEOUT_SECONDS: Final = 120'''

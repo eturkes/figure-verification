@@ -36,20 +36,15 @@ import httpx
 import pytest
 
 from webui.bootstrap import SmokeResult, run_bootstrap, smoke
-from webui.client import PersistedChatResult, WebUIClient, WebUIProvisionError
-from webui.enforcement_filter import (
-    FILTER_DESCRIPTION,
-    FILTER_ID,
-    FILTER_NAME,
-    function_source,
-)
-from webui.paste_in.bundle import TOOL_ARTIFACT, artifact_text
+from webui.client import FunctionReadback, PersistedChatResult, WebUIClient, WebUIProvisionError
+from webui.paste_in.bundle import FILTER_ARTIFACT, TOOL_ARTIFACT, artifact_text
+from webui.paste_in.filter import FILTER_DESCRIPTION, FILTER_ID, FILTER_NAME
 from webui.settings import Settings
 
 _Handler = Callable[[httpx.Request], httpx.Response]
 
-_FUNCTION_ID = "verified_plot_guard"
-_FUNCTION_NAME = "Verified Plot Guard"
+_FUNCTION_ID = "figure_verification_filter"
+_FUNCTION_NAME = "Figure Verification Filter"
 _FUNCTION_CONTENT = "class Filter:\n    pass\n"
 _FUNCTION_DESCRIPTION = "Routes direct charts through Figure Verifier."
 _FUNCTION_PATH = f"/api/v1/functions/id/{_FUNCTION_ID}"
@@ -194,6 +189,7 @@ class _FakeClient:
         model_tool_ids: list[str] | None = None,
         *,
         fail_filter: bool = False,
+        functions: tuple[FunctionReadback, ...] | None = None,
     ) -> None:
         self._model_ids = model_ids
         self._tool_ids = tool_ids
@@ -201,6 +197,19 @@ class _FakeClient:
             list(model_tool_ids) if model_tool_ids is not None else list(tool_ids)
         )
         self._fail_filter = fail_filter
+        self._functions = (
+            (
+                FunctionReadback(
+                    id=FILTER_ID,
+                    type="filter",
+                    is_active=True,
+                    is_global=True,
+                    content=artifact_text(FILTER_ARTIFACT),
+                ),
+            )
+            if functions is None
+            else functions
+        )
         self.calls: list[str] = []
         self.filter_calls: list[tuple[str, str, str, str]] = []
         self.tool_calls: list[tuple[str, str, str, str]] = []
@@ -255,6 +264,10 @@ class _FakeClient:
         self.calls.append("model_tool_ids")
         return list(self._model_tool_ids)
 
+    def function_states(self) -> tuple[FunctionReadback, ...]:
+        self.calls.append("function_states")
+        return self._functions
+
 
 class _BootstrapTransport:
     """Stateful MockTransport handler for one or more full bootstrap runs."""
@@ -266,7 +279,7 @@ class _BootstrapTransport:
         self.filter_writes = {"create": 0, "update": 0}
         self.tool_writes = {"create": 0, "update": 0}
         self.model_writes = {"create": 0, "update": 0}
-        self.filter_content = function_source()
+        self.filter_content = artifact_text(FILTER_ARTIFACT)
         self.tool_content = artifact_text(TOOL_ARTIFACT)
         self.filter_state: dict[str, object] | None = None
         self.tool_state: dict[str, object] | None = None
@@ -313,6 +326,13 @@ class _BootstrapTransport:
 
     def _handle_filter(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if path == "/api/v1/functions/" and request.method == "GET":
+            listed = (
+                []
+                if self.filter_state is None
+                else [{key: value for key, value in self.filter_state.items() if key != "content"}]
+            )
+            return httpx.Response(200, json=listed)
         if path == _FUNCTION_PATH and request.method == "GET":
             if self.filter_state is None:
                 return httpx.Response(401, json={"detail": "Function not found"})
@@ -1724,6 +1744,9 @@ def test_smoke_result_ok_is_conjunction(
         no_tool_servers=no_tool_servers,
         model_tool_attached=model_tool_attached,
         model_tool_exclusive=True,
+        filter_current=True,
+        filter_global_active=True,
+        filter_exclusive=True,
     )
     assert result.ok is expected_ok
 
@@ -1746,6 +1769,7 @@ def test_smoke_derives_membership_without_wait_or_auth() -> None:
         "model_ids",
         "tool_ids",
         "model_tool_ids",
+        "function_states",
     ]  # smoke alone: no wait_ready/authenticate
 
 
@@ -1764,6 +1788,83 @@ def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
     assert not result.ok
 
 
+@pytest.mark.parametrize(
+    ("functions", "flag"),
+    [
+        ((), "filter_current"),
+        (
+            (
+                FunctionReadback(
+                    id=FILTER_ID,
+                    type="filter",
+                    is_active=True,
+                    is_global=True,
+                    content=artifact_text(FILTER_ARTIFACT) + "# drift",
+                ),
+            ),
+            "filter_current",
+        ),
+        (
+            (
+                FunctionReadback(
+                    id=FILTER_ID,
+                    type="filter",
+                    is_active=False,
+                    is_global=True,
+                    content=artifact_text(FILTER_ARTIFACT),
+                ),
+            ),
+            "filter_global_active",
+        ),
+        (
+            (
+                FunctionReadback(
+                    id=FILTER_ID,
+                    type="filter",
+                    is_active=True,
+                    is_global=False,
+                    content=artifact_text(FILTER_ARTIFACT),
+                ),
+            ),
+            "filter_global_active",
+        ),
+        (
+            (
+                FunctionReadback(
+                    id=FILTER_ID,
+                    type="filter",
+                    is_active=True,
+                    is_global=True,
+                    content=artifact_text(FILTER_ARTIFACT),
+                ),
+                FunctionReadback(
+                    id="other_filter",
+                    type="filter",
+                    is_active=True,
+                    is_global=True,
+                    content="class Filter: pass",
+                ),
+            ),
+            "filter_exclusive",
+        ),
+    ],
+    ids=["missing", "drift", "inactive", "not-global", "second-active"],
+)
+def test_smoke_fails_closed_on_filter_readback(
+    functions: tuple[FunctionReadback, ...], flag: str
+) -> None:
+    settings = Settings()
+    fake = _FakeClient(
+        model_ids=[settings.model_id],
+        tool_ids=[settings.tool_id],
+        model_tool_ids=[settings.tool_id],
+        functions=functions,
+    )
+    result = smoke(fake, settings)
+    assert not getattr(result, flag)
+    assert not result.ok
+
+
 def test_run_bootstrap_ok_in_order() -> None:
     settings = Settings()
     fake = _FakeClient(model_ids=[settings.model_id], tool_ids=[settings.tool_id])
@@ -1778,8 +1879,11 @@ def test_run_bootstrap_ok_in_order() -> None:
         "model_ids",
         "tool_ids",
         "model_tool_ids",
+        "function_states",
     ]
-    assert fake.filter_calls == [(FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)]
+    assert fake.filter_calls == [
+        (FILTER_ID, FILTER_NAME, artifact_text(FILTER_ARTIFACT), FILTER_DESCRIPTION)
+    ]
     # The tool is provisioned from the COMMITTED artifact: what the demo runs is byte-for-byte what
     # an admin pastes, so a render-instead-of-read would hide artifact drift here.
     assert fake.tool_calls == [
@@ -1805,8 +1909,14 @@ def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
         "model_ids",
         "tool_ids",
         "model_tool_ids",
+        "function_states",
     ]
-    expected_filter_call = (FILTER_ID, FILTER_NAME, function_source(), FILTER_DESCRIPTION)
+    expected_filter_call = (
+        FILTER_ID,
+        FILTER_NAME,
+        artifact_text(FILTER_ARTIFACT),
+        FILTER_DESCRIPTION,
+    )
     expected_tool_call = (
         settings.tool_id,
         settings.tool_name,

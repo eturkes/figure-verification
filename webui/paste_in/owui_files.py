@@ -16,6 +16,7 @@ call chain.
 """
 
 import asyncio
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ UPLOAD_DIR = "/mnt/uploads/"
 class UploadedFile:
     """One attachment, named as the sandbox will name it, carrying the store's exact bytes."""
 
+    file_id: str
     path: str
     content: bytes
 
@@ -50,24 +52,31 @@ def attachment_ids(metadata: Mapping[str, object] | None) -> list[str]:
     return ids
 
 
-async def uploaded_files(
-    metadata: Mapping[str, object] | None,
-    user_id: str,
-) -> tuple[UploadedFile, ...]:
-    """Every attachment the requesting user owns, in chat order, carrying its stored bytes.
-
-    Async because the ownership lookup is: a synchronous handler would have to trust the metadata's
-    nested path instead, which is the one thing this module exists to avoid.
-    """
+async def owned_files(file_ids: Sequence[str], user_id: str) -> tuple[UploadedFile, ...]:
+    """Fetch only owned, readable ids through Open WebUI's store, preserving chat order."""
     from open_webui.models.files import Files  # noqa: PLC0415 - see the module docstring
     from open_webui.storage.provider import Storage  # noqa: PLC0415 - see the module docstring
 
     found: list[UploadedFile] = []
-    for file_id in attachment_ids(metadata):
+    for file_id in file_ids:
         record = await Files.get_file_by_id_and_user_id(file_id, user_id)
         if record is None:
-            continue  # missing or foreign: skipped, never re-fetched by another route
-        local_path = await asyncio.to_thread(Storage.get_file, record.path)
-        content = await asyncio.to_thread(Path(local_path).read_bytes)
-        found.append(UploadedFile(path=UPLOAD_DIR + record.filename, content=content))
+            continue
+        try:
+            local_path = await asyncio.to_thread(Storage.get_file, record.path)
+            content = await asyncio.to_thread(Path(local_path).read_bytes)
+        except Exception:
+            logging.getLogger(__name__).debug("Unreadable owned file omitted")
+            continue
+        found.append(
+            UploadedFile(file_id=file_id, path=UPLOAD_DIR + record.filename, content=content)
+        )
     return tuple(found)
+
+
+async def uploaded_files(
+    metadata: Mapping[str, object] | None,
+    user_id: str,
+) -> tuple[UploadedFile, ...]:
+    """Resolve chat attachment ids through the same ownership path the filter uses."""
+    return await owned_files(attachment_ids(metadata), user_id)

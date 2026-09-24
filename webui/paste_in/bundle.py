@@ -25,10 +25,14 @@ import sys
 from pathlib import Path
 
 TOOL_ARTIFACT = "paste-in/figure_verification_tool.py"
+FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
 
-# Artifact path (repo-relative) -> the root module whose closure it embeds. One entry per paste
-# target; the outlet filter's artifact joins at M10.1.
-ARTIFACTS: dict[str, str] = {TOOL_ARTIFACT: "webui.paste_in.tool"}
+# Each root names the one class Open WebUI discovers after its source closure loads.
+ARTIFACTS: dict[str, str] = {
+    TOOL_ARTIFACT: "webui.paste_in.tool",
+    FILTER_ARTIFACT: "webui.paste_in.filter",
+}
+_EXPORTS = {"webui.paste_in.tool": "Tools", "webui.paste_in.filter": "Filter"}
 
 # First-party root package -> the repo-relative directory holding it.
 _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
@@ -254,7 +258,12 @@ def render(root: str) -> str:
     """The complete artifact text for one paste target. Deterministic in the tracked sources."""
     names = closure(root)
     blobs = [_ASSIGNMENT.format(name=name, source=_embeddable_source(name)) for name in names]
-    text = _PREAMBLE + "\n".join(blobs) + _EPILOGUE.format(root=root)
+    try:
+        exported = _EXPORTS[root]
+    except KeyError as exc:
+        msg = f"{root!r} is not a paste-in root"
+        raise BundleError(msg) from exc
+    text = _PREAMBLE + "\n".join(blobs) + _EPILOGUE.format(root=root, exported=exported)
     offending = offending_import_roots(text)
     if offending:
         msg = f"{root!r} reaches outside the dependency envelope: {', '.join(offending)}"
@@ -318,5 +327,5 @@ def _load() -> types.ModuleType:
                 sys.modules[name] = previous
 
 
-Tools = _load().Tools
+{exported} = _load().{exported}
 '''

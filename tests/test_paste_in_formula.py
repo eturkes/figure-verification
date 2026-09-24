@@ -25,6 +25,7 @@ from paste_in_support import (
 )
 from verifier.pysrc import DatasetTarget, FormulaTarget, Refused, Verdict, Verified, spec
 from verifier.pysrc import verify_python_source as core_verify
+from webui.paste_in import selection
 
 _USER_ID = "user-1"
 _CSV_BYTES = b"site,value\nwest,1\neast,2\n"
@@ -89,8 +90,8 @@ def test_t7_attachment_order_beats_formula_candidate(
         seen.append((declared_target, verdict))
         return verdict
 
-    monkeypatch.setattr(module, "formula_target", parser)
-    monkeypatch.setattr(module, "verify_python_source", spy)
+    monkeypatch.setattr(selection, "formula_target", parser)
+    monkeypatch.setattr(selection, "verify_python_source", spy)
     stored = [_stored("first", "wrong.csv"), _stored("second", "relevant.csv")]
     with fake_open_webui(stored, tmp_path) as lookups:
         reply = invoke_tool(
@@ -126,7 +127,7 @@ def test_t7_formula_candidate_follows_unrelated_csv(
         seen.append((declared_target, verdict))
         return verdict
 
-    monkeypatch.setattr(module, "verify_python_source", spy)
+    monkeypatch.setattr(selection, "verify_python_source", spy)
     with fake_open_webui([_stored("one", "unrelated.csv")], tmp_path) as lookups:
         reply = invoke_tool(
             module,
@@ -174,8 +175,8 @@ def test_t8_parser_receives_current_user_message_only(
         targets.append(declared_target)
         return core_verify(source, declared_target=cast(FormulaTarget, declared_target))
 
-    monkeypatch.setattr(module, "formula_target", parser)
-    monkeypatch.setattr(module, "verify_python_source", spy)
+    monkeypatch.setattr(selection, "formula_target", parser)
+    monkeypatch.setattr(selection, "verify_python_source", spy)
     with fake_open_webui([], tmp_path):
         reply = invoke_tool(module, program, metadata=metadata, user={"id": _USER_ID})
     assert reply == _READY
@@ -194,7 +195,7 @@ def test_t8_non_string_user_message_never_calls_parser(
     def parser(text: object) -> None:
         calls.append(text)
 
-    monkeypatch.setattr(module, "formula_target", parser)
+    monkeypatch.setattr(selection, "formula_target", parser)
     with fake_open_webui([], tmp_path):
         reply = invoke_tool(
             module, _FORMULA_SOURCE, metadata=_metadata(content), user={"id": _USER_ID}
@@ -214,7 +215,7 @@ def test_t8_malformed_user_message_never_calls_parser(
     def parser(text: object) -> None:
         calls.append(text)
 
-    monkeypatch.setattr(module, "formula_target", parser)
+    monkeypatch.setattr(selection, "formula_target", parser)
     metadata = {"user_message": user_message, "fallback": _REQUEST}
     with fake_open_webui([], tmp_path):
         reply = invoke_tool(module, _FORMULA_SOURCE, metadata=metadata, user={"id": _USER_ID})
@@ -235,7 +236,7 @@ def test_t8_no_fallback_to_other_fields(monkeypatch: pytest.MonkeyPatch, tmp_pat
     def parser(text: str) -> None:
         parsed.append(text)
 
-    monkeypatch.setattr(module, "formula_target", parser)
+    monkeypatch.setattr(selection, "formula_target", parser)
     with fake_open_webui([], tmp_path):
         reply = invoke_tool(module, program, metadata=metadata, user={"id": _USER_ID})
     assert reply == _BLOCKED

@@ -269,7 +269,7 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
             if not name.startswith("_") and callable(value)
         ]
         assert len(public) == 1
-        namespace = public[0].__globals__
+        namespace = public[0].__globals__['first_verdict'].__globals__
         verify = next(
             value
             for value in namespace.values()

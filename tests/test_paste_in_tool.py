@@ -29,6 +29,7 @@ from paste_in_support import (
 )
 from verifier.pysrc import DatasetTarget, RefusalCode, Refused, Verdict, Verified
 from verifier.pysrc import verify_python_source as core_verify
+from webui.paste_in import selection
 
 # Hand-stated closed sets: deriving either from production would let the tool and the test drift
 # together. The two reply strings are the whole model-facing vocabulary (amendment T4-1), and the
@@ -186,7 +187,7 @@ def test_t1_exactly_one_model_visible_callable(tmp_path: Path) -> None:
     assert isinstance(properties, dict)
     # The reserved parameters ARE declared on the method, which is what makes their absence from
     # the schema a finding rather than a tautology.
-    assert reserved[operation] == ["__metadata__", "__user__"]
+    assert reserved[operation] == ["__metadata__", "__user__", "__request__"]
     assert len(declared[operation]) == 1
     assert properties[operation] == declared[operation]
 
@@ -259,7 +260,7 @@ def test_t2_verdict_comes_from_verify_python_source_alone(
             targets.append(declared_target.path)
             return remaining.pop(0)
 
-        monkeypatch.setattr(module, "verify_python_source", scripted)
+        monkeypatch.setattr(selection, "verify_python_source", scripted)
         stored = _stored(case.attachments)
         with fake_open_webui(stored, tmp_path):
             return invoke_tool(
@@ -312,7 +313,7 @@ def test_t3_core_receives_the_uploaded_bytes_for_the_named_path(
         calls.append((source, declared_target))
         return Refused("value_not_in_profile")
 
-    monkeypatch.setattr(module, "verify_python_source", spy)
+    monkeypatch.setattr(selection, "verify_python_source", spy)
     with fake_open_webui(stored, tmp_path) as lookups:
         present = invoke_tool(module, program, metadata=_metadata("file-1"), user={"id": _USER_ID})
         absent = invoke_tool(module, program, metadata={"files": []}, user={"id": _USER_ID})
@@ -352,7 +353,7 @@ def test_t4_return_text_is_closed_and_echoes_no_model_bytes(
         assert isinstance(declared_target, DatasetTarget)
         return selected
 
-    monkeypatch.setattr(module, "verify_python_source", scripted)
+    monkeypatch.setattr(selection, "verify_python_source", scripted)
     outputs: list[str] = []
     with fake_open_webui(_stored(1), tmp_path):
         for verdict in verdicts:
@@ -388,7 +389,7 @@ def test_t5_target_is_the_named_path_with_the_uploaded_content(
         calls.append((source, declared_target, verdict))
         return verdict
 
-    monkeypatch.setattr(module, "verify_python_source", spy)
+    monkeypatch.setattr(selection, "verify_python_source", spy)
     matching = _program(_SALES_PATH)
     mismatch = _program("/mnt/uploads/other.csv")
     with fake_open_webui(stored, tmp_path):
@@ -446,7 +447,7 @@ def test_t6_file_access_is_ownership_checked(
     def fallback_read_bytes(_path: Path) -> Never:
         raise AssertionError(fallback_path_read)
 
-    monkeypatch.setattr(module, "verify_python_source", bomb_verify)
+    monkeypatch.setattr(selection, "verify_python_source", bomb_verify)
     # The bombs are withdrawn before the assertions: pytest reads `os.environ` through `open`
     # while it writes the call-phase report, so one surviving the body kills the whole run.
     with (

@@ -196,6 +196,7 @@ def test_fixed_env_pins_load_bearing_toggles() -> None:
     assert _FIXED_ENV["WEBUI_ADMIN_EMAIL"] == ""
     assert _FIXED_ENV["WEBUI_AUTH_TRUSTED_EMAIL_HEADER"] == ""
     assert _FIXED_ENV["ENABLE_API_OUTLET_FILTERS"] == "true"
+    assert _FIXED_ENV["BYPASS_EMBEDDING_AND_RETRIEVAL"] == "true"
 
 
 def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -25,7 +25,9 @@ from paste_in_support import (
     public_tool_operation,
 )
 from webui.bootstrap import SmokeResult, smoke
-from webui.client import WebUIClient
+from webui.client import FunctionReadback, WebUIClient
+from webui.paste_in.bundle import FILTER_ARTIFACT, artifact_text
+from webui.paste_in.filter import FILTER_ID
 from webui.settings import Settings
 
 
@@ -87,6 +89,17 @@ class _SmokeClient:
     def model_tool_ids(self, model_id: str) -> list[str]:
         assert model_id == self._model_id
         return list(self._attached)
+
+    def function_states(self) -> tuple[FunctionReadback, ...]:
+        return (
+            FunctionReadback(
+                id=FILTER_ID,
+                type="filter",
+                is_active=True,
+                is_global=True,
+                content=artifact_text(FILTER_ARTIFACT),
+            ),
+        )
 
 
 def _enabled_server_operations(connections_text: str) -> set[str]:

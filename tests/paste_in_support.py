@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import base64
 import importlib
 import importlib.util
 import inspect
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import textwrap
+import zlib
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -599,3 +602,105 @@ def assert_topological(order: Sequence[str]) -> None:
             assert positions[dependency] < positions[module], (
                 f"{dependency} emitted after dependent {module}"
             )
+
+
+def load_filter_module() -> ModuleType:
+    """Load the filter dynamically so a red suite collects before its module exists."""
+    return importlib.import_module("webui.paste_in.filter")
+
+
+def load_receipt_module() -> ModuleType:
+    """Load the backend-owned receipt seam without importing an absent module at collection."""
+    return importlib.import_module("webui.paste_in.receipt")
+
+
+def filter_request() -> SimpleNamespace:
+    """Model one OWUI completion's shared `__request__.state` object."""
+    return SimpleNamespace(state=SimpleNamespace())
+
+
+def filter_body(text: str) -> dict[str, object]:
+    """One persisted output item plus a preceding message that must survive an outlet rewrite."""
+    return {
+        "messages": [
+            {"id": "earlier", "role": "user", "content": "original request"},
+            {
+                "id": "final",
+                "role": "assistant",
+                "content": text,
+                "output": [
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [{"type": "output_text", "text": text}],
+                    }
+                ],
+            },
+        ]
+    }
+
+
+def assert_filter_text(body: dict[str, object], text: str) -> None:
+    """Check both persisted text surfaces and preserve the prior message untouched."""
+    messages = cast(list[dict[str, object]], body["messages"])
+    assert messages[0] == {"id": "earlier", "role": "user", "content": "original request"}
+    message = messages[-1]
+    assert message["content"] == text
+    output = cast(list[dict[str, object]], message["output"])
+    assert len(output) == 1
+    item = output[0]
+    assert item["type"] == "message"
+    assert item["role"] == "assistant"
+    assert item["status"] == "completed"
+    assert item["content"] == [{"type": "output_text", "text": text}]
+
+
+def invoke_filter(  # noqa: PLR0913 - reserved Open WebUI outlet arguments
+    module: ModuleType,
+    body: dict[str, object],
+    *,
+    request: object | None = None,
+    user: dict[str, object] | None = None,
+    metadata: dict[str, object] | None = None,
+    event_call: Callable[[dict[str, object]], Awaitable[object]] | None = None,
+    event_emitter: Callable[[dict[str, object]], Awaitable[object]] | None = None,
+) -> dict[str, object]:
+    """Drive OWUI's reserved outlet arguments, requiring an async result."""
+    result = module.Filter().outlet(
+        body,
+        __user__=user,
+        __request__=request,
+        __event_call__=event_call,
+        __event_emitter__=event_emitter,
+        __metadata__=metadata,
+    )
+    assert inspect.isawaitable(result)
+    returned = asyncio.run(_complete(cast(Awaitable[object], result)))
+    assert isinstance(returned, dict)
+    return cast(dict[str, object], returned)
+
+
+def recorded_request(
+    program: str, file_ids: tuple[str, ...] = (), request_text: str | None = None
+) -> SimpleNamespace:
+    """Place a backend-style A3 tuple receipt on a fresh completion request."""
+    module = load_receipt_module()
+    request = filter_request()
+    module.write_receipt(request, module.Receipt(program, file_ids, request_text))
+    return request
+
+
+def valid_png_uri() -> str:
+    """Produce a complete 1-by-1 PNG, including CRCs, without a fixture-specific expected image."""
+
+    def chunk(name: bytes, content: bytes) -> bytes:
+        checksum = zlib.crc32(name + content)
+        return struct.pack(">I", len(content)) + name + content + struct.pack(">I", checksum)
+
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+    image = b"\x89PNG\r\n\x1a\n"
+    image += chunk(b"IHDR", header)
+    image += chunk(b"IDAT", zlib.compress(b"\0\xff\0\0"))
+    image += chunk(b"IEND", b"")
+    return "data:image/png;base64," + base64.b64encode(image).decode("ascii")

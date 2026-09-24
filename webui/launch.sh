@@ -249,9 +249,8 @@ log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. Its JSON-spec outcomes predate the pasted python tool; the calibration unit owns
-#    re-measuring both prompts and replacing the banner's old outcome text. The stub still returns
-#    the retired proposeSpec reply, so its current python-tool outcome is unmeasured.
+# 5) banner. The real-model outcome text predates the pasted python tool; the calibration unit
+#    re-measures it. The stub arm states no outcome until the M10.1 live witness records one.
 simple_prompt="Chart the total revenue of each region using bars. dataset_name: sales.csv"
 elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then
@@ -261,10 +260,8 @@ if (( USE_STUB )); then
     "      1) ${simple_prompt}" \
     "      2) ${elaborate_prompt}" \
     "" \
-    "           Both prompts VERIFY. The stub proposes one fixed known-good spec for every" \
-    "           request. The stub ignores your prompt intent, so both prompts render the same" \
-    "           demo figure. The stub cannot show the blocked path. To see a blocked chart," \
-    "           start this script again without --stub."
+    "           The stub gives fixed replies. It does not run a real model." \
+    "           This banner states no outcome for these prompts until a recorded run exists."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
@@ -278,8 +275,9 @@ else
     "" \
     "           No verifiable spec can express this request. The outcome is not stable. In three" \
     "           measured runs the model answered twice with prose and once with a plain spec" \
-    "           that verified. Prose carries no chart signal, so the guard does not block it." \
-    "           The Verified Plot Guard replaces unverified chart code only." \
+    "           that verified. These observations predate the generated outlet filter." \
+    "           Without an authentic tool call, the current filter now displays:" \
+    "           Figure verification failed, no image produced" \
     "" \
     "           Milestone M10 calibrates both prompts. Use --stub for a verified render."
 fi

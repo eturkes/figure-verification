@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Every tracked citation of a demo dataset's sha256 equals that CSV's live digest.
 
-`data/sales.csv`'s digest is pinned in 25 tracked files. The example corpus checks its own share
-(`test_examples.py`) and `webui/model_stub.py` rides g01's golden, but
-`model_backend/guidance_oracle.py` embeds the digest in a prose task prompt that nothing pinned: a
-stale digest there ships green through all eight gate stages. This suite sweeps `git ls-files`
-rather than a path list, so a file added later is covered once its citation resolves to an owner.
+`data/sales.csv`'s digest is pinned in 24 tracked files. The example corpus checks its own share
+(`test_examples.py`), but `model_backend/guidance_oracle.py` embeds the digest in a prose task
+prompt that nothing pinned: a stale digest there ships green through all eight gate stages. This
+suite sweeps `git ls-files` rather than a path list, so a file added later is covered once its
+citation resolves to an owner.
 
 THE LAW. A `sha256:<64 lower-case hex>` token in a tracked file that names a tracked `data/*.csv`
 equals that dataset's live digest. The owner is the last such CSV name spelled before the token, or,
@@ -55,7 +55,7 @@ _MISMATCH_FIXTURES = (
 _NOT_DATASET_DIGESTS = ("tests/test_canon.py", "tests/test_dataset_digests.py")
 _HISTORY = ".agent/archive/"
 # Floor against a vacuous sweep: a resolver defect that finds nothing would otherwise pass.
-_SALES_CITATION_FLOOR = 25
+_SALES_CITATION_FLOOR = 24
 
 # Hand-stated so the exemption cannot absorb a real dataset citation. These are digests of the
 # canonical spec ENCODING; an addition or a removal must be re-audited rather than re-derived.
