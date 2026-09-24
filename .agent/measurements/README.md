@@ -35,12 +35,16 @@ export UV_PROJECT_ENVIRONMENT="$PWD/.venv" UV_LINK_MODE=copy UV_NO_SYNC=1 PYTHON
 node .agent/measurements/f7_wrapper.mjs "$PWD/.venv-webui/lib/python3.12/site-packages/open_webui/frontend/pyodide" f7-0283.json
 ```
 
-F7 reads the installed frontend's `execute:python` package regexes and iframe prelude at runtime.
-It loads only source-detected packages, runs the literal-trigger prelude, then executes the wrapper.
-Missing or changed anchors fail loudly. The four wrappers must each emit one PNG line with no stderr;
-a literal plotting import must trigger the installed prelude's `SyntaxError`.
+F7 reads the installed frontend's `execute:python` package regexes, iframe prelude and reply
+shaping at runtime. It loads only source-detected packages, runs the literal-trigger prelude, then
+executes the wrapper. Missing or changed anchors fail loudly. The four wrappers must each emit one
+tagged observation line before one PNG line with a valid signature; the shaped reply must have
+`stderr: null` and `result: null`. A literal plotting import must trigger the installed prelude's
+`SyntaxError`.
 
-For the other Node commands:
+`o8_observe.mjs` takes `owui`, a result filename, then `wrapper`; it exports the production
+`wrapper_code` through `o8_export.py` and overwrites 52 self-contained fixtures. For the other
+Node commands:
 
 ```
 cd .agent/measurements
@@ -69,6 +73,7 @@ and pandas versions for the selected build.
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
 | W1 | `w1_width.py [run-dir]` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
+| O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 52 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 
 ## What each one backs
@@ -86,7 +91,18 @@ and pandas versions for the selected build.
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | W1 | shipped verifier's verdict over one committed capture run, per category, idiom, and row | M13.6's measured width aim; M13.7's capture-prompt delta |
-| F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7: the four `Ue`-shaped replies each have one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
+| F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
+| O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 52 fixture observations + PNGs, zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
+
+Rerun O8 from the repository root after the host input generators. `o8_observe.mjs` obtains the wrapper from the tracked filter and writes the observed JSON into `tests/fixtures/observe/`; a second run should leave those bytes unchanged.
+
+```
+uv run --locked python .agent/measurements/make_s2_inputs.py
+uv run --locked python .agent/measurements/make_s7_pow.py
+node .agent/measurements/s2_pyodide.mjs owui s2-0283.json
+node .agent/measurements/s7_pyodide.mjs owui s7-0283.json
+node .agent/measurements/o8_observe.mjs owui o8-0283.json wrapper
+```
 
 Each result JSON carries environment details and a per-region breakdown when regions apply. A
 region's `disagreements` is the count that matters. `max_ulp` applies only where both values are

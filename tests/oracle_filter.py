@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
+from oracle_observe import oracle_matches, oracle_parse
 from oracle_paste_in_tool import ToolContext, oracle_draw_figure
 from paste_in_support import StoredFile
 from verifier.pysrc import DatasetTarget, DeclaredTarget, Verified, verify_python_source
@@ -164,8 +165,14 @@ def oracle_outlet(scenario: Scenario) -> Expected:
                     response["stderr"] is None
                     or (type(response["stderr"]) is str and response["stderr"] == "")
                 ):
-                    uri = _png_uri(response.get("stdout"))
-                    if uri is not None:
+                    stdout = response.get("stdout")
+                    uri = _png_uri(stdout)
+                    observation = oracle_parse(stdout) if isinstance(stdout, str) else None
+                    if (
+                        uri is not None
+                        and observation is not None
+                        and oracle_matches(verdict, observation)
+                    ):
                         published = PASS_TEXT + "\n\n" + verdict.certificate.interpretation
     text = published if published is not None else FAIL_TEXT
     events: tuple[dict[str, object], ...] = ()

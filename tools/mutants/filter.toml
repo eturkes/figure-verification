@@ -139,6 +139,13 @@ anchor = '''RPC_TIMEOUT_SECONDS: Final = 60'''
 mutant = '''RPC_TIMEOUT_SECONDS: Final = 120'''
 
 [[mutant]]
+id = "o6-missing-observation-passes"
+predicate = "a valid PNG without one matching observation never publishes"
+kills = "tests/test_paste_in_observe_filter.py::test_o6_verified_with_bad_observation_withholds_figure[missing]"
+anchor = '''        if uri is None or observed is None or not observation_matches(verdict, observed):'''
+mutant = '''        if uri is None or (observed is not None and not observation_matches(verdict, observed)):'''
+
+[[mutant]]
 id = "a6-empty-string-only"
 predicate = "OWUI's present null stderr is empty and permits a verified PNG"
 kills = "tests/test_paste_in_filter_outlet.py::test_a6_owui_clean_reply_null_stderr_publishes_pass"

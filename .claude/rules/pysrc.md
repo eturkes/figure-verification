@@ -109,24 +109,26 @@ implies the figure answers the question asked.
   the dataset arm, the formula in the request sentence in the formula arm. `verify_python_source(src,
   declared_target=None)` keeps the parameter optional for headless callers; the demo supplies it from
   the arm in play.
-- **(b) Observed-execution confirmation — RESOLVED: ADOPTED (user).** The sandbox reports the arrays
-  matplotlib actually received, the outlet filter returns them, and the PNG is withheld until they
-  match the verifier's own recomputation. The reader is a CLOSED PER-MARK map (user), one entry per
-  admitted mark and NO default arm, because matplotlib files each mark under a different artist:
-  `plt.bar` → `container.patches` read as `(get_x() + get_width()/2, get_height())`, `plt.barh` →
-  the same patches read as `(get_width(), get_y() + get_height()/2)`, `plt.plot` →
-  `line.get_xydata()`, `plt.scatter` → `collection.get_offsets()`. A lines-only reader would have
-  blocked the demo's own PASS arm the moment `sentinel-simple` became a bar prompt, and all three
-  readers are already characterised bit-for-bit against the shipped Pyodide build by
-  `.agent/measurements/t6_pyodide.mjs`. An unmapped mark yields no arrays and therefore BLOCKS,
-  which is the law below, not an exception to it. This closes the
-  projection gap EMPIRICALLY instead of by construction and costs no new trust: OWUI already
-  rewrites `plt.show()` to `savefig(BytesIO)`, so an environment layer around the model's bytes
-  already exists and is accepted, and admitted code provably cannot tamper with the observer because
-  the allowlist admits no idiom that could. The environment/observation layer reads as OUTSIDE
-  ruling 1 (verifier-(re)authored scripts REJECTED): the EXECUTED bytes stay the model's, and the
-  epilogue observes rather than re-authors. Observation may only WITHHOLD, never admit — a
-  comparison it cannot perform blocks. `M10.2` owns the implementation.
+- **(b) Observed-execution confirmation — RESOLVED: ADOPTED (user), SHIPPED (`webui/paste_in/observe.py`,
+  `.agent/archive/contracts/m10u2.md`).** The wrapper's show hook prints ONE tagged JSON observation
+  line of what matplotlib actually holds, then the PNG line; the outlet compares the observation with
+  the verifier's own `Verified.table.{x,y}` and withholds the PNG unless they match. The reader =
+  `READERS`, a CLOSED PER-MARK map keyed `line`/`scatter`/`bar`/`barh` with NO default arm, because
+  matplotlib files each mark under a different artist: `plt.plot` → `line.get_xydata()`,
+  `plt.scatter` → `collection.get_offsets()`, bars → `container.patches` bound through the FORWARD
+  edge `patch.get_x() == position - span/2` + base 0 (barh on the swapped axes; span = matplotlib's
+  converted width, 0.8 direct, 0.5 pandas accessor) — never a center equality, which false-blocks
+  decimal positions. A categorical x binds through the axis `units._mapping` (direct marks) or tick
+  identity (accessor). Formula arm (O5 + reading R4): each observed y inside the interval of the
+  verified expression — per-call ±1-ulp libm, point `+ - * /` over two points exact, outward 1 ulp
+  once an operand is an interval; a libm call whose argument is itself a libm result
+  (`np.exp(-x**2)`) is WITHHELD (a false-block class, `.agent/deferred.md`). An unmapped mark, an
+  extra artist, a second axes, a missing/duplicate/oversized/unparseable observation line ⇒ FAIL.
+  This closes the projection gap EMPIRICALLY instead of by construction at no new trust: OWUI
+  already wraps the model's bytes (`plt.show()` → `savefig`), admitted code provably cannot tamper
+  with the observer because the allowlist admits no idiom that could, and the EXECUTED bytes stay
+  the model's (outside ruling 1: the epilogue observes, never re-authors). Observation may only
+  WITHHOLD, never admit — a comparison it cannot perform blocks.
 
 The verdict is decided statically either way — it must precede release — so the core is built on
 projection + exact recomputation and observation is additive.

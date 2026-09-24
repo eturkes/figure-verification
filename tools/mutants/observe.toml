@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Observation gate: each mutant names the one independent test that must change verdict.
+module = "webui/paste_in/observe.py"
+tests = ["tests/test_paste_in_observe.py", "tests/test_paste_in_observe_values.py", "tests/test_paste_in_observe_formula.py", "tests/test_paste_in_observe_differential.py", "tests/test_paste_in_observe_fixtures.py", "tests/test_paste_in_observe_internal.py"]
+
+[[mutant]]
+id = "o2-default-reader"
+predicate = "an unmapped projected mark cannot fall back to the line reader"
+kills = "tests/test_paste_in_observe.py::test_o2_unmapped_mark_has_no_fallback_reader"
+anchor = '''    return mark in READERS and READERS[mark](verified, observation)'''
+mutant = '''    return READERS.get(mark, _line)(verified, observation)'''
+
+[[mutant]]
+id = "o4-inverse-center"
+predicate = "bar geometry compares the forward edge, not the inverted center"
+kills = "tests/test_paste_in_observe_values.py::test_o4_decimal_forward_edge_releases_when_inverse_center_disagrees[bar]"
+anchor = '''            or observed_edge != expected_position - span / 2'''
+mutant = '''            or observed_edge + span / 2 != expected_position'''
+
+[[mutant]]
+id = "o4-baseline-dropped"
+predicate = "a bar must start on the zero magnitude baseline"
+kills = "tests/test_paste_in_observe_values.py::test_o4_forward_geometry_checks_baseline_extent_and_edge[base-categorical-bar]"
+anchor = '''            base != 0.0'''
+mutant = '''            False'''
+
+[[mutant]]
+id = "o3-numeric-accessor-tick"
+predicate = "numeric accessor ticks identify the plotted key, not any finite number"
+kills = "tests/test_paste_in_observe_values.py::test_o3_accessor_numeric_key_parses_tick_text_instead_of_matching_ordinal[bar]"
+anchor = '''    return math.isfinite(numeric) and numeric == key'''
+mutant = '''    return math.isfinite(numeric)'''
+
+[[mutant]]
+id = "o5-interval-arithmetic-without-outward"
+predicate = "interval-valued arithmetic retains its outward ulp for cancellation"
+kills = "tests/test_paste_in_observe_differential.py::test_differential_boundaries[formula-line-np.sin(x) - np.cos(x)-formula-inside]"
+anchor = '''    return _outward(min(values), max(values))'''
+mutant = '''    return min(values), max(values)'''
+
+[[mutant]]
+id = "o5-non-singleton-transcendental"
+predicate = "a transcendental fed an uncertain interval withholds instead of evaluating one endpoint"
+kills = "tests/test_paste_in_observe_formula.py::test_o5_ambiguous_libm_argument_withholds_even_at_host_value[np.sin(np.cos(x))]"
+anchor = '''    if low != high:
+        return None'''
+mutant = '''    if False and low != high:
+        return None'''

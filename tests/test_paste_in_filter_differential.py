@@ -22,6 +22,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn
 
+from observe_support import stdout_for_verified
 from oracle_filter import (
     FAIL_TEXT,
     PASS_TEXT,
@@ -34,7 +35,8 @@ from oracle_filter import (
     oracle_outlet,
 )
 from paste_in_support import REPO_ROOT, StoredFile, fake_open_webui
-from verifier.pysrc import verify_python_source
+from verifier.pysrc import DatasetTarget, FormulaTarget, Verified, verify_python_source
+from verifier.pysrc.request import formula_target
 
 _PNG = (
     "data:image/png;base64,"
@@ -78,6 +80,23 @@ def _reply(stdout: str = _PNG, stderr: str = "", result: object = None) -> RpcOu
     return RpcOutcome("returns", {"stdout": stdout, "stderr": stderr, "result": result})
 
 
+def _dataset_verdict(filename: str) -> Verified:
+    program = _program(filename)
+    verdict = verify_python_source(
+        program, declared_target=DatasetTarget(f"/mnt/uploads/{filename}", _SALES)
+    )
+    assert isinstance(verdict, Verified)
+    return verdict
+
+
+def _formula_verdict() -> Verified:
+    target = formula_target(_FORMULA_REQUEST)
+    assert isinstance(target, FormulaTarget)
+    verdict = verify_python_source(_FORMULA_PROGRAM, declared_target=target)
+    assert isinstance(verdict, Verified)
+    return verdict
+
+
 def _dataset(filename: str = "a.csv", *, rpc: RpcOutcome | None = None) -> Scenario:
     return Scenario(
         ReceiptValue(_program(filename), ("file-a",), None),
@@ -85,7 +104,7 @@ def _dataset(filename: str = "a.csv", *, rpc: RpcOutcome | None = None) -> Scena
         (FileRow("file-a", "caller", filename, _SALES),),
         _assistant(),
         {"session_id": "session-1"},
-        rpc if rpc is not None else _reply(),
+        rpc if rpc is not None else _reply(stdout_for_verified(_dataset_verdict(filename), _PNG)),
     )
 
 
@@ -96,7 +115,7 @@ def _formula(*, rpc: RpcOutcome | None = None) -> Scenario:
         (),
         _assistant(),
         {"session_id": "session-2"},
-        rpc if rpc is not None else _reply(),
+        rpc if rpc is not None else _reply(stdout_for_verified(_formula_verdict(), _PNG)),
     )
 
 
@@ -225,11 +244,19 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
         ("rpc-times-out", replace(dataset, rpc=RpcOutcome("timeout")), False, 1, 0),
         ("rpc-non-dict", replace(dataset, rpc=RpcOutcome("returns", "wrong shape")), False, 1, 0),
         ("rpc-stderr", replace(dataset, rpc=_reply(stderr="sandbox exception")), False, 1, 0),
+        ("rpc-no-observation", replace(dataset, rpc=_reply(stdout=_PNG)), False, 1, 0),
         (
             "rpc-null-stderr",
             replace(
                 dataset,
-                rpc=RpcOutcome("returns", {"stdout": _PNG + "\n", "stderr": None, "result": None}),
+                rpc=RpcOutcome(
+                    "returns",
+                    {
+                        "stdout": stdout_for_verified(_dataset_verdict("a.csv"), _PNG) + "\n",
+                        "stderr": None,
+                        "result": None,
+                    },
+                ),
             ),
             True,
             1,
@@ -237,7 +264,16 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
         ),
         (
             "rpc-missing-stderr",
-            replace(dataset, rpc=RpcOutcome("returns", {"stdout": _PNG + "\n", "result": None})),
+            replace(
+                dataset,
+                rpc=RpcOutcome(
+                    "returns",
+                    {
+                        "stdout": stdout_for_verified(_dataset_verdict("a.csv"), _PNG) + "\n",
+                        "result": None,
+                    },
+                ),
+            ),
             False,
             1,
             0,
@@ -274,7 +310,13 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
         ),
         (
             "rpc-result-ignored",
-            replace(dataset, rpc=_reply(result={"untrusted_result": PASS_TEXT})),
+            replace(
+                dataset,
+                rpc=_reply(
+                    stdout=stdout_for_verified(_dataset_verdict("a.csv"), _PNG),
+                    result={"untrusted_result": PASS_TEXT},
+                ),
+            ),
             True,
             1,
             1,
@@ -540,11 +582,18 @@ def _assert_agrees(scenario: Scenario, module: ModuleType, patch: pytest.MonkeyP
 @st.composite
 def _pass_scenarios(draw: DrawFn) -> Scenario:
     arm = draw(st.sampled_from(("dataset", "formula")))
-    outcome = _reply(stdout=draw(st.sampled_from((_PNG, "output\n" + _PNG + "\n"))))
+    prose = draw(st.sampled_from((False, True)))
     if arm == "formula":
-        return _formula(rpc=outcome)
-    filename = draw(st.sampled_from(("a.csv", "b.csv", "clinical.csv")))
-    return _dataset(filename, rpc=outcome)
+        verdict = _formula_verdict()
+        filename = None
+    else:
+        filename = draw(st.sampled_from(("a.csv", "b.csv", "clinical.csv")))
+        verdict = _dataset_verdict(filename)
+    stdout = stdout_for_verified(verdict, _PNG, prefix="output\n" if prose else "")
+    if prose:
+        stdout += "\n"
+    response = _reply(stdout=stdout)
+    return _formula(rpc=response) if filename is None else _dataset(filename, rpc=response)
 
 
 @st.composite
@@ -596,7 +645,9 @@ def test_outlet_fixed_anchor(
     name: str, scenario: Scenario, passes: object, rpc_count: int, event_count: int
 ) -> None:
     """Each F2-F6 conjunct has a fixed, named witness in addition to generated scenarios."""
-    del name, passes, rpc_count, event_count
+    assert isinstance(passes, bool)
+    assert oracle_outlet(scenario).content.startswith(PASS_TEXT + "\n\n") is passes, name
+    del rpc_count, event_count
     module = _load_filter()
     with pytest.MonkeyPatch.context() as patch:
         _assert_agrees(scenario, module, patch)

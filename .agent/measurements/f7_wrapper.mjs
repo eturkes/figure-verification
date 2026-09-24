@@ -123,13 +123,27 @@ async function execute(code) {
   }
   const reply = shapeReply({ stdout, stderr, result });
   const lines = typeof reply.stdout === "string" ? reply.stdout.trimEnd().split("\n").filter(Boolean) : [];
+  const tag = "FIGURE_VERIFICATION_OBSERVATION:";
+  const tagged = lines.filter((line) => line.startsWith(tag));
+  let observationParseable = false;
+  if (tagged.length === 1 && lines[0] === tagged[0]) {
+    try {
+      const value = JSON.parse(tagged[0].slice(tag.length));
+      observationParseable = value !== null && typeof value === "object" && !Array.isArray(value);
+    } catch {
+      observationParseable = false;
+    }
+  }
   const pngs = lines.filter((line) => line.startsWith("data:image/png;base64,"));
   const png = pngs.length === 1 ? Buffer.from(pngs[0].slice(22), "base64") : Buffer.alloc(0);
   return {
     packages,
     stdout_lines: lines.length,
     stdout_other: lines.filter((line) => !line.startsWith("data:image/png;base64,")).map((line) => line.slice(0, 200)),
+    observation_lines: tagged.length,
+    observation_parseable: observationParseable,
     png_lines: pngs.length,
+    png_second: lines.length === 2 && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(lines[1]),
     stderr_bytes: Buffer.byteLength(reply.stderr ?? ""),
     stderr: reply.stderr,
     result: reply.result,
@@ -160,8 +174,12 @@ const plots = Object.entries(results).filter(([name]) => name !== "literal-contr
 if (
   plots.length !== 4 ||
   plots.some(
-    ([, { stdout_lines, png_lines, stderr_bytes, stderr, result, png_signature, error }]) =>
-      stdout_lines !== 1 || png_lines !== 1 || stderr_bytes !== 0 || stderr !== null ||
+    ([, {
+      stdout_lines, observation_lines, observation_parseable, png_lines, png_second,
+      stderr_bytes, stderr, result, png_signature, error,
+    }]) =>
+      stdout_lines !== 2 || observation_lines !== 1 || !observation_parseable ||
+      png_lines !== 1 || !png_second || stderr_bytes !== 0 || stderr !== null ||
       result !== null || !png_signature || error,
   ) ||
   !results["literal-control"].stderr.includes("SyntaxError")

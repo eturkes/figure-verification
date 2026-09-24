@@ -15,7 +15,9 @@ from typing import cast
 
 import pytest
 
+from observe_support import stdout_for, stdout_for_verified
 from paste_in_support import REPO_ROOT, StoredFile, execute_artifact, fake_open_webui
+from verifier.pysrc import DatasetTarget, Verified, verify_python_source
 from webui.paste_in import filter as outlet
 from webui.paste_in import selection, tool
 from webui.paste_in.receipt import RECEIPT_ATTR, RECEIPT_TAG, Receipt, read_receipt
@@ -148,12 +150,16 @@ def test_cross_artifact_receipt_renders_one_consumed_attachment(tmp_path: Path) 
         StoredFile("matching", "caller", "sales.csv", _CSV),
     ]
     metadata = {"files": [{"id": "wrong"}, {"id": "matching"}]}
+    verdict = verify_python_source(
+        _PROGRAM, declared_target=DatasetTarget("/mnt/uploads/sales.csv", _CSV)
+    )
+    assert isinstance(verdict, Verified)
     rpc: list[dict[str, object]] = []
     events: list[dict[str, object]] = []
 
     async def event_call(payload: dict[str, object]) -> object:
         rpc.append(payload)
-        return {"stdout": _PNG + "\n", "stderr": "", "result": None}
+        return {"stdout": stdout_for_verified(verdict, _PNG) + "\n", "stderr": "", "result": None}
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
@@ -232,22 +238,54 @@ def test_wrapper_loads_plotting_stack_before_import() -> None:
 
 
 def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    """F7: the wrapper, not OWUI's substring patch, owns show and no-show rendering."""
+    """F7/O1: show draws one axes inventory before saving, once even after two show calls."""
     package = types.ModuleType("matplotlib")
     package.__path__ = []
     pyplot = types.ModuleType("matplotlib.pyplot")
     vars(package)["pyplot"] = pyplot
-    counts = {"saves": 0}
+    history: list[str] = []
+
+    def draw() -> None:
+        history.append("draw")
 
     def savefig(output: io.BytesIO, **kwargs: str) -> None:
         assert kwargs == {"format": "png"}
-        counts["saves"] += 1
+        history.append("save")
         output.write(b"\x89PNG\r\n\x1a\nbytes")
 
-    vars(pyplot)["gcf"] = lambda: types.SimpleNamespace(savefig=savefig)
+    def axis() -> types.SimpleNamespace:
+        return types.SimpleNamespace(units=None, get_ticklocs=lambda: (), get_ticklabels=lambda: ())
+
+    axes = [
+        types.SimpleNamespace(
+            lines=[],
+            collections=[],
+            containers=[],
+            patches=[],
+            images=[],
+            texts=[],
+            xaxis=axis(),
+            yaxis=axis(),
+        )
+    ]
+    figure = types.SimpleNamespace(
+        canvas=types.SimpleNamespace(draw=draw), axes=axes, savefig=savefig
+    )
+    vars(pyplot)["gcf"] = lambda: figure
     vars(pyplot)["close"] = lambda _scope: None
     monkeypatch.setitem(sys.modules, "matplotlib", package)
     monkeypatch.setitem(sys.modules, "matplotlib.pyplot", pyplot)
+    observation: dict[str, object] = {
+        "axes": 1,
+        "lines": [],
+        "collections": [],
+        "containers": [],
+        "patches": 0,
+        "images": 0,
+        "texts": 0,
+        "xaxis": {"units": None, "ticks": []},
+        "yaxis": {"units": None, "ticks": []},
+    }
     pyodide_js = types.ModuleType("pyodide_js")
 
     async def load_package(
@@ -256,6 +294,7 @@ def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPa
         messageCallback: Callable[[str], None],  # noqa: N803 - JS keyword
     ) -> None:
         assert packages == ["numpy", "pandas", "matplotlib"]
+        history.append("load")
         messageCallback("loaded")
 
     vars(pyodide_js)["loadPackage"] = load_package
@@ -272,5 +311,5 @@ def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPa
                 compile(code, "<wrapper>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), {}
             )
             asyncio.run(coroutine)
-        assert output.getvalue().splitlines() == [_PNG]
-    assert counts == {"saves": 2}
+        assert output.getvalue().splitlines() == [stdout_for(observation).rstrip("\n"), _PNG]
+    assert history == ["load", "draw", "save", "load", "draw", "save"]

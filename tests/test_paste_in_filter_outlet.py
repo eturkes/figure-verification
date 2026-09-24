@@ -15,6 +15,7 @@ from typing import cast
 
 import pytest
 
+from observe_support import stdout_for_verified
 from paste_in_support import (
     StoredFile,
     assert_filter_text,
@@ -57,16 +58,25 @@ def _sales_bytes() -> bytes:
     return (Path(__file__).resolve().parent.parent / "data" / "sales.csv").read_bytes()
 
 
-def _expected_formula_pass() -> str:
+def _formula_verdict() -> Verified:
     target = formula_target(_REQUEST)
     assert isinstance(target, FormulaTarget)
     verdict = verify_python_source(_FORMULA, declared_target=target)
     assert isinstance(verdict, Verified)
-    return _PASS + "\n\n" + verdict.certificate.interpretation
+    return verdict
 
 
-def _png_response(uri: str | None = None) -> dict[str, object]:
-    return {"stdout": valid_png_uri() if uri is None else uri, "stderr": "", "result": None}
+def _expected_formula_pass() -> str:
+    return _PASS + "\n\n" + _formula_verdict().certificate.interpretation
+
+
+def _png_response(uri: str | None = None, *, verified: Verified | None = None) -> dict[str, object]:
+    png = valid_png_uri() if uri is None else uri
+    return {
+        "stdout": stdout_for_verified(verified, png) if verified is not None else png,
+        "stderr": "",
+        "result": None,
+    }
 
 
 def _files_events(events: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -156,7 +166,7 @@ def test_f4_multiturn_rewrites_only_last_assistant_on_fail_and_pass(
 
     async def rpc(payload: dict[str, object]) -> object:
         calls.append(payload)
-        return _png_response(uri)
+        return _png_response(uri, verified=_formula_verdict())
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
@@ -205,14 +215,21 @@ def test_f4_render_failures_withhold_image_and_model_prose(
         monkeypatch.setattr(module, "RPC_TIMEOUT_SECONDS", 0.001)
     request = recorded_request(_FORMULA, request_text=_REQUEST)
     uri = valid_png_uri()
+    observation = stdout_for_verified(_formula_verdict(), "")
     cases: dict[str, object] = {
         "rpc-not-dict": [uri],
-        "stderr": {"stdout": uri, "stderr": "render failed", "result": None},
-        "zero-png": {"stdout": "nothing printed", "stderr": "", "result": None},
-        "two-png": {"stdout": f"{uri}\n{uri}\n", "stderr": "", "result": None},
-        "not-base64": {"stdout": "data:image/png;base64,%%%", "stderr": "", "result": None},
+        "stderr": {"stdout": observation + uri, "stderr": "render failed", "result": None},
+        "zero-png": {"stdout": observation, "stderr": "", "result": None},
+        "two-png": {"stdout": f"{observation}{uri}\n{uri}\n", "stderr": "", "result": None},
+        "not-base64": {
+            "stdout": observation + "data:image/png;base64,%%%",
+            "stderr": "",
+            "result": None,
+        },
         "not-png": {
-            "stdout": "data:image/png;base64," + base64.b64encode(b"not PNG").decode(),
+            "stdout": observation
+            + "data:image/png;base64,"
+            + base64.b64encode(b"not PNG").decode(),
             "stderr": "",
             "result": None,
         },
@@ -264,7 +281,7 @@ def test_f5_verified_formula_publishes_one_file_and_recomputed_interpretation(
 
     async def rpc(payload: dict[str, object]) -> object:
         calls.append(payload)
-        return _png_response(uri)
+        return _png_response(uri, verified=_formula_verdict())
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
@@ -299,7 +316,7 @@ def test_f6_dataset_rpc_uses_only_the_owned_file_consumed_by_verification(tmp_pa
 
     async def rpc(payload: dict[str, object]) -> object:
         calls.append(payload)
-        return _png_response()
+        return _png_response(verified=verdict)
 
     with fake_open_webui([wrong, matching], tmp_path) as lookups:
         result = invoke_filter(
@@ -337,7 +354,7 @@ def test_f6_formula_candidate_follows_unrelated_csv_and_rpc_files_are_empty(
 
     async def rpc(payload: dict[str, object]) -> object:
         calls.append(payload)
-        return _png_response()
+        return _png_response(verified=_formula_verdict())
 
     with fake_open_webui([other], tmp_path) as lookups:
         result = invoke_filter(
@@ -404,7 +421,11 @@ def test_a6_owui_clean_reply_null_stderr_publishes_pass(tmp_path: Path) -> None:
     events: list[dict[str, object]] = []
 
     async def rpc(_payload: dict[str, object]) -> object:
-        return {"stdout": uri + "\n", "stderr": None, "result": None}
+        return {
+            "stdout": stdout_for_verified(_formula_verdict(), uri) + "\n",
+            "stderr": None,
+            "result": None,
+        }
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
@@ -430,7 +451,10 @@ def test_a6_reply_without_stderr_key_fails(tmp_path: Path) -> None:
     events: list[dict[str, object]] = []
 
     async def rpc(_payload: dict[str, object]) -> object:
-        return {"stdout": valid_png_uri() + "\n", "result": None}
+        return {
+            "stdout": stdout_for_verified(_formula_verdict(), valid_png_uri()) + "\n",
+            "result": None,
+        }
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
@@ -455,7 +479,11 @@ def test_a6_non_string_stderr_fails(stderr: object, tmp_path: Path) -> None:
     events: list[dict[str, object]] = []
 
     async def rpc(_payload: dict[str, object]) -> object:
-        return {"stdout": valid_png_uri() + "\n", "stderr": stderr, "result": None}
+        return {
+            "stdout": stdout_for_verified(_formula_verdict(), valid_png_uri()) + "\n",
+            "stderr": stderr,
+            "result": None,
+        }
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)

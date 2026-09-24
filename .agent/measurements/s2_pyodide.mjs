@@ -3,16 +3,12 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { selectBundle } from "./o8_bundle.mjs";
+
 const root = dirname(fileURLToPath(import.meta.url));
 const packageName = process.argv[2] ?? "pyodide";
 const outputName = process.argv[3] ?? "s2.json";
-if (!["pyodide", "pyodide0281"].includes(packageName)) {
-  throw new Error(`Unknown Pyodide package: ${packageName}`);
-}
-const { loadPyodide } = await import(packageName);
-const packageVersion = JSON.parse(
-  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
-).version;
+const { loadPyodide, options } = await selectBundle(root, packageName);
 const dataRoot = join(root, "s2-data");
 const manifest = JSON.parse(readFileSync(join(dataRoot, "manifest.json"), "utf8"));
 const families = {
@@ -24,10 +20,7 @@ const families = {
   sqrt: "positive",
 };
 
-const pyodide = await loadPyodide({
-  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
-  packageCacheDir: join(root, "node_modules", packageName),
-});
+const pyodide = await loadPyodide(options);
 await pyodide.loadPackage("numpy");
 const metadata = JSON.parse(
   pyodide.runPython(`

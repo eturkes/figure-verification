@@ -15,6 +15,12 @@ from collections.abc import Awaitable, Callable
 from typing import Final
 
 from verifier.pysrc.verify import Verified
+from webui.paste_in.observe import (
+    OBSERVATION_TAG,
+    OBSERVER_SOURCE,
+    observation_matches,
+    parse_observation,
+)
 from webui.paste_in.owui_files import owned_files
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.selection import first_verdict
@@ -55,14 +61,19 @@ def wrapper_code(program: str) -> str:
                 "import os as _os",
                 "_os.environ['MPLBACKEND'] = 'AGG'",
                 "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",
+                "plt = _plt",
+                *OBSERVER_SOURCE.splitlines(),
                 "_shown = False",
                 "def _show(*_args, **_kwargs):",
                 "    global _shown",
                 "    if _shown:",
                 "        return",
                 "    _shown = True",
+                "    _fig = _plt.gcf()",
+                "    _fig.canvas.draw()",
+                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
                 "    _png = _io.BytesIO()",
-                "    _plt.gcf().savefig(_png, format='png')",
+                "    _fig.savefig(_png, format='png')",
                 "    print('data:image/png;base64,' +",
                 "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
                 "    _plt.close('all')",
@@ -171,8 +182,12 @@ class Filter:
         # OWUI reports a clean sandbox run with null stderr.
         if stderr is not None and (type(stderr) is not str or stderr != ""):
             return _rewrite(body, FAIL_TEXT)
-        uri = _png_uri(response.get("stdout"))
-        if uri is None:
+        stdout = response.get("stdout")
+        if not isinstance(stdout, str):
+            return _rewrite(body, FAIL_TEXT)
+        uri = _png_uri(stdout)
+        observed = parse_observation(stdout)
+        if uri is None or observed is None or not observation_matches(verdict, observed):
             return _rewrite(body, FAIL_TEXT)
         try:
             await __event_emitter__(
