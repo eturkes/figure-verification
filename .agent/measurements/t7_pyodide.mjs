@@ -1,10 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import { readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = "/home/eturkes/Projects/figure-verification/.scratch/spike-m13u5b";
-const modulePath = `${root}/pyodide-index/pyodide.mjs`;
-const { loadPyodide } = await import(pathToFileURL(modulePath).href);
-const pyodide = await loadPyodide();
+const root = dirname(fileURLToPath(import.meta.url));
+const packageName = process.argv[2] ?? "pyodide0281";
+const outputName = process.argv[3] ?? "t7-pyodide.json";
+if (!["pyodide", "pyodide0281"].includes(packageName)) {
+  throw new Error(`Unknown Pyodide package: ${packageName}`);
+}
+const { loadPyodide } = await import(packageName);
+const packageVersion = JSON.parse(
+  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
+).version;
+const pyodide = await loadPyodide({
+  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
+  packageCacheDir: join(root, "node_modules", packageName),
+});
 await pyodide.loadPackage(["numpy", "pandas"]);
 for (const name of [
   "t7-decimals.csv",
@@ -14,7 +26,7 @@ for (const name of [
   "t7-integers-quoted.csv",
   "t7-integers.f64le",
 ]) {
-  pyodide.FS.writeFile(`/${name}`, readFileSync(`${root}/${name}`));
+  pyodide.FS.writeFile(`/${name}`, readFileSync(join(root, name)));
 }
 pyodide.FS.writeFile(
   "/utf8.csv",
@@ -60,5 +72,5 @@ json.dumps({
     "utf8_spot_check": utf8_result,
 })
 `);
-writeFileSync(`${root}/t7-pyodide.json`, `${result}\n`);
+writeFileSync(join(root, outputName), `${result}\n`);
 console.log(result);

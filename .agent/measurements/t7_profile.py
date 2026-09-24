@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import json
 from fractions import Fraction
 from pathlib import Path

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,8 +7,18 @@ const root = dirname(fileURLToPath(import.meta.url));
 const packageName = process.argv[2] ?? "pyodide0281";
 const outputName = process.argv[3] ?? "s6.json";
 const indexURL = process.argv[4];
+if (!["pyodide", "pyodide0281"].includes(packageName)) {
+  throw new Error(`Unknown Pyodide package: ${packageName}`);
+}
 const { loadPyodide } = await import(packageName);
-const pyodide = await loadPyodide(indexURL ? { indexURL } : {});
+const packageVersion = JSON.parse(
+  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
+).version;
+const pyodide = await loadPyodide({
+  ...(indexURL ? { indexURL } : {}),
+  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
+  packageCacheDir: join(root, "node_modules", packageName),
+});
 await pyodide.loadPackage(["numpy", "pandas"]);
 const dataRoot = join(root, "s6-data");
 pyodide.FS.writeFile("/floats.csv", readFileSync(join(dataRoot, "floats.csv")));

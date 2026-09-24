@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Mutation catalogue for the CSV read seam. Run: `uv run --locked python
 # tools/mutate.py tools/mutants/csvread.toml`. One mutant per predicate, each naming the ONE test
 # that must go red under it.

@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G13, tests/test_spec.py S1-S8, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G14, tests/test_spec.py S1-S8, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
@@ -33,7 +33,8 @@ SPEC=.agent/spec.md
 DEFERRED=.agent/deferred.md
 REVIEW=.agent/review.md
 ARTIFACT=paste-in/figure_verification_tool.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT")
+SPDX_PROBE=tools/mutate.py
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -111,6 +112,13 @@ plant_shellcheck_finding() {
 plant_uncovered_check() {
     # Name assembled at run time: G12 scans this file, so a literal would read as covered.
     printf '\n\ndef test_g%s_uncovered_probe() -> None:\n    """Probe."""\n' 99 >>"$TEST_GATE"
+}
+
+strip_spdx_header() {
+    local header
+    IFS= read -r header <"$SPDX_PROBE"
+    [[ $header == '# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception' ]] || return 1
+    sed -i '1d' "$SPDX_PROBE"
 }
 
 # Both S8 plants may carry literal names: S8 parses `.py` sources, so this script is outside its
@@ -208,6 +216,10 @@ probe g6-stage-list tests/test_gate.py::test_g6_gate_script_runs_every_expected_
 probe g13-nested-lock-audit tests/test_gate.py::test_g13_audit_stage_covers_every_lock \
     'model_backend/runtime' \
     sed -i '/^    uv audit --preview-features audit-command --locked --project model_backend\/runtime /d' "$GATE"
+
+probe g14-spdx-header tests/test_gate.py::test_g14_tracked_sources_carry_spdx_header \
+    "$SPDX_PROBE" \
+    strip_spdx_header
 
 probe g7-ecosystem tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert covered == {' \

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """W1 -- what the shipped admitted subset does to a committed capture run.
 
 Reads the raw model replies of ONE run, de-fences each through the capture harness' sole

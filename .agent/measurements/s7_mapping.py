@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """S7 leg 2 -- does an explicit C99 special-case mapping make `math.pow` reproduce numpy exactly?
 
 The generator measured `math.pow`'s exception classes against numpy's value categories and found

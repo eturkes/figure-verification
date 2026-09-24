@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"

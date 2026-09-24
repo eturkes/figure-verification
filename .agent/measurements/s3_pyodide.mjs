@@ -1,12 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadPyodide } from "pyodide";
 
 const root = dirname(fileURLToPath(import.meta.url));
+const packageName = process.argv[2] ?? "pyodide";
+const outputName = process.argv[3] ?? "s3.json";
+if (!["pyodide", "pyodide0281"].includes(packageName)) {
+  throw new Error(`Unknown Pyodide package: ${packageName}`);
+}
+const { loadPyodide } = await import(packageName);
+const packageVersion = JSON.parse(
+  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
+).version;
 const dataRoot = join(root, "s3-data");
 const manifest = JSON.parse(readFileSync(join(dataRoot, "manifest.json"), "utf8"));
-const pyodide = await loadPyodide();
+const pyodide = await loadPyodide({
+  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
+  packageCacheDir: join(root, "node_modules", packageName),
+});
 await pyodide.loadPackage("numpy");
 const metadata = JSON.parse(
   pyodide.runPython(`
@@ -121,5 +133,5 @@ json.dumps(_result)
   pyodide.FS.unlink("/host.f64le");
   pyodide.FS.unlink("/offsets.u64le");
 }
-writeFileSync(join(root, "s3.json"), `${JSON.stringify(results, null, 2)}\n`);
+writeFileSync(join(root, outputName), `${JSON.stringify(results, null, 2)}\n`);
 console.log(JSON.stringify(results));

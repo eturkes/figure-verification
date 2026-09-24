@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Mutation catalogue for the grouped reduction engine. Run: `uv run --locked python
 # tools/mutate.py tools/mutants/aggregate.toml`. One mutant per R-predicate, each naming the ONE
 # test that must go red under it.

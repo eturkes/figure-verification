@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G13: static-config invariants of the one gate command.
+"""G6-G14: static-config invariants of the one gate command.
 
-Contract: `.agent/archive/contracts/m13u0.md`.
+Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
+`.agent/archive/contracts/m10u7.md` (G14).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -242,3 +243,33 @@ def test_g13_audit_stage_covers_every_lock() -> None:
     assert audited == lock_dirs, (
         f"audit projects {sorted(audited)} != lock dirs {sorted(lock_dirs)}"
     )
+
+
+def test_g14_tracked_sources_carry_spdx_header() -> None:
+    """G14: tracked sources carry the licensed comment in their first three lines.
+
+    Generated lockfiles (`uv.lock`, `pnpm-lock.yaml`) and the held-out corpus are exempt.
+    Acceptance: every missing source path appears in the failure message.
+    """
+    tracked = subprocess.run(
+        ["/usr/bin/git", "ls-files", "-z", "--", ":(exclude)corpus/python/heldout/**"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        check=True,
+    )
+    suffixes = {".py", ".sh", ".mjs", ".js", ".toml", ".yml", ".yaml"}
+    lockfiles = {"uv.lock", "pnpm-lock.yaml"}
+    missing = []
+    for name in sorted(tracked.stdout.decode("utf-8").split("\0")):
+        if not name or name.startswith("corpus/python/heldout/"):
+            continue
+        path = Path(name)
+        if path.suffix not in suffixes or path.name in lockfiles:
+            continue
+        marker = "//" if path.suffix in {".mjs", ".js"} else "#"
+        header = f"{marker} SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception"
+        with (_REPO_ROOT / path).open(encoding="utf-8") as source:
+            first_three = (source.readline().strip() for _ in range(3))
+            if header not in first_three:
+                missing.append(name)
+    assert not missing, "tracked source files missing SPDX header:\n" + "\n".join(missing)

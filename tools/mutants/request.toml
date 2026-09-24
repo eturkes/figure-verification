@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Mutation catalogue for the user-request formula grammar. Each mutant neuters one condition;
 # the named test must change outcome. Run with tools/mutate.py and a private UV_PROJECT_ENVIRONMENT.
 module = "src/verifier/pysrc/request.py"

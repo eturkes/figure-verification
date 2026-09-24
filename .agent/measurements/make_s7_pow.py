@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """S7 -- `pow` inputs + the three host legs N8 needs.
 
 N7 puts `pow` in the libm-dependent class but the band was never measured for it, and `pow` is the

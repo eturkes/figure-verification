@@ -1,11 +1,23 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import { readFileSync, writeFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = "/home/eturkes/Projects/figure-verification/.scratch/spike-m13u5b";
-const source = "/home/eturkes/Projects/figure-verification/.scratch/spike-m13u5/s6-data/floats.csv";
-const modulePath = "/home/eturkes/Projects/figure-verification/.scratch/spike-m13u5b/pyodide-index/pyodide.mjs";
-const { loadPyodide } = await import(pathToFileURL(modulePath).href);
-const pyodide = await loadPyodide();
+const root = dirname(fileURLToPath(import.meta.url));
+const packageName = process.argv[2] ?? "pyodide";
+const outputName = process.argv[3] ?? "t6.json";
+const source = join(root, "s6-data", "floats.csv");
+if (!["pyodide", "pyodide0281"].includes(packageName)) {
+  throw new Error(`Unknown Pyodide package: ${packageName}`);
+}
+const { loadPyodide } = await import(packageName);
+const packageVersion = JSON.parse(
+  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
+).version;
+const pyodide = await loadPyodide({
+  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
+  packageCacheDir: join(root, "node_modules", packageName),
+});
 await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
 pyodide.FS.writeFile("/floats.csv", readFileSync(source));
 const result = await pyodide.runPythonAsync(`
@@ -182,5 +194,5 @@ json.dumps({
     "string_bar": string_result,
 })
 `);
-writeFileSync(`${root}/t6.json`, `${result}\n`);
+writeFileSync(join(root, outputName), `${result}\n`);
 console.log(result);

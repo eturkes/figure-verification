@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Mutation catalogue for the ADMISSION allowlist. Run: `uv run --locked python tools/mutate.py
 # tools/mutants/admit.toml`. Each mutant neuters ONE predicate's CONDITION and names the ONE test
 # that must go red under it.
