@@ -145,17 +145,16 @@ def test_k4_declared_open_always_names_the_artifact_gap() -> None:
         _INTENT_GAP,
         _NO_ARTIFACT,
     }
-    assert set(formula_targeted.certificate.declared_open) == {_ARTIFACT_GAP, _NO_ARTIFACT}
+    assert set(formula_targeted.certificate.declared_open) == {_ARTIFACT_GAP}
     for result in (dataset, formula_internal, formula_targeted):
         assert result.certificate.artifact_sha256 is None
 
 
 def test_k5_provenance_matrix() -> None:
-    """`provenance = "artifact"` only when every plotted number derives from user-supplied bytes:
-    the dataset arm with a matched target, or the formula arm with a `FormulaTarget`. Otherwise
-    `"internal"`.
+    """`provenance = "artifact"` only for a matched dataset or formula target. An unbound
+    formula stays internal; a formula given a dataset target refuses rather than claiming one.
 
-    Accept: the full arm x target matrix, each cell pinned.
+    Accept: the full arm x target matrix, including the crossed-arm refusal, each cell pinned.
     """
     from verifier.pysrc import Refused, Verified, verify_python_source  # noqa: PLC0415
 
@@ -178,10 +177,12 @@ def test_k5_provenance_matrix() -> None:
         verify_python_source(_FORMULA_SOURCE, declared_target=dataset_target),
         verify_python_source(_FORMULA_SOURCE, declared_target=formula_target),
     )
-    assert all(isinstance(result, Verified) for result in formula_results)
-    assert [
-        result.certificate.provenance for result in formula_results if isinstance(result, Verified)
-    ] == ["internal", "internal", "artifact"]
+    assert isinstance(formula_results[0], Verified)
+    assert formula_results[0].certificate.provenance == "internal"
+    assert isinstance(formula_results[1], Refused)
+    assert formula_results[1].code == "target_mismatch"
+    assert isinstance(formula_results[2], Verified)
+    assert formula_results[2].certificate.provenance == "artifact"
 
 
 def test_k6_interpretation_is_plain_words_and_model_free() -> None:

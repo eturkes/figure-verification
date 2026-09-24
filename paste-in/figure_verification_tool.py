@@ -295,6 +295,14 @@ class Grid:
 
 
 @dataclass(frozen=True, slots=True)
+class Interval:
+    """The user-stated x interval, with an inclusive stop and no promised sample count."""
+
+    start: Expr
+    stop: Expr
+
+
+@dataclass(frozen=True, slots=True)
 class Labels:
     """Everything the figure says about itself, for tier-3 publication.
 
@@ -394,17 +402,14 @@ class DatasetTarget:
 class FormulaTarget:
     """An expression the USER stated, already parsed into the core's own tree.
 
-    Carrying a tree rather than text keeps the core parser-free: a caller that holds the user's
-    formula as `expr-0.1` source parses it demo-side and hands the result here. `grid` is optional
-    because a request may state the function without stating the interval.
-
-    The demo supplies this for no one: a chat sentence is not a specification, and a model-produced
-    reading of it may never become the target -- the model would then own both sides of the
-    comparison. Absent a target the formula arm claims internal consistency and publishes the gap.
+    The core's request grammar builds this tree from the user's request sentence, independently of
+    the model-authored program. `Interval` binds only the stated bounds; `Grid` also binds a stated
+    sample count. A headless caller may omit the target, but that verdict claims only internal
+    consistency and publishes the gap.
     """
 
     y: Expr
-    grid: Grid | None = None
+    grid: Grid | Interval | None = None
 
 
 type DeclaredTarget = DatasetTarget | FormulaTarget
@@ -1687,6 +1692,7 @@ from verifier.pysrc.spec import (
     FormulaPlot,
     FormulaTarget,
     Grid,
+    Interval,
     Labels,
     Neg,
     Num,
@@ -1748,7 +1754,11 @@ _INTENT_GAP = (
 _NO_ARTIFACT = (
     "No user artifact was consumed. The plotted values come from the submitted program alone."
 )
-_UNUSED_DATA_FILE = "The supplied data file was not read by this chart."
+_SAMPLES_GAP = "The request states no sample count. The submitted program sets it."
+_INTERVAL_GAP = (
+    "The request states no x interval. "
+    "The submitted program sets the interval and the sample count."
+)
 _SPEC_DOMAIN = b"pysrc-spec-0.1\n"
 # Reduction -> the word a person reads. `min`/`max` are abbreviations a reader has to expand;
 # `sum` and `mean` are already the English words for what they do.
@@ -1866,11 +1876,13 @@ def _target_consumed(spec: CorePlotSpec, target: DeclaredTarget | None) -> bool:
     if isinstance(spec, DatasetPlot):
         return isinstance(target, DatasetTarget) and target.path == spec.source.path
     if isinstance(spec, FormulaPlot):
-        return (
-            isinstance(target, FormulaTarget)
-            and target.y == spec.y
-            and (target.grid is None or target.grid == spec.grid)
-        )
+        if not isinstance(target, FormulaTarget) or target.y != spec.y:
+            return False
+        if isinstance(target.grid, Grid):
+            return target.grid == spec.grid
+        if isinstance(target.grid, Interval):
+            return target.grid.start == spec.grid.start and target.grid.stop == spec.grid.stop
+        return target.grid is None
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is a closed union
 
 
@@ -1943,12 +1955,23 @@ def _dataset_text(
 
 
 def _interpretation(
-    spec: CorePlotSpec, table: PlottedTable, group_counts: tuple[int, ...] | None
+    spec: CorePlotSpec,
+    table: PlottedTable,
+    group_counts: tuple[int, ...] | None,
+    target: DeclaredTarget | None,
 ) -> str:
     if isinstance(spec, FormulaPlot):
+        bound = ""
+        if isinstance(target, FormulaTarget):
+            if isinstance(target.grid, Grid):
+                bound = "The formula, the x interval and the sample count match the request. "
+            elif isinstance(target.grid, Interval):
+                bound = "The formula and the x interval match the request. "
+            else:
+                bound = "The formula matches the request. "
         text = (
             f"Chart type: {spec.mark}. The data comes from the submitted program. "
-            f"Y computes {_expr_text(spec.y)}. X runs from {_expr_text(spec.grid.start)} to "
+            f"{bound}Y computes {_expr_text(spec.y)}. X runs from {_expr_text(spec.grid.start)} to "
             f"{_expr_text(spec.grid.stop)} in {spec.grid.samples} samples. Numbers follow the "
             f"profile {NUMERIC_PROFILE}."
         )
@@ -1983,11 +2006,12 @@ def certify(
     provenance: Provenance = "artifact" if consumed else "internal"
     declared_open = [_ARTIFACT_GAP]
     if isinstance(spec, FormulaPlot):
-        declared_open.append(_NO_ARTIFACT)
         if not isinstance(target, FormulaTarget):
-            declared_open.append(_INTENT_GAP)
-        if isinstance(target, DatasetTarget):
-            declared_open.append(_UNUSED_DATA_FILE)
+            declared_open.extend((_INTENT_GAP, _NO_ARTIFACT))
+        elif isinstance(target.grid, Interval):
+            declared_open.append(_SAMPLES_GAP)
+        elif target.grid is None:
+            declared_open.append(_INTERVAL_GAP)
     return CoreCertificate(
         version=CERTIFICATE_VERSION,
         source_sha256=_digest(source),
@@ -1999,7 +2023,7 @@ def certify(
         numeric_profile=NUMERIC_PROFILE,
         checks=_CHECKS,
         declared_open=tuple(declared_open),
-        interpretation=_interpretation(spec, table, group_counts),
+        interpretation=_interpretation(spec, table, group_counts, target),
     )
 '''
 
@@ -2969,6 +2993,392 @@ def project(tree: ast.Module, limits: PysrcLimits = DEFAULT_LIMITS) -> CorePlotS
     return _Projector(limits).run(tree)
 '''
 
+_SOURCES["verifier.pysrc.request"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Extract a formula target from the user's request, independently of program bytes.
+
+The expression lexer consumes one maximal run at a time. Each carrier is visited once; the
+Japanese interval probe skips starts inside a run it has already scanned. Nothing from a model
+program or chat history enters this parser.
+"""
+
+import math
+import re
+import unicodedata
+from dataclasses import dataclass
+from fractions import Fraction
+from typing import cast
+
+from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
+from verifier.pysrc.spec import (
+    Bin,
+    Const,
+    Expr,
+    Fn,
+    FnName,
+    FormulaTarget,
+    Grid,
+    Interval,
+    Neg,
+    Num,
+    Var,
+)
+
+REQUEST_GRAMMAR = "pyexpr-0.1"
+
+_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_FUNCTIONS = frozenset({"sin", "cos", "tan", "exp", "log", "sqrt", "abs"})
+_CONSTANTS = frozenset({"pi", "e"})
+_OPERATORS = frozenset({"+", "-", "*", "/", "(", ")"})
+
+
+class _InvalidError(Exception):
+    """A carrier cannot supply a target, never a verdict about the submitted program."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Token:
+    kind: str
+    text: str
+
+
+def _word(char: str) -> bool:
+    return "A" <= char <= "Z" or "a" <= char <= "z" or "0" <= char <= "9" or char == "_"
+
+
+def _japanese(char: str) -> bool:
+    return "　" <= char <= "ヿ" or "一" <= char <= "鿿"
+
+
+def _start_boundary(text: str, index: int) -> bool:
+    if index == 0:
+        return True
+    preceding = text[index - 1]
+    return preceding.isspace() or _japanese(preceding) or preceding in ",;:="
+
+
+def _prose_boundary(text: str, index: int) -> bool:
+    if index == len(text):
+        return True
+    current = text[index]
+    if current in " \t\r\n" or _japanese(current):
+        return True
+    if current in ",;:.?":
+        next_index = index + 1
+        return (
+            next_index == len(text) or text[next_index] in " \t\r\n" or _japanese(text[next_index])
+        )
+    return False
+
+
+def _spaces(text: str, index: int) -> int:
+    while index < len(text) and text[index] in " \t":
+        index += 1
+    return index
+
+
+def _lex(text: str, start: int, *, allow_x: bool) -> tuple[list[_Token], int]:
+    """Return the maximal run; `end` excludes trailing blanks before a prose boundary."""
+    tokens: list[_Token] = []
+    index = start
+    end = start
+    while index < len(text):
+        index = _spaces(text, index)
+        if index == len(text):
+            break
+        char = text[index]
+        if "0" <= char <= "9":
+            matched = _NUMBER.match(text, index)
+            if matched is None:  # pragma: no cover - every ASCII digit starts a number
+                raise _InvalidError
+            tokens.append(_Token("number", matched.group()))
+            end = index = matched.end()
+        elif ("A" <= char <= "Z") or ("a" <= char <= "z") or char == "_":
+            matched = _IDENTIFIER.match(text, index)
+            if matched is None:  # pragma: no cover - every ASCII letter starts an identifier
+                raise _InvalidError
+            name = matched.group()
+            if name not in _FUNCTIONS and name not in _CONSTANTS and not (allow_x and name == "x"):
+                break
+            tokens.append(_Token("name", name))
+            end = index = matched.end()
+        elif text.startswith("**", index):
+            tokens.append(_Token("operator", "**"))
+            end = index = index + 2
+        elif char in _OPERATORS:
+            tokens.append(_Token("operator", char))
+            end = index = index + 1
+        else:
+            break
+    return tokens, end
+
+
+class _Expression:
+    def __init__(self, tokens: list[_Token], limits: PysrcLimits) -> None:
+        self.tokens = tokens
+        self.index = 0
+        self.nodes = 0
+        self.limits = limits
+
+    def _node(self, value: Expr) -> Expr:
+        self.nodes += 1
+        if self.nodes > self.limits.max_expr_nodes:
+            raise _InvalidError
+        return value
+
+    def _nest(self, depth: int) -> int:
+        if depth >= self.limits.max_bracket_depth:
+            raise _InvalidError
+        return depth + 1
+
+    def _peek(self) -> str | None:
+        return self.tokens[self.index].text if self.index < len(self.tokens) else None
+
+    def _take(self, expected: str) -> None:
+        if self._peek() != expected:
+            raise _InvalidError
+        self.index += 1
+
+    def parse(self) -> Expr:
+        result = self._sum(0)
+        if self.index != len(self.tokens):
+            raise _InvalidError
+        return result
+
+    def _sum(self, depth: int) -> Expr:
+        value = self._product(depth)
+        while (operator := self._peek()) in ("+", "-"):
+            self.index += 1
+            right = self._product(depth)
+            value = self._node(Bin("add" if operator == "+" else "sub", value, right))
+        return value
+
+    def _product(self, depth: int) -> Expr:
+        value = self._unary(depth)
+        while (operator := self._peek()) in ("*", "/"):
+            self.index += 1
+            right = self._unary(depth)
+            value = self._node(Bin("mul" if operator == "*" else "div", value, right))
+        return value
+
+    def _unary(self, depth: int) -> Expr:
+        sign = self._peek()
+        if sign in ("+", "-"):
+            self.index += 1
+            operand = self._unary(self._nest(depth))
+            return self._node(Neg(operand)) if sign == "-" else operand
+        return self._power(depth)
+
+    def _power(self, depth: int) -> Expr:
+        value = self._primary(depth)
+        if self._peek() == "**":
+            self.index += 1
+            sign = self._peek()
+            if sign in ("+", "-"):
+                self.index += 1
+                self._nest(depth)
+            if self.index == len(self.tokens):
+                raise _InvalidError
+            token = self.tokens[self.index]
+            if token.kind != "number" or not token.text.isdecimal():
+                raise _InvalidError
+            self.index += 1
+            exponent = self._node(Num(Fraction(int(token.text))))
+            if sign == "-":
+                exponent = self._node(Neg(exponent))
+            value = self._node(Bin("pow", value, exponent))
+        return value
+
+    def _primary(self, depth: int) -> Expr:
+        if self.index == len(self.tokens):
+            raise _InvalidError
+        token = self.tokens[self.index]
+        self.index += 1
+        if token.kind == "number":
+            if "." in token.text or "e" in token.text.lower():
+                float_value = float(token.text)
+                if not math.isfinite(float_value):
+                    raise _InvalidError
+                return self._node(Num(Fraction(float_value)))
+            return self._node(Num(Fraction(int(token.text))))
+        if token.text == "x":
+            return self._node(Var())
+        if token.text in _CONSTANTS:
+            return self._node(Const("pi" if token.text == "pi" else "e"))
+        if token.text in _FUNCTIONS:
+            self._take("(")
+            argument = self._sum(self._nest(depth))
+            self._take(")")
+            # The lexer, not the model, chooses the name from the closed function vocabulary.
+            return self._node(Fn(cast("FnName", token.text), argument))
+        if token.text == "(":
+            value = self._sum(self._nest(depth))
+            self._take(")")
+            return value
+        raise _InvalidError
+
+
+def _expression(text: str, index: int, limits: PysrcLimits, *, allow_x: bool) -> tuple[Expr, int]:
+    tokens, end = _lex(text, index, allow_x=allow_x)
+    if not tokens:
+        raise _InvalidError
+    return _Expression(tokens, limits).parse(), end
+
+
+def _bracket_interval(text: str, start: int, limits: PysrcLimits) -> tuple[Interval, int]:
+    left, index = _expression(text, start, limits, allow_x=False)
+    index = _spaces(text, index)
+    if index == len(text) or text[index] != ",":
+        raise _InvalidError
+    right, index = _expression(text, index + 1, limits, allow_x=False)
+    index = _spaces(text, index)
+    if index == len(text) or text[index] != "]":
+        raise _InvalidError
+    return Interval(left, right), index + 1
+
+
+def _formula_start(text: str, index: int) -> int | None:
+    if index and _word(text[index - 1]):
+        return None
+    if text.startswith("f(x)", index):
+        end = index + 4
+    elif text[index] == "y":
+        end = index + 1
+    else:
+        return None
+    end = _spaces(text, end)
+    return end + 1 if end < len(text) and text[end] == "=" else None
+
+
+def _bracket_start(text: str, index: int) -> int | None:
+    if text[index] != "x" or (index and _word(text[index - 1])):
+        return None
+    end = _spaces(text, index + 1)
+    if text.startswith("∈", end):
+        end += 1
+    elif text[end : end + 2].lower() == "in":
+        end += 2
+    else:
+        return None
+    end = _spaces(text, end)
+    return end + 1 if end < len(text) and text[end] == "[" else None
+
+
+def _count_start(text: str, index: int) -> int | None:
+    if text[index] != "n" or (index and _word(text[index - 1])):
+        return None
+    end = _spaces(text, index + 1)
+    return end + 1 if end < len(text) and text[end] == "=" else None
+
+
+def _from_interval(text: str, index: int, limits: PysrcLimits) -> tuple[Interval, int] | None:
+    if (
+        (index and _word(text[index - 1]))
+        or text[index : index + 4].lower() != "from"
+        or text[index + 4 : index + 5] not in (" ", "\t")
+    ):
+        return None
+    try:
+        left, end = _expression(text, index + 4, limits, allow_x=False)
+        next_word = _spaces(text, end)
+        if (
+            next_word == end
+            or text[next_word : next_word + 2].lower() != "to"
+            or text[next_word + 2 : next_word + 3] not in (" ", "\t")
+        ):
+            return None
+        right, end = _expression(text, next_word + 2, limits, allow_x=False)
+        if not _prose_boundary(text, end):
+            return None
+    except _InvalidError:
+        return None
+    return Interval(left, right), end
+
+
+def _japanese_interval(text: str, index: int, limits: PysrcLimits) -> tuple[Interval | None, int]:
+    tokens, end = _lex(text, index, allow_x=False)
+    separator = _spaces(text, end)
+    if not tokens or not text.startswith("から", separator):
+        return None, end
+    try:
+        left = _Expression(tokens, limits).parse()
+        right, finish = _expression(text, separator + 2, limits, allow_x=False)
+    except _InvalidError:
+        return None, end
+    finish = _spaces(text, finish)
+    if not text.startswith("まで", finish):
+        return None, end
+    return Interval(left, right), finish + 2
+
+
+def formula_target(  # noqa: PLR0911, PLR0912 - each carrier fails closed in one linear pass
+    text: str, limits: PysrcLimits = DEFAULT_LIMITS
+) -> FormulaTarget | None:
+    """Extract one user-authored formula and interval; any ambiguity leaves no target."""
+    normalized = unicodedata.normalize("NFKC", text)
+    try:
+        if (
+            limits.max_source_bytes < 1
+            or limits.max_expr_nodes < 1
+            or limits.max_bracket_depth < 1
+            or len(normalized.encode("utf-8")) > limits.max_source_bytes
+        ):
+            return None
+        formula: Expr | None = None
+        interval: Interval | None = None
+        samples: int | None = None
+        spans: list[tuple[int, int]] = []
+        japanese_scanned = 0
+        for index in range(len(normalized)):
+            if (start := _formula_start(normalized, index)) is not None:
+                if formula is not None:
+                    return None
+                formula, finish = _expression(normalized, start, limits, allow_x=True)
+                if not _prose_boundary(normalized, finish):
+                    return None
+                spans.append((index, finish))
+            if (start := _bracket_start(normalized, index)) is not None:
+                if interval is not None:
+                    return None
+                interval, finish = _bracket_interval(normalized, start, limits)
+                spans.append((index, finish))
+            if (start := _count_start(normalized, index)) is not None:
+                if samples is not None:
+                    return None
+                finish = _spaces(normalized, start)
+                begin = finish
+                while finish < len(normalized) and "0" <= normalized[finish] <= "9":
+                    finish += 1
+                if finish == begin or not _prose_boundary(normalized, finish):
+                    return None
+                samples = int(normalized[begin:finish])
+                spans.append((index, finish))
+            if (found := _from_interval(normalized, index, limits)) is not None:
+                if interval is not None:
+                    return None
+                interval, finish = found
+                spans.append((index, finish))
+            if index >= japanese_scanned and _start_boundary(normalized, index):
+                japanese_candidate, japanese_scanned = _japanese_interval(normalized, index, limits)
+                if japanese_candidate is not None:
+                    if interval is not None:
+                        return None
+                    interval = japanese_candidate
+                    spans.append((index, japanese_scanned))
+        if formula is None or interval is None:
+            return None
+        spans.sort()
+        if any(spans[index][1] > spans[index + 1][0] for index in range(len(spans) - 1)):
+            return None
+        grid: Grid | Interval = (
+            Grid(interval.start, interval.stop, samples) if samples is not None else interval
+        )
+        return FormulaTarget(formula, grid)
+    except (_InvalidError, UnicodeError, ValueError, OverflowError, RecursionError):
+        return None
+'''
+
 _SOURCES["verifier.pysrc.csvread"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The safe CSV profile: what the verifier parses with stdlib `csv` + `float`, and what it refuses.
@@ -3316,6 +3726,8 @@ from verifier.pysrc.spec import (
     Fn,
     FormulaPlot,
     FormulaTarget,
+    Grid,
+    Interval,
     Neg,
     Num,
     Var,
@@ -3382,13 +3794,19 @@ def bind_target(spec: CorePlotSpec, target: DeclaredTarget | None) -> DeclaredTa
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
-            if spec.y != target.y or (target.grid is not None and spec.grid != target.grid):
+            if spec.y != target.y:
+                _refuse("target_mismatch")
+            if isinstance(target.grid, Grid) and spec.grid != target.grid:
+                _refuse("target_mismatch")
+            if isinstance(target.grid, Interval) and (
+                spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop
+            ):
                 _refuse("target_mismatch")
             return target
         if target is None:
             return None
         if isinstance(target, DatasetTarget):
-            return target
+            _refuse("target_mismatch")
         assert_never(target)  # pragma: no cover - `DeclaredTarget` is closed
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is closed
 
@@ -3600,10 +4018,9 @@ nothing and decides nothing -- a second opinion here would be a pass/fail bounda
 verifier, which ruling 5 forbids.
 
 Target selection is the one choice it makes, and it moves no boundary because every candidate is a
-user artifact and the core decides each one. Zero attachments cannot verify at all. One attachment
-gets one call. Several get one call each, in chat order, and the first verdict that is not
-`target_mismatch` wins -- so the program's own `read_csv` literal picks the file, decided inside
-the core by a byte-for-byte path comparison.
+user artifact and the core decides each one. Owned attachments are tried in chat order; the formula
+target parsed from the user's own request follows them. The first verdict other than
+a `target_mismatch` wins. No program byte or assistant message supplies the formula target.
 
 `Tools` is Open WebUI's fixed entry name; it instantiates the class once and exposes every public
 method to the model (`utils/plugin.py`, `utils/tools.py`), so a helper here must stay private or it
@@ -3615,7 +4032,8 @@ Publication is the outlet filter's, not this return value: only a backend-record
 publish a figure (transport ruling), and the filter re-derives the verdict from that record.
 """
 
-from verifier.pysrc.spec import DatasetTarget
+from verifier.pysrc.request import formula_target
+from verifier.pysrc.spec import DatasetTarget, FormulaTarget
 from verifier.pysrc.verify import Refused, Verdict, Verified, verify_python_source
 from webui.paste_in.owui_files import UploadedFile, uploaded_files
 from webui.paste_in.verdicts import CHART_NOT_PRODUCED, CHART_PRODUCED
@@ -3625,17 +4043,28 @@ from webui.paste_in.verdicts import CHART_NOT_PRODUCED, CHART_PRODUCED
 _TARGET_MISMATCH = "target_mismatch"
 
 
-def _first_verdict(program: str, attachments: tuple[UploadedFile, ...]) -> Verdict | None:
-    """The first verdict about the file the program named, else the last mismatch, else nothing."""
+def _first_verdict(
+    program: str, attachments: tuple[UploadedFile, ...], formula: FormulaTarget | None
+) -> Verdict | None:
+    """Try owned files, then the user-stated formula; only a target mismatch continues."""
+    candidates: tuple[DatasetTarget | FormulaTarget, ...] = tuple(
+        DatasetTarget(path=attachment.path, content=attachment.content)
+        for attachment in attachments
+    ) + ((formula,) if formula is not None else ())
     outcome: Verdict | None = None
-    for attachment in attachments:
-        outcome = verify_python_source(
-            program,
-            declared_target=DatasetTarget(path=attachment.path, content=attachment.content),
-        )
+    for candidate in candidates:
+        outcome = verify_python_source(program, declared_target=candidate)
         if not (isinstance(outcome, Refused) and outcome.code == _TARGET_MISMATCH):
             return outcome
     return outcome
+
+
+def _request_text(metadata: dict[str, object] | None) -> str | None:
+    user_message = (metadata or {}).get("user_message")
+    if not isinstance(user_message, dict):
+        return None
+    content = user_message.get("content")
+    return content if isinstance(content, str) else None
 
 
 class Tools:
@@ -3655,7 +4084,9 @@ class Tools:
         if not isinstance(user_id, str):
             return CHART_NOT_PRODUCED
         attachments = await uploaded_files(__metadata__, user_id)
-        verdict = _first_verdict(program, attachments)
+        request = _request_text(__metadata__)
+        formula = formula_target(request) if request is not None else None
+        verdict = _first_verdict(program, attachments, formula)
         return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED
 '''
 

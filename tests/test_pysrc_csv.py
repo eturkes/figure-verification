@@ -150,13 +150,18 @@ def test_c4_formula_target_compares_structurally() -> None:
 
 
 def test_c5_formula_arm_never_silently_consumes_a_target() -> None:
-    """Every formula arm declares that no user artifact was consumed; a supplied dataset target
-    also declares that its file was not read.
+    """A formula consumes a matched user formula target and discloses only the unbound gap.
 
-    Accept: both `declared_open` strings byte-pinned across all three formula/target combinations.
+    Accept: the exact formula/target matrix; a supplied dataset target refuses rather than
+    verifying against unrelated bytes or publishing an unreachable unused-file sentence.
     """
-    from verifier.pysrc import Verified, verify_python_source  # noqa: PLC0415
+    from verifier.pysrc import Refused, Verified, verify_python_source  # noqa: PLC0415
 
+    artifact_gap = "The emitted image is not compared against this table."
+    intent_gap = (
+        "The plotted values are the submitted program's own expression, "
+        "not a target the user stated."
+    )
     no_artifact_sentence = (
         "No user artifact was consumed. The plotted values come from the submitted program alone."
     )
@@ -170,17 +175,20 @@ def test_c5_formula_arm_never_silently_consumes_a_target() -> None:
     results = [
         verify_python_source(_formula_source(), declared_target=target) for target in targets
     ]
-    assert all(isinstance(result, Verified) for result in results)
-    certificates = [result.certificate for result in results if isinstance(result, Verified)]
-    assert [certificate.provenance for certificate in certificates] == [
-        "internal",
-        "internal",
-        "artifact",
-    ]
-    assert all(no_artifact_sentence in certificate.declared_open for certificate in certificates)
-    assert unused_file_sentence not in certificates[0].declared_open
-    assert unused_file_sentence in certificates[1].declared_open
-    assert unused_file_sentence not in certificates[2].declared_open
+    assert isinstance(results[0], Verified)
+    assert isinstance(results[1], Refused)
+    assert results[1].code == "target_mismatch"
+    assert isinstance(results[2], Verified)
+    assert results[0].certificate.provenance == "internal"
+    assert results[2].certificate.provenance == "artifact"
+    assert set(results[0].certificate.declared_open) == {
+        artifact_gap,
+        intent_gap,
+        no_artifact_sentence,
+    }
+    assert set(results[2].certificate.declared_open) == {artifact_gap}
+    assert unused_file_sentence not in results[0].certificate.declared_open
+    assert unused_file_sentence not in results[2].certificate.declared_open
 
 
 def test_c6_strict_structural_profile() -> None:

@@ -1,0 +1,79 @@
+# Certificate evidence: every formula binding form publishes its own exact residual gaps.
+# Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
+module = "src/verifier/pysrc/certificate.py"
+tests = ["tests/test_pysrc_formula_target.py"]
+
+[[mutant]]
+id = "c4-formula-consumption-erased"
+predicate = "matching user formula+Grid bytes count as an artifact, not internal provenance"
+kills = "tests/test_pysrc_formula_target.py::test_c4_every_bound_formula_property"
+anchor = '''        if isinstance(target.grid, Grid):
+            return target.grid == spec.grid'''
+mutant = '''        if isinstance(target.grid, Grid):
+            return False'''
+
+[[mutant]]
+id = "c5-artifact-gap-dropped"
+predicate = "a bound dataset and every formula report that pixels are not verified"
+kills = "tests/test_pysrc_formula_target.py::test_c5_bound_dataset_and_unbound_formula_gaps_remain_exact"
+anchor = '''    declared_open = [_ARTIFACT_GAP]'''
+mutant = '''    declared_open = []'''
+
+[[mutant]]
+id = "c5-unbound-formula-gaps-dropped"
+predicate = "an unbound formula names intent and absence of the user artifact"
+kills = "tests/test_pysrc_formula_target.py::test_c5_bound_dataset_and_unbound_formula_gaps_remain_exact"
+anchor = '''        if not isinstance(target, FormulaTarget):
+            declared_open.extend((_INTENT_GAP, _NO_ARTIFACT))'''
+mutant = '''        if not isinstance(target, FormulaTarget):
+            pass'''
+
+[[mutant]]
+id = "c5-grid-samples-reopened"
+predicate = "an exactly bound Grid does not say the sample count was supplied by the program"
+kills = "tests/test_pysrc_formula_target.py::test_c5_grid_bound_formula_only_has_artifact_gap"
+anchor = '''        elif target.grid is None:
+            declared_open.append(_INTERVAL_GAP)'''
+mutant = '''        elif isinstance(target.grid, Grid):
+            declared_open.append(_SAMPLES_GAP)
+        elif target.grid is None:
+            declared_open.append(_INTERVAL_GAP)'''
+
+[[mutant]]
+id = "c5-interval-samples-gap-dropped"
+predicate = "an interval-only request leaves the sample count open"
+kills = "tests/test_pysrc_formula_target.py::test_c5_interval_bound_formula_names_samples_gap_exactly"
+anchor = '''        elif isinstance(target.grid, Interval):
+            declared_open.append(_SAMPLES_GAP)'''
+mutant = '''        elif isinstance(target.grid, Interval):
+            pass'''
+
+[[mutant]]
+id = "c5-no-domain-interval-gap-dropped"
+predicate = "a formula-only request leaves the interval and sample count open"
+kills = "tests/test_pysrc_formula_target.py::test_c5_no_domain_formula_names_interval_gap_exactly"
+anchor = '''        elif target.grid is None:
+            declared_open.append(_INTERVAL_GAP)'''
+mutant = '''        elif target.grid is None:
+            pass'''
+
+[[mutant]]
+id = "c6-grid-interpretation-downgraded"
+predicate = "a Grid-bound formula reports its sample-count match in plain words"
+kills = "tests/test_pysrc_formula_target.py::test_c6_bound_interpretation_is_byte_pinned"
+anchor = '''                bound = "The formula, the x interval and the sample count match the request. "'''
+mutant = '''                bound = "The formula and the x interval match the request. "'''
+
+[[mutant]]
+id = "c6-interval-interpretation-downgraded"
+predicate = "an Interval-bound formula reports its interval match in plain words"
+kills = "tests/test_pysrc_formula_target.py::test_c6_bound_interpretation_is_byte_pinned"
+anchor = '''                bound = "The formula and the x interval match the request. "'''
+mutant = '''                bound = "The formula matches the request. "'''
+
+[[mutant]]
+id = "c6-no-domain-interpretation-dropped"
+predicate = "a bound formula with no domain still states that the formula matches"
+kills = "tests/test_pysrc_formula_target.py::test_c6_bound_interpretation_is_byte_pinned"
+anchor = '''                bound = "The formula matches the request. "'''
+mutant = '''                bound = ""'''

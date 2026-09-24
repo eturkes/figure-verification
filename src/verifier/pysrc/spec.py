@@ -96,6 +96,14 @@ class Grid:
 
 
 @dataclass(frozen=True, slots=True)
+class Interval:
+    """The user-stated x interval, with an inclusive stop and no promised sample count."""
+
+    start: Expr
+    stop: Expr
+
+
+@dataclass(frozen=True, slots=True)
 class Labels:
     """Everything the figure says about itself, for tier-3 publication.
 
@@ -195,17 +203,14 @@ class DatasetTarget:
 class FormulaTarget:
     """An expression the USER stated, already parsed into the core's own tree.
 
-    Carrying a tree rather than text keeps the core parser-free: a caller that holds the user's
-    formula as `expr-0.1` source parses it demo-side and hands the result here. `grid` is optional
-    because a request may state the function without stating the interval.
-
-    The demo supplies this for no one: a chat sentence is not a specification, and a model-produced
-    reading of it may never become the target -- the model would then own both sides of the
-    comparison. Absent a target the formula arm claims internal consistency and publishes the gap.
+    The core's request grammar builds this tree from the user's request sentence, independently of
+    the model-authored program. `Interval` binds only the stated bounds; `Grid` also binds a stated
+    sample count. A headless caller may omit the target, but that verdict claims only internal
+    consistency and publishes the gap.
     """
 
     y: Expr
-    grid: Grid | None = None
+    grid: Grid | Interval | None = None
 
 
 type DeclaredTarget = DatasetTarget | FormulaTarget

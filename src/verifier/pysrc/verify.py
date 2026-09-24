@@ -39,6 +39,8 @@ from verifier.pysrc.spec import (
     Fn,
     FormulaPlot,
     FormulaTarget,
+    Grid,
+    Interval,
     Neg,
     Num,
     Var,
@@ -105,13 +107,19 @@ def bind_target(spec: CorePlotSpec, target: DeclaredTarget | None) -> DeclaredTa
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
-            if spec.y != target.y or (target.grid is not None and spec.grid != target.grid):
+            if spec.y != target.y:
+                _refuse("target_mismatch")
+            if isinstance(target.grid, Grid) and spec.grid != target.grid:
+                _refuse("target_mismatch")
+            if isinstance(target.grid, Interval) and (
+                spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop
+            ):
                 _refuse("target_mismatch")
             return target
         if target is None:
             return None
         if isinstance(target, DatasetTarget):
-            return target
+            _refuse("target_mismatch")
         assert_never(target)  # pragma: no cover - `DeclaredTarget` is closed
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is closed
 

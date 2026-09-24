@@ -31,6 +31,7 @@ from verifier.pysrc.spec import (
     FormulaPlot,
     FormulaTarget,
     Grid,
+    Interval,
     Labels,
     Neg,
     Num,
@@ -92,7 +93,11 @@ _INTENT_GAP = (
 _NO_ARTIFACT = (
     "No user artifact was consumed. The plotted values come from the submitted program alone."
 )
-_UNUSED_DATA_FILE = "The supplied data file was not read by this chart."
+_SAMPLES_GAP = "The request states no sample count. The submitted program sets it."
+_INTERVAL_GAP = (
+    "The request states no x interval. "
+    "The submitted program sets the interval and the sample count."
+)
 _SPEC_DOMAIN = b"pysrc-spec-0.1\n"
 # Reduction -> the word a person reads. `min`/`max` are abbreviations a reader has to expand;
 # `sum` and `mean` are already the English words for what they do.
@@ -210,11 +215,13 @@ def _target_consumed(spec: CorePlotSpec, target: DeclaredTarget | None) -> bool:
     if isinstance(spec, DatasetPlot):
         return isinstance(target, DatasetTarget) and target.path == spec.source.path
     if isinstance(spec, FormulaPlot):
-        return (
-            isinstance(target, FormulaTarget)
-            and target.y == spec.y
-            and (target.grid is None or target.grid == spec.grid)
-        )
+        if not isinstance(target, FormulaTarget) or target.y != spec.y:
+            return False
+        if isinstance(target.grid, Grid):
+            return target.grid == spec.grid
+        if isinstance(target.grid, Interval):
+            return target.grid.start == spec.grid.start and target.grid.stop == spec.grid.stop
+        return target.grid is None
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is a closed union
 
 
@@ -287,12 +294,23 @@ def _dataset_text(
 
 
 def _interpretation(
-    spec: CorePlotSpec, table: PlottedTable, group_counts: tuple[int, ...] | None
+    spec: CorePlotSpec,
+    table: PlottedTable,
+    group_counts: tuple[int, ...] | None,
+    target: DeclaredTarget | None,
 ) -> str:
     if isinstance(spec, FormulaPlot):
+        bound = ""
+        if isinstance(target, FormulaTarget):
+            if isinstance(target.grid, Grid):
+                bound = "The formula, the x interval and the sample count match the request. "
+            elif isinstance(target.grid, Interval):
+                bound = "The formula and the x interval match the request. "
+            else:
+                bound = "The formula matches the request. "
         text = (
             f"Chart type: {spec.mark}. The data comes from the submitted program. "
-            f"Y computes {_expr_text(spec.y)}. X runs from {_expr_text(spec.grid.start)} to "
+            f"{bound}Y computes {_expr_text(spec.y)}. X runs from {_expr_text(spec.grid.start)} to "
             f"{_expr_text(spec.grid.stop)} in {spec.grid.samples} samples. Numbers follow the "
             f"profile {NUMERIC_PROFILE}."
         )
@@ -327,11 +345,12 @@ def certify(
     provenance: Provenance = "artifact" if consumed else "internal"
     declared_open = [_ARTIFACT_GAP]
     if isinstance(spec, FormulaPlot):
-        declared_open.append(_NO_ARTIFACT)
         if not isinstance(target, FormulaTarget):
-            declared_open.append(_INTENT_GAP)
-        if isinstance(target, DatasetTarget):
-            declared_open.append(_UNUSED_DATA_FILE)
+            declared_open.extend((_INTENT_GAP, _NO_ARTIFACT))
+        elif isinstance(target.grid, Interval):
+            declared_open.append(_SAMPLES_GAP)
+        elif target.grid is None:
+            declared_open.append(_INTERVAL_GAP)
     return CoreCertificate(
         version=CERTIFICATE_VERSION,
         source_sha256=_digest(source),
@@ -343,5 +362,5 @@ def certify(
         numeric_profile=NUMERIC_PROFILE,
         checks=_CHECKS,
         declared_open=tuple(declared_open),
-        interpretation=_interpretation(spec, table, group_counts),
+        interpretation=_interpretation(spec, table, group_counts, target),
     )

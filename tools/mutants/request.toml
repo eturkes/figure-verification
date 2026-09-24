@@ -1,0 +1,212 @@
+# Mutation catalogue for the user-request formula grammar. Each mutant neuters one condition;
+# the named test must change outcome. Run with tools/mutate.py and a private UV_PROJECT_ENVIRONMENT.
+module = "src/verifier/pysrc/request.py"
+tests = ["tests/test_pysrc_request.py", "tests/test_pysrc_request_internal.py"]
+
+[[mutant]]
+id = "r2-nfkc-omitted"
+predicate = "full-width request text is folded before carrier and expression extraction"
+kills = "tests/test_pysrc_request.py::test_r2_nfkc_is_applied_before_carrier_and_expression_rules"
+anchor = '''    normalized = unicodedata.normalize("NFKC", text)'''
+mutant = '''    normalized = text'''
+
+[[mutant]]
+id = "r2-byte-cap-one-over"
+predicate = "the normalized UTF-8 byte cap rejects the first excess byte"
+kills = "tests/test_pysrc_request.py::test_r2_normalized_utf8_byte_cap_is_not_raw_character_count"
+anchor = '''            or len(normalized.encode("utf-8")) > limits.max_source_bytes'''
+mutant = '''            or len(normalized.encode("utf-8")) > limits.max_source_bytes + 1'''
+
+[[mutant]]
+id = "r3-literal-float64-bypassed"
+predicate = "a decimal literal is rounded through binary64 before becoming a Num"
+kills = "tests/test_pysrc_request.py::test_r3_bounds_have_the_same_tree_shape_as_y"
+anchor = '''                return self._node(Num(Fraction(float_value)))'''
+mutant = '''                return self._node(Num(Fraction(token.text)))'''
+
+[[mutant]]
+id = "r3-exponent-sign-lost"
+predicate = "a negative integer power remains a Neg over the positive integer exponent"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''            if sign == "-":
+                exponent = self._node(Neg(exponent))'''
+mutant = '''            if False:
+                exponent = self._node(Neg(exponent))'''
+
+[[mutant]]
+id = "r3-exponent-value-shifted"
+predicate = "the exponent is read from its literal, never inferred from context"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''            exponent = self._node(Num(Fraction(int(token.text))))'''
+mutant = '''            exponent = self._node(Num(Fraction(int(token.text) + 1)))'''
+
+[[mutant]]
+id = "r3-sum-operator-inverted"
+predicate = "addition and subtraction map to distinct AST nodes"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''            value = self._node(Bin("add" if operator == "+" else "sub", value, right))'''
+mutant = '''            value = self._node(Bin("sub" if operator == "+" else "add", value, right))'''
+
+[[mutant]]
+id = "r3-product-operator-inverted"
+predicate = "multiplication and division map to distinct AST nodes"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''            value = self._node(Bin("mul" if operator == "*" else "div", value, right))'''
+mutant = '''            value = self._node(Bin("div" if operator == "*" else "mul", value, right))'''
+
+[[mutant]]
+id = "r3-unary-sign-erased"
+predicate = "unary minus changes a tree; unary plus does not"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''            return self._node(Neg(operand)) if sign == "-" else operand'''
+mutant = '''            return operand'''
+
+[[mutant]]
+id = "r3-scientific-minus-lost"
+predicate = "scientific notation may carry an exponent minus sign"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")'''
+mutant = '''_NUMBER = re.compile(r"[0-9]+(?:\.[0-9]+)?(?:[eE][+]?[0-9]+)?")'''
+
+[[mutant]]
+id = "r3-function-set-narrowed"
+predicate = "tan is an admitted math function, not an unrecognized name"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''_FUNCTIONS = frozenset({"sin", "cos", "tan", "exp", "log", "sqrt", "abs"})'''
+mutant = '''_FUNCTIONS = frozenset({"sin", "cos", "exp", "log", "sqrt", "abs"})'''
+
+[[mutant]]
+id = "r3-constants-narrowed"
+predicate = "e is a named constant, not unrecognized request prose"
+kills = "tests/test_pysrc_request.py::test_r3_expression_trees_are_structural"
+anchor = '''_CONSTANTS = frozenset({"pi", "e"})'''
+mutant = '''_CONSTANTS = frozenset({"pi"})'''
+
+[[mutant]]
+id = "r5-formula-keyword-prefix-open"
+predicate = "a formula carrier begins at a whole identifier boundary"
+kills = "tests/test_pysrc_request.py::test_r5_keywords_and_bounds_are_closed_by_context"
+anchor = '''    if index and _word(text[index - 1]):
+        return None
+    if text.startswith("f(x)", index):'''
+mutant = '''    if False:
+        return None
+    if text.startswith("f(x)", index):'''
+
+[[mutant]]
+id = "r5-bracket-keyword-case-closed"
+predicate = "the English interval keyword accepts IN as well as in"
+kills = "tests/test_pysrc_request.py::test_r5_each_carrier_form_english_and_japanese"
+anchor = '''    elif text[end : end + 2].lower() == "in":'''
+mutant = '''    elif text[end : end + 2] == "in":'''
+
+[[mutant]]
+id = "r5-from-keyword-case-closed"
+predicate = "the English from/to carrier accepts upper-case keywords"
+kills = "tests/test_pysrc_request.py::test_r5_each_carrier_form_english_and_japanese"
+anchor = '''        or text[index : index + 4].lower() != "from"'''
+mutant = '''        or text[index : index + 4] != "from"'''
+
+[[mutant]]
+id = "r5-bounds-variable-accepted"
+predicate = "interval bounds cannot name the grid variable x"
+kills = "tests/test_pysrc_request.py::test_r5_keywords_and_bounds_are_closed_by_context"
+anchor = '''    left, index = _expression(text, start, limits, allow_x=False)'''
+mutant = '''    left, index = _expression(text, start, limits, allow_x=True)'''
+
+[[mutant]]
+id = "r5-japanese-start-removed"
+predicate = "a Japanese から separator binds the interval"
+kills = "tests/test_pysrc_request.py::test_r5_each_carrier_form_english_and_japanese"
+anchor = '''    if not tokens or not text.startswith("から", separator):'''
+mutant = '''    if not tokens or not text.startswith("まで", separator):'''
+
+[[mutant]]
+id = "r5-japanese-space-before-kara-ignored"
+predicate = "spaces before から are valid inside a complete Japanese interval"
+kills = "tests/test_pysrc_request_internal.py::test_internal_carrier_forms"
+anchor = '''    separator = _spaces(text, end)'''
+mutant = '''    separator = end'''
+
+[[mutant]]
+id = "r5-japanese-space-before-made-ignored"
+predicate = "spaces before まで are valid inside a complete Japanese interval"
+kills = "tests/test_pysrc_request_internal.py::test_internal_carrier_forms"
+anchor = '''    finish = _spaces(text, finish)
+    if not text.startswith("まで", finish):'''
+mutant = '''    if not text.startswith("まで", finish):'''
+
+[[mutant]]
+id = "r6-japanese-prose-boundary-erased"
+predicate = "Japanese text can follow the formula without whitespace"
+kills = "tests/test_pysrc_request.py::test_r6_maximal_spans_and_prose_boundaries"
+anchor = '''    if current in " \t\r\n" or _japanese(current):'''
+mutant = '''    if current in " \t\r\n":'''
+
+[[mutant]]
+id = "r6-comma-without-prose-allowed"
+predicate = "a comma without a prose boundary cannot truncate the formula"
+kills = "tests/test_pysrc_request.py::test_r6_maximal_spans_and_prose_boundaries"
+anchor = '''            next_index == len(text) or text[next_index] in " \t\r\n" or _japanese(text[next_index])'''
+mutant = '''            True'''
+
+[[mutant]]
+id = "r7-formula-multiplicity-erased"
+predicate = "a second complete formula carrier makes the target ambiguous"
+kills = "tests/test_pysrc_request.py::test_r7_one_of_each_carrier_and_disjoint_spans"
+anchor = '''                if formula is not None:
+                    return None
+                formula, finish = _expression(normalized, start, limits, allow_x=True)'''
+mutant = '''                if False:
+                    return None
+                formula, finish = _expression(normalized, start, limits, allow_x=True)'''
+
+[[mutant]]
+id = "r7-interval-multiplicity-erased"
+predicate = "a second bracket interval makes the target ambiguous"
+kills = "tests/test_pysrc_request.py::test_r7_one_of_each_carrier_and_disjoint_spans"
+anchor = '''                if interval is not None:
+                    return None
+                interval, finish = _bracket_interval(normalized, start, limits)'''
+mutant = '''                if False:
+                    return None
+                interval, finish = _bracket_interval(normalized, start, limits)'''
+
+[[mutant]]
+id = "r7-count-multiplicity-erased"
+predicate = "a second sample count cannot supersede the first"
+kills = "tests/test_pysrc_request.py::test_r7_one_of_each_carrier_and_disjoint_spans"
+anchor = '''                if samples is not None:
+                    return None
+                finish = _spaces(normalized, start)'''
+mutant = '''                if False:
+                    return None
+                finish = _spaces(normalized, start)'''
+
+[[mutant]]
+id = "r7-span-overlap-ignored"
+predicate = "a formula and interval cannot occupy the same request bytes"
+kills = "tests/test_pysrc_request.py::test_r7_one_of_each_carrier_and_disjoint_spans"
+anchor = '''        if any(spans[index][1] > spans[index + 1][0] for index in range(len(spans) - 1)):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "r7-count-trailing-garbage-ignored"
+predicate = "n=3x is not the count n=3 followed by separate prose"
+kills = "tests/test_pysrc_request_internal.py::test_internal_malformed_carriers_fail_closed"
+anchor = '''                if finish == begin or not _prose_boundary(normalized, finish):'''
+mutant = '''                if finish == begin:'''
+
+[[mutant]]
+id = "r8-node-limit-off-by-one"
+predicate = "each expression rejects the first AST node beyond the caller's limit"
+kills = "tests/test_pysrc_request.py::test_r8_node_and_nesting_limits_bind_each_carrier"
+anchor = '''        if self.nodes > self.limits.max_expr_nodes:'''
+mutant = '''        if self.nodes > self.limits.max_expr_nodes + 1:'''
+
+[[mutant]]
+id = "r8-depth-limit-off-by-one"
+predicate = "the caller's nesting limit is inclusive of each function or parenthesis"
+kills = "tests/test_pysrc_request.py::test_r8_node_and_nesting_limits_bind_each_carrier"
+anchor = '''        if depth >= self.limits.max_bracket_depth:'''
+mutant = '''        if depth > self.limits.max_bracket_depth:'''

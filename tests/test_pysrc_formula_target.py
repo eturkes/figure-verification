@@ -1,84 +1,343 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.4 core target widening.
 
-Contract: `.agent/contracts/m10u4.md` predicate group C. Each docstring carries its
-predicate's acceptance check; the check is the test's specification and the contract's wording
-wins wherever a body would assert more.
-
-Skeleton: each body is `pytest.skip`, retired at M10.4's close together with this line.
+Contract: `.agent/archive/contracts/m10u4.md` predicate group C. Each test states the
+expected tree, refusal code, declared gap or certificate bytes independently.
 """
 
+from dataclasses import FrozenInstanceError, fields
+from fractions import Fraction
+from typing import get_args, get_type_hints
+
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from verifier.pysrc import RefusalCode, Refused, Verified, spec, verify_python_source
+from verifier.pysrc.certificate import CERTIFICATE_VERSION, CoreCertificate
+
+_FORMULA_SOURCE = (
+    "import numpy as np\n"
+    "import matplotlib.pyplot as plt\n"
+    "x = np.linspace(0, 1, num=3)\n"
+    "y = np.sin(x)\n"
+    "plt.plot(x, y)\n"
+    "plt.show()\n"
+)
+_DATASET_SOURCE = (
+    "import pandas as pd\n"
+    "import matplotlib.pyplot as plt\n"
+    'df = pd.read_csv("measurements.csv")\n'
+    'plt.bar(df["site"], df["value"])\n'
+    "plt.show()\n"
+)
+_DATASET_BYTES = b"site,value\nwest,1\neast,2\n"
+_ARTIFACT_GAP = "The emitted image is not compared against this table."
+_INTENT_GAP = (
+    "The plotted values are the submitted program's own expression, not a target the user stated."
+)
+_NO_ARTIFACT = (
+    "No user artifact was consumed. The plotted values come from the submitted program alone."
+)
+_SAMPLES_GAP = "The request states no sample count. The submitted program sets it."
+_INTERVAL_GAP = (
+    "The request states no x interval. The submitted program sets the interval "
+    "and the sample count."
+)
+_BASE_INTERPRETATION = (
+    "Chart type: line. The data comes from the submitted program. Y computes sin(x). "
+    "X runs from 0 to 1 in 3 samples. Numbers follow the profile binary64-libm-v1."
+)
 
 
-def test_c1_spec_interval_start_expr_stop_expr() -> None:
-    """C1: `spec.Interval(start: Expr, stop: Expr)` = frozen slotted dataclass, `stop` INCLUSIVE;
-    `FormulaTarget.grid: Grid | Interval | None = None`.
-
-    Accept: Field sets hand-pinned: `Interval` = {start, stop}; `FormulaTarget` = {y, grid}
-    (unchanged).
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+def _num(value: int | float) -> spec.Num:
+    return spec.Num(Fraction(value))
 
 
-def test_c2_formula_program_formulatarget_verified_requires_spec() -> None:
-    """C2: Formula program + `FormulaTarget`: Verified requires `spec.y == target.y` AND, by
-    `target.grid` form: `Grid` → `spec.grid == target.grid`; `Interval` → `spec.grid.start ==
-    target.grid.start` and `spec.grid.stop == target.grid.stop`; `None` → no domain check. Any
-    failing conjunct → `target_mismatch`. STRUCTURAL: no folding, so `Neg(Num(5)) != Num(-5)`.
-
-    Accept: One witness per conjunct failing alone (y; start; stop; samples under `Grid`); samples
-    differing under `Interval` still Verified.
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+def _grid(*, start: int = 0, stop: int = 1, samples: int = 3) -> spec.Grid:
+    return spec.Grid(_num(start), _num(stop), samples)
 
 
-def test_c3_formula_program_datasettarget_refused_target_mismatch() -> None:
-    """C3: Formula program + `DatasetTarget` → Refused `target_mismatch` (was Verified, internal
-    provenance). Dataset program + `FormulaTarget` stays `source_not_supplied`; formula program +
-    `None` stays Verified internal.
-
-    Accept: Full arm-by-target matrix pinned.
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+def _sin_target(grid: spec.Grid | None = None) -> spec.FormulaTarget:
+    return spec.FormulaTarget(spec.Fn("sin", spec.Var()), grid)
 
 
-def test_c4_every_verified_with_a_non_none() -> None:
-    """C4: Every Verified with a non-`None` target has `certificate.provenance == "artifact"`.
-
-    Accept: Property over the matrix + Hypothesis-drawn formula programs/targets.
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+def _dataset_target() -> spec.DatasetTarget:
+    return spec.DatasetTarget(path="measurements.csv", content=_DATASET_BYTES)
 
 
-def test_c5_declared_open_exact_set_per_case() -> None:
-    """C5: `declared_open` = exact set per case: dataset bound → {ARTIFACT_GAP}; formula + `None` →
-    {ARTIFACT_GAP, INTENT_GAP, NO_ARTIFACT} (bytes unchanged); formula + `Grid` target →
-    {ARTIFACT_GAP}; + `Interval` → {ARTIFACT_GAP, SAMPLES_GAP}; + no-domain target → {ARTIFACT_GAP,
-    INTERVAL_GAP}. `_UNUSED_DATA_FILE` deleted (unreachable after C3).
-
-    Accept: Hand-stated sets. SAMPLES_GAP = `The request states no sample count. The submitted
-    program sets it.` INTERVAL_GAP = `The request states no x interval. The submitted program sets
-    the interval and the sample count.`
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
-
-
-def test_c6_interpretation_formula_none_bytes_unchanged_bound() -> None:
-    """C6: Interpretation: formula + `None` → bytes unchanged. Bound formula target → one sentence
-    inserted right after `The data comes from the submitted program.`: `Grid` → `The formula, the x
-    interval and the sample count match the request.`; `Interval` → `The formula and the x interval
-    match the request.`; no domain → `The formula matches the request.`
-
-    Accept: Byte-pinned witness per case.
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+def test_c1_interval_shape_is_frozen_slotted_and_inclusive() -> None:
+    """C1: Interval has exactly start/stop, frozen slots, and carries the inclusive endpoint."""
+    interval_type = spec.Interval
+    assert tuple(field.name for field in fields(interval_type)) == ("start", "stop")
+    assert interval_type.__slots__ == ("start", "stop")
+    interval = interval_type(_num(0), _num(1))
+    assert interval.start == _num(0)
+    assert interval.stop == _num(1)
+    assert not hasattr(interval, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        setattr(interval, "stop", _num(2))  # noqa: B010
+    assert tuple(field.name for field in fields(spec.FormulaTarget)) == ("y", "grid")
+    assert get_type_hints(spec.FormulaTarget)["grid"] == spec.Grid | spec.Interval | None
+    assert spec.FormulaTarget(y=spec.Var()).grid is None
 
 
-def test_c7_certificate_version_the_certificate_field_set() -> None:
-    """C7: `CERTIFICATE_VERSION`, the certificate field set (K1) and the 52-member refusal set are
-    unchanged.
+def test_c2_formula_y_mismatch_refuses_alone() -> None:
+    """C2: a wrong y with an otherwise matching Grid refuses target_mismatch."""
+    result = verify_python_source(
+        _FORMULA_SOURCE,
+        declared_target=spec.FormulaTarget(spec.Fn("cos", spec.Var()), _grid()),
+    )
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
 
-    Accept: `get_args(RefusalCode.__value__)` size 52; K1 green.
-    """
-    pytest.skip("owned by **M10.4** (`.agent/spec.md` Deferred)")
+
+def test_c2_grid_start_mismatch_refuses_alone() -> None:
+    """C2: a wrong Grid start with the matching y/stop/samples refuses."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target(_grid(start=2)))
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c2_grid_stop_mismatch_refuses_alone() -> None:
+    """C2: a wrong Grid stop with the matching y/start/samples refuses."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target(_grid(stop=2)))
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c2_grid_samples_mismatch_refuses_alone() -> None:
+    """C2: a Grid samples mismatch alone refuses target_mismatch."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target(_grid(samples=4)))
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c2_interval_start_mismatch_refuses_alone() -> None:
+    """C2: Interval compares the projected start even when the program's samples differ."""
+    interval = spec.Interval(_num(2), _num(1))
+    result = verify_python_source(
+        _FORMULA_SOURCE, declared_target=spec.FormulaTarget(spec.Fn("sin", spec.Var()), interval)
+    )
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c2_interval_stop_mismatch_refuses_alone() -> None:
+    """C2: Interval compares the projected inclusive stop independently."""
+    interval = spec.Interval(_num(0), _num(2))
+    result = verify_python_source(
+        _FORMULA_SOURCE, declared_target=spec.FormulaTarget(spec.Fn("sin", spec.Var()), interval)
+    )
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c2_interval_ignores_sample_count() -> None:
+    """C2: a target with an interval but no n verifies programs at different sample counts."""
+    interval = spec.Interval(_num(0), _num(1))
+    target = spec.FormulaTarget(spec.Fn("sin", spec.Var()), interval)
+    original = verify_python_source(_FORMULA_SOURCE, declared_target=target)
+    different = verify_python_source(
+        _FORMULA_SOURCE.replace("num=3", "num=5"), declared_target=target
+    )
+    assert isinstance(original, Verified)
+    assert isinstance(different, Verified)
+    assert isinstance(original.spec, spec.FormulaPlot)
+    assert isinstance(different.spec, spec.FormulaPlot)
+    assert original.spec.grid.samples == 3
+    assert different.spec.grid.samples == 5
+
+
+def test_c2_no_domain_does_not_compare_grid() -> None:
+    """C2: a formula-only target compares y but leaves start, stop and n open."""
+    different = verify_python_source(
+        _FORMULA_SOURCE.replace("np.linspace(0, 1, num=3)", "np.linspace(3, 5, num=7)"),
+        declared_target=_sin_target(),
+    )
+    assert isinstance(different, Verified)
+    assert isinstance(different.spec, spec.FormulaPlot)
+    assert different.spec.grid == _grid(start=3, stop=5, samples=7)
+
+
+def test_c2_no_folding_of_mathematically_equal_y() -> None:
+    """C2: Neg(Num(5)) differs from Num(-5) even if the plotted numbers coincide."""
+    source = _FORMULA_SOURCE.replace("y = np.sin(x)", "y = x + -5")
+    target = spec.FormulaTarget(spec.Bin("add", spec.Var(), _num(-5)), _grid())
+    result = verify_python_source(source, declared_target=target)
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c3_formula_program_rejects_dataset_target() -> None:
+    """C3: a formula cannot verify against a supplied CSV even if its code reads no file."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_dataset_target())
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+
+
+def test_c3_unchanged_cells_of_the_arm_target_matrix() -> None:
+    """C3: every other arm-by-target cell retains its explicit verdict and provenance."""
+    results = (
+        verify_python_source(_DATASET_SOURCE),
+        verify_python_source(_DATASET_SOURCE, declared_target=_dataset_target()),
+        verify_python_source(_DATASET_SOURCE, declared_target=_sin_target()),
+        verify_python_source(_FORMULA_SOURCE),
+        verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target(_grid())),
+    )
+    assert isinstance(results[0], Refused) and results[0].code == "source_not_supplied"
+    assert isinstance(results[1], Verified) and results[1].certificate.provenance == "artifact"
+    assert isinstance(results[2], Refused) and results[2].code == "source_not_supplied"
+    assert isinstance(results[3], Verified) and results[3].certificate.provenance == "internal"
+    assert isinstance(results[4], Verified) and results[4].certificate.provenance == "artifact"
+
+
+def test_c4_dataset_with_non_none_target_has_artifact_provenance() -> None:
+    """C4: the bound dataset cell of the matrix publishes artifact provenance."""
+    result = verify_python_source(_DATASET_SOURCE, declared_target=_dataset_target())
+    assert isinstance(result, Verified)
+    assert result.certificate.provenance == "artifact"
+
+
+@given(
+    st.sampled_from(
+        [
+            ("np.sin(x)", spec.Fn("sin", spec.Var())),
+            ("np.cos(x)", spec.Fn("cos", spec.Var())),
+            ("x + 1", spec.Bin("add", spec.Var(), _num(1))),
+        ]
+    ),
+    st.integers(min_value=0, max_value=3),
+    st.integers(min_value=1, max_value=4),
+    st.integers(min_value=2, max_value=6),
+    st.sampled_from(["grid", "interval", "none"]),
+)
+def test_c4_every_bound_formula_property(
+    case: tuple[str, spec.Expr], start: int, step: int, samples: int, domain: str
+) -> None:
+    """C4: drawn programs with user-bound y/optional domains always claim artifact provenance."""
+    expression, expected_y = case
+    stop = start + step
+    source = (
+        "import numpy as np\nimport matplotlib.pyplot as plt\n"
+        f"x = np.linspace({start}, {stop}, num={samples})\n"
+        f"y = {expression}\nplt.plot(x, y)\nplt.show()\n"
+    )
+    grid = spec.Grid(_num(start), _num(stop), samples)
+    if domain == "grid":
+        declared_domain: spec.Grid | spec.Interval | None = grid
+    elif domain == "interval":
+        declared_domain = spec.Interval(_num(start), _num(stop))
+    else:
+        declared_domain = None
+    result = verify_python_source(
+        source, declared_target=spec.FormulaTarget(expected_y, declared_domain)
+    )
+    assert isinstance(result, Verified)
+    assert result.certificate.provenance == "artifact"
+
+
+def test_c5_bound_dataset_and_unbound_formula_gaps_remain_exact() -> None:
+    """C5: dataset binding and unbound formula retain their exact old gap sets."""
+    dataset = verify_python_source(_DATASET_SOURCE, declared_target=_dataset_target())
+    internal = verify_python_source(_FORMULA_SOURCE)
+    assert isinstance(dataset, Verified)
+    assert isinstance(internal, Verified)
+    assert set(dataset.certificate.declared_open) == {_ARTIFACT_GAP}
+    assert set(internal.certificate.declared_open) == {
+        _ARTIFACT_GAP,
+        _INTENT_GAP,
+        _NO_ARTIFACT,
+    }
+
+
+def test_c5_grid_bound_formula_only_has_artifact_gap() -> None:
+    """C5: exact-domain formula binding consumes the user's request artifact."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target(_grid()))
+    assert isinstance(result, Verified)
+    assert set(result.certificate.declared_open) == {_ARTIFACT_GAP}
+
+
+def test_c5_interval_bound_formula_names_samples_gap_exactly() -> None:
+    """C5: request interval binds y/x but leaves n to the submitted program."""
+    result = verify_python_source(
+        _FORMULA_SOURCE,
+        declared_target=spec.FormulaTarget(
+            spec.Fn("sin", spec.Var()), spec.Interval(_num(0), _num(1))
+        ),
+    )
+    assert isinstance(result, Verified)
+    assert set(result.certificate.declared_open) == {_ARTIFACT_GAP, _SAMPLES_GAP}
+
+
+def test_c5_no_domain_formula_names_interval_gap_exactly() -> None:
+    """C5: request y-only target binds y but leaves the interval and n open."""
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=_sin_target())
+    assert isinstance(result, Verified)
+    assert set(result.certificate.declared_open) == {_ARTIFACT_GAP, _INTERVAL_GAP}
+
+
+def test_c6_unbound_formula_interpretation_is_byte_unchanged() -> None:
+    """C6: an unbound formula certificate keeps its original complete sentence bytes."""
+    result = verify_python_source(_FORMULA_SOURCE)
+    assert isinstance(result, Verified)
+    assert result.certificate.interpretation == _BASE_INTERPRETATION
+
+
+@pytest.mark.parametrize(
+    ("domain", "expected"),
+    [
+        (
+            "grid",
+            "Chart type: line. The data comes from the submitted program. "
+            "The formula, the x interval and the sample count match the request. "
+            "Y computes sin(x). X runs from 0 to 1 in 3 samples. "
+            "Numbers follow the profile binary64-libm-v1.",
+        ),
+        (
+            "interval",
+            "Chart type: line. The data comes from the submitted program. "
+            "The formula and the x interval match the request. "
+            "Y computes sin(x). X runs from 0 to 1 in 3 samples. "
+            "Numbers follow the profile binary64-libm-v1.",
+        ),
+        (
+            "none",
+            "Chart type: line. The data comes from the submitted program. "
+            "The formula matches the request. "
+            "Y computes sin(x). X runs from 0 to 1 in 3 samples. "
+            "Numbers follow the profile binary64-libm-v1.",
+        ),
+    ],
+    ids=["grid", "interval", "formula-only"],
+)
+def test_c6_bound_interpretation_is_byte_pinned(domain: str, expected: str) -> None:
+    """C6: one exact sentence follows the source sentence for each target domain form."""
+    if domain == "grid":
+        target = _sin_target(_grid())
+    elif domain == "interval":
+        target = spec.FormulaTarget(spec.Fn("sin", spec.Var()), spec.Interval(_num(0), _num(1)))
+    else:
+        target = _sin_target()
+    result = verify_python_source(_FORMULA_SOURCE, declared_target=target)
+    assert isinstance(result, Verified)
+    assert result.certificate.interpretation == expected
+
+
+def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
+    """C7: version, K1's field set and all 52 refusal codes stay unchanged."""
+    assert CERTIFICATE_VERSION == "pysrc-cert-0.1"
+    assert set(CoreCertificate.__dataclass_fields__) == {
+        "version",
+        "source_sha256",
+        "spec_sha256",
+        "table_sha256",
+        "group_counts",
+        "provenance",
+        "artifact_sha256",
+        "numeric_profile",
+        "checks",
+        "declared_open",
+        "interpretation",
+    }
+    assert len(get_args(RefusalCode)) == 52

@@ -1,0 +1,59 @@
+# Structural target binding: one mutant for each independently compared field and arm crossing.
+# Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
+module = "src/verifier/pysrc/verify.py"
+tests = ["tests/test_pysrc_formula_target.py"]
+
+[[mutant]]
+id = "c2-formula-y-ignored"
+predicate = "the target formula tree agrees with the projected y tree"
+kills = "tests/test_pysrc_formula_target.py::test_c2_formula_y_mismatch_refuses_alone"
+anchor = '''            if spec.y != target.y:
+                _refuse("target_mismatch")'''
+mutant = '''            if False:
+                _refuse("target_mismatch")'''
+
+[[mutant]]
+id = "c2-grid-start-ignored"
+predicate = "a Grid target compares the start independently of stop and samples"
+kills = "tests/test_pysrc_formula_target.py::test_c2_grid_start_mismatch_refuses_alone"
+anchor = '''            if isinstance(target.grid, Grid) and spec.grid != target.grid:'''
+mutant = '''            if isinstance(target.grid, Grid) and (spec.grid.stop != target.grid.stop or spec.grid.samples != target.grid.samples):'''
+
+[[mutant]]
+id = "c2-grid-stop-ignored"
+predicate = "a Grid target compares the stop independently of start and samples"
+kills = "tests/test_pysrc_formula_target.py::test_c2_grid_stop_mismatch_refuses_alone"
+anchor = '''            if isinstance(target.grid, Grid) and spec.grid != target.grid:'''
+mutant = '''            if isinstance(target.grid, Grid) and (spec.grid.start != target.grid.start or spec.grid.samples != target.grid.samples):'''
+
+[[mutant]]
+id = "c2-grid-samples-ignored"
+predicate = "a Grid target compares the sample count independently of both bounds"
+kills = "tests/test_pysrc_formula_target.py::test_c2_grid_samples_mismatch_refuses_alone"
+anchor = '''            if isinstance(target.grid, Grid) and spec.grid != target.grid:'''
+mutant = '''            if isinstance(target.grid, Grid) and (spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop):'''
+
+[[mutant]]
+id = "c2-interval-start-ignored"
+predicate = "an Interval target compares its start without imposing a sample count"
+kills = "tests/test_pysrc_formula_target.py::test_c2_interval_start_mismatch_refuses_alone"
+anchor = '''                spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop'''
+mutant = '''                spec.grid.stop != target.grid.stop'''
+
+[[mutant]]
+id = "c2-interval-stop-ignored"
+predicate = "an Interval target compares its stop without imposing a sample count"
+kills = "tests/test_pysrc_formula_target.py::test_c2_interval_stop_mismatch_refuses_alone"
+anchor = '''                spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop'''
+mutant = '''                spec.grid.start != target.grid.start'''
+
+[[mutant]]
+id = "c3-formula-dataset-crossing-admitted"
+predicate = "a formula program cannot consume an uploaded CSV as its declared target"
+kills = "tests/test_pysrc_formula_target.py::test_c3_formula_program_rejects_dataset_target"
+anchor = '''        if isinstance(target, DatasetTarget):
+            _refuse("target_mismatch")
+        assert_never(target)'''
+mutant = '''        if isinstance(target, DatasetTarget):
+            return None
+        assert_never(target)'''

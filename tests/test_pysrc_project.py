@@ -311,7 +311,8 @@ def test_p12_projection_is_pure() -> None:
     # `csv` is C6's `csv.reader(strict=True)`, `hashlib` is K2's digests, `json` is the
     # certificate's canonical encoding, `re` is C10's profile pattern. `re` runs on untrusted text,
     # safe here and not by luck: the patterns carry no nested quantifier, so they cannot backtrack
-    # catastrophically, and `max_csv_cell_bytes` bounds the input anyway.
+    # catastrophically, and `max_csv_cell_bytes` bounds the input anyway. `unicodedata` is R2's
+    # NFKC-first normalization of the user's request (M10.4).
     allowed_import_roots = {
         "__intra_package__",
         "ast",
@@ -326,6 +327,7 @@ def test_p12_projection_is_pure() -> None:
         "re",
         "tokenize",
         "typing",
+        "unicodedata",
         "verifier",
     }
     assert imported_roots <= allowed_import_roots
