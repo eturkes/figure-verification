@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# CodeQL runs BESIDE the gate, never inside it: its findings land in GitHub code scanning, which
+# needs a hosted upload that tools/gate.sh cannot make. The gate's own static analysis (ruff's
+# security rules, mypy --strict, zizmor) stays the one local claim; this is a second, deeper pass.
+# No build step: every analysed language is interpreted, so build-mode none sees the whole tree.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # New queries ship with new CodeQL bundles, so a clean result decays without any commit here.
+  schedule:
+    - cron: "41 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The upload scope lives on this job alone; the workflow token above stays read-only.
+    permissions:
+      contents: read
+      security-events: write # upload the SARIF result to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        # python = the product; actions = these workflows; javascript-typescript = the Node
+        # measurement harnesses under .agent/measurements/.
+        language: [python, actions, javascript-typescript]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # Every checkout in this repository fetches full history (tests/test_gate.py G6).
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          category: "/language:${{ matrix.language }}"

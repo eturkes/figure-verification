@@ -7,7 +7,7 @@ A local Open WebUI instance where a weak local model writes the Python that draw
 ## Artifacts
 
 Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m …`. Shipped = JSON-spec dataset + headless formula modes; python mode = the spine.
-- Gate — `bash tools/gate.sh` (ONE command, 8 stages: format · lint · types · tests · audit · secrets · workflows · shell); positive controls = `bash tools/gate-probe.sh`. CI = `.github/workflows/gate.yml` runs the same script; updates = `.github/dependabot.yml`.
+- Gate — `bash tools/gate.sh` (ONE command, 8 stages: format · lint · types · tests · audit · secrets · workflows · shell); positive controls = `bash tools/gate-probe.sh`. CI = `.github/workflows/gate.yml` runs the same script; CodeQL = `.github/workflows/codeql.yml` (python · actions · javascript-typescript, `security-extended`), a hosted pass BESIDE the gate; updates = `.github/dependabot.yml`.
 - Mutation credit — `uv run --locked python tools/mutate.py tools/mutants/project.toml` · `… tools/mutants/aggregate.toml` (committed driver + per-module catalogue; baseline must be green, each mutant names the ONE test that must go red). Rerun EVERY catalogue of a module a unit touches: a widening edits the lines older mutants anchor on, and the driver then reports ANCHOR-MISS rather than a kill.
 - Paste-in generation — `uv run --locked python tools/generate_paste_in.py` writes every artifact in `webui/paste_in/bundle.py` `ARTIFACTS`; `… --check` writes nothing and exits 1 naming each drifted path. Single source, hand fork banned: the artifact `paste-in/figure_verification_tool.py` embeds the tracked core BY GENERATION, so an edit made there is lost at the next run.
 - Dataset digest repair — `uv run --locked python tools/rederive_dataset_hashes.py` (idempotent; recomputes every tracked `sha256:` citation of a `data/*.csv` from that CSV's own bytes, skipping the all-zeros mismatch fixtures; `tests/test_dataset_digests.py` states the same law independently and fails on a stale citation).
@@ -32,7 +32,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Deferred
 
-Queue = `.agent/deferred.md`, 18 rows, one line + acceptance check each; nothing there blocks the units below.
+Queue = `.agent/deferred.md`, 17 rows, one line + acceptance check each; nothing there blocks the units below.
 
 Spine = the unfinished units, in order: M10.0 → M10.4 → M10.1 → M10.2 → M10.5 → M10.6 → M10.3 → M10.9 → M14. M10.5 shares no surface with M10.4/M10.1/M10.2 and may run beside them.
 
