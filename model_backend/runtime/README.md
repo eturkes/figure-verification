@@ -9,7 +9,7 @@ wheels for `torch` stop at Python 3.12. A separate project keeps the two locks a
 | File | Content |
 | --- | --- |
 | `pyproject.toml` | The eight direct pins, the probe validator group, and the CUDA 12.6 wheel index. |
-| `uv.lock` | The full transitive resolution. The file lists 75 entries, including this project. |
+| `uv.lock` | The full transitive resolution. The file lists 79 entries, including this project. |
 | `snapshot.json` | The model revision and one SHA-256 digest per file. |
 
 ## Build the environment
@@ -76,18 +76,19 @@ uv run --locked python -m model_backend.snapshot --write
 
 ## Measured facts
 
-The values below come from this host. Read them as one `(device, config)` baseline.
+The device and model values below come from this host.
 
 | Item | Value |
 | --- | --- |
 | Device | NVIDIA MX150, compute capability 6.1, 1994 MiB |
+| Runtime | `torch==2.13.0+cu126`, `accelerate==1.15.0` |
 | Precision | fp16, the supported path on this device |
 | Model | `Qwen/Qwen2.5-Coder-0.5B-Instruct`, 494M parameters, Apache-2.0 |
 | Weights | 942.3 MiB resident |
-| Rate | 5.5-5.7 tokens per second at a full 1536-token context |
 
-A rate depends on the context length. A short prompt measures faster. The smoke probe records 10.3
-tokens per second on an 8-token reply. Always state the context length beside a rate.
+The guidance oracle and the HTTP smoke probe report their own token rates. State the prompt length,
+GPU clock, and temperature with a rate. The smoke probe uses one short reply. Its rate does not
+measure sustained throughput.
 
 The model family and the number format both changed with this port. Earlier proposer measurements
 used a different family and INT4 weights, so they do not compare with numbers taken here. Measure

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G11: static-config invariants of the one gate command.
+"""G6-G13: static-config invariants of the one gate command.
 
 Contract: `.agent/archive/contracts/m13u0.md`.
 
@@ -213,3 +213,32 @@ def test_g12_every_static_config_check_ships_a_positive_control() -> None:
     assert checks, "no checks found to cover"
     missing = [name for name in checks if name not in probe]
     assert not missing, f"no positive control in gate-probe.sh for {missing}"
+
+
+def test_g13_audit_stage_covers_every_lock() -> None:
+    """G13: audit projects equal tracked lock directories; dropping one fails."""
+    script = _GATE.read_text(encoding="utf-8")
+    function = re.search(r"^audit_locks\(\) \{\n(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+    assert function is not None, "audit_locks must cover model_backend/runtime"
+    assert "stage audit audit_locks" in script
+
+    audited = set()
+    for line in function.group("body").splitlines():
+        words = line.strip().split()
+        if words[:2] != ["uv", "audit"]:
+            continue
+        assert words[2:4] == ["--preview-features", "audit-command"]
+        project = words[words.index("--project") + 1] if "--project" in words else "."
+        audited.add(project)
+
+    tracked = subprocess.run(
+        ["/usr/bin/git", "ls-files", "--", "uv.lock", "**/uv.lock"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lock_dirs = {Path(path).parent.as_posix() for path in tracked.stdout.splitlines()}
+    assert audited == lock_dirs, (
+        f"audit projects {sorted(audited)} != lock dirs {sorted(lock_dirs)}"
+    )

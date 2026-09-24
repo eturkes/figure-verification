@@ -714,9 +714,9 @@ def test_p15_runtime_pyproject_pins() -> None:
         "msgspec==0.21.1",
         "litestar==2.24.0",
         "uvicorn==0.49.0",
-        "torch==2.7.1+cu126",
+        "torch==2.13.0+cu126",
         "transformers==5.16.1",
-        "accelerate==1.14.0",
+        "accelerate==1.15.0",
         "tokenizers==0.23.1",
         "xgrammar==0.2.3",
     }
@@ -785,9 +785,14 @@ def test_p16_runtime_lock_pins_torch_cu126() -> None:
     torch_packages = [package for package in package_tables if package.get("name") == "torch"]
     assert len(torch_packages) == 1
     torch_package = torch_packages[0]
-    assert torch_package["version"] == "2.7.1+cu126"
+    assert torch_package["version"] == "2.13.0+cu126"
     source = _string_table(torch_package["source"])
     assert source["registry"] == "https://download.pytorch.org/whl/cu126"
+    accelerate_packages = [
+        package for package in package_tables if package.get("name") == "accelerate"
+    ]
+    assert len(accelerate_packages) == 1
+    assert accelerate_packages[0]["version"] == "1.15.0"
 
 
 def test_p17_runtime_files_tracked_not_ignored() -> None:

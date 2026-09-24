@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G12, tests/test_spec.py S1-S8, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G13, tests/test_spec.py S1-S8, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
@@ -204,6 +204,10 @@ probe g6-ci-direct-tool tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_
 probe g6-stage-list tests/test_gate.py::test_g6_gate_script_runs_every_expected_stage \
     'assert declared == _EXPECTED_STAGES' \
     sed -i 's|^\( *\)stage secrets |\1# stage secrets |' "$GATE"
+
+probe g13-nested-lock-audit tests/test_gate.py::test_g13_audit_stage_covers_every_lock \
+    'model_backend/runtime' \
+    sed -i '/^    uv audit --preview-features audit-command --locked --project model_backend\/runtime /d' "$GATE"
 
 probe g7-ecosystem tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert covered == {' \

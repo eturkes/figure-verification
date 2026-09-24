@@ -41,6 +41,18 @@ secret_scan() {
     uv run --locked detect-secrets-hook --baseline .secrets.baseline "${files[@]}"
 }
 
+audit_locks() {
+    local root_rc=0 runtime_rc=0
+    uv audit --preview-features audit-command || root_rc=$?
+    printf 'root-lock audit rc=%d\n' "$root_rc"
+    uv audit --preview-features audit-command --locked --project model_backend/runtime || runtime_rc=$?
+    printf 'model_backend/runtime audit rc=%d\n' "$runtime_rc"
+    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 shell_lint() {
     local files=()
     mapfile -t files < <(git ls-files '*.sh')
@@ -59,7 +71,7 @@ main() {
     stage lint uv run --locked ruff check .
     stage types uv run --locked mypy
     stage tests uv run --locked pytest
-    stage audit uv audit --preview-features audit-command
+    stage audit audit_locks
     stage secrets secret_scan
     stage workflows uv run --locked zizmor .github/
 
