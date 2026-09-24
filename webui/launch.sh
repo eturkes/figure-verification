@@ -249,19 +249,27 @@ log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. The real-model outcome text predates the pasted python tool; the calibration unit
-#    re-measures it. The stub arm states no outcome until the M10.1 live witness records one.
+# 5) banner. Every stated outcome names its recorded run count. The stub counts = the M10.1 live
+#    witness; the real-model text predates the pasted python tool and the calibration unit
+#    re-measures it.
 simple_prompt="Chart the total revenue of each region using bars. dataset_name: sales.csv"
 elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
   printf -v try_typing '%s\n' \
-    "    Type either prompt:" \
+    "    Attach data/sales.csv to a new chat. Then paste one of these prompts:" \
     "      1) ${simple_prompt}" \
     "      2) ${elaborate_prompt}" \
     "" \
-    "           The stub gives fixed replies. It does not run a real model." \
-    "           This banner states no outcome for these prompts until a recorded run exists."
+    "           Paste the prompt. The stub recognizes only the exact prompt text, and the chat" \
+    "           editor can change typed text, for example 2x2 to 2×2." \
+    "           The stub does not run a model. It calls the figure tool with a fixed program." \
+    "           Prompt 1: the verifier accepts the program. In 1 recorded run, the chat showed" \
+    "           one chart and \"Figure verification passed\"." \
+    "           Prompt 2: the verifier refuses the program. In 1 recorded run, the chat showed" \
+    "           only \"Figure verification failed, no image produced\"." \
+    "           Other messages, for example \"hello\", get no tool call. In 1 recorded run, the" \
+    "           chat showed the same failure text. Each result stayed the same after a reload."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \

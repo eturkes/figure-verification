@@ -405,8 +405,16 @@ it also depends on the exact prompt:
 - **`--stub`.**
 
   The deterministic stub gives fixed replies and does not run a model. It tests the wiring between
-  Open WebUI, the pasted tool, and the outlet filter. This README states no stub outcome until a
-  recorded run exists.
+  Open WebUI, the pasted tool, and the outlet filter. Attach `data/sales.csv` to a new chat. Then
+  paste one of the two prompts that the banner shows. The stub recognizes only the exact prompt
+  text, and the chat editor can change typed text, for example `2x2` to `2×2`.
+
+  For the simple prompt, the stub calls the figure tool with a fixed program that the verifier
+  accepts. In 1 recorded run, the chat showed one chart and `Figure verification passed`. For the
+  elaborate prompt, the stub calls the tool with a fixed program that the verifier refuses. In 1
+  recorded run, the chat showed only `Figure verification failed, no image produced`. Other
+  messages, for example `hello`, get no tool call. In 1 recorded run, the chat showed the same
+  failure text. Each result stayed the same after a page reload.
 
 Open WebUI, its browser sandbox, and the pixels stay trusted display components. The modest claim
 above and [POC_SCOPE.md](POC_SCOPE.md) hold this boundary. The generated Figure Verification Filter

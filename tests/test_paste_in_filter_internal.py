@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Backend-state, embedded-class and sandbox-source witnesses for M10.1."""
 
+import ast
 import asyncio
 import base64
 import contextlib
@@ -8,6 +9,7 @@ import io
 import sys
 import types
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -198,6 +200,37 @@ def test_cross_artifact_receipt_renders_one_consumed_attachment(tmp_path: Path) 
     assert _text(body) == content[0]["text"]
 
 
+def test_wrapper_loads_plotting_stack_before_import() -> None:
+    """F7/A5: the browser detector sees no hidden imports; the wrapper loads its own stack."""
+    code = outlet.wrapper_code(_PROGRAM)
+    assert "matplotlib" not in code
+    statements = ast.parse(code).body
+    assert isinstance(statements[0], ast.Import)
+    assert [(item.name, item.asname) for item in statements[0].names] == [
+        ("pyodide_js", "_pyodide")
+    ]
+    loader = statements[1]
+    assert isinstance(loader, ast.Expr) and isinstance(loader.value, ast.Await)
+    call = loader.value.value
+    assert isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+    assert isinstance(call.func.value, ast.Name) and call.func.value.id == "_pyodide"
+    assert call.func.attr == "loadPackage" and len(call.args) == 1
+    assert len(call.keywords) == 1 and call.keywords[0].arg == "messageCallback"
+    callback = call.keywords[0].value
+    assert isinstance(callback, ast.Lambda) and len(callback.args.args) == 1
+    assert isinstance(callback.body, ast.Constant) and callback.body.value is None
+    packages = call.args[0]
+    assert isinstance(packages, ast.List) and len(packages.elts) == 3
+    numpy, pandas, plotting = packages.elts
+    assert isinstance(numpy, ast.Constant) and numpy.value == "numpy"
+    assert isinstance(pandas, ast.Constant) and pandas.value == "pandas"
+    assert isinstance(plotting, ast.BinOp) and isinstance(plotting.op, ast.Add)
+    assert isinstance(plotting.left, ast.Constant) and isinstance(plotting.right, ast.Constant)
+    assert isinstance(plotting.left.value, str) and isinstance(plotting.right.value, str)
+    assert plotting.left.value + plotting.right.value == "matplotlib"
+    assert isinstance(statements[2], ast.Import)
+
+
 def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """F7: the wrapper, not OWUI's substring patch, owns show and no-show rendering."""
     package = types.ModuleType("matplotlib")
@@ -215,6 +248,18 @@ def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPa
     vars(pyplot)["close"] = lambda _scope: None
     monkeypatch.setitem(sys.modules, "matplotlib", package)
     monkeypatch.setitem(sys.modules, "matplotlib.pyplot", pyplot)
+    pyodide_js = types.ModuleType("pyodide_js")
+
+    async def load_package(
+        packages: list[str],
+        *,
+        messageCallback: Callable[[str], None],  # noqa: N803 - JS keyword
+    ) -> None:
+        assert packages == ["numpy", "pandas", "matplotlib"]
+        messageCallback("loaded")
+
+    vars(pyodide_js)["loadPackage"] = load_package
+    monkeypatch.setitem(sys.modules, "pyodide_js", pyodide_js)
     for program in (
         "import matplotlib.pyplot as plt\nplt.show()\nplt.show()\n",
         "import matplotlib.pyplot as plt\nx = 1\n",
@@ -223,6 +268,9 @@ def test_wrapper_runs_exact_program_and_prints_once(monkeypatch: pytest.MonkeyPa
         code = outlet.wrapper_code(program)
         assert "matplotlib" not in code
         with contextlib.redirect_stdout(output):
-            exec(compile(code, "<wrapper>", "exec"), {})  # noqa: S102 - generated sandbox source
+            coroutine = eval(  # noqa: S307 - the generated sandbox source is the test subject
+                compile(code, "<wrapper>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), {}
+            )
+            asyncio.run(coroutine)
         assert output.getvalue().splitlines() == [_PNG]
     assert counts == {"saves": 2}

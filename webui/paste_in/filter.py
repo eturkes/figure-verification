@@ -36,9 +36,9 @@ FILTER_DESCRIPTION: Final = "Shows a chart only after the verifier checks its pr
 def wrapper_code(program: str) -> str:
     """Run the submitted program bytes inside the browser, with one trusted PNG output hook.
 
-    OWUI patches plotting globally on a literal substring in the RPC source and raises before it
-    executes. Split that library name in the wrapper and carry program bytes as base64; split the
-    encoded payload too if it happens to contain the trigger sequence.
+    OWUI detects packages only from literal imports in the RPC source, missing encoded programs.
+    Load the stack quietly through Pyodide; select Agg as OWUI's own patch prelude does, without
+    triggering that broken prelude. Split the plotting name and any matching base64 RPC payload.
     """
     encoded = base64.b64encode(program.encode("utf-8")).decode("ascii")
     parts = encoded.split("matplotlib")
@@ -46,9 +46,14 @@ def wrapper_code(program: str) -> str:
     return (
         "\n".join(
             (
+                "import pyodide_js as _pyodide",
+                "await _pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'],",
+                "                              messageCallback=lambda _message: None)",
                 "import base64 as _b64",
                 "import io as _io",
                 "import importlib as _imports",
+                "import os as _os",
+                "_os.environ['MPLBACKEND'] = 'AGG'",
                 "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",
                 "_shown = False",
                 "def _show(*_args, **_kwargs):",
@@ -160,7 +165,11 @@ class Filter:
             response = await asyncio.wait_for(__event_call__(payload), timeout=RPC_TIMEOUT_SECONDS)
         except Exception:
             return _rewrite(body, FAIL_TEXT)
-        if not isinstance(response, dict) or response.get("stderr") != "":
+        if not isinstance(response, dict) or "stderr" not in response:
+            return _rewrite(body, FAIL_TEXT)
+        stderr = response["stderr"]
+        # OWUI reports a clean sandbox run with null stderr.
+        if stderr is not None and (type(stderr) is not str or stderr != ""):
             return _rewrite(body, FAIL_TEXT)
         uri = _png_uri(response.get("stdout"))
         if uri is None:

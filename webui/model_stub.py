@@ -7,9 +7,9 @@ routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it 
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
 structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
-prompt-classified (see _scripted_reply): the simple banner prompt selects one committed verified
-Python program; the complicated banner prompt stays prose. This makes both outlet verdicts
-repeatable without treating the stub as a model-quality measurement.
+prompt-classified (see _scripted_reply): the simple banner prompt selects the committed verified
+Python program, the complicated banner prompt selects the committed refused program, and other
+turns stay prose. This makes both outlet verdicts repeatable without measuring model quality.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
@@ -40,6 +40,11 @@ from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
 _SIMPLE_PROMPT = "Chart the total revenue of each region using bars. dataset_name: sales.csv"
+_COMPLICATED_PROMPT = (
+    "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue "
+    "area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter "
+    "colored by region, and a KPI panel, on a dark theme with the peak month annotated."
+)
 # De-fenced `sentinel-simple` from the committed m13-design capture. The F9 test compares the
 # decoded tool call to that capture and verifies this source against data/sales.csv independently.
 _SIMPLE_PROGRAM = (
@@ -62,20 +67,77 @@ _SIMPLE_PROGRAM = (
     "plt.tight_layout()\n"
     "plt.show()\n"
 )
-_TOOL_CALL_REPLY = json.dumps(
-    {"tool_calls": [{"name": "draw_figure", "parameters": {"program": _SIMPLE_PROGRAM}}]},
-    separators=(",", ":"),
+# De-fenced `sentinel-complicated` from the same capture: the verifier refuses this program.
+_COMPLICATED_PROGRAM = (
+    "import pandas as pd\n"
+    "import matplotlib.pyplot as plt\n"
+    "\n"
+    "# Read the CSV file\n"
+    "sales = pd.read_csv('/mnt/uploads/sales.csv')\n"
+    "\n"
+    "# Create a 2x2 grid of subplots\n"
+    "fig, axs = plt.subplots(2, 2, figsize=(10, 10))\n"
+    "\n"
+    "# Plot the revenue area chart\n"
+    "axs[0, 0].plot(sales['month'], sales['revenue'], color='skyblue', label='Revenue Area')\n"
+    "axs[0, 0].set_title('Revenue Area Chart')\n"
+    "axs[0, 0].set_xlabel('Month')\n"
+    "axs[0, 0].set_ylabel('Revenue')\n"
+    "\n"
+    "# Plot the grouped orders-by-region bar chart\n"
+    "axs[0, 1].bar(sales['region'], sales['orders'], color='lightcoral', "
+    "label='Orders by Region')\n"
+    "axs[0, 1].set_title('Orders by Region')\n"
+    "axs[0, 1].set_xlabel('Region')\n"
+    "axs[0, 1].set_ylabel('Orders')\n"
+    "\n"
+    "# Plot the revenue-versus-orders bubble scatter colored by region\n"
+    "axs[1, 0].scatter(sales['month'], sales['revenue'], c=sales['region'], "
+    "cmap='viridis', s=50, label='Revenue vs Orders')\n"
+    "axs[1, 0].set_title('Revenue vs Orders Bubble Scatter')\n"
+    "axs[1, 0].set_xlabel('Month')\n"
+    "axs[1, 0].set_ylabel('Revenue')\n"
+    "\n"
+    "# Add a peak month annotation\n"
+    "axs[1, 0].annotate('Peak Month', xy=(sales['month'].max(), sales['revenue'].max()), "
+    "ha='center', va='bottom', fontsize=12)\n"
+    "\n"
+    "# Set the background color to dark\n"
+    "plt.gca().set_facecolor('black')\n"
+    "\n"
+    "# Show the plot\n"
+    "plt.show()\n"
 )
+
+
+def _tool_call_reply(program: str) -> str:
+    return json.dumps(
+        {"tool_calls": [{"name": "draw_figure", "parameters": {"program": program}}]},
+        separators=(",", ":"),
+    )
+
+
+_TOOL_CALL_REPLY = _tool_call_reply(_SIMPLE_PROGRAM)
+_COMPLICATED_TOOL_CALL_REPLY = _tool_call_reply(_COMPLICATED_PROGRAM)
 # The filter, not the stub's prose, publishes the final verdict on either path.
 _FINAL_REPLY = "Chart request completed."
 
 
+def _selector_query(user: str, prompt: str) -> bool:
+    # OWUI 0.10.2 middleware.py wraps the prompt in `Query:`, after `History:` on later turns.
+    query = f"Query: {prompt}"
+    return user == query or user.endswith(f"\n{query}")
+
+
 def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:
-    """Select the pinned simple call on the legacy selector turn; leave other requests as prose."""
+    """Select each pinned call on the legacy selector turn; leave other requests as prose."""
     system = "\n".join(message.content for message in messages if message.role == "system")
     user = next((message.content for message in reversed(messages) if message.role == "user"), "")
-    if _SELECTOR_MARKER in system and user == _SIMPLE_PROMPT:
-        return _TOOL_CALL_REPLY
+    if _SELECTOR_MARKER in system:
+        if _selector_query(user, _SIMPLE_PROMPT):
+            return _TOOL_CALL_REPLY
+        if _selector_query(user, _COMPLICATED_PROMPT):
+            return _COMPLICATED_TOOL_CALL_REPLY
     return _FINAL_REPLY
 
 

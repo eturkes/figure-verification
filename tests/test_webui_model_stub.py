@@ -25,6 +25,13 @@ from webui.model_stub import (
 )
 from webui.settings import Settings
 
+_COMPLICATED_PROMPT = (
+    "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue "
+    "area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter "
+    "colored by region, and a KPI panel, on a dark theme with the peak month annotated."
+)
+_HISTORY_PREFIX = 'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier reply"""\nQuery: '
+
 
 # --- /v1/models -----------------------------------------------------------------------------
 def test_models_lists_only_the_configured_id() -> None:
@@ -100,16 +107,46 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
 
 
 @pytest.mark.parametrize(
-    ("selector", "prompt", "expected"),
+    ("selector", "prompt", "kind"),
     [
-        (_SELECTOR_MARKER, _SIMPLE_PROMPT, _TOOL_CALL_REPLY),
-        (_SELECTOR_MARKER, "Build a fancy sales.csv dashboard", _FINAL_REPLY),
-        ("ordinary chat", _SIMPLE_PROMPT, _FINAL_REPLY),
-        (_SELECTOR_MARKER, "other request", _FINAL_REPLY),
+        (_SELECTOR_MARKER, f"Query: {_SIMPLE_PROMPT}", "simple"),
+        (
+            _SELECTOR_MARKER,
+            f"{_HISTORY_PREFIX}{_SIMPLE_PROMPT}",
+            "simple",
+        ),
+        (_SELECTOR_MARKER, f"Query: {_COMPLICATED_PROMPT}", "complicated"),
+        (
+            _SELECTOR_MARKER,
+            f"{_HISTORY_PREFIX}{_COMPLICATED_PROMPT}",
+            "complicated",
+        ),
+        (_SELECTOR_MARKER, _SIMPLE_PROMPT, "prose"),
+        (_SELECTOR_MARKER, _COMPLICATED_PROMPT, "prose"),
+        (_SELECTOR_MARKER, "Query: other request", "prose"),
+        (_SELECTOR_MARKER, f"Query: {_SIMPLE_PROMPT} please", "prose"),
+        (_SELECTOR_MARKER, f"Query: {_COMPLICATED_PROMPT} please", "prose"),
+        ("ordinary chat", f"Query: {_SIMPLE_PROMPT}", "prose"),
+        ("ordinary chat", f"Query: {_COMPLICATED_PROMPT}", "prose"),
+        (_SELECTOR_MARKER, "other request", "prose"),
     ],
-    ids=["simple-tool", "complicated-prose", "no-selector", "other-prose"],
+    ids=[
+        "simple-fresh",
+        "simple-history",
+        "complicated-fresh",
+        "complicated-history",
+        "simple-bare",
+        "complicated-bare",
+        "other-query",
+        "simple-suffix",
+        "complicated-suffix",
+        "simple-non-selector",
+        "complicated-non-selector",
+        "other-prose",
+    ],
 )
-def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, expected: str) -> None:
+def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, kind: str) -> None:
+    # OWUI 0.10.2 utils/middleware.py:1102-1124 sends one user message with these literal shapes.
     with TestClient(app=create_app("stub-model")) as client:
         response = client.post(
             "/v1/chat/completions",
@@ -122,8 +159,34 @@ def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, expected: s
         )
     assert response.status_code == 200
     body = response.json()
-    assert body["choices"][0]["message"]["content"] == expected
-    assert body["usage"]["completion_tokens"] == len(expected.split())
+    reply = body["choices"][0]["message"]["content"]
+    if kind == "simple":
+        assert reply == _TOOL_CALL_REPLY
+    elif kind == "complicated":
+        calls = json.loads(reply)["tool_calls"]
+        assert len(calls) == 1
+        assert calls[0]["name"] == "draw_figure"
+        assert "plt.subplots(2, 2" in calls[0]["parameters"]["program"]
+    else:
+        assert reply == _FINAL_REPLY
+    assert body["usage"]["completion_tokens"] == len(reply.split())
+
+
+def test_chat_final_turn_does_not_repeat_tool_call() -> None:
+    # A model turn after legacy tool execution is NOT the selector's `Query: ` message.
+    with TestClient(app=create_app("stub-model")) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "messages": [
+                    {"role": "system", "content": _SELECTOR_MARKER},
+                    {"role": "assistant", "content": _TOOL_CALL_REPLY},
+                    {"role": "user", "content": _SIMPLE_PROMPT},
+                ]
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["choices"][0]["message"]["content"] == _FINAL_REPLY
 
 
 def test_scripted_tool_call_is_exact_draw_figure_request() -> None:

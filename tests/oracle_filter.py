@@ -160,7 +160,10 @@ def oracle_outlet(scenario: Scenario) -> Expected:
             rpc = RpcFacts(1, files, receipt.program, session)
             if scenario.rpc.kind == "returns" and isinstance(scenario.rpc.value, dict):
                 response = scenario.rpc.value
-                if response.get("stderr") == "":
+                if "stderr" in response and (
+                    response["stderr"] is None
+                    or (type(response["stderr"]) is str and response["stderr"] == "")
+                ):
                     uri = _png_uri(response.get("stdout"))
                     if uri is not None:
                         published = PASS_TEXT + "\n\n" + verdict.certificate.interpretation

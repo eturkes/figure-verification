@@ -59,8 +59,8 @@ mutant = '''_DATA_PREFIX = re.compile(r"(?<![A-Za-z0-9_])data:")'''
 id = "f4-stderr-ignored"
 predicate = "sandbox stderr must be empty before any publication"
 kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[stderr]"
-anchor = '''        if not isinstance(response, dict) or response.get("stderr") != "":'''
-mutant = '''        if not isinstance(response, dict):'''
+anchor = '''        if stderr is not None and (type(stderr) is not str or stderr != ""):'''
+mutant = '''        if False:'''
 
 [[mutant]]
 id = "f4-output-not-rewritten"
@@ -104,6 +104,13 @@ anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.
 mutant = '''        return _rewrite(body, PASS_TEXT)'''
 
 [[mutant]]
+id = "f7-pandas-wheel-omitted"
+predicate = "wrapper loads every plotting dependency before its first plotting import"
+kills = "tests/test_paste_in_filter_internal.py::test_wrapper_loads_plotting_stack_before_import"
+anchor = '''                "await _pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'],",'''
+mutant = '''                "await _pyodide.loadPackage(['numpy', 'mat' + 'plotlib'],",'''
+
+[[mutant]]
 id = "f6-wrapper-literal-patch-trigger"
 predicate = "RPC source avoids OWUI's plotting-source trigger substring"
 kills = "tests/test_paste_in_filter_outlet.py::test_f7_wrapper_compiles_with_own_show_hook_and_no_literal_plotting_module"
@@ -130,3 +137,23 @@ predicate = "browser callback has an explicit deadline of no more than sixty sec
 kills = "tests/test_paste_in_filter_outlet.py::test_f6_rpc_timeout_is_bounded_by_sixty_seconds"
 anchor = '''RPC_TIMEOUT_SECONDS: Final = 60'''
 mutant = '''RPC_TIMEOUT_SECONDS: Final = 120'''
+
+[[mutant]]
+id = "a6-empty-string-only"
+predicate = "OWUI's present null stderr is empty and permits a verified PNG"
+kills = "tests/test_paste_in_filter_outlet.py::test_a6_owui_clean_reply_null_stderr_publishes_pass"
+anchor = '''        if stderr is not None and (type(stderr) is not str or stderr != ""):'''
+mutant = '''        if stderr != "":'''
+
+[[mutant]]
+id = "a6-truthy-stderr"
+predicate = "a missing stderr key and falsy non-string values must fail closed"
+kills = "tests/test_paste_in_filter_outlet.py::test_a6_reply_without_stderr_key_fails"
+anchor = '''        if not isinstance(response, dict) or "stderr" not in response:
+            return _rewrite(body, FAIL_TEXT)
+        stderr = response["stderr"]
+        # OWUI reports a clean sandbox run with null stderr.
+        if stderr is not None and (type(stderr) is not str or stderr != ""):
+            return _rewrite(body, FAIL_TEXT)'''
+mutant = '''        if not isinstance(response, dict) or response.get("stderr"):
+            return _rewrite(body, FAIL_TEXT)'''

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.1 F4-F7: total outlet decision, exact publication and bounded sandbox transport.
 
-Contract: `.agent/contracts/m10u1.md`. The rendering callback is faked, not a second verdict;
-Pyodide behavior is measured outside the gate over the installed bundle.
+Contract: `.agent/archive/contracts/m10u1.md`. The rendering callback is faked, not a second
+verdict; Pyodide behavior is measured outside the gate over the installed bundle.
 """
 
 import ast
@@ -83,7 +83,7 @@ def _assert_encoded_program(code: str, program: str) -> None:
     encoded = base64.b64encode(program.encode("utf-8")).decode("ascii")
     assert encoded in code
     assert base64.b64decode(encoded, validate=True).decode("utf-8") == program
-    compile(code, "<sandbox-wrapper>", "exec")
+    compile(code, "<sandbox-wrapper>", "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
     tree = ast.parse(code)
     assert any(
         isinstance(node, ast.Call)
@@ -396,3 +396,79 @@ def test_f7_wrapper_compiles_with_own_show_hook_and_no_literal_plotting_module()
             )
             for node in nodes
         )
+
+
+def test_a6_owui_clean_reply_null_stderr_publishes_pass(tmp_path: Path) -> None:
+    """A6: OWUI returns null stderr and a PNG line even when rendering succeeds."""
+    uri = valid_png_uri()
+    events: list[dict[str, object]] = []
+
+    async def rpc(_payload: dict[str, object]) -> object:
+        return {"stdout": uri + "\n", "stderr": None, "result": None}
+
+    async def emit(event: dict[str, object]) -> None:
+        events.append(event)
+
+    with fake_open_webui([], tmp_path):
+        result = invoke_filter(
+            load_filter_module(),
+            filter_body("untrusted model narration"),
+            request=recorded_request(_FORMULA, request_text=_REQUEST),
+            user={"id": _USER},
+            metadata={"session_id": "browser-session"},
+            event_call=rpc,
+            event_emitter=emit,
+        )
+    assert_filter_text(result, _expected_formula_pass())
+    assert _files_events(events) == [
+        {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+    ]
+
+
+def test_a6_reply_without_stderr_key_fails(tmp_path: Path) -> None:
+    """A6: a missing stderr field never means a clean sandbox run."""
+    events: list[dict[str, object]] = []
+
+    async def rpc(_payload: dict[str, object]) -> object:
+        return {"stdout": valid_png_uri() + "\n", "result": None}
+
+    async def emit(event: dict[str, object]) -> None:
+        events.append(event)
+
+    with fake_open_webui([], tmp_path):
+        result = invoke_filter(
+            load_filter_module(),
+            filter_body("untrusted model narration"),
+            request=recorded_request(_FORMULA, request_text=_REQUEST),
+            user={"id": _USER},
+            metadata={"session_id": "browser-session"},
+            event_call=rpc,
+            event_emitter=emit,
+        )
+    assert_filter_text(result, _FAIL)
+    assert _files_events(events) == []
+
+
+@pytest.mark.parametrize("stderr", [0, False, [], {}])
+def test_a6_non_string_stderr_fails(stderr: object, tmp_path: Path) -> None:
+    """A6: falsy values of other types cannot masquerade as empty stderr."""
+    events: list[dict[str, object]] = []
+
+    async def rpc(_payload: dict[str, object]) -> object:
+        return {"stdout": valid_png_uri() + "\n", "stderr": stderr, "result": None}
+
+    async def emit(event: dict[str, object]) -> None:
+        events.append(event)
+
+    with fake_open_webui([], tmp_path):
+        result = invoke_filter(
+            load_filter_module(),
+            filter_body("untrusted model narration"),
+            request=recorded_request(_FORMULA, request_text=_REQUEST),
+            user={"id": _USER},
+            metadata={"session_id": "browser-session"},
+            event_call=rpc,
+            event_emitter=emit,
+        )
+    assert_filter_text(result, _FAIL)
+    assert _files_events(events) == []

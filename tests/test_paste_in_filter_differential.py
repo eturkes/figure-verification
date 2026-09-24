@@ -225,6 +225,23 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
         ("rpc-times-out", replace(dataset, rpc=RpcOutcome("timeout")), False, 1, 0),
         ("rpc-non-dict", replace(dataset, rpc=RpcOutcome("returns", "wrong shape")), False, 1, 0),
         ("rpc-stderr", replace(dataset, rpc=_reply(stderr="sandbox exception")), False, 1, 0),
+        (
+            "rpc-null-stderr",
+            replace(
+                dataset,
+                rpc=RpcOutcome("returns", {"stdout": _PNG + "\n", "stderr": None, "result": None}),
+            ),
+            True,
+            1,
+            1,
+        ),
+        (
+            "rpc-missing-stderr",
+            replace(dataset, rpc=RpcOutcome("returns", {"stdout": _PNG + "\n", "result": None})),
+            False,
+            1,
+            0,
+        ),
         ("rpc-no-png", replace(dataset, rpc=_reply(stdout="ordinary stdout")), False, 1, 0),
         ("rpc-two-pngs", replace(dataset, rpc=_reply(stdout=f"{_PNG}\n{_PNG}")), False, 1, 0),
         (
@@ -515,8 +532,8 @@ def _translate_outlet(
 
 def _assert_agrees(scenario: Scenario, module: ModuleType, patch: pytest.MonkeyPatch) -> None:
     expected = oracle_outlet(scenario)
-    with TemporaryDirectory(prefix="filter-oracle-") as directory:
-        observed = _translate_outlet(scenario, module, Path(directory), patch)
+    with TemporaryDirectory(prefix="filter-oracle-") as directory, patch.context() as scoped:
+        observed = _translate_outlet(scenario, module, Path(directory), scoped)
     assert observed == expected, (scenario, expected, observed)
 
 

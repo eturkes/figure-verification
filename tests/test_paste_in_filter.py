@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.1 F1-F3: backend receipt, authenticity and independent verdict re-derivation.
 
-Contract: `.agent/contracts/m10u1.md`. Each test pins a distinct public behavior; the outlet may
-publish only from a tool-written request receipt, never from the assistant's own words.
+Contract: `.agent/archive/contracts/m10u1.md`. Each test pins a distinct public behavior; the
+outlet may publish only from a tool-written request receipt, never from the assistant's own words.
 """
 
 import asyncio
