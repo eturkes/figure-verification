@@ -35,7 +35,9 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 Queue = `.agent/deferred.md`, 18 rows, one line + acceptance check each; nothing there blocks the units below.
 
-Spine = the unfinished units, in order: M10.1 → M10.2 → M10.6 → M10.3 → M10.9 → M14.
+Spine = the unfinished units, in order: M10.7 ∥ M10.1 → M10.2 → M10.6 → M10.3 → M10.9 → M14 (M10.7 runs beside M10.1; disjoint files).
+
+**M10.7** — license headers + measurement-harness rerunnability, tier docs plus one purpose-built gate check (contract `.agent/contracts/m10u7.md`). 27 tracked source files lack the SPDX line `.claude/rules/ops.md` requires — 20 under `.agent/measurements/`, 7 `tools/mutants/*.toml` — and no check decides it; `t6_pyodide.mjs` and `versions.mjs` read `.scratch/` paths that no longer exist, so two published harness numbers cannot be rerun from committed state. Accept: G14 decides the header law over `git ls-files` with probe `g14-spdx-header` (34/34 FIRED), every census path carries the header by a header-only diff, and T6 + `versions.mjs` rerun from committed state with the README stating each harness's real argv.
 
 **M10.6** — the proposer lever on the design set (user ruling 1), tier data. Levers = ruling 6's alone: positive style examples, `max_tokens`, temperature, task phrasing; admission vocabulary stays banned (C6). Accept: one fresh `m13-design`-shaped capture on the upgraded runtime, the simple rate reported design-only with the sentinel apart, the prompt hash re-pinned, and the demo's admin prompt equal to the capture prompt.
 
