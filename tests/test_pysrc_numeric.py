@@ -4,7 +4,8 @@
 The executed program is numpy float64 and rounds at EVERY operator, so the verifier evaluates the
 projected tree operator by operator in binary64. An exact-rational engine rounding once at the end
 would compute a number the program never computes; the more precise engine is the less faithful
-one. Every comparison here is on BIT PATTERNS, never with a tolerance.
+one. Every comparison here is on BIT PATTERNS, never with a tolerance, except N3's NaN rows, which
+compare by category because numpy's NaN sign is host-dependent.
 
 Each test's docstring carries its predicate's acceptance check.
 """
@@ -96,10 +97,10 @@ def test_n2_literal_conversion_is_the_executed_float() -> None:
 def test_n3_ieee_domain_results_instead_of_exceptions() -> None:
     """Domain and overflow faults reproduce numpy's IEEE values rather than raising.
 
-    Accept: table-driven differential against numpy, compared on bit patterns, for `x/0` -> +-inf,
-    `0/0` -> nan, `log(0)` -> -inf, `log(x<0)` -> nan, `sqrt(x<0)` -> nan, negative base with
-    non-integral exponent -> nan, `exp` overflow -> inf. No `ValueError`, `ZeroDivisionError` or
-    `OverflowError` escapes the evaluator.
+    Accept: table-driven differential against numpy, NaNs by category and all else by bit pattern,
+    for `x/0` -> +-inf, `0/0` -> nan, `log(0)` -> -inf, `log(x<0)` -> nan, `sqrt(x<0)` -> nan,
+    negative base with non-integral exponent -> nan, `exp` overflow -> inf. No `ValueError`,
+    `ZeroDivisionError` or `OverflowError` escapes the evaluator.
     """
     from verifier.pysrc.numeric import evaluate_expr  # noqa: PLC0415
 
@@ -123,7 +124,12 @@ def test_n3_ieee_domain_results_instead_of_exceptions() -> None:
 
     for expression, oracle in cases:
         evaluated = evaluate_expr(expression, x=0.0, budget=WorkBudget(limit=10))
-        assert _bits(evaluated) == _bits(float(oracle))
+        expected = float(oracle)
+        # numpy's NaN sign varies by host; N4 refuses non-finite values before a verdict.
+        if math.isnan(evaluated) or math.isnan(expected):
+            assert math.isnan(evaluated) and math.isnan(expected)
+        else:
+            assert _bits(evaluated) == _bits(expected)
 
 
 def test_n4_non_finite_is_the_sole_domain_refusal() -> None:

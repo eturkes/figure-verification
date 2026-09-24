@@ -193,7 +193,11 @@ imports, inlinable into one pasted file:
    base → the pole `±inf`, negative only for `-0.0` under an odd-integer exponent; every remaining
    `ValueError` → `nan`. Category structure (`finite`/`±inf`/`nan`) never split across the
    environment pair — 0 splits in 1,000,000 — so the REFUSAL decision is environment-independent and
-   only a finite value's last bit can differ.
+   only a finite value's last bit can differ. A NaN's SIGN is not stable across x86 hosts either:
+   numpy's `log(-1)` is +NaN on the host of record and −NaN on the hosted CI runner. The evaluator
+   is pure `math` and does not move, and `value_not_finite` refuses every NaN before a verdict, so
+   a differential against numpy compares a NaN by category (`math.isnan` on both sides) and every
+   other value by bits (M10.8, `.agent/archive/contracts/m10u8.md`).
 
    The DATASET arm's parse is a separate and harder problem: the sandbox calls plain
    `pd.read_csv`, whose DEFAULT float parser is not correctly rounded. Measured against stdlib
