@@ -36,7 +36,9 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 Queue = `.agent/deferred.md`, 18 rows, one line + acceptance check each; nothing there blocks the units below.
 
-Spine = the unfinished units, in order: M10.1 → M10.2 → M10.6 → M10.3 → M10.9 → M14.
+Spine = the unfinished units, in order: M10.1 → M10.8 → M10.2 → M10.6 → M10.3 → M10.9 → M14.
+
+**M10.8** — CI determinism, tier kernel (`.agent/contracts/m10u8.md`). Hosted run `35936902620` on `ef5aa7f` failed N3 alone: numpy's `log(-1)` NaN sign is host-dependent, the evaluator is host-independent, and N4 refuses every non-finite, so the sign never reaches a verdict. Accept: N3 compares a NaN row by category (`math.isnan` on both sides) and every other row by bits; three planted category mutants go red, an inf-sign flip goes red, the tolerated NaN-sign flips stay green; `src/**` unchanged; then the user pushes `main` and R4 closes on that hosted run (lever + CI rulings 2-3).
 
 **M10.6** — the proposer lever on the design set (user ruling 1), tier data. Levers = ruling 6's alone: positive style examples (prose OR code, lever ruling 5), `max_tokens`, temperature, task phrasing; admission vocabulary stays banned (C6). Objective + guard = lever ruling 4; demo transport = lever ruling 6. Accept: one fresh `m13-design`-shaped capture on the upgraded runtime, VERIFIED + FAITHFUL + complicated-BLOCKED reported design-only with the sentinel apart, the adopted variant passing the guard, the prompt hash re-pinned, and the demo's admin prompt equal to the capture prompt.
 
