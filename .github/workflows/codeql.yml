@@ -33,9 +33,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # python = the product; actions = these workflows; javascript-typescript = the Node
-        # measurement harnesses under .agent/measurements/.
-        language: [python, actions, javascript-typescript]
+        # python = the product; actions = these workflows. No javascript-typescript leg: the only
+        # JS is the Node measurement harnesses under .agent/, a dot-directory the extractor skips,
+        # so that leg fails with "no source code seen" (CLI 2.27.0, measured).
+        language: [python, actions]
     steps:
       - name: Check out the repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
