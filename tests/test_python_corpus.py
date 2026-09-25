@@ -45,9 +45,13 @@ _VALID_ROW: dict[str, Any] = {
 _SENTINEL_SIMPLE_RENDERED = (
     "Chart the total revenue of each region using bars.\n"
     "\n"
-    "Use the CSV file at /mnt/uploads/sales.csv. "
-    "Its columns are month, region, revenue, orders.\n"
+    "Use the CSV file at /mnt/uploads/sales.csv. Its columns are month, region, revenue, orders.\n"
     "Read the CSV file with pandas. Draw the figure with matplotlib.\n"
+    "\n"
+    "When the task asks for one value per time or category, group by its named field with "
+    "pandas and calculate one plotted value per group. For totals, calculate a sum; for "
+    "averages, a mean; for highest or lowest values, a maximum or minimum. Draw the grouped "
+    "values rather than the original rows.\n"
     "\n"
     "Return one complete Python program as bare source text, no Markdown fences.\n"
 )
@@ -189,7 +193,7 @@ def test_corpus_tree_holds_no_python_module() -> None:
 
 def test_capture_records_are_tracked_not_ignored() -> None:
     """I5 -- M12.7 commits captures; bench/reports/ is the gitignored counter-example."""
-    probe = "corpus/python/captures/m13-design/row.json"
+    probe = "corpus/python/captures/m10-design/row.json"
     result = subprocess.run(  # noqa: S603
         ["git", "check-ignore", "--no-index", probe],  # noqa: S607
         capture_output=True,

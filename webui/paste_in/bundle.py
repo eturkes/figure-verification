@@ -21,11 +21,14 @@ what stops `ruff format` from rewriting the quotes and breaking `--check` on the
 """
 
 import ast
+import json
 import sys
 from pathlib import Path
 
 TOOL_ARTIFACT = "paste-in/figure_verification_tool.py"
 FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
+CAPTURE_TEMPLATE_SOURCE = "webui/paste_in/capture_template.py"
+_CAPTURE_TEMPLATE_MODULE = "webui.paste_in.capture_template"
 
 # Each root names the one class Open WebUI discovers after its source closure loads.
 ARTIFACTS: dict[str, str] = {
@@ -40,6 +43,7 @@ _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
 # `pyproject.toml` [tool.ruff] line-length. The artifact is linted like any other tracked source,
 # so a source line that would overflow here must abort generation rather than fail the gate.
 _LINE_LIMIT = 100
+_MAX_TEMPLATE_LITERAL = 88  # indented JSON literals must fit the embedding line cap
 
 # The one third-party import the artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition.
@@ -55,6 +59,34 @@ class BundleError(RuntimeError):
 def repo_root() -> Path:
     """The repository root, resolved from this file rather than from the process cwd."""
     return Path(__file__).resolve().parents[2]
+
+
+def generated_template_source() -> str:
+    """Encode the authored prompt once for both the dev inlet and embedded filter."""
+    template = (repo_root() / "corpus/python/capture_prompt_v1.txt").read_text(encoding="utf-8")
+    chunks: list[str] = []
+    current = ""
+    for character in template:
+        candidate = current + character
+        if current and len(json.dumps(candidate, ensure_ascii=False)) > _MAX_TEMPLATE_LITERAL:
+            chunks.append(current)
+            current = character
+        else:
+            current = candidate
+    if current or not chunks:
+        chunks.append(current)
+    lines = [
+        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+        '"""Generated from corpus/python/capture_prompt_v1.txt; edit that file instead."""',
+        "",
+        "from typing import Final",
+        "",
+        "CAPTURE_TEMPLATE: Final = (",
+        *(f"    {json.dumps(chunk, ensure_ascii=False)}" for chunk in chunks),
+        ")",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def artifact_text(relative: str) -> str:
@@ -89,7 +121,7 @@ def module_path(name: str) -> Path:
     if package.is_file():
         return package
     module = base.with_suffix(".py")
-    if module.is_file():
+    if module.is_file() or name == _CAPTURE_TEMPLATE_MODULE:
         return module
     msg = f"no tracked source for module {name!r}"
     raise BundleError(msg)
@@ -123,7 +155,11 @@ def _embeddable_source(name: str) -> str:
     `ast.parse` would raise a bare `SyntaxError` carrying no path, and generation must abort naming
     the source it refused.
     """
-    source = module_path(name).read_text(encoding="utf-8")
+    source = (
+        generated_template_source()
+        if name == _CAPTURE_TEMPLATE_MODULE
+        else module_path(name).read_text(encoding="utf-8")
+    )
     _check_embeddable(name, source)
     return source
 

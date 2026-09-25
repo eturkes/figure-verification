@@ -7,9 +7,9 @@ routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it 
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
 structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
-prompt-classified (see _scripted_reply): the simple banner prompt selects the committed verified
-Python program, the complicated banner prompt selects the committed refused program, and other
-turns stay prose. This makes both outlet verdicts repeatable without measuring model quality.
+prompt-classified (see _scripted_reply): the inlet-rendered simple banner prompt selects the
+committed verified program, the rendered complicated prompt selects the refused program, and
+other turns stay prose. This makes both outlet verdicts repeatable without measuring model quality.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
@@ -22,11 +22,14 @@ import uuid
 from typing import cast
 from urllib.parse import urlparse
 
+import msgspec
 import uvicorn
 from litestar import Litestar, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_200_OK
 
+from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
+from capture.harness import defence
 from model_backend.models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -39,75 +42,35 @@ from model_backend.models import (
 from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
-_SIMPLE_PROMPT = "Chart the total revenue of each region using bars. dataset_name: sales.csv"
-_COMPLICATED_PROMPT = (
-    "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue "
-    "area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter "
-    "colored by region, and a KPI panel, on a dark theme with the peak month annotated."
-)
-# De-fenced `sentinel-simple` from the committed m13-design capture. The F9 test compares the
-# decoded tool call to that capture and verifies this source against data/sales.csv independently.
-_SIMPLE_PROGRAM = (
-    "import pandas as pd\n"
-    "import matplotlib.pyplot as plt\n"
-    "\n"
-    "# Read the CSV file\n"
-    "df = pd.read_csv('/mnt/uploads/sales.csv')\n"
-    "\n"
-    "# Group the data by region and calculate the total revenue\n"
-    "region_revenue = df.groupby('region')['revenue'].sum()\n"
-    "\n"
-    "# Plot the total revenue for each region\n"
-    "plt.figure(figsize=(10, 6))\n"
-    "plt.bar(region_revenue.index, region_revenue.values)\n"
-    "plt.xlabel('Region')\n"
-    "plt.ylabel('Total Revenue')\n"
-    "plt.title('Total Revenue by Region')\n"
-    "plt.xticks(rotation=45)\n"
-    "plt.tight_layout()\n"
-    "plt.show()\n"
-)
-# De-fenced `sentinel-complicated` from the same capture: the verifier refuses this program.
-_COMPLICATED_PROGRAM = (
-    "import pandas as pd\n"
-    "import matplotlib.pyplot as plt\n"
-    "\n"
-    "# Read the CSV file\n"
-    "sales = pd.read_csv('/mnt/uploads/sales.csv')\n"
-    "\n"
-    "# Create a 2x2 grid of subplots\n"
-    "fig, axs = plt.subplots(2, 2, figsize=(10, 10))\n"
-    "\n"
-    "# Plot the revenue area chart\n"
-    "axs[0, 0].plot(sales['month'], sales['revenue'], color='skyblue', label='Revenue Area')\n"
-    "axs[0, 0].set_title('Revenue Area Chart')\n"
-    "axs[0, 0].set_xlabel('Month')\n"
-    "axs[0, 0].set_ylabel('Revenue')\n"
-    "\n"
-    "# Plot the grouped orders-by-region bar chart\n"
-    "axs[0, 1].bar(sales['region'], sales['orders'], color='lightcoral', "
-    "label='Orders by Region')\n"
-    "axs[0, 1].set_title('Orders by Region')\n"
-    "axs[0, 1].set_xlabel('Region')\n"
-    "axs[0, 1].set_ylabel('Orders')\n"
-    "\n"
-    "# Plot the revenue-versus-orders bubble scatter colored by region\n"
-    "axs[1, 0].scatter(sales['month'], sales['revenue'], c=sales['region'], "
-    "cmap='viridis', s=50, label='Revenue vs Orders')\n"
-    "axs[1, 0].set_title('Revenue vs Orders Bubble Scatter')\n"
-    "axs[1, 0].set_xlabel('Month')\n"
-    "axs[1, 0].set_ylabel('Revenue')\n"
-    "\n"
-    "# Add a peak month annotation\n"
-    "axs[1, 0].annotate('Peak Month', xy=(sales['month'].max(), sales['revenue'].max()), "
-    "ha='center', va='bottom', fontsize=12)\n"
-    "\n"
-    "# Set the background color to dark\n"
-    "plt.gca().set_facecolor('black')\n"
-    "\n"
-    "# Show the plot\n"
-    "plt.show()\n"
-)
+_CAPTURE_RECORDS = CORPUS_ROOT / "captures" / "m10-design" / "records.ndjson"
+
+
+def _rendered_sentinel(prompt_id: str) -> str:
+    """Use the public task and the capture renderer, never a second authored template."""
+    rows = msgspec.json.decode((CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet)
+    prompt = next((row for row in rows.prompts if row.id == prompt_id), None)
+    if prompt is None:
+        msg = f"no public sentinel {prompt_id}"
+        raise ValueError(msg)
+    return render_capture_prompt(prompt)
+
+
+def _captured_program(prompt_id: str) -> str:
+    """Take the model-authored bytes from the committed run, de-fenced at the capture seam."""
+    rows = (json.loads(line) for line in _CAPTURE_RECORDS.read_text().splitlines())
+    captured = next((row for row in rows if row["prompt_id"] == prompt_id), None)
+    if captured is None or not isinstance(captured["content"], str):
+        msg = f"no captured program for {prompt_id}"
+        raise ValueError(msg)
+    fenced, source = defence(captured["content"])
+    if not fenced or not source:
+        msg = f"capture {prompt_id} has no de-fenced program"
+        raise ValueError(msg)
+    return source
+
+
+_SIMPLE_PROMPT = _rendered_sentinel("sentinel-simple")
+_COMPLICATED_PROMPT = _rendered_sentinel("sentinel-complicated")
 
 
 def _tool_call_reply(program: str) -> str:
@@ -117,8 +80,8 @@ def _tool_call_reply(program: str) -> str:
     )
 
 
-_TOOL_CALL_REPLY = _tool_call_reply(_SIMPLE_PROGRAM)
-_COMPLICATED_TOOL_CALL_REPLY = _tool_call_reply(_COMPLICATED_PROGRAM)
+_TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-simple"))
+_COMPLICATED_TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-complicated"))
 # The filter, not the stub's prose, publishes the final verdict on either path.
 _FINAL_REPLY = "Chart request completed."
 

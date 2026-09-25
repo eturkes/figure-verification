@@ -68,6 +68,7 @@ CLAUDE.local.md
 .agent/measurements/t7-*.f64le
 .agent/measurements/*.json
 !.agent/measurements/package.json
+!.agent/measurements/design_intent.json
 .agent/measurements/*.log
 .agent/measurements/node_modules/
 .agent/measurements/pyodide-index/

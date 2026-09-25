@@ -1,7 +1,7 @@
 {
   "version": "python-capture-stats-1",
   "mode": "python_raw_unconstrained",
-  "run": "m13-design",
+  "run": "m10-design",
   "kind": "design",
   "record_count": 50,
   "by_category": {
@@ -20,10 +20,10 @@
       "replies": 24,
       "fenced": 24,
       "parsed": 24,
-      "truncated": 0,
+      "truncated": 2,
       "fence_rate": 1.0,
       "parse_rate": 1.0,
-      "truncation_rate": 0.0
+      "truncation_rate": 0.0833
     }
   },
   "sentinels": [

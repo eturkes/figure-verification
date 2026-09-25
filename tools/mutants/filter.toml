@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py"]
+tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -14,8 +14,10 @@ mutant = '''        receipt = read_receipt(__request__) or body.get("receipt")''
 id = "f3-metadata-user"
 predicate = "owner-checked refetch uses __user__, never untrusted metadata identity"
 kills = "tests/test_paste_in_filter.py::test_f3_filter_uses_current_user_to_refetch_and_drops_foreign_or_missing_ids"
-anchor = '''        user_id = (__user__ or {}).get("id")'''
-mutant = '''        user_id = (__metadata__ or {}).get("user", {}).get("id") or (__user__ or {}).get("id")'''
+anchor = '''        receipt = read_receipt(__request__)
+        user_id = (__user__ or {}).get("id")'''
+mutant = '''        receipt = read_receipt(__request__)
+        user_id = (__metadata__ or {}).get("user", {}).get("id") or (__user__ or {}).get("id")'''
 
 [[mutant]]
 id = "f3-selection-duplicate"
@@ -164,3 +166,36 @@ anchor = '''        if not isinstance(response, dict) or "stderr" not in respons
             return _rewrite(body, FAIL_TEXT)'''
 mutant = '''        if not isinstance(response, dict) or response.get("stderr"):
             return _rewrite(body, FAIL_TEXT)'''
+
+[[mutant]]
+id = "x2-inlet-metadata-message"
+predicate = "the inlet never replaces the metadata user-message content"
+kills = "tests/test_paste_in_inlet.py::test_x2_aliasing_keeps_request_metadata_and_prior_message_objects"
+anchor = '''            updated[index] = {**message, "content": rendered}'''
+mutant = '''            __metadata__["user_message"]["content"] = rendered
+            updated[index] = {**message, "content": rendered}'''
+
+[[mutant]]
+id = "x2-inlet-in-place"
+predicate = "the inlet returns a new message without mutating the aliased original"
+kills = "tests/test_paste_in_inlet.py::test_x2_aliasing_keeps_request_metadata_and_prior_message_objects"
+anchor = '''            updated[index] = {**message, "content": rendered}'''
+mutant = '''            message["content"] = rendered
+            updated[index] = message'''
+
+[[mutant]]
+id = "x1-inlet-first-owned"
+predicate = "the last owned attachment in chat order supplies the prompt header"
+kills = "tests/test_paste_in_inlet.py::test_x1_last_owned_file_and_last_user_message_win"
+anchor = '''                    attachments[-1].content,'''
+mutant = '''                    attachments[0].content,'''
+
+[[mutant]]
+id = "x1-inlet-no-attachment"
+predicate = "no owned attachment leaves the proposer prompt unchanged"
+kills = "tests/test_paste_in_inlet.py::test_x1_unrenderable_input_keeps_body_equal[no-file]"
+anchor = '''        if not attachments:
+            return body'''
+mutant = '''        if not attachments:
+            from webui.paste_in.owui_files import UploadedFile
+            attachments = (UploadedFile("invented", UPLOAD_DIR + "invented.csv", b"x,y\na,1\n"),)'''

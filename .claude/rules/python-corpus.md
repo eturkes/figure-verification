@@ -91,5 +91,9 @@ paths:
 - Crypto seal/escrow/contamination batteries = REJECTED over-engineering (ruling 7) — do not
   re-propose. Held-out discipline is instruction-level and binds GENERATION plus SUBSET DESIGN, not
   structural review at authoring time.
-- M13 static guard: no prompt text, prompt hash, sample-specific field list or raw model reply may
-  appear in production code — one committed search test; admission is justified by AST idiom class.
+- Static guard (G1, `tests/test_static_guard.py`): no corpus prompt (design, held-out + sentinel,
+  read in memory through `capture.corpus`, never printed), no non-blank capture-template line and no
+  `CAPTURE_PROMPT_SHA256` value may appear in the verification core, `src/verifier/**`; a failure
+  names file + row id or template line, never prompt text. The surface is the CORE, not all
+  production code: the paste-in filter EMBEDS the template by generation, because its inlet renders
+  it. Admission is justified by AST idiom class, never by a prompt.

@@ -10,26 +10,36 @@ model_backend.models, so shape drift versus the live backend surfaces here witho
 
 import json
 
+import msgspec
 import pytest
 import uvicorn
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
+from webui.model_stub import (
+    _COMPLICATED_PROMPT as _STUB_COMPLICATED_PROMPT,
+)
 from webui.model_stub import (
     _FINAL_REPLY,
     _SELECTOR_MARKER,
-    _SIMPLE_PROMPT,
     _TOOL_CALL_REPLY,
     create_app,
     serve,
 )
+from webui.model_stub import (
+    _SIMPLE_PROMPT as _STUB_SIMPLE_PROMPT,
+)
 from webui.settings import Settings
 
-_COMPLICATED_PROMPT = (
-    "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue "
-    "area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter "
-    "colored by region, and a KPI panel, on a dark theme with the peak month annotated."
-)
+_PUBLIC_SENTINELS = {
+    row.id: row
+    for row in msgspec.json.decode(
+        (CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet
+    ).prompts
+}
+_SIMPLE_PROMPT = render_capture_prompt(_PUBLIC_SENTINELS["sentinel-simple"])
+_COMPLICATED_PROMPT = render_capture_prompt(_PUBLIC_SENTINELS["sentinel-complicated"])
 _HISTORY_PREFIX = 'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier reply"""\nQuery: '
 
 
@@ -123,6 +133,8 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
         ),
         (_SELECTOR_MARKER, _SIMPLE_PROMPT, "prose"),
         (_SELECTOR_MARKER, _COMPLICATED_PROMPT, "prose"),
+        (_SELECTOR_MARKER, f"Query: {_PUBLIC_SENTINELS['sentinel-simple'].prompt}", "prose"),
+        (_SELECTOR_MARKER, f"Query: {_PUBLIC_SENTINELS['sentinel-complicated'].prompt}", "prose"),
         (_SELECTOR_MARKER, "Query: other request", "prose"),
         (_SELECTOR_MARKER, f"Query: {_SIMPLE_PROMPT} please", "prose"),
         (_SELECTOR_MARKER, f"Query: {_COMPLICATED_PROMPT} please", "prose"),
@@ -137,6 +149,8 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
         "complicated-history",
         "simple-bare",
         "complicated-bare",
+        "simple-unrendered",
+        "complicated-unrendered",
         "other-query",
         "simple-suffix",
         "complicated-suffix",
@@ -190,6 +204,8 @@ def test_chat_final_turn_does_not_repeat_tool_call() -> None:
 
 
 def test_scripted_tool_call_is_exact_draw_figure_request() -> None:
+    assert _STUB_SIMPLE_PROMPT == _SIMPLE_PROMPT
+    assert _STUB_COMPLICATED_PROMPT == _COMPLICATED_PROMPT
     reply = json.loads(_TOOL_CALL_REPLY)
     assert set(reply) == {"tool_calls"}
     assert len(reply["tool_calls"]) == 1

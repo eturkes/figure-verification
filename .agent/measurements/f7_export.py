@@ -8,7 +8,7 @@ from capture.harness import defence
 from webui.paste_in.filter import wrapper_code
 
 root = Path(__file__).resolve().parents[2]
-records = root / "corpus/python/captures/m13-design/records.ndjson"
+records = root / "corpus/python/captures/m10-design/records.ndjson"
 sentinel = next(
     json.loads(line)["content"]
     for line in records.read_text().splitlines()

@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Demo-only selector transport: one named X4 test must fail per changed boundary.
+module = "model_backend/app.py"
+tests = ["tests/test_model_backend_adapter.py"]
+
+[[mutant]]
+id = "x4-first-query"
+predicate = "history cannot replace the final user query with an earlier Query: fragment"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[bare-history-last-query]"""
+anchor = '''    if marker and history.startswith("History:\n") and history != "History:\n":
+        return user.rsplit("Query: ", 1)[-1]'''
+mutant = '''    if marker and history.startswith("History:\n") and history != "History:\n":
+        return user.split("Query: ", 1)[-1]'''
+
+[[mutant]]
+id = "x4-fence-preserved"
+predicate = "the capture de-fencer alone extracts the model-authored source"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[fenced-fresh]"""
+anchor = '''        _, program = defence(text)'''
+mutant = '''        program = text'''
+
+[[mutant]]
+id = "x4-non-selector-tool-call"
+predicate = "an ordinary completion never turns into a chart tool call"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_non_selector_keeps_original_generation_and_reply[no-system]"""
+anchor = '''    selector = _selector_prompt(data.messages)'''
+mutant = '''    selector = _selector_prompt(data.messages) or "draw"'''
+
+[[mutant]]
+id = "x4-exact-message-count"
+predicate = "three-message near misses preserve original generation"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_non_selector_keeps_original_generation_and_reply[two-users]"""
+anchor = '''        len(messages) != _SELECTOR_MESSAGE_COUNT'''
+mutant = '''        False'''
+
+[[mutant]]
+id = "x4-capture-temperature"
+predicate = "a selector forces the capture's greedy decoding rather than caller temperature"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
+anchor = '''        temperature=DEFAULT_TEMPERATURE'''
+mutant = '''        temperature=data.temperature'''
+
+[[mutant]]
+id = "x4-capture-token-cap"
+predicate = "a selector forces the capture's 512-token cap rather than the caller cap"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
+anchor = '''        max_tokens = DEFAULT_MAX_TOKENS'''
+mutant = '''        max_tokens = min(data.max_tokens or settings.max_tokens, settings.max_tokens)'''
+
+[[mutant]]
+id = "x4-no-guided-schema"
+predicate = "selector generation never applies a caller's guidance schema"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
+anchor = '''        guided_schema=None if selector is not None else data.guided_schema,'''
+mutant = '''        guided_schema=data.guided_schema,'''
+
+[[mutant]]
+id = "x4-empty-reply-envelope"
+predicate = "an empty model program still produces a nonempty tool-call envelope"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_reuses_capture_params_and_round_trips_program[empty-fresh]"""
+anchor = '''    if selector is not None:
+        _, program = defence(text)'''
+mutant = '''    if selector is not None and text:
+        _, program = defence(text)'''

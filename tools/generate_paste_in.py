@@ -20,7 +20,14 @@ from pathlib import Path
 # same entry through `pythonpath = ["tests", "."]`; a command-line run has to state it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from webui.paste_in.bundle import ARTIFACTS, BundleError, render, repo_root
+from webui.paste_in.bundle import (
+    ARTIFACTS,
+    CAPTURE_TEMPLATE_SOURCE,
+    BundleError,
+    generated_template_source,
+    render,
+    repo_root,
+)
 
 
 def _artifact_text(module: str) -> str:
@@ -40,9 +47,12 @@ def main(argv: list[str]) -> int:
 
     root = repo_root()
     drifted: list[str] = []
-    for relative, module in sorted(ARTIFACTS.items()):
+    outputs = [(CAPTURE_TEMPLATE_SOURCE, generated_template_source())]
+    outputs.extend(
+        (relative, _artifact_text(module)) for relative, module in sorted(ARTIFACTS.items())
+    )
+    for relative, text in outputs:
         target = root / relative
-        text = _artifact_text(module)
         if check:
             current = target.read_text(encoding="utf-8") if target.is_file() else None
             if current != text:

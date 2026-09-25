@@ -14,14 +14,19 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final
 
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
+from verifier.pysrc.csvread import _read_csv
+from verifier.pysrc.errors import PysrcRefusalError
+from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.verify import Verified
+from webui.paste_in.capture_template import CAPTURE_TEMPLATE
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
     OBSERVER_SOURCE,
     observation_matches,
     parse_observation,
 )
-from webui.paste_in.owui_files import owned_files
+from webui.paste_in.owui_files import UPLOAD_DIR, owned_files, uploaded_files
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.selection import first_verdict
 
@@ -133,7 +138,46 @@ def _rewrite(body: dict[str, object], text: str) -> dict[str, object]:
 
 
 class Filter:
-    """The global active outlet; all paths publish a verdict rather than model narration."""
+    """The global active filter; the inlet carries context, and the outlet authors the verdict."""
+
+    async def inlet(
+        self,
+        body: dict[str, object],
+        __user__: dict[str, object] | None = None,
+        __metadata__: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Render the capture prompt over an owned CSV without changing the user's evidence."""
+        user_id = (__user__ or {}).get("id")
+        messages = body.get("messages")
+        if not isinstance(user_id, str) or not isinstance(messages, list):
+            return body
+        attachments = await uploaded_files(__metadata__, user_id)
+        if not attachments:
+            return body
+        for index in range(len(messages) - 1, -1, -1):
+            message = messages[index]
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            task = message.get("content")
+            if not isinstance(task, str):
+                return body
+            try:
+                header, _rows = _read_csv(
+                    attachments[-1].content,
+                    DEFAULT_LIMITS,
+                    WorkBudget(DEFAULT_LIMITS.max_work),
+                )
+            except (PysrcRefusalError, WorkBudgetExceededError):
+                return body
+            rendered = CAPTURE_TEMPLATE.format(
+                task=task,
+                dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
+                columns=", ".join(header),
+            )
+            updated = list(messages)
+            updated[index] = {**message, "content": rendered}
+            return {**body, "messages": updated}
+        return body
 
     async def outlet(  # noqa: PLR0913, PLR0911 - fixed OWUI hook; every refusal returns a verdict
         self,

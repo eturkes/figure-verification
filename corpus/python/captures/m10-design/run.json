@@ -1,22 +1,22 @@
 {
   "version": "python-capture-1",
   "mode": "python_raw_unconstrained",
-  "run": "m13-design",
+  "run": "m10-design",
   "kind": "design",
   "model": "Qwen2.5-Coder-0.5B-Instruct",
-  "model_base_url": "http://127.0.0.1:8001",
-  "max_tokens": 1024,
+  "model_base_url": "http://127.0.0.1:8201",
+  "max_tokens": 512,
   "temperature": 0.0,
   "record_count": 50,
   "provenance": {
     "repo": {
-      "git_commit": "90cb799dbc7354bb1277a3b43ba7d8d5c0bd7e44",
-      "git_dirty": true,
+      "git_commit": "086cc3c508606ee81e0237c51490daf0a59cb8f4",
+      "git_dirty": false,
       "model_repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
       "model_revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
       "engine_dtype": "float16",
-      "runtime_lock_sha256": "c5c2c2458b8de334b7341134d0b00a5397f298c68d9a8469e35d953da6fbe94e",
-      "capture_prompt_sha256": "e5196f4df7eac02e7a83ca1b609ced29d04d2b443b844cb904891de27f52f2fe"
+      "runtime_lock_sha256": "75adac9c73b536f3d15380c7d53c852462bebd3776914515e319a9eaea6a42ef",
+      "capture_prompt_sha256": "9ceee9a4561aa46c8ec08931666379bf939b26ecaffb87dbe57395ff9307d71f"
     },
     "service": {
       "model_name": "Qwen2.5-Coder-0.5B-Instruct",

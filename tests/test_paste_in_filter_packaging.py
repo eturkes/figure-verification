@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import cast
 
 import httpx
+import msgspec
 import pytest
 
+from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
 from capture.harness import defence
 from model_backend.models import ChatMessage
 from paste_in_support import (
@@ -270,9 +272,15 @@ def _sentinels() -> dict[str, str]:
     return {cast(str, row["id"]): cast(str, row["prompt"]) for row in rows}
 
 
+def _rendered_sentinel(prompt_id: str) -> str:
+    sentinels = msgspec.json.decode((CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet)
+    prompt = next(row for row in sentinels.prompts if row.id == prompt_id)
+    return render_capture_prompt(prompt)
+
+
 def _captured_program(prompt_id: str) -> str:
     """Extract source from committed design capture, independent of the stub constants."""
-    records = REPO_ROOT / "corpus/python/captures/m13-design/records.ndjson"
+    records = REPO_ROOT / "corpus/python/captures/m10-design/records.ndjson"
     rows = (json.loads(line) for line in records.read_text().splitlines())
     captured = next(row for row in rows if row["prompt_id"] == prompt_id)
     content = captured["content"]
@@ -322,11 +330,12 @@ def test_f9_simple_banner_prompt_calls_draw_figure_with_committed_sentinel_progr
     prefix: str,
 ) -> None:
     """F9/A4: both legacy selector shapes carry the committed verified program byte for byte."""
-    simple = _sentinels()["sentinel-simple"] + " dataset_name: sales.csv"
+    simple = _sentinels()["sentinel-simple"]
     assert f'simple_prompt="{simple}"' in (REPO_ROOT / "webui/launch.sh").read_text()
     source = _captured_program("sentinel-simple")
     assert isinstance(_sales_verdict(source), Verified)
-    reply = json.loads(_stub_reply(prefix + simple))
+    assert _stub_reply(prefix + simple) == model_stub._FINAL_REPLY
+    reply = json.loads(_stub_reply(prefix + _rendered_sentinel("sentinel-simple")))
     assert reply == {"tool_calls": [{"name": "draw_figure", "parameters": {"program": source}}]}
 
 
@@ -347,6 +356,7 @@ def test_f9_complicated_banner_prompt_calls_draw_figure_with_refused_capture(
     source = _captured_program("sentinel-complicated")
     refusal = _sales_verdict(source)
     assert isinstance(refusal, Refused)
-    assert refusal.code == "assign_target_not_admitted"
-    reply = json.loads(_stub_reply(prefix + complicated))
+    assert refusal.code == "expression_not_admitted"
+    assert _stub_reply(prefix + complicated) == model_stub._FINAL_REPLY
+    reply = json.loads(_stub_reply(prefix + _rendered_sentinel("sentinel-complicated")))
     assert reply == {"tool_calls": [{"name": "draw_figure", "parameters": {"program": source}}]}

@@ -20,7 +20,7 @@ from capture.harness import validate_stats
 from capture.record import CAPTURES_ROOT, load_run
 from capture.record import validate as validate_records
 
-DESIGN_RUN = "m13-design"
+DESIGN_RUN = "m10-design"
 RUN_FILES = ("run.json", "records.ndjson", "stats.json")
 # 24 + 24 committed design prompts plus the two public sentinels.
 DESIGN_ROW_COUNT = 50

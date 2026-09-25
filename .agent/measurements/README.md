@@ -20,7 +20,16 @@ For `make_s6_csv.py`, `t3.py`, `t4.py`, `t5.py`, `t7_profile.py`, and `t7_quoted
 `uv run --locked --with pandas==2.3.1 python .agent/measurements/<script>.py`: pandas is not in
 the root development environment. Run a generator before its dependent host or sandbox leg.
 `W1` reads committed capture records and accepts an optional run directory; its default is
-`corpus/python/captures/m13-design`.
+`corpus/python/captures/m10-design`. Re-run the design-only outcome and intent counts with:
+
+```
+uv run --locked python .agent/measurements/w1_width.py corpus/python/captures/m10-design
+```
+
+The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
+x column, y column and reduction; six tasks also require a separate city series or city color, which
+one `DatasetPlot` cannot express. A row is FAITHFUL only when the verified projected spec equals
+those fields and the task requires no unrepresented series.
 
 Run each Node command from `.agent/measurements/`. Replace `<P>` with `pyodide` (0.28.0) or
 `pyodide0281` (0.28.1), and `<v>` with `0280` or `0281`, respectively. Every `.mjs` takes `<P>` as
@@ -71,7 +80,7 @@ and pandas versions for the selected build.
 | T5 | `t5.py` | none | host only |
 | T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs <P> t6-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
-| W1 | `w1_width.py [run-dir]` | none | host only |
+| W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 52 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
@@ -90,7 +99,7 @@ and pandas versions for the selected build.
 | T5 | default NA spellings pandas recognises | C9's 19-spelling literal |
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
-| W1 | shipped verifier's verdict over one committed capture run, per category, idiom, and row | M13.6's measured width aim; M13.7's capture-prompt delta |
+| W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 52 fixture observations + PNGs, zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 

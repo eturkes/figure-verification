@@ -249,10 +249,10 @@ log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
-# 5) banner. Every stated outcome names its recorded run count. The stub counts = the M10.1 live
-#    witness; the real-model text predates the pasted python tool and the calibration unit
-#    re-measures it.
-simple_prompt="Chart the total revenue of each region using bars. dataset_name: sales.csv"
+# 5) banner. Every stated outcome names its recorded run count or says it is unrecorded; the
+#    verdict sentences of the stub arm are test-backed (tests/test_webui_banner_prompts.py). The
+#    calibration unit records both arms live through the inlet + adapter transport.
+simple_prompt="Chart the total revenue of each region using bars."
 elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
@@ -261,33 +261,24 @@ if (( USE_STUB )); then
     "      1) ${simple_prompt}" \
     "      2) ${elaborate_prompt}" \
     "" \
-    "           Paste the prompt. The stub recognizes only the exact prompt text, and the chat" \
-    "           editor can change typed text, for example 2x2 to 2×2." \
+    "           Paste the prompt. The inlet binds the uploaded file and its columns before the" \
+    "           stub sees it. The chat editor can change typed 2x2 to 2×2." \
     "           The stub does not run a model. It calls the figure tool with a fixed program." \
-    "           Prompt 1: the verifier accepts the program. In 1 recorded run, the chat showed" \
-    "           one chart and \"Figure verification passed\"." \
-    "           Prompt 2: the verifier refuses the program. In 1 recorded run, the chat showed" \
-    "           only \"Figure verification failed, no image produced\"." \
-    "           Other messages, for example \"hello\", get no tool call. In 1 recorded run, the" \
-    "           chat showed the same failure text. Each result stayed the same after a reload."
+    "           Prompt 1: the verifier accepts that program. Prompt 2: the verifier refuses it." \
+    "           Other messages, for example \"hello\", get no tool call." \
+    "           The chat display of this setup is not recorded yet."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
-    "    Type these prompts:" \
+    "    Attach data/sales.csv to a new chat. Then type one of these prompts:" \
     "      1) ${simple_prompt}" \
-    "" \
-    "           The model proposes a spec. The verifier recomputes the data and rules on it." \
-    "           Measured on this host, the spec fails a check, so no figure renders." \
-    "" \
     "      2) ${elaborate_prompt}" \
     "" \
-    "           No verifiable spec can express this request. The outcome is not stable. In three" \
-    "           measured runs the model answered twice with prose and once with a plain spec" \
-    "           that verified. These observations predate the generated outlet filter." \
-    "           Without an authentic tool call, the current filter now displays:" \
+    "           The model writes a Python program. The verifier recomputes every plotted value" \
+    "           and decides if the chart can show. A refused or missing program shows:" \
     "           Figure verification failed, no image produced" \
-    "" \
-    "           Milestone M10 calibrates both prompts. Use --stub for a verified render."
+    "           The outcomes of these prompts on this host are not recorded yet." \
+    "           Use --stub to run the demo without a model."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"
 cat >&2 <<BANNER

@@ -257,7 +257,9 @@ z3 cannot be inlined.
 - **Dataset-arm width, M13.6 (user ruling): aimed by MEASURED proposer output, not by idiom
   coverage.** An idiom-coverage ceiling over the held-out manifest says the column-pair subset
   reaches 2/20 = 10%. That number is a CEILING and it is not the bottleneck. Measured over all 50
-  committed design captures against the shipped verifier: 0/25 simple verify; 17/25 refuse
+  committed design captures against the shipped verifier (every n/25 in this file = 24 design rows
+  PLUS the sentinel, the measurement's convention until the lever unit moved `w1_width.py` to
+  design-only n/24 with the sentinels printed apart): 0/25 simple verify; 17/25 refuse
   `name_not_bound` because the proposer writes `pd.read_csv` with no `import pandas as pd`; repair
   that hypothetically and it is STILL 0/25, blocked by constructs carrying NO data effect —
   `plt.figure(figsize=)` in 16/25 prompts, `plt.tight_layout()` 6, `plt.xticks(rotation=)` 6,

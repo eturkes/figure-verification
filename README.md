@@ -346,8 +346,8 @@ also explains the accelerator wiring. Use `--fresh` to wipe the persisted instan
 to free all three ports.
 
 Open `http://127.0.0.1:8080`. Log in with the printed credentials. If you use the defaults, enter
-`operator@localhost` / `loopback-dev-password`. Type a chart request. For example, enter
-`Chart the total revenue of each region using bars. dataset_name: sales.csv`.
+`operator@localhost` / `loopback-dev-password`. Attach `data/sales.csv` to a new chat. Then type a
+chart request, for example `Chart the total revenue of each region using bars.`
 
 Bootstrap makes Figure Verifier a default tool on the configured model. Browser chats then offer it
 automatically, without a manual tool toggle. The result depends on the model tier. For the real model,
@@ -405,16 +405,15 @@ it also depends on the exact prompt:
 - **`--stub`.**
 
   The deterministic stub gives fixed replies and does not run a model. It tests the wiring between
-  Open WebUI, the pasted tool, and the outlet filter. Attach `data/sales.csv` to a new chat. Then
-  paste one of the two prompts that the banner shows. The stub recognizes only the exact prompt
-  text, and the chat editor can change typed text, for example `2x2` to `2×2`.
+  Open WebUI, the filter inlet, the pasted tool, and the outlet filter. Attach `data/sales.csv` to a
+  new chat. Then paste one of the two prompts that the banner shows. The inlet binds the uploaded
+  file and its columns before the stub sees the prompt. The stub recognizes only that exact
+  result, and the chat editor can change typed text, for example `2x2` to `2×2`.
 
   For the simple prompt, the stub calls the figure tool with a fixed program that the verifier
-  accepts. In 1 recorded run, the chat showed one chart and `Figure verification passed`. For the
-  elaborate prompt, the stub calls the tool with a fixed program that the verifier refuses. In 1
-  recorded run, the chat showed only `Figure verification failed, no image produced`. Other
-  messages, for example `hello`, get no tool call. In 1 recorded run, the chat showed the same
-  failure text. Each result stayed the same after a page reload.
+  accepts. For the elaborate prompt, the stub calls the tool with a fixed program that the verifier
+  refuses. Other messages, for example `hello`, get no tool call. The chat display of this setup is
+  not recorded yet.
 
 Open WebUI, its browser sandbox, and the pixels stay trusted display components. The modest claim
 above and [POC_SCOPE.md](POC_SCOPE.md) hold this boundary. The generated Figure Verification Filter
