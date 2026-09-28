@@ -58,7 +58,7 @@ _ARCHIVE_CONTRACTS = _REPO_ROOT / ".agent" / "archive" / "contracts"
 
 _GIT = shutil.which("git")
 
-_EXPECTED_SECTIONS = ("Intent", "Artifacts", "Decisions", "Deferred", "Phase")
+_EXPECTED_SECTIONS = ("Intent", "Artifacts", "Decisions", "Tasks", "Phase")
 
 # Roots whose contents are tracked, so a pointer at one either resolves or is dead. Bare `corpus/`
 # and `bench/` stay out: rows legitimately name run outputs that no commit carries.
@@ -88,10 +88,12 @@ _CONTRACT_CITATION = re.compile(
 )
 
 # S8's two tracker forms. A blocker inside an unfinished unit lives with that unit, so a spine id
-# counts; anything off-spine cites the queue. Spine ids are read in the `**M13.6**` heading form
-# alone, which is what makes a unit named in passing prose -- `Carried forward from M13.4` -- stop
-# counting once it closes: S6 already keeps only open units under a heading in `Deferred`.
+# counts; anything off-spine cites the queue. Spine ids are read in the `**M13.6**` form on an OPEN
+# `- [ ]` row of `Tasks` alone: a unit named in passing prose -- `Carried forward from M13.4` --
+# never counts, and a unit stops counting once its row is ticked `- [x] <sha>`, a row the layout
+# keeps legal until phase close.
 _SPINE_UNIT = re.compile(r"\*\*(M\d+(?:\.\d+)?[a-z]?)\*\*")
+_OPEN_ROW = re.compile(r"^- \[ \] (.*)$", re.MULTILINE)
 _UNIT_CITATION = re.compile(r"M\d+(?:\.\d+)?[a-z]?")
 _QUEUE = ".agent/deferred.md"
 
@@ -134,8 +136,8 @@ def _path_tokens(text: str) -> list[str]:
 
 
 def _closed(section: str, unit: re.Match[str]) -> bool:
-    """Emphasis is stripped with the whitespace: `Deferred` writes its unit ids as `**M13.3**`
-    headings, so a tail test that stops at `**` is blind in the one form the section uses."""
+    """Emphasis is stripped with the whitespace: `Tasks` writes its unit ids as `**M13.3**` on
+    its rows, so a tail test that stops at `**` is blind in the one form the section uses."""
     return section[unit.end() :].lstrip("* \t\n").startswith("CLOSED")
 
 
@@ -207,16 +209,17 @@ def test_s5_every_closed_unit_has_its_contract_archived() -> None:
     assert not unfinished, unfinished
 
 
-def test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units() -> None:
-    """S6: `Deferred` owns the unfinished units -- the spine -- and `Phase` records the phase plus
-    the units already closed. Acceptance: a unit written into `Phase` without CLOSED fails, and so
-    does a unit marked CLOSED inside `Deferred`; either one splits what is left to do across two
-    sections, and a reader navigating to one of them reads a spine that is missing a unit."""
-    phase, deferred = _section("Phase"), _section("Deferred")
+def test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units() -> None:
+    """S6: `Tasks` owns the unfinished units -- the spine, one `- [ ]` row each, a ticked
+    `- [x] <sha>` row legal until phase close -- and `Phase` records the phase plus the units
+    already closed. Acceptance: a unit written into `Phase` without CLOSED fails, and so does a unit
+    marked CLOSED inside `Tasks`; either one splits what is left to do across two sections, and a
+    reader navigating to one of them reads a spine that is missing a unit."""
+    phase, tasks = _section("Phase"), _section("Tasks")
     open_in_phase = [m.group(0) for m in _UNIT.finditer(phase) if not _closed(phase, m)]
     assert not open_in_phase, f"Phase names units that are not CLOSED: {open_in_phase}"
-    closed_in_deferred = [m.group(0) for m in _UNIT.finditer(deferred) if _closed(deferred, m)]
-    assert not closed_in_deferred, f"Deferred names closed units: {closed_in_deferred}"
+    closed_in_tasks = [m.group(0) for m in _UNIT.finditer(tasks) if _closed(tasks, m)]
+    assert not closed_in_tasks, f"Tasks names closed units: {closed_in_tasks}"
 
 
 def test_s7_every_contract_citation_survives_the_archive_move() -> None:
@@ -355,17 +358,21 @@ def _disabled_cases(path: Path) -> list[tuple[int, str]]:
 
 
 def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
-    """S8: every case `tests/` disables STATICALLY names its tracker -- a spine unit in `Deferred`,
-    or the `.agent/deferred.md` queue for an off-spine row. Read: a `skip`/`xfail` marker, a
-    constant-condition `skipif`, a `marks=` marker on a parametrized case, a module `pytestmark`,
-    and a `pytest.skip()` no condition can spare, each rooted in the module's OWN `pytest` binding.
-    Acceptance: a marker whose reason names neither tracker fails with its `file:line`, and so does
-    one citing a unit that has since closed; a skip outliving the unit that justified it is a
-    silently narrowed suite, and rc 0 is what a green run reports either way. Outside the claim,
-    deliberately: a skip a REAL condition guards, and anything disabled at runtime, which no AST
-    states -- the gate announces a run's skips by name, and that is where those surface."""
-    spine = frozenset(_SPINE_UNIT.findall(_section("Deferred")))
-    assert spine, "no spine units found in Deferred"
+    """S8: every case `tests/` disables STATICALLY names its tracker -- the unit of an open `- [ ]`
+    row in `Tasks`, or the `.agent/deferred.md` queue for an off-spine row. Read: a `skip`/`xfail`
+    marker, a constant-condition `skipif`, a `marks=` marker on a parametrized case, a module
+    `pytestmark`, and a `pytest.skip()` no condition can spare, each rooted in the module's OWN
+    `pytest` binding. Acceptance: a marker whose reason names neither tracker fails with its
+    `file:line`, and so does one citing a unit that has since closed; a skip outliving the unit that
+    justified it is a silently narrowed suite, and rc 0 is what a green run reports either way.
+    Outside the claim, deliberately: a skip a REAL condition guards, and anything disabled at
+    runtime, which no AST states -- the gate announces a run's skips by name, and that is where
+    those surface."""
+    # No non-empty guard: every row ticked `- [x] <sha>` is a legal layout until phase close,
+    # and an empty open set only narrows what counts as a tracker.
+    spine = frozenset(
+        unit for row in _OPEN_ROW.findall(_section("Tasks")) for unit in _SPINE_UNIT.findall(row)
+    )
     sources = sorted(
         name for name in _tracked() if name.startswith("tests/") and name.endswith(".py")
     )

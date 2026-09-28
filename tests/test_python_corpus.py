@@ -67,7 +67,7 @@ def corpus() -> Corpus:
 def test_committed_corpus_satisfies_every_predicate(corpus: Corpus, predicate_id: str) -> None:
     """C1-C10 -- each contract predicate reports zero failures against the committed corpus."""
     if predicate_id in _SEED_PENDING:
-        pytest.skip("corpus seeded at M12.5; prod-m12u5 fills the 88 prompt cells")
+        pytest.skip("corpus rows seeded with unknown-<id> prompts; the fill empties _SEED_PENDING")
     assert PREDICATES[predicate_id](corpus) == []
 
 

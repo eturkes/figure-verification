@@ -263,7 +263,7 @@ probe g12-probe-coverage tests/test_gate.py::test_g12_every_static_config_check_
 
 probe s1-section-set tests/test_spec.py::test_s1_spec_carries_the_five_sections_in_order \
     'assert headings == _EXPECTED_SECTIONS' \
-    sed -i 's|^## Deferred$|## Backlog|' "$SPEC"
+    sed -i 's|^## Tasks$|## Backlog|' "$SPEC"
 
 probe s2-artifacts-path tests/test_spec.py::test_s2_every_artifacts_path_is_tracked \
     'Artifacts names untracked paths' \
@@ -287,13 +287,13 @@ probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_i
     'm99u9z.md absent from .agent/archive/contracts/' \
     plant_unarchived_closed_unit
 
-probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units \
+probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
     'Phase names units that are not CLOSED' \
     plant_open_unit_in_phase
 
-probe s6-closed-unit-in-deferred tests/test_spec.py::test_s6_the_spine_lives_in_deferred_and_phase_records_only_closed_units \
-    'Deferred names closed units' \
-    sed -i 's|^## Deferred$|## Deferred\n\n**M99.7** CLOSED (probe).|' "$SPEC"
+probe s6-closed-unit-in-tasks tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
+    'Tasks names closed units' \
+    sed -i 's|^## Tasks$|## Tasks\n\n- [ ] **M99.7** CLOSED (probe).|' "$SPEC"
 
 probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_citation_survives_the_archive_move \
     'stranded contract citations' \

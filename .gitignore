@@ -58,8 +58,10 @@ demo/reports/
 # Claude Code machine-local (settings + private instructions)
 .claude/settings.local.json
 CLAUDE.local.md
-# Headroom wrap live-session marker (ephemeral: pid/port/env key; removed on exit)
+# Headroom wrap session state: live-session marker (pid/port/env key; removed on exit), the env keys it owns in settings.local.json + that file's lock
 .claude/.headroom_wrap_marker.json
+.claude/.headroom_wrap_owners.json
+.claude/.headroom_wrap_settings.lock
 
 # Measurement harness outputs: generated corpora + result JSONs land beside the scripts (S1 + W1
 # print to stdout) and run to hundreds of MB. Only the SOURCES are tracked -- rerunning = the evidence.
