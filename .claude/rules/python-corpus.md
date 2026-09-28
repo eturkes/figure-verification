@@ -74,6 +74,15 @@ paths:
   but `record_count`, or a committed `prompt_id` sits outside the freshly selected rows; the
   default refusal precedes every request; `--kind heldout` refuses without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
   lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
+- `capture/score.py` owns the HELD-OUT SCORE (`.agent/contracts/m10u9.md`, S1-S8): `python -m capture score
+  <run-dir>… [--write]` writes/re-derives `<run>/score.json`. Three outcomes — `transport_error` (no
+  verifier call; never BLOCKED credit, the `w1_width.py` empty-source trap) · `verified` · `refused`;
+  denominators = the manifest kind's CORPUS set; numerators = DISTINCT own-set ids by corpus category;
+  `complete` = multiset match; sentinels outside both denominators, judged alone. The CLI rc tracks
+  DRIFT only, never `acceptance_met`, so a recorded miss still gates green. `heldout_guard` =
+  EXACTLY-ONCE: one complete `m10-heldout` run carrying its score. The committed score is bound to
+  the committed verifier: a later verifier change that moves a held-out verdict fails the gate's
+  re-derivation BY DESIGN, and a re-grade is a separately named artifact, never a rewrite.
 - Driving a live capture (`.agent/archive/contracts/m12u7.md`): start the backend with
   `MODEL_BACKEND_MAX_TOKENS` **≥ the client `--max-tokens`** — the backend clamps silently and the
   manifest records what was SENT, so a client cap above the server's commits a manifest that

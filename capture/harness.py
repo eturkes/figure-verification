@@ -7,6 +7,7 @@ bytes with no backend, no accelerator and no network.
 
     python -m capture run --run m13-design      drive a corpus set, flushing after every row
     python -m capture stats [<run-dir>...]      grade R1-R11 AND S1-S4, or rewrite stats.json
+    python -m capture score <run-dir>... [--write]  re-derive score.json (capture.score)
 
 capture.record owns the record format and never imports this module. Nothing here spells an
 outbound body: build_request_body is the sole speller and build_record the sole emitter, which is
@@ -695,6 +696,43 @@ def _stats_command(directories: Sequence[Path], *, write: bool) -> int:
     return _USAGE_FAIL if failed else _USAGE_OK
 
 
+def _score_command(directories: Sequence[Path], *, write: bool) -> int:
+    """Re-derive each run's score; rc names DRIFT alone, never whether acceptance was met.
+
+    `capture.score` imports this module for its de-fencer, so the import stays local.
+    """
+    from capture.score import (  # noqa: PLC0415
+        SCORE_FILE,
+        ScoreError,
+        decode_score,
+        score_directory,
+    )
+
+    failed = False
+    for directory in directories:
+        try:
+            derived = score_directory(directory)
+        except (CaptureFormatError, ScoreError, msgspec.DecodeError, OSError) as exc:
+            sys.stderr.write(f"{directory}: {exc}\n")
+            failed = True
+            continue
+        target = directory / SCORE_FILE
+        if write:
+            target.write_bytes(derived)
+        elif not target.is_file() or target.read_bytes() != derived:
+            sys.stderr.write(f"{directory}: {SCORE_FILE} is missing or drifted\n")
+            failed = True
+            continue
+        summary = decode_score(derived).summary
+        met = "met" if summary.acceptance_met else "NOT met"
+        sys.stdout.write(
+            f"{directory}: simple {summary.simple.verified}/{summary.simple.total} verified, "
+            f"complicated {summary.complicated.blocked}/{summary.complicated.total} blocked, "
+            f"transport {summary.transport_errors}, acceptance {met}\n"
+        )
+    return _USAGE_FAIL if failed else _USAGE_OK
+
+
 def _resolve_existing(
     directory: Path,
     *,
@@ -838,6 +876,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--root", type=Path, default=CAPTURES_ROOT, metavar="DIR", help="captures root directory"
     )
     stats.add_argument("--write", action="store_true", help="rewrite each stats file first")
+
+    score = subs.add_parser(
+        "score",
+        description="Score capture runs with the verifier. Add --write to write score.json.",
+        allow_abbrev=False,
+    )
+    score.add_argument(
+        "run_dir", type=Path, nargs="+", metavar="PATH", help="capture run directories"
+    )
+    score.add_argument("--write", action="store_true", help="write each score file")
     return parser
 
 
@@ -846,6 +894,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "run":
         return _run_command(args)
+    if args.command == "score":
+        return _score_command(args.run_dir, write=args.write)
     directories: list[Path] = args.run_dir or _discover(args.root)
     if not directories:
         sys.stdout.write(f"no capture runs under {args.root}\n")

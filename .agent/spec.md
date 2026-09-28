@@ -15,7 +15,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Demo instance — `webui/launch.sh` (real dGPU model) | `--stub` (hardware-free) → `http://127.0.0.1:8080`; sentinel prompts pinned there.
 - Verifier service — `-m verifier.service` (:8000; `audit <attempt_id>`); routes = `POC_SCOPE.md`.
 - Demos — `-m demo` · `-m demo.formula_walkthrough` · `-m demo.e2e`. Bench — `-m bench` (JSON-spec proposer eval; live :8000 + :8001).
-- Corpus + capture — `-m capture.corpus` · `-m capture stats corpus/python/captures/m10-design` · `-m capture run --run <name>`. Width over a run = `.agent/measurements/w1_width.py`.
+- Corpus + capture — `-m capture.corpus` · `-m capture stats corpus/python/captures/m10-design` · `-m capture run --run <name>` · held-out score `-m capture score <run-dir> [--write]` (`capture/score.py`). Width over a run = `.agent/measurements/w1_width.py`.
 - Model backend — `.venv-model/bin/python -m model_backend` (:8001); `-m model_backend.guidance_oracle` on the host.
 
 ## Decisions
