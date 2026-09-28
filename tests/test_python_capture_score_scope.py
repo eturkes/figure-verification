@@ -60,3 +60,33 @@ def test_unscorable_directory_does_not_hide_later_drift(
     captured = capsys.readouterr()
     assert str(first) in captured.err
     assert str(second) in captured.err
+
+
+def test_a_duplicated_row_alone_makes_the_run_incomplete() -> None:
+    """A1(3), pinned on its own: every expected id present once plus ONE duplicate of a REFUSED
+    complicated row, so no numerator moves and only the cardinality conjunct can decide
+    (closing review H4: the acceptance-only witness let either duplicate fix mask the other)."""
+    run = fixtures.full_run()
+    duplicate = next(
+        row for row in run.records if row.kind == "heldout" and row.category == "complicated"
+    )
+    summary = fixtures.document(fixtures.make_run([*run.records, duplicate]))["summary"]
+    assert summary["complicated"] == {"total": 20, "blocked": 20}
+    assert summary["complete"] is False
+    assert summary["acceptance_met"] is False
+
+
+def test_a_duplicated_verified_row_is_counted_once() -> None:
+    """A1(2), pinned on its own: a 13/20 run plus a duplicate of one VERIFIED simple row still
+    reads 13, whatever completeness says (closing review H4)."""
+    run = fixtures.full_run(13, 20)
+    duplicate = next(
+        row
+        for row in run.records
+        if row.kind == "heldout"
+        and row.category == "simple"
+        and fixtures.document(fixtures.make_run([row], kind="heldout"))["rows"][0]["outcome"]
+        == "verified"
+    )
+    summary = fixtures.document(fixtures.make_run([*run.records, duplicate]))["summary"]
+    assert summary["simple"] == {"total": 20, "verified": 13}

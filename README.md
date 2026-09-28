@@ -28,7 +28,8 @@ A chart passes when all of these statements are true:
 2. **Integrity.** The chart obeys a closed set of rules. For example, bars start at zero and the
    chart has one linear axis pair. Also, no data row is dropped silently.
 3. **Observation.** The values that the browser runtime drew match the recomputed values. They
-   match exactly for CSV data and within one unit in the last place for a function.
+   match exactly for CSV data. For a function, each value lies inside a rounding range that the
+   verifier computes from the formula.
 
 After a pass, the chat also shows a sentence that states what the chart shows, for example the sum of
 revenue for each region. Read that sentence. A pass does not mean that the chart answers the
@@ -50,7 +51,8 @@ an NVIDIA MX150 with greedy decoding. A different model or device can give diffe
 
 - **Held-out acceptance.** On 40 held-out prompts, measured once, 14 of 20 simple requests verified and 20 of 20
   complicated requests were blocked. The acceptance bar is 70% for each category, so the simple
-  result meets it exactly. Both public demo prompts behaved as intended. This measurement does not
+  result meets it exactly. The simple result depends on line-chart support that was added before
+  the run and chosen from the design prompts alone. Without it, the same replies score 12 of 20. Both public demo prompts behaved as intended. This measurement does not
   check whether a verified chart shows what the request asked for. At least 4 of the 14 verified
   charts use a different aggregation or chart type than the request.
 - **Design set (tuning only).** On the 48 design prompts, 20 of 24 simple requests verified and 24
@@ -101,7 +103,7 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
   ```
 
   The launcher prints a banner with the address, the login and two prompts to try. Attach
-  `data/sales.csv` to a new chat, then send one of the prompts. Press `Ctrl-C` to stop.
+  `data/sales.csv` to a new chat. Send one of the prompts. Press `Ctrl-C` to stop.
 
 - Recompute the held-out score from the committed capture. The command writes nothing unless you add
   `--write`.
@@ -114,7 +116,7 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 
 - **An existing Open WebUI instance.** Follow [docs/admin/README.md](docs/admin/README.md).
 - **The paste-in files.** Do not edit them. Change the source under `src/verifier/pysrc/` or
-  `webui/paste_in/`, then regenerate both files:
+  `webui/paste_in/`. Then regenerate both files:
 
   ```sh
   uv run --locked python tools/generate_paste_in.py

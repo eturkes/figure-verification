@@ -7,6 +7,7 @@ module = "capture/score.py"
 tests = [
   "tests/test_python_capture_score.py",
   "tests/test_python_capture_score_differential.py",
+  "tests/test_python_capture_score_scope.py",
 ]
 
 [[mutant]]
@@ -81,3 +82,37 @@ mutant = '''
         names = ", ".join(path.name for path in held) or "none"
         return [f"expected exactly one held-out run under {root}, found {len(held)}: {names}"]
     directory = held[0]'''
+
+[[mutant]]
+# Closing review H4: the duplicate witness judged acceptance alone, so either duplicate fix masked
+# the other. Each conjunct now has a witness of its own.
+id = "a1-completeness-ignores-duplicates"
+predicate = "a duplicated record makes the run incomplete even when no numerator moves"
+kills = "tests/test_python_capture_score_scope.py::test_a_duplicated_row_alone_makes_the_run_incomplete"
+anchor = '''    complete = len(rows) == len(expected) and {row.prompt_id for row in rows} == expected'''
+mutant = '''    complete = {row.prompt_id for row in rows} == expected'''
+
+[[mutant]]
+id = "a1-numerator-counts-duplicates"
+predicate = "a numerator counts each own-set prompt id once"
+kills = "tests/test_python_capture_score_scope.py::test_a_duplicated_verified_row_is_counted_once"
+anchor = '''
+        return len(
+            {
+                row.prompt_id
+                for row in rows
+                if row.prompt_id in own
+                and own[row.prompt_id].category == category
+                and row.outcome == outcome
+            }
+        )'''
+mutant = '''
+        return len(
+            [
+                row.prompt_id
+                for row in rows
+                if row.prompt_id in own
+                and own[row.prompt_id].category == category
+                and row.outcome == outcome
+            ]
+        )'''

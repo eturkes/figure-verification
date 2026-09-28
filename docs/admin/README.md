@@ -4,7 +4,8 @@ This guide tells an administrator how to add figure verification to an existing 
 instance. After the setup, a chat model writes a Python program that draws a chart. A separate
 verifier checks that program before the chart can appear in the chat.
 
-- If the verifier accepts the program, the chat shows the chart and `Figure verification passed`.
+- If the verifier accepts the program and the drawn chart matches the recomputed values, the chat
+  shows the chart and `Figure verification passed`.
 - If the verifier refuses the program, the chat shows `Figure verification failed, no image produced`.
 
 ## What you install
@@ -48,6 +49,7 @@ them from its source code.
 4. Set the function ID to `figure_verification_filter`.
 5. Save the function.
 6. Turn the function on.
+7. In the function menu, turn on **Global**.
 
 The measured setup makes this filter global. A global filter rewrites the last reply of every
 chat on the instance, and a reply without a chart becomes the failure message. Thus, use a
@@ -56,7 +58,7 @@ did not measure the per-model option.
 
 ## Step 3: Set up the chart model
 
-1. Open **Workspace**, then **Models**, and edit the chart model.
+1. In **Workspace** > **Models**, edit the chart model.
 2. Attach the `figure_verification` tool. Attach no other tool to this model.
 3. Paste the system prompt from `system_prompt.en.txt` into the system prompt field.
 4. Save the model.
@@ -96,8 +98,8 @@ Expect `Figure verification failed, no image produced`.
   matplotlib calls.
 - The verifier recomputed every plotted value from the uploaded CSV file or from the function in
   the request. The model did not supply any plotted value.
-- The values that Pyodide drew match the recomputed values. They match exactly for CSV data and
-  within one unit in the last place for a function.
+- The values that Pyodide drew match the recomputed values. They match exactly for CSV data. For a
+  function, each value lies inside a rounding range that the verifier computes from the formula.
 
 The pass message does not mean that the chart answers the question. The chart can show a
 different measure or a different grouping than the user wanted. Read the text below the chart. It

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const [browserURL, webuiURL, csvPath, arm, attemptsText, outDir] = process.argv.slice(2);
-// Byte-identical to webui/launch.sh `simple_prompt` / `elaborate_prompt`; checked at start.
+// Byte-identical to webui/launch.sh `simple_prompt` / `elaborate_prompt`; checked below at start.
 const PROMPTS = {
   simple: "Chart the total revenue of each region using bars.",
   elaborate:
@@ -23,6 +23,10 @@ const PASS = "Figure verification passed";
 const FAIL = "Figure verification failed, no image produced";
 if (!Object.hasOwn(PROMPTS, arm) || !outDir) {
   throw new Error("usage: m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>");
+}
+const launcher = readFileSync(new URL("../../webui/launch.sh", import.meta.url), "utf8");
+for (const [name, text] of [["simple_prompt", PROMPTS.simple], ["elaborate_prompt", PROMPTS.elaborate]]) {
+  if (!launcher.includes(`${name}="${text}"`)) throw new Error(`${name} differs from webui/launch.sh`);
 }
 const attempts = Number.parseInt(attemptsText, 10);
 mkdirSync(outDir, { recursive: true });

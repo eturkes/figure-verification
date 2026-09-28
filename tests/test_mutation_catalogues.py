@@ -54,6 +54,17 @@ def test_every_kill_names_an_existing_test_function(name: str) -> None:
             if test_file.is_file()
             else set()
         )
-        if selector.partition("[")[0] not in functions:
+        name = selector.partition("[")[0]
+        # pytest collects `test_*` functions alone: a helper name exists but still exits rc 4.
+        if not name.startswith("test_") or name not in functions:
             missing.append((mutant["id"], mutant["kills"]))
     assert not missing, f"{name}.toml credits tests that do not exist: {missing}"
+
+
+def test_a_non_test_helper_is_not_a_kill(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A helper function exists in the module but pytest never collects it (closing review K3)."""
+    catalogue = tomllib.loads((_ROOT / "tools/mutants/admit.toml").read_text("utf-8"))
+    catalogue["mutant"][0]["kills"] = "tests/test_pysrc_accessor_line.py::_source"
+    monkeypatch.setattr(tomllib, "loads", lambda _text: catalogue)
+    with pytest.raises(AssertionError, match="credits tests that do not exist"):
+        test_every_kill_names_an_existing_test_function("admit")
