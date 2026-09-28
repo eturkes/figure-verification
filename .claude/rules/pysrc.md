@@ -119,7 +119,7 @@ implies the figure answers the question asked.
   edge `patch.get_x() == position - span/2` + base 0 (barh on the swapped axes; span = matplotlib's
   converted width, 0.8 direct, 0.5 pandas accessor) — never a center equality, which false-blocks
   decimal positions. A categorical x binds through the axis `units._mapping` (direct marks) or tick
-  identity (accessor). Formula arm (O5 + reading R4): each observed y inside the interval of the
+  identity (accessor bars). A string-keyed LINE with no category units -- pandas' line accessor -- binds POSITIONALLY (M10.10): x = 0..n-1 exactly, each in-range integral tick labelled with its key, at least one such tick present; negative ticks wrap to tail keys and are ignored. Formula arm (O5 + reading R4): each observed y inside the interval of the
   verified expression — per-call ±1-ulp libm, point `+ - * /` over two points exact, outward 1 ulp
   once an operand is an interval; a libm call whose argument is itself a libm result
   (`np.exp(-x**2)`) is WITHHELD (a false-block class, `.agent/deferred.md`). An unmapped mark, an
@@ -303,12 +303,20 @@ z3 cannot be inlined.
   prices its EFFECT (`accessor_is_subscripted`), and the guard is compound with one mutant per
   conjunct. This is the general shape wherever a router normalizes a receiver to reach a name: the
   normalization is a claim the consumer must re-price, or it silently widens what verifies.
-- **The accessor's TICK PLACEMENT is a declared gap, ruled TRUSTED (M13.8).** For a NUMERIC group
+- **The accessor's TICK PLACEMENT is a declared gap, ruled TRUSTED (M13.8).** Bars only: M10.10's line accessor draws numeric keys at their data positions. For a NUMERIC group
   key the two spellings place ticks differently: pandas draws the accessor CATEGORICALLY, at
   positions 0..n-1 with the key as the label, while `plt.bar` draws at the data positions. The gap
   lives inside the renderer, the recomputed table is identical either way, and no plotted VALUE
   differs — so it is trusted rather than closed, and it is STATED here because the rule above says a
   projection gap is closed by construction or declared TRUSTED, never left unstated.
+- **The accessor's LINE kind, M10.10 (user phase-close ruling 1).** `kind="line"` maps onto
+  `plt.plot` in the same closed map; the keywords stay `{kind, color}` and a missing `kind` -- pandas'
+  default line -- still refuses. Aimed by design evidence alone: 5 simple `m10-design` rows wrote
+  `<series>.plot(kind='line')`; `w1_width.py` moved 15/24 -> 20/24 VERIFIED, 7/24 -> 10/24 FAITHFUL,
+  complicated 24/24 BLOCKED unchanged. The line carries NO tick-placement gap: numeric keys draw at
+  their data positions, and string keys draw at 0..n-1 with pandas-set labels that the observation
+  gate reads (fork (b)). design-simple-06/14 ask for per-city series and verify as ONE collapsed
+  line over `groupby('city')` -- verified, not faithful, the gap tier 3 publishes.
 - **A DEMO DATASET MAY NEVER SPELL A GROUP KEY WITH A PANDAS NA SPELLING (M13.7b, closed).** The
   third M13.7 blocker was not the verifier at all: `data/sales.csv` spelled North America `NA`, one
   of the 19 default pandas NA spellings the CSV profile refuses, so every `groupby("region")`
@@ -343,8 +351,10 @@ z3 cannot be inlined.
   `certificate.canonical_bytes` keeps its framing, G2 stays true BY CONSTRUCTION and is re-pinned
   against `twinx`/`twiny`/`secondary_yaxis`/`subplots` rather than against mark count, and G7/G8
   stay UNCONDITIONAL rather than moving to "a `Filter` projected AND published" — with no filter
-  admitted, the plotted column is still the whole column. Heldout 06/14 (multi-series) and 08/16
-  (colour-by-category) stay refused, for a ceiling of 16/20 = 80% with ten points of headroom. G11
+  admitted, the plotted column is still the whole column. No admitted idiom draws heldout 06/14 (multi-series) or 08/16
+  (colour-by-category) FAITHFULLY, for a faithful ceiling of 16/20 = 80%; since M10.10 a program that
+  collapses the series into one line may still VERIFY (design-simple-06/14 do), so 16/20 bounds
+  FAITHFUL, never VERIFIED. G11
   (per-group counts published beside every aggregate) goes live in M13.6.
 - **Aggregation recomputation is Kahan, and this is measured, not chosen.** pandas reduces a
   float64 group with ordered binary64 Kahan compensation in file-row order. Naive left-to-right
@@ -431,7 +441,7 @@ widening reddens; and
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
 integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
-what splits them. `tools/mutants/admit.toml` = 5, M13.8's accessor ROUTE and nothing else yet: every
+what splits them. `tools/mutants/admit.toml` = 6, the accessor ROUTE (M13.8's five + M10.10's `line` entry) and nothing else yet: every
 refusal that route lands is decided before projection runs, so `project.toml` cannot reach it. Run
 all four — a claim credited in one catalogue can sit unmutated in another.
 

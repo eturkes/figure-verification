@@ -34,6 +34,8 @@ _DATASET_IDS = (
     "design-simple-01",
     "design-simple-02",
     "design-simple-03",
+    "design-simple-05",
+    "design-simple-06",
     "design-simple-09",
     "design-simple-11",
     "design-simple-17",
@@ -57,6 +59,10 @@ _DATASET_IDS = (
     "synthetic-accessor-barh-str",
     "synthetic-accessor-barh-num",
     "synthetic-accessor-barh-dec",
+    "synthetic-accessor-line-str",
+    "synthetic-accessor-line-num",
+    "synthetic-accessor-line-dec",
+    "synthetic-accessor-line-wide",
     "synthetic-direct-group-bar-str",
     "synthetic-direct-group-bar-num",
     "synthetic-direct-group-bar-dec",
@@ -117,11 +123,11 @@ def _matches(verdict: Verified, observed: object) -> bool:
     )
 
 
-def test_o3_o5_observation_fixture_set_is_exactly_32_dataset_and_20_formula() -> None:
-    """O3/O5: exactly the 52 measured case IDs, never an empty parametrization or silent loss."""
-    assert len(_DATASET_IDS) == 32
+def test_o3_o5_observation_fixture_set_is_exactly_38_dataset_and_20_formula() -> None:
+    """O3/O5, widened by M10.10 B6: exactly 58 IDs, never a silent fixture loss."""
+    assert len(_DATASET_IDS) == 38
     assert len(_FORMULA_IDS) == 20
-    assert len(_EXPECTED) == 52
+    assert len(_EXPECTED) == 58
     actual = {path.stem for path in _FIXTURES.glob("*.json")}
     assert actual == _EXPECTED, (
         f"missing={sorted(_EXPECTED - actual)}; extra={sorted(actual - _EXPECTED)}"
@@ -130,7 +136,7 @@ def test_o3_o5_observation_fixture_set_is_exactly_32_dataset_and_20_formula() ->
 
 @pytest.mark.parametrize("case_id", _DATASET_IDS)
 def test_o3_committed_dataset_artist_fixture_releases(case_id: str) -> None:
-    """O3: 32 recorded dataset artists each match the core recomputation over their own CSV."""
+    """O3/B1: 38 recorded dataset artists match recomputation over their own CSV."""
     data, verdict, observed = _case(case_id)
     assert data["arm"] == "dataset"
     assert isinstance(verdict.spec, DatasetPlot)

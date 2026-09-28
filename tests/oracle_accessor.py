@@ -21,10 +21,10 @@ type OracleRefusalCode = Literal[
     "column_not_from_source",
     "aggregation_not_projected",
 ]
-type OracleMark = Literal["bar", "barh"]
+type OracleMark = Literal["bar", "barh", "line"]
 type OracleReduction = Literal["sum", "mean", "min", "max"]
 
-ACCESSOR_KIND_MAP: Final[dict[str, OracleMark]] = {"bar": "bar", "barh": "barh"}
+ACCESSOR_KIND_MAP: Final[dict[str, OracleMark]] = {"bar": "bar", "barh": "barh", "line": "line"}
 ACCESSOR_KEYWORDS: Final[frozenset[str]] = frozenset({"kind", "color"})
 RESET_UNWRAPS: Final[frozenset[str]] = frozenset({"reset_index"})
 _REDUCTIONS: Final[frozenset[str]] = frozenset({"sum", "mean", "min", "max"})
@@ -305,15 +305,13 @@ def _decide(source_text: str) -> OracleProjection:
             continue
         call = statement.value
         target = _target(call)
-        if target in {"plt.bar", "plt.barh"}:
-            marks.append(
-                _standard_projection(
-                    call,
-                    bindings,
-                    dataset,
-                    cast("OracleMark", target.removeprefix("plt.")),
-                )
-            )
+        direct_marks: dict[str, OracleMark] = {
+            "plt.bar": "bar",
+            "plt.barh": "barh",
+            "plt.plot": "line",
+        }
+        if target is not None and target in direct_marks:
+            marks.append(_standard_projection(call, bindings, dataset, direct_marks[target]))
             continue
         if isinstance(call.func, ast.Attribute) and call.func.attr == "plot":
             marks.append(_accessor_projection(call, bindings, dataset))

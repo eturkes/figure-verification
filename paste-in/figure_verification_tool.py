@@ -723,15 +723,16 @@ _NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
 _GROUPBY = "groupby"
 _REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
 
-# The pandas plotting ACCESSOR, `<data>.plot(kind="bar")`, written by 4 of the 25 simple design
-# captures. It is its own route rather than a dotted target: its receiver is a name the MODEL bound,
+# The pandas plotting ACCESSOR, `<data>.plot(kind="bar"|"line")`, written by 4 of the 25 simple
+# `m13-design` captures (bar) and 5 of the 24 simple `m10-design` captures (line). It is its own
+# route rather than a dotted target: its receiver is a name the MODEL bound,
 # so admitting it through `ADMITTED_CALL_TARGETS` -- which is keyed by a FIXED import alias -- would
 # open every `<name>.plot` at once.
 _ACCESSOR_ATTR = "plot"
 # `kind` is TARGET IDENTITY, not a style keyword: each value names the mark the accessor draws, and
 # it maps onto that mark's own target string here so projection never defaults an unlisted spelling
 # onto a line the program does not draw.
-ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh"}
+ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}
 # Closed exactly as `ADMITTED_KEYWORDS` is per target. `x=`/`y=` stay out: they select columns, and
 # the accessor's projection reads its channels from the receiver instead.
 ADMITTED_ACCESSOR_KEYWORDS = frozenset({"kind", "color"})
@@ -2971,11 +2972,11 @@ class _Projector:
     def _accessor_mark(self, receiver: ast.Name, node: ast.Call) -> _MarkBuilder:
         """`<reduced series>.plot(kind="<mark>")`, resolved at its own statement.
 
-        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`, so the
-        two lookups below are total rather than defaulted. The receiver carries the channels, and
-        only a reduced series states both of them: a frame, a raw column, a reset frame and a
-        SELECTED ELEMENT of a reduced series each name a table whose x and y the projection would
-        have to guess, so each refuses on the channel it cannot read.
+        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`/
+        `plt.plot`, so the two lookups below are total rather than defaulted. The receiver carries
+        the channels, and only a reduced series states both of them: a frame, a raw column, a reset
+        frame and a SELECTED ELEMENT of a reduced series each name a table whose x and y the
+        projection would have to guess, so each refuses on the channel it cannot read.
         """
         # The arm's precondition reads first, exactly as `_resolve_dataset_mark` reads it: with no
         # source bound, `column_not_from_source` would report a symptom where `no_source` names

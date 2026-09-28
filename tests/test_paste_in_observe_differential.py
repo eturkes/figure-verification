@@ -40,9 +40,13 @@ class Case:
 
 def _dataset_case(mark: str, mode: str) -> Case:
     if mark == "line":
-        body = 'reduced = frame.groupby("region")["revenue"].sum()\n'
-        plot = "plt.plot(reduced.index, reduced.values)\n"
-        mode = "categorical"
+        key = "month" if mode in {"positional", "positional-direct"} else "region"
+        body = f'reduced = frame.groupby("{key}")["revenue"].sum()\n'
+        plot = (
+            "reduced.plot(kind='line')\n"
+            if mode == "positional"
+            else "plt.plot(reduced.index, reduced.values)\n"
+        )
     elif mark == "scatter":
         body = ""
         plot = 'plt.scatter(frame["orders"], frame["revenue"])\n'
@@ -77,6 +81,8 @@ _CASES = {
             for mode in ("categorical", "numeric", "accessor")
         ),
         _dataset_case("line", "categorical"),
+        _dataset_case("line", "positional"),
+        _dataset_case("line", "positional-direct"),
         _dataset_case("scatter", "numeric"),
         _formula_case("np.sin(x)"),
         _formula_case("np.sin(2*x)"),
@@ -92,8 +98,23 @@ _RELEASING = (
     "barh-categorical",
     "barh-numeric",
     "barh-accessor",
+    "line-positional-direct",
+    "line-positional",
     "formula-line-np.sin(2*x)",
     "formula-line-np.sin(x) - np.cos(x)",
+)
+_POSITIONAL_PERTURBATIONS = (
+    "pos-labels-swapped",
+    "pos-label-altered",
+    "pos-x-shifted",
+    "pos-x-half-step",
+    "pos-y-one-ulp",
+    "pos-point-appended",
+    "pos-point-dropped",
+    "pos-units-present",
+    "pos-in-range-ticks-removed",
+    "pos-second-line",
+    "pos-collection-added",
 )
 _PERTURBATIONS = (
     "none",
@@ -154,11 +175,15 @@ def _observed(verified: Verified, mode: str) -> dict[str, object]:
     if mode == "categorical":
         units = [[cast(str, key), _hex(float(i))] for i, key in enumerate(table.x)]
         position_axis["units"] = units
-    if mode == "accessor":
+    if mode in {"accessor", "positional", "positional-direct"}:
         position_axis["ticks"] = [[_hex(float(i)), str(key)] for i, key in enumerate(table.x)]
+    if mode in {"positional", "positional-direct"}:
+        cast("list[list[str]]", position_axis["ticks"]).extend(
+            [[_hex(-1.0), str(table.x[-1])], [_hex(0.5), ""], [_hex(float(len(table.x))), ""]]
+        )
     positions = [
         float(index)
-        if mode == "accessor"
+        if mode in {"accessor", "positional", "positional-direct"}
         else float(index)
         if units is not None
         else cast(float, key)
@@ -204,6 +229,45 @@ def _shift(text: str, direction: int, steps: int) -> str:
     return _hex(value)
 
 
+def _positional_change(  # noqa: PLR0912 — one branch per B3 perturbation
+    verified: Verified, raw: dict[str, object], kind: str
+) -> None:
+    line = _artist(raw, "line")
+    axis = cast("dict[str, object]", raw["xaxis"])
+    ticks = cast("list[list[str]]", axis["ticks"])
+    labels = [
+        tick
+        for tick in ticks
+        if float.fromhex(tick[0]).is_integer()
+        and 0 <= float.fromhex(tick[0]) < len(verified.table.x)
+    ]
+    if kind == "pos-labels-swapped":
+        labels[0][1], labels[1][1] = labels[1][1], labels[0][1]
+    elif kind == "pos-label-altered":
+        labels[0][1] += "-changed"
+    elif kind == "pos-x-shifted":
+        for point in line:
+            point[0] = _hex(float.fromhex(point[0]) + 1.0)
+    elif kind == "pos-x-half-step":
+        line[0][0] = _hex(float.fromhex(line[0][0]) + 0.5)
+    elif kind == "pos-y-one-ulp":
+        line[0][1] = _shift(line[0][1], 1, 1)
+    elif kind == "pos-point-appended":
+        line.append(line[-1].copy())
+    elif kind == "pos-point-dropped":
+        line.pop()
+    elif kind == "pos-units-present":
+        axis["units"] = []
+    elif kind == "pos-in-range-ticks-removed":
+        axis["ticks"] = [tick for tick in ticks if tick not in labels]
+    elif kind == "pos-second-line":
+        cast("list[object]", raw["lines"]).append(deepcopy(line))
+    elif kind == "pos-collection-added":
+        raw["collections"] = [deepcopy(line)]
+    else:
+        raise ValueError(kind)
+
+
 def _perturb(  # noqa: PLR0912, PLR0915
     verified: Verified, base: dict[str, object], kind: str, *, direction: int = 1, steps: int = 4
 ) -> str:
@@ -211,6 +275,9 @@ def _perturb(  # noqa: PLR0912, PLR0915
     mark = verified.spec.mark
     position_axis = cast("dict[str, object]", raw["yaxis" if mark == "barh" else "xaxis"])
     if kind == "none":
+        return _wire(raw)
+    if kind in _POSITIONAL_PERTURBATIONS:
+        _positional_change(verified, raw, kind)
         return _wire(raw)
     if kind == "double-tag":
         return _wire(raw) + _wire(raw)
@@ -479,11 +546,12 @@ def test_oracle_interval_hand_stated_cases() -> None:
     assert oracle_interval(spec.Bin("div", variable, spec.Num(Fraction(0))), x) is None
 
 
-def test_oracle_signed_zero_equals_zero_but_neighbor_does_not() -> None:
-    """R1 normalises signed zero only; one positive ulp remains distinguishable."""
-    case = _CASES["line-categorical"]
+@pytest.mark.parametrize("name", ("line-categorical", "line-positional-direct"))
+def test_oracle_signed_zero_equals_zero_but_neighbor_does_not(name: str) -> None:
+    """R1/M10.10 A1 normalise signed zero only; one positive ulp remains distinguishable."""
+    case = _CASES[name]
     verdict = _verified(case)
-    zero = replace(verdict, table=PlottedTable(verdict.table.x, (0.0, verdict.table.y[1])))
+    zero = replace(verdict, table=PlottedTable(verdict.table.x, (0.0, *verdict.table.y[1:])))
     raw = _observed(zero, case.mode)
     _artist(raw, "line")[0][1] = _hex(-0.0)
     parsed = oracle_parse(_wire(raw))
@@ -511,9 +579,15 @@ def test_oracle_forward_edge_decimal_and_accessor_key() -> None:
 
 @st.composite
 def _drawn(draw: DrawFn) -> tuple[Case, str, int, int]:
+    case = _CASES[draw(st.sampled_from(tuple(_CASES)))]
+    perturbations = (
+        _PERTURBATIONS + _POSITIONAL_PERTURBATIONS
+        if case.mode in {"positional", "positional-direct"}
+        else _PERTURBATIONS
+    )
     return (
-        _CASES[draw(st.sampled_from(tuple(_CASES)))],
-        draw(st.sampled_from(_PERTURBATIONS)),
+        case,
+        draw(st.sampled_from(perturbations)),
         draw(st.sampled_from((-1, 1))),
         draw(st.sampled_from((1, 2, 4, 8))),
     )
@@ -522,13 +596,13 @@ def _drawn(draw: DrawFn) -> tuple[Case, str, int, int]:
 @given(drawn=st.lists(_drawn(), min_size=12, max_size=12))
 @settings(max_examples=64, deadline=None)
 def test_differential_drawn_pairs(drawn: list[tuple[Case, str, int, int]]) -> None:
-    """20 pairs per draw; eight independently releasing basis cases bind ≥25% of decisions."""
+    """22 pairs per draw; ten releasing basis cases include direct and accessor positional lines."""
     results = [_case_agrees(_CASES[name], "none") for name in _RELEASING]
     results.extend(
         _case_agrees(case, kind, direction=direction, steps=steps)
         for case, kind, direction, steps in drawn
     )
-    assert sum(results) >= 5, f"vacuous differential: {sum(results)}/20 released"
+    assert sum(results) >= 5, f"vacuous differential: {sum(results)}/{len(results)} released"
 
 
 @pytest.mark.parametrize(
@@ -564,6 +638,24 @@ def test_differential_perturbation_inventory(kind: str) -> None:
     _case_agrees(_CASES[name], kind)
 
 
+@pytest.mark.parametrize("kind", ("none", *_POSITIONAL_PERTURBATIONS))
+def test_oracle_positional_line_contract(kind: str) -> None:
+    """C2: independent oracle releases the basis and refuses every B3 perturbation."""
+    case = _CASES["line-positional-direct"]
+    verdict = _verified(case)
+    parsed = oracle_parse(_perturb(verdict, _observed(verdict, case.mode), kind))
+    assert parsed is not None
+    assert oracle_matches(verdict, parsed) is (kind == "none")
+
+
+@pytest.mark.parametrize("kind", ("none", *_POSITIONAL_PERTURBATIONS))
+def test_differential_positional_line_contract(kind: str) -> None:
+    """C2: each B3 mutation reaches the comparator independently of accessor admission."""
+    case = _CASES["line-positional-direct"]
+    assert _case_agrees(case, "none")
+    assert _case_agrees(case, kind) is (kind == "none")
+
+
 def test_differential_closed_unmapped_mark() -> None:
     case = _CASES["bar-categorical"]
     verdict = _verified(case)
@@ -590,9 +682,9 @@ def test_differential_decimal_edge() -> None:
 
 
 def test_differential_fixture_replay() -> None:
-    """All 52 self-contained committed observations, plus one perturbation per file."""
+    """All 58 self-contained committed observations, plus one perturbation per file."""
     paths = sorted((_ROOT / "tests/fixtures/observe").glob("*.json"))
-    assert len(paths) == 52, f"fixture inventory drift: {len(paths)}/52"
+    assert len(paths) == 58, f"fixture inventory drift: {len(paths)}/58"
     for index, path in enumerate(paths):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         assert set(fixture) == {"id", "arm", "mark", "source", "dataset", "observation"}

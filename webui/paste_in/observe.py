@@ -251,20 +251,33 @@ def parse_observation(stdout: str) -> Observation | None:
         return None
 
 
-def _direct_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
-    if len(points) != len(verified.table.y):
+def _points_match(verified: Verified, points: Series, positions: tuple[float, ...] | None) -> bool:
+    if positions is None or len(points) != len(verified.table.y):
         return False
-    positions = (
-        _categorical(axis, verified.table.x)
-        if axis.units is not None
-        else _numeric(axis, verified.table.x)
-    )
-    return positions is not None and all(
+    return all(
         observed_x == expected_x and observed_y == expected_y
         for (observed_x, observed_y), expected_x, expected_y in zip(
             points, positions, verified.table.y, strict=True
         )
     )
+
+
+def _direct_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
+    positions = (
+        _categorical(axis, verified.table.x)
+        if axis.units is not None
+        else _numeric(axis, verified.table.x)
+    )
+    return _points_match(verified, points, positions)
+
+
+def _line_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
+    # String keys with no category units = pandas' line accessor, which never engages the category
+    # converter and draws at 0..n-1 instead (measured on the installed bundle, M10.10).
+    keys = verified.table.x
+    if axis.units is None and all(isinstance(key, str) for key in keys):
+        return _points_match(verified, points, _positional(axis, keys))
+    return _direct_points(verified, axis, points)
 
 
 def _line(verified: Verified, observation: Observation) -> bool:
@@ -273,7 +286,7 @@ def _line(verified: Verified, observation: Observation) -> bool:
     return (
         _formula(verified, observation)
         if isinstance(verified.spec, FormulaPlot)
-        else _direct_points(verified, observation.xaxis, observation.lines[0])
+        else _line_points(verified, observation.xaxis, observation.lines[0])
     )
 
 
@@ -332,6 +345,20 @@ def _accessor(axis: AxisObservation, keys: tuple[float | str, ...]) -> tuple[flo
             return None
         positions.append(position)
     return tuple(positions)
+
+
+def _positional(axis: AxisObservation, keys: tuple[float | str, ...]) -> tuple[float, ...] | None:
+    """pandas labels each integral tick `index[int(p)]`: a negative one WRAPS to a tail key and an
+    in-range position may carry no tick at all (n=2 labels 0 alone), so only the in-range integral
+    ticks are read -- and at least one must be, or no label binds a key to a position."""
+    labelled = [
+        (position, text)
+        for position, text in axis.ticks
+        if position.is_integer() and 0 <= position < len(keys)
+    ]
+    if not labelled or any(text != keys[int(position)] for position, text in labelled):
+        return None
+    return tuple(float(index) for index in range(len(keys)))
 
 
 type _Position = Callable[[AxisObservation, tuple[float | str, ...]], tuple[float, ...] | None]

@@ -114,15 +114,16 @@ _NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
 _GROUPBY = "groupby"
 _REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
 
-# The pandas plotting ACCESSOR, `<data>.plot(kind="bar")`, written by 4 of the 25 simple design
-# captures. It is its own route rather than a dotted target: its receiver is a name the MODEL bound,
+# The pandas plotting ACCESSOR, `<data>.plot(kind="bar"|"line")`, written by 4 of the 25 simple
+# `m13-design` captures (bar) and 5 of the 24 simple `m10-design` captures (line). It is its own
+# route rather than a dotted target: its receiver is a name the MODEL bound,
 # so admitting it through `ADMITTED_CALL_TARGETS` -- which is keyed by a FIXED import alias -- would
 # open every `<name>.plot` at once.
 _ACCESSOR_ATTR = "plot"
 # `kind` is TARGET IDENTITY, not a style keyword: each value names the mark the accessor draws, and
 # it maps onto that mark's own target string here so projection never defaults an unlisted spelling
 # onto a line the program does not draw.
-ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh"}
+ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}
 # Closed exactly as `ADMITTED_KEYWORDS` is per target. `x=`/`y=` stay out: they select columns, and
 # the accessor's projection reads its channels from the receiver instead.
 ADMITTED_ACCESSOR_KEYWORDS = frozenset({"kind", "color"})

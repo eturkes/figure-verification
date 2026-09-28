@@ -89,13 +89,6 @@ def test_p2_an_unadmitted_kind_refuses_call_target_not_admitted() -> None:
     assert _admission_code(_accessor_source('kind="pie"')) == "call_target_not_admitted"
 
 
-def test_p2_kind_line_refuses_call_target_not_admitted() -> None:
-    """P2: `g.plot(kind="line")` refuses `call_target_not_admitted`. Accept: that exact code. Named
-    apart from `pie` because `line` is pandas' own default and is the shape a permissive map admits
-    by accident."""
-    assert _admission_code(_accessor_source('kind="line"')) == "call_target_not_admitted"
-
-
 def test_p2_a_non_literal_kind_refuses_call_target_not_admitted() -> None:
     """P2: `g.plot(kind=chart_kind)` refuses `call_target_not_admitted`. Accept: that exact code.
     The map is a closed dispatch over string LITERALS; a name is not a target."""
@@ -114,15 +107,9 @@ def test_p2_a_missing_kind_refuses_call_target_not_admitted() -> None:
     assert _admission_code(_accessor_source("")) == "call_target_not_admitted"
 
 
-def test_p2_the_admitted_kind_map_is_exactly_bar_and_barh() -> None:
-    """P2: the admitted map is `{"bar": "plt.bar", "barh": "plt.barh"}` and nothing else. Accept: an
-    exact-set assertion on the map, hand-stated as literals rather than read from production, plus
-    `g.plot(kind="barh")` verifying. A test reading the production constant pins nothing.
-
-    The VALUES were amended from the `DatasetMark` names during implementation: the map lives in
-    `admit.py`, whose whole vocabulary is `plt.*` call targets, so spelling them as targets makes
-    this predicate's own rationale checkable in the module that owns both sides. Keys unchanged."""
-    assert ADMITTED_ACCESSOR_KINDS == {"bar": "plt.bar", "barh": "plt.barh"}
+def test_p2_the_admitted_kind_map_is_exactly_bar_barh_and_line() -> None:
+    """P2, widened by M10.10 A2: exactly three hand-stated call targets; barh still projects."""
+    assert ADMITTED_ACCESSOR_KINDS == {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}
     horizontal = project(parse_admitted(_accessor_source('kind="barh"')))
     assert isinstance(horizontal, spec.DatasetPlot)
     assert horizontal.mark == "barh"

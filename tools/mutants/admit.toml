@@ -3,7 +3,7 @@
 # tools/mutants/admit.toml`. Each mutant neuters ONE predicate's CONDITION and names the ONE test
 # that must go red under it.
 #
-# Scope today = M13.8's accessor route ALONE. The 13 mutants that credited `admit.py` at M13.2 were
+# Scope today = the accessor route ALONE (M13.8's bar/barh + M10.10's line). The 13 mutants that credited `admit.py` at M13.2 were
 # driven by a gitignored script, and porting them here -- together with the M13.4/M13.6 admission
 # predicates that never earned mutation credit at all -- is a queued `.agent/deferred.md` row.
 # A claim credited in `project.toml` can sit unmutated here: `project.toml` covers only what
@@ -17,6 +17,7 @@
 module = "src/verifier/pysrc/admit.py"
 tests = [
   "tests/test_pysrc_accessor.py",
+  "tests/test_pysrc_accessor_line.py",
   "tests/test_pysrc_admit.py",
   "tests/test_pysrc_aggregate.py",
 ]
@@ -75,3 +76,10 @@ mutant = '''
     if False:
         _refuse("name_not_bound")
     # `accessor_receiver` reached `receiver` by walking `node.func`, so an `ast.Attribute` here is'''
+
+[[mutant]]
+id = "m10u10-line-kind-maps-to-bar"
+predicate = "`kind=\"line\"` names `plt.plot`: the accessor line projects EQUAL to its direct spelling"
+kills = "tests/test_pysrc_accessor_line.py::test_a1_line_accessor_projects_equal_to_the_plt_plot_spelling[sum-month]"
+anchor = '''ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}'''
+mutant = '''ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.bar"}'''

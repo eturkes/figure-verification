@@ -632,7 +632,7 @@ mutant = '''
 # satisfies it while drawing the wrong chart from the right numbers. The pin is the OTHER kind.
 id = "p2-accessor-mark-hardcoded"
 predicate = "`kind` selects its own mark through the closed map, never a default"
-kills = "tests/test_pysrc_accessor.py::test_p2_the_admitted_kind_map_is_exactly_bar_and_barh"
+kills = "tests/test_pysrc_accessor.py::test_p2_the_admitted_kind_map_is_exactly_bar_barh_and_line"
 anchor = '''
         mark = _DATASET_MARKS[ADMITTED_ACCESSOR_KINDS[kind]]'''
 mutant = '''

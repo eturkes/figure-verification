@@ -36,7 +36,7 @@ def _case(name: str) -> tuple[Verified, observe.Observation, dict[str, object]]:
 
 
 def test_fixture_roster_is_full_and_self_contained() -> None:
-    assert len(_NAMES) == 52
+    assert len(_NAMES) == 58
     counts = {"dataset": 0, "formula": 0}
     for name in _NAMES:
         case = cast("dict[str, object]", json.loads((_FIXTURES / name).read_text()))
@@ -45,7 +45,7 @@ def test_fixture_roster_is_full_and_self_contained() -> None:
         arm = cast("str", case["arm"])
         counts[arm] += 1
         assert (case["dataset"] is None) == (arm == "formula")
-    assert counts == {"dataset": 32, "formula": 20}
+    assert counts == {"dataset": 38, "formula": 20}
 
 
 @pytest.mark.parametrize("name", _NAMES)

@@ -766,11 +766,11 @@ class _Projector:
     def _accessor_mark(self, receiver: ast.Name, node: ast.Call) -> _MarkBuilder:
         """`<reduced series>.plot(kind="<mark>")`, resolved at its own statement.
 
-        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`, so the
-        two lookups below are total rather than defaulted. The receiver carries the channels, and
-        only a reduced series states both of them: a frame, a raw column, a reset frame and a
-        SELECTED ELEMENT of a reduced series each name a table whose x and y the projection would
-        have to guess, so each refuses on the channel it cannot read.
+        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`/
+        `plt.plot`, so the two lookups below are total rather than defaulted. The receiver carries
+        the channels, and only a reduced series states both of them: a frame, a raw column, a reset
+        frame and a SELECTED ELEMENT of a reduced series each name a table whose x and y the
+        projection would have to guess, so each refuses on the channel it cannot read.
         """
         # The arm's precondition reads first, exactly as `_resolve_dataset_mark` reads it: with no
         # source bound, `column_not_from_source` would report a symptom where `no_source` names

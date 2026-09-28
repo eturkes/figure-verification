@@ -247,6 +247,23 @@ def _direct_x(x: float | str, actual: float, axis: Axis) -> bool:
     return units is not None and any(key == x and position == actual for key, position in units)
 
 
+def _positional_line(
+    keys: tuple[str, ...], values: tuple[float, ...], points: tuple[Pair, ...], axis: Axis
+) -> bool:
+    """M10.10 B2/A1: float equality normalizes signed zero; in-range integral labels bind."""
+    if _axis_units(axis) is not None:
+        return False
+    wanted = tuple((float(index), value) for index, value in enumerate(values))
+    if points != wanted:
+        return False
+    in_range = tuple(
+        (int(position), label)
+        for position, label in _axis_ticks(axis)
+        if position.is_integer() and 0 <= position < len(keys)
+    )
+    return bool(in_range) and all(label == keys[index] for index, label in in_range)
+
+
 def _tick_identity(x: float | str, position: float, axis: Axis) -> bool:
     for tick_position, text in _axis_ticks(axis):
         if tick_position != position:
@@ -342,6 +359,18 @@ def oracle_matches(verified: Verified, observation: Observation) -> bool:  # noq
             return False
         if mark in {"line", "scatter"}:
             x_axis = cast(Axis, observation["xaxis"])
+            if (
+                mark == "line"
+                and isinstance(verified.spec, spec.DatasetPlot)
+                and _axis_units(x_axis) is None
+                and all(type(key) is str for key in table.x)
+            ):
+                return _positional_line(
+                    cast("tuple[str, ...]", table.x),
+                    table.y,
+                    cast("tuple[Pair, ...]", points),
+                    x_axis,
+                )
             for x, y, point in zip(table.x, table.y, points, strict=True):
                 actual_x, actual_y = point
                 if isinstance(verified.spec, spec.FormulaPlot):

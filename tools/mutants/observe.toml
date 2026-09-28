@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Observation gate: each mutant names the one independent test that must change verdict.
 module = "webui/paste_in/observe.py"
-tests = ["tests/test_paste_in_observe.py", "tests/test_paste_in_observe_values.py", "tests/test_paste_in_observe_formula.py", "tests/test_paste_in_observe_differential.py", "tests/test_paste_in_observe_fixtures.py", "tests/test_paste_in_observe_internal.py"]
+tests = ["tests/test_paste_in_observe_accessor_line.py", "tests/test_paste_in_observe.py", "tests/test_paste_in_observe_values.py", "tests/test_paste_in_observe_formula.py", "tests/test_paste_in_observe_differential.py", "tests/test_paste_in_observe_fixtures.py", "tests/test_paste_in_observe_internal.py"]
 
 [[mutant]]
 id = "o2-default-reader"
@@ -46,3 +46,68 @@ anchor = '''    if low != high:
         return None'''
 mutant = '''    if False and low != high:
         return None'''
+
+[[mutant]]
+id = "m10u10-positional-label-unchecked"
+predicate = "every in-range integral tick label must equal the key at its position"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b3_one_perturbation_withholds[label-altered]"
+anchor = '''    if not labelled or any(text != keys[int(position)] for position, text in labelled):'''
+mutant = '''    if not labelled:'''
+
+[[mutant]]
+id = "m10u10-positional-no-label-admitted"
+predicate = "at least one in-range integral tick must bind a key to a position"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b3_one_perturbation_withholds[in-range-ticks-removed]"
+anchor = '''    if not labelled or any(text != keys[int(position)] for position, text in labelled):'''
+mutant = '''    if any(text != keys[int(position)] for position, text in labelled):'''
+
+[[mutant]]
+id = "m10u10-positional-reads-negative-ticks"
+predicate = "a negative tick wraps to a tail key in pandas and is ignored, never read"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b2_positional_reading_ignores_out_of_range_and_fractional_ticks"
+anchor = '''        if position.is_integer() and 0 <= position < len(keys)'''
+mutant = '''        if position.is_integer() and position < len(keys)'''
+
+[[mutant]]
+id = "m10u10-positional-reads-fractional-ticks"
+predicate = "a non-integral tick carries no key and is ignored"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b2_positional_reading_ignores_out_of_range_and_fractional_ticks"
+anchor = '''        if position.is_integer() and 0 <= position < len(keys)'''
+mutant = '''        if 0 <= position < len(keys)'''
+
+[[mutant]]
+id = "m10u10-positional-x-shifted"
+predicate = "string keys are drawn at 0..n-1 exactly"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b1_committed_accessor_line_fixtures_release[synthetic-accessor-line-str]"
+anchor = '''    return tuple(float(index) for index in range(len(keys)))'''
+mutant = '''    return tuple(float(index + 1) for index in range(len(keys)))'''
+
+[[mutant]]
+id = "m10u10-positional-for-numeric-keys"
+predicate = "numeric keys keep the numeric reading at their data positions"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b1_committed_accessor_line_fixtures_release[synthetic-accessor-line-num]"
+anchor = '''    if axis.units is None and all(isinstance(key, str) for key in keys):'''
+mutant = '''    if axis.units is None:'''
+
+[[mutant]]
+id = "m10u10-positional-ignores-units"
+predicate = "a line with category units keeps the categorical reading"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b3_one_perturbation_withholds[units-present]"
+anchor = '''    if axis.units is None and all(isinstance(key, str) for key in keys):'''
+mutant = '''    if all(isinstance(key, str) for key in keys):'''
+
+[[mutant]]
+id = "m10u10-positional-reads-ticks-past-the-end"
+predicate = "a tick at or past the last key is ignored, never read"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b2_positional_reading_ignores_out_of_range_and_fractional_ticks"
+anchor = '''        if position.is_integer() and 0 <= position < len(keys)'''
+mutant = '''        if position.is_integer() and 0 <= position'''
+
+[[mutant]]
+id = "m10u10-positional-x-unchecked"
+predicate = "the positional reading compares every observed x with 0..n-1"
+kills = "tests/test_paste_in_observe_accessor_line.py::test_b3_one_perturbation_withholds[x-shifted]"
+anchor = '''        return _points_match(verified, points, _positional(axis, keys))'''
+mutant = '''        return _positional(axis, keys) is not None and _points_match(
+            verified, points, tuple(x for x, _ in points)
+        )'''

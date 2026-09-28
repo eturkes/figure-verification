@@ -10,6 +10,8 @@ from types import ModuleType
 from typing import Final, cast
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 import oracle_accessor as oracle_module
 from oracle_accessor import (
@@ -345,16 +347,43 @@ def _assert_nonvacuous(
     )
 
 
-def test_p1_oracle_accessor_equals_series_spelling() -> None:
-    """P1: the accessor and `plt.bar` spelling independently project to one value."""
-    assert oracle_decide(_accessor('kind="bar"')) == oracle_decide(_series())
+@given(
+    key=st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=12),
+    value=st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=12),
+    reduction=st.sampled_from(("sum", "mean", "min", "max")),
+    colored=st.booleans(),
+)
+@settings(max_examples=80, deadline=None)
+def test_c1_generated_line_accessor_meaning(
+    key: str, value: str, reduction: str, *, colored: bool
+) -> None:
+    """C1: independent field translation agrees over generated channels, reductions and color."""
+    _assert_nonvacuous(_corpus())
+    _assert_meaning_map_is_total()
+    arguments = 'color="red", kind="line"' if colored else 'kind="line"'
+    source = _accessor(arguments, key=f"key_{key}", value=f"value_{value}", reduction=reduction)
+    oracle = _oracle_projection(source)
+    production = _production_projection(source)
+    assert oracle is not None
+    assert oracle.mark == "line"
+    assert production is not None, "M10.10 C1: generated line accessor must project"
+    assert _production_meaning(production) == _oracle_meaning(oracle)
+
+
+@pytest.mark.parametrize(("kind", "target"), (("bar", "bar"), ("barh", "barh"), ("line", "plot")))
+def test_p1_oracle_accessor_equals_series_spelling(kind: str, target: str) -> None:
+    """P1/A1: every accessor kind independently equals its explicit pyplot spelling."""
+    assert oracle_decide(_accessor(f"kind={kind!r}")) == oracle_decide(_series(mark=target))
 
 
 def test_p2_oracle_kind_dispatch_is_closed() -> None:
-    """P2: the hand-stated map carries exactly bar and barh; near misses refuse."""
-    assert ACCESSOR_KIND_MAP == {"bar": "bar", "barh": "barh"}
-    assert isinstance(oracle_decide(_accessor('kind="barh"')), OracleProjection)
-    for kind in ("pie", "hist", "line"):
+    """P2/A2: the hand-stated map carries bar, barh and line; near misses refuse."""
+    assert ACCESSOR_KIND_MAP == {"bar": "bar", "barh": "barh", "line": "line"}
+    for admitted in ("bar", "barh", "line"):
+        result = oracle_decide(_accessor(f"kind={admitted!r}"))
+        assert isinstance(result, OracleProjection)
+        assert result.mark == admitted
+    for kind in ("pie", "hist", "area", "scatter", "Line", "line "):
         assert oracle_decide(_accessor(f"kind={kind!r}")) == OracleRefusal(
             "call_target_not_admitted"
         )
@@ -517,6 +546,7 @@ def test_differential_p1_r4_projected_meaning_agrees() -> None:
             continue
         compared[case.name] = (_oracle_meaning(oracle), _production_meaning(production))
     assert compared, "VACUOUS DIFFERENTIAL: no corpus case is admitted by both sides"
+    assert "p2-line" in compared, "M10.10 C1: the admitted line case must be compared on meaning"
     assert len({meaning for meaning, _ in compared.values()}) > 1, (
         "VACUOUS DIFFERENTIAL: every compared case carries the same meaning"
     )

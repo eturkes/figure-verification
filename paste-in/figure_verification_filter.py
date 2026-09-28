@@ -720,15 +720,16 @@ _NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
 _GROUPBY = "groupby"
 _REDUCTIONS = frozenset({"sum", "mean", "min", "max"})
 
-# The pandas plotting ACCESSOR, `<data>.plot(kind="bar")`, written by 4 of the 25 simple design
-# captures. It is its own route rather than a dotted target: its receiver is a name the MODEL bound,
+# The pandas plotting ACCESSOR, `<data>.plot(kind="bar"|"line")`, written by 4 of the 25 simple
+# `m13-design` captures (bar) and 5 of the 24 simple `m10-design` captures (line). It is its own
+# route rather than a dotted target: its receiver is a name the MODEL bound,
 # so admitting it through `ADMITTED_CALL_TARGETS` -- which is keyed by a FIXED import alias -- would
 # open every `<name>.plot` at once.
 _ACCESSOR_ATTR = "plot"
 # `kind` is TARGET IDENTITY, not a style keyword: each value names the mark the accessor draws, and
 # it maps onto that mark's own target string here so projection never defaults an unlisted spelling
 # onto a line the program does not draw.
-ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh"}
+ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}
 # Closed exactly as `ADMITTED_KEYWORDS` is per target. `x=`/`y=` stay out: they select columns, and
 # the accessor's projection reads its channels from the receiver instead.
 ADMITTED_ACCESSOR_KEYWORDS = frozenset({"kind", "color"})
@@ -2968,11 +2969,11 @@ class _Projector:
     def _accessor_mark(self, receiver: ast.Name, node: ast.Call) -> _MarkBuilder:
         """`<reduced series>.plot(kind="<mark>")`, resolved at its own statement.
 
-        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`, so the
-        two lookups below are total rather than defaulted. The receiver carries the channels, and
-        only a reduced series states both of them: a frame, a raw column, a reset frame and a
-        SELECTED ELEMENT of a reduced series each name a table whose x and y the projection would
-        have to guess, so each refuses on the channel it cannot read.
+        `kind` named the mark at ADMISSION, against a closed map onto `plt.bar`/`plt.barh`/
+        `plt.plot`, so the two lookups below are total rather than defaulted. The receiver carries
+        the channels, and only a reduced series states both of them: a frame, a raw column, a reset
+        frame and a SELECTED ELEMENT of a reduced series each name a table whose x and y the
+        projection would have to guess, so each refuses on the channel it cannot read.
         """
         # The arm's precondition reads first, exactly as `_resolve_dataset_mark` reads it: with no
         # source bound, `column_not_from_source` would report a symptom where `no_source` names
@@ -4322,20 +4323,33 @@ def parse_observation(stdout: str) -> Observation | None:
         return None
 
 
-def _direct_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
-    if len(points) != len(verified.table.y):
+def _points_match(verified: Verified, points: Series, positions: tuple[float, ...] | None) -> bool:
+    if positions is None or len(points) != len(verified.table.y):
         return False
-    positions = (
-        _categorical(axis, verified.table.x)
-        if axis.units is not None
-        else _numeric(axis, verified.table.x)
-    )
-    return positions is not None and all(
+    return all(
         observed_x == expected_x and observed_y == expected_y
         for (observed_x, observed_y), expected_x, expected_y in zip(
             points, positions, verified.table.y, strict=True
         )
     )
+
+
+def _direct_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
+    positions = (
+        _categorical(axis, verified.table.x)
+        if axis.units is not None
+        else _numeric(axis, verified.table.x)
+    )
+    return _points_match(verified, points, positions)
+
+
+def _line_points(verified: Verified, axis: AxisObservation, points: Series) -> bool:
+    # String keys with no category units = pandas' line accessor, which never engages the category
+    # converter and draws at 0..n-1 instead (measured on the installed bundle, M10.10).
+    keys = verified.table.x
+    if axis.units is None and all(isinstance(key, str) for key in keys):
+        return _points_match(verified, points, _positional(axis, keys))
+    return _direct_points(verified, axis, points)
 
 
 def _line(verified: Verified, observation: Observation) -> bool:
@@ -4344,7 +4358,7 @@ def _line(verified: Verified, observation: Observation) -> bool:
     return (
         _formula(verified, observation)
         if isinstance(verified.spec, FormulaPlot)
-        else _direct_points(verified, observation.xaxis, observation.lines[0])
+        else _line_points(verified, observation.xaxis, observation.lines[0])
     )
 
 
@@ -4403,6 +4417,20 @@ def _accessor(axis: AxisObservation, keys: tuple[float | str, ...]) -> tuple[flo
             return None
         positions.append(position)
     return tuple(positions)
+
+
+def _positional(axis: AxisObservation, keys: tuple[float | str, ...]) -> tuple[float, ...] | None:
+    """pandas labels each integral tick `index[int(p)]`: a negative one WRAPS to a tail key and an
+    in-range position may carry no tick at all (n=2 labels 0 alone), so only the in-range integral
+    ticks are read -- and at least one must be, or no label binds a key to a position."""
+    labelled = [
+        (position, text)
+        for position, text in axis.ticks
+        if position.is_integer() and 0 <= position < len(keys)
+    ]
+    if not labelled or any(text != keys[int(position)] for position, text in labelled):
+        return None
+    return tuple(float(index) for index in range(len(keys)))
 
 
 type _Position = Callable[[AxisObservation, tuple[float | str, ...]], tuple[float, ...] | None]

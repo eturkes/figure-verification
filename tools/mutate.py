@@ -18,6 +18,11 @@ mutated -- a refactor that moves a line lands here instead of silently passing. 
 neutered predicate changed behaviour and the named test did not notice: the finding.
 
 The baseline runs first and must be green: a kill against an already-red suite proves nothing.
+It runs every named kill test too, so a renamed or deleted one fails the catalogue loudly.
+
+KILLED means pytest exit code 1 -- the named test RAN and FAILED. Every other nonzero code runs no
+named test to a verdict (2 interrupted by a collection error, 4 a kill name matching nothing, 5
+nothing collected), so it credits nothing and reports as NO-TEST.
 
 CPython invalidates cached bytecode on (mtime, size), so a SAME-SIZE restore silently reuses the
 mutant code object -- every write here clears `__pycache__` under the source root.
@@ -110,6 +115,9 @@ def _clear_caches(root: Path) -> None:
         shutil.rmtree(cache, ignore_errors=True)
 
 
+_TESTS_FAILED = 1
+
+
 def _run(selectors: tuple[str, ...]) -> int:
     return subprocess.run([*_PYTEST, *selectors], check=False).returncode  # noqa: S603
 
@@ -141,7 +149,14 @@ def _evaluate(catalogue: Catalogue, item: Mutant) -> Result:
         if reason is not None:
             return Result(item, f"ANCHOR-MISS ({reason})")
         _clear_caches(module.parent)
-        verdict = "KILLED" if _run((item.kills,)) != 0 else "SURVIVED"
+        rc = _run((item.kills,))
+        verdict = (
+            "KILLED"
+            if rc == _TESTS_FAILED
+            else "SURVIVED"
+            if rc == 0
+            else f"NO-TEST (pytest rc {rc})"
+        )
     finally:
         module.write_text(original, encoding="utf-8")
         _clear_caches(module.parent)
@@ -173,9 +188,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # Vacuity guard: a kill against an already-red suite proves nothing at all.
-    sys.stdout.write(f"baseline {' '.join(catalogue.tests)}\n")
-    if _run(catalogue.tests) != 0:
-        sys.stdout.write("VACUOUS: the suite is red before any mutation\n")
+    kills = tuple(dict.fromkeys(item.kills for item in selected))
+    sys.stdout.write(f"baseline {' '.join(catalogue.tests)} + {len(kills)} kill test(s)\n")
+    # Kill tests run APART: beside a whole-file selector pytest drops an unmatched node id and
+    # still exits 0, so a renamed kill test would hide inside its own module's run.
+    if _run(catalogue.tests) != 0 or _run(kills) != 0:
+        sys.stdout.write("VACUOUS: the suite or a named kill test is red or absent unmutated\n")
         return 2
 
     results = [_evaluate(catalogue, item) for item in selected]

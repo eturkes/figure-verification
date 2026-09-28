@@ -35,8 +35,8 @@ const exported = (kind, input = "") =>
   });
 const fixtureDir = join(project, "tests/fixtures/observe");
 const names = readdirSync(fixtureDir).filter((name) => name.endsWith(".json")).sort();
-if (names.length !== 52) {
-  throw new Error(`Expected 52 fixtures, got ${names.length}`);
+if (names.length !== 58) {
+  throw new Error(`Expected 58 fixtures, got ${names.length}`);
 }
 const observations = [];
 for (const name of names) {
