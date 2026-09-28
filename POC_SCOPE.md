@@ -275,7 +275,7 @@ curl -sS 'http://127.0.0.1:8000/verify-and-render?include_html=false' \
   --data-binary @examples/good_specs/g01_total_revenue_by_month.json
 
 # verify a formula spec and, only if verified, return the certified matplotlib script
-# (the verifier authors that script and never runs it)
+# (JSON formula mode: the verifier authors that script and never runs it; python mode differs)
 curl -sS http://127.0.0.1:8000/verify-formula \
   -H 'Content-Type: application/json' \
   --data-binary @examples/formula_good_specs/f02_linear.json
@@ -320,8 +320,9 @@ earns no new trust, and a chart still rides only a verified, on-request outcome.
 The formula proposer's request is a smaller `{user_request}` object, because formula mode opens no
 dataset: it has no dataset name to pin, and it can give no not-found answer. The service builds the
 formula proposer prompt, asks the same backend for a spec, and feeds the exact reply bytes through
-`verify-formula` above. The result is the raw reply plus that verdict, and nothing else. The
-verifier authors the certified matplotlib script and never executes it, so this endpoint serves no
+`verify-formula` above. The result is the raw reply plus that verdict, and nothing else. In this
+JSON formula mode the verifier authors the certified matplotlib script and never executes it (python
+mode, where the MODEL authors the executed bytes, is `.claude/rules/pysrc.md`), so this endpoint serves no
 chart page, sends no `Location` header, and adds no summary string. The claim boundary does not
 move here either: the model proposes a complete restricted `FormulaPlotSpec` — version, formula,
 domain, numeric profile, mark and encoding. The spec carries no plotted values and no Python. The

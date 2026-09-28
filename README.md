@@ -1,434 +1,145 @@
 # figure-verification
 
-## What the PoC is
+figure-verification lets a language model draw charts in Open WebUI, but the model never supplies a
+plotted value. The model writes a Python program that draws the chart. A separate verifier checks
+the program and recomputes every plotted value from the user's own CSV file or from the function
+that the user states. The chart appears only when every check passes. Otherwise the chat shows
+`Figure verification failed, no image produced`.
 
-A caller submits a restricted JSON plot specification. In either mode, a weak local LLM may propose
-that specification. A separate trusted verifier deterministically recomputes every plotted value
-and runs structured checks. It blocks failures and certifies only verified plots with a signed
-provenance certificate.
+## What this repository delivers
 
-The verifier has two plot modes. Dataset mode re-binds the named source CSV by hash and renders a
-verified chart. Formula mode evaluates a closed-form expression exactly and emits a matplotlib
-script. The verifier writes that script and never runs it.
+- **Two files to paste into Open WebUI.** `paste-in/figure_verification_tool.py` and
+  `paste-in/figure_verification_filter.py` contain the complete verifier. They need only the Python
+  standard library and what Open WebUI 0.10.2 already contains. They make no network calls.
+- **An administrator guide in English and Japanese.** Read [docs/admin/README.md](docs/admin/README.md)
+  or [docs/admin/README.ja.md](docs/admin/README.ja.md) to install the two files.
+- **A demo harness.** One command starts a local Open WebUI with a local model or a stub model. The
+  harness also holds the measurement tools and the test suite.
 
-## The modest claim
+The repository also contains an older JSON-spec verifier service. That service runs headless and is
+not part of the Open WebUI deliverable. See [docs/json-spec.md](docs/json-spec.md).
 
-The verification claim is exactly the boundary stated in [POC_SCOPE.md](POC_SCOPE.md):
+## What "verified" means
 
-> The verifier has TWO plot modes with DISJOINT carriers. DATASET MODE is the original: a source
-> CSV plus a trusted column manifest, emitted as Vega-Lite, certified by VCert v0.2. FORMULA MODE
-> plots a closed-form expression over an explicit domain: no CSV, no manifest, no Vega-Lite, no SVG,
-> and a verifier-authored matplotlib script the service NEVER executes, certified by VCert v0.3.
-> Every sentence below naming a CSV, manifest, Vega-Lite, SVG, renderer, or chart is a DATASET-MODE
-> sentence.
+A chart passes when all of these statements are true:
 
-Dataset mode binds four artifacts:
+1. **Provenance.** The verifier recomputed every plotted number from the uploaded CSV file or from
+   the function in the request. The model supplied no plotted number.
+2. **Integrity.** The chart obeys a closed set of rules. For example, bars start at zero and the
+   chart has one linear axis pair. Also, no data row is dropped silently.
+3. **Observation.** The values that the browser runtime drew match the recomputed values. They
+   match exactly for CSV data and within one unit in the last place for a function.
 
-> The untrusted model proposes ONLY a VPlot spec — transforms, encoding, and a declared
-> source-dataset hash — never plotted values. In dataset mode, "verified" means these four artifacts
-> are mutually consistent and every check passed:
->
-> 1. the spec validated against the VPlot v0.1 DSL (unknown fields, ops, and marks are
->    rejected before any computation runs);
-> 2. the plotted table the verifier recomputed independently from the source CSV;
-> 3. the emitted Vega-Lite, which inlines only that recomputed table;
-> 4. the VCert v0.2 provenance record and badge representation: source-dataset, trusted-manifest,
->    canonical-spec, recomputed-table, and exact emitted-Vega hashes; every passing check with its
->    method; and the verifier, Z3, canonicalization, and display-tool versions in the trusted base.
+After a pass, the chat also shows a sentence that states what the chart shows, for example the sum of
+revenue for each region. Read that sentence. A pass does not mean that the chart answers the
+question. The chart can show a different measure or grouping than the user wanted.
 
-Formula mode binds four different artifacts:
+The verifier trusts the browser, the Pyodide runtime, matplotlib and the pixels. It does not check
+them. The verifier accepts a small subset of pandas, numpy and matplotlib:
 
-> Formula mode verifies its own four artifacts instead: the spec validated against the
-> `vplot-formula-0.1` DSL; the plotted table the verifier recomputed by EXACT rational evaluation of
-> the declared formula over the declared domain, never floating point; the canonical matplotlib
-> script the verifier itself authored from that table; and the VCert v0.3 provenance record binding
-> exactly four hashes — RESOLVED formula source, canonical spec, recomputed table, and emitted
-> script. The resolved formula source is the verifier's own canonical rendering of nine fixed fields
-> — grammar version, numeric profile, rounding mode, printed AST, resolved domain endpoints, sample
-> count, and both axis scales — never the submitted formula string verbatim, so two equivalent
-> respellings share one formula source hash while a changed domain or scale does not. THREE of the
-> four are respelling-invariant — formula source, recomputed table, and emitted script all derive
-> from the canonical AST and the recomputed points, and the script embeds no submitted text. The
-> canonical spec preserves the submitted text, so the spec hash is the SOLE spelling-sensitive
-> certified digest; the certificate payload and the derived plot and spec ids still differ between
-> two spellings of the same function. There is no fifth. The same structured checks, resource
-> ceilings, and Z3 second-checking apply, over formula-mode obligations. matplotlib, the interpreter
-> that would run the script, and the resulting pixels are display trust, exactly as SVG rasterization
-> is for dataset mode.
+- a bar, horizontal bar, line or scatter chart over two CSV columns;
+- one sum, mean, minimum or maximum for each group;
+- a line or scatter chart of a stated function.
 
-Formula mode also bounds what the service can return:
+It refuses everything else.
 
-> ONLY A VERIFIED 200 RETURNS OR ARCHIVES A SCRIPT ARTIFACT; EVERY FAILED VERDICT DOES NEITHER.
+## Measured results
 
-That claim covers verdicts, not every non-2xx response. A capacity `507` or an archive `500` can
-follow an in-memory build. Those responses answer a Problem, never a verdict. The atomic commit
-keeps those bytes out of the archive.
+All model results come from one device and configuration: `Qwen2.5-Coder-0.5B-Instruct` in fp16 on
+an NVIDIA MX150 with greedy decoding. A different model or device can give different results.
 
-The trusted-computing-base boundary is also unchanged:
+- **Held-out acceptance.** On 40 held-out prompts, measured once, 14 of 20 simple requests verified and 20 of 20
+  complicated requests were blocked. The acceptance bar is 70% for each category, so the simple
+  result meets it exactly. Both public demo prompts behaved as intended. This measurement does not
+  check whether a verified chart shows what the request asked for. At least 4 of the 14 verified
+  charts use a different aggregation or chart type than the request.
+- **Design set (tuning only).** On the 48 design prompts, 20 of 24 simple requests verified and 24
+  of 24 complicated requests were blocked. 10 of the 24 simple charts showed what the request asked
+  for. The other 10 verified charts showed real values of a different quantity.
+- **Browser demo.** The test used the real model in Open WebUI with `data/sales.csv` attached. The
+  simple banner prompt showed a bar chart and the pass message in 5 of 5 recorded runs. The
+  elaborate dashboard prompt showed the failure message and no image in 5 of 5 runs. The records are in
+  `.agent/measurements/m10u3/`.
+- **Stub model.** With `--stub`, the simple prompt showed a chart and the pass message. The
+  elaborate prompt showed the failure message and no image. One recorded run of each.
 
-> Z3 is a trusted second checker for three bounded, concrete obligations; it does not prove the
-> evaluator, builder, renderer, or whole verifier. `vl-convert` and the Vega runtime, SVG
-> rasterization, the browser, and the final pixels are likewise trusted, not formally verified -
-> trusted to render verified data faithfully, not proven to. In formula mode, matplotlib and the
-> Python interpreter that would execute the emitted script hold exactly that position; the verifier
-> authors those bytes and never runs them, so nothing downstream of the script is proven. The claim
-> is about the mutually bound data, spec, emitted artifact, and certificate layer, not what reaches
-> the screen.
+## Install
 
-## Trust spine
+You need Linux, [uv](https://docs.astral.sh/uv/) and git. The real model needs an NVIDIA GPU with
+CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 
-Dataset mode:
-
-```text
-UNTRUSTED
-  weak local LLM
-       |
-       | proposes ONLY VPlot v0.1:
-       | transforms + encoding + declared dataset hash
-       | MODEL SUPPLIES NO PLOTTED VALUES
-       v
-TRUSTED VERIFIER
-  strict decode + schema/resource gates
-       |
-source CSV --bounded read--> SHA-256 dataset re-binding
-       |                         |
-       +-------------------------+
-       |
-       v
-  deterministic Decimal-exact recomputation of ALL plotted rows
-       |
-       v
-  structured checks:
-  schema_validation | resource_policy | deterministic_recompute
-  construction      | z3_smt
-       |
-       v
-  DatasetEvidence
-       |
-       v
-  positive-allowlist builder copies no model Vega key
-  and inlines ONLY the recomputed table
-       |
-       v
-  exact emitted Vega-Lite bytes
-       |
-       v
-  renderer produces:
-       +--> vl-convert / Vega --> SVG / HTML --> browser / pixels
-       |      trusted display only; not formally verified or replay proof
-       |
-       +--> VCert v0.2 payload: dataset + manifest + canonical-spec
-              + recomputed-table + exact emitted-Vega hashes
-                    |
-                    v
-              Ed25519 DSSE envelope --> certificate
-```
-
-The certificate binds the exact emitted Vega-Lite bytes, not SVG rasterization or final pixels.
-
-Formula mode keeps that spine and replaces the source and the artifact:
-
-```text
-UNTRUSTED
-  caller-supplied formula spec, or one proposed by the model at POST /propose-formula
-       |
-       | carries ONLY vplot-formula-0.1:
-       | version + formula + domain + numeric_profile + mark + encoding
-       | THE SPEC SUPPLIES NO PLOTTED VALUES
-       v
-TRUSTED VERIFIER
-  strict decode + schema/resource gates
-       |
-       v
-  closed AST parse; NO source CSV and NO manifest is read
-       |
-       v
-  EXACT rational evaluation of every plotted point
-       |
-       v
-  core structured checks + Z3 second-checking over formula obligations
-       |
-       v
-  fixed-template emitter: float64-fidelity gate, construction checks,
-  and script-size admission over the bytes it AUTHORS
-       |
-       v
-  VCert v0.3 payload: RESOLVED-formula-source + canonical-spec
-       + recomputed-table + emitted-script hashes
-       (resolved source = nine canonical fields: grammar, numeric profile,
-        rounding, printed AST, endpoints, samples, and both scales —
-        not the submitted formula string)
-       |
-       v
-  Ed25519 DSSE envelope --> certificate
-       |
-       +--> script TEXT answered inline by POST /verify-formula
-       |      the verifier NEVER executes those bytes
-       |
-       +--> matplotlib / interpreter / figure pixels
-              trusted display only; outside the verified claim
-```
-
-The v0.3 certificate binds four hashes and the exact script bytes, not the rendered figure.
-
-## Repo layout
-
-```text
-.
-├── src/verifier/          trusted verifier core
-│   └── service/           `verifier.service` local HTTP transport, archive, audit, and replay
-├── model_backend/         hardware-gated OpenVINO NPU wrapper; unshipped
-├── bench/                 weak-model proposer evaluation and deterministic verifier-corpus guarantee
-├── webui/                 Open WebUI provisioning, generated outlet filter, stub, and chat harness
-├── demo/                  hardware-free hardening and real-socket end-to-end walkthroughs
-├── tests/                 hardware-free pytest unit and integration suite
-├── examples/              10/18 dataset and 6/20 formula good/bad specifications
-├── data/                  synthetic source CSVs and trusted column manifests
-├── schema/                exported dataset and formula JSON Schema goldens, and the OpenAPI golden
-├── POC_SCOPE.md           claim, service, replay, and display trust boundaries
-└── VPlot_SEMANTICS.md     dataset and formula semantics and determinism contract
-```
-
-## PoC acceptance
-
-This section is the single acceptance record for the PoC's ten criteria. Each item identifies the
-committed evidence. It also states the boundary that keeps the claim modest.
-
-Criteria 1 to 9 describe the dataset path unless an item names formula mode. Formula mode ships six
-good and 20 bad corpus specifications. `POST /verify-formula` and `POST /propose-formula` verify and
-certify a canonical matplotlib script, then archive it. Each route archives a script only on a
-verified result. `GET /replay/{plot_id}` recomputes the occurrence from the archived canonical spec.
-Replay reproduces no script bytes and no signature. The `/script` route serves those bytes
-independently. The verifier never runs those scripts.
-`python -m demo.formula_walkthrough` runs five in-process formula scenarios. Demo case 4 of
-`python -m demo.e2e` repeats the certificate, table, script, restart, replay, and no-chart evidence
-over real sockets. No certified formula script has run in the Open WebUI sandbox. M10 gates that
-execution.
-
-1. **The model cannot render a chart directly through the approved path.**
-
-   **Evidence:** `POST /propose-spec` in `src/verifier/service/app.py` accepts a request and obtains
-   the raw model reply bytes. It strictly decodes and verifies the reply. Only then does it reach
-   `render.prepare_render`. The render handoff requires `DatasetEvidence`.
-   **Boundary:** This service claim covers its approved verifier path, not every UI output channel.
-   The generated Open WebUI filter separately requires a backend-recorded tool call and re-verifies
-   it before publication. Browser rendering and pixels remain trusted, not verified.
-
-2. **The model can only propose a restricted VPlot spec.**
-
-   **Evidence:** The request is exactly `{user_request, dataset_name}` (`ProposeRequest`). The raw
-   reply then enters `schema.decode_spec`. VPlot v0.1 uses `forbid_unknown_fields`, closed marks and
-   transforms, and no field for plotted values. The verifier blocks malformed or out-of-language
-   replies.
-   **Boundary:** The weak model may emit arbitrary junk. Only a successfully decoded restricted spec
-   can proceed.
-
-3. **The verifier recomputes plotted data independently.**
-
-   **Evidence:** `checks.verify_run` reads and hashes the source bytes. It checks the declared dataset
-   hash. It calls `eval.evaluate_run` to recompute the complete plotted table from the CSV. The
-   recomputation uses deterministic Decimal-exact semantics.
-   **Boundary:** This proves faithful execution of the declared selection. It does not prove that the
-   selected data or chart intent is representative or fair.
-
-4. **The renderer only receives verifier-computed data.**
-
-   **Evidence:** `render.prepare_render` consumes `DatasetEvidence`. `render.build_vega_lite` copies
-   no model Vega key. It constructs `data.values` solely from `evidence.plotted_table`.
-   **Boundary:** `vl-convert`, Vega, SVG rasterization, browser behavior, and pixels remain trusted
-   display components, not verified components.
-
-5. **Known-bad specs are blocked.**
-
-   **Evidence:** The deterministic `python -m bench` guarantee records all 18 bad goldens as blocked,
-   with `false_accept=0`. In `python -m demo.e2e`, case 2 blocks `b07` at `schema.fields_exist`. The
-   pinned corpus is in `examples/bad_specs/`.
-   **Boundary:** 18/18 is a bound over that hand-authored corpus. It is not a bound over every possible
-   hostile specification.
-
-6. **Known-good specs render.**
-
-   **Evidence:** The same benchmark guarantee records all 10 good goldens as accepted, with
-   `false_reject=0`. In `python -m demo.e2e`, case 1 renders `g01`, verifies its certificate, restarts
-   the service, and replays exactly. The pinned corpus is in `examples/good_specs/`.
-   **Boundary:** 10/10 is a corpus result, not a claim that every useful chart request is supported.
-
-7. **Failures are specific enough to debug.**
-
-   **Evidence:** Each `CheckResult` carries a check ID, method, status, severity, and message. Demo
-   case 2 prints `field 'profit' does not exist in the table`. To inspect a committed occurrence,
-   run `python -m verifier.service audit ATTEMPT_ID`.
-   **Boundary:** Classified verification failures are specific. Unclassified implementation faults
-   intentionally remain generic `500` responses. Their details remain confined to operator logs.
-
-8. **Open WebUI shows verified charts inline.**
-
-   **Evidence:** `WebUIClient.run_persisted_chat` and
-   `python -m webui chat --prompt "…"` read the final text from `output[0].content[0].text`. They read
-   the chart URL from `embeds[0]`. A live run records a verified
-   `http://127.0.0.1:8000/chart/<hash>` embed in a sandboxed iframe.
-   **Boundary:** The retained browser evidence here is textual DOM and CSP evidence. Browser
-   rendering and pixels remain in the trusted computing base.
-
-9. **Unverified chart-like output is blocked or clearly labeled.**
-
-   **Evidence:** The generated global outlet filter blocks replies without a backend-recorded
-   `draw_figure` call. It blocks prose and fenced chart code alike. Only a re-verified tool call
-   followed by one PNG from the browser sandbox can publish the pass text and certificate
-   interpretation. [webui/README.md](webui/README.md) probes the two no-receipt cases.
-   **Boundary:** The filter trusts backend request state and browser rendering. It does not prove
-   pixels or control every possible UI output channel.
-
-10. **Every plot the dataset service renders is replayable to a certificate.**
-
-    **Evidence:** Every verified service render emits a DSSE-signed VCert v0.2. It commits its plot
-    bundle to the SQLite provenance archive. `GET /certificate/{plot_id}` serves the envelope.
-    `GET /replay/{plot_id}` re-executes archived inputs. Demo case 1 proves exact replay after a
-    service restart.
-    **Boundary:** Replay does not rerun the weak model or prove browser pixels. A chart is regenerated
-    only for an exact dataset replay under configured trust. Drift and integrity failures return
-    diagnostics. Formula plots are archived and certified under VCert v0.3. `POST /verify-formula`
-    mints them. The pure formula replay engine is renderer-free. `GET /replay/{plot_id}` answers a
-    bounded formula verdict for an archived formula plot that has a signed verified attempt. That
-    verdict reports per-artifact hash matches and version drift. A formula replay builds no chart,
-    so it never repopulates the chart cache. A plot without such an attempt answers 404 in both
-    modes. `GET /table/{plot_id}` serves the archived plotted-table bytes for either mode.
-    `GET /script/{plot_id}` serves the archived matplotlib script, which only a formula plot carries.
-
-## Quickstart
-
-A clean checkout requires no model backend or accelerator:
-
-1. Install the locked environment.
+1. Install the locked Python 3.13 environment.
 
    ```sh
    uv sync --locked
    ```
 
-2. Run the locked quality gate.
+2. For the browser demo, set up the Open WebUI environment. [webui/README.md](webui/README.md)
+   gives the one-time steps.
+3. For the real model, set up the model runtime. [model_backend/runtime/README.md](model_backend/runtime/README.md)
+   gives the steps and the model download.
 
-   ```sh
-   uv run --locked ruff format --check .
-   uv run --locked ruff check .
-   uv run --locked mypy
-   uv run --locked pytest
-   ```
+## Run
 
-3. Run the hardware-free 13-scenario hardening walkthrough.
+- Run the full quality gate. The gate runs formatting, lint, type, test, dependency audit, secret,
+  workflow and shell checks.
 
-   ```sh
-   uv run --locked python -m demo
-   ```
-
-4. Run the real-socket four-case end-to-end demo. It starts and stops its own verifier subprocess.
-
-   ```sh
-   uv run --locked python -m demo.e2e
-   ```
-
-## Try it in your browser
-
-This browser recipe covers dataset mode. No certified formula script has run in the Open WebUI
-sandbox. M10 gates that execution.
-
-Use one command to start and fully provision the whole instance. The instance includes the verifier,
-a local model, and Open WebUI. Then use the verified-plot pipeline from a browser:
-
-```sh
-webui/launch.sh          # real local model on the NPU (hardware-gated)
-webui/launch.sh --stub   # deterministic stub, no accelerator required
-```
-
-The launcher waits for the verifier (`:8000`), the model backend (`:8001`), and Open WebUI (`:8080`).
-It then bootstraps Open WebUI. Finally, it prints a banner with the browser URL and the admin login.
-[webui/README.md](webui/README.md) explains the one-time `.venv-webui` setup. For the real model, it
-also explains the accelerator wiring. Use `--fresh` to wipe the persisted instance. Press `Ctrl-C`
-to free all three ports.
-
-Open `http://127.0.0.1:8080`. Log in with the printed credentials. If you use the defaults, enter
-`operator@localhost` / `loopback-dev-password`. Attach `data/sales.csv` to a new chat. Then type a
-chart request, for example `Chart the total revenue of each region using bars.`
-
-Bootstrap makes Figure Verifier a default tool on the configured model. Browser chats then offer it
-automatically, without a manual tool toggle. The result depends on the model tier. For the real model,
-it also depends on the exact prompt:
-
-- **Real local model (default).**
-
-  Open WebUI's first call selects a tool without guidance. Only a selected `proposeSpec` call is
-  schema-guided. This guidance steers the weak model toward schema-representable structure instead of
-  the raw model's markdown-fenced prose.
-
-  The `webui/launch.sh` banner pins both prompts. Neither arm is calibrated on the current build.
-  The results below were measured with the real model on the host of record, against the earlier
-  wiring that exposed `proposeSpec` through a registered tool server. The instance now exposes the
-  python-mode paste-in tool instead, so these two outcomes are a record of that earlier build and
-  not a prediction for this one.
-
-  The simple prompt is
-  `Chart the total revenue of each region using bars. dataset_name: sales.csv`. This prompt does
-  drive `proposeSpec`. The verifier then refuses the proposed spec at `transform.group_by_placement`,
-  so no figure renders. The prompt pinned before it,
-  `Plot a scatter chart of revenue versus orders. dataset_name: sales.csv`, refuses at
-  `encoding.fields_exist_in_plotted_table`. Four runs gave the same two results.
-
-  The elaborate example asks for much more:
-
-  ```text
-  Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated.
+  ```sh
+  bash tools/gate.sh
   ```
 
-  No verifiable VPlot spec can express that request. The outcome is not stable. In one run the model
-  ignored the request. It proposed a plain whole-table spec, that spec verified, and a real chart
-  rendered. The numbers in that chart are correct and the figure does not answer the request. In two
-  more runs the model answered with prose. The earlier outlet let that prose through. The current
-  filter instead publishes `Figure verification failed, no image produced` without a backend tool
-  receipt. These observations predate that filter.
+- Start the demo with the stub model. No GPU is necessary.
 
-  Milestone M10 replaces this JSON-spec path with python mode. M10 also calibrates both demo prompts.
+  ```sh
+  webui/launch.sh --stub
+  ```
 
-  A separate 100-prompt bench calls `/propose-spec` directly. It exercises neither Open WebUI tool
-  selection nor the generated outlet filter. It fully verified 26/100 fixed benchmark prompts.
-  Another 51/100 failed strict decode, and 23/100 failed a semantic check.
+- Start the demo with the real model.
 
-  In a same-commit A/B, only schema guidance changes. The unguided arm is at 0/100. JSON validity
-  changes from 0.01→0.83. Markdown fencing changes from 52→0. Both arms are observations, not bounds.
-  Blocking remains common and expected when output truncates. It also remains common and expected
-  when a structurally valid proposal fails semantic checks.
+  ```sh
+  webui/launch.sh
+  ```
 
-  Guidance constrains structure only. It does not establish values, semantics, dataset binding,
-  recomputation, provenance, or acceptance. The strict verifier still re-decodes every proposal. It
-  recomputes the plotted table and re-binds the CSV by SHA-256. The verifier alone decides whether a
-  chart is verified. To audit each admitted attempt, run
-  `uv run --locked python -m verifier.service audit <attempt_id>`.
+  The launcher prints a banner with the address, the login and two prompts to try. Attach
+  `data/sales.csv` to a new chat, then send one of the prompts. Press `Ctrl-C` to stop.
 
-- **`--stub`.**
+- Recompute the held-out score from the committed capture. The command writes nothing unless you add
+  `--write`.
 
-  The deterministic stub gives fixed replies and does not run a model. It tests the wiring between
-  Open WebUI, the filter inlet, the pasted tool, and the outlet filter. Attach `data/sales.csv` to a
-  new chat. Then paste one of the two prompts that the banner shows. The inlet binds the uploaded
-  file and its columns before the stub sees the prompt. The stub recognizes only that exact
-  result, and the chat editor can change typed text, for example `2x2` to `2×2`.
+  ```sh
+  uv run --locked python -m capture score corpus/python/captures/m10-heldout
+  ```
 
-  For the simple prompt, the stub calls the figure tool with a fixed program that the verifier
-  accepts. For the elaborate prompt, the stub calls the tool with a fixed program that the verifier
-  refuses. Other messages, for example `hello`, get no tool call. The chat display of this setup is
-  not recorded yet.
+## Configure
 
-Open WebUI, its browser sandbox, and the pixels stay trusted display components. The modest claim
-above and [POC_SCOPE.md](POC_SCOPE.md) hold this boundary. The generated Figure Verification Filter
-re-verifies backend-recorded tool calls. It does not verify pixels or cover other UI output channels.
+- **An existing Open WebUI instance.** Follow [docs/admin/README.md](docs/admin/README.md).
+- **The paste-in files.** Do not edit them. Change the source under `src/verifier/pysrc/` or
+  `webui/paste_in/`, then regenerate both files:
 
-## Live full-stack recipes
+  ```sh
+  uv run --locked python tools/generate_paste_in.py
+  ```
 
-[bench/README.md](bench/README.md) contains the hardware-gated two-server NPU evaluation recipe.
-[webui/README.md](webui/README.md) contains the Open WebUI provisioning, deterministic stub,
-persisted chat, and live-stack recipe.
+- **The demo launcher.** Use `--fresh` to delete the saved demo instance. [webui/README.md](webui/README.md)
+  lists the environment variables, for example the ports and the admin login.
 
-The optional `python -m demo.e2e --with-webui` and `python -m demo.e2e --with-model` legs are both
-off by default. They require that live stack. Port `8001` serves either the deterministic WebUI stub
-or the NPU model backend. It cannot serve both at once. Therefore, run the two legs as separate live
-passes. Use the WebUI recipe instead of starting both providers on that port.
+## Repository layout
+
+```text
+.
+├── paste-in/              the two generated Open WebUI files (the deliverable)
+├── docs/admin/            administrator guide (English, Japanese) and model system prompts
+├── src/verifier/pysrc/    the verification core that the paste-in files embed
+├── webui/                 paste-in sources, Open WebUI provisioning, launcher and stub model
+├── model_backend/         the local model server for the demo
+├── capture/               model capture, statistics and the held-out scorer
+├── corpus/python/         design, held-out and sentinel prompts, and committed captures
+├── data/                  demo CSV files
+├── tools/                 gate, positive controls, mutation driver and paste-in generator
+├── tests/                 the test suite
+├── src/verifier/          the JSON-spec verifier service (headless)
+└── docs/json-spec.md      the JSON-spec service claim, trust spine and acceptance record
+```
 
 ## License
 
