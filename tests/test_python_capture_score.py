@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.9 scorer contract S1-S8: independent fixtures, literal boundaries, no model calls.
 
-Contract: `.agent/contracts/m10u9.md`. Held-out TEXT is never inspected: synthetic prompts copy
-only the corpus metadata. Lazy import keeps every predicate independently red before score.py
+Contract: `.agent/archive/contracts/m10u9.md`. Held-out TEXT is never inspected: synthetic prompts
+copy only the corpus metadata. Lazy import keeps every predicate independently red before score.py
 exists, rather than aborting collection at the first import.
 """
 

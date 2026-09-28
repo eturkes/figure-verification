@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Mutation catalogue for the held-out acceptance SCORER (contract .agent/contracts/m10u9.md, S1-S8).
+# Mutation catalogue for the held-out acceptance SCORER (contract .agent/archive/contracts/m10u9.md, S1-S8).
 # Run: `uv run --locked python tools/mutate.py tools/mutants/score.toml`. Each mutant neuters ONE
 # conjunct of the scorer's contract and names the ONE test that must go red under it.
 

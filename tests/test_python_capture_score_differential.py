@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M10.9 scorer differential: real design capture + synthetic/generated heldout metadata.
 
-Contract: `.agent/contracts/m10u9.md`. No held-out text, backend, GPU, or model invocation.
+Contract: `.agent/archive/contracts/m10u9.md`. No held-out text, backend, GPU, or model invocation.
 The oracle reparses raw NDJSON independently and shares only the specified verifier/de-fencer.
 """
 

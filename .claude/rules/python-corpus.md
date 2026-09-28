@@ -10,8 +10,8 @@ paths:
   `pythonpath = ["tests", "."]` (tests FIRST) and a `corpus` package additionally raises a duplicate
   module under mypy. Code lives in the repo-root package `capture/`; `corpus/python/` is pure data.
 - Layout (fixed at M12.5): `corpus/python/design/manifest.json` 24+24 · `heldout/manifest.json`
-  20+20 (ruling 7: never generated against until the M13 config is frozen; subset design + tuning
-  read the design set + its captures alone) · `sentinels.json` (2 public demo prompts, outside both
+  20+20 (ruling 7: generated against ONCE — `captures/m10-heldout`, scored `score.json`; subset
+  design + tuning read the design set + its captures alone) · `sentinels.json` (2 public demo prompts, outside both
   sets + both denominators) · `capture_prompt_v1.txt` · `captures/<run>/` records, TRACKED.
 - `capture/corpus.py` is the SOLE implementation of predicates C1–C10 (`.agent/archive/contracts/m12u5.md`),
   the strict schema, the loader, `render_capture_prompt` and the closed idiom vocabulary.
@@ -74,7 +74,7 @@ paths:
   but `record_count`, or a committed `prompt_id` sits outside the freshly selected rows; the
   default refusal precedes every request; `--kind heldout` refuses without `--heldout-acknowledged`. Backend `max_tokens` CLAMPS at 512 silently ⇒ the truncation
   lever is server-side `MODEL_BACKEND_MAX_TOKENS`, not a client flag.
-- `capture/score.py` owns the HELD-OUT SCORE (`.agent/contracts/m10u9.md`, S1-S8): `python -m capture score
+- `capture/score.py` owns the HELD-OUT SCORE (`.agent/archive/contracts/m10u9.md`, S1-S8): `python -m capture score
   <run-dir>… [--write]` writes/re-derives `<run>/score.json`. Three outcomes — `transport_error` (no
   verifier call; never BLOCKED credit, the `w1_width.py` empty-source trap) · `verified` · `refused`;
   denominators = the manifest kind's CORPUS set; numerators = DISTINCT own-set ids by corpus category;
@@ -92,7 +92,8 @@ paths:
   invocation: provenance samples `git_dirty` once before row 1, writing row 1 makes the tree dirty,
   so `--resume` then refuses on the `git_dirty` field. A failed run restarts under `--overwrite`.
   `tests/test_python_capture_run.py` grades every COMMITTED run (T1–T4) and is what a new run must
-  pass: it calls R1–R11 + S1–S4 and adds completeness, tracked-ness and held-out absence.
+  pass: it calls R1–R11 + S1–S4 and adds completeness, tracked-ness and the EXACTLY-ONCE held-out guard
+  with byte re-derivation of `m10-heldout/score.json`.
 - Extending the corpus: seed rows with `unknown-<id>` in `prompt` alone, add the affected predicate
   ids to `_SEED_PENDING` in `tests/test_python_corpus.py` so the seed commit gates green, and empty
   it again at the fill. `id`/`category`/`idiom`/`dataset_name` are assigned by script before

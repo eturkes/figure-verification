@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Held-out acceptance scorer + its EXACTLY-ONCE guard (contract .agent/contracts/m10u9.md, S1-S8).
+"""Held-out acceptance scorer + its EXACTLY-ONCE guard.
+
+Contract `.agent/archive/contracts/m10u9.md`, predicates S1-S8.
 
 A pure function of one committed run, the committed corpus manifests (denominators + sentinel ids)
 and the tracked CSV bytes under the committed verifier, so the gate re-derives the committed

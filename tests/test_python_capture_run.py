@@ -5,7 +5,8 @@ R1-R11 and S1-S4 live in capture.record and capture.harness and are called here,
 What this file adds is what neither predicate set can say about a committed run: that the run is
 COMPLETE (R5 admits "its own set plus sentinels and nothing else", R3 only agrees record_count with
 the rows PRESENT, so a 3-of-50 run grades clean under both), that its bytes are TRACKED rather than
-gitignored evidence, that no held-out capture was ever committed, and that the discovered run list
+gitignored evidence, that exactly one held-out capture is committed with a re-deriving score, and
+that the discovered run list
 is non-empty so no loop over it can pass vacuously.
 
 Run discovery is re-implemented here rather than imported: a broken discovery in the module under
@@ -19,6 +20,7 @@ from capture.corpus import REPO_ROOT, load_corpus
 from capture.harness import validate_stats
 from capture.record import CAPTURES_ROOT, load_run
 from capture.record import validate as validate_records
+from capture.score import HELDOUT_RUN, SCORE_FILE, heldout_guard, score_directory
 
 DESIGN_RUN = "m10-design"
 RUN_FILES = ("run.json", "records.ndjson", "stats.json")
@@ -72,8 +74,19 @@ def test_t3_committed_run_bytes_are_tracked() -> None:
         assert tracked.returncode == 0, f"{probe} is untracked: {tracked.stderr}"
 
 
-def test_t4_no_heldout_capture_is_committed() -> None:
-    """T4 -- ruling 7: the held-out set stays ungenerated until the M13 config is frozen."""
-    for directory in _runs():
-        kind = load_run(directory).manifest.kind
-        assert kind != "heldout", f"{directory} commits a held-out capture"
+def test_t4_exactly_one_heldout_capture_is_committed_and_its_score_rederives() -> None:
+    """T4 -- IMPLEMENT-close ruling 2: EXACTLY ONE held-out run is committed.
+
+    `heldout_guard` fails on zero or a second held-out run, a missing row or an absent score; the
+    four run files are tracked; and the committed `score.json` re-derives byte for byte from the
+    committed records, corpus, CSVs and verifier. A later verifier change that moves a held-out
+    verdict fails here BY DESIGN: the recorded acceptance claim stays bound to its commit, and a
+    re-grade is a separately named artifact.
+    """
+    assert heldout_guard(CAPTURES_ROOT) == []
+    directory = CAPTURES_ROOT / HELDOUT_RUN
+    for name in (*RUN_FILES, SCORE_FILE):
+        probe = f"{CAPTURES_ROOT.relative_to(REPO_ROOT)}/{HELDOUT_RUN}/{name}"
+        tracked = _git("ls-files", "--error-unmatch", probe)
+        assert tracked.returncode == 0, f"{probe} is untracked: {tracked.stderr}"
+    assert (directory / SCORE_FILE).read_bytes() == score_directory(directory)
