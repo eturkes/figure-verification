@@ -1,0 +1,9 @@
+{
+  "chat_id": "5c44615a-8175-4df4-b6c8-1ada54c74e14",
+  "done": true,
+  "verdict": "fail",
+  "content": "Figure verification failed, no image produced",
+  "file_pngs": 0,
+  "dom_pngs": 0,
+  "png_sha256": []
+}

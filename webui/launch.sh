@@ -266,7 +266,8 @@ if (( USE_STUB )); then
     "           The stub does not run a model. It calls the figure tool with a fixed program." \
     "           Prompt 1: the verifier accepts that program. Prompt 2: the verifier refuses it." \
     "           Other messages, for example \"hello\", get no tool call." \
-    "           The chat display of this setup is not recorded yet."
+    "           Recorded once: prompt 1 showed a chart and the pass message, and" \
+    "           prompt 2 showed the failure message and no image."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
@@ -277,7 +278,9 @@ else
     "           The model writes a Python program. The verifier recomputes every plotted value" \
     "           and decides if the chart can show. A refused or missing program shows:" \
     "           Figure verification failed, no image produced" \
-    "           The outcomes of these prompts on this host are not recorded yet." \
+    "           Recorded on an MX150 GPU with this model, 5 runs for each prompt:" \
+    "           Prompt 1 showed a bar chart and Figure verification passed in 5 of 5 runs." \
+    "           Prompt 2 showed Figure verification failed, no image produced in 5 of 5 runs." \
     "           Use --stub to run the demo without a model."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"

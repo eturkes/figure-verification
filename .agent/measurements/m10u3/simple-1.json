@@ -1,0 +1,50 @@
+{
+  "arm": "simple",
+  "attempt": 1,
+  "prompt": "Chart the total revenue of each region using bars.",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "composed_identical": true,
+  "chat_id": "1aed08a4-f4b6-4708-81b1-5f61763fa677",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\nChart type: bar. The data comes from the file \"/mnt/uploads/sales.csv\". X shows the groups of the column \"region\". Y shows the sum of the column \"revenue\" in each group. The chart draws 2 groups from 6 rows. Numbers follow the profile binary64-libm-v1. X label: \"Region\". Y label: \"Revenue\". Title: \"Total Revenue by Region\".",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 1000,
+        "height": 600
+      }
+    ],
+    "png_sha256": [
+      "c45dc3f860a4d8e565c3d564f7a942bda22a8063480b6c73e91c2175f8ee5833"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ]
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\nChart type: bar. The data comes from the file \"/mnt/uploads/sales.csv\". X shows the groups of the column \"region\". Y shows the sum of the column \"revenue\" in each group. The chart draws 2 groups from 6 rows. Numbers follow the profile binary64-libm-v1. X label: \"Region\". Y label: \"Revenue\". Title: \"Total Revenue by Region\".",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 1000,
+        "height": 600
+      }
+    ],
+    "png_sha256": [
+      "c45dc3f860a4d8e565c3d564f7a942bda22a8063480b6c73e91c2175f8ee5833"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ]
+  },
+  "error": null,
+  "seconds": 31
+}

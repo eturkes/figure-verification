@@ -137,7 +137,8 @@ workspace model configuration persist in `.webui-data/`.
 This section records the JSON-spec chain measured on the earlier wiring, where a registered tool
 server published `proposeSpec`. The harness no longer registers that server, so these steps need an
 operator to register it first. Read them as evidence for the chain they measured, not as the current
-demo path. The exposed python-mode arm has not yet been measured against the live demo.
+demo path. The python-mode demo is measured separately. See the recorded demo in the root
+[README](../README.md#measured-results).
 
 With the hardware-free stack provisioned and the verifier registered as a tool server, run this
 synchronous request. It proves the legacy selector, server tool, VPlot proposal, verifier, and clean
@@ -219,8 +220,8 @@ for some well-formed requests. However, the verifier blocks most attempts. These
 not bounds. They are reproducible only for the measured device and configuration. They do not
 expand what the deterministic fixture proves. The 100-prompt bench calls `/propose-spec` directly.
 Therefore, it measures neither Open WebUI tool selection nor guard coverage. The
-`webui/launch.sh` still prints outcomes recorded on the earlier JSON-spec wiring. Its two prompts
-await re-measurement with the pasted python tool. The [bench recipe](../bench/README.md) documents
+`webui/launch.sh` banner now states the python-mode outcomes recorded with the real model. The
+[bench recipe](../bench/README.md) documents
 reproduction and the session-logged, gitignored reports.
 
 ## Live outlet assertion
