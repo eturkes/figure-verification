@@ -1520,6 +1520,309 @@ class PlottedTable:
         return bytes(encoded)
 '''
 
+_SOURCES["webui.paste_in.reasons"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Why a figure failed, in the words the chat user reads above the fixed failure verdict.
+
+Data only; `filter.py` picks the reason and the language. The outlet shows one of these texts as an
+Open WebUI status line, which the chat keeps in `statusHistory` and never sends back to the model,
+so the admission vocabulary in the refusal codes stays out of model context (ruling 6). Each text is
+a short cause, plus a fix where one is known, because Open WebUI clamps a status line to one line.
+"""
+
+from typing import Final, Literal
+
+from verifier.pysrc.errors import RefusalCode
+
+# Faults the outlet finds around the verifier: the model's call, the browser round trip, the render.
+OutletCause = Literal[
+    "no_tool_call",
+    "no_user",
+    "no_target",
+    "no_browser",
+    "browser_timeout",
+    "browser_error",
+    "browser_no_answer",
+    "reply_malformed",
+    "sandbox_unavailable",
+    "sandbox_error",
+    "no_image",
+    "no_observation",
+    "observation_mismatch",
+    "publish_failed",
+]
+
+type Reason = RefusalCode | OutletCause
+
+# reason -> (English, Japanese).
+REASONS: Final[dict[Reason, tuple[str, str]]] = {
+    "source_too_large": (
+        "The program is too long.",
+        "プログラムが長すぎます。",
+    ),
+    "source_not_utf8": (
+        "The program is not valid UTF-8 text.",
+        "プログラムが正しい UTF-8 テキストではありません。",
+    ),
+    "source_has_nul": (
+        "The program contains a NUL character.",
+        "プログラムに NUL 文字が含まれています。",
+    ),
+    "line_too_long": (
+        "A line of the program is too long.",
+        "プログラムに長すぎる行があります。",
+    ),
+    "source_not_tokenizable": (
+        "The program cannot be read as Python tokens.",
+        "プログラムを Python のトークンとして読み取れません。",
+    ),
+    "too_many_tokens": (
+        "The program has too many tokens.",
+        "プログラムのトークンが多すぎます。",
+    ),
+    "nesting_too_deep": (
+        "The program nests brackets too deeply.",
+        "プログラムの括弧の入れ子が深すぎます。",
+    ),
+    "unbalanced_brackets": (
+        "The program has unbalanced brackets.",
+        "プログラムの括弧の対応が取れていません。",
+    ),
+    "indent_too_deep": (
+        "The program indents too deeply.",
+        "プログラムのインデントが深すぎます。",
+    ),
+    "source_not_parsable": (
+        "The program is not valid Python.",
+        "プログラムが正しい Python ではありません。",
+    ),
+    "statement_not_admitted": (
+        "The program uses a statement that the verifier does not accept.",
+        "検証器が受け入れない文が使われています。",
+    ),
+    "expression_not_admitted": (
+        "The program uses an expression that the verifier does not accept.",
+        "検証器が受け入れない式が使われています。",
+    ),
+    "import_not_admitted": (
+        "The program has an import that the verifier does not accept.",
+        "検証器が受け入れない import 文があります。",
+    ),
+    "assign_target_not_admitted": (
+        "The program assigns to a target that the verifier does not accept.",
+        "検証器が受け入れない代入先が使われています。",
+    ),
+    "call_target_not_admitted": (
+        "The program calls a function that the verifier does not accept.",
+        "検証器が受け入れない関数が呼び出されています。",
+    ),
+    "keyword_not_admitted": (
+        "A call passes an argument that the verifier does not accept.",
+        "検証器が受け入れない引数を渡す呼び出しがあります。",
+    ),
+    "attribute_not_admitted": (
+        "The program uses an attribute that the verifier does not accept.",
+        "検証器が受け入れない属性が使われています。",
+    ),
+    "operator_not_admitted": (
+        "The program uses an operator that the verifier does not accept.",
+        "検証器が受け入れない演算子が使われています。",
+    ),
+    "literal_not_admitted": (
+        "The program uses a literal value that the verifier does not accept.",
+        "検証器が受け入れないリテラル値が使われています。",
+    ),
+    "name_not_bound": (
+        "The program uses a name that it does not define.",
+        "定義されていない名前が使われています。",
+    ),
+    "no_mark": (
+        "The verifier finds no plot call that it can read as the chart.",
+        "グラフとして読み取れる描画の呼び出しがありません。",
+    ),
+    "multiple_marks": (
+        "The program draws more than one series.",
+        "プログラムが複数の系列を描いています。",
+    ),
+    "mark_arity_not_projected": (
+        "A plot call does not take exactly two arguments, x and y.",
+        "描画の呼び出しの引数が x と y の 2 つではありません。",
+    ),
+    "mark_not_valid_for_arm": (
+        "A formula chart cannot use this plot type.",
+        "数式のグラフではこの種類のグラフを使えません。",
+    ),
+    "x_not_a_grid": (
+        "The plot call does not take x directly from np.linspace or np.arange.",
+        "描画の呼び出しが x を np.linspace または np.arange から直接受け取っていません。",
+    ),
+    "y_not_over_grid": (
+        "The y values are not computed from the x grid.",
+        "y の値が x のグリッドから計算されていません。",
+    ),
+    "grid_not_representable": (
+        "The verifier cannot use the bounds or point count of the x grid.",
+        "x のグリッドの範囲または点の数を使えません。",
+    ),
+    "expression_not_projected": (
+        "The verifier cannot state what an expression computes.",
+        "式が何を計算するかを特定できません。",
+    ),
+    "label_not_literal": (
+        "A label, title or style call has a form that the verifier does not accept.",
+        "ラベル、タイトル、またはスタイルの呼び出しの形式を、検証器が受け入れません。",
+    ),
+    "name_rebound": (
+        "The program assigns the same name twice.",
+        "同じ名前に 2 回代入しています。",
+    ),
+    "no_terminal": (
+        "The program does not call plt.show().",
+        "プログラムが plt.show() を呼び出していません。",
+    ),
+    "statement_after_terminal": (
+        "The program has statements after plt.show().",
+        "plt.show() の後に文があります。",
+    ),
+    "statement_not_projected": (
+        "The verifier cannot state what a statement draws.",
+        "文が何を描くかを特定できません。",
+    ),
+    "arm_ambiguous": (
+        "The program imports pandas and also uses a formula grid.",
+        "プログラムが pandas をインポートし、数式のグリッドも使っています。",
+    ),
+    "no_source": (
+        "The program does not read the CSV file.",
+        "プログラムが CSV ファイルを読み込んでいません。",
+    ),
+    "multiple_sources": (
+        "The program calls pd.read_csv more than once.",
+        "プログラムが pd.read_csv を 2 回以上呼び出しています。",
+    ),
+    "source_not_literal": (
+        "The pd.read_csv call does not take exactly one fixed file name.",
+        "pd.read_csv の呼び出しが、固定のファイル名 1 つだけを受け取っていません。",
+    ),
+    "column_not_literal": (
+        "A column selection or grouping is not written as one fixed column name.",
+        "列の選択またはグループ化が、固定の列名 1 つで書かれていません。",
+    ),
+    "column_not_from_source": (
+        "A plotted column does not come from the CSV file.",
+        "描画する列が CSV ファイルから取られていません。",
+    ),
+    "aggregation_not_projected": (
+        "The verifier cannot state what a grouping computes.",
+        "グループ集計が何を計算するかを特定できません。",
+    ),
+    "figure_orphans_mark": (
+        "The program calls plt.figure() after it draws.",
+        "描画の後に plt.figure() が呼び出されています。",
+    ),
+    "source_not_supplied": (
+        "The program reads a CSV file, but no CSV file is attached.",
+        "プログラムは CSV ファイルを読み込みますが、添付がありません。",
+    ),
+    "target_mismatch": (
+        "The program does not match the attached file or the requested formula.",
+        "プログラムが添付ファイルにも依頼の数式にも一致しません。",
+    ),
+    "csv_too_large": (
+        "The CSV file is too large.",
+        "CSV ファイルが大きすぎます。",
+    ),
+    "csv_not_parsable": (
+        "The CSV file cannot be read.",
+        "CSV ファイルを読み取れません。",
+    ),
+    "column_not_present": (
+        "A column that the program uses is not in the CSV file.",
+        "プログラムが使う列が CSV ファイルにありません。",
+    ),
+    "column_not_numeric": (
+        "A plotted column holds a value that is not a number.",
+        "描画する列に数値でない値があります。",
+    ),
+    "value_not_in_profile": (
+        "The verifier does not accept the form or size of a CSV value or group value.",
+        "CSV の値またはグループの値の形式や大きさを、検証器が受け入れません。",
+    ),
+    "value_not_finite": (
+        "A computed value is not a finite number.",
+        "計算した値に有限でない値があります。",
+    ),
+    "work_budget_exceeded": (
+        "The chart needs more computation than the limit allows.",
+        "グラフに必要な計算量が上限を超えています。",
+    ),
+    "category_not_unique": (
+        "The same category occurs more than once in the chart.",
+        "グラフに同じカテゴリが 2 回以上あります。",
+    ),
+    "x_not_ordered": (
+        "The x values of the line are not in increasing order.",
+        "折れ線の x の値が昇順ではありません。",
+    ),
+    "no_tool_call": (
+        "The model did not send a chart program.",
+        "モデルからグラフのプログラムが届きませんでした。",
+    ),
+    "no_user": (
+        "The request has no signed-in user.",
+        "サインインしているユーザーがいません。",
+    ),
+    "no_target": (
+        "No CSV file or request formula is available that the verifier can read.",
+        "検証器が読み取れる CSV ファイルも、依頼文の数式もありません。",
+    ),
+    "no_browser": (
+        "No browser session is available to draw the chart.",
+        "グラフを描くブラウザのセッションがありません。",
+    ),
+    "browser_timeout": (
+        "The browser did not answer within 60 seconds.",
+        "ブラウザが 60 秒以内に応答しませんでした。",
+    ),
+    "browser_error": (
+        "The call to the browser failed.",
+        "ブラウザの呼び出しに失敗しました。",
+    ),
+    "browser_no_answer": (
+        "The chat tab did not answer. Keep the tab open and try again.",
+        "チャットのタブが応答しませんでした。タブを開いたままにしてください。",
+    ),
+    "reply_malformed": (
+        "The browser sent a reply in an unknown format.",
+        "ブラウザの応答の形式が不明です。",
+    ),
+    "sandbox_unavailable": (
+        "The browser could not load Pyodide. Turn off the ad blocker for this site.",
+        "Pyodide を読み込めません。このサイトの広告ブロッカーをオフにしてください。",
+    ),
+    "sandbox_error": (
+        "The browser runtime reported an error.",
+        "ブラウザの実行環境がエラーを報告しました。",
+    ),
+    "no_image": (
+        "The browser run did not produce exactly one PNG image.",
+        "ブラウザでの実行で PNG 画像が 1 枚だけ作られませんでした。",
+    ),
+    "no_observation": (
+        "The browser run did not report the drawn values.",
+        "ブラウザが描画した値を報告しませんでした。",
+    ),
+    "observation_mismatch": (
+        "The drawn values differ from the recomputed values.",
+        "描画された値が再計算した値と一致しません。",
+    ),
+    "publish_failed": (
+        "Open WebUI could not attach the image.",
+        "Open WebUI が画像を添付できませんでした。",
+    ),
+}
+'''
+
 _SOURCES["verifier.pysrc.aggregate"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Grouped reduction, reproducing what the EXECUTED program plots.
@@ -4651,7 +4954,10 @@ that record. The browser sandbox is trusted to render a passing program, not to 
 import asyncio
 import base64
 import binascii
+import contextlib
+import logging
 import re
+import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final
@@ -4660,7 +4966,7 @@ from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
-from verifier.pysrc.verify import Verified
+from verifier.pysrc.verify import Refused, Verified
 from webui.paste_in.capture_template import CAPTURE_TEMPLATE
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
@@ -4669,16 +4975,25 @@ from webui.paste_in.observe import (
     parse_observation,
 )
 from webui.paste_in.owui_files import UPLOAD_DIR, owned_files, uploaded_files
+from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.selection import first_verdict
+
+type _Emit = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
 RPC_TIMEOUT_SECONDS: Final = 60
+STATUS_TIMEOUT_SECONDS: Final = 5
 _PNG_PREFIX = "data:image/png;base64,"
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
 _DATA_PREFIX = re.compile(r"(?<!\w)data:")
+_TRACEBACK = "Traceback (most recent call last):"
+# A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
+# marks such as `・` or `ー` occur beside kanji alone.
+_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
+_LOGGER = logging.getLogger(__name__)
 
 # Admin-facing identity; the function source itself comes from the generated paste-in artifact.
 FILTER_ID: Final = "figure_verification_filter"
@@ -4779,6 +5094,85 @@ def _rewrite(body: dict[str, object], text: str) -> dict[str, object]:
     return body
 
 
+def _reply_fault(response: dict[object, object]) -> Reason | None:
+    """Why a sandbox reply cannot carry a clean run, or `None` when its stderr is empty.
+
+    OWUI's own caller answers `{'error': ...}` for a closed or timed-out tab, and reports a clean
+    run with null stderr. A content blocker that stops `pyodide.js` leaves `loadPyodide` unbound,
+    and OWUI's sandbox host replies with the engine's ReferenceError, which names it; only that
+    measured shape earns the ad-blocker fix. The host reports other faults in the same bare shape
+    (an upload throwing outside the program's `try`), so the rest stay generic.
+    """
+    if "stderr" not in response:
+        return "browser_no_answer" if "error" in response else "reply_malformed"
+    stderr = response["stderr"]
+    if stderr is None or (type(stderr) is str and stderr == ""):
+        return None
+    if type(stderr) is not str:
+        return "reply_malformed"
+    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):
+        return "sandbox_unavailable"
+    return "sandbox_error"
+
+
+def _japanese(metadata: dict[str, object] | None) -> bool:
+    """The user's own request text decides, on every arm; the receipt exists on only some."""
+    message = (metadata or {}).get("user_message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return isinstance(content, str) and any(
+        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
+    )
+
+
+async def _emit_status(emit: _Emit, event: dict[str, object]) -> None:
+    """Deliver one status event, waiting at most `STATUS_TIMEOUT_SECONDS`.
+
+    The emit runs as its own task and a late one is cancelled but never awaited: `wait_for` would
+    wait for the emitter's cancellation cleanup, so a slow cleanup would hold back the verdict. An
+    `Exception` from the emitter is dropped; a cancellation propagates.
+    """
+    try:
+        task = asyncio.ensure_future(emit(event))
+    except Exception:  # an emitter that raises before it returns an awaitable
+        return
+    try:
+        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
+    if not done:
+        task.cancel()
+        # Retrieve the eventual outcome, so asyncio never reports it as unhandled.
+        task.add_done_callback(lambda late: late.cancelled() or late.exception())
+        return
+    error = task.exception()  # raises CancelledError when the emitter cancelled itself
+    if error is not None and not isinstance(error, Exception):
+        raise error
+
+
+async def _fail(
+    body: dict[str, object],
+    reason: Reason,
+    metadata: dict[str, object] | None,
+    emit: _Emit | None,
+) -> dict[str, object]:
+    """Block the figure and say why: one log record for the admin, one status line for the user.
+
+    OWUI keeps a status line in `statusHistory`, which its chat flows never send to a model: a
+    rewritten reply always carries `output`, which is what they read. So a refusal code reaches the
+    user without entering model context. Neither surface carries sandbox output, program bytes or
+    request text, because an error message can quote the user's clinical data. Both are diagnosis
+    only, so a raising or stalled one never costs or delays the verdict.
+    """
+    with contextlib.suppress(Exception):
+        _LOGGER.info("figure verification failed reason=%s", reason)
+    if emit is not None:
+        english, japanese = REASONS[reason]
+        text = f"{japanese if _japanese(metadata) else english} ({reason})"
+        await _emit_status(emit, {"type": "status", "data": {"description": text, "done": True}})
+    return _rewrite(body, FAIL_TEXT)
+
+
 class Filter:
     """The global active filter; the inlet carries context, and the outlet authors the verdict."""
 
@@ -4821,30 +5215,41 @@ class Filter:
             return {**body, "messages": updated}
         return body
 
-    async def outlet(  # noqa: PLR0913, PLR0911 - fixed OWUI hook; every refusal returns a verdict
+    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913 - fixed OWUI hook; one guard per FAIL arm
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,
         __request__: object | None = None,
-        __event_call__: Callable[[dict[str, object]], Awaitable[object]] | None = None,
-        __event_emitter__: Callable[[dict[str, object]], Awaitable[object]] | None = None,
+        __event_call__: _Emit | None = None,
+        __event_emitter__: _Emit | None = None,
         __metadata__: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Re-derive, render once, publish only when verification and rendering both succeed."""
+
+        async def fail(reason: Reason) -> dict[str, object]:
+            return await _fail(body, reason, __metadata__, __event_emitter__)
+
         receipt = read_receipt(__request__)
         user_id = (__user__ or {}).get("id")
-        if receipt is None or not isinstance(user_id, str):
-            return _rewrite(body, FAIL_TEXT)
+        if receipt is None:
+            return await fail("no_tool_call")
+        if not isinstance(user_id, str):
+            return await fail("no_user")
 
         attachments = await owned_files(receipt.file_ids, user_id)
         verdict, consumed = first_verdict(receipt.program, attachments, receipt.request_text)
+        if isinstance(verdict, Refused):
+            return await fail(verdict.code)
         if not isinstance(verdict, Verified):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("no_target")
 
-        if __event_call__ is None or __event_emitter__ is None or __metadata__ is None:
-            return _rewrite(body, FAIL_TEXT)
-        if "session_id" not in __metadata__:
-            return _rewrite(body, FAIL_TEXT)
+        if (
+            __event_call__ is None
+            or __event_emitter__ is None
+            or __metadata__ is None
+            or "session_id" not in __metadata__
+        ):
+            return await fail("no_browser")
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {
@@ -4860,27 +5265,32 @@ class Filter:
         }
         try:
             response = await asyncio.wait_for(__event_call__(payload), timeout=RPC_TIMEOUT_SECONDS)
+        except TimeoutError:
+            return await fail("browser_timeout")
         except Exception:
-            return _rewrite(body, FAIL_TEXT)
-        if not isinstance(response, dict) or "stderr" not in response:
-            return _rewrite(body, FAIL_TEXT)
-        stderr = response["stderr"]
-        # OWUI reports a clean sandbox run with null stderr.
-        if stderr is not None and (type(stderr) is not str or stderr != ""):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("browser_error")
+        if not isinstance(response, dict):
+            return await fail("reply_malformed")
+        fault = _reply_fault(response)
+        if fault is not None:
+            return await fail(fault)
         stdout = response.get("stdout")
         if not isinstance(stdout, str):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("no_image")
         uri = _png_uri(stdout)
+        if uri is None:
+            return await fail("no_image")
         observed = parse_observation(stdout)
-        if uri is None or observed is None or not observation_matches(verdict, observed):
-            return _rewrite(body, FAIL_TEXT)
+        if observed is None:
+            return await fail("no_observation")
+        if not observation_matches(verdict, observed):
+            return await fail("observation_mismatch")
         try:
             await __event_emitter__(
                 {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
             )
         except Exception:
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("publish_failed")
         return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")
 '''
 

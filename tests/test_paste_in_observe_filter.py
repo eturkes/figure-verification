@@ -25,6 +25,7 @@ from observe_support import (
     observation_for,
     stdout_for,
 )
+from oracle_filter import status_event
 from paste_in_support import StoredFile, fake_open_webui
 from verifier.pysrc import Verified
 
@@ -207,7 +208,16 @@ def test_o6_verified_with_bad_observation_withholds_figure(tmp_path: Path, failu
         tmp_path, stdout, stderr="observer error" if failure == "stderr" else ""
     )
     _assert_text(output, _FAILED)
-    assert emitter.events == []
+    reasons = {
+        "missing": "no_observation",
+        "unparseable": "no_observation",
+        "duplicate": "no_observation",
+        "oversized": "no_observation",
+        "mismatching": "observation_mismatch",
+        "extra-artist": "observation_mismatch",
+        "stderr": "sandbox_error",
+    }
+    assert emitter.events == [status_event(reasons[failure])]
     assert len(rpc.calls) == 1
     assert looked_up == [("owned-file", _USER_ID)]
 
@@ -226,5 +236,6 @@ def test_o6_refused_or_unrecorded_call_never_consults_observation(
     )
     _assert_text(output, _FAILED)
     assert rpc.calls == []
-    assert emitter.events == []
+    reason = "mark_not_valid_for_arm" if carrier == "refused" else "no_tool_call"
+    assert emitter.events == [status_event(reason)]
     assert looked_up == ([("owned-file", _USER_ID)] if carrier == "refused" else [])

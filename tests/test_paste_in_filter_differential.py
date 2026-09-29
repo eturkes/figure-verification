@@ -33,6 +33,7 @@ from oracle_filter import (
     RpcOutcome,
     Scenario,
     oracle_outlet,
+    status_event,
 )
 from paste_in_support import REPO_ROOT, StoredFile, fake_open_webui
 from verifier.pysrc import DatasetTarget, FormulaTarget, Verified, verify_python_source
@@ -324,7 +325,93 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
     )
 
 
-_ANCHORS = _anchors()
+def _cause_anchors() -> tuple[tuple[str, Scenario, str], ...]:
+    dataset = _dataset()
+    return (
+        ("no-tool-call", replace(dataset, receipt=None), "no_tool_call"),
+        ("no-user", replace(dataset, user_id=None), "no_user"),
+        ("no-target", replace(dataset, stored=()), "no_target"),
+        (
+            "lone-csv-mismatch",
+            replace(dataset, receipt=ReceiptValue(_program("b.csv"), ("file-a",), None)),
+            "target_mismatch",
+        ),
+        ("no-metadata", replace(dataset, metadata=None), "no_browser"),
+        ("no-session", replace(dataset, metadata={}), "no_browser"),
+        ("no-emitter", replace(dataset, emitter_present=False), "no_browser"),
+        ("timeout", replace(dataset, rpc=RpcOutcome("timeout")), "browser_timeout"),
+        ("rpc-error", replace(dataset, rpc=RpcOutcome("raises")), "browser_error"),
+        (
+            "caller-error",
+            replace(dataset, rpc=RpcOutcome("returns", {"error": "gone"})),
+            "browser_no_answer",
+        ),
+        ("malformed-reply", replace(dataset, rpc=RpcOutcome("returns", {})), "reply_malformed"),
+        (
+            "non-string-stderr",
+            replace(dataset, rpc=RpcOutcome("returns", {"stderr": False, "error": "caller"})),
+            "reply_malformed",
+        ),
+        (
+            "str-subclass-stderr",
+            replace(dataset, rpc=_reply(stderr=type("EmptyText", (str,), {})(""))),
+            "reply_malformed",
+        ),
+        (
+            "loader-chromium",
+            replace(dataset, rpc=_reply(stderr="loadPyodide is not defined")),
+            "sandbox_unavailable",
+        ),
+        (
+            "loader-webkit",
+            replace(dataset, rpc=_reply(stderr="Can't find variable: loadPyodide")),
+            "sandbox_unavailable",
+        ),
+        (
+            "traceback-loader",
+            replace(dataset, rpc=_reply(stderr="Traceback (most recent call last):\nloadPyodide")),
+            "sandbox_error",
+        ),
+        ("sandbox", replace(dataset, rpc=_reply(stderr="upload failed")), "sandbox_error"),
+        ("no-image", replace(dataset, rpc=_reply(stdout="")), "no_image"),
+        ("no-observation", replace(dataset, rpc=_reply()), "no_observation"),
+        ("publish-error", replace(dataset, publish_raises=True), "publish_failed"),
+        (
+            "kana-no-receipt",
+            replace(dataset, receipt=None, metadata={"user_message": {"content": "ｶ"}}),
+            "no_tool_call",
+        ),
+        (
+            "kanji-no-receipt",
+            replace(dataset, receipt=None, metadata={"user_message": {"content": "漢字・漢字ー"}}),
+            "no_tool_call",
+        ),
+    )
+
+
+_CAUSE_ANCHORS = _cause_anchors()
+_ANCHORS = _anchors() + tuple(
+    (
+        name,
+        scenario,
+        False,
+        0
+        if reason in {"no_tool_call", "no_user", "no_target", "target_mismatch", "no_browser"}
+        else 1,
+        1 if reason == "publish_failed" else 0,
+    )
+    for name, scenario, reason in _CAUSE_ANCHORS
+)
+
+
+@pytest.mark.parametrize(
+    "name,scenario,reason", _CAUSE_ANCHORS, ids=[row[0] for row in _CAUSE_ANCHORS]
+)
+def test_d9_oracle_causes_are_hand_stated(name: str, scenario: Scenario, reason: str) -> None:
+    expected = oracle_outlet(scenario)
+    assert expected.content == FAIL_TEXT, name
+    statuses = (status_event(reason, scenario.metadata),) if scenario.emitter_present else ()
+    assert expected.status_events == statuses, name
 
 
 @pytest.mark.parametrize(
@@ -474,7 +561,7 @@ def _rpc_facts(calls: list[dict[str, object]]) -> RpcFacts:
     )
 
 
-def _translate_outlet(
+def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conjunct
     scenario: Scenario, module: ModuleType, root: Path, patch: pytest.MonkeyPatch
 ) -> Expected:
     """Drive the real outlet through strict fakes; reject every effect outside F2-F6."""
@@ -499,6 +586,9 @@ def _translate_outlet(
 
     async def emit(event: dict[str, object]) -> None:
         events.append(copy.deepcopy(event))
+        if scenario.publish_raises and event.get("type") == "files":
+            failure = "file publication failed"
+            raise RuntimeError(failure)
 
     if scenario.rpc.kind == "timeout":
         patch.setattr(module, "RPC_TIMEOUT_SECONDS", 0.002)
@@ -523,7 +613,7 @@ def _translate_outlet(
                             else None
                         ),
                         __event_call__=call if scenario.rpc.kind != "absent" else None,
-                        __event_emitter__=emit,
+                        __event_emitter__=emit if scenario.emitter_present else None,
                         __metadata__=scenario.metadata,
                     ),
                 ),
@@ -555,10 +645,18 @@ def _translate_outlet(
     if not all(isinstance(item, dict) for item in output):
         failure = "unmapped output item"
         raise AssertionError(failure)
+    files_events: list[dict[str, object]] = []
+    status_events: list[dict[str, object]] = []
     for event in events:
-        if set(event) != {"type", "data"} or event["type"] != "files":
-            failure = "unmapped files event"
-            raise AssertionError(failure)
+        if event.get("type") == "status":
+            status_events.append(event)
+        else:
+            if set(event) != {"type", "data"} or event["type"] != "files":
+                failure = "unmapped files event"
+                raise AssertionError(failure)
+            files_events.append(event)
+    assert tuple(status_events) == oracle_outlet(scenario).status_events, "unmapped status event"
+    assert events == files_events + status_events, "status event must be last"
     receipt = scenario.receipt
     expected_lookups = (
         [(file_id, scenario.user_id) for file_id in receipt.file_ids]
@@ -569,7 +667,9 @@ def _translate_outlet(
     )
     assert lookups == expected_lookups, "every receipt id must use caller-owned lookup in order"
     assert all(body.get(key) == value for key, value in scenario.body_fields.items())
-    return Expected(content, tuple(output), tuple(events), _rpc_facts(calls))
+    return Expected(
+        content, tuple(output), tuple(files_events), _rpc_facts(calls), tuple(status_events)
+    )
 
 
 def _assert_agrees(scenario: Scenario, module: ModuleType, patch: pytest.MonkeyPatch) -> None:
@@ -599,8 +699,15 @@ def _pass_scenarios(draw: DrawFn) -> Scenario:
 @st.composite
 def _arbitrary_scenarios(draw: DrawFn) -> Scenario:
     anchor = draw(st.sampled_from(_ANCHORS))[1]
+    content = draw(st.sampled_from(("English", "あ", "ｶ", "漢字", "漢字・漢字ー", ["かな"], None)))
+    metadata = (
+        {**anchor.metadata, "user_message": {"content": content}}
+        if anchor.metadata is not None
+        else None
+    )
     return replace(
         anchor,
+        metadata=metadata,
         assistant=_assistant(
             draw(
                 st.sampled_from(

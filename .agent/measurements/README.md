@@ -84,6 +84,7 @@ and pandas versions for the selected build.
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 58 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
+| M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 
 ## What each one backs
 
@@ -102,6 +103,7 @@ and pandas versions for the selected build.
 | W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 58 fixture observations + PNGs (M10.10 added 6 accessor lines), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
+| M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/132 texts clamped |
 
 Rerun O8 from the repository root after the host input generators. `o8_observe.mjs` obtains the wrapper from the tracked filter and writes the observed JSON into `tests/fixtures/observe/`; a second run should leave those bytes unchanged.
 
@@ -116,3 +118,20 @@ node .agent/measurements/o8_observe.mjs owui o8-0283.json wrapper
 Each result JSON carries environment details and a per-region breakdown when regions apply. A
 region's `disagreements` is the count that matters. `max_ulp` applies only where both values are
 finite; S7 reports category splits separately.
+
+Rerun M15 against a stub instance and a browser that exposes CDP. OWUI hosts its Pyodide iframe
+out of process unless the browser runs with `--disable-features=IsolateSandboxedIframes`, and the
+blocked case then sees no request to abort. The script exits 0 only when every case, its
+`webui.log` record and the width sweep hold. `FV_CASES=<name,...>` runs a subset of `refused`,
+`japanese`, `blocked` and `pass`; the width sweep needs one failing case.
+
+```
+webui/launch.sh --stub
+"$(chromiumfish path)" --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" \
+  --disable-features=IsolateSandboxedIframes --window-size=1280,800 about:blank &
+uv run --locked python -c 'import json; from webui.paste_in.reasons import REASONS; print(json.dumps(REASONS, ensure_ascii=False))' > /tmp/reasons.json
+cd .agent/measurements
+FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password \
+  node m15u1_status.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv /tmp/reasons.json \
+  ../../.launch-logs/webui.log m15u1
+```

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py"]
+tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -61,8 +61,10 @@ mutant = '''_DATA_PREFIX = re.compile(r"(?<![A-Za-z0-9_])data:")'''
 id = "f4-stderr-ignored"
 predicate = "sandbox stderr must be empty before any publication"
 kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[stderr]"
-anchor = '''        if stderr is not None and (type(stderr) is not str or stderr != ""):'''
-mutant = '''        if False:'''
+anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):
+        return "sandbox_unavailable"
+    return "sandbox_error"'''
+mutant = '''    return None'''
 
 [[mutant]]
 id = "f4-output-not-rewritten"
@@ -82,21 +84,23 @@ mutant = '''            for message in messages'''
 id = "f4-files-on-fail"
 predicate = "a missing receipt emits no files event"
 kills = "tests/test_paste_in_filter.py::test_f2_assistant_content_output_sources_and_metadata_cannot_author_pass[tool-reply]"
-anchor = '''        if receipt is None or not isinstance(user_id, str):
-            return _rewrite(body, FAIL_TEXT)'''
-mutant = '''        if receipt is None or not isinstance(user_id, str):
+anchor = '''        if receipt is None:
+            return await fail("no_tool_call")'''
+mutant = '''        if receipt is None:
             if __event_emitter__ is not None:
                 await __event_emitter__({"type": "files", "data": {"files": []}})
-            return _rewrite(body, FAIL_TEXT)'''
+            return await fail("no_tool_call")'''
 
 [[mutant]]
 id = "f4-refusal-rpc"
 predicate = "no verifier refusal may request sandbox execution"
 kills = "tests/test_paste_in_filter_outlet.py::test_f4_absent_refused_or_unbound_receipt_blocks_every_reply[refused]"
-anchor = '''        if not isinstance(verdict, Verified):
-            return _rewrite(body, FAIL_TEXT)'''
+anchor = '''        if isinstance(verdict, Refused):
+            return await fail(verdict.code)
+        if not isinstance(verdict, Verified):
+            return await fail("no_target")'''
 mutant = '''        if verdict is None:
-            return _rewrite(body, FAIL_TEXT)'''
+            return await fail("no_target")'''
 
 [[mutant]]
 id = "f5-interpretation-dropped"
@@ -144,28 +148,36 @@ mutant = '''RPC_TIMEOUT_SECONDS: Final = 120'''
 id = "o6-missing-observation-passes"
 predicate = "a valid PNG without one matching observation never publishes"
 kills = "tests/test_paste_in_observe_filter.py::test_o6_verified_with_bad_observation_withholds_figure[missing]"
-anchor = '''        if uri is None or observed is None or not observation_matches(verdict, observed):'''
-mutant = '''        if uri is None or (observed is not None and not observation_matches(verdict, observed)):'''
+anchor = '''        if observed is None:
+            return await fail("no_observation")
+        if not observation_matches(verdict, observed):'''
+mutant = '''        if observed is not None and not observation_matches(verdict, observed):'''
 
 [[mutant]]
 id = "a6-empty-string-only"
 predicate = "OWUI's present null stderr is empty and permits a verified PNG"
 kills = "tests/test_paste_in_filter_outlet.py::test_a6_owui_clean_reply_null_stderr_publishes_pass"
-anchor = '''        if stderr is not None and (type(stderr) is not str or stderr != ""):'''
-mutant = '''        if stderr != "":'''
+anchor = '''    if stderr is None or (type(stderr) is str and stderr == ""):
+        return None'''
+mutant = '''    if stderr == "":
+        return None'''
 
 [[mutant]]
 id = "a6-truthy-stderr"
 predicate = "a missing stderr key and falsy non-string values must fail closed"
 kills = "tests/test_paste_in_filter_outlet.py::test_a6_reply_without_stderr_key_fails"
-anchor = '''        if not isinstance(response, dict) or "stderr" not in response:
-            return _rewrite(body, FAIL_TEXT)
-        stderr = response["stderr"]
-        # OWUI reports a clean sandbox run with null stderr.
-        if stderr is not None and (type(stderr) is not str or stderr != ""):
-            return _rewrite(body, FAIL_TEXT)'''
-mutant = '''        if not isinstance(response, dict) or response.get("stderr"):
-            return _rewrite(body, FAIL_TEXT)'''
+anchor = '''    if "stderr" not in response:
+        return "browser_no_answer" if "error" in response else "reply_malformed"
+    stderr = response["stderr"]
+    if stderr is None or (type(stderr) is str and stderr == ""):
+        return None
+    if type(stderr) is not str:
+        return "reply_malformed"'''
+mutant = '''    stderr = response.get("stderr")
+    if not stderr:
+        return None
+    if type(stderr) is not str:
+        return "reply_malformed"'''
 
 [[mutant]]
 id = "x2-inlet-metadata-message"
@@ -199,3 +211,172 @@ anchor = '''        if not attachments:
 mutant = '''        if not attachments:
             from webui.paste_in.owui_files import UploadedFile
             attachments = (UploadedFile("invented", UPLOAD_DIR + "invented.csv", b"x,y\na,1\n"),)'''
+
+[[mutant]]
+id = "d4-status-on-pass"
+predicate = "a PASS emits no status event"
+kills = "tests/test_paste_in_filter_reasons.py::test_d4_one_status_event_per_fail_and_none_on_pass[good]"
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+mutant = '''        await __event_emitter__({"type": "status", "data": {"description": "ok", "done": True}})
+        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+
+[[mutant]]
+id = "d8-status-unguarded"
+predicate = "a raising status emit never costs the FAIL verdict"
+kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_or_pending_emitter_never_costs_the_verdict[raises-01-no-receipt]"
+anchor = '''    if error is not None and not isinstance(error, Exception):
+        raise error'''
+mutant = '''    if error is not None:
+        raise error'''
+
+[[mutant]]
+id = "d8-status-unbounded"
+predicate = "a stalled status emit is cut at its deadline"
+kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_or_pending_emitter_never_costs_the_verdict[pending-01-no-receipt]"
+anchor = '''        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)'''
+mutant = '''        done, _pending = await asyncio.wait({task})'''
+
+[[mutant]]
+id = "d8-log-unguarded"
+predicate = "a raising log handler never costs the verdict or the status line"
+kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_log_handler_never_costs_the_verdict_or_status[RuntimeError]"
+anchor = '''    with contextlib.suppress(Exception):
+        _LOGGER.info('''
+mutant = '''    if True:
+        _LOGGER.info('''
+
+[[mutant]]
+id = "d5-kanji-is-japanese"
+predicate = "kanji alone selects English"
+kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata8-0]"
+anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
+mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER", "CJK")'''
+
+[[mutant]]
+id = "d5-kana-marks-are-japanese"
+predicate = "a middle dot or prolonged-sound mark beside kanji selects English"
+kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata9-0]"
+anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
+mutant = '''_KANA_LETTERS = ("HIRAGANA", "KATAKANA", "HALFWIDTH KATAKANA")'''
+
+[[mutant]]
+id = "d5-halfwidth-dropped"
+predicate = "half-width katakana alone selects Japanese"
+kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata13-1]"
+anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
+mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
+
+[[mutant]]
+id = "d5-receipt-decides-language"
+predicate = "the metadata request text, never the receipt, picks the language"
+kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[True-metadata11-1]"
+anchor = '''            return await _fail(body, reason, __metadata__, __event_emitter__)'''
+mutant = '''            text = {"user_message": {"content": receipt.request_text}} if receipt else __metadata__
+            return await _fail(body, reason, text, __event_emitter__)'''
+
+[[mutant]]
+id = "d3-traceback-is-loader"
+predicate = "a Python traceback naming loadPyodide is not the loader failure"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[11-traceback-loader]"
+anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):'''
+mutant = '''    if "loadPyodide" in stderr:'''
+
+[[mutant]]
+id = "d3-every-stderr-is-loader"
+predicate = "only stderr naming loadPyodide earns the ad-blocker fix"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[11-sandbox]"
+anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):'''
+mutant = '''    if not stderr.startswith(_TRACEBACK):'''
+
+[[mutant]]
+id = "d3-caller-error-malformed"
+predicate = "OWUI's error-only reply reads as a tab that did not answer"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[08-caller-error]"
+anchor = '''        return "browser_no_answer" if "error" in response else "reply_malformed"'''
+mutant = '''        return "reply_malformed"'''
+
+[[mutant]]
+id = "d3-timeout-as-error"
+predicate = "an RPC deadline reads as a timeout, not a call error"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[06-timeout]"
+anchor = '''        except TimeoutError:
+            return await fail("browser_timeout")
+        except Exception:'''
+mutant = '''        except Exception:'''
+
+[[mutant]]
+id = "d3-no-image-misnamed"
+predicate = "a reply without exactly one PNG reads as no image"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[12-no-image]"
+anchor = '''        if uri is None:
+            return await fail("no_image")'''
+mutant = '''        if uri is None:
+            return await fail("no_observation")'''
+
+[[mutant]]
+id = "d3-non-string-stderr-sandbox"
+predicate = "a non-string stderr is a malformed reply, not a sandbox fault"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[09-false-stderr]"
+anchor = '''    if type(stderr) is not str:
+        return "reply_malformed"'''
+mutant = '''    if type(stderr) is not str:
+        return "sandbox_error"'''
+
+[[mutant]]
+id = "d7-log-carries-stderr"
+predicate = "the log record never carries sandbox output"
+kills = "tests/test_paste_in_filter_reasons.py::test_d7_status_and_log_carry_no_untrusted_bytes[11-sandbox_error]"
+anchor = '''        if fault is not None:
+            return await fail(fault)'''
+mutant = '''        if fault is not None:
+            _LOGGER.info("stderr=%s", response.get("stderr"))
+            return await fail(fault)'''
+
+[[mutant]]
+id = "d3-no-user-as-no-call"
+predicate = "a missing user id reads apart from a missing tool call"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[02-no-user]"
+anchor = '''        if not isinstance(user_id, str):
+            return await fail("no_user")'''
+mutant = '''        if not isinstance(user_id, str):
+            return await fail("no_tool_call")'''
+
+[[mutant]]
+id = "d3-mismatch-as-no-target"
+predicate = "an attached CSV the program does not read reports target_mismatch"
+kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[lone-csv-mismatch]"
+anchor = '''        if isinstance(verdict, Refused):
+            return await fail(verdict.code)'''
+mutant = '''        if isinstance(verdict, Refused):
+            code = verdict.code
+            return await fail("no_target" if code == "target_mismatch" else code)'''
+
+[[mutant]]
+id = "d3-no-target-proceeds"
+predicate = "only a Verified verdict reaches the sandbox"
+kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[03-no-target]"
+anchor = '''        if not isinstance(verdict, Verified):
+            return await fail("no_target")'''
+mutant = '''        if verdict is None and False:
+            return await fail("no_target")'''
+
+[[mutant]]
+id = "d8-status-awaits-cleanup"
+predicate = "a timed-out status emit is cancelled, never awaited, so its cleanup cannot delay the verdict"
+kills = "tests/test_paste_in_filter_reasons.py::test_d8_slow_emitter_cleanup_never_delays_the_verdict"
+anchor = '''    if not done:
+        task.cancel()'''
+mutant = '''    if not done:
+        task.cancel()
+        with contextlib.suppress(BaseException):
+            await task'''
+
+[[mutant]]
+id = "d8-emit-call-unguarded"
+predicate = "an emitter raising on call, before any await, never costs the verdict"
+kills = "tests/test_paste_in_filter_reasons.py::test_d8_an_emitter_raising_before_it_returns_an_awaitable_keeps_the_verdict"
+anchor = '''    try:
+        task = asyncio.ensure_future(emit(event))
+    except Exception:  # an emitter that raises before it returns an awaitable
+        return'''
+mutant = '''    task = asyncio.ensure_future(emit(event))'''

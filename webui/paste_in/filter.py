@@ -9,7 +9,10 @@ that record. The browser sandbox is trusted to render a passing program, not to 
 import asyncio
 import base64
 import binascii
+import contextlib
+import logging
 import re
+import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final
@@ -18,7 +21,7 @@ from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
-from verifier.pysrc.verify import Verified
+from verifier.pysrc.verify import Refused, Verified
 from webui.paste_in.capture_template import CAPTURE_TEMPLATE
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
@@ -27,16 +30,25 @@ from webui.paste_in.observe import (
     parse_observation,
 )
 from webui.paste_in.owui_files import UPLOAD_DIR, owned_files, uploaded_files
+from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.selection import first_verdict
+
+type _Emit = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
 RPC_TIMEOUT_SECONDS: Final = 60
+STATUS_TIMEOUT_SECONDS: Final = 5
 _PNG_PREFIX = "data:image/png;base64,"
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
 _DATA_PREFIX = re.compile(r"(?<!\w)data:")
+_TRACEBACK = "Traceback (most recent call last):"
+# A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
+# marks such as `・` or `ー` occur beside kanji alone.
+_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
+_LOGGER = logging.getLogger(__name__)
 
 # Admin-facing identity; the function source itself comes from the generated paste-in artifact.
 FILTER_ID: Final = "figure_verification_filter"
@@ -137,6 +149,85 @@ def _rewrite(body: dict[str, object], text: str) -> dict[str, object]:
     return body
 
 
+def _reply_fault(response: dict[object, object]) -> Reason | None:
+    """Why a sandbox reply cannot carry a clean run, or `None` when its stderr is empty.
+
+    OWUI's own caller answers `{'error': ...}` for a closed or timed-out tab, and reports a clean
+    run with null stderr. A content blocker that stops `pyodide.js` leaves `loadPyodide` unbound,
+    and OWUI's sandbox host replies with the engine's ReferenceError, which names it; only that
+    measured shape earns the ad-blocker fix. The host reports other faults in the same bare shape
+    (an upload throwing outside the program's `try`), so the rest stay generic.
+    """
+    if "stderr" not in response:
+        return "browser_no_answer" if "error" in response else "reply_malformed"
+    stderr = response["stderr"]
+    if stderr is None or (type(stderr) is str and stderr == ""):
+        return None
+    if type(stderr) is not str:
+        return "reply_malformed"
+    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):
+        return "sandbox_unavailable"
+    return "sandbox_error"
+
+
+def _japanese(metadata: dict[str, object] | None) -> bool:
+    """The user's own request text decides, on every arm; the receipt exists on only some."""
+    message = (metadata or {}).get("user_message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return isinstance(content, str) and any(
+        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
+    )
+
+
+async def _emit_status(emit: _Emit, event: dict[str, object]) -> None:
+    """Deliver one status event, waiting at most `STATUS_TIMEOUT_SECONDS`.
+
+    The emit runs as its own task and a late one is cancelled but never awaited: `wait_for` would
+    wait for the emitter's cancellation cleanup, so a slow cleanup would hold back the verdict. An
+    `Exception` from the emitter is dropped; a cancellation propagates.
+    """
+    try:
+        task = asyncio.ensure_future(emit(event))
+    except Exception:  # an emitter that raises before it returns an awaitable
+        return
+    try:
+        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)
+    except asyncio.CancelledError:
+        task.cancel()
+        raise
+    if not done:
+        task.cancel()
+        # Retrieve the eventual outcome, so asyncio never reports it as unhandled.
+        task.add_done_callback(lambda late: late.cancelled() or late.exception())
+        return
+    error = task.exception()  # raises CancelledError when the emitter cancelled itself
+    if error is not None and not isinstance(error, Exception):
+        raise error
+
+
+async def _fail(
+    body: dict[str, object],
+    reason: Reason,
+    metadata: dict[str, object] | None,
+    emit: _Emit | None,
+) -> dict[str, object]:
+    """Block the figure and say why: one log record for the admin, one status line for the user.
+
+    OWUI keeps a status line in `statusHistory`, which its chat flows never send to a model: a
+    rewritten reply always carries `output`, which is what they read. So a refusal code reaches the
+    user without entering model context. Neither surface carries sandbox output, program bytes or
+    request text, because an error message can quote the user's clinical data. Both are diagnosis
+    only, so a raising or stalled one never costs or delays the verdict.
+    """
+    with contextlib.suppress(Exception):
+        _LOGGER.info("figure verification failed reason=%s", reason)
+    if emit is not None:
+        english, japanese = REASONS[reason]
+        text = f"{japanese if _japanese(metadata) else english} ({reason})"
+        await _emit_status(emit, {"type": "status", "data": {"description": text, "done": True}})
+    return _rewrite(body, FAIL_TEXT)
+
+
 class Filter:
     """The global active filter; the inlet carries context, and the outlet authors the verdict."""
 
@@ -179,30 +270,41 @@ class Filter:
             return {**body, "messages": updated}
         return body
 
-    async def outlet(  # noqa: PLR0913, PLR0911 - fixed OWUI hook; every refusal returns a verdict
+    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913 - fixed OWUI hook; one guard per FAIL arm
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,
         __request__: object | None = None,
-        __event_call__: Callable[[dict[str, object]], Awaitable[object]] | None = None,
-        __event_emitter__: Callable[[dict[str, object]], Awaitable[object]] | None = None,
+        __event_call__: _Emit | None = None,
+        __event_emitter__: _Emit | None = None,
         __metadata__: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Re-derive, render once, publish only when verification and rendering both succeed."""
+
+        async def fail(reason: Reason) -> dict[str, object]:
+            return await _fail(body, reason, __metadata__, __event_emitter__)
+
         receipt = read_receipt(__request__)
         user_id = (__user__ or {}).get("id")
-        if receipt is None or not isinstance(user_id, str):
-            return _rewrite(body, FAIL_TEXT)
+        if receipt is None:
+            return await fail("no_tool_call")
+        if not isinstance(user_id, str):
+            return await fail("no_user")
 
         attachments = await owned_files(receipt.file_ids, user_id)
         verdict, consumed = first_verdict(receipt.program, attachments, receipt.request_text)
+        if isinstance(verdict, Refused):
+            return await fail(verdict.code)
         if not isinstance(verdict, Verified):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("no_target")
 
-        if __event_call__ is None or __event_emitter__ is None or __metadata__ is None:
-            return _rewrite(body, FAIL_TEXT)
-        if "session_id" not in __metadata__:
-            return _rewrite(body, FAIL_TEXT)
+        if (
+            __event_call__ is None
+            or __event_emitter__ is None
+            or __metadata__ is None
+            or "session_id" not in __metadata__
+        ):
+            return await fail("no_browser")
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {
@@ -218,25 +320,30 @@ class Filter:
         }
         try:
             response = await asyncio.wait_for(__event_call__(payload), timeout=RPC_TIMEOUT_SECONDS)
+        except TimeoutError:
+            return await fail("browser_timeout")
         except Exception:
-            return _rewrite(body, FAIL_TEXT)
-        if not isinstance(response, dict) or "stderr" not in response:
-            return _rewrite(body, FAIL_TEXT)
-        stderr = response["stderr"]
-        # OWUI reports a clean sandbox run with null stderr.
-        if stderr is not None and (type(stderr) is not str or stderr != ""):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("browser_error")
+        if not isinstance(response, dict):
+            return await fail("reply_malformed")
+        fault = _reply_fault(response)
+        if fault is not None:
+            return await fail(fault)
         stdout = response.get("stdout")
         if not isinstance(stdout, str):
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("no_image")
         uri = _png_uri(stdout)
+        if uri is None:
+            return await fail("no_image")
         observed = parse_observation(stdout)
-        if uri is None or observed is None or not observation_matches(verdict, observed):
-            return _rewrite(body, FAIL_TEXT)
+        if observed is None:
+            return await fail("no_observation")
+        if not observation_matches(verdict, observed):
+            return await fail("observation_mismatch")
         try:
             await __event_emitter__(
                 {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
             )
         except Exception:
-            return _rewrite(body, FAIL_TEXT)
+            return await fail("publish_failed")
         return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")
