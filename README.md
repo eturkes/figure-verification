@@ -4,7 +4,8 @@ figure-verification lets a language model draw charts in Open WebUI, but the mod
 plotted value. The model writes a Python program that draws the chart. A separate verifier checks
 the program and recomputes every plotted value from the user's own CSV file or from the function
 that the user states. The chart appears only when every check passes. Otherwise the chat shows
-`Figure verification failed, no image produced`.
+`Figure verification failed, no image produced`, and a status line above that message states the
+reason.
 
 ## What this repository delivers
 

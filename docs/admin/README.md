@@ -7,6 +7,7 @@ verifier checks that program before the chart can appear in the chat.
 - If the verifier accepts the program and the drawn chart matches the recomputed values, the chat
   shows the chart and `Figure verification passed`.
 - If the verifier refuses the program, the chat shows `Figure verification failed, no image produced`.
+  A status line above that message states the reason.
 
 ## What you install
 
@@ -88,7 +89,8 @@ expect a bar chart and `Figure verification passed`. Below the pass message, the
 plain words what the verifier checked.
 
 Then send a request for a complex dashboard, for example a grid of four charts with a dark theme.
-Expect `Figure verification failed, no image produced`.
+Expect `Figure verification failed, no image produced`, with a status line above it that states the
+reason.
 
 ## What the verdict means
 
@@ -120,11 +122,35 @@ The verifier accepts one chart per reply:
 The verifier refuses everything else. For example, it refuses several charts in one figure, a
 second axis, a changed axis scale and hand-typed data values.
 
+## Why a chart failed
+
+When the filter blocks a chart, the reply shows a status line above the failure message. The line
+states the reason and ends with a reason code in parentheses, for example
+`(call_target_not_admitted)`. If the request contains Japanese kana, the line is in Japanese.
+Otherwise, the line is in English.
+
+The status line stays with the reply after a page reload. Open WebUI does not send it to the model.
+For each blocked reply, the filter also writes one record to the Open WebUI server log:
+`figure verification failed reason=<code>`. The status line and the log record contain no program
+text, no request text and no data from the CSV file.
+
+There are two types of reason code:
+
+- A code from the verifier, for example `call_target_not_admitted` or `target_mismatch`. The
+  verifier refused the program. Ask for a simpler chart. The section "What the verifier accepts"
+  lists the charts that can pass.
+- A code from the filter or the browser, for example `no_tool_call` or `sandbox_unavailable`. The
+  table below gives the cause and the action for the common codes.
+
 ## Troubleshooting
 
 | Symptom | Cause | Action |
 |---|---|---|
-| Every reply shows the failure message | The model did not call the tool. | Make sure that the tool is attached to the model and that the system prompt is set. |
-| Every reply shows the failure message | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. |
-| A reply without a chart request shows the failure message | The filter is global. | Attach the filter only to the chart model, or use a separate instance. |
+| Every reply fails with the code `no_tool_call` | The model did not call the tool. | Make sure that the tool is attached to the model and that the system prompt is set. |
+| A reply without a chart request fails with the code `no_tool_call` | The filter is global. | Attach the filter only to the chart model, or use a separate instance. |
+| The reply fails with the code `no_target` | The verifier cannot read a CSV file or a function in the request. | Attach a CSV file, or state the function and the interval in the form that the section "What the verifier accepts" shows. |
+| The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
+| Every chart fails with the code `sandbox_unavailable` | A content blocker in the browser stops the Pyodide runtime. The "Block Outsider Intrusion into LAN" list of uBlock Origin Lite does this. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
+| The reply fails with the code `sandbox_error` | The browser runtime reported an error. | Reload the page and send the request again. |
+| The reply fails with the code `observation_mismatch` | The values that Pyodide drew differ from the recomputed values. | Make sure that the browser uses the Pyodide runtime of Open WebUI 0.10.2. If the code stays, keep the chat and report it. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |
