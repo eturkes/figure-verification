@@ -40,6 +40,9 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
+- [ ] **M15.1** outlet failure reasons (kernel, `.agent/contracts/m15u1.md`): each FAIL reply → one OWUI status line (sentence + code, JA on a kana request) + one log record; adopts the outlet-diagnosis queue row.
+- [ ] **M15.2** admin guide EN + JA + root README explain the status line (docs); adopts the content-blocker queue row.
+
 Queue = `.agent/deferred.md`, 28 rows, one line + acceptance check each; nothing there is open work of this phase; MAINTAIN requests adopt rows from it.
 
 ## Phase
