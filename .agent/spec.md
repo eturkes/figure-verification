@@ -40,7 +40,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-Queue = `.agent/deferred.md`, 26 rows, one line + acceptance check each; nothing there is open work of this phase; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 28 rows, one line + acceptance check each; nothing there is open work of this phase; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
