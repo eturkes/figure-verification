@@ -134,6 +134,9 @@ For each blocked reply, the filter also writes one record to the Open WebUI serv
 `figure verification failed reason=<code>`. The status line and the log record contain no program
 text, no request text and no data from the CSV file.
 
+The status line and the log record are for diagnosis only. If the filter cannot deliver one of them,
+the chart stays blocked and the failure message still appears.
+
 There are two types of reason code:
 
 - A code from the verifier, for example `call_target_not_admitted` or `target_mismatch`. The
@@ -148,9 +151,9 @@ There are two types of reason code:
 |---|---|---|
 | Every reply fails with the code `no_tool_call` | The model did not call the tool. | Make sure that the tool is attached to the model and that the system prompt is set. |
 | A reply without a chart request fails with the code `no_tool_call` | The filter is global. | Attach the filter only to the chart model, or use a separate instance. |
-| The reply fails with the code `no_target` | The verifier cannot read a CSV file or a function in the request. | Attach a CSV file, or state the function and the interval in the form that the section "What the verifier accepts" shows. |
+| The reply fails with the code `no_target` | The verifier cannot read a CSV file or a function in the request. | Attach a CSV file, or state the function and its interval. The section "What the verifier accepts" gives an example. |
 | The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
-| Every chart fails with the code `sandbox_unavailable` | A content blocker in the browser stops the Pyodide runtime. The "Block Outsider Intrusion into LAN" list of uBlock Origin Lite does this. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
+| Every chart fails with the code `sandbox_unavailable` | The browser could not load the Pyodide runtime. A content blocker is a common cause. For example, the "Block Outsider Intrusion into LAN" list of uBlock Origin Lite blocks it. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
 | The reply fails with the code `sandbox_error` | The browser runtime reported an error. | Reload the page and send the request again. |
 | The reply fails with the code `observation_mismatch` | The values that Pyodide drew differ from the recomputed values. | Make sure that the browser uses the Pyodide runtime of Open WebUI 0.10.2. If the code stays, keep the chat and report it. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |

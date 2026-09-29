@@ -125,8 +125,15 @@ blocked case then sees no request to abort. The script exits 0 only when every c
 `webui.log` record and the width sweep hold. `FV_CASES=<name,...>` runs a subset of `refused`,
 `japanese`, `blocked` and `pass`; the width sweep needs one failing case.
 
+In one terminal, start the stub stack and keep it running:
+
 ```
 webui/launch.sh --stub
+```
+
+In a second terminal, from the repository root, run:
+
+```
 "$(chromiumfish path)" --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" \
   --disable-features=IsolateSandboxedIframes --window-size=1280,800 about:blank &
 uv run --locked python -c 'import json; from webui.paste_in.reasons import REASONS; print(json.dumps(REASONS, ensure_ascii=False))' > /tmp/reasons.json
