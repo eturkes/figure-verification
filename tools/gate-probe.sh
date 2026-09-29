@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G14, tests/test_spec.py S1-S8, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G14, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file, runs the single check that owns the invariant, and
 # demands a nonzero rc whose output names the expected cause: attribution rides the message,
@@ -317,6 +317,14 @@ probe s8-untracked-param-marks tests/test_spec.py::test_s8_every_disabled_case_n
 probe s8-untracked-module-pytestmark tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_module_pytestmark
+
+probe s9-phase-without-name tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
+    'Phase opens with no phase name' \
+    sed -i '/^## Phase$/,$ s|^[A-Z]\+; scope = |PHASE; scope = |' "$SPEC"
+
+probe s9-phase-without-scope tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
+    'Phase names no scope' \
+    sed -i '/^## Phase$/,$ s|; scope = |; |' "$SPEC"
 
 probe b1-artifact-freshness tests/test_paste_in_bundle.py::test_b1_committed_artifact_equals_a_fresh_generation \
     'committed artifact(s) differ from their sources' \

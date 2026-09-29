@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""S1-S8: liveness invariants of the attached state and the law surface around it.
+"""S1-S9: liveness invariants of the attached state and the law surface around it.
 
 `.agent/spec.md` is imported by CLAUDE.md, so MAIN and every teammate hold it from session start
 and read every line as current law. Liveness itself is a judgment no test can make. What IS
 decidable is whether the file still points at things that exist, and a dead row is the one most
 likely to point at something that does not: a retired corpus, an unwritten archive record, a
 deferral whose acceptance check was never stated. Also decidable is which section a row sits in,
-which is what keeps the spine in one place (S6).
+which is what keeps the spine in one place (S6), and whether `Phase` opens with the phase and
+its scope (S9).
 
 The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
 those paths stay absent by design until the row closes.
@@ -59,6 +60,10 @@ _ARCHIVE_CONTRACTS = _REPO_ROOT / ".agent" / "archive" / "contracts"
 _GIT = shutil.which("git")
 
 _EXPECTED_SECTIONS = ("Intent", "Artifacts", "Decisions", "Tasks", "Phase")
+
+# S9's opening: one of the four phase names, then its scope clause.
+_PHASES = frozenset({"PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"})
+_SCOPE = re.compile(r"; scope = \S")
 
 # Roots whose contents are tracked, so a pointer at one either resolves or is dead. Bare `corpus/`
 # and `bench/` stay out: rows legitimately name run outputs that no commit carries.
@@ -385,3 +390,14 @@ def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
         and not any(unit in spine for unit in _UNIT_CITATION.findall(reason))
     ]
     assert not untracked, f"untracked disabled cases: {untracked}"
+
+
+def test_s9_phase_names_the_phase_and_its_scope() -> None:
+    """S9: `Phase` opens with the phase, then its scope -- `MAINTAIN; scope = the whole product.`
+    (`CLAUDE.md` `Session flow`: the whole product, or one surface beside shipped parts).
+    Acceptance: a `Phase` opening with no phase name fails, and so does one naming no scope after
+    it; a scope opened on one surface is otherwise invisible to a reader orienting from spec.md."""
+    phase = _section("Phase").lstrip()
+    name = re.split(r"[^A-Z]", phase, maxsplit=1)[0]
+    assert name in _PHASES, f"Phase opens with no phase name: {phase[:40]!r}"
+    assert _SCOPE.match(phase, len(name)), f"Phase names no scope: {phase[:40]!r}"
