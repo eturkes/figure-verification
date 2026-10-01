@@ -97,7 +97,7 @@ def _float_literal(value: Decimal, scale: int, label: str) -> tuple[float, str]:
     if not math.isfinite(projected):
         message = f"{label} projects to non-finite float64"
         raise _Float64FidelityError(message)
-    if round(Fraction.from_float(projected), scale) != Fraction(value):
+    if round(Fraction(projected), scale) != Fraction(value):
         message = f"{label} does not survive float64 projection at declared scale {scale}"
         raise _Float64FidelityError(message)
     if projected == 0.0:

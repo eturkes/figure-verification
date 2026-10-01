@@ -302,7 +302,7 @@ class Filter:
             return {**body, "messages": updated}
         return body
 
-    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913 - fixed OWUI hook; one guard per FAIL arm
+    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 - fixed OWUI hook signature
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,

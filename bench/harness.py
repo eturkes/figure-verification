@@ -572,7 +572,7 @@ def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
 
 
 # --- the driver -----------------------------------------------------------------------------
-def run_eval(  # noqa: PLR0913 — explicit boundary inputs keep provenance non-defaulted
+def run_eval(  # noqa: PLR0913, PLR0917 — explicit boundary inputs keep provenance non-defaulted
     client: httpx.Client,
     verifier_base_url: str,
     examples_dir: Path,

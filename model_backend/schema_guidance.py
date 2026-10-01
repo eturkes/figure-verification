@@ -13,7 +13,7 @@ import math
 from pathlib import Path
 from typing import Any, cast
 
-type JSON = None | bool | int | float | str | list[JSON] | dict[str, JSON]
+type JSON = bool | int | float | str | list[JSON] | dict[str, JSON] | None
 
 __all__ = ["load_guidance_schema", "schema_digest", "strip_guidance"]
 

@@ -167,7 +167,7 @@ def _closure_order(schema: list[canon.Column], active_keys: list[tuple[str, str]
     return ", ".join(parts)
 
 
-def _aggregate(  # noqa: PLR0913 — 6 irreducible args: con, cur, schema, keys, op, step
+def _aggregate(  # noqa: PLR0913, PLR0917 — 6 irreducible args: con, cur, schema, keys, op, step
     con: duckdb.DuckDBPyConnection,
     cur: str,
     schema: list[canon.Column],

@@ -174,7 +174,7 @@ def _half_even_at_scale(value: Fraction, scale: int) -> Fraction:
 def _independent_projection(value: Decimal, scale: int) -> tuple[float, str]:
     projected = float(value)
     assert math.isfinite(projected)
-    assert _half_even_at_scale(Fraction.from_float(projected), scale) == Fraction(value)
+    assert _half_even_at_scale(Fraction(projected), scale) == Fraction(value)
     if projected == 0.0:
         projected = 0.0
     return projected, repr(projected)
@@ -835,10 +835,8 @@ def test_half_even_endpoint_tie_pair_distinguishes_even_and_odd_retained_digit()
         )
     )
     projected = float(Decimal("562949953421312.2"))
-    assert Fraction.from_float(projected) == Fraction(2251799813685249, 4)
-    assert _half_even_at_scale(Fraction.from_float(projected), 1) == Fraction(
-        Decimal("562949953421312.2")
-    )
+    assert Fraction(projected) == Fraction(2251799813685249, 4)
+    assert _half_even_at_scale(Fraction(projected), 1) == Fraction(Decimal("562949953421312.2"))
     assert b"x = [562949953421312.2, 562949953421313.2]" in admitted.matplotlib_script
 
     refused = _prepare(
