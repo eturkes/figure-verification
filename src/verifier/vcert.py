@@ -349,6 +349,9 @@ def _validate_v03_for_encode(certificate: object) -> VCertV03:
 def vcert_bytes(certificate: VCert) -> bytes:
     """Canonical VCert v0.2 JSON bytes, refusing a wrong-family or subclass certificate or TCB.
 
+    These exact bytes are the DSSE payload the signer wraps; the service serves the signed
+    envelope and addresses it (``plot_id`` = sha256 of the envelope), so one ``VCert`` must yield
+    byte-identical payload output or its address changes.
     ``VCert`` validates nothing at construction, so this exact-type gate is what keeps a
     ``FormulaTcb`` (or a ``Tcb`` subclass) from encoding its own ``kind`` tag into a v0.2 payload
     for every caller, the signer and the archive/replay re-encoders included.
@@ -437,7 +440,13 @@ def _formula_tcb(numeric_profile: NumericProfile) -> FormulaTcb:
 def disclosed_transforms(
     spec: VPlotSpec,
 ) -> tuple[tuple[DisclosedFilter, ...], tuple[DisclosedSort, ...]]:
-    """Derive deterministic dataset filter and active-sort disclosures."""
+    """Derive deterministic dataset filter and active-sort disclosures.
+
+    EVERY applied filter is disclosed, in pipeline order, because each one drops rows; only the
+    ACTIVE sort is, because an earlier sort is superseded and orders nothing in the plotted table.
+    Filter values are model-controlled text, disclosed raw in the signed payload; no display
+    surface interpolates them (``render.badge_html`` shows a check count alone).
+    """
     filters = tuple(
         DisclosedFilter(field=transform.field, cmp=transform.cmp, value=transform.value)
         for transform in spec.transform
@@ -453,6 +462,7 @@ def disclosed_transforms(
 
 
 def _certified_checks(results: tuple[checks.CheckResult, ...]) -> tuple[CertifiedCheck, ...]:
+    """The passing ids + methods in final-report ORDER: the certificate binds that sequence."""
     return tuple(
         CertifiedCheck(id=result.check, method=result.method, status="pass")
         for result in results
@@ -510,7 +520,7 @@ def build_dataset_certificate(
         spec_hash=evidence.spec_hash,
         plotted_table_hash=evidence.plotted_table_hash,
         manifest_hash=evidence.manifest_hash,
-        vega_lite_hash=hash_vega_lite(vega_lite),
+        vega_lite_hash=hash_vega_lite(vega_lite),  # the exact emitted bytes, never a rebuild
         checks=_certified_checks(results),
         filters=filters,
         sorts=sorts,
