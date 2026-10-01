@@ -1608,3 +1608,98 @@ def test_v02_encoder_refuses_a_certificate_subclass() -> None:
     )
     with pytest.raises(msgspec.ValidationError, match=r"expected exact VCert at \$;"):
         vcert.vcert_bytes(forged)
+
+
+# --- TCB-injection seams: call shape + ordering (polish p7) -------------------------------------
+
+
+def test_both_builders_take_the_tcb_by_keyword_only() -> None:
+    artifact = _artifact("f02_linear.json")
+    spec, evidence = _dataset_spec_and_evidence()
+    dataset_builder = cast("Callable[..., object]", vcert.build_dataset_certificate)
+    formula_builder = cast("Callable[..., object]", vcert.build_formula_certificate)
+    with pytest.raises(TypeError, match="positional"):
+        dataset_builder(spec, evidence, (), b"{}", DATASET_TCB)
+    with pytest.raises(TypeError, match="positional"):
+        formula_builder(artifact, FORMULA_TCB)
+
+
+def test_both_builders_reject_the_removed_verifier_version_keyword() -> None:
+    artifact = _artifact("f02_linear.json")
+    spec, evidence = _dataset_spec_and_evidence()
+    dataset_builder = cast("Callable[..., object]", vcert.build_dataset_certificate)
+    formula_builder = cast("Callable[..., object]", vcert.build_formula_certificate)
+    with pytest.raises(TypeError, match="verifier_version"):
+        dataset_builder(spec, evidence, (), b"{}", verifier_version="0.0.0")
+    with pytest.raises(TypeError, match="verifier_version"):
+        formula_builder(artifact, verifier_version="0.0.0")
+
+
+def test_an_omitted_and_an_explicit_none_tcb_both_collect_live() -> None:
+    artifact = _artifact("f02_linear.json")
+    spec, evidence = _dataset_spec_and_evidence()
+    assert vcert.build_formula_certificate(artifact) == vcert.build_formula_certificate(
+        artifact, tcb=None
+    )
+    omitted = vcert.build_dataset_certificate(spec, evidence, (), b"{}")
+    explicit = vcert.build_dataset_certificate(spec, evidence, (), b"{}", tcb=None)
+    assert omitted == explicit
+    assert omitted.tcb == vcert.dataset_tcb()
+
+
+def test_an_exact_type_tcb_copy_is_accepted_with_its_own_identity() -> None:
+    artifact = _artifact("f02_linear.json")
+    spec, evidence = _dataset_spec_and_evidence()
+    dataset_copy = msgspec.structs.replace(DATASET_TCB, verifier_version="9.9.9")
+    formula_copy = msgspec.structs.replace(FORMULA_TCB, verifier_version="9.9.9")
+    assert dataset_copy is not DATASET_TCB
+    assert formula_copy is not FORMULA_TCB
+    dataset = vcert.build_dataset_certificate(spec, evidence, (), b"{}", tcb=dataset_copy)
+    formula = vcert.build_formula_certificate(artifact, tcb=formula_copy)
+    assert dataset.tcb is dataset_copy
+    assert formula.tcb is formula_copy
+    assert b'"verifier_version":"9.9.9"' in vcert.vcert_bytes(dataset)
+    assert b'"verifier_version":"9.9.9"' in vcert.vcert_v03_bytes(formula)
+
+
+def test_dataset_guard_refuses_before_any_vcert_is_constructed() -> None:
+    spec, evidence = _dataset_spec_and_evidence()
+    built: list[object] = []
+
+    def _bomb(*args: object, **kwargs: object) -> NoReturn:
+        built.append((args, kwargs))
+        message = "a VCert was constructed for a wrong-family TCB"
+        raise AssertionError(message)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(vcert, "VCert", _bomb)
+        with pytest.raises(msgspec.ValidationError, match=r"expected exact Tcb at tcb"):
+            vcert.build_dataset_certificate(
+                spec, evidence, (), b"{}", tcb=cast("vcert.Tcb", FORMULA_TCB)
+            )
+    assert built == []
+
+
+def test_formula_wrong_family_tcb_is_refused_after_all_four_rebinds() -> None:
+    artifact = _artifact("f02_linear.json")
+    calls = {"formula": 0, "spec": 0, "table": 0, "script": 0}
+    rebinds: dict[str, tuple[str, Callable[..., str]]] = {
+        "formula": ("hash_formula_source", canon.hash_formula_source),
+        "spec": ("hash_spec", canon.hash_spec),
+        "table": ("hash_table", canon.hash_table),
+        "script": ("hash_matplotlib_script", canon.hash_matplotlib_script),
+    }
+
+    def _counting(name: str, real: Callable[..., str]) -> Callable[..., str]:
+        def call(*args: object, **kwargs: object) -> str:
+            calls[name] += 1
+            return real(*args, **kwargs)
+
+        return call
+
+    with pytest.MonkeyPatch.context() as patch:
+        for name, (attribute, real) in rebinds.items():
+            patch.setattr(canon, attribute, _counting(name, real))
+        with pytest.raises(ValueError, match="TCB"):
+            vcert.build_formula_certificate(artifact, tcb=cast("vcert.FormulaTcb", DATASET_TCB))
+    assert calls == {"formula": 1, "spec": 1, "table": 1, "script": 1}
