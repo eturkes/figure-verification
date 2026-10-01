@@ -661,6 +661,39 @@ def test_the_empty_program_is_admitted() -> None:
     assert parse_admitted("").body == []
 
 
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param("column", id="variable"),
+        pytest.param("0", id="integer"),
+        pytest.param("0.5", id="float"),
+        pytest.param("True", id="boolean"),
+        pytest.param("['revenue']", id="list"),
+        pytest.param("'region', 'revenue'", id="tuple"),
+        pytest.param(":", id="slice"),
+    ],
+)
+def test_column_subscripts_require_string_literals(index: str) -> None:
+    """A column selector is a string literal, even when a variable names the same column."""
+    source = 'import pandas as pd\ndf = pd.read_csv("fixture.csv")\ncolumn = "revenue"\n'
+    parse_admitted(source + 'values = df["revenue"]\n')
+    assert _code(source + f"values = df[{index}]\n") == "column_not_literal"
+
+
+@pytest.mark.parametrize(
+    "size",
+    [
+        pytest.param("()", id="empty"),
+        pytest.param("(8,)", id="single"),
+        pytest.param("(8, 5, 3)", id="three"),
+    ],
+)
+def test_figsize_requires_exactly_two_elements(size: str) -> None:
+    """The tuple-slot map and its reader both bind figsize to TWO numeric literals."""
+    parse_admitted(_PRELUDE + "plt.figure(figsize=(8, 5))\n")
+    assert _code(_PRELUDE + f"plt.figure(figsize={size})\n") == "literal_not_admitted"
+
+
 def test_the_admitted_maps_are_pinned_as_literals() -> None:
     """The subset itself is the deliverable, so its contents are stated here by hand.
 

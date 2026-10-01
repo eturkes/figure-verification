@@ -3,16 +3,17 @@
 # tools/mutants/admit.toml`. Each mutant neuters ONE predicate's CONDITION and names the ONE test
 # that must go red under it.
 #
-# Scope today = the accessor route ALONE (M13.8's bar/barh + M10.10's line). The 13 mutants that credited `admit.py` at M13.2 were
-# driven by a gitignored script, and porting them here -- together with the M13.4/M13.6 admission
-# predicates that never earned mutation credit at all -- is a queued `.agent/deferred.md` row.
-# A claim credited in `project.toml` can sit unmutated here: `project.toml` covers only what
-# PROJECTION decides, and every refusal this route lands is decided before projection runs.
-#
-# `p2-kind-map-opened` is deliberately ABSENT as a mutant over the MAP: opening
-# `ADMITTED_ACCESSOR_KINDS` to a third key is a data edit, not a predicate neuter, and the exact-set
-# assertion on that literal is what fails. `p2-missing-kind-defaults` below is the predicate form --
-# absent `kind` becoming a line plot is pandas' own default and the fault the closed map exists for.
+# Scope = accessor route + base allowlist + column/aggregation/presentation admission.
+# Projection-only predicates stay in `project.toml`; admission refusals earn their own mutants.
+# Literal membership/arity entries define the boundary too: removing a presentation entry, changing
+# the tuple arity, or re-mapping a kind changes the predicate just as neutering a branch does.
+# M2 is equal on the default literal set; its kill narrows that set to price the exact-type rule.
+# The reduction func Attribute conjunct is a source-domain postcondition of `_groupby_root`: every
+# Call traversed to reach the root has an Attribute func. Its removal alone opens no shape.
+
+# Accessor kind-map expansion is pinned by its exact-literal assertion. Mutation covers the
+# missing-kind predicate + line-to-bar entry rather than repeating every unlisted map key.
+# Absent `kind` defaults to a line in pandas; the closed map must refuse that implicit target.
 
 module = "src/verifier/pysrc/admit.py"
 tests = [
@@ -83,3 +84,360 @@ predicate = "`kind=\"line\"` names `plt.plot`: the accessor line projects EQUAL 
 kills = "tests/test_pysrc_accessor_line.py::test_a1_line_accessor_projects_equal_to_the_plt_plot_spelling[sum-month]"
 anchor = '''ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.plot"}'''
 mutant = '''ADMITTED_ACCESSOR_KINDS: dict[str, str] = {"bar": "plt.bar", "barh": "plt.barh", "line": "plt.bar"}'''
+
+[[mutant]]
+id = "M1-call-target-open"
+predicate = "call target allowlist stops refusing unlisted targets"
+kills = "tests/test_pysrc_admit.py::test_a4_call_targets_are_a_closed_set"
+anchor = '''
+    if target not in ADMITTED_CALL_TARGETS:
+        _refuse("call_target_not_admitted")
+'''
+mutant = '''
+    if False:  # noqa
+        pass
+'''
+
+[[mutant]]
+id = "M2-literal-isinstance"
+predicate = "exact-type literal check degraded to isinstance (bool/int collapse)"
+kills = "tests/test_pysrc_admit.py::test_the_literal_set_is_an_exact_type_boundary"
+anchor = '''
+        if type(node.value) not in _ADMITTED_LITERAL_TYPES:'''
+mutant = '''
+        if not isinstance(node.value, _ADMITTED_LITERAL_TYPES):'''
+
+[[mutant]]
+id = "M3-call-alias-unbound"
+predicate = "call alias no longer needs to be bound by an import"
+kills = "tests/test_pysrc_admit.py::test_a7_every_name_is_bound_before_use"
+anchor = '''
+    if alias not in scope.bound:
+        _refuse("name_not_bound")
+    admitted = ADMITTED_KEYWORDS[target]
+'''
+mutant = '''
+    admitted = ADMITTED_KEYWORDS[target]
+'''
+
+[[mutant]]
+id = "M13-attr-alias-unbound"
+predicate = "constant-attribute alias no longer needs to be bound by an import"
+kills = "tests/test_pysrc_admit.py::test_a7_every_name_is_bound_before_use"
+anchor = '''
+        _refuse("attribute_not_admitted")
+    if alias not in scope.bound:
+        _refuse("name_not_bound")
+'''
+mutant = '''
+        _refuse("attribute_not_admitted")
+'''
+
+[[mutant]]
+id = "M4-bind-before-rhs"
+predicate = "assignment binds its target BEFORE admitting the right-hand side"
+kills = "tests/test_pysrc_admit.py::test_a7_every_name_is_bound_before_use"
+anchor = '''
+    _admit_expr(node.value, scope)
+    scope.bound.add(target.id)
+'''
+mutant = '''
+    scope.bound.add(target.id)
+    _admit_expr(node.value, scope)
+'''
+
+[[mutant]]
+id = "M5-kwargs-conjunct"
+predicate = "the `**kwargs` conjunct dropped from the keyword guard"
+kills = "tests/test_pysrc_admit.py::test_a6_keywords_are_closed_per_target"
+anchor = '''
+        if keyword.arg is None or keyword.arg not in admitted:'''
+mutant = '''
+        if keyword.arg is not None and keyword.arg not in admitted:'''
+
+[[mutant]]
+id = "M6-private-attr"
+predicate = "dunder/private attribute access no longer refused"
+kills = "tests/test_pysrc_admit.py::test_a9_dunder_and_private_names_refuse"
+anchor = '''
+    if node.attr.startswith("_"):
+        _refuse("attribute_not_admitted")
+'''
+mutant = '''
+    if False:  # noqa
+        pass
+'''
+
+[[mutant]]
+id = "M7-expr-catch-all"
+predicate = "the closed expression tail becomes a permissive catch-all"
+kills = "tests/test_pysrc_admit.py::test_a2_admission_is_positive_not_a_denylist"
+anchor = '''
+        # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
+        # starred args, walrus, comparisons, boolean and conditional expressions.
+        _refuse("expression_not_admitted")'''
+mutant = '''
+        pass'''
+
+[[mutant]]
+id = "M8-import-alias-conjunct"
+predicate = "the required-alias conjunct dropped from the import guard"
+kills = "tests/test_pysrc_admit.py::test_a3_the_import_set_is_exact"
+anchor = '''
+        if required is None or alias.asname != required:'''
+mutant = '''
+        if required is None:'''
+
+[[mutant]]
+id = "M9-stmt-catch-all"
+predicate = "the closed statement tail becomes a permissive catch-all"
+kills = "tests/test_pysrc_admit.py::test_a2_admission_is_positive_not_a_denylist"
+anchor = '''
+        # The closed tail: loops, `def`, `class`, `try`, `with`, `del`, `global`, `nonlocal`,
+        # `raise`, `assert`, `async`, `from x import y`, annotated and augmented assignment.
+        _refuse("statement_not_admitted")'''
+mutant = '''
+        pass'''
+
+[[mutant]]
+id = "M10-assign-multi-target"
+predicate = "chained assignment `a = b = 1` no longer refused"
+kills = "tests/test_pysrc_admit.py::test_assignment_targets_are_a_single_plain_name"
+anchor = '''
+    if len(node.targets) != 1:
+        _refuse("assign_target_not_admitted")
+'''
+mutant = '''
+    if False:  # noqa
+        pass
+'''
+
+[[mutant]]
+id = "M11-attr-depth"
+predicate = "attribute chain depth bound removed (np.random.rand reachable)"
+kills = "tests/test_pysrc_admit.py::test_a8_attribute_depth_is_bounded"
+anchor = '''
+    if not isinstance(value, ast.Name):
+        _refuse("attribute_not_admitted")
+'''
+mutant = '''
+    if not isinstance(value, ast.Name):
+        return 'np', 'np.pi'
+'''
+
+[[mutant]]
+id = "M12-constant-attr-open"
+predicate = "bare attribute reads no longer checked against the constant allowlist"
+kills = "tests/test_pysrc_admit.py::test_constant_attributes_outside_the_admitted_set_refuse"
+anchor = '''
+    if node.attr not in ADMITTED_VALUE_ATTRS and dotted not in ADMITTED_CONSTANT_ATTRS:
+        _refuse("attribute_not_admitted")
+'''
+mutant = '''
+    if False:  # noqa
+        pass
+'''
+
+[[mutant]]
+id = "d1-column-slice-open"
+predicate = "a column subscript requires a string literal, never a variable or numeric key"
+kills = "tests/test_pysrc_admit.py::test_column_subscripts_require_string_literals[variable]"
+anchor = '''
+    if not isinstance(index, ast.Constant) or type(index.value) is not str:
+        _refuse("column_not_literal")'''
+mutant = '''
+    if False:
+        _refuse("column_not_literal")'''
+
+[[mutant]]
+id = "a2-frame-unbound"
+predicate = "the groupby frame is bound before the atomic chain admits (name_not_bound)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+    if frame.id not in scope.bound:
+        _refuse("name_not_bound")'''
+mutant = '''
+    if False:
+        _refuse("name_not_bound")'''
+
+[[mutant]]
+id = "a2-key-arity-open"
+predicate = "groupby takes exactly ONE key (column_not_literal)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[two-keys]"
+anchor = '''
+    if len(root.args) != 1 or root.keywords:'''
+mutant = '''
+    if root.keywords:'''
+
+[[mutant]]
+id = "a2-key-keywords-open"
+predicate = "groupby takes NO keyword that could change its grouping (column_not_literal)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[root-keyword]"
+anchor = '''
+    if len(root.args) != 1 or root.keywords:'''
+mutant = '''
+    if len(root.args) != 1:'''
+
+[[mutant]]
+id = "a2-key-literal-unchecked"
+predicate = "the atomic chain checks its root key as a string literal (column_not_literal)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+    _admit_string_index(root.args[0])'''
+mutant = '''
+    if False:
+        _admit_string_index(root.args[0])'''
+
+[[mutant]]
+id = "a2-column-literal-unchecked"
+predicate = "the atomic chain checks its selected column as a string literal (column_not_literal)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+    _admit_string_index(selection.slice)'''
+mutant = '''
+    if False:
+        _admit_string_index(selection.slice)'''
+
+[[mutant]]
+id = "a2-string-index-type-open"
+predicate = "constant numeric keys are not string-literal group keys or columns (column_not_literal)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[numeric-key]"
+anchor = '''
+    if not isinstance(node, ast.Constant) or type(node.value) is not str:
+        _refuse("column_not_literal")'''
+mutant = '''
+    if not isinstance(node, ast.Constant):
+        _refuse("column_not_literal")'''
+
+[[mutant]]
+id = "a2-reduction-target-open"
+predicate = "a reduction is one of sum/mean/min/max (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+    if not isinstance(func, ast.Attribute) or func.attr not in _REDUCTIONS:'''
+mutant = '''
+    if not isinstance(func, ast.Attribute):'''
+
+[[mutant]]
+id = "a2-reduction-positional-open"
+predicate = "a reduction takes NO positional argument (keyword_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+    if node.args or node.keywords:
+        # A reduction carrying `axis=` or a positional computes something else entirely.'''
+mutant = '''
+    if node.keywords:
+        # A reduction carrying `axis=` or a positional computes something else entirely.'''
+
+[[mutant]]
+id = "a2-reduction-keywords-open"
+predicate = "a reduction takes NO keyword argument (keyword_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[reduction-keyword]"
+anchor = '''
+    if node.args or node.keywords:
+        # A reduction carrying `axis=` or a positional computes something else entirely.'''
+mutant = '''
+    if node.args:
+        # A reduction carrying `axis=` or a positional computes something else entirely.'''
+
+[[mutant]]
+id = "a2-selection-root-open"
+predicate = "the selected column belongs DIRECTLY to the groupby root (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[nested-selection]"
+anchor = '''
+    if not isinstance(selection, ast.Subscript) or selection.value is not root:'''
+mutant = '''
+    if not isinstance(selection, ast.Subscript):'''
+
+[[mutant]]
+id = "a2-trailing-private-open"
+predicate = "a trailing call has a public attribute (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[trailing-private]"
+anchor = '''
+        if func.attr.startswith("_") or node.args or node.keywords:'''
+mutant = '''
+        if node.args or node.keywords:'''
+
+[[mutant]]
+id = "a2-trailing-positional-open"
+predicate = "a trailing call takes NO positional argument (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[trailing-positional]"
+anchor = '''
+        if func.attr.startswith("_") or node.args or node.keywords:'''
+mutant = '''
+        if func.attr.startswith("_") or node.keywords:'''
+
+[[mutant]]
+id = "a2-trailing-keywords-open"
+predicate = "a trailing call takes NO keyword argument (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_deviations_each_refuse"
+anchor = '''
+        if func.attr.startswith("_") or node.args or node.keywords:'''
+mutant = '''
+        if func.attr.startswith("_") or node.args:'''
+
+[[mutant]]
+id = "a6-style-keywords-shared"
+predicate = "style keywords are closed PER MARK TARGET, never the union of every mark's styles"
+kills = "tests/test_pysrc_admit.py::test_a6_keywords_are_closed_per_target"
+anchor = '''
+    admitted = ADMITTED_KEYWORDS[target]'''
+mutant = '''
+    admitted = (
+        frozenset().union(*(ADMITTED_KEYWORDS[mark] for mark in _MARK_TARGETS))
+        if target in _MARK_TARGETS else ADMITTED_KEYWORDS[target]
+    )'''
+
+[[mutant]]
+id = "a6-tuple-map-wrong-arity"
+predicate = "figsize is the ONLY tuple slot and its arity is TWO"
+kills = "tests/test_pysrc_admit.py::test_figsize_requires_exactly_two_elements[three]"
+anchor = '''
+ADMITTED_TUPLE_KEYWORDS: dict[tuple[str, str], int] = {("plt.figure", "figsize"): 2}'''
+mutant = '''
+ADMITTED_TUPLE_KEYWORDS: dict[tuple[str, str], int] = {("plt.figure", "figsize"): 3}'''
+
+[[mutant]]
+id = "a6-tuple-arity-unchecked"
+predicate = "the keyword tuple has exactly the arity declared by its own target/keyword slot"
+kills = "tests/test_pysrc_admit.py::test_figsize_requires_exactly_two_elements[three]"
+anchor = '''
+    if not isinstance(node, ast.Tuple) or len(node.elts) != arity:'''
+mutant = '''
+    if not isinstance(node, ast.Tuple):'''
+
+[[mutant]]
+id = "a8-presentation-figure-missing"
+predicate = "plt.figure is an admitted cosmetic target"
+kills = "tests/test_pysrc_admit.py::test_a10_the_admitted_set_round_trips_the_design_corpus"
+anchor = '''
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
+mutant = '''
+_PRESENTATION_TARGETS = frozenset({"plt.tight_layout", "plt.xticks"})'''
+
+[[mutant]]
+id = "a8-presentation-tight_layout-missing"
+predicate = "plt.tight_layout is an admitted cosmetic target"
+kills = "tests/test_pysrc_admit.py::test_a10_the_admitted_set_round_trips_the_design_corpus"
+anchor = '''
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
+mutant = '''
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.xticks"})'''
+
+[[mutant]]
+id = "a8-presentation-xticks-missing"
+predicate = "plt.xticks is an admitted cosmetic target"
+kills = "tests/test_pysrc_admit.py::test_a10_the_admitted_set_round_trips_the_design_corpus"
+anchor = '''
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
+mutant = '''
+_PRESENTATION_TARGETS = frozenset({"plt.figure", "plt.tight_layout"})'''
+
+[[mutant]]
+id = "a2-column-selection-shape-open"
+predicate = "the reduction receiver is a column Subscript, never the bare groupby call (attribute_not_admitted)"
+kills = "tests/test_pysrc_aggregate.py::test_a2_chain_link_near_misses_refuse[no-selection]"
+anchor = '''
+    if not isinstance(selection, ast.Subscript) or selection.value is not root:'''
+mutant = '''
+    if selection.value is not root:'''

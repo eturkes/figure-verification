@@ -48,7 +48,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q7 polish p2 p4 p16 p22 p24 p32 p34 p35 p44 p47 — owed: rulings p2 p22 p24 p35 p47 · lost M9.7b-1/M9.10 lists p4 p44 (ports landed) · MX150 p16 p32 p34
 - [ ] Q8 lexical term anchoring — owed: contract approval
 - [ ] Q9 exact folder in `_rational` — owed: ruling
-- [ ] Q10 admit mutation catalogue port
 - [ ] Q11 measurement rerun driver
 - [ ] Q12 C10 float-branch range
 - [ ] Q13 spike-groupby measurement port
@@ -72,7 +71,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q31 launcher tests vs inherited SIGINT=ignore (new)
 - [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 
-Queue = `.agent/deferred.md`, 28 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 27 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

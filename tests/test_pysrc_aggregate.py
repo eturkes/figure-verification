@@ -184,6 +184,50 @@ def test_a2_chain_deviations_each_refuse() -> None:
     assert _projection_code(wrong_frame) == "column_not_from_source"
 
 
+@pytest.mark.parametrize(
+    ("chain", "expected"),
+    [
+        pytest.param(
+            'df.groupby("region", "city")["revenue"].sum()',
+            "column_not_literal",
+            id="two-keys",
+        ),
+        pytest.param('df.groupby("region").sum()', "attribute_not_admitted", id="no-selection"),
+        pytest.param(
+            'df.groupby("region", sort=False)["revenue"].sum()',
+            "column_not_literal",
+            id="root-keyword",
+        ),
+        pytest.param('df.groupby(0)["revenue"].sum()', "column_not_literal", id="numeric-key"),
+        pytest.param('df.groupby("region")[0].sum()', "column_not_literal", id="numeric-column"),
+        pytest.param(
+            'df.groupby("region")["revenue"].sum(axis=0)',
+            "keyword_not_admitted",
+            id="reduction-keyword",
+        ),
+        pytest.param(
+            'df.groupby("region")["revenue"]["orders"].sum()',
+            "attribute_not_admitted",
+            id="nested-selection",
+        ),
+        pytest.param(
+            'df.groupby("region")["revenue"].sum()._reset_index()',
+            "attribute_not_admitted",
+            id="trailing-private",
+        ),
+        pytest.param(
+            'df.groupby("region")["revenue"].sum().reset_index(1)',
+            "attribute_not_admitted",
+            id="trailing-positional",
+        ),
+    ],
+)
+def test_a2_chain_link_near_misses_refuse(chain: str, expected: str) -> None:
+    """Each link keeps its own boundary; another conjunct must not hide a missing check."""
+    parse_admitted(_aggregate_source("sum"))
+    assert _admission_code(_dataset_source(f"g = {chain}\n")) == expected
+
+
 def test_a3_reset_index_projects_as_the_series_spelling() -> None:
     """A3: `df.groupby('r')['o'].max().reset_index()` projects, EQUAL to the series spelling.
 

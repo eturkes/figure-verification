@@ -441,8 +441,11 @@ widening reddens; and
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
 integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
-what splits them. `tools/mutants/admit.toml` = 6, the accessor ROUTE (M13.8's five + M10.10's `line` entry) and nothing else yet: every
-refusal that route lands is decided before projection runs, so `project.toml` cannot reach it. Run
+what splits them. `tools/mutants/admit.toml` = 40: the accessor ROUTE (M13.8's five + M10.10's `line` entry), M13.2's
+13 allowlist predicates (below), + 21 admission predicates — the string-literal column subscript,
+each `groupby(k)[c].reduce()` chain link, the cosmetic call-target set, the per-target style-keyword
+map + `ADMITTED_TUPLE_KEYWORDS` arity. Every refusal ADMISSION lands is decided before projection
+runs, so `project.toml` cannot reach it. Run
 all four — a claim credited in one catalogue can sit unmutated in another.
 
 A widening INVALIDATES anchors silently until the driver runs: M13.6 edited four lines that M13.3
@@ -450,9 +453,7 @@ and M13.4 mutants anchored on (`p4-y-over-inline-grid`, `d1-grid-selector-is-dee
 `d2-rebind-dataset-names`, `d10-dataset-statement-coverage`), and the driver reported ANCHOR-MISS
 rather than a kill. Rerun EVERY catalogue of a module a unit touches, not just the new one.
 
-`admit.py`'s M13.2 allowlist = 13/13 killed, under `.scratch/mutate_admit.py` (gitignored ⇒ port
-those 13 into the now-existing `tools/mutants/admit.toml`, which holds the six accessor-route
-mutants (M13.8's five + M10.10's line entry) and nothing older; queued in `.agent/deferred.md`, superseding the driver half of p3/p4/p43/p44). Each
+`admit.py`'s M13.2 allowlist = 13/13 killed, in `tools/mutants/admit.toml` (`M1`-`M13`). Each
 mutant neuters a PREDICATE: call-target set opened · exact-type literal check degraded to
 `isinstance` · call-alias bound check dropped · constant-attribute alias bound check dropped ·
 assignment binding moved ahead of its right-hand side · `**kwargs` conjunct dropped ·
