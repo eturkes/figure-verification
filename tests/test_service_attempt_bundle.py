@@ -1045,3 +1045,32 @@ def test_generic_dsse_profile_validates_payload_type_types_and_exact_limits(tmp_
             payload_type=ATTEMPT_PAYLOAD_TYPE,
             max_payload_bytes=1,
         )
+
+
+def _verdict_with_other_message(payload: bytes) -> bytes:
+    """A canonical verdict differing from `payload` only in its first result's message text."""
+    verdict = archive_module._VERDICT_DECODER.decode(payload)
+    first = msgspec.structs.replace(verdict.results[0], message="another canonical message")
+    return _ENCODER.encode(msgspec.structs.replace(verdict, results=(first, *verdict.results[1:])))
+
+
+@pytest.mark.parametrize("field", ["raw_csv", "raw_manifest", "verdict"])
+def test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot(
+    tmp_path: Path, field: str
+) -> None:
+    """p13: a signed occurrence valid on every other dimension, whose attempt bytes disagree with
+    the nested dataset plot's at ONE shared field, fails on that field alone."""
+    _settings, signer, plot = _plot_parts(tmp_path)
+    base = materialize_attempt_bundle(
+        _success_draft(plot, route=AttemptRoute.VERIFY_AND_RENDER), signer, nonce="e" * 32
+    )
+    current = cast("bytes", getattr(base.artifacts, field))
+    observed = _verdict_with_other_message(current) if field == "verdict" else current + b"\n"
+    artifacts = replace(base.artifacts, **{field: observed})
+    manifest = msgspec.structs.replace(
+        base.manifest, artifacts=archive_module._artifact_bindings(artifacts)
+    )
+    mutant = _resign(replace(base, artifacts=artifacts), signer, manifest)
+    archive = open_archive(Settings(data_dir=_DATA, state_dir=tmp_path / f"shared-{field}"))
+    with pytest.raises(ArchiveIntegrityError, match="disagree with the successful plot bundle"):
+        archive.publish_attempt(mutant)

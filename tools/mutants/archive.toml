@@ -36,3 +36,25 @@ mutant = '''            require_canonical_envelope=False,
         )
     except (ValueError, attestation.AttestationError, VerificationError) as exc:
         msg = "attempt envelope or signing public key failed verification"'''
+
+# Each dataset attempt/plot shared field alone (polish p13).
+[[mutant]]
+id = "shared-field-raw-csv-dropped"
+predicate = "attempt raw_csv must equal the nested dataset plot's raw_csv"
+kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
+anchor = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),'''
+mutant = '''    PlotSourceKind.DATASET: ("raw_manifest", "verdict"),'''
+
+[[mutant]]
+id = "shared-field-raw-manifest-dropped"
+predicate = "attempt raw_manifest must equal the nested dataset plot's raw_manifest"
+kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
+anchor = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),'''
+mutant = '''    PlotSourceKind.DATASET: ("raw_csv", "verdict"),'''
+
+[[mutant]]
+id = "shared-field-verdict-dropped"
+predicate = "attempt verdict must equal the nested dataset plot's verdict"
+kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
+anchor = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),'''
+mutant = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest"),'''
