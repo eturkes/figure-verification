@@ -818,3 +818,47 @@ def test_native_render_exception_is_bounded_diagnostic(
     verdict = replay.replay_snapshot(fixture.snapshot, _trusted(fixture))
     assert verdict.status == "recomputation_failed"
     assert verdict.diagnostic.endswith("ValueError")
+
+
+def test_manifest_keyid_disagreeing_with_its_signer_fails_before_recompute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The dataset twin of the formula engine's signer pin: the attempt is genuinely signed by the
+    trusted key, but the manifest it authenticates names another keyid."""
+    fixture = _fixture(tmp_path)
+    keyid = fixture.signer.keyid
+    other = keyid[:-1] + ("0" if keyid[-1] != "0" else "1")
+    snapshot = _resign_manifest(
+        fixture, msgspec.structs.replace(fixture.bundle.manifest, keyid=other)
+    )
+
+    def _unexpected_recompute(*_args: object, **_kwargs: object) -> NoReturn:
+        msg = "a signer-disagreeing manifest reached recomputation"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(checks, "verify_snapshot", _unexpected_recompute)
+    verdict = replay.replay_snapshot(snapshot, _trusted(fixture))
+
+    assert verdict.status == "integrity_failed"
+    assert verdict.failure_stage == "attempt_manifest"
+    assert verdict.trusted_keyid == keyid
+    assert not verdict.integrity_ok
+
+
+def test_a_short_public_key_fails_its_address_even_when_its_digest_matches(
+    tmp_path: Path,
+) -> None:
+    """The length conjunct alone: a 31-byte key whose digest IS the snapshot keyid passes the
+    digest test, so only the raw Ed25519 length refuses it at ``attempt_address`` -- without it
+    the snapshot reads as merely untrusted."""
+    fixture = _fixture(tmp_path)
+    short_key = fixture.snapshot.public_key[:-1]
+    snapshot = replace(
+        fixture.snapshot,
+        keyid="sha256:" + hashlib.sha256(short_key).hexdigest(),
+        public_key=short_key,
+    )
+    verdict = replay.replay_snapshot(snapshot, _trusted(fixture))
+
+    assert verdict.status == "integrity_failed"
+    assert verdict.failure_stage == "attempt_address"

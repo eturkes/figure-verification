@@ -34,3 +34,73 @@ predicate = "replay maps decodable non-canonical table bytes to plot_contents, n
 kills = "tests/test_rev_m9_4.py::test_formula_replay_refuses_a_noncanonical_table_before_recomputation"
 anchor = '''    except (canon.TableDecodeError, canon.NonCanonicalTableError) as exc:'''
 mutant = '''    except canon.TableDecodeError as exc:'''
+
+# Every `_authenticate_attempt` predicate (polish p19). The function is shared by both engines, so
+# a formula-side pin credits the dataset engine too.
+[[mutant]]
+id = "attempt-payload-cap"
+predicate = "the attempt payload is bounded by the attestation byte limit before trust"
+kills = "tests/test_replay_formula.py::test_v02_attempt_address_predicates_precede_trust_and_signature"
+anchor = '''        len(snapshot.attempt_payload) <= limits.max_attestation_bytes,
+        "attempt_address",'''
+mutant = '''        True,
+        "attempt_address",'''
+
+[[mutant]]
+id = "attempt-envelope-cap"
+predicate = "the attempt envelope is bounded by its canonical byte limit before trust"
+kills = "tests/test_replay_formula.py::test_v02_attempt_address_predicates_precede_trust_and_signature"
+anchor = '''        len(snapshot.attempt_envelope) <= envelope_limit,'''
+mutant = '''        True,'''
+
+[[mutant]]
+id = "attempt-id-addresses-envelope"
+predicate = "the attempt id is the sha256 of the exact envelope bytes"
+kills = "tests/test_replay_formula.py::test_v02_attempt_address_predicates_precede_trust_and_signature"
+anchor = '''        hashlib.sha256(snapshot.attempt_envelope).hexdigest() == snapshot.attempt_id,'''
+mutant = '''        True,'''
+
+[[mutant]]
+id = "attempt-key-length-dropped"
+predicate = "the attempt key must be a raw 32-byte Ed25519 key, not only digest-addressed"
+kills = "tests/test_replay.py::test_a_short_public_key_fails_its_address_even_when_its_digest_matches"
+anchor = '''        len(snapshot.public_key) == _ED25519_PUBLIC_KEY_BYTES
+        and _raw_digest(snapshot.public_key) == snapshot.keyid,'''
+mutant = '''        _raw_digest(snapshot.public_key) == snapshot.keyid,'''
+
+[[mutant]]
+id = "attempt-key-digest-dropped"
+predicate = "the attempt keyid is the digest of the stored public key"
+kills = "tests/test_replay_formula.py::test_v02_attempt_address_predicates_precede_trust_and_signature"
+anchor = '''        len(snapshot.public_key) == _ED25519_PUBLIC_KEY_BYTES
+        and _raw_digest(snapshot.public_key) == snapshot.keyid,'''
+mutant = '''        len(snapshot.public_key) == _ED25519_PUBLIC_KEY_BYTES,'''
+
+[[mutant]]
+id = "attempt-envelope-canonicality-dropped"
+predicate = "the attempt DSSE envelope must be canonical (p20)"
+kills = "tests/test_replay.py::test_authenticated_noncanonical_attempt_envelope_fails_closed"
+anchor = '''            payload_type=ATTEMPT_PAYLOAD_TYPE,
+            max_payload_bytes=limits.max_attestation_bytes,
+            require_canonical_envelope=True,'''
+mutant = '''            payload_type=ATTEMPT_PAYLOAD_TYPE,
+            max_payload_bytes=limits.max_attestation_bytes,
+            require_canonical_envelope=False,'''
+
+[[mutant]]
+id = "attempt-stored-payload-unbound"
+predicate = "the stored attempt payload equals the authenticated envelope payload"
+kills = "tests/test_replay_formula.py::test_v04_stored_attempt_payload_must_equal_authenticated_payload"
+anchor = '''        verified.payload == snapshot.attempt_payload,
+        "attempt_signature",'''
+mutant = '''        True,
+        "attempt_signature",'''
+
+[[mutant]]
+id = "attempt-manifest-keyid-unbound"
+predicate = "the authenticated manifest keyid equals its signer (dataset pin)"
+kills = "tests/test_replay.py::test_manifest_keyid_disagreeing_with_its_signer_fails_before_recompute"
+anchor = '''        manifest.keyid == snapshot.keyid,
+        "attempt_manifest",'''
+mutant = '''        True,
+        "attempt_manifest",'''
