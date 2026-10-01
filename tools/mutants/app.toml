@@ -2,7 +2,7 @@
 # Mutation catalogue for the service routes' shared admission seam (polish p36).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/service/app.py"
-tests = ["tests/test_service_admission.py"]
+tests = ["tests/test_service_admission.py", "tests/test_service_certificate_ceiling.py"]
 
 [[mutant]]
 id = "propose-formula-per-call-controller"
@@ -14,3 +14,19 @@ anchor = '''    with _admit_work(state) as permit:
 mutant = '''    with _admit_work(cast("State", {"admission": AdmissionController(1, 1, 1)})) as permit:
         try:
             proposal = await propose_formula(req.user_request, settings)'''
+
+[[mutant]]
+id = "certificate-ceiling-min-profile"
+predicate = "/certificate reads under the LARGER of the two certificate MIME ceilings (p27)"
+kills = "tests/test_service_certificate_ceiling.py::test_certificate_read_ceiling_is_the_larger_mime_profile"
+anchor = '''    max_bytes = max(
+        attestation.envelope_byte_limit(settings.max_attestation_bytes, payload_type=payload_type)'''
+mutant = '''    max_bytes = min(
+        attestation.envelope_byte_limit(settings.max_attestation_bytes, payload_type=payload_type)'''
+
+[[mutant]]
+id = "certificate-ceiling-v02-only"
+predicate = "/certificate consults the v0.3 (formula) MIME profile too (p27)"
+kills = "tests/test_service_certificate_ceiling.py::test_certificate_read_ceiling_is_the_larger_mime_profile"
+anchor = '''        for payload_type in (attestation.VCERT_PAYLOAD_TYPE, attestation.VCERT_V03_PAYLOAD_TYPE)'''
+mutant = '''        for payload_type in (attestation.VCERT_PAYLOAD_TYPE,)'''

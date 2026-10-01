@@ -736,10 +736,17 @@ def _fetch_artifact(
     sync_to_thread=True,
 )
 def certificate_route(plot_id: FromPath[str], state: State) -> Response[bytes]:
-    """Serve an archive-authenticated canonical DSSE VCert envelope verbatim."""
+    """Serve an archive-authenticated canonical DSSE VCert envelope verbatim.
+
+    The mode of the stored certificate is unknown until it is read, so the read ceiling is the
+    larger of the two fixed certificate MIME profiles: v0.2 (dataset) and v0.3 (formula).
+    """
     archive = cast("Archive", state["archive"])
     settings = cast("Settings", state["settings"])
-    max_bytes = attestation.envelope_byte_limit(settings.max_attestation_bytes)
+    max_bytes = max(
+        attestation.envelope_byte_limit(settings.max_attestation_bytes, payload_type=payload_type)
+        for payload_type in (attestation.VCERT_PAYLOAD_TYPE, attestation.VCERT_V03_PAYLOAD_TYPE)
+    )
     return _fetch_artifact(
         plot_id,
         lambda address: archive.read_certificate(
