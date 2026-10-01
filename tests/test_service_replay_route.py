@@ -439,3 +439,83 @@ def test_no_formula_replay_status_builds_or_stores_a_chart(
     assert json.loads(replayed.content)["status"] == status
     assert stored == []
     assert chart.status_code == 404
+
+
+def _flip_mode_and_corrupt(archive: Archive, plot_id: str, kind: BlobKind, mode: str) -> None:
+    """Rewrite the unauthenticated `plots.source_kind` row AND corrupt one stored blob."""
+    connection = sqlite3.connect(archive.database_path)
+    try:
+        trigger_sql = cast(
+            "str",
+            connection.execute(
+                "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = ?",
+                ("blobs_reject_update",),
+            ).fetchone()[0],
+        )
+        connection.execute("DROP TRIGGER blobs_reject_update")
+        connection.execute(
+            "UPDATE blobs SET content = CAST(zeroblob(length(content)) AS BLOB) WHERE kind = ?",
+            (kind.value,),
+        )
+        connection.execute(trigger_sql)
+        connection.execute("UPDATE plots SET source_kind = ? WHERE plot_id = ?", (mode, plot_id))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_a_dataset_row_rewritten_to_formula_shapes_its_fault_verdict_as_formula(
+    tmp_path: Path,
+) -> None:
+    """p30: on the integrity-fault path the verdict SHAPE follows the unauthenticated mode row,
+    the boundary `POC_SCOPE.md` states; integrity stays false and every match stays null."""
+    app = create_app(Settings(data_dir=_DATA, state_dir=tmp_path / "state"))
+    with TestClient(app=app) as client:
+        plot_id = _render_plot(client)
+        _flip_mode_and_corrupt(
+            cast("Archive", app.state["archive"]), plot_id, BlobKind.RAW_CSV, "formula"
+        )
+        body = client.get(f"/replay/{plot_id}").json()
+    assert body["integrity_ok"] is False
+    assert body["status"] == "integrity_failed"
+    assert body["artifact_matches"] == {
+        "formula": None,
+        "spec": None,
+        "plotted_table": None,
+        "matplotlib_script": None,
+    }
+
+
+def test_a_formula_row_rewritten_to_dataset_shapes_its_fault_verdict_as_dataset(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    plot = formula_bundle_parts(signing=signer).bundle
+    bundle = materialize_attempt_bundle(
+        AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=AttemptRoute.VERIFY_FORMULA,
+            http_status=200,
+            outcome=AttemptOutcome.VERIFIED,
+            artifacts=AttemptArtifacts(raw_spec=_FORMULA_SPEC.read_bytes(), verdict=plot.verdict),
+            plot=plot,
+        ),
+        signer,
+        nonce="c" * 32,
+        limits=settings.limits,
+    )
+    archive = open_archive(settings)
+    archive.publish_attempt(bundle, limits=settings.limits)
+    _flip_mode_and_corrupt(archive, plot.plot_id, BlobKind.FORMULA_SOURCE, "dataset")
+    with TestClient(app=create_app(settings)) as client:
+        body = client.get(f"/replay/{plot.plot_id}").json()
+    assert body["integrity_ok"] is False
+    assert body["status"] == "integrity_failed"
+    assert body["artifact_matches"] == {
+        "dataset": None,
+        "manifest": None,
+        "spec": None,
+        "plotted_table": None,
+        "vega_lite": None,
+    }

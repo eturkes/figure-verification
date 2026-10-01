@@ -250,7 +250,10 @@ the chart LRU untouched and reports no SVG equality. An unknown or malformed id 
 does any plot with no signed verified attempt; process-local rate/active-job refusal returns 429;
 a SQLite, schema, archive-read, or implementation fault becomes generic 500. A signed
 attestation, blob, key, version, or recomputation mismatch instead returns a bounded 200 diagnostic
-with no chart. Replay does not re-run the weak model; pixels and browser rendering remain trusted
+with no chart. When the archive read itself fails integrity, that diagnostic's SHAPE follows the
+unauthenticated `plots.source_kind` row, because the authenticated mode is what failed to read; a
+row rewritten to the other mode changes the shape alone, while `integrity_ok` stays false and every
+hash match stays null. Replay does not re-run the weak model; pixels and browser rendering remain trusted
 display, not replay proof. Certificate, spec, and public-key retrieval remain durable and
 archive-backed.
 
