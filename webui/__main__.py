@@ -100,8 +100,14 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         prog="python -m webui",
         description="Run one Open WebUI harness command: serve, bootstrap, stub, or chat.",
     )
-    parser.add_argument("command", choices=("serve", "bootstrap", "stub", "chat"))
-    parser.add_argument("--prompt", type=_non_empty_prompt)
+    parser.add_argument(
+        "command",
+        choices=("serve", "bootstrap", "stub", "chat"),
+        help="harness command to run",
+    )
+    parser.add_argument(
+        "--prompt", type=_non_empty_prompt, help="chat prompt text, required by chat"
+    )
     args = parser.parse_args(argv)
     if cast("str", args.command) == "chat" and args.prompt is None:
         parser.error("chat requires --prompt")

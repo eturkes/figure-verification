@@ -1060,9 +1060,17 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         ),
     )
     leg = parser.add_mutually_exclusive_group()
-    leg.add_argument("--with-webui", action="store_true")
-    leg.add_argument("--with-model", action="store_true")
-    parser.add_argument("--verifier-url", default=_DEFAULT_VERIFIER_URL)
+    leg.add_argument(
+        "--with-webui", action="store_true", help="optional Open WebUI persisted-chat leg"
+    )
+    leg.add_argument(
+        "--with-model", action="store_true", help="optional model-backed /propose-spec leg"
+    )
+    parser.add_argument(
+        "--verifier-url",
+        default=_DEFAULT_VERIFIER_URL,
+        help="production verifier base URL for the model leg",
+    )
     return parser.parse_args(argv)
 
 
