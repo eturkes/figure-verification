@@ -18,6 +18,7 @@ _CATALOGUES = (
     "adapter",
     "admit",
     "aggregate",
+    "app",
     "archive",
     "canon",
     "certificate",

@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the service routes' shared admission seam (polish p36).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/service/app.py"
+tests = ["tests/test_service_admission.py"]
+
+[[mutant]]
+id = "propose-formula-per-call-controller"
+predicate = "/propose-formula spends the app-global admission controller, not a fresh one per call"
+kills = "tests/test_service_admission.py::test_every_post_refuses_before_work_but_after_transport_validation"
+anchor = '''    with _admit_work(state) as permit:
+        try:
+            proposal = await propose_formula(req.user_request, settings)'''
+mutant = '''    with _admit_work(cast("State", {"admission": AdmissionController(1, 1, 1)})) as permit:
+        try:
+            proposal = await propose_formula(req.user_request, settings)'''

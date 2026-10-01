@@ -333,6 +333,10 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
         called.append("propose")
         return b"{}"
 
+    async def unexpected_propose_formula(*_args: object, **_kwargs: object) -> bytes:
+        called.append("propose-formula")
+        return b"{}"
+
     def unexpected_formula(*_args: object, **_kwargs: object) -> Verdict:
         called.append("verify-formula")
         return _failed_outcome().verdict
@@ -341,6 +345,7 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
     monkeypatch.setattr(app_module, "verify_and_render", unexpected("verify-and-render"))
     monkeypatch.setattr(app_module, "verify_formula_and_emit", unexpected_formula)
     monkeypatch.setattr(app_module, "propose_spec", unexpected_propose)
+    monkeypatch.setattr(app_module, "propose_formula", unexpected_propose_formula)
     settings = Settings(
         data_dir=tmp_path,
         state_dir=tmp_path / "state",
@@ -354,6 +359,7 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
     held = admission.try_acquire()
     assert held is not None
     propose_body = msgspec.json.encode({"user_request": "x", "dataset_name": "sales.csv"})
+    propose_formula_body = msgspec.json.encode({"user_request": "y = x"})
 
     with TestClient(app=app) as client, held:
         refused = (
@@ -361,6 +367,7 @@ def test_every_post_refuses_before_work_but_after_transport_validation(
             client.post("/verify-and-render", content=b"{}", headers=_JSON),
             client.post("/verify-formula", content=b"{}", headers=_JSON),
             client.post("/propose-spec", content=propose_body, headers=_JSON),
+            client.post("/propose-formula", content=propose_formula_body, headers=_JSON),
         )
         for response in refused:
             assert response.status_code == 429
