@@ -1074,3 +1074,67 @@ def test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot(
     archive = open_archive(Settings(data_dir=_DATA, state_dir=tmp_path / f"shared-{field}"))
     with pytest.raises(ArchiveIntegrityError, match="disagree with the successful plot bundle"):
         archive.publish_attempt(mutant)
+
+
+def _arm_signing_bombs(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    calls = {"sign": 0, "envelope_limit": 0}
+
+    def sign_bomb(*_args: object, **_kwargs: object) -> bytes:
+        calls["sign"] += 1
+        pytest.fail("attempt signing ran after a required pre-signing refusal")
+
+    def envelope_limit_bomb(*_args: object, **_kwargs: object) -> int:
+        calls["envelope_limit"] += 1
+        pytest.fail("attempt envelope work ran after a required pre-signing refusal")
+
+    monkeypatch.setattr(attestation, "sign_dsse", sign_bomb)
+    monkeypatch.setattr(attestation, "envelope_byte_limit", envelope_limit_bomb)
+    return calls
+
+
+_V, _P = AttemptRoute.VERIFY_AND_RENDER, AttemptRoute.PROPOSE_SPEC
+_MISMATCH: dict[str, Any] = {"outcome": AttemptOutcome.DATASET_MISMATCH, "http_status": 502}
+_TRANSPORT: dict[str, Any] = {"outcome": AttemptOutcome.MODEL_TRANSPORT, "http_status": 503}
+_NO_REPLY: dict[str, Any] = {"verdict": None, "model_response": None, "model_reply": None}
+
+
+@pytest.mark.parametrize(
+    ("route", "change", "message"),
+    [
+        (_V, ({"verdict": None}, {}), "attempt verdict presence disagrees"),
+        (_V, ({"raw_spec": None}, {}), "attempt raw-spec presence disagrees"),
+        (_P, ({"verdict": None}, {}), "attempt verdict presence disagrees"),
+        (_P, ({}, _MISMATCH), "attempt verdict presence disagrees"),
+        # The proposer route ties raw_spec to the model reply first; that guard is pre-sign too.
+        (_P, ({"raw_spec": None}, {}), "attempt model reply differs from the exact raw spec"),
+        # Without a reply the proposer raw-spec rule is reachable on its own.
+        (_P, (_NO_REPLY, _TRANSPORT), "attempt raw-spec presence disagrees"),
+    ],
+    ids=[
+        "render-judgement-without-verdict",
+        "render-judgement-without-raw-spec",
+        "propose-judgement-without-verdict",
+        "propose-verdict-outside-judgement",
+        "propose-raw-spec-missing",
+        "propose-raw-spec-outside-its-outcomes",
+    ],
+)
+def test_dataset_routes_refuse_presence_contradictions_before_signing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: AttemptRoute,
+    change: tuple[dict[str, Any], dict[str, Any]],
+    message: str,
+) -> None:
+    """p12: each outcome/role presence rule refuses on each dataset route before any signing work
+    -- the formula route's order proof, extended to the routes that lacked it."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    draft = _rejected_draft(settings, route=route)
+    artifacts, draft_change = change
+    draft = replace(draft, artifacts=replace(draft.artifacts, **artifacts), **draft_change)
+    calls = _arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(ArchiveIntegrityError, match=rf"^{message}"):
+        materialize_attempt_bundle(draft, signer, nonce="a" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}

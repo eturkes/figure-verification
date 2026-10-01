@@ -58,3 +58,13 @@ predicate = "attempt verdict must equal the nested dataset plot's verdict"
 kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
 anchor = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest", "verdict"),'''
 mutant = '''    PlotSourceKind.DATASET: ("raw_csv", "raw_manifest"),'''
+
+# Outcome/role presence decided BEFORE signing on the dataset routes (polish p12).
+[[mutant]]
+id = "presence-rules-only-after-signing"
+predicate = "the manifest presence rules refuse before any attempt signing work"
+kills = "tests/test_service_attempt_bundle.py::test_dataset_routes_refuse_presence_contradictions_before_signing"
+anchor = '''    _validate_outcome_role_presence(
+        manifest.outcome, {binding.role for binding in manifest.artifacts}
+    )'''
+mutant = '''    pass'''
