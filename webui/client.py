@@ -132,14 +132,16 @@ class _CompletionAck(msgspec.Struct):
 
 
 class _OutputText(msgspec.Struct):
-    """One persisted assistant content item; only final text is read."""
+    """One persisted assistant content item; final text is the `output_text` type alone."""
 
+    type: str = ""
     text: str = ""
 
 
 class _AssistantOutput(msgspec.Struct):
-    """One persisted assistant output item; only its content list is read."""
+    """One persisted assistant output item; final text lives in a `message` item alone."""
 
+    type: str = ""
     content: tuple[_OutputText, ...] = ()
 
 
@@ -486,11 +488,21 @@ class WebUIClient:
 
     @staticmethod
     def _completed_chat_result(message: _ChatMessage) -> PersistedChatResult:
-        """Extract the fail-closed final text and optional first embed from a done message."""
-        if not message.output or not message.output[0].content:
-            msg = "completed assistant message returned no final text"
-            raise WebUIProvisionError(msg)
-        final_text = message.output[0].content[0].text
+        """Extract the fail-closed final text and optional first embed from a done message.
+
+        Selection is by item TYPE, never position: a reasoning-capable backend prepends a
+        `reasoning` item, whose text is not the reply.
+        """
+        final_text = next(
+            (
+                content.text
+                for item in message.output
+                if item.type == "message"
+                for content in item.content
+                if content.type == "output_text"
+            ),
+            "",
+        )
         if not final_text:
             msg = "completed assistant message returned no final text"
             raise WebUIProvisionError(msg)

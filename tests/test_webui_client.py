@@ -88,13 +88,15 @@ def _chat_readback(
     include_assistant: bool = True,
     done: bool = True,
     embeds: tuple[str, ...] = (_CHAT_URL,),
-    malformed_output: bool = False,
+    output_items: list[object] | None = None,
 ) -> httpx.Response:
     """One loose persisted-chat response with a controllable assistant entry."""
     messages: dict[str, object] = {}
     if include_assistant:
         output: list[object] = []
-        if not malformed_output:
+        if output_items is not None:
+            output = output_items
+        else:
             output = [
                 {
                     "type": "message",
@@ -940,7 +942,7 @@ def test_run_persisted_chat_rejects_done_message_without_final_text() -> None:
             assert isinstance(value, str)
             assistant_id = value
             return _chat_ack()
-        return _chat_readback(assistant_id, malformed_output=True)
+        return _chat_readback(assistant_id, output_items=[])
 
     with (
         _webui_client(handler) as client,
@@ -2013,3 +2015,45 @@ def test_run_bootstrap_end_to_end_over_mock_transport() -> None:
     assert result.model_tool_ids == (state.tool_id,)
     assert result.no_tool_servers
     assert result.model_tool_attached
+
+
+_REASONING = {"type": "reasoning", "content": [{"type": "reasoning_text", "text": "thinking..."}]}
+
+
+@pytest.mark.parametrize(
+    ("items", "expected"),
+    [
+        (
+            [_REASONING, {"type": "message", "content": [{"type": "output_text", "text": "R"}]}],
+            "R",
+        ),
+        ([_REASONING], None),
+        ([{"type": "message", "content": [{"type": "refusal", "text": "no"}]}], None),
+    ],
+    ids=["reasoning-first", "reasoning-only", "no-output-text"],
+)
+def test_final_text_is_selected_by_item_type_not_position(
+    items: list[object], expected: str | None
+) -> None:
+    """p15: a reasoning item first must not become the reply; no `output_text` item fails closed."""
+    assistant_id = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal assistant_id
+        if request.url.path == "/api/v1/chats/new":
+            return httpx.Response(200, json={"id": _CHAT_ID})
+        if request.url.path == "/api/chat/completions":
+            body: dict[str, object] = json.loads(request.content)
+            value = body["id"]
+            assert isinstance(value, str)
+            assistant_id = value
+            return _chat_ack()
+        return _chat_readback(assistant_id, output_items=items)
+
+    with _webui_client(handler) as client:
+        client._token = "tok"  # noqa: S105 (test literal, not a real secret)
+        if expected is None:
+            with pytest.raises(WebUIProvisionError, match="returned no final text"):
+                client.run_persisted_chat(_CHAT_PROMPT)
+        else:
+            assert client.run_persisted_chat(_CHAT_PROMPT).final_text == expected
