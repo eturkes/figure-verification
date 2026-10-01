@@ -24,7 +24,7 @@ dependencies = [
     "transformers==5.16.1",
     "accelerate==1.15.0",
     "tokenizers==0.23.1",
-    "xgrammar==0.2.3",
+    "xgrammar==0.2.7",
 ]
 
 # Probe-only, never served: model_backend/guidance_oracle.py holds guided output to the guidance
