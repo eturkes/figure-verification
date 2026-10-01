@@ -86,6 +86,13 @@ _CLOSED_RESPONSE_SCHEMAS = frozenset(
 )
 _ONE_OF_VERDICT_SCHEMAS = frozenset({"ProposeResult", "ProposeFormulaResult"})
 _ONE_OF_200_PATHS = frozenset({"/verify-and-render", "/verify-formula"})
+# Polish p26: the formula verify route's 507 names the withheld SCRIPT; inverted to the baseline's
+# shared chart wording before comparison, so any other drift in that response still fails.
+_FORMULA_507_PATH = "/verify-formula"
+_FORMULA_507 = (
+    "The signed attempt could not commit within the configured logical archive quota; "
+    "the original endpoint outcome and any certified script artifact were withheld."
+)
 _REMOVED_REPLAY_RESPONSES = frozenset({"501"})
 _REPLAY_ARMS = 2
 
@@ -325,7 +332,7 @@ def _as_any_of(schema: dict[str, Any]) -> None:
 
 
 def _undo_p23(got: dict[str, Any], want: dict[str, Any]) -> None:
-    """Invert exactly the p23 tightening on the candidate document, in place."""
+    """Invert exactly the declared p23 + p26 changes on the candidate document, in place."""
     schemas, baseline = got["components"]["schemas"], want["components"]["schemas"]
     for name in _CLOSED_RESPONSE_SCHEMAS & set(baseline):
         if (
@@ -335,6 +342,13 @@ def _undo_p23(got: dict[str, Any], want: dict[str, Any]) -> None:
             _fail(f"schema {name} is not closed")
     for name in _ONE_OF_VERDICT_SCHEMAS & set(baseline):
         _as_any_of(schemas[name]["properties"]["verdict"])
+    if _FORMULA_507_PATH in want["paths"]:
+        response = got["paths"][_FORMULA_507_PATH]["post"]["responses"]["507"]
+        if response["description"] != _FORMULA_507:
+            _fail("the formula 507 description is not the declared script wording")
+        response["description"] = want["paths"][_FORMULA_507_PATH]["post"]["responses"]["507"][
+            "description"
+        ]
     for path in _ONE_OF_200_PATHS & set(want["paths"]):
         _as_any_of(
             got["paths"][path]["post"]["responses"]["200"]["content"]["application/json"]["schema"]

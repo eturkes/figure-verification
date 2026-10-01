@@ -666,3 +666,28 @@ def test_each_mode_success_and_failure_validate_exactly_one_response_arm(tmp_pat
             assert failure.json()["verified"] is False
             assert _arms_admitting(schema, success.json()) == [expected[path]]
             assert _arms_admitting(schema, failure.json()) == ["Verdict"]
+
+
+def test_only_formula_routes_say_their_507_withholds_a_script() -> None:
+    """p26: formula mode builds no chart, so its 507 names the withheld SCRIPT; every dataset
+    route keeps the shared chart wording byte for byte."""
+    paths = _DOC["paths"]
+    script = (
+        "The signed attempt could not commit within the configured logical archive quota; "
+        "the original endpoint outcome and any certified script artifact were withheld."
+    )
+    chart = (
+        "The signed attempt could not commit within the configured logical archive quota; "
+        "the original endpoint outcome and any chart artifact were withheld."
+    )
+    described = {
+        path: paths[path]["post"]["responses"]["507"]["description"]
+        for path in paths
+        if "post" in paths[path] and "507" in paths[path]["post"]["responses"]
+    }
+    assert described == {
+        "/verify-and-render": chart,
+        "/propose-spec": chart,
+        "/verify-formula": script,
+        "/propose-formula": script,
+    }

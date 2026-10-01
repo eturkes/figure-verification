@@ -390,6 +390,13 @@ def _paths() -> dict[str, Any]:
             "the original endpoint outcome and any chart artifact were withheld."
         )
     }
+    # Formula mode builds no chart: the carrier it withholds is the certified script.
+    formula_archive_quota = {
+        "507": _problem_response(
+            "The signed attempt could not commit within the configured logical archive quota; "
+            "the original endpoint outcome and any certified script artifact were withheld."
+        )
+    }
     not_found = {"404": _problem_response("No stored artifact for that id, or a malformed id.")}
     public_archive_fault = {
         "500": _problem_response(
@@ -494,7 +501,7 @@ def _paths() -> dict[str, Any]:
                         },
                     ),
                     **problems_post,
-                    **archive_quota,
+                    **formula_archive_quota,
                 },
             }
         },
@@ -615,7 +622,7 @@ def _paths() -> dict[str, Any]:
                         "ceiling are independent and inclusive."
                     ),
                     **problems_post,
-                    **archive_quota,
+                    **formula_archive_quota,
                     "502": _problem_response(
                         "The model backend replied, but not with a usable chat completion "
                         "(any other non-success status, an oversized or malformed body, or no "

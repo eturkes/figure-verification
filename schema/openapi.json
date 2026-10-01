@@ -282,7 +282,7 @@
             }
           },
           "507": {
-            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any certified script artifact were withheld.",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -527,7 +527,7 @@
             }
           },
           "507": {
-            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any chart artifact were withheld.",
+            "description": "The signed attempt could not commit within the configured logical archive quota; the original endpoint outcome and any certified script artifact were withheld.",
             "content": {
               "application/problem+json": {
                 "schema": {
