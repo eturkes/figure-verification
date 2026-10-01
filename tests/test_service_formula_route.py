@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from collections.abc import Callable, Iterator
 from dataclasses import fields
@@ -19,7 +20,7 @@ from httpx import Response
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from verifier import attestation, checks, formal, formula_prepare, matplotlib_script, vcert
+from verifier import attestation, canon, checks, formal, formula_prepare, matplotlib_script, vcert
 from verifier import eval as eval_module
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import decode_formula_spec
@@ -36,6 +37,7 @@ from verifier.service.archive import (
     open_archive,
 )
 from verifier.service.identity import Signer
+from verifier.service.openapi import openapi_document_text
 from verifier.service.settings import Settings
 from verifier.service.store import ArtifactStore
 
@@ -1212,3 +1214,195 @@ def test_v40_chunked_body_cap_matches_content_length_refusal(
     _assert_problem(chunked, 413, cast("str", fixed.json()["detail"]))
     assert chunked.content == fixed.content
     _assert_transport_did_no_work(calls, drafts, store_calls, admission_calls)
+
+
+# Merged from the retained M9.10 route-suite remainder (archive/m9u10-test, polish p25).
+
+
+class _ListHandler(logging.Handler):
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_v42_archive_quota_refuses_atomically_after_formula_materialization(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls, _returned, store_calls = _observe_formula_stages(monkeypatch)
+    drafts = _capture_attempt_drafts(monkeypatch)
+    settings = _settings(tmp_path, max_archive_bytes=1)
+    app = create_app(settings)
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    with TestClient(app=app) as client:
+        response = client.post("/verify-formula", content=raw, headers=_JSON)
+    problem = _assert_problem(
+        response,
+        507,
+        "the provenance archive has insufficient logical storage capacity",
+    )
+
+    assert "attempt_id" not in problem
+    assert calls["build_formula_certificate"] == 1
+    assert calls["sign_vcert_v03"] == 1
+    assert calls["materialize_formula_plot_bundle"] == 1
+    assert len(drafts) == 1
+    assert drafts[0].outcome is AttemptOutcome.VERIFIED
+    assert type(drafts[0].plot) is FormulaPlotBundle
+    stats = _archive(app).stats()
+    assert stats.attempts == 0 and stats.plots == 0
+    assert store_calls == {"put_chart": 0, "chart": 0}
+
+
+def test_v43_internal_fault_timing_never_leaks_script_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    logger = logging.getLogger("verifier.service.app")
+
+    def fail_commit() -> None:
+        message = "pre-commit sentinel"
+        raise RuntimeError(message)
+
+    with monkeypatch.context() as precommit_patch:
+        precommit_patch.setattr(archive_module, "_before_archive_commit", fail_commit)
+        settings = _settings(tmp_path / "precommit")
+        app = create_app(settings)
+        handler = _ListHandler()
+        with TestClient(app=app) as client:
+            logger.addHandler(handler)
+            try:
+                response = client.post("/verify-formula", content=raw, headers=_JSON)
+            finally:
+                logger.removeHandler(handler)
+        _assert_problem(response, 500, "the verifier encountered an internal error")
+        stats = _archive(app).stats()
+        assert stats.attempts == 0 and stats.plots == 0
+        assert handler.records
+        assert handler.records[-1].exc_info is not None
+        assert isinstance(handler.records[-1].exc_info[1], RuntimeError)
+
+    with monkeypatch.context() as response_patch:
+        model: object = pipeline_module.__dict__.get("FormulaScriptVerdict")
+        assert callable(model), "FormulaScriptVerdict is absent"
+
+        def fail_response(*_args: object, **_kwargs: object) -> object:
+            message = "post-commit sentinel"
+            raise RuntimeError(message)
+
+        response_patch.setattr(pipeline_module, "FormulaScriptVerdict", fail_response)
+        settings = _settings(tmp_path / "postcommit")
+        app = create_app(settings)
+        with TestClient(app=app) as client:
+            response = client.post("/verify-formula", content=raw, headers=_JSON)
+        _assert_problem(response, 500, "the verifier encountered an internal error")
+        stats = _archive(app).stats()
+        assert stats.attempts == 1 and stats.plots == 1
+
+
+def test_v49_formula_certificate_get_is_byte_exact_and_authenticates(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    app = create_app(settings)
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    with TestClient(app=app) as client:
+        posted = client.post("/verify-formula", content=raw, headers=_JSON)
+        payload = _success(posted)
+        plot = _formula_plot(_archive(app), settings, payload)
+        certificate = client.get(f"/certificate/{plot.plot_id}")
+        key = client.get(f"/key/{plot.keyid}")
+
+    archived = _archive(app).read_certificate(
+        plot.plot_id,
+        max_bytes=settings.max_archive_bytes,
+        limits=settings.limits,
+    )
+    assert certificate.status_code == 200
+    assert certificate.headers["content-type"].startswith("application/json")
+    assert certificate.content == archived
+    assert hashlib.sha256(certificate.content).hexdigest() == plot.plot_id
+    assert key.status_code == 200
+    assert key.content == _archive(app).read_key(plot.keyid, max_bytes=32)
+    public_key = Ed25519PublicKey.from_public_bytes(key.content)
+    verified = attestation.verify_vcert_v03(
+        certificate.content,
+        {plot.keyid: public_key},
+        limits=settings.limits,
+        require_canonical_envelope=True,
+        expected_keyid_hint=plot.keyid,
+    )
+    assert type(verified.certificate.source) is vcert.FormulaSourceCert
+
+
+def test_v50_formula_spec_get_is_canonical_content_addressed_and_source_neutral(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    app = create_app(settings)
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    with TestClient(app=app) as client:
+        posted = client.post("/verify-formula", content=raw, headers=_JSON)
+        payload = _success(posted)
+        response = client.get(f"/spec/{payload['spec_id']}")
+
+    plot = _formula_plot(_archive(app), settings, payload)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.content == plot.canonical_spec
+    assert canon.hash_spec(decode_formula_spec(response.content)) == payload["spec_hash"]
+    assert payload["spec_id"] == cast("str", payload["spec_hash"]).removeprefix("sha256:")
+    assert "mode" not in cast("dict[str, Any]", response.json())
+    assert not hasattr(plot, "raw_csv")
+    assert not hasattr(plot, "raw_manifest")
+
+
+def test_v52_formula_plot_has_no_chart_while_health_and_schema_remain_live(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _calls, _returned, store_calls = _observe_formula_stages(monkeypatch)
+    settings = _settings(tmp_path)
+    app = create_app(settings)
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    with TestClient(app=app) as client:
+        posted = client.post("/verify-formula", content=raw, headers=_JSON)
+        payload = _success(posted)
+        chart = client.get(f"/chart/{payload['plot_id']}")
+        health = client.get("/health")
+        schema = client.get("/schema/openapi.json")
+
+    assert chart.status_code == 404
+    assert chart.headers["content-type"] == "application/problem+json"
+    assert b"<html" not in chart.content.lower()
+    assert health.status_code == 200
+    assert cast("dict[str, Any]", health.json())["status"] == "ok"
+    assert schema.status_code == 200
+    assert schema.content == openapi_document_text().encode()
+    assert store_calls == {"put_chart": 0, "chart": 1}
+
+
+def test_v53_same_app_formula_posts_are_deterministic_with_distinct_occurrences(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    app = create_app(settings)
+    raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+    with TestClient(app=app) as client:
+        first = _success(client.post("/verify-formula", content=raw, headers=_JSON))
+        second = _success(client.post("/verify-formula", content=raw, headers=_JSON))
+
+    stable = (
+        "matplotlib_script",
+        "formula_hash",
+        "spec_hash",
+        "plotted_table_hash",
+        "matplotlib_script_hash",
+        "plot_id",
+    )
+    assert tuple(first[name] for name in stable) == tuple(second[name] for name in stable)
+    assert first["attempt_id"] != second["attempt_id"]
+    stats = _archive(app).stats()
+    assert stats.plots == 1
+    assert stats.attempts == 2
