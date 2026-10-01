@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for formula sample-point admission precedence (Q4).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/eval.py"
+tests = ["tests/test_review_m9_eval_contract.py", "tests/test_eval_formula.py"]
+
+[[mutant]]
+id = "collision-outranks-missed-stop"
+predicate = "a missed stop endpoint outranks an interior collision"
+kills = "tests/test_review_m9_eval_contract.py::test_endpoint_boundedness_precedes_an_earlier_interior_collision"
+anchor = '''            not stop_exact and (index == last_index or collided)'''
+mutant = '''            not stop_exact and index == last_index'''
+
+[[mutant]]
+id = "missed-stop-at-last-index-dropped"
+predicate = "a missed stop endpoint refuses at the last point"
+kills = "tests/test_eval_formula.py::test_domain_endpoints_must_be_exactly_representable_at_x_scale"
+anchor = '''            not stop_exact and (index == last_index or collided)'''
+mutant = '''            not stop_exact and collided'''

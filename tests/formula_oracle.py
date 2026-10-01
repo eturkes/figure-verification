@@ -101,50 +101,54 @@ def _atom_value(
     x_value: Fraction,
     limits: VerificationLimits,
 ) -> Fraction | None:
-    if isinstance(node, Number):
+    if type(node) is Number:
         return _checked(node.value, limits)
-    if isinstance(node, Variable):
+    if type(node) is Variable:
         return _checked(x_value, limits)
     return None
 
 
 def _push_children(frames: list[tuple[Expr, bool]], node: Expr) -> None:
     frames.append((node, True))
-    if isinstance(node, Binary):
+    if type(node) is Binary:
         frames.append((node.right, False))
         frames.append((node.left, False))
-    elif isinstance(node, (Neg, Abs)):
+    elif type(node) is Neg or type(node) is Abs:
         frames.append((node.operand, False))
-    elif isinstance(node, Pow):
+    elif type(node) is Pow:
         frames.append((node.base, False))
     else:
-        msg = "an atom reached the oracle composite-node scheduler"
+        msg = f"not a declared expression node: {type(node).__name__}"
         raise TypeError(msg)
 
 
 def _binary_result(node: Binary, left: Fraction, right: Fraction) -> Fraction:
-    if node.op == "add":
+    op: str = node.op
+    if op == "add":
         return left + right
-    if node.op == "sub":
+    if op == "sub":
         return left - right
-    if node.op == "mul":
+    if op == "mul":
         return left * right
+    if op != "div":
+        msg = f"oracle refuses an undeclared binary operator: {op[:16]!r}"
+        raise ValueError(msg)
     if right == 0:
         _reject("formula.values_defined", "formula division by zero")
     return left / right
 
 
 def _finish_node(node: Expr, values: list[Fraction], limits: VerificationLimits) -> None:
-    if isinstance(node, Neg):
+    if type(node) is Neg:
         values.append(_checked(-values.pop(), limits))
         return
-    if isinstance(node, Abs):
+    if type(node) is Abs:
         values.append(_checked(abs(values.pop()), limits))
         return
-    if isinstance(node, Pow):
+    if type(node) is Pow:
         values.append(_bounded_power(values.pop(), node.exponent, limits))
         return
-    if not isinstance(node, Binary):
+    if type(node) is not Binary:
         msg = "an atom reached the oracle composite-node reducer"
         raise TypeError(msg)
     right = values.pop()

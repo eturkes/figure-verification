@@ -12,7 +12,8 @@ behaviors (cited below by finding number).
 """
 
 import json
-from typing import Annotated, Any, Literal
+import re
+from typing import Annotated, Any, Literal, get_args
 
 import msgspec
 from msgspec import Meta, Struct, ValidationError
@@ -28,15 +29,18 @@ DatasetHash = Annotated[str, Meta(pattern=r"^(?!.*[\r\n])sha256:[0-9a-f]{64}$")]
 # FormulaText's ASCII-only v0.1 alphabet admits digits, letters, underscore, space,
 # parentheses, decimal point, and + - * /. Length in characters therefore equals bytes;
 # commas/quotes/semicolons/^/=/brackets/braces are unrepresentable.
-FormulaText = Annotated[str, Meta(pattern=r"^(?!.*[\r\n])[0-9A-Za-z_ ().*/+-]+$", max_length=1024)]
+_FORMULA_TEXT_PATTERN = r"^(?!.*[\r\n])[0-9A-Za-z_ ().*/+-]+$"
+_FORMULA_TEXT_MAX_LENGTH = 1024
+FormulaText = Annotated[
+    str, Meta(pattern=_FORMULA_TEXT_PATTERN, max_length=_FORMULA_TEXT_MAX_LENGTH)
+]
 # Domain endpoints are bounded decimal STRINGS, never JSON floats: no exponent, leading
 # plus/zeroes, or trailing point; at most 18 integer and 9 fractional digits. The grammar
 # is self-bounding at 29 characters (sign + 18 + point + 9), so unlike FieldName/DatasetName
 # — whose patterns are unbounded — this alias carries NO max_length: a cap here could never
 # bind, and dead policy reads as tested policy.
-DecimalText = Annotated[
-    str, Meta(pattern=r"^(?!.*[\r\n])-?(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,9})?$")
-]
+_DECIMAL_TEXT_PATTERN = r"^(?!.*[\r\n])-?(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,9})?$"
+DecimalText = Annotated[str, Meta(pattern=_DECIMAL_TEXT_PATTERN)]
 
 # Filter literals carry no float/Decimal: int|str rejects float/bool/null at decode in
 # strict mode (finding 3), keeping the spec re-encode exact. The int is bounded to
@@ -50,6 +54,10 @@ Mark = Literal["bar", "line", "scatter"]
 # Formula mode deliberately excludes bars: sampled functions are line/scatter only.
 FormulaMark = Literal["line", "scatter"]
 NumericProfile = Literal["rational-half-even-v1"]
+FormulaVersion = Literal["vplot-formula-0.1"]
+FormulaXField = Literal["x"]
+FormulaYField = Literal["y"]
+FormulaChannelType = Literal["quantitative"]
 ChannelType = Literal["quantitative", "temporal", "ordinal", "nominal"]
 AggFn = Literal["sum", "mean", "count", "min", "max"]
 CmpOp = Literal["eq", "ne", "lt", "le", "gt", "ge"]
@@ -62,6 +70,41 @@ SortOrder = Literal["ascending", "descending"]
 # every concrete struct repeats frozen=True, kw_only=True (finding 1).
 class _Base(Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     pass
+
+
+# --- formula direct-construction closure (finding 10) --------------------------
+# Literal + Meta bind DECODE only. Each formula struct therefore re-checks its own fields in
+# __post_init__, which msgspec also runs on decode and on msgspec.structs.replace, and refuses
+# an undeclared subclass: its extra fields reach the deterministic encoder, and strict decode
+# then refuses those bytes. Shape only; formula meaning stays in the semantic checks.
+_FORMULA_TEXT_RE = re.compile(_FORMULA_TEXT_PATTERN)
+_DECIMAL_TEXT_RE = re.compile(_DECIMAL_TEXT_PATTERN)
+
+
+def _require_declared(instance: Struct, declared: type[Struct]) -> None:
+    if type(instance) is not declared:
+        msg = f"{type(instance).__name__} is not the declared {declared.__name__}"
+        raise ValueError(msg)
+
+
+def _require_member(value: object, alias: object, field: str) -> None:
+    allowed = get_args(alias)
+    if type(value) is not str or value not in allowed:
+        msg = f"{field} must be one of {allowed}"
+        raise ValueError(msg)
+
+
+def _require_int(value: object, low: int, high: int, field: str) -> None:
+    if type(value) is not int or not low <= value <= high:
+        msg = f"{field} must be an int in [{low}, {high}]"
+        raise ValueError(msg)
+
+
+def _require_text(value: object, pattern: re.Pattern[str], field: str) -> None:
+    # msgspec applies a Meta pattern with re.search; the patterns anchor themselves.
+    if type(value) is not str or pattern.search(value) is None:
+        msg = f"{field} does not match its declared pattern"
+        raise ValueError(msg)
 
 
 # --- encoding ----------------------------------------------------------------
@@ -80,18 +123,33 @@ class Encoding(_Base, frozen=True, kw_only=True):
 
 # --- formula encoding --------------------------------------------------------
 class FormulaXChannel(_Base, frozen=True, kw_only=True):
-    field: Literal["x"]
-    kind: Literal["quantitative"] = msgspec.field(name="type")
+    field: FormulaXField
+    kind: FormulaChannelType = msgspec.field(name="type")
+
+    def __post_init__(self) -> None:
+        _require_declared(self, FormulaXChannel)
+        _require_member(self.field, FormulaXField, "field")
+        _require_member(self.kind, FormulaChannelType, "type")
 
 
 class FormulaYChannel(_Base, frozen=True, kw_only=True):
-    field: Literal["y"]
-    kind: Literal["quantitative"] = msgspec.field(name="type")
+    field: FormulaYField
+    kind: FormulaChannelType = msgspec.field(name="type")
+
+    def __post_init__(self) -> None:
+        _require_declared(self, FormulaYChannel)
+        _require_member(self.field, FormulaYField, "field")
+        _require_member(self.kind, FormulaChannelType, "type")
 
 
 class FormulaEncoding(_Base, frozen=True, kw_only=True):
     x: FormulaXChannel
     y: FormulaYChannel
+
+    def __post_init__(self) -> None:
+        _require_declared(self, FormulaEncoding)
+        _require_declared(self.x, FormulaXChannel)
+        _require_declared(self.y, FormulaYChannel)
 
 
 # --- dataset binding ---------------------------------------------------------
@@ -152,22 +210,48 @@ class VPlotSpec(_Base, frozen=True, kw_only=True):
 
 
 # Shape only: ordering, representability, grammar, names/functions/exponents, and sample
-# distinctness are formula semantic checks, never Struct post-init validation.
+# distinctness are formula semantic checks, never Struct post-init validation. The post-init
+# re-checks the decode shape alone (finding 10).
+_MIN_SAMPLES = 2
+_MAX_SAMPLES = 100_000
+_MAX_SCALE = 12
+
+
 class FormulaDomain(_Base, frozen=True, kw_only=True):
     start: DecimalText
     stop: DecimalText
-    samples: Annotated[int, Meta(ge=2, le=100_000)]
-    x_scale: Annotated[int, Meta(ge=0, le=12)]
-    y_scale: Annotated[int, Meta(ge=0, le=12)]
+    samples: Annotated[int, Meta(ge=_MIN_SAMPLES, le=_MAX_SAMPLES)]
+    x_scale: Annotated[int, Meta(ge=0, le=_MAX_SCALE)]
+    y_scale: Annotated[int, Meta(ge=0, le=_MAX_SCALE)]
+
+    def __post_init__(self) -> None:
+        _require_declared(self, FormulaDomain)
+        _require_text(self.start, _DECIMAL_TEXT_RE, "start")
+        _require_text(self.stop, _DECIMAL_TEXT_RE, "stop")
+        _require_int(self.samples, _MIN_SAMPLES, _MAX_SAMPLES, "samples")
+        _require_int(self.x_scale, 0, _MAX_SCALE, "x_scale")
+        _require_int(self.y_scale, 0, _MAX_SCALE, "y_scale")
 
 
 class FormulaPlotSpec(_Base, frozen=True, kw_only=True):
-    version: Literal["vplot-formula-0.1"]
+    version: FormulaVersion
     formula: FormulaText
     domain: FormulaDomain
     numeric_profile: NumericProfile
     mark: FormulaMark
     encoding: FormulaEncoding
+
+    def __post_init__(self) -> None:
+        _require_declared(self, FormulaPlotSpec)
+        _require_member(self.version, FormulaVersion, "version")
+        _require_text(self.formula, _FORMULA_TEXT_RE, "formula")
+        if len(self.formula) > _FORMULA_TEXT_MAX_LENGTH:
+            msg = f"formula exceeds {_FORMULA_TEXT_MAX_LENGTH} characters"
+            raise ValueError(msg)
+        _require_declared(self.domain, FormulaDomain)
+        _require_member(self.numeric_profile, NumericProfile, "numeric_profile")
+        _require_member(self.mark, FormulaMark, "mark")
+        _require_declared(self.encoding, FormulaEncoding)
 
 
 type DatasetPlotSpec = VPlotSpec

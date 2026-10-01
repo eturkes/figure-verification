@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the formula structs' direct-construction closure (Q4, msgspec finding 10).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/schema.py"
+tests = ["tests/test_review_m9_formula_contract.py", "tests/test_schema.py"]
+
+[[mutant]]
+id = "declared-subclass-admitted"
+predicate = "a formula struct refuses an undeclared subclass"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_structs_refuse_undeclared_subclasses"
+anchor = '''    if type(instance) is not declared:'''
+mutant = '''    if not isinstance(instance, declared):'''
+
+[[mutant]]
+id = "member-check-skipped"
+predicate = "a Literal field refuses a near-miss string"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_spec_refuses_direct_enum_near_misses"
+anchor = '''    if type(value) is not str or value not in allowed:'''
+mutant = '''    if type(value) is not str:'''
+
+[[mutant]]
+id = "int-bool-admitted"
+predicate = "a bounded int field refuses bool"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_domain_refuses_direct_meta_bound_bypasses"
+anchor = '''    if type(value) is not int or not low <= value <= high:'''
+mutant = '''    if not isinstance(value, int) or not low <= value <= high:'''
+
+[[mutant]]
+id = "int-bounds-skipped"
+predicate = "a bounded int field refuses an out-of-range value"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_domain_refuses_direct_meta_bound_bypasses"
+anchor = '''    if type(value) is not int or not low <= value <= high:'''
+mutant = '''    if type(value) is not int:'''
+
+[[mutant]]
+id = "text-pattern-skipped"
+predicate = "a pattern field refuses text its decode pattern rejects"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_domain_refuses_direct_decimal_text_bypasses"
+anchor = '''    if type(value) is not str or pattern.search(value) is None:'''
+mutant = '''    if type(value) is not str:'''
+
+[[mutant]]
+id = "formula-length-skipped"
+predicate = "the formula refuses text longer than the decode cap"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_spec_refuses_direct_formula_text_bypasses"
+anchor = '''        if len(self.formula) > _FORMULA_TEXT_MAX_LENGTH:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "formula-length-off-by-one"
+predicate = "the formula cap admits exactly the decode cap"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_spec_admits_the_longest_formula_decode_admits"
+anchor = '''        if len(self.formula) > _FORMULA_TEXT_MAX_LENGTH:'''
+mutant = '''        if len(self.formula) >= _FORMULA_TEXT_MAX_LENGTH:'''
+
+[[mutant]]
+id = "spec-mark-unchecked"
+predicate = "the formula mark refuses a dataset-only mark"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_spec_refuses_a_dataset_mark_near_miss"
+anchor = '''        _require_member(self.mark, FormulaMark, "mark")'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "spec-domain-type-unchecked"
+predicate = "the spec refuses a domain of another type"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_structs_refuse_wrongly_typed_children"
+anchor = '''        _require_declared(self.domain, FormulaDomain)'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "encoding-x-type-unchecked"
+predicate = "the encoding refuses an x channel of another type"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_structs_refuse_wrongly_typed_children"
+anchor = '''        _require_declared(self.x, FormulaXChannel)'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "member-str-subclass-admitted"
+predicate = "a Literal field refuses a str subclass"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_spec_refuses_str_subclass_values"
+anchor = '''    if type(value) is not str or value not in allowed:'''
+mutant = '''    if not isinstance(value, str) or value not in allowed:'''
+
+[[mutant]]
+id = "text-str-subclass-admitted"
+predicate = "a pattern field refuses a str subclass"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_domain_refuses_str_and_int_subclass_values"
+anchor = '''    if type(value) is not str or pattern.search(value) is None:'''
+mutant = '''    if not isinstance(value, str) or pattern.search(value) is None:'''
+
+[[mutant]]
+id = "int-subclass-admitted"
+predicate = "a bounded int field refuses an int subclass other than bool"
+kills = "tests/test_review_m9_formula_contract.py::test_formula_domain_refuses_str_and_int_subclass_values"
+anchor = '''    if type(value) is not int or not low <= value <= high:'''
+mutant = '''    if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:'''

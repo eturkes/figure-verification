@@ -1166,7 +1166,12 @@ def test_mark_dispatch_rejects_direct_near_miss_before_template_hash_or_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     prepared = _prepare(_spec("0"))
-    invalid_spec = msgspec.structs.replace(prepared.spec, mark=cast("FormulaMark", mark))
+    # Direct construction now refuses the near miss (schema closure), so the emitter's own
+    # dispatch defense is reached by forcing the field past that guard.
+    with pytest.raises(ValueError, match="mark"):
+        msgspec.structs.replace(prepared.spec, mark=cast("FormulaMark", mark))
+    invalid_spec = msgspec.structs.replace(prepared.spec)
+    msgspec.structs.force_setattr(invalid_spec, "mark", mark)
     invalid = replace(prepared, spec=invalid_spec)
     calls = {"template": 0, "hash": 0, "success": 0}
 

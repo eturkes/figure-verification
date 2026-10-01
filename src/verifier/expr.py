@@ -60,6 +60,8 @@ type Expr = Number | Variable | Neg | Abs | Pow | Binary
 type BinaryOp = Literal["add", "sub", "mul", "div"]
 type ExactValue = Decimal | Fraction
 
+_BINARY_OPS: frozenset[str] = frozenset(BinaryOp.__value__.__args__)
+
 
 class ExpressionEvaluationError(VerificationError):
     """An interpreter failure carrying work consumed across the shared run budget."""
@@ -70,11 +72,14 @@ class ExpressionEvaluationError(VerificationError):
 
 
 class Number(msgspec.Struct, frozen=True, kw_only=True):
-    """One exact non-negative decimal literal."""
+    """One exact non-negative decimal literal; a negative value is a ``Neg`` node."""
 
     value: Fraction
 
     def __post_init__(self) -> None:
+        if self.value < 0:
+            msg = "number literal must be non-negative; negation is a Neg node"
+            raise ValueError(msg)
         if abs(self.value.numerator) >= _INTEGER_MAGNITUDE_LIMIT:
             msg = "number numerator exceeds the 512-digit AST magnitude ceiling"
             raise ValueError(msg)
@@ -116,6 +121,11 @@ class Binary(msgspec.Struct, frozen=True, kw_only=True):
     op: BinaryOp
     left: Expr
     right: Expr
+
+    def __post_init__(self) -> None:
+        if self.op not in _BINARY_OPS:
+            msg = f"binary operator is not one of {sorted(_BINARY_OPS)}: {str(self.op)[:16]!r}"
+            raise ValueError(msg)
 
 
 class ParsedExpr(msgspec.Struct, frozen=True, kw_only=True):
@@ -784,13 +794,21 @@ def _apply_binary(
     right: Fraction,
     budget: WorkBudget,
 ) -> Fraction:
-    """Apply one already-admitted binary node, retaining its cost on undefined division."""
-    if op == "add":
+    """Apply one already-admitted binary node, retaining its cost on undefined division.
+
+    The closed operator set is matched case by case: an unmatched value refuses rather than
+    falling through to division, so the comparison runs over ``str``, not the ``Literal``.
+    """
+    name: str = op
+    if name == "add":
         return left + right
-    if op == "sub":
+    if name == "sub":
         return left - right
-    if op == "mul":
+    if name == "mul":
         return left * right
+    if name != "div":
+        msg = f"binary operator is not admitted: {name[:16]!r}"
+        raise ValueError(msg)
     if right == 0:
         msg = "formula value is undefined: division by zero"
         _raise_expression_error(msg, check="formula.values_defined", budget=budget)
@@ -815,23 +833,26 @@ def _interpret_expr(
     limits: VerificationLimits,
     budget: WorkBudget,
 ) -> Fraction:
-    if isinstance(node, Number):
+    """Dispatch on the EXACT node type: a subclass or a look-alike is not a parser node."""
+    if type(node) is Number:
         _charge_expression(budget, "number")
         return _bounded_fraction(node.value, limits, budget)
-    if isinstance(node, Variable):
+    if type(node) is Variable:
         _charge_expression(budget, "variable")
         return _binding_fraction(node.name, binding, limits, budget)
-    if isinstance(node, Neg):
+    if type(node) is Neg:
         operand = _interpret_expr(node.operand, binding, limits, budget)
         _charge_expression(budget, "negation")
         return _bounded_fraction(-operand, limits, budget)
-    if isinstance(node, Abs):
+    if type(node) is Abs:
         operand = _interpret_expr(node.operand, binding, limits, budget)
         _charge_expression(budget, "absolute value")
         return _bounded_fraction(abs(operand), limits, budget)
-    if isinstance(node, Pow):
+    if type(node) is Pow:
         return _interpret_power(node, binding, limits, budget)
-    return _interpret_binary(node, binding, limits, budget)
+    if type(node) is Binary:
+        return _interpret_binary(node, binding, limits, budget)
+    raise _undeclared_node(node)
 
 
 def eval_expr(
@@ -861,16 +882,24 @@ def print_expr(node: Expr) -> str:
 
     ASTs produced by ``parse_expr`` under validated policy are bounded by
     ``_MAX_FORMULA_AST_DEPTH`` and safe for this recursive printer. A deeper hand-built
-    tree is trusted-caller misuse; this function deliberately performs no validating walk.
+    tree is trusted-caller misuse; this function deliberately performs no validating walk. It
+    dispatches on the EXACT node type, so a subclass or a look-alike raises ``TypeError``
+    rather than printing as the node it imitates.
     """
-    if isinstance(node, Number):
+    if type(node) is Number:
         return str(node.value)
-    if isinstance(node, Variable):
+    if type(node) is Variable:
         return node.name
-    if isinstance(node, Neg):
+    if type(node) is Neg:
         return f"(neg {print_expr(node.operand)})"
-    if isinstance(node, Abs):
+    if type(node) is Abs:
         return f"(abs {print_expr(node.operand)})"
-    if isinstance(node, Pow):
+    if type(node) is Pow:
         return f"(pow {print_expr(node.base)} {node.exponent})"
-    return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"
+    if type(node) is Binary:
+        return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"
+    raise _undeclared_node(node)
+
+
+def _undeclared_node(node: object) -> TypeError:
+    return TypeError(f"not a declared expression node: {type(node).__name__}")

@@ -271,15 +271,25 @@ def _admit_formula_sample_points(
     *,
     budget: WorkBudget,
 ) -> None:
+    """Admit the quantized schedule point by point, charging one unit before each point.
+
+    A missed endpoint outranks a collision: the stop endpoint is read ahead, so a schedule that
+    both collides and misses its stop reports ``formula.domain_bounded`` at the collision, while
+    the work charged still stops at the first refused point.
+    """
     previous: Decimal | None = None
     last_index = len(points) - 1
+    stop_exact = Fraction(points[last_index]) == stop
     for index, point in enumerate(points):
         _charge_formula(budget, "x admission")
         exact = Fraction(point)
-        if (index == 0 and exact != start) or (index == last_index and exact != stop):
+        collided = previous is not None and point <= previous
+        if (index == 0 and exact != start) or (
+            not stop_exact and (index == last_index or collided)
+        ):
             msg = "formula domain endpoints must be exactly representable at x_scale"
             _raise_formula_error(msg, check="formula.domain_bounded", budget=budget)
-        if previous is not None and point <= previous:
+        if collided:
             msg = "formula sample points must be strictly increasing after x quantization"
             _raise_formula_error(
                 msg,

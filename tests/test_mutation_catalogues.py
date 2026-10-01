@@ -21,18 +21,21 @@ _CATALOGUES = (
     "certificate",
     "checks",
     "csvread",
+    "eval",
+    "expr",
     "filter",
     "observe",
     "project",
     "receipt",
     "request",
+    "schema",
     "score",
     "selection",
     "verify",
 )
 
 
-def test_the_catalogue_set_is_exactly_the_stated_fourteen() -> None:
+def test_the_catalogue_set_is_exactly_the_stated_set() -> None:
     """A deleted or added catalogue shows here, so the parametrized sweep below never narrows."""
     assert {path.stem for path in (_ROOT / "tools" / "mutants").glob("*.toml")} == set(_CATALOGUES)
 

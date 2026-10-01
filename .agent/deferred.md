@@ -4,7 +4,6 @@ One line + acceptance check each. `p<n>` rows = the archived polish register in 
 
 - M12.8 guided-JSON bench re-baseline. Accept: tracked `bench/baselines/m12-cuda/` + `by_category` pin + ignore test.
 - M11 `derive` transform (computed columns via the shared expr engine; seed `.agent/archive/reference.md`). Accept: `Derive` in the Transform union; replay reparses.
-- M9R1 formula typed-API closure. Accept: tag `archive/m9-rev-1` `db833f3` 39 reds green.
 - M9R2 replay canonical-table proof (p18). Accept: one public `canon` table deserializer, used by archive + both replay engines.
 - M9R3 + the unmeasured M9 obsolescence lens. Accept: `.agent/review.md` rows adjudicated.
 - Polish register p3–p47, eight themes, per-row text + evidence + acceptance in `.agent/archive/polish.md`: attestation/replay hardening · mutation + differential gates from committed state · retained suites + reviews merged (tags deleted at close) · routes/OpenAPI (`additionalProperties:false` + `oneOf`) · test depth (p46 = committed grep over the forbidden guidance claim) · docs register (committed STE check) · bench + prompts (per-category run on the CUDA tuple) · tooling + webui. Accept: per row.

@@ -1,0 +1,156 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the legacy formula expression engine's runtime closure (Q4).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/expr.py"
+tests = ["tests/test_review_m9_expr_closure.py", "tests/test_review_m9_eval_contract.py", "tests/test_expr.py"]
+
+[[mutant]]
+id = "number-negative-admitted"
+predicate = "a negative Number literal refuses"
+kills = "tests/test_review_m9_expr_closure.py::test_number_refuses_direct_negative_literal"
+anchor = '''        if self.value < 0:
+            msg = "number literal must be non-negative; negation is a Neg node"'''
+mutant = '''        if False:
+            msg = "number literal must be non-negative; negation is a Neg node"'''
+
+[[mutant]]
+id = "binary-op-unguarded"
+predicate = "Binary refuses an undeclared operator on construction"
+kills = "tests/test_review_m9_expr_closure.py::test_binary_refuses_dunder_shaped_operator_on_direct_construction"
+anchor = '''        if self.op not in _BINARY_OPS:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "apply-binary-falls-to-div"
+predicate = "an unmatched operator refuses instead of dividing"
+kills = "tests/test_review_m9_eval_contract.py::test_binary_operator_dispatch_refuses_dunder_near_miss"
+anchor = '''    if name != "div":
+        msg = f"binary operator is not admitted: {name[:16]!r}"'''
+mutant = '''    if False:
+        msg = f"binary operator is not admitted: {name[:16]!r}"'''
+
+[[mutant]]
+id = "interpret-catch-all-binary"
+predicate = "the interpreter refuses a non-node instead of treating it as Binary"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_structural_binary_near_miss"
+anchor = '''    if type(node) is Binary:
+        return _interpret_binary(node, binding, limits, budget)
+    raise _undeclared_node(node)'''
+mutant = '''    return _interpret_binary(node, binding, limits, budget)  # type: ignore[arg-type]'''
+
+[[mutant]]
+id = "interpret-number-isinstance"
+predicate = "the interpreter dispatches Number on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Number:
+        _charge_expression(budget, "number")'''
+mutant = '''    if isinstance(node, Number):
+        _charge_expression(budget, "number")'''
+
+[[mutant]]
+id = "interpret-pow-isinstance"
+predicate = "the interpreter dispatches Pow on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Pow:
+        return _interpret_power(node, binding, limits, budget)'''
+mutant = '''    if isinstance(node, Pow):
+        return _interpret_power(node, binding, limits, budget)'''
+
+[[mutant]]
+id = "printer-catch-all-binary"
+predicate = "the printer refuses a non-node instead of printing it as Binary"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_structural_near_miss_instead_of_aliasing_binary"
+anchor = '''    if type(node) is Binary:
+        return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"
+    raise _undeclared_node(node)'''
+mutant = '''    return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"  # type: ignore[union-attr]'''
+
+[[mutant]]
+id = "printer-neg-isinstance"
+predicate = "the printer dispatches Neg on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Neg:
+        return f"(neg {print_expr(node.operand)})"'''
+mutant = '''    if isinstance(node, Neg):
+        return f"(neg {print_expr(node.operand)})"'''
+
+[[mutant]]
+id = "interpret-variable-isinstance"
+predicate = "the interpreter dispatches Variable on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Variable:
+        _charge_expression(budget, "variable")'''
+mutant = '''    if isinstance(node, Variable):
+        _charge_expression(budget, "variable")'''
+
+[[mutant]]
+id = "interpret-neg-isinstance"
+predicate = "the interpreter dispatches Neg on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Neg:
+        operand = _interpret_expr(node.operand, binding, limits, budget)'''
+mutant = '''    if isinstance(node, Neg):
+        operand = _interpret_expr(node.operand, binding, limits, budget)'''
+
+[[mutant]]
+id = "interpret-abs-isinstance"
+predicate = "the interpreter dispatches Abs on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Abs:
+        operand = _interpret_expr(node.operand, binding, limits, budget)'''
+mutant = '''    if isinstance(node, Abs):
+        operand = _interpret_expr(node.operand, binding, limits, budget)'''
+
+[[mutant]]
+id = "interpret-binary-isinstance"
+predicate = "the interpreter dispatches Binary on the exact type"
+kills = "tests/test_review_m9_eval_contract.py::test_evaluator_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Binary:
+        return _interpret_binary(node, binding, limits, budget)'''
+mutant = '''    if isinstance(node, Binary):
+        return _interpret_binary(node, binding, limits, budget)'''
+
+[[mutant]]
+id = "printer-number-isinstance"
+predicate = "the printer dispatches Number on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Number:
+        return str(node.value)'''
+mutant = '''    if isinstance(node, Number):
+        return str(node.value)'''
+
+[[mutant]]
+id = "printer-variable-isinstance"
+predicate = "the printer dispatches Variable on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Variable:
+        return node.name'''
+mutant = '''    if isinstance(node, Variable):
+        return node.name'''
+
+[[mutant]]
+id = "printer-abs-isinstance"
+predicate = "the printer dispatches Abs on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Abs:
+        return f"(abs {print_expr(node.operand)})"'''
+mutant = '''    if isinstance(node, Abs):
+        return f"(abs {print_expr(node.operand)})"'''
+
+[[mutant]]
+id = "printer-pow-isinstance"
+predicate = "the printer dispatches Pow on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Pow:
+        return f"(pow {print_expr(node.base)} {node.exponent})"'''
+mutant = '''    if isinstance(node, Pow):
+        return f"(pow {print_expr(node.base)} {node.exponent})"'''
+
+[[mutant]]
+id = "printer-binary-isinstance"
+predicate = "the printer dispatches Binary on the exact type"
+kills = "tests/test_review_m9_expr_closure.py::test_printer_refuses_undeclared_node_subclass"
+anchor = '''    if type(node) is Binary:
+        return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"'''
+mutant = '''    if isinstance(node, Binary):
+        return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"'''

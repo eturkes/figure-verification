@@ -504,7 +504,9 @@ section below says so and names it.
   `formula.domain_ordered`. Strictness stays independently reachable from the other side: an
   ORDERED domain whose quantization collapses two positions fails strictness alone
   (`fb20_sample_collision.json`). Both fixtures are load-bearing; neither substitutes for the
-  other.
+  other. A schedule that BOTH collides and misses an endpoint reports `formula.domain_bounded`:
+  endpoint representability outranks strictness, in production
+  (`eval.py::_admit_formula_sample_points`) and in the independent oracle alike.
 
 ### F6. Fixed quantitative encoding + script emission — formula mode
 
