@@ -409,3 +409,24 @@ def test_cli_dispatch_validation_and_real_module_entry(
     assert completed.returncode == 0
     assert completed.stderr == b""
     assert _decoded(completed.stdout)["attempt"]["id"] == bundle.attempt_id
+
+
+def test_an_absent_attempt_is_indistinguishable_from_a_verification_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """p39: a valid-shaped but absent 64-hex id answers exactly like a failed verification.
+
+    rc 1, nothing on stdout, the one fixed stderr line and no traceback: no existence oracle.
+    """
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    signer = load_identity(settings).signer
+    _publish(settings, signer, _rejected_draft(settings), nonce="d" * 32)
+    monkeypatch.setattr(Settings, "from_env", staticmethod(lambda: settings))
+
+    assert audit.main(["b" * 64]) == 1
+    captured = capfd.readouterr()
+    assert captured.out == ""
+    assert captured.err == "attempt audit failed: archive or configured-key verification failed\n"
+    assert "Traceback" not in captured.out + captured.err
