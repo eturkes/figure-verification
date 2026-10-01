@@ -300,6 +300,6 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_REQUEST_TIMEOUT` | `30` | Sets the timeout in seconds for each provisioning request.
 `WEBUI_PROVISION_READY_TIMEOUT` | `60` | Sets the seconds allowed for `/ready`.
 
-The default credentials are fixed, throwaway PoC credentials. All three services bind to loopback.
+The default credentials are constant, throwaway PoC values. All three services bind to loopback.
 For the verified recipe, keep that boundary. For any network-exposed deployment, use fresh
 credentials. Generate a secret for that deployment. Obtain a separate production security review.
