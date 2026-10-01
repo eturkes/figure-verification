@@ -34,6 +34,7 @@ _CATALOGUES = (
     "schema",
     "score",
     "selection",
+    "vcert",
     "verify",
 )
 

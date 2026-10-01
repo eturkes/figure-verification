@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the VCert v0.2 encoder's exact-type gate (polish p6).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/vcert.py"
+tests = ["tests/test_vcert.py"]
+
+[[mutant]]
+id = "v02-encoder-tcb-unchecked"
+predicate = "vcert_bytes refuses a wrong-family or subclass TCB"
+kills = "tests/test_vcert.py::test_v02_encoder_refuses_a_wrong_family_subclass_or_foreign_tcb"
+anchor = '''    _require_exact_type(certificate.tcb, (Tcb,), path="$.tcb")'''
+mutant = '''    pass'''
+
+[[mutant]]
+id = "v02-encoder-certificate-unchecked"
+predicate = "vcert_bytes refuses a VCert subclass"
+kills = "tests/test_vcert.py::test_v02_encoder_refuses_a_certificate_subclass"
+anchor = '''    _require_exact_type(certificate, (VCert,), path="$")'''
+mutant = '''    pass'''
+
+[[mutant]]
+id = "v02-builder-tcb-unchecked"
+predicate = "the dataset builder refuses a wrong-family TCB before a VCert exists"
+kills = "tests/test_vcert.py::test_dataset_builder_refuses_a_wrong_family_or_subclass_tcb"
+anchor = '''    _require_exact_type(resolved_tcb, (Tcb,), path="tcb")'''
+mutant = '''    pass'''

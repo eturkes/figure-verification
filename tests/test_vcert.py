@@ -574,7 +574,7 @@ def test_formula_builder_threads_its_injected_tcb() -> None:
 
 
 def test_dataset_builder_refuses_a_wrong_family_or_subclass_tcb() -> None:
-    """v0.2 has no ``__post_init__`` and ``vcert_bytes`` is a raw encoder, so the builder guards.
+    """v0.2 has no ``__post_init__``, so the builder guards before a ``VCert`` exists.
 
     Without it a ``FormulaTcb`` encodes ``"kind":"formula"`` into a ``vcert-0.2`` payload and a
     ``Tcb`` subclass encodes its own tag -- the silent dataset-identity drift ``DatasetTcb``
@@ -1560,3 +1560,51 @@ assert "vl_convert" not in sys.modules
     )
     assert completed.stdout == ""
     assert completed.stderr == ""
+
+
+def test_v02_encoder_refuses_a_wrong_family_subclass_or_foreign_tcb() -> None:
+    """``vcert_bytes`` owns the exact-type authority for every caller, not only the builder."""
+
+    class _TcbSubclass(vcert.Tcb, frozen=True, kw_only=True):
+        pass
+
+    subclass = _TcbSubclass(
+        **{field: getattr(DATASET_TCB, field) for field in DATASET_TCB.__struct_fields__}
+    )
+    certificate = vcert.VCert(
+        version="vcert-0.2",
+        dataset_hash="sha256:" + "1" * 64,
+        spec_hash="sha256:" + "2" * 64,
+        plotted_table_hash="sha256:" + "3" * 64,
+        manifest_hash="sha256:" + "4" * 64,
+        vega_lite_hash="sha256:" + "5" * 64,
+        checks=(),
+        filters=(),
+        sorts=(),
+        tcb=DATASET_TCB,
+    )
+    assert b'"tcb":{' in vcert.vcert_bytes(certificate)
+    for wrong in (FORMULA_TCB, _dataset_v03_tcb(), subclass, object()):
+        forged = msgspec.structs.replace(certificate, tcb=cast("vcert.Tcb", wrong))
+        with pytest.raises(msgspec.ValidationError, match=r"expected exact Tcb at \$\.tcb"):
+            vcert.vcert_bytes(forged)
+
+
+def test_v02_encoder_refuses_a_certificate_subclass() -> None:
+    class _VCertSubclass(vcert.VCert, frozen=True, kw_only=True):
+        pass
+
+    forged = _VCertSubclass(
+        version="vcert-0.2",
+        dataset_hash="sha256:" + "1" * 64,
+        spec_hash="sha256:" + "2" * 64,
+        plotted_table_hash="sha256:" + "3" * 64,
+        manifest_hash="sha256:" + "4" * 64,
+        vega_lite_hash="sha256:" + "5" * 64,
+        checks=(),
+        filters=(),
+        sorts=(),
+        tcb=DATASET_TCB,
+    )
+    with pytest.raises(msgspec.ValidationError, match=r"expected exact VCert at \$;"):
+        vcert.vcert_bytes(forged)

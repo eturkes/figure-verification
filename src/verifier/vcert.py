@@ -347,7 +347,14 @@ def _validate_v03_for_encode(certificate: object) -> VCertV03:
 
 
 def vcert_bytes(certificate: VCert) -> bytes:
-    """Canonical VCert v0.2 JSON bytes."""
+    """Canonical VCert v0.2 JSON bytes, refusing a wrong-family or subclass certificate or TCB.
+
+    ``VCert`` validates nothing at construction, so this exact-type gate is what keeps a
+    ``FormulaTcb`` (or a ``Tcb`` subclass) from encoding its own ``kind`` tag into a v0.2 payload
+    for every caller, the signer and the archive/replay re-encoders included.
+    """
+    _require_exact_type(certificate, (VCert,), path="$")
+    _require_exact_type(certificate.tcb, (Tcb,), path="$.tcb")
     return _VCERT_ENCODER.encode(certificate)
 
 
@@ -489,10 +496,9 @@ def build_dataset_certificate(
     checked for exact type and NOTHING ELSE -- its values are a trusted caller assertion, never
     validated against the running environment -- so "the TCB describes the running versions" holds
     for shipped certificates by way of the collectors and call sites alone, not by construction.
-    Unlike
-    v0.3, ``VCert`` validates nothing at construction and ``vcert_bytes`` is a raw encoder, so a
-    wrong-family or subclass TCB would otherwise encode its own ``kind`` tag into a v0.2 payload --
-    hence the exact-type guard, which the formula builder deliberately omits because
+    Unlike v0.3, ``VCert`` validates nothing at construction. ``vcert_bytes`` refuses a
+    wrong-family or subclass TCB at encode time for every caller; this builder guard stays so the
+    refusal lands BEFORE a ``VCert`` exists, which the formula builder omits because
     ``VCertV03.__post_init__`` already refuses one by exact type.
     """
     resolved_tcb = dataset_tcb() if tcb is None else tcb
