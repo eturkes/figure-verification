@@ -85,6 +85,7 @@ and pandas versions for the selected build.
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 58 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 | M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
+| M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 
 ## What each one backs
 
@@ -104,6 +105,7 @@ and pandas versions for the selected build.
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 58 fixture observations + PNGs (M10.10 added 6 accessor lines), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 | M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/132 texts clamped |
+| M16 | the "Show checks" embed in a live `--stub` chat: elaborate prompt, a kana prompt, the simple prompt; one frame after the status line + before the verdict, collapsed < 60 px, expanded = its content (no inner scroll), collapsed again, rows + marks + texts + cause per state, before + after reload; REST `content`/`output`/`embeds`; the expanded FAIL at 760 px; light + dark screenshots | M16.1 L1-L5: exit code 0 = 3/3 cases + the narrow re-size; screenshots inspected by hand |
 
 Rerun O8 from the repository root after the host input generators. `o8_observe.mjs` obtains the wrapper from the tracked filter and writes the observed JSON into `tests/fixtures/observe/`; a second run should leave those bytes unchanged.
 
@@ -141,4 +143,16 @@ cd .agent/measurements
 FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password \
   node m15u1_status.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv /tmp/reasons.json \
   ../../.launch-logs/webui.log m15u1
+```
+
+Rerun M16 against the same stub stack and CDP browser (the M15 browser flag is harmless here). The
+script exits 0 only when every case and the 760 px re-size hold; it writes one PNG per case and
+theme into `<out-dir>` for a person to inspect. `FV_CASES=<name,...>` runs a subset of `refused`,
+`japanese` and `pass`.
+
+```
+PYTHONPATH="$PWD" uv run --locked python .agent/measurements/m16u1_dump.py /tmp/checks.json
+cd .agent/measurements
+FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password \
+  node m16u1_checks.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv /tmp/checks.json m16u1
 ```

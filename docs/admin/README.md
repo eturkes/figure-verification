@@ -76,6 +76,7 @@ Set these Open WebUI settings. You can set each one as an environment variable.
 | `ENABLE_CODE_INTERPRETER` | `false` | The model must not run code outside the verifier. |
 | `ENABLE_API_OUTLET_FILTERS` | `true` | The filter must run on every chat completion. |
 | `BYPASS_EMBEDDING_AND_RETRIEVAL` | `true` | An offline instance otherwise calls a remote embedding service when a user uploads a CSV file. |
+| `IFRAME_CSP` | empty (the default) | The check list of each chart reply sets its own height with an inline script. Keep the setting empty, or allow inline scripts. |
 
 ## Step 5: Test the setup
 
@@ -134,8 +135,15 @@ For each blocked reply, the filter also writes one record to the Open WebUI serv
 `figure verification failed reason=<code>`. The status line and the log record contain no program
 text, no request text and no data from the CSV file.
 
-The status line and the log record are for diagnosis only. If the filter cannot deliver one of them,
-the chart stays blocked and the failure message still appears.
+Each chart reply also has a `Show checks` control. It is below the status line, or below the chart
+if the chart passed. Click it to show every check that the verifier runs, in order. Each check
+states what it examines. A passed check has a ✓ mark. The failed check has a ✗ mark and the reason.
+The checks after the failed check show `not checked`. If the chart passed, every check has a ✓ mark.
+The list uses the same language as the status line. It stays with the reply after a page reload, and
+Open WebUI does not send it to the model.
+
+The status line, the check list and the log record are for diagnosis only. If the filter cannot
+deliver one of them, the verdict does not change.
 
 There are two types of reason code:
 

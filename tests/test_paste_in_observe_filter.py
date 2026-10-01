@@ -18,6 +18,7 @@ from typing import Any
 
 import pytest
 
+from filter_checks_support import embed_event, normalized_events
 from observe_support import (
     OBS_MAX_BYTES,
     OBS_TAG,
@@ -166,8 +167,9 @@ def test_o6_matching_observation_preserves_pass_with_one_inline_image(tmp_path: 
     verified, stdout = _observed_stdout()
     output, rpc, emitter, looked_up = _render(tmp_path, stdout)
     _assert_text(output, _PASSED + "\n\n" + verified.certificate.interpretation)
-    assert emitter.events == [
-        {"type": "files", "data": {"files": [{"type": "image", "url": _PNG_URI}]}}
+    assert normalized_events(emitter.events) == [
+        {"type": "files", "data": {"files": [{"type": "image", "url": _PNG_URI}]}},
+        embed_event(None),
     ]
     assert len(rpc.calls) == 1
     assert looked_up == [("owned-file", _USER_ID)]
@@ -217,7 +219,10 @@ def test_o6_verified_with_bad_observation_withholds_figure(tmp_path: Path, failu
         "extra-artist": "observation_mismatch",
         "stderr": "sandbox_error",
     }
-    assert emitter.events == [status_event(reasons[failure])]
+    assert normalized_events(emitter.events) == [
+        status_event(reasons[failure]),
+        embed_event(reasons[failure]),
+    ]
     assert len(rpc.calls) == 1
     assert looked_up == [("owned-file", _USER_ID)]
 
@@ -237,5 +242,5 @@ def test_o6_refused_or_unrecorded_call_never_consults_observation(
     _assert_text(output, _FAILED)
     assert rpc.calls == []
     reason = "mark_not_valid_for_arm" if carrier == "refused" else "no_tool_call"
-    assert emitter.events == [status_event(reason)]
+    assert normalized_events(emitter.events) == [status_event(reason), embed_event(reason)]
     assert looked_up == ([("owned-file", _USER_ID)] if carrier == "refused" else [])

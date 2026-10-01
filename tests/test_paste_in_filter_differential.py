@@ -22,6 +22,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn
 
+from filter_checks_support import embed_event, normalize_event
 from observe_support import stdout_for_verified
 from oracle_filter import (
     FAIL_TEXT,
@@ -412,6 +413,8 @@ def test_d9_oracle_causes_are_hand_stated(name: str, scenario: Scenario, reason:
     assert expected.content == FAIL_TEXT, name
     statuses = (status_event(reason, scenario.metadata),) if scenario.emitter_present else ()
     assert expected.status_events == statuses, name
+    embeds = (embed_event(reason, scenario.metadata),) if scenario.emitter_present else ()
+    assert expected.embed_events == embeds, name
 
 
 @pytest.mark.parametrize(
@@ -647,16 +650,22 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
         raise AssertionError(failure)
     files_events: list[dict[str, object]] = []
     status_events: list[dict[str, object]] = []
-    for event in events:
+    embed_events: list[dict[str, object]] = []
+    mapped_events = [normalize_event(event) for event in events]
+    for event in mapped_events:
         if event.get("type") == "status":
             status_events.append(event)
+        elif event.get("type") == "embeds":
+            embed_events.append(event)
         else:
             if set(event) != {"type", "data"} or event["type"] != "files":
                 failure = "unmapped files event"
                 raise AssertionError(failure)
             files_events.append(event)
-    assert tuple(status_events) == oracle_outlet(scenario).status_events, "unmapped status event"
-    assert events == files_events + status_events, "status event must be last"
+    expected = oracle_outlet(scenario)
+    assert tuple(status_events) == expected.status_events, "unmapped status event"
+    assert tuple(embed_events) == expected.embed_events, "unmapped embed event"
+    assert mapped_events == files_events + status_events + embed_events, "diagnostics must be last"
     receipt = scenario.receipt
     expected_lookups = (
         [(file_id, scenario.user_id) for file_id in receipt.file_ids]
@@ -668,7 +677,12 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
     assert lookups == expected_lookups, "every receipt id must use caller-owned lookup in order"
     assert all(body.get(key) == value for key, value in scenario.body_fields.items())
     return Expected(
-        content, tuple(output), tuple(files_events), _rpc_facts(calls), tuple(status_events)
+        content,
+        tuple(output),
+        tuple(files_events),
+        _rpc_facts(calls),
+        tuple(status_events),
+        tuple(embed_events),
     )
 
 

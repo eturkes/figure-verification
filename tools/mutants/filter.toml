@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py"]
+tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -233,7 +233,7 @@ mutant = '''    if error is not None:
 id = "d8-status-unbounded"
 predicate = "a stalled status emit is cut at its deadline"
 kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_or_pending_emitter_never_costs_the_verdict[pending-01-no-receipt]"
-anchor = '''        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)'''
+anchor = '''        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
 mutant = '''        done, _pending = await asyncio.wait({task})'''
 
 [[mutant]]
@@ -380,3 +380,127 @@ anchor = '''    try:
     except Exception:  # an emitter that raises before it returns an awaitable
         return'''
 mutant = '''    task = asyncio.ensure_future(emit(event))'''
+
+[[mutant]]
+id = "m16-embed-skipped-on-pass"
+predicate = "a PASS reply carries the check list too"
+kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
+anchor = '''        await _diagnose(__event_emitter__, None, __metadata__)'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "m16-embed-before-files-on-pass"
+predicate = "a PASS shows its check list only after the image is attached"
+kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
+anchor = '''        try:
+            await __event_emitter__(
+                {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+            )'''
+mutant = '''        await _diagnose(__event_emitter__, None, __metadata__)
+        try:
+            await __event_emitter__(
+                {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+            )'''
+
+[[mutant]]
+id = "m16-embed-before-status"
+predicate = "a FAIL shows its status line first, then the check list"
+kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
+anchor = '''    if reason is not None:
+        english, japanese_text = REASONS[reason]'''
+mutant = '''    early = {"type": "embeds", "data": {"embeds": [breakdown_html(reason, japanese=japanese)], "replace": True}}
+    await _emit_bounded(emit, early, deadline)
+    if reason is not None:
+        english, japanese_text = REASONS[reason]'''
+
+[[mutant]]
+id = "m16-replace-dropped"
+predicate = "the embed replaces earlier embeds, so the reply stores exactly one list"
+kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-01-no-receipt]"
+anchor = '''"embeds": [document], "replace": True}}'''
+mutant = '''"embeds": [document]}}'''
+
+[[mutant]]
+id = "m16-unshared-deadline"
+predicate = "status and embed share one deadline"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_status_spends_the_embed_budget_too[01-no-receipt]"
+anchor = '''        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
+mutant = '''        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)'''
+
+[[mutant]]
+id = "m16-late-start-skip-dropped"
+predicate = "no emit starts after the shared deadline"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_an_emit_never_starts_after_the_shared_deadline"
+anchor = '''    if loop.time() >= deadline:
+        return'''
+mutant = '''    if False:
+        return'''
+
+[[mutant]]
+id = "m16-renderer-unguarded"
+predicate = "a raising renderer never costs the verdict or the status line"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_renderer_exception_keeps_status_files_log_and_verdict[01-no-receipt]"
+anchor = '''    try:
+        document = breakdown_html(reason, japanese=japanese)
+    except Exception:
+        return'''
+mutant = '''    document = breakdown_html(reason, japanese=japanese)'''
+
+[[mutant]]
+id = "m16-embed-emit-unguarded"
+predicate = "a raising embed emit never costs the verdict"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_emit_exception_keeps_the_other_diagnostic_and_the_verdict[await-embeds-01-no-receipt]"
+anchor = '''    await _emit_bounded(emit, embed, deadline)'''
+mutant = '''    await emit(embed)'''
+
+[[mutant]]
+id = "m16-language-read-unguarded"
+predicate = "a non-dict metadata selects English without raising"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_non_dict_metadata_defaults_to_english_without_exception[7-01-no-receipt]"
+anchor = '''    message = metadata.get("user_message") if isinstance(metadata, dict) else None'''
+mutant = '''    message = (metadata or {}).get("user_message")'''
+
+[[mutant]]
+id = "m16-non-dict-metadata-reaches-rpc"
+predicate = "a non-dict metadata reads as no browser, never as a session"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_non_dict_metadata_defaults_to_english_without_exception[session_id-11-sandbox]"
+anchor = '''            or not isinstance(__metadata__, dict)'''
+mutant = '''            or __metadata__ is None'''
+
+[[mutant]]
+id = "m16-pass-document-for-fail"
+predicate = "a FAIL list marks its failing check"
+kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
+anchor = '''        document = breakdown_html(reason, japanese=japanese)'''
+mutant = '''        document = breakdown_html(None, japanese=japanese)'''
+
+[[mutant]]
+id = "m16-japanese-not-passed"
+predicate = "a Japanese request gets a Japanese list"
+kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[ja-04-call-refusal]"
+anchor = '''        document = breakdown_html(reason, japanese=japanese)'''
+mutant = '''        document = breakdown_html(reason, japanese=False)'''
+
+[[mutant]]
+id = "m16-stale-remainder"
+predicate = "the wait gets only the time left after a blocking emitter call (reviewer-1 K3)"
+kills = "tests/test_paste_in_filter_checks.py::test_c8_a_blocking_emitter_call_spends_the_shared_deadline"
+anchor = '''    loop = asyncio.get_running_loop()
+    if loop.time() >= deadline:
+        return
+    try:
+        task = asyncio.ensure_future(emit(event))
+    except Exception:  # an emitter that raises before it returns an awaitable
+        return
+    try:
+        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
+mutant = '''    loop = asyncio.get_running_loop()
+    remaining = deadline - loop.time()
+    if remaining <= 0:
+        return
+    try:
+        task = asyncio.ensure_future(emit(event))
+    except Exception:  # an emitter that raises before it returns an awaitable
+        return
+    try:
+        done, _pending = await asyncio.wait({task}, timeout=remaining)'''

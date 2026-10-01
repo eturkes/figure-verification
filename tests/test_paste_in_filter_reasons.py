@@ -21,6 +21,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from filter_checks_support import embed_event, normalized_events
 from observe_support import formula_verdict, observation_for, stdout_for, stdout_for_verified
 from paste_in_support import (
     StoredFile,
@@ -339,8 +340,8 @@ def test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict(
     _assert_log(caplog, case.reason)
     expected = [_files()] if case.publish_fails else []
     if case.emitter:
-        expected.append(_status(case.reason))
-    assert events == expected
+        expected.extend([_status(case.reason), embed_event(case.reason, case.metadata)])
+    assert normalized_events(events) == expected
 
 
 @pytest.mark.parametrize("reply", ["good", "null-stderr", "error-clean-stderr"])
@@ -354,7 +355,7 @@ def test_d4_one_status_event_per_fail_and_none_on_pass(
     )
     assert_filter_text(result, _expected_pass())
     assert len(calls) == 1
-    assert events == [_files()]
+    assert normalized_events(events) == [_files(), embed_event(None)]
     assert _records(caplog) == []
 
 
@@ -393,7 +394,10 @@ def test_d5_language_follows_kana_in_the_metadata_request_text(
     )
     result, _calls, events, _completed = _exercise(case, load_filter_module())
     assert_filter_text(result, _FAIL)
-    assert events == [_status(case.reason, language)]
+    assert normalized_events(events) == [
+        _status(case.reason, language),
+        embed_event(case.reason, metadata),
+    ]
 
 
 @given(text=st.text(max_size=80), kana=st.sampled_from(("", "あ", "カ", "ｶ", "\U0001b001")))
@@ -407,7 +411,10 @@ def test_d5_unicode_language_property(text: str, kana: str) -> None:
     case = replace(_BY_NAME["01-no-receipt"], metadata={"user_message": {"content": content}})
     result, _calls, events, _completed = _exercise(case, load_filter_module())
     assert_filter_text(result, _FAIL)
-    assert events == [_status("no_tool_call", language)]
+    assert normalized_events(events) == [
+        _status("no_tool_call", language),
+        embed_event("no_tool_call", case.metadata),
+    ]
 
 
 @pytest.mark.parametrize("reason", sorted(get_args(RefusalCode)))
@@ -428,7 +435,7 @@ def test_d6_one_info_record_per_fail_with_no_ids(
     assert_filter_text(result, _FAIL)
     assert calls == []
     _assert_log(caplog, reason)
-    assert events == [_status(reason)]
+    assert normalized_events(events) == [_status(reason), embed_event(reason)]
 
 
 @pytest.mark.parametrize(
@@ -497,7 +504,7 @@ def test_d7_status_and_log_carry_no_untrusted_bytes(
     assert_filter_text(result, _FAIL)
     assert len(calls) == (0 if arm == 4 else 1)
     _assert_log(caplog, reason)
-    assert events == [_status(reason)]
+    assert normalized_events(events) == [_status(reason), embed_event(reason)]
     surfaced = repr(events) + repr(_records(caplog))
     for sentinel in sentinels:
         assert sentinel not in surfaced
@@ -526,7 +533,10 @@ def test_d8_a_raising_or_pending_emitter_never_costs_the_verdict(
     assert len(calls) == case.rpc_count
     assert completed == []
     _assert_log(caplog, case.reason)
-    assert events == ([_files()] if case.publish_fails else []) + [_status(case.reason)]
+    expected = ([_files()] if case.publish_fails else []) + [_status(case.reason)]
+    if status_mode == "raises":
+        expected.append(embed_event(case.reason))
+    assert normalized_events(events) == expected
 
 
 def test_d8_slow_emitter_cleanup_never_delays_the_verdict(
@@ -606,7 +616,7 @@ def test_d8_a_raising_log_handler_never_costs_the_verdict_or_status(
         logger.removeHandler(handler)
         logger.setLevel(previous)
     assert_filter_text(result, _FAIL)
-    assert events == [_status("no_tool_call")]
+    assert normalized_events(events) == [_status("no_tool_call"), embed_event("no_tool_call")]
 
 
 @pytest.mark.parametrize(

@@ -23,6 +23,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.verify import Refused, Verified
 from webui.paste_in.capture_template import CAPTURE_TEMPLATE
+from webui.paste_in.checks import breakdown_html
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
     OBSERVER_SOURCE,
@@ -170,28 +171,36 @@ def _reply_fault(response: dict[object, object]) -> Reason | None:
     return "sandbox_error"
 
 
-def _japanese(metadata: dict[str, object] | None) -> bool:
-    """The user's own request text decides, on every arm; the receipt exists on only some."""
-    message = (metadata or {}).get("user_message")
+def _japanese(metadata: object) -> bool:
+    """The user's own request text decides, on every arm; the receipt exists on only some.
+
+    Total, because it runs on diagnostic paths that must never cost the verdict.
+    """
+    message = metadata.get("user_message") if isinstance(metadata, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
     return isinstance(content, str) and any(
         unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
     )
 
 
-async def _emit_status(emit: _Emit, event: dict[str, object]) -> None:
-    """Deliver one status event, waiting at most `STATUS_TIMEOUT_SECONDS`.
+async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) -> None:
+    """Deliver one diagnostic event unless `deadline` (event-loop time) passes first.
 
     The emit runs as its own task and a late one is cancelled but never awaited: `wait_for` would
     wait for the emitter's cancellation cleanup, so a slow cleanup would hold back the verdict. An
-    `Exception` from the emitter is dropped; a cancellation propagates.
+    emit not started by the deadline is skipped, and the wait gets only the time left once the
+    emitter has returned its awaitable, since that call can itself block. An `Exception` from the
+    emitter is dropped; a cancellation propagates.
     """
+    loop = asyncio.get_running_loop()
+    if loop.time() >= deadline:
+        return
     try:
         task = asyncio.ensure_future(emit(event))
     except Exception:  # an emitter that raises before it returns an awaitable
         return
     try:
-        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)
+        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))
     except asyncio.CancelledError:
         task.cancel()
         raise
@@ -205,26 +214,49 @@ async def _emit_status(emit: _Emit, event: dict[str, object]) -> None:
         raise error
 
 
+async def _diagnose(
+    emit: _Emit | None, reason: Reason | None, metadata: dict[str, object] | None
+) -> None:
+    """Show the user why a figure failed, then every check it faced (`reason` None = published).
+
+    Open WebUI keeps a status line in `statusHistory` and an embed in `embeds`; its chat flows
+    send neither to a model, since a rewritten reply always carries `output`, which is what they
+    read. So a refusal code reaches the user without entering model context. Both are diagnosis
+    only: together they wait at most `STATUS_TIMEOUT_SECONDS`, and no failure of theirs costs the
+    verdict.
+    """
+    if emit is None:
+        return
+    deadline = asyncio.get_running_loop().time() + STATUS_TIMEOUT_SECONDS
+    japanese = _japanese(metadata)
+    if reason is not None:
+        english, japanese_text = REASONS[reason]
+        text = f"{japanese_text if japanese else english} ({reason})"
+        status: dict[str, object] = {"type": "status", "data": {"description": text, "done": True}}
+        await _emit_bounded(emit, status, deadline)
+    try:
+        document = breakdown_html(reason, japanese=japanese)
+    except Exception:
+        return
+    # `replace` keeps exactly this document on the message; Open WebUI otherwise appends.
+    embed: dict[str, object] = {"type": "embeds", "data": {"embeds": [document], "replace": True}}
+    await _emit_bounded(emit, embed, deadline)
+
+
 async def _fail(
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
     emit: _Emit | None,
 ) -> dict[str, object]:
-    """Block the figure and say why: one log record for the admin, one status line for the user.
+    """Block the figure: one log record for the admin, the diagnostics for the user.
 
-    OWUI keeps a status line in `statusHistory`, which its chat flows never send to a model: a
-    rewritten reply always carries `output`, which is what they read. So a refusal code reaches the
-    user without entering model context. Neither surface carries sandbox output, program bytes or
-    request text, because an error message can quote the user's clinical data. Both are diagnosis
-    only, so a raising or stalled one never costs or delays the verdict.
+    Neither surface carries sandbox output, program bytes or request text, because an error
+    message can quote the user's clinical data.
     """
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
-    if emit is not None:
-        english, japanese = REASONS[reason]
-        text = f"{japanese if _japanese(metadata) else english} ({reason})"
-        await _emit_status(emit, {"type": "status", "data": {"description": text, "done": True}})
+    await _diagnose(emit, reason, metadata)
     return _rewrite(body, FAIL_TEXT)
 
 
@@ -301,7 +333,7 @@ class Filter:
         if (
             __event_call__ is None
             or __event_emitter__ is None
-            or __metadata__ is None
+            or not isinstance(__metadata__, dict)
             or "session_id" not in __metadata__
         ):
             return await fail("no_browser")
@@ -346,4 +378,5 @@ class Filter:
             )
         except Exception:
             return await fail("publish_failed")
+        await _diagnose(__event_emitter__, None, __metadata__)
         return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")

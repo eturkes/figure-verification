@@ -11,6 +11,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from filter_checks_support import embed_event
 from oracle_observe import oracle_matches, oracle_parse
 from oracle_paste_in_tool import ToolContext, oracle_draw_figure
 from paste_in_support import StoredFile
@@ -79,6 +80,7 @@ class Expected:
     files_events: tuple[dict[str, object], ...]
     rpc: RpcFacts
     status_events: tuple[dict[str, object], ...]
+    embed_events: tuple[dict[str, object], ...]
 
 
 def _candidate(
@@ -202,7 +204,8 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
 
     def failed(reason: str, files: tuple[dict[str, object], ...] = ()) -> Expected:
         statuses = (status_event(reason, scenario.metadata),) if scenario.emitter_present else ()
-        return Expected(FAIL_TEXT, (_message_item(FAIL_TEXT),), files, rpc, statuses)
+        embeds = (embed_event(reason, scenario.metadata),) if scenario.emitter_present else ()
+        return Expected(FAIL_TEXT, (_message_item(FAIL_TEXT),), files, rpc, statuses, embeds)
 
     receipt = scenario.receipt
     if not scenario.request_present or not isinstance(receipt, ReceiptValue):
@@ -237,4 +240,6 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
     if scenario.publish_raises:
         return failed("publish_failed", events)
     text = PASS_TEXT + "\n\n" + verdict.certificate.interpretation
-    return Expected(text, (_message_item(text),), events, rpc, ())
+    return Expected(
+        text, (_message_item(text),), events, rpc, (), (embed_event(None, scenario.metadata),)
+    )

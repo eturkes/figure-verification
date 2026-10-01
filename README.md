@@ -5,7 +5,7 @@ plotted value. The model writes a Python program that draws the chart. A separat
 the program and recomputes every plotted value from the user's own CSV file or from the function
 that the user states. The chart appears only when every check passes. Otherwise the chat shows
 `Figure verification failed, no image produced`, and a status line above that message states the
-reason.
+reason. Each chart reply also has a `Show checks` list of every check and its result.
 
 ## What this repository delivers
 

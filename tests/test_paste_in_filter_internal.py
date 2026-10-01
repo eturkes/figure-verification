@@ -15,6 +15,7 @@ from typing import cast
 
 import pytest
 
+from filter_checks_support import embed_event, normalized_events
 from observe_support import stdout_for, stdout_for_verified
 from paste_in_support import REPO_ROOT, StoredFile, execute_artifact, fake_open_webui
 from verifier.pysrc import DatasetTarget, Verified, verify_python_source
@@ -198,7 +199,10 @@ def test_cross_artifact_receipt_renders_one_consumed_attachment(tmp_path: Path) 
     code = cast(str, data["code"])
     assert "matplotlib" not in code
     assert base64.b64encode(_PROGRAM.encode()).decode() in code
-    assert events == [{"type": "files", "data": {"files": [{"type": "image", "url": _PNG}]}}]
+    assert normalized_events(events) == [
+        {"type": "files", "data": {"files": [{"type": "image", "url": _PNG}]}},
+        embed_event(None),
+    ]
     assert _text(body).startswith(outlet.PASS_TEXT + "\n\n")
     message = cast(list[dict[str, object]], body["messages"])[-1]
     output = cast(list[dict[str, object]], message["output"])
