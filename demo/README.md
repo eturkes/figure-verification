@@ -33,8 +33,9 @@ durable rejection audit, restart, exact replay, typed table and script retrieval
 archive-integrity guards. The command writes the report to `demo/reports/formula_report.json`
 (gitignored). It exits with `0` only if all five scenarios pass.
 
-The verifier authors each matplotlib script and never runs it. No certified formula script has run
-in the Open WebUI sandbox. M10 gates that execution.
+In this JSON formula mode, the verifier authors each matplotlib script and never runs it. Open WebUI
+does not run these scripts. The Open WebUI demo uses python mode, where the model writes the
+program. See the root [README](../README.md).
 
 ## Real-socket end-to-end demo
 
@@ -48,9 +49,9 @@ The driver starts its own verifier subprocess. It exercises four cases over real
 
 1. `g01` renders a verified chart and verifies its DSSE-signed certificate.
    The driver restarts the service and replays the archived plot exactly.
-2. `b07` is blocked by `schema.fields_exist` with
+2. The check `schema.fields_exist` blocks `b07` with
    `field 'profit' does not exist in the table`.
-3. `b13` is blocked by `label.quantitative_units_present`.
+3. The check `label.quantitative_units_present` blocks `b13`.
    A crafted `scale.zero:false` variant is separately decode-refused because that misleading baseline is unrepresentable in VPlot v0.1.
 4. `f02` verifies a formula spec and authenticates its VCert v0.3.
    The driver takes the signing key from the service over HTTP.
@@ -60,11 +61,18 @@ The driver starts its own verifier subprocess. It exercises four cases over real
    identifiers share that one answer. The driver therefore gets 200 responses from `/certificate`,
    `/table`, and `/script` both before and after the restart and replay. `/chart` stays 404 before
    the restart, before the replay, and after the replay. Together those observations show that
-   formula mode builds no chart page, rather than that a chart was evicted.
+   formula mode builds no chart page, rather than that the service evicted a chart.
 
 The command writes the machine-readable report to `demo/reports/e2e_report.json` (gitignored).
 It exits with `0` only if all four outcomes match those expectations.
 
-The opt-in `--with-webui` and `--with-model` legs are disabled by default. Both legs require the live
-stack in [webui/README.md](../webui/README.md). Run the legs as separate passes.
-Port `8001` serves either the deterministic WebUI stub or the NPU model backend, not both.
+The driver skips the opt-in `--with-webui` and `--with-model` legs by default. Run the legs as
+separate passes. Port `8001` serves either the deterministic WebUI stub or the CUDA model backend,
+not both.
+
+- The `--with-webui` leg checks the earlier JSON-spec chat chain. It expects a chart URL from the
+  verifier tool server. The current harness registers no tool server, so this leg reports `FAIL`
+  until an operator registers one. The recorded JSON-spec section of
+  [webui/README.md](../webui/README.md) describes that chain.
+- The `--with-model` leg sends three prompts to `/propose-spec` on the verifier. The verifier uses
+  the model on port `8001`.

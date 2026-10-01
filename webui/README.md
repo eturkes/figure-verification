@@ -132,13 +132,12 @@ The launcher disables persistent configuration for its settings. The launch envi
 tool, model, and legacy-function-calling configuration. The administrator user, owned function, and
 workspace model configuration persist in `.webui-data/`.
 
-## Recorded JSON-spec E2E (earlier wiring)
+## Historical: recorded JSON-spec E2E (earlier wiring)
 
-This section records the JSON-spec chain measured on the earlier wiring, where a registered tool
+This section is historical. It records the JSON-spec chain measured on the earlier wiring, where a registered tool
 server published `proposeSpec`. The harness no longer registers that server, so these steps need an
 operator to register it first. Read them as evidence for the chain they measured, not as the current
-demo path. The python-mode demo is measured separately. See the recorded demo in the root
-[README](../README.md#measured-results).
+demo path. The root [README](../README.md#measured-results) records the python-mode demo.
 
 With the hardware-free stack provisioned and the verifier registered as a tool server, run this
 synchronous request. It proves the legacy selector, server tool, VPlot proposal, verifier, and clean
@@ -202,8 +201,8 @@ The CLI calls `WebUIClient.run_persisted_chat`. It waits for the persisted assis
 then prints the final text from `output[0].content[0].text`. When a chart URL is present, it prints
 that URL from `embeds[0]`.
 
-An NPU run replaces the stub and measures the weak model separately. For that device and
-configuration, a raw, unconstrained ten-prompt sample selected the tool on 5/10 prompts. The sample
+On the ORIGIN host, an NPU run replaced the stub and measured the weak model separately. For that
+device and configuration, a raw, unconstrained ten-prompt sample selected the tool on 5/10 prompts. The sample
 produced no verified chart. Four calls reached the verifier with undecodable fenced specs. One call
 omitted a required argument. That observation is not a bound. The deterministic fixture above
 proves only that the integration works when its untrusted proposer supplies valid protocol

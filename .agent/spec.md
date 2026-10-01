@@ -42,7 +42,37 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-Queue = `.agent/deferred.md`, 27 rows, one line + acceptance check each; nothing there is open work of this phase; MAINTAIN requests adopt rows from it.
+MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
+- [ ] Q1 guided-JSON bench re-baseline — owed: MX150 run
+- [ ] Q3 `derive` transform — owed: contract approval
+- [ ] Q4 formula typed-API closure (`archive/m9-rev-1` reds)
+- [ ] Q5 canonical-table deserializer (p18)
+- [ ] Q6 M9 docs-hygiene findings + obsolescence lens
+- [ ] Q7 polish p2 p3 p4 p6 p7 p8 p9 p10 p11 p12 p13 p14 p15 p16 p17 p18 p19 p20 p22 p23 p24 p25 p26 p27 p28 p29 p30 p31 p32 p33 p34 p35 p36 p39 p40 p41 p42 p43 p44 p45 p46 p47
+- [ ] Q8 lexical term anchoring — owed: contract approval
+- [ ] Q9 exact folder in `_rational` — owed: ruling
+- [ ] Q10 admit mutation catalogue port
+- [ ] Q11 measurement rerun driver
+- [ ] Q12 C10 float-branch range
+- [ ] Q13 spike-groupby measurement port
+- [ ] Q14 refusal-set size owner
+- [ ] Q15 S4 sweep over `.claude/rules/`
+- [ ] Q16 G10 label/legend — waits Q8
+- [ ] Q17 negative `np.arange` binding — owed: ruling
+- [ ] Q18 nested-libm observation rule
+- [ ] Q19 structural FAIL-arm variant — owed: MX150 runs
+- [ ] Q20 S8 ticked-row probe
+- [ ] Q21 S6 malformed Tasks rows — owed: approval
+- [ ] Q22 `max_work` cancellation pointer
+- [ ] Q23 `m13-design` counts pointer
+- [ ] Q24 gate-probe header count
+- [ ] Q25 stale teammate worktrees
+- [ ] Q26 W2/W5 refusal-code split — owed: approval
+- [ ] Q27 `tests/test_spec.py` S4/S7 docstring
+- [ ] Q28 `demo/e2e.py` `--with-webui` leg vs python mode (new)
+- [ ] Q29 `webui/client.py` `chart_url` = `embeds[0]` (new)
+
+Queue = `.agent/deferred.md`, 28 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

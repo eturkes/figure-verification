@@ -1,12 +1,14 @@
 # bench — weak-proposer eval (raw baseline + schema-guided default)
 
-This benchmark is an out-of-tree observer of the weak NPU proposer.
+This benchmark is an out-of-tree observer of the weak JSON-spec proposer.
 It covers the dataset proposer only, and it makes no measured formula error-gradient claim.
 The pinned formula live smoke stays unmet.
 It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-only`.
 It never imports `verifier` internals, so it adds no trust.
 It uses a synchronous `httpx.Client`, no random-number generator, and a fixed prompt order.
 For each `(device, config)`, its output is byte-reproducible.
+Every recorded bench number comes from the earlier ORIGIN host and its NPU model.
+These numbers are historical. No bench baseline exists for the CURRENT host.
 
 ## What it measures — two things, never conflated
 
@@ -20,7 +22,7 @@ Neither arm calls `/propose-formula`.
   Either nonzero value is a real verifier regression and makes the run INVALID (`exit 1`).
   The good leg prevents reject-everything vacuity.
   Without this leg, a verifier that blocks all specs satisfies the bad bound trivially.
-  Each corpus is pinned by its size (`18/10`) and an identity digest.
+  Bench pins each corpus by its size (`18/10`) and an identity digest.
   The digest is a SHA-256 over the sorted `(filename, content-hash)` pairs.
   These pins make a short or empty corpus fail loudly.
   They also catch a wrong `--examples-dir`, even if it contains same-sized sets of other specs.
@@ -93,9 +95,9 @@ Fence-wrapping is a syntactic failure that `decode_spec` rejects.
 The classifier separates it from deeper malformation.
 For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-guided default had `fenced=0`.
 
-## OpenVINO wiring on the ORIGIN host
+## Historical: OpenVINO wiring on the ORIGIN host
 
-This section records ORIGIN-host evidence.
+This section is historical. It records ORIGIN-host evidence.
 Its Debian paths and its NPU self-test do not apply on the CURRENT host.
 The CURRENT host has no NPU.
 Before you start model-tier work on the CURRENT host, read `.claude/rules/host-runtime.md`.
@@ -130,9 +132,9 @@ Before you start model-tier work on the CURRENT host, read `.claude/rules/host-r
   After a host Intel-driver update, rebuild it with `python3 /var/home/eturkes/.local/app/intel-accel/make_farm.py`.
   Then rerun the self-test.
 
-## ORIGIN-only run recipe (hardware-gated — needs both servers up)
+## Historical: ORIGIN-only run recipe (hardware-gated — needs both servers up)
 
-Run this recipe on the ORIGIN host only.
+This recipe is historical. Run it on the ORIGIN host only.
 The CURRENT host cannot run it, because the CURRENT host has no NPU.
 A run of this recipe does not satisfy the unmet formula live smoke.
 Start the NPU backend on :8001 with the accelerator environment and OpenVINO `PYTHONPATH`.
@@ -160,7 +162,7 @@ Run the evaluation:
 
 Keep the Git commit, verifier configuration, prompts, model, and device fixed.
 Restart only the backend between the two arms.
-In each backend shell, source the accelerator environment exactly as shown above.
+On the ORIGIN host, source the accelerator environment in each backend shell, as shown above.
 
 Run the RAW arm with schema guidance off.
 The verifier's hardcoded `guided_schema` request then becomes a no-op:
@@ -215,7 +217,7 @@ Exit 1 means an INVALID run only.
 It never means that the weak model failed prompts.
 These conditions make a run INVALID:
 
-- The guarantee is broken: `false_accept > 0`, `false_reject > 0`, or transport errors.
+- The guarantee fails: `false_accept > 0`, `false_reject > 0`, or transport errors.
 - The guarantee is not exercised: either corpus size or identity digest mismatches.
 - `prompt_policy > 0`.
 - `harness_error > 0`.

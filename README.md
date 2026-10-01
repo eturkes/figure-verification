@@ -27,7 +27,7 @@ A chart passes when all of these statements are true:
 1. **Provenance.** The verifier recomputed every plotted number from the uploaded CSV file or from
    the function in the request. The model supplied no plotted number.
 2. **Integrity.** The chart obeys a closed set of rules. For example, bars start at zero and the
-   chart has one linear axis pair. Also, no data row is dropped silently.
+   chart has one linear axis pair. Also, the program drops no data row silently.
 3. **Observation.** The values that the browser runtime drew match the recomputed values. They
    match exactly for CSV data. For a function, each value lies inside a rounding range that the
    verifier computes from the formula.
@@ -50,14 +50,14 @@ It refuses everything else.
 All model results come from one device and configuration: `Qwen2.5-Coder-0.5B-Instruct` in fp16 on
 an NVIDIA MX150 with greedy decoding. A different model or device can give different results.
 
-- **Held-out acceptance.** On 40 held-out prompts, measured once, 14 of 20 simple requests verified and 20 of 20
-  complicated requests were blocked. The acceptance bar is 70% for each category, so the simple
-  result meets it exactly. The simple result depends on line-chart support that was added before
-  the run and chosen from the design prompts alone. Without it, the same replies score 12 of 20. Both public demo prompts behaved as intended. This measurement does not
+- **Held-out acceptance.** On 40 held-out prompts, measured once, 14 of 20 simple requests verified and the verifier
+  blocked 20 of 20 complicated requests. The acceptance bar is 70% for each category, so the simple
+  result meets it exactly. The simple result depends on line-chart support that the project added before
+  the run and chose from the design prompts alone. Without it, the same replies score 12 of 20. Both public demo prompts behaved as intended. This measurement does not
   check whether a verified chart shows what the request asked for. At least 4 of the 14 verified
   charts use a different aggregation or chart type than the request.
-- **Design set (tuning only).** On the 48 design prompts, 20 of 24 simple requests verified and 24
-  of 24 complicated requests were blocked. 10 of the 24 simple charts showed what the request asked
+- **Design set (tuning only).** On the 48 design prompts, 20 of 24 simple requests verified and the verifier
+  blocked 24 of 24 complicated requests. 10 of the 24 simple charts showed what the request asked
   for. The other 10 verified charts showed real values of a different quantity.
 - **Browser demo.** The test used the real model in Open WebUI with `data/sales.csv` attached. The
   simple banner prompt showed a bar chart and the pass message in 5 of 5 recorded runs. The
