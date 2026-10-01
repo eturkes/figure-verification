@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import inspect
 import re
 import sqlite3
@@ -16,9 +17,10 @@ import pytest
 
 from formula_plot_bundle_helpers import dataset_bundle, formula_bundle_parts
 from schema_downgrade import downgrade_to_v3
-from verifier import attestation, canon, replay, schema
+from verifier import attestation, canon, render, replay, schema
 from verifier.limits import DEFAULT_LIMITS
 from verifier.service import archive as archive_module
+from verifier.service import pipeline
 from verifier.service.archive import (
     ArchiveIntegrityError,
     ArchiveNotFoundError,
@@ -33,6 +35,7 @@ from verifier.service.archive import (
     PlotSourceKind,
     open_archive,
 )
+from verifier.service.identity import load_identity
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -81,6 +84,46 @@ def _formula_archive(tmp_path: Path) -> tuple[archive_module.Archive, Any]:
     settings = Settings(data_dir=_ROOT / "data", state_dir=tmp_path / "formula-state")
     archive = open_archive(settings)
     return archive, parts
+
+
+def _matching_dataset_bundle(tmp_path: Path, plotted_table: bytes) -> tuple[Settings, Any]:
+    data_dir = tmp_path / "linear-data"
+    state_dir = tmp_path / "linear-state"
+    (data_dir / "schemas").mkdir(parents=True)
+    csv_bytes = b"x,y\n" + b"".join(f"{x},{2 * x + 1}\n".encode() for x in range(11))
+    (data_dir / "linear.csv").write_bytes(csv_bytes)
+    (data_dir / "schemas" / "linear.json").write_bytes(
+        b'{"dataset":"linear.csv","columns":['
+        b'{"name":"x","type":"numeric","scale":0,"unit":"x"},'
+        b'{"name":"y","type":"numeric","scale":0,"unit":"y"}]}'
+    )
+    spec_bytes = (
+        b'{"version":"vplot-0.1","dataset":{"name":"linear.csv","hash":"'
+        + canon.hash_dataset(csv_bytes).encode()
+        + b'"},"transform":[],"mark":"line","encoding":{'
+        b'"x":{"field":"x","type":"quantitative"},'
+        b'"y":{"field":"y","type":"quantitative"}}}'
+    )
+    settings = Settings(data_dir=data_dir, state_dir=state_dir)
+    outcome = pipeline.verify_only(spec_bytes, settings)
+    prepared = cast("render.PreparedArtifact", outcome.prepared)
+    rendered = render.render_prepared(prepared, limits=settings.limits)
+    signer = load_identity(settings).signer
+    envelope = attestation.sign_vcert(
+        rendered.certificate,
+        signer.private_key,
+        keyid=signer.keyid,
+        limits=settings.limits,
+    )
+    bundle = archive_module.materialize_plot_bundle(
+        prepared,
+        rendered,
+        envelope,
+        signer,
+        limits=settings.limits,
+    )
+    assert bundle.plotted_table == plotted_table
+    return settings, bundle
 
 
 def _role_values(entries: object) -> tuple[tuple[str, str], ...]:
@@ -893,3 +936,361 @@ def test_s6_storage_claim_docstrings_no_longer_describe_formula_as_future() -> N
     assert "formula" in module_doc.lower()
     assert "formula" in source_doc.lower()
     assert "formula" in formula_doc.lower()
+
+
+# --- merged from the retained M9.7b-2 adversarial remainder (polish p8) ---
+
+
+def test_d4_read_spec_unicode_error_falls_through_to_formula(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    original_formula = schema.decode_formula_spec
+    calls: list[str] = []
+
+    def dataset_failure(_payload: bytes) -> object:
+        calls.append("dataset")
+        encoding = "utf-8"
+        reason = "injected"
+        raise UnicodeDecodeError(encoding, b"\xff", 0, 1, reason)
+
+    def formula_spy(payload: bytes) -> object:
+        calls.append("formula")
+        return original_formula(payload)
+
+    monkeypatch.setattr(archive_module, "decode_spec", dataset_failure)
+    monkeypatch.setattr(archive_module, "decode_formula_spec", formula_spy)
+    assert archive.read_spec(spec_id, max_bytes=len(parts.bundle.canonical_spec)) == (
+        parts.bundle.canonical_spec
+    )
+    assert calls == ["dataset", "formula"]
+
+
+def test_d4_read_spec_normalizes_two_decode_failures_without_hashing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    calls: list[str] = []
+
+    def dataset_failure(_payload: bytes) -> object:
+        calls.append("dataset")
+        msg = "dataset refusal"
+        raise msgspec.ValidationError(msg)
+
+    def formula_failure(_payload: bytes) -> object:
+        calls.append("formula")
+        msg = "formula refusal"
+        raise msgspec.DecodeError(msg)
+
+    monkeypatch.setattr(archive_module, "decode_spec", dataset_failure)
+    monkeypatch.setattr(archive_module, "decode_formula_spec", formula_failure)
+    monkeypatch.setattr(canon, "hash_spec", lambda *_args: pytest.fail("hash ran"))
+    with pytest.raises(ArchiveIntegrityError, match="canonical spec"):
+        archive.read_spec(spec_id, max_bytes=len(parts.bundle.canonical_spec))
+    assert calls == ["dataset", "formula"]
+
+
+def test_d4_read_spec_rejects_decoded_domain_address_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    monkeypatch.setattr(canon, "hash_spec", lambda _spec: "sha256:" + "0" * 64)
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match="archive spec_id does not address the decoded canonical spec",
+    ):
+        archive.read_spec(spec_id, max_bytes=len(parts.bundle.canonical_spec))
+
+
+def test_d4_read_spec_metadata_cap_precedes_both_decoders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    calls = {"dataset": 0, "formula": 0}
+
+    def bomb(name: str) -> Any:
+        def inner(_payload: bytes) -> object:
+            calls[name] += 1
+            pytest.fail(f"{name} decoder ran")
+
+        return inner
+
+    monkeypatch.setattr(archive_module, "decode_spec", bomb("dataset"))
+    monkeypatch.setattr(archive_module, "decode_formula_spec", bomb("formula"))
+    with pytest.raises(ArchiveReadLimitError, match="canonical spec"):
+        archive.read_spec(spec_id, max_bytes=len(parts.bundle.canonical_spec) - 1)
+    assert calls == {"dataset": 0, "formula": 0}
+
+
+def test_d4_read_spec_distinguishes_missing_address_and_broken_relation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    missing_id = "0" * 64
+    calls = 0
+
+    def decoder_bomb(_payload: bytes) -> object:
+        nonlocal calls
+        calls += 1
+        pytest.fail("decoder ran before relation refusal")
+
+    monkeypatch.setattr(archive_module, "decode_spec", decoder_bomb)
+    monkeypatch.setattr(archive_module, "decode_formula_spec", decoder_bomb)
+    with pytest.raises(ArchiveNotFoundError, match="canonical spec address was not found"):
+        archive.read_spec(missing_id, max_bytes=1_000_000)
+    with _database_connection(archive) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute(
+            "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
+            ("sha256:" + "f" * 64, spec_id),
+        )
+    monkeypatch.setattr(archive_module, "_validate_schema", lambda *_args, **_kwargs: 0)
+    with pytest.raises(ArchiveIntegrityError, match="canonical spec relation is broken"):
+        archive.read_spec(spec_id, max_bytes=1_000_000)
+    assert calls == 0
+
+
+def test_d4_formula_spec_read_performs_no_plot_source_lookup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    spec_id = canon.hash_spec(parts.spec).removeprefix("sha256:")
+    statements: list[str] = []
+
+    class RecordingConnection(sqlite3.Connection):
+        def execute(self, sql: str, parameters: Any = (), /) -> sqlite3.Cursor:
+            statements.append(sql)
+            return super().execute(sql, parameters)
+
+    monkeypatch.setattr(archive_module, "_CONNECTION_FACTORY", RecordingConnection)
+    assert archive.read_spec(spec_id, max_bytes=len(parts.bundle.canonical_spec)) == (
+        parts.bundle.canonical_spec
+    )
+    assert any("FROM specs" in statement for statement in statements)
+    assert not any("FROM plots" in statement for statement in statements)
+
+
+def test_v21_formula_projection_rejects_bad_spec_before_storage_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = formula_bundle_parts()
+    mutant = replace(parts.bundle, canonical_spec=b"{}")
+    monkeypatch.setattr(
+        archive_module.Archive,
+        "_connect",
+        lambda *_args: pytest.fail("archive connection opened"),
+    )
+    with pytest.raises(ArchiveIntegrityError, match=r"formula.*canonical spec"):
+        archive_module._plot_bundle_batch(mutant)
+
+
+def test_v77_missing_plot_valid_role_uses_generic_typed_absence(tmp_path: Path) -> None:
+    archive, _parts = _formula_archive(tmp_path)
+    with pytest.raises(ArchiveNotFoundError) as caught:
+        archive.read_plot_blob("f" * 64, _formula_source_role(), max_bytes=1_000_000)
+    assert str(caught.value) == "archive address or typed reference was not found"
+
+
+@pytest.mark.parametrize("fault", ["missing", "corrupt"])
+def test_v48_formula_envelope_relation_faults_stay_source_neutral(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    with _database_connection(archive) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        if fault == "missing":
+            connection.execute("DROP TRIGGER blobs_reject_delete")
+            connection.execute(
+                "DELETE FROM blobs WHERE digest = ? AND kind = ?",
+                (f"sha256:{parts.bundle.plot_id}", BlobKind.VCERT_ENVELOPE.value),
+            )
+        else:
+            connection.execute("DROP TRIGGER blobs_reject_update")
+            connection.execute(
+                "UPDATE blobs SET content = ? WHERE digest = ? AND kind = ?",
+                (
+                    b"x" * len(parts.bundle.vcert_envelope),
+                    f"sha256:{parts.bundle.plot_id}",
+                    BlobKind.VCERT_ENVELOPE.value,
+                ),
+            )
+    monkeypatch.setattr(archive_module, "_validate_schema", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        attestation,
+        "verify_vcert_v03",
+        lambda *_args, **_kwargs: pytest.fail("formula certificate decoder ran"),
+    )
+    error = ArchiveNotFoundError if fault == "missing" else ArchiveIntegrityError
+    with pytest.raises(error):
+        archive.read_plot_envelope(
+            parts.bundle.plot_id,
+            max_bytes=len(parts.bundle.vcert_envelope),
+        )
+
+
+@pytest.mark.parametrize("fault", ["certificate", "key_record", "key_blob"])
+def test_formula_certificate_relation_fault_precedes_both_verifiers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    with _database_connection(archive) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        if fault == "certificate":
+            connection.execute("DROP TRIGGER blobs_reject_delete")
+            connection.execute(
+                "DELETE FROM blobs WHERE digest = ? AND kind = ?",
+                (f"sha256:{parts.bundle.plot_id}", BlobKind.VCERT_ENVELOPE.value),
+            )
+        elif fault == "key_record":
+            connection.execute("DELETE FROM keys WHERE keyid = ?", (parts.bundle.keyid,))
+        else:
+            connection.execute("DROP TRIGGER blobs_reject_delete")
+            connection.execute(
+                "DELETE FROM blobs WHERE digest = ? AND kind = ?",
+                (parts.bundle.keyid, BlobKind.ED25519_PUBLIC_KEY.value),
+            )
+    monkeypatch.setattr(archive_module, "_validate_schema", lambda *_args, **_kwargs: 0)
+    calls = {"dataset": 0, "formula": 0}
+
+    def bomb(name: str) -> Any:
+        def inner(*_args: Any, **_kwargs: Any) -> object:
+            calls[name] += 1
+            pytest.fail(f"{name} verifier ran")
+
+        return inner
+
+    monkeypatch.setattr(attestation, "verify_vcert", bomb("dataset"))
+    monkeypatch.setattr(attestation, "verify_vcert_v03", bomb("formula"))
+    messages = {
+        "certificate": "certificate relation is broken",
+        "key_record": "signing-key relation is broken",
+        "key_blob": "signing-key blob is absent",
+    }
+    with pytest.raises(ArchiveIntegrityError, match=messages[fault]):
+        archive.read_certificate(
+            parts.bundle.plot_id,
+            max_bytes=len(parts.bundle.vcert_envelope),
+        )
+    assert calls == {"dataset": 0, "formula": 0}
+
+
+def test_formula_role_set_missing_required_refuses_before_blob_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    with _database_connection(archive) as connection:
+        connection.execute(
+            "DELETE FROM plot_references WHERE plot_id = ? AND role = ?",
+            (parts.bundle.plot_id, _formula_source_role().value),
+        )
+    monkeypatch.setattr(archive_module, "_validate_schema", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        archive_module,
+        "_consume_blob",
+        lambda *_args, **_kwargs: pytest.fail("blob read ran"),
+    )
+    with pytest.raises(ArchiveIntegrityError, match="every required role"):
+        archive.read_plot(parts.bundle.plot_id, max_bytes=1_000_000)
+
+
+def test_formula_role_set_extra_dataset_refuses_before_blob_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    archive.publish_plot(parts.bundle)
+    payload = b"dataset-only extra"
+    blob = BlobWrite(BlobKind.RAW_CSV, payload)
+    with _database_connection(archive) as connection:
+        connection.execute("DROP TRIGGER plot_references_match_source")
+        connection.execute(
+            "INSERT INTO blobs(digest, kind, size, content) VALUES (?, ?, ?, ?)",
+            (blob.ref.digest, blob.kind.value, len(payload), payload),
+        )
+        connection.execute(
+            "INSERT INTO plot_references VALUES (?, ?, ?, ?)",
+            (parts.bundle.plot_id, "raw_csv", blob.ref.digest, blob.kind.value),
+        )
+    monkeypatch.setattr(archive_module, "_validate_schema", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        archive_module,
+        "_consume_blob",
+        lambda *_args, **_kwargs: pytest.fail("blob read ran"),
+    )
+    with pytest.raises(ArchiveIntegrityError, match="every required role"):
+        archive.read_plot(parts.bundle.plot_id, max_bytes=1_000_000)
+
+
+def test_formula_publish_inserts_blobs_key_plot_spec_then_references(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, parts = _formula_archive(tmp_path)
+    events: list[str] = []
+    original_insert = archive_module._insert_batch_rows
+    original_put_key = archive_module._put_key
+    original_put_plot = archive_module._put_plot
+    original_put_spec = archive_module._put_spec
+    original_put_reference = archive_module._put_plot_reference
+
+    def insert_spy(connection: sqlite3.Connection, batch: Any, new_blobs: Any) -> None:
+        events.extend(["blob"] * len(new_blobs))
+        return original_insert(connection, batch, new_blobs)
+
+    def key_spy(*args: Any, **kwargs: Any) -> None:
+        events.append("key")
+        original_put_key(*args, **kwargs)
+
+    def plot_spy(*args: Any, **kwargs: Any) -> None:
+        events.append("plot")
+        original_put_plot(*args, **kwargs)
+
+    def spec_spy(*args: Any, **kwargs: Any) -> None:
+        events.append("spec")
+        original_put_spec(*args, **kwargs)
+
+    def reference_spy(*args: Any, **kwargs: Any) -> None:
+        events.append("reference")
+        original_put_reference(*args, **kwargs)
+
+    monkeypatch.setattr(archive_module, "_insert_batch_rows", insert_spy)
+    monkeypatch.setattr(archive_module, "_put_key", key_spy)
+    monkeypatch.setattr(archive_module, "_put_plot", plot_spy)
+    monkeypatch.setattr(archive_module, "_put_spec", spec_spy)
+    monkeypatch.setattr(archive_module, "_put_plot_reference", reference_spy)
+    archive.publish_plot(parts.bundle)
+    assert events == ["blob"] * 9 + ["key", "plot", "spec"] + ["reference"] * 7
+
+
+def test_d6_real_cross_mode_same_kind_blob_deduplicates_once(tmp_path: Path) -> None:
+    formula = formula_bundle_parts().bundle
+    settings, dataset = _matching_dataset_bundle(tmp_path, formula.plotted_table)
+    archive = open_archive(settings)
+    archive.publish_plot(dataset)
+    archive.publish_plot(formula)
+    digest = hashlib.sha256(formula.plotted_table).hexdigest()
+    with _database_connection(archive) as connection:
+        rows = connection.execute(
+            "SELECT COUNT(*) FROM blobs WHERE digest = ? AND kind = ?",
+            (f"sha256:{digest}", BlobKind.PLOTTED_TABLE.value),
+        ).fetchone()
+        references = connection.execute(
+            "SELECT COUNT(*) FROM plot_references WHERE blob_digest = ? AND blob_kind = ?",
+            (f"sha256:{digest}", BlobKind.PLOTTED_TABLE.value),
+        ).fetchone()
+    assert rows == (1,)
+    assert references == (2,)
+    expected = _bundle_bytes(dataset) + _bundle_bytes(formula) - len(formula.plotted_table)
+    assert archive.stats().logical_blob_bytes == expected
