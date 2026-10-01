@@ -225,7 +225,7 @@ mode instead, which the root README describes.
    **Boundary:** `vl-convert`, Vega, SVG rasterization, browser behavior, and pixels remain trusted
    display components, not verified components.
 
-5. **Known-bad specs are blocked.**
+5. **The verifier blocks known-bad specifications.**
 
    **Evidence:** The deterministic `python -m bench` guarantee records all 18 bad goldens as blocked,
    with `false_accept=0`. In `python -m demo.e2e`, case 2 blocks `b07` at `schema.fields_exist`. The
@@ -238,7 +238,8 @@ mode instead, which the root README describes.
    **Evidence:** The same benchmark guarantee records all 10 good goldens as accepted, with
    `false_reject=0`. In `python -m demo.e2e`, case 1 renders `g01`, verifies its certificate, restarts
    the service, and replays exactly. The pinned corpus is in `examples/good_specs/`.
-   **Boundary:** 10/10 is a corpus result, not a claim that every useful chart request is supported.
+   **Boundary:** The 10/10 result covers this corpus only. It does not claim that the verifier
+   supports every useful chart request.
 
 7. **Failures are specific enough to debug.**
 
@@ -246,7 +247,7 @@ mode instead, which the root README describes.
    case 2 prints `field 'profit' does not exist in the table`. To inspect a committed occurrence,
    run `python -m verifier.service audit ATTEMPT_ID`.
    **Boundary:** Classified verification failures are specific. Unclassified implementation faults
-   intentionally remain generic `500` responses. Their details remain confined to operator logs.
+   intentionally remain generic `500` responses. Operator logs retain those details.
 
 8. **Open WebUI shows verified charts inline.**
 
@@ -258,7 +259,7 @@ mode instead, which the root README describes.
    **Boundary:** The retained browser evidence here is textual DOM and CSP evidence. Browser
    rendering and pixels remain in the trusted computing base.
 
-9. **Unverified chart-like output is blocked or clearly labeled.**
+9. **The guard blocks or clearly labels unverified chart-like output.**
 
    **Evidence:** The generated global outlet filter blocks replies without a backend-recorded
    `draw_figure` call. It blocks prose and fenced chart code alike. Only a re-verified tool call
@@ -267,21 +268,22 @@ mode instead, which the root README describes.
    **Boundary:** The filter trusts backend request state and browser rendering. It does not prove
    pixels or control every possible UI output channel.
 
-10. **Every plot the dataset service renders is replayable to a certificate.**
+10. **The dataset service can replay every rendered plot to a certificate.**
 
     **Evidence:** Every verified service render emits a DSSE-signed VCert v0.2. It commits its plot
     bundle to the SQLite provenance archive. `GET /certificate/{plot_id}` serves the envelope.
     `GET /replay/{plot_id}` re-executes archived inputs. Demo case 1 proves exact replay after a
     service restart.
-    **Boundary:** Replay does not rerun the weak model or prove browser pixels. A chart is regenerated
-    only for an exact dataset replay under configured trust. Drift and integrity failures return
-    diagnostics. Formula plots are archived and certified under VCert v0.3. `POST /verify-formula`
-    mints them. The pure formula replay engine is renderer-free. `GET /replay/{plot_id}` answers a
-    bounded formula verdict for an archived formula plot that has a signed verified attempt. That
-    verdict reports per-artifact hash matches and version drift. A formula replay builds no chart,
-    so it never repopulates the chart cache. A plot without such an attempt answers 404 in both
-    modes. `GET /table/{plot_id}` serves the archived plotted-table bytes for either mode.
-    `GET /script/{plot_id}` serves the archived matplotlib script, which only a formula plot carries.
+    **Boundary:** Replay does not rerun the weak model or prove browser pixels. Only an exact
+    dataset replay under configured trust regenerates a chart. Drift and integrity failures return
+    diagnostics. The service archives formula plots and certifies them under VCert v0.3. `POST
+    /verify-formula` mints them. The pure formula replay engine is renderer-free. `GET
+    /replay/{plot_id}` answers a bounded formula verdict for an archived formula plot that has a
+    signed verified attempt. That verdict reports per-artifact hash matches and version drift. A
+    formula replay builds no chart, so it never repopulates the chart cache. A plot without such an
+    attempt answers 404 in both modes. `GET /table/{plot_id}` serves the archived plotted-table
+    bytes for either mode. `GET /script/{plot_id}` serves the archived matplotlib script, which only
+    a formula plot carries.
 
 ## Live full-stack recipes
 
