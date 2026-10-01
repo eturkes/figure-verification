@@ -1,17 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Diff-blind red suite for M9.12 steps 4-5: route vocabulary, occurrence identity, fault matrix.
+"""`/propose-formula`: route vocabulary, occurrence identity and the proposer fault matrix.
 
-Every test here is written against `.scratch/agents/contract-m9u12.md` and
-`.scratch/agents/rulings-m9u12.md` ALONE, never against MAIN's implementation. A test that passes
-before MAIN implements the step is a defective test: it pins something that already held.
-
-IMPORT RULE, load-bearing: module-level imports may name ONLY symbols that exist at `main`.
-Anything M9.12 adds (`AttemptRoute.PROPOSE_FORMULA`, `propose_formula`, `/propose-formula`,
-`ProposeFormulaRequest`, ...) must be imported INSIDE the test body. A module-level import of an
-unbuilt symbol turns the whole file into one collection ERROR and hides every other red test.
-
-Replace each placeholder body with its real assertions. MAIN polls
-`rg -c unwritten tests/test_formula_proposer_red.py`, which must fall from 29 to 0.
+Each case pins one contract predicate of the formula proposer route, written from the contract
+rather than from the implementation, so a passing case states what the route must do. Symbols the
+route introduced are imported inside test bodies.
 """
 
 from __future__ import annotations

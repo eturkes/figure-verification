@@ -234,8 +234,10 @@ Owner-local audit is `python -m verifier.service audit ATTEMPT_ID [--reveal-sens
 revalidates the complete signed graph reachable from the named attempt and authenticates under the
 current signer's public verification key or an explicitly pinned historical public key. Default
 ASCII JSON exposes hashes and metadata only; `--reveal-sensitive` additionally exposes
-attempt-observation bytes as JSON-escaped UTF-8 or padded base64. Raw CSV, prompt, model, and request
-bytes stay operator-local; no HTTP surface exposes them.
+attempt-observation bytes as JSON-escaped UTF-8 or padded base64. Raw CSV, prompt, model-request,
+model-response and request bytes stay operator-local; no HTTP surface exposes them. The one
+model-authored byte string the service returns is the proposer's reply, `model_reply`, in the
+`/propose-spec` and `/propose-formula` bodies.
 
 `GET /replay/{plot_id}` re-runs the trusted pipeline from archived raw CSV, manifest, and canonical
 spec bytes under the operator's independent trust policy: the current signer plus explicitly pinned

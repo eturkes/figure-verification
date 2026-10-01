@@ -129,3 +129,13 @@ Check set O1-O6 fixed before reading (paths · line citations · symbols · curr
 | R83 | M10 | L-CLAIM | O6: `.agent/spec.md` sent M10 units to `Tasks` (now the queue checklist). | closed | Decision line points at `.agent/archive/implement.md` + `.agent/archive/contracts/`. |
 | R84 | various | L-LAW | O1 (q6-1 only): live text cites scratch inputs — `.scratch/mutate_admit.py`, `.scratch/spike-groupby/run_all.sh`, `.scratch/cdp.py`. | register | The first two are the debts queue rows Q10/Q13 port; `.claude/rules/owui.md` now labels the CDP driver a gitignored scratch implementation of the inline recipe. |
 | R85 | various | L-CLAIM | O6 (q6-1 F13): `.agent/spec.md` `CANCELLED, below` and `.claude/rules/pysrc.md`'s m13-design count pointer point at pruned text. | register | Owned by queue rows Q22 + Q23 (rank order). |
+
+### M9.12b post-implementation review (polish p33)
+
+The three lenses M9.12b's review never reached (L01-L09 reachability + closure over the NINE route surfaces and the S predicates · C01-C08 claim soundness over R2/R4/R7/R8/R9/S12 · K01-K03 `CLAUDE.md` conformance), run against the landed `/propose-formula` code at `0328532` by two blind reviewers (rev-m9u12-2-1, rev-m9u12-2-2), 20 rows each, every row adjudicated; 11/11 route-surface + identity/order mutants killed; the dataset HTTP differential + OpenAPI projection pass. Union of findings:
+
+| id | unit | lens | finding | status | acceptance check |
+|---|---|---|---|---|---|
+| R86 | M9.12b | L-CORR | S9: a bounded malformed proposer body returns 500, not 400 — `user_request` holding a 5000-digit integer (stdlib int-string cap, ValueError) or 10,000 nested arrays (RecursionError) escapes `_decode_propose_formula_request`'s except tuple; `/propose-spec` shares the shape. | closed | Both decoders catch `(ValueError, RecursionError)`; `tests/test_service_propose_bodies.py` (both routes × both shapes, model bomb) red at `0328532` app.py (4 failed), green after. |
+| R87 | M9.12b | L-CLAIM | `POC_SCOPE.md` said raw "model" bytes stay operator-local with no HTTP surface, while R9 deliberately returns the proposer's `model_reply`. | closed | Narrowed: model-request/-response bytes stay local; the one model-authored byte string returned is `model_reply` in both proposer bodies. |
+| R88 | M9.12b | L-LAW | `tests/test_formula_proposer_red.py` kept its authoring-phase instructions (placeholder bodies, MAIN's `unwritten` poll). | closed | Docstring restated by what the suite pins; `rg -c unwritten tests/test_formula_proposer_red.py` = 0. |

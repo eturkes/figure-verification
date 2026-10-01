@@ -343,12 +343,9 @@ def _decode_propose_request(raw: bytes) -> ProposeRequest:
     try:
         _reject_duplicate_members(raw)
         return _PROPOSE_DECODER.decode(raw)
-    except (
-        msgspec.DecodeError,
-        msgspec.ValidationError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-    ) as exc:
+    # ValueError covers every decode refusal here (msgspec, json and UnicodeDecodeError are its
+    # subclasses) plus the stdlib pre-scan's integer-digit cap; RecursionError is its nesting cap.
+    except (ValueError, RecursionError) as exc:
         msg = f"malformed propose request body: {exc}"
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
@@ -364,12 +361,9 @@ def _decode_propose_formula_request(raw: bytes) -> ProposeFormulaRequest:
     try:
         _reject_duplicate_members(raw)
         return _PROPOSE_FORMULA_DECODER.decode(raw)
-    except (
-        msgspec.DecodeError,
-        msgspec.ValidationError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-    ) as exc:
+    # ValueError covers every decode refusal here (msgspec, json and UnicodeDecodeError are its
+    # subclasses) plus the stdlib pre-scan's integer-digit cap; RecursionError is its nesting cap.
+    except (ValueError, RecursionError) as exc:
         msg = f"malformed propose formula request body: {exc}"
         raise HTTPException(detail=msg, status_code=HTTP_400_BAD_REQUEST) from exc
 
