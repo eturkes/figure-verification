@@ -839,8 +839,8 @@ def test_p17_runtime_files_tracked_not_ignored() -> None:
     assert ignored_models.returncode == 0
 
 
-def test_p18_mypy_overrides_added_and_openvino_retained() -> None:
-    """P18 pins the runtime import overrides and excludes unused package overrides."""
+def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
+    """P18 pins the runtime import overrides and excludes overrides no source imports."""
     document = cast(
         "dict[str, object]",
         tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8")),
@@ -864,7 +864,6 @@ def test_p18_mypy_overrides_added_and_openvino_retained() -> None:
     assert frozenset({"torch", "torch.*"}) in module_groups
     assert frozenset({"transformers", "transformers.*"}) in module_groups
     assert frozenset({"xgrammar", "xgrammar.*"}) in module_groups
-    assert frozenset({"openvino_genai", "openvino_genai.*"}) in module_groups
     all_modules = set().union(*module_groups)
     assert "accelerate" not in all_modules
     assert "accelerate.*" not in all_modules
