@@ -2,7 +2,7 @@
 # Mutation catalogue for archive's mapping of table decode failures (Q5).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/service/archive.py"
-tests = ["tests/test_service_plot_bundle.py"]
+tests = ["tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py"]
 
 [[mutant]]
 id = "archive-noncanonical-escapes"
@@ -21,3 +21,18 @@ predicate = "archive maps an undecodable table to ArchiveIntegrityError"
 kills = "tests/test_service_plot_bundle.py::test_publish_rejects_noncanonical_or_invalid_plotted_table_bytes"
 anchor = '''    except canon.TableDecodeError as exc:'''
 mutant = '''    except ZeroDivisionError as exc:'''
+
+[[mutant]]
+id = "publish-attempt-envelope-canonicality-dropped"
+predicate = "publish and read refuse a non-canonical (re-addressed, padded) attempt envelope (p20)"
+kills = "tests/test_service_attempt_bundle.py::test_attempt_envelope_malleability_is_rejected_on_publish_and_read"
+anchor = '''            require_canonical_envelope=True,
+            expected_keyid_hint=keyid,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "attempt envelope or signing public key failed verification"'''
+mutant = '''            require_canonical_envelope=False,
+            expected_keyid_hint=keyid,
+        )
+    except (ValueError, attestation.AttestationError, VerificationError) as exc:
+        msg = "attempt envelope or signing public key failed verification"'''
