@@ -16,7 +16,7 @@ list. Dataset specs decode via `verifier.schema.decode_spec`, formula specs via
 - `formula_bad_specs/fb01..fb20` — each fails exactly one declared layer (`index.json.formula_bad_specs[].layer/check/reason`).
 - Rejection points: `decode` (×14) → `decode_formula_spec`, `decodes=false`; later (×6), still decode by design → parser (×2), evaluation/sampling (×2), domain (×1), exponent policy (×1).
 - Check ORDER is load-bearing, so `check` names the FIRST failing check: `formula.domain_ordered` precedes `formula.sample_points_strictly_increasing`, since a reversed domain always produces a descending schedule and no fixture can isolate one from the other. Evaluation must check ordering first, or fb17 stops discriminating.
-- The verifier AUTHORS the matplotlib script and never runs it. No certified formula script has run in the Open WebUI sandbox; M10 gates that execution.
+- The verifier AUTHORS the matplotlib script and never runs it; no shipped path executes it. The Open WebUI sandbox runs python mode's model-authored program instead.
 
 ## Dataset-mode bad-spec layers (rejection point)
 - `decode` (×8) → now, at `decode_spec`. `decodes=false`. Bad enum/op/fn, float value, unknown key, wrong version, Vega-Lite injection keys (`encoding.aggregate`, top-level `url`) refused by `forbid_unknown_fields`.

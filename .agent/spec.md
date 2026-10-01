@@ -38,14 +38,13 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Carried forward from M13.5: `max_work` is a MEASURED 390,000 (398,458 work/s binding, width 31), so a widening that raises per-row cost shows up as `work_budget_exceeded` on real corpus files rather than as a slow demo. The SEVEN `assert_never(spec)` sites (3 `verify.py`, 4 `certificate.py`) stay put — the mark-LIST widening that would have moved them is CANCELLED, below.
 - **Failure-reason rulings (user, M15).** (1) A FAIL reply = one OWUI status line + one server log record; `PASS_TEXT`/`FAIL_TEXT`, `content`/`output` + the tool's model-facing strings stay byte-identical. (2) Status = one plain sentence (+ one fix sentence where a fix is known) + ` (<reason>)`; log = the code alone. (3) JA iff the request text holds a kana letter, else EN. (4) A sandbox failure shows its cause alone, never `stderr` bytes; the loader signature carries the ad-blocker fix. Law = `.claude/rules/owui.md` failure-reasons bullet; contract `.agent/archive/contracts/m15u1.md`.
 - **Check-breakdown rulings (user, M16).** (1) Surface = ONE OWUI message embed per reply: a collapsed `Show checks` disclosure between the status line and the verdict. (2) Row = check title + what it covers; the failing row adds its `REASONS` cause. (3) FAIL AND PASS replies carry it; PASS still emits no status line and no log record. (4) A FAIL lists every check, rows after the failing one `not checked`. Contract `.agent/archive/contracts/m16u1.md`.
-- OWUI integration + calibrated demo = the `**M10.<u>**` units in `Tasks` (user), each with its own contract, tier and gate-green commit; mechanism + calibration risk = `.claude/rules/owui.md` throughout.
+- OWUI integration + calibrated demo = the M10 units, all closed (records `.agent/archive/implement.md`, contracts `.agent/archive/contracts/`); mechanism + calibration risk = `.claude/rules/owui.md`.
 
 ## Tasks
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
 - [ ] Q1 guided-JSON bench re-baseline — owed: MX150 run
 - [ ] Q3 `derive` transform — owed: contract approval
-- [ ] Q6 M9 docs-hygiene findings + obsolescence lens
 - [ ] Q7 polish p2 p3 p4 p6 p7 p8 p9 p10 p11 p12 p13 p14 p15 p16 p17 p19 p20 p22 p23 p24 p25 p26 p27 p28 p29 p30 p31 p32 p33 p34 p35 p36 p39 p40 p41 p42 p43 p44 p45 p46 p47
 - [ ] Q8 lexical term anchoring — owed: contract approval
 - [ ] Q9 exact folder in `_rational` — owed: ruling
@@ -69,6 +68,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q27 `tests/test_spec.py` S4/S7 docstring
 - [ ] Q28 `demo/e2e.py` `--with-webui` leg vs python mode (new)
 - [ ] Q29 `webui/client.py` `chart_url` = `embeds[0]` (new)
+- [ ] Q30 line citations → symbol citations + resolver check (new, Q6 lens)
 
 Queue = `.agent/deferred.md`, 26 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 

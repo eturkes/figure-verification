@@ -2,8 +2,8 @@
 """Source/artifact-aware provenance certificates without display-stack imports.
 
 VCert v0.2 remains the dataset wire contract. VCert v0.3 makes source, artifact, and TCB
-variants explicit; this unit emits v0.3 only for formula plots while retaining a structurally
-complete dataset branch for a future opt-in migration. Formula certification checks exactly four
+variants explicit; the service emits v0.3 for formula plots alone, while the dataset branch stays
+structurally complete for a future opt-in migration. Formula certification checks exactly four
 domain-separated carrier/digest agreements. Cross-carrier derivation and result completeness remain
 trusted properties of the admitted matplotlib-script producer. Rebinding never parses, evaluates,
 samples, emits, solves, executes, or compares pixels.

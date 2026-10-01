@@ -295,7 +295,7 @@ section below says so and names it.
 ### F1. Trust spine — formula mode
 
 - The untrusted model proposes ONLY the formula spec: `version`, `formula`, `domain`,
-  `numeric_profile`, `mark`, `encoding` (`schema.py:164-170`). Never point values, never Python,
+  `numeric_profile`, `mark`, `encoding` (`schema.py::FormulaPlotSpec`). Never point values, never Python,
   never a rendered artifact.
 - The verifier owns every stage between that spec and the plotted bytes: strict decode → closed
   parse → exact evaluation → sampling → quantization → semantic + SMT checks → script emission →
@@ -344,7 +344,7 @@ section below says so and names it.
 
 ### F2. Carriers + sampled domain — formula mode
 
-- **Spec carriers.** `FormulaPlotSpec` has exactly six fields (`schema.py:164-170`):
+- **Spec carriers.** `FormulaPlotSpec` has exactly six fields (`schema.py::FormulaPlotSpec`):
   `version: Literal["vplot-formula-0.1"]`, `formula: FormulaText`, `domain: FormulaDomain`,
   `numeric_profile: Literal["rational-half-even-v1"]`, `mark: Literal["line","scatter"]`,
   `encoding: FormulaEncoding`.
@@ -353,7 +353,7 @@ section below says so and names it.
   and no string literal.
 - **Domain.** `FormulaDomain` has exactly `start`, `stop` (both `DecimalText` — decimal STRINGS,
   never JSON floats, matching Part A `§2`'s no-float rule), `samples` (`int`, decode bound
-  `2 ≤ n ≤ 100_000`), `x_scale` and `y_scale` (`int`, `0 ≤ s ≤ 12`) (`schema.py:156-161`).
+  `2 ≤ n ≤ 100_000`), `x_scale` and `y_scale` (`int`, `0 ≤ s ≤ 12`) (`schema.py::FormulaDomain`).
 - **Sample schedule.** For `i = 0 … samples-1`, `xᵢ = quantize(start + i·(stop-start)/(samples-1),
   x_scale)` (`eval.py:240-268`). Both endpoints are sampled: `x₀ = quantize(start)` and
   `x_{samples-1} = quantize(stop)`. Admission then REQUIRES both quantized endpoints to equal the
@@ -362,10 +362,11 @@ section below says so and names it.
   `x_scale=1` blocks; `§F6`'s `render.x_domain_exact` rests on this).
 - **Decode settles SHAPE alone.** Domain ordering, decimal representability, grammar,
   name/function/exponent admissibility and sample distinctness are all SEMANTIC checks, never
-  struct post-init validation (`schema.py:154-155`). A domain whose `stop` precedes its `start`
+  struct post-init validation; the post-init re-checks decode SHAPE alone, for direct construction
+  (`schema.py::FormulaDomain`, `schema.py::FormulaPlotSpec`). A domain whose `stop` precedes its `start`
   decodes cleanly, then blocks at `§F5`.
 - **Decode bounds are HARD outer ceilings; DEFAULT resource policy is what refuses first.** The
-  decoder's `samples ≤ 100_000` and `FormulaText ≤ 1024` (`schema.py:31`, `schema.py:159`) are
+  decoder's `samples ≤ 100_000` and `FormulaText ≤ 1024` (`schema.py::FormulaText`, `schema.py::FormulaDomain`) are
   non-configurable shape bounds. At the shipped defaults the operator's resource policy binds
   tighter, so a run refuses at `§F7`'s resource layer before decode could. Raising
   `max_formula_bytes` or `max_formula_samples` — neither carries an absolute ceiling — moves that
@@ -380,7 +381,7 @@ section below says so and names it.
   `numeric_profile`, `rounding`, `ast`, `start`, `stop`, `samples`, `x_scale`, `y_scale`
   (`canon.py:102-118`). Two FORMULA-SPECIFIC domain-tagged hash identities augment the shared
   `spec` and `table` identities: `formula` over the resolved canonical source, and
-  `matplotlib-script` over the exact emitted script bytes (`canon.py:202-293`). All four digests a
+  `matplotlib-script` over the exact emitted script bytes (`canon.py::hash_formula_source`, `canon.py::hash_matplotlib_script`). All four digests a
   formula certificate binds are domain-tagged; none is a raw SHA-256 of a body.
 - **Plotted table.** Two numeric columns, `x` then `y`, at the declared `x_scale`/`y_scale`, one
   row per admitted sample, in sample-schedule order (`eval.py:329-355`).
@@ -395,7 +396,7 @@ section below says so and names it.
   arithmetic and string conversion cannot affect the result. This matches Part A `§3`'s
   HALF_EVEN rule and is implemented separately for the rational domain.
 - **Two declared scales, one quantization each.** `x_scale` quantizes every schedule position;
-  `y_scale` quantizes each exact evaluated result (`eval.py:241-267`, `eval.py:329-346`). Both
+  `y_scale` quantizes each exact evaluated result (`eval.py::_quantize_fraction`, `eval.py::_evaluate_formula`). Both
   come from `FormulaDomain`, so the model declares them and the certificate binds them.
 - **Float enters once, after verification.** The only float in the mode appears when the verified
   exact points project into the emitted script's literals (`matplotlib_script.py:95-105`). `§F6`
@@ -408,7 +409,7 @@ section below says so and names it.
   variable occurrence" overstates every multi-node formula.
 - **Charge precedes the guarded operation.** An over-limit charge raises BEFORE incrementing, so
   refused work consumes zero units; an operation that is admitted and then fails retains its full
-  charge (`work.py:37-52`).
+  charge (`pysrc/budget.py::WorkBudget`).
 - **Intermediate size is bounded.** `max_formula_intermediate_bits` inclusively caps the maximum
   numerator/denominator bit width of each reduced rational; a breach reports
   `resource.formula_intermediate_bits` (`expr.py:669-687`). `Pow` preflights its components against
@@ -428,10 +429,10 @@ section below says so and names it.
   value changes nothing — irrationality at general arguments is the reason, never a per-argument
   test. `sin`, `cos`, `tan`, `exp`, `log` and `sqrt` block on `formula.functions_allowed`; `pi` and
   `e` block on `formula.names_allowed`; both raise
-  `VerificationError` (`expr.py:535-556`). **`sqrt` is refused UNCONDITIONALLY** — `sqrt(4)` blocks
+  `VerificationError` (`expr.py::_Parser._parse_identifier`). **`sqrt` is refused UNCONDITIONALLY** — `sqrt(4)` blocks
   exactly like `sqrt(2)`, because refusal is by NAME at parse time and never inspects the argument.
 - **Parse limits: eight policy DEFAULTS, of which exactly THREE carry an absolute ceiling**
-  (`limits.py:49-58`, `expr.py:152-162`). The other five are bounded by operator policy alone:
+  (`limits.py:49-58`, `expr.py::_MAX_FORMULA_AST_DEPTH` + its two siblings). The other five are bounded by operator policy alone:
 
   | limit | default | absolute ceiling |
   |---|---|---|
@@ -459,7 +460,7 @@ section below says so and names it.
   `max_formula_ast_depth` binds a long flat sum FIRST — at the defaults, 32 terms parse and term 33
   raises `resource.formula_ast_depth`. Tokens are not the binding ceiling there: 33 terms spend 65
   of the 256 admitted tokens.
-- **Canonical normalization is exactly five rewrites** (`expr.py:10-13`, `expr.py:858-875`):
+- **Canonical normalization is exactly five rewrites** (`expr.py:10-13`, `expr.py::print_expr`):
   whitespace, redundant grouping, decimal-literal spelling as a lowest-terms `Fraction`, unary
   plus, and integer-exponent sign/leading-zero spelling. It performs NO constant folding and NO
   algebraic rewrite. That list is a PROVENANCE claim, not a convenience:
@@ -490,9 +491,12 @@ section below says so and names it.
   sequence (`canon.py:174-190`), so reordering two rows changes `plotted_table_hash`.
 - **Two ordering authorities, deliberately different strengths.**
   - `formula.sample_points_strictly_increasing` (`deterministic_recompute`) is the SOLE
-    strictly-increasing authority. It rejects every quantized `xᵢ` that is not greater than its
-    predecessor (`eval.py:270-290`). Quantization at `x_scale` can collapse two distinct exact
-    positions onto one decimal, and this check is what refuses that run.
+    strictly-increasing authority for canonical sampled Decimal x. It rejects every quantized
+    `xᵢ` that is not greater than its predecessor (`eval.py::_admit_formula_sample_points`).
+    Quantization at `x_scale` can collapse two distinct exact
+    positions onto one decimal, and this check is what refuses that run. The projected float64 x
+    the emitter writes has its own strictness authority, `render.float64_fidelity`
+    (`matplotlib_script.py`).
   - `sort.canonical_order` (`z3_smt`) searches adjacent sampled-x ranks for an ascending inversion
     and proves NONDECREASING x only — it admits equality on purpose (`formula_prepare.py:2-9`,
     `formula_prepare.py:44-72`, `formal.py:285-296`). It proves nothing about y and nothing about
@@ -511,7 +515,7 @@ section below says so and names it.
 ### F6. Fixed quantitative encoding + script emission — formula mode
 
 - **Encoding is FIXED**, not proposed: `x` and `y`, both `quantitative`, with the literal field
-  names `x` and `y` (`schema.py:82-95`). Formula mode admits no color channel, no
+  names `x` and `y` (`schema.py::FormulaEncoding`). Formula mode admits no color channel, no
   ordinal/nominal/temporal channel type, and no model-supplied title, unit, DISPLAY-scale
   configuration or format. `x_scale`/`y_scale` are a different thing and ARE model-declared: they
   are decimal PLACE counts governing quantization (`§F2`, `§F3`), never axis-scale policy. `mark`
@@ -527,9 +531,9 @@ section below says so and names it.
   declared decimal scale, and projected x stays strictly increasing
   (`matplotlib_script.py:95-137`, `matplotlib_script.py:199-216`). This is NOT binary64 identity,
   NOT pixels, and NOT execution.
-- **Nothing executes the script in M9.** The verifier imports no matplotlib and executes no script;
-  it emits bytes. Only M10's sandbox may execute the canonical verifier-authored
-  `matplotlib-script-0.1` carrier, and no other Python.
+- **Nothing executes the script.** The verifier imports no matplotlib and executes no script; it
+  emits bytes, and no shipped path runs the `matplotlib-script-0.1` carrier. The Open WebUI sandbox
+  executes python mode's MODEL-authored program instead (`.claude/rules/pysrc.md`), never this one.
 
 ### F7. Error layers — formula mode
 
@@ -537,7 +541,7 @@ The three-layer split of Part A `§9` holds, but each layer has different member
 
 - **DECODE** (`decode_formula_spec`) = SYNTAX. A dedicated strict decoder plus a duplicate-key
   rescan; the outcome is a total `FormulaPlotSpec`, or `msgspec.ValidationError` /
-  `msgspec.DecodeError` mapped to a decode verdict (`schema.py:177-251`,
+  `msgspec.DecodeError` mapped to a decode verdict (`schema.py::decode_formula_spec`, `schema.py::_reject_duplicate_keys`,
   `service/pipeline.py:303-315`). Decode settles SHAPE alone — `§F2`.
 - **RESOURCE POLICY** = inclusive logical ceilings. Formula mode adds ELEVEN
   (`checks.py:69-92`): `resource.formula_bytes`, `resource.formula_tokens`,
@@ -622,7 +626,7 @@ The three-layer split of Part A `§9` holds, but each layer has different member
   digests — `formula_hash`, `plotted_table_hash` and `matplotlib_script_hash` — because each
   derives from the canonical AST and the recomputed points, and the emitted script embeds no
   submitted text. They differ in `spec_hash`, in the VCert payload and in every derived id, because
-  the canonical spec preserves the SUBMITTED text (`eval.py:350-369`, `canon.py:252-281`).
+  the canonical spec preserves the SUBMITTED text (`eval.py:350-369`, `canon.py::spec_bytes`).
   `spec_hash` is the SOLE spelling-sensitive certified digest.
 - **Canonicalization normalizes spelling, never algebra.** `x*2` and `2*x` are DIFFERENT canonical
   sources: commutative reordering is not among the rewrites `§F4` enumerates, and those

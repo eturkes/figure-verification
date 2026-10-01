@@ -53,8 +53,9 @@ and contradicts several of these — the installed bytes win.
   Hub REPOSITORY IDENTIFIER and reaches the network before failing (`:439-496`). State that reason,
   not the false one. A malformed local directory has no single exception family: `OSError` from hub
   resolution, `ValueError` from `AutoConfig`/backend construction.
-- **`device_map` requires accelerate** (`integrations/accelerate.py:96-141`) and cannot express a
-  device STRING; its only real gain is lower PEAK HOST memory, since a mapped load materializes each
+- **`device_map` requires accelerate** (`integrations/accelerate.py:96-141`); a device STRING
+  (`"cpu"`, `"cuda"`, `"cuda:0"`) is accepted and normalized to `{"": torch.device(...)}`
+  (`check_and_set_device_map`, `:110-120`). Its only real gain is lower PEAK HOST memory, since a mapped load materializes each
   weight straight onto the device (`core_model_loading.py:1604-1609,1716-1734`) while `.to()` builds
   the full CPU model first. Final device residency is identical.
 - **Concurrent `generate` on one model = UNSETTLED BY EVIDENCE, so keep a lock.** Per-call config is

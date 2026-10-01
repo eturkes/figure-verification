@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Reachability pins for the three M9.10 claims that a PREP-certified contract got wrong.
+"""Reachability pins for three formula-route claims: the attestation ceiling needs upstream work,
+the shared resource inventory stays whole, and signing precedes the archive commit.
 
-Each case began as an executable counterexample: the contract asserted something unreachable or
-false, and the test demonstrated it. The rulings amended the contract, so each now pins the
-AMENDED claim instead. Keeping them is what stops the refuted wording from returning — a
-regression would have to make the attestation ceiling reachable with zero upstream calls, shrink
-the shared resource inventory again, or reorder signing behind the archive commit.
+Each pins a claim whose earlier wording was unreachable or false; a regression would have to make
+the ceiling reachable with zero upstream calls, shrink the inventory, or reorder signing behind
+the archive commit.
 """
 
 from __future__ import annotations

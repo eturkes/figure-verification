@@ -399,8 +399,9 @@ image and writes `Figure verification passed` with the certificate interpretatio
 a refused verdict, or a failed render, it rewrites the final assistant reply to
 `Figure verification failed, no image produced`. Message text, fenced code and tool-result prose grant
 no publication authority. The verifier checks admitted code against the recomputed table and
-certificate; it does not independently check the arrays drawn in Pyodide. Backend request state,
-the sandbox, renderer and pixels remain trusted.
+certificate, and the filter releases the PNG only when the array values the sandbox reports drawing
+match the recomputed table (`webui/paste_in/observe.py`). Backend request state, the sandbox and its
+self-report, the renderer and the pixels remain trusted.
 
 The `proposeSpec` + iframe flow described above belongs to the separate JSON-spec dataset service.
 The demo registers no tool server; `proposeSpec` reaches a model only after an operator separately

@@ -87,8 +87,8 @@ from the model.
 | class | compares | catches | cannot catch |
 |---|---|---|---|
 | **I** admission | submitted AST vs closed allowlist | overreach: scipy/sklearn, `subplots(2,2)`, loops, themes, `cmap=` | anything wrong but admissible |
-| **II** recomputation vs out-of-model truth | plotted values vs values derived from an artifact the USER supplied (uploaded CSV, or a target stated in the `expr-0.1` grammar) | the figure misrepresents the thing of record | nothing, within its scope |
-| **III** internal consistency | projection vs projection | numeric-literal arrays (= model-supplied data), label/computation mismatch, grid/value length skew, `np.random` | a model that coherently plots the wrong function |
+| **II** recomputation vs out-of-model truth | plotted values vs values derived from an artifact the USER supplied (uploaded CSV, or a target stated in the `pyexpr-0.1` request grammar) | the figure misrepresents the thing of record | nothing, within its scope |
+| **III** internal consistency | projection vs projection | numeric-literal arrays (= model-supplied data), grid/value length skew, `np.random` (label/computation mismatch is NOT caught: G10 is deferred, tier 3 publishes the label beside the computation) | a model that coherently plots the wrong function |
 | **IV** integrity | projection vs the G-rules | truncated baselines, dual axes, silent row drops, radius-encoded area, interpolation asserted over unordered x | a well-formed figure of the wrong quantity |
 
 **Class II's truth source is the user's own artifact** — the uploaded CSV (dataset arm) or the
@@ -215,10 +215,10 @@ imports, inlinable into one pasted file:
    in first-occurrence order, which is exactly why a duplicate category overplots and G8 refuses it.
    Full profile + its closed refusal complement = `.agent/archive/contracts/m13u5.md` § The C10 ruling.
 
-Demo-side wrappers, outside the core: certificate kinds · archive (`PlotSourceKind` + `PlotRole`
-widening, 5 totality sites) · `AttemptRoute.VERIFY_PYTHON` + `PROPOSE_PYTHON` at all NINE route
-surfaces · replay · `POST /verify-python` + `/propose-python`. Surfaces enumerated in the archived
-roadmap § M13 scope sketch.
+Python mode ships in the Open WebUI paste-in alone; the :8000 service stays JSON-spec-only (user
+ruling, `.agent/spec.md` Demo shape), so no python-mode certificate kind, archive widening,
+`AttemptRoute` member, replay or `/verify-python` route exists. The archived roadmap § M13 scope
+sketch that enumerated those wrappers is history, not a plan.
 
 Where "reuse the shipped evaluator" conflicts with core isolation, **embeddability wins** (user
 word): extract into the core rather than import the service stack. `formal.py` stays demo-side —
@@ -246,9 +246,9 @@ z3 cannot be inlined.
 - A source float projects as `Fraction(<the float64>)`: `0.1` → `Fraction(3602879701896397,
   36028797018963968)`, never `Fraction(1, 10)`. Projection is faithful to EXECUTION; which spelling
   a check compares against is M13.5's ruling.
-- `CorePlotSpec` is a ONE-MEMBER alias for `FormulaPlot`; `DatasetPlot` is declared by M13.4, not
-  before. A placeholder written ahead of the admitted dataset idioms would be written wrong and then
-  inherited as law, and the alias makes the widening a visible edit at the union.
+- `CorePlotSpec` = `FormulaPlot | DatasetPlot` (`src/verifier/pysrc/spec.py`). A new arm widens the
+  union where every `assert_never(spec)` site sees it; declare it with its admitted idioms, never as
+  a placeholder ahead of them.
 - **Dataset-arm width, M13.4 (user ruling): COLUMN PAIRS ONLY** — `read_csv` → column selection →
   bar/line/scatter over two columns. No `groupby`/`sum`/`mean` in that unit, so G11 stays dormant
   and aggregation is its own later unit. The width caps the FIRST release, never the ceiling:
@@ -331,7 +331,7 @@ z3 cannot be inlined.
   `tests/test_pysrc_aggregate.py`'s 19 hand-stated spellings through the VALUE column, its
   key-column end-to-end refusal (S2), and `data/deliberately_dirty.csv`, which keeps its literal
   `NA` for JSON mode's "only an empty cell is null" claim. The digest of `data/sales.csv` is cited
-  in 25 tracked files, so a data edit is replayed by `uv run --locked python
+  in 24 tracked files (`tests/test_dataset_digests.py` `_SALES_CITATION_FLOOR`), so a data edit is replayed by `uv run --locked python
   tools/rederive_dataset_hashes.py` — idempotent, recomputing each citation from the CSV — and
   `tests/test_dataset_digests.py` states the same law independently. Read that law at its real
   strength: a `sha256:<64 lower-case hex>` token in a tracked file naming a tracked `data/*.csv`
@@ -451,8 +451,8 @@ and M13.4 mutants anchored on (`p4-y-over-inline-grid`, `d1-grid-selector-is-dee
 rather than a kill. Rerun EVERY catalogue of a module a unit touches, not just the new one.
 
 `admit.py`'s M13.2 allowlist = 13/13 killed, under `.scratch/mutate_admit.py` (gitignored ⇒ port
-those 13 into the now-existing `tools/mutants/admit.toml`, which holds M13.8's five and nothing
-older; queued in `.agent/deferred.md`, superseding the driver half of p3/p4/p43/p44). Each
+those 13 into the now-existing `tools/mutants/admit.toml`, which holds the six accessor-route
+mutants (M13.8's five + M10.10's line entry) and nothing older; queued in `.agent/deferred.md`, superseding the driver half of p3/p4/p43/p44). Each
 mutant neuters a PREDICATE: call-target set opened · exact-type literal check degraded to
 `isinstance` · call-alias bound check dropped · constant-attribute alias bound check dropped ·
 assignment binding moved ahead of its right-hand side · `**kwargs` conjunct dropped ·
