@@ -310,3 +310,47 @@ predicate = "manifest source is inferred without a new signed source field"
 anchor = "    plot_artifacts: tuple[BlobBinding, ...]\n    keyid: str\n    verifier_version: str\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass AttemptArtifacts:"
 mutant = "    plot_artifacts: tuple[BlobBinding, ...]\n    keyid: str\n    verifier_version: str\n    source_kind: PlotSourceKind = PlotSourceKind.FORMULA\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass AttemptArtifacts:"
 kills = "tests/test_service_replay_route.py::test_archived_formula_plot_replay_reports_an_exact_formula_verdict"
+
+# M9.8a route maps + M9.12b occurrence guards (polish p4).
+
+[[mutant]]
+id = "route-formula-uses-dataset-source"
+predicate = "verify-formula attaches only formula plots, never dataset plots"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_plot_sources_map_is_total_and_exact"
+anchor = '''    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA}),'''
+mutant = '''    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.DATASET}),'''
+
+[[mutant]]
+id = "route-formula-reads-dataset"
+predicate = "verify-formula never opens dataset inputs"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_reads_dataset_inputs_map_is_total_and_exact"
+anchor = '''    AttemptRoute.VERIFY_FORMULA: False,'''
+mutant = '''    AttemptRoute.VERIFY_FORMULA: True,'''
+
+[[mutant]]
+id = "route-formula-uses-proposer-roles"
+predicate = "verify-formula uses direct-formula model-trace semantics"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_model_roles_map_is_total_and_exact"
+anchor = '''    AttemptRoute.VERIFY_FORMULA: _formula_route_model_roles,'''
+mutant = '''    AttemptRoute.VERIFY_FORMULA: _proposer_route_model_roles,'''
+
+[[mutant]]
+id = "f02-archive-set-drops-formula"
+predicate = "archive binds propose-formula reply to its exact decoder input"
+kills = "tests/test_formula_proposer_red.py::test_r6_validate_attempt_outcome_binds_reply_identity_on_both_proposer_routes"
+anchor = '''_REPLY_IS_DECODER_INPUT = frozenset({AttemptRoute.PROPOSE_SPEC, AttemptRoute.PROPOSE_FORMULA})'''
+mutant = '''_REPLY_IS_DECODER_INPUT = frozenset({AttemptRoute.PROPOSE_SPEC})'''
+
+[[mutant]]
+id = "f03-presign-identity-check-removed"
+predicate = "archive refuses an inconsistent proposer occurrence before signing"
+kills = "tests/test_service_attempt_bundle.py::test_proposer_reply_identity_refuses_before_the_signing_key_runs"
+anchor = '''    _validate_occurrence_claim(draft.route, draft.artifacts)'''
+mutant = '''    pass'''
+
+[[mutant]]
+id = "f07-formula-proposer-admits-dataset-outcome"
+predicate = "formula proposer refuses dataset-only outcomes"
+kills = "tests/test_formula_proposer_red.py::test_s6_dataset_only_outcomes_are_unreachable_on_propose_formula"
+anchor = '''    if manifest.outcome in _DATASET_OUTCOMES:'''
+mutant = '''    if False:'''

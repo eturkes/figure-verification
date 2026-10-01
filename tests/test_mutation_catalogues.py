@@ -24,10 +24,12 @@ _CATALOGUES = (
     "canon",
     "certificate",
     "checks",
+    "core_checks",
     "csvread",
     "eval",
     "expr",
     "filter",
+    "formula_walkthrough",
     "observe",
     "openapi",
     "project",
@@ -39,6 +41,7 @@ _CATALOGUES = (
     "selection",
     "vcert",
     "verify",
+    "walkthrough",
 )
 
 

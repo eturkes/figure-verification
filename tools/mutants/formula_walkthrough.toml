@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Scenario registry + loop-count mutations (M9.13a, polish p44).
+module = "demo/formula_walkthrough.py"
+tests = ["tests/test_demo_registries.py"]
+
+[[mutant]]
+id = "registry-empty"
+predicate = "the scenario registry is nonempty and exact"
+kills = "tests/test_demo_registries.py::test_formula_registry_holds_exactly_five_named_scenarios"
+anchor = '''_FORMULA_SCENARIOS: tuple[tuple[str, Scenario], ...] = (
+    ("formula direct flow", _scenario_formula_direct_flow),
+    ("formula proposed flow", _scenario_formula_proposed_flow),
+    ("formula certificate check shape", _scenario_formula_certificate_check_shape),
+    ("formula failed attempt audit cli", _scenario_formula_failed_attempt_audit_cli),
+    ("formula archive integrity guards", _scenario_formula_archive_integrity_guards),
+)'''
+mutant = '''_FORMULA_SCENARIOS: tuple[tuple[str, Scenario], ...] = ()'''
+
+[[mutant]]
+id = "registry-entry-dropped"
+predicate = "the scenario registry retains every named entry"
+kills = "tests/test_demo_registries.py::test_formula_registry_holds_exactly_five_named_scenarios"
+anchor = '''    ("formula archive integrity guards", _scenario_formula_archive_integrity_guards),
+)
+'''
+mutant = ''')
+'''
+
+[[mutant]]
+id = "reported-count-changed"
+predicate = "the walkthrough total counts the registry actually read"
+kills = "tests/test_demo_registries.py::test_formula_loop_reports_exactly_the_registry_it_reads"
+anchor = '''        total=len(results),'''
+mutant = '''        total=len(results) + 1,'''
+
+# M9.13a retained campaign (p44).
+[[mutant]]
+id = "m9u13a-core-scenarios-dropped"
+predicate = "the formula registry retains the three original capstone scenarios"
+kills = "tests/test_demo_registries.py::test_formula_registry_holds_exactly_five_named_scenarios"
+anchor = '''    ("formula direct flow", _scenario_formula_direct_flow),
+    ("formula proposed flow", _scenario_formula_proposed_flow),
+    ("formula certificate check shape", _scenario_formula_certificate_check_shape),
+    ("formula failed attempt audit cli", _scenario_formula_failed_attempt_audit_cli),
+'''
+mutant = '''    ("formula failed attempt audit cli", _scenario_formula_failed_attempt_audit_cli),
+'''
+
+# M9.13a retained campaign (p44).
+[[mutant]]
+id = "m9u13a-scenario-rename"
+predicate = "the formula registry preserves the exact declared scenario names"
+kills = "tests/test_demo_registries.py::test_formula_registry_holds_exactly_five_named_scenarios"
+anchor = '''    ("formula direct flow", _scenario_formula_direct_flow),'''
+mutant = '''    ("formula direct flowx", _scenario_formula_direct_flow),'''

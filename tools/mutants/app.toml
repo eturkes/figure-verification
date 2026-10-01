@@ -30,3 +30,23 @@ predicate = "/certificate consults the v0.3 (formula) MIME profile too (p27)"
 kills = "tests/test_service_certificate_ceiling.py::test_certificate_read_ceiling_is_the_larger_mime_profile"
 anchor = '''        for payload_type in (attestation.VCERT_PAYLOAD_TYPE, attestation.VCERT_V03_PAYLOAD_TYPE)'''
 mutant = '''        for payload_type in (attestation.VCERT_PAYLOAD_TYPE,)'''
+
+# M9.13a retained campaign (p44).
+[[mutant]]
+id = "m9u13a-script-route-role-swap"
+predicate = "the script route reads the matplotlib-script carrier, never the table"
+kills = "tests/test_formula_e2e_hardening.py::test_direct_formula_script_bytes_match_certified_digest"
+anchor = '''            PlotRole.MATPLOTLIB_SCRIPT,
+            max_bytes=settings.limits.max_matplotlib_script_bytes,'''
+mutant = '''            PlotRole.PLOTTED_TABLE,
+            max_bytes=settings.limits.max_matplotlib_script_bytes,'''
+
+# M9.13a retained campaign (p44).
+[[mutant]]
+id = "m9u13a-table-route-role-swap"
+predicate = "the table route reads the table carrier, never the matplotlib script"
+kills = "tests/test_formula_e2e_hardening.py::test_direct_formula_table_bytes_match_certified_digest"
+anchor = '''            PlotRole.PLOTTED_TABLE,
+            max_bytes=settings.max_archive_bytes,'''
+mutant = '''            PlotRole.MATPLOTLIB_SCRIPT,
+            max_bytes=settings.max_archive_bytes,'''

@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Scenario registry + loop-count mutations (M9.13a, polish p44).
+module = "demo/walkthrough.py"
+tests = ["tests/test_demo_registries.py"]
+
+[[mutant]]
+id = "registry-empty"
+predicate = "the scenario registry is nonempty and exact"
+kills = "tests/test_demo_registries.py::test_dataset_registry_holds_exactly_thirteen_named_scenarios"
+anchor = '''_SCENARIOS: tuple[tuple[str, Scenario], ...] = (
+    ("direct render + invalid UTF-8", _scenario_direct_render_and_invalid_utf8),
+    ("model stub success", _scenario_model_stub_success),
+    ("model stub decode failure", _scenario_model_stub_decode_failure),
+    ("three formal obligations", _scenario_three_formal_obligations),
+    ("unknown solver fail-closed", _scenario_unknown_solver_fails_closed),
+    ("certificate check shape", _scenario_certificate_check_shape),
+    ("restart + LRU + archived replay", _scenario_restart_lru_and_archived_replay),
+    ("distinct dataset certificate hashes", _scenario_distinct_dataset_certificate_hashes),
+    ("verifier-version drift", _scenario_verifier_version_drift),
+    ("durable failed-attempt audit CLI", _scenario_failed_attempt_audit_cli),
+    ("archive integrity guards", _scenario_archive_integrity_guards),
+    ("capacity + quota fail-closed", _scenario_capacity_and_quota_fail_closed),
+    ("transaction rollback", _scenario_transaction_rollback),
+)'''
+mutant = '''_SCENARIOS: tuple[tuple[str, Scenario], ...] = ()'''
+
+[[mutant]]
+id = "registry-entry-dropped"
+predicate = "the scenario registry retains every named entry"
+kills = "tests/test_demo_registries.py::test_dataset_registry_holds_exactly_thirteen_named_scenarios"
+anchor = '''    ("transaction rollback", _scenario_transaction_rollback),
+)
+'''
+mutant = ''')
+'''
+
+[[mutant]]
+id = "reported-count-changed"
+predicate = "the walkthrough total counts the registry actually read"
+kills = "tests/test_demo_registries.py::test_dataset_loop_reports_exactly_the_registry_it_reads"
+anchor = '''        total=len(results),'''
+mutant = '''        total=len(results) + 1,'''

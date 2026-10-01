@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Core check registry (M9.13a retained campaign, p44).
+module = "src/verifier/checks.py"
+tests = ["tests/test_checks.py"]
+
+# M9.13a retained campaign (p44).
+[[mutant]]
+id = "m9u13a-check-method-relabel"
+predicate = "sort.canonical_order is registered as the finite-SMT method"
+kills = "tests/test_checks.py::test_check_id_method_matrix_is_exhaustive_and_closed"
+anchor = '''    "sort.canonical_order": "z3_smt",'''
+mutant = '''    "sort.canonical_order": "construction",'''
