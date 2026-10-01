@@ -691,3 +691,24 @@ def test_only_formula_routes_say_their_507_withholds_a_script() -> None:
         "/verify-formula": script,
         "/propose-formula": script,
     }
+
+
+def test_live_route_metadata_mirrors_the_document(tmp_path: Path) -> None:
+    """p28: each live handler's `operation_id` + `summary` equal the hand-authored document's for
+    that method + path; a drift in `app.py` alone fails here, not only in the golden."""
+    app = create_app(Settings(data_dir=tmp_path, state_dir=tmp_path / "state"))
+    documented = {
+        (method.upper(), path): (operation["operationId"], operation["summary"])
+        for path, method, operation in _operations()
+    }
+    live: dict[tuple[str, str], tuple[object, object]] = {}
+    for route in app.routes:
+        if not isinstance(route, HTTPRoute):
+            continue
+        path = re.sub(r":\w+}", "}", route.path)
+        if path == "/schema/openapi.json":
+            continue
+        for handler in route.route_handlers:
+            for method in handler.http_methods - {"OPTIONS", "HEAD"}:
+                live[(method, path)] = (handler.operation_id, handler.summary)
+    assert live == documented
