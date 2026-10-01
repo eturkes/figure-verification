@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the audit CLI's per-mode carrier + certificate dispatch (polish p14).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/service/audit.py"
+tests = ["tests/test_service_audit.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_plot_bundle.py"]
+
+# rev-m9u8b-2 M52 (a subclass/default arm in the audit's mode dispatch) is EQUIVALENT and absent:
+# `read_attempt` reconstructs exact classes and `AttemptBundle` refuses any other.
+[[mutant]]
+id = "M35"
+predicate = "dataset audit names dataset carriers"
+anchor = "    DatasetPlotBundle: _DATASET_PLOT_FIELDS,"
+mutant = "    DatasetPlotBundle: _FORMULA_PLOT_FIELDS,"
+kills = "tests/test_service_audit.py::test_every_closed_outcome_has_stable_authenticated_redacted_output"
+
+[[mutant]]
+id = "M36"
+predicate = "formula audit names formula carriers"
+anchor = "    FormulaPlotBundle: _FORMULA_PLOT_FIELDS,"
+mutant = "    FormulaPlotBundle: _DATASET_PLOT_FIELDS,"
+kills = "tests/test_service_formula_attempt.py::test_a9_formula_attempt_audit_selects_the_formula_certificate_and_carriers"
+
+[[mutant]]
+id = "M37"
+predicate = "dataset audit uses v0.2 authenticator"
+anchor = "    DatasetPlotBundle: attestation.verify_vcert,"
+mutant = "    DatasetPlotBundle: attestation.verify_vcert_v03,"
+kills = "tests/test_service_audit.py::test_every_closed_outcome_has_stable_authenticated_redacted_output"
+
+[[mutant]]
+id = "m38-formula-audit-verifies-as-v02"
+predicate = "the audit authenticates a formula plot's certificate with the v0.3 verifier"
+kills = "tests/test_service_formula_attempt.py::test_a9_an_unpatched_formula_audit_authenticates_its_v03_certificate"
+anchor = '''    FormulaPlotBundle: attestation.verify_vcert_v03,'''
+mutant = '''    FormulaPlotBundle: attestation.verify_vcert,'''
+
+[[mutant]]
+id = "M49"
+predicate = "audit arrays retain signed carrier tuple order"
+anchor = "    for binding in bindings:\n        payload = payloads[binding.role]"
+mutant = "    for binding in set(bindings):\n        payload = payloads[binding.role]"
+kills = "tests/test_service_audit.py::test_every_closed_outcome_has_stable_authenticated_redacted_output"

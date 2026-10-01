@@ -1277,3 +1277,29 @@ def test_a10_formula_materialization_docstrings_are_truthful() -> None:
     assert "no pipeline here emits formula rows yet" not in module_doc
     # The dataset-only reader policy is gone: both modes reconstruct through the source maps.
     assert not hasattr(archive_module, "_require_dataset_plot")
+
+
+def test_an_attempt_bundle_refuses_a_formula_plot_subclass(tmp_path: Path) -> None:
+    """p14 M04: the AttemptBundle constructor refuses a FormulaPlotBundle SUBCLASS by exact type,
+    the formula twin of the dataset-subclass refusal; the draft guard alone does not cover it."""
+    settings, signer, parts, draft = _formula_success_draft(tmp_path)
+    base = materialize_attempt_bundle(draft, signer, nonce="d" * 32, limits=settings.limits)
+    child_type = type("FormulaChild", (FormulaPlotBundle,), {})
+    child = child_type(
+        **{field.name: getattr(parts.bundle, field.name) for field in fields(parts.bundle)}
+    )
+    with pytest.raises(TypeError):
+        replace(base, plot=child)
+
+
+def test_a9_an_unpatched_formula_audit_authenticates_its_v03_certificate(tmp_path: Path) -> None:
+    """p14 M38: with the shipped verifier table untouched, a published formula attempt audits
+    valid; the spy test above swaps that table entry, so it cannot see the shipped value."""
+    settings, signer, parts, draft = _formula_success_draft(tmp_path)
+    bundle = materialize_attempt_bundle(draft, signer, nonce="d" * 32, limits=settings.limits)
+    open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+
+    document = _decoded_audit(audit.audit_attempt(settings, bundle.attempt_id))
+
+    assert document["authentication"]["plot_vcert_dsse"] == "valid"
+    assert document["plot"]["id"] == parts.bundle.plot_id

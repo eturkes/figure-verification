@@ -2,7 +2,7 @@
 # Mutation catalogue for archive's mapping of table decode failures (Q5).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/service/archive.py"
-tests = ["tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py"]
+tests = ["tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py", "tests/test_service_formula_plot_bundle.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_storage.py"]
 
 [[mutant]]
 id = "archive-noncanonical-escapes"
@@ -68,3 +68,245 @@ anchor = '''    _validate_outcome_role_presence(
         manifest.outcome, {binding.role for binding in manifest.artifacts}
     )'''
 mutant = '''    pass'''
+
+# The plot-union predicates of rev-m9u8b-2's ledger (polish p14), re-anchored on current code.
+# rev-m9u8b-2 M07 + M24 (a dataset default / formula catch-all in `_plot_bindings`) are EQUIVALENT and
+# absent: only exact plot classes reach it, refused upstream by `_require_attempt_plot` + the
+# `AttemptBundle` constructor, both mutant-pinned below (M01-M04).
+[[mutant]]
+id = "M01"
+predicate = "draft plot refuses a DatasetPlotBundle subclass before downstream work"
+anchor = "    _require_attempt_plot(plot_object, subject=\"draft plot\")"
+mutant = "    if not isinstance(plot_object, DatasetPlotBundle):\n        _require_attempt_plot(plot_object, subject=\"draft plot\")"
+kills = "tests/test_service_formula_plot_bundle.py::test_t20_dataset_bundle_subclass_refuses_in_attempt_materializer"
+
+[[mutant]]
+id = "M02"
+predicate = "draft plot refuses a FormulaPlotBundle subclass before downstream work"
+anchor = "    _require_attempt_plot(plot_object, subject=\"draft plot\")"
+mutant = "    if not isinstance(plot_object, FormulaPlotBundle):\n        _require_attempt_plot(plot_object, subject=\"draft plot\")"
+kills = "tests/test_service_formula_plot_bundle.py::test_t51_formula_bundle_subclass_refuses_in_attempt_materializer"
+
+[[mutant]]
+id = "M03"
+predicate = "attempt bundle plot refuses a DatasetPlotBundle subclass before downstream work"
+anchor = "        _require_attempt_plot(plot_object, subject=\"attempt bundle plot\")"
+mutant = "        if not isinstance(plot_object, DatasetPlotBundle):\n            _require_attempt_plot(plot_object, subject=\"attempt bundle plot\")"
+kills = "tests/test_service_formula_plot_bundle.py::test_t19_dataset_bundle_subclass_refuses_in_attempt_bundle"
+
+[[mutant]]
+id = "m04-attempt-bundle-admits-formula-subclass"
+predicate = "the attempt layer admits exactly the concrete formula plot class, never a subclass"
+kills = "tests/test_service_formula_attempt.py::test_an_attempt_bundle_refuses_a_formula_plot_subclass"
+anchor = '''    if plot is not None and type(plot) not in _PLOT_SOURCE_KIND_BY_TYPE:'''
+mutant = '''    if plot is not None and not isinstance(plot, FormulaPlotBundle) and type(plot) not in _PLOT_SOURCE_KIND_BY_TYPE:'''
+
+[[mutant]]
+id = "M05"
+predicate = "dataset class selects dataset mode"
+anchor = "    DatasetPlotBundle: PlotSourceKind.DATASET,"
+mutant = "    DatasetPlotBundle: PlotSourceKind.FORMULA,"
+kills = "tests/test_service_attempt_bundle.py::test_success_manifest_binds_every_observed_and_plot_blob_then_round_trips"
+
+[[mutant]]
+id = "M06"
+predicate = "formula class selects formula mode"
+anchor = "    FormulaPlotBundle: PlotSourceKind.FORMULA,"
+mutant = "    FormulaPlotBundle: PlotSourceKind.DATASET,"
+kills = "tests/test_service_formula_attempt.py::test_a9_verified_formula_attempt_binds_its_nine_carriers_and_round_trips"
+
+[[mutant]]
+id = "M08"
+predicate = "topology includes DATASET"
+anchor = "    for mode, fields in _PLOT_BINDING_FIELDS_BY_SOURCE.items()\n}"
+mutant = "    for mode, fields in _PLOT_BINDING_FIELDS_BY_SOURCE.items()\n    if mode is not PlotSourceKind.DATASET\n}"
+kills = "tests/test_service_formula_attempt.py::test_a4_plot_source_topology_map_is_exact_and_derived"
+
+[[mutant]]
+id = "M09"
+predicate = "topology includes FORMULA"
+anchor = "    for mode, fields in _PLOT_BINDING_FIELDS_BY_SOURCE.items()\n}"
+mutant = "    for mode, fields in _PLOT_BINDING_FIELDS_BY_SOURCE.items()\n    if mode is not PlotSourceKind.FORMULA\n}"
+kills = "tests/test_service_formula_attempt.py::test_a4_plot_source_topology_map_is_exact_and_derived"
+
+[[mutant]]
+id = "M10"
+predicate = "unknown topology has no dataset default"
+anchor = "    mode = _PLOT_SOURCE_KIND_BY_BINDING_ROLES.get(declared_roles)"
+mutant = "    mode = _PLOT_SOURCE_KIND_BY_BINDING_ROLES.get(declared_roles, PlotSourceKind.DATASET)"
+kills = "tests/test_service_formula_attempt.py::test_a4_unmatched_plot_binding_topology_refuses_at_source_inference"
+
+[[mutant]]
+id = "M11"
+predicate = "plot address, bindings and verified outcome agree"
+anchor = "    if has_plot_id != is_verified or has_plot_artifacts != is_verified:"
+mutant = "    if has_plot_id != is_verified:"
+kills = "tests/test_service_formula_attempt.py::test_a3_plot_address_and_bindings_each_refuse_alone"
+
+[[mutant]]
+id = "M12"
+predicate = "plot address, bindings and verified outcome agree"
+anchor = "    if has_plot_id != is_verified or has_plot_artifacts != is_verified:"
+mutant = "    if has_plot_artifacts != is_verified:"
+kills = "tests/test_service_formula_attempt.py::test_a3_plot_address_and_bindings_each_refuse_alone"
+
+[[mutant]]
+id = "M13"
+predicate = "plot address, bindings and verified outcome agree"
+anchor = "    if has_plot_id != is_verified or has_plot_artifacts != is_verified:"
+mutant = "    if not is_verified and (has_plot_id != is_verified or has_plot_artifacts != is_verified):"
+kills = "tests/test_service_formula_attempt.py::test_a3_plot_presence_must_match_the_verified_outcome_on_every_route"
+
+[[mutant]]
+id = "M14"
+predicate = "plot address, bindings and verified outcome agree"
+anchor = "    if has_plot_id != is_verified or has_plot_artifacts != is_verified:"
+mutant = "    if is_verified and (has_plot_id != is_verified or has_plot_artifacts != is_verified):"
+kills = "tests/test_service_formula_attempt.py::test_a3_plot_presence_must_match_the_verified_outcome_on_every_route"
+
+[[mutant]]
+id = "M15"
+predicate = "route source column is closed and exact"
+anchor = "    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA}),"
+mutant = "    AttemptRoute.VERIFY_FORMULA: frozenset(),"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_plot_sources_map_is_total_and_exact"
+
+[[mutant]]
+id = "M16"
+predicate = "route source column is closed and exact"
+anchor = "    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA}),"
+mutant = "    AttemptRoute.VERIFY_FORMULA: frozenset({PlotSourceKind.FORMULA, PlotSourceKind.DATASET}),"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_plot_sources_map_is_total_and_exact"
+
+[[mutant]]
+id = "M17"
+predicate = "route source column is closed and exact"
+anchor = "    AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET}),"
+mutant = "    AttemptRoute.VERIFY_AND_RENDER: frozenset({PlotSourceKind.DATASET, PlotSourceKind.FORMULA}),"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_plot_sources_map_is_total_and_exact"
+
+[[mutant]]
+id = "M18"
+predicate = "route source column is closed and exact"
+anchor = "    AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET}),"
+mutant = "    AttemptRoute.PROPOSE_SPEC: frozenset({PlotSourceKind.DATASET, PlotSourceKind.FORMULA}),"
+kills = "tests/test_service_formula_attempt.py::test_a4_route_plot_sources_map_is_total_and_exact"
+
+[[mutant]]
+id = "M19"
+predicate = "signed carrier tuple includes every mode carrier"
+anchor = "_DATASET_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.RAW_CSV, \"raw_csv\"),\n    (BlobKind.RAW_MANIFEST, \"raw_manifest\"),\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.VEGA_LITE, \"vega_lite\"),\n    (BlobKind.SVG, \"svg\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+mutant = "_DATASET_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.RAW_MANIFEST, \"raw_manifest\"),\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.VEGA_LITE, \"vega_lite\"),\n    (BlobKind.SVG, \"svg\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+kills = "tests/test_service_formula_attempt.py::test_a4_signed_plot_binding_order_is_pinned_per_mode"
+
+[[mutant]]
+id = "M20"
+predicate = "signed carrier tuple order is fixed"
+anchor = "_DATASET_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.RAW_CSV, \"raw_csv\"),\n    (BlobKind.RAW_MANIFEST, \"raw_manifest\"),\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.VEGA_LITE, \"vega_lite\"),\n    (BlobKind.SVG, \"svg\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+mutant = "_DATASET_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.RAW_MANIFEST, \"raw_manifest\"),\n    (BlobKind.RAW_CSV, \"raw_csv\"),\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.VEGA_LITE, \"vega_lite\"),\n    (BlobKind.SVG, \"svg\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+kills = "tests/test_service_formula_attempt.py::test_a4_signed_plot_binding_order_is_pinned_per_mode"
+
+[[mutant]]
+id = "M21"
+predicate = "signed carrier tuple includes every mode carrier"
+anchor = "_FORMULA_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.FORMULA_SOURCE, \"formula_source\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.MATPLOTLIB_SCRIPT, \"matplotlib_script\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+mutant = "_FORMULA_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.FORMULA_SOURCE, \"formula_source\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.MATPLOTLIB_SCRIPT, \"matplotlib_script\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+kills = "tests/test_service_formula_attempt.py::test_a4_signed_plot_binding_order_is_pinned_per_mode"
+
+[[mutant]]
+id = "M22"
+predicate = "signed carrier tuple order is fixed"
+anchor = "_FORMULA_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.FORMULA_SOURCE, \"formula_source\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.MATPLOTLIB_SCRIPT, \"matplotlib_script\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+mutant = "_FORMULA_PLOT_BINDING_FIELDS: tuple[tuple[BlobKind, str], ...] = (\n    (BlobKind.FORMULA_SOURCE, \"formula_source\"),\n    (BlobKind.CANONICAL_SPEC, \"canonical_spec\"),\n    (BlobKind.PLOTTED_TABLE, \"plotted_table\"),\n    (BlobKind.VERDICT, \"verdict\"),\n    (BlobKind.MATPLOTLIB_SCRIPT, \"matplotlib_script\"),\n    (BlobKind.VCERT_PAYLOAD, \"vcert_payload\"),\n    (BlobKind.VCERT_ENVELOPE, \"vcert_envelope\"),\n    (BlobKind.TOOL_VERSIONS, \"tool_versions\"),\n    (BlobKind.ED25519_PUBLIC_KEY, \"public_key\"),\n)"
+kills = "tests/test_service_formula_attempt.py::test_a4_signed_plot_binding_order_is_pinned_per_mode"
+
+[[mutant]]
+id = "M23"
+predicate = "binding map selects its own mode tuple"
+anchor = "    PlotSourceKind.DATASET: _DATASET_PLOT_BINDING_FIELDS,\n    PlotSourceKind.FORMULA: _FORMULA_PLOT_BINDING_FIELDS,"
+mutant = "    PlotSourceKind.DATASET: _FORMULA_PLOT_BINDING_FIELDS,\n    PlotSourceKind.FORMULA: _DATASET_PLOT_BINDING_FIELDS,"
+kills = "tests/test_service_formula_attempt.py::test_a4_signed_plot_binding_order_is_pinned_per_mode"
+
+[[mutant]]
+id = "M25"
+predicate = "dataset verdict cross-edge is present"
+anchor = "    PlotSourceKind.DATASET: (\"raw_csv\", \"raw_manifest\", \"verdict\"),"
+mutant = "    PlotSourceKind.DATASET: (\"raw_csv\", \"raw_manifest\"),"
+kills = "tests/test_service_formula_attempt.py::test_a4_attempt_plot_shared_fields_are_pinned_per_mode"
+
+[[mutant]]
+id = "M26"
+predicate = "formula verdict cross-edge is present"
+anchor = "    PlotSourceKind.FORMULA: (\"verdict\",),"
+mutant = "    PlotSourceKind.FORMULA: (),"
+kills = "tests/test_service_formula_attempt.py::test_a4_attempt_plot_shared_fields_are_pinned_per_mode"
+
+[[mutant]]
+id = "M27a"
+predicate = "dataset observed input cross-edge is present"
+anchor = "    PlotSourceKind.DATASET: (\"raw_csv\", \"raw_manifest\", \"verdict\"),"
+mutant = "    PlotSourceKind.DATASET: (\"raw_manifest\", \"verdict\"),"
+kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
+
+[[mutant]]
+id = "M27b"
+predicate = "dataset observed input cross-edge is present"
+anchor = "    PlotSourceKind.DATASET: (\"raw_csv\", \"raw_manifest\", \"verdict\"),"
+mutant = "    PlotSourceKind.DATASET: (\"raw_csv\", \"verdict\"),"
+kills = "tests/test_service_attempt_bundle.py::test_each_shared_field_alone_ties_the_attempt_bytes_to_its_plot"
+
+[[mutant]]
+id = "M28"
+predicate = "dataset versions use dataset TCB decoder"
+anchor = "    PlotSourceKind.DATASET: _decode_canonical_versions,"
+mutant = "    PlotSourceKind.DATASET: _decode_canonical_formula_versions,"
+kills = "tests/test_service_attempt_bundle.py::test_success_manifest_binds_every_observed_and_plot_blob_then_round_trips"
+
+[[mutant]]
+id = "M29"
+predicate = "formula versions use formula TCB decoder"
+anchor = "    PlotSourceKind.FORMULA: _decode_canonical_formula_versions,"
+mutant = "    PlotSourceKind.FORMULA: _decode_canonical_versions,"
+kills = "tests/test_service_formula_attempt.py::test_a9_verified_formula_attempt_binds_its_nine_carriers_and_round_trips"
+
+[[mutant]]
+id = "M30"
+predicate = "attempt reader retains stored source_kind"
+anchor = "        plot_parts = _PlotEntries(\n            plot_id,\n            plot_keyid,\n            plot_source_kind,"
+mutant = "        plot_parts = _PlotEntries(\n            plot_id,\n            plot_keyid,\n            PlotSourceKind.DATASET,"
+kills = "tests/test_service_formula_attempt.py::test_a9_verified_formula_attempt_binds_its_nine_carriers_and_round_trips"
+
+[[mutant]]
+id = "M31"
+predicate = "dataset reader uses dataset roles"
+anchor = "    PlotSourceKind.DATASET: _DATASET_PLOT_ROLE_FIELDS,"
+mutant = "    PlotSourceKind.DATASET: _FORMULA_PLOT_ROLE_FIELDS,"
+kills = "tests/test_service_attempt_bundle.py::test_success_manifest_binds_every_observed_and_plot_blob_then_round_trips"
+
+[[mutant]]
+id = "M32"
+predicate = "formula reader uses formula roles"
+anchor = "    PlotSourceKind.FORMULA: _FORMULA_PLOT_ROLE_FIELDS,"
+mutant = "    PlotSourceKind.FORMULA: _DATASET_PLOT_ROLE_FIELDS,"
+kills = "tests/test_service_formula_attempt.py::test_a9_verified_formula_attempt_binds_its_nine_carriers_and_round_trips"
+
+[[mutant]]
+id = "M33"
+predicate = "dataset reader constructs dataset bundle"
+anchor = "    return _PLOT_BUNDLE_TYPE_BY_SOURCE[source_kind](\n        plot_id=plot_id,"
+mutant = "    return (FormulaPlotBundle if source_kind is PlotSourceKind.DATASET else _PLOT_BUNDLE_TYPE_BY_SOURCE[source_kind])(\n        plot_id=plot_id,"
+kills = "tests/test_service_formula_storage.py::test_d1_both_modes_return_their_exact_concrete_bundle"
+
+[[mutant]]
+id = "M34"
+predicate = "formula reader constructs formula bundle"
+anchor = "    return _PLOT_BUNDLE_TYPE_BY_SOURCE[source_kind](\n        plot_id=plot_id,"
+mutant = "    return (DatasetPlotBundle if source_kind is PlotSourceKind.FORMULA else _PLOT_BUNDLE_TYPE_BY_SOURCE[source_kind])(\n        plot_id=plot_id,"
+kills = "tests/test_service_formula_storage.py::test_d1_both_modes_return_their_exact_concrete_bundle"
+
+[[mutant]]
+id = "M50"
+predicate = "manifest source is inferred without a new signed source field"
+anchor = "    plot_artifacts: tuple[BlobBinding, ...]\n    keyid: str\n    verifier_version: str\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass AttemptArtifacts:"
+mutant = "    plot_artifacts: tuple[BlobBinding, ...]\n    keyid: str\n    verifier_version: str\n    source_kind: PlotSourceKind = PlotSourceKind.FORMULA\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass AttemptArtifacts:"
+kills = "tests/test_service_replay_route.py::test_archived_formula_plot_replay_reports_an_exact_formula_verdict"

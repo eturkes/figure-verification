@@ -104,3 +104,11 @@ anchor = '''        manifest.keyid == snapshot.keyid,
         "attempt_manifest",'''
 mutant = '''        True,
         "attempt_manifest",'''
+
+# rev-m9u8b-2 ledger (polish p14).
+[[mutant]]
+id = "M44"
+predicate = "dataset replay route shape excludes formula route"
+anchor = "    \"/verify-and-render\": True,\n    \"/propose-spec\": True,\n    \"/verify-formula\": False,\n    \"/propose-formula\": False,"
+mutant = "    \"/verify-and-render\": True,\n    \"/propose-spec\": True,\n    \"/verify-formula\": True,\n    \"/propose-formula\": False,"
+kills = "tests/test_replay_formula.py::test_v48_closed_formula_and_dataset_selectors_are_hand_stated"
