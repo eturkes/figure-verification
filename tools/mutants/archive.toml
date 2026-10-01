@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for archive's mapping of table decode failures (Q5).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/service/archive.py"
+tests = ["tests/test_service_plot_bundle.py"]
+
+[[mutant]]
+id = "archive-noncanonical-escapes"
+predicate = "archive maps a non-canonical table to ArchiveIntegrityError"
+kills = "tests/test_service_plot_bundle.py::test_publish_rejects_noncanonical_or_invalid_plotted_table_bytes"
+anchor = '''    except canon.NonCanonicalTableError as exc:
+        msg = "plot bundle plotted table bytes are not canonical"
+        raise ArchiveIntegrityError(msg) from exc'''
+mutant = '''    except ZeroDivisionError as exc:
+        msg = "plot bundle plotted table bytes are not canonical"
+        raise ArchiveIntegrityError(msg) from exc'''
+
+[[mutant]]
+id = "archive-undecodable-escapes"
+predicate = "archive maps an undecodable table to ArchiveIntegrityError"
+kills = "tests/test_service_plot_bundle.py::test_publish_rejects_noncanonical_or_invalid_plotted_table_bytes"
+anchor = '''    except canon.TableDecodeError as exc:'''
+mutant = '''    except ZeroDivisionError as exc:'''

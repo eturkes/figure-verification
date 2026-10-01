@@ -716,6 +716,18 @@ def _require(
         raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid)
 
 
+def _require_canonical_table(payload: bytes, *, trusted_keyid: str) -> None:
+    """A certified digest authenticates the table bytes, never their form: archive refuses a
+    non-canonical table at publication, so replay refuses one at ``plot_contents`` too, before
+    recomputation could read it as a value mismatch."""
+    try:
+        canon.parse_table(payload)
+    except (canon.TableDecodeError, canon.NonCanonicalTableError) as exc:
+        stage: ReplayFailureStage = "plot_contents"
+        diagnostic = "archived plotted table is not canonical typed NDJSON"
+        raise _integrity_error(stage, diagnostic, trusted_keyid=trusted_keyid) from exc
+
+
 def _raw_digest(payload: bytes) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
@@ -1138,6 +1150,7 @@ def _authenticate_plot(
         "archived plot artifact bytes disagree with one or more certified hashes",
         trusted_keyid=trusted_keyid,
     )
+    _require_canonical_table(plot.plotted_table, trusted_keyid=trusted_keyid)
     _require(
         spec.dataset.hash == certificate.dataset_hash,
         "plot_contents",
@@ -1608,6 +1621,7 @@ def _authenticate_formula_plot(
         "archived formula plot artifact bytes disagree with one or more certified hashes",
         trusted_keyid=trusted_keyid,
     )
+    _require_canonical_table(plot.plotted_table, trusted_keyid=trusted_keyid)
     _require(
         verdict.layer == "verify" and all(result.status == "pass" for result in verdict.results),
         "plot_contents",

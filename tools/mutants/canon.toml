@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for the canonical typed-NDJSON table deserializer (Q5).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/canon.py"
+tests = ["tests/test_canon_parse_table.py", "tests/test_canon.py"]
+
+[[mutant]]
+id = "parse-table-form-unchecked"
+predicate = "decoded table bytes must equal their canonical re-serialization"
+kills = "tests/test_canon_parse_table.py::test_parse_table_refuses_typed_ndjson_that_is_not_canonical"
+anchor = '''    if canonical != payload:
+        msg = "table bytes are not in canonical form"'''
+mutant = '''    if False:
+        msg = "table bytes are not in canonical form"'''
+
+[[mutant]]
+id = "parse-table-descriptor-search"
+predicate = "a column descriptor must match its grammar in full"
+kills = "tests/test_canon_parse_table.py::test_parse_table_refuses_bytes_that_are_not_typed_ndjson"
+anchor = '''    match = _TABLE_COLUMN_DESCRIPTOR.fullmatch(descriptor)'''
+mutant = '''    match = _TABLE_COLUMN_DESCRIPTOR.match(descriptor)'''

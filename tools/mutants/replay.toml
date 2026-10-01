@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Mutation catalogue for replay's canonical-table guard in both engines (Q5).
+# Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
+module = "src/verifier/replay.py"
+tests = ["tests/test_rev_m9_4.py", "tests/test_replay.py", "tests/test_replay_formula.py"]
+
+[[mutant]]
+id = "dataset-table-form-unchecked"
+predicate = "dataset replay refuses a digest-authentic non-canonical table at plot_contents"
+kills = "tests/test_rev_m9_4.py::test_dataset_replay_refuses_a_noncanonical_table_before_recomputation"
+anchor = '''        "archived plot artifact bytes disagree with one or more certified hashes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require_canonical_table(plot.plotted_table, trusted_keyid=trusted_keyid)'''
+mutant = '''        "archived plot artifact bytes disagree with one or more certified hashes",
+        trusted_keyid=trusted_keyid,
+    )'''
+
+[[mutant]]
+id = "formula-table-form-unchecked"
+predicate = "formula replay refuses a digest-authentic non-canonical table at plot_contents"
+kills = "tests/test_rev_m9_4.py::test_formula_replay_rejects_digest_authentic_noncanonical_table"
+anchor = '''        "archived formula plot artifact bytes disagree with one or more certified hashes",
+        trusted_keyid=trusted_keyid,
+    )
+    _require_canonical_table(plot.plotted_table, trusted_keyid=trusted_keyid)'''
+mutant = '''        "archived formula plot artifact bytes disagree with one or more certified hashes",
+        trusted_keyid=trusted_keyid,
+    )'''
+
+[[mutant]]
+id = "replay-noncanonical-escapes"
+predicate = "replay maps decodable non-canonical table bytes to plot_contents, not only undecodable ones"
+kills = "tests/test_rev_m9_4.py::test_formula_replay_refuses_a_noncanonical_table_before_recomputation"
+anchor = '''    except (canon.TableDecodeError, canon.NonCanonicalTableError) as exc:'''
+mutant = '''    except canon.TableDecodeError as exc:'''

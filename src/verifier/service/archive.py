@@ -79,10 +79,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from types import GenericAlias
 from typing import Literal, Protocol, cast
 
 import msgspec
@@ -180,9 +178,6 @@ ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
 _ATTEMPT_NONCE_BYTES = 16
 _ATTEMPT_NONCE_ATTEMPTS = 3
 _NONCE_HEX = re.compile(r"[0-9a-f]{32}")
-_TABLE_COLUMN_DESCRIPTOR = re.compile(
-    r"(.*):(?:numeric:([0-9]+)|temporal:(date|datetime)|(string))", re.DOTALL
-)
 _UTC_TIMESTAMP = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z")
 _MAX_VERSION_BYTES = 128
 
@@ -819,7 +814,6 @@ def _require_attempt_plot(plot: object, *, subject: str) -> None:
 
 _BUNDLE_ENCODER = msgspec.json.Encoder(order="deterministic")
 _VERDICT_DECODER = msgspec.json.Decoder(Verdict, strict=True)
-_TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
 _TOOL_VERSIONS_DECODER = msgspec.json.Decoder(render.Tcb, strict=True)
 _FORMULA_TOOL_VERSIONS_DECODER = msgspec.json.Decoder(vcert.FormulaTcb, strict=True)
 _ATTEMPT_DECODER = msgspec.json.Decoder(AttemptManifest, strict=True)
@@ -901,45 +895,15 @@ def _require_limits(limits: VerificationLimits) -> None:
         raise TypeError(msg)
 
 
-def _decode_table_column(descriptor: str) -> canon.Column:
-    match = _TABLE_COLUMN_DESCRIPTOR.fullmatch(descriptor)
-    if match is None:
-        msg = f"invalid plotted-table column descriptor: {descriptor!r}"
-        raise ValueError(msg)
-    name = match.group(1)
-    scale = match.group(2)
-    granularity = match.group(3)
-    if scale is not None:
-        return canon.NumericColumn(name=name, scale=int(scale))
-    if granularity is not None:
-        return canon.TemporalColumn(
-            name=name, granularity=cast("Literal['date', 'datetime']", granularity)
-        )
-    return canon.StringColumn(name=name)
-
-
 def _decode_canonical_table(payload: bytes) -> canon.Table:
     try:
-        header, _separator, row_bytes = payload.partition(b"\n")
-        columns = tuple(
-            _decode_table_column(descriptor) for descriptor in _TABLE_HEADER_DECODER.decode(header)
-        )
-        cell_types = tuple(
-            Decimal | None if isinstance(column, canon.NumericColumn) else str | None
-            for column in columns
-        )
-        row_type = cast("type[tuple[canon.Cell, ...]]", GenericAlias(tuple, cell_types))
-        row_decoder = msgspec.json.Decoder(row_type, strict=True)
-        rows = tuple(row_decoder.decode(row) for row in row_bytes.splitlines())
-        table = canon.Table(columns=columns, rows=rows)
-        canonical = canon.serialize_table(table).encode("utf-8")
-    except (msgspec.DecodeError, UnicodeDecodeError, ValueError, TypeError, ArithmeticError) as exc:
+        return canon.parse_table(payload)
+    except canon.TableDecodeError as exc:
         msg = "plot bundle plotted table is not valid typed NDJSON"
         raise ArchiveIntegrityError(msg) from exc
-    if canonical != payload:
+    except canon.NonCanonicalTableError as exc:
         msg = "plot bundle plotted table bytes are not canonical"
-        raise ArchiveIntegrityError(msg)
-    return table
+        raise ArchiveIntegrityError(msg) from exc
 
 
 def _decode_canonical_verdict(payload: bytes, *, subject: str = "plot bundle") -> Verdict:

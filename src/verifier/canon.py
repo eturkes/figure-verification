@@ -31,9 +31,11 @@ the manifest, never in a Column, so it never enters the table hash. See memory S
 
 import hashlib
 import platform
+import re
 import unicodedata
 from decimal import MAX_EMAX, MIN_EMIN, ROUND_HALF_EVEN, Context, Decimal
-from typing import ClassVar, Literal
+from types import GenericAlias
+from typing import ClassVar, Literal, cast
 
 import msgspec
 from msgspec import Struct
@@ -187,6 +189,73 @@ def serialize_table(table: Table) -> str:
     return "\n".join(lines) + "\n"
 
 
+class TableDecodeError(ValueError):
+    """Table bytes that are not typed NDJSON over the canonical column descriptors."""
+
+
+class NonCanonicalTableError(ValueError):
+    """Typed-NDJSON table bytes that decode but differ from their canonical re-serialization."""
+
+
+_TABLE_HEADER_DECODER = msgspec.json.Decoder(tuple[str, ...], strict=True)
+_TABLE_COLUMN_DESCRIPTOR = re.compile(
+    r"(.*):(?:numeric:([0-9]+)|temporal:(date|datetime)|(string))", re.DOTALL
+)
+
+
+def _parse_column(descriptor: str) -> Column:
+    match = _TABLE_COLUMN_DESCRIPTOR.fullmatch(descriptor)
+    if match is None:
+        msg = f"invalid plotted-table column descriptor: {descriptor!r}"
+        raise ValueError(msg)
+    name = match.group(1)
+    scale = match.group(2)
+    granularity = match.group(3)
+    if scale is not None:
+        return NumericColumn(name=name, scale=int(scale))
+    if granularity is not None:
+        return TemporalColumn(
+            name=name, granularity=cast("Literal['date', 'datetime']", granularity)
+        )
+    return StringColumn(name=name)
+
+
+def parse_table(payload: bytes) -> Table:
+    """Decode typed-NDJSON bytes, then prove them canonical: the inverse of :func:`serialize_table`
+    over its output bytes.
+
+    The decoded table is re-serialized and must reproduce ``payload`` byte for byte, so a table
+    this returns hashes (:func:`hash_table`) to ``hash_table_bytes(payload)``. The round trip is
+    exact on bytes, not on every input table: ``serialize_table`` quantizes each numeric cell to
+    its column scale, so a table holding ``1.005`` at scale 2 parses back as ``1.00``. Archive and
+    both replay engines call this one deserializer; a digest alone authenticates bytes, not their
+    form.
+    Raises ``TableDecodeError`` when the bytes do not decode and ``NonCanonicalTableError`` when
+    they decode to a table whose canonical form differs.
+    """
+    try:
+        header, _separator, row_bytes = payload.partition(b"\n")
+        columns = tuple(
+            _parse_column(descriptor) for descriptor in _TABLE_HEADER_DECODER.decode(header)
+        )
+        cell_types = tuple(
+            Decimal | None if isinstance(column, NumericColumn) else str | None
+            for column in columns
+        )
+        row_type = cast("type[tuple[Cell, ...]]", GenericAlias(tuple, cell_types))
+        row_decoder = msgspec.json.Decoder(row_type, strict=True)
+        rows = tuple(row_decoder.decode(row) for row in row_bytes.splitlines())
+        table = Table(columns=columns, rows=rows)
+        canonical = serialize_table(table).encode("utf-8")
+    except (msgspec.DecodeError, UnicodeDecodeError, ValueError, TypeError, ArithmeticError) as exc:
+        msg = "table bytes are not typed NDJSON"
+        raise TableDecodeError(msg) from exc
+    if canonical != payload:
+        msg = "table bytes are not in canonical form"
+        raise NonCanonicalTableError(msg)
+    return table
+
+
 # --- resolved formula-source serialization -----------------------------------
 def formula_source_bytes(source: FormulaSource) -> bytes:
     """Nine fixed, newline-terminated UTF-8 lines for a resolved formula source.
@@ -248,8 +317,9 @@ def hash_table(table: Table) -> str:
 def hash_table_bytes(payload: bytes) -> str:
     """Hash exact already-canonical typed-NDJSON table bytes.
 
-    Archive/replay code owns the canonical-byte precondition; live tables should use
-    :func:`hash_table`, which serializes them first. Keeping the domain tag here prevents a
+    The digest authenticates bytes, not their form: archive and replay prove the canonical-byte
+    precondition with :func:`parse_table`. Live tables should use :func:`hash_table`, which
+    serializes them first. Keeping the domain tag here prevents a
     second provenance layer from restating canon's versioned hash construction.
     """
     return _digest("table", payload)
