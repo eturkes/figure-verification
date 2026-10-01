@@ -67,6 +67,25 @@ _PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset({"FormulaScriptVerdict"})
 # oneOf whose FIRST arm is the baseline's own dataset $ref unchanged, the formula-only 501 is
 # removed, and every remaining response object stays byte-identical.
 _REPLAY_PATH = "/replay/{plot_id}"
+
+# Polish p23 closed every response object and made the verdict unions exclusive. The permitted
+# change is hand-stated as its exact inverse, applied to the candidate before comparison: drop
+# `additionalProperties: false` from these components (where the baseline had none) and read the
+# verdict unions below back as `anyOf`. Any other drift inside them still fails.
+_CLOSED_RESPONSE_SCHEMAS = frozenset(
+    {
+        "Verdict",
+        "Problem",
+        "DSSEEnvelope",
+        "DSSESignature",
+        "RenderVerdict",
+        "FormulaScriptVerdict",
+        "ProposeResult",
+        "ProposeFormulaResult",
+    }
+)
+_ONE_OF_VERDICT_SCHEMAS = frozenset({"ProposeResult", "ProposeFormulaResult"})
+_ONE_OF_200_PATHS = frozenset({"/verify-and-render", "/verify-formula"})
 _REMOVED_REPLAY_RESPONSES = frozenset({"501"})
 _REPLAY_ARMS = 2
 
@@ -299,6 +318,29 @@ def _compare_replay_path(candidate: dict[str, Any], expected: dict[str, Any]) ->
         _fail("replay 200 no longer publishes the baseline dataset arm first")
 
 
+def _as_any_of(schema: dict[str, Any]) -> None:
+    if list(schema) != ["oneOf"]:
+        _fail(f"declared oneOf union is not a bare oneOf: {sorted(schema)}")
+    schema["anyOf"] = schema.pop("oneOf")
+
+
+def _undo_p23(got: dict[str, Any], want: dict[str, Any]) -> None:
+    """Invert exactly the p23 tightening on the candidate document, in place."""
+    schemas, baseline = got["components"]["schemas"], want["components"]["schemas"]
+    for name in _CLOSED_RESPONSE_SCHEMAS & set(baseline):
+        if (
+            "additionalProperties" not in baseline[name]
+            and schemas[name].pop("additionalProperties", None) is not False
+        ):
+            _fail(f"schema {name} is not closed")
+    for name in _ONE_OF_VERDICT_SCHEMAS & set(baseline):
+        _as_any_of(schemas[name]["properties"]["verdict"])
+    for path in _ONE_OF_200_PATHS & set(want["paths"]):
+        _as_any_of(
+            got["paths"][path]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+        )
+
+
 def _compare_openapi(candidate: dict[str, Any], expected: dict[str, Any]) -> None:
     """Every baseline path, schema, and top-level value survives; only the declared keys appear.
 
@@ -316,6 +358,7 @@ def _compare_openapi(candidate: dict[str, Any], expected: dict[str, Any]) -> Non
         _fail("openapi headers changed")
     got = json.loads(bytes.fromhex(candidate["body"]))
     want = json.loads(bytes.fromhex(expected["body"]))
+    _undo_p23(got, want)
     if _REPLAY_PATH not in got["paths"]:
         _fail(f"path removed: ['{_REPLAY_PATH}']")
     _compare_subtrees(

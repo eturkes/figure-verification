@@ -164,9 +164,9 @@ def _formula_verdict_schema(verdict_schema: dict[str, Any]) -> dict[str, Any]:
 def _propose_result_schema() -> dict[str, Any]:
     """ProposeResult's schema, hand-derived for the same reason as RenderVerdict — its `verdict`
     field is the Verdict | RenderVerdict union, and RenderVerdict cannot be introspected
-    (Literal[True]). `model_reply` is the raw model reply string; `verdict` is anyOf
-    RenderVerdict|Verdict (a RenderVerdict payload also satisfies Verdict — anyOf, not oneOf,
-    the /verify-and-render 200 precedent). Both fields are required."""
+    (Literal[True]). `model_reply` is the raw model reply string; `verdict` is oneOf
+    RenderVerdict|Verdict (closed components make the arms exclusive, the /verify-and-render 200
+    precedent). Both fields are required."""
     return {
         "title": "ProposeResult",
         "description": inspect.getdoc(ProposeResult),
@@ -174,7 +174,7 @@ def _propose_result_schema() -> dict[str, Any]:
         "properties": {
             "model_reply": {"type": "string"},
             "verdict": {
-                "anyOf": [
+                "oneOf": [
                     {"$ref": f"{_COMPONENTS}/RenderVerdict"},
                     {"$ref": f"{_COMPONENTS}/Verdict"},
                 ]
@@ -187,9 +187,9 @@ def _propose_result_schema() -> dict[str, Any]:
 def _propose_formula_result_schema() -> dict[str, Any]:
     """ProposeFormulaResult's schema, hand-derived for the reason _propose_result_schema gives —
     its `verdict` field is the Verdict | FormulaScriptVerdict union, and FormulaScriptVerdict is
-    itself hand-derived. `model_reply` is the raw model reply string; `verdict` is anyOf
-    FormulaScriptVerdict|Verdict (a FormulaScriptVerdict payload also satisfies Verdict — anyOf,
-    not oneOf, the /verify-formula 200 precedent). Both fields are required."""
+    itself hand-derived. `model_reply` is the raw model reply string; `verdict` is oneOf
+    FormulaScriptVerdict|Verdict (closed components make the arms exclusive, the /verify-formula
+    200 precedent). Both fields are required."""
     return {
         "title": "ProposeFormulaResult",
         "description": inspect.getdoc(ProposeFormulaResult),
@@ -197,7 +197,7 @@ def _propose_formula_result_schema() -> dict[str, Any]:
         "properties": {
             "model_reply": {"type": "string"},
             "verdict": {
-                "anyOf": [
+                "oneOf": [
                     {"$ref": f"{_COMPONENTS}/FormulaScriptVerdict"},
                     {"$ref": f"{_COMPONENTS}/Verdict"},
                 ]
@@ -247,6 +247,19 @@ def _dsse_schemas() -> dict[str, dict[str, Any]]:
     return {"DSSEEnvelope": envelope, "DSSESignature": signature}
 
 
+# The response objects whose models do not forbid unknown fields, or are hand-derived, closed here.
+_OPEN_RESPONSE_SCHEMAS = (
+    "Verdict",
+    "Problem",
+    "DSSEEnvelope",
+    "DSSESignature",
+    "RenderVerdict",
+    "FormulaScriptVerdict",
+    "ProposeResult",
+    "ProposeFormulaResult",
+)
+
+
 def _components() -> dict[str, Any]:
     """The components/schemas block: VPlot request-body defs (pointers rebased) + the
     introspectable response/request models (sorted, including ProposeRequest and both replay
@@ -276,6 +289,10 @@ def _components() -> dict[str, Any]:
     schemas["FormulaScriptVerdict"] = _formula_verdict_schema(generated["Verdict"])
     schemas["ProposeResult"] = _propose_result_schema()
     schemas["ProposeFormulaResult"] = _propose_formula_result_schema()
+    # Every response object is closed, so a payload validates exactly the arm it belongs to; the
+    # request-body and nested models already carry it (msgspec maps forbid_unknown_fields).
+    for name in _OPEN_RESPONSE_SCHEMAS:
+        schemas[name]["additionalProperties"] = False
     return schemas
 
 
@@ -433,11 +450,11 @@ def _paths() -> dict[str, Any]:
                         "A RenderVerdict with the certified chart on a passing verdict, or a "
                         "plain Verdict on a failing one — each carrying its durably committed "
                         "attempt_id, and never a chart on an unverified outcome.",
-                        # anyOf, NOT oneOf: a RenderVerdict payload also satisfies Verdict
-                        # (which carries no additionalProperties:false), so the two are not
-                        # mutually exclusive.
+                        # oneOf: every response component is closed (additionalProperties:false),
+                        # so a RenderVerdict's extra fields fail the Verdict arm and a failing
+                        # Verdict lacks RenderVerdict's required fields -- exactly one arm holds.
                         {
-                            "anyOf": [
+                            "oneOf": [
                                 {"$ref": f"{_COMPONENTS}/RenderVerdict"},
                                 {"$ref": f"{_COMPONENTS}/Verdict"},
                             ]
@@ -468,11 +485,9 @@ def _paths() -> dict[str, Any]:
                         "verdict, or a plain Verdict on a failing one — each carrying its durably "
                         "committed attempt_id, and never a script on an unverified outcome. The "
                         "verifier authored the script and did not run it.",
-                        # anyOf, NOT oneOf: a FormulaScriptVerdict payload also satisfies Verdict
-                        # (which carries no additionalProperties:false), so the two are not
-                        # mutually exclusive — the /verify-and-render precedent.
+                        # oneOf, for the reason the /verify-and-render 200 gives.
                         {
-                            "anyOf": [
+                            "oneOf": [
                                 {"$ref": f"{_COMPONENTS}/FormulaScriptVerdict"},
                                 {"$ref": f"{_COMPONENTS}/Verdict"},
                             ]
@@ -516,8 +531,8 @@ def _paths() -> dict[str, Any]:
                         # anyOf: the bare ProposeResult object (every non-verified outcome), OR the
                         # verified-success embed body — a two-element [ProposeResult, summary]
                         # array (element0 that same ProposeResult, element1 a human summary
-                        # string). The arms are type-disjoint (object vs array); anyOf follows the
-                        # union-200 house style (the /verify-and-render precedent).
+                        # string). The arms are type-disjoint (object vs array), so anyOf already
+                        # admits exactly one of them.
                         {
                             "anyOf": [
                                 {"$ref": f"{_COMPONENTS}/ProposeResult"},

@@ -424,12 +424,10 @@ def _validator(schema: dict[str, Any]) -> Draft202012Validator:
 
 def test_documented_response_schemas_accept_real_payloads() -> None:
     # The external-contract rule: prove the service's REAL encoded structs satisfy the
-    # schemas the document advertises, not merely that those schemas are well-formed. It pins
-    # anyOf over oneOf (a render payload validates against BOTH RenderVerdict and Verdict, so
-    # oneOf would reject it) and guards the overlap the anyOf relies on — the
-    # verify_200.is_valid(render_verdict) check below is what fails if Verdict gains
-    # forbid_unknown_fields (additionalProperties:false). Validating the render payload against
-    # the anyOf-200 alone would NOT catch that: its RenderVerdict branch would still pass.
+    # schemas the document advertises, not merely that those schemas are well-formed. The
+    # response components are CLOSED (additionalProperties:false), so the 200 oneOf admits a
+    # render payload through its RenderVerdict arm alone and a failing payload through its
+    # Verdict arm alone (polish p23).
     fail_verdict = _payload(
         Verdict(
             verified=False,
@@ -476,12 +474,14 @@ def test_documented_response_schemas_accept_real_payloads() -> None:
     committed_fail = {**fail_verdict, "attempt_id": "8" * 64}
     assert render_200.is_valid(committed_fail)
     assert not render_200.is_valid({**fail_verdict, "attempt_id": "not-an-address"})
-    # A render payload ALSO satisfies the bare Verdict schema — the overlap the anyOf relies on,
-    # and precisely what breaks if Verdict gains forbid_unknown_fields (additionalProperties:false).
-    assert verify_200.is_valid(render_verdict)
+    # Exclusive arms: the closed Verdict refuses a render payload's extra fields.
+    assert not verify_200.is_valid(render_verdict)
     render_ref = _validator({"$ref": "#/components/schemas/RenderVerdict"})
     assert render_ref.is_valid(render_verdict)
     assert not render_ref.is_valid(fail_verdict)
+    assert not _validator({"$ref": "#/components/schemas/Verdict"}).is_valid(
+        {**fail_verdict, "undeclared": 1}
+    )
     # The hand-written /health 200 schema (the one response schema not msgspec-generated) must
     # accept the real health body; test_health pins that body to the live route.
     health_schema = _DOC["paths"]["/health"]["get"]["responses"]["200"]["content"][
@@ -628,3 +628,41 @@ def test_served_via_test_client(tmp_path: Path) -> None:
     assert response.headers["content-type"].startswith("application/json")
     assert response.headers["x-content-type-options"] == _NOSNIFF
     assert response.content == openapi_document_text().encode("utf-8")
+
+
+def _arms_admitting(schema: dict[str, Any], payload: dict[str, Any]) -> list[str]:
+    return [
+        arm["$ref"].rsplit("/", 1)[1]
+        for arm in schema["oneOf"]
+        if _validator(arm).is_valid(payload)
+    ]
+
+
+def test_each_mode_success_and_failure_validate_exactly_one_response_arm(tmp_path: Path) -> None:
+    """p23: per mode, a REAL success and a REAL failure 200 each satisfy exactly one arm, so a
+    client can discriminate the outcome by schema alone."""
+    examples = _ROOT / "examples"
+    bodies = {
+        "/verify-and-render": (
+            (examples / "good_specs" / "g01_total_revenue_by_month.json").read_bytes(),
+            b"{",
+        ),
+        "/verify-formula": (
+            (examples / "formula_good_specs" / "f02_linear.json").read_bytes(),
+            b"{",
+        ),
+    }
+    expected = {"/verify-and-render": "RenderVerdict", "/verify-formula": "FormulaScriptVerdict"}
+    app = create_app(Settings(data_dir=_ROOT / "data", state_dir=tmp_path / "state"))
+    with TestClient(app=app) as client:
+        for path, (good, bad) in bodies.items():
+            schema = _DOC["paths"][path]["post"]["responses"]["200"]["content"]["application/json"][
+                "schema"
+            ]
+            success = client.post(path, content=good, headers={"content-type": "application/json"})
+            failure = client.post(path, content=bad, headers={"content-type": "application/json"})
+            assert success.status_code == failure.status_code == 200
+            assert success.json()["verified"] is True
+            assert failure.json()["verified"] is False
+            assert _arms_admitting(schema, success.json()) == [expected[path]]
+            assert _arms_admitting(schema, failure.json()) == ["Verdict"]

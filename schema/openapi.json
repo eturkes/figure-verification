@@ -134,7 +134,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
+                  "oneOf": [
                     {
                       "$ref": "#/components/schemas/RenderVerdict"
                     },
@@ -229,7 +229,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "anyOf": [
+                  "oneOf": [
                     {
                       "$ref": "#/components/schemas/FormulaScriptVerdict"
                     },
@@ -1796,7 +1796,8 @@
           "title",
           "status",
           "detail"
-        ]
+        ],
+        "additionalProperties": false
       },
       "ProposeFormulaRequest": {
         "title": "ProposeFormulaRequest",
@@ -2091,7 +2092,8 @@
           "verified",
           "layer",
           "results"
-        ]
+        ],
+        "additionalProperties": false
       },
       "VersionDrift": {
         "title": "VersionDrift",
@@ -2154,7 +2156,8 @@
           "payload",
           "payloadType",
           "signatures"
-        ]
+        ],
+        "additionalProperties": false
       },
       "DSSESignature": {
         "title": "DSSESignature",
@@ -2173,7 +2176,8 @@
         "required": [
           "keyid",
           "sig"
-        ]
+        ],
+        "additionalProperties": false
       },
       "RenderVerdict": {
         "title": "RenderVerdict",
@@ -2240,7 +2244,8 @@
           "manifest_hash",
           "vega_lite_hash",
           "svg"
-        ]
+        ],
+        "additionalProperties": false
       },
       "FormulaScriptVerdict": {
         "title": "FormulaScriptVerdict",
@@ -2300,7 +2305,8 @@
           "plotted_table_hash",
           "matplotlib_script_hash",
           "matplotlib_script"
-        ]
+        ],
+        "additionalProperties": false
       },
       "ProposeResult": {
         "title": "ProposeResult",
@@ -2311,7 +2317,7 @@
             "type": "string"
           },
           "verdict": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/RenderVerdict"
               },
@@ -2324,7 +2330,8 @@
         "required": [
           "model_reply",
           "verdict"
-        ]
+        ],
+        "additionalProperties": false
       },
       "ProposeFormulaResult": {
         "title": "ProposeFormulaResult",
@@ -2335,7 +2342,7 @@
             "type": "string"
           },
           "verdict": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/FormulaScriptVerdict"
               },
@@ -2348,7 +2355,8 @@
         "required": [
           "model_reply",
           "verdict"
-        ]
+        ],
+        "additionalProperties": false
       }
     }
   }
