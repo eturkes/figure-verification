@@ -267,6 +267,11 @@ class _VerifierService:
         self.stop()
         self.start()
 
+    @property
+    def launches(self) -> int:
+        """How many children this service has started; a restart must advance it by one."""
+        return self._launches
+
     def diagnostics(self) -> str:
         """Return every child stderr capture for failure diagnosis."""
         captures = [
@@ -496,7 +501,9 @@ def _case_g01_verified(service: _VerifierService) -> str:
     _assert_chart(service, plot_id, "g01 chart")
     _LOGGER.info("  chart served under CSP sandbox allow-scripts")
 
+    launches = service.launches
     service.restart()
+    _require(service.launches == launches + 1, "g01 restart launched no new verifier child")
     replay_response = _get(service, f"/replay/{plot_id}")
     _expect_status(replay_response, _HTTP_OK, "g01 replay")
     replay = _response_object(replay_response, "g01 replay response")
@@ -763,7 +770,9 @@ def _case_f02_formula_verified(service: _VerifierService) -> str:
     # The restart hands this case a fresh chart LRU. Checking /chart on BOTH sides of the replay
     # is what separates "formula mode builds no chart" from "the chart was evicted": the dataset
     # case's replay repopulates its chart, and this one must still answer 404 afterwards.
+    launches = service.launches
     service.restart()
+    _require(service.launches == launches + 1, "f02 restart launched no new verifier child")
     _expect_no_chart(service, plot_id, "f02 on the restarted service, before replay")
     _check_formula_replay(service, plot_id)
     replayed_keyid, replayed = _fetch_and_verify_formula_certificate(service, plot_id)
