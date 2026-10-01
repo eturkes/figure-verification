@@ -9,12 +9,15 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import msgspec
 import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
 from formula_plot_bundle_helpers import formula_bundle_parts
+from verifier import replay as replay_core
 from verifier.attestation import VCERT_V03_PAYLOAD_TYPE
+from verifier.service import replay as service_replay
 from verifier.service.admission import AdmissionController
 from verifier.service.app import create_app
 from verifier.service.archive import (
@@ -376,3 +379,63 @@ def test_replay_uses_shared_active_job_admission(tmp_path: Path) -> None:
         429,
         "the process-local verifier work limit is currently exhausted",
     )
+
+
+@pytest.mark.parametrize(
+    "status", ["exact", "drift", "untrusted_key", "integrity_failed", "recomputation_failed"]
+)
+def test_no_formula_replay_status_builds_or_stores_a_chart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    """p29: the formula arm carries no snapshot under EVERY status, so a refactor that brings back
+    a status conditional cannot start rebuilding charts for one of them unseen."""
+    settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
+    identity = load_identity(settings)
+    plot = formula_bundle_parts(signing=identity.signer).bundle
+    bundle = materialize_attempt_bundle(
+        AttemptDraft(
+            occurred_at=datetime.now(UTC),
+            route=AttemptRoute.VERIFY_FORMULA,
+            http_status=200,
+            outcome=AttemptOutcome.VERIFIED,
+            artifacts=AttemptArtifacts(raw_spec=_FORMULA_SPEC.read_bytes(), verdict=plot.verdict),
+            plot=plot,
+        ),
+        identity.signer,
+        nonce="d" * 32,
+        limits=settings.limits,
+    )
+    open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    real = replay_core.replay_formula_snapshot
+
+    def forced(*args: Any, **kwargs: Any) -> Any:
+        verdict = real(*args, **kwargs)
+        return msgspec.structs.replace(
+            verdict,
+            status=status,
+            exact=status == "exact",
+            integrity_ok=status in {"exact", "drift"},
+        )
+
+    stored: list[str] = []
+    monkeypatch.setattr(service_replay, "replay_formula_snapshot", forced)
+    monkeypatch.setattr(
+        ArtifactStore, "put_chart", lambda _self, plot_id, _html: stored.append(plot_id)
+    )
+    direct = service_replay.replay_plot_chart(
+        open_archive(settings),
+        identity.trusted_keys,
+        plot.plot_id,
+        public_base_url="http://127.0.0.1:8000",
+        max_bytes=10_000_000,
+        limits=settings.limits,
+    )
+    with TestClient(app=create_app(settings)) as client:
+        replayed = client.get(f"/replay/{plot.plot_id}")
+        chart = client.get(f"/chart/{plot.plot_id}")
+
+    assert direct.verdict.status == status
+    assert direct.chart_html is None
+    assert json.loads(replayed.content)["status"] == status
+    assert stored == []
+    assert chart.status_code == 404
