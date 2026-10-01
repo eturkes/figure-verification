@@ -8,9 +8,10 @@ import inspect
 import json
 import sqlite3
 from collections.abc import Callable
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any, Protocol, cast, get_args, get_type_hints
 
 import msgspec
@@ -27,9 +28,12 @@ from verifier import attestation, canon, matplotlib_script, replay, vcert
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.service import archive as archive_module
 from verifier.service import audit, pipeline
+from verifier.service import audit as audit_module
 from verifier.service.archive import (
     ArchiveIntegrityError,
+    ArchiveQuotaError,
     ArchiveReadLimitError,
+    ArchiveStats,
     AttemptArtifacts,
     AttemptBundle,
     AttemptDraft,
@@ -37,6 +41,8 @@ from verifier.service.archive import (
     AttemptOutcome,
     AttemptRole,
     AttemptRoute,
+    BlobBinding,
+    BlobKind,
     DatasetPlotBundle,
     FormulaPlotBundle,
     PlotBundle,
@@ -1303,3 +1309,386 @@ def test_a9_an_unpatched_formula_audit_authenticates_its_v03_certificate(tmp_pat
 
     assert document["authentication"]["plot_vcert_dsse"] == "valid"
     assert document["plot"]["id"] == parts.bundle.plot_id
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_DATA = _U_ROOT / "data"
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+_U_ENCODER = msgspec.json.Encoder(order="deterministic")
+
+
+_U_FORMULA_ROUTE = AttemptRoute.VERIFY_FORMULA
+
+
+_U_USE_PLOT_ID = object()
+
+
+_U_FORMULA_BINDING_FIELDS = (
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.FORMULA_SOURCE, "formula_source"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _UFormulaAttemptParts:
+    settings: Settings
+    signer: Signer
+    plot: FormulaPlotBundle
+    bundle: AttemptBundle
+
+
+def _u_required(module: ModuleType, name: str) -> object:
+    assert name in module.__dict__, f"{name} is absent"
+    return module.__dict__[name]
+
+
+def _u_formula_parts(signing: Signer) -> FormulaBundleParts:
+    builder = cast("Callable[..., FormulaBundleParts]", formula_bundle_parts)
+    return builder(signing=signing)
+
+
+def _u_formula_draft(
+    plot: FormulaPlotBundle,
+    *,
+    route: AttemptRoute = _U_FORMULA_ROUTE,
+    artifacts: AttemptArtifacts | None = None,
+) -> AttemptDraft:
+    if artifacts is None:
+        artifacts = AttemptArtifacts(raw_spec=plot.canonical_spec, verdict=plot.verdict)
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=artifacts,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_formula_attempt(
+    tmp_path: Path,
+    *,
+    nonce: str = "a" * 32,
+    publish: bool = False,
+    settings: Settings | None = None,
+) -> _UFormulaAttemptParts:
+    if settings is None:
+        settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-state")
+    signing = load_identity(settings).signer
+    parts = _u_formula_parts(signing)
+    plot = cast("FormulaPlotBundle", parts.bundle)
+    bundle = materialize_attempt_bundle(
+        _u_formula_draft(plot),
+        signing,
+        nonce=nonce,
+        limits=settings.limits,
+    )
+    if publish:
+        open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    return _UFormulaAttemptParts(settings, signing, plot, bundle)
+
+
+def _u_binding(role: BlobKind, payload: bytes) -> BlobBinding:
+    return BlobBinding(role=role, digest="sha256:" + hashlib.sha256(payload).hexdigest())
+
+
+def _u_plot_bindings(plot: DatasetPlotBundle | FormulaPlotBundle | None) -> tuple[BlobBinding, ...]:
+    selector = cast(
+        "Callable[[object], tuple[BlobBinding, ...]]", _u_required(archive_module, "_plot_bindings")
+    )
+    return selector(plot)
+
+
+def _u_manifest(
+    plot: DatasetPlotBundle | FormulaPlotBundle,
+    *,
+    outcome: AttemptOutcome = AttemptOutcome.VERIFIED,
+    plot_id: str | object | None = _U_USE_PLOT_ID,
+    plot_artifacts: tuple[BlobBinding, ...] | None = None,
+) -> AttemptManifest:
+    selected_id = plot.plot_id if plot_id is _U_USE_PLOT_ID else cast("str | None", plot_id)
+    selected_bindings = _u_plot_bindings(plot) if plot_artifacts is None else plot_artifacts
+    raw_spec = plot.canonical_spec
+    verdict = plot.verdict
+    return AttemptManifest(
+        version="attempt-0.1",
+        nonce="0" * 32,
+        occurred_at="2026-08-14T01:02:03.456789Z",
+        route=_U_FORMULA_ROUTE
+        if type(plot) is FormulaPlotBundle
+        else AttemptRoute.VERIFY_AND_RENDER,
+        http_status=200,
+        outcome=outcome,
+        plot_id=selected_id,
+        artifacts=(
+            _u_binding(BlobKind.RAW_SPEC, raw_spec),
+            _u_binding(BlobKind.VERDICT, verdict),
+        ),
+        plot_artifacts=selected_bindings,
+        keyid=plot.keyid,
+        verifier_version="test",
+    )
+
+
+def _u_bundle_size(bundle: AttemptBundle) -> int:
+    batch = archive_module._attempt_bundle_batch(bundle)
+    return sum(len(blob.payload) for blob in archive_module._unique_blob_writes(batch.blobs))
+
+
+def test_u09_plot_source_type_map_is_total_and_exact() -> None:
+    source_by_type = cast(
+        "dict[type[DatasetPlotBundle] | type[FormulaPlotBundle], PlotSourceKind]",
+        _u_required(archive_module, "_PLOT_SOURCE_KIND_BY_TYPE"),
+    )
+    assert source_by_type == {
+        DatasetPlotBundle: PlotSourceKind.DATASET,
+        FormulaPlotBundle: PlotSourceKind.FORMULA,
+    }
+
+
+def test_u15_formula_plot_bindings_use_formula_order(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-bindings")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+
+    assert _u_plot_bindings(plot) == tuple(
+        _u_binding(role, cast("bytes", getattr(plot, field_name)))
+        for role, field_name in _U_FORMULA_BINDING_FIELDS
+    )
+
+
+def test_u16_private_plot_selector_forged_source_keyerrors_before_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "forged-source")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    source_by_type = cast(
+        "dict[type[DatasetPlotBundle] | type[FormulaPlotBundle], PlotSourceKind]",
+        _u_required(archive_module, "_PLOT_SOURCE_KIND_BY_TYPE"),
+    )
+    calls = {"digest": 0}
+
+    def digest_bomb(_payload: bytes) -> str:
+        calls["digest"] += 1
+        pytest.fail("digest work ran after a forged source lookup")
+
+    monkeypatch.setitem(
+        source_by_type,
+        FormulaPlotBundle,
+        cast("PlotSourceKind", "spreadsheet"),
+    )
+    monkeypatch.setattr(archive_module, "_digest", digest_bomb)
+    with pytest.raises(KeyError):
+        _u_plot_bindings(plot)
+    assert calls == {"digest": 0}
+
+
+def test_u18_declared_plot_source_refuses_near_miss_topology(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "near-miss-topology")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    manifest = _u_manifest(plot, plot_artifacts=tuple(reversed(_u_plot_bindings(plot))))
+    selector = cast(
+        "Callable[[AttemptManifest], PlotSourceKind]",
+        _u_required(archive_module, "_declared_plot_source"),
+    )
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt manifest plot bindings match no closed plot source mode$",
+    ):
+        selector(manifest)
+
+
+def test_u19_presence_validation_precedes_source_declaration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "owner-order")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    manifest = _u_manifest(plot)
+    calls: list[str] = []
+
+    def presence_spy(value: AttemptManifest) -> None:
+        assert value is manifest
+        calls.append("presence")
+
+    def source_spy(value: AttemptManifest) -> PlotSourceKind:
+        assert value is manifest
+        calls.append("source")
+        return PlotSourceKind.FORMULA
+
+    monkeypatch.setattr(archive_module, "_validate_manifest_plot_presence", presence_spy)
+    monkeypatch.setattr(archive_module, "_declared_plot_source", source_spy)
+    archive_module._validate_manifest_route_relations(manifest)
+    assert calls == ["presence", "source"]
+
+
+def test_u35_formula_verdict_mismatch_refuses_authenticated_edge(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-verdict-edge")
+    signing = load_identity(settings).signer
+    plot = cast("FormulaPlotBundle", _u_formula_parts(signing).bundle)
+    verdict = archive_module._VERDICT_DECODER.decode(plot.verdict)
+    different_verdict = _U_ENCODER.encode(msgspec.structs.replace(verdict, results=()))
+    assert different_verdict != plot.verdict
+    draft = _u_formula_draft(
+        plot,
+        artifacts=AttemptArtifacts(
+            raw_spec=plot.canonical_spec,
+            verdict=different_verdict,
+        ),
+    )
+
+    with pytest.raises(
+        ArchiveIntegrityError,
+        match=r"^attempt observed verifier bytes disagree with the successful plot bundle$",
+    ):
+        materialize_attempt_bundle(draft, signing, nonce="a" * 32, limits=settings.limits)
+
+
+def test_u37_plot_tcb_decoder_map_is_total_and_exact() -> None:
+    decoders = cast(
+        "dict[PlotSourceKind, Callable[[bytes], object]]",
+        _u_required(archive_module, "_PLOT_TCB_DECODERS_BY_SOURCE"),
+    )
+    assert set(decoders) == set(PlotSourceKind)
+    assert decoders == {
+        PlotSourceKind.DATASET: archive_module._decode_canonical_versions,
+        PlotSourceKind.FORMULA: archive_module._decode_canonical_formula_versions,
+    }
+
+
+def test_u39_formula_tcb_dispatch_uses_map_entry_and_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = _u_formula_attempt(tmp_path)
+    decoders = cast(
+        "dict[PlotSourceKind, Callable[[bytes], object]]",
+        _u_required(archive_module, "_PLOT_TCB_DECODERS_BY_SOURCE"),
+    )
+    calls: list[bytes] = []
+
+    def dataset_bomb(_payload: bytes) -> object:
+        pytest.fail("dataset TCB decoder handled a formula attempt")
+
+    def formula_spy(payload: bytes) -> object:
+        calls.append(payload)
+        return SimpleNamespace(verifier_version=parts.bundle.manifest.verifier_version)
+
+    monkeypatch.setitem(decoders, PlotSourceKind.DATASET, dataset_bomb)
+    monkeypatch.setitem(decoders, PlotSourceKind.FORMULA, formula_spy)
+    archive_module._validate_attempt_bundle(parts.bundle, parts.settings.limits)
+    assert calls == [parts.plot.tool_versions]
+
+
+def test_u47_formula_attempt_read_cap_is_exact_before_blob_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = _u_formula_attempt(tmp_path, publish=True)
+    size = _u_bundle_size(parts.bundle)
+
+    class TrackingConnection(sqlite3.Connection):
+        blob_opens = 0
+
+        def blobopen(self, *args: Any, **kwargs: Any) -> sqlite3.Blob:
+            type(self).blob_opens += 1
+            return super().blobopen(*args, **kwargs)
+
+    monkeypatch.setattr(archive_module, "_CONNECTION_FACTORY", TrackingConnection)
+    archive = open_archive(parts.settings)
+    with pytest.raises(ArchiveReadLimitError, match="aggregate read limit"):
+        archive.read_attempt(
+            parts.bundle.attempt_id,
+            max_bytes=size - 1,
+            limits=parts.settings.limits,
+        )
+    assert TrackingConnection.blob_opens == 0
+    assert (
+        archive.read_attempt(
+            parts.bundle.attempt_id,
+            max_bytes=size,
+            limits=parts.settings.limits,
+        )
+        == parts.bundle
+    )
+    assert TrackingConnection.blob_opens == len(
+        archive_module._unique_blob_writes(archive_module._attempt_bundle_batch(parts.bundle).blobs)
+    )
+
+
+def test_u51_formula_attempt_quota_is_inclusive_and_atomic(tmp_path: Path) -> None:
+    staging = Settings(data_dir=_U_DATA, state_dir=tmp_path / "quota-staging")
+    staged = _u_formula_attempt(tmp_path / "quota-build", settings=staging)
+    expected = _u_bundle_size(staged.bundle)
+    exact_settings = Settings(
+        data_dir=_U_DATA,
+        state_dir=tmp_path / "quota-exact",
+        max_archive_bytes=expected,
+    )
+    exact = open_archive(exact_settings)
+    exact.publish_attempt(staged.bundle, limits=staged.settings.limits)
+    expected_blobs = len(
+        archive_module._unique_blob_writes(
+            archive_module._attempt_bundle_batch(staged.bundle).blobs
+        )
+    )
+    assert exact.stats() == ArchiveStats(expected, expected_blobs, 1, 1, 1)
+
+    tight_settings = Settings(
+        data_dir=_U_DATA,
+        state_dir=tmp_path / "quota-tight",
+        max_archive_bytes=expected - 1,
+    )
+    tight = open_archive(tight_settings)
+    with pytest.raises(ArchiveQuotaError):
+        tight.publish_attempt(staged.bundle, limits=staged.settings.limits)
+    assert tight.stats() == ArchiveStats(0, 0, 0, 0, 0)
+
+
+def test_u55_audit_certificate_dispatch_uses_formula_entry_and_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = _u_formula_attempt(tmp_path)
+    identity = load_identity(parts.settings)
+    verifiers = cast(
+        "dict[type[DatasetPlotBundle] | type[FormulaPlotBundle], Callable[..., object]]",
+        _u_required(audit_module, "_PLOT_CERTIFICATE_VERIFIERS"),
+    )
+    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def dataset_bomb(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("dataset verifier handled a formula audit")
+
+    def formula_spy(*args: object, **kwargs: object) -> object:
+        calls.append((args, kwargs))
+        return object()
+
+    monkeypatch.setitem(verifiers, DatasetPlotBundle, dataset_bomb)
+    monkeypatch.setitem(verifiers, FormulaPlotBundle, formula_spy)
+    audit_module._authenticate_configured_key(parts.bundle, identity, parts.settings.limits)
+
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[0] == parts.plot.vcert_envelope
+    trusted_keys = cast("dict[str, Any]", args[1])
+    assert set(trusted_keys) == {parts.signer.keyid}
+    assert trusted_keys[parts.signer.keyid].public_bytes_raw() == parts.signer.public_key_bytes
+    assert kwargs == {"limits": parts.settings.limits}

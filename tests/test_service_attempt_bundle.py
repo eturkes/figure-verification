@@ -3,14 +3,17 @@
 
 import hashlib
 import sqlite3
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
 from typing import Any, Literal, cast
 
 import msgspec
 import pytest
 
+from formula_plot_bundle_helpers import dataset_bundle
 from verifier import attestation, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
@@ -33,6 +36,7 @@ from verifier.service.archive import (
     BlobKind,
     BlobWrite,
     DatasetPlotBundle,
+    PlotSourceKind,
     materialize_attempt_bundle,
     materialize_plot_bundle,
     open_archive,
@@ -1138,3 +1142,79 @@ def test_dataset_routes_refuse_presence_contradictions_before_signing(
     with pytest.raises(ArchiveIntegrityError, match=rf"^{message}"):
         materialize_attempt_bundle(draft, signer, nonce="a" * 32)
     assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class _UDatasetAttemptParts:
+    settings: Settings
+    signer: Signer
+    plot: DatasetPlotBundle
+    bundle: AttemptBundle
+
+
+def _u_required(module: ModuleType, name: str) -> object:
+    assert name in module.__dict__, f"{name} is absent"
+    return module.__dict__[name]
+
+
+def _u_dataset_draft(plot: DatasetPlotBundle) -> AttemptDraft:
+    raw_spec = (_U_ROOT / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=AttemptRoute.VERIFY_AND_RENDER,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=AttemptArtifacts(
+            raw_csv=plot.raw_csv,
+            raw_manifest=plot.raw_manifest,
+            raw_spec=raw_spec,
+            verdict=plot.verdict,
+        ),
+        plot=plot,
+    )
+
+
+def _u_dataset_attempt(tmp_path: Path, *, nonce: str = "b" * 32) -> _UDatasetAttemptParts:
+    settings, raw_plot = dataset_bundle(tmp_path / "dataset")
+    plot = cast("DatasetPlotBundle", raw_plot)
+    signing = load_identity(settings).signer
+    bundle = materialize_attempt_bundle(
+        _u_dataset_draft(plot),
+        signing,
+        nonce=nonce,
+        limits=settings.limits,
+    )
+    return _UDatasetAttemptParts(settings, signing, plot, bundle)
+
+
+def test_u38_dataset_tcb_dispatch_uses_map_entry_and_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = _u_dataset_attempt(tmp_path)
+    decoders = cast(
+        "dict[PlotSourceKind, Callable[[bytes], object]]",
+        _u_required(archive_module, "_PLOT_TCB_DECODERS_BY_SOURCE"),
+    )
+    calls: list[bytes] = []
+
+    def dataset_spy(payload: bytes) -> object:
+        calls.append(payload)
+        return SimpleNamespace(verifier_version=parts.bundle.manifest.verifier_version)
+
+    def formula_bomb(_payload: bytes) -> object:
+        pytest.fail("formula TCB decoder handled a dataset attempt")
+
+    monkeypatch.setitem(decoders, PlotSourceKind.DATASET, dataset_spy)
+    monkeypatch.setitem(decoders, PlotSourceKind.FORMULA, formula_bomb)
+    archive_module._validate_attempt_bundle(parts.bundle, parts.settings.limits)
+    assert calls == [parts.plot.tool_versions]

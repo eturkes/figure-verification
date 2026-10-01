@@ -3,18 +3,39 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass, fields
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
 
 import pytest
 
+from formula_plot_bundle_helpers import FormulaBundleParts, formula_bundle_parts
 from verifier.limits import DEFAULT_LIMITS
 from verifier.service import archive as archive_module
-from verifier.service.archive import PlotSourceKind
+from verifier.service.archive import (
+    AttemptArtifacts,
+    AttemptBundle,
+    AttemptDraft,
+    AttemptOutcome,
+    AttemptRoute,
+    BlobKind,
+    BlobRef,
+    DatasetPlotBundle,
+    FormulaPlotBundle,
+    PlotRole,
+    PlotSourceKind,
+    materialize_attempt_bundle,
+    open_archive,
+)
+from verifier.service.identity import Signer, load_identity
+from verifier.service.settings import Settings
 
 
 def _set(module: ModuleType, name: str, value: object) -> None:
@@ -315,3 +336,274 @@ def test_rd7_formula_linked_attempt_reads_through_its_own_source_kind(
             limits=DEFAULT_LIMITS,
         )
     assert captured == {"source_kind": PlotSourceKind.FORMULA}
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_DATA = _U_ROOT / "data"
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+_U_FORMULA_ROUTE = AttemptRoute.VERIFY_FORMULA
+
+
+_U_DATASET_ROLE_FIELDS = (
+    (PlotRole.RAW_CSV, "raw_csv"),
+    (PlotRole.RAW_MANIFEST, "raw_manifest"),
+    (PlotRole.CANONICAL_SPEC, "canonical_spec"),
+    (PlotRole.PLOTTED_TABLE, "plotted_table"),
+    (PlotRole.VERDICT, "verdict"),
+    (PlotRole.VEGA_LITE, "vega_lite"),
+    (PlotRole.SVG, "svg"),
+    (PlotRole.VCERT_PAYLOAD, "vcert_payload"),
+    (PlotRole.TOOL_VERSIONS, "tool_versions"),
+)
+
+
+_U_FORMULA_ROLE_FIELDS = (
+    (PlotRole.CANONICAL_SPEC, "canonical_spec"),
+    (PlotRole.FORMULA_SOURCE, "formula_source"),
+    (PlotRole.PLOTTED_TABLE, "plotted_table"),
+    (PlotRole.VERDICT, "verdict"),
+    (PlotRole.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (PlotRole.VCERT_PAYLOAD, "vcert_payload"),
+    (PlotRole.TOOL_VERSIONS, "tool_versions"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _UFormulaAttemptParts:
+    settings: Settings
+    signer: Signer
+    plot: FormulaPlotBundle
+    bundle: AttemptBundle
+
+
+def _u_required(module: ModuleType, name: str) -> object:
+    assert name in module.__dict__, f"{name} is absent"
+    return module.__dict__[name]
+
+
+def _u_formula_parts(signing: Signer) -> FormulaBundleParts:
+    builder = cast("Callable[..., FormulaBundleParts]", formula_bundle_parts)
+    return builder(signing=signing)
+
+
+def _u_formula_draft(
+    plot: FormulaPlotBundle,
+    *,
+    route: AttemptRoute = _U_FORMULA_ROUTE,
+    artifacts: AttemptArtifacts | None = None,
+) -> AttemptDraft:
+    if artifacts is None:
+        artifacts = AttemptArtifacts(raw_spec=plot.canonical_spec, verdict=plot.verdict)
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=artifacts,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_formula_attempt(
+    tmp_path: Path,
+    *,
+    nonce: str = "a" * 32,
+    publish: bool = False,
+    settings: Settings | None = None,
+) -> _UFormulaAttemptParts:
+    if settings is None:
+        settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-state")
+    signing = load_identity(settings).signer
+    parts = _u_formula_parts(signing)
+    plot = cast("FormulaPlotBundle", parts.bundle)
+    bundle = materialize_attempt_bundle(
+        _u_formula_draft(plot),
+        signing,
+        nonce=nonce,
+        limits=settings.limits,
+    )
+    if publish:
+        open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    return _UFormulaAttemptParts(settings, signing, plot, bundle)
+
+
+def _u_blob_entry(
+    kind: BlobKind,
+    payload: bytes,
+    blob_id: int,
+) -> tuple[BlobRef, Any]:
+    reference = BlobRef("sha256:" + hashlib.sha256(payload).hexdigest(), kind)
+    return reference, (blob_id, reference.digest, kind.value, len(payload))
+
+
+def test_u41_plot_entries_carry_source_kind_and_accept_keywords() -> None:
+    entries_type = cast("type[Any]", _u_required(archive_module, "_PlotEntries"))
+    assert tuple(field.name for field in fields(entries_type)) == (
+        "plot_id",
+        "keyid",
+        "source_kind",
+        "certificate",
+        "key",
+        "roles",
+    )
+    certificate = _u_blob_entry(BlobKind.VCERT_ENVELOPE, b"certificate", 1)
+    key = _u_blob_entry(BlobKind.ED25519_PUBLIC_KEY, b"k" * 32, 2)
+    entries = entries_type(
+        plot_id="0" * 64,
+        keyid="sha256:" + "1" * 64,
+        source_kind=PlotSourceKind.FORMULA,
+        certificate=certificate,
+        key=key,
+        roles={},
+    )
+    assert entries.source_kind is PlotSourceKind.FORMULA
+
+
+def test_u43_plot_bundle_type_map_is_total_and_exact() -> None:
+    bundle_types = cast(
+        "dict[PlotSourceKind, type[DatasetPlotBundle] | type[FormulaPlotBundle]]",
+        _u_required(archive_module, "_PLOT_BUNDLE_TYPE_BY_SOURCE"),
+    )
+    assert set(bundle_types) == set(PlotSourceKind)
+    assert bundle_types == {
+        PlotSourceKind.DATASET: DatasetPlotBundle,
+        PlotSourceKind.FORMULA: FormulaPlotBundle,
+    }
+
+
+def test_u44_plot_bundle_from_payloads_uses_formula_constructor_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "constructor-entry")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    role_payloads = {
+        role: cast("bytes", getattr(plot, field_name))
+        for role, field_name in _U_FORMULA_ROLE_FIELDS
+    }
+    bundle_types = cast(
+        "dict[PlotSourceKind, Callable[..., object]]",
+        _u_required(archive_module, "_PLOT_BUNDLE_TYPE_BY_SOURCE"),
+    )
+    calls: list[dict[str, object]] = []
+
+    def formula_spy(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return plot
+
+    monkeypatch.setitem(bundle_types, PlotSourceKind.FORMULA, formula_spy)
+    constructor = cast(
+        "Callable[..., object]",
+        _u_required(archive_module, "_plot_bundle_from_payloads"),
+    )
+    result = constructor(
+        PlotSourceKind.FORMULA,
+        plot_id=plot.plot_id,
+        keyid=plot.keyid,
+        role_payloads=role_payloads,
+        certificate_payload=plot.vcert_envelope,
+        public_key=plot.public_key,
+    )
+
+    assert result is plot
+    assert calls == [
+        {
+            "plot_id": plot.plot_id,
+            "keyid": plot.keyid,
+            **{field_name: role_payloads[role] for role, field_name in _U_FORMULA_ROLE_FIELDS},
+            "vcert_envelope": plot.vcert_envelope,
+            "public_key": plot.public_key,
+        }
+    ]
+
+
+def test_u45_attempt_reader_aggregate_uses_formula_role_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parts = _u_formula_attempt(tmp_path, publish=True)
+    role_fields = cast(
+        "dict[PlotSourceKind, tuple[tuple[PlotRole, str], ...]]",
+        _u_required(archive_module, "_PLOT_ROLE_FIELDS_BY_SOURCE"),
+    )
+    calls = {"reconstruct": 0}
+
+    def reconstruction_bomb(*_args: object, **_kwargs: object) -> object:
+        calls["reconstruct"] += 1
+        pytest.fail("reconstruction ran after aggregate-role selection failed")
+
+    monkeypatch.setitem(role_fields, PlotSourceKind.FORMULA, _U_DATASET_ROLE_FIELDS)
+    monkeypatch.setattr(archive_module, "_plot_from_entries", reconstruction_bomb)
+    with pytest.raises(KeyError) as error:
+        open_archive(parts.settings).read_attempt(
+            parts.bundle.attempt_id,
+            max_bytes=parts.settings.max_archive_bytes,
+            limits=parts.settings.limits,
+        )
+    assert error.value.args == (PlotRole.RAW_CSV,)
+    assert calls == {"reconstruct": 0}
+
+
+def test_u46_plot_from_entries_uses_formula_roles_and_constructor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-reconstruct")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    entries_type = cast("type[Any]", _u_required(archive_module, "_PlotEntries"))
+    certificate = _u_blob_entry(BlobKind.VCERT_ENVELOPE, plot.vcert_envelope, 1)
+    key = _u_blob_entry(BlobKind.ED25519_PUBLIC_KEY, plot.public_key, 2)
+    roles = {
+        role: _u_blob_entry(BlobKind(role.value), cast("bytes", getattr(plot, field_name)), index)
+        for index, (role, field_name) in enumerate(_U_FORMULA_ROLE_FIELDS, start=3)
+    }
+    entries = entries_type(
+        plot_id=plot.plot_id,
+        keyid=plot.keyid,
+        source_kind=PlotSourceKind.FORMULA,
+        certificate=certificate,
+        key=key,
+        roles=roles,
+    )
+    payloads = {
+        certificate[0]: plot.vcert_envelope,
+        key[0]: plot.public_key,
+        **{
+            entry[0]: cast("bytes", getattr(plot, field_name))
+            for (role, field_name), entry in zip(
+                _U_FORMULA_ROLE_FIELDS, roles.values(), strict=True
+            )
+        },
+    }
+    calls: list[tuple[PlotSourceKind, dict[PlotRole, bytes]]] = []
+
+    def constructor_spy(
+        source_kind: PlotSourceKind,
+        *,
+        role_payloads: dict[PlotRole, bytes],
+        **_kwargs: object,
+    ) -> FormulaPlotBundle:
+        calls.append((source_kind, role_payloads))
+        return plot
+
+    monkeypatch.setattr(archive_module, "_plot_bundle_from_payloads", constructor_spy)
+    result = archive_module._plot_from_entries(entries, payloads)
+    assert result is plot
+    assert calls == [
+        (
+            PlotSourceKind.FORMULA,
+            {
+                role: cast("bytes", getattr(plot, field_name))
+                for role, field_name in _U_FORMULA_ROLE_FIELDS
+            },
+        )
+    ]

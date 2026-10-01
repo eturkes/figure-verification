@@ -3,6 +3,7 @@
 
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ import pytest
 from msgspec.structs import replace as struct_replace
 
 from formula_plot_bundle_helpers import (
+    FormulaBundleParts,
     canonical_specs,
     dataset_bundle,
     dataset_certificate,
@@ -25,9 +27,21 @@ from verifier import attestation, canon, render, vcert
 from verifier.limits import DEFAULT_LIMITS
 from verifier.schema import FormulaPlotSpec, VPlotSpec
 from verifier.service import archive as archive_module
-from verifier.service.archive import ArchiveIntegrityError
-from verifier.service.identity import keyid_for_public_key, load_identity
+from verifier.service.archive import (
+    ArchiveIntegrityError,
+    AttemptArtifacts,
+    AttemptBundle,
+    AttemptDraft,
+    AttemptManifest,
+    AttemptOutcome,
+    AttemptRoute,
+    DatasetPlotBundle,
+    FormulaPlotBundle,
+    materialize_attempt_bundle,
+)
+from verifier.service.identity import Signer, keyid_for_public_key, load_identity
 from verifier.service.models import Verdict
+from verifier.service.settings import Settings
 
 
 def test_t01_real_chain_formula_bundle_validates() -> None:
@@ -954,3 +968,189 @@ def test_t50_mixed_certificate_family_is_unconstructible_and_undecodable() -> No
         mixed[member] = dataset_fields[member]
         with pytest.raises(msgspec.ValidationError, match="do not correlate"):
             decoder.decode(encoder.encode(mixed))
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_DATA = _U_ROOT / "data"
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+_U_FORMULA_ROUTE = AttemptRoute.VERIFY_FORMULA
+
+
+def _u_formula_parts(signing: Signer) -> FormulaBundleParts:
+    builder = cast("Callable[..., FormulaBundleParts]", formula_bundle_parts)
+    return builder(signing=signing)
+
+
+def _u_formula_draft(
+    plot: FormulaPlotBundle,
+    *,
+    route: AttemptRoute = _U_FORMULA_ROUTE,
+    artifacts: AttemptArtifacts | None = None,
+) -> AttemptDraft:
+    if artifacts is None:
+        artifacts = AttemptArtifacts(raw_spec=plot.canonical_spec, verdict=plot.verdict)
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=artifacts,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_dataset_draft(plot: DatasetPlotBundle) -> AttemptDraft:
+    raw_spec = (_U_ROOT / "examples/good_specs/g01_total_revenue_by_month.json").read_bytes()
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=AttemptRoute.VERIFY_AND_RENDER,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=AttemptArtifacts(
+            raw_csv=plot.raw_csv,
+            raw_manifest=plot.raw_manifest,
+            raw_spec=raw_spec,
+            verdict=plot.verdict,
+        ),
+        plot=plot,
+    )
+
+
+def _u_child_bundle(plot: DatasetPlotBundle | FormulaPlotBundle, name: str) -> Any:
+    child_type = type(name, (type(plot),), {})
+    return child_type(**{field.name: getattr(plot, field.name) for field in fields(plot)})
+
+
+def _u_attempt_bundle_with_plot(plot: object) -> AttemptBundle:
+    keyid = cast("Any", plot).keyid
+    public_key = cast("Any", plot).public_key
+    manifest = AttemptManifest(
+        version="attempt-0.1",
+        nonce="0" * 32,
+        occurred_at="2026-08-14T01:02:03.456789Z",
+        route=_U_FORMULA_ROUTE,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        plot_id=None,
+        artifacts=(),
+        plot_artifacts=(),
+        keyid=keyid,
+        verifier_version="test",
+    )
+    return AttemptBundle(
+        attempt_id="0" * 64,
+        keyid=keyid,
+        manifest=manifest,
+        artifacts=AttemptArtifacts(),
+        attempt_payload=b"{}",
+        attempt_envelope=b"{}",
+        public_key=public_key,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_arm_signing_bombs(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+    calls = {"sign": 0, "envelope_limit": 0}
+
+    def sign_bomb(*_args: object, **_kwargs: object) -> bytes:
+        calls["sign"] += 1
+        pytest.fail("attempt signing ran after a required pre-sign refusal")
+
+    def envelope_bomb(*_args: object, **_kwargs: object) -> int:
+        calls["envelope_limit"] += 1
+        pytest.fail("attempt envelope sizing ran after a required pre-sign refusal")
+
+    monkeypatch.setattr(attestation, "sign_dsse", sign_bomb)
+    monkeypatch.setattr(attestation, "envelope_byte_limit", envelope_bomb)
+    return calls
+
+
+def test_u04_draft_guard_refuses_dataset_subclass_before_signing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, raw_plot = dataset_bundle(tmp_path / "dataset-child")
+    plot = cast("DatasetPlotBundle", raw_plot)
+    child = _u_child_bundle(plot, "DatasetChild")
+    draft = replace(_u_dataset_draft(plot), plot=child)
+    calls = _u_arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"^draft plot must be DatasetPlotBundle, FormulaPlotBundle, or None, "
+            r"got DatasetChild$"
+        ),
+    ):
+        materialize_attempt_bundle(draft, load_identity(settings).signer, nonce="0" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+def test_u05_draft_guard_refuses_formula_subclass_before_signing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-child")
+    signing = load_identity(settings).signer
+    plot = cast("FormulaPlotBundle", _u_formula_parts(signing).bundle)
+    child = _u_child_bundle(plot, "FormulaChild")
+    draft = replace(_u_formula_draft(plot), plot=child)
+    calls = _u_arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"^draft plot must be DatasetPlotBundle, FormulaPlotBundle, or None, "
+            r"got FormulaChild$"
+        ),
+    ):
+        materialize_attempt_bundle(draft, signing, nonce="0" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}
+
+
+def test_u07_bundle_guard_refuses_formula_subclass(tmp_path: Path) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-bundle-child")
+    plot = cast("FormulaPlotBundle", _u_formula_parts(load_identity(settings).signer).bundle)
+    child = _u_child_bundle(plot, "FormulaChild")
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"^attempt bundle plot must be DatasetPlotBundle, FormulaPlotBundle, or None, "
+            r"got FormulaChild$"
+        ),
+    ):
+        _u_attempt_bundle_with_plot(child)
+
+
+def test_u08_public_guard_refuses_third_carrier_before_signing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "third-carrier")
+    signing = load_identity(settings).signer
+    draft = AttemptDraft(
+        occurred_at=_U_TIME,
+        route=_U_FORMULA_ROUTE,
+        http_status=200,
+        outcome=AttemptOutcome.REJECTED,
+        artifacts=AttemptArtifacts(),
+        plot=cast("Any", object()),
+    )
+    calls = _u_arm_signing_bombs(monkeypatch)
+
+    with pytest.raises(
+        TypeError,
+        match=(r"^draft plot must be DatasetPlotBundle, FormulaPlotBundle, or None, got object$"),
+    ):
+        materialize_attempt_bundle(draft, signing, nonce="0" * 32)
+    assert calls == {"sign": 0, "envelope_limit": 0}

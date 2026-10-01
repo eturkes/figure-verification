@@ -18,9 +18,10 @@ import logging
 import sqlite3
 import subprocess
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import closing
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -32,6 +33,7 @@ from litestar.testing import TestClient
 
 from demo import formula_walkthrough
 from demo.walkthrough import DemoError, WalkthroughReport
+from formula_plot_bundle_helpers import FormulaBundleParts, formula_bundle_parts
 from verifier import attestation, canon, vcert
 from verifier.service import model_client
 from verifier.service.__main__ import main as service_main
@@ -41,12 +43,16 @@ from verifier.service.archive import (
     ArchiveIntegrityError,
     ArchiveSchemaError,
     ArchiveStats,
+    AttemptArtifacts,
     AttemptBundle,
+    AttemptDraft,
     AttemptOutcome,
     AttemptRoute,
+    FormulaPlotBundle,
+    materialize_attempt_bundle,
     open_archive,
 )
-from verifier.service.identity import SigningIdentity
+from verifier.service.identity import Signer, SigningIdentity, load_identity
 from verifier.service.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -739,3 +745,83 @@ def test_formula_walkthrough_subprocess_exits_zero_and_writes_report() -> None:
     assert (report.total, report.passed, report.failed) == (5, 5, 0)
     assert {result.name for result in report.results} == _SCENARIO_NAMES
     assert {result.detail for result in report.results} == _SCENARIO_DETAILS
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_DATA = _U_ROOT / "data"
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+_U_FORMULA_ROUTE = AttemptRoute.VERIFY_FORMULA
+
+
+@dataclass(frozen=True, slots=True)
+class _UFormulaAttemptParts:
+    settings: Settings
+    signer: Signer
+    plot: FormulaPlotBundle
+    bundle: AttemptBundle
+
+
+def _u_formula_parts(signing: Signer) -> FormulaBundleParts:
+    builder = cast("Callable[..., FormulaBundleParts]", formula_bundle_parts)
+    return builder(signing=signing)
+
+
+def _u_formula_draft(
+    plot: FormulaPlotBundle,
+    *,
+    route: AttemptRoute = _U_FORMULA_ROUTE,
+    artifacts: AttemptArtifacts | None = None,
+) -> AttemptDraft:
+    if artifacts is None:
+        artifacts = AttemptArtifacts(raw_spec=plot.canonical_spec, verdict=plot.verdict)
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=artifacts,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_formula_attempt(
+    tmp_path: Path,
+    *,
+    nonce: str = "a" * 32,
+    publish: bool = False,
+    settings: Settings | None = None,
+) -> _UFormulaAttemptParts:
+    if settings is None:
+        settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-state")
+    signing = load_identity(settings).signer
+    parts = _u_formula_parts(signing)
+    plot = cast("FormulaPlotBundle", parts.bundle)
+    bundle = materialize_attempt_bundle(
+        _u_formula_draft(plot),
+        signing,
+        nonce=nonce,
+        limits=settings.limits,
+    )
+    if publish:
+        open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    return _UFormulaAttemptParts(settings, signing, plot, bundle)
+
+
+def test_u62_http_formula_certificate_remains_v03(tmp_path: Path) -> None:
+    parts = _u_formula_attempt(tmp_path, publish=True)
+    with TestClient(app=create_app(parts.settings)) as client:
+        response = client.get(f"/certificate/{parts.plot.plot_id}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.content == parts.plot.vcert_envelope
+    assert response.json()["payloadType"] == attestation.VCERT_V03_PAYLOAD_TYPE

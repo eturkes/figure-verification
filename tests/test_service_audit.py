@@ -2,29 +2,38 @@
 """Operator-only attempt audit, configured trust, and terminal-safe disclosure."""
 
 import base64
+import hashlib
 import json
 import os
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import msgspec
 import pytest
 
+from formula_plot_bundle_helpers import FormulaBundleParts, formula_bundle_parts
 from verifier import attestation, render
 from verifier.service import __main__ as service_main
+from verifier.service import archive as archive_module
 from verifier.service import audit, pipeline
+from verifier.service import audit as audit_module
 from verifier.service.archive import (
     AttemptArtifacts,
     AttemptBundle,
     AttemptDraft,
     AttemptOutcome,
     AttemptRoute,
+    BlobBinding,
     BlobKind,
     DatasetPlotBundle,
+    FormulaPlotBundle,
     materialize_attempt_bundle,
     materialize_plot_bundle,
     open_archive,
@@ -430,3 +439,230 @@ def test_an_absent_attempt_is_indistinguishable_from_a_verification_failure(
     assert captured.out == ""
     assert captured.err == "attempt audit failed: archive or configured-key verification failed\n"
     assert "Traceback" not in captured.out + captured.err
+
+
+# Merged from the M9.8b plot-union suite (polish p9); its private helpers carry a `_u`/`_U` prefix.
+
+
+_U_ROOT = Path(__file__).resolve().parents[1]
+
+
+_U_DATA = _U_ROOT / "data"
+
+
+_U_TIME = datetime(2026, 8, 14, 1, 2, 3, 456789, tzinfo=UTC)
+
+
+_U_FORMULA_ROUTE = AttemptRoute.VERIFY_FORMULA
+
+
+_U_DATASET_BINDING_FIELDS = (
+    (BlobKind.RAW_CSV, "raw_csv"),
+    (BlobKind.RAW_MANIFEST, "raw_manifest"),
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.VEGA_LITE, "vega_lite"),
+    (BlobKind.SVG, "svg"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
+
+
+_U_FORMULA_BINDING_FIELDS = (
+    (BlobKind.CANONICAL_SPEC, "canonical_spec"),
+    (BlobKind.FORMULA_SOURCE, "formula_source"),
+    (BlobKind.PLOTTED_TABLE, "plotted_table"),
+    (BlobKind.VERDICT, "verdict"),
+    (BlobKind.MATPLOTLIB_SCRIPT, "matplotlib_script"),
+    (BlobKind.VCERT_PAYLOAD, "vcert_payload"),
+    (BlobKind.VCERT_ENVELOPE, "vcert_envelope"),
+    (BlobKind.TOOL_VERSIONS, "tool_versions"),
+    (BlobKind.ED25519_PUBLIC_KEY, "public_key"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _UFormulaAttemptParts:
+    settings: Settings
+    signer: Signer
+    plot: FormulaPlotBundle
+    bundle: AttemptBundle
+
+
+def _u_required(module: ModuleType, name: str) -> object:
+    assert name in module.__dict__, f"{name} is absent"
+    return module.__dict__[name]
+
+
+def _u_formula_parts(signing: Signer) -> FormulaBundleParts:
+    builder = cast("Callable[..., FormulaBundleParts]", formula_bundle_parts)
+    return builder(signing=signing)
+
+
+def _u_formula_draft(
+    plot: FormulaPlotBundle,
+    *,
+    route: AttemptRoute = _U_FORMULA_ROUTE,
+    artifacts: AttemptArtifacts | None = None,
+) -> AttemptDraft:
+    if artifacts is None:
+        artifacts = AttemptArtifacts(raw_spec=plot.canonical_spec, verdict=plot.verdict)
+    return AttemptDraft(
+        occurred_at=_U_TIME,
+        route=route,
+        http_status=200,
+        outcome=AttemptOutcome.VERIFIED,
+        artifacts=artifacts,
+        plot=cast("Any", plot),
+    )
+
+
+def _u_formula_attempt(
+    tmp_path: Path,
+    *,
+    nonce: str = "a" * 32,
+    publish: bool = False,
+    settings: Settings | None = None,
+) -> _UFormulaAttemptParts:
+    if settings is None:
+        settings = Settings(data_dir=_U_DATA, state_dir=tmp_path / "formula-state")
+    signing = load_identity(settings).signer
+    parts = _u_formula_parts(signing)
+    plot = cast("FormulaPlotBundle", parts.bundle)
+    bundle = materialize_attempt_bundle(
+        _u_formula_draft(plot),
+        signing,
+        nonce=nonce,
+        limits=settings.limits,
+    )
+    if publish:
+        open_archive(settings).publish_attempt(bundle, limits=settings.limits)
+    return _UFormulaAttemptParts(settings, signing, plot, bundle)
+
+
+def _u_audit_artifacts(
+    bindings: tuple[BlobBinding, ...],
+    payloads: dict[BlobKind, bytes],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "role": binding.role.value,
+            "digest": binding.digest,
+            "bytes": len(payloads[binding.role]),
+        }
+        for binding in bindings
+    ]
+
+
+def _u_expected_audit_bytes(bundle: AttemptBundle) -> bytes:
+    attempt_payloads = {
+        BlobKind(role.value): payload
+        for role, field_name in archive_module._ATTEMPT_ARTIFACT_FIELDS
+        if (payload := cast("bytes | None", getattr(bundle.artifacts, field_name))) is not None
+    }
+    plot = bundle.plot
+    plot_document: dict[str, object] | None = None
+    if plot is not None:
+        fields_for_type = {
+            DatasetPlotBundle: _U_DATASET_BINDING_FIELDS,
+            FormulaPlotBundle: _U_FORMULA_BINDING_FIELDS,
+        }
+        plot_payloads = {
+            role: cast("bytes", getattr(plot, field_name))
+            for role, field_name in fields_for_type[type(plot)]
+        }
+        plot_document = {
+            "id": plot.plot_id,
+            "keyid": plot.keyid,
+            "artifacts": _u_audit_artifacts(bundle.manifest.plot_artifacts, plot_payloads),
+        }
+    manifest = bundle.manifest
+    document = {
+        "audit_version": "attempt-audit-0.1",
+        "disclosure": "redacted",
+        "authentication": {
+            "key_policy": "current-or-explicitly-pinned",
+            "attempt_dsse": "valid",
+            "plot_vcert_dsse": "valid" if plot is not None else None,
+        },
+        "attempt": {
+            "id": bundle.attempt_id,
+            "version": manifest.version,
+            "nonce": manifest.nonce,
+            "occurred_at": manifest.occurred_at,
+            "route": manifest.route.value,
+            "http_status": manifest.http_status,
+            "outcome": manifest.outcome.value,
+            "plot_id": manifest.plot_id,
+            "keyid": manifest.keyid,
+            "verifier_version": manifest.verifier_version,
+            "attestation": {
+                "payload_type": archive_module.ATTEMPT_PAYLOAD_TYPE,
+                "payload": {
+                    "digest": "sha256:" + hashlib.sha256(bundle.attempt_payload).hexdigest(),
+                    "bytes": len(bundle.attempt_payload),
+                },
+                "envelope": {
+                    "digest": "sha256:" + hashlib.sha256(bundle.attempt_envelope).hexdigest(),
+                    "bytes": len(bundle.attempt_envelope),
+                },
+            },
+            "artifacts": _u_audit_artifacts(manifest.artifacts, attempt_payloads),
+        },
+        "plot": plot_document,
+    }
+    return (json.dumps(document, ensure_ascii=True, allow_nan=False, indent=2) + "\n").encode(
+        "ascii"
+    )
+
+
+def test_u52_audit_field_map_is_total_and_exact() -> None:
+    dataset_fields = _u_required(audit_module, "_DATASET_PLOT_FIELDS")
+    formula_fields = _u_required(audit_module, "_FORMULA_PLOT_FIELDS")
+    fields_by_type = cast(
+        "dict[type[DatasetPlotBundle] | type[FormulaPlotBundle], tuple[tuple[BlobKind, str], ...]]",
+        _u_required(audit_module, "_PLOT_FIELDS_BY_TYPE"),
+    )
+
+    assert dataset_fields == _U_DATASET_BINDING_FIELDS
+    assert formula_fields == _U_FORMULA_BINDING_FIELDS
+    assert fields_by_type == {
+        DatasetPlotBundle: _U_DATASET_BINDING_FIELDS,
+        FormulaPlotBundle: _U_FORMULA_BINDING_FIELDS,
+    }
+    assert set(fields_by_type) == {DatasetPlotBundle, FormulaPlotBundle}
+
+
+def test_u54_audit_certificate_verifier_map_is_total_and_exact() -> None:
+    verifiers = cast(
+        "dict[type[DatasetPlotBundle] | type[FormulaPlotBundle], Callable[..., object]]",
+        _u_required(audit_module, "_PLOT_CERTIFICATE_VERIFIERS"),
+    )
+    assert set(verifiers) == {DatasetPlotBundle, FormulaPlotBundle}
+    assert verifiers == {
+        DatasetPlotBundle: attestation.verify_vcert,
+        FormulaPlotBundle: attestation.verify_vcert_v03,
+    }
+
+
+def test_u56_formula_audit_json_is_deterministic_with_nine_carriers(tmp_path: Path) -> None:
+    parts = _u_formula_attempt(tmp_path, publish=True)
+    first = audit_module.audit_attempt(parts.settings, parts.bundle.attempt_id)
+    second = audit_module.audit_attempt(parts.settings, parts.bundle.attempt_id)
+    document = cast("dict[str, Any]", json.loads(first))
+
+    assert first == second == _u_expected_audit_bytes(parts.bundle)
+    assert first.isascii()
+    assert list(document) == [
+        "audit_version",
+        "disclosure",
+        "authentication",
+        "attempt",
+        "plot",
+    ]
+    assert [item["role"] for item in document["plot"]["artifacts"]] == [
+        role.value for role, _name in _U_FORMULA_BINDING_FIELDS
+    ]
