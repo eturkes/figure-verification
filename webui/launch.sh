@@ -249,6 +249,13 @@ log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
 
+# Every tracked leader must still be alive at READY: a service that died after its readiness probe
+# would otherwise surface only later, as the final wait's exit, after the banner promised a stack.
+for _i in "${!SERVICE_PIDS[@]}"; do
+  kill -0 "${SERVICE_PIDS[$_i]}" 2>/dev/null \
+    || die "${SERVICE_NAMES[$_i]} (pid ${SERVICE_PIDS[$_i]}) exited before READY (see ${LOG_DIR})"
+done
+
 # 5) banner. Every stated outcome names its recorded run count or says it is unrecorded; the
 #    verdict sentences of the stub arm are test-backed (tests/test_webui_banner_prompts.py). The
 #    calibration unit records both arms live through the inlet + adapter transport.
@@ -305,16 +312,18 @@ BANNER
 #    130/143 before returning here); getting past `wait -n` means a child died on its own -- a
 #    failure. Name it and exit non-zero so automation never reads a crashed stack as a clean launch;
 #    the EXIT trap still tears everything down.
+#    The wait names the tracked leaders explicitly: a bare `wait -n` returns on ANY job, and `-p`
+#    records which leader ended, so the reported service is the one that exited, not a guess.
 service_rc=0
-wait -n 2>/dev/null || service_rc=$?
-dead_service=""
+dead_pid=""
+wait -n -p dead_pid "${SERVICE_PIDS[@]}" 2>/dev/null || service_rc=$?
+dead_service="unknown"
 for _i in "${!SERVICE_PIDS[@]}"; do
-  if ! kill -0 "${SERVICE_PIDS[$_i]}" 2>/dev/null; then
+  if [[ "${SERVICE_PIDS[$_i]}" == "${dead_pid}" ]]; then
     dead_service="${SERVICE_NAMES[$_i]}"
-    break
   fi
 done
-log "service ${dead_service:-unknown} exited (status ${service_rc}); tearing down"
+log "service ${dead_service} (pid ${dead_pid:-none}) exited (status ${service_rc}); tearing down"
 # Subshell exit, not a bare top-level `exit`: the latter trips ShellCheck SC2317 ("unreachable")
 # on the EXIT-trap-only helpers; `set -e` still propagates this status to the parent, whose EXIT
 # trap runs the teardown.

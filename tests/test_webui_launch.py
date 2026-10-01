@@ -566,6 +566,24 @@ def test_l7_teardown_frees_all_three_ports_and_removes_the_pidfile(tmp_path: Pat
         _force_stop(process, harness)
 
 
+def test_l10_a_crashed_service_is_named_by_its_tracked_leader_pid(tmp_path: Path) -> None:
+    """L10 (polish p17): after READY, a service dying on its own ends the launcher non-zero, and the
+    log names the TRACKED leader pid that `wait -n -p` reported, not a guess from a liveness scan.
+    The fake `uv` execs its helper in place, so the helper pid IS the tracked leader here."""
+    harness = _make_harness(tmp_path)
+    process, stderr_path = _start_launcher(harness, "--stub")
+    try:
+        _wait_for_text(stderr_path, "READY --", process)
+        verifier_pid = int((harness.pid_dir / "verifier.pid").read_text(encoding="utf-8"))
+        os.kill(verifier_pid, signal.SIGKILL)
+        assert process.wait(timeout=_SUBPROCESS_TIMEOUT_S) != 0
+        stderr = stderr_path.read_text(encoding="utf-8")
+        assert f"service verifier (pid {verifier_pid}) exited" in stderr
+        assert not any(_can_connect(port) for port in harness.ports)
+    finally:
+        _force_stop(process, harness)
+
+
 def test_l8_help_exits_clean_and_an_unknown_argument_dies(tmp_path: Path) -> None:
     """L8: `--help` exits 0 before any preflight and its text names no ORIGIN accelerator term;
     an unknown argument `die`s non-zero. Acceptance: `--help` succeeds with the whole environment
