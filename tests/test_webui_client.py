@@ -774,7 +774,24 @@ def test_run_persisted_chat_polls_missing_assistant_until_done(
     assert sleeps == [1.0]
 
 
-def test_run_persisted_chat_allows_missing_embed() -> None:
+# M16's Show-checks disclosure is one HTML document embed, and python mode puts it first.
+_CHECKS_EMBED = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"></head></html>'
+
+
+@pytest.mark.parametrize(
+    ("embeds", "chart_url"),
+    [
+        ((), None),
+        ((_CHECKS_EMBED,), None),
+        ((_CHECKS_EMBED, _CHAT_URL), _CHAT_URL),
+        ((_CHECKS_EMBED, _CHAT_URL, "https://later.test/chart/2"), _CHAT_URL),
+        (("javascript:alert(1)", "ftp://host/chart", "https:/no-host", "http://[::1"), None),
+    ],
+    ids=["no-embed", "html-only", "html-then-url", "first-of-two-urls", "non-http"],
+)
+def test_run_persisted_chat_chart_url_is_the_first_http_embed(
+    embeds: tuple[str, ...], chart_url: str | None
+) -> None:
     assistant_id = ""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -787,13 +804,13 @@ def test_run_persisted_chat_allows_missing_embed() -> None:
             assert isinstance(value, str)
             assistant_id = value
             return _chat_ack()
-        return _chat_readback(assistant_id, embeds=())
+        return _chat_readback(assistant_id, embeds=embeds)
 
     with _webui_client(handler) as client:
         client._token = "tok"  # noqa: S105 (test literal, not a real secret)
         result = client.run_persisted_chat(_CHAT_PROMPT)
 
-    assert result == PersistedChatResult(final_text=_CHAT_TEXT, chart_url=None)
+    assert result == PersistedChatResult(final_text=_CHAT_TEXT, chart_url=chart_url)
 
 
 @pytest.mark.parametrize("fault_phase", ["create", "completion", "poll"])

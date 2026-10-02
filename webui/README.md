@@ -186,8 +186,9 @@ For persisted browser evidence, send the same completion with `parent_id: null` 
 `session_id`. Include an assistant `id`. Include a complete `user_message` with its own ID, role,
 content, timestamp, `parentId: null`, and `childrenIds: [<assistant-id>]`. The response supplies
 `chat_id`. Poll `GET /api/v1/chats/{chat_id}` until that assistant has `done: true`. Then open
-`/c/{chat_id}`. In Open WebUI 0.10.2, the persisted final text is
-`output[0].content[0].text`. The legacy `content` stays empty. The verifier URL is in `embeds[0]`.
+`/c/{chat_id}`. In Open WebUI 0.10.2, the persisted final text is the first `output_text` content of a
+`message` output item; a reasoning item can come first. The legacy `content` stays empty. In this
+legacy chain, the verifier URL is in `embeds[0]`.
 The rendered iframe must contain the verified chart. Its sandbox must omit `allow-same-origin`.
 
 Use the persisted-chat CLI to run that flow without duplicate request construction:
@@ -198,8 +199,9 @@ uv run --locked python -m webui chat --prompt \
 ```
 
 The CLI calls `WebUIClient.run_persisted_chat`. It waits for the persisted assistant message. It
-then prints the final text from `output[0].content[0].text`. When a chart URL is present, it prints
-that URL from `embeds[0]`.
+then prints the final text: the first `output_text` content of a `message` output item. When an
+embed is an `http://` or `https://` URL, the CLI also prints the first such URL. It never prints an
+HTML embed, such as the Show-checks list that python mode puts first.
 
 On the ORIGIN host, an NPU run replaced the stub and measured the weak model separately. For that
 device and configuration, a raw, unconstrained ten-prompt sample selected the tool on 5/10 prompts. The sample

@@ -15,7 +15,7 @@ modelled, matching the bench consumer-struct convention.
 import time
 import uuid
 from typing import NamedTuple, Never
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 import msgspec
@@ -33,6 +33,14 @@ _READY_POLL_INTERVAL = 1.0
 
 # Seconds between persisted-chat readbacks while the background completion runs.
 _CHAT_POLL_INTERVAL = 1.0
+
+
+def _is_http_url(embed: str) -> bool:
+    try:
+        parts = urlsplit(embed)
+    except ValueError:
+        return False
+    return parts.scheme in {"http", "https"} and bool(parts.netloc)
 
 
 class WebUIProvisionError(RuntimeError):
@@ -488,7 +496,10 @@ class WebUIClient:
 
     @staticmethod
     def _completed_chat_result(message: _ChatMessage) -> PersistedChatResult:
-        """Extract the fail-closed final text and optional first embed from a done message.
+        """Extract the fail-closed final text and optional chart URL from a done message.
+
+        The chart URL is the first `http(s)` embed: python mode's first embed is the Show-checks
+        HTML, which is no URL.
 
         Selection is by item TYPE, never position: a reasoning-capable backend prepends a
         `reasoning` item, whose text is not the reply.
@@ -506,7 +517,7 @@ class WebUIClient:
         if not final_text:
             msg = "completed assistant message returned no final text"
             raise WebUIProvisionError(msg)
-        chart_url = message.embeds[0] if message.embeds else None
+        chart_url = next((embed for embed in message.embeds if _is_http_url(embed)), None)
         return PersistedChatResult(final_text=final_text, chart_url=chart_url)
 
     def ensure_tool(
