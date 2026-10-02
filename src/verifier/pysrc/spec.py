@@ -80,6 +80,28 @@ class Bin:
 
 type Expr = Num | Var | Const | Neg | Fn | Bin
 
+# The deepest expression tree the core walks recursively (Q34). Projection refuses a deeper program
+# expression, the request grammar names no target for a deeper request expression, and
+# `project.same_bound` never folds a deeper declared bound. Every level costs a few Python frames,
+# so this sits far below the interpreter's recursion limit while far above any chart program.
+MAX_EXPR_DEPTH = 100
+
+
+def expr_height(expr: Expr) -> int:
+    """Levels in `expr`, counted without recursion: a flat 10,000-term sum is 10,000 levels."""
+    deepest = 0
+    stack: list[tuple[Expr, int]] = [(expr, 1)]
+    while stack:
+        node, level = stack.pop()
+        deepest = max(deepest, level)
+        if isinstance(node, Bin):
+            stack += ((node.left, level + 1), (node.right, level + 1))
+        elif isinstance(node, Neg):
+            stack.append((node.operand, level + 1))
+        elif isinstance(node, Fn):
+            stack.append((node.arg, level + 1))
+    return deepest
+
 
 @dataclass(frozen=True, slots=True)
 class Grid:

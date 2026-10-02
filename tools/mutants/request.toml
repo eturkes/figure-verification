@@ -2,7 +2,7 @@
 # Mutation catalogue for the user-request formula grammar. Each mutant neuters one condition;
 # the named test must change outcome. Run with tools/mutate.py and a private UV_PROJECT_ENVIRONMENT.
 module = "src/verifier/pysrc/request.py"
-tests = ["tests/test_pysrc_request.py", "tests/test_pysrc_request_internal.py"]
+tests = ["tests/test_pysrc_request.py", "tests/test_pysrc_request_internal.py", "tests/test_pysrc_project.py"]
 
 [[mutant]]
 id = "r2-nfkc-omitted"
@@ -211,3 +211,10 @@ predicate = "the caller's nesting limit is inclusive of each function or parenth
 kills = "tests/test_pysrc_request.py::test_r8_node_and_nesting_limits_bind_each_carrier"
 anchor = '''        if depth >= self.limits.max_bracket_depth:'''
 mutant = '''        if depth > self.limits.max_bracket_depth:'''
+
+[[mutant]]
+id = "q34-request-height-unchecked"
+predicate = "the request grammar names no target for a tree taller than the projection bound"
+kills = "tests/test_pysrc_project.py::test_q34_a_request_deeper_than_projection_names_no_target"
+anchor = '''        if self.index != len(self.tokens) or expr_height(result) > MAX_EXPR_DEPTH:'''
+mutant = '''        if self.index != len(self.tokens):'''

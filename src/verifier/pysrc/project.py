@@ -33,6 +33,7 @@ from verifier.pysrc.admit import (
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.spec import (
+    MAX_EXPR_DEPTH,
     Bin,
     BinOp,
     Column,
@@ -53,6 +54,7 @@ from verifier.pysrc.spec import (
     Num,
     Reduction,
     Var,
+    expr_height,
 )
 
 _GRID_CALLS = frozenset({"np.linspace", "np.arange"})
@@ -201,6 +203,8 @@ def same_bound(program: Expr, declared: Expr) -> bool:
     both fold to -5. `fold_exact` folds only a tree binary64 computes exactly, so a bound the
     program rounds (`1/49*49`) still compares by tree and refuses.
     """
+    if expr_height(declared) > MAX_EXPR_DEPTH:
+        return False  # deeper than any tree projection admits: no program bound equals it
     left, right = fold_exact(program), fold_exact(declared)
     if left is not None and right is not None:
         return left == right
@@ -307,6 +311,7 @@ class _Projector:
         self._aliases: set[str] = set()
         self._grids: dict[str, Grid] = {}
         self._exprs: dict[str, ast.expr] = {}
+        self._depth = 0
         self._used: set[str] = set()
         self._mark: _MarkBuilder | None = None
         self._frames: dict[str, DatasetRef] = {}
@@ -351,8 +356,19 @@ class _Projector:
     def _expr(self, node: ast.expr, grid_name: str | None) -> Expr:
         """Project one admitted expression, substituting bound names away.
 
-        `grid_name` is the only free name the result may carry; `None` means none may.
+        `grid_name` is the only free name the result may carry; `None` means none may. Nesting --
+        operators and the alias chains substitution follows -- is bounded at `MAX_EXPR_DEPTH`
+        (Q34): an unbounded chain (`a1 = a0`, `a2 = a1`, ...) recursed until Python raised.
         """
+        self._depth += 1
+        try:
+            if self._depth > MAX_EXPR_DEPTH:
+                _refuse("expression_not_projected")
+            return self._expr_node(node, grid_name)
+        finally:
+            self._depth -= 1
+
+    def _expr_node(self, node: ast.expr, grid_name: str | None) -> Expr:
         if isinstance(node, ast.Constant):
             return self._literal(node)
         if isinstance(node, ast.Name):

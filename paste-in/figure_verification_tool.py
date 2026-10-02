@@ -279,6 +279,28 @@ class Bin:
 
 type Expr = Num | Var | Const | Neg | Fn | Bin
 
+# The deepest expression tree the core walks recursively (Q34). Projection refuses a deeper program
+# expression, the request grammar names no target for a deeper request expression, and
+# `project.same_bound` never folds a deeper declared bound. Every level costs a few Python frames,
+# so this sits far below the interpreter's recursion limit while far above any chart program.
+MAX_EXPR_DEPTH = 100
+
+
+def expr_height(expr: Expr) -> int:
+    """Levels in `expr`, counted without recursion: a flat 10,000-term sum is 10,000 levels."""
+    deepest = 0
+    stack: list[tuple[Expr, int]] = [(expr, 1)]
+    while stack:
+        node, level = stack.pop()
+        deepest = max(deepest, level)
+        if isinstance(node, Bin):
+            stack += ((node.left, level + 1), (node.right, level + 1))
+        elif isinstance(node, Neg):
+            stack.append((node.operand, level + 1))
+        elif isinstance(node, Fn):
+            stack.append((node.arg, level + 1))
+    return deepest
+
 
 @dataclass(frozen=True, slots=True)
 class Grid:
@@ -1872,6 +1894,7 @@ from verifier.pysrc.admit import (
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.spec import (
+    MAX_EXPR_DEPTH,
     Bin,
     BinOp,
     Column,
@@ -1892,6 +1915,7 @@ from verifier.pysrc.spec import (
     Num,
     Reduction,
     Var,
+    expr_height,
 )
 
 _GRID_CALLS = frozenset({"np.linspace", "np.arange"})
@@ -2040,6 +2064,8 @@ def same_bound(program: Expr, declared: Expr) -> bool:
     both fold to -5. `fold_exact` folds only a tree binary64 computes exactly, so a bound the
     program rounds (`1/49*49`) still compares by tree and refuses.
     """
+    if expr_height(declared) > MAX_EXPR_DEPTH:
+        return False  # deeper than any tree projection admits: no program bound equals it
     left, right = fold_exact(program), fold_exact(declared)
     if left is not None and right is not None:
         return left == right
@@ -2146,6 +2172,7 @@ class _Projector:
         self._aliases: set[str] = set()
         self._grids: dict[str, Grid] = {}
         self._exprs: dict[str, ast.expr] = {}
+        self._depth = 0
         self._used: set[str] = set()
         self._mark: _MarkBuilder | None = None
         self._frames: dict[str, DatasetRef] = {}
@@ -2190,8 +2217,19 @@ class _Projector:
     def _expr(self, node: ast.expr, grid_name: str | None) -> Expr:
         """Project one admitted expression, substituting bound names away.
 
-        `grid_name` is the only free name the result may carry; `None` means none may.
+        `grid_name` is the only free name the result may carry; `None` means none may. Nesting --
+        operators and the alias chains substitution follows -- is bounded at `MAX_EXPR_DEPTH`
+        (Q34): an unbounded chain (`a1 = a0`, `a2 = a1`, ...) recursed until Python raised.
         """
+        self._depth += 1
+        try:
+            if self._depth > MAX_EXPR_DEPTH:
+                _refuse("expression_not_projected")
+            return self._expr_node(node, grid_name)
+        finally:
+            self._depth -= 1
+
+    def _expr_node(self, node: ast.expr, grid_name: str | None) -> Expr:
         if isinstance(node, ast.Constant):
             return self._literal(node)
         if isinstance(node, ast.Name):
@@ -2785,6 +2823,7 @@ from typing import cast
 
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.spec import (
+    MAX_EXPR_DEPTH,
     Bin,
     Const,
     Expr,
@@ -2796,6 +2835,7 @@ from verifier.pysrc.spec import (
     Neg,
     Num,
     Var,
+    expr_height,
 )
 
 REQUEST_GRAMMAR = "pyexpr-0.1"
@@ -2916,7 +2956,7 @@ class _Expression:
 
     def parse(self) -> Expr:
         result = self._sum(0)
-        if self.index != len(self.tokens):
+        if self.index != len(self.tokens) or expr_height(result) > MAX_EXPR_DEPTH:
             raise _InvalidError
         return result
 

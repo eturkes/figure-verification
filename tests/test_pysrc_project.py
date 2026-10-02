@@ -6,6 +6,7 @@ is written. A test that asserts more than the ratified predicate loses to the pr
 """
 
 import ast
+import dataclasses
 import sys
 from collections.abc import Iterator
 from dataclasses import fields, is_dataclass
@@ -15,10 +16,12 @@ from typing import Any, cast
 
 import pytest
 
-from verifier.pysrc import spec
+from verifier.pysrc import Refused, spec, verify_python_source
 from verifier.pysrc.admit import parse_admitted
 from verifier.pysrc.errors import PysrcRefusalError
+from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.project import project
+from verifier.pysrc.request import formula_target
 
 _PRELUDE = "import numpy as np\nimport matplotlib.pyplot as plt\n"
 
@@ -438,3 +441,71 @@ def test_q9_an_unfoldable_arange_bound_refuses(grid_call: str) -> None:
     least two samples, so only that predicate can refuse it -- and every one refuses
     `grid_not_representable` rather than projecting a grid the executed program does not draw."""
     assert _project_code(_formula(_arange_body(grid_call))) == "grid_not_representable"
+
+
+def _alias_chain_source(length: int, grid_call: str) -> str:
+    names = [f"a{index}" for index in range(length)]
+    chain = "a0 = 1\n" + "".join(f"{names[i]} = {names[i - 1]}\n" for i in range(1, length))
+    return (
+        "import numpy as np\nimport matplotlib.pyplot as plt\n"
+        + chain
+        + f"x = {grid_call.format(last=names[-1])}\ny = np.sin(x)\nplt.plot(x, y)\nplt.show()\n"
+    )
+
+
+@pytest.mark.parametrize("length", [600, 10_000])
+@pytest.mark.parametrize(
+    "grid_call", ["np.arange(0, {last} + 4)", "np.linspace(0, {last} + 4, num=5)"]
+)
+def test_q34_a_long_alias_chain_refuses_instead_of_recursing(length: int, grid_call: str) -> None:
+    """Q34: alias substitution recursed once per chain link until Python raised RecursionError
+    out of `verify_python_source`. Projection depth is bounded, so the chain refuses with one
+    code; the source limits are widened so the 10,000-link chain reaches projection at all."""
+    limits = dataclasses.replace(DEFAULT_LIMITS, max_source_bytes=10**6, max_tokens=10**6)
+    result = verify_python_source(_alias_chain_source(length, grid_call), limits=limits)
+    assert isinstance(result, Refused)
+    assert result.code == "expression_not_projected"
+
+
+def test_q34_projection_depth_is_bounded_and_ordinary_depth_projects() -> None:
+    """Q34: a left-nested sum 99 links deep projects; 101 links refuses
+    `expression_not_projected`."""
+    for terms, code in ((99, None), (101, "expression_not_projected")):
+        bound = " + ".join(["1"] * terms)
+        lines = f"n = {bound}\n"
+        source = _formula(
+            f"{lines}x = np.arange(0, n)\ny = np.sin(x)\nplt.plot(x, y)\nplt.show()\n"
+        )
+        if code is None:
+            project(source)
+        else:
+            assert _project_code(source) == code
+
+
+def test_q34_a_request_deeper_than_projection_names_no_target() -> None:
+    """Q34 (kernel review K8): the request grammar builds a flat sum in a loop, so a 10,000-term
+    bound parsed under widened limits, and folding it against the program's bound recursed. The
+    grammar names no target for a tree taller than `spec.MAX_EXPR_DEPTH`; 100 levels still bind."""
+    limits = dataclasses.replace(DEFAULT_LIMITS, max_source_bytes=10**6, max_expr_nodes=40_000)
+
+    def request(terms: int) -> str:
+        return f"y = sin(x), x in [0, {' + '.join(['1'] * terms)}], n = 5"
+
+    assert formula_target(request(10_000), limits) is None
+    assert formula_target(request(101), limits) is None
+    assert formula_target(request(100), limits) is not None
+
+
+def test_q34_a_declared_bound_deeper_than_projection_never_folds() -> None:
+    """Q34 (K8): a headless caller's declared bound taller than `spec.MAX_EXPR_DEPTH` mismatches
+    instead of recursing in the folder; no projected bound can equal it."""
+    deep: spec.Expr = spec.Num(Fraction(1))
+    for _ in range(10_000):
+        deep = spec.Bin("add", deep, spec.Num(Fraction(1)))
+    target = spec.FormulaTarget(
+        spec.Fn("sin", spec.Var()), spec.Grid(spec.Num(Fraction(0)), deep, 5)
+    )
+    source = _PRELUDE + "x = np.linspace(0, 4, num=5)\ny = np.sin(x)\nplt.plot(x, y)\nplt.show()\n"
+    result = verify_python_source(source, declared_target=target)
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"

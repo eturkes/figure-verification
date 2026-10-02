@@ -15,6 +15,7 @@ from typing import cast
 
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.spec import (
+    MAX_EXPR_DEPTH,
     Bin,
     Const,
     Expr,
@@ -26,6 +27,7 @@ from verifier.pysrc.spec import (
     Neg,
     Num,
     Var,
+    expr_height,
 )
 
 REQUEST_GRAMMAR = "pyexpr-0.1"
@@ -146,7 +148,7 @@ class _Expression:
 
     def parse(self) -> Expr:
         result = self._sum(0)
-        if self.index != len(self.tokens):
+        if self.index != len(self.tokens) or expr_height(result) > MAX_EXPR_DEPTH:
             raise _InvalidError
         return result
 

@@ -749,3 +749,19 @@ anchor = '''    if left is not None and right is not None:
         return left == right'''
 mutant = '''    if False:
         return left == right'''
+
+[[mutant]]
+id = "q34-expr-depth-unbounded"
+predicate = "projection depth is bounded, so a deep expression or alias chain refuses instead of recursing"
+kills = "tests/test_pysrc_project.py::test_q34_projection_depth_is_bounded_and_ordinary_depth_projects"
+anchor = '''            if self._depth > MAX_EXPR_DEPTH:
+                _refuse("expression_not_projected")'''
+mutant = '''            if False:
+                _refuse("expression_not_projected")'''
+
+[[mutant]]
+id = "q34-declared-height-unchecked"
+predicate = "a declared bound taller than the projection bound mismatches before the folder recurses"
+kills = "tests/test_pysrc_project.py::test_q34_a_declared_bound_deeper_than_projection_never_folds"
+anchor = '''    if expr_height(declared) > MAX_EXPR_DEPTH:'''
+mutant = '''    if False:'''

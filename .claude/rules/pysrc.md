@@ -444,8 +444,9 @@ Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<modu
 test that must go red and only that test runs under it, so attribution cannot drift to whichever
 red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
 SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
-writes. `tools/mutants/project.toml` = 65 mutants over the projection predicates (23 at M13.3, +13
-at M13.4, +10 at M13.6, +10 at Q9 -- the exact folder -- +9 at M13.8 against one REPLACED — `.reset_index()` now projects, so the
+writes. `tools/mutants/project.toml` = 68 mutants over the projection predicates (23 at M13.3, +13
+at M13.4, +10 at M13.6, +10 at Q9 -- the exact folder -- +1 at Q17, +2 at
+Q34 -- the depth bound -- +9 at M13.8 against one REPLACED — `.reset_index()` now projects, so the
 mutant asserting it never could was retired for the by-name-unwrap predicate the widening rests on),
 with the two EQUIVALENT mutants documented in the file rather than listed. The accessor's receiver
 guard is a COMPOUND one and carries one mutant per conjunct: `p5-accessor-receiver-unchecked` drops
