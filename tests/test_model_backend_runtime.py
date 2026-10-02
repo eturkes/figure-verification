@@ -861,14 +861,16 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
             assert all(isinstance(module, str) for module in modules)
             module_groups.add(frozenset(cast("list[str]", modules)))
 
-    assert frozenset({"torch", "torch.*"}) in module_groups
-    assert frozenset({"transformers", "transformers.*"}) in module_groups
-    assert frozenset({"xgrammar", "xgrammar.*"}) in module_groups
-    all_modules = set().union(*module_groups)
-    assert "accelerate" not in all_modules
-    assert "accelerate.*" not in all_modules
-    assert "tokenizers" not in all_modules
-    assert "tokenizers.*" not in all_modules
+    # The closed set, hand-stated: a deny-list of known-unused packages would admit any other
+    # override (a restored retired `openvino_genai` group passed the earlier form).
+    assert module_groups == {
+        frozenset({"jsonschema.*"}),
+        frozenset({"z3", "z3.*"}),
+        frozenset({"torch", "torch.*"}),
+        frozenset({"transformers", "transformers.*"}),
+        frozenset({"xgrammar", "xgrammar.*"}),
+        frozenset({"open_webui", "open_webui.*"}),
+    }
 
 
 def test_p19_root_lock_matches_ratified_digest() -> None:

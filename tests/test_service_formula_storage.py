@@ -1237,41 +1237,26 @@ def test_formula_role_set_extra_dataset_refuses_before_blob_reads(
 def test_formula_publish_inserts_blobs_key_plot_spec_then_references(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The order is read from the SQL the archive connection executes, never from helper spies:
+    a spy that logs before delegating records its own order, not the INSERTs'."""
     archive, parts = _formula_archive(tmp_path)
-    events: list[str] = []
-    original_insert = archive_module._insert_batch_rows
-    original_put_key = archive_module._put_key
-    original_put_plot = archive_module._put_plot
-    original_put_spec = archive_module._put_spec
-    original_put_reference = archive_module._put_plot_reference
+    executed: list[str] = []
+    original_connect = archive_module.Archive._connect
 
-    def insert_spy(connection: sqlite3.Connection, batch: Any, new_blobs: Any) -> None:
-        events.extend(["blob"] * len(new_blobs))
-        return original_insert(connection, batch, new_blobs)
+    def traced_connect(self: archive_module.Archive) -> sqlite3.Connection:
+        connection = original_connect(self)
+        connection.set_trace_callback(executed.append)
+        return connection
 
-    def key_spy(*args: Any, **kwargs: Any) -> None:
-        events.append("key")
-        original_put_key(*args, **kwargs)
-
-    def plot_spy(*args: Any, **kwargs: Any) -> None:
-        events.append("plot")
-        original_put_plot(*args, **kwargs)
-
-    def spec_spy(*args: Any, **kwargs: Any) -> None:
-        events.append("spec")
-        original_put_spec(*args, **kwargs)
-
-    def reference_spy(*args: Any, **kwargs: Any) -> None:
-        events.append("reference")
-        original_put_reference(*args, **kwargs)
-
-    monkeypatch.setattr(archive_module, "_insert_batch_rows", insert_spy)
-    monkeypatch.setattr(archive_module, "_put_key", key_spy)
-    monkeypatch.setattr(archive_module, "_put_plot", plot_spy)
-    monkeypatch.setattr(archive_module, "_put_spec", spec_spy)
-    monkeypatch.setattr(archive_module, "_put_plot_reference", reference_spy)
+    monkeypatch.setattr(archive_module.Archive, "_connect", traced_connect)
     archive.publish_plot(parts.bundle)
-    assert events == ["blob"] * 9 + ["key", "plot", "spec"] + ["reference"] * 7
+    # SQLite re-reports a statement that fires a trigger, so consecutive repeats are one execution
+    # (two real INSERTs never share expanded text: each row carries its own key).
+    statements = [
+        sql for index, sql in enumerate(executed) if index == 0 or sql != executed[index - 1]
+    ]
+    tables = [sql.split()[2].split("(")[0] for sql in statements if sql.startswith("INSERT INTO ")]
+    assert tables == ["blobs"] * 9 + ["keys", "plots", "specs"] + ["plot_references"] * 7
 
 
 def test_d6_real_cross_mode_same_kind_blob_deduplicates_once(tmp_path: Path) -> None:

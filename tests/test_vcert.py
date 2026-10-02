@@ -576,9 +576,10 @@ def test_formula_builder_threads_its_injected_tcb() -> None:
 def test_dataset_builder_refuses_a_wrong_family_or_subclass_tcb() -> None:
     """v0.2 has no ``__post_init__``, so the builder guards before a ``VCert`` exists.
 
-    Without it a ``FormulaTcb`` encodes ``"kind":"formula"`` into a ``vcert-0.2`` payload and a
-    ``Tcb`` subclass encodes its own tag -- the silent dataset-identity drift ``DatasetTcb``
-    deliberately avoids by not being a ``Tcb`` subclass.
+    ``vcert_bytes`` refuses the same certificate at encode time, so the builder guard buys an
+    EARLIER refusal: a ``FormulaTcb`` (which would carry ``"kind":"formula"``) or a ``Tcb``
+    subclass (its own tag) never becomes a ``VCert`` at all -- the dataset-identity drift
+    ``DatasetTcb`` avoids by not being a ``Tcb`` subclass.
     """
 
     class _TcbSubclass(vcert.Tcb, frozen=True, kw_only=True):

@@ -15,6 +15,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from formula_plot_bundle_helpers import formula_bundle_parts
+from verifier import render
 from verifier import replay as replay_core
 from verifier.attestation import VCERT_V03_PAYLOAD_TYPE
 from verifier.service import replay as service_replay
@@ -418,10 +419,24 @@ def test_no_formula_replay_status_builds_or_stores_a_chart(
         )
 
     stored: list[str] = []
+    built: list[str] = []
+    real_rebuild = service_replay._rebuild_signed_chart
+
+    def counting_rebuild(*args: Any, **kwargs: Any) -> bytes:
+        built.append("rebuild")
+        return real_rebuild(*args, **kwargs)
+
+    def counting_render(*_args: Any, **_kwargs: Any) -> str:
+        built.append("render")
+        return ""
+
     monkeypatch.setattr(service_replay, "replay_formula_snapshot", forced)
     monkeypatch.setattr(
         ArtifactStore, "put_chart", lambda _self, plot_id, _html: stored.append(plot_id)
     )
+    # Counting bombs on the build itself: a chart built and then discarded is still a build.
+    monkeypatch.setattr(service_replay, "_rebuild_signed_chart", counting_rebuild)
+    monkeypatch.setattr(render, "signed_chart_html", counting_render)
     direct = service_replay.replay_plot_chart(
         open_archive(settings),
         identity.trusted_keys,
@@ -438,6 +453,7 @@ def test_no_formula_replay_status_builds_or_stores_a_chart(
     assert direct.chart_html is None
     assert json.loads(replayed.content)["status"] == status
     assert stored == []
+    assert built == []
     assert chart.status_code == 404
 
 

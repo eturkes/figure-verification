@@ -54,11 +54,8 @@ def _units(text: str) -> list[tuple[int, str]]:
             flush()
             fence = not fence
             continue
-        skipped = (
-            fence
-            or line.startswith(("    ", ">", "#", "|"))
-            or line.count("|") >= 2  # a table row carries a cell delimiter pair
-        )
+        # A table row opens with its delimiter; a pipe inside prose leaves the line prose.
+        skipped = fence or line.startswith(("    ", ">", "#", "|"))
         if skipped or not line.strip():
             flush()
             continue
@@ -117,12 +114,17 @@ def test_the_checks_fire_on_a_long_and_a_passive_sentence(tmp_path: Path) -> Non
         + " ".join(["word"] * 13)
         + ": "
         + " ".join(["Word"] * 13)
-        + '.\n\n```sh\ncat <<EOF\n```"""\nEOF\n```\n\nAfter the fence.\n',
+        + '.\n\n```sh\ncat <<EOF\n```"""\nEOF\n```\n\nAfter the fence.\n\n'
+        + " ".join(["word"] * 12)
+        + " a | b | c "
+        + " ".join(["word"] * 12)
+        + ".\n\n| table | row |\n",
         encoding="utf-8",
     )
     units = _units(planted.read_text(encoding="utf-8"))
-    assert [line for line, _ in units] == [3, 5, 7, 15]
+    assert [line for line, _ in units] == [3, 5, 7, 15, 17]
     lengths = [len(_WORD.findall(text)) for _, text in units]
     assert lengths[0] > _MAX_WORDS
+    assert lengths[4] > _MAX_WORDS  # pipes inside prose never make it a table row
     assert _passives(units[1][1]) == ["is drawn"]
     assert [len(_WORD.findall(s)) for s in _SENTENCE_END.split(units[2][1])] == [26]

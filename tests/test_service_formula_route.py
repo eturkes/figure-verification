@@ -923,7 +923,8 @@ def _assert_problem(response: Response, status: int, detail: str) -> dict[str, A
     payload = cast("dict[str, Any]", response.json())
     assert payload["status"] == status
     assert payload["detail"] == detail
-    assert "matplotlib_script" not in payload
+    # The closed problem shape, so no member -- named or nested -- can carry script bytes.
+    assert set(payload) == {"title", "status", "detail"}
     return payload
 
 

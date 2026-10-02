@@ -4,8 +4,9 @@
 "The grammar enforces the guidance schema" is FALSE on every surface (`.claude/rules/claims.md`):
 the grammar constrains generation TOWARD the schema, and strict re-decode is the sole admission
 authority. The forbidden family is a phrase, so a tool decides it. The one admitted spelling is
-the law's own negation: the phrase in quotes followed by `is FALSE`, or `never "..."`. Archived
-records are history and stay out.
+the law's own negation: the phrase in quotes followed by `is FALSE`, or `never "..."`. Every
+tracked file is read (an undecodable byte becomes U+FFFD) except two: archived records are history,
+and this module plants the phrase in its own positive control.
 """
 
 import re
@@ -14,12 +15,13 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SELF = "tests/test_guidance_claim_boundary.py"
-_FAMILY = re.compile(r"enforc\w* the guidance schema|subset xgrammar supports", re.IGNORECASE)
+# Words part on any whitespace run: a Markdown line wrap must not hide the phrase.
+_PHRASE = r"enforc\w*\s+the\s+guidance\s+schema|subset\s+xgrammar\s+supports"
+_FAMILY = re.compile(_PHRASE, re.IGNORECASE)
 # A match inside a quotation the law immediately negates: `"... phrase" is FALSE` or
 # `never "... phrase"`.
 _NEGATED = re.compile(
-    r"\"[^\"]{0,200}(?:enforc\w* the guidance schema|subset xgrammar supports)\" is FALSE"
-    r"|never \"[^\"]{0,200}(?:enforc\w* the guidance schema|subset xgrammar supports)\"",
+    rf"\"[^\"]{{0,200}}(?:{_PHRASE})\"\s+is\s+FALSE|never\s+\"[^\"]{{0,200}}(?:{_PHRASE})\"",
     re.IGNORECASE,
 )
 
@@ -48,10 +50,7 @@ def _live_files() -> list[str]:
 def test_no_live_file_affirms_the_forbidden_guidance_claim() -> None:
     found: list[str] = []
     for name in _live_files():
-        try:
-            text = (_ROOT / name).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):  # a tracked binary carries no prose claim
-            continue
+        text = (_ROOT / name).read_bytes().decode("utf-8", errors="replace")
         found += [f"{name}:{text.count(chr(10), 0, at) + 1}" for at in _affirmations(text)]
     assert not found, found
 
@@ -63,3 +62,5 @@ def test_the_check_fires_on_an_affirmation_and_spares_the_negations() -> None:
     assert _affirmations('"The grammar enforces the guidance schema" is FALSE.') == []
     assert _affirmations('Say never "the subset xgrammar supports".') == []
     assert len(_affirmations('"The grammar enforces the guidance schema" is true.')) == 1
+    assert len(_affirmations("The grammar enforces the guidance\n  schema.")) == 1
+    assert _affirmations('"The grammar enforces the\nguidance schema" is\nFALSE.') == []

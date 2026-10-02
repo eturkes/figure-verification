@@ -824,4 +824,5 @@ def test_u62_http_formula_certificate_remains_v03(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
     assert response.content == parts.plot.vcert_envelope
-    assert response.json()["payloadType"] == attestation.VCERT_V03_PAYLOAD_TYPE
+    # Hand-stated: comparing against the production constant would follow it to any MIME.
+    assert response.json()["payloadType"] == "application/vnd.figure-verification.vcert.v0.3+json"

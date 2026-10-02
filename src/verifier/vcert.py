@@ -444,7 +444,7 @@ def disclosed_transforms(
 ) -> tuple[tuple[DisclosedFilter, ...], tuple[DisclosedSort, ...]]:
     """Derive deterministic dataset filter and active-sort disclosures.
 
-    EVERY applied filter is disclosed, in pipeline order, because each one drops rows; only the
+    EVERY applied filter is disclosed, in pipeline order, because each one can drop rows; only the
     ACTIVE sort is, because an earlier sort is superseded and orders nothing in the plotted table.
     Filter values are model-controlled text, disclosed raw in the signed payload; no display
     surface interpolates them (``render.badge_html`` shows a check count alone).
