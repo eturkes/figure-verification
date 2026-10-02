@@ -31,7 +31,7 @@ dependencies = [
     "litestar>=2.24,<3",
     "uvicorn>=0.49,<1",
     "httpx>=0.28,<1",
-    "z3-solver>=4.16,<5",
+    "z3-solver>=5.1.0.0,<6",
     "cryptography>=50,<51",
 ]
 
