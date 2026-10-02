@@ -58,14 +58,13 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q21 S6 malformed Tasks rows — owed: approval
 - [ ] Q25 stale teammate worktrees
 - [ ] Q26 W2/W5 refusal-code split — owed: approval
-- [ ] Q27 `tests/test_spec.py` S4/S7 docstring
 - [ ] Q28 `demo/e2e.py` `--with-webui` leg vs python mode (new)
 - [ ] Q29 `webui/client.py` `chart_url` = `embeds[0]` (new)
 - [ ] Q30 line citations → symbol citations + resolver check (new, Q6 lens)
 - [ ] Q31 launcher tests vs inherited SIGINT=ignore (new)
 - [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 
-Queue = `.agent/deferred.md`, 21 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 20 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
