@@ -129,6 +129,13 @@ plant_untracked_skip_marker() {
     printf '\n\n@pytest.mark.skip(reason="probe")\ndef test_g97_untracked_marker_probe() -> None:\n    """Probe."""\n' >>"$TEST_GATE"
 }
 
+# The one TWO-file probe: S8's ticked-row exclusion is only reachable when a skip cites a unit AND
+# that unit's Tasks row is ticked, so the plant writes both (both files sit in TARGETS).
+plant_ticked_row_skip() {
+    printf '\n\n@pytest.mark.skip(reason="M99.7 probe")\ndef test_g94_ticked_row_probe() -> None:\n    """Probe."""\n' >>"$TEST_GATE"
+    sed -i '0,/^## Tasks$/s//## Tasks\n\n- [x] abcdef0 **M99.7** probe row/' "$SPEC"
+}
+
 plant_untracked_body_skip() {
     printf '\n\ndef test_g96_untracked_body_probe() -> None:\n    """Probe."""\n    pytest.skip("probe")\n' >>"$TEST_GATE"
 }
@@ -318,6 +325,10 @@ probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_c
 probe s8-untracked-skip-marker tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
     plant_untracked_skip_marker
+
+probe s8-ticked-row-not-a-tracker tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
+    'test_gate.py' \
+    plant_ticked_row_skip
 
 probe s8-untracked-body-skip tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it \
     'untracked disabled cases' \
