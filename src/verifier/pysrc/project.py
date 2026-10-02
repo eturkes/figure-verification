@@ -545,15 +545,15 @@ class _Projector:
         self._decorated.add(target)
         self._drawn = True
         if target == _TIGHT_LAYOUT:
-            if node.args or node.keywords:
-                _refuse("statement_not_projected")
+            # Admission refuses every argument here: a positional (`_NO_POSITIONAL_TARGETS`) and
+            # every keyword (an empty allowlist), so the call is bare.
             self._tight_layout = True
             return
         if target == _XTICKS:
             # A bare `plt.xticks()` READS the current ticks and changes nothing, so there is
-            # nothing to represent; a positional SETS tick locations or labels, which restates what
-            # the x axis says about the data and is a projection this spec does not have.
-            if node.args or not node.keywords:
+            # nothing to represent. A positional, which SETS ticks, never gets here: admission
+            # refuses it (`_NO_POSITIONAL_TARGETS`).
+            if not node.keywords:
                 _refuse("statement_not_projected")
             self._tick_rotation = _exact(node.keywords[0].value)
             return

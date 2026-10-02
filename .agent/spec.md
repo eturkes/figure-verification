@@ -54,9 +54,8 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q18 nested-libm observation rule
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
-- [ ] Q26 W2/W5 refusal-code split
 
-Queue = `.agent/deferred.md`, 12 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 11 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

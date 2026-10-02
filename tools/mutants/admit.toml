@@ -21,6 +21,7 @@ tests = [
   "tests/test_pysrc_accessor_line.py",
   "tests/test_pysrc_admit.py",
   "tests/test_pysrc_aggregate.py",
+  "tests/test_pysrc_presentation.py",
 ]
 
 [[mutant]]
@@ -441,3 +442,17 @@ anchor = '''
     if not isinstance(selection, ast.Subscript) or selection.value is not root:'''
 mutant = '''
     if selection.value is not root:'''
+
+[[mutant]]
+id = "q26-xticks-positional-escapes-admission"
+predicate = "`plt.xticks` admits no positional argument, so a tick-setting call refuses `keyword_not_admitted` at admission"
+kills = "tests/test_pysrc_presentation.py::test_w5_xticks_admits_rotation_only_and_no_positional"
+anchor = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
+mutant = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.tight_layout"})'''
+
+[[mutant]]
+id = "q26-tight-layout-positional-escapes-admission"
+predicate = "`plt.tight_layout` admits no positional argument; projection no longer re-checks, so the ignored argument would verify"
+kills = "tests/test_pysrc_presentation.py::test_w4_tight_layout_admits_bare_and_once"
+anchor = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
+mutant = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.xticks"})'''

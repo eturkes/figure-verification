@@ -104,9 +104,11 @@ ADMITTED_VALUE_ATTRS = frozenset({"index", "values"})
 # tail, so this is the ONLY door a tuple enters the language by, and it is keyed per keyword rather
 # than opened globally: `figsize` is the one admitted tuple.
 ADMITTED_TUPLE_KEYWORDS: dict[tuple[str, str], int] = {("plt.figure", "figsize"): 2}
-# Targets admitting NO positional argument. `plt.figure(1)` selects a figure by number, which is a
-# figure-lifecycle effect the spec does not represent, so it refuses rather than being ignored.
-_NO_POSITIONAL_TARGETS = frozenset({"plt.figure"})
+# Targets admitting NO positional argument, all refused here with ONE code (user ruling Q26).
+# `plt.figure(1)` selects a figure by number, a figure-lifecycle effect the spec does not
+# represent; `plt.xticks(ticks)` sets tick locations or labels, restating what the x axis says
+# about the data; `plt.tight_layout` takes no argument the spec carries.
+_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})
 
 # The `groupby` idiom, admitted as ONE atomic shape rather than link by link. `_dotted` bounds an
 # attribute chain to depth 1 against an `ast.Name`, so the outer `.sum` of a chain -- whose receiver

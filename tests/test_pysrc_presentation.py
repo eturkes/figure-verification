@@ -165,7 +165,8 @@ def test_w4_tight_layout_admits_bare_and_once() -> None:
 
     `pad=2` refuses one stage EARLIER than W4's wording expects: the per-target keyword allowlist is
     empty for `plt.tight_layout`, so admission answers `keyword_not_admitted` before projection ever
-    reads the call. A bare positional (`plt.tight_layout(1)`) does reach projection."""
+    reads the call. A bare positional (`plt.tight_layout(1)`) refuses the same way, at admission
+    (Q26: every positional to a presentation call shares that one code)."""
     mark = 'plt.bar(df["region"], df["revenue"])\n'
     once = project(parse_admitted(_dataset_source(mark + "plt.tight_layout()\nplt.show()\n")))
     assert isinstance(once, spec.DatasetPlot)
@@ -176,7 +177,7 @@ def test_w4_tight_layout_admits_bare_and_once() -> None:
     )
     assert (
         _projection_code(_dataset_source(mark + "plt.tight_layout(1)\nplt.show()\n"))
-        == "statement_not_projected"
+        == "keyword_not_admitted"
     )
     assert (
         _projection_code(
@@ -191,9 +192,9 @@ def test_w5_xticks_admits_rotation_only_and_no_positional() -> None:
     refuse — a positional argument sets tick locations or labels, which changes what the figure
     asserts about x. `plt.xticks(rotation='vertical')` refuses `label_not_literal`.
 
-    The two positional witnesses refuse at DIFFERENT stages, and each names the stage that caught
-    it: a list display is not an admitted expression at all, so `[1, 2, 3]` never reaches
-    projection, while `df['region']` is an admitted expression that projection then refuses."""
+    Both positional witnesses refuse with ONE code at ONE stage (user ruling Q26): admission checks
+    the positional slot before it admits the argument, so `[1, 2, 3]` (no admitted expression) and
+    `df['region']` (an admitted one) both answer `keyword_not_admitted`, like `plt.figure(1)`."""
     mark = 'plt.bar(df["region"], df["revenue"])\n'
     rotated = project(
         parse_admitted(_dataset_source(mark + "plt.xticks(rotation=45)\nplt.show()\n"))
@@ -206,8 +207,10 @@ def test_w5_xticks_admits_rotation_only_and_no_positional() -> None:
     assert isinstance(fractional, spec.DatasetPlot)
     assert fractional.labels.tick_rotation == Fraction(45, 2)
     positional = {
-        "plt.xticks([1, 2, 3])": "expression_not_admitted",
-        'plt.xticks(df["region"])': "statement_not_projected",
+        "plt.xticks([1, 2, 3])": "keyword_not_admitted",
+        'plt.xticks(df["region"])': "keyword_not_admitted",
+        # A bare call READS the ticks and changes nothing: no presentation to project.
+        "plt.xticks()": "statement_not_projected",
     }
     for call, expected in positional.items():
         assert _projection_code(_dataset_source(mark + f"{call}\nplt.show()\n")) == expected, call

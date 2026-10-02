@@ -441,8 +441,8 @@ widening reddens; and
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
 integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
-what splits them. `tools/mutants/admit.toml` = 40: the accessor ROUTE (M13.8's five + M10.10's `line` entry), M13.2's
-13 allowlist predicates (below), + 21 admission predicates — the string-literal column subscript,
+what splits them. `tools/mutants/admit.toml` = 42: the accessor ROUTE (M13.8's five + M10.10's `line` entry), M13.2's
+13 allowlist predicates (below), + 21 admission predicates, + Q26's two presentation-positional entries — the string-literal column subscript,
 each `groupby(k)[c].reduce()` chain link, the cosmetic call-target set, the per-target style-keyword
 map + `ADMITTED_TUPLE_KEYWORDS` arity. Every refusal ADMISSION lands is decided before projection
 runs, so `project.toml` cannot reach it. Run
