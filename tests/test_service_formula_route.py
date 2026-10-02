@@ -676,6 +676,53 @@ def test_v18_float64_fidelity_failure_has_no_emitted_artifact(
     assert calls["materialize_formula_plot_bundle"] == 0
 
 
+_PRE_EMISSION_LEDGER = (
+    "security.no_arbitrary_code",
+    "formula.values_bounded",
+    "formula.hash_matches_source",
+    "formula.points_from_recomputation",
+    "formula.rounding_unambiguous",
+    "encoding.fields_exist_in_plotted_table",
+    "encoding.axis_types_match_fields",
+    "sort.canonical_order",
+)
+
+
+@pytest.mark.parametrize(
+    ("case", "formula", "settings_changes", "failing"),
+    [
+        ("emission", "9007199254740993", {}, "render.float64_fidelity"),
+        (
+            "attestation",
+            None,
+            {"max_attestation_bytes": _ATTESTATION_CAP_REFUSING},
+            "resource.attestation_bytes",
+        ),
+    ],
+)
+def test_p24_late_formula_failures_report_their_stage_summary_ledgers(
+    tmp_path: Path,
+    case: str,
+    formula: str | None,
+    settings_changes: dict[str, object],
+    failing: str,
+) -> None:
+    """p24 (stage summary): both late failures list the eight pre-emission passes then their own
+    failure, so neither ledger drifts unseen. The emission case's failure IS the emitter's first
+    check; the attestation case omits the emitter checks that passed before the ceiling."""
+    raw = (
+        (_FORMULA_GOOD / "f02_linear.json").read_bytes()
+        if formula is None
+        else _formula_raw(formula=formula)
+    )
+    _settings_obj, _app, response = _raw_formula_post(tmp_path / case, raw, **settings_changes)
+    results = cast("list[dict[str, Any]]", response.json()["results"])
+    assert [(row["check"], row["status"]) for row in results] == [
+        *((check, "pass") for check in _PRE_EMISSION_LEDGER),
+        (failing, "fail"),
+    ]
+
+
 @pytest.mark.parametrize(
     "row",
     (

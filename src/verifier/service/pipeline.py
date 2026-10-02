@@ -601,6 +601,14 @@ def emit_formula_outcome(
     verdict and never a script, and the atomic commit is what keeps the signed bytes from becoming
     durable or observable.
 
+    The two late-failure ledgers differ ON PURPOSE (stage summary, user ruling p24). A semantic
+    emission failure (``artifact is None``) answers the emitter's merged report: the pre-emission
+    checks, then the emitter's checks up to and including the one that blocked. A certificate or
+    signing resource breach answers the PRE-emission verdict extended by that one resource result,
+    so the emitter checks that passed before it are not listed. The resource ceiling bounds the
+    signed bytes rather than verifying the artifact, and keeping that shape leaves every archived
+    late-failure verdict byte-identical; the success ledger alone carries every emitter check.
+
     The service emits script BYTES and never executes them, so there is no chart page, no
     ArtifactStore write, and no display cache on any path — FormulaContext carries no store to
     write to. matplotlib, the interpreter that would run these bytes, and the resulting pixels stay
