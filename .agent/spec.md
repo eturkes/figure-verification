@@ -56,7 +56,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q18 nested-libm observation rule
 - [ ] Q19 structural FAIL-arm variant — owed: MX150 runs
 - [ ] Q21 S6 malformed Tasks rows — owed: approval
-- [ ] Q23 `m13-design` counts pointer
 - [ ] Q24 gate-probe header count
 - [ ] Q25 stale teammate worktrees
 - [ ] Q26 W2/W5 refusal-code split — owed: approval
@@ -67,7 +66,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q31 launcher tests vs inherited SIGINT=ignore (new)
 - [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 
-Queue = `.agent/deferred.md`, 23 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 22 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

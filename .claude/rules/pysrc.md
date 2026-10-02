@@ -269,7 +269,7 @@ z3 cannot be inlined.
 - **What the M13.7 lever exposed, and it re-aims the NEXT width.** Naming pandas in the capture
   prompt took `name_not_bound` from 17/25 to 0/25 over the simple design rows and left simple verify
   at 0/25, so the M13.6 census is now stale and the blocker layer under it is a different shape
-  (`.agent/measurements/w1_width.py`, run against `m13-design`; per-row counts in `.agent/spec.md`).
+  (`.agent/measurements/w1_width.py`, run against `m13-design`, retired at `d1f1ecd`; its capture stays at `f4ebe2b`).
   Two width gaps carry real rows and NEITHER is cosmetic: 4 rows call the pandas plotting ACCESSOR,
   `series.plot(kind="bar")`, instead of `plt.bar`; 2 append `.reset_index()` to the reduction, which
   re-spells the channels and is exactly what `aggregation_not_projected` names. The remaining simple
