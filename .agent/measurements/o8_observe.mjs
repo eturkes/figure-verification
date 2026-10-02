@@ -84,8 +84,14 @@ json.dumps({"python": sys.version.split()[0], "pyodide": pyodide.__version__,
             "numpy": numpy.__version__, "pandas": pandas.__version__, "renderer": _mpl.__version__})
 `),
 );
+const checkFixtures = process.argv[5] === "--check-fixtures";
+if (process.argv[5] && !checkFixtures) throw new Error(`Unknown option: ${process.argv[5]}`);
+let fixtureDifferences = 0;
 for (const { path, fixture, observation } of observations) {
-  writeFileSync(path, `${JSON.stringify({ ...fixture, observation }, null, 2)}\n`);
+  const emitted = `${JSON.stringify({ ...fixture, observation }, null, 2)}\n`;
+  if (checkFixtures) {
+    if (readFileSync(path, "utf8") !== emitted) fixtureDifferences += 1;
+  } else writeFileSync(path, emitted);
 }
 const result = {
   build: packageVersion,
@@ -97,6 +103,7 @@ const result = {
   observations: observations.length,
   pngs: observations.length,
   stderr: 0,
+  fixture_differences: fixtureDifferences,
 };
 writeFileSync(join(root, outputName), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify(result));

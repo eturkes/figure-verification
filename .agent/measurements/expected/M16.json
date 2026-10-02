@@ -1,0 +1,10 @@
+{
+  "cases": {
+    "japanese": true,
+    "pass": true,
+    "refused": true
+  },
+  "narrow_ok": true,
+  "ok": true,
+  "screenshots": 6
+}

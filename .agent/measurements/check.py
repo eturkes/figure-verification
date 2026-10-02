@@ -10,21 +10,39 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 
-def difference(expected, actual, path="$"):
-    if type(expected) is not type(actual):
-        return f"{path}: type {type(actual).__name__} != {type(expected).__name__}"
+def bound_difference(expected, actual, path):
+    operator, bound = next(iter(expected.items()))
+    if type(bound) not in (int, float) or type(actual) is not type(bound):
+        return f"{path}: invalid numeric bound or observed type"
+    holds = actual <= bound if operator == "$le" else actual >= bound
+    return None if holds else f"{path}: observed {actual!r} violates {operator} {bound!r}"
+
+
+def container_difference(expected, actual, path):
     if isinstance(expected, dict):
         if expected.keys() != actual.keys():
             return f"{path}: keys {sorted(actual)} != {sorted(expected)}"
-        for key, value in expected.items():
-            if mismatch := difference(value, actual[key], f"{path}.{key}"):
-                return mismatch
-    elif isinstance(expected, list):
+        pairs = ((f"{path}.{key}", value, actual[key]) for key, value in expected.items())
+    else:
         if len(expected) != len(actual):
             return f"{path}: length {len(actual)} != {len(expected)}"
-        for index, (left, right) in enumerate(zip(expected, actual, strict=True)):
-            if mismatch := difference(left, right, f"{path}[{index}]"):
-                return mismatch
+        pairs = (
+            (f"{path}[{index}]", left, right)
+            for index, (left, right) in enumerate(zip(expected, actual, strict=True))
+        )
+    for child, left, right in pairs:
+        if mismatch := difference(left, right, child):
+            return mismatch
+    return None
+
+
+def difference(expected, actual, path="$"):
+    if isinstance(expected, dict) and set(expected) in ({"$le"}, {"$ge"}):
+        return bound_difference(expected, actual, path)
+    if type(expected) is not type(actual):
+        return f"{path}: type {type(actual).__name__} != {type(expected).__name__}"
+    if isinstance(expected, (dict, list)):
+        return container_difference(expected, actual, path)
     return None if expected == actual else f"{path}: observed {actual!r} != expected {expected!r}"
 
 

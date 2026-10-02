@@ -1,0 +1,14 @@
+{
+  "blocked": {
+    "count": 24,
+    "total": 24
+  },
+  "faithful": {
+    "count": 10,
+    "total": 24
+  },
+  "verified": {
+    "count": 20,
+    "total": 24
+  }
+}

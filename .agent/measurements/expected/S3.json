@@ -1,0 +1,34 @@
+{
+  "0280": {
+    "arange": {
+      "all_values_compared": true,
+      "cases": 10000,
+      "length_disagreements": 0,
+      "max_ulp": 0,
+      "value_disagreements": 0
+    },
+    "linspace": {
+      "all_values_compared": true,
+      "cases": 10000,
+      "length_disagreements": 0,
+      "max_ulp": 0,
+      "value_disagreements": 0
+    }
+  },
+  "0281": {
+    "arange": {
+      "all_values_compared": true,
+      "cases": 10000,
+      "length_disagreements": 0,
+      "max_ulp": 0,
+      "value_disagreements": 0
+    },
+    "linspace": {
+      "all_values_compared": true,
+      "cases": 10000,
+      "length_disagreements": 0,
+      "max_ulp": 0,
+      "value_disagreements": 0
+    }
+  }
+}

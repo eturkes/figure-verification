@@ -1,0 +1,12 @@
+{
+  "cases": {
+    "blocked": true,
+    "japanese": true,
+    "pass": true,
+    "refused": true
+  },
+  "clamped": 0,
+  "ok": true,
+  "texts": 132,
+  "width_ok": true
+}

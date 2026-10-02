@@ -1,0 +1,90 @@
+{
+  "0280": {
+    "cos": {
+      "disagreements": 17872,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "exp": {
+      "disagreements": 389,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "log": {
+      "disagreements": 0,
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "sin": {
+      "disagreements": 17792,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "sqrt": {
+      "disagreements": 0,
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "tan": {
+      "disagreements": 20876,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    }
+  },
+  "0281": {
+    "cos": {
+      "disagreements": 17872,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "exp": {
+      "disagreements": 389,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "log": {
+      "disagreements": 0,
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "sin": {
+      "disagreements": 17792,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "sqrt": {
+      "disagreements": 0,
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "tan": {
+      "disagreements": 20876,
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    }
+  }
+}

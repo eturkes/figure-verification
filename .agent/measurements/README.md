@@ -3,8 +3,38 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-`S1` + `W1` print to stdout. The reduction IDs below compare against hand-stated published results;
-other IDs still report measurements without that comparison.
+All 26 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+`all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
+JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
+
+## All-id check
+
+After the environment + Node setup below, from the repository root:
+
+```
+nice -n 19 ionice -c3 uv run --locked python .agent/measurements/rerun_all.py
+```
+
+The driver replays every ID, compares its independent `results/<id>.json`, and prints `<id>: PASS`
+or `<id>: FAIL <cause>`. Missing dependencies/results and mismatches return nonzero; later IDs still
+run. README table IDs, driver IDs and expected-file IDs must match. Optional positional IDs select
+an explicit subset; `--check-only` compares prior results without rerunning measurements.
+
+Logs + raw results → `all-data/`; reduction evidence → `r-data/`. The driver shares successful
+input generators within one invocation. Both npm builds run wherever the table names both.
+F7/O8 read the installed Open WebUI bundle through the repository's common Git directory.
+O8 uses `--check-fixtures`: emitted fixture bytes must match, and tracked fixtures stay untouched.
+
+M15/M16 start a private `webui/launch.sh --stub` stack with fresh loopback ports and a headless
+`chromiumfish` CDP browser. Open WebUI must already exist in `.venv-webui` of the primary checkout.
+Runtime data, verifier state, browser profile and service logs use `.scratch/measurements-live/`.
+The driver stops its processes and removes that private state; copied service logs stay in
+`all-data/stack-logs/`. It never attaches to the user's live stack/browser or uses ports 8000/8001/8080.
+M16 theme PNGs still need visual inspection; a machine PASS claims its measured DOM predicates,
+not inspected pixels.
+
+Positive control after a successful replay: run the one-count R1 probe below. It uses the driver
+with `--check-only R1`; require nonzero + `R1: FAIL`, then restore byte-identical expectations.
 
 ## Rerun
 
@@ -102,7 +132,7 @@ Logs + raw results → `r-data/`; normalized per-id results → `results/<id>.js
 `check.py <id>…` reads those results; it does not rerun the experiment. It compares exact types,
 keys, list order/length + values against `expected/<id>.json`; a missing file or mismatch returns
 nonzero with the id + cause. Expected files state the cited claims, never a fresh run's output.
-IDs outside this table have no expected file yet.
+The all-id driver runs this reduction replay once alongside the other table IDs.
 
 Host pins = root NumPy 2.2.5 + pandas 2.3.1; optional leg adds bottleneck 1.6.0 + numexpr 2.14.2.
 Sandbox pandas = 2.3.0 on Pyodide 0.28.0; 2.3.1 on Pyodide 0.28.1; both carry NumPy 2.2.5.
@@ -145,7 +175,7 @@ try:
     assert expected['sum']['host']['kahan']['differences'] == 0
     expected['sum']['host']['kahan']['differences'] = 1
     path.write_text(json.dumps(expected, indent=2, sort_keys=True) + '\n')
-    result = subprocess.run([sys.executable, str(root / 'check.py'), 'R1'], capture_output=True, text=True)
+    result = subprocess.run([sys.executable, str(root / 'rerun_all.py'), '--check-only', 'R1'], capture_output=True, text=True)
     print(f'one-count probe rc={result.returncode}\n{result.stderr}', end='')
     assert result.returncode == 1
     assert 'R1: FAIL $.sum.host.kahan.differences: observed 0 != expected 1' in result.stderr
@@ -156,7 +186,8 @@ PY
 ```
 
 Add a new self-checking id by committing `expected/<id>.json` from its published predicate and
-emitting an independent `results/<id>.json` from its measurement. The same driver then compares it.
+emitting an independent `results/<id>.json` from its measurement. Register its replay in
+`rerun_all.py`; the inventory check keeps the driver, README and expectations equal.
 
 ## What each one backs
 

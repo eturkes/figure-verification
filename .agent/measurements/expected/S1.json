@@ -1,0 +1,32 @@
+{
+  "cos": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  },
+  "exp": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  },
+  "log": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  },
+  "sin": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  },
+  "sqrt": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  },
+  "tan": {
+    "disagreements": 0,
+    "max_ulp": 0,
+    "samples": 1000000
+  }
+}

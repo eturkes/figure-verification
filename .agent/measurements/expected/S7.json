@@ -1,0 +1,23 @@
+{
+  "0280": {
+    "category_splits": 0,
+    "disagreements": 238,
+    "max_ulp": {
+      "$le": 1
+    },
+    "samples": 1000000
+  },
+  "0281": {
+    "category_splits": 0,
+    "disagreements": 238,
+    "max_ulp": {
+      "$le": 1
+    },
+    "samples": 1000000
+  },
+  "mapping": {
+    "blanket_value_error_to_nan_disagreements": 184343,
+    "samples": 1000000,
+    "specific_mapping_disagreements": 0
+  }
+}

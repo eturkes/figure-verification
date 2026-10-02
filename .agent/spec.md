@@ -12,7 +12,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Paste-in generation — `uv run --locked python tools/generate_paste_in.py` writes every artifact in `webui/paste_in/bundle.py` `ARTIFACTS`; `… --check` writes nothing and exits 1 naming each drifted path. Single source, hand fork banned: the two artifacts `paste-in/figure_verification_tool.py` + `paste-in/figure_verification_filter.py` embed the tracked core BY GENERATION, so an edit made there is lost at the next run.
 - Admin guide + model prompts — `docs/admin/README.md` · `docs/admin/README.ja.md` · `docs/admin/system_prompt.en.txt` · `docs/admin/system_prompt.ja.txt` (EN/JA parity = `tests/test_admin_docs.py`); the JSON-spec service's claim + acceptance record = `docs/json-spec.md`.
 - Dataset digest repair — `uv run --locked python tools/rederive_dataset_hashes.py` (idempotent; recomputes every tracked `sha256:` citation of a `data/*.csv` from that CSV's own bytes, skipping the all-zeros mismatch fixtures; `tests/test_dataset_digests.py` states the same law independently and fails on a stale citation).
-- Measurement harnesses — `.agent/measurements/README.md` (id → claim table + per-leg run commands; host leg `uv run --locked python .agent/measurements/<script>.py`, sandbox leg `node <script>.mjs <pyodide|pyodide0281> <out>.json`; F7 alone takes the installed Open WebUI bundle dir `<B>` there). Frozen evidence for every published band + profile; outside the gate and outside `mypy` `files` by ruling.
+- Measurement harnesses — `.agent/measurements/README.md` (id → claim table + per-leg run commands; all-id self-check `uv run --locked python .agent/measurements/rerun_all.py [--check-only <id>…]`; host leg `uv run --locked python .agent/measurements/<script>.py`, sandbox leg `node <script>.mjs <pyodide|pyodide0281> <out>.json`; F7 alone takes the installed Open WebUI bundle dir `<B>` there). Frozen evidence for every published band + profile; outside the gate and outside `mypy` `files` by ruling.
 - Demo instance — `webui/launch.sh` (real dGPU model) | `--stub` (hardware-free) → `http://127.0.0.1:8080`; sentinel prompts pinned there. Recorded demo = `node .agent/measurements/m10u3_demo.mjs <browser-url> http://127.0.0.1:8080 data/sales.csv <simple|elaborate> <n> <out-dir>` (records `.agent/measurements/m10u3/`).
 - Verifier service — `-m verifier.service` (:8000; `audit <attempt_id>`); routes = `POC_SCOPE.md`.
 - Demos — `-m demo` · `-m demo.formula_walkthrough` · `-m demo.e2e`. Bench — `-m bench` (JSON-spec proposer eval; live :8000 + :8001).
@@ -48,7 +48,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q7 polish p2 p4 p16 p22 p24 p32 p34 p35 p44 p47 — owed: rulings p2 p22 p24 p35 p47 · lost M9.7b-1/M9.10 lists p4 p44 (ports landed) · MX150 p16 p32 p34
 - [ ] Q8 lexical term anchoring — owed: contract approval
 - [ ] Q9 exact folder in `_rational` — owed: ruling
-- [ ] Q11 measurement rerun driver
 - [ ] Q12 C10 float-branch range
 - [ ] Q16 G10 label/legend — waits Q8
 - [ ] Q17 negative `np.arange` binding — owed: ruling
@@ -59,7 +58,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q26 W2/W5 refusal-code split — owed: approval
 - [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) — owed: approval (new)
 
-Queue = `.agent/deferred.md`, 15 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 14 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

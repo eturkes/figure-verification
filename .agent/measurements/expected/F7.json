@@ -1,0 +1,50 @@
+{
+  "build": "0.28.3",
+  "cases": {
+    "line": {
+      "error": null,
+      "observation_lines": 1,
+      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "no-show": {
+      "error": null,
+      "observation_lines": 1,
+      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "scatter": {
+      "error": null,
+      "observation_lines": 1,
+      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "sentinel-simple": {
+      "error": null,
+      "observation_lines": 1,
+      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    }
+  },
+  "literal_control_syntax_error": true
+}

@@ -1,0 +1,121 @@
+[
+  {
+    "digits": 1,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 2,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 3,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 4,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 5,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 6,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 7,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 8,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 9,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 10,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 11,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 12,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 13,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 14,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 15,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 16,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  },
+  {
+    "digits": 17,
+    "mismatches": {
+      "$ge": 1
+    },
+    "samples": 1000000
+  }
+]

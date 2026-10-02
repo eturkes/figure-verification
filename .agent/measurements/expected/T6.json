@@ -1,0 +1,40 @@
+{
+  "0280": {
+    "float_bar": {
+      "bit_mismatches": 99,
+      "mismatch_hex_pairs": {
+        "-0x0.0p+0 -> 0x0.0p+0": 99
+      },
+      "rows": 1024
+    },
+    "integer_probes": 15,
+    "integer_profile_holds": true,
+    "line": {
+      "bit_mismatches": 0,
+      "rows": 20000
+    },
+    "scatter": {
+      "bit_mismatches": 0,
+      "rows": 20000
+    }
+  },
+  "0281": {
+    "float_bar": {
+      "bit_mismatches": 99,
+      "mismatch_hex_pairs": {
+        "-0x0.0p+0 -> 0x0.0p+0": 99
+      },
+      "rows": 1024
+    },
+    "integer_probes": 15,
+    "integer_profile_holds": true,
+    "line": {
+      "bit_mismatches": 0,
+      "rows": 20000
+    },
+    "scatter": {
+      "bit_mismatches": 0,
+      "rows": 20000
+    }
+  }
+}

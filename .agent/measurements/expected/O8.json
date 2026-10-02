@@ -1,0 +1,55 @@
+{
+  "pow": {
+    "category_splits": 0,
+    "max_ulp": {
+      "$le": 1
+    },
+    "samples": 1000000
+  },
+  "unary": {
+    "cos": {
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "exp": {
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "log": {
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "sin": {
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    },
+    "sqrt": {
+      "max_ulp": {
+        "$le": 0
+      },
+      "samples": 1000000
+    },
+    "tan": {
+      "max_ulp": {
+        "$le": 1
+      },
+      "samples": 1000000
+    }
+  },
+  "wrapper": {
+    "build": "0.28.3",
+    "cases": 58,
+    "fixture_differences": 0,
+    "observations": 58,
+    "pngs": 58,
+    "stderr": 0
+  }
+}
