@@ -43,20 +43,20 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 ## Tasks
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
-- [ ] Q1 guided-JSON bench re-baseline — owed: MX150 run
-- [ ] Q3 `derive` transform — owed: contract approval
-- [ ] Q7 polish p2 p4 p16 p22 p24 p32 p34 p35 p44 p47 — owed: rulings p2 p22 p24 p35 p47 · lost M9.7b-1/M9.10 lists p4 p44 (ports landed) · MX150 p16 p32 p34
-- [ ] Q8 lexical term anchoring — owed: contract approval
-- [ ] Q9 exact folder in `_rational` — owed: ruling
+- [ ] Q1 guided-JSON bench re-baseline (MX150)
+- [ ] Q3 `derive` transform
+- [ ] Q7 polish p2 p4 p16 p22 p24 p32 p34 p44 p47 (p16 p32 p34 on the MX150)
+- [ ] Q8 lexical term anchoring
+- [ ] Q9 exact folder in `_rational`
 - [ ] Q12 C10 float-branch range
 - [ ] Q16 G10 label/legend — waits Q8
-- [ ] Q17 negative `np.arange` binding — owed: ruling
+- [ ] Q17 negative `np.arange` binding
 - [ ] Q18 nested-libm observation rule
-- [ ] Q19 structural FAIL-arm variant — owed: MX150 runs
-- [ ] Q21 S6 malformed Tasks rows — owed: approval
+- [ ] Q19 structural FAIL-arm variant (MX150)
+- [ ] Q21 S6 malformed Tasks rows
 - [ ] Q25 stale teammate worktrees
-- [ ] Q26 W2/W5 refusal-code split — owed: approval
-- [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) — owed: approval (new)
+- [ ] Q26 W2/W5 refusal-code split
+- [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) (new)
 
 Queue = `.agent/deferred.md`, 14 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
