@@ -1,0 +1,278 @@
+{
+  "0280": {
+    "corpora": {
+      "decimals": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        }
+      },
+      "mixed": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        }
+      }
+    },
+    "renderer": {
+      "float64_paths": {
+        "boundary_floats": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2364
+        },
+        "mixed_column": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2097
+        }
+      },
+      "integer_probes": 6,
+      "integer_profile_holds": true,
+      "matplotlib": "3.8.4"
+    },
+    "versions": {
+      "numpy": "2.2.5",
+      "pandas": "2.3.0",
+      "pyodide": "0.28.0"
+    }
+  },
+  "0281": {
+    "corpora": {
+      "decimals": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        }
+      },
+      "mixed": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        }
+      }
+    },
+    "renderer": {
+      "float64_paths": {
+        "boundary_floats": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2364
+        },
+        "mixed_column": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2097
+        }
+      },
+      "integer_probes": 6,
+      "integer_profile_holds": true,
+      "matplotlib": "3.8.4"
+    },
+    "versions": {
+      "numpy": "2.2.5",
+      "pandas": "2.3.1",
+      "pyodide": "0.28.1"
+    }
+  },
+  "0283": {
+    "corpora": {
+      "decimals": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 99999999999999.9,
+            "rows": 623350
+          },
+          "rows": 1345852,
+          "stdlib_bit_mismatches": 215269
+        }
+      },
+      "mixed": {
+        "plain": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        },
+        "quoted": {
+          "dtype": "float64",
+          "host_bit_mismatches": 0,
+          "injected_one_bit_control": 1,
+          "max_measured_abs": 9007199254740992,
+          "retained_digit_profile": {
+            "bit_mismatches": 0,
+            "max_measured_abs": 999999999999999,
+            "rows": 853466
+          },
+          "rows": 1000049,
+          "stdlib_bit_mismatches": 0
+        }
+      }
+    },
+    "renderer": {
+      "float64_paths": {
+        "boundary_floats": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2364
+        },
+        "mixed_column": {
+          "bit_mismatches_after_draw": 0,
+          "bit_mismatches_before_draw": 0,
+          "draw_completed": true,
+          "height_types": ["numpy.float64"],
+          "input_dtype": "float64",
+          "max_height": 9007199254740992,
+          "min_height": -9007199254740992,
+          "rows": 2097
+        }
+      },
+      "integer_probes": 6,
+      "integer_profile_holds": true,
+      "matplotlib": "3.8.4"
+    },
+    "versions": {
+      "numpy": "2.2.5",
+      "pandas": "2.3.1",
+      "pyodide": "0.28.3"
+    }
+  }
+}

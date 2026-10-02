@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 26 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 27 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -22,7 +22,7 @@ an explicit subset; `--check-only` compares prior results without rerunning meas
 
 Logs + raw results → `all-data/`; reduction evidence → `r-data/`. The driver shares successful
 input generators within one invocation. Both npm builds run wherever the table names both.
-F7/O8 read the installed Open WebUI bundle through the repository's common Git directory.
+F7/O8/T8 read the installed Open WebUI bundle through the repository's common Git directory.
 O8 uses `--check-fixtures`: emitted fixture bytes must match, and tracked fixtures stay untouched.
 
 M15/M16 start a private `webui/launch.sh --stub` stack with fresh loopback ports and a headless
@@ -47,8 +47,8 @@ uv sync --locked
 ```
 
 Run each host script in the table with `uv run --locked python .agent/measurements/<script>.py`.
-For `make_s6_csv.py`, `t3.py`, `t4.py`, `t5.py`, `t7_profile.py`, and `t7_quoted.py`, use
-`uv run --locked --with pandas==2.3.1 python .agent/measurements/<script>.py`: pandas is not in
+For `make_s6_csv.py`, `t3.py`, `t4.py`, `t5.py`, `t7_profile.py`, `t7_quoted.py`, and
+`t8_profile.py`, use `uv run --locked --with pandas==2.3.1 python .agent/measurements/<script>.py`: pandas is not in
 the root development environment. Run a generator before its dependent host or sandbox leg.
 `W1` reads committed capture records and accepts an optional run directory; its default is
 `corpus/python/captures/m10-design`. Re-run the design-only outcome and intent counts with:
@@ -111,6 +111,7 @@ and pandas versions for the selected build.
 | T5 | `t5.py` | none | host only |
 | T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs <P> t6-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
+| T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs <P> t8-<v>.json`; `node t8_pyodide.mjs owui t8-0283.json` | 0.28.0, 0.28.1; installed OWUI 0.28.3 |
 | W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 58 production-wrapper figures |
@@ -203,6 +204,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | T5 | default NA spellings pandas recognises | C9's 19-spelling literal |
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
+| T8 | beyond-int32 fixed-point parsing vs host pandas AND stdlib `float`; float64-column bar heights; mixed integer/decimal tokens | Q12 production range changed: integer columns keep int32; float64 cells retain the 15-digit cap; float64 bar reductions stay within ±2**53. Evidence: 0/1,345,852 host↔Pyodide decimal disagreements/form/build through ±2**53; ≤15-digit subset 0/623,350 vs stdlib, unrestricted 215,269 disagreements; mixed column 0/1,000,049 vs both; 0/2,364 boundary + 0/2,097 mixed artist-height changes/build |
 | W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 58 fixture observations + PNGs (M10.10 added 6 accessor lines), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
@@ -218,6 +220,23 @@ node .agent/measurements/s2_pyodide.mjs owui s2-0283.json
 node .agent/measurements/s7_pyodide.mjs owui s7-0283.json
 node .agent/measurements/o8_observe.mjs owui o8-0283.json wrapper
 ```
+
+T8's `t8-data/` corpus separates ≤15-significant-digit candidates from 16–22-digit diagnostic
+probes. Every decimal token has a point and 1–6 fractional digits; magnitudes span 2**31 through
+2**53, both signs. One decimal token makes the mixed column float64. Plain and quoted forms
+contain the same sampled rows, not independent samples. Host references and corpora are hash-bound;
+one injected bit flip checks each comparison observer. Sandbox legs also draw clipped-limit bar
+artists and read their heights before and after the canvas draw. `owui` uses the installed bundle
+through `o8_bundle.mjs`; T8 directs cache writes into its own `node_modules/t8-owui-cache/`.
+Q12 changes C10 by column branch: integer columns keep int32; float64 cells keep the ≤15-digit
+cap and all other C10 clauses; float64 bar reductions stay within ±2**53. Host↔Pyodide agreement
+alone does not establish the stdlib recomputation's agreement. The ≤15-digit cap's measured maxima
+are `99999999999999.9` for decimal tokens and `999999999999999` for integer tokens in float64 columns.
+T8 measures these environment pairs and samples, not exhaustive parser correctness or pixels.
+Replay with `uv run --locked python .agent/measurements/rerun_all.py T8`; recheck with
+`uv run --locked python .agent/measurements/rerun_all.py --check-only T8`.
+T8's one-count control plants `expected/T8.json`'s `0280.corpora.decimals.plain.host_bit_mismatches`
+0→1; require nonzero + `T8: FAIL`, then restore SHA-256-identical expected bytes.
 
 Each result JSON carries environment details and a per-region breakdown when regions apply. A
 region's `disagreements` is the count that matters. `max_ulp` applies only where both values are

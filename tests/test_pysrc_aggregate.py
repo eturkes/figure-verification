@@ -395,7 +395,7 @@ def test_r3_int_mean_casts_before_summing(monkeypatch: pytest.MonkeyPatch) -> No
     float64 carries it exactly. `PlottedTable.y` is `tuple[float, ...]`, so "stays int64" is a claim
     about the retained DTYPE that B3 and B4 read, not about the table's storage type."""
 
-    def unprofiled_float(text: str) -> float:
+    def unprofiled_float(text: str, _integer_column: bool) -> float:  # noqa: FBT001
         """C10's cell bound withdrawn, and nothing else. `column_dtype` reads TEXT, so the dtype
         the reduction sees is unchanged."""
         return float(text)
@@ -420,7 +420,7 @@ def test_r4_extrema_keep_the_first_tied_value_bits(monkeypatch: pytest.MonkeyPat
     bit patterns, since `-0.0 == +0.0`. Unreachable under C10 today and pinned anyway, because the
     profile is what makes it unreachable and the profile is what a later unit widens."""
 
-    def unprofiled_float(text: str) -> float:
+    def unprofiled_float(text: str, _integer_column: bool) -> float:  # noqa: FBT001
         return float(text)
 
     witnesses = (
@@ -482,7 +482,7 @@ def test_r6_nan_never_reaches_a_reduction(monkeypatch: pytest.MonkeyPatch) -> No
     assert frozenset(_NA_SPELLINGS) == csvread_module.NA_SPELLINGS
     calls = 0
 
-    def reduction_input_bomb(_text: str) -> float:
+    def reduction_input_bomb(_text: str, _integer_column: bool) -> float:  # noqa: FBT001
         nonlocal calls
         calls += 1
         message = "an NA cell reached numeric conversion before reduction"
@@ -640,7 +640,7 @@ def test_b4_reductions_retain_dtype(monkeypatch: pytest.MonkeyPatch) -> None:
     It returns `float` for every cell, matching `_numeric_value`'s own type: the dtype under test
     comes from `column_dtype`, which reads the raw TEXT."""
 
-    def unprofiled_float(text: str) -> float:
+    def unprofiled_float(text: str, _integer_column: bool) -> float:  # noqa: FBT001
         return float(text)
 
     with monkeypatch.context() as patch:
@@ -883,3 +883,19 @@ def test_s2_an_na_group_key_refuses_value_not_in_profile() -> None:
     result = _aggregate_verdict(b"region,revenue\nNA,1\nEU,2\nNA,3\n", "sum")
     assert isinstance(result, Refused)
     assert result.code == "value_not_in_profile"
+
+
+def test_q12_a_float64_bar_reduction_stays_within_2_to_the_53() -> None:
+    """Q12: float64 cells may now pass int32, so their SUM can pass 2**53 -- beyond the float bar
+    heights measured bit-exact. Under `bar`/`barh` that reduction refuses; `line` draws it."""
+    # 15 significant digits each (the cap); the one decimal token makes the column float64.
+    rows = "".join("one,999999999999999\n" for _ in range(10))
+    content = f"region,revenue\n{rows}one,0.5\n".encode()
+    for mark in ("bar", "barh"):
+        refused = _aggregate_verdict(content, "sum", mark=mark)
+        assert isinstance(refused, Refused), mark
+        assert refused.code == "value_not_in_profile", mark
+    assert isinstance(_aggregate_verdict(content, "sum", mark="line"), Verified)
+    within = "".join("one,900000000000000\n" for _ in range(10))
+    drawn = _aggregate_verdict(f"region,revenue\n{within}one,0.5\n".encode(), "sum", mark="bar")
+    assert isinstance(drawn, Verified)

@@ -207,7 +207,11 @@ imports, inlinable into one pasted file:
    2–7,262 ulp); only `float_precision="round_trip"` agrees fully; and NO significant-digit cap
    repairs it — even `1e-23` disagrees. **RULED: restrict, not reimplement.** The admitted cell text
    is canonical fixed point, `-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?`, ≤15 significant digits, finite,
-   in `[-2147483648, 2147483647]`, and not a sign-bearing zero — measured at 0/4,000,000 bit
+   in `[-2147483648, 2147483647]` IN AN INTEGER COLUMN (a column pandas infers float64 — any token
+   with a decimal point — is bounded by the 15-digit cap alone, user ruling Q12: host↔Pyodide
+   0/1,345,852 bit disagreements to ±2**53 on 0.28.0/0.28.1/0.28.3, `plt.bar` float heights 0/2,364
+   changed, integer tokens in a float64 column 0/1,000,049; `.agent/measurements/` T8), and not a
+   sign-bearing zero — measured at 0/4,000,000 bit
    mismatches against target Pyodide across plain and quoted fields. Two of those clauses are about
    the RENDERER, not the parser: Pyodide's `plt.bar` keeps integer heights as `int32` and RAISES
    outside signed 32 bits, and matplotlib bar erases the sign of `-0.0` (99/1,024 heights). Line and
@@ -384,7 +388,9 @@ z3 cannot be inlined.
   int too large to convert to C long` on `bar` AND `barh` of int64 sums `[4294967294, -4294967296]`,
   while in-int32 controls render and `plot`/`scatter` preserve their float64 bits. Reductions
   therefore retain dtype, and the bound binds integer `sum`/`min`/`max` under `bar`/`barh` alone —
-  an integer `mean` is float64 and never reaches that branch.
+  an integer `mean` is float64 and never reaches that branch. A float64 reduction under `bar`/`barh`
+  stays within `2**53` (Q12): float64 cells sum past it, and the float bar path was measured
+  bit-exact only up to it.
 - A differential between two implementations of this contract compares MEANING: one named
   translation maps both sides onto a canonical tuple through an EXPLICIT node-name and field-name
   map, in a fixed field order. Class names and field order are form noise (`Number`/`Num`,
@@ -449,7 +455,7 @@ call-counting bomb on `_numeric_value`, R5 an arithmetic bound under 2**63 that 
 widening reddens; and
 `_reduce_int`'s `float(sum(values))` is profile-equivalent, because C10's int32 cell bound times
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
-integer exactly to 2**53. `tools/mutants/csvread.toml` = 1, G11's PUBLICATION seam: the counts are
+integer exactly to 2**53. `tools/mutants/csvread.toml` = 5: G11's PUBLICATION seam + Q12's four range-split predicates. The counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
 what splits them. `tools/mutants/admit.toml` = 42: the accessor ROUTE (M13.8's five + M10.10's `line` entry), M13.2's
 13 allowlist predicates (below), + 21 admission predicates, + Q26's two presentation-positional entries — the string-literal column subscript,

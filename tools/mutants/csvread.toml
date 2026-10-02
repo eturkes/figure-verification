@@ -16,7 +16,7 @@
 # of absent ones is the value-kill beside it.
 
 module = "src/verifier/pysrc/csvread.py"
-tests = ["tests/test_pysrc_aggregate.py"]
+tests = ["tests/test_pysrc_aggregate.py", "tests/test_pysrc_csv.py"]
 
 [[mutant]]
 id = "g11-counts-dropped-at-publication"
@@ -26,3 +26,34 @@ anchor = '''
         return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=reduced.counts)'''
 mutant = '''
         return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=None)'''
+
+[[mutant]]
+id = "q12-integer-column-range-dropped"
+predicate = "an integer column keeps C10's int32 cell clause (Pyodide's integer bar raises outside it)"
+kills = "tests/test_pysrc_csv.py::test_q12_a_float64_column_admits_magnitudes_past_int32"
+anchor = '''        or (integer_column and not _INT32_MIN <= value <= _INT32_MAX)'''
+mutant = '''        or False'''
+
+
+[[mutant]]
+id = "q12-float-column-bound-to-int32"
+predicate = "a float64 column is not held to int32: its cells draw through the float path"
+kills = "tests/test_pysrc_csv.py::test_q12_a_float64_column_admits_magnitudes_past_int32"
+anchor = '''        or (integer_column and not _INT32_MIN <= value <= _INT32_MAX)'''
+mutant = '''        or not _INT32_MIN <= value <= _INT32_MAX'''
+
+
+[[mutant]]
+id = "q12-column-dtype-ignored"
+predicate = "the column's inferred dtype, not each token alone, picks the range clause"
+kills = "tests/test_pysrc_csv.py::test_q12_a_float64_column_admits_magnitudes_past_int32"
+anchor = '''    integer_column = column_dtype(texts) == "int64"'''
+mutant = '''    integer_column = all("." not in text for text in texts[:1])'''
+
+
+[[mutant]]
+id = "q12-float-bar-reduction-unbounded"
+predicate = "a float64 reduction under bar/barh stays within the measured 2**53"
+kills = "tests/test_pysrc_aggregate.py::test_q12_a_float64_bar_reduction_stays_within_2_to_the_53"
+anchor = '''        else (-_FLOAT_HEIGHT_MAX, _FLOAT_HEIGHT_MAX)'''
+mutant = '''        else (-math.inf, math.inf)'''

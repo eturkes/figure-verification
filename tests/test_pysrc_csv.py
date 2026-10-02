@@ -548,3 +548,27 @@ def test_csv_empty_content_is_not_parsable() -> None:
 
     assert isinstance(result, Refused)
     assert result.code == "csv_not_parsable"
+
+
+def test_q12_a_float64_column_admits_magnitudes_past_int32() -> None:
+    """Q12 (user ruling): a column pandas infers float64 -- any token with a decimal point --
+    admits cells past int32, its integer tokens included, up to the 15-digit cap, on every mark;
+    an integer column keeps the int32 clause on every mark."""
+    from verifier.pysrc import Refused, Verified, verify_python_source  # noqa: PLC0415
+
+    def verdict(content: bytes, mark: str) -> object:
+        return verify_python_source(
+            _dataset_source(mark=mark),
+            declared_target=spec.DatasetTarget(path="measurements.csv", content=content),
+        )
+
+    # Integer tokens first: the column's dtype comes from ALL its tokens, not the first one.
+    float_column = b"site,value\n1,-999999999999999\n2,3000000000\n3,99999999999999.9\n"
+    integer_column = b"site,value\n1,3000000000\n2,1\n"
+    over_cap = b"site,value\n1,1234567890123456.0\n2,1\n"
+    for mark in ("scatter", "plot", "bar", "barh"):
+        assert isinstance(verdict(float_column, mark), Verified), mark
+        for content in (integer_column, over_cap):
+            refused = verdict(content, mark)
+            assert isinstance(refused, Refused), (mark, content)
+            assert refused.code == "value_not_in_profile", (mark, content)

@@ -3549,7 +3549,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
-from verifier.pysrc.aggregate import Aggregated, aggregate_series
+from verifier.pysrc.aggregate import Aggregated, aggregate_series, column_dtype
 from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits
@@ -3591,6 +3591,10 @@ _CR = ord("\r")
 _LF = ord("\n")
 _INT32_MIN = -(2**31)
 _INT32_MAX = 2**31 - 1
+# Float64 heights `plt.bar` draws bit-exactly, measured on both pinned Pyodide builds and the
+# installed bundle (Q12: 0/2,364 changed). A float64 CELL never reaches it -- the 15-digit cap keeps
+# every cell below 10**15 -- so it binds a float64 REDUCTION alone.
+_FLOAT_HEIGHT_MAX = 2**53
 # The marks whose magnitude is drawn as a LENGTH, which is the Pyodide integer path C10 bounds.
 _INT_HEIGHT_MARKS = frozenset({"bar", "barh"})
 _MAX_SIGNIFICANT_DIGITS = 15
@@ -3681,18 +3685,20 @@ def _significant_digits(text: str) -> int:
     return len(digits) if digits else 1
 
 
-def _profile_float(text: str, value: float) -> float:
+def _profile_float(text: str, value: float, *, integer_column: bool) -> float:
     if (
         _NUMBER.fullmatch(text) is None
         or _significant_digits(text) > _MAX_SIGNIFICANT_DIGITS
         or not math.isfinite(value)
-        or not _INT32_MIN <= value <= _INT32_MAX
+        or (integer_column and not _INT32_MIN <= value <= _INT32_MAX)
         or (value == 0.0 and math.copysign(1.0, value) < 0.0)
     ):
         _refuse("value_not_in_profile")
     # The range and signed-zero clauses bind the renderer, not parsing. Pyodide's integer bar
-    # raises outside int32, while matplotlib bar turns -0.0 into +0.0; either would make the
-    # emitted mark differ from this recomputation even though pandas parsed the token correctly.
+    # raises outside int32 -- an INTEGER column alone reaches that path; a column pandas infers
+    # float64 (any token with a decimal point) draws through the float path, measured bit-exact to
+    # 2**53 (Q12) -- while matplotlib bar turns -0.0 into +0.0; either would make the emitted mark
+    # differ from this recomputation even though pandas parsed the token correctly.
     return value
 
 
@@ -3717,12 +3723,18 @@ def _classify_column(texts: tuple[str, ...]) -> _ColumnClass:
     return "mixed"
 
 
-def _numeric_value(text: str) -> float:
+def _numeric_value(text: str, integer_column: bool) -> float:  # noqa: FBT001 - the one seam
     try:
         value = float(text)
     except ValueError as exc:
         _refuse("value_not_in_profile", exc)
-    return _profile_float(text, value)
+    return _profile_float(text, value, integer_column=integer_column)
+
+
+def _numeric_values(texts: tuple[str, ...]) -> tuple[float, ...]:
+    """A numeric column's cells; its inferred dtype picks the range clause (user ruling Q12)."""
+    integer_column = column_dtype(texts) == "int64"
+    return tuple(_numeric_value(text, integer_column) for text in texts)
 
 
 def _x_values(
@@ -3740,12 +3752,12 @@ def _x_values(
         case "scatter":
             if column_class == "categorical":
                 _refuse("column_not_numeric")
-            return tuple(_numeric_value(text) for text in texts)
+            return _numeric_values(texts)
         case "line" | "bar" | "barh":
             if column_class == "mixed" and not grouped:
                 _refuse("column_not_numeric")
             if column_class == "numeric":
-                return tuple(_numeric_value(text) for text in texts)
+                return _numeric_values(texts)
             return texts
         case _ as unreachable:  # pragma: no cover - `DatasetMark` is closed
             assert_never(unreachable)
@@ -3754,7 +3766,7 @@ def _x_values(
 def _y_values(texts: tuple[str, ...]) -> tuple[float, ...]:
     if _classify_column(texts) == "categorical":
         _refuse("column_not_numeric")
-    return tuple(_numeric_value(text) for text in texts)
+    return _numeric_values(texts)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -3778,11 +3790,18 @@ def _check_renderer_bound(reduced: Aggregated, mark: DatasetMark) -> None:
     `bar` and `barh` raise `OverflowError: Python int too large to convert to C long` on the int64
     heights `[4294967294, -4294967296]`, while in-range controls render. Dtype retention is what
     keeps this narrow -- an integer `mean` is float64 and never reaches the renderer's integer
-    branch, and `plot`/`scatter` preserve their float64 bits either way.
+    branch, and `plot`/`scatter` preserve their float64 bits either way. A float64 reduction under
+    `bar`/`barh` stays within 2**53, the span measured bit-exact through the float path (Q12):
+    float64 cells sum past it, and nothing was measured beyond.
     """
-    if reduced.dtype != "int64" or mark not in _INT_HEIGHT_MARKS:
+    if mark not in _INT_HEIGHT_MARKS:
         return
-    if any(not _INT32_MIN <= value <= _INT32_MAX for value in reduced.values):
+    low, high = (
+        (_INT32_MIN, _INT32_MAX)
+        if reduced.dtype == "int64"
+        else (-_FLOAT_HEIGHT_MAX, _FLOAT_HEIGHT_MAX)
+    )
+    if any(not low <= value <= high for value in reduced.values):
         _refuse("value_not_in_profile")
 
 

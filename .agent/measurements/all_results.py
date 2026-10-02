@@ -124,6 +124,66 @@ def t7():
     }
 
 
+def t8():
+    results = {}
+    for build in (*BUILDS, "0283"):
+        data = load(f"t8-{build}.json")
+        renderer = data["renderer"]
+        probes = renderer["integer_controls"]
+        results[build] = {
+            "versions": fields(data["versions"], "pyodide", "numpy", "pandas"),
+            "corpora": {
+                name: {
+                    form: {
+                        "dtype": row["dtype"],
+                        "rows": row["vs_host_pandas"]["rows"],
+                        "host_bit_mismatches": row["vs_host_pandas"]["bit_mismatches"],
+                        "stdlib_bit_mismatches": row["vs_stdlib_float"]["bit_mismatches"],
+                        "max_measured_abs": row["vs_host_pandas"]["max_measured_abs"],
+                        "retained_digit_profile": fields(
+                            row["vs_stdlib_float"]["retained_digit_profile"],
+                            "rows",
+                            "bit_mismatches",
+                            "max_measured_abs",
+                        ),
+                        "injected_one_bit_control": row["injected_one_bit_control"],
+                    }
+                    for form, row in forms.items()
+                }
+                for name, forms in data["corpora"].items()
+            },
+            "renderer": {
+                "matplotlib": renderer["matplotlib"],
+                "float64_paths": {
+                    name: fields(
+                        row,
+                        "rows",
+                        "input_dtype",
+                        "height_types",
+                        "min_height",
+                        "max_height",
+                        "bit_mismatches_before_draw",
+                        "bit_mismatches_after_draw",
+                        "draw_completed",
+                    )
+                    for name, row in renderer["float64_paths"].items()
+                },
+                "integer_probes": len(probes),
+                "integer_profile_holds": all(
+                    row["ok"] == (-2147483648 <= row["value"] <= 2147483647)
+                    and (
+                        row["height"] == row["value"]
+                        if row["ok"]
+                        else row["error"]
+                        == "OverflowError: Python int too large to convert to C long"
+                    )
+                    for row in probes
+                ),
+            },
+        }
+    return results
+
+
 def w1():
     text = (ROOT / "all-data/W1.log").read_text()
     result = {}
@@ -218,6 +278,7 @@ PROJECTORS = {
     "T5": t5,
     "T6": t6,
     "T7": t7,
+    "T8": t8,
     "W1": w1,
     "F7": f7,
     "O8": o8,

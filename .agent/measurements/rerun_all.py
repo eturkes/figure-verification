@@ -32,6 +32,7 @@ IDS = (
     "T5",
     "T6",
     "T7",
+    "T8",
     "W1",
     "F7",
     "O8",
@@ -57,6 +58,7 @@ GENERATORS = {
     "S7": (("make_s7_pow.py", False), ("s7_mapping.py", False)),
     "T6": (("make_s6_csv.py", True),),
     "T7": (("t7_profile.py", True), ("t7_quoted.py", True)),
+    "T8": (("make_t8_inputs.py", False), ("t8_profile.py", True)),
     "O8": (("make_s2_inputs.py", False), ("make_s7_pow.py", False)),
 }
 NODE_SCRIPTS = {
@@ -66,6 +68,7 @@ NODE_SCRIPTS = {
     "S7": "s7_pyodide.mjs",
     "T6": "t6_pyodide.mjs",
     "T7": "t7_pyodide.mjs",
+    "T8": "t8_pyodide.mjs",
     "Versions": "versions.mjs",
 }
 
@@ -277,7 +280,8 @@ class Replay:
             self.run(script, self.python(script, pandas=pandas))
         if name in NODE_SCRIPTS:
             script = NODE_SCRIPTS[name]
-            for package, build in BUILD_PAIRS:
+            builds = (*BUILD_PAIRS, ("owui", "0283")) if name == "T8" else BUILD_PAIRS
+            for package, build in builds:
                 self.run(
                     f"{name}-{build}",
                     ["node", str(ROOT / script), package, f"{name.lower()}-{build}.json"],
