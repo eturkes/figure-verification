@@ -10,8 +10,6 @@ import pytest
 
 from demo import e2e
 from demo.walkthrough import ScenarioResult, WalkthroughReport, encode_report
-from webui.client import PersistedChatResult, WebUIClient, WebUIProvisionError
-from webui.settings import Settings
 
 _ATTEMPT_VERIFIED = "1" * 64
 _ATTEMPT_BLOCKED = "2" * 64
@@ -56,17 +54,6 @@ def _decode_e2e(path: Path) -> e2e.E2EReport:
     return msgspec.json.decode(path.read_bytes(), type=e2e.E2EReport)
 
 
-def _patch_webui_settings_and_auth(monkeypatch: pytest.MonkeyPatch) -> None:
-    def from_env() -> Settings:
-        return Settings()
-
-    def authenticate(_client: WebUIClient) -> str:
-        return "token"
-
-    monkeypatch.setattr(Settings, "from_env", staticmethod(from_env))
-    monkeypatch.setattr(WebUIClient, "authenticate", authenticate)
-
-
 def test_main_without_flags_keeps_walkthrough_report_bytes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -78,90 +65,10 @@ def test_main_without_flags_keeps_walkthrough_report_bytes(
     assert list(body) == ["generated_at", "status", "passed", "failed", "total", "results"]
 
 
-def test_parse_args_rejects_both_legs_together() -> None:
+def test_parse_args_rejects_the_retired_webui_leg() -> None:
     with pytest.raises(SystemExit) as excinfo:
-        e2e._parse_args(["--with-webui", "--with-model"])
+        e2e._parse_args(["--with-webui"])
     assert excinfo.value.code == 2
-
-
-def test_main_with_webui_verifies_chart_certificate(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    report_path = _prepare_main(monkeypatch, tmp_path)
-    _patch_webui_settings_and_auth(monkeypatch)
-
-    def run_persisted_chat(_client: WebUIClient, prompt: str) -> PersistedChatResult:
-        assert prompt == e2e._WEBUI_PROMPT
-        return PersistedChatResult("summary", _CHART_URL)
-
-    def fetch_certificate(origin: str, plot_id: str) -> e2e.CertInfo:
-        assert origin == "http://127.0.0.1:8000"
-        assert plot_id == _PLOT_ID
-        return e2e.CertInfo(verified=True, keyid=_KEY_ID, hashes=_HASHES)
-
-    monkeypatch.setattr(WebUIClient, "run_persisted_chat", run_persisted_chat)
-    monkeypatch.setattr(e2e, "_fetch_and_verify_certificate", fetch_certificate)
-
-    assert e2e.main(["--with-webui"]) == 0
-    report = _decode_e2e(report_path)
-    assert report.status == "PASS"
-    assert report.model is None
-    assert report.webui is not None
-    assert report.webui.status == "PASS"
-    assert report.webui.prompt == e2e._WEBUI_PROMPT
-    assert report.webui.final_text == "summary"
-    assert report.webui.chart_url == _CHART_URL
-    assert report.webui.certificate == e2e.CertInfo(
-        verified=True,
-        keyid=_KEY_ID,
-        hashes=_HASHES,
-    )
-
-
-def test_main_with_webui_fails_when_chat_produces_no_chart(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    report_path = _prepare_main(monkeypatch, tmp_path)
-    _patch_webui_settings_and_auth(monkeypatch)
-
-    def run_persisted_chat(_client: WebUIClient, prompt: str) -> PersistedChatResult:
-        assert prompt == e2e._WEBUI_PROMPT
-        return PersistedChatResult("summary", None)
-
-    def unexpected_fetch(_origin: str, _plot_id: str) -> e2e.CertInfo:
-        pytest.fail("certificate fetch should not run without a chart URL")
-
-    monkeypatch.setattr(WebUIClient, "run_persisted_chat", run_persisted_chat)
-    monkeypatch.setattr(e2e, "_fetch_and_verify_certificate", unexpected_fetch)
-
-    assert e2e.main(["--with-webui"]) == 1
-    report = _decode_e2e(report_path)
-    assert report.status == "FAIL"
-    assert report.webui is not None
-    assert report.webui.status == "FAIL"
-    assert report.webui.chart_url is None
-    assert report.webui.certificate is None
-    assert report.webui.detail == "persisted chat completed without a chart"
-
-
-def test_main_with_webui_records_provisioning_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    report_path = _prepare_main(monkeypatch, tmp_path)
-    _patch_webui_settings_and_auth(monkeypatch)
-
-    def run_persisted_chat(_client: WebUIClient, _prompt: str) -> PersistedChatResult:
-        message = "not ready"
-        raise WebUIProvisionError(message)
-
-    monkeypatch.setattr(WebUIClient, "run_persisted_chat", run_persisted_chat)
-
-    assert e2e.main(["--with-webui"]) == 1
-    report = _decode_e2e(report_path)
-    assert report.status == "FAIL"
-    assert report.webui is not None
-    assert report.webui.status == "FAIL"
-    assert report.webui.detail == "WebUIProvisionError: not ready"
 
 
 def _check_result(*, check: str, status: str, message: str) -> dict[str, object]:
@@ -283,7 +190,6 @@ def test_main_with_model_records_prompts_and_audits_blocked_attempt(
     assert e2e.main(["--with-model", "--verifier-url", verifier_url]) == 0
     report = _decode_e2e(report_path)
     assert report.status == "PASS"
-    assert report.webui is None
     assert report.model is not None
     assert report.model.status == "PASS"
     assert len(report.model.prompts) == 3

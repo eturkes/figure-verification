@@ -292,8 +292,7 @@ the earlier NPU host.
 [webui/README.md](../webui/README.md) contains the Open WebUI provisioning, deterministic stub,
 persisted chat, and live-stack recipe.
 
-The optional `python -m demo.e2e --with-webui` and `python -m demo.e2e --with-model` legs are both
-off by default. They require that live stack. Port `8001` serves either the deterministic WebUI stub
-or the model backend. It cannot serve both at once. Therefore, run the two legs as separate live
-passes. Use the WebUI recipe instead of starting both providers on that port.
+The optional `python -m demo.e2e --with-model` leg is off by default. It requires that live stack,
+with the model backend on port `8001`. That port serves either the deterministic WebUI stub or the
+model backend, never both at once.
 

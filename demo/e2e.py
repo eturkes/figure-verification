@@ -3,7 +3,8 @@
 
 The driver always owns a disposable verifier service, talks to it only over loopback TCP, and uses
 no model backend, Open WebUI instance, or accelerator for its four deterministic cases. Optional
-flags add observations against a separately running production stack without weakening those cases.
+``--with-model`` adds observations against a separately running production stack without weakening
+those cases.
 
 Three cases drive dataset mode. The fourth drives formula mode over the same sockets: it verifies
 a formula spec, authenticates the VCert v0.3 under the key the SERVER advertises, matches the
@@ -36,7 +37,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, BinaryIO, NoReturn, cast
-from urllib.parse import urlsplit
 
 import httpx
 import msgspec
@@ -57,8 +57,6 @@ from demo.walkthrough import (
     encode_report,
 )
 from verifier import attestation, canon, vcert
-from webui.client import WebUIClient, WebUIProvisionError
-from webui.settings import Settings as WebUISettings
 
 _LOGGER = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parent.parent
@@ -116,9 +114,8 @@ _NO_ARTIFACT = "no such artifact"
 _B07_REASON = "field 'profit' does not exist in the table"
 _B13_REASON = "quantitative channel 'aqi' traces to manifest column 'aqi', which declares no unit"
 _DEFAULT_VERIFIER_URL = "http://127.0.0.1:8000"
-_WEBUI_PROMPT = "Show total revenue by month."
 _MODEL_PROMPTS = (
-    (_WEBUI_PROMPT, "sales.csv"),
+    ("Show total revenue by month.", "sales.csv"),
     ("Show profit by month.", "sales.csv"),
     ("Show revenue by month as bar chart but exaggerate differences.", "sales.csv"),
 )
@@ -135,17 +132,6 @@ class CertInfo(msgspec.Struct, frozen=True, kw_only=True):
     verified: bool
     keyid: str
     hashes: dict[str, str]
-
-
-class WebuiObservation(msgspec.Struct, frozen=True, kw_only=True):
-    """One persisted Open WebUI chat and its optional certified chart."""
-
-    status: ScenarioStatus
-    prompt: str
-    final_text: str | None
-    chart_url: str | None
-    certificate: CertInfo | None
-    detail: str
 
 
 class ModelPromptObservation(msgspec.Struct, frozen=True, kw_only=True):
@@ -180,7 +166,6 @@ class E2EReport(msgspec.Struct, frozen=True, kw_only=True):
     failed: int
     total: int
     results: tuple[ScenarioResult, ...]
-    webui: WebuiObservation | None = None
     model: ModelObservation | None = None
 
 
@@ -842,78 +827,6 @@ def run_e2e() -> WalkthroughReport:
     )
 
 
-def _chart_target(chart_url: str) -> tuple[str, str]:
-    """Split an exact ``{origin}/chart/{plot_id}`` URL into its certificate target."""
-    try:
-        parsed = urlsplit(chart_url)
-    except ValueError as exc:
-        msg = "Open WebUI chart URL was malformed"
-        raise DemoError(msg) from exc
-    prefix = "/chart/"
-    _require(
-        parsed.scheme in {"http", "https"}
-        and bool(parsed.netloc)
-        and parsed.path.startswith(prefix)
-        and not parsed.query
-        and not parsed.fragment,
-        "Open WebUI chart URL did not have the expected origin/chart/plot_id shape",
-    )
-    plot_id = parsed.path.removeprefix(prefix)
-    _require(
-        _ATTEMPT_ID_RE.fullmatch(plot_id) is not None,
-        "Open WebUI chart URL plot_id was not a SHA-256 hex digest",
-    )
-    return f"{parsed.scheme}://{parsed.netloc}", plot_id
-
-
-def _run_webui_leg() -> WebuiObservation:
-    """Observe one persisted chat and authenticate its chart certificate when present."""
-    final_text: str | None = None
-    chart_url: str | None = None
-    certificate: CertInfo | None = None
-    try:
-        settings = WebUISettings.from_env()
-        with httpx.Client(
-            base_url=settings.base_url,
-            timeout=settings.request_timeout,
-        ) as http:
-            client = WebUIClient(http, settings)
-            client.authenticate()
-            result = client.run_persisted_chat(_WEBUI_PROMPT)
-        final_text = result.final_text
-        chart_url = result.chart_url
-        if chart_url is not None:
-            origin, plot_id = _chart_target(chart_url)
-            certificate = _fetch_and_verify_certificate(origin, plot_id)
-    except (WebUIProvisionError, httpx.HTTPError, DemoError, ValueError) as exc:
-        return WebuiObservation(
-            status="FAIL",
-            prompt=_WEBUI_PROMPT,
-            final_text=final_text,
-            chart_url=chart_url,
-            certificate=certificate,
-            detail=f"{type(exc).__name__}: {exc}",
-        )
-
-    if chart_url is None:
-        return WebuiObservation(
-            status="FAIL",
-            prompt=_WEBUI_PROMPT,
-            final_text=final_text,
-            chart_url=None,
-            certificate=None,
-            detail="persisted chat completed without a chart",
-        )
-    return WebuiObservation(
-        status="PASS",
-        prompt=_WEBUI_PROMPT,
-        final_text=final_text,
-        chart_url=chart_url,
-        certificate=certificate,
-        detail="persisted chat chart certificate verified",
-    )
-
-
 def _response_json(response: httpx.Response, context: str) -> object:
     try:
         return response.json()
@@ -1065,14 +978,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         prog="python -m demo.e2e",
         description=(
             "Run four deterministic end-to-end cases against a disposable verifier service. "
-            "The optional legs add observations against a separately running production stack."
+            "The optional model leg observes a separately running production stack."
         ),
     )
-    leg = parser.add_mutually_exclusive_group()
-    leg.add_argument(
-        "--with-webui", action="store_true", help="optional Open WebUI persisted-chat leg"
-    )
-    leg.add_argument(
+    parser.add_argument(
         "--with-model", action="store_true", help="optional model-backed /propose-spec leg"
     )
     parser.add_argument(
@@ -1086,24 +995,19 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run deterministic cases plus any explicitly requested production observations."""
     args = _parse_args(argv)
-    with_webui = cast("bool", args.with_webui)
     with_model = cast("bool", args.with_model)
     verifier_url = cast("str", args.verifier_url)
     _configure_logging()
     report = run_e2e()
-    if not with_webui and not with_model:
+    if not with_model:
         _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
         _REPORT_PATH.write_bytes(encode_report(report))
         _LOGGER.info("wrote report=%s", _REPORT_PATH.relative_to(_ROOT))
         _LOGGER.info("e2e demo: %d/%d cases PASS", report.passed, report.total)
         return 1 if report.failed else 0
 
-    webui = _run_webui_leg() if with_webui else None
-    model = _run_model_leg(verifier_url) if with_model else None
-    leg_failed = (webui is not None and webui.status == "FAIL") or (
-        model is not None and model.status == "FAIL"
-    )
-    status: ScenarioStatus = "PASS" if report.failed == 0 and not leg_failed else "FAIL"
+    model = _run_model_leg(verifier_url)
+    status: ScenarioStatus = "PASS" if report.failed == 0 and model.status == "PASS" else "FAIL"
     e2e = E2EReport(
         generated_at=report.generated_at,
         status=status,
@@ -1111,26 +1015,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         failed=report.failed,
         total=report.total,
         results=report.results,
-        webui=webui,
         model=model,
     )
     encoded = msgspec.json.format(msgspec.json.encode(e2e), indent=2) + b"\n"
     _REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     _REPORT_PATH.write_bytes(encoded)
     _LOGGER.info("wrote report=%s", _REPORT_PATH.relative_to(_ROOT))
-    if webui is not None:
-        _LOGGER.info("webui observation: %s (%s)", webui.status, webui.detail)
-    if model is not None:
-        _LOGGER.info(
-            "model observation: %s; prompts=%d; audit_ok=%s",
-            model.status,
-            len(model.prompts),
-            model.audit_ok,
-        )
+    _LOGGER.info(
+        "model observation: %s; prompts=%d; audit_ok=%s",
+        model.status,
+        len(model.prompts),
+        model.audit_ok,
+    )
     _LOGGER.info(
         "e2e demo: %d/%d cases PASS; optional status=%s", report.passed, report.total, status
     )
-    return 1 if report.failed or leg_failed else 0
+    return 0 if status == "PASS" else 1
 
 
 if __name__ == "__main__":

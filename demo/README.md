@@ -66,13 +66,5 @@ The driver starts its own verifier subprocess. It exercises four cases over real
 The command writes the machine-readable report to `demo/reports/e2e_report.json` (gitignored).
 It exits with `0` only if all four outcomes match those expectations.
 
-The driver skips the opt-in `--with-webui` and `--with-model` legs by default. Run the legs as
-separate passes. Port `8001` serves either the deterministic WebUI stub or the CUDA model backend,
-not both.
-
-- The `--with-webui` leg checks the earlier JSON-spec chat chain. It expects a chart URL from the
-  verifier tool server. The current harness registers no tool server, so this leg reports `FAIL`
-  until an operator registers one. The recorded JSON-spec section of
-  [webui/README.md](../webui/README.md) describes that chain.
-- The `--with-model` leg sends three prompts to `/propose-spec` on the verifier. The verifier uses
-  the model on port `8001`.
+The driver skips the opt-in `--with-model` leg by default. That leg sends three prompts to
+`/propose-spec` on the verifier. The verifier uses the model on port `8001`.
