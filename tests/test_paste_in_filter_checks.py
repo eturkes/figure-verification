@@ -450,7 +450,9 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
 ) -> None:
     caplog.set_level(logging.INFO, logger=_LOGGER)
     module = load_filter_module()
-    monkeypatch.setattr(module, "STATUS_TIMEOUT_SECONDS", 0.003)
+    # Long enough that the embed always STARTS before the deadline on a loaded host; the order
+    # check below counts loop turns, never wall time, so load cannot fail it.
+    monkeypatch.setattr(module, "STATUS_TIMEOUT_SECONDS", 0.5)
     harness = _Harness(_case(name), module)
     cleanup: list[bool] = []
 
@@ -466,7 +468,18 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
                     await release.wait()
 
         task = asyncio.create_task(harness.run(emit))
-        done, _pending = await asyncio.wait({task}, timeout=0.1)
+        # Wall time only until the deadline cancels the embed; the 30 s bound fires for a defect
+        # (an outlet that never cancels) and is never approached by a working one.
+        give_up = asyncio.get_running_loop().time() + 30
+        while not cleanup and not task.done() and asyncio.get_running_loop().time() < give_up:
+            await asyncio.sleep(0.001)
+        # The cleanup now blocks on `release`; an outlet that does not await it finishes within
+        # a few loop turns, one that does never finishes while `release` stays unset.
+        for _ in range(1000):
+            if task.done():
+                break
+            await asyncio.sleep(0)
+        done = task.done()
         release.set()
         try:
             assert done, "outlet awaited the embed's cancellation cleanup"

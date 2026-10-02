@@ -11,7 +11,7 @@ from time import perf_counter
 from types import ModuleType
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn, SearchStrategy
 
@@ -378,7 +378,9 @@ def test_oracle_generated_carriers_bind(text: str) -> None:
     valid=st.lists(_valid_cases(), min_size=7, max_size=7),
     varied=st.lists(_domain_cases(), min_size=13, max_size=13),
 )
-@settings(max_examples=48, deadline=None)
+# `too_slow` measures wall time per draw, so a loaded host fails it with no code change; the fixed
+# example count is the budget this test owns.
+@settings(max_examples=48, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 def test_differential_generated_request_domain(
     valid: list[str], varied: list[tuple[str, PysrcLimits]]
 ) -> None:
