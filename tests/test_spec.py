@@ -13,11 +13,11 @@ The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it wi
 those paths stay absent by design until the row closes.
 
 S4 and S7 sweep past `spec.md` itself, each as far as its question stays decidable. S4 adds the
-ledger and the scope sources, which carry pointers that strand exactly as the spec's do, and stops
-at `.agent/archive/**`, where a record legitimately names a file since deleted outright. S7 covers
-every tracked file, archived records included, because its target does not vanish -- closing a unit
-MOVES the contract, so a citation of the pre-archive path always has somewhere correct to point.
-Neither covers `.claude/rules/*.md`; that gap is queued, not overlooked.
+ledger, the scope sources and every `.claude/rules/*.md`, which carry pointers that strand
+exactly as the spec's do, and stops at `.agent/archive/**`, where a record legitimately names a file
+since deleted outright. S7 covers every tracked file, archived records and rules included, because
+its target does not vanish -- closing a unit MOVES the contract, so a citation of the pre-archive
+path always has somewhere correct to point.
 
 S8 reaches the other direction, into `tests/`: a disabled case is the one form of dead law a green
 run cannot show, since a skip and a pass print the same rc. It asks only what is decidable -- does
@@ -40,19 +40,21 @@ _SPEC = _REPO_ROOT / ".agent" / "spec.md"
 _DEFERRED = _REPO_ROOT / ".agent" / "deferred.md"
 _REVIEW = _REPO_ROOT / ".agent" / "review.md"
 
-# S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, and the two
-# scope sources `ops.md` names. This is NOT all live law -- `.claude/rules/*.md` carries project
-# law and stays out, because those files cite by bare basename (`ops.md`, `oracle.py`) and by
-# brace aggregate (`.agent/archive/{roadmap,polish,memory}.md`), neither of which this resolver
-# reads; widening to them is queued in `.agent/deferred.md`. Archived records stay out for a
-# different reason: a retired unit legitimately names a file later deleted outright, so there is
-# nothing to repoint at and history being history would fail the sweep.
+# S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, the two scope
+# sources `ops.md` names, and every project-law file under `.claude/rules/`. Those rule
+# files also cite by bare basename (`ops.md`, `oracle.py`) and by brace aggregate
+# (`.agent/archive/{roadmap,polish,memory}.md`): a bare basename names no root, so the root filter
+# below leaves it unread, and a brace token is a set, skipped as a placeholder -- only rooted paths
+# are decided. Archived records stay out: a retired unit legitimately names a file later deleted
+# outright, so there is nothing to repoint at and history being history would fail the sweep.
+_RULES = _REPO_ROOT / ".claude" / "rules"
 _POINTER_SURFACE = (
     _SPEC,
     _DEFERRED,
     _REVIEW,
     _REPO_ROOT / "POC_SCOPE.md",
     _REPO_ROOT / "VPlot_SEMANTICS.md",
+    *sorted(_RULES.glob("*.md")),
 )
 _CONTRACTS = _REPO_ROOT / ".agent" / "contracts"
 _ARCHIVE_CONTRACTS = _REPO_ROOT / ".agent" / "archive" / "contracts"

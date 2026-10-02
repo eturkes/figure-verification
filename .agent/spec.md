@@ -51,7 +51,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q11 measurement rerun driver
 - [ ] Q12 C10 float-branch range
 - [ ] Q13 spike-groupby measurement port
-- [ ] Q15 S4 sweep over `.claude/rules/`
 - [ ] Q16 G10 label/legend — waits Q8
 - [ ] Q17 negative `np.arange` binding — owed: ruling
 - [ ] Q18 nested-libm observation rule
@@ -70,7 +69,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q31 launcher tests vs inherited SIGINT=ignore (new)
 - [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 
-Queue = `.agent/deferred.md`, 26 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 25 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

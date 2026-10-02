@@ -28,13 +28,14 @@ LAUNCH=webui/launch.sh
 WORKFLOW=.github/workflows/gate.yml
 DEPENDABOT=.github/dependabot.yml
 OPS=.claude/rules/ops.md
+OWUI=.claude/rules/owui.md
 TEST_GATE=tests/test_gate.py
 SPEC=.agent/spec.md
 DEFERRED=.agent/deferred.md
 REVIEW=.agent/review.md
 ARTIFACT=paste-in/figure_verification_tool.py
 SPDX_PROBE=tools/mutate.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -149,6 +150,12 @@ plant_unarchived_closed_unit() {
 
 plant_open_unit_in_phase() {
     printf ' M%s.%s OPEN (probe).\n' 99 8 >>"$SPEC"
+}
+
+plant_dangling_rules_pointer() {
+    local bt
+    bt="$(printf '\140')"
+    printf '\n- Probe: %s.agent/archive/absent.md%s\n' "$bt" "$bt" >>"$OWUI"
 }
 
 plant_dangling_live_law_pointer() {
@@ -282,6 +289,12 @@ probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archi
 probe s4-live-law-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
     'review.md: .claude/rules/absent.md' \
     plant_dangling_live_law_pointer
+
+# The rules half of the widening: `.claude/rules/*.md` joined S4's surface, so it carries its own
+# control -- the two probes above pass whether or not a rules file is swept.
+probe s4-rules-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'owui.md: .agent/archive/absent.md' \
+    plant_dangling_rules_pointer
 
 probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_its_contract_archived \
     'm99u9z.md absent from .agent/archive/contracts/' \
