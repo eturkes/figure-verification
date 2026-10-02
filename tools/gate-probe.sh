@@ -8,9 +8,11 @@
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
 # script fires it: tests/test_gate.py G6-G14, tests/test_spec.py S1-S9, shell_lint's ban.
 #
-# Each probe mutates one tracked file, runs the single check that owns the invariant, and
-# demands a nonzero rc whose output names the expected cause: attribution rides the message,
-# since four tests carry two probes each -- one per conjunct of a compound guard. Targets are
+# Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
+# its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
+# whose output names the expected cause: attribution rides the message, since seven tests carry
+# more than one probe -- G6, G7, G10, S6 and S9 two each, S4 three, S8 five -- one per conjunct of
+# a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
 #
