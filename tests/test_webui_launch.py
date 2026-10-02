@@ -303,16 +303,22 @@ def _pid_is_alive(pid: int) -> bool:
 
 def _start_launcher(harness: _Harness, *args: str) -> tuple[subprocess.Popen[str], Path]:
     stderr_path = harness.log_dir.parent / "launcher.stderr"
-    with stderr_path.open("w", encoding="utf-8") as stderr_file:
-        process = subprocess.Popen(  # noqa: S603
-            ["/bin/bash", str(_LAUNCHER), *args],
-            cwd=_ROOT,
-            env=harness.env,
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_file,
-            text=True,
-            start_new_session=True,
-        )
+    # A background `cmd &` starts pytest with SIGINT ignored, and bash never traps a signal ignored
+    # at entry: a Python handler over the spawn makes exec hand the launcher SIG_DFL instead.
+    previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+    try:
+        with stderr_path.open("w", encoding="utf-8") as stderr_file:
+            process = subprocess.Popen(  # noqa: S603
+                ["/bin/bash", str(_LAUNCHER), *args],
+                cwd=_ROOT,
+                env=harness.env,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+                text=True,
+                start_new_session=True,
+            )
+    finally:
+        signal.signal(signal.SIGINT, previous)
     return process, stderr_path
 
 
