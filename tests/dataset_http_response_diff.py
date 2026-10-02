@@ -13,7 +13,7 @@ equality there is false by construction, and asserting it would leave a differen
 only be deleted or falsified. It is compared as a PROJECTION instead — every baseline path,
 schema, and envelope value must survive intact, the added keys are hand-stated so an unannounced
 extra one fails, the one changed operation is hand-stated down to the shape of its permitted
-change, and the single prose-only allowance still pins the wire shape it covers. The new
+change, and each prose-only allowance still pins the wire shape it covers. The new
 document's own bytes are pinned by the committed OpenAPI golden.
 
 Both runs read the CANDIDATE tree's `data/` and `examples/`, copied into the baseline worktree
@@ -60,7 +60,9 @@ _ADDED_SCHEMAS = frozenset(
 # FormulaScriptVerdict's description carried a FALSE claim — "That hash ALONE is
 # respelling-invariant" — when three of its four certified digests are. The corrected prose is an
 # announced description-only change; `shape_held` still fails any structural drift underneath it.
-_PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset({"FormulaScriptVerdict"})
+# DisclosedFilter's said `badge_html` HTML-escapes the filter value, which no display surface
+# interpolates at all: the same announced description-only change.
+_PROSE_ONLY_SCHEMAS: frozenset[str] = frozenset({"FormulaScriptVerdict", "DisclosedFilter"})
 
 # The one baseline path this unit CHANGES rather than adds, hand-stated down to the shape of its
 # permitted change so any other drift inside it still fails: the 200 schema becomes a two-arm
@@ -260,9 +262,17 @@ def _headers(record: dict[str, Any]) -> list[Any]:
 
 
 def _without_prose(value: Any) -> Any:
-    """The same subtree minus every `description`, i.e. its wire shape alone."""
+    """The same subtree minus every `description` KEYWORD, i.e. its wire shape alone.
+
+    Only a string-valued `description` is prose: a property NAMED `description` maps to a schema
+    object, and erasing it would let a structural addition pass as a prose edit.
+    """
     if isinstance(value, dict):
-        return {k: _without_prose(v) for k, v in value.items() if k != "description"}
+        return {
+            k: _without_prose(v)
+            for k, v in value.items()
+            if not (k == "description" and isinstance(v, str))
+        }
     if isinstance(value, list):
         return [_without_prose(item) for item in value]
     return value

@@ -1393,7 +1393,7 @@
       },
       "DisclosedFilter": {
         "title": "DisclosedFilter",
-        "description": "One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary\ntext within FilterValue bounds) -> badge_html HTML-escapes it.",
+        "description": "One applied filter operation, disclosed in the certificate.\n\nThe model controls `value`: any text within the `FilterValue` bounds. No display surface\ninterpolates that value; `render.badge_html` shows only a check count.",
         "type": "object",
         "properties": {
           "field": {

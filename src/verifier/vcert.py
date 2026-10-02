@@ -142,8 +142,10 @@ class FormulaTcb(
 
 
 class DisclosedFilter(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
-    """One applied filter op, disclosed in the cert. `value` is model-controlled (arbitrary
-    text within FilterValue bounds) -> badge_html HTML-escapes it."""
+    """One applied filter operation, disclosed in the certificate.
+
+    The model controls `value`: any text within the `FilterValue` bounds. No display surface
+    interpolates that value; `render.badge_html` shows only a check count."""
 
     field: str
     cmp: str

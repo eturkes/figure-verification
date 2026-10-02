@@ -58,10 +58,9 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q21 S6 malformed Tasks rows — owed: approval
 - [ ] Q25 stale teammate worktrees
 - [ ] Q26 W2/W5 refusal-code split — owed: approval
-- [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 - [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) — owed: approval (new)
 
-Queue = `.agent/deferred.md`, 17 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 16 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
