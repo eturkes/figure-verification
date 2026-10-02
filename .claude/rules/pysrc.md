@@ -243,6 +243,16 @@ z3 cannot be inlined.
   (`0.0, 10.0, 1.0`) included. numpy's own reference calls non-integer steps inconsistent and points
   at `linspace`, whose residual is a per-sample rounding rather than a different SAMPLE COUNT — the
   comparison layer's business (M13.5), not a structural gap.
+- **An `arange` bound folds exact arithmetic (user rulings Q9 + Q17)** — `project.py::fold_exact`:
+  `+ - * /` over literals and negations, `**` only with a literal integer exponent `|e| <= 64`; a
+  zero divisor, a wider power, a symbolic constant, a COMPUTED zero (`0 / -1` executes as -0.0, a
+  sign a `Fraction` loses) or ANY node that is not exact in binary64 or exceeds `2**53` folds to
+  None ⇒ `grid_not_representable`. The node guard is the faithfulness
+  bound: there Python's exact ints, numpy's float64 and IEEE `+ - * /` agree with the exact value,
+  so `np.arange(1/49*49, 5)` (exact start 1, executed 0.9999999999999999, 4 vs 5 samples) and
+  `np.arange(0, 10000000000000000 - 9999999999999995)` (Python 5, binary64 4) refuse. A declared
+  target compares its bounds by that folded value when BOTH sides fold (`project.py::same_bound`),
+  else by tree: `x ∈ [-5, 5]` binds `np.arange(-5, 6)`; `y` stays tree-compared.
 - A source float projects as `Fraction(<the float64>)`: `0.1` → `Fraction(3602879701896397,
   36028797018963968)`, never `Fraction(1, 10)`. Projection is faithful to EXECUTION; which spelling
   a check compares against is M13.5's ruling.
@@ -425,8 +435,8 @@ Driver = **`tools/mutate.py`**, committed, catalogues under `tools/mutants/<modu
 test that must go red and only that test runs under it, so attribution cannot drift to whichever
 red came first; the baseline runs unmutated and must be green, ANCHOR-MISS is reported apart from
 SURVIVED, and the target restores under sha256 verification with `__pycache__` cleared on both
-writes. `tools/mutants/project.toml` = 55 mutants over the projection predicates (23 at M13.3, +13
-at M13.4, +10 at M13.6, +9 at M13.8 against one REPLACED — `.reset_index()` now projects, so the
+writes. `tools/mutants/project.toml` = 65 mutants over the projection predicates (23 at M13.3, +13
+at M13.4, +10 at M13.6, +10 at Q9 -- the exact folder -- +9 at M13.8 against one REPLACED — `.reset_index()` now projects, so the
 mutant asserting it never could was retired for the by-name-unwrap predicate the widening rests on),
 with the two EQUIVALENT mutants documented in the file rather than listed. The accessor's receiver
 guard is a COMPOUND one and carries one mutant per conjunct: `p5-accessor-receiver-unchecked` drops

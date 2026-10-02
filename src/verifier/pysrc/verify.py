@@ -27,7 +27,7 @@ from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.numeric import evaluate_expr, materialize_grid
 from verifier.pysrc.prescan import prescan
-from verifier.pysrc.project import project
+from verifier.pysrc.project import project, same_bound
 from verifier.pysrc.spec import (
     Bin,
     Const,
@@ -109,10 +109,11 @@ def bind_target(spec: CorePlotSpec, target: DeclaredTarget | None) -> DeclaredTa
         if isinstance(target, FormulaTarget):
             if spec.y != target.y:
                 _refuse("target_mismatch")
-            if isinstance(target.grid, Grid) and spec.grid != target.grid:
+            grid = target.grid
+            if isinstance(grid, Grid) and spec.grid.samples != grid.samples:
                 _refuse("target_mismatch")
-            if isinstance(target.grid, Interval) and (
-                spec.grid.start != target.grid.start or spec.grid.stop != target.grid.stop
+            if isinstance(grid, Grid | Interval) and not (
+                same_bound(spec.grid.start, grid.start) and same_bound(spec.grid.stop, grid.stop)
             ):
                 _refuse("target_mismatch")
             return target

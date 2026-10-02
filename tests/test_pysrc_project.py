@@ -393,3 +393,48 @@ def test_p13_every_projection_refusal_path_is_reachable() -> None:
     labelled = project(_formula(grid + f'y = np.sin(x)\nplt.plot(x, y, label="s")\n{tail}'))
     assert isinstance(labelled, spec.FormulaPlot)
     assert labelled.labels.series == "s"
+
+
+def _arange_body(grid_call: str) -> str:
+    return f"x = {grid_call}\ny = np.sin(x)\nplt.plot(x, y)\nplt.show()\n"
+
+
+def test_q9_arange_bounds_fold_exact_arithmetic() -> None:
+    """Q9 (user ruling): `+ - * /` and an integer-literal `**` fold inside an `arange` bound, so
+    `np.arange(0, 2 + 3)` projects equal to `np.arange(0, 5)`."""
+    for folded, literal in (
+        ("np.arange(0, 2 + 3)", "np.arange(0, 5)"),
+        ("np.arange(0, 10 / 2)", "np.arange(0, 5)"),
+        ("np.arange(2 * 3 - 1, 2 ** 3)", "np.arange(5, 8)"),
+        ("np.arange(0, 2 ** 6, 2 ** 2)", "np.arange(0, 64, 4)"),
+        ("np.arange(-(1 + 1), 4 ** -1 * 8)", "np.arange(-2, 2)"),
+    ):
+        assert project(_formula(_arange_body(folded))) == project(
+            _formula(_arange_body(literal))
+        ), folded
+
+
+@pytest.mark.parametrize(
+    "grid_call",
+    [
+        "np.arange(0, 1 / 0)",  # a zero divisor
+        "np.arange(0, 0 ** -1)",  # zero to a negative power divides by zero
+        "np.arange(0, 1 ** 65 * 5)",  # an exponent beyond 64, though the result is 5
+        "np.arange(0, 4 ** 0.5 * 5)",  # a non-integer exponent, though the result is 10
+        "np.arange(0, 2 ** (1 + 1))",  # an exponent that is not a literal
+        "np.arange(0, 3 ** 34 - 3 ** 34 + 5)",  # a node binary64 cannot hold; result 5
+        "np.arange(0, 2 ** 54 / 2 ** 50)",  # a node beyond 2**53, though binary64 holds it
+        # Python computes 5; a float64 literal would give 1e16 - 9999999999999996 = 4.
+        "np.arange(0, 10000000000000000 - 9999999999999995)",
+        "np.arange(1 / 49 * 49, 5)",  # exact 1, but binary64 computes 0.9999999999999999
+        "np.arange(0, np.pi + 1)",  # a symbolic constant has no exact value
+        "np.arange(0 / -1, 5)",  # a computed zero: Python's 0 / -1 is -0.0, a signed start
+        "np.arange(-0.0, 5)",  # a negated zero executes as -0.0
+        "np.arange(2 - 2, 5)",  # every computed zero refuses, signed or not
+    ],
+)
+def test_q9_an_unfoldable_arange_bound_refuses(grid_call: str) -> None:
+    """Q9: each witness isolates ONE folder predicate -- its result would be a valid grid of at
+    least two samples, so only that predicate can refuse it -- and every one refuses
+    `grid_not_representable` rather than projecting a grid the executed program does not draw."""
+    assert _project_code(_formula(_arange_body(grid_call))) == "grid_not_representable"

@@ -8,8 +8,8 @@ tests = ["tests/test_pysrc_formula_target.py"]
 id = "c4-formula-consumption-erased"
 predicate = "matching user formula+Grid bytes count as an artifact, not internal provenance"
 kills = "tests/test_pysrc_formula_target.py::test_c4_every_bound_formula_property"
-anchor = '''        if isinstance(target.grid, Grid):
-            return target.grid == spec.grid'''
+anchor = '''        if isinstance(target.grid, Grid) and target.grid.samples != spec.grid.samples:
+            return False'''
 mutant = '''        if isinstance(target.grid, Grid):
             return False'''
 
@@ -78,3 +78,12 @@ predicate = "a bound formula with no domain still states that the formula matche
 kills = "tests/test_pysrc_formula_target.py::test_c6_bound_interpretation_is_byte_pinned"
 anchor = '''                bound = "The formula matches the request. "'''
 mutant = '''                bound = ""'''
+
+[[mutant]]
+id = "q17-provenance-reads-trees"
+predicate = "the certificate's provenance uses the binding's own bound predicate, so a value-bound target is consumed"
+kills = "tests/test_pysrc_formula_target.py::test_q17_a_negative_arange_binds_its_request_by_exact_value"
+anchor = '''        return same_bound(spec.grid.start, target.grid.start) and same_bound(
+            spec.grid.stop, target.grid.stop
+        )'''
+mutant = '''        return spec.grid.start == target.grid.start and spec.grid.stop == target.grid.stop'''

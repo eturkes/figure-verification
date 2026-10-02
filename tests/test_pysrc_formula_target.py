@@ -14,7 +14,8 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from verifier.pysrc import RefusalCode, Refused, Verified, spec, verify_python_source
-from verifier.pysrc.certificate import CERTIFICATE_VERSION, CoreCertificate
+from verifier.pysrc.certificate import CERTIFICATE_VERSION, CoreCertificate, certify
+from verifier.pysrc.request import formula_target
 
 _FORMULA_SOURCE = (
     "import numpy as np\n"
@@ -324,6 +325,20 @@ def test_c6_bound_interpretation_is_byte_pinned(domain: str, expected: str) -> N
     assert result.certificate.interpretation == expected
 
 
+def test_q9_certificate_reads_a_grid_sample_mismatch_as_unconsumed() -> None:
+    """`_target_consumed` checks a Grid target's sample count before its bounds: binding refuses
+    that target first, so only a direct `certify` call reaches it, and it publishes `internal`."""
+    verdict = verify_python_source(_FORMULA_SOURCE)
+    assert isinstance(verdict, Verified) and isinstance(verdict.spec, spec.FormulaPlot)
+    plot = verdict.spec
+    for samples, provenance in (
+        (plot.grid.samples, "artifact"),
+        (plot.grid.samples + 1, "internal"),
+    ):
+        target = spec.FormulaTarget(plot.y, spec.Grid(plot.grid.start, plot.grid.stop, samples))
+        assert certify(plot, verdict.table, b"", target, None).provenance == provenance
+
+
 def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
     """C7: version, K1's field set and all 52 refusal codes stay unchanged."""
     assert CERTIFICATE_VERSION == "pysrc-cert-0.1"
@@ -341,3 +356,58 @@ def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
         "interpretation",
     }
     assert len(get_args(RefusalCode)) == 52
+
+
+_SQUARE_OVER_ARANGE = (
+    "import numpy as np\n"
+    "import matplotlib.pyplot as plt\n"
+    "x = np.arange(-5, 6)\n"
+    "y = x**2\n"
+    "plt.plot(x, y)\n"
+    "plt.show()\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "verified"),
+    [
+        ("Plot y = x**2, x ∈ [-5, 5]", True),
+        ("Plot y = x**2, x ∈ [-5, 5], n = 11", True),
+        ("Plot y = x**2, x ∈ [-5, 4]", False),
+        ("Plot y = x**2, x ∈ [-4, 5]", False),
+        ("Plot y = x**2, x ∈ [-5, 5], n = 10", False),
+    ],
+)
+def test_q17_a_negative_arange_binds_its_request_by_exact_value(
+    sentence: str, *, verified: bool
+) -> None:
+    """Q17 (user ruling): the request keeps `-5` as `Neg(Num(5))` while projection folds `arange`
+    bounds to `Num(-5)`; both fold to -5, so `x ∈ [-5, 5]` binds `np.arange(-5, 6)` -- with or
+    without `n = 11` -- and a different bound or count still refuses `target_mismatch`."""
+    target = formula_target(sentence)
+    assert target is not None
+    result = verify_python_source(_SQUARE_OVER_ARANGE, declared_target=target)
+    if verified:
+        assert isinstance(result, Verified)
+        # The certificate reads the SAME bound predicate: a bound target is consumed provenance.
+        assert result.certificate.provenance == "artifact"
+    else:
+        assert isinstance(result, Refused)
+        assert result.code == "target_mismatch"
+
+
+def test_q17_a_bound_binary64_rounds_still_compares_by_tree() -> None:
+    """Q17: value comparison needs a bound binary64 computes EXACTLY. `1/49*49` folds to 1 in exact
+    arithmetic but the program computes 0.9999999999999999, so against `x ∈ [1, 2]` it compares by
+    tree and refuses -- the bound the program draws is not the bound the user stated."""
+    source = _FORMULA_SOURCE.replace(
+        "np.linspace(0, 1, num=3)", "np.linspace(1 / 49 * 49, 2, num=3)"
+    )
+    target = formula_target("Plot y = sin(x), x ∈ [1, 2]")
+    assert target is not None
+    result = verify_python_source(source, declared_target=target)
+    assert isinstance(result, Refused)
+    assert result.code == "target_mismatch"
+    control = formula_target("Plot y = sin(x), x ∈ [1 / 49 * 49, 2]")
+    assert control is not None
+    assert isinstance(verify_python_source(source, declared_target=control), Verified)

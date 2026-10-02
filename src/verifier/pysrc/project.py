@@ -20,7 +20,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import NoReturn, cast
+from typing import NoReturn, assert_never, cast
 
 from verifier.pysrc.admit import (
     ADMITTED_ACCESSOR_KINDS,
@@ -155,6 +155,88 @@ _ARANGE_MAX_ARITY = 3
 # Every integer up to 2**53 is exactly representable in float64; 2**52 leaves the difference of
 # two bounds inside that range, which is what makes `arange`'s float64 sizing provably exact.
 _EXACT_INT = 2**52
+
+# The exact folder a grid bound and a declared target bound share (user rulings Q9 + Q17): `+ - * /`
+# over literals and negations, `**` only with an integer-literal exponent of magnitude at most
+# `_POW_EXPONENT_MAX`. EVERY node must also be exact in binary64 and at most `_FOLD_MAX` in
+# magnitude: there Python's exact ints, numpy's float64 and IEEE's correctly rounded `+ - * /` all
+# agree with the exact value, so the fold is what the executed program computes. `1/49*49` (exact
+# 1, binary64 0.9999999999999999) would otherwise shift an `arange` start and change its sample
+# count. A zero divisor, a wider power or an inexact node folds to None.
+_POW_EXPONENT_MAX = 64
+_FOLD_MAX = 2**53
+
+
+def _exact_node(value: Fraction) -> Fraction | None:
+    if abs(value) > _FOLD_MAX or Fraction(float(value)) != value:
+        return None
+    return value
+
+
+def _computed(value: Fraction | None) -> Fraction | None:
+    """A COMPUTED zero has a sign `Fraction` cannot carry: `0 / -1` and `-0.0` execute as -0.0,
+    a different number downstream (`-1 / x` is +inf there, -inf at +0.0). Only a literal zero
+    folds."""
+    return None if value == 0 else value
+
+
+def _fold_pow(base: Fraction, exponent_node: Expr, exponent: Fraction) -> Fraction | None:
+    literal = isinstance(exponent_node, Num) or (
+        isinstance(exponent_node, Neg) and isinstance(exponent_node.operand, Num)
+    )
+    if not literal or exponent.denominator != 1 or abs(exponent) > _POW_EXPONENT_MAX:
+        return None
+    if base == 0 and exponent < 0:
+        return None
+    return _exact_node(base ** int(exponent))
+
+
+def same_bound(program: Expr, declared: Expr) -> bool:
+    """Two grid bounds agree by EXACT value when both fold (user ruling Q17), else by tree.
+
+    Shared by target binding (`verify.bind_target`) and the certificate's provenance
+    (`certificate._target_consumed`), so the two can never disagree on whether a target bound.
+
+    `np.arange(-5, 6)` projects its start to `Num(-5)` while the request keeps `-5` as `Neg(Num)`;
+    both fold to -5. `fold_exact` folds only a tree binary64 computes exactly, so a bound the
+    program rounds (`1/49*49`) still compares by tree and refuses.
+    """
+    left, right = fold_exact(program), fold_exact(declared)
+    if left is not None and right is not None:
+        return left == right
+    return program == declared
+
+
+def _fold_bin(op: BinOp, left: Fraction, right: Fraction, right_node: Expr) -> Fraction | None:
+    match op:
+        case "add":
+            return _computed(_exact_node(left + right))
+        case "sub":
+            return _computed(_exact_node(left - right))
+        case "mul":
+            return _computed(_exact_node(left * right))
+        case "div":
+            return None if right == 0 else _computed(_exact_node(left / right))
+        case "pow":
+            return _computed(_fold_pow(left, right_node, right))
+        case _:  # pragma: no cover - `BinOp` is closed
+            assert_never(op)
+
+
+def fold_exact(expr: Expr) -> Fraction | None:
+    """The exact value of a closed arithmetic tree every node of which binary64 computes exactly."""
+    if isinstance(expr, Num):
+        return _exact_node(expr.value)
+    if isinstance(expr, Neg):
+        operand = _computed(fold_exact(expr.operand))
+        return None if operand is None else -operand
+    if not isinstance(expr, Bin):
+        return None  # `Var`, `Const`, `Fn`: no exact rational
+    left, right = fold_exact(expr.left), fold_exact(expr.right)
+    if left is None or right is None:
+        return None
+    return _fold_bin(expr.op, left, right, expr.right)
+
 
 _BINOPS: dict[type[ast.operator], BinOp] = {
     ast.Add: "add",
@@ -330,16 +412,11 @@ class _Projector:
         return self._expr(bound, grid_name)
 
     def _rational(self, node: ast.expr) -> Fraction:
-        """A grid bound that arithmetic must reach: symbolic constants have no exact value."""
-        projected = self._expr(node, None)
-        # A source `-1` is `UnaryOp(USub, 1)`, so a descending `np.arange(5, 0, -1)` reaches here
-        # as `Neg(Num)`. Folding it is exact; anything wider (`2 + 3`, `np.pi`) stays refused,
-        # since a general folder needs its own ruling on division by zero and on `pow`.
-        if isinstance(projected, Neg) and isinstance(projected.operand, Num):
-            return -projected.operand.value
-        if not isinstance(projected, Num):
+        """A grid bound that arithmetic must reach: `fold_exact` or `grid_not_representable`."""
+        value = fold_exact(self._expr(node, None))
+        if value is None:
             _refuse("grid_not_representable")
-        return projected.value
+        return value
 
     # --- grids ---------------------------------------------------------------
 

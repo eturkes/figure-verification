@@ -18,6 +18,7 @@ from typing import Literal, assert_never, cast
 
 from verifier.pysrc.errors import PysrcCallerError
 from verifier.pysrc.numeric import NUMERIC_PROFILE
+from verifier.pysrc.project import same_bound
 from verifier.pysrc.spec import (
     Bin,
     Const,
@@ -217,11 +218,13 @@ def _target_consumed(spec: CorePlotSpec, target: DeclaredTarget | None) -> bool:
     if isinstance(spec, FormulaPlot):
         if not isinstance(target, FormulaTarget) or target.y != spec.y:
             return False
-        if isinstance(target.grid, Grid):
-            return target.grid == spec.grid
-        if isinstance(target.grid, Interval):
-            return target.grid.start == spec.grid.start and target.grid.stop == spec.grid.stop
-        return target.grid is None
+        if target.grid is None:
+            return True
+        if isinstance(target.grid, Grid) and target.grid.samples != spec.grid.samples:
+            return False
+        return same_bound(spec.grid.start, target.grid.start) and same_bound(
+            spec.grid.stop, target.grid.stop
+        )
     assert_never(spec)  # pragma: no cover - `CorePlotSpec` is a closed union
 
 

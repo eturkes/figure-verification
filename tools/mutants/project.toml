@@ -21,6 +21,7 @@
 module = "src/verifier/pysrc/project.py"
 tests = [
   "tests/test_pysrc_project.py",
+  "tests/test_pysrc_formula_target.py",
   "tests/test_pysrc_integrity.py",
   "tests/test_pysrc_dataset.py",
   "tests/test_pysrc_aggregate.py",
@@ -128,7 +129,7 @@ id = "p5-symbolic-bound-refused"
 predicate = "an arange bound arithmetic cannot reach is refused, never coerced"
 kills = "tests/test_pysrc_project.py::test_p5_grid_forms_agree"
 anchor = '''
-        if not isinstance(projected, Num):
+        if value is None:
             _refuse("grid_not_representable")'''
 mutant = '''
         if False:
@@ -659,3 +660,92 @@ anchor = '''
             | self._aggs.keys()'''
 mutant = '''
             | set()'''
+
+[[mutant]]
+id = "q9-zero-divisor-folds"
+predicate = "a zero divisor folds to no value"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''            return None if right == 0 else _computed(_exact_node(left / right))'''
+mutant = '''            return _computed(_exact_node(left / right))'''
+
+
+[[mutant]]
+id = "q9-zero-to-negative-power-folds"
+predicate = "zero to a negative power folds to no value"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    if base == 0 and exponent < 0:
+        return None'''
+mutant = '''    if False:
+        return None'''
+
+
+[[mutant]]
+id = "q9-exponent-bound-open"
+predicate = "a power folds only with an exponent of magnitude at most 64"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''abs(exponent) > _POW_EXPONENT_MAX'''
+mutant = '''abs(exponent) > 10**6'''
+
+
+[[mutant]]
+id = "q9-fractional-exponent-folds"
+predicate = "a power folds only with an integer exponent"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    if not literal or exponent.denominator != 1 or abs(exponent)'''
+mutant = '''    if not literal or abs(exponent)'''
+
+
+[[mutant]]
+id = "q9-non-literal-exponent-folds"
+predicate = "a power folds only with a literal exponent"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    if not literal or exponent.denominator'''
+mutant = '''    if exponent.denominator'''
+
+
+[[mutant]]
+id = "q9-node-magnitude-open"
+predicate = "every folded node stays within 2**53 in magnitude"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    if abs(value) > _FOLD_MAX or Fraction(float(value)) != value:'''
+mutant = '''    if Fraction(float(value)) != value:'''
+
+
+[[mutant]]
+id = "q9-inexact-node-folds"
+predicate = "every folded node is exact in binary64"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    if abs(value) > _FOLD_MAX or Fraction(float(value)) != value:'''
+mutant = '''    if abs(value) > _FOLD_MAX:'''
+
+
+[[mutant]]
+id = "q9-negation-dropped"
+predicate = "a negation folds to the negated value"
+kills = "tests/test_pysrc_project.py::test_q9_arange_bounds_fold_exact_arithmetic"
+anchor = '''        return None if operand is None else -operand'''
+mutant = '''        return operand'''
+
+
+[[mutant]]
+id = "q9-subtraction-adds"
+predicate = "subtraction folds to the difference"
+kills = "tests/test_pysrc_project.py::test_q9_arange_bounds_fold_exact_arithmetic"
+anchor = '''            return _computed(_exact_node(left - right))'''
+mutant = '''            return _computed(_exact_node(left + right))'''
+
+[[mutant]]
+id = "q9-computed-zero-folds"
+predicate = "a computed zero folds to no value: its executed sign (`0 / -1` is -0.0) is lost in a Fraction"
+kills = "tests/test_pysrc_project.py::test_q9_an_unfoldable_arange_bound_refuses"
+anchor = '''    return None if value == 0 else value'''
+mutant = '''    return value'''
+
+[[mutant]]
+id = "q17-value-compare-dropped"
+predicate = "two bounds that both fold compare by exact value, so `Num(-5)` binds `Neg(Num(5))`"
+kills = "tests/test_pysrc_formula_target.py::test_q17_a_negative_arange_binds_its_request_by_exact_value"
+anchor = '''    if left is not None and right is not None:
+        return left == right'''
+mutant = '''    if False:
+        return left == right'''
