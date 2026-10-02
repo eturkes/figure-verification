@@ -6,6 +6,7 @@ copy only the corpus metadata. Lazy import keeps every predicate independently r
 exists, rather than aborting collection at the first import.
 """
 
+import dataclasses
 import importlib
 import json
 from collections.abc import Mapping, Sequence
@@ -277,6 +278,24 @@ def test_s1_invalid_successful_reply_is_refused_not_transport(content: str) -> N
     assert result["rows"][0]["code"] is not None
     assert result["summary"]["transport_errors"] == 0
     assert result["summary"]["complicated"] == {"total": 20, "blocked": 1}
+
+
+def test_s1_a_formula_plot_verified_against_a_csv_is_a_scorer_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S1: the verifier refuses a formula program against a CSV target (`target_mismatch`), so a
+    Verified formula plot here would be a verifier defect; the scorer raises rather than state a
+    figure it has no channels for."""
+    api = importlib.import_module("capture.score")
+    real = api.verify_python_source
+
+    def formula_shaped(source: str, *, declared_target: Any) -> Any:
+        verdict = real(source, declared_target=declared_target)
+        return dataclasses.replace(verdict, spec=object())
+
+    monkeypatch.setattr(api, "verify_python_source", formula_shaped)
+    with pytest.raises(api.ScoreError, match="a formula plot verified against a dataset target"):
+        document(make_run([record("sales-record", "verified")]))
 
 
 def test_s2_the_declared_target_comes_from_the_record() -> None:

@@ -10,8 +10,8 @@ widened `GITHUB_TOKEN` or a CI step that calls a tool directly instead of the ga
 green gate behind while quietly deleting coverage. Each is stated as a literal rather than read
 back from the file it guards -- a test that derives its expectation from the artifact pins nothing.
 
-This file imports no `verifier` symbol: coverage source stays `verifier` only, so an import here
-would add gate-tooling lines to a suite that never runs them.
+This file imports no `verifier` symbol: coverage measures the verifier core (and capture's two
+graders), so an import here would add gate-tooling lines to a suite that never runs them.
 """
 
 import re

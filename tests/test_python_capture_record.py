@@ -18,6 +18,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ from capture.record import (
     FINISH_REASONS,
     PREDICATES,
     REQUEST_KEYS,
+    CaptureFormatError,
     CaptureRecord,
     HostProvenance,
     Provenance,
@@ -934,3 +936,53 @@ def test_i8_cli(
     assert record_module.main([]) == 1
     assert set(calls) == {alpha, beta}
     assert "R1: synthetic failure" in capsys.readouterr().err
+
+
+def test_i9_every_degraded_and_cli_path_answers_its_contracted_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I9: the grader's coverage floor (p47) -- each degraded path returns its contracted value:
+    the real subprocess seam runs a fixed argv; an absent tool degrades git to (None, False) and
+    nvidia-smi to None; a valid commit + a non-empty status reads as dirty; an unreadable engine
+    file pins no dtype; a non-integer or negative memory field is unparseable; NDJSON without its
+    final newline is refused; an unknown prompt id is left to R4; an absent captures root holds no
+    run; a run directory that cannot load is reported on stderr; and no run at all exits 0."""
+    done = record_module._run_command([sys.executable, "-c", "print('ok')"])
+    assert (done.returncode, done.stdout) == (0, "ok\n")
+
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    repo = collect_repo_provenance()
+    assert (repo.git_commit, repo.git_dirty) == (None, False)
+    assert collect_host_provenance() is None
+    monkeypatch.undo()
+
+    commit = "a" * 40
+
+    def git_runner(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        dirty_query = "status" in argv
+        return subprocess.CompletedProcess(
+            list(argv), 0, stdout=" M file.py\n" if dirty_query else f"{commit}\n", stderr=""
+        )
+
+    repo = collect_repo_provenance(runner=git_runner)
+    assert (repo.git_commit, repo.git_dirty) == (commit, True)
+
+    assert record_module.live_engine_dtype(tmp_path / "absent.py") is None
+    assert record_module._parse_smi_line("580.178.04, 6.1, NVIDIA GeForce MX150, many") is None
+    assert record_module._parse_smi_line("580.178.04, 6.1, NVIDIA GeForce MX150, -1") is None
+    with pytest.raises(CaptureFormatError, match="does not end with a newline"):
+        decode_records(b"{}")
+
+    unknown = _with_record(_sound_run(tmp_path / "unknown"), prompt_id="no-such-prompt")
+    assert check_request_reproduces(unknown) == []
+
+    assert record_module._discover_runs(tmp_path / "absent") == []
+    broken = tmp_path / "broken-run"
+    broken.mkdir()
+    assert record_module.main([str(broken)]) == 1
+    assert capsys.readouterr().err.startswith(f"{broken}: ")
+    empty = tmp_path / "empty-captures"
+    empty.mkdir()
+    monkeypatch.setattr(record_module, "CAPTURES_ROOT", empty)
+    assert record_module.main([]) == 0
+    assert capsys.readouterr().out == f"no capture runs under {empty}\n"

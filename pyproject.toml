@@ -190,10 +190,17 @@ xfail_strict = true
 
 [tool.coverage.run]
 branch = true
-source = ["verifier"]
+# Two scopes, one pytest run: the verifier core, and capture's two GRADERS (record.py validates a
+# committed capture run, score.py scores it). Capture's live I/O -- HTTP harness, corpus files, CLI
+# shim -- is measured by neither.
+source = ["verifier", "capture"]
+omit = ["*/capture/harness.py", "*/capture/corpus.py", "*/capture/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
+# This report (pytest-cov's) is the verifier scope; tools/gate.sh's `tests` stage states the
+# capture graders' own floor in a second report over the same data.
+include = ["*/src/verifier/*"]
 fail_under = 100
 exclude_also = [
     # No "raise NotImplementedError" / "..." here: in a trusted core an unimplemented
