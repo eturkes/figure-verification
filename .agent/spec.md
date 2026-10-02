@@ -48,12 +48,11 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q7 polish p2 p16 p22 p32 p34 (p16 p32 p34 on the MX150)
 - [ ] Q8 lexical term anchoring
 - [ ] Q16 G10 label/legend — waits Q8
-- [ ] Q18 nested-libm observation rule
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
 - [ ] Q34 alias-chain RecursionError in the projector (new)
 
-Queue = `.agent/deferred.md`, 9 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 8 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

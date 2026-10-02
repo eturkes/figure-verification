@@ -133,10 +133,20 @@ def test_o5_cancellation_allows_many_y_ulps_when_source_ops_differ() -> None:
 
 
 @pytest.mark.parametrize("expression", ["np.sin(np.cos(x))", "np.sin(x)**2", "np.exp(-x**2)"])
-def test_o5_ambiguous_libm_argument_withholds_even_at_host_value(expression: str) -> None:
-    """O5/R4: a libm/pow argument that is already an interval cannot be certified."""
+def test_q18_interval_libm_argument_releases_at_host_value(expression: str) -> None:
+    """Q18 (user ruling; supersedes the O5/R4 reading that withheld these): a libm call or an
+    integer `**` over an interval argument encloses its result -- monotone ends, extrema, 1 ulp
+    outward per call -- so the host values release, and one y moved 1 ulp past its enclosure
+    withholds."""
     verdict = formula_verdict(expression, bounds=("0.1", "1.0"))
     payload = observation_for(verdict)
+    assert _matches(verdict, payload)
+    spec = cast("Any", verdict.spec)
+    x = verdict.table.x[1]
+    assert isinstance(x, float)
+    bounds = importlib.import_module("webui.paste_in.observe")._interval(spec.y, x)
+    assert bounds is not None
+    _points(verdict, payload)[1][1] = math.nextafter(bounds[1], math.inf).hex()
     assert not _matches(verdict, payload)
 
 

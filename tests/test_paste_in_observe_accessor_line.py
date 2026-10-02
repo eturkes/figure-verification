@@ -204,11 +204,12 @@ def test_b5_reader_keys_stay_closed_without_a_fallback() -> None:
     assert not _matches(unmapped, payload)
 
 
-def test_b6_fixture_set_is_38_dataset_and_20_formula() -> None:
-    """B6: exact dataset/formula counts; fixture regeneration remains a separate lead-run check."""
+def test_b6_fixture_set_is_38_dataset_and_24_formula() -> None:
+    """B6, widened by Q18's four nested-libm formulas: exact dataset/formula counts; fixture
+    regeneration remains a separate lead-run check."""
     paths = tuple(_FIXTURES.glob("*.json"))
     arms = [json.loads(path.read_text(encoding="utf-8"))["arm"] for path in paths]
-    assert len(paths) == 58
+    assert len(paths) == 62
     assert arms.count("dataset") == 38
-    assert arms.count("formula") == 20
+    assert arms.count("formula") == 24
     assert {path.stem for path in paths} >= set(_LINE_IDS)

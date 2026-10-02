@@ -83,6 +83,8 @@ _FORMULA_IDS = tuple(
         "pow",
         "exact",
         "cancellation",
+        "gauss",
+        "sin-square",
     )
     for mark in ("plot", "scatter")
 )
@@ -123,11 +125,12 @@ def _matches(verdict: Verified, observed: object) -> bool:
     )
 
 
-def test_o3_o5_observation_fixture_set_is_exactly_38_dataset_and_20_formula() -> None:
-    """O3/O5, widened by M10.10 B6: exactly 58 IDs, never a silent fixture loss."""
+def test_o3_o5_observation_fixture_set_is_exactly_38_dataset_and_24_formula() -> None:
+    """O3/O5, widened by M10.10 B6 and by Q18 (the `np.exp(-x**2)` + `np.sin(x)**2` nested-libm
+    pairs): exactly 62 IDs, never a silent fixture loss."""
     assert len(_DATASET_IDS) == 38
-    assert len(_FORMULA_IDS) == 20
-    assert len(_EXPECTED) == 58
+    assert len(_FORMULA_IDS) == 24
+    assert len(_EXPECTED) == 62
     actual = {path.stem for path in _FIXTURES.glob("*.json")}
     assert actual == _EXPECTED, (
         f"missing={sorted(_EXPECTED - actual)}; extra={sorted(actual - _EXPECTED)}"

@@ -434,6 +434,50 @@ def _arithmetic(op: str, left: float, right: float) -> float:
     raise ValueError
 
 
+def _may_contain(low: float, high: float, offset: float, period: float) -> list[int]:
+    """Every k for which `offset + k * period` MAY lie in [low, high], judged conservatively.
+
+    Callers pass a span below two periods, so the scan stays a handful of candidates.
+    """
+    first = math.floor((low - offset) / period) - 1
+    found = []
+    for k in range(first, first + 4 + math.ceil((high - low) / period)):
+        point = offset + k * period
+        slack = 4.0 * (math.ulp(point) + abs(k) * math.ulp(period))
+        if low - slack <= point <= high + slack:
+            found.append(k)
+    return found
+
+
+def _extremum_interval(name: str, low: float, high: float) -> Interval | None:
+    """sin/cos over [low, high]: the endpoint values plus every extremum the interval may hold."""
+    if high - low >= 2.0 * math.pi:
+        return _outward(-1.0, 1.0)
+    function = math.sin if name == "sin" else math.cos
+    values = [function(low), function(high)]
+    if low != high:  # a point argument keeps today's interval: the value, 1 ulp outward
+        # A maximum (+1) sits at sin's pi/2 + 2k*pi and cos's 2k*pi; a minimum (-1) half a turn on.
+        offset = math.pi / 2.0 if name == "sin" else 0.0
+        values += [1.0 if k % 2 == 0 else -1.0 for k in _may_contain(low, high, offset, math.pi)]
+    return _outward(min(values), max(values))
+
+
+def _monotone_interval(name: str, low: float, high: float) -> Interval | None:
+    """exp, log, tan over [low, high]: each is increasing on the admitted span; `math.log` raises
+    at or below zero, which withholds."""
+    if (
+        name == "tan"
+        and low != high
+        and (high - low >= math.pi or _may_contain(low, high, math.pi / 2.0, math.pi))
+    ):
+        return None  # a pole may sit inside: tan is not monotone across it
+    function = getattr(math, name)
+    try:
+        return _outward(function(low), function(high))
+    except (OverflowError, ValueError):
+        return None
+
+
 def _function_interval(expr: Fn, argument: Interval) -> Interval | None:
     low, high = argument
     if expr.name == "abs":
@@ -442,18 +486,34 @@ def _function_interval(expr: Fn, argument: Interval) -> Interval | None:
         return min(abs(low), abs(high)), max(abs(low), abs(high))
     if expr.name == "sqrt":
         return _finite((math.sqrt(low), math.sqrt(high))) if low >= 0.0 else None
-    if low != high:
-        return None
+    if expr.name in ("sin", "cos"):
+        return _extremum_interval(expr.name, low, high)
+    return _monotone_interval(expr.name, low, high)
+
+
+def _integer_power(base: Interval, exponent: int) -> Interval | None:
+    """An interval base to a point integer exponent: monotone on each side of zero."""
+    low, high = base
+    if exponent == 0:
+        return 1.0, 1.0
+    if low <= 0.0 <= high and exponent < 0:
+        return None  # a pole inside the base
     try:
-        value = getattr(math, expr.name)(low)
+        ends = (math.pow(low, exponent), math.pow(high, exponent))
     except (OverflowError, ValueError):
         return None
-    return _outward(value, value) if math.isfinite(value) else None
+    if exponent % 2 == 0 and low <= 0.0 <= high:
+        return _finite((0.0, math.nextafter(max(ends), math.inf)))
+    return _outward(min(ends), max(ends))
 
 
 def _power_interval(left: Interval, right: Interval) -> Interval | None:
-    if left[0] != left[1] or right[0] != right[1]:
+    if right[0] != right[1]:
         return None
+    if left[0] != left[1]:
+        if not right[0].is_integer():
+            return None
+        return _integer_power(left, int(right[0]))
     try:
         value = math.pow(left[0], right[0])
     except (OverflowError, ValueError):

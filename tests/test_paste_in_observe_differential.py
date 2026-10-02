@@ -18,7 +18,17 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn
 
-from oracle_observe import oracle_interval, oracle_matches, oracle_parse
+from oracle_observe import (
+    _arithmetic as oracle_arithmetic,
+)
+from oracle_observe import (
+    _function as oracle_function,
+)
+from oracle_observe import (
+    oracle_interval,
+    oracle_matches,
+    oracle_parse,
+)
 from verifier.pysrc import spec
 from verifier.pysrc.table import PlottedTable
 from verifier.pysrc.verify import Verified, verify_python_source
@@ -28,6 +38,15 @@ _TAG = "FIGURE_VERIFICATION_OBSERVATION:"
 _SALES = "/mnt/uploads/sales.csv"
 _DATA = f"import pandas as pd\nimport matplotlib.pyplot as plt\nframe = pd.read_csv('{_SALES}')\n"
 _FORMULA = "import numpy as np\nimport matplotlib.pyplot as plt\n"
+_Q18_EXPRESSIONS = (
+    "np.sin(x)**2",
+    "np.exp(-x**2)",
+    "np.sin(np.cos(x))",
+    "np.log(x**2 + 1)",
+    "np.tan(x)**3",
+    "np.cos(x)**2",
+    "x**-2",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +106,13 @@ _CASES = {
         _formula_case("np.sin(x)"),
         _formula_case("np.sin(2*x)"),
         _formula_case("np.sin(x) - np.cos(x)"),
-        _formula_case("np.exp(-x**2)"),
+        *(
+            _formula_case(expression, mark=mark)
+            for expression in _Q18_EXPRESSIONS
+            for mark in ("line", "scatter")
+        ),
+        _formula_case("np.sin(x)**1.3"),
+        _formula_case("x**np.sin(x)"),
         _formula_case("x ** 1.3", mark="scatter"),
     )
 }
@@ -102,7 +127,13 @@ _RELEASING = (
     "line-positional",
     "formula-line-np.sin(2*x)",
     "formula-line-np.sin(x) - np.cos(x)",
+    *(
+        f"formula-{mark}-{expression}"
+        for expression in _Q18_EXPRESSIONS
+        for mark in ("line", "scatter")
+    ),
 )
+_WITHHOLDING = ("formula-line-np.sin(x)**1.3", "formula-line-x**np.sin(x)")
 _POSITIONAL_PERTURBATIONS = (
     "pos-labels-swapped",
     "pos-label-altered",
@@ -494,8 +525,7 @@ def test_oracle_real_verified_artists(name: str) -> None:
     verdict = _verified(case)
     parsed = oracle_parse(_wire(_observed(verdict, case.mode)))
     assert parsed is not None
-    expect = "np.exp(-x**2)" not in name
-    assert oracle_matches(verdict, parsed) is expect, name
+    assert oracle_matches(verdict, parsed) is (name not in _WITHHOLDING), name
 
 
 @pytest.mark.parametrize("reason", ("bool-count", "extra-key", "wrong-hex", "non-finite"))
@@ -522,7 +552,7 @@ def test_oracle_tag_cardinality_and_byte_limit() -> None:
 
 
 def test_oracle_interval_hand_stated_cases() -> None:
-    """R4 keeps point arithmetic point, including sin(2*x), and fails closed on nested libm."""
+    """Q18 keeps point arithmetic point, then encloses nested libm and integer powers."""
     x = math.pi / 4
     variable = spec.Var()
     two = spec.Num(Fraction(2))
@@ -536,14 +566,76 @@ def test_oracle_interval_hand_stated_cases() -> None:
     assert point == (2 * x, 2 * x)
     sin_band = oracle_interval(sin_two, x)
     assert sin_band is not None and sin_band[0] <= math.sin(2 * x) <= sin_band[1]
-    assert oracle_interval(spec.Fn("sin", sin), x) is None
+    nested_sin = oracle_interval(spec.Fn("sin", sin), x)
+    assert nested_sin is not None and nested_sin[0] <= math.sin(math.sin(x)) <= nested_sin[1]
     width = oracle_interval(cancel, x)
     assert width is not None and width[0] < 0 < width[1]
     assert width[0] <= math.sin(x) - math.cos(x) <= width[1]
     assert math.nextafter(width[1], math.inf) > width[1]
     assert oracle_interval(pow_x, 0.5) is not None
-    assert oracle_interval(exp_pow, 0.5) is None
+    exponential = oracle_interval(exp_pow, 0.5)
+    assert exponential is not None and exponential[0] <= math.exp(-(0.5**2)) <= exponential[1]
     assert oracle_interval(spec.Bin("div", variable, spec.Num(Fraction(0))), x) is None
+
+
+@pytest.mark.parametrize("name", ("exp", "log", "sqrt", "sin", "cos", "tan"))
+def test_oracle_q18_function_ranges(name: spec.FnName) -> None:
+    """Hand-stated ranges pin the oracle separately from the implementation differential."""
+    lower, upper = 0.2, 0.5
+    function = {
+        "exp": math.exp,
+        "log": math.log,
+        "sqrt": math.sqrt,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+    }[name]
+    ends = (function(lower), function(upper))
+    expected = (min(ends), max(ends))
+    if name != "sqrt":
+        expected = (math.nextafter(expected[0], -math.inf), math.nextafter(expected[1], math.inf))
+    assert oracle_function(name, (lower, upper)) == expected
+
+
+def test_oracle_q18_extrema_poles_and_domains() -> None:
+    wide = (math.nextafter(-1.0, -math.inf), math.nextafter(1.0, math.inf))
+    assert oracle_function("sin", (-2.0, 2.0)) == wide
+    assert oracle_function("sin", (-4.0, 4.0)) == wide
+    assert oracle_function("cos", (-4.0, 4.0)) == wide
+    assert oracle_function("cos", (-2.0, 2.0)) == (
+        math.nextafter(math.cos(2.0), -math.inf),
+        math.nextafter(1.0, math.inf),
+    )
+    assert oracle_function("cos", (math.pi - 0.2, math.pi + 0.2)) == (
+        math.nextafter(-1.0, -math.inf),
+        math.nextafter(max(math.cos(math.pi - 0.2), math.cos(math.pi + 0.2)), math.inf),
+    )
+    assert oracle_function("tan", (-2.0, 2.0)) is None
+    assert oracle_function("tan", (math.pi / 2, math.nextafter(math.pi / 2, math.inf))) is None
+    assert oracle_function("log", (0.0, 1.0)) is None
+    assert oracle_function("log", (-1.0, 1.0)) is None
+    assert oracle_function("sqrt", (-math.nextafter(0.0, math.inf), 1.0)) is None
+    assert oracle_function("sqrt", (0.0, 4.0)) == (0.0, 2.0)
+
+
+@pytest.mark.parametrize("exponent", (-3.0, -2.0, 0.0, 2.0, 3.0, 1.5))
+@pytest.mark.parametrize("base", ((-2.0, -1.0), (-2.0, 3.0), (1.0, 3.0), (0.0, 3.0), (-2.0, 0.0)))
+def test_oracle_q18_power_ranges(base: tuple[float, float], exponent: float) -> None:
+    lower, upper = base
+    expected: tuple[float, float] | None
+    if not exponent.is_integer() or (exponent < 0.0 and lower <= 0.0 <= upper):
+        expected = None
+    elif exponent == 0.0:
+        expected = (1.0, 1.0)
+    else:
+        ends = (math.pow(lower, exponent), math.pow(upper, exponent))
+        expected = (
+            0.0
+            if exponent > 0.0 and int(exponent) % 2 == 0 and lower <= 0.0 <= upper
+            else math.nextafter(min(ends), -math.inf),
+            math.nextafter(max(ends), math.inf),
+        )
+    assert oracle_arithmetic("pow", base, (exponent, exponent)) == expected
 
 
 @pytest.mark.parametrize("name", ("line-categorical", "line-positional-direct"))
@@ -596,7 +688,7 @@ def _drawn(draw: DrawFn) -> tuple[Case, str, int, int]:
 @given(drawn=st.lists(_drawn(), min_size=12, max_size=12))
 @settings(max_examples=64, deadline=None)
 def test_differential_drawn_pairs(drawn: list[tuple[Case, str, int, int]]) -> None:
-    """22 pairs per draw; ten releasing basis cases include direct and accessor positional lines."""
+    """Releasing basis + 12 generated faults; at least five releases prevent vacuity."""
     results = [_case_agrees(_CASES[name], "none") for name in _RELEASING]
     results.extend(
         _case_agrees(case, kind, direction=direction, steps=steps)
@@ -623,6 +715,62 @@ def test_differential_drawn_pairs(drawn: list[tuple[Case, str, int, int]]) -> No
 )
 def test_differential_boundaries(name: str, kind: str) -> None:
     _case_agrees(_CASES[name], kind)
+
+
+@pytest.mark.parametrize("expression", _Q18_EXPRESSIONS)
+@pytest.mark.parametrize("mark", ("line", "scatter"))
+@pytest.mark.parametrize("kind", ("none", "formula-inside", "formula-outside"))
+def test_differential_q18_releasing_rows(expression: str, mark: str, kind: str) -> None:
+    """Q18 releases both marks; the interval boundary releases and its next float withholds."""
+    case = _CASES[f"formula-{mark}-{expression}"]
+    assert case.name in _RELEASING
+    assert _case_agrees(case, kind) is (kind != "formula-outside")
+
+
+@pytest.mark.parametrize("name", _WITHHOLDING)
+def test_differential_q18_noninteger_or_nonpoint_exponent_withholds(name: str) -> None:
+    assert not _case_agrees(_CASES[name], "none")
+
+
+@given(
+    shape=st.sampled_from(
+        (
+            "exp-square",
+            "sin-power",
+            "sin-cos",
+            "log-square",
+            "tan-cube",
+            "cos-square",
+            "inverse",
+            "sqrt-abs",
+            "fractional",
+            "interval-exponent",
+        )
+    ),
+    x=st.floats(min_value=-3.0, max_value=3.0, allow_nan=False, allow_infinity=False),
+    exponent=st.integers(min_value=-5, max_value=5),
+)
+@settings(max_examples=192, deadline=None)
+def test_differential_q18_generated_intervals(shape: str, x: float, exponent: int) -> None:
+    """Generated x + integer exponents compare the new pure interval rule, not only fixtures."""
+    variable = spec.Var()
+    one, two = spec.Num(Fraction(1)), spec.Num(Fraction(2))
+    sin = spec.Fn("sin", variable)
+    square = spec.Bin("pow", variable, two)
+    expressions: dict[str, spec.Expr] = {
+        "exp-square": spec.Fn("exp", spec.Neg(square)),
+        "sin-power": spec.Bin("pow", sin, spec.Num(Fraction(exponent))),
+        "sin-cos": spec.Fn("sin", spec.Fn("cos", variable)),
+        "log-square": spec.Fn("log", spec.Bin("add", square, one)),
+        "tan-cube": spec.Bin("pow", spec.Fn("tan", variable), spec.Num(Fraction(3))),
+        "cos-square": spec.Bin("pow", spec.Fn("cos", variable), two),
+        "inverse": spec.Bin("pow", variable, spec.Num(Fraction(-2))),
+        "sqrt-abs": spec.Fn("sqrt", spec.Fn("abs", sin)),
+        "fractional": spec.Bin("pow", sin, spec.Num(Fraction(3, 2))),
+        "interval-exponent": spec.Bin("pow", variable, sin),
+    }
+    expression = expressions[shape]
+    assert _production()._interval(expression, x) == oracle_interval(expression, x)
 
 
 @pytest.mark.parametrize("kind", _PERTURBATIONS)
@@ -682,9 +830,9 @@ def test_differential_decimal_edge() -> None:
 
 
 def test_differential_fixture_replay() -> None:
-    """All 58 self-contained committed observations, plus one perturbation per file."""
+    """All 62 self-contained committed observations, plus one perturbation per file."""
     paths = sorted((_ROOT / "tests/fixtures/observe").glob("*.json"))
-    assert len(paths) == 58, f"fixture inventory drift: {len(paths)}/58"
+    assert len(paths) == 62, f"fixture inventory drift: {len(paths)}/62"
     for index, path in enumerate(paths):
         fixture = json.loads(path.read_text(encoding="utf-8"))
         assert set(fixture) == {"id", "arm", "mark", "source", "dataset", "observation"}

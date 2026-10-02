@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Observation gate: each mutant names the one independent test that must change verdict.
+# Equivalent, omitted: dropping `_extremum_interval`'s full-period shortcut (span >= 2*pi) -- the
+# extremum scan then finds both extrema and returns the same [-1, 1]; the shortcut bounds the scan.
 module = "webui/paste_in/observe.py"
-tests = ["tests/test_paste_in_observe_accessor_line.py", "tests/test_paste_in_observe.py", "tests/test_paste_in_observe_values.py", "tests/test_paste_in_observe_formula.py", "tests/test_paste_in_observe_differential.py", "tests/test_paste_in_observe_fixtures.py", "tests/test_paste_in_observe_internal.py"]
+tests = ["tests/test_paste_in_observe_q18.py", "tests/test_paste_in_observe_accessor_line.py", "tests/test_paste_in_observe.py", "tests/test_paste_in_observe_values.py", "tests/test_paste_in_observe_formula.py", "tests/test_paste_in_observe_differential.py", "tests/test_paste_in_observe_fixtures.py", "tests/test_paste_in_observe_internal.py"]
 
 [[mutant]]
 id = "o2-default-reader"
@@ -35,17 +37,10 @@ mutant = '''    return math.isfinite(numeric)'''
 id = "o5-interval-arithmetic-without-outward"
 predicate = "interval-valued arithmetic retains its outward ulp for cancellation"
 kills = "tests/test_paste_in_observe_differential.py::test_differential_boundaries[formula-line-np.sin(x) - np.cos(x)-formula-inside]"
-anchor = '''    return _outward(min(values), max(values))'''
-mutant = '''    return min(values), max(values)'''
-
-[[mutant]]
-id = "o5-non-singleton-transcendental"
-predicate = "a transcendental fed an uncertain interval withholds instead of evaluating one endpoint"
-kills = "tests/test_paste_in_observe_formula.py::test_o5_ambiguous_libm_argument_withholds_even_at_host_value[np.sin(np.cos(x))]"
-anchor = '''    if low != high:
-        return None'''
-mutant = '''    if False and low != high:
-        return None'''
+anchor = '''        return min(values), max(values)
+    return _outward(min(values), max(values))'''
+mutant = '''        return min(values), max(values)
+    return min(values), max(values)'''
 
 [[mutant]]
 id = "m10u10-positional-label-unchecked"
@@ -111,3 +106,84 @@ anchor = '''        return _points_match(verified, points, _positional(axis, key
 mutant = '''        return _positional(axis, keys) is not None and _points_match(
             verified, points, tuple(x for x, _ in points)
         )'''
+
+[[mutant]]
+id = "q18-monotone-not-widened"
+predicate = "exp/log/tan over an interval widen each end 1 ulp outward"
+kills = "tests/test_paste_in_observe_q18.py::test_i1_exp_interval_endpoints_and_nonfinite_refusal"
+anchor = '''        return _outward(function(low), function(high))'''
+mutant = '''        return function(low), function(high)'''
+
+
+[[mutant]]
+id = "q18-tan-pole-ignored"
+predicate = "tan over an interval that may hold a pole withholds"
+kills = "tests/test_paste_in_observe_q18.py::test_i6_tan_interval_spanning_poles_withholds"
+anchor = '''    if (
+        name == "tan"
+        and low != high'''
+mutant = '''    if (
+        False
+        and low != high'''
+
+
+[[mutant]]
+id = "q18-sin-cos-extremum-dropped"
+predicate = "sin/cos over an interval include every extremum it may hold"
+kills = "tests/test_paste_in_observe_q18.py::test_i4_sin_interval_extrema_and_full_period"
+anchor = '''        values += [1.0 if k % 2 == 0 else -1.0 for k in _may_contain(low, high, offset, math.pi)]'''
+mutant = '''        values += []'''
+
+
+[[mutant]]
+id = "q18-extremum-sign-flattened"
+predicate = "a minimum the interval may hold contributes -1, not +1"
+kills = "tests/test_paste_in_observe_q18.py::test_i5_cos_interval_extrema_and_full_period"
+anchor = '''        values += [1.0 if k % 2 == 0 else -1.0 for k in _may_contain(low, high, offset, math.pi)]'''
+mutant = '''        values += [1.0 for k in _may_contain(low, high, offset, math.pi)]'''
+
+
+[[mutant]]
+id = "q18-even-power-zero-dropped"
+predicate = "an even power over a base holding zero reaches down to exactly 0"
+kills = "tests/test_paste_in_observe_q18.py::test_i7_zero_touch_even_power_and_negative_power"
+anchor = '''    if exponent % 2 == 0 and low <= 0.0 <= high:'''
+mutant = '''    if False:'''
+
+
+[[mutant]]
+id = "q18-negative-power-pole-ignored"
+predicate = "a negative power over a base holding zero withholds"
+kills = "tests/test_paste_in_observe_q18.py::test_i7_negative_power_over_a_base_straddling_zero_withholds"
+anchor = '''    if low <= 0.0 <= high and exponent < 0:'''
+mutant = '''    if False:'''
+
+
+[[mutant]]
+id = "q18-non-integer-exponent-admitted"
+predicate = "an interval base takes a point INTEGER exponent only"
+kills = "tests/test_paste_in_observe_q18.py::test_i7_interval_base_point_integer_exponent"
+anchor = '''        if not right[0].is_integer():
+            return None'''
+mutant = '''        if False:
+            return None'''
+
+
+[[mutant]]
+id = "q18-zero-exponent-not-exact"
+predicate = "x**0 over an interval is exactly 1"
+kills = "tests/test_paste_in_observe_q18.py::test_i7_interval_base_point_integer_exponent"
+anchor = '''    if exponent == 0:
+        return 1.0, 1.0'''
+mutant = '''    if False:
+        return 1.0, 1.0'''
+
+
+[[mutant]]
+id = "q18-interval-exponent-admitted"
+predicate = "a non-point exponent withholds"
+kills = "tests/test_paste_in_observe_q18.py::test_i7_a_point_base_with_an_interval_exponent_withholds"
+anchor = '''    if right[0] != right[1]:
+        return None'''
+mutant = '''    if False:
+        return None'''

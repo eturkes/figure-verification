@@ -46,10 +46,10 @@
   },
   "wrapper": {
     "build": "0.28.3",
-    "cases": 58,
+    "cases": 62,
     "fixture_differences": 0,
-    "observations": 58,
-    "pngs": 58,
+    "observations": 62,
+    "pngs": 62,
     "stderr": 0
   }
 }

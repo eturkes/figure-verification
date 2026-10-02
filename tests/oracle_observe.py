@@ -159,23 +159,52 @@ def _binary(op: str, left: float, right: float) -> float:
     raise ValueError(op)
 
 
+def _outward(lower: float, upper: float) -> Range | None:
+    return _finite_range(math.nextafter(lower, -math.inf), math.nextafter(upper, math.inf))
+
+
+def _integer_power(base: Range, exponent: float) -> Range | None:
+    lower, upper = base
+    integer = int(exponent)
+    if integer == 0:
+        return (1.0, 1.0)
+    if integer < 0 and lower <= 0.0 <= upper:
+        return None
+    endpoints = (math.pow(lower, exponent), math.pow(upper, exponent))
+    if integer > 0 and integer % 2 == 0 and lower <= 0.0 <= upper:
+        return _finite_range(0.0, math.nextafter(max(endpoints), math.inf))
+    return _outward(min(endpoints), max(endpoints))
+
+
 def _arithmetic(op: str, left: Range, right: Range) -> Range | None:
     if op == "div" and right[0] <= 0.0 <= right[1]:
         return None
     if op == "pow":
-        if left[0] != left[1] or right[0] != right[1]:
+        if left[0] == left[1] and right[0] == right[1]:
+            return _steps(math.pow(left[0], right[0]))
+        if right[0] != right[1] or not right[0].is_integer():
             return None
-        return _steps(_binary(op, left[0], right[0]))
+        return _integer_power(left, right[0])
     if left[0] == left[1] and right[0] == right[1]:
         point = _binary(op, left[0], right[0])
         return _finite_range(point, point)
     results = [_binary(op, a, b) for a in left for b in right]
-    return _finite_range(
-        math.nextafter(min(results), -math.inf), math.nextafter(max(results), math.inf)
+    return _outward(min(results), max(results))
+
+
+def _critical(argument: Range, phase: Fraction, period: int) -> bool:
+    # Exact rational bounds keep cancellation and large phase indices conservative.
+    pi_bounds = tuple(
+        Fraction(value)
+        for value in (math.nextafter(math.pi, -math.inf), math.nextafter(math.pi, math.inf))
     )
+    scaled = [Fraction(value) / pi for value in argument for pi in pi_bounds]
+    first = math.ceil((min(scaled) - phase) / period)
+    last = math.floor((max(scaled) - phase) / period)
+    return first <= last
 
 
-def _function(name: str, argument: Range) -> Range | None:
+def _function(name: str, argument: Range) -> Range | None:  # noqa: PLR0911
     lower, upper = argument
     if name == "abs":
         return _finite_range(
@@ -186,21 +215,32 @@ def _function(name: str, argument: Range) -> Range | None:
         if lower < 0.0:
             return None
         return _finite_range(math.sqrt(lower), math.sqrt(upper))
-    if lower != upper:
-        return None
-    if name == "sin":
-        result = math.sin(lower)
-    elif name == "cos":
-        result = math.cos(lower)
-    elif name == "tan":
-        result = math.tan(lower)
-    elif name == "exp":
-        result = math.exp(lower)
-    elif name == "log":
-        result = math.log(lower)
-    else:
+    if name == "exp":
+        return _outward(math.exp(lower), math.exp(upper))
+    if name == "log":
+        return None if lower <= 0.0 else _outward(math.log(lower), math.log(upper))
+    if name not in {"sin", "cos", "tan"}:
         raise ValueError(name)
-    return _steps(result)
+    function = {"sin": math.sin, "cos": math.cos, "tan": math.tan}[name]
+    if lower == upper:
+        return _steps(function(lower))
+    if name == "tan":
+        return (
+            None
+            if _critical(argument, Fraction(1, 2), 1)
+            else _outward(math.tan(lower), math.tan(upper))
+        )
+    if upper - lower >= math.tau:
+        return _outward(-1.0, 1.0)
+    endpoints = [function(lower), function(upper)]
+    high_phase, low_phase = (
+        (Fraction(1, 2), Fraction(3, 2)) if name == "sin" else (Fraction(0), Fraction(1))
+    )
+    if _critical(argument, high_phase, 2):
+        endpoints.append(1.0)
+    if _critical(argument, low_phase, 2):
+        endpoints.append(-1.0)
+    return _outward(min(endpoints), max(endpoints))
 
 
 def oracle_interval(expression: spec.Expr, x: float) -> Range | None:  # noqa: PLR0911

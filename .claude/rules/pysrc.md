@@ -121,8 +121,11 @@ implies the figure answers the question asked.
   decimal positions. A categorical x binds through the axis `units._mapping` (direct marks) or tick
   identity (accessor bars). A string-keyed LINE with no category units -- pandas' line accessor -- binds POSITIONALLY (M10.10): x = 0..n-1 exactly, each in-range integral tick labelled with its key, at least one such tick present; negative ticks wrap to tail keys and are ignored. Formula arm (O5 + reading R4): each observed y inside the interval of the
   verified expression — per-call ±1-ulp libm, point `+ - * /` over two points exact, outward 1 ulp
-  once an operand is an interval; a libm call whose argument is itself a libm result
-  (`np.exp(-x**2)`) is WITHHELD (a false-block class, `.agent/deferred.md`). An unmapped mark, an
+  once an operand is an interval; a libm call or integer `**` over an interval argument encloses
+  its result by its own rule (Q18): exp/log/tan monotone (tan withholds a pole the interval may
+  hold), sin/cos endpoints + every extremum the interval may hold, an integer power per sign of
+  its base (zero inside an even power ⇒ lower bound 0), 1 ulp outward per call — so
+  `np.exp(-x**2)` and `np.sin(x)**2` release; anything else withholds. An unmapped mark, an
   extra artist, a second axes, a missing/duplicate/oversized/unparseable observation line ⇒ FAIL.
   This closes the projection gap EMPIRICALLY instead of by construction at no new trust: OWUI
   already wraps the model's bytes (`plt.show()` → `savefig`), admitted code provably cannot tamper

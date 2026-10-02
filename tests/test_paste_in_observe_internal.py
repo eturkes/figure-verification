@@ -36,7 +36,7 @@ def _case(name: str) -> tuple[Verified, observe.Observation, dict[str, object]]:
 
 
 def test_fixture_roster_is_full_and_self_contained() -> None:
-    assert len(_NAMES) == 58
+    assert len(_NAMES) == 62
     counts = {"dataset": 0, "formula": 0}
     for name in _NAMES:
         case = cast("dict[str, object]", json.loads((_FIXTURES / name).read_text()))
@@ -45,7 +45,7 @@ def test_fixture_roster_is_full_and_self_contained() -> None:
         arm = cast("str", case["arm"])
         counts[arm] += 1
         assert (case["dataset"] is None) == (arm == "formula")
-    assert counts == {"dataset": 38, "formula": 20}
+    assert counts == {"dataset": 38, "formula": 24}
 
 
 @pytest.mark.parametrize("name", _NAMES)
@@ -70,7 +70,9 @@ def test_point_arithmetic_does_not_falsely_block_nested_sine() -> None:
     assert observe.observation_matches(verdict, observed)
 
 
-def test_libm_result_cannot_feed_power_then_exponential_without_range_proof() -> None:
+def test_q18_libm_result_feeds_power_then_exponential_by_interval_rule() -> None:
+    """Q18 (supersedes the R4 reading): `np.exp(-x**2)` encloses `x**2` (an integer power over a
+    point), negates it, and takes `exp` monotonically, so the recomputed series releases."""
     source = (
         "import numpy as np\nimport matplotlib.pyplot as plt\n"
         "x = np.linspace(0.1, 2.1, num=41)\n"
@@ -82,7 +84,7 @@ def test_libm_result_cannot_feed_power_then_exponential_without_range_proof() ->
     assert all(isinstance(x, float) for x in verdict.table.x)
     numeric_x = cast("tuple[float, ...]", verdict.table.x)
     observed = replace(recorded, lines=(tuple(zip(numeric_x, verdict.table.y, strict=True)),))
-    assert not observe.observation_matches(verdict, observed)
+    assert observe.observation_matches(verdict, observed)
 
 
 def test_recorded_decimal_bar_uses_forward_edge_not_inverse_center() -> None:
