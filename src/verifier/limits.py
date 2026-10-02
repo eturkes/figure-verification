@@ -21,9 +21,14 @@ import msgspec
 
 from verifier.errors import VerificationError
 
-__all__ = ["DEFAULT_LIMITS", "VerificationLimits", "read_bounded"]
+__all__ = ["DEFAULT_LIMITS", "MAX_ATTEMPT_PAYLOAD_BYTES", "VerificationLimits", "read_bounded"]
 
 _MIB = 1024 * 1024
+# The signed OCCURRENCE (attempt) payload ceiling: fixed, not operator-configured (polish p22). An
+# attempt manifest carries digests and a handful of scalars, so its size is bounded by construction,
+# and keeping it apart from `max_attestation_bytes` keeps a low CERTIFICATE ceiling a verification
+# outcome -- a 200 failed verdict with its attempt committed -- not a 500 that records nothing.
+MAX_ATTEMPT_PAYLOAD_BYTES = _MIB
 _READ_CHUNK_BYTES = 64 * 1024
 
 

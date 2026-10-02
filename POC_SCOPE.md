@@ -170,11 +170,12 @@ The transport reports two kinds of outcome and never confuses them:
   (500) — answers an RFC 9457
   `application/problem+json` document. Resource ceilings are verification outcomes, so they
   return a failed verdict before artifact storage once a spec entered verification; proposer
-  context/token ceilings instead return 422 because no model content exists to verify. ONE ceiling
-  escapes that rule in both modes: `VERIFIER_MAX_ATTESTATION_BYTES` bounds the signed OCCURRENCE as
-  well as the certificate, so a value too small to sign even the rejection record replaces that
-  verification outcome with a generic 500 carrying no attempt. Sizing it above the largest signable
-  occurrence is operator configuration; the service enforces no minimum. A 500
+  context/token ceilings instead return 422 because no model content exists to verify. That holds
+  for every configurable VERIFICATION ceiling (archive capacity stays the 507 above):
+  `VERIFIER_MAX_ATTESTATION_BYTES` bounds the CERTIFICATE alone, and
+  the signed occurrence carries its own fixed ceiling (`verifier.limits.MAX_ATTEMPT_PAYLOAD_BYTES`,
+  1 MiB; a manifest of digests and scalars), so even a certificate cap too small to sign anything
+  answers a 200 failed verdict with its attempt committed. A 500
   remains outside the verification contract; its cause stays in the server log, never in the
   caller's response.
 

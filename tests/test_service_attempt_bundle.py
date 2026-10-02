@@ -591,7 +591,9 @@ def test_wrong_signer_verdict_trace_and_version_relationships_fail_closed(tmp_pa
         )
 
 
-def test_attempt_api_runtime_types_and_attestation_limits(tmp_path: Path) -> None:
+def test_attempt_api_runtime_types_and_attestation_limits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     settings = Settings(data_dir=_DATA, state_dir=tmp_path / "state")
     signer = load_identity(settings).signer
     draft = _rejected_draft(settings, route=AttemptRoute.VERIFY_AND_RENDER)
@@ -641,12 +643,14 @@ def test_attempt_api_runtime_types_and_attestation_limits(tmp_path: Path) -> Non
             limits=cast("VerificationLimits", object()),
         )
 
-    payload_limit = msgspec.structs.replace(
-        DEFAULT_LIMITS, max_attestation_bytes=len(bundle.attempt_payload) - 1
+    # The attempt ceiling is fixed apart from the certificate's (p22): patch it, not the limits.
+    monkeypatch.setattr(
+        archive_module, "MAX_ATTEMPT_PAYLOAD_BYTES", len(bundle.attempt_payload) - 1
     )
     with pytest.raises(ArchiveReadLimitError, match="attempt payload"):
-        archive.publish_attempt(bundle, limits=payload_limit)
-    envelope_limit = msgspec.structs.replace(DEFAULT_LIMITS, max_attestation_bytes=1)
+        archive.publish_attempt(bundle, limits=DEFAULT_LIMITS)
+    monkeypatch.setattr(archive_module, "MAX_ATTEMPT_PAYLOAD_BYTES", 1)
+    envelope_limit = DEFAULT_LIMITS
     oversized_envelope = b"x" * (
         attestation.envelope_byte_limit(1, payload_type=ATTEMPT_PAYLOAD_TYPE) + 1
     )

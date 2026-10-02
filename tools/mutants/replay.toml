@@ -39,9 +39,9 @@ mutant = '''    except canon.TableDecodeError as exc:'''
 # a formula-side pin credits the dataset engine too.
 [[mutant]]
 id = "attempt-payload-cap"
-predicate = "the attempt payload is bounded by the attestation byte limit before trust"
+predicate = "the attempt payload is bounded by the fixed attempt ceiling before trust (p22)"
 kills = "tests/test_replay_formula.py::test_v02_attempt_address_predicates_precede_trust_and_signature"
-anchor = '''        len(snapshot.attempt_payload) <= limits.max_attestation_bytes,
+anchor = '''        len(snapshot.attempt_payload) <= MAX_ATTEMPT_PAYLOAD_BYTES,
         "attempt_address",'''
 mutant = '''        True,
         "attempt_address",'''
@@ -81,10 +81,10 @@ id = "attempt-envelope-canonicality-dropped"
 predicate = "the attempt DSSE envelope must be canonical (p20)"
 kills = "tests/test_replay.py::test_authenticated_noncanonical_attempt_envelope_fails_closed"
 anchor = '''            payload_type=ATTEMPT_PAYLOAD_TYPE,
-            max_payload_bytes=limits.max_attestation_bytes,
+            max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
             require_canonical_envelope=True,'''
 mutant = '''            payload_type=ATTEMPT_PAYLOAD_TYPE,
-            max_payload_bytes=limits.max_attestation_bytes,
+            max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
             require_canonical_envelope=False,'''
 
 [[mutant]]

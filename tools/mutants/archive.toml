@@ -2,7 +2,7 @@
 # Mutation catalogue for archive's mapping of table decode failures (Q5).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/service/archive.py"
-tests = ["tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py", "tests/test_service_formula_plot_bundle.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_storage.py"]
+tests = ["tests/test_service_formula_route.py", "tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py", "tests/test_service_formula_plot_bundle.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_storage.py"]
 
 [[mutant]]
 id = "archive-noncanonical-escapes"
@@ -354,3 +354,16 @@ predicate = "formula proposer refuses dataset-only outcomes"
 kills = "tests/test_formula_proposer_red.py::test_s6_dataset_only_outcomes_are_unreachable_on_propose_formula"
 anchor = '''    if manifest.outcome in _DATASET_OUTCOMES:'''
 mutant = '''    if False:'''
+
+[[mutant]]
+id = "p22-attempt-signed-under-the-certificate-ceiling"
+predicate = "the occurrence is signed under its own fixed ceiling, so a low certificate ceiling still records the attempt"
+kills = "tests/test_service_formula_route.py::test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_still_records"
+anchor = '''        payload_type=ATTEMPT_PAYLOAD_TYPE,
+        max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
+    )
+    bundle = AttemptBundle('''
+mutant = '''        payload_type=ATTEMPT_PAYLOAD_TYPE,
+        max_payload_bytes=limits.max_attestation_bytes,
+    )
+    bundle = AttemptBundle('''

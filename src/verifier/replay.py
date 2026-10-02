@@ -57,7 +57,7 @@ from verifier import (
     schema,
     vcert,
 )
-from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.limits import DEFAULT_LIMITS, MAX_ATTEMPT_PAYLOAD_BYTES, VerificationLimits
 
 ATTEMPT_PAYLOAD_TYPE = "application/vnd.figure-verification.attempt.v0.1+json"
 
@@ -926,15 +926,14 @@ def _certified_checks(verdict: _ArchivedVerdict) -> tuple[vcert.CertifiedCheck, 
 def _authenticate_attempt(
     snapshot: ReplaySnapshot | ReplayFormulaSnapshot,
     trusted_keys: Mapping[str, Ed25519PublicKey],
-    limits: VerificationLimits,
 ) -> tuple[_AttemptManifest, Ed25519PublicKey]:
     _require(
-        len(snapshot.attempt_payload) <= limits.max_attestation_bytes,
+        len(snapshot.attempt_payload) <= MAX_ATTEMPT_PAYLOAD_BYTES,
         "attempt_address",
-        "attempt payload exceeds the attestation byte limit",
+        "attempt payload exceeds the attempt byte limit",
     )
     envelope_limit = attestation.envelope_byte_limit(
-        limits.max_attestation_bytes,
+        MAX_ATTEMPT_PAYLOAD_BYTES,
         payload_type=ATTEMPT_PAYLOAD_TYPE,
     )
     _require(
@@ -959,7 +958,7 @@ def _authenticate_attempt(
             snapshot.attempt_envelope,
             {snapshot.keyid: trusted_key},
             payload_type=ATTEMPT_PAYLOAD_TYPE,
-            max_payload_bytes=limits.max_attestation_bytes,
+            max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
             require_canonical_envelope=True,
         )
     except (TypeError, ValueError, attestation.AttestationError, errors.VerificationError) as exc:
@@ -1183,7 +1182,7 @@ def _authenticate_snapshot(
     trusted_keys: Mapping[str, Ed25519PublicKey],
     limits: VerificationLimits,
 ) -> _AuthenticatedSnapshot:
-    manifest, _attempt_key = _authenticate_attempt(snapshot, trusted_keys, limits)
+    manifest, _attempt_key = _authenticate_attempt(snapshot, trusted_keys)
     trusted_keyid = snapshot.keyid
     verdict = _validate_attempt_graph(snapshot, manifest, trusted_keyid=trusted_keyid)
     spec, certificate, versions, archived_svg = _authenticate_plot(
@@ -1661,7 +1660,7 @@ def _authenticate_formula_snapshot(
     trusted_keys: Mapping[str, Ed25519PublicKey],
     limits: VerificationLimits,
 ) -> _AuthenticatedFormulaSnapshot:
-    manifest, _attempt_key = _authenticate_attempt(snapshot, trusted_keys, limits)
+    manifest, _attempt_key = _authenticate_attempt(snapshot, trusted_keys)
     trusted_keyid = snapshot.keyid
     verdict = _validate_formula_attempt_graph(snapshot, manifest, trusted_keyid=trusted_keyid)
     spec, certificate = _authenticate_formula_plot(

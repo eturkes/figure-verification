@@ -51,10 +51,9 @@ the inline script plus its four VCert v0.3 hashes, and a failing one answers a p
 Error split: a verification outcome (verified, semantic/resource-failed, or decode-failed)
 is a 200 Verdict (or, when verified, a 200 RenderVerdict or FormulaScriptVerdict — a failing
 render or emission answers a plain Verdict, so no artifact ever rides an unverified outcome).
-That 200 rule has ONE operator-configuration exception, identical in both modes and documented in
-POC_SCOPE.md: max_attestation_bytes bounds the signed OCCURRENCE as well as the certificate, so a
-value too small to sign even the rejection record turns that outcome into a generic 500 with no
-attempt. Otherwise, transport misuse (wrong
+That 200 rule holds for every configurable verification ceiling (archive capacity answers 507):
+max_attestation_bytes bounds the certificate alone, and the signed occurrence carries its own fixed
+ceiling (POC_SCOPE.md). Otherwise, transport misuse (wrong
 content-type -> 415, oversize -> 413, wrong method -> 405, unknown/malformed artifact id ->
 404, a malformed /propose-spec body -> 400), proposer input/token policy refusal (422),
 process-local admission refusal (429), or a trusted config / implementation fault (a broken

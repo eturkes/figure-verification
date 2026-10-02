@@ -25,7 +25,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from verifier import attestation
 from verifier.errors import VerificationError
-from verifier.limits import VerificationLimits
+from verifier.limits import MAX_ATTEMPT_PAYLOAD_BYTES, VerificationLimits
 from verifier.service.archive import (
     ATTEMPT_PAYLOAD_TYPE,
     ArchiveError,
@@ -227,7 +227,7 @@ def _authenticate_configured_key(
         bundle.attempt_envelope,
         trusted_key,
         payload_type=ATTEMPT_PAYLOAD_TYPE,
-        max_payload_bytes=limits.max_attestation_bytes,
+        max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
     )
     plot = bundle.plot
     if plot is not None:

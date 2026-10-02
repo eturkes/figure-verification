@@ -88,7 +88,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from verifier import __version__, attestation, canon, checks, matplotlib_script, render, vcert
 from verifier.errors import VerificationError
-from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.limits import DEFAULT_LIMITS, MAX_ATTEMPT_PAYLOAD_BYTES, VerificationLimits
 from verifier.schema import (
     FormulaPlotSpec,
     PlotSpec,
@@ -1791,18 +1791,16 @@ class _AttemptAuthentication:
     public_key: bytes
 
 
-def _authenticate_attempt_payload(
-    parts: _AttemptAuthentication, limits: VerificationLimits
-) -> AttemptManifest:
+def _authenticate_attempt_payload(parts: _AttemptAuthentication) -> AttemptManifest:
     attempt_id = parts.attempt_id
     keyid = parts.keyid
     payload = parts.payload
     envelope = parts.envelope
-    if len(payload) > limits.max_attestation_bytes:
-        msg = f"attempt payload has {len(payload)} bytes; limit is {limits.max_attestation_bytes}"
+    if len(payload) > MAX_ATTEMPT_PAYLOAD_BYTES:
+        msg = f"attempt payload has {len(payload)} bytes; limit is {MAX_ATTEMPT_PAYLOAD_BYTES}"
         raise ArchiveReadLimitError(msg)
     envelope_limit = attestation.envelope_byte_limit(
-        limits.max_attestation_bytes, payload_type=ATTEMPT_PAYLOAD_TYPE
+        MAX_ATTEMPT_PAYLOAD_BYTES, payload_type=ATTEMPT_PAYLOAD_TYPE
     )
     if len(envelope) > envelope_limit:
         msg = f"attempt envelope has {len(envelope)} bytes; limit is {envelope_limit}"
@@ -1820,7 +1818,7 @@ def _authenticate_attempt_payload(
             envelope,
             {keyid: public_key},
             payload_type=ATTEMPT_PAYLOAD_TYPE,
-            max_payload_bytes=limits.max_attestation_bytes,
+            max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
             require_canonical_envelope=True,
             expected_keyid_hint=keyid,
         )
@@ -1841,9 +1839,7 @@ def _authenticate_attempt_payload(
     return manifest
 
 
-def _authenticated_attempt_manifest(
-    bundle: AttemptBundle, limits: VerificationLimits
-) -> AttemptManifest:
+def _authenticated_attempt_manifest(bundle: AttemptBundle) -> AttemptManifest:
     manifest = _authenticate_attempt_payload(
         _AttemptAuthentication(
             bundle.attempt_id,
@@ -1851,8 +1847,7 @@ def _authenticated_attempt_manifest(
             bundle.attempt_payload,
             bundle.attempt_envelope,
             bundle.public_key,
-        ),
-        limits,
+        )
     )
     if manifest != bundle.manifest:
         msg = "attempt bundle manifest differs from its authenticated payload"
@@ -1862,7 +1857,7 @@ def _authenticated_attempt_manifest(
 
 def _validate_attempt_bundle(bundle: AttemptBundle, limits: VerificationLimits) -> None:
     _require_limits(limits)
-    manifest = _authenticated_attempt_manifest(bundle, limits)
+    manifest = _authenticated_attempt_manifest(bundle)
     _validate_attempt_manifest_shape(manifest)
     if manifest.keyid != bundle.keyid:
         msg = "attempt manifest keyid disagrees with the bundle signer"
@@ -1949,7 +1944,7 @@ def materialize_attempt_bundle(
         signer.private_key,
         keyid=signer.keyid,
         payload_type=ATTEMPT_PAYLOAD_TYPE,
-        max_payload_bytes=limits.max_attestation_bytes,
+        max_payload_bytes=MAX_ATTEMPT_PAYLOAD_BYTES,
     )
     bundle = AttemptBundle(
         attempt_id=hashlib.sha256(envelope).hexdigest(),
@@ -3110,8 +3105,7 @@ def _read_complete_attempt_bundle(
             attempt_payload,
             attempt_envelope,
             public_key,
-        ),
-        limits,
+        )
     )
 
     def artifact(role: AttemptRole) -> bytes | None:

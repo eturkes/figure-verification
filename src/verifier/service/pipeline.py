@@ -15,10 +15,10 @@ with no manifest (dataset.manifest_available) — a genuine absence the read rep
 FileNotFoundError. A trusted manifest that is PRESENT but unloadable (malformed JSON; a
 non-file path raising a directory/permission/symlink-loop error at the read; or one whose
 declared dataset mispairs with the spec) is operator misconfiguration: it escapes to the
-app's 500 handler. Resource-policy breaches instead remain ordinary failed 200 Verdicts, with ONE
-operator-configuration exception common to both modes (POC_SCOPE.md): max_attestation_bytes bounds
-the signed OCCURRENCE as well as the certificate, so a value too small to sign even the rejection
-record turns that failed verdict into a generic 500 with no attempt.
+app's 500 handler. Resource-policy breaches instead remain ordinary failed 200 Verdicts, in both
+modes and for every configurable verification ceiling (archive capacity answers 507):
+max_attestation_bytes bounds the certificate alone, and
+the signed occurrence carries its own fixed ceiling (POC_SCOPE.md).
 The untrusted model controls only the dataset name, not what the trusted data_dir holds at
 that path, so a name with no manifest fails closed as a 200 Verdict.
 

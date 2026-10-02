@@ -36,7 +36,7 @@ from verifier import (
     schema,
     vcert,
 )
-from verifier.limits import DEFAULT_LIMITS, VerificationLimits
+from verifier.limits import DEFAULT_LIMITS, MAX_ATTEMPT_PAYLOAD_BYTES, VerificationLimits
 from verifier.service.archive import (
     ATTEMPT_PAYLOAD_TYPE,
     AttemptArtifacts,
@@ -418,11 +418,8 @@ def test_v02_attempt_address_predicates_precede_trust_and_signature(
 ) -> None:
     fixture = _fixture(tmp_path)
     calls = _arm_downstream_bombs(monkeypatch)
-    payload_limit = len(fixture.snapshot.attempt_payload) - 1
-    payload_limits = msgspec.structs.replace(
-        fixture.settings.limits,
-        max_attestation_bytes=payload_limit,
-    )
+    # The attempt ceiling is fixed apart from the certificate's (p22), so each case patches it.
+    payload_ceiling = len(fixture.snapshot.attempt_payload) - 1
     envelope_limit = attestation.envelope_byte_limit(
         len(fixture.snapshot.attempt_payload),
         payload_type=ATTEMPT_PAYLOAD_TYPE,
@@ -435,22 +432,21 @@ def test_v02_attempt_address_predicates_precede_trust_and_signature(
         attempt_id=hashlib.sha256(oversized_envelope).hexdigest(),
         attempt_envelope=oversized_envelope,
     )
-    envelope_limits = msgspec.structs.replace(
-        fixture.settings.limits,
-        max_attestation_bytes=len(fixture.snapshot.attempt_payload),
-    )
+    envelope_ceiling = len(fixture.snapshot.attempt_payload)
+    default_ceiling = MAX_ATTEMPT_PAYLOAD_BYTES
     cases = (
-        (fixture.snapshot, payload_limits),
-        (envelope_snapshot, envelope_limits),
-        (replace(fixture.snapshot, attempt_id="0" * 64), fixture.settings.limits),
+        (fixture.snapshot, payload_ceiling),
+        (envelope_snapshot, envelope_ceiling),
+        (replace(fixture.snapshot, attempt_id="0" * 64), default_ceiling),
         (
             replace(fixture.snapshot, keyid=_different_keyid(fixture.snapshot.keyid)),
-            fixture.settings.limits,
+            default_ceiling,
         ),
     )
 
-    for snapshot, limits in cases:
-        verdict = _formula_replay()(snapshot, {}, limits=limits)
+    for snapshot, ceiling in cases:
+        monkeypatch.setattr(replay, "MAX_ATTEMPT_PAYLOAD_BYTES", ceiling)
+        verdict = _formula_replay()(snapshot, {}, limits=fixture.settings.limits)
         assert verdict.status == "integrity_failed"
         assert verdict.failure_stage == "attempt_address"
     assert calls == dict.fromkeys(calls, 0)

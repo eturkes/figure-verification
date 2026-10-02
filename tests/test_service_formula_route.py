@@ -975,7 +975,7 @@ def _assert_problem(response: Response, status: int, detail: str) -> dict[str, A
     return payload
 
 
-def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_500(
+def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_still_records(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     raw = (_FORMULA_GOOD / "f02_linear.json").read_bytes()
@@ -1008,15 +1008,20 @@ def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_500(
         app = create_app(settings)
         with TestClient(app=app) as client:
             response = client.post("/verify-formula", content=raw, headers=_JSON)
-        problem = _assert_problem(response, 500, "the verifier encountered an internal error")
-        assert "attempt_id" not in problem
+        # p22: the attempt ceiling is fixed apart from the certificate's, so even a cap too small
+        # for any certificate answers a 200 failed verdict and commits the rejected attempt.
+        assert response.status_code == 200
+        low = cast("dict[str, Any]", response.json())
+        assert low["verified"] is False
+        assert low["results"][-1]["check"] == "resource.attestation_bytes"
         assert calls["build_formula_certificate"] == 1
         assert calls["sign_vcert_v03"] == 1
         assert calls["materialize_formula_plot_bundle"] == 0
         stats = _archive(app).stats()
-        assert stats.attempts == 0
+        assert stats.attempts == 1
         assert stats.plots == 0
         assert store_calls == {"put_chart": 0, "chart": 0}
+        assert _archive(app).read_attempt_envelope(low["attempt_id"], max_bytes=1 << 20)
 
     dataset_settings = _settings(tmp_path / "dataset-cap-100", max_attestation_bytes=100)
     dataset_app = create_app(dataset_settings)
@@ -1025,9 +1030,12 @@ def test_v34_attestation_ceiling_stages_formula_refusal_and_low_cap_500(
     ).read_bytes()
     with TestClient(app=dataset_app) as client:
         response = client.post("/verify-and-render", content=dataset_raw, headers=_JSON)
-    problem = _assert_problem(response, 500, "the verifier encountered an internal error")
-    assert "attempt_id" not in problem
-    assert _archive(dataset_app).stats().attempts == 0
+    assert response.status_code == 200
+    dataset_low = cast("dict[str, Any]", response.json())
+    assert dataset_low["verified"] is False
+    assert dataset_low["results"][-1]["check"] == "resource.attestation_bytes"
+    assert _archive(dataset_app).stats().attempts == 1
+    assert _archive(dataset_app).stats().plots == 0
 
 
 @pytest.mark.parametrize(
