@@ -35,7 +35,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Proposer: fp16 `Qwen2.5-Coder-0.5B-Instruct` on the MX150 = the sole GO; every proposer number = one `(device, config)` observation (`.claude/rules/host-runtime.md`). "The grammar enforces the guidance schema" is FALSE on every surface; strict re-decode = the sole admission authority.
 - Stack: `uv` + py 3.13 cap · msgspec · Decimal-exact evaluator · DuckDB dev oracle · Litestar · ruff + `mypy --strict` + pytest + Hypothesis · torch/transformers/xgrammar. Per unit: tier + contract before code (`.agent/contracts/<unit>.md`, archived at close); ledger `.agent/review.md`.
 - Carried forward from M13.4, because M10 inherits it: DEMO-SIDE TOTALITY is the large surface, and the archived roadmap's "5 totality sites" undercounts it — 5 role-total consumers in `archive.py`, plus 11 typed `PlotSourceKind` declarations across 8 dispatch families, 2 exact-union consumers, `replay.py`'s three mirrors, `service/replay.py` `_MODE_REPLAYS`, and `service/audit.py`'s bundle dispatch. SQLite is its own closed vocabulary — `source_kind IN (…)`, `role IN (…)`, trigger arms — so a third source needs a schema-version bump and migration, not just enum edits. The bare name `FormulaPlot` matches 44 tracked files but 39 are the LEGACY JSON-spec type — never sweep by substring.
-- Carried forward from M13.5: `max_work` is a MEASURED 390,000 (398,458 work/s binding, width 31), so a widening that raises per-row cost shows up as `work_budget_exceeded` on real corpus files rather than as a slow demo. The SEVEN `assert_never(spec)` sites (3 `verify.py`, 4 `certificate.py`) stay put — the mark-LIST widening that would have moved them is CANCELLED, below.
+- Carried forward from M13.5: `max_work` is a MEASURED 390,000 (398,458 work/s binding, width 31), so a widening that raises per-row cost shows up as `work_budget_exceeded` on real corpus files rather than as a slow demo. The SEVEN `assert_never(spec)` sites (3 `verify.py`, 4 `certificate.py`) stay put — the mark-LIST widening that would have moved them is CANCELLED (`.claude/rules/pysrc.md`, "The SECOND mark is CANCELLED").
 - **Failure-reason rulings (user, M15).** (1) A FAIL reply = one OWUI status line + one server log record; `PASS_TEXT`/`FAIL_TEXT`, `content`/`output` + the tool's model-facing strings stay byte-identical. (2) Status = one plain sentence (+ one fix sentence where a fix is known) + ` (<reason>)`; log = the code alone. (3) JA iff the request text holds a kana letter, else EN. (4) A sandbox failure shows its cause alone, never `stderr` bytes; the loader signature carries the ad-blocker fix. Law = `.claude/rules/owui.md` failure-reasons bullet; contract `.agent/archive/contracts/m15u1.md`.
 - **Check-breakdown rulings (user, M16).** (1) Surface = ONE OWUI message embed per reply: a collapsed `Show checks` disclosure between the status line and the verdict. (2) Row = check title + what it covers; the failing row adds its `REASONS` cause. (3) FAIL AND PASS replies carry it; PASS still emits no status line and no log record. (4) A FAIL lists every check, rows after the failing one `not checked`. Contract `.agent/archive/contracts/m16u1.md`.
 - OWUI integration + calibrated demo = the M10 units, all closed (records `.agent/archive/implement.md`, contracts `.agent/archive/contracts/`); mechanism + calibration risk = `.claude/rules/owui.md`.
@@ -56,7 +56,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q18 nested-libm observation rule
 - [ ] Q19 structural FAIL-arm variant — owed: MX150 runs
 - [ ] Q21 S6 malformed Tasks rows — owed: approval
-- [ ] Q22 `max_work` cancellation pointer
 - [ ] Q23 `m13-design` counts pointer
 - [ ] Q24 gate-probe header count
 - [ ] Q25 stale teammate worktrees
@@ -68,7 +67,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q31 launcher tests vs inherited SIGINT=ignore (new)
 - [ ] Q32 `DisclosedFilter` escaping claim in the published description (new)
 
-Queue = `.agent/deferred.md`, 24 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 23 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
