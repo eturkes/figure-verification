@@ -1,0 +1,91 @@
+{
+  "sum": {
+    "host": {
+      "fsum": {
+        "differences": 1483,
+        "groups": 4000,
+        "max_ulp": 5252
+      },
+      "kahan": {
+        "differences": 0,
+        "groups": 16062
+      },
+      "naive": {
+        "differences": 2761,
+        "groups": 4000,
+        "max_ulp": 8192
+      }
+    },
+    "host-optional": {
+      "fsum": {
+        "differences": 1483,
+        "groups": 4000,
+        "max_ulp": 5252
+      },
+      "kahan": {
+        "differences": 0,
+        "groups": 16062
+      },
+      "naive": {
+        "differences": 2761,
+        "groups": 4000,
+        "max_ulp": 8192
+      }
+    },
+    "pyodide": {
+      "fsum": {
+        "differences": 1483,
+        "groups": 4000,
+        "max_ulp": 5252
+      },
+      "kahan": {
+        "differences": 0,
+        "groups": 16062
+      },
+      "naive": {
+        "differences": 2761,
+        "groups": 4000,
+        "max_ulp": 8192
+      }
+    },
+    "pyodide0281": {
+      "fsum": {
+        "differences": 1483,
+        "groups": 4000,
+        "max_ulp": 5252
+      },
+      "kahan": {
+        "differences": 0,
+        "groups": 16062
+      },
+      "naive": {
+        "differences": 2761,
+        "groups": 4000,
+        "max_ulp": 8192
+      }
+    }
+  },
+  "witness": {
+    "host": {
+      "fsum": "0x1.0c6f7a0b5ed8dp-19",
+      "kahan": "0x1.1000000000000p-19",
+      "naive": "0x1.0000000000000p-19",
+      "neumaier": "0x1.0c6f7a0b5ed8dp-19",
+      "pandas": "0x1.1000000000000p-19"
+    },
+    "pyodide": {
+      "fsum": "0x1.0c6f7a0b5ed8dp-19",
+      "kahan": "0x1.1000000000000p-19",
+      "naive": "0x1.0000000000000p-19",
+      "neumaier": "0x1.0c6f7a0b5ed8dp-19",
+      "pandas": "0x1.1000000000000p-19"
+    },
+    "pyodide0281": {
+      "fsum": "0x1.0c6f7a0b5ed8dp-19",
+      "kahan": "0x1.1000000000000p-19",
+      "naive": "0x1.0000000000000p-19",
+      "neumaier": "0x1.0c6f7a0b5ed8dp-19",
+      "pandas": "0x1.1000000000000p-19"
+    }
+  }
+}

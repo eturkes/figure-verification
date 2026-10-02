@@ -64,8 +64,9 @@ CLAUDE.local.md
 .claude/.headroom_wrap_settings.lock
 
 # Measurement harness outputs: generated corpora + result JSONs land beside the scripts (S1 + W1
-# print to stdout) and run to hundreds of MB. Only the SOURCES are tracked -- rerunning = the evidence.
+# print to stdout) and run to hundreds of MB. Sources + published expectations tracked; rerun = evidence.
 .agent/measurements/*-data/
+.agent/measurements/results/
 .agent/measurements/t7-*.csv
 .agent/measurements/t7-*.f64le
 .agent/measurements/*.json

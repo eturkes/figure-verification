@@ -1,0 +1,33 @@
+{
+  "absent": {
+    "bottleneck": false,
+    "numexpr": false
+  },
+  "presence_changed_sections": 0,
+  "present": {
+    "bottleneck": true,
+    "numexpr": true
+  },
+  "runtime_flags": {
+    "host": {
+      "all_four": true,
+      "changed_results": 0,
+      "combinations": 4
+    },
+    "host-optional": {
+      "all_four": true,
+      "changed_results": 0,
+      "combinations": 4
+    },
+    "pyodide": {
+      "all_four": true,
+      "changed_results": 0,
+      "combinations": 4
+    },
+    "pyodide0281": {
+      "all_four": true,
+      "changed_results": 0,
+      "combinations": 4
+    }
+  }
+}

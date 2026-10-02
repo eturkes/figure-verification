@@ -1,0 +1,13 @@
+{
+  "one_bit_control": 1,
+  "runtimes": {
+    "pyodide": {
+      "differences": 0,
+      "rows": 96372
+    },
+    "pyodide0281": {
+      "differences": 0,
+      "rows": 96372
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "host": {
+    "dtype": "object",
+    "keys": [
+      "10",
+      "2",
+      "a"
+    ]
+  },
+  "host-optional": {
+    "dtype": "object",
+    "keys": [
+      "10",
+      "2",
+      "a"
+    ]
+  },
+  "pyodide": {
+    "dtype": "object",
+    "keys": [
+      "10",
+      "2",
+      "a"
+    ]
+  },
+  "pyodide0281": {
+    "dtype": "object",
+    "keys": [
+      "10",
+      "2",
+      "a"
+    ]
+  }
+}

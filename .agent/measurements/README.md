@@ -1,9 +1,10 @@
 # Measurement harnesses
 
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
-`.agent/archive/contracts/m13u5.md`. The gate does not run them, and `mypy` excludes them: each
-Pyodide leg needs Node and package downloads. Generated corpora and JSON results are gitignored.
-`S1` and `W1` print to stdout instead of writing a result JSON.
+`.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
+Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
+`S1` + `W1` print to stdout. The reduction IDs below compare against hand-stated published results;
+other IDs still report measurements without that comparison.
 
 ## Rerun
 
@@ -86,6 +87,76 @@ and pandas versions for the selected build.
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 | M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 | M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
+
+## Reduction claims — M13.6
+
+Rerun all reduction IDs from the repository root after the pinned environment + Node install:
+
+```
+nice -n 19 ionice -c3 bash .agent/measurements/r_run.sh
+```
+
+`r_run.sh` runs 11 stages: corpus · host · host-optional · Pyodide 0.28.0 · Pyodide 0.28.1 ·
+comparison · locales · both sandbox renderer supplements · result projection · checks.
+Logs + raw results → `r-data/`; normalized per-id results → `results/<id>.json`.
+`check.py <id>…` reads those results; it does not rerun the experiment. It compares exact types,
+keys, list order/length + values against `expected/<id>.json`; a missing file or mismatch returns
+nonzero with the id + cause. Expected files state the cited claims, never a fresh run's output.
+IDs outside this table have no expected file yet.
+
+Host pins = root NumPy 2.2.5 + pandas 2.3.1; optional leg adds bottleneck 1.6.0 + numexpr 2.14.2.
+Sandbox pandas = 2.3.0 on Pyodide 0.28.0; 2.3.1 on Pyodide 0.28.1; both carry NumPy 2.2.5.
+Each host leg uses `uv run --locked --with pandas==2.3.1`; the optional leg adds the two pinned
+`--with` arguments. Node legs reuse the existing frozen lock, loading the selected build's wheels.
+Locales `C`, `C.utf8`, `en_US.utf8` must exist. Only the sandbox supplement loads matplotlib.
+`make_r_inputs.py` retains the fixed seed, exact-float cases + interleaved CSVs.
+`r_probe.py` runs unchanged inputs in every environment; `r_compare.py` compares encoded
+bits/dtypes/order and detects a one-bit planted control. `r_supplement.py` supplies the locale,
+parser + renderer controls. `r_results.py` projects measured data; it reads no expected files.
+
+Every row's rerun command is `bash .agent/measurements/r_run.sh`; the last column rechecks its
+result separately after that command.
+
+| id | published claim | source predicate | compare command from repository root |
+|---|---|---|---|
+| R1 | Kahan 0/16,062 groups; naive 2,761/4,000, worst 8,192 ulp; fsum 1,483/4,000, worst 5,252 ulp; four-cell witness separates Kahan, naive + fsum/Neumaier | `m13u6.md` R1; `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R1` |
+| R2 | float mean = Kahan sum / non-NaN count, zero disagreements | `m13u6.md` R2; `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R2` |
+| R3 | int64 mean casts each cell first: `0x1.5555555555555p+51` vs exact-divide `0x1.5555555555556p+51`, 1 ulp; int sum exact; in-profile sum `0x1.0000000000000p+31` | `m13u6.md` R3 + R3 closing clarification | `uv run --locked python .agent/measurements/check.py R3` |
+| R4 | min/max keep the first tied zero's sign: [-0,+0] → -0; reversed → +0 | `m13u6.md` R4; `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R4` |
+| R5 | int64 `[2**63-1,1]` sum wraps to `-2**63` | `m13u6.md` R5 | `uv run --locked python .agent/measurements/check.py R5` |
+| R7 | string keys follow code-point order in all three locales; en_US collation differs; numeric keys sort numerically | `m13u6.md` R7; `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R7` |
+| R8 | CSV keys ['2','a','10','2'] type as strings and group to ['10','2','a'] | `m13u6.md` R8 | `uv run --locked python .agent/measurements/check.py R8` |
+| R-ACCEL | optional modules present vs absent: 0 changed sections; all four flag pairs: 0 changed results in every runtime | `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R-ACCEL` |
+| R-PORT | host vs each Pyodide build: 0 differences over 96,372 reduction rows | `m13u6.md` closing review G3; `pysrc.md` aggregation bullet | `uv run --locked python .agent/measurements/check.py R-PORT` |
+| R-BAR | int64 sums [4294967294,-4294967296] raise the named OverflowError in bar/barh on both builds; both int32 endpoints draw; line/scatter preserve float64 bits | `m13u6.md` B3; `pysrc.md` renderer-bound bullet | `uv run --locked python .agent/measurements/check.py R-BAR` |
+
+Comparison control: after the rerun, plant one count in R1's expected result. Require rc=1 +
+`R1: FAIL $.sum.host.kahan.differences: observed 0 != expected 1`; restore byte-identical bytes.
+
+```
+uv run --locked python - <<'PY'
+import json, subprocess, sys
+from pathlib import Path
+root = Path('.agent/measurements')
+path = root / 'expected/R1.json'
+saved = path.read_bytes()
+try:
+    expected = json.loads(saved)
+    assert expected['sum']['host']['kahan']['differences'] == 0
+    expected['sum']['host']['kahan']['differences'] = 1
+    path.write_text(json.dumps(expected, indent=2, sort_keys=True) + '\n')
+    result = subprocess.run([sys.executable, str(root / 'check.py'), 'R1'], capture_output=True, text=True)
+    print(f'one-count probe rc={result.returncode}\n{result.stderr}', end='')
+    assert result.returncode == 1
+    assert 'R1: FAIL $.sum.host.kahan.differences: observed 0 != expected 1' in result.stderr
+finally:
+    path.write_bytes(saved)
+assert path.read_bytes() == saved
+PY
+```
+
+Add a new self-checking id by committing `expected/<id>.json` from its published predicate and
+emitting an independent `results/<id>.json` from its measurement. The same driver then compares it.
 
 ## What each one backs
 

@@ -1,0 +1,42 @@
+{
+  "host": {
+    "cast_kahan_mean": "0x1.5555555555555p+51",
+    "exact_integer_mean": "0x1.5555555555556p+51",
+    "in_profile_sum": "0x1.0000000000000p+31",
+    "mean": "0x1.5555555555555p+51",
+    "mean_dtype": "float64",
+    "split_ulp": 1,
+    "sum_dtype": "int64",
+    "sum_exact": true
+  },
+  "host-optional": {
+    "cast_kahan_mean": "0x1.5555555555555p+51",
+    "exact_integer_mean": "0x1.5555555555556p+51",
+    "in_profile_sum": "0x1.0000000000000p+31",
+    "mean": "0x1.5555555555555p+51",
+    "mean_dtype": "float64",
+    "split_ulp": 1,
+    "sum_dtype": "int64",
+    "sum_exact": true
+  },
+  "pyodide": {
+    "cast_kahan_mean": "0x1.5555555555555p+51",
+    "exact_integer_mean": "0x1.5555555555556p+51",
+    "in_profile_sum": "0x1.0000000000000p+31",
+    "mean": "0x1.5555555555555p+51",
+    "mean_dtype": "float64",
+    "split_ulp": 1,
+    "sum_dtype": "int64",
+    "sum_exact": true
+  },
+  "pyodide0281": {
+    "cast_kahan_mean": "0x1.5555555555555p+51",
+    "exact_integer_mean": "0x1.5555555555556p+51",
+    "in_profile_sum": "0x1.0000000000000p+31",
+    "mean": "0x1.5555555555555p+51",
+    "mean_dtype": "float64",
+    "split_ulp": 1,
+    "sum_dtype": "int64",
+    "sum_exact": true
+  }
+}

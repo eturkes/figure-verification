@@ -1,0 +1,64 @@
+{
+  "pyodide": {
+    "bit_mismatches": {
+      "plot": 0,
+      "scatter": 0
+    },
+    "dtype": "int64",
+    "int32_controls": {
+      "bar": true,
+      "barh": true
+    },
+    "marks": {
+      "bar": {
+        "error": "OverflowError: Python int too large to convert to C long",
+        "ok": false
+      },
+      "barh": {
+        "error": "OverflowError: Python int too large to convert to C long",
+        "ok": false
+      },
+      "plot": {
+        "ok": true
+      },
+      "scatter": {
+        "ok": true
+      }
+    },
+    "sums": [
+      "4294967294",
+      "-4294967296"
+    ]
+  },
+  "pyodide0281": {
+    "bit_mismatches": {
+      "plot": 0,
+      "scatter": 0
+    },
+    "dtype": "int64",
+    "int32_controls": {
+      "bar": true,
+      "barh": true
+    },
+    "marks": {
+      "bar": {
+        "error": "OverflowError: Python int too large to convert to C long",
+        "ok": false
+      },
+      "barh": {
+        "error": "OverflowError: Python int too large to convert to C long",
+        "ok": false
+      },
+      "plot": {
+        "ok": true
+      },
+      "scatter": {
+        "ok": true
+      }
+    },
+    "sums": [
+      "4294967294",
+      "-4294967296"
+    ]
+  }
+}

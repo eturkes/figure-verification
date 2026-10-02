@@ -1,0 +1,26 @@
+{
+  "en_US_collation_differs": true,
+  "locale_orders": {
+    "C": true,
+    "C.utf8": true,
+    "en_US.utf8": true
+  },
+  "runtime_orders": {
+    "host": {
+      "numeric_keys_in_numeric_order": true,
+      "string_keys_in_codepoint_order": true
+    },
+    "host-optional": {
+      "numeric_keys_in_numeric_order": true,
+      "string_keys_in_codepoint_order": true
+    },
+    "pyodide": {
+      "numeric_keys_in_numeric_order": true,
+      "string_keys_in_codepoint_order": true
+    },
+    "pyodide0281": {
+      "numeric_keys_in_numeric_order": true,
+      "string_keys_in_codepoint_order": true
+    }
+  }
+}

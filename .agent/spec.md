@@ -50,7 +50,6 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q9 exact folder in `_rational` — owed: ruling
 - [ ] Q11 measurement rerun driver
 - [ ] Q12 C10 float-branch range
-- [ ] Q13 spike-groupby measurement port
 - [ ] Q16 G10 label/legend — waits Q8
 - [ ] Q17 negative `np.arange` binding — owed: ruling
 - [ ] Q18 nested-libm observation rule
@@ -60,7 +59,7 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q26 W2/W5 refusal-code split — owed: approval
 - [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) — owed: approval (new)
 
-Queue = `.agent/deferred.md`, 16 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 15 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
