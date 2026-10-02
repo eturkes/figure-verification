@@ -45,7 +45,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
 - [ ] Q1 guided-JSON bench re-baseline (MX150)
 - [ ] Q3 `derive` transform
-- [ ] Q7 polish p2 p4 p16 p22 p24 p32 p34 p44 p47 (p16 p32 p34 on the MX150)
+- [ ] Q7 polish p2 p16 p22 p24 p32 p34 p47 (p16 p32 p34 on the MX150)
 - [ ] Q8 lexical term anchoring
 - [ ] Q9 exact folder in `_rational`
 - [ ] Q12 C10 float-branch range
