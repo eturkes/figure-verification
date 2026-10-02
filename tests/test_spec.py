@@ -101,6 +101,8 @@ _CONTRACT_CITATION = re.compile(
 # keeps legal until phase close.
 _SPINE_UNIT = re.compile(r"\*\*(M\d+(?:\.\d+)?[a-z]?)\*\*")
 _OPEN_ROW = re.compile(r"^- \[ \] (.*)$", re.MULTILINE)
+# A top-level Tasks row is open (`- [ ] `) or ticked with its commit (`- [x] <sha> `).
+_ROW = re.compile(r"- \[ \] |- \[x\] [0-9a-f]{7,40} ")
 _UNIT_CITATION = re.compile(r"M\d+(?:\.\d+)?[a-z]?")
 _QUEUE = ".agent/deferred.md"
 
@@ -221,12 +223,18 @@ def test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units() -> No
     `- [x] <sha>` row legal until phase close -- and `Phase` records the phase plus the units
     already closed. Acceptance: a unit written into `Phase` without CLOSED fails, and so does a unit
     marked CLOSED inside `Tasks`; either one splits what is left to do across two sections, and a
-    reader navigating to one of them reads a spine that is missing a unit."""
+    reader navigating to one of them reads a spine that is missing a unit. A top-level `Tasks` row
+    of any other shape -- `- [x]` without its sha, or a bare `- ` row -- fails too: S8 reads only
+    `- [ ]` rows as trackers, so a malformed one is a unit no check can see."""
     phase, tasks = _section("Phase"), _section("Tasks")
     open_in_phase = [m.group(0) for m in _UNIT.finditer(phase) if not _closed(phase, m)]
     assert not open_in_phase, f"Phase names units that are not CLOSED: {open_in_phase}"
     closed_in_tasks = [m.group(0) for m in _UNIT.finditer(tasks) if _closed(tasks, m)]
     assert not closed_in_tasks, f"Tasks names closed units: {closed_in_tasks}"
+    malformed = [
+        line for line in tasks.splitlines() if line.startswith("- ") and not _ROW.match(line)
+    ]
+    assert not malformed, f"Tasks rows neither `- [ ]` nor `- [x] <sha>`: {malformed}"
 
 
 def test_s7_every_contract_citation_survives_the_archive_move() -> None:

@@ -11,7 +11,7 @@
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
 # whose output names the expected cause: attribution rides the message, since seven tests carry
-# more than one probe -- G6, G7, G10, S6 and S9 two each, S4 three, S8 five -- one per conjunct of
+# more than one probe -- G6, G7, G10 and S9 two each, S4 three, S6 four, S8 five -- one per conjunct of
 # a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -316,6 +316,16 @@ probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_tasks
 probe s6-closed-unit-in-tasks tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
     'Tasks names closed units' \
     sed -i 's|^## Tasks$|## Tasks\n\n- [ ] **M99.7** CLOSED (probe).|' "$SPEC"
+
+# One probe per malformed row shape: a tick without its sha and a row that is neither form; the
+# expected text is the planted row itself, which only the row-shape assertion prints whole.
+probe s6-ticked-row-without-sha tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
+    'M99.1** probe row' \
+    sed -i 's|^## Tasks$|## Tasks\n\n- [x] **M99.1** probe row|' "$SPEC"
+
+probe s6-row-neither-shape tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
+    'M99.2** probe row' \
+    sed -i 's|^## Tasks$|## Tasks\n\n- **M99.2** probe row|' "$SPEC"
 
 probe s7-stranded-contract-citation tests/test_spec.py::test_s7_every_contract_citation_survives_the_archive_move \
     'stranded contract citations' \

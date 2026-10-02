@@ -53,12 +53,11 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q17 negative `np.arange` binding
 - [ ] Q18 nested-libm observation rule
 - [ ] Q19 structural FAIL-arm variant (MX150)
-- [ ] Q21 S6 malformed Tasks rows
 - [ ] Q25 stale teammate worktrees
 - [ ] Q26 W2/W5 refusal-code split
 - [ ] Q33 load-sensitive gate tests (C8 wall-clock window, request differential `too_slow`) (new)
 
-Queue = `.agent/deferred.md`, 14 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 13 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
