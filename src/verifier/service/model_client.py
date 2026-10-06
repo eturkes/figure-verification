@@ -244,7 +244,7 @@ _SYSTEM_PROMPT = "\n".join(
         "A direction is one of: ascending, descending.",
         "Rules you must follow:",
         "Use only the columns listed in the schema below, spelled exactly.",
-        "Emit that one JSON object as the entire reply, starting with { and ending with }.",
+        "Output only JSON.",
         'Write concrete values, never placeholders such as "bar or line" or "<column>".',
         "Give every filter an explicit value.",
         "Aggregate a unit-bearing column only with sum, mean, min, or max; count is unitless.",
@@ -257,7 +257,8 @@ _SYSTEM_PROMPT = "\n".join(
 # rules. Enum options keep the dataset prompt's "one of: a, b, c" spelling, never "a|b|c": the pipe
 # form is the placeholder a weak model echoes back. Naming the supported grammar positively beats
 # listing rejected functions, which merely puts sin/cos/log in front of the model; the shared
-# output rule names the one accepted form for the same reason, in both prompts.
+# output rule names the one accepted form for the same reason, in both prompts (p34: the
+# minimal edit; a longer positive rule cost the guided dataset bench 24 verified prompts).
 _FORMULA_SYSTEM_PROMPT = "\n".join(
     [
         "You are proposing a VPlot formula chart specification.",
@@ -278,7 +279,7 @@ _FORMULA_SYSTEM_PROMPT = "\n".join(
         'x is exactly {"field": "x", "type": "quantitative"}.',
         'y is exactly {"field": "y", "type": "quantitative"}.',
         "Rules you must follow:",
-        "Emit that one JSON object as the entire reply, starting with { and ending with }.",
+        "Output only JSON.",
         "Describe the curve with the formula alone; the verifier computes every point itself.",
         'Write concrete values, never placeholders such as "line or scatter" or "<expression>".',
     ]

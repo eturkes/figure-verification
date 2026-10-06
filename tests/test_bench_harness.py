@@ -94,6 +94,11 @@ _BASELINE = Path(__file__).parents[1] / "bench" / "baselines" / "m12-cuda"
 _BASELINE_FILES = ("report.json", "details.jsonl", "provenance.json")
 _BASELINE_RAW = _BASELINE.with_name("m12-cuda-raw")
 _BASELINE_FORMULA = _BASELINE.with_name("m12-cuda-formula")
+# p34 priced prompt variants, each run at the commit that shipped it.
+_P34_VARIANTS = (
+    ("m12-cuda-p34a", "dataset", "43cc447f2ababd360201261cee51ca5834ef90b4"),
+    ("m12-cuda-formula-p34a", "formula", "43cc447f2ababd360201261cee51ca5834ef90b4"),
+)
 # Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
 _CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
 
@@ -677,8 +682,16 @@ def test_m12_cuda_baseline_is_a_valid_guided_run_over_every_category() -> None:
 
 @pytest.mark.parametrize(
     ("directory", "prompts"),
-    [(_BASELINE, PROMPTS), (_BASELINE_RAW, PROMPTS), (_BASELINE_FORMULA, FORMULA_PROMPTS)],
-    ids=["guided", "raw", "formula"],
+    [
+        (_BASELINE, PROMPTS),
+        (_BASELINE_RAW, PROMPTS),
+        (_BASELINE_FORMULA, FORMULA_PROMPTS),
+        *(
+            (_BASELINE.with_name(name), FORMULA_PROMPTS if mode == "formula" else PROMPTS)
+            for name, mode, _ in _P34_VARIANTS
+        ),
+    ],
+    ids=["guided", "raw", "formula", *(name for name, _, _ in _P34_VARIANTS)],
 )
 def test_m12_cuda_baseline_report_re_derives_from_its_details(
     directory: Path, prompts: tuple[Prompt, ...]
@@ -736,7 +749,10 @@ def test_p16_raw_arm_pairs_the_guided_baseline_on_one_commit() -> None:
     assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]
 
 
-@pytest.mark.parametrize("directory", ["m12-cuda", "m12-cuda-raw", "m12-cuda-formula"])
+@pytest.mark.parametrize(
+    "directory",
+    ["m12-cuda", "m12-cuda-raw", "m12-cuda-formula", *(name for name, _, _ in _P34_VARIANTS)],
+)
 @pytest.mark.parametrize("name", _BASELINE_FILES)
 def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str, directory: str) -> None:
     """`bench/reports/` is gitignored; the baselines must stay outside every ignore rule."""
@@ -895,6 +911,29 @@ def test_p32_formula_baseline_is_a_valid_guided_run_of_both_categories() -> None
     sidecar = msgspec.json.decode((_BASELINE_FORMULA / "provenance.json").read_bytes())
     guided_sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
     assert sidecar["git_commit"] == meta.git_commit
+    assert sidecar["git_status_porcelain"] == ""
+    assert sidecar["exit_code"] == "0"
+    assert sidecar["model"] == guided_sidecar["model"]
+    assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]
+
+
+@pytest.mark.parametrize(
+    ("name", "mode", "commit"), _P34_VARIANTS, ids=[n for n, _, _ in _P34_VARIANTS]
+)
+def test_p34_priced_variant_ran_clean_at_its_commit(name: str, mode: str, commit: str) -> None:
+    """p34: each priced variant is a VALID guided run at the commit that shipped its prompt, on
+    the guided baseline's model + runtime -- a price, never a claim about the shipped prompt."""
+    directory = _BASELINE.with_name(name)
+    report = _baseline_report(directory)
+    assert _exit_code(report) == 0
+    assert report.meta.mode == mode
+    assert report.meta.git_commit == commit
+    assert report.meta.git_dirty is False
+    assert report.meta.backend is not None
+    assert report.meta.backend.structured_output is True
+    sidecar = msgspec.json.decode((directory / "provenance.json").read_bytes())
+    guided_sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
+    assert sidecar["git_commit"] == commit
     assert sidecar["git_status_porcelain"] == ""
     assert sidecar["exit_code"] == "0"
     assert sidecar["model"] == guided_sidecar["model"]

@@ -186,6 +186,23 @@ On this laptop GPU, a thermal slowdown can make one reply take about one minute.
 The long `--timeout` and `VERIFIER_MODEL_TIMEOUT=900` keep a slow reply from counting as an `upstream_fault`.
 Greedy output does not depend on speed.
 
+### Priced system-prompt variants (p34)
+
+Both proposer system prompts once closed on a list of rejected output forms.
+The p34 change replaces that list with one positive rule.
+Each variant ran at the commit that shipped it, with the guided arm's model, runtime and settings.
+
+| Variant | Commit | Output rule | Dataset verified | normal | Formula verified |
+|---|---|---|---|---|---|
+| original | `5a97b5d` | `Output only JSON: no prose, Markdown, fences, SQL, Python, JavaScript, or Vega-Lite.` | 26 of 100 | 2 of 20 | 1 of 40 |
+| A | `43cc447` | `Emit that one JSON object as the entire reply, starting with { and ending with }.` | 2 of 100 | 0 of 20 | 1 of 40 |
+
+The formula rows ran at `4a52176` (original) and `43cc447` (A).
+Variant A changed 71 of the 100 dataset replies, and 25 verified replies failed a semantic check instead.
+The failures of `encoding.axis_types_match_fields` rose from 6 to 42.
+The cause of this change is not known.
+`bench/baselines/m12-cuda-p34a/` and `bench/baselines/m12-cuda-formula-p34a/` hold the variant A runs.
+
 ## Historical: OpenVINO wiring on the ORIGIN host
 
 This section is historical. It records ORIGIN-host evidence.

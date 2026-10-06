@@ -860,8 +860,13 @@ def test_formula_system_prompt_teaches_exactly_the_supported_grammar() -> None:
 
 
 def test_both_system_prompts_name_the_output_form_positively() -> None:
-    """p34: the shared output rule names the accepted form, never an inventory of rejected ones."""
-    rule = "Emit that one JSON object as the entire reply, starting with { and ending with }."
+    """p34: the shared output rule names the accepted form, never an inventory of rejected ones.
+
+    Variant A (`Emit that one JSON object as the entire reply, starting with { and ending with }.`)
+    dropped the guided dataset bench from 26/100 to 2/100 verified
+    (`bench/baselines/m12-cuda-p34a/`); this minimal edit drops the inventory alone.
+    """
+    rule = "Output only JSON."
     for prompt in (model_client._SYSTEM_PROMPT, model_client._FORMULA_SYSTEM_PROMPT):
         assert rule in prompt.splitlines()
         for rejected in (
