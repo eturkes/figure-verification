@@ -94,6 +94,7 @@ _BASELINE = Path(__file__).parents[1] / "bench" / "baselines" / "m12-cuda"
 _BASELINE_FILES = ("report.json", "details.jsonl", "provenance.json")
 _BASELINE_RAW = _BASELINE.with_name("m12-cuda-raw")
 _BASELINE_FORMULA = _BASELINE.with_name("m12-cuda-formula")
+_BASELINE_FORMULA_Q36 = _BASELINE.with_name("m12-cuda-formula-q36")
 # p34 priced prompt variants, each run at the commit that shipped it.
 _P34_VARIANTS = (
     ("m12-cuda-p34a", "dataset", "43cc447f2ababd360201261cee51ca5834ef90b4"),
@@ -688,12 +689,13 @@ def test_m12_cuda_baseline_is_a_valid_guided_run_over_every_category() -> None:
         (_BASELINE, PROMPTS),
         (_BASELINE_RAW, PROMPTS),
         (_BASELINE_FORMULA, FORMULA_PROMPTS),
+        (_BASELINE_FORMULA_Q36, FORMULA_PROMPTS),
         *(
             (_BASELINE.with_name(name), FORMULA_PROMPTS if mode == "formula" else PROMPTS)
             for name, mode, _ in _P34_VARIANTS
         ),
     ],
-    ids=["guided", "raw", "formula", *(name for name, _, _ in _P34_VARIANTS)],
+    ids=["guided", "raw", "formula", "formula-q36", *(name for name, _, _ in _P34_VARIANTS)],
 )
 def test_m12_cuda_baseline_report_re_derives_from_its_details(
     directory: Path, prompts: tuple[Prompt, ...]
@@ -753,7 +755,13 @@ def test_p16_raw_arm_pairs_the_guided_baseline_on_one_commit() -> None:
 
 @pytest.mark.parametrize(
     "directory",
-    ["m12-cuda", "m12-cuda-raw", "m12-cuda-formula", *(name for name, _, _ in _P34_VARIANTS)],
+    [
+        "m12-cuda",
+        "m12-cuda-raw",
+        "m12-cuda-formula",
+        "m12-cuda-formula-q36",
+        *(name for name, _, _ in _P34_VARIANTS),
+    ],
 )
 @pytest.mark.parametrize("name", _BASELINE_FILES)
 def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str, directory: str) -> None:
@@ -951,3 +959,27 @@ def test_p34_control_reproduces_the_guided_baseline_byte_for_byte() -> None:
     ]
     report = _baseline_report(_BASELINE.with_name("m12-cuda-p34-control"))
     assert report.observations == _baseline_report().observations
+
+
+def test_q36_formula_run_meets_no_sample_refusal_at_the_fixing_commit() -> None:
+    """Q36: at the commit that states 101 samples, the formula run is valid and clean, and no
+    reply fails a policy check -- `resource.formula_samples` refused 29 of 40 at p32's commit."""
+    report = _baseline_report(_BASELINE_FORMULA_Q36)
+    assert _exit_code(report) == 0
+    assert report.meta.mode == "formula"
+    assert report.meta.git_commit == "c48b0e0c9cdf1b6cc597831e9ae8735b6e4c48a3"
+    assert report.meta.git_dirty is False
+    assert report.observations.overall.policy_failure_rate == 0
+    assert all(
+        mode.check != "resource.formula_samples" for mode in report.observations.top_failure_modes
+    )
+    assert (
+        round(_baseline_report(_BASELINE_FORMULA).observations.overall.policy_failure_rate * 40)
+        == 29
+    )
+    sidecar = msgspec.json.decode((_BASELINE_FORMULA_Q36 / "provenance.json").read_bytes())
+    guided_sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
+    assert sidecar["git_commit"] == report.meta.git_commit
+    assert sidecar["git_status_porcelain"] == ""
+    assert sidecar["model"] == guided_sidecar["model"]
+    assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]

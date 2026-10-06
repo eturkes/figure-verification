@@ -139,6 +139,18 @@ The verifier's default limit is 10000 samples, so 29 of these replies failed `re
 On this host, the gradient between the two categories is 1 of 20 against 0 of 20.
 This sample-count failure hides most of the difference between the categories.
 
+`bench/baselines/m12-cuda-formula-q36/` holds the same run at commit `c48b0e0`.
+At that commit, the prompt states a default of 101 samples instead of the 100000 maximum.
+
+| Category | n | Verified | Schema | Semantic | Policy |
+|---|---|---|---|---|---|
+| simple | 20 | 16 | 3 | 1 | 0 |
+| complex | 20 | 6 | 6 | 8 | 0 |
+
+No reply failed `resource.formula_samples`, and the guarantee held.
+Each of the 6 verified `complex` replies drew a curve that the grammar can state, not the requested figure.
+For example, the request for the standard normal density produced `abs(x - 3) * 3`.
+
 ## CURRENT-host baseline (`bench/baselines/m12-cuda/`)
 
 This directory holds one guided run of the full 100-prompt corpus on the CURRENT host.
@@ -169,17 +181,21 @@ This number is a CURRENT-host observation for one `(device, config)`.
 The ORIGIN guided run also verified 26 of 100, but the two runs differ in host, model, quantization and guidance stack.
 Thus, the two results are not a comparison.
 
-To repeat the run, start the two servers and run bench from the repository root:
+To repeat the run, start the two servers and run bench from the repository root.
+Write all three outputs to the ignored `bench/reports/` directory first.
+An untracked output file in the tree makes the report record `git_dirty: true`.
 
 ```
 .venv-model/bin/python -m model_backend
 VERIFIER_MODEL_TIMEOUT=900 VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
   .venv/bin/python -m verifier.service
 # In the eval shell, after both /health endpoints are ready:
-B=bench/baselines/m12-cuda
-.venv/bin/python -m bench.sidecar $B/provenance.json start
-.venv/bin/python -m bench --timeout 1200 --out $B/report.json --details $B/details.jsonl
-.venv/bin/python -m bench.sidecar $B/provenance.json end exit_code=0
+O=bench/reports/m12-cuda
+mkdir -p $O
+.venv/bin/python -m bench.sidecar $O/provenance.json start
+.venv/bin/python -m bench --timeout 1200 --out $O/report.json --details $O/details.jsonl
+.venv/bin/python -m bench.sidecar $O/provenance.json end exit_code=0
+cp $O/* bench/baselines/m12-cuda/
 ```
 
 On this laptop GPU, a thermal slowdown can make one reply take about one minute.

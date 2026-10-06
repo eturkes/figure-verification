@@ -46,15 +46,14 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 **Resume note** — MAINTAIN queue request, session 4; the request's closing commit deletes this block.
   - Finish line = the request's `Met when` (verbatim + every user ruling + chain mechanics = `.scratch/q/RESUME.md`): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA) + one AskUserQuestion (items = `.scratch/q/RESUME.md` § Session 3 PAUSE).
   - Second closing review: CLOSED — fixes R107 + R108 `021d1a3` · R111 `9b22c20` · R113 `8379f0c` · R115 `9f0585b` · R116 + R117 `5a97b5d`, each gated green (8 stages, skipped none); acceptance re-review reviewer-fix-3 + reviewer-fix-4 9/9 pass each; ledger rows closed (R116 = register).
-  - GPU rows (MX150 + ports 8000/8001 held by MAIN; the user relaunches the demo after): Q1 `395e925` · p16 `fc7e650` · p32 `4a52176` + `c98ce81` · p34 priced + restored `43cc447` `caed70d` `42ac1db` + control `94ec39a` → owed · Q19 recorded owed `23b49b5` · Q25 (this commit). Then Q36: prompt fix (this commit) → `--mode formula` run at it → baseline commit; closing gate on a clean tree, final message.
+  - GPU rows (MX150 + ports 8000/8001 held by MAIN; the user relaunches the demo after): Q1 `395e925` · p16 `fc7e650` · p32 `4a52176` + `c98ce81` · p34 priced + restored `43cc447` `caed70d` `42ac1db` + control `94ec39a` → owed · Q19 recorded owed `23b49b5` · Q25 (this commit). Q36 `c48b0e0` + baseline (this commit). Then the closing review of this session's diff, the closing gate on a clean tree, final message + AskUserQuestion.
   - Per-commit gate: `bash tools/gate.sh` in the primary tree on a clean tree (the gate worktrees retired with Q25), logs `.scratch/q/gates3/<unit>.log`. Teammates: none running.
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
 - [ ] Q7 polish p34 — owed (user ruling): two positive restatements priced 2 + 3 of 100 verified against the original rule's 26 (byte-identical control at `42ac1db`), original rule restored; retire the row or name a phrasing to price
 - [ ] Q19 structural FAIL-arm variant — owed (user ruling): 5 greedy ruling-6 variants screened on the 6 keyword-refused complicated rows, none passes (record in the queue row); a wider search, another lever, or retire
-- [ ] Q36 formula prompt sample count (find, p32; MX150)
 
-Queue = `.agent/deferred.md`, 3 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 2 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
