@@ -450,9 +450,10 @@ DERIVED_SOURCE = "<derive>"
 
 def unit_source(name: str, aggregates: tuple[Aggregate | Derive, ...]) -> str | None:
     """The manifest column whose unit a quantitative channel on plotted column `name` requires,
-    or None when `name` traces back to a count (dimensionless -> unit-exempt).
+    None when `name` traces back to a count (dimensionless -> unit-exempt), or `DERIVED_SOURCE`
+    when its surviving producer is a vplot-0.2 derive (unit-exempt, axis titled `Derived value`).
 
-    Position-aware reverse lineage over the spec's aggregate ops in pipeline order
+    Position-aware reverse lineage over the spec's aggregate + derive ops in pipeline order
     (VPlot_SEMANTICS.md sections 5 + 7). Walk the LATEST aggregate first: the latest one carrying
     a measure with output == name is `name`'s surviving producer, since each aggregate REBUILDS
     the schema (output-uniqueness is per-aggregate, so an output name may recur across aggregates).
