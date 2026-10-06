@@ -32,9 +32,9 @@ abs, ** with a whole-number exponent, one curve over one interval):
               (sin, exp, log, sqrt, a fractional or variable exponent), several curves or panels,
               a non-function curve, styling or an axis change. A difficulty LABEL, not a proof:
               the piecewise row has an exact admitted form, (x + x**2 + (x - 1) * abs(x)) / 2.
-              The JSON formula route binds no request, so a verified reply here is a different
-              curve or the curve without its styling -- the rate measures the gradient, never
-              faithfulness.
+              The JSON formula route binds no request, so a verified reply here can be a
+              different curve or the curve without its styling -- the rate measures the gradient,
+              never faithfulness.
 """
 
 import msgspec
