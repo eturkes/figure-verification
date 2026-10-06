@@ -41,6 +41,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from schema_downgrade import relation_guards_lifted
 from verifier import attestation, canon, checks, limits, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
@@ -515,6 +516,16 @@ def _replace_blob(
     return digest
 
 
+def _rewrite_relation(
+    connection: sqlite3.Connection, statement: str, values: tuple[str, ...]
+) -> None:
+    """A raw writer of the file lifts the one v5 guard its UPDATE crosses; readers must still
+    refuse what it writes."""
+    with relation_guards_lifted(connection, f"{statement.split()[1]}_reject_update"):
+        cursor = connection.execute(statement, values)
+    assert cursor.rowcount == 1
+
+
 def _readdress_envelope(
     connection: sqlite3.Connection, artifacts: _PublicArtifacts, corrupted: bytes
 ) -> str:
@@ -527,11 +538,11 @@ def _readdress_envelope(
         corrupted,
         new_digest,
     )
-    cursor = connection.execute(
+    _rewrite_relation(
+        connection,
         "UPDATE plots SET plot_id = ?, certificate_digest = ? WHERE plot_id = ?",
         (new_plot_id, new_digest, artifacts.plot_id),
     )
-    assert cursor.rowcount == 1
     return f"/certificate/{new_plot_id}"
 
 
@@ -585,21 +596,21 @@ def _corrupt_key(connection: sqlite3.Connection, fault: str, artifacts: _PublicA
             keys=(KeyRecord(second_keyid, second_blob.ref),),
         )
     )
-    cursor = connection.execute(
+    _rewrite_relation(
+        connection,
         "UPDATE plots SET keyid = ? WHERE plot_id = ?",
         (second_keyid, artifacts.plot_id),
     )
-    assert cursor.rowcount == 1
     return f"/certificate/{artifacts.plot_id}"
 
 
 def _corrupt_spec(connection: sqlite3.Connection, fault: str, artifacts: _PublicArtifacts) -> str:
     if fault == "spec_relation":
-        cursor = connection.execute(
+        _rewrite_relation(
+            connection,
             "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
             ("sha256:" + "f" * 64, artifacts.spec_id),
         )
-        assert cursor.rowcount == 1
         return f"/spec/{artifacts.spec_id}"
 
     replacement = (
@@ -611,11 +622,11 @@ def _corrupt_spec(connection: sqlite3.Connection, fault: str, artifacts: _Public
     old_digest = "sha256:" + hashlib.sha256(artifacts.canonical_spec).hexdigest()
     new_digest = "sha256:" + hashlib.sha256(replacement).hexdigest()
     _replace_blob(connection, old_digest, BlobKind.CANONICAL_SPEC, replacement, new_digest)
-    cursor = connection.execute(
+    _rewrite_relation(
+        connection,
         "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
         (new_digest, artifacts.spec_id),
     )
-    assert cursor.rowcount == 1
     return f"/spec/{artifacts.spec_id}"
 
 
@@ -729,7 +740,7 @@ def test_public_artifact_schema_drift_is_logged_generic_500(
         connection = sqlite3.connect(archive.database_path, autocommit=True)
         try:
             if schema_fault == "version":
-                connection.execute("PRAGMA user_version=5")
+                connection.execute("PRAGMA user_version=6")
             else:
                 connection.execute("DROP TRIGGER blobs_reject_delete")
         finally:

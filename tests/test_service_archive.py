@@ -14,7 +14,7 @@ from typing import Any, cast
 
 import pytest
 
-from schema_downgrade import downgrade_to_v3
+from schema_downgrade import downgrade_to_v3, downgrade_to_v4, relation_guards_lifted
 from verifier.service import archive as archive_module
 from verifier.service.app import create_app
 from verifier.service.archive import (
@@ -149,10 +149,10 @@ def test_create_reopen_uses_exact_strict_schema_and_connection_profile(tmp_path:
         assert not connection.getconfig(sqlite3.SQLITE_DBCONFIG_TRUSTED_SCHEMA)
         assert connection.getconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_FKEY)
         table_rows = connection.execute("PRAGMA table_list").fetchall()
-        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (5,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (4,)
+        ).fetchone() == (5,)
         assert archive_module._schema_rows(connection) == tuple(
             sorted(archive_module._SCHEMA_OBJECTS, key=lambda row: (row[0], row[1]))
         )
@@ -191,10 +191,10 @@ def test_version_two_archive_migrates_partial_attempt_index_atomically(tmp_path:
 
     reopened = _archive(tmp_path)
     with _database_connection(reopened) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (5,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (4,)
+        ).fetchone() == (5,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
         ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)
@@ -312,7 +312,10 @@ def test_lowest_verified_attempt_id_is_indexed_bounded_and_corruption_safe(
         with pytest.raises(ArchiveIntegrityError, match="address is corrupt"):
             archive_module._validated_lowest_attempt_id(corrupt_row)
 
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "attempts_reject_update"),
+    ):
         connection.execute("PRAGMA foreign_keys=OFF")
         connection.execute("PRAGMA ignore_check_constraints=ON")
         connection.execute(
@@ -556,7 +559,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 ) -> None:
     versioned = _archive(tmp_path / "versioned")
     with _database_connection(versioned) as connection:
-        connection.execute("PRAGMA user_version=5")
+        connection.execute("PRAGMA user_version=6")
     with pytest.raises(ArchiveSchemaError, match="schema version"):
         _archive(tmp_path / "versioned")
 
@@ -582,7 +585,7 @@ def test_unknown_schema_version_shape_meta_and_unversioned_database_fail_closed(
 
     meta = _archive(tmp_path / "meta")
     with _database_connection(meta) as connection:
-        connection.execute("UPDATE meta SET schema_version = 5 WHERE singleton = 1")
+        connection.execute("UPDATE meta SET schema_version = 6 WHERE singleton = 1")
     with pytest.raises(ArchiveSchemaError, match="meta row"):
         _archive(tmp_path / "meta")
 
@@ -1129,7 +1132,7 @@ def test_historic_v3_ddl_derivations_reproduce_the_shipped_v3_text() -> None:
     assert any(row[1] == guard for row in archive_module._SCHEMA_OBJECTS)
 
 
-def test_version_three_archive_migrates_to_exact_v4_preserving_every_stored_byte(
+def test_version_three_archive_migrates_to_exact_v5_preserving_every_stored_byte(
     tmp_path: Path,
 ) -> None:
     """P02-P05, P08, P10, P11, P23, P24, P31 on the direct v3 arm."""
@@ -1159,8 +1162,8 @@ def test_version_three_archive_migrates_to_exact_v4_preserving_every_stored_byte
 
     with _database_connection(reopened) as connection:
         assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS)
-        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
-        assert connection.execute("SELECT schema_version FROM meta").fetchone() == (4,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (5,)
+        assert connection.execute("SELECT schema_version FROM meta").fetchone() == (5,)
         assert _blob_snapshot(connection) == before_blobs
         after_relations = _relation_snapshot(connection)
         assert after_relations["plots"] == [
@@ -1173,7 +1176,10 @@ def test_version_three_archive_migrates_to_exact_v4_preserving_every_stored_byte
         )
         after_rootpages = _rootpages(connection)
         assert {name: after_rootpages[name] for name in before_rootpages} == before_rootpages
-        assert set(after_rootpages) - set(before_rootpages) == {"plot_references_match_source"}
+        assert set(after_rootpages) - set(before_rootpages) == {
+            "plot_references_match_source",
+            *(row[1] for row in archive_module._RELATION_GUARDS),
+        }
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         columns = [cast("str", row[1]) for row in connection.execute("PRAGMA table_info(plots)")]
@@ -1280,6 +1286,8 @@ def test_migration_statement_order_matches_the_contract(
         first("PRAGMA writable_schema=OFF"),
         first("CREATE TRIGGER plot_references_match_source"),
         first("PRAGMA user_version=4"),
+        first("CREATE TRIGGER plots_reject_update"),
+        first("PRAGMA user_version=5"),
         first("COMMIT"),
     ]
     assert order == sorted(order)
@@ -1370,7 +1378,8 @@ def test_plot_reference_mode_guard_refuses_a_reference_without_its_plot(tmp_path
 def test_mode_flipped_plot_row_is_refused_by_each_reader_that_interprets_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """P20: a direct UPDATE past the INSERT-only trigger leaves corrupt, not supported, state.
+    """P20: a direct UPDATE past the triggers -- a raw writer lifting the v5 relation guards first
+    -- leaves corrupt, not supported, state.
 
     Both modes decode at this version, so the readers no longer share one blanket mode guard. Each
     refuses on its own terms instead: the complete read against the formula role set the tag now
@@ -1383,7 +1392,10 @@ def test_mode_flipped_plot_row_is_refused_by_each_reader_that_interprets_it(
     archive.publish(batch)
     plot_id = batch.plots[0].plot_id
     attempt_id = batch.attempts[0].attempt_id
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "plots_reject_update"),
+    ):
         connection.execute("UPDATE plots SET source_kind = 'formula' WHERE plot_id = ?", (plot_id,))
 
     with pytest.raises(ArchiveIntegrityError, match="every required role exactly once"):
@@ -1427,7 +1439,7 @@ def test_exact_schema_validator_refuses_near_miss_version_four_text(tmp_path: Pa
 
 
 def test_v4_schema_objects_match_the_bytes_shipped_at_schema_version_4() -> None:
-    """Pin `_SCHEMA_OBJECTS` to the v4 DDL text actually shipped, not to a hand-retyped copy.
+    """Pin `_SCHEMA_OBJECTS_V4` to the v4 DDL text actually shipped, not to a hand-retyped copy.
 
     `_validate_schema_version` compares a live archive's `sqlite_schema` rows against this exact
     DDL TEXT, so an incidental formatting or wording edit that leaves `_SCHEMA_VERSION == 4` makes
@@ -1439,6 +1451,174 @@ def test_v4_schema_objects_match_the_bytes_shipped_at_schema_version_4() -> None
     golden = json.loads(
         (Path(__file__).parent / "golden" / "archive_schema_v4.json").read_text(encoding="utf-8")
     )
-    assert archive_module._SCHEMA_VERSION == 4
+    assert archive_module._SCHEMA_VERSION_V4 == 4
     assert len(golden) == 13
+    assert tuple(tuple(row) for row in golden) == tuple(archive_module._SCHEMA_OBJECTS_V4)
+
+
+# p2: every relation table is as immutable as `blobs`, hand-stated with the column each UPDATE sets.
+_GUARDED_COLUMNS = {
+    "plots": "keyid",
+    "specs": "canonical_spec_digest",
+    "attempts": "keyid",
+    "plot_references": "role",
+    "attempt_references": "role",
+}
+
+
+@pytest.mark.parametrize("event", ["UPDATE", "DELETE"])
+@pytest.mark.parametrize("table", list(_GUARDED_COLUMNS))
+def test_p2_every_relation_row_refuses_update_and_delete(
+    tmp_path: Path, table: str, event: str
+) -> None:
+    """p2: one refusal per table and event; the statement changes no row."""
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    spec_blob = BlobWrite(BlobKind.CANONICAL_SPEC, b"{}")
+    archive.publish(ArchiveBatch(blobs=(spec_blob,), specs=(SpecRecord("c" * 64, spec_blob.ref),)))
+    column = _GUARDED_COLUMNS[table]
+    statement = (
+        f"UPDATE {table} SET {column} = {column}"  # noqa: S608 - hand-stated table + column
+        if event == "UPDATE"
+        else f"DELETE FROM {table}"  # noqa: S608 - hand-stated table
+    )
+    with _database_connection(archive) as connection:
+        before = _relation_snapshot(connection)
+        assert before[table], f"the batch stores no {table} row, so no trigger could fire"
+        with pytest.raises(sqlite3.IntegrityError, match=f"archive {table} rows are immutable"):
+            connection.execute(statement)
+        assert _relation_snapshot(connection) == before
+
+
+def test_p2_a_cross_mode_reference_cannot_be_forged_by_update(tmp_path: Path) -> None:
+    """p2's witness: `plot_references_match_source` guards INSERT alone, so a v4 archive took
+    `UPDATE plot_references SET role = 'formula_source'` on a dataset plot."""
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    with (
+        _database_connection(archive) as connection,
+        pytest.raises(sqlite3.IntegrityError, match="archive plot_references rows are immutable"),
+    ):
+        connection.execute(
+            "UPDATE plot_references SET role = 'formula_source', blob_kind = 'formula_source' "
+            "WHERE role = 'raw_csv'"
+        )
+
+
+def test_p2_relation_guard_text_is_the_hand_stated_ddl() -> None:
+    """The v5 golden is co-derived from the code that ships it; this literal is hand-written."""
+    assert archive_module._relation_guard("plots", "UPDATE") == (
+        "CREATE TRIGGER plots_reject_update\n"
+        "BEFORE UPDATE ON plots\n"
+        "BEGIN\n"
+        "    SELECT RAISE(ABORT, 'archive plots rows are immutable');\n"
+        "END"
+    )
+    assert [row[1] for row in archive_module._RELATION_GUARDS] == [
+        f"{table}_reject_{event}" for table in _GUARDED_COLUMNS for event in ("update", "delete")
+    ]
+
+
+def test_v5_schema_objects_match_the_golden_shipped_at_schema_version_5() -> None:
+    """Pins `_SCHEMA_OBJECTS` to the v5 DDL text this version ships (`archive_schema_v5.json`), so
+    an incidental DDL edit that keeps `_SCHEMA_VERSION == 5` cannot strand every v5 archive."""
+    golden = json.loads(
+        (Path(__file__).parent / "golden" / "archive_schema_v5.json").read_text(encoding="utf-8")
+    )
+    assert archive_module._SCHEMA_VERSION == 5
+    assert len(golden) == 23
     assert tuple(tuple(row) for row in golden) == tuple(archive_module._SCHEMA_OBJECTS)
+
+
+def test_version_four_archive_migrates_to_exact_v5_adding_only_the_guards(tmp_path: Path) -> None:
+    """p2: the v4 -> v5 step adds ten triggers and moves, rewrites or drops nothing."""
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    with _database_connection(archive) as connection:
+        downgrade_to_v4(connection)
+        assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS_V4)
+        connection.execute("UPDATE plots SET keyid = keyid")  # v4: relation rows still mutable
+        before_blobs = _blob_snapshot(connection)
+        before_relations = _relation_snapshot(connection)
+        before_rootpages = _rootpages(connection)
+
+    reopened = _archive(tmp_path)
+    with _database_connection(reopened) as connection:
+        assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS)
+        assert connection.execute("PRAGMA user_version").fetchone() == (5,)
+        assert connection.execute("SELECT schema_version FROM meta").fetchone() == (5,)
+        assert _blob_snapshot(connection) == before_blobs
+        assert _relation_snapshot(connection) == before_relations
+        after_rootpages = _rootpages(connection)
+        assert {name: after_rootpages[name] for name in before_rootpages} == before_rootpages
+        assert set(after_rootpages) - set(before_rootpages) == {
+            row[1] for row in archive_module._RELATION_GUARDS
+        }
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        with pytest.raises(sqlite3.IntegrityError, match="archive plots rows are immutable"):
+            connection.execute("UPDATE plots SET keyid = keyid")
+
+
+def test_injected_v5_validation_failure_rolls_back_to_exact_version_four(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fault after the triggers are created restores v4 whole: no guard survives the rollback."""
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    with _database_connection(archive) as connection:
+        downgrade_to_v4(connection)
+
+    def explode(*_args: object, **_kwargs: object) -> None:
+        msg = "injected migration fault"
+        raise ArchiveIntegrityError(msg)
+
+    monkeypatch.setattr(archive_module, "_validate_schema", explode)
+    with pytest.raises(ArchiveIntegrityError, match="injected migration fault"):
+        _archive(tmp_path)
+    monkeypatch.undo()
+    with _database_connection(archive) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+        assert _is_exact_schema(connection, archive_module._SCHEMA_OBJECTS_V4)
+
+
+@pytest.mark.parametrize("table", ["blobs", *_GUARDED_COLUMNS])
+def test_p2_a_replace_cannot_swap_out_a_stored_row(tmp_path: Path, table: str) -> None:
+    """Kernel review H7: a REPLACE deletes the row it conflicts with; recursive triggers make that
+    delete fire the table's DELETE guard. Off, `INSERT OR REPLACE INTO plots` flipped a dataset
+    plot to formula past every v5 guard. Read through the archive's own connection profile."""
+    archive = _archive(tmp_path)
+    batch, _blobs = _complete_batch()
+    archive.publish(batch)
+    spec_blob = BlobWrite(BlobKind.CANONICAL_SPEC, b"{}")
+    archive.publish(ArchiveBatch(blobs=(spec_blob,), specs=(SpecRecord("c" * 64, spec_blob.ref),)))
+    connection = archive._connect()
+    try:
+        before = _relation_snapshot(connection)
+        with pytest.raises(sqlite3.IntegrityError, match=f"archive {table} .*immutable"):
+            connection.execute(
+                f"INSERT OR REPLACE INTO {table} SELECT * FROM {table}"  # noqa: S608 - literal
+            )
+        assert _relation_snapshot(connection) == before
+    finally:
+        connection.close()
+
+
+def test_p2_the_connection_profile_requires_recursive_triggers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A SQLite build ignoring the pragma would reopen the REPLACE path; the read-back refuses."""
+    real_read_scalar = archive_module._read_scalar
+
+    def ignored(connection: sqlite3.Connection, statement: str) -> object:
+        if statement == "PRAGMA recursive_triggers":
+            return 0
+        return real_read_scalar(connection, statement)
+
+    monkeypatch.setattr(archive_module, "_read_scalar", ignored)
+    with pytest.raises(ArchiveError, match="recursive_triggers"):
+        _archive(tmp_path)

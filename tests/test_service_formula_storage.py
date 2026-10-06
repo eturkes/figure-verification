@@ -16,7 +16,7 @@ import msgspec
 import pytest
 
 from formula_plot_bundle_helpers import dataset_bundle, formula_bundle_parts
-from schema_downgrade import downgrade_to_v3
+from schema_downgrade import downgrade_to_v3, relation_guards_lifted
 from verifier import attestation, canon, render, replay, schema
 from verifier.limits import DEFAULT_LIMITS
 from verifier.service import archive as archive_module
@@ -738,7 +738,10 @@ def test_p4_plot_blob_absence_is_identical_across_modes_and_missing_rows(tmp_pat
         with pytest.raises(ArchiveNotFoundError) as caught:
             archive.read_plot_blob(plot_id, role, max_bytes=1_000_000)
         errors.append(caught.value)
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "plot_references_reject_delete"),
+    ):
         connection.execute(
             "DELETE FROM plot_references WHERE plot_id = ? AND role = ?",
             (formula.plot_id, _formula_source_role().value),
@@ -887,7 +890,10 @@ def test_rd5_mode_flipped_dataset_row_has_mode_specific_new_outcomes(
     settings, dataset = dataset_bundle(tmp_path)
     archive = open_archive(settings)
     archive.publish_plot(dataset)
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "plots_reject_update"),
+    ):
         connection.execute(
             "UPDATE plots SET source_kind = 'formula' WHERE plot_id = ?",
             (dataset.plot_id,),
@@ -1048,7 +1054,10 @@ def test_d4_read_spec_distinguishes_missing_address_and_broken_relation(
     monkeypatch.setattr(archive_module, "decode_formula_spec", decoder_bomb)
     with pytest.raises(ArchiveNotFoundError, match="canonical spec address was not found"):
         archive.read_spec(missing_id, max_bytes=1_000_000)
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "specs_reject_update"),
+    ):
         connection.execute("PRAGMA foreign_keys=OFF")
         connection.execute(
             "UPDATE specs SET canonical_spec_digest = ? WHERE spec_id = ?",
@@ -1192,7 +1201,10 @@ def test_formula_role_set_missing_required_refuses_before_blob_reads(
 ) -> None:
     archive, parts = _formula_archive(tmp_path)
     archive.publish_plot(parts.bundle)
-    with _database_connection(archive) as connection:
+    with (
+        _database_connection(archive) as connection,
+        relation_guards_lifted(connection, "plot_references_reject_delete"),
+    ):
         connection.execute(
             "DELETE FROM plot_references WHERE plot_id = ? AND role = ?",
             (parts.bundle.plot_id, _formula_source_role().value),

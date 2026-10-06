@@ -14,6 +14,7 @@ import msgspec
 import pytest
 
 from formula_plot_bundle_helpers import dataset_bundle
+from schema_downgrade import relation_guards_lifted
 from verifier import attestation, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
@@ -950,7 +951,8 @@ def test_linked_plot_absence_and_sqlite_faults_normalize_without_partial_publish
     connection = sqlite3.connect(archive.database_path, autocommit=True)
     try:
         connection.execute("PRAGMA foreign_keys=OFF")
-        connection.execute("DELETE FROM plots WHERE plot_id = ?", (plot.plot_id,))
+        with relation_guards_lifted(connection, "plots_reject_delete"):
+            connection.execute("DELETE FROM plots WHERE plot_id = ?", (plot.plot_id,))
     finally:
         connection.close()
     with pytest.raises(ArchiveIntegrityError, match="linked plot record is absent"):

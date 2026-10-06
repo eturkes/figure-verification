@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Independent v3→v4 conventional rebuild from frozen DDL; no verifier imports.
+"""Independent v3→v5 conventional rebuild from frozen DDL; no verifier imports.
 
 The three changed v3 table statements are historic literals pinned by test_service_archive.
-The v4 golden fixes the destination structure. Temporary-table rename may quote table names;
+The v5 golden fixes the destination structure: v4's tables and mode trigger plus v5's ten
+relation guards. Temporary-table rename may quote table names;
 comparison owns logical structure/rows, not SQLite's equivalent table-name spelling.
 """
 
@@ -92,7 +93,7 @@ def table_info(connection: sqlite3.Connection) -> dict[str, list[tuple[object, .
 def expected_table_info() -> dict[str, list[tuple[object, ...]]]:
     connection = sqlite3.connect(":memory:", autocommit=True)
     try:
-        for _, _, _, statement in schema_fixture(4):
+        for _, _, _, statement in schema_fixture(5):
             connection.execute(statement)
         return table_info(connection)
     finally:
@@ -127,7 +128,7 @@ def migrate(path: Path) -> None:
 
 
 def _rebuild(connection: sqlite3.Connection, prior: tuple[SchemaObject, ...]) -> None:
-    target = schema_fixture(4)
+    target = schema_fixture(5)
     for kind, name, _, _ in prior:
         if kind in {"trigger", "index"}:
             connection.execute(f'DROP {kind.upper()} "{name}"')
@@ -149,8 +150,8 @@ def _rebuild(connection: sqlite3.Connection, prior: tuple[SchemaObject, ...]) ->
         connection.execute(f'DROP TABLE "{name}"')
     for name in _TABLES:
         connection.execute(f'ALTER TABLE "rebuild_{name}" RENAME TO "{name}"')
-    connection.execute("UPDATE meta SET schema_version = 4 WHERE singleton = 1")
-    connection.execute("PRAGMA user_version=4")
+    connection.execute("UPDATE meta SET schema_version = 5 WHERE singleton = 1")
+    connection.execute("PRAGMA user_version=5")
     for kind, name, _, statement in target:
         if kind != "table":
             connection.execute(

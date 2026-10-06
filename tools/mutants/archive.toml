@@ -2,7 +2,7 @@
 # Mutation catalogue for archive's mapping of table decode failures (Q5).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/service/archive.py"
-tests = ["tests/test_service_formula_route.py", "tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py", "tests/test_service_formula_plot_bundle.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_storage.py"]
+tests = ["tests/test_service_formula_route.py", "tests/test_service_plot_bundle.py", "tests/test_service_attempt_bundle.py", "tests/test_service_formula_plot_bundle.py", "tests/test_service_formula_attempt.py", "tests/test_service_formula_storage.py", "tests/test_service_archive.py"]
 
 [[mutant]]
 id = "archive-noncanonical-escapes"
@@ -367,3 +367,115 @@ mutant = '''        payload_type=ATTEMPT_PAYLOAD_TYPE,
         max_payload_bytes=limits.max_attestation_bytes,
     )
     bundle = AttemptBundle('''
+
+# p2: schema v5's relation guards and their v4 -> v5 migration.
+[[mutant]]
+id = "p2-plots-unguarded"
+predicate = "plots rows refuse UPDATE and DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[plots-UPDATE]"
+anchor = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")'''
+mutant = '''_IMMUTABLE_RELATIONS = ("specs", "attempts", "plot_references", "attempt_references")'''
+
+[[mutant]]
+id = "p2-specs-unguarded"
+predicate = "specs rows refuse UPDATE and DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[specs-UPDATE]"
+anchor = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")'''
+mutant = '''_IMMUTABLE_RELATIONS = ("plots", "attempts", "plot_references", "attempt_references")'''
+
+[[mutant]]
+id = "p2-attempts-unguarded"
+predicate = "attempts rows refuse UPDATE and DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[attempts-UPDATE]"
+anchor = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")'''
+mutant = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "plot_references", "attempt_references")'''
+
+[[mutant]]
+id = "p2-plot-references-unguarded"
+predicate = "plot_references rows refuse UPDATE and DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[plot_references-UPDATE]"
+anchor = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")'''
+mutant = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "attempt_references")'''
+
+[[mutant]]
+id = "p2-attempt-references-unguarded"
+predicate = "attempt_references rows refuse UPDATE and DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[attempt_references-UPDATE]"
+anchor = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")'''
+mutant = '''_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references")'''
+
+[[mutant]]
+id = "p2-update-unguarded"
+predicate = "every relation guard covers UPDATE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[attempts-UPDATE]"
+anchor = '''    for event in ("UPDATE", "DELETE")
+)'''
+mutant = '''    for event in ("DELETE",)
+)'''
+
+[[mutant]]
+id = "p2-delete-unguarded"
+predicate = "every relation guard covers DELETE"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[attempts-DELETE]"
+anchor = '''    for event in ("UPDATE", "DELETE")
+)'''
+mutant = '''    for event in ("UPDATE",)
+)'''
+
+[[mutant]]
+id = "p2-v4-left-unmigrated"
+predicate = "a v4 archive migrates to v5 on open"
+kills = "tests/test_service_archive.py::test_version_four_archive_migrates_to_exact_v5_adding_only_the_guards"
+anchor = '''        elif version == _SCHEMA_VERSION_V4:
+            _migrate_v4_to_v5(connection)'''
+mutant = '''        elif version == _SCHEMA_VERSION_V4:
+            pass'''
+
+[[mutant]]
+id = "p2-v3-chain-stops-at-v4"
+predicate = "a v3 archive migrates through v4 to v5 on open"
+kills = "tests/test_service_archive.py::test_version_three_archive_migrates_to_exact_v5_preserving_every_stored_byte"
+anchor = '''        elif version == _SCHEMA_VERSION_V3:
+            _migrate_v3_to_v4(connection)
+            _migrate_v4_to_v5(connection)
+'''
+mutant = '''        elif version == _SCHEMA_VERSION_V3:
+            _migrate_v3_to_v4(connection)
+'''
+
+[[mutant]]
+id = "p2-migration-adds-no-guard"
+predicate = "the v4 -> v5 migration creates every relation guard"
+kills = "tests/test_service_archive.py::test_version_four_archive_migrates_to_exact_v5_adding_only_the_guards"
+anchor = '''    for _object_type, _name, _table, statement in _RELATION_GUARDS:
+        connection.execute(statement)
+    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )'''
+mutant = '''    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )'''
+
+[[mutant]]
+id = "p2-fresh-archive-unguarded"
+predicate = "a fresh archive carries every relation guard"
+kills = "tests/test_service_archive.py::test_p2_every_relation_row_refuses_update_and_delete[plots-DELETE]"
+anchor = '''_SCHEMA_OBJECTS = _SCHEMA_OBJECTS_V4 + _RELATION_GUARDS'''
+mutant = '''_SCHEMA_OBJECTS = _SCHEMA_OBJECTS_V4'''
+
+[[mutant]]
+id = "p2-recursive-triggers-off"
+predicate = "the connection profile turns recursive triggers on, so a REPLACE fires the DELETE guard"
+kills = "tests/test_service_archive.py::test_p2_a_replace_cannot_swap_out_a_stored_row[plots]"
+anchor = '''    connection.execute("PRAGMA recursive_triggers=ON")'''
+mutant = '''    connection.execute("PRAGMA recursive_triggers=OFF")'''
+
+[[mutant]]
+id = "p2-recursive-triggers-unread"
+predicate = "the profile reads recursive triggers back and refuses a connection without them"
+kills = "tests/test_service_archive.py::test_p2_the_connection_profile_requires_recursive_triggers"
+anchor = '''    _require_connection_setting(
+        "recursive_triggers", _read_scalar(connection, "PRAGMA recursive_triggers"), 1
+    )'''
+mutant = '''    pass'''
+

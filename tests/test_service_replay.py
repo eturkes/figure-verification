@@ -15,6 +15,7 @@ from typing import cast
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from schema_downgrade import relation_guards_lifted
 from verifier import attestation, render
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.replay import ReplaySnapshot, ReplayVerdict, replay_snapshot
@@ -278,11 +279,12 @@ def test_missing_blob_and_corrupt_plot_association_raise_archive_errors(
     connection = sqlite3.connect(associated.archive.database_path, autocommit=True)
     try:
         connection.execute("PRAGMA foreign_keys=OFF")
-        cursor = connection.execute(
-            "UPDATE attempts SET plot_id = ? WHERE attempt_id = ?",
-            (corrupt_plot_id, associated.bundle.attempt_id),
-        )
-        assert cursor.rowcount == 1
+        with relation_guards_lifted(connection, "attempts_reject_update"):
+            cursor = connection.execute(
+                "UPDATE attempts SET plot_id = ? WHERE attempt_id = ?",
+                (corrupt_plot_id, associated.bundle.attempt_id),
+            )
+            assert cursor.rowcount == 1
     finally:
         connection.close()
     with pytest.raises(ArchiveIntegrityError, match="linked plot record is absent"):

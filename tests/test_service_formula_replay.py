@@ -14,6 +14,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from formula_plot_bundle_helpers import formula_bundle_parts
+from schema_downgrade import relation_guards_lifted
 from verifier import vcert
 from verifier.limits import VerificationLimits
 from verifier.service import app as service_app
@@ -174,11 +175,12 @@ def _corrupt_source_kind(archive: Archive, plot_id: str, value: str) -> None:
     connection = sqlite3.connect(archive.database_path)
     try:
         connection.execute("PRAGMA ignore_check_constraints=ON")
-        cursor = connection.execute(
-            "UPDATE plots SET source_kind = ? WHERE plot_id = ?",
-            (value, plot_id),
-        )
-        assert cursor.rowcount == 1
+        with relation_guards_lifted(connection, "plots_reject_update"):
+            cursor = connection.execute(
+                "UPDATE plots SET source_kind = ? WHERE plot_id = ?",
+                (value, plot_id),
+            )
+            assert cursor.rowcount == 1
         connection.commit()
     finally:
         connection.close()

@@ -178,10 +178,10 @@ def test_version_one_archive_chains_spec_and_attempt_index_migrations_atomically
     )
     connection = sqlite3.connect(reopened.database_path, autocommit=True)
     try:
-        assert connection.execute("PRAGMA user_version").fetchone() == (4,)
+        assert connection.execute("PRAGMA user_version").fetchone() == (5,)
         assert connection.execute(
             "SELECT schema_version FROM meta WHERE singleton = 1"
-        ).fetchone() == (4,)
+        ).fetchone() == (5,)
         assert connection.execute(
             "SELECT sql FROM sqlite_schema WHERE name = ?", ("attempts_by_plot",)
         ).fetchone() == (archive_module._CREATE_ATTEMPTS_BY_PLOT,)

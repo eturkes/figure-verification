@@ -15,6 +15,7 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from formula_plot_bundle_helpers import formula_bundle_parts
+from schema_downgrade import relation_guards_lifted
 from verifier import render
 from verifier import replay as replay_core
 from verifier.attestation import VCERT_V03_PAYLOAD_TYPE
@@ -474,7 +475,10 @@ def _flip_mode_and_corrupt(archive: Archive, plot_id: str, kind: BlobKind, mode:
             (kind.value,),
         )
         connection.execute(trigger_sql)
-        connection.execute("UPDATE plots SET source_kind = ? WHERE plot_id = ?", (mode, plot_id))
+        with relation_guards_lifted(connection, "plots_reject_update"):
+            connection.execute(
+                "UPDATE plots SET source_kind = ? WHERE plot_id = ?", (mode, plot_id)
+            )
         connection.commit()
     finally:
         connection.close()

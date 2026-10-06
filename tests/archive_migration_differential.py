@@ -3,7 +3,7 @@
 
 Run: uv run --locked python tests/archive_migration_differential.py
 Gate: tests/test_archive_migration_differential.py runs three small shapes + a row-loss probe.
-Logical sections must match BOTH the independent v3→v4 expectation and each other. Rootpages
+Logical sections must match BOTH the independent v3→v5 expectation and each other. Rootpages
 of every pre-existing object must survive the shipped rewrite. Trigger text may differ only
 between the frozen shipped form and the independently authored oracle form; both must implement
 the closed dataset/formula role matrix. Physical sizes are expected-divergent: compare the
@@ -302,9 +302,9 @@ def _expected(prior: Snapshot) -> dict[str, object]:
     sections = dict(prior.sections)
     rows = dict(cast("dict[str, list[tuple[object, ...]]]", sections["rows"]))
     rows["plots"] = [(*row, "dataset") for row in rows["plots"]]
-    rows["meta"] = [(singleton, 4, logical) for singleton, _, logical in rows["meta"]]
+    rows["meta"] = [(singleton, 5, logical) for singleton, _, logical in rows["meta"]]
     sections.update(
-        table_info=expected_table_info(), rows=rows, meta=rows["meta"], user_version=(4,)
+        table_info=expected_table_info(), rows=rows, meta=rows["meta"], user_version=(5,)
     )
     if prior.sections["foreign_key_check"] != [] or prior.sections["integrity_check"] != [("ok",)]:
         message = "v3 corpus failed foreign-key/integrity checks"
@@ -410,10 +410,15 @@ def _compare(case: str, root: Path, *, plant_row_loss: bool) -> Result:
     migrate(rebuild)
     if plant_row_loss:
         connection = sqlite3.connect(rebuild, autocommit=True)
+        # v5 guards every relation row; the planted loss lifts the one guard it passes, from the
+        # golden DDL, and restores it, so the probe still reaches the rows comparison alone.
+        (guard,) = (sql for _, name, _, sql in schema_fixture(5) if name == "specs_reject_delete")
         try:
+            connection.execute("DROP TRIGGER specs_reject_delete")
             cursor = connection.execute(
                 "DELETE FROM specs WHERE spec_id = (SELECT spec_id FROM specs LIMIT 1)"
             )
+            connection.execute(guard)
             if cursor.rowcount != 1:
                 message = f"{case}: row-loss probe needs one spec row"
                 raise OracleError(message)
@@ -430,7 +435,7 @@ def _compare(case: str, root: Path, *, plant_row_loss: bool) -> Result:
     checks["trigger_behavior"] = (
         _trigger_behavior(rewrite) == _trigger_behavior(rebuild) == _expected_behavior()
     )
-    shipped_triggers = {name: sql for kind, name, _, sql in schema_fixture(4) if kind == "trigger"}
+    shipped_triggers = {name: sql for kind, name, _, sql in schema_fixture(5) if kind == "trigger"}
     oracle_triggers = dict(shipped_triggers, plot_references_match_source=MODE_TRIGGER)
     checks["trigger_sql_form"] = (
         actual.triggers == shipped_triggers and oracle.triggers == oracle_triggers
@@ -462,7 +467,7 @@ def _require_local_import() -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     """Print every comparison section; rc 0 = pass, 1 = divergence, 2 = invalid setup."""
     parser = argparse.ArgumentParser(
-        description="Compare archive v3→v4 rewrite and independent rebuild."
+        description="Compare archive v3→v5 migration and independent rebuild."
     )
     parser.add_argument(
         "--case",
@@ -482,7 +487,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _require_local_import()
         scratch = _ROOT / ".scratch"
         scratch.mkdir(mode=0o700, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="archive-v3-v4-", dir=scratch) as directory:
+        with tempfile.TemporaryDirectory(prefix="archive-v3-v5-", dir=scratch) as directory:
             for case in selected:
                 root = Path(directory) / case
                 root.mkdir(mode=0o700)
@@ -491,7 +496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(f"setup failed: {error}\n")
         return 2
     sys.stdout.write(
-        "rule: logical=both arms equal independent v3→v4 expectation; "
+        "rule: logical=both arms equal independent v3→v5 expectation; "
         "physical=expected-divergent, rewrite preserves input allocation\n"
     )
     for result in results:

@@ -30,9 +30,15 @@ without reading raw CSV, prompt, or model bytes. Schema v4 widens the blob-kind 
 role domains with the two formula byte roles and appends a backfilled ``plots.source_kind``
 discriminator plus a positive-allowlist trigger binding each reference role to its plot's mode; it
 rewrites three stored table definitions in place rather than rebuilding, so no content byte moves.
-That trigger admits no cross-mode reference through any INSERT; it does not defend against a direct
-UPDATE of already-stored rows. Both plot modes publish and read back through closed per-mode role,
-canonical-spec, and certificate-family dispatch, and each mode has its own materializer here.
+Schema v5 adds ``BEFORE UPDATE`` and ``BEFORE DELETE`` reject triggers to every relation table --
+``plots``, ``specs``, ``attempts``, ``plot_references``, ``attempt_references`` -- as v1 already had
+on ``blobs``. With the INSERT-time mode trigger and the connection profile's recursive triggers (a
+REPLACE's implicit delete then fires the DELETE guard), a cross-mode reference is unrepresentable
+through row DML on an archive connection -- INSERT, UPDATE, DELETE, REPLACE, upsert. Schema DDL
+can still drop a guard; the exact-schema validator refuses that archive at open while the guard
+stays dropped, and nothing detects a dropped-and-recreated one. Both plot modes
+publish and read back through closed per-mode role, canonical-spec, and certificate-family
+dispatch, and each mode has its own materializer here.
 
 Narrow public reads avoid full plot materialization: certificate reads resolve only plot envelope
 + key rows/blobs and recheck canonical DSSE form, address, signature, exact VCert type, and payload;
@@ -148,7 +154,8 @@ __all__ = [
 
 _SCHEMA_VERSION_V2 = 2
 _SCHEMA_VERSION_V3 = 3
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION_V4 = 4
+_SCHEMA_VERSION = 5
 _DATABASE_NAME = "archive.sqlite3"
 _BUSY_TIMEOUT_MS = 5_000
 _BLOB_CHUNK_BYTES = 64 * 1024
@@ -2118,11 +2125,30 @@ BEGIN
     );
 END"""
 
+# p2: every relation row is as immutable as the blobs it references. The application only inserts
+# them, and a row it never rewrites needs no window: the v3 -> v4 backfill runs before v5 exists.
+_IMMUTABLE_RELATIONS = ("plots", "specs", "attempts", "plot_references", "attempt_references")
+
+
+def _relation_guard(table: str, event: str) -> str:
+    return f"""CREATE TRIGGER {table}_reject_{event.lower()}
+BEFORE {event} ON {table}
+BEGIN
+    SELECT RAISE(ABORT, 'archive {table} rows are immutable');
+END"""
+
+
+_RELATION_GUARDS = tuple(
+    ("trigger", f"{table}_reject_{event.lower()}", table, _relation_guard(table, event))
+    for table in _IMMUTABLE_RELATIONS
+    for event in ("UPDATE", "DELETE")
+)
+
 # fmt: off
 _CREATE_ATTEMPTS_BY_PLOT = "CREATE INDEX attempts_by_plot ON attempts(plot_id, attempt_id) WHERE plot_id IS NOT NULL"  # noqa: E501
 # fmt: on
 
-_SCHEMA_OBJECTS = (
+_SCHEMA_OBJECTS_V4 = (
     ("table", "meta", "meta", _CREATE_META),
     ("table", "blobs", "blobs", _CREATE_BLOBS),
     ("table", "keys", "keys", _CREATE_KEYS),
@@ -2137,6 +2163,7 @@ _SCHEMA_OBJECTS = (
     ("trigger", "plot_references_match_source", "plot_references", _CREATE_PLOT_SOURCE_GUARD),
     ("index", "attempts_by_plot", "attempts", _CREATE_ATTEMPTS_BY_PLOT),
 )
+_SCHEMA_OBJECTS = _SCHEMA_OBJECTS_V4 + _RELATION_GUARDS
 _SCHEMA_OBJECTS_V3 = (
     ("table", "meta", "meta", _CREATE_META),
     ("table", "blobs", "blobs", _CREATE_BLOBS_V3),
@@ -2239,6 +2266,9 @@ def _configure_connection(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA foreign_keys=ON")
     connection.execute("PRAGMA trusted_schema=OFF")
     connection.execute("PRAGMA busy_timeout=5000")
+    # A REPLACE deletes the conflicting row WITHOUT firing its DELETE trigger unless recursive
+    # triggers are on: off, `INSERT OR REPLACE INTO plots` swaps a plot's mode past every v5 guard.
+    connection.execute("PRAGMA recursive_triggers=ON")
 
     _require_connection_setting(
         "journal_mode", _read_scalar(connection, "PRAGMA journal_mode"), "delete"
@@ -2252,6 +2282,9 @@ def _configure_connection(connection: sqlite3.Connection) -> None:
     )
     _require_connection_setting(
         "busy_timeout", _read_scalar(connection, "PRAGMA busy_timeout"), _BUSY_TIMEOUT_MS
+    )
+    _require_connection_setting(
+        "recursive_triggers", _read_scalar(connection, "PRAGMA recursive_triggers"), 1
     )
     _require_connection_setting(
         "defensive",
@@ -2464,9 +2497,25 @@ def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
     _rewrite_stored_schema_text(connection)
     connection.execute(_CREATE_PLOT_SOURCE_GUARD)
     connection.execute(
-        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION_V4, 1)
     )
     connection.execute("PRAGMA user_version=4")
+
+
+def _migrate_v4_to_v5(connection: sqlite3.Connection) -> None:
+    """Add the UPDATE/DELETE reject triggers to every relation table; no row moves or changes."""
+    _validate_schema_version(
+        connection,
+        schema_version=_SCHEMA_VERSION_V4,
+        schema_objects=_SCHEMA_OBJECTS_V4,
+        verify_accounting=True,
+    )
+    for _object_type, _name, _table, statement in _RELATION_GUARDS:
+        connection.execute(statement)
+    connection.execute(
+        "UPDATE meta SET schema_version = ? WHERE singleton = ?", (_SCHEMA_VERSION, 1)
+    )
+    connection.execute("PRAGMA user_version=5")
 
 
 def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes: int) -> None:
@@ -2483,16 +2532,21 @@ def _create_or_validate_schema(connection: sqlite3.Connection, *, max_spec_bytes
                 "INSERT INTO meta(singleton, schema_version, logical_blob_bytes) VALUES (?, ?, ?)",
                 (1, _SCHEMA_VERSION, 0),
             )
-            connection.execute("PRAGMA user_version=4")
+            connection.execute("PRAGMA user_version=5")
         elif version == 1:
             _migrate_v1_to_v2(connection, max_spec_bytes=max_spec_bytes)
             _migrate_v2_to_v3(connection)
             _migrate_v3_to_v4(connection)
+            _migrate_v4_to_v5(connection)
         elif version == _SCHEMA_VERSION_V2:
             _migrate_v2_to_v3(connection)
             _migrate_v3_to_v4(connection)
+            _migrate_v4_to_v5(connection)
         elif version == _SCHEMA_VERSION_V3:
             _migrate_v3_to_v4(connection)
+            _migrate_v4_to_v5(connection)
+        elif version == _SCHEMA_VERSION_V4:
+            _migrate_v4_to_v5(connection)
         _validate_schema(connection, verify_accounting=True)
 
 
