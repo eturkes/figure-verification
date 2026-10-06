@@ -1,9 +1,8 @@
 # bench — weak-proposer eval (raw baseline + schema-guided default)
 
-This benchmark is an out-of-tree observer of the weak JSON-spec proposer.
-It covers the dataset proposer only, and it makes no measured formula error-gradient claim.
-The pinned formula live smoke stays unmet.
-It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-only`.
+This benchmark is an out-of-tree observer of the weak JSON-spec proposers.
+By default, it measures the dataset proposer. With `--mode formula`, it measures the formula proposer.
+It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-only` for the dataset proposer, `/propose-formula` and `/verify-formula` for the formula proposer.
 It never imports `verifier` internals, so it adds no trust.
 It uses a synchronous `httpx.Client`, no random-number generator, and a fixed prompt order.
 For each `(device, config)`, its output is byte-reproducible.
@@ -13,9 +12,8 @@ The CURRENT-host baseline is in `bench/baselines/m12-cuda/`, as the CURRENT-host
 
 ## What it measures — two things, never conflated
 
-Both arms measure dataset mode alone.
-Neither arm posts the 20 formula-bad or the six formula-good goldens.
-Neither arm calls `/propose-formula`.
+This section describes a dataset run.
+The formula-mode section describes the changes for a formula run.
 
 - **GUARANTEE:** This deterministic check provides the only bounds.
   Bench re-posts the `18` bad dataset goldens and the `10` good dataset goldens to `/verify-only`.
@@ -95,6 +93,35 @@ The fence pattern is ```` ```(?:json)?\s*(.*?)``` ````.
 Fence-wrapping is a syntactic failure that `decode_spec` rejects.
 The classifier separates it from deeper malformation.
 For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-guided default had `fenced=0`.
+
+## Formula mode (`--mode formula`)
+
+Formula mode measures the formula proposer through `/propose-formula`.
+Its guarantee leg posts the `20` bad formula goldens and the `6` good formula goldens to `/verify-formula`.
+Bench pins both formula corpora by size and identity digest, as it does for the dataset corpora.
+The run is INVALID under the same conditions as a dataset run.
+
+The formula prompts are `FORMULA_PROMPTS` in `bench/prompts.py`: two categories of `20` prompts each.
+The categories partition the prompts by intended difficulty against the formula grammar.
+
+- `simple`: one curve that the grammar can state, over a given interval.
+  A faithful specification can verify.
+- `complex`: a faithful specification cannot verify.
+  The prompt asks for a function outside the grammar, several curves or panels, a curve that is not a function, styling, or an axis change.
+
+The formula route binds no request text.
+Thus, a verified `complex` reply draws a DIFFERENT curve than the request asks for.
+`verified_render_rate` counts verified verdicts, because the formula route renders no chart.
+Read the gradient per category, never as one overall rate.
+The rate is not a faithfulness measure.
+
+```
+.venv/bin/python -m bench --mode formula --out bench/reports/report-formula.json \
+  --details bench/reports/details-formula.jsonl
+```
+
+A formula report records `meta.mode = formula` and bench's own `formula_schema_sha256`.
+The backend's `formula_schema_sha256` appears in `meta.backend`.
 
 ## CURRENT-host baseline (`bench/baselines/m12-cuda/`)
 

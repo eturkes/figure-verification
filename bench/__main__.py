@@ -18,10 +18,14 @@ import math
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Literal, assert_never
 
 import httpx
 
 from bench.harness import (
+    DATASET_MODE,
+    FORMULA_MODE,
+    BenchMode,
     Report,
     RunProvenance,
     encode_details,
@@ -30,7 +34,7 @@ from bench.harness import (
     fetch_model_name,
     run_eval,
 )
-from bench.prompts import PROMPTS
+from bench.prompts import FORMULA_PROMPTS, PROMPTS, Prompt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +45,7 @@ _DEFAULT_OUT = "bench/reports/report.json"
 _DEFAULT_DETAILS = "bench/reports/details.jsonl"
 _DEFAULT_TIMEOUT = 180.0
 _SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.1.schema.json"
+_FORMULA_SCHEMA_PATH = _SCHEMA_PATH.with_name("vplot-formula-0.1.schema.json")
 
 # The corpora are exactly 18 bad + 10 good goldens (examples/index.json). Pinning each count
 # makes the guarantee fail LOUD on a missing or truncated corpus, so a short corpus is never
@@ -54,12 +59,46 @@ _EXPECTED_GOOD_CORPUS_SIZE = 10
 # both from the tree, so a drift fails the portable gate too).
 _EXPECTED_BAD_CORPUS_DIGEST = "da1dfbff5d974fa53255d2e6b826040d2d5c3825d642a79f6efdb626b4366940"
 _EXPECTED_GOOD_CORPUS_DIGEST = "72b15d1cb95b8e21440c2b6c5413a37298b3060f8d423bfe5e63f825e518f245"
+# Formula mode's corpora (examples/formula_{bad,good}_specs), pinned the same way.
+_EXPECTED_FORMULA_BAD_CORPUS_SIZE = 20
+_EXPECTED_FORMULA_GOOD_CORPUS_SIZE = 6
+_EXPECTED_FORMULA_BAD_CORPUS_DIGEST = (
+    "57e6118702c1a065e2d7f96d23eac76c9f02772e55e33dd842e50f9f699b4bce"
+)
+_EXPECTED_FORMULA_GOOD_CORPUS_DIGEST = (
+    "79702b19ea19cdb093df0f857a4b17f1d66ccab4cf25cfaf6e9810cfa0abdbac"
+)
+_MODES: dict[str, tuple[BenchMode, tuple[Prompt, ...]]] = {
+    "dataset": (DATASET_MODE, PROMPTS),
+    "formula": (FORMULA_MODE, FORMULA_PROMPTS),
+}
 
 
-def _schema_digest() -> str | None:
-    """Digest bench's own committed VPlot schema bytes in backend-compatible form."""
+def _expected_pins(mode: Literal["dataset", "formula"]) -> tuple[int, str, int, str]:
+    """(bad size, bad digest, good size, good digest) the mode's guarantee must exercise."""
+    match mode:
+        case "dataset":
+            return (
+                _EXPECTED_BAD_CORPUS_SIZE,
+                _EXPECTED_BAD_CORPUS_DIGEST,
+                _EXPECTED_GOOD_CORPUS_SIZE,
+                _EXPECTED_GOOD_CORPUS_DIGEST,
+            )
+        case "formula":
+            return (
+                _EXPECTED_FORMULA_BAD_CORPUS_SIZE,
+                _EXPECTED_FORMULA_BAD_CORPUS_DIGEST,
+                _EXPECTED_FORMULA_GOOD_CORPUS_SIZE,
+                _EXPECTED_FORMULA_GOOD_CORPUS_DIGEST,
+            )
+        case _:
+            assert_never(mode)
+
+
+def _schema_digest(path: Path = _SCHEMA_PATH) -> str | None:
+    """Digest one of bench's own committed schema files in backend-compatible form."""
     try:
-        schema_bytes = _SCHEMA_PATH.read_bytes()
+        schema_bytes = path.read_bytes()
     except OSError:
         return None
     return "sha256:" + hashlib.sha256(schema_bytes).hexdigest()
@@ -121,6 +160,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout", type=_positive_seconds, default=_DEFAULT_TIMEOUT, help="HTTP timeout (s)"
     )
+    parser.add_argument(
+        "--mode",
+        choices=tuple(_MODES),
+        default="dataset",
+        help="proposer route: dataset (/propose-spec) or formula (/propose-formula)",
+    )
     return parser.parse_args()
 
 
@@ -128,6 +173,7 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
     """Log provenance, guarantee, observations, top failures, and written paths."""
     meta = report.meta
     short_commit = meta.git_commit[:7] if meta.git_commit is not None else None
+    _LOGGER.info("PROVENANCE mode=%s", meta.mode)
     _LOGGER.info("PROVENANCE git_commit=%s git_dirty=%s", short_commit, meta.git_dirty)
     _LOGGER.info("PROVENANCE vplot_schema_sha256=%s", meta.vplot_schema_sha256)
     _LOGGER.info("PROVENANCE model_probe_url=%s", meta.model_probe_url)
@@ -170,21 +216,10 @@ def _log_summary(report: Report, out_path: Path, details_path: Path) -> None:
         guarantee.good_corpus_false_reject_count,
         guarantee.good_corpus_transport_errors,
     )
+    bad_size, bad_digest, good_size, good_digest = _expected_pins(meta.mode)
     for label, size, expected_size, digest, expected_digest in (
-        (
-            "bad",
-            guarantee.bad_corpus_size,
-            _EXPECTED_BAD_CORPUS_SIZE,
-            guarantee.bad_corpus_digest,
-            _EXPECTED_BAD_CORPUS_DIGEST,
-        ),
-        (
-            "good",
-            guarantee.good_corpus_size,
-            _EXPECTED_GOOD_CORPUS_SIZE,
-            guarantee.good_corpus_digest,
-            _EXPECTED_GOOD_CORPUS_DIGEST,
-        ),
+        ("bad", guarantee.bad_corpus_size, bad_size, guarantee.bad_corpus_digest, bad_digest),
+        ("good", guarantee.good_corpus_size, good_size, guarantee.good_corpus_digest, good_digest),
     ):
         if size != expected_size:
             _LOGGER.warning(
@@ -243,13 +278,14 @@ def _exit_code(report: Report) -> int:
     """
     guarantee = report.guarantee
     overall = report.observations.overall
+    bad_size, bad_digest, good_size, good_digest = _expected_pins(report.meta.mode)
     invalid = (
-        guarantee.bad_corpus_size != _EXPECTED_BAD_CORPUS_SIZE
-        or guarantee.bad_corpus_digest != _EXPECTED_BAD_CORPUS_DIGEST
+        guarantee.bad_corpus_size != bad_size
+        or guarantee.bad_corpus_digest != bad_digest
         or guarantee.bad_corpus_false_accept_count > 0
         or guarantee.bad_corpus_transport_errors > 0
-        or guarantee.good_corpus_size != _EXPECTED_GOOD_CORPUS_SIZE
-        or guarantee.good_corpus_digest != _EXPECTED_GOOD_CORPUS_DIGEST
+        or guarantee.good_corpus_size != good_size
+        or guarantee.good_corpus_digest != good_digest
         or guarantee.good_corpus_false_reject_count > 0
         or guarantee.good_corpus_transport_errors > 0
         or overall.prompt_policy_count > 0
@@ -263,6 +299,7 @@ def main() -> int:
     """Run the eval, write both artifacts, log the summary, and return the process exit code."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = _parse_args()
+    mode, prompts = _MODES[args.mode]
     git_commit, git_dirty = _git_provenance()
     with httpx.Client(timeout=args.timeout) as client:
         served_model = fetch_model_name(client, args.model_url)
@@ -270,6 +307,7 @@ def main() -> int:
             git_commit=git_commit,
             git_dirty=git_dirty,
             vplot_schema_sha256=_schema_digest(),
+            formula_schema_sha256=_schema_digest(_FORMULA_SCHEMA_PATH),
             model_probe_url=args.model_url,
             backend=fetch_backend_provenance(client, args.model_url),
         )
@@ -278,8 +316,9 @@ def main() -> int:
             args.verifier_url,
             Path(args.examples_dir),
             served_model,
-            PROMPTS,
+            prompts,
             provenance,
+            mode,
         )
     out_path = Path(args.out)
     details_path = Path(args.details)

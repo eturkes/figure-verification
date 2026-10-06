@@ -23,20 +23,30 @@ Categories:
 Datasets and columns (units drive the label check): sales.csv{month, region, revenue[USD],
 orders[orders]}, weather.csv{date, city, temp_c[C], precip_mm[mm], aqi[no unit]}. Dataset names
 carry the .csv suffix the VPlot DatasetName requires.
+
+FORMULA_PROMPTS (`--mode formula`, POSTed to /propose-formula) = 2 categories x 20, partitioned
+by INTENDED difficulty against the formula grammar (decimal numbers, x, + - * /, parentheses,
+abs, ** with a whole-number exponent, one curve over one interval):
+  simple   -- one curve the grammar can state, interval given; a faithful spec can verify.
+  complex  -- a faithful spec cannot verify: a function outside the grammar (sin, exp, log,
+              sqrt, a fractional or variable exponent), several curves or panels, a non-function
+              curve, styling or an axis change. The JSON formula route binds no request, so a
+              verified reply here is a DIFFERENT curve -- the rate measures the gradient, never
+              faithfulness.
 """
 
 import msgspec
 
 
 class Prompt(msgspec.Struct, frozen=True, kw_only=True):
-    """One eval prompt: the dataset to plot and the user's free-text ask."""
+    """One eval prompt: the dataset to plot (None for a formula prompt) and the user's ask."""
 
     category: str
-    dataset_name: str
+    dataset_name: str | None
     user_request: str
 
 
-def _mk(category: str, pairs: tuple[tuple[str, str], ...]) -> tuple[Prompt, ...]:
+def _mk(category: str, pairs: tuple[tuple[str | None, str], ...]) -> tuple[Prompt, ...]:
     """Build a category's prompts from (dataset_name, user_request) pairs."""
     return tuple(
         Prompt(category=category, dataset_name=dataset_name, user_request=user_request)
@@ -189,3 +199,59 @@ PROMPTS: tuple[Prompt, ...] = (
     *_BAD_AGGREGATION,
     *_HIDDEN_FILTER,
 )
+
+FORMULA_CATEGORIES: tuple[str, ...] = ("simple", "complex")
+
+_SIMPLE = _mk(
+    "simple",
+    (
+        (None, "Plot y = 2x + 1 for x from -5 to 5."),
+        (None, "Plot y = x squared from -3 to 3."),
+        (None, "Draw the line y = 3 - x between x = 0 and x = 10."),
+        (None, "Plot y = x^3 - x for x from -2 to 2."),
+        (None, "Plot the absolute value of x from -4 to 4."),
+        (None, "Plot y = 1/x for x from 1 to 10."),
+        (None, "Plot y = 0.5x - 2 from 0 to 8 as a scatter plot."),
+        (None, "Plot y = (x - 1)^2 for x between -2 and 4."),
+        (None, "Draw y = |x - 2| * 3 from -1 to 5."),
+        (None, "Plot the cubic y = x^3 from -2 to 2."),
+        (None, "Plot y = 4 - x^2 for x from -3 to 3."),
+        (None, "Plot y = x / 2 + 3 from 0 to 20."),
+        (None, "Show y = 10x as a line from 0 to 1."),
+        (None, "Plot y = x^2 + 2x + 1 from -4 to 2."),
+        (None, "Plot y = 1 / (x + 1) for x from 0 to 5."),
+        (None, "Plot y = 2|x| - 1 from -3 to 3."),
+        (None, "Plot y = x^4 from -1 to 1."),
+        (None, "Draw y = 100 - 5x from 0 to 20."),
+        (None, "Plot y = (x + 2)(x - 3) for x from -4 to 5."),
+        (None, "Plot y = x for x from 0 to 1 with 11 points."),
+    ),
+)
+
+_COMPLEX = _mk(
+    "complex",
+    (
+        (None, "Plot y = sin(x) from 0 to 6.28."),
+        (None, "Plot y = e^x from 0 to 3."),
+        (None, "Plot y = ln(x) from 1 to 10."),
+        (None, "Plot y = sqrt(x) from 0 to 9."),
+        (None, "Plot y = x^2 and y = 2x on the same axes from -3 to 3."),
+        (None, "Plot the circle x^2 + y^2 = 4."),
+        (None, "Plot the parametric curve x = cos(t), y = sin(t) for t from 0 to 2 pi."),
+        (None, "Plot y = x for x below 0 and y = x^2 otherwise, from -2 to 2."),
+        (None, "Plot y = 1/x from 1 to 100 with a logarithmic y axis."),
+        (None, "Plot y = x^2 from -3 to 3 with the area under the curve shaded."),
+        (None, "Plot y = x^0.5 from 0 to 4."),
+        (None, "Plot the standard normal density from -3 to 3."),
+        (None, "Plot y = tan(x) from -1 to 1 and mark its asymptotes."),
+        (None, "Draw a 2 by 2 grid of plots of x, x^2, x^3 and x^4."),
+        (None, "Plot y = x^2 from -3 to 3 as a red dashed line with a legend."),
+        (None, "Plot 50 random points scattered around the line y = 2x."),
+        (None, "Plot the polar rose r = cos(3 theta)."),
+        (None, "Plot y = 2^x from 0 to 10."),
+        (None, "Plot y = floor(x) from 0 to 5."),
+        (None, "Plot y = x^2 on the left axis and y = 1/x on a second right axis from 1 to 5."),
+    ),
+)
+
+FORMULA_PROMPTS: tuple[Prompt, ...] = (*_SIMPLE, *_COMPLEX)

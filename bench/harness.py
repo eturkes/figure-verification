@@ -2,15 +2,16 @@
 """Eval driver, classification, and report encoding for the failure eval.
 
 An out-of-tree observer: a synchronous httpx client (deterministic) driving ONLY the verifier's
-public HTTP surface -- /propose-spec for the model path and /verify-only for the corpus
-guarantee. It never imports verifier internals, so it adds no trust; it measures the existing
-service. Two measurements, never conflated:
+public HTTP surface -- per BenchMode, /propose-spec + /verify-only (dataset) or /propose-formula +
+/verify-formula (formula) for the model path and the corpus guarantee. It never imports
+verifier internals, so it adds no trust; it measures the existing service. Two measurements,
+never conflated:
 
-  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks all 18 bad
-  goldens (bad_corpus_false_accept_count MUST be 0) AND accepts all 10 good ones
-  (good_corpus_false_reject_count MUST be 0). Either non-zero is a real verifier regression;
-  without the good leg, a verifier that rejected EVERYTHING would satisfy the bad-corpus
-  bound vacuously and the run would still exit 0.
+  GUARANTEE (deterministic, the only bounds) -- the trusted verifier blocks every bad golden
+  of the mode (18 dataset / 20 formula; bad_corpus_false_accept_count MUST be 0) AND accepts
+  every good one (10 / 6; good_corpus_false_reject_count MUST be 0). Either non-zero is a real
+  verifier regression; without the good leg, a verifier that rejected EVERYTHING would satisfy
+  the bad-corpus bound vacuously and the run would still exit 0.
 
   OBSERVATIONS (statistical, characterize the weak proposer) -- JSON-object / JSON-validity /
   schema|semantic|policy failure / verified-render rates plus the top failing checks. NOT a
@@ -29,12 +30,12 @@ import logging
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Literal
+from typing import Literal, assert_never
 
 import httpx
 import msgspec
 
-from bench.prompts import CATEGORIES, Prompt
+from bench.prompts import CATEGORIES, FORMULA_CATEGORIES, Prompt
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +120,8 @@ class _SpecEntry(msgspec.Struct):
 class _Index(msgspec.Struct):
     bad_specs: tuple[_SpecEntry, ...]
     good_specs: tuple[_SpecEntry, ...]
+    formula_bad_specs: tuple[_SpecEntry, ...] = ()
+    formula_good_specs: tuple[_SpecEntry, ...] = ()
 
 
 class _Models(msgspec.Struct):
@@ -129,6 +132,36 @@ class _ModelList(msgspec.Struct):
     data: tuple[_Models, ...]
 
 
+# --- modes ----------------------------------------------------------------------------------
+class BenchMode(msgspec.Struct, frozen=True, kw_only=True):
+    """One proposer route under evaluation + the golden corpora its guarantee leg re-judges."""
+
+    name: Literal["dataset", "formula"]
+    propose_path: str
+    verify_path: str
+    bad_dir: str
+    good_dir: str
+    categories: tuple[str, ...]
+
+
+DATASET_MODE = BenchMode(
+    name="dataset",
+    propose_path="/propose-spec",
+    verify_path="/verify-only",
+    bad_dir="bad_specs",
+    good_dir="good_specs",
+    categories=CATEGORIES,
+)
+FORMULA_MODE = BenchMode(
+    name="formula",
+    propose_path="/propose-formula",
+    verify_path="/verify-formula",
+    bad_dir="formula_bad_specs",
+    good_dir="formula_good_specs",
+    categories=FORMULA_CATEGORIES,
+)
+
+
 # --- report structs (encoded to report.json; all frozen + kw_only) --------------------------
 class BackendProvenance(msgspec.Struct, frozen=True, kw_only=True):
     """Model backend provenance decoded from its root /health endpoint."""
@@ -137,6 +170,7 @@ class BackendProvenance(msgspec.Struct, frozen=True, kw_only=True):
     device: str
     structured_output: bool
     vplot_schema_sha256: str | None
+    formula_schema_sha256: str | None = None
 
 
 class RunProvenance(msgspec.Struct, frozen=True, kw_only=True):
@@ -145,12 +179,17 @@ class RunProvenance(msgspec.Struct, frozen=True, kw_only=True):
     git_commit: str | None
     git_dirty: bool
     vplot_schema_sha256: str | None
+    formula_schema_sha256: str | None
     model_probe_url: str
     backend: BackendProvenance | None
 
 
 class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
-    """Explicit run provenance plus prompt-set identity and reproducibility note."""
+    """Explicit run provenance plus prompt-set identity and reproducibility note.
+
+    `mode` + `formula_schema_sha256` default so a report written before formula mode existed
+    (every dataset run) still decodes.
+    """
 
     served_model: str | None
     prompt_count: int
@@ -161,6 +200,8 @@ class MetaBlock(msgspec.Struct, frozen=True, kw_only=True):
     vplot_schema_sha256: str | None
     model_probe_url: str
     backend: BackendProvenance | None
+    mode: Literal["dataset", "formula"] = "dataset"
+    formula_schema_sha256: str | None = None
 
 
 class GuaranteeBlock(msgspec.Struct, frozen=True, kw_only=True):
@@ -257,7 +298,7 @@ class PromptRecord(msgspec.Struct, frozen=True, kw_only=True):
     """
 
     category: str
-    dataset_name: str
+    dataset_name: str | None
     user_request: str
     http_status: int
     bucket: str
@@ -459,63 +500,80 @@ def _corpus_digest(spec_dir: Path, files: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
-def _verify_only_verdict(client: httpx.Client, verifier_base_url: str, spec: bytes) -> bool | None:
-    """POST one golden to /verify-only: its verified bool, or None on a transport fault/non-200
-    (a golden can never be transport misuse, so a non-200 is infra, not a verdict)."""
+def _golden_verdict(
+    client: httpx.Client, verifier_base_url: str, verify_path: str, spec: bytes
+) -> bool | None:
+    """POST one golden to the mode's verify route: its verified bool, or None on a transport
+    fault/non-200 (a golden can never be transport misuse, so a non-200 is infra, not a verdict)."""
     try:
         response = client.post(
-            f"{verifier_base_url}/verify-only",
+            f"{verifier_base_url}{verify_path}",
             content=spec,
             headers={"content-type": "application/json"},
         )
     except httpx.HTTPError:
         return None
     if response.status_code != _HTTP_OK:
-        _LOGGER.warning("corpus verify-only answered non-200 (%d)", response.status_code)
+        _LOGGER.warning("corpus %s answered non-200 (%d)", verify_path, response.status_code)
         return None
     return msgspec.json.decode(response.content, type=_RespVerdict).verified
 
 
+def _corpora(
+    index: _Index, mode: BenchMode
+) -> tuple[tuple[_SpecEntry, ...], tuple[_SpecEntry, ...]]:
+    """The mode's (bad, good) golden entries from examples/index.json."""
+    match mode.name:
+        case "dataset":
+            return index.bad_specs, index.good_specs
+        case "formula":
+            return index.formula_bad_specs, index.formula_good_specs
+        case _:
+            assert_never(mode.name)
+
+
 def _run_guarantee(
-    client: httpx.Client, verifier_base_url: str, examples_dir: Path
+    client: httpx.Client, verifier_base_url: str, examples_dir: Path, mode: BenchMode
 ) -> GuaranteeBlock:
-    """Re-judge both golden corpora through /verify-only: count bad goldens that falsely verify
-    and good goldens that falsely fail (see GuaranteeBlock -- the good leg needs the verifier's
-    data_dir provisioned with the corpus datasets, which the goldens' baked hashes bind to).
+    """Re-judge both golden corpora of `mode` through its verify route: count bad goldens that
+    falsely verify and good goldens that falsely fail (see GuaranteeBlock -- the dataset good leg
+    needs the verifier's data_dir provisioned with the corpus datasets, which the goldens' baked
+    hashes bind to).
 
     A transport error or non-200 is logged and counted per corpus as a transport error, never
     as a false accept/reject. Both false counts MUST be 0; either non-zero is a real regression.
     """
     index = msgspec.json.decode((examples_dir / "index.json").read_bytes(), type=_Index)
-    counts = {"bad_specs": 0, "good_specs": 0}
-    transport = {"bad_specs": 0, "good_specs": 0}
+    bad_specs, good_specs = _corpora(index, mode)
+    counts = {mode.bad_dir: 0, mode.good_dir: 0}
+    transport = {mode.bad_dir: 0, mode.good_dir: 0}
     # regression_verdict = the verdict that counts AGAINST the bound: a bad golden verifying
     # (false accept) or a good golden failing (false reject).
     for subdir, entries, regression_verdict in (
-        ("bad_specs", index.bad_specs, True),
-        ("good_specs", index.good_specs, False),
+        (mode.bad_dir, bad_specs, True),
+        (mode.good_dir, good_specs, False),
     ):
         for entry in entries:
             spec_bytes = (examples_dir / subdir / entry.file).read_bytes()
-            verified = _verify_only_verdict(client, verifier_base_url, spec_bytes)
+            verified = _golden_verdict(client, verifier_base_url, mode.verify_path, spec_bytes)
             if verified is None:
                 _LOGGER.warning("%s transport error for %s", subdir, entry.file)
                 transport[subdir] += 1
             elif verified is regression_verdict:
                 counts[subdir] += 1
     return GuaranteeBlock(
-        bad_corpus_size=len(index.bad_specs),
+        bad_corpus_size=len(bad_specs),
         bad_corpus_digest=_corpus_digest(
-            examples_dir / "bad_specs", tuple(e.file for e in index.bad_specs)
+            examples_dir / mode.bad_dir, tuple(e.file for e in bad_specs)
         ),
-        bad_corpus_false_accept_count=counts["bad_specs"],
-        bad_corpus_transport_errors=transport["bad_specs"],
-        good_corpus_size=len(index.good_specs),
+        bad_corpus_false_accept_count=counts[mode.bad_dir],
+        bad_corpus_transport_errors=transport[mode.bad_dir],
+        good_corpus_size=len(good_specs),
         good_corpus_digest=_corpus_digest(
-            examples_dir / "good_specs", tuple(e.file for e in index.good_specs)
+            examples_dir / mode.good_dir, tuple(e.file for e in good_specs)
         ),
-        good_corpus_false_reject_count=counts["good_specs"],
-        good_corpus_transport_errors=transport["good_specs"],
+        good_corpus_false_reject_count=counts[mode.good_dir],
+        good_corpus_transport_errors=transport[mode.good_dir],
     )
 
 
@@ -572,6 +630,21 @@ def _decode_propose_result(response: httpx.Response) -> _RespProposeResult:
 
 
 # --- the driver -----------------------------------------------------------------------------
+def _propose_body(prompt: Prompt, mode: BenchMode) -> dict[str, str]:
+    """The route's request body; a formula body carries the ask alone (strict decode refuses
+    any other member)."""
+    match mode.name:
+        case "dataset":
+            if prompt.dataset_name is None:
+                msg = f"dataset prompt names no dataset: {prompt.user_request!r}"
+                raise ValueError(msg)
+            return {"dataset_name": prompt.dataset_name, "user_request": prompt.user_request}
+        case "formula":
+            return {"user_request": prompt.user_request}
+        case _:
+            assert_never(mode.name)
+
+
 def run_eval(  # noqa: PLR0913, PLR0917 — explicit boundary inputs keep provenance non-defaulted
     client: httpx.Client,
     verifier_base_url: str,
@@ -579,24 +652,24 @@ def run_eval(  # noqa: PLR0913, PLR0917 — explicit boundary inputs keep proven
     served_model: str | None,
     prompts: tuple[Prompt, ...],
     provenance: RunProvenance,
+    mode: BenchMode,
 ) -> tuple[Report, tuple[PromptRecord, ...]]:
-    """Run the guarantee (both corpora) then every prompt through /propose-spec; return the
-    report + JSONL rows.
+    """Run the guarantee (both corpora of `mode`) then every prompt through the mode's propose
+    route; return the report + JSONL rows.
 
-    Each prompt is POSTed to /propose-spec. A 200 decodes to a loose ProposeResult and buckets by
-    verdict; a non-200 decodes the problem detail (best-effort) and buckets as a fault. Rates are
-    over the 200-response count per scope; the top failing checks span all 200 verdicts.
+    A 200 decodes to a loose ProposeResult and buckets by verdict; a non-200 decodes the problem
+    detail (best-effort) and buckets as a fault. Rates are over the 200-response count per scope;
+    the top failing checks span all 200 verdicts.
     """
-    guarantee = _run_guarantee(client, verifier_base_url, examples_dir)
+    guarantee = _run_guarantee(client, verifier_base_url, examples_dir, mode)
     overall = _Tally()
-    cat_tallies: dict[str, _Tally] = {category: _Tally() for category in CATEGORIES}
+    cat_tallies: dict[str, _Tally] = {category: _Tally() for category in mode.categories}
     failing_checks: Counter[str] = Counter()
     records: list[PromptRecord] = []
     for prompt in prompts:
         cat = cat_tallies[prompt.category]
         response = client.post(
-            f"{verifier_base_url}/propose-spec",
-            json={"dataset_name": prompt.dataset_name, "user_request": prompt.user_request},
+            f"{verifier_base_url}{mode.propose_path}", json=_propose_body(prompt, mode)
         )
         status = response.status_code
         if status == _HTTP_OK:
@@ -635,20 +708,22 @@ def run_eval(  # noqa: PLR0913, PLR0917 — explicit boundary inputs keep proven
     )
     observations = ObservationsBlock(
         overall=_rate_block(overall),
-        by_category={category: _rate_block(cat_tallies[category]) for category in CATEGORIES},
+        by_category={category: _rate_block(cat_tallies[category]) for category in mode.categories},
         top_failure_modes=top,
         reply_shape=_shape_block(overall),
     )
     meta = MetaBlock(
         served_model=served_model,
         prompt_count=len(prompts),
-        categories=CATEGORIES,
+        categories=mode.categories,
         reproducibility=_REPRODUCIBILITY,
         git_commit=provenance.git_commit,
         git_dirty=provenance.git_dirty,
         vplot_schema_sha256=provenance.vplot_schema_sha256,
         model_probe_url=provenance.model_probe_url,
         backend=provenance.backend,
+        mode=mode.name,
+        formula_schema_sha256=provenance.formula_schema_sha256,
     )
     return Report(meta=meta, guarantee=guarantee, observations=observations), tuple(records)
 

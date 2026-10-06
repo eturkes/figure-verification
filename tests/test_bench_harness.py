@@ -34,8 +34,13 @@ import pytest
 from bench.__main__ import (
     _EXPECTED_BAD_CORPUS_DIGEST,
     _EXPECTED_BAD_CORPUS_SIZE,
+    _EXPECTED_FORMULA_BAD_CORPUS_DIGEST,
+    _EXPECTED_FORMULA_BAD_CORPUS_SIZE,
+    _EXPECTED_FORMULA_GOOD_CORPUS_DIGEST,
+    _EXPECTED_FORMULA_GOOD_CORPUS_SIZE,
     _EXPECTED_GOOD_CORPUS_DIGEST,
     _EXPECTED_GOOD_CORPUS_SIZE,
+    _FORMULA_SCHEMA_PATH,
     _SCHEMA_PATH,
     _exit_code,
     _git_provenance,
@@ -44,6 +49,8 @@ from bench.__main__ import (
     _schema_digest,
 )
 from bench.harness import (
+    DATASET_MODE,
+    FORMULA_MODE,
     BackendProvenance,
     GuaranteeBlock,
     MetaBlock,
@@ -60,6 +67,7 @@ from bench.harness import (
     _defenced_json_valid,
     _Index,
     _json_shape,
+    _propose_body,
     _rate_block,
     _reply_shape,
     _RespCheck,
@@ -74,7 +82,7 @@ from bench.harness import (
     fetch_backend_provenance,
     run_eval,
 )
-from bench.prompts import PROMPTS
+from bench.prompts import FORMULA_PROMPTS, PROMPTS, Prompt
 
 # model_backend.models is pure msgspec — importing it here needs no native OpenVINO runtime, and
 # it keeps the bench-tolerance proof bound to the bytes the backend actually serves.
@@ -286,8 +294,9 @@ def test_fetch_backend_provenance_uses_backend_root_health() -> None:
 def test_fetch_backend_provenance_tolerates_every_served_health_field() -> None:
     """Decode the backend's OWN HealthResponse bytes, not a hand-written dict.
 
-    The backend serves one digest per operator-pinned schema. Bench records the dataset digest and
-    ignores the rest, so a new pinned mode must never turn `meta.backend` into null.
+    The backend serves one digest per operator-pinned schema. Bench records the dataset and formula
+    digests and ignores any other field, so a new pinned mode must never turn `meta.backend` into
+    null.
     """
     served = HealthResponse(
         model_name="model-id",
@@ -309,6 +318,7 @@ def test_fetch_backend_provenance_tolerates_every_served_health_field() -> None:
         device="NPU",
         structured_output=True,
         vplot_schema_sha256="sha256:" + "a" * 64,
+        formula_schema_sha256="sha256:" + "b" * 64,
     )
 
 
@@ -417,7 +427,7 @@ def test_run_guarantee_healthy_verifier_counts_zero(tmp_path: Path) -> None:
         return _verdict_response(verified=b'"good"' in request.content)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+        block = _run_guarantee(client, "http://verifier.test", tmp_path, DATASET_MODE)
     assert block.bad_corpus_false_accept_count == 0
     assert block.good_corpus_false_reject_count == 0
     assert block.bad_corpus_transport_errors == 0
@@ -437,7 +447,7 @@ def test_run_guarantee_counts_regressions_per_corpus(tmp_path: Path) -> None:
         return _verdict_response(verified=b'"bad"' in request.content)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+        block = _run_guarantee(client, "http://verifier.test", tmp_path, DATASET_MODE)
     assert block.bad_corpus_false_accept_count == 1
     assert block.good_corpus_false_reject_count == 1
     assert block.bad_corpus_transport_errors == 0
@@ -456,7 +466,7 @@ def test_run_guarantee_transport_faults_never_count_as_verdicts(tmp_path: Path) 
         raise httpx.ConnectError(msg)
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-        block = _run_guarantee(client, "http://verifier.test", tmp_path)
+        block = _run_guarantee(client, "http://verifier.test", tmp_path, DATASET_MODE)
     assert block.bad_corpus_transport_errors == 1
     assert block.good_corpus_transport_errors == 1
     assert block.bad_corpus_false_accept_count == 0
@@ -587,6 +597,16 @@ def test_timeout_option_is_wired_to_the_guard_not_only_defined_beside_it(
 
 
 # --- M12.8: by_category pin + the committed CURRENT-host baseline ---------------------------
+_PROVENANCE = RunProvenance(
+    git_commit=None,
+    git_dirty=False,
+    vplot_schema_sha256=None,
+    formula_schema_sha256=None,
+    model_probe_url="http://model.test/v1",
+    backend=None,
+)
+
+
 def _scope_count(block: RateBlock) -> int:
     return (
         block.n
@@ -607,16 +627,9 @@ def test_run_eval_reports_every_category_with_its_twenty_prompts(tmp_path: Path)
         verdict = {"verified": False, "layer": "decode", "results": []}
         return httpx.Response(200, json={"model_reply": "{}", "verdict": verdict})
 
-    provenance = RunProvenance(
-        git_commit=None,
-        git_dirty=False,
-        vplot_schema_sha256=None,
-        model_probe_url="http://model.test/v1",
-        backend=None,
-    )
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         report, records = run_eval(
-            client, "http://verifier.test", tmp_path, None, PROMPTS, provenance
+            client, "http://verifier.test", tmp_path, None, PROMPTS, _PROVENANCE, DATASET_MODE
         )
     by_category = report.observations.by_category
     assert tuple(by_category) == _CATEGORY_NAMES
@@ -731,3 +744,122 @@ def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str, direct
         [git, "check-ignore", "--no-index", "-q", path], cwd=root, capture_output=True, check=False
     )
     assert ignored.returncode == 1
+
+
+# --- p32: formula mode ------------------------------------------------------------------------
+def test_formula_corpus_digest_pins_match_tree() -> None:
+    index = msgspec.json.decode((_EXAMPLES / "index.json").read_bytes(), type=_Index)
+    bad = tuple(entry.file for entry in index.formula_bad_specs)
+    good = tuple(entry.file for entry in index.formula_good_specs)
+    assert len(bad) == _EXPECTED_FORMULA_BAD_CORPUS_SIZE == 20
+    assert len(good) == _EXPECTED_FORMULA_GOOD_CORPUS_SIZE == 6
+    assert _corpus_digest(_EXAMPLES / "formula_bad_specs", bad) == (
+        _EXPECTED_FORMULA_BAD_CORPUS_DIGEST
+    )
+    assert _corpus_digest(_EXAMPLES / "formula_good_specs", good) == (
+        _EXPECTED_FORMULA_GOOD_CORPUS_DIGEST
+    )
+
+
+def test_formula_prompts_are_two_categories_of_twenty_without_a_dataset() -> None:
+    assert FORMULA_MODE.categories == ("simple", "complex")
+    assert [prompt.category for prompt in FORMULA_PROMPTS] == ["simple"] * 20 + ["complex"] * 20
+    assert {prompt.dataset_name for prompt in FORMULA_PROMPTS} == {None}
+    assert None not in {prompt.dataset_name for prompt in PROMPTS}
+    assert len({prompt.user_request for prompt in FORMULA_PROMPTS}) == 40
+
+
+def test_formula_mode_posts_the_ask_alone_and_judges_the_formula_corpora(tmp_path: Path) -> None:
+    """Formula mode: goldens through /verify-formula, prompts through /propose-formula with a
+    body that holds `user_request` alone (the route's strict decode refuses any other member)."""
+    (tmp_path / "formula_bad_specs").mkdir()
+    (tmp_path / "formula_good_specs").mkdir()
+    (tmp_path / "formula_bad_specs" / "fb.json").write_bytes(b'{"marker": "bad"}')
+    (tmp_path / "formula_good_specs" / "fg.json").write_bytes(b'{"marker": "good"}')
+    index = {
+        "bad_specs": [],
+        "good_specs": [],
+        "formula_bad_specs": [{"file": "fb.json"}],
+        "formula_good_specs": [{"file": "fg.json"}],
+    }
+    (tmp_path / "index.json").write_bytes(msgspec.json.encode(index))
+    seen: list[tuple[str, bytes]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.url.path, request.content))
+        if request.url.path == "/verify-formula":
+            return _verdict_response(verified=b'"good"' in request.content)
+        verdict = {"verified": True, "layer": "verify", "results": []}
+        return httpx.Response(200, json={"model_reply": "{}", "verdict": verdict})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report, records = run_eval(
+            client,
+            "http://verifier.test",
+            tmp_path,
+            None,
+            FORMULA_PROMPTS,
+            _PROVENANCE,
+            FORMULA_MODE,
+        )
+    assert [path for path, _ in seen[:2]] == ["/verify-formula", "/verify-formula"]
+    proposals = seen[2:]
+    assert {path for path, _ in proposals} == {"/propose-formula"}
+    assert [msgspec.json.decode(body) for _, body in proposals] == [
+        {"user_request": prompt.user_request} for prompt in FORMULA_PROMPTS
+    ]
+    assert report.meta.mode == "formula"
+    assert report.meta.categories == ("simple", "complex")
+    assert tuple(report.observations.by_category) == ("simple", "complex")
+    assert [block.n for block in report.observations.by_category.values()] == [20, 20]
+    assert report.guarantee.bad_corpus_false_accept_count == 0
+    assert report.guarantee.good_corpus_false_reject_count == 0
+    assert {record.dataset_name for record in records} == {None}
+
+
+def test_a_dataset_prompt_without_a_dataset_is_refused_before_any_request() -> None:
+    prompt = Prompt(category="normal", dataset_name=None, user_request="Plot revenue.")
+    with pytest.raises(ValueError, match="names no dataset"):
+        _propose_body(prompt, DATASET_MODE)
+    assert _propose_body(prompt, FORMULA_MODE) == {"user_request": "Plot revenue."}
+
+
+def test_exit_code_reads_the_pins_of_the_mode_that_ran() -> None:
+    """A formula report passes against the formula pins and fails against the dataset ones."""
+    formula = _valid_report(
+        bad_corpus_size=_EXPECTED_FORMULA_BAD_CORPUS_SIZE,
+        bad_corpus_digest=_EXPECTED_FORMULA_BAD_CORPUS_DIGEST,
+        good_corpus_size=_EXPECTED_FORMULA_GOOD_CORPUS_SIZE,
+        good_corpus_digest=_EXPECTED_FORMULA_GOOD_CORPUS_DIGEST,
+    )
+    assert _exit_code(formula) == 1  # still labelled dataset: formula corpora are off-identity
+    relabelled = msgspec.structs.replace(
+        formula, meta=msgspec.structs.replace(formula.meta, mode="formula")
+    )
+    assert _exit_code(relabelled) == 0
+    dataset_labelled_formula = msgspec.structs.replace(
+        _valid_report(), meta=msgspec.structs.replace(_valid_report().meta, mode="formula")
+    )
+    assert _exit_code(dataset_labelled_formula) == 1
+
+
+def test_formula_schema_digest_reads_the_committed_formula_schema() -> None:
+    expected = "sha256:" + hashlib.sha256(_FORMULA_SCHEMA_PATH.read_bytes()).hexdigest()
+    assert _schema_digest(_FORMULA_SCHEMA_PATH) == expected
+    assert _schema_digest(_FORMULA_SCHEMA_PATH) != _schema_digest()
+
+
+@pytest.mark.parametrize("mode", ["dataset", "formula"])
+def test_mode_option_selects_a_known_mode(mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["bench", "--mode", mode])
+    assert _parse_args().mode == mode
+
+
+def test_mode_option_defaults_to_dataset_and_rejects_others(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["bench"])
+    assert _parse_args().mode == "dataset"
+    monkeypatch.setattr(sys, "argv", ["bench", "--mode", "python"])
+    with pytest.raises(SystemExit):
+        _parse_args()
