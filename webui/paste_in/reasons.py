@@ -245,6 +245,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "The x values of the line are not in increasing order.",
         "折れ線の x の値が昇順ではありません。",
     ),
+    "label_not_consistent": (
+        "A chart label names a CSV column or a summary that the chart does not show.",
+        "グラフのラベルが、グラフにない CSV の列または集計を挙げています。",
+    ),
     "no_tool_call": (
         "The model did not send a chart program.",
         "モデルからグラフのプログラムが届きませんでした。",

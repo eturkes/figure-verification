@@ -552,6 +552,8 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_stages() -> None:
     integrity_codes = {
         "category_not_unique",
         "x_not_ordered",
+        # Q16: G10, a label naming what the chart does not show.
+        "label_not_consistent",
     }
     stages = [
         prescan_codes,

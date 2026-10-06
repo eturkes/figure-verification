@@ -2,7 +2,7 @@
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"
-tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py"]
 
 [[mutant]]
 id = "c2-formula-y-ignored"
@@ -174,7 +174,7 @@ mutant = '''            tail = index + 1'''
 id = "q8-tie-admitted"
 predicate = "a span within one edit of two names, or a name two headers fold to, refuses"
 kills = "tests/test_pysrc_anchoring.py::test_q8_a_word_within_one_edit_of_two_headers_is_a_tie"
-anchor = '''    if tied:'''
+anchor = '''    if tied and not ignore_ties:'''
 mutant = '''    if False:'''
 
 [[mutant]]
@@ -226,3 +226,109 @@ predicate = "overlapping near stretches are one place, so two names there tie"
 kills = "tests/test_pysrc_anchoring.py::test_q8_overlapping_near_matches_are_one_place"
 anchor = '''        if index != place_run or start >= place_end:'''
 mutant = '''        if True:'''
+
+
+# Q16 G10: a label's positive mismatch, one mutant per predicate.
+[[mutant]]
+id = "q16-labels-unchecked"
+predicate = "G10 runs in the dataset integrity stage"
+kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[xlabel]"
+anchor = '''    _check_labels(spec, header)
+'''
+mutant = '''    pass
+'''
+
+[[mutant]]
+id = "q16-header-not-threaded"
+predicate = "the dataset's header reaches the integrity stage"
+kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[ylabel]"
+anchor = '''        check_integrity(spec, table, _header(bound_target, limits))'''
+mutant = '''        check_integrity(spec, table)'''
+
+[[mutant]]
+id = "q16-column-mismatch-admitted"
+predicate = "a label naming an undrawn column refuses"
+kills = "tests/test_pysrc_labels.py::test_q16_a_one_edit_spelling_names_its_column"
+anchor = '''        if _named_columns(text, header, ignore_ties=True) - drawn:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q16-label-ties-refuse"
+predicate = "a tied label word names nothing rather than raising"
+kills = "tests/test_pysrc_labels.py::test_q16_a_tied_label_word_names_nothing"
+anchor = '''_named_columns(text, header, ignore_ties=True)'''
+mutant = '''_named_columns(text, header)'''
+
+[[mutant]]
+id = "q16-ignore-ties-unhonoured"
+predicate = "the matcher honours a caller's request to ignore ties"
+kills = "tests/test_pysrc_labels.py::test_q16_a_tied_label_word_names_nothing"
+anchor = '''    if tied and not ignore_ties:'''
+mutant = '''    if tied:'''
+
+[[mutant]]
+id = "q16-summary-mismatch-admitted"
+predicate = "over a reduction, another reduction's summary word refuses"
+kills = "tests/test_pysrc_labels.py::test_q16_a_summary_word_of_another_reduction_refuses[mean-Average revenue-Total revenue]"
+anchor = '''        if spec.group is not None and _summaries(text, header) - {spec.group}:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q16-summary-read-without-reduction"
+predicate = "without a reduction summary words go unread"
+kills = "tests/test_pysrc_labels.py::test_q16_without_a_reduction_summary_words_go_unread"
+anchor = '''        if spec.group is not None and _summaries(text, header) - {spec.group}:'''
+mutant = '''        if _summaries(text, header) - {spec.group}:'''
+
+[[mutant]]
+id = "q16-median-unread"
+predicate = "a summary no admitted reduction computes refuses"
+kills = "tests/test_pysrc_labels.py::test_q16_a_summary_no_reduction_computes_refuses"
+anchor = '''    "median": None,'''
+mutant = '''    "never-a-summary": None,'''
+
+[[mutant]]
+id = "q16-header-word-read-as-summary"
+predicate = "an ASCII summary word that is a header word names that column"
+kills = "tests/test_pysrc_labels.py::test_q16_a_summary_word_inside_a_header_names_the_column"
+anchor = '''            if word in words and word not in header_words:'''
+mutant = '''            if word in words:'''
+
+[[mutant]]
+id = "q16-header-text-read-as-summary"
+predicate = "a Japanese summary word inside a header names that column"
+kills = "tests/test_pysrc_labels.py::test_q16_a_japanese_summary_word_inside_a_header_names_the_column"
+anchor = '''        elif word in joined and word not in header_text:'''
+mutant = '''        elif word in joined:'''
+
+[[mutant]]
+id = "q16-japanese-summary-unread"
+predicate = "Japanese summary words match inside the label"
+kills = "tests/test_pysrc_labels.py::test_q16_japanese_summary_words_match_inside_the_label"
+anchor = '''        elif word in joined and word not in header_text:'''
+mutant = '''        elif False:'''
+
+[[mutant]]
+id = "q16-title-unread"
+predicate = "the title is a label G10 reads"
+kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[title]"
+anchor = '''    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):'''
+mutant = '''    for text in (labels.xlabel, labels.ylabel, labels.series):'''
+
+[[mutant]]
+id = "q16-series-unread"
+predicate = "the legend label is a label G10 reads"
+kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[series]"
+anchor = '''    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):'''
+mutant = '''    for text in (labels.title, labels.xlabel, labels.ylabel):'''
+
+[[mutant]]
+id = "q16-labels-before-mark-rules"
+predicate = "the mark rules refuse before G10"
+kills = "tests/test_pysrc_labels.py::test_q16_mark_rules_refuse_before_labels"
+anchor = '''    match spec.mark:
+        case "bar" | "barh":'''
+mutant = '''    _check_labels(spec, header)
+    match spec.mark:
+        case "bar" | "barh":'''
+

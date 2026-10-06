@@ -92,6 +92,9 @@ RefusalCode = Literal[
     # integrity -- what an otherwise-recomputable figure would misrepresent.
     "category_not_unique",
     "x_not_ordered",
+    # G10 (Q16): a title, axis label or legend label names a CSV column the chart does not draw,
+    # or -- over a reduction -- the summary word of another reduction.
+    "label_not_consistent",
 ]
 
 

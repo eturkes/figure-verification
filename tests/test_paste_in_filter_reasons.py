@@ -259,14 +259,14 @@ def _exercise(
 
 
 def test_d1_reason_key_set_is_every_refusal_code_plus_the_fourteen_outlet_causes() -> None:
-    """D1: exact 53 + 14 key union and disjoint OutletCause alias, not a production-derived list."""
+    """D1: exact 54 + 14 key union and disjoint OutletCause alias, not a production-derived list."""
     texts = _texts()
     alias = importlib.import_module("webui.paste_in.reasons").OutletCause
     causes = set(get_args(getattr(alias, "__value__", alias)))
     refusals = set(get_args(RefusalCode))
     assert causes == _CAUSES
     assert len(causes) == 14
-    assert len(refusals) == 53
+    assert len(refusals) == 54
     assert causes.isdisjoint(refusals)
     assert set(texts) == refusals | _CAUSES
 

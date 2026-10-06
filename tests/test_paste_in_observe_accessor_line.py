@@ -15,7 +15,7 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from observe_support import ROOT, dataset_verdict, observation_for, stdout_for
+from observe_support import LABEL_REFUSED, ROOT, dataset_verdict, observation_for, stdout_for
 from verifier.pysrc import Verified, verify_python_source
 from verifier.pysrc.spec import DatasetPlot, DatasetTarget
 from webui.paste_in import observe
@@ -66,9 +66,12 @@ def _positional(key_count: int) -> tuple[Verified, dict[str, Any]]:
     return verified, payload
 
 
-@pytest.mark.parametrize("case_id", _LINE_IDS)
+@pytest.mark.parametrize("case_id", [i for i in _LINE_IDS if i not in LABEL_REFUSED])
 def test_b1_committed_accessor_line_fixtures_release(case_id: str) -> None:
-    """B1: four synthetic and two captured programs release their own recorded observations."""
+    """B1: four synthetic programs + one capture release their own recorded observations.
+
+    The second capture, design-simple-06, G10 refuses (`observe_support.LABEL_REFUSED`).
+    """
     verified, payload = _fixture(case_id)
     assert _matches(verified, payload)
 

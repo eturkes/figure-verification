@@ -170,7 +170,7 @@ def test_a7_the_int32_renderer_bound_binds_bars_alone(kind: str) -> None:
 
 
 def test_a8_the_width_invariants_hold() -> None:
-    """A8: 53 refusal codes, two spec members and four reader keys, all hand-stated."""
-    assert len(get_args(RefusalCode)) == 53
+    """A8: 54 refusal codes, two spec members and four reader keys, all hand-stated."""
+    assert len(get_args(RefusalCode)) == 54
     assert len(get_args(CorePlotSpec.__value__)) == 2
     assert set(observe.READERS) == {"line", "scatter", "bar", "barh"}

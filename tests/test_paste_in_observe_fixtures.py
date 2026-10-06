@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from observe_support import OBS_TAG, ROOT
+from observe_support import LABEL_REFUSED, OBS_TAG, ROOT
 from verifier.pysrc import Verified, verify_python_source
 from verifier.pysrc.limits import PysrcLimits
 from verifier.pysrc.spec import (
@@ -137,13 +137,23 @@ def test_o3_o5_observation_fixture_set_is_exactly_38_dataset_and_24_formula() ->
     )
 
 
-@pytest.mark.parametrize("case_id", _DATASET_IDS)
+@pytest.mark.parametrize("case_id", [i for i in _DATASET_IDS if i not in LABEL_REFUSED])
 def test_o3_committed_dataset_artist_fixture_releases(case_id: str) -> None:
-    """O3/B1: 38 recorded dataset artists match recomputation over their own CSV."""
+    """O3/B1: 36 recorded dataset artists match recomputation over their own CSV; G10 refuses 2."""
     data, verdict, observed = _case(case_id)
     assert data["arm"] == "dataset"
     assert isinstance(verdict.spec, DatasetPlot)
     assert _matches(verdict, observed)
+
+
+@pytest.mark.parametrize("case_id", sorted(LABEL_REFUSED))
+def test_q16_label_refused_fixture_never_reaches_observation(case_id: str) -> None:
+    data = json.loads((_FIXTURES / f"{case_id}.json").read_text(encoding="utf-8"))
+    dataset = data["dataset"]
+    target = DatasetTarget(dataset["path"], dataset["content"].encode("utf-8"))
+    verdict = verify_python_source(data["source"], declared_target=target)
+    assert not isinstance(verdict, Verified)
+    assert verdict.code == "label_not_consistent"
 
 
 @pytest.mark.parametrize("case_id", _FORMULA_IDS)

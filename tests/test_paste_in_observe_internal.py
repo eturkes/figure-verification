@@ -10,6 +10,7 @@ from typing import cast
 
 import pytest
 
+from observe_support import LABEL_REFUSED
 from verifier.pysrc.spec import DatasetTarget
 from verifier.pysrc.verify import Verified, verify_python_source
 from webui.paste_in import observe
@@ -48,7 +49,9 @@ def test_fixture_roster_is_full_and_self_contained() -> None:
     assert counts == {"dataset": 38, "formula": 24}
 
 
-@pytest.mark.parametrize("name", _NAMES)
+@pytest.mark.parametrize(
+    "name", [n for n in _NAMES if n.removesuffix(".json") not in LABEL_REFUSED]
+)
 def test_recorded_artist_arrays_match_live_recomputation(name: str) -> None:
     verdict, observation, _ = _case(name)
     assert observe.observation_matches(verdict, observation)

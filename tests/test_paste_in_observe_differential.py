@@ -18,6 +18,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn
 
+from observe_support import LABEL_REFUSED
 from oracle_observe import (
     _arithmetic as oracle_arithmetic,
 )
@@ -830,7 +831,11 @@ def test_differential_decimal_edge() -> None:
 
 
 def test_differential_fixture_replay() -> None:
-    """All 62 self-contained committed observations, plus one perturbation per file."""
+    """All 62 self-contained committed observations, plus one perturbation per file.
+
+    The two G10 refuses (`observe_support.LABEL_REFUSED`) pin that refusal; the perturbation index
+    stays bound to the sorted inventory, so every other file keeps its perturbation.
+    """
     paths = sorted((_ROOT / "tests/fixtures/observe").glob("*.json"))
     assert len(paths) == 62, f"fixture inventory drift: {len(paths)}/62"
     for index, path in enumerate(paths):
@@ -842,6 +847,10 @@ def test_differential_fixture_replay() -> None:
             assert set(dataset) == {"path", "content"}
             target = spec.DatasetTarget(dataset["path"], dataset["content"].encode("utf-8"))
         verdict = verify_python_source(fixture["source"], declared_target=target)
+        if path.stem in LABEL_REFUSED:
+            assert not isinstance(verdict, Verified)
+            assert verdict.code == "label_not_consistent"
+            continue
         assert isinstance(verdict, Verified), (path.name, verdict)
         assert verdict.spec.mark == fixture["mark"]
         observed = _TAG + fixture["observation"] + "\n"

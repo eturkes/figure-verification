@@ -130,6 +130,11 @@ same code. The verifier compares the words of the request with the
 column names only. It does not know synonyms or translations, so a request that names no column
 passes this check.
 
+The chart labels obey a similar rule. A title, axis label or legend label cannot name a CSV column
+that the chart does not show. If the chart shows a sum, mean, minimum or maximum per group, a label
+cannot name a different summary. For example, a chart of means cannot have the label `Total`. Such
+a chart fails with the code `label_not_consistent`.
+
 ## Why a chart failed
 
 When the filter blocks a chart, the reply shows a status line above the failure message. The line

@@ -1,9 +1,9 @@
 {
   "capture": {
-    "baseline_verified": 20,
+    "baseline_verified": 18,
     "changed": [
-      "design-simple-06:VERIFIED->column_not_requested",
-      "design-simple-22:VERIFIED->column_not_requested",
+      "design-simple-06:label_not_consistent->column_not_requested",
+      "design-simple-22:label_not_consistent->column_not_requested",
       "design-simple-23:column_not_numeric->column_not_requested"
     ],
     "design_rows": 48,

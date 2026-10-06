@@ -24,11 +24,11 @@ predicate = "a code never maps to a check before the one that raises it"
 kills = "tests/test_paste_in_checks.py::test_c1_check_order_and_reason_map_are_the_hand_stated_tables"
 anchor = '''        "work_budget_exceeded",
     ),
-    "integrity": ("category_not_unique", "x_not_ordered"),'''
+    "integrity": ("category_not_unique", "x_not_ordered", "label_not_consistent"),'''
 mutant = '''        "work_budget_exceeded",
         "category_not_unique",
     ),
-    "integrity": ("x_not_ordered",),'''
+    "integrity": ("x_not_ordered", "label_not_consistent"),'''
 
 [[mutant]]
 id = "c4-pass-boundary-off-by-one"

@@ -1,0 +1,40 @@
+{
+  "concepts": {
+    "en": {
+      "month": "Month",
+      "region": "Region",
+      "revenue": "Revenue",
+      "orders": "Orders",
+      "date": "Date",
+      "city": "City",
+      "temp_c": "Temperature (°C)",
+      "precip_mm": "Precipitation (mm)",
+      "aqi": "Air quality index"
+    },
+    "ja": {
+      "month": "年月",
+      "region": "地域",
+      "revenue": "売上",
+      "orders": "注文数",
+      "date": "日付",
+      "city": "都市",
+      "temp_c": "気温 (°C)",
+      "precip_mm": "降水量 (mm)",
+      "aqi": "大気質指数"
+    }
+  },
+  "summaries": {
+    "en": {
+      "sum": "Total",
+      "mean": "Average",
+      "min": "Minimum",
+      "max": "Maximum"
+    },
+    "ja": {
+      "sum": "合計",
+      "mean": "平均",
+      "min": "最小",
+      "max": "最大"
+    }
+  }
+}

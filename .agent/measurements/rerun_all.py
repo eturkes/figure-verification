@@ -35,6 +35,7 @@ IDS = (
     "T8",
     "W1",
     "A1",
+    "A2",
     "F7",
     "O8",
     "Versions",
@@ -51,6 +52,8 @@ IDS = (
     "R-PORT",
     "R-BAR",
 )
+# Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
+HOST_ONLY = {"A1": "a1_anchor.py", "A2": "a2_labels.py", "S1": "s1_host.py"}
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
 GENERATORS = {
     "S2": (("make_s2_inputs.py", False),),
@@ -323,10 +326,8 @@ class Replay:
             self.run(
                 name, self.python("w1_width.py", PROJECT / "corpus/python/captures/m10-design")
             )
-        elif name == "A1":
-            self.run(name, self.python("a1_anchor.py"))
-        elif name == "S1":
-            self.run(name, self.python("s1_host.py"))
+        elif name in HOST_ONLY:
+            self.run(name, self.python(HOST_ONLY[name]))
         else:
             self.run(name, self.python(f"{name.lower()}.py", pandas=True))
         self.run(f"project-{name}", self.python("all_results.py", name))

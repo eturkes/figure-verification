@@ -14,6 +14,10 @@ from verifier.pysrc import Verified, verify_python_source
 from verifier.pysrc.spec import DatasetTarget
 
 OBS_TAG = "FIGURE_VERIFICATION_OBSERVATION:"
+# Q16: committed captures whose verbatim program G10 refuses -- design-simple-06's x label names
+# `date` over x = `city`, design-simple-09's title names `orders` over y = `revenue`. Production
+# never observes a refused program, so each fixture suite pins that refusal in place of a release.
+LABEL_REFUSED = frozenset({"design-simple-06", "design-simple-09"})
 OBS_MAX_BYTES = 16_777_216
 ROOT = Path(__file__).resolve().parent.parent
 

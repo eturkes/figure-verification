@@ -340,7 +340,7 @@ def test_q9_certificate_reads_a_grid_sample_mismatch_as_unconsumed() -> None:
 
 
 def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
-    """C7: version, K1's field set and all 53 refusal codes stay unchanged."""
+    """C7: version, K1's field set and all 54 refusal codes stay unchanged."""
     assert CERTIFICATE_VERSION == "pysrc-cert-0.1"
     assert set(CoreCertificate.__dataclass_fields__) == {
         "version",
@@ -355,7 +355,7 @@ def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
         "declared_open",
         "interpretation",
     }
-    assert len(get_args(RefusalCode)) == 53
+    assert len(get_args(RefusalCode)) == 54
 
 
 _SQUARE_OVER_ARANGE = (

@@ -183,6 +183,9 @@ RefusalCode = Literal[
     # integrity -- what an otherwise-recomputable figure would misrepresent.
     "category_not_unique",
     "x_not_ordered",
+    # G10 (Q16): a title, axis label or legend label names a CSV column the chart does not draw,
+    # or -- over a reduction -- the summary word of another reduction.
+    "label_not_consistent",
 ]
 
 
@@ -618,7 +621,7 @@ _SOURCES["webui.paste_in.verdicts"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The closed string set the tool returns to the model.
 
-Two members, fixed, and no refusal code among them. Five of the 53 closed codes carry the banned
+Two members, fixed, and no refusal code among them. Five of the 54 closed codes carry the banned
 stem `admit` (`call_target_not_admitted`, `keyword_not_admitted`, `statement_not_admitted`,
 `attribute_not_admitted`, `assign_target_not_admitted`), so returning a code would teach admission
 vocabulary through exactly the surface ruling 6 keeps clean. Nothing needs it either: the outlet
@@ -3979,6 +3982,7 @@ from verifier.pysrc.spec import (
     Interval,
     Neg,
     Num,
+    Reduction,
     Var,
 )
 from verifier.pysrc.table import CellValue, PlottedTable
@@ -4106,8 +4110,10 @@ def _near_names(rest: str, keys: list[str]) -> list[set[str]]:
     return places
 
 
-def _named_columns(text: str, header: tuple[str, ...]) -> frozenset[str]:
-    """The header names `text` names; raises `_AmbiguousTermError` on a tie."""
+def _named_columns(
+    text: str, header: tuple[str, ...], *, ignore_ties: bool = False
+) -> frozenset[str]:
+    """The header names `text` names; a tie raises `_AmbiguousTermError`, or names nothing."""
     by_key: dict[str, list[str]] = {}
     for column in header:
         by_key.setdefault(_words(column), []).append(column)
@@ -4128,7 +4134,7 @@ def _named_columns(text: str, header: tuple[str, ...]) -> frozenset[str]:
     # A tie: one place in the request within one edit of two names, or one name two headers fold to.
     tied = [sorted(keys) for keys in near if len(keys) > 1]
     tied += [[key] for key in named if len(by_key[key]) > 1]
-    if tied:
+    if tied and not ignore_ties:
         message = f"request places {sorted(tied)} each fit more than one header"
         raise _AmbiguousTermError(message)
     return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1)
@@ -4155,6 +4161,69 @@ def _check_anchoring(spec: DatasetPlot, request: str, content: bytes, limits: Py
         _refuse("column_not_requested", exc)
     if named - plotted and plotted - named:
         _refuse("column_not_requested")
+
+
+# --- label consistency (G10, Q16) ----------------------------------------------------------------
+# A label is the figure's own claim about what it shows, and G10 checks that claim against the
+# projection with the request-anchoring matcher above. It refuses a POSITIVE mismatch alone: a
+# title, axis label or legend label naming a CSV column the chart does not draw, or -- over a
+# reduction -- the summary word of a different reduction (`Total` over a mean). A label naming
+# nothing checkable passes; a word tied between two headers names nothing. Without a reduction a
+# summary word goes unread, since a raw column may itself hold totals or averages; and a summary
+# word that is also a word of some header (`total_revenue`) names that column, never a summary.
+# ASCII summary words match whole words; Japanese ones match inside the label's words.
+_SUMMARY_WORDS: dict[str, Reduction | None] = {
+    "sum": "sum",
+    "sums": "sum",
+    "summed": "sum",
+    "total": "sum",
+    "totals": "sum",
+    "mean": "mean",
+    "means": "mean",
+    "average": "mean",
+    "averages": "mean",
+    "avg": "mean",
+    "min": "min",
+    "minimum": "min",
+    "max": "max",
+    "maximum": "max",
+    # A summary no admitted reduction computes: naming it is a mismatch under every reduction.
+    "median": None,
+    "合計": "sum",
+    "総計": "sum",
+    "平均": "mean",
+    "最小": "min",
+    "最大": "max",
+    "中央値": None,
+}
+
+
+def _summaries(text: str, header: tuple[str, ...]) -> set[Reduction | None]:
+    """The reductions `text` names by a summary word no header uses."""
+    joined = _words(text)
+    words = set(joined.split())
+    header_text = " ".join(_words(column) for column in header)
+    header_words = set(header_text.split())
+    found: set[Reduction | None] = set()
+    for word, reduction in _SUMMARY_WORDS.items():
+        if word.isascii():
+            if word in words and word not in header_words:
+                found.add(reduction)
+        elif word in joined and word not in header_text:
+            found.add(reduction)
+    return found
+
+
+def _check_labels(spec: DatasetPlot, header: tuple[str, ...]) -> None:
+    drawn = {spec.x.name, spec.y.name}
+    labels = spec.labels
+    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):
+        if text is None:
+            continue
+        if _named_columns(text, header, ignore_ties=True) - drawn:
+            _refuse("label_not_consistent")
+        if spec.group is not None and _summaries(text, header) - {spec.group}:
+            _refuse("label_not_consistent")
 
 
 def bind_target(
@@ -4297,7 +4366,7 @@ def _formula_integrity(spec: FormulaPlot, table: PlottedTable) -> None:
             assert_never(unreachable)
 
 
-def _dataset_integrity(spec: DatasetPlot, table: PlottedTable) -> None:
+def _dataset_integrity(spec: DatasetPlot, table: PlottedTable, header: tuple[str, ...]) -> None:
     match spec.mark:
         case "bar" | "barh":
             categories = tuple(value for value in table.x if isinstance(value, str))
@@ -4306,19 +4375,31 @@ def _dataset_integrity(spec: DatasetPlot, table: PlottedTable) -> None:
         case "line":
             _check_line_order(table.x)
         case "scatter":
-            return
+            pass
         case _ as unreachable:  # pragma: no cover - the mark union is closed
             assert_never(unreachable)
+    _check_labels(spec, header)
 
 
-def check_integrity(spec: CorePlotSpec, table: PlottedTable) -> None:
-    """The G-rules that become decidable only once the table exists. Raises, or returns."""
+def check_integrity(spec: CorePlotSpec, table: PlottedTable, header: tuple[str, ...] = ()) -> None:
+    """The G-rules that become decidable only once the table exists. Raises, or returns.
+
+    `header` = the dataset's column names, which G10 matches labels against; empty for a formula.
+    """
     if isinstance(spec, FormulaPlot):
         _formula_integrity(spec, table)
     elif isinstance(spec, DatasetPlot):
-        _dataset_integrity(spec, table)
+        _dataset_integrity(spec, table, header)
     else:  # pragma: no cover - `CorePlotSpec` is closed
         assert_never(spec)
+
+
+def _header(target: DeclaredTarget | None, limits: PysrcLimits) -> tuple[str, ...]:
+    # Recomputation already read this header, so `None` (unreadable) cannot reach here; `()`
+    # would name nothing.
+    if isinstance(target, DatasetTarget):
+        return header_names(target.content, limits) or ()
+    return ()
 
 
 def verify_python_source(
@@ -4345,7 +4426,7 @@ def verify_python_source(
         bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
-        check_integrity(spec, table)
+        check_integrity(spec, table, _header(bound_target, limits))
         certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
         return Verified(spec=spec, table=table, certificate=certificate)
     except PysrcRefusalError as exc:

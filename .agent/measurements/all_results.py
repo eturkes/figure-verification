@@ -220,6 +220,29 @@ def a1():
     return result
 
 
+def a2():
+    data = load("a2-result.json")
+    result = {
+        form: fields(
+            leg,
+            "faithful",
+            "series",
+            "column_plants",
+            "column_caught",
+            "summary_plants",
+            "summary_caught",
+        )
+        | {
+            "false_refusals": len(leg["false_refusals"]),
+            "series_refused": len(leg["series_refused"]),
+        }
+        for form, leg in data.items()
+        if form != "capture"
+    }
+    result["capture"] = data["capture"]
+    return result
+
+
 def f7():
     data = load("f7-0283.json")
     return {
@@ -301,6 +324,7 @@ PROJECTORS = {
     "T8": t8,
     "W1": w1,
     "A1": a1,
+    "A2": a2,
     "F7": f7,
     "O8": o8,
     "Versions": versions,

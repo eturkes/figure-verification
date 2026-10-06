@@ -82,7 +82,7 @@ _REASON_GROUPS = {
         "value_not_finite",
         "work_budget_exceeded",
     ),
-    "integrity": ("category_not_unique", "x_not_ordered"),
+    "integrity": ("category_not_unique", "x_not_ordered", "label_not_consistent"),
     "render": (
         "no_browser",
         "browser_timeout",

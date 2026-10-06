@@ -94,6 +94,7 @@ _REASON_CHECK: dict[Reason, str] = {
     "work_budget_exceeded": "recompute",
     "category_not_unique": "integrity",
     "x_not_ordered": "integrity",
+    "label_not_consistent": "integrity",
     "no_browser": "render",
     "browser_timeout": "render",
     "browser_error": "render",
@@ -134,13 +135,13 @@ _ANCHORS: dict[str, _TextPair] = {
     "integrity": (
         (
             "Chart integrity",
-            "bars from zero, one set of axes, linear scales, no row left out, no repeated "
-            "category, line x never decreasing or in file order",
+            "bars from zero, one set of axes, linear scales, no row dropped, no repeated "
+            "category, line x never decreasing or in file order, consistent labels",
         ),
         (
             "グラフの完全性",
             "棒はゼロから、軸は 1 組、線形の目盛り、行の欠落なし、カテゴリの重複なし、"
-            "折れ線の x は減少しないかファイルの順序どおり",
+            "折れ線の x は減少しないかファイルの順序どおり、ラベルは描いた列と集計に一致",
         ),
     ),
     "match": (
@@ -379,6 +380,7 @@ def _site_check(module: str, function: str | None) -> str:
         return "recompute"
     assert module == "verify" and function in {
         "_check_line_order",
+        "_check_labels",
         "_formula_integrity",
         "_dataset_integrity",
         "check_integrity",
@@ -391,7 +393,7 @@ def test_c1_check_order_and_reason_map_are_the_hand_stated_tables() -> None:
     module = _checks()
     refusal_codes = set(get_args(RefusalCode))
     outlet_codes = set(get_args(OutletCause))
-    assert len(refusal_codes) == 53
+    assert len(refusal_codes) == 54
     assert len(outlet_codes) == 14
     assert refusal_codes.isdisjoint(outlet_codes)
     assert module.CHECKS == _ORDER

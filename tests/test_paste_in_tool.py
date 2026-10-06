@@ -33,7 +33,7 @@ from webui.paste_in import selection
 
 # Hand-stated closed sets: deriving either from production would let the tool and the test drift
 # together. The two reply strings are the whole model-facing vocabulary (amendment T4-1), and the
-# refusal codes pin the unit's 53-member invariant surface.
+# refusal codes pin the unit's 54-member invariant surface.
 _CHART_PRODUCED = "The chart is ready."
 _CHART_NOT_PRODUCED = "No chart was produced."
 _TOOL_VERDICTS = frozenset({_CHART_PRODUCED, _CHART_NOT_PRODUCED})
@@ -92,6 +92,7 @@ _REFUSAL_CODES = (
     "work_budget_exceeded",
     "category_not_unique",
     "x_not_ordered",
+    "label_not_consistent",
 )
 
 _USER_ID = "user-1"
@@ -363,8 +364,8 @@ def test_t4_return_text_is_closed_and_echoes_no_model_bytes(
                 invoke_tool(module, program, metadata=_metadata("file-0"), user={"id": _USER_ID})
             )
 
-    assert len(outputs) == 54
-    assert calls == 54
+    assert len(outputs) == 55
+    assert calls == 55
     assert set(outputs) == _TOOL_VERDICTS
     assert all(marker not in output for output in outputs)
 

@@ -103,7 +103,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "value_not_finite",
         "work_budget_exceeded",
     ),
-    "integrity": ("category_not_unique", "x_not_ordered"),
+    "integrity": ("category_not_unique", "x_not_ordered", "label_not_consistent"),
     "render": (
         "no_browser",
         "browser_timeout",
@@ -197,13 +197,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "integrity": (
         (
             "Chart integrity",
-            "bars from zero, one set of axes, linear scales, no row left out, no repeated"
-            " category, line x never decreasing or in file order",
+            "bars from zero, one set of axes, linear scales, no row dropped, no repeated"
+            " category, line x never decreasing or in file order, consistent labels",
         ),
         (
             "グラフの完全性",
             "棒はゼロから、軸は 1 組、線形の目盛り、行の欠落なし、カテゴリの重複なし、"
-            "折れ線の x は減少しないかファイルの順序どおり",
+            "折れ線の x は減少しないかファイルの順序どおり、ラベルは描いた列と集計に一致",
         ),
     ),
     "render": (

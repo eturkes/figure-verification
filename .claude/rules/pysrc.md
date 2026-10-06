@@ -49,7 +49,7 @@ is graphical integrity, enforced by refusal.
 | G7 | all | plotted x-range = data range unless a `Filter` is projected AND published | by construction (M13.5) |
 | G8 | all | every non-null row is covered by a plotted point — one point per row for a column pair, one group point per row set for an aggregate — unless a drop is projected AND published | by construction (M13.5) |
 | G9 | line | x numeric NON-DECREASING, or categorical with UNIQUE categories in file order | M13.5 |
-| G10 | all | label/legend text consistent with the projected computation | `label=` admitted, unchecked |
+| G10 | dataset | no title, axis or legend label names a CSV column the chart does not draw, or, over a reduction, another reduction's summary word | Q16, lexical |
 | G11 | aggregate | per-group counts published beside every aggregate | tier 3 |
 
 A by-construction rule is only as durable as the refusal under it ⇒ **every G-row pinned by a test
@@ -78,6 +78,19 @@ resolved differently:
   order: with unique keys the path is a genuine sequence of distinct points, which is what a
   categorical line chart means, and it is the shape a `groupby` key always has. A repeated category
   refuses, because the line would double back over itself. `scatter` still requires numeric x.
+- **G10 = a label's POSITIVE mismatch, lexically (Q16).** `verify.py::_check_labels`, last in
+  `_dataset_integrity`, matches `title`, `xlabel`, `ylabel` and the `label=` series text against
+  the file's header with the request-anchoring matcher (ties name nothing here): naming a column
+  other than x/y refuses `label_not_consistent`; over a reduction, so does a summary word of
+  another reduction or `median` (`_SUMMARY_WORDS`, EN whole words + JA containment). Without a
+  reduction summary words go unread (a raw column may hold totals), and a summary word inside any
+  header word names that column (`total_revenue`). The formula arm meets no header, so G10 binds
+  the dataset arm alone. A label naming nothing checkable passes; an x/y swap (`xlabel` naming the
+  y column) is not a G10 fault. Measured, A2 (`.agent/measurements/a2_labels.py`): false refusals
+  0/18 per form (EN · JA over a translated header · JA naming the English header); x-label plants
+  caught 30/42 · 42/42 · 42/42 (EN misses `Temperature`, `Precipitation`, `Air quality index`: no lexical anchor);
+  summary plants 45/45 each; `m10-design` captures: 0 FAITHFUL rows refused, design-simple-06/22
+  (`xlabel` `Date` over x = `city`) now refuse.
 
 ## Comparison surfaces — what the verifier can compare AT ALL
 
@@ -88,7 +101,7 @@ from the model.
 |---|---|---|---|
 | **I** admission | submitted AST vs closed allowlist | overreach: scipy/sklearn, `subplots(2,2)`, loops, themes, `cmap=` | anything wrong but admissible |
 | **II** recomputation vs out-of-model truth | plotted values vs values derived from an artifact the USER supplied (uploaded CSV, or a target stated in the `pyexpr-0.1` request grammar) | the figure misrepresents the thing of record | nothing, within its scope |
-| **III** internal consistency | projection vs projection | numeric-literal arrays (= model-supplied data), grid/value length skew, `np.random` (label/computation mismatch is NOT caught: G10 is deferred, tier 3 publishes the label beside the computation) | a model that coherently plots the wrong function |
+| **III** internal consistency | projection vs projection | numeric-literal arrays (= model-supplied data), grid/value length skew, `np.random`, a label naming an undrawn column or another reduction (G10, lexical; any wider label meaning stays tier-3 publication) | a model that coherently plots the wrong function |
 | **IV** integrity | projection vs the G-rules | truncated baselines, dual axes, silent row drops, radius-encoded area, interpolation asserted over unordered x | a well-formed figure of the wrong quantity |
 
 **Class II's truth source is the user's own artifact** — the uploaded CSV (dataset arm) or the
@@ -343,10 +356,11 @@ z3 cannot be inlined.
   `plt.plot` in the same closed map; the keywords stay `{kind, color}` and a missing `kind` -- pandas'
   default line -- still refuses. Aimed by design evidence alone: 5 simple `m10-design` rows wrote
   `<series>.plot(kind='line')`; `w1_width.py` moved 15/24 -> 20/24 VERIFIED, 7/24 -> 10/24 FAITHFUL,
-  complicated 24/24 BLOCKED unchanged. The line carries NO tick-placement gap: numeric keys draw at
+  complicated 24/24 BLOCKED unchanged (Q16's G10 then refused design-simple-06/22, whose x label
+  names `date` over x = `city`: 18/24 VERIFIED, FAITHFUL unchanged). The line carries NO tick-placement gap: numeric keys draw at
   their data positions, and string keys draw at 0..n-1 with pandas-set labels that the observation
-  gate reads (fork (b)). design-simple-06/14 ask for per-city series and verify as ONE collapsed
-  line over `groupby('city')` -- verified, not faithful, the gap tier 3 publishes.
+  gate reads (fork (b)). design-simple-06/14 ask for per-city series and draw ONE collapsed line
+  over `groupby('city')` -- 14 verifies, not faithful, the gap tier 3 publishes; 06's label refuses.
 - **A DEMO DATASET MAY NEVER SPELL A GROUP KEY WITH A PANDAS NA SPELLING (M13.7b, closed).** The
   third M13.7 blocker was not the verifier at all: `data/sales.csv` spelled North America `NA`, one
   of the 19 default pandas NA spellings the CSV profile refuses, so every `groupby("region")`
@@ -383,7 +397,7 @@ z3 cannot be inlined.
   stay UNCONDITIONAL rather than moving to "a `Filter` projected AND published" — with no filter
   admitted, the plotted column is still the whole column. No admitted idiom draws heldout 06/14 (multi-series) or 08/16
   (colour-by-category) FAITHFULLY, for a faithful ceiling of 16/20 = 80%; since M10.10 a program that
-  collapses the series into one line may still VERIFY (design-simple-06/14 do), so 16/20 bounds
+  collapses the series into one line may still VERIFY (design-simple-14 does), so 16/20 bounds
   FAITHFUL, never VERIFIED. G11
   (per-group counts published beside every aggregate) goes live in M13.6.
 - **Aggregation recomputation is Kahan, and this is measured, not chosen.** pandas reduces a
