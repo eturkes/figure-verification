@@ -123,17 +123,22 @@ The verifier accepts one chart per reply:
 The verifier refuses everything else. For example, it refuses several charts in one figure, a
 second axis, a changed axis scale and hand-typed data values.
 
-If the request names columns of the CSV file, the chart cannot put a different column in place of
-a named column. For example, if the request says `revenue by region`, a chart of revenue by month
+If the request names columns of the CSV file, the chart cannot put a different column in place of a
+named column. For example, if the request says `revenue by region`, a chart of revenue by month
 fails with the code `column_not_requested`. A request word that fits two column names fails with the
-same code. The verifier compares the words of the request with the
-column names only. It does not know synonyms or translations, so a request that names no column
-passes this check.
+same code. The verifier compares the words of the request with the column names only, so this check
+covers only the column names that the verifier recognizes. It does not recognize synonyms or
+translations. It also does not recognize a short column name. A short name has one or two ASCII
+characters, such as `id`, or one character of another script. If the request names no recognized
+column, the chart passes this check.
 
-The chart labels obey a similar rule. A title, axis label or legend label cannot name a CSV column
-that the chart does not show. If the chart shows a sum, mean, minimum or maximum per group, a label
-cannot name a different summary. For example, a chart of means cannot have the label `Total`. Such
-a chart fails with the code `label_not_consistent`.
+The labels of a chart over a CSV file obey a similar rule. A title, axis label or legend label
+cannot name a recognized CSV column that the chart does not show. The verifier does not check a
+label word that fits two column names. If the chart shows a sum, mean, minimum or maximum per group,
+a label cannot name a different summary. If a column name contains a summary word, such as `total`
+in `total_revenue`, the verifier reads that word as part of the name. For example, if no column name
+contains `total`, a chart of mean revenue cannot have the title `Total revenue`. Such a chart fails
+with the code `label_not_consistent`. The verifier does not check the labels of a function chart.
 
 ## Why a chart failed
 

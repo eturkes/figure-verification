@@ -120,6 +120,18 @@ _MARKS: dict[_State, tuple[str, tuple[str, str]]] = {
 }
 _TextPair = tuple[tuple[str, str], tuple[str, str]]
 _ANCHORS: dict[str, _TextPair] = {
+    "binding": (
+        (
+            "Program matches your file or formula",
+            "it reads your attached file without swapping a column your request names, if the "
+            "verifier recognizes the name, or it plots your requested formula",
+        ),
+        (
+            "プログラムが添付ファイルまたは依頼の数式と一致",
+            "添付ファイルを読み込み、依頼にある列名のうち検証器が認識した列を"
+            "別の列に置き換えていないこと、または依頼した数式を描くこと",
+        ),
+    ),
     "recompute": (
         (
             "Plotted values recomputed from your data",
@@ -136,12 +148,13 @@ _ANCHORS: dict[str, _TextPair] = {
         (
             "Chart integrity",
             "bars from zero, one set of axes, linear scales, no row dropped, no repeated "
-            "category, line x never decreasing or in file order, consistent labels",
+            "category, ordered line x, no label naming another recognized file column",
         ),
         (
             "グラフの完全性",
             "棒はゼロから、軸は 1 組、線形の目盛り、行の欠落なし、カテゴリの重複なし、"
-            "折れ線の x は減少しないかファイルの順序どおり、ラベルは描いた列と集計に一致",
+            "折れ線の x は減少しないかファイルの順序どおり、"
+            "ラベルは検証器が認識したファイルの列名のうち、描いていない列名を挙げない",
         ),
     ),
     "match": (
@@ -443,7 +456,7 @@ def _assert_text(
 
 
 def test_c3_every_text_obeys_the_text_law_and_anchors_are_byte_exact() -> None:
-    """C3: all localized slots; UI/marks + three critical rows anchored independently."""
+    """C3: all localized slots; UI/marks + four claim-bearing rows anchored independently."""
     module = _checks()
     assert set(module.TEXTS) == set(_ORDER)
     assert {name: getattr(module, name) for name in _UI} == _UI
