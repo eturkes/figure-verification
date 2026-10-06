@@ -93,6 +93,7 @@ _EXAMPLES = Path(__file__).parents[1] / "examples"
 _BASELINE = Path(__file__).parents[1] / "bench" / "baselines" / "m12-cuda"
 _BASELINE_FILES = ("report.json", "details.jsonl", "provenance.json")
 _BASELINE_RAW = _BASELINE.with_name("m12-cuda-raw")
+_BASELINE_FORMULA = _BASELINE.with_name("m12-cuda-formula")
 # Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
 _CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
 
@@ -638,12 +639,12 @@ def test_run_eval_reports_every_category_with_its_twenty_prompts(tmp_path: Path)
     assert report.observations.overall.n == len(records) == 100
 
 
-def _baseline_report() -> Report:
-    return msgspec.json.decode((_BASELINE / "report.json").read_bytes(), type=Report)
+def _baseline_report(directory: Path = _BASELINE) -> Report:
+    return msgspec.json.decode((directory / "report.json").read_bytes(), type=Report)
 
 
-def _baseline_records() -> tuple[PromptRecord, ...]:
-    lines = (_BASELINE / "details.jsonl").read_bytes().splitlines()
+def _baseline_records(directory: Path = _BASELINE) -> tuple[PromptRecord, ...]:
+    lines = (directory / "details.jsonl").read_bytes().splitlines()
     return tuple(msgspec.json.decode(line, type=PromptRecord) for line in lines)
 
 
@@ -674,14 +675,21 @@ def test_m12_cuda_baseline_is_a_valid_guided_run_over_every_category() -> None:
     assert sidecar["model_runtime"]["torch"] == "2.13.0+cu126"
 
 
-def test_m12_cuda_baseline_report_re_derives_from_its_details() -> None:
+@pytest.mark.parametrize(
+    ("directory", "prompts"),
+    [(_BASELINE, PROMPTS), (_BASELINE_RAW, PROMPTS), (_BASELINE_FORMULA, FORMULA_PROMPTS)],
+    ids=["guided", "raw", "formula"],
+)
+def test_m12_cuda_baseline_report_re_derives_from_its_details(
+    directory: Path, prompts: tuple[Prompt, ...]
+) -> None:
     """Every committed rate + reply-shape count re-tallies from the committed details rows."""
-    report = _baseline_report()
-    records = _baseline_records()
-    assert [record.category for record in records] == [p.category for p in PROMPTS]
-    assert [record.user_request for record in records] == [p.user_request for p in PROMPTS]
+    report = _baseline_report(directory)
+    records = _baseline_records(directory)
+    assert [record.category for record in records] == [p.category for p in prompts]
+    assert [record.user_request for record in records] == [p.user_request for p in prompts]
     overall = _Tally()
-    by_category = {category: _Tally() for category in _CATEGORY_NAMES}
+    by_category = {category: _Tally() for category in report.meta.categories}
     for record in records:
         tallies = (overall, by_category[record.category])
         if record.http_status == 200:
@@ -728,7 +736,7 @@ def test_p16_raw_arm_pairs_the_guided_baseline_on_one_commit() -> None:
     assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]
 
 
-@pytest.mark.parametrize("directory", ["m12-cuda", "m12-cuda-raw"])
+@pytest.mark.parametrize("directory", ["m12-cuda", "m12-cuda-raw", "m12-cuda-formula"])
 @pytest.mark.parametrize("name", _BASELINE_FILES)
 def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str, directory: str) -> None:
     """`bench/reports/` is gitignored; the baselines must stay outside every ignore rule."""
@@ -863,3 +871,31 @@ def test_mode_option_defaults_to_dataset_and_rejects_others(
     monkeypatch.setattr(sys, "argv", ["bench", "--mode", "python"])
     with pytest.raises(SystemExit):
         _parse_args()
+
+
+def test_p32_formula_baseline_is_a_valid_guided_run_of_both_categories() -> None:
+    """p32: the committed formula run = one VALID guided run of the 40-prompt corpus, measured at
+    the commit that ships the formula-mode instrument, on the guided arm's model + runtime."""
+    report = _baseline_report(_BASELINE_FORMULA)
+    assert _exit_code(report) == 0
+    meta = report.meta
+    assert meta.mode == "formula"
+    assert meta.git_dirty is False
+    assert meta.git_commit is not None
+    assert meta.prompt_count == 40
+    assert meta.categories == ("simple", "complex")
+    assert meta.backend is not None
+    assert meta.backend.structured_output is True
+    assert meta.backend.formula_schema_sha256 == meta.formula_schema_sha256
+    assert report.guarantee.bad_corpus_size == 20
+    assert report.guarantee.good_corpus_size == 6
+    by_category = report.observations.by_category
+    assert tuple(by_category) == ("simple", "complex")
+    assert all(_scope_count(block) == 20 for block in by_category.values())
+    sidecar = msgspec.json.decode((_BASELINE_FORMULA / "provenance.json").read_bytes())
+    guided_sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
+    assert sidecar["git_commit"] == meta.git_commit
+    assert sidecar["git_status_porcelain"] == ""
+    assert sidecar["exit_code"] == "0"
+    assert sidecar["model"] == guided_sidecar["model"]
+    assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]

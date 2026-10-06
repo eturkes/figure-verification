@@ -123,6 +123,22 @@ The rate is not a faithfulness measure.
 A formula report records `meta.mode = formula` and bench's own `formula_schema_sha256`.
 The backend's `formula_schema_sha256` appears in `meta.backend`.
 
+`bench/baselines/m12-cuda-formula/` holds one guided formula run on the CURRENT host.
+It ran at commit `4a52176`, on the same model, runtime and verifier process as the guided dataset baseline.
+
+| Category | n | Verified | Schema | Policy |
+|---|---|---|---|---|
+| simple | 20 | 1 | 3 | 16 |
+| complex | 20 | 0 | 7 | 13 |
+
+The guarantee held: 0 of the 20 bad formula goldens verified, and 6 of the 6 good formula goldens verified.
+All 40 replies were bare JSON objects.
+The one verified reply plotted `y = x` with the 11 points that the prompt asked for.
+In 35 replies, the model asked for 100000 samples, which is the maximum that the system prompt states.
+The verifier's default limit is 10000 samples, so 29 of these replies failed `resource.formula_samples`.
+On this host, the gradient between the two categories is 1 of 20 against 0 of 20.
+This sample-count failure hides most of the difference between the categories.
+
 ## CURRENT-host baseline (`bench/baselines/m12-cuda/`)
 
 This directory holds one guided run of the full 100-prompt corpus on the CURRENT host.
