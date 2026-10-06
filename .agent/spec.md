@@ -48,9 +48,8 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q7 polish p16 p32 p34 (p16 p32 p34 on the MX150)
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
-- [ ] Q35 refusal-set size sweep misses `<n> closed codes`
 
-Queue = `.agent/deferred.md`, 6 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 5 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

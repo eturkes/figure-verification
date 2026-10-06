@@ -17,12 +17,14 @@ from verifier.pysrc.errors import RefusalCode
 _ROOT = Path(__file__).resolve().parents[1]
 _AS_OF = (".agent/archive/", ".agent/review.md")
 # The shapes a size statement takes in this repo: "the <n>-member refusal set", "all <n> refusal
-# codes", "the closed refusal set is <n> members", "the unit's <n>-member invariant surface" --
-# each read across a line wrap, since prose wraps wherever the column runs out.
+# codes", "the closed refusal set is <n> members", "the unit's <n>-member invariant surface",
+# "<k> of the <n> closed codes" -- each read across a line wrap, since prose wraps wherever the
+# column runs out.
 _SIZE = re.compile(
     r"\b(\d+)-member\b[^.]{0,40}?(?:refusal|invariant\s+surface)"
     r"|\b(\d+)\s+refusal\s+codes\b"
-    r"|\brefusal\s+set\s+is\s+(\d+)\b",
+    r"|\brefusal\s+set\s+is\s+(\d+)\b"
+    r"|\b(\d+)\s+closed\s+codes\b",
 )
 
 
@@ -71,6 +73,7 @@ def test_the_check_reads_each_statement_shape_and_skips_as_of_records(tmp_path: 
     )
     assert _statements(planted) == [(2, 51), (3, 9), (3, 7)]
     assert _statements(f"the unit's {52}-member invariant surface") == [(1, 52)]
+    assert _statements(f"Five of the {51} closed\ncodes carry the banned stem") == [(1, 51)]
     assert _statements(f"x\nall {8}\nrefusal codes; the {6}-member\n  refusal set") == [
         (2, 8),
         (3, 6),
