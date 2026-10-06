@@ -38,18 +38,18 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Carried forward from M13.5: `max_work` is a MEASURED 390,000 (398,458 work/s binding, width 31), so a widening that raises per-row cost shows up as `work_budget_exceeded` on real corpus files rather than as a slow demo. The SEVEN `assert_never(spec)` sites (3 `verify.py`, 4 `certificate.py`) stay put — the mark-LIST widening that would have moved them is CANCELLED (`.claude/rules/pysrc.md`, "The SECOND mark is CANCELLED").
 - **Failure-reason rulings (user, M15).** (1) A FAIL reply = one OWUI status line + one server log record; `PASS_TEXT`/`FAIL_TEXT`, `content`/`output` + the tool's model-facing strings stay byte-identical. (2) Status = one plain sentence (+ one fix sentence where a fix is known) + ` (<reason>)`; log = the code alone. (3) JA iff the request text holds a kana letter, else EN. (4) A sandbox failure shows its cause alone, never `stderr` bytes; the loader signature carries the ad-blocker fix. Law = `.claude/rules/owui.md` failure-reasons bullet; contract `.agent/archive/contracts/m15u1.md`.
 - **Check-breakdown rulings (user, M16).** (1) Surface = ONE OWUI message embed per reply: a collapsed `Show checks` disclosure between the status line and the verdict. (2) Row = check title + what it covers; the failing row adds its `REASONS` cause. (3) FAIL AND PASS replies carry it; PASS still emits no status line and no log record. (4) A FAIL lists every check, rows after the failing one `not checked`. Contract `.agent/archive/contracts/m16u1.md`.
+- **Derive rulings (user, queue request Batch A; Q3).** `vplot-0.2` = `vplot-0.1` + `derive` (expr-0.1 over numeric columns, one HALF_EVEN quantize at a declared scale, NULL in → NULL out, a failing row refuses the plot, never between `group_by` and its `aggregate`); the proposer stays pinned to `vplot-0.1` (verifier-only first); the VCert discloses each derive. Unit readings: a derived column's axis title is the fixed `Derived value` and it is unit-exempt; VCert v0.2 omits an empty `derives`. Contract `.agent/archive/contracts/q3.md`.
 - OWUI integration + calibrated demo = the M10 units, all closed (records `.agent/archive/implement.md`, contracts `.agent/archive/contracts/`); mechanism + calibration risk = `.claude/rules/owui.md`.
 
 ## Tasks
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
 - [ ] Q1 guided-JSON bench re-baseline (MX150)
-- [ ] Q3 `derive` transform
 - [ ] Q7 polish p16 p32 p34 (p16 p32 p34 on the MX150)
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
 
-Queue = `.agent/deferred.md`, 5 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 4 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

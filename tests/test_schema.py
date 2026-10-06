@@ -24,6 +24,8 @@ from verifier.schema import (
     formula_json_schema_text,
     json_schema,
     json_schema_text,
+    json_schema_v02,
+    json_schema_v02_text,
 )
 
 HASH = "sha256:" + "0" * 64
@@ -211,7 +213,7 @@ _REJECTS: dict[str, bytes] = {
     "float_value": _filter(1.5),
     "bool_value": _with_transform([{"op": "filter", "field": "x", "cmp": "gt", "value": True}]),
     "null_value": _filter(None),
-    "wrong_version": _enc(_good() | {"version": "vplot-0.2"}),
+    "wrong_version": _enc(_good() | {"version": "vplot-0.3"}),
     "bad_field_pattern": _select(["1bad"]),
     "field_name_too_long": _select(["a" * 65]),
     "empty_fields": _select([]),
@@ -601,6 +603,13 @@ def test_golden_schema_is_draft_2020_12_valid_and_byte_stable() -> None:
     Draft202012Validator.check_schema(json_schema())  # raises if not a valid 2020-12 schema
     golden_path = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.1.schema.json"
     assert golden_path.read_bytes() == json_schema_text().encode("utf-8")  # byte-exact
+
+
+def test_v02_golden_schema_is_draft_2020_12_valid_and_byte_stable() -> None:
+    """Q3: vplot-0.2's advisory export; the proposer's pinned v0.1 golden above does not move."""
+    Draft202012Validator.check_schema(json_schema_v02())
+    golden_path = Path(__file__).resolve().parent.parent / "schema" / "vplot-0.2.schema.json"
+    assert golden_path.read_bytes() == json_schema_v02_text().encode("utf-8")
 
 
 def test_formula_golden_schema_is_draft_2020_12_valid_and_byte_stable() -> None:

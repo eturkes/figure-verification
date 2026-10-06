@@ -1,7 +1,8 @@
 # VPlot — semantics
 
 Schema is syntax; this is meaning. VPlot has TWO decode gates, one per MODE: `decode_spec` +
-`schema/vplot-0.1.schema.json` for DATASET mode (`vplot-0.1`), `decode_formula_spec` +
+`schema/vplot-0.1.schema.json` / `schema/vplot-0.2.schema.json` for DATASET mode (`vplot-0.1`, or
+`vplot-0.2` = v0.1 + `derive`, the decoder picked by `version`), `decode_formula_spec` +
 `schema/vplot-formula-0.1.schema.json` for FORMULA mode (`vplot-formula-0.1`). Each gate settles
 shape, types, enums, bounds. **This file is the MEANING contract for both modes** — evaluator,
 checks, renderer, script emitter, and both dev/test oracles conform to it. Boundary + the modest
@@ -20,7 +21,7 @@ heading; the shared H1 and this introduction are deliberately mode-neutral and a
 that is. A dataset rule NEVER transfers to formula mode by default — where the modes agree, Part B
 states the agreement explicitly.
 
-## Part A — dataset mode (`vplot-0.1`)
+## Part A — dataset mode (`vplot-0.1`, `vplot-0.2`)
 
 ### 1. Trust spine — dataset mode
 
@@ -39,9 +40,11 @@ states the agreement explicitly.
   builder object; `render_prepared()` consumes only a passing artifact's exact Vega-Lite bytes
   without reopening the live dataset or rebuilding/re-solving).
 - Only allowlisted ops decode → `transform.ops_allowed` + `security.no_arbitrary_code` hold by
-  construction: dataset mode admits no `eval`/`exec`/SQL/JS/free-form-expression path. This
-  affirmation is DATASET-ONLY and never transfers — formula mode's input IS an expression, and
-  `§F1` states its separately worded safety claim.
+  construction: `vplot-0.1` admits no `eval`/`exec`/SQL/JS/free-form-expression path. `vplot-0.2`
+  admits exactly one expression carrier, `derive.expr` — expr-0.1 text evaluated only by the
+  closed verifier-owned interpreter (§4), never executed — and both affirmations say so for a
+  v0.2 spec (Q3). Neither transfers to formula mode — its input IS an expression, and `§F1`
+  states its separately worded safety claim. The proposer stays pinned to `vplot-0.1`.
 - Checks prove mechanical consistency (spec ↔ encoding ↔ binding), NOT representativeness or
   intent: a valid cherry-picked `filter` passes. The VCert badge discloses every
   applied filter and active sort, so a reader sees the selected subset; the verifier guarantees the
@@ -58,8 +61,8 @@ states the agreement explicitly.
   construction). `label.quantitative_units_present` still ENFORCES that a unit is present
   per quantitative channel — manifest units are optional, so presence is checked, not given.
   A quantitative channel tracing (via §7 position-aware reverse lineage) to a `count` is
-  dimensionless → unit-exempt; every other quantitative channel must resolve to a manifest numeric
-  column that declares a `unit`.
+  dimensionless → unit-exempt, as is one tracing to a `derive` (§7); every other quantitative
+  channel must resolve to a manifest numeric column that declares a `unit`.
 
 ### 2. Data model — dataset mode
 
@@ -80,7 +83,7 @@ states the agreement explicitly.
 
 - Numeric cells → `Decimal` at the column's manifest scale. The cell must be EXACTLY representable
   at scale s (≤ s decimal places); excess precision = a SEMANTIC error — source data is never
-  silently rounded (only computed aggregates quantize, below). Integer = scale 0.
+  silently rounded (only computed aggregates and `derive` columns quantize, below + §4). Integer = scale 0.
 - Aggregation is EXACT, then QUANTIZE `ROUND_HALF_EVEN`. Exact summation + count are
   order-independent → hash-stable; `mean` adds ONE final division + quantize (its inputs are
   order-independent, so the result is too — division itself is not associative). No float, no Kahan.
@@ -128,10 +131,21 @@ through each op. Empty list → the loaded table unchanged.
 - **sort**`{by:[{field, order}…]}` → reorder rows by the keys in order; schema unchanged. Each
   key direction ∈ {ascending, descending}. NULL = greatest (ascending → nulls last; descending
   → nulls first).
+- **derive**`{expr, as, scale}` (`vplot-0.2` only, Q3) → append ONE numeric column `as` at
+  `scale` ∈ [0, 12]: `expr` (expr-0.1: decimal literals, `+ - * /`, unary minus, `abs`, an integer
+  `**`) over the NUMERIC columns of the current schema (a name over 32 bytes or reserved as a
+  function cannot be bound). Per row: any referenced cell NULL → NULL; else evaluate EXACTLY
+  (`Fraction`) and quantize ONCE `ROUND_HALF_EVEN` at `scale`. A row that cannot evaluate
+  (division by zero, exponent/intermediate bounds) refuses the WHOLE plot
+  (`derive.values_defined`) — dropping it would silently change the chart; a value beyond
+  DECIMAL(38, scale) → `derive.values_bounded`; a grammar fault, an unknown or non-numeric name →
+  `derive.expr_valid`. Placement: anywhere except between a `group_by` and its `aggregate`
+  (`transform.group_by_placement`); later ops see the new column.
 
 ### 5. Distinctness + collision — dataset mode (semantic, enforced in eval)
 
 - `select.fields` distinct; `group_by.keys` distinct; `sort.by` fields distinct.
+- derive `as` names a column the current schema lacks (`derive.output_unique`).
 - aggregate `as` names: mutually unique AND disjoint from the group keys (no output-column
   collision) — enforced PER AGGREGATE only (`aggregate.output_unique`). Each aggregate REBUILDS
   the schema (group keys ++ measure outputs), so an output name MAY recur across separate
@@ -198,6 +212,11 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
   `label.quantitative_units_present` resolves a derived quantitative channel through this lineage
   (`count` is dimensionless — no inherited unit). A group_by KEY keeps its source column's
   metadata; a derived column's numeric scale follows §3.
+- A `derive` column has NO manifest source: its axis title is the fixed `Derived value` (no spec
+  text reaches the chart) and it is unit-exempt like a `count`; lineage walks derives with the
+  aggregates, so an aggregate over a derived column is derived too (`checks.DERIVED_SOURCE`).
+  The VCert discloses every derive (`as`, raw `expr`, `scale`, transform order); a spec without
+  one emits no `derives` member, so a v0.1 certificate's bytes are unchanged.
 - `bar` mark: the builder emits `scale.zero=true` on every quantitative positional channel (the
   model proposes no scale). `scale.bar_zero` (`z3_smt`) reads the exact built mark/channels
   and blocks a missing/false baseline, solver uncertainty, or resource refusal before native Vega.
@@ -217,7 +236,8 @@ SAT supplies the lowest inversion; solver uncertainty or resource refusal blocks
 
 - DECODE (`decode_spec`) = SYNTAX: unknown field/op/mark/enum, wrong container/type,
   float/bool/null token, length/pattern breach, duplicate key, malformed or non-UTF-8 JSON.
-  Outcome for any `bytes | str` input (the `decode_spec` signature): a total `VPlotSpec`, or
+  Outcome for any `bytes | str` input (the `decode_spec` signature): a total `VPlotSpec` or
+  `VPlotSpecV02` (by `version`), or
   `msgspec.ValidationError` / `msgspec.DecodeError` — never a partial or coerced object. (A
   non-`bytes|str` argument is a caller type error → `TypeError`, outside this data contract.)
 - RESOURCE POLICY (`resource.*`) = inclusive logical ceilings over trusted inputs and later
@@ -252,7 +272,11 @@ not rely on its defaults):
 - `group_by` NULL = single group; `COUNT(col)` = non-null; `SUM`/`MIN`/`MAX` over all-null =
   NULL — all match by default and are asserted, not assumed.
 
-Every v0.1 op reproduces bit-for-bit (goldens + adversarial synthetic parity). Outside
+Every v0.1 op reproduces bit-for-bit (goldens + adversarial synthetic parity). `derive` is
+recomputed in Python by an evaluator independent of `verifier.expr` — Python `ast` parse, literals
+lifted from source text to `Fraction`, `round(Fraction, scale)` HALF_EVEN — over a derive corpus
+(every placement, every expr-0.1 construct, NULLs in, a HALF_EVEN tie); DuckDB cannot carry it,
+DECIMAL division going through DOUBLE. Outside
 DuckDB's DECIMAL(38)/HUGEINT domain — where eval's unbounded exact arithmetic still succeeds —
 the oracle raises LOUDLY (filter-literal magnitude bound; SUM-accumulator or typed-reinsert
 overflow, both sites pinned by tests), never a silent divergence.

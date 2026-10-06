@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Evidence-bound VPlot -> Vega-Lite preparation, rendering, and certification.
 
-Turns an untrusted VPlotSpec plus the verifier's recomputed plotted table into a Vega-Lite
+Turns an untrusted DatasetPlotSpec plus the verifier's recomputed plotted table into a Vega-Lite
 v5 spec dict that inlines ONLY that table. Two trust mechanisms, kept distinct: (1) the
 builder copies NO model-supplied Vega-Lite key, so no dangerous data/JS/URL sink can appear
 (positive allowlist by construction); (2) it EMITS its own narrow fixed safe set to pin
@@ -44,7 +44,7 @@ from verifier import vcert as _vcert
 from verifier.errors import VerificationError
 from verifier.eval import active_sort
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import Aggregate, Channel, SortOrder, VPlotSpec
+from verifier.schema import Aggregate, Channel, DatasetPlotSpec, Derive, SortOrder
 
 _FONT_DIR = _vcert._FONT_DIR
 _FONT_FAMILY = _vcert._FONT_FAMILY
@@ -66,6 +66,8 @@ vcert_bytes = _vcert.vcert_bytes
 _VEGA_LITE_SCHEMA = "https://vega.github.io/schema/vega-lite/v5.json"
 # The certificate module owns the display-version/font constants shared by builder + TCB.
 _COUNT_AXIS_TITLE = "count"
+# A derive-computed column (vplot-0.2) has no manifest label; the title is fixed, not spec text.
+_DERIVED_AXIS_TITLE = "Derived value"
 # Vega-Lite has no scatter mark; scatter -> point.
 _MARK_MAP: dict[str, str] = {"bar": "bar", "line": "line", "scatter": "point"}
 
@@ -121,13 +123,17 @@ def _manifest_column(manifest: ingest.Manifest, name: str) -> ingest.ManifestCol
     return {column.name: column for column in manifest.columns}[name]
 
 
-def _axis_title(field: str, aggregates: tuple[Aggregate, ...], manifest: ingest.Manifest) -> str:
+def _axis_title(
+    field: str, aggregates: tuple[Aggregate | Derive, ...], manifest: ingest.Manifest
+) -> str:
     """A channel's axis title from the manifest (never the spec): the lineage source's label
     (or its name when unlabelled), plus a unit suffix for a numeric source that declares one. A
     count-derived channel has no source -> the fixed dimensionless title."""
     source = checks.unit_source(field, aggregates)
     if source is None:
         return _COUNT_AXIS_TITLE
+    if source == checks.DERIVED_SOURCE:
+        return _DERIVED_AXIS_TITLE  # fixed: spec text never reaches the chart
     column = _manifest_column(manifest, source)
     base = column.label if column.label is not None else column.name
     if isinstance(column, ingest.NumericColumnSpec) and column.unit is not None:
@@ -136,7 +142,7 @@ def _axis_title(field: str, aggregates: tuple[Aggregate, ...], manifest: ingest.
 
 
 def _channel(
-    channel: Channel, aggregates: tuple[Aggregate, ...], manifest: ingest.Manifest
+    channel: Channel, aggregates: tuple[Aggregate | Derive, ...], manifest: ingest.Manifest
 ) -> dict[str, Any]:
     """A channel definition with the always-emitted safe keys: field + type + sort:null (defeats
     the implicit field sort, and a nominal color's legend-domain sort) + a manifest-sourced
@@ -166,7 +172,7 @@ def _discrete_domain(values: list[dict[str, canon.Cell]], field: str) -> list[ca
 
 
 def build_vega_lite(
-    spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
+    spec: DatasetPlotSpec, table: canon.Table, manifest: ingest.Manifest
 ) -> dict[str, Any]:
     """The Vega-Lite v5 spec dict inlining only the recomputed table. Carries Decimal cells in
     data.values (each re-quantized to its column scale via _scaled_cell, for structural/allowlist
@@ -181,7 +187,7 @@ def build_vega_lite(
     if len(set(names)) != len(names):
         msg = f"duplicate column names in the plotted table: {names!r}"
         raise ValueError(msg)
-    aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate))
+    aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate | Derive))
     values = [
         {col.name: _scaled_cell(col, cell) for col, cell in zip(table.columns, row, strict=True)}
         for row in table.rows
@@ -217,7 +223,7 @@ def build_vega_lite(
     }
 
 
-def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest) -> str:
+def vega_lite_json(spec: DatasetPlotSpec, table: canon.Table, manifest: ingest.Manifest) -> str:
     """The authoritative Vega-Lite JSON string (raw Decimal tokens, floats rejected) -- the form
     render_svg consumes."""
     return _dumps(build_vega_lite(spec, table, manifest))
@@ -227,7 +233,7 @@ def vega_lite_json(spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifes
 class PreparedArtifact:
     """Internal formal-passed build carrying exact Vega-Lite bytes into native rendering."""
 
-    spec: VPlotSpec = field(repr=False)
+    spec: DatasetPlotSpec = field(repr=False)
     evidence: checks.DatasetEvidence = field(repr=False)
     results: tuple[checks.CheckResult, ...] = field(repr=False)
     vega_lite: bytes = field(repr=False)
@@ -243,7 +249,7 @@ class PreparationRun:
 
 
 def _row_order_facts(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     table: canon.Table,
     built: dict[str, Any],
 ) -> formal.RowOrderFacts:
@@ -355,7 +361,7 @@ def _legend_domain_facts(
 
 
 def _formal_facts(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     table: canon.Table,
     built: dict[str, Any],
 ) -> formal.FormalFacts:
@@ -388,7 +394,7 @@ def admit_html(html_document: str, limits: VerificationLimits = DEFAULT_LIMITS) 
 
 
 def prepare_render(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     evidence: checks.DatasetEvidence,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
@@ -745,7 +751,7 @@ def signed_chart_html(
 
 
 def render(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest_bytes: bytes,
     *,
     data_dir: Path,

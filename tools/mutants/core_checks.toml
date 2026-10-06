@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Core check registry (M9.13a retained campaign, p44).
 module = "src/verifier/checks.py"
-tests = ["tests/test_checks.py"]
+tests = ["tests/test_checks.py", "tests/test_derive.py"]
 
 # M9.13a retained campaign (p44).
 [[mutant]]
@@ -10,3 +10,37 @@ predicate = "sort.canonical_order is registered as the finite-SMT method"
 kills = "tests/test_checks.py::test_check_id_method_matrix_is_exhaustive_and_closed"
 anchor = '''    "sort.canonical_order": "z3_smt",'''
 mutant = '''    "sort.canonical_order": "construction",'''
+
+# Q3 derive (vplot-0.2): affirmations, disclosure checks, lineage.
+[[mutant]]
+id = "q3-v02-affirmation-unselected"
+predicate = "a v0.2 spec's affirmations name the expression path"
+kills = "tests/test_derive.py::test_q3_a_v02_report_discloses_its_derive_checks_and_its_expression_path"
+anchor = '''    v02 = isinstance(spec, VPlotSpecV02)'''
+mutant = '''    v02 = False'''
+
+[[mutant]]
+id = "q3-derive-passes-unreported"
+predicate = "a run with a derive reports its derive checks"
+kills = "tests/test_derive.py::test_q3_a_v02_report_discloses_its_derive_checks_and_its_expression_path"
+anchor = '''    if any(isinstance(op, Derive) for op in spec.transform):
+        results.extend(_derive_success_checks())'''
+mutant = '''    if False:
+        results.extend(_derive_success_checks())'''
+
+[[mutant]]
+id = "q3-derive-lineage-unread"
+predicate = "lineage ends at a derive"
+kills = "tests/test_derive.py::test_q3_unit_lineage_runs_through_a_derive_into_an_aggregate"
+anchor = '''            if op.output == name:
+                return DERIVED_SOURCE'''
+mutant = '''            if False:
+                return DERIVED_SOURCE'''
+
+[[mutant]]
+id = "q3-derived-unit-unexempt"
+predicate = "a derived quantitative channel is unit-exempt"
+kills = "tests/test_derive.py::test_q3_a_derived_quantitative_axis_is_unit_exempt_and_titled_derived_value"
+anchor = '''        if source is None or source == DERIVED_SOURCE:'''
+mutant = '''        if source is None:'''
+

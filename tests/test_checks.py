@@ -35,7 +35,7 @@ from verifier import canon, checks, ingest
 from verifier.checks import verify
 from verifier.eval import evaluate
 from verifier.limits import VerificationLimits
-from verifier.schema import Aggregate, Filter, Measure, VPlotSpec, decode_spec
+from verifier.schema import Aggregate, DatasetPlotSpec, Filter, Measure, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLES = _ROOT / "examples"
@@ -126,6 +126,10 @@ _EXPECTED_CHECKS_BY_METHOD: dict[str, frozenset[str]] = {
             "filter.value_type",
             "sort.fields_distinct",
             "aggregate.output_unique",
+            "derive.expr_valid",
+            "derive.output_unique",
+            "derive.values_defined",
+            "derive.values_bounded",
             "schema.field_types_match",
             "sort.field_in_plotted_table",
             "encoding.fields_exist_in_plotted_table",
@@ -277,7 +281,7 @@ _RESOURCE_BOUNDARIES = [
 ]
 
 
-def _resource_case(tmp_path: Path) -> tuple[VPlotSpec, bytes]:
+def _resource_case(tmp_path: Path) -> tuple[DatasetPlotSpec, bytes]:
     """Two rows x two columns -> source/plotted cell boundary = 4."""
     raw = _RESOURCE_CSV_BYTES
     (tmp_path / "t.csv").write_bytes(raw)
@@ -731,7 +735,7 @@ def test_encoding_failure_stops_before_evidence_hashes(
 @pytest.mark.parametrize("entry", _BAD_DECODE, ids=_ids(_BAD_DECODE))
 def test_decode_layer_specs_never_reach_verify(entry: dict[str, Any]) -> None:
     # decode_spec is the sole accepted untrusted-input path: a decode-layer rejection means
-    # no model-proposed VPlotSpec reaches verify() — the trust gate's first line is the
+    # no model-proposed DatasetPlotSpec reaches verify() — the trust gate's first line is the
     # decoder. (Structs stay directly constructible; binding-gate path confinement holds
     # regardless — see test_binding_rejects_absolute_name_even_when_target_readable.)
     raw = (_BAD_DIR / entry["file"]).read_bytes()
@@ -887,7 +891,7 @@ _SECTION7_ADMISSIBLE: dict[str, frozenset[str]] = {
 
 def _spec_with_encoding(
     x: tuple[str, str], y: tuple[str, str], color: tuple[str, str] | None = None
-) -> VPlotSpec:
+) -> DatasetPlotSpec:
     # A minimally-decoding spec (empty transform; _encoding_checks never evaluates) whose
     # encoding carries the channels under test, each given as (field, type).
     enc: dict[str, Any] = {"x": {"field": x[0], "type": x[1]}, "y": {"field": y[0], "type": y[1]}}

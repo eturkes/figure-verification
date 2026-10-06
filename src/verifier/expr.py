@@ -26,7 +26,7 @@ consumers bind their own names without changing the engine.
 from collections.abc import Mapping
 from decimal import Decimal
 from fractions import Fraction
-from typing import Literal, NoReturn, cast
+from typing import Literal, NoReturn, assert_never, cast
 
 import msgspec
 
@@ -50,6 +50,7 @@ __all__ = [
     "eval_expr",
     "parse_expr",
     "print_expr",
+    "variables",
 ]
 
 GRAMMAR_VERSION = "expr-0.1"
@@ -875,6 +876,25 @@ def eval_expr(
         )
         raise ValueError(msg)
     return _interpret_expr(node, binding, limits, active_budget)
+
+
+def variables(node: Expr) -> frozenset[str]:
+    """Every variable name ``node`` reads -- what a derive (vplot-0.2) binds per row."""
+    names: set[str] = set()
+    pending: list[Expr] = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, Variable):
+            names.add(current.name)
+        elif isinstance(current, Neg | Abs):
+            pending.append(current.operand)
+        elif isinstance(current, Pow):
+            pending.append(current.base)
+        elif isinstance(current, Binary):
+            pending += (current.left, current.right)
+        elif not isinstance(current, Number):  # pragma: no cover - `Expr` is a closed union
+            assert_never(current)
+    return frozenset(names)
 
 
 def print_expr(node: Expr) -> str:

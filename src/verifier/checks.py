@@ -2,9 +2,10 @@
 """Dataset and formula verification spines with bounded traces and gated evidence.
 
 Dataset mode admits exact trusted manifest/CSV bytes, recomputes every plotted value from a
-``VPlotSpec``, and mints ``DatasetEvidence`` only after binding, evaluator, resource, and
-encoding checks pass. Its spec is pure data: the closed transform union carries no expression,
-script, or URL field.
+``DatasetPlotSpec``, and mints ``DatasetEvidence`` only after binding, evaluator, resource, and
+encoding checks pass. A ``vplot-0.1`` spec is pure data: its closed transform union carries no
+expression, script, or URL field. A ``vplot-0.2`` spec adds one expression carrier, ``derive.expr``,
+evaluated only by the closed expr-0.1 interpreter.
 
 Formula mode accepts a separate ``FormulaPlotSpec``. The formula string is parsed into the
 verifier-owned closed AST, interpreted exactly, and never executed as Python. It retains only
@@ -26,7 +27,15 @@ from verifier import canon, ingest
 from verifier.errors import VerificationError
 from verifier.eval import EvaluationError, evaluate_formula_run, evaluate_run
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits, read_bounded
-from verifier.schema import Aggregate, ChannelType, FormulaPlotSpec, VPlotSpec, _Base
+from verifier.schema import (
+    Aggregate,
+    ChannelType,
+    DatasetPlotSpec,
+    Derive,
+    FormulaPlotSpec,
+    VPlotSpecV02,
+    _Base,
+)
 
 # --- structured verdict ------------------------------------------------------
 CheckMethod = Literal[
@@ -112,6 +121,10 @@ _CHECK_METHODS: dict[str, CheckMethod] = {
     "filter.value_type": "deterministic_recompute",
     "sort.fields_distinct": "deterministic_recompute",
     "aggregate.output_unique": "deterministic_recompute",
+    "derive.expr_valid": "deterministic_recompute",
+    "derive.output_unique": "deterministic_recompute",
+    "derive.values_defined": "deterministic_recompute",
+    "derive.values_bounded": "deterministic_recompute",
     "schema.field_types_match": "deterministic_recompute",
     "sort.field_in_plotted_table": "deterministic_recompute",
     "encoding.fields_exist_in_plotted_table": "deterministic_recompute",
@@ -275,18 +288,27 @@ def _fail(check: str, message: str) -> CheckResult:
 
 
 # --- affirmations (true by construction; the documented trust argument) ------
-def _affirmations() -> list[CheckResult]:
+def _affirmations(spec: DatasetPlotSpec) -> list[CheckResult]:
     """Properties the architecture guarantees by construction, surfaced as passes so the
-    report records the whole trust argument, not only the computed checks."""
+    report records the whole trust argument, not only the computed checks. A vplot-0.2 spec may
+    carry derive expressions, so its two affected claims say so; a vplot-0.1 spec's stay as they
+    were."""
+    v02 = isinstance(spec, VPlotSpecV02)
     return [
         _pass(
             "security.no_arbitrary_code",
-            "spec is pure data (frozen msgspec structs, no expr/script/url field), "
+            "derive expression text reaches evaluation only through the closed verifier-owned "
+            "expr-0.1 interpreter, never as Python; the spec has no script or url field"
+            if v02
+            else "spec is pure data (frozen msgspec structs, no expr/script/url field), "
             "so it carries no executable path",
         ),
         _pass(
             "transform.ops_allowed",
-            "transforms are a closed tagged union (select/filter/group_by/aggregate/sort); "
+            "transforms are a closed tagged union (select/filter/group_by/aggregate/sort/derive); "
+            "any other op is rejected at decode"
+            if v02
+            else "transforms are a closed tagged union (select/filter/group_by/aggregate/sort); "
             "any other op is rejected at decode",
         ),
         _pass(
@@ -339,9 +361,32 @@ def _formula_success_checks() -> list[CheckResult]:
     ]
 
 
+def _derive_success_checks() -> list[CheckResult]:
+    """Disclose what a successful run established for every derive (vplot-0.2); a spec without a
+    derive reports none of these, so a v0.1 report is unchanged."""
+    return [
+        _pass(
+            "derive.expr_valid",
+            "every derive expression parsed as expr-0.1 over numeric columns of the running table",
+        ),
+        _pass(
+            "derive.output_unique",
+            "every derive output names a column the running table did not yet have",
+        ),
+        _pass(
+            "derive.values_defined",
+            "every derive evaluated exactly on every row whose referenced cells are non-null",
+        ),
+        _pass(
+            "derive.values_bounded",
+            "every derived value fits DECIMAL(38, scale) at its declared scale",
+        ),
+    ]
+
+
 # --- dataset binding ---------------------------------------------------------
 def _check_dataset_binding(
-    spec: VPlotSpec, data_dir: Path, limits: VerificationLimits
+    spec: DatasetPlotSpec, data_dir: Path, limits: VerificationLimits
 ) -> tuple[CheckResult | None, bytes | None]:
     """Resolve and bounded-read the spec's CSV under ``data_dir``.
 
@@ -372,7 +417,7 @@ def _check_dataset_binding(
     return None, raw
 
 
-def _check_dataset_hash(spec: VPlotSpec, source_bytes: bytes) -> tuple[CheckResult, str]:
+def _check_dataset_hash(spec: DatasetPlotSpec, source_bytes: bytes) -> tuple[CheckResult, str]:
     """Bind already-admitted source bytes to the spec's declared dataset hash."""
     actual = canon.hash_dataset(source_bytes)
     if actual != spec.dataset.hash:
@@ -398,7 +443,12 @@ _CHANNEL_COLUMN_COMPAT: dict[ChannelType, frozenset[str]] = {
 }
 
 
-def unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
+# A derived column (vplot-0.2) has no manifest source: its lineage ends here. `<` and `>` keep the
+# marker outside the FieldName grammar, so no manifest column can share it.
+DERIVED_SOURCE = "<derive>"
+
+
+def unit_source(name: str, aggregates: tuple[Aggregate | Derive, ...]) -> str | None:
     """The manifest column whose unit a quantitative channel on plotted column `name` requires,
     or None when `name` traces back to a count (dimensionless -> unit-exempt).
 
@@ -419,7 +469,12 @@ def unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
     recursion, every recursion's `name` stays numeric, so a returned manifest column is numeric.
     """
     for i in range(len(aggregates) - 1, -1, -1):
-        for measure in aggregates[i].measures:
+        op = aggregates[i]
+        if isinstance(op, Derive):
+            if op.output == name:
+                return DERIVED_SOURCE  # unit-exempt like a count; titled `Derived value`
+            continue
+        for measure in op.measures:
             if measure.output == name:
                 if measure.fn == "count":
                     return None
@@ -428,7 +483,7 @@ def unit_source(name: str, aggregates: tuple[Aggregate, ...]) -> str | None:
 
 
 def _encoding_checks(
-    spec: VPlotSpec, plotted_table: canon.Table, manifest: ingest.Manifest
+    spec: DatasetPlotSpec, plotted_table: canon.Table, manifest: ingest.Manifest
 ) -> list[CheckResult]:
     """The encoding/label stage over the recomputed plotted table — three checks in a
     narrowing chain so each catches exactly its own failure (a field absent from the table is
@@ -467,7 +522,7 @@ def _encoding_checks(
     )
 
     check = "label.quantitative_units_present"
-    aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate))
+    aggregates = tuple(t for t in spec.transform if isinstance(t, Aggregate | Derive))
     numeric_units = {
         c.name: c.unit for c in manifest.columns if isinstance(c, ingest.NumericColumnSpec)
     }
@@ -480,8 +535,8 @@ def _encoding_checks(
         if columns[ch.field].kind != "numeric":
             continue
         source = unit_source(ch.field, aggregates)
-        if source is None:
-            continue  # count-derived -> dimensionless, unit-exempt
+        if source is None or source == DERIVED_SOURCE:
+            continue  # count-derived -> dimensionless; derive-computed -> no manifest unit
         if numeric_units[source] is None:
             unit_failure = (
                 f"quantitative channel {ch.field!r} traces to manifest column "
@@ -491,7 +546,12 @@ def _encoding_checks(
     results.append(
         _fail(check, unit_failure)
         if unit_failure is not None
-        else _pass(check, "every quantitative channel resolves to a unit or a count")
+        else _pass(
+            check,
+            "every quantitative channel resolves to a unit, a count, or a derive"
+            if any(isinstance(op, Derive) for op in spec.transform)
+            else "every quantitative channel resolves to a unit or a count",
+        )
     )
 
     return results
@@ -559,14 +619,14 @@ def _admit_manifest(
 
 
 def _verify_admitted_source(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest: ingest.Manifest,
     manifest_bytes: bytes,
     source_bytes: bytes,
     limits: VerificationLimits,
 ) -> VerificationRun:
     """Run the shared post-read verification over exact admitted source bytes."""
-    results = _affirmations()
+    results = _affirmations(spec)
     binding, admitted_dataset_hash = _check_dataset_hash(spec, source_bytes)
     results.append(binding)
     trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=source_bytes)
@@ -588,6 +648,8 @@ def _verify_admitted_source(
         results.append(_fail("resource.plotted_cells", message))
         return _failed_run(results, trace)
 
+    if any(isinstance(op, Derive) for op in spec.transform):
+        results.extend(_derive_success_checks())
     results.extend(_encoding_checks(spec, plotted, manifest))
     report = VerificationReport(results=tuple(results))
     if not report.passed:
@@ -608,7 +670,7 @@ def _verify_admitted_source(
 
 
 def verify_run(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest_bytes: bytes,
     *,
     data_dir: Path,
@@ -631,7 +693,7 @@ def verify_run(
 
     read_failure, raw = _check_dataset_binding(spec, data_dir, limits)
     if read_failure is not None:
-        results = _affirmations()
+        results = _affirmations(spec)
         results.append(read_failure)
         trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
         return _failed_run(results, trace)
@@ -690,7 +752,7 @@ def verify_formula_run(
 
 
 def verify_snapshot(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest_bytes: bytes,
     source_bytes: bytes,
     *,
@@ -713,7 +775,7 @@ def verify_snapshot(
 
     if len(source_bytes) > limits.max_csv_bytes:
         message = f"file exceeds byte limit of {limits.max_csv_bytes}"
-        results = _affirmations()
+        results = _affirmations(spec)
         results.append(_fail("resource.file_bytes", message))
         trace = VerificationTrace(manifest_bytes=manifest_bytes, source_bytes=None)
         return _failed_run(results, trace)
@@ -722,7 +784,7 @@ def verify_snapshot(
 
 
 def verify(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest_bytes: bytes,
     *,
     data_dir: Path,

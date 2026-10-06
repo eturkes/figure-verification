@@ -47,7 +47,7 @@ from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.replay import FormulaReplayVerdict, ReplayVerdict
-from verifier.schema import FormulaPlotSpec, json_schema
+from verifier.schema import FormulaPlotSpec, json_schema, json_schema_v02
 from verifier.service.models import (
     FormulaScriptVerdict,
     Problem,
@@ -268,6 +268,13 @@ def _components() -> dict[str, Any]:
     schemas: dict[str, Any] = {
         name: _rebase_refs(schema) for name, schema in json_schema()["$defs"].items()
     }
+    # vplot-0.2 shares every v0.1 definition byte for byte and adds its own two (`Derive`,
+    # `VPlotSpecV02`), so merging its defs onto v0.1's changes no v0.1 schema.
+    for name, schema in json_schema_v02()["$defs"].items():
+        rebased = _rebase_refs(schema)
+        if schemas.setdefault(name, rebased) != rebased:
+            message = f"vplot-0.2 redefines the shared VPlot schema {name!r}"
+            raise ValueError(message)
     _, generated = msgspec.json.schema_components(
         [
             Verdict,
@@ -332,7 +339,16 @@ def _spec_request_body() -> dict[str, Any]:
     """The required VPlot-spec JSON request body shared by both dataset POST routes."""
     return {
         "required": True,
-        "content": {"application/json": {"schema": {"$ref": f"{_COMPONENTS}/VPlotSpec"}}},
+        "content": {
+            "application/json": {
+                "schema": {
+                    "oneOf": [
+                        {"$ref": f"{_COMPONENTS}/VPlotSpec"},
+                        {"$ref": f"{_COMPONENTS}/VPlotSpecV02"},
+                    ]
+                }
+            }
+        },
     }
 
 
@@ -694,12 +710,14 @@ def _paths() -> dict[str, Any]:
                 "responses": {
                     "200": _json_response(
                         "The archive-validated canonical spec bytes, in the mode the stored spec "
-                        "declares: a dataset spec carries version vplot-0.1, and a formula spec "
+                        "declares: a dataset spec carries version vplot-0.1 or vplot-0.2, and a "
+                        "formula spec "
                         "carries version vplot-formula-0.1. spec_id is canon.hash_spec of the "
                         "decoded exact bytes.",
                         {
                             "anyOf": [
                                 {"$ref": f"{_COMPONENTS}/VPlotSpec"},
+                                {"$ref": f"{_COMPONENTS}/VPlotSpecV02"},
                                 {"$ref": f"{_COMPONENTS}/FormulaPlotSpec"},
                             ]
                         },

@@ -34,6 +34,7 @@ _CATALOGUES = (
     "openapi",
     "project",
     "receipt",
+    "render",
     "replay",
     "request",
     "schema",

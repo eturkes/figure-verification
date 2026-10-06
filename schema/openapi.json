@@ -44,7 +44,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VPlotSpec"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VPlotSpec"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VPlotSpecV02"
+                  }
+                ]
               }
             }
           }
@@ -123,7 +130,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/VPlotSpec"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/VPlotSpec"
+                  },
+                  {
+                    "$ref": "#/components/schemas/VPlotSpecV02"
+                  }
+                ]
               }
             }
           }
@@ -691,13 +705,16 @@
         ],
         "responses": {
           "200": {
-            "description": "The archive-validated canonical spec bytes, in the mode the stored spec declares: a dataset spec carries version vplot-0.1, and a formula spec carries version vplot-formula-0.1. spec_id is canon.hash_spec of the decoded exact bytes.",
+            "description": "The archive-validated canonical spec bytes, in the mode the stored spec declares: a dataset spec carries version vplot-0.1 or vplot-0.2, and a formula spec carries version vplot-formula-0.1. spec_id is canon.hash_spec of the decoded exact bytes.",
             "content": {
               "application/json": {
                 "schema": {
                   "anyOf": [
                     {
                       "$ref": "#/components/schemas/VPlotSpec"
+                    },
+                    {
+                      "$ref": "#/components/schemas/VPlotSpecV02"
                     },
                     {
                       "$ref": "#/components/schemas/FormulaPlotSpec"
@@ -1256,6 +1273,110 @@
         ],
         "additionalProperties": false
       },
+      "VPlotSpecV02": {
+        "title": "VPlotSpecV02",
+        "description": "vplot-0.2: vplot-0.1 plus the `derive` transform; every other member is identical.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "enum": [
+              "vplot-0.2"
+            ]
+          },
+          "dataset": {
+            "$ref": "#/components/schemas/Dataset"
+          },
+          "transform": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Select"
+                },
+                {
+                  "$ref": "#/components/schemas/Filter"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupBy"
+                },
+                {
+                  "$ref": "#/components/schemas/Aggregate"
+                },
+                {
+                  "$ref": "#/components/schemas/Sort"
+                },
+                {
+                  "$ref": "#/components/schemas/Derive"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "select": "#/components/schemas/Select",
+                  "filter": "#/components/schemas/Filter",
+                  "group_by": "#/components/schemas/GroupBy",
+                  "aggregate": "#/components/schemas/Aggregate",
+                  "sort": "#/components/schemas/Sort",
+                  "derive": "#/components/schemas/Derive"
+                }
+              }
+            },
+            "maxItems": 64
+          },
+          "mark": {
+            "enum": [
+              "bar",
+              "line",
+              "scatter"
+            ]
+          },
+          "encoding": {
+            "$ref": "#/components/schemas/Encoding"
+          }
+        },
+        "required": [
+          "version",
+          "dataset",
+          "transform",
+          "mark",
+          "encoding"
+        ],
+        "additionalProperties": false
+      },
+      "Derive": {
+        "title": "Derive",
+        "description": "vplot-0.2 (Q3): one computed numeric column, `expr` in the shared expr-0.1 grammar over the\nrunning table's numeric columns, quantized once HALF_EVEN at `scale`. Meaning =\nVPlot_SEMANTICS.md section 3; this gate checks shape only.",
+        "type": "object",
+        "properties": {
+          "op": {
+            "enum": [
+              "derive"
+            ]
+          },
+          "expr": {
+            "type": "string",
+            "maxLength": 1024,
+            "pattern": "^(?!.*[\\r\\n])[0-9A-Za-z_ ().*/+-]+$"
+          },
+          "as": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^(?!.*[\\r\\n])[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "scale": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 12
+          }
+        },
+        "required": [
+          "op",
+          "expr",
+          "as",
+          "scale"
+        ],
+        "additionalProperties": false
+      },
       "ArtifactHashMatches": {
         "title": "ArtifactHashMatches",
         "description": "Fresh-vs-authenticated VCert hash equality for each certified artifact.",
@@ -1388,6 +1509,28 @@
           "status",
           "severity",
           "message"
+        ],
+        "additionalProperties": false
+      },
+      "DisclosedDerive": {
+        "title": "DisclosedDerive",
+        "description": "One applied derive (vplot-0.2), disclosed in transform order. `expr` is the spec's raw\nexpression text -- model-controlled like a filter value, and like it never displayed.",
+        "type": "object",
+        "properties": {
+          "output": {
+            "type": "string"
+          },
+          "expr": {
+            "type": "string"
+          },
+          "scale": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "output",
+          "expr",
+          "scale"
         ],
         "additionalProperties": false
       },
@@ -2039,6 +2182,13 @@
           },
           "tcb": {
             "$ref": "#/components/schemas/Tcb"
+          },
+          "derives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisclosedDerive"
+            },
+            "default": []
           }
         },
         "required": [

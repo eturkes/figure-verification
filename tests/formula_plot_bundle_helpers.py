@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from verifier import attestation, canon, checks, formula_prepare, matplotlib_script, render, vcert
-from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
+from verifier.schema import DatasetPlotSpec, FormulaPlotSpec, decode_formula_spec, decode_spec
 from verifier.service import archive as archive_module
 from verifier.service import pipeline
 from verifier.service.identity import Signer, keyid_for_public_key, load_identity
@@ -50,7 +50,7 @@ def signer() -> Signer:
     )
 
 
-def canonical_specs() -> tuple[VPlotSpec, FormulaPlotSpec]:
+def canonical_specs() -> tuple[DatasetPlotSpec, FormulaPlotSpec]:
     return decode_spec(_DATASET_SPEC.read_bytes()), decode_formula_spec(_FORMULA_SPEC.read_bytes())
 
 

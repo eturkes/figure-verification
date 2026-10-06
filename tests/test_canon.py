@@ -43,7 +43,7 @@ from verifier.canon import (
     serialize_table,
     spec_bytes,
 )
-from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
+from verifier.schema import DatasetPlotSpec, FormulaPlotSpec, decode_formula_spec, decode_spec
 
 ZERO_HASH = "sha256:" + "0" * 64
 # "cafe" in two NFC-equivalent but byte-different forms: precomposed e-acute (U+00E9) vs
@@ -53,7 +53,7 @@ _CAFE_DECOMPOSED = "cafe" + chr(0x0301)
 _FORMULA_SCRIPT = b"import matplotlib.pyplot as plt\nplt.plot([0.0, 1.0], [0.0, 1.0])\nplt.show()\n"
 
 
-def _spec(value: object = "West", *, mark: str = "bar") -> VPlotSpec:
+def _spec(value: object = "West", *, mark: str = "bar") -> DatasetPlotSpec:
     """A valid spec whose single filter carries `value` (the lone non-ASCII-capable site —
     field/dataset names are ASCII by pattern) and whose mark is editable for hash flips."""
     raw: dict[str, Any] = {

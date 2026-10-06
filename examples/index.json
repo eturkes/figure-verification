@@ -137,7 +137,7 @@
       "decodes": false,
       "check": "schema decode (version Literal)",
       "caught_by": "decode_spec",
-      "reason": "version 'vplot-0.2' is not the pinned literal 'vplot-0.1'"
+      "reason": "version 'vplot-0.3' is neither pinned literal ('vplot-0.1', 'vplot-0.2')"
     },
     {
       "file": "b17_injection_encoding_aggregate.json",

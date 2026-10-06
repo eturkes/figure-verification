@@ -22,7 +22,7 @@ import msgspec
 
 from verifier import __version__, canon, checks, expr
 from verifier.eval import active_sort
-from verifier.schema import Filter, NumericProfile, VPlotSpec, _reject_duplicate_keys
+from verifier.schema import DatasetPlotSpec, Derive, Filter, NumericProfile, _reject_duplicate_keys
 
 if TYPE_CHECKING:
     from verifier.matplotlib_script import MatplotlibScriptArtifact
@@ -31,6 +31,7 @@ __all__ = [
     "CertifiedCheck",
     "DatasetSourceCert",
     "DatasetTcb",
+    "DisclosedDerive",
     "DisclosedFilter",
     "DisclosedSort",
     "FormulaSourceCert",
@@ -45,6 +46,7 @@ __all__ = [
     "dataset_tcb",
     "decode_vcert",
     "decode_vcert_v03",
+    "disclosed_derives",
     "disclosed_transforms",
     "hash_vega_lite",
     "vcert_bytes",
@@ -159,6 +161,15 @@ class DisclosedSort(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_
     order: str
 
 
+class DisclosedDerive(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+    """One applied derive (vplot-0.2), disclosed in transform order. `expr` is the spec's raw
+    expression text -- model-controlled like a filter value, and like it never displayed."""
+
+    output: str
+    expr: str
+    scale: int
+
+
 class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
     """One passing final result recorded with the method that established it."""
 
@@ -167,7 +178,9 @@ class CertifiedCheck(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw
     status: Literal["pass"]
 
 
-class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True):
+class VCert(
+    msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=True, omit_defaults=True
+):
     """A VCert v0.2 provenance certificate: five bound artifact hashes, method-bearing passing
     checks, disclosed applied filters and active-sort keys, and the verifier/formal/display TCB.
     Core render produces a deterministic payload; the service signs its exact bytes into DSSE.
@@ -186,6 +199,9 @@ class VCert(msgspec.Struct, frozen=True, forbid_unknown_fields=True, kw_only=Tru
     filters: tuple[DisclosedFilter, ...]
     sorts: tuple[DisclosedSort, ...]
     tcb: Tcb
+    # vplot-0.2 (Q3). The ONLY defaulted member, and `omit_defaults` leaves it out when empty, so
+    # every v0.1 certificate -- archived ones included -- keeps its exact payload bytes.
+    derives: tuple[DisclosedDerive, ...] = ()
 
 
 class DatasetSourceCert(
@@ -440,7 +456,7 @@ def _formula_tcb(numeric_profile: NumericProfile) -> FormulaTcb:
 
 
 def disclosed_transforms(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
 ) -> tuple[tuple[DisclosedFilter, ...], tuple[DisclosedSort, ...]]:
     """Derive deterministic dataset filter and active-sort disclosures.
 
@@ -461,6 +477,15 @@ def disclosed_transforms(
         else ()
     )
     return filters, sorts
+
+
+def disclosed_derives(spec: DatasetPlotSpec) -> tuple[DisclosedDerive, ...]:
+    """Every derive in transform order: each one adds a column the plotted table may show."""
+    return tuple(
+        DisclosedDerive(output=transform.output, expr=transform.expr, scale=transform.scale)
+        for transform in spec.transform
+        if isinstance(transform, Derive)
+    )
 
 
 def _certified_checks(results: tuple[checks.CheckResult, ...]) -> tuple[CertifiedCheck, ...]:
@@ -490,7 +515,7 @@ def _formula_certified_checks(
 
 
 def build_dataset_certificate(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     evidence: checks.DatasetEvidence,
     results: tuple[checks.CheckResult, ...],
     vega_lite: bytes,
@@ -527,6 +552,7 @@ def build_dataset_certificate(
         filters=filters,
         sorts=sorts,
         tcb=resolved_tcb,
+        derives=disclosed_derives(spec),
     )
 
 

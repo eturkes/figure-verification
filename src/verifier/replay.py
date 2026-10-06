@@ -676,7 +676,7 @@ def _untrusted_key_error(diagnostic: str) -> _ReplayFailureError:
 class _AuthenticatedSnapshot:
     snapshot: ReplaySnapshot = field(repr=False)
     manifest: _AttemptManifest = field(repr=False)
-    spec: schema.VPlotSpec = field(repr=False)
+    spec: schema.DatasetPlotSpec = field(repr=False)
     certificate: vcert.VCert
     archived_svg: str = field(repr=False)
     trusted_keyid: str
@@ -878,7 +878,7 @@ def _decode_versions(payload: bytes, *, trusted_keyid: str) -> vcert.Tcb:
     return versions
 
 
-def _decode_spec(payload: bytes, *, trusted_keyid: str) -> schema.VPlotSpec:
+def _decode_spec(payload: bytes, *, trusted_keyid: str) -> schema.DatasetPlotSpec:
     try:
         spec = schema.decode_spec(payload)
     except (ValueError, RecursionError) as exc:
@@ -1069,7 +1069,7 @@ def _authenticate_plot(
     limits: VerificationLimits,
     *,
     trusted_keyid: str,
-) -> tuple[schema.VPlotSpec, vcert.VCert, vcert.Tcb, str]:
+) -> tuple[schema.DatasetPlotSpec, vcert.VCert, vcert.Tcb, str]:
     _require(
         hashlib.sha256(plot.vcert_envelope).hexdigest() == plot.plot_id,
         "plot_address",

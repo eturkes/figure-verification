@@ -35,11 +35,10 @@ from verifier.ingest import (
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.schema import (
     Aggregate,
+    DatasetPlotSpec,
     Measure,
     Sort,
     SortKey,
-    Transform,
-    VPlotSpec,
     decode_spec,
 )
 
@@ -56,7 +55,7 @@ def _evaluate_example(category: str, filename: str, dataset_stem: str) -> canon.
     return evaluate(spec, manifest, (DATA / f"{dataset_stem}.csv").read_bytes())
 
 
-def _spec(transform: list[dict[str, object]]) -> VPlotSpec:
+def _spec(transform: list[dict[str, object]]) -> DatasetPlotSpec:
     """Decode an inline spec from its transform list (placeholder dataset/encoding; evaluate
     inspects neither). Built through decode_spec so the FilterValue = int | str parse boundary
     holds — a bool literal could not slip into a filter value."""
@@ -890,13 +889,15 @@ def test_m15_layer_spec_evaluates_without_error(
 
 
 # --- determinism anchor: a semantically no-op spec edit moves only the spec hash ----
-def _sort_op(field: str, order: str) -> Transform:
+def _sort_op(field: str, order: str) -> Sort:
     """A standalone sort op, graftable into any spec via msgspec.structs.replace (the same frozen
     Sort type a decoded spec carries)."""
-    return _spec([{"op": "sort", "by": [{"field": field, "order": order}]}]).transform[0]
+    op = _spec([{"op": "sort", "by": [{"field": field, "order": order}]}]).transform[0]
+    assert isinstance(op, Sort)
+    return op
 
 
-def _g01_anchor() -> tuple[VPlotSpec, Manifest, bytes]:
+def _g01_anchor() -> tuple[DatasetPlotSpec, Manifest, bytes]:
     """The g01 spec + its sales inputs — the base every no-op-edit variant is replaced from."""
     spec = decode_spec((EXAMPLES / "good_specs" / "g01_total_revenue_by_month.json").read_bytes())
     manifest = load_manifest((DATA / "schemas" / "sales.json").read_bytes())

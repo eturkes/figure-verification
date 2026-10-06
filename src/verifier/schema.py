@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""VPlot v0.1 schemas — the restricted chart specs the untrusted model proposes.
+"""VPlot v0.1 / v0.2 schemas — the restricted chart specs the untrusted model proposes.
 
 The schema gates (syntax only; meaning lives in VPlot_SEMANTICS.md)
 define frozen, fail-closed msgspec structs and two entry points: decode_spec for
@@ -13,7 +13,7 @@ behaviors (cited below by finding number).
 
 import json
 import re
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal, cast, get_args
 
 import msgspec
 from msgspec import Meta, Struct, ValidationError
@@ -196,7 +196,20 @@ class Sort(_Base, frozen=True, kw_only=True, tag_field="op", tag="sort"):
     by: Annotated[tuple[SortKey, ...], Meta(min_length=1, max_length=32)]
 
 
+class Derive(_Base, frozen=True, kw_only=True, tag_field="op", tag="derive"):
+    """vplot-0.2 (Q3): one computed numeric column, `expr` in the shared expr-0.1 grammar over the
+    running table's numeric columns, quantized once HALF_EVEN at `scale`. Meaning =
+    VPlot_SEMANTICS.md section 3; this gate checks shape only."""
+
+    expr: FormulaText
+    output: FieldName = msgspec.field(name="as")  # JSON key `as` (a keyword)
+    scale: Annotated[int, Meta(ge=0, le=12)]
+
+
 Transform = Select | Filter | GroupBy | Aggregate | Sort
+# vplot-0.2 widens the union by `derive` alone; vplot-0.1 keeps its own, so a v0.1 spec cannot
+# carry a derive and the proposer's pinned v0.1 schema never moves (verifier-only first).
+TransformV02 = Select | Filter | GroupBy | Aggregate | Sort | Derive
 
 
 # --- top-level spec ----------------------------------------------------------
@@ -205,6 +218,16 @@ class VPlotSpec(_Base, frozen=True, kw_only=True):
     version: Literal["vplot-0.1"]
     dataset: Dataset
     transform: Annotated[tuple[Transform, ...], Meta(max_length=64)]
+    mark: Mark
+    encoding: Encoding
+
+
+class VPlotSpecV02(_Base, frozen=True, kw_only=True):
+    """vplot-0.2: vplot-0.1 plus the `derive` transform; every other member is identical."""
+
+    version: Literal["vplot-0.2"]
+    dataset: Dataset
+    transform: Annotated[tuple[TransformV02, ...], Meta(max_length=64)]
     mark: Mark
     encoding: Encoding
 
@@ -254,13 +277,14 @@ class FormulaPlotSpec(_Base, frozen=True, kw_only=True):
         _require_declared(self.encoding, FormulaEncoding)
 
 
-type DatasetPlotSpec = VPlotSpec
-type PlotSpec = VPlotSpec | FormulaPlotSpec
+type DatasetPlotSpec = VPlotSpec | VPlotSpecV02
+type PlotSpec = VPlotSpec | VPlotSpecV02 | FormulaPlotSpec
 
 
 # One module-level strict decoder per external shape (strict is msgspec's default;
 # pinned explicitly because fail-closed decode is the whole contract of these gates).
 _DECODER = msgspec.json.Decoder(VPlotSpec, strict=True)
+_DECODER_V02 = msgspec.json.Decoder(VPlotSpecV02, strict=True)
 _FORMULA_DECODER = msgspec.json.Decoder(FormulaPlotSpec, strict=True)
 
 _DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
@@ -304,8 +328,32 @@ def _decode[T](raw: bytes | str, decoder: msgspec.json.Decoder[T]) -> T:
     return decoded
 
 
-def decode_spec(raw: bytes | str) -> VPlotSpec:
-    """Decode raw JSON into a validated VPlotSpec, or raise.
+class _VersionProbe(Struct, frozen=True):
+    """Reads the `version` member alone; every other member is ignored here and decoded strictly
+    by the decoder it selects. Typed `str | None`, so a non-string version fails at once."""
+
+    version: str | None = None
+
+
+_VERSION_PROBE = msgspec.json.Decoder(_VersionProbe)
+
+
+def _dataset_decoder(
+    raw: bytes | str,
+) -> msgspec.json.Decoder[VPlotSpec] | msgspec.json.Decoder[VPlotSpecV02]:
+    """`vplot-0.2` selects the v0.2 decoder; anything else -- malformed JSON, a missing or unknown
+    version -- takes the v0.1 decoder, whose strict decode then reports the fault. Skipping an
+    unknown member, the lenient probe recurses where the strict decoders refuse at once, so a
+    deeply nested body also falls through to them (closing review S17)."""
+    try:
+        probe = _VERSION_PROBE.decode(raw)
+    except (msgspec.DecodeError, msgspec.ValidationError, UnicodeError, RecursionError):
+        return _DECODER
+    return _DECODER_V02 if probe.version == "vplot-0.2" else _DECODER
+
+
+def decode_spec(raw: bytes | str) -> DatasetPlotSpec:
+    """Decode raw JSON into a validated VPlotSpec or VPlotSpecV02 (by `version`), or raise.
 
     The only two failure modes: msgspec.DecodeError on malformed or non-UTF-8 JSON,
     msgspec.ValidationError on any schema violation (unknown key, bad enum,
@@ -322,7 +370,10 @@ def decode_spec(raw: bytes | str) -> VPlotSpec:
     pathological depth); its sole job is to reject the duplicate keys msgspec silently
     last-wins (finding 4).
     """
-    return _decode(raw, _DECODER)
+    decoder: msgspec.json.Decoder[DatasetPlotSpec] = cast(
+        "msgspec.json.Decoder[DatasetPlotSpec]", _dataset_decoder(raw)
+    )
+    return _decode(raw, decoder)
 
 
 def decode_formula_spec(raw: bytes | str) -> FormulaPlotSpec:
@@ -361,6 +412,18 @@ def json_schema_text() -> str:
     """json_schema() as deterministic, newline-terminated UTF-8 JSON — the
     byte-exact form committed as schema/vplot-0.1.schema.json."""
     return _schema_text(VPlotSpec)
+
+
+def json_schema_v02() -> dict[str, Any]:
+    """The vplot-0.2 JSON Schema, ADVISORY exactly like json_schema(). No proposer is pinned to
+    it: the proposer keeps vplot-0.1 (verifier-only first)."""
+    return _schema_doc(VPlotSpecV02)
+
+
+def json_schema_v02_text() -> str:
+    """json_schema_v02() as deterministic, newline-terminated UTF-8 JSON — the byte-exact form
+    committed as schema/vplot-0.2.schema.json."""
+    return _schema_text(VPlotSpecV02)
 
 
 def formula_json_schema() -> dict[str, Any]:

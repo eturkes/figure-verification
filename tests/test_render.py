@@ -64,6 +64,7 @@ from verifier.schema import (
     Aggregate,
     Channel,
     Dataset,
+    DatasetPlotSpec,
     Encoding,
     Filter,
     Measure,
@@ -108,7 +109,7 @@ def _external_refs(svg: str) -> list[str]:
     return external
 
 
-def _good(name: str) -> tuple[VPlotSpec, ingest.Manifest]:
+def _good(name: str) -> tuple[DatasetPlotSpec, ingest.Manifest]:
     spec = decode_spec((_GOOD / name).read_bytes())
     stem = Path(spec.dataset.name).stem
     manifest = ingest.load_manifest((_SCHEMAS / f"{stem}.json").read_bytes())
@@ -122,13 +123,15 @@ def _manifest_bytes(name: str) -> bytes:
     return (_SCHEMAS / f"{stem}.json").read_bytes()
 
 
-def _evaluated(name: str) -> tuple[VPlotSpec, ingest.Manifest, canon.Table]:
+def _evaluated(name: str) -> tuple[DatasetPlotSpec, ingest.Manifest, canon.Table]:
     spec, manifest = _good(name)
     table = evaluate(spec, manifest, (_DATA / spec.dataset.name).read_bytes())
     return spec, manifest, table
 
 
-def _evidence(name: str, *, data_dir: Path = _DATA) -> tuple[VPlotSpec, checks.DatasetEvidence]:
+def _evidence(
+    name: str, *, data_dir: Path = _DATA
+) -> tuple[DatasetPlotSpec, checks.DatasetEvidence]:
     """One good spec plus the check-passed evidence captured from ``data_dir``."""
     spec, _ = _good(name)
     run = checks.verify_run(spec, _manifest_bytes(name), data_dir=data_dir)
@@ -702,7 +705,7 @@ def test_naive_spec_reintroduces_implicit_ordering() -> None:
 
 # --- provenance certificate + render() gate ---------------------------------
 def _certificate_evidence(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     table: canon.Table,
     results: tuple[checks.CheckResult, ...] = (),
 ) -> checks.DatasetEvidence:
@@ -730,7 +733,7 @@ def _render(name: str) -> render.RenderResult:
 
 
 def _prepare(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     evidence: checks.DatasetEvidence,
     *,
     limits: VerificationLimits = DEFAULT_LIMITS,
@@ -743,7 +746,7 @@ def _prepare(
 
 
 def _certificate(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     evidence: checks.DatasetEvidence,
     *,
     vega_lite: bytes = b"{}",
@@ -798,7 +801,7 @@ def test_direct_render_formal_gate_blocks_built_row_corruption(
     formal_runs: list[formal.FormalRun] = []
 
     def corrupt_rows(
-        spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
+        spec: DatasetPlotSpec, table: canon.Table, manifest: ingest.Manifest
     ) -> dict[str, Any]:
         nonlocal build_count
         build_count += 1
@@ -843,7 +846,7 @@ def test_render_reads_source_and_builds_vega_once(monkeypatch: pytest.MonkeyPatc
     built: list[dict[str, object]] = []
 
     def _build_spy(
-        spec: VPlotSpec, table: canon.Table, manifest: ingest.Manifest
+        spec: DatasetPlotSpec, table: canon.Table, manifest: ingest.Manifest
     ) -> dict[str, object]:
         value = original_build(spec, table, manifest)
         built.append(value)

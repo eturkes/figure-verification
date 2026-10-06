@@ -32,7 +32,8 @@ from verifier.attestation import VCERT_PAYLOAD_TYPE, VCERT_V03_PAYLOAD_TYPE
 from verifier.checks import CheckResult
 from verifier.render import VCert
 from verifier.replay import FormulaReplayVerdict, ReplayVerdict
-from verifier.schema import FormulaPlotSpec, decode_formula_spec, json_schema
+from verifier.schema import FormulaPlotSpec, decode_formula_spec, json_schema, json_schema_v02
+from verifier.service import openapi as openapi_module
 from verifier.service.app import create_app
 from verifier.service.archive import (
     AttemptArtifacts,
@@ -352,10 +353,15 @@ def test_durable_public_artifact_responses_and_raw_key_profile() -> None:
 
 
 def test_post_bodies_reference_vplotspec() -> None:
+    """Q3: both dataset POSTs take either spec version; the versions are disjoint literals, so a
+    body validates exactly one arm."""
     for path in ("/verify-only", "/verify-and-render"):
         body = _DOC["paths"][path]["post"]["requestBody"]
         assert body["content"]["application/json"]["schema"] == {
-            "$ref": "#/components/schemas/VPlotSpec"
+            "oneOf": [
+                {"$ref": "#/components/schemas/VPlotSpec"},
+                {"$ref": "#/components/schemas/VPlotSpecV02"},
+            ]
         }
 
 
@@ -712,3 +718,14 @@ def test_live_route_metadata_mirrors_the_document(tmp_path: Path) -> None:
             for method in handler.http_methods - {"OPTIONS", "HEAD"}:
                 live[(method, path)] = (handler.operation_id, handler.summary)
     assert live == documented
+
+
+def test_a_v02_definition_that_redefines_a_shared_v01_schema_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Q3: v0.2's defs merge onto v0.1's only where they agree byte for byte."""
+    real = json_schema_v02()
+    clashing = real | {"$defs": real["$defs"] | {"Dataset": {"type": "string"}}}
+    monkeypatch.setattr(openapi_module, "json_schema_v02", lambda: clashing)
+    with pytest.raises(ValueError, match="redefines the shared VPlot schema 'Dataset'"):
+        openapi_module._components()

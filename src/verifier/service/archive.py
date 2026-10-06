@@ -96,9 +96,9 @@ from verifier import __version__, attestation, canon, checks, matplotlib_script,
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, MAX_ATTEMPT_PAYLOAD_BYTES, VerificationLimits
 from verifier.schema import (
+    DatasetPlotSpec,
     FormulaPlotSpec,
     PlotSpec,
-    VPlotSpec,
     decode_formula_spec,
     decode_spec,
 )
@@ -940,7 +940,7 @@ def _decode_canonical_versions(payload: bytes) -> render.Tcb:
     return versions
 
 
-def _decode_canonical_spec(payload: bytes) -> VPlotSpec:
+def _decode_canonical_spec(payload: bytes) -> DatasetPlotSpec:
     try:
         spec = decode_spec(payload)
     except (ValueError, RecursionError) as exc:

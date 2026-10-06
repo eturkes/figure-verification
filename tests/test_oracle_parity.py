@@ -31,7 +31,7 @@ from verifier import canon
 from verifier.errors import VerificationError
 from verifier.eval import evaluate
 from verifier.ingest import Manifest, load_manifest
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import DatasetPlotSpec, Derive, decode_spec
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -61,6 +61,113 @@ def test_oracle_matches_eval(filename: str, stem: str) -> None:
     expected = evaluate(spec, manifest, csv_bytes)
     actual = recompute(spec, manifest, csv_bytes)
 
+    assert canon.serialize_table(actual) == canon.serialize_table(expected)
+    assert canon.hash_table(actual) == canon.hash_table(expected)
+
+
+# --- Q3: a derive corpus (vplot-0.2) --------------------------------------------
+# Every derive placement the semantics admit -- first, after select / filter / sort / derive /
+# aggregate -- every expr-0.1 construct (literal, variable, unary minus and plus, abs, + - * /, an
+# integer power, a negative exponent), NULLs in, a HALF_EVEN tie, a 30-digit value, and a derived
+# column feeding a later filter, aggregate and sort -- against the oracle's own
+# evaluator, which parses with Python `ast` and never imports verifier.expr.
+def _derive_spec(stem: str, transform: list[dict[str, Any]]) -> DatasetPlotSpec:
+    return decode_spec(
+        json.dumps(
+            {
+                "version": "vplot-0.2",
+                "dataset": {"name": f"{stem}.csv", "hash": "sha256:" + "0" * 64},
+                "transform": transform,
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "x", "type": "nominal"},
+                    "y": {"field": "y", "type": "quantitative"},
+                },
+            }
+        )
+    )
+
+
+def _d(expr: str, output: str, scale: int) -> dict[str, Any]:
+    return {"op": "derive", "expr": expr, "as": output, "scale": scale}
+
+
+_DERIVE_CORPUS: list[tuple[str, str, list[dict[str, Any]]]] = [
+    ("ratio", "sales", [_d("revenue / orders", "per_order", 2)]),
+    ("tie-and-scale", "sales", [_d("orders / 8", "eighths", 2), _d("revenue / 1000", "k", 0)]),
+    ("full-grammar", "sales", [_d("-abs(revenue - 12000) * 2 ** 3 / (orders + 1) ** -1", "g", 4)]),
+    ("literals", "sales", [_d("0.1 * revenue + 1.25", "adj", 3)]),
+    (
+        "derive-then-aggregate",
+        "sales",
+        [
+            _d("revenue / orders", "per_order", 2),
+            {"op": "group_by", "keys": ["region"]},
+            {"op": "aggregate", "measures": [{"field": "per_order", "fn": "mean", "as": "avg"}]},
+        ],
+    ),
+    (
+        "aggregate-then-derive",
+        "sales",
+        [
+            {"op": "group_by", "keys": ["month"]},
+            {
+                "op": "aggregate",
+                "measures": [
+                    {"field": "revenue", "fn": "sum", "as": "rev"},
+                    {"field": "orders", "fn": "sum", "as": "ords"},
+                ],
+            },
+            _d("rev / ords", "per_order", 3),
+            {"op": "sort", "by": [{"field": "per_order", "order": "descending"}]},
+        ],
+    ),
+    (
+        "filter-on-derived",
+        "weather",
+        [
+            _d("temp_c * 9 / 5 + 32", "temp_f", 1),
+            {"op": "filter", "field": "temp_f", "cmp": "gt", "value": "50"},
+            {"op": "select", "fields": ["city", "temp_f"]},
+        ],
+    ),
+    ("nulls-in", "deliberately_dirty", [_d("revenue / orders", "per_order", 2)]),
+    (
+        "select-then-derive",
+        "sales",
+        [{"op": "select", "fields": ["month", "orders"]}, _d("+orders * 2", "twice", 0)],
+    ),
+    (
+        "filter-then-derive",
+        "sales",
+        [
+            {"op": "filter", "field": "region", "cmp": "eq", "value": "US"},
+            _d("revenue / orders", "r", 2),
+        ],
+    ),
+    (
+        "sort-then-derive",
+        "sales",
+        [
+            {"op": "sort", "by": [{"field": "revenue", "order": "descending"}]},
+            _d("orders - 1", "o", 0),
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "stem", "transform"), _DERIVE_CORPUS, ids=[row[0] for row in _DERIVE_CORPUS]
+)
+def test_oracle_matches_eval_over_the_derive_corpus(
+    case: str, stem: str, transform: list[dict[str, Any]]
+) -> None:
+    spec = _derive_spec(stem, transform)
+    manifest = load_manifest((DATA / "schemas" / f"{stem}.json").read_bytes())
+    csv_bytes = (DATA / f"{stem}.csv").read_bytes()
+    expected = evaluate(spec, manifest, csv_bytes)
+    actual = recompute(spec, manifest, csv_bytes)
+    assert any(isinstance(op, Derive) for op in spec.transform), case
     assert canon.serialize_table(actual) == canon.serialize_table(expected)
     assert canon.hash_table(actual) == canon.hash_table(expected)
 
@@ -137,7 +244,7 @@ def _sort(keys: list[tuple[str, str]]) -> list[dict[str, Any]]:
 
 def _spec_manifest(
     manifest_json: bytes, csv: bytes, transform: list[dict[str, Any]]
-) -> tuple[VPlotSpec, Manifest]:
+) -> tuple[DatasetPlotSpec, Manifest]:
     """A decoded spec + manifest for a synthetic case. encoding is recompute/evaluate-irrelevant
     (only render reads it), so x/y just name real columns to satisfy the schema gate."""
     cols = [c["name"] for c in json.loads(manifest_json)["columns"]]
@@ -359,3 +466,18 @@ def test_oracle_sum_site_overflow_is_order_sensitive() -> None:
     safe = evaluate(spec, manifest, _CANCEL_SAFE)
     assert safe.rows == in_domain
     assert canon.hash_table(recompute(spec, manifest, _CANCEL_SAFE)) == canon.hash_table(safe)
+
+
+def test_oracle_derive_keeps_every_digit_of_a_30_digit_value() -> None:
+    """Kernel review register: a Decimal division under the 28-digit context lost a legal
+    DECIMAL(38, 0) result; the oracle now quantizes from an exact integer."""
+    manifest = load_manifest(
+        b'{"dataset":"t.csv","columns":[{"name":"k","type":"string","label":"K"},'
+        b'{"name":"v","type":"numeric","scale":0,"unit":"u","label":"V"}]}'
+    )
+    csv_bytes = b"k,v\na,123456789012345678901234567890\n"
+    spec = _derive_spec("t", [_d("v / 1", "w", 0)])
+    expected = evaluate(spec, manifest, csv_bytes)
+    assert canon.serialize_table(recompute(spec, manifest, csv_bytes)) == canon.serialize_table(
+        expected
+    )

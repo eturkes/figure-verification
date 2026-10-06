@@ -68,7 +68,7 @@ from verifier import attestation, checks, formal, matplotlib_script, render, vce
 from verifier.errors import VerificationError
 from verifier.formula_prepare import PreparedFormula, prepare_formula
 from verifier.limits import read_bounded
-from verifier.schema import FormulaPlotSpec, VPlotSpec, decode_formula_spec, decode_spec
+from verifier.schema import DatasetPlotSpec, FormulaPlotSpec, decode_formula_spec, decode_spec
 from verifier.service.archive import (
     Archive,
     AttemptArtifacts,
@@ -97,7 +97,7 @@ class DatasetOutcome:
     """Internal final-verification state; trace/evidence/build never serialize or enter repr."""
 
     verdict: Verdict
-    spec: VPlotSpec | None = field(default=None, repr=False)
+    spec: DatasetPlotSpec | None = field(default=None, repr=False)
     trace: checks.VerificationTrace = field(default=_EMPTY_TRACE, repr=False)
     evidence: checks.DatasetEvidence | None = field(default=None, repr=False)
     formal_trace: tuple[formal.FormalTrace, ...] = field(default=(), repr=False)
@@ -211,8 +211,8 @@ def _single(check: str, message: str, *, layer: Literal["decode", "verify"]) -> 
     return Verdict(verified=False, layer=layer, results=(result,))
 
 
-def decode_stage(raw: bytes) -> VPlotSpec | Verdict:
-    """Strictly decode raw spec bytes: the decoded VPlotSpec, or a 200 layer="decode" Verdict on
+def decode_stage(raw: bytes) -> DatasetPlotSpec | Verdict:
+    """Strictly decode raw spec bytes: the decoded dataset spec, or a 200 layer="decode" Verdict on
     a decode failure (an expected model failure mode). The first pipeline stage, split out so
     app.py's proposer pins the requested dataset name on the decoded spec BEFORE any trusted
     dataset I/O — an off-request name is refused without touching the wrong dataset's files."""
@@ -222,7 +222,7 @@ def decode_stage(raw: bytes) -> VPlotSpec | Verdict:
         return _single("spec.decode", str(exc), layer="decode")
 
 
-def verify_decoded(spec: VPlotSpec, settings: Settings) -> DatasetOutcome:
+def verify_decoded(spec: DatasetPlotSpec, settings: Settings) -> DatasetOutcome:
     """Verify an already-decoded spec: resolve + load the trusted manifest, run checks, map the
     report onto a DatasetOutcome. A dataset with no manifest fails closed as a 200 Verdict; a
     PRESENT but unloadable manifest (or a checks mispair) raises -> the app's 500 (see the module
@@ -304,7 +304,7 @@ def verify_only(raw: bytes, settings: Settings) -> DatasetOutcome:
 def decode_formula_stage(raw: bytes) -> FormulaPlotSpec | Verdict:
     """Strictly decode raw formula-spec bytes: the decoded FormulaPlotSpec, or a 200
     layer="decode" Verdict on a decode failure (an expected model failure mode, metered exactly
-    like the dataset one). The formula decoder is its OWN strict decoder — a dataset VPlotSpec
+    like the dataset one). The formula decoder is its OWN strict decoder — a dataset DatasetPlotSpec
     body fails here on its version literal, so the two modes can never cross at this seam.
     decode_formula_spec already re-raises a builtin UnicodeDecodeError as msgspec.DecodeError, so
     these two arms are the complete guard."""

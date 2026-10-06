@@ -36,7 +36,7 @@ from verifier import (
     render,
     vcert,
 )
-from verifier.schema import NumericProfile, VPlotSpec, decode_formula_spec, decode_spec
+from verifier.schema import DatasetPlotSpec, NumericProfile, decode_formula_spec, decode_spec
 
 _ROOT = Path(__file__).resolve().parent.parent
 _FORMULA_GOOD = _ROOT / "examples" / "formula_good_specs"
@@ -114,7 +114,7 @@ def _artifact(name: str) -> matplotlib_script.MatplotlibScriptArtifact:
     return cast("matplotlib_script.MatplotlibScriptArtifact", emission.artifact)
 
 
-def _dataset_spec_and_evidence() -> tuple[VPlotSpec, checks.DatasetEvidence]:
+def _dataset_spec_and_evidence() -> tuple[DatasetPlotSpec, checks.DatasetEvidence]:
     spec = decode_spec((_DATASET_GOOD / "g01_total_revenue_by_month.json").read_bytes())
     manifest = (_SCHEMAS / f"{Path(spec.dataset.name).stem}.json").read_bytes()
     return spec, checks.verify_run(spec, manifest, data_dir=_DATA).require_evidence()

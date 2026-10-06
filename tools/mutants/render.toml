@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Render predicates a unit adds outside the Vega-Lite builder's existing suites (Q3: the fixed title
+# of a derived axis). Run: `uv run --locked python tools/mutate.py tools/mutants/render.toml`.
+module = "src/verifier/render.py"
+tests = ["tests/test_render.py", "tests/test_derive.py"]
+
+[[mutant]]
+id = "q3-derived-title-dropped"
+predicate = "a derived axis takes the fixed `Derived value` title, never a manifest lookup"
+kills = "tests/test_derive.py::test_q3_a_derived_quantitative_axis_is_unit_exempt_and_titled_derived_value"
+anchor = '''    if source == checks.DERIVED_SOURCE:
+        return _DERIVED_AXIS_TITLE'''
+mutant = '''    if False:
+        return _DERIVED_AXIS_TITLE'''

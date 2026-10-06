@@ -37,10 +37,18 @@ active sort, then every remaining column ascending, nulls greatest) realizes the
 filter materializes via CREATE TEMP TABLE AS SELECT (CREATE VIEW rejects a bound parameter; CTAS
 accepts it), an aggregate breaks the SQL chain (mean needs Python) into a typed temp table, and the
 pipeline continues on that.
+
+A vplot-0.2 `derive` (Q3) is recomputed in Python by an expression evaluator independent of
+verifier.expr: Python's own `ast` parses the expr-0.1 text (a subset of Python expression syntax),
+every literal is lifted from its exact source text to a Fraction, and `round(Fraction, scale)`
+quantizes HALF_EVEN once. DuckDB cannot carry it -- DECIMAL division goes through DOUBLE -- so the
+derived column breaks the SQL chain into a typed temp table, as an aggregate does.
 """
 
+import ast
 from datetime import date, datetime
 from decimal import Decimal
+from fractions import Fraction
 from typing import Any
 
 import duckdb
@@ -48,7 +56,7 @@ import duckdb
 from verifier import canon
 from verifier.eval import mean_at_scale
 from verifier.ingest import Manifest, _coerce_numeric, load_table
-from verifier.schema import Aggregate, Filter, GroupBy, Select, Sort, VPlotSpec
+from verifier.schema import Aggregate, DatasetPlotSpec, Derive, Filter, GroupBy, Select, Sort
 
 # CmpOp (VPlot_SEMANTICS section 4) -> SQL operator. A null cell makes `cell op X` UNKNOWN, so
 # DuckDB's WHERE drops it for every operator (ne included) — the three-valued-logic drop, matching
@@ -227,8 +235,69 @@ def _aggregate(  # noqa: PLR0913, PLR0917 — 6 irreducible args: con, cur, sche
     return table, out_schema
 
 
+def _derive_value(node: ast.expr, text: str, row: dict[str, Fraction]) -> Fraction:
+    """One expr-0.1 node over one row, exactly. Literals come from their source text, never a
+    Python float, so `0.1` is 1/10 here exactly as the grammar defines it."""
+    if isinstance(node, ast.Constant):
+        return Fraction(ast.get_source_segment(text, node) or "")
+    if isinstance(node, ast.Name):
+        return row[node.id]
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub | ast.UAdd):
+        value = _derive_value(node.operand, text, row)
+        return -value if isinstance(node.op, ast.USub) else value
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "abs":
+        return abs(_derive_value(node.args[0], text, row))
+    if isinstance(node, ast.BinOp):
+        left = _derive_value(node.left, text, row)
+        if isinstance(node.op, ast.Pow):
+            exponent = node.right
+            sign = (
+                -1 if isinstance(exponent, ast.UnaryOp) and isinstance(exponent.op, ast.USub) else 1
+            )
+            literal = exponent.operand if isinstance(exponent, ast.UnaryOp) else exponent
+            return left ** (sign * int(ast.get_source_segment(text, literal) or ""))
+        right = _derive_value(node.right, text, row)
+        operators = {
+            ast.Add: Fraction.__add__,
+            ast.Sub: Fraction.__sub__,
+            ast.Mult: Fraction.__mul__,
+            ast.Div: Fraction.__truediv__,
+        }
+        return operators[type(node.op)](left, right)
+    msg = f"oracle: derive node {ast.dump(node)} is outside expr-0.1"
+    raise ValueError(msg)
+
+
+def _derive(
+    con: duckdb.DuckDBPyConnection, cur: str, schema: list[canon.Column], op: Derive, step: int
+) -> tuple[str, list[canon.Column]]:
+    """Append the derived column row by row and materialize a typed temp table, NULL in -> NULL."""
+    tree = ast.parse(op.expr.strip(), mode="eval")
+    names = sorted({node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - {"abs"})
+    out_col = canon.NumericColumn(name=op.output, scale=op.scale)
+    out_schema = [*schema, out_col]
+    out_rows: list[tuple[object, ...]] = []
+    for record in con.execute(f"SELECT * FROM {cur}").fetchall():  # noqa: S608 — internal name
+        cells = {column.name: value for column, value in zip(schema, record, strict=True)}
+        if any(cells[name] is None for name in names):
+            out_rows.append((*record, None))
+            continue
+        exact = _derive_value(tree.body, op.expr.strip(), {n: Fraction(cells[n]) for n in names})
+        # round() on a Fraction is HALF_EVEN; the string constructor keeps every digit, where a
+        # Decimal division would round to the ambient 28-digit context.
+        scaled = round(exact * 10**op.scale)
+        out_rows.append((*record, Decimal(f"{scaled}e-{op.scale}")))
+    table = f"derive{step}"
+    col_defs = ", ".join(f"{_q(c.name)} {_duckdb_type(c)}" for c in out_schema)
+    con.execute(f"CREATE TEMP TABLE {table} ({col_defs})")
+    if out_rows:
+        placeholders = ", ".join("?" for _ in out_schema)
+        con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", out_rows)  # noqa: S608
+    return table, out_schema
+
+
 def _run(
-    con: duckdb.DuckDBPyConnection, spec: VPlotSpec, manifest: Manifest, csv_bytes: bytes
+    con: duckdb.DuckDBPyConnection, spec: DatasetPlotSpec, manifest: Manifest, csv_bytes: bytes
 ) -> canon.Table:
     source = load_table(csv_bytes, manifest)  # SHARED trusted ingestion -> coerced canon.Table
     schema = list(source.columns)
@@ -275,6 +344,9 @@ def _run(
             sql = f"CREATE TEMP TABLE v{step} AS SELECT * FROM {cur} WHERE {pred}"  # noqa: S608
             con.execute(sql, params)
             cur = f"v{step}"
+        elif isinstance(op, Derive):
+            step += 1
+            cur, schema = _derive(con, cur, schema, op, step)
         elif isinstance(op, Sort):
             active_keys = [(key.field, key.order) for key in op.by]
     if pending_keys is not None:
@@ -288,7 +360,7 @@ def _run(
     return canon.Table(columns=tuple(schema), rows=out)
 
 
-def recompute(spec: VPlotSpec, manifest: Manifest, csv_bytes: bytes) -> canon.Table:
+def recompute(spec: DatasetPlotSpec, manifest: Manifest, csv_bytes: bytes) -> canon.Table:
     """Independently recompute the plotted table for a validated spec (the DuckDB engine). Mirrors
     verifier.eval.evaluate's signature so test_oracle_parity can byte-compare both
     serializations."""

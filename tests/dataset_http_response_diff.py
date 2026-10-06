@@ -55,6 +55,10 @@ _ADDED_SCHEMAS = frozenset(
         "FormulaVersionDrift",
         "ProposeFormulaRequest",
         "ProposeFormulaResult",
+        # Q3: the vplot-0.2 spec, its derive op, and the certificate's derive disclosure.
+        "VPlotSpecV02",
+        "Derive",
+        "DisclosedDerive",
     }
 )
 # FormulaScriptVerdict's description carried a FALSE claim — "That hash ALONE is
@@ -341,6 +345,45 @@ def _as_any_of(schema: dict[str, Any]) -> None:
     schema["anyOf"] = schema.pop("oneOf")
 
 
+# Q3 (vplot-0.2): both dataset POST bodies admit either spec version, /spec's 200 names the v0.2
+# arm, and VCert gains the optional `derives` disclosure. Inverted exactly on the candidate; any
+# other drift inside these objects still fails.
+_Q3_SPEC_BODY_PATHS = frozenset({"/verify-only", "/verify-and-render"})
+_Q3_SPEC_PATH = "/spec/{spec_id}"
+_Q3_V01 = {"$ref": "#/components/schemas/VPlotSpec"}
+_Q3_V02 = {"$ref": "#/components/schemas/VPlotSpecV02"}
+_Q3_SPEC_PROSE = (
+    "a dataset spec carries version vplot-0.1 or vplot-0.2, and a formula spec",
+    "a dataset spec carries version vplot-0.1, and a formula spec",
+)
+_Q3_DERIVES = {
+    "type": "array",
+    "items": {"$ref": "#/components/schemas/DisclosedDerive"},
+    "default": [],
+}
+
+
+def _undo_q3(got: dict[str, Any]) -> None:
+    """Invert exactly the declared Q3 changes on the candidate document, in place."""
+    for path in sorted(_Q3_SPEC_BODY_PATHS):
+        content = got["paths"][path]["post"]["requestBody"]["content"]["application/json"]
+        if content["schema"] != {"oneOf": [_Q3_V01, _Q3_V02]}:
+            _fail(f"{path} request body is not the declared two-version oneOf")
+        content["schema"] = _Q3_V01
+    response = got["paths"][_Q3_SPEC_PATH]["get"]["responses"]["200"]
+    arms = response["content"]["application/json"]["schema"]["anyOf"]
+    if _Q3_V02 not in arms:
+        _fail("/spec 200 lost its vplot-0.2 arm")
+    arms.remove(_Q3_V02)
+    new, old = _Q3_SPEC_PROSE
+    if new not in response["description"]:
+        _fail("/spec 200 description lost its vplot-0.2 wording")
+    response["description"] = response["description"].replace(new, old)
+    vcert = got["components"]["schemas"]["VCert"]
+    if vcert["properties"].pop("derives", None) != _Q3_DERIVES or "derives" in vcert["required"]:
+        _fail("VCert.derives is not the declared optional disclosure")
+
+
 def _undo_p23(got: dict[str, Any], want: dict[str, Any]) -> None:
     """Invert exactly the declared p23 + p26 changes on the candidate document, in place."""
     schemas, baseline = got["components"]["schemas"], want["components"]["schemas"]
@@ -383,6 +426,7 @@ def _compare_openapi(candidate: dict[str, Any], expected: dict[str, Any]) -> Non
     got = json.loads(bytes.fromhex(candidate["body"]))
     want = json.loads(bytes.fromhex(expected["body"]))
     _undo_p23(got, want)
+    _undo_q3(got)
     if _REPLAY_PATH not in got["paths"]:
         _fail(f"path removed: ['{_REPLAY_PATH}']")
     _compare_subtrees(

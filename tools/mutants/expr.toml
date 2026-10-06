@@ -2,7 +2,7 @@
 # Mutation catalogue for the legacy formula expression engine's runtime closure (Q4).
 # Each mutant neuters one condition; the named test must change outcome. Run with tools/mutate.py.
 module = "src/verifier/expr.py"
-tests = ["tests/test_review_m9_expr_closure.py", "tests/test_review_m9_eval_contract.py", "tests/test_expr.py"]
+tests = ["tests/test_review_m9_expr_closure.py", "tests/test_review_m9_eval_contract.py", "tests/test_expr.py", "tests/test_derive.py"]
 
 [[mutant]]
 id = "number-negative-admitted"
@@ -154,3 +154,30 @@ anchor = '''    if type(node) is Binary:
         return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"'''
 mutant = '''    if isinstance(node, Binary):
         return f"({node.op} {print_expr(node.left)} {print_expr(node.right)})"'''
+
+# Q3 derive (vplot-0.2): `variables`, what a derive binds per row.
+[[mutant]]
+id = "q3-variables-misses-right"
+predicate = "variables reads both sides of a binary node"
+kills = "tests/test_derive.py::test_q3_expr_variables_reads_every_name_once"
+anchor = '''            pending += (current.left, current.right)'''
+mutant = '''            pending.append(current.left)'''
+
+[[mutant]]
+id = "q3-variables-misses-operand"
+predicate = "variables reads a negation's and an abs's operand"
+kills = "tests/test_derive.py::test_q3_expr_variables_reads_every_name_once"
+anchor = '''        elif isinstance(current, Neg | Abs):
+            pending.append(current.operand)'''
+mutant = '''        elif isinstance(current, Neg | Abs):
+            pass'''
+
+[[mutant]]
+id = "q3-variables-misses-base"
+predicate = "variables reads a power's base"
+kills = "tests/test_derive.py::test_q3_expr_variables_reads_every_name_once"
+anchor = '''        elif isinstance(current, Pow):
+            pending.append(current.base)'''
+mutant = '''        elif isinstance(current, Pow):
+            pass'''
+

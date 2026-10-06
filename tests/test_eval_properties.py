@@ -39,7 +39,7 @@ from corpus import csv_bytes, date_cell, numeric_cell, string_cell
 from verifier import canon
 from verifier.eval import evaluate
 from verifier.ingest import Manifest, NumericColumnSpec, StringColumnSpec, TemporalColumnSpec
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import DatasetPlotSpec, decode_spec
 
 type _Row = tuple[str, str, str, str]  # (k, a, b, d) cell texts; "" = null (section 2 empty->None)
 
@@ -55,7 +55,7 @@ _MANIFEST = Manifest(
 )
 
 
-def _spec(transform: list[dict[str, object]]) -> VPlotSpec:
+def _spec(transform: list[dict[str, object]]) -> DatasetPlotSpec:
     """A valid spec over the fixed manifest (placeholder dataset hash + encoding -- evaluate
     inspects neither), decoded so it carries the same frozen op types a real spec would."""
     raw: dict[str, object] = {

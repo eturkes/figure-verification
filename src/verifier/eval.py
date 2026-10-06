@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Deterministic dataset and formula evaluators — the trust spine's recompute step.
 
-Given a validated VPlotSpec, the trusted per-column manifest, and the raw CSV bytes,
+Given a validated DatasetPlotSpec, the trusted per-column manifest, and the raw CSV bytes,
 evaluate() applies the spec's transform pipeline to the ingested source table and closes
 with the canonical total sort, returning the plotted canon.Table the renderer later inlines.
 Formula evaluation instead resolves exact rational endpoints, quantizes an exact uniform
@@ -36,21 +36,30 @@ from typing import Any, NoReturn, cast
 
 from verifier import canon, ingest
 from verifier.errors import VerificationError
-from verifier.expr import GRAMMAR_VERSION, ParsedExpr, eval_expr, parse_expr, print_expr
+from verifier.expr import (
+    FUNCTION_NAMES,
+    GRAMMAR_VERSION,
+    ParsedExpr,
+    eval_expr,
+    parse_expr,
+    print_expr,
+    variables,
+)
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.schema import (
     AggFn,
     Aggregate,
     CmpOp,
+    DatasetPlotSpec,
+    Derive,
     Filter,
     FormulaPlotSpec,
     GroupBy,
     Measure,
     Select,
     Sort,
-    Transform,
-    VPlotSpec,
+    TransformV02,
 )
 
 # Comparison operators by name (CmpOp closes the set). Each takes Any/Any because a cell is
@@ -139,7 +148,7 @@ def _sort_work(table: canon.Table, key_count: int) -> int:
 
 
 def evaluate(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest: ingest.Manifest,
     csv_bytes: bytes,
     *,
@@ -150,7 +159,7 @@ def evaluate(
 
 
 def evaluate_run(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest: ingest.Manifest,
     csv_bytes: bytes,
     *,
@@ -384,7 +393,7 @@ def _evaluate_formula(
 
 
 def _evaluate(
-    spec: VPlotSpec,
+    spec: DatasetPlotSpec,
     manifest: ingest.Manifest,
     csv_bytes: bytes,
     *,
@@ -424,6 +433,8 @@ def _evaluate(
             )
             table = _apply_aggregate(table, op, pending_keys)
             pending_keys = None
+        elif isinstance(op, Derive):
+            table = _apply_derive(table, op, limits=limits, budget=budget)
         else:  # Sort (last union variant; reachable, so warn_unreachable stays satisfied)
             budget.charge("sort", _sort_work(table, len(op.by)))
             _validate_sort(table, op)  # every sort is validated; active_sort picks the applied one
@@ -439,7 +450,7 @@ def _evaluate(
     return EvaluationRun(table=plotted, work_units=budget.consumed)
 
 
-def active_sort(transform: tuple[Transform, ...]) -> Sort | None:
+def active_sort(transform: tuple[TransformV02, ...]) -> Sort | None:
     """The lone declared sort that survives into the plotted table (section 6): the last `sort`
     op with no later `aggregate`. An aggregate rebuilds the table, discarding any earlier sort,
     and a later sort supersedes an earlier one. `evaluate`'s closure seed and the certificate's
@@ -520,6 +531,67 @@ def _validate_sort(table: canon.Table, op: Sort) -> None:
     _require_distinct(fields, "sort.fields_distinct", "sort field")
     for field in fields:
         _field_index(table, field)
+
+
+# --- derive (vplot-0.2) -------------------------------------------------------
+# DECIMAL(38, scale), the domain every numeric cell lives in (ingest + the DuckDB oracle).
+_MAX_PRECISION = 38
+
+
+def _derive_variables(table: canon.Table, limits: VerificationLimits) -> dict[str, int]:
+    """The numeric columns a derive expression may name, by position. A name the expr engine
+    cannot bind -- over its identifier ceiling, or reserved as a function -- stays out, so naming
+    it refuses as an unknown variable rather than a caller error."""
+    return {
+        column.name: index
+        for index, column in enumerate(table.columns)
+        if isinstance(column, canon.NumericColumn)
+        and len(column.name) <= limits.max_formula_identifier_bytes
+        and column.name not in FUNCTION_NAMES
+    }
+
+
+def _apply_derive(
+    table: canon.Table, op: Derive, *, limits: VerificationLimits, budget: _WorkBudget
+) -> canon.Table:
+    """Append one computed numeric column (section 3 derive): `expr` over the running table's
+    numeric columns, evaluated exactly per row and quantized ONCE HALF_EVEN at `op.scale`. A NULL
+    referenced cell yields NULL (SQL `NULL + 1`); any row the expression cannot evaluate refuses
+    the whole plot, since dropping it would silently change what the chart shows."""
+    if op.output in {column.name for column in table.columns}:
+        msg = f"derive output {op.output!r} is already a column of the running table"
+        raise VerificationError(msg, check="derive.output_unique")
+    numeric = _derive_variables(table, limits)
+    if not numeric:
+        msg = "derive needs at least one numeric column to compute from"
+        raise VerificationError(msg, check="derive.expr_valid")
+    try:
+        parsed = parse_expr(op.expr, allowed_vars=frozenset(numeric), limits=limits)
+    except VerificationError as exc:
+        msg = f"derive expression {op.expr!r} is not expr-0.1 over numeric columns: {exc}"
+        raise VerificationError(msg, check="derive.expr_valid") from exc
+    budget.charge("derive", len(table.rows) * (parsed.nodes + 1))
+    referenced = sorted(variables(parsed.ast))
+    cells: list[canon.Cell] = []
+    for row in table.rows:
+        inputs = {name: row[numeric[name]] for name in referenced}
+        if any(value is None for value in inputs.values()):
+            cells.append(None)
+            continue
+        binding = {name: Fraction(cast(Decimal, value)) for name, value in inputs.items()}
+        try:
+            exact = eval_expr(parsed.ast, binding, limits)
+        except VerificationError as exc:
+            msg = f"derive {op.output!r} cannot evaluate a row: {exc}"
+            raise VerificationError(msg, check="derive.values_defined") from exc
+        value = _quantize_fraction(exact, op.scale)
+        if not (value.is_zero() or value.adjusted() <= _MAX_PRECISION - 1 - op.scale):
+            msg = f"derive {op.output!r} value exceeds DECIMAL({_MAX_PRECISION}, {op.scale})"
+            raise VerificationError(msg, check="derive.values_bounded")
+        cells.append(value)
+    columns = (*table.columns, canon.NumericColumn(name=op.output, scale=op.scale))
+    rows = tuple((*row, cell) for row, cell in zip(table.rows, cells, strict=True))
+    return canon.Table(columns=columns, rows=rows)
 
 
 # --- aggregation -------------------------------------------------------------

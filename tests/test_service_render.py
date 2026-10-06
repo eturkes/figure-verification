@@ -45,7 +45,7 @@ from schema_downgrade import relation_guards_lifted
 from verifier import attestation, canon, checks, limits, render
 from verifier.errors import VerificationError
 from verifier.limits import DEFAULT_LIMITS, VerificationLimits
-from verifier.schema import VPlotSpec, decode_spec
+from verifier.schema import DatasetPlotSpec, decode_spec
 from verifier.service import app as service_app
 from verifier.service import archive as archive_module
 from verifier.service import pipeline
@@ -145,7 +145,7 @@ def test_proposer_decoder_receives_traced_reply_buffer_verbatim(
     observed: list[bytes] = []
     original_decode = pipeline.decode_stage
 
-    def recording_decode(candidate: bytes) -> VPlotSpec | Verdict:
+    def recording_decode(candidate: bytes) -> DatasetPlotSpec | Verdict:
         observed.append(candidate)
         return original_decode(candidate)
 
@@ -264,7 +264,7 @@ def test_render_routes_ignore_source_mutation_after_evidence_capture(
     replacement = b"month,region,revenue,orders\n2099-01,US,1.00,1\n"
 
     def capture_then_mutate(
-        captured_spec: VPlotSpec,
+        captured_spec: DatasetPlotSpec,
         manifest_bytes: bytes,
         *,
         data_dir: Path,

@@ -23,6 +23,9 @@ Dataset mode only — formula mode declares no transforms, because the expressio
 - `group_by` — group by one or more keys
 - `aggregate` — `sum` · `mean` · `count` · `min` · `max`
 - `sort` — order rows by declared key(s) and direction
+- `derive` (`vplot-0.2` only) — append one numeric column computed per row from an expr-0.1
+  expression over numeric columns, evaluated exactly and rounded once at a declared scale; the
+  certificate discloses it, and the proposer is not taught it
 
 ## What does verification mean for this PoC?
 
