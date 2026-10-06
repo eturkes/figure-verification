@@ -84,6 +84,7 @@ from verifier.service.app import _PIN_MISMATCH_DETAIL
 _EXAMPLES = Path(__file__).parents[1] / "examples"
 _BASELINE = Path(__file__).parents[1] / "bench" / "baselines" / "m12-cuda"
 _BASELINE_FILES = ("report.json", "details.jsonl", "provenance.json")
+_BASELINE_RAW = _BASELINE.with_name("m12-cuda-raw")
 # Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
 _CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
 
@@ -692,11 +693,34 @@ def test_m12_cuda_baseline_report_re_derives_from_its_details() -> None:
     }
 
 
+def test_p16_raw_arm_pairs_the_guided_baseline_on_one_commit() -> None:
+    """p16: the RAW arm ran at the guided baseline's commit; only the guidance flag differs."""
+    guided = _baseline_report()
+    raw = msgspec.json.decode((_BASELINE_RAW / "report.json").read_bytes(), type=Report)
+    assert _exit_code(raw) == 0
+    assert raw.meta.git_commit == guided.meta.git_commit
+    assert raw.meta.git_dirty is guided.meta.git_dirty is False
+    assert raw.meta.backend is not None
+    assert guided.meta.backend is not None
+    assert raw.meta.backend.structured_output is False
+    assert guided.meta.backend.structured_output is True
+    assert msgspec.structs.replace(
+        raw.meta.backend, structured_output=True, vplot_schema_sha256=None
+    ) == (msgspec.structs.replace(guided.meta.backend, vplot_schema_sha256=None))
+    assert raw.meta.prompt_count == guided.meta.prompt_count == 100
+    sidecar = msgspec.json.decode((_BASELINE_RAW / "provenance.json").read_bytes())
+    guided_sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
+    assert sidecar["git_commit"] == raw.meta.git_commit
+    assert sidecar["model"] == guided_sidecar["model"]
+    assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]
+
+
+@pytest.mark.parametrize("directory", ["m12-cuda", "m12-cuda-raw"])
 @pytest.mark.parametrize("name", _BASELINE_FILES)
-def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str) -> None:
-    """`bench/reports/` is gitignored; the baseline must stay outside every ignore rule."""
+def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str, directory: str) -> None:
+    """`bench/reports/` is gitignored; the baselines must stay outside every ignore rule."""
     root = Path(__file__).parents[1]
-    path = f"bench/baselines/m12-cuda/{name}"
+    path = f"bench/baselines/{directory}/{name}"
     git = shutil.which("git")
     assert git is not None
     tracked = subprocess.run(  # noqa: S603 - fixed argv, which()-resolved git

@@ -1,0 +1,63 @@
+{
+  "backend_command": "MODEL_BACKEND_STRUCTURED_OUTPUT=false .venv-model/bin/python -m model_backend",
+  "backend_env": "MODEL_BACKEND_STRUCTURED_OUTPUT=false, else defaults (cuda, MAX_TOKENS 512, MAX_PROMPT_LEN 1536; engine dtype float16)",
+  "backend_health": "{\"model_name\":\"Qwen2.5-Coder-0.5B-Instruct\",\"device\":\"cuda\",\"structured_output\":false,\"vplot_schema_sha256\":null,\"formula_schema_sha256\":null,\"status\":\"ok\"}",
+  "bench_command": "(cd <worktree detached at 5a97b5d> && .venv/bin/python -m bench --timeout 1200 --out bench/baselines/m12-cuda-raw/report.json --details bench/baselines/m12-cuda-raw/details.jsonl)",
+  "bench_wall": "50m20s",
+  "ended_utc": "2026-10-06T19:58:34Z",
+  "exit_code": "0",
+  "git_commit": "5a97b5d1d16796ab57f171d687762d6b855aba55",
+  "git_status_porcelain": "",
+  "gpu_end": {
+    "clocks.sm": "746 MHz",
+    "driver_version": "580.178.04",
+    "memory.total": "2048 MiB",
+    "memory.used": "1263 MiB",
+    "name": "NVIDIA GeForce MX150",
+    "temperature.gpu": "62",
+    "vbios_version": "86.08.3B.00.38"
+  },
+  "host": {
+    "cpu": "Intel(R) Core(TM) i7-8650U CPU @ 1.90GHz",
+    "gpu_start": {
+      "clocks.sm": "1657 MHz",
+      "driver_version": "580.178.04",
+      "memory.total": "2048 MiB",
+      "memory.used": "1029 MiB",
+      "name": "NVIDIA GeForce MX150",
+      "temperature.gpu": "69",
+      "vbios_version": "86.08.3B.00.38"
+    },
+    "kernel": "7.2.9-1-cachyos-gcc"
+  },
+  "kind": "bench provenance sidecar",
+  "model": {
+    "dir": "models/Qwen2.5-Coder-0.5B-Instruct",
+    "files": {
+      "config.json": "sha256:b1e58593cd31852f7da5c2fc31ddf6135b9c066c0fd9177a4bbe95717083adff",
+      "generation_config.json": "sha256:fdaccbcb02f3e1e7914ccb0f69ebe899071ffd27cf825166d823163e156870f2",
+      "merges.txt": "sha256:599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+      "model.safetensors": "sha256:f9523886352217ded3aeeef552b381af79d568c6d49a4b9e423288cea56b0a44",
+      "tokenizer.json": "sha256:c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+      "tokenizer_config.json": "sha256:959e7f1d9a1b7641a6d6ce05ca97b75c7894fcb66cbe5a040406458fb1128ee4",
+      "vocab.json": "sha256:ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+    }
+  },
+  "model_runtime": {
+    "accelerate": "1.15.0",
+    "capability": [
+      6,
+      1
+    ],
+    "device": "NVIDIA GeForce MX150",
+    "python": "3.12.14",
+    "tokenizers": "0.23.1",
+    "torch": "2.13.0+cu126",
+    "torch_cuda": "12.6",
+    "transformers": "5.16.1",
+    "xgrammar": "0.2.3"
+  },
+  "started_utc": "2026-10-06T19:07:44Z",
+  "verifier_command": "VERIFIER_STATE_DIR=<fresh 0700 dir> VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 VERIFIER_MODEL_TIMEOUT=900 .venv/bin/python -m verifier.service (same process as the guided arm)",
+  "verifier_sampling": "temperature 0 (model_client constant), VERIFIER_MODEL_MAX_TOKENS default 512, VERIFIER_DATA_DIR default data"
+}

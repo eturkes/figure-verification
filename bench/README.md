@@ -237,6 +237,24 @@ This evidence covers only the backend that `--model-url` probes.
 Keep `--model-url` on the verifier's proposal backend, as the Run provenance section describes.
 Otherwise, `backend.structured_output` describes the wrong server.
 
+### The paired A/B on the CURRENT host
+
+`bench/baselines/m12-cuda-raw/` holds the RAW arm of this recipe on the CURRENT host.
+It ran at commit `5a97b5d`, which is the same commit as the guided baseline in `bench/baselines/m12-cuda/`.
+The backend ran with `MODEL_BACKEND_STRUCTURED_OUTPUT=false`.
+The verifier process, prompts, model and device were the same as in the guided arm.
+`tests/test_bench_harness.py` checks that the two reports differ only in the guidance flag.
+
+| Arm | Verified | Schema | Semantic | Policy | JSON valid | Fenced | Valid after de-fencing |
+|---|---|---|---|---|---|---|---|
+| RAW | 0 | 100 | 0 | 0 | 0 | 100 | 100 |
+| GUIDED | 26 | 3 | 70 | 1 | 100 | 0 | 100 |
+
+Each arm sent 100 prompts, and every RAW category verified 0 of 20.
+Every RAW reply was valid JSON inside a Markdown fence, which the strict decode rejects.
+The guarantee held in both arms.
+On this host, schema guidance removes the fence and moves the first failure from decode to the semantic checks.
+
 ## Defaults (all overridable, see `python -m bench --help`)
 - `--verifier-url http://127.0.0.1:8000`.
 - `--model-url http://127.0.0.1:8001/v1`.
