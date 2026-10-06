@@ -1533,7 +1533,7 @@ def test_v5_schema_objects_match_the_golden_shipped_at_schema_version_5() -> Non
 
 
 def test_version_four_archive_migrates_to_exact_v5_adding_only_the_guards(tmp_path: Path) -> None:
-    """p2: the v4 -> v5 step adds ten triggers and moves, rewrites or drops nothing."""
+    """p2: the v4 -> v5 step adds ten triggers; artifact + relation rows stay, meta reads 5."""
     archive = _archive(tmp_path)
     batch, _blobs = _complete_batch()
     archive.publish(batch)

@@ -773,7 +773,8 @@ def spec_route(spec_id: FromPath[str], state: State) -> Response[bytes]:
 # VCert payload that binds the artifact to its occurrence. A caller needing that binding reads
 # GET /certificate/{plot_id} and compares the certified hash itself. The certified hashes are
 # domain-tagged rather than raw blob digests, so no content-digest address is constructible and
-# the address stays plot_id plus a fixed role. Relation rows refuse row DML since archive schema v5.
+# the address stays plot_id plus a fixed role. Since archive schema v5 a stored relation row refuses
+# UPDATE and DELETE (REPLACE and upsert included); INSERT of a new valid row still succeeds.
 
 
 @get(

@@ -2503,7 +2503,11 @@ def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
 
 
 def _migrate_v4_to_v5(connection: sqlite3.Connection) -> None:
-    """Add the UPDATE/DELETE reject triggers to every relation table; no row moves or changes."""
+    """Add the UPDATE/DELETE reject triggers to every relation table.
+
+    Artifact and relation rows stay byte-identical; the version advances to 5 in the `meta` row
+    and in `PRAGMA user_version`.
+    """
     _validate_schema_version(
         connection,
         schema_version=_SCHEMA_VERSION_V4,
