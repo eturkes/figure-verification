@@ -442,6 +442,15 @@ def test_c8_a_blocking_emitter_call_spends_the_shared_deadline(
     _assert_events(harness.case, harness.events, embed=False)
 
 
+class _JumpLoop(asyncio.SelectorEventLoop):
+    """Event loop whose clock jumps forward on demand, so a test decides when a deadline passes."""
+
+    jump = 0.0
+
+    def time(self) -> float:
+        return super().time() + self.jump
+
+
 @pytest.mark.parametrize("name", _EXCEPTION_CASES)
 def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
     name: str,
@@ -450,9 +459,9 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
 ) -> None:
     caplog.set_level(logging.INFO, logger=_LOGGER)
     module = load_filter_module()
-    # Long enough that the embed always STARTS before the deadline on a loaded host; the order
-    # check below counts loop turns, never wall time, so load cannot fail it.
-    monkeypatch.setattr(module, "STATUS_TIMEOUT_SECONDS", 0.5)
+    # No stall reaches this deadline: the embed's start jumps the loop clock past it, so the embed
+    # always starts and the deadline then cancels it. The order check counts loop turns.
+    monkeypatch.setattr(module, "STATUS_TIMEOUT_SECONDS", 3600)
     harness = _Harness(_case(name), module)
     cleanup: list[bool] = []
 
@@ -461,6 +470,7 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
 
         async def emit(event: dict[str, object]) -> None:
             if event["type"] == "embeds":
+                cast(_JumpLoop, asyncio.get_running_loop()).jump = 7200
                 try:
                     await asyncio.Event().wait()
                 finally:
@@ -468,10 +478,10 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
                     await release.wait()
 
         task = asyncio.create_task(harness.run(emit))
-        # Wall time only until the deadline cancels the embed; the 30 s bound fires for a defect
-        # (an outlet that never cancels) and is never approached by a working one.
-        give_up = asyncio.get_running_loop().time() + 30
-        while not cleanup and not task.done() and asyncio.get_running_loop().time() < give_up:
+        # The 30 s wall bound fires for a defect alone (an outlet that never cancels); a working
+        # one cancels within a few loop turns of the jump.
+        give_up = time.monotonic() + 30
+        while not cleanup and not task.done() and time.monotonic() < give_up:
             await asyncio.sleep(0.001)
         # The cleanup now blocks on `release`; an outlet that does not await it finishes within
         # a few loop turns, one that does never finishes while `release` stays unset.
@@ -489,7 +499,7 @@ def test_c8_slow_embed_cancellation_cleanup_never_delays_the_verdict(
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
 
-    result = asyncio.run(scenario())
+    result = asyncio.run(scenario(), loop_factory=_JumpLoop)
     _assert_result(harness.case, result, caplog)
     assert cleanup == [True]
     _assert_events(harness.case, harness.events)
