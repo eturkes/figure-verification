@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "served_model": "Qwen2.5-Coder-0.5B-Instruct",
+    "prompt_count": 100,
+    "categories": [
+      "normal",
+      "ambiguous",
+      "adversarial",
+      "bad_aggregation",
+      "hidden_filter"
+    ],
+    "reproducibility": "fixed ordered prompts, greedy client; per backend (device, config)",
+    "git_commit": "5a97b5d1d16796ab57f171d687762d6b855aba55",
+    "git_dirty": false,
+    "vplot_schema_sha256": "sha256:2bab7c6ef3f749ba6cc975781e03f41d463707c6db451ef6acc864801edc9177",
+    "model_probe_url": "http://127.0.0.1:8001/v1",
+    "backend": {
+      "model_name": "Qwen2.5-Coder-0.5B-Instruct",
+      "device": "cuda",
+      "structured_output": true,
+      "vplot_schema_sha256": "sha256:2bab7c6ef3f749ba6cc975781e03f41d463707c6db451ef6acc864801edc9177"
+    }
+  },
+  "guarantee": {
+    "bad_corpus_size": 18,
+    "bad_corpus_digest": "da1dfbff5d974fa53255d2e6b826040d2d5c3825d642a79f6efdb626b4366940",
+    "bad_corpus_false_accept_count": 0,
+    "bad_corpus_transport_errors": 0,
+    "good_corpus_size": 10,
+    "good_corpus_digest": "72b15d1cb95b8e21440c2b6c5413a37298b3060f8d423bfe5e63f825e518f245",
+    "good_corpus_false_reject_count": 0,
+    "good_corpus_transport_errors": 0
+  },
+  "observations": {
+    "overall": {
+      "n": 100,
+      "json_object_rate": 1.0,
+      "json_validity_rate": 1.0,
+      "schema_failure_rate": 0.03,
+      "semantic_failure_rate": 0.7,
+      "policy_failure_rate": 0.01,
+      "verified_render_rate": 0.26,
+      "off_request_count": 0,
+      "prompt_policy_count": 0,
+      "upstream_fault_count": 0,
+      "harness_error_count": 0
+    },
+    "by_category": {
+      "normal": {
+        "n": 20,
+        "json_object_rate": 1.0,
+        "json_validity_rate": 1.0,
+        "schema_failure_rate": 0.0,
+        "semantic_failure_rate": 0.9,
+        "policy_failure_rate": 0.0,
+        "verified_render_rate": 0.1,
+        "off_request_count": 0,
+        "prompt_policy_count": 0,
+        "upstream_fault_count": 0,
+        "harness_error_count": 0
+      },
+      "ambiguous": {
+        "n": 20,
+        "json_object_rate": 1.0,
+        "json_validity_rate": 1.0,
+        "schema_failure_rate": 0.0,
+        "semantic_failure_rate": 0.6,
+        "policy_failure_rate": 0.0,
+        "verified_render_rate": 0.4,
+        "off_request_count": 0,
+        "prompt_policy_count": 0,
+        "upstream_fault_count": 0,
+        "harness_error_count": 0
+      },
+      "adversarial": {
+        "n": 20,
+        "json_object_rate": 1.0,
+        "json_validity_rate": 1.0,
+        "schema_failure_rate": 0.1,
+        "semantic_failure_rate": 0.6,
+        "policy_failure_rate": 0.0,
+        "verified_render_rate": 0.3,
+        "off_request_count": 0,
+        "prompt_policy_count": 0,
+        "upstream_fault_count": 0,
+        "harness_error_count": 0
+      },
+      "bad_aggregation": {
+        "n": 20,
+        "json_object_rate": 1.0,
+        "json_validity_rate": 1.0,
+        "schema_failure_rate": 0.05,
+        "semantic_failure_rate": 0.95,
+        "policy_failure_rate": 0.0,
+        "verified_render_rate": 0.0,
+        "off_request_count": 0,
+        "prompt_policy_count": 0,
+        "upstream_fault_count": 0,
+        "harness_error_count": 0
+      },
+      "hidden_filter": {
+        "n": 20,
+        "json_object_rate": 1.0,
+        "json_validity_rate": 1.0,
+        "schema_failure_rate": 0.0,
+        "semantic_failure_rate": 0.45,
+        "policy_failure_rate": 0.05,
+        "verified_render_rate": 0.5,
+        "off_request_count": 0,
+        "prompt_policy_count": 0,
+        "upstream_fault_count": 0,
+        "harness_error_count": 0
+      }
+    },
+    "top_failure_modes": [
+      {
+        "check": "transform.group_by_placement",
+        "count": 43
+      },
+      {
+        "check": "encoding.fields_exist_in_plotted_table",
+        "count": 23
+      },
+      {
+        "check": "encoding.axis_types_match_fields",
+        "count": 6
+      },
+      {
+        "check": "spec.decode",
+        "count": 3
+      },
+      {
+        "check": "label.quantitative_units_present",
+        "count": 2
+      }
+    ],
+    "reply_shape": {
+      "n": 100,
+      "fenced": 0,
+      "bare_object": 100,
+      "empty": 0,
+      "other": 0,
+      "defenced_json_valid": 100
+    }
+  }
+}

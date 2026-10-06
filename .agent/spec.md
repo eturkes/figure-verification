@@ -15,7 +15,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - Measurement harnesses — `.agent/measurements/README.md` (id → claim table + per-leg run commands; all-id self-check `uv run --locked python .agent/measurements/rerun_all.py [--check-only <id>…]`; host leg `uv run --locked python .agent/measurements/<script>.py`, sandbox leg `node <script>.mjs <pyodide|pyodide0281> <out>.json`; F7 alone takes the installed Open WebUI bundle dir `<B>` there). Frozen evidence for every published band + profile; outside the gate and outside `mypy` `files` by ruling.
 - Demo instance — `webui/launch.sh` (real dGPU model) | `--stub` (hardware-free) → `http://127.0.0.1:8080`; sentinel prompts pinned there. Recorded demo = `node .agent/measurements/m10u3_demo.mjs <browser-url> http://127.0.0.1:8080 data/sales.csv <simple|elaborate> <n> <out-dir>` (records `.agent/measurements/m10u3/`).
 - Verifier service — `-m verifier.service` (:8000; `audit <attempt_id>`); routes = `POC_SCOPE.md`.
-- Demos — `-m demo` · `-m demo.formula_walkthrough` · `-m demo.e2e`. Bench — `-m bench` (JSON-spec proposer eval; live :8000 + :8001).
+- Demos — `-m demo` · `-m demo.formula_walkthrough` · `-m demo.e2e`. Bench — `-m bench` (JSON-spec proposer eval; live :8000 + :8001); CURRENT-host guided baseline `bench/baselines/m12-cuda/` (+ `-m bench.sidecar` provenance; recipe `bench/README.md`).
 - Corpus + capture — `-m capture.corpus` · `-m capture stats corpus/python/captures/m10-design` · `-m capture run --run <name>` · held-out score `-m capture score <run-dir> [--write]` (`capture/score.py`). Width over a run = `.agent/measurements/w1_width.py`.
 - Model backend — `.venv-model/bin/python -m model_backend` (:8001); `-m model_backend.guidance_oracle` on the host.
 
@@ -46,16 +46,15 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 **Resume note** — MAINTAIN queue request, session 4; the request's closing commit deletes this block.
   - Finish line = the request's `Met when` (verbatim + every user ruling + chain mechanics = `.scratch/q/RESUME.md`): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA) + one AskUserQuestion (items = `.scratch/q/RESUME.md` § Session 3 PAUSE).
   - Second closing review: CLOSED — fixes R107 + R108 `021d1a3` · R111 `9b22c20` · R113 `8379f0c` · R115 `9f0585b` · R116 + R117 `5a97b5d`, each gated green (8 stages, skipped none); acceptance re-review reviewer-fix-3 + reviewer-fix-4 9/9 pass each; ledger rows closed (R116 = register).
-  - GPU rows: MX150 + ports 8000/8001/8080 free at session start (demo down) ⇒ MAIN runs Q1 → Q7 p16 p32 p34 → Q19 after the fixes; the user relaunches the demo after. Then Q25 cleanup, closing gate on a clean tree, final message.
+  - GPU rows (MX150 + ports 8000/8001 held by MAIN; the user relaunches the demo after): Q1 landed (this commit's row) · p16 RAW arm running at `5a97b5d` · then p32 (formula-mode code commit, then its run + baseline commit) · p34 (code commit, then dataset + formula arms) · Q19 searched (5 variants screened, none passes → owed to the user). Then Q25 cleanup, closing gate on a clean tree, final message.
   - Per-commit gate: `GATE_WT=<abs wt> .scratch/q/gate-at2.sh <sha> <ABSOLUTE log>` (detached gate worktrees `gate-q` · `gate-q2` · `gate-q5w`, private venvs), logs `.scratch/q/gates3/<unit>.log`. Teammates: none running.
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
-- [ ] Q1 guided-JSON bench re-baseline (MX150)
 - [ ] Q7 polish p16 p32 p34 (p16 p32 p34 on the MX150)
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
 
-Queue = `.agent/deferred.md`, 4 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 3 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

@@ -7,8 +7,9 @@ It uses only the verifier's public HTTP endpoints: `/propose-spec` and `/verify-
 It never imports `verifier` internals, so it adds no trust.
 It uses a synchronous `httpx.Client`, no random-number generator, and a fixed prompt order.
 For each `(device, config)`, its output is byte-reproducible.
-Every recorded bench number comes from the earlier ORIGIN host and its NPU model.
-These numbers are historical. No bench baseline exists for the CURRENT host.
+The bench numbers in `.agent/archive/m3.md` and `.agent/archive/m8.md` come from the earlier ORIGIN host and its NPU model.
+These numbers are historical.
+The CURRENT-host baseline is in `bench/baselines/m12-cuda/`, as the CURRENT-host baseline section describes.
 
 ## What it measures — two things, never conflated
 
@@ -94,6 +95,53 @@ The fence pattern is ```` ```(?:json)?\s*(.*?)``` ````.
 Fence-wrapping is a syntactic failure that `decode_spec` rejects.
 The classifier separates it from deeper malformation.
 For example, an unguided run had `fenced=97 defenced_json_valid=24`; the schema-guided default had `fenced=0`.
+
+## CURRENT-host baseline (`bench/baselines/m12-cuda/`)
+
+This directory holds one guided run of the full 100-prompt corpus on the CURRENT host.
+Git tracks the run, and `tests/test_bench_harness.py` checks it.
+
+- `report.json` and `details.jsonl` are the bench outputs.
+- `provenance.json` is the sidecar from `bench/sidecar.py`.
+  It records the host, the GPU state, the model runtime versions and the SHA-256 digest of each model file.
+
+The run used commit `5a97b5d` with a clean tree.
+The model was `Qwen2.5-Coder-0.5B-Instruct` in float16 on the NVIDIA MX150 with torch 2.13.0+cu126.
+Schema guidance was on, the token cap was 512 and the temperature was 0.
+
+| Scope | n | Verified | Schema | Semantic | Policy |
+|---|---|---|---|---|---|
+| overall | 100 | 26 | 3 | 70 | 1 |
+| normal | 20 | 2 | 0 | 18 | 0 |
+| ambiguous | 20 | 8 | 0 | 12 | 0 |
+| adversarial | 20 | 6 | 2 | 12 | 0 |
+| bad_aggregation | 20 | 0 | 1 | 19 | 0 |
+| hidden_filter | 20 | 10 | 0 | 9 | 1 |
+
+The guarantee held: 0 of the 18 bad goldens verified, and 10 of the 10 good goldens verified.
+All 100 replies were bare JSON objects.
+The most frequent failing check was `transform.group_by_placement`, in 43 replies.
+
+This number is a CURRENT-host observation for one `(device, config)`.
+The ORIGIN guided run also verified 26 of 100, but the two runs differ in host, model, quantization and guidance stack.
+Thus, the two results are not a comparison.
+
+To repeat the run, start the two servers and run bench from the repository root:
+
+```
+.venv-model/bin/python -m model_backend
+VERIFIER_MODEL_TIMEOUT=900 VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
+  .venv/bin/python -m verifier.service
+# In the eval shell, after both /health endpoints are ready:
+B=bench/baselines/m12-cuda
+.venv/bin/python -m bench.sidecar $B/provenance.json start
+.venv/bin/python -m bench --timeout 1200 --out $B/report.json --details $B/details.jsonl
+.venv/bin/python -m bench.sidecar $B/provenance.json end exit_code=0
+```
+
+On this laptop GPU, a thermal slowdown can make one reply take about one minute.
+The long `--timeout` and `VERIFIER_MODEL_TIMEOUT=900` keep a slow reply from counting as an `upstream_fault`.
+Greedy output does not depend on speed.
 
 ## Historical: OpenVINO wiring on the ORIGIN host
 
@@ -208,8 +256,8 @@ The prompts reference `sales.csv` and `weather.csv`.
   Each row contains `category`, `dataset_name`, `user_request`, `http_status`, `bucket`, and `model_reply`.
   Non-200 rows store the problem `detail` as `model_reply`.
 
-Headline numbers remain in `.agent/archive/m3.md` and `.agent/archive/m8.md` as durable evidence.
-The `reports/` directory is not committed.
+Headline ORIGIN numbers remain in `.agent/archive/m3.md` and `.agent/archive/m8.md` as durable evidence.
+The `reports/` directory is not committed. Committed baselines are in `bench/baselines/`.
 
 Exit 0 means a valid run.
 A weak model that fails most prompts is the EXPECTED success.

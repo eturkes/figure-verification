@@ -48,25 +48,33 @@ from bench.harness import (
     GuaranteeBlock,
     MetaBlock,
     ObservationsBlock,
+    PromptRecord,
     RateBlock,
     ReplyShapeBlock,
     Report,
+    RunProvenance,
     _classify,
     _classify_fault,
     _corpus_digest,
     _decode_propose_result,
     _defenced_json_valid,
     _Index,
+    _json_shape,
     _rate_block,
     _reply_shape,
     _RespCheck,
     _RespMethod,
     _RespVerdict,
     _run_guarantee,
+    _Sample,
+    _shape_block,
     _Tally,
+    _tally_200,
     _tally_fault,
     fetch_backend_provenance,
+    run_eval,
 )
+from bench.prompts import PROMPTS
 
 # model_backend.models is pure msgspec — importing it here needs no native OpenVINO runtime, and
 # it keeps the bench-tolerance proof bound to the bytes the backend actually serves.
@@ -74,6 +82,10 @@ from model_backend.models import HealthResponse
 from verifier.service.app import _PIN_MISMATCH_DETAIL
 
 _EXAMPLES = Path(__file__).parents[1] / "examples"
+_BASELINE = Path(__file__).parents[1] / "bench" / "baselines" / "m12-cuda"
+_BASELINE_FILES = ("report.json", "details.jsonl", "provenance.json")
+# Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
+_CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
 
 
 def _verdict(
@@ -571,3 +583,127 @@ def test_timeout_option_is_wired_to_the_guard_not_only_defined_beside_it(
     assert "finite positive number of seconds" in capsys.readouterr().err
     monkeypatch.setattr(sys, "argv", ["bench", "--timeout", "2.5"])
     assert _parse_args().timeout == 2.5
+
+
+# --- M12.8: by_category pin + the committed CURRENT-host baseline ---------------------------
+def _scope_count(block: RateBlock) -> int:
+    return (
+        block.n
+        + block.off_request_count
+        + block.prompt_policy_count
+        + block.upstream_fault_count
+        + block.harness_error_count
+    )
+
+
+def test_run_eval_reports_every_category_with_its_twenty_prompts(tmp_path: Path) -> None:
+    """`by_category` holds exactly the five categories in order, each scope carrying 20 prompts."""
+    _mini_corpus(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/verify-only":
+            return _verdict_response(verified=b'"good"' in request.content)
+        verdict = {"verified": False, "layer": "decode", "results": []}
+        return httpx.Response(200, json={"model_reply": "{}", "verdict": verdict})
+
+    provenance = RunProvenance(
+        git_commit=None,
+        git_dirty=False,
+        vplot_schema_sha256=None,
+        model_probe_url="http://model.test/v1",
+        backend=None,
+    )
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        report, records = run_eval(
+            client, "http://verifier.test", tmp_path, None, PROMPTS, provenance
+        )
+    by_category = report.observations.by_category
+    assert tuple(by_category) == _CATEGORY_NAMES
+    assert [_scope_count(block) for block in by_category.values()] == [20] * 5
+    assert [block.n for block in by_category.values()] == [20] * 5
+    assert report.observations.overall.n == len(records) == 100
+
+
+def _baseline_report() -> Report:
+    return msgspec.json.decode((_BASELINE / "report.json").read_bytes(), type=Report)
+
+
+def _baseline_records() -> tuple[PromptRecord, ...]:
+    lines = (_BASELINE / "details.jsonl").read_bytes().splitlines()
+    return tuple(msgspec.json.decode(line, type=PromptRecord) for line in lines)
+
+
+def test_m12_cuda_baseline_is_a_valid_guided_run_over_every_category() -> None:
+    """The committed baseline = one VALID guided run of the full corpus on the CURRENT host."""
+    report = _baseline_report()
+    assert _exit_code(report) == 0
+    meta = report.meta
+    assert meta.git_dirty is False
+    assert meta.git_commit is not None
+    assert len(meta.git_commit) == 40
+    assert meta.prompt_count == 100
+    assert meta.categories == _CATEGORY_NAMES
+    assert meta.backend is not None
+    assert meta.backend.device == "cuda"
+    assert meta.backend.structured_output is True
+    assert meta.backend.model_name == "Qwen2.5-Coder-0.5B-Instruct"
+    by_category = report.observations.by_category
+    assert tuple(by_category) == _CATEGORY_NAMES
+    assert all(_scope_count(block) == 20 for block in by_category.values())
+    assert _scope_count(report.observations.overall) == 100
+    # The sidecar names the (device, config) tuple the HTTP-only meta cannot see.
+    sidecar = msgspec.json.decode((_BASELINE / "provenance.json").read_bytes())
+    assert sidecar["git_commit"] == meta.git_commit
+    assert sidecar["git_status_porcelain"] == ""
+    assert sidecar["exit_code"] == "0"
+    assert sidecar["model_runtime"]["device"] == "NVIDIA GeForce MX150"
+    assert sidecar["model_runtime"]["torch"] == "2.13.0+cu126"
+
+
+def test_m12_cuda_baseline_report_re_derives_from_its_details() -> None:
+    """Every committed rate + reply-shape count re-tallies from the committed details rows."""
+    report = _baseline_report()
+    records = _baseline_records()
+    assert [record.category for record in records] == [p.category for p in PROMPTS]
+    assert [record.user_request for record in records] == [p.user_request for p in PROMPTS]
+    overall = _Tally()
+    by_category = {category: _Tally() for category in _CATEGORY_NAMES}
+    for record in records:
+        tallies = (overall, by_category[record.category])
+        if record.http_status == 200:
+            valid_json, is_object = _json_shape(record.model_reply)
+            sample = _Sample(
+                bucket=record.bucket,
+                valid_json=valid_json,
+                is_object=is_object,
+                shape=_reply_shape(record.model_reply),
+                defenced_valid=_defenced_json_valid(record.model_reply),
+            )
+            for tally in tallies:
+                _tally_200(tally, sample)
+        else:
+            for tally in tallies:
+                _tally_fault(tally, record.bucket)
+    observations = report.observations
+    assert observations.overall == _rate_block(overall)
+    assert observations.reply_shape == _shape_block(overall)
+    assert observations.by_category == {
+        category: _rate_block(tally) for category, tally in by_category.items()
+    }
+
+
+@pytest.mark.parametrize("name", _BASELINE_FILES)
+def test_m12_cuda_baseline_files_are_tracked_and_never_ignored(name: str) -> None:
+    """`bench/reports/` is gitignored; the baseline must stay outside every ignore rule."""
+    root = Path(__file__).parents[1]
+    path = f"bench/baselines/m12-cuda/{name}"
+    git = shutil.which("git")
+    assert git is not None
+    tracked = subprocess.run(  # noqa: S603 - fixed argv, which()-resolved git
+        [git, "ls-files", "--error-unmatch", path], cwd=root, capture_output=True, check=False
+    )
+    assert tracked.returncode == 0
+    ignored = subprocess.run(  # noqa: S603 - fixed argv, which()-resolved git
+        [git, "check-ignore", "--no-index", "-q", path], cwd=root, capture_output=True, check=False
+    )
+    assert ignored.returncode == 1
