@@ -553,6 +553,7 @@ source of two shipped pins. M12.3a CONSUMED its two prep branches — `wt/test-m
 `tests/test_rev_m12u3_contract.py`) — suites shipped in `main`, worktree + branch removed untagged:
 M12.6b ADDS `archive/m12u6b-test` `0cab7de` (its diff-blind red suite). M12.7 ran with NO teammates
 and adds none. Audited at the M12.7 close: **18 tags, 0 `wt/` branches, 0 worktrees live.**
+The queue-request close (row Q25) ADDS `archive/implement-close-rev-hard` `f4cdf2f` (`tests/test_review_hard.py`) + `archive/implement-close-rev-corr` `ed20e0b` (`tests/test_review_corr.py`), the IMPLEMENT-close lens suites no other ref holds, and DELETES `archive/m9u7b2-test` (merged by `p8`, `6016a05`) + `archive/m9u10-test` (merged by `p25`, `b35c872`); every other retired tip held only superseded intermediates (blob census against `main` + tags). Audited at that close: **22 tags, 0 `wt/` `snap/` `wip/` branches, 0 worktrees live.**
 `wt/orc-m9u7a` is GONE from every reachable ref (`p3` must rebuild, not recover). Cite the TAGGED
 tip, never a pre-amend SHA: the review close found `70af87f` cited for M9R1 while the live tip `db833f3`
 carried 24 further lines in `test_review_m9_eval_contract.py`. Audit this list at every milestone
