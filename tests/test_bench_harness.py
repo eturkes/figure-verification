@@ -99,6 +99,7 @@ _P34_VARIANTS = (
     ("m12-cuda-p34a", "dataset", "43cc447f2ababd360201261cee51ca5834ef90b4"),
     ("m12-cuda-formula-p34a", "formula", "43cc447f2ababd360201261cee51ca5834ef90b4"),
     ("m12-cuda-p34b", "dataset", "caed70d28149e0ae3b41fcade077b4f1b7301259"),
+    ("m12-cuda-p34-control", "dataset", "42ac1dbd4bfb40674e60a1d4ab62f0d83e4df776"),
 )
 # Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
 _CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
@@ -939,3 +940,14 @@ def test_p34_priced_variant_ran_clean_at_its_commit(name: str, mode: str, commit
     assert sidecar["exit_code"] == "0"
     assert sidecar["model"] == guided_sidecar["model"]
     assert sidecar["model_runtime"] == guided_sidecar["model_runtime"]
+
+
+def test_p34_control_reproduces_the_guided_baseline_byte_for_byte() -> None:
+    """p34: the restored rule at 42ac1db replays Q1's 100 replies exactly, so greedy decoding held
+    across backend restarts and GPU clock states and the variant prices are the prompt's alone."""
+    control = _baseline_records(_BASELINE.with_name("m12-cuda-p34-control"))
+    assert [record.model_reply for record in control] == [
+        record.model_reply for record in _baseline_records()
+    ]
+    report = _baseline_report(_BASELINE.with_name("m12-cuda-p34-control"))
+    assert report.observations == _baseline_report().observations

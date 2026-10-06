@@ -198,6 +198,7 @@ Both variants lost most of the verified dataset prompts, so the prompts keep the
 | original | `5a97b5d` | `Output only JSON: no prose, Markdown, fences, SQL, Python, JavaScript, or Vega-Lite.` | 26 of 100 | 2 of 20 | 1 of 40 |
 | A | `43cc447` | `Emit that one JSON object as the entire reply, starting with { and ending with }.` | 2 of 100 | 0 of 20 | 1 of 40 |
 | B | `caed70d` | `Output only JSON.` | 3 of 100 | 0 of 20 | not run |
+| original, control | `42ac1db` | the original rule | 26 of 100 | 2 of 20 | not run |
 
 The formula rows ran at `4a52176` (original) and `43cc447` (A).
 Variant B did not run in formula mode, because its dataset result already failed.
@@ -207,6 +208,10 @@ The cause of this change is not known.
 Variant B changed 73 of the 100 dataset replies.
 `bench/baselines/m12-cuda-p34a/` and `bench/baselines/m12-cuda-formula-p34a/` hold the variant A runs.
 `bench/baselines/m12-cuda-p34b/` holds the variant B run.
+The control restored the original rule and ran again after both variants.
+All 100 control replies were byte-identical to the guided baseline, so greedy decoding held across backend restarts.
+Thus, the prompt change alone caused each drop.
+`bench/baselines/m12-cuda-p34-control/` holds the control run.
 
 ## Historical: OpenVINO wiring on the ORIGIN host
 
