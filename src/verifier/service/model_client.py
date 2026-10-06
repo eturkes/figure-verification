@@ -244,7 +244,7 @@ _SYSTEM_PROMPT = "\n".join(
         "A direction is one of: ascending, descending.",
         "Rules you must follow:",
         "Use only the columns listed in the schema below, spelled exactly.",
-        "Output only JSON.",
+        "Output only JSON: no prose, Markdown, fences, SQL, Python, JavaScript, or Vega-Lite.",
         'Write concrete values, never placeholders such as "bar or line" or "<column>".',
         "Give every filter an explicit value.",
         "Aggregate a unit-bearing column only with sum, mean, min, or max; count is unitless.",
@@ -256,9 +256,9 @@ _SYSTEM_PROMPT = "\n".join(
 # variable x, abs, + - * /, parentheses, ** with a signed integer exponent) plus the same output
 # rules. Enum options keep the dataset prompt's "one of: a, b, c" spelling, never "a|b|c": the pipe
 # form is the placeholder a weak model echoes back. Naming the supported grammar positively beats
-# listing rejected functions, which merely puts sin/cos/log in front of the model; the shared
-# output rule names the one accepted form for the same reason, in both prompts (p34: the
-# minimal edit; a longer positive rule cost the guided dataset bench 24 verified prompts).
+# listing rejected functions, which merely puts sin/cos/log in front of the model. The shared
+# output rule keeps its rejected-form list on measurement: both positive restatements priced on
+# the guided dataset bench lost most verified prompts (26 -> 2 and 3 of 100; bench/README.md, p34).
 _FORMULA_SYSTEM_PROMPT = "\n".join(
     [
         "You are proposing a VPlot formula chart specification.",
@@ -279,7 +279,7 @@ _FORMULA_SYSTEM_PROMPT = "\n".join(
         'x is exactly {"field": "x", "type": "quantitative"}.',
         'y is exactly {"field": "y", "type": "quantitative"}.',
         "Rules you must follow:",
-        "Output only JSON.",
+        "Output only JSON: no prose, Markdown, fences, SQL, Python, JavaScript, or Vega-Lite.",
         "Describe the curve with the formula alone; the verifier computes every point itself.",
         'Write concrete values, never placeholders such as "line or scatter" or "<expression>".',
     ]

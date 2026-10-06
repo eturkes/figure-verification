@@ -98,6 +98,7 @@ _BASELINE_FORMULA = _BASELINE.with_name("m12-cuda-formula")
 _P34_VARIANTS = (
     ("m12-cuda-p34a", "dataset", "43cc447f2ababd360201261cee51ca5834ef90b4"),
     ("m12-cuda-formula-p34a", "formula", "43cc447f2ababd360201261cee51ca5834ef90b4"),
+    ("m12-cuda-p34b", "dataset", "caed70d28149e0ae3b41fcade077b4f1b7301259"),
 )
 # Hand-stated: the five prompt categories in report order (bench/prompts.py CATEGORIES).
 _CATEGORY_NAMES = ("normal", "ambiguous", "adversarial", "bad_aggregation", "hidden_filter")
