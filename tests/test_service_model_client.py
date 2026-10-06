@@ -12,6 +12,7 @@ factory tests install no transport -- they short-circuit or never dispatch.
 import asyncio
 import csv
 import json
+import re
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
@@ -845,7 +846,7 @@ def test_formula_system_prompt_teaches_exactly_the_supported_grammar() -> None:
         "Top-level keys: version, formula, domain, numeric_profile, mark, encoding.",
         "An expression uses decimal numbers, x, parentheses, and the operators + - * /.",
         "The only function is abs; the only power form is ** with a whole-number exponent.",
-        "samples is a whole number from 2 to 100000.",
+        "samples is the number of points: 101, or the count the request names.",
         "mark is one of: line, scatter.",
         "Describe the curve with the formula alone; the verifier computes every point itself.",
     ):
@@ -857,6 +858,15 @@ def test_formula_system_prompt_teaches_exactly_the_supported_grammar() -> None:
     for absent in ("sin(", "cos(", "tan(", "log(", "exp(", "sqrt(", "numpy", "matplotlib"):
         assert absent not in prompt
     assert "abs(x - 2)" in prompt
+
+
+def test_formula_prompt_states_no_sample_count_the_default_policy_refuses() -> None:
+    """Q36: the prompt's sample default sits inside the default limits; no ceiling is quoted."""
+    prompt = model_client._FORMULA_SYSTEM_PROMPT
+    assert "100000" not in prompt
+    (line,) = [line for line in prompt.splitlines() if line.startswith("samples is")]
+    assert [int(word) for word in re.findall(r"\d+", line)] == [101]
+    assert Settings(data_dir=_DATA).max_formula_samples >= 101
 
 
 def test_both_system_prompts_keep_the_measured_output_rule() -> None:

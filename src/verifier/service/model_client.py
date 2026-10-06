@@ -254,7 +254,9 @@ _SYSTEM_PROMPT = "\n".join(
 
 # Formula system = the expr.py grammar the verifier actually parses (decimal literals, the single
 # variable x, abs, + - * /, parentheses, ** with a signed integer exponent) plus the same output
-# rules. Enum options keep the dataset prompt's "one of: a, b, c" spelling, never "a|b|c": the pipe
+# rules. samples names a working default, never the schema's 100000 ceiling: a greedy model
+# copies a stated maximum, which `max_formula_samples` (10000) and `max_smt_terms` refuse (Q36).
+# Enum options keep the dataset prompt's "one of: a, b, c" spelling, never "a|b|c": the pipe
 # form is the placeholder a weak model echoes back. Naming the supported grammar positively beats
 # listing rejected functions, which merely puts sin/cos/log in front of the model. The shared
 # output rule keeps its rejected-form list on measurement: both positive restatements priced on
@@ -271,7 +273,7 @@ _FORMULA_SYSTEM_PROMPT = "\n".join(
         'Build formula from those characters alone, as in "abs(x - 2) * 3" or "x ** 2 + 1".',
         "domain is an object with keys start, stop, samples, x_scale, and y_scale.",
         'start and stop are decimal numbers written as strings, such as "0", "-2.5", or "10".',
-        "samples is a whole number from 2 to 100000.",
+        "samples is the number of points: 101, or the count the request names.",
         "x_scale and y_scale are whole numbers from 0 to 12, giving the decimal places to keep.",
         'numeric_profile is the string "rational-half-even-v1".',
         "mark is one of: line, scatter.",
