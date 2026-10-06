@@ -859,6 +859,23 @@ def test_formula_system_prompt_teaches_exactly_the_supported_grammar() -> None:
     assert "abs(x - 2)" in prompt
 
 
+def test_both_system_prompts_name_the_output_form_positively() -> None:
+    """p34: the shared output rule names the accepted form, never an inventory of rejected ones."""
+    rule = "Emit that one JSON object as the entire reply, starting with { and ending with }."
+    for prompt in (model_client._SYSTEM_PROMPT, model_client._FORMULA_SYSTEM_PROMPT):
+        assert rule in prompt.splitlines()
+        for rejected in (
+            "Markdown",
+            "fences",
+            "SQL",
+            "Python",
+            "JavaScript",
+            "Vega-Lite",
+            "no prose",
+        ):
+            assert rejected not in prompt
+
+
 def test_propose_formula_admits_an_empty_request_and_refuses_an_oversize_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
