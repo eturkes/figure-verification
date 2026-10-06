@@ -732,7 +732,9 @@ def test_m12_cuda_baseline_report_re_derives_from_its_details(
 
 
 def test_p16_raw_arm_pairs_the_guided_baseline_on_one_commit() -> None:
-    """p16: the RAW arm ran at the guided baseline's commit; only the guidance flag differs."""
+    """p16: the RAW arm ran at the guided baseline's commit, clean, on the same model files +
+    runtime; its backend provenance differs from the guided arm's in the guidance flag and the
+    dataset schema digest (served with guidance alone), and nowhere else."""
     guided = _baseline_report()
     raw = msgspec.json.decode((_BASELINE_RAW / "report.json").read_bytes(), type=Report)
     assert _exit_code(raw) == 0

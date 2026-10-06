@@ -28,10 +28,12 @@ FORMULA_PROMPTS (`--mode formula`, POSTed to /propose-formula) = 2 categories x 
 by INTENDED difficulty against the formula grammar (decimal numbers, x, + - * /, parentheses,
 abs, ** with a whole-number exponent, one curve over one interval):
   simple   -- one curve the grammar can state, interval given; a faithful spec can verify.
-  complex  -- a faithful spec cannot verify: a function outside the grammar (sin, exp, log,
-              sqrt, a fractional or variable exponent), several curves or panels, a non-function
-              curve, styling or an axis change. The JSON formula route binds no request, so a
-              verified reply here is a DIFFERENT curve -- the rate measures the gradient, never
+  complex  -- asks for more than the grammar or route states: a function outside the grammar
+              (sin, exp, log, sqrt, a fractional or variable exponent), several curves or panels,
+              a non-function curve, styling or an axis change. A difficulty LABEL, not a proof:
+              the piecewise row has an exact admitted form, (x + x**2 + (x - 1) * abs(x)) / 2.
+              The JSON formula route binds no request, so a verified reply here is a different
+              curve or the curve without its styling -- the rate measures the gradient, never
               faithfulness.
 """
 

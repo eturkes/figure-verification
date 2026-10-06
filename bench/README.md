@@ -65,12 +65,14 @@ It never silently misclassifies an older response.
 Every report records `git_commit`, which can be `null`.
 It records `git_dirty` for tracked or untracked changes.
 It records bench's raw-byte `vplot_schema_sha256` for `schema/vplot-0.1.schema.json`.
+It records bench's raw-byte `formula_schema_sha256` for `schema/vplot-formula-0.1.schema.json` and the run `mode`.
 It also records the exact `model_probe_url` supplied by `--model-url`.
+A report written before formula mode existed has no `mode` and no formula digest, and it reads as a dataset run.
 
 `backend` is `null` when the probe is unreachable, non-200, or undecodable.
-Otherwise, it contains these four root `/health` fields: `model_name`, `device`, `structured_output`, and `vplot_schema_sha256`.
-The backend also serves `formula_schema_sha256` for the formula proposer schema, which bench ignores.
-When bench and backend both report a schema digest, `_log_summary` warns about divergence.
+Otherwise, it contains these five root `/health` fields: `model_name`, `device`, `structured_output`, `vplot_schema_sha256`, and `formula_schema_sha256`.
+When bench and backend both report the dataset schema digest, `_log_summary` warns about divergence.
+`_log_summary` does not compare the two formula schema digests.
 This provenance is observational and never changes the exit status.
 
 `--model-url` selects only the backend that bench probes through `/v1/models` and root `/health`.
@@ -106,11 +108,13 @@ The categories partition the prompts by intended difficulty against the formula 
 
 - `simple`: one curve that the grammar can state, over a given interval.
   A faithful specification can verify.
-- `complex`: a faithful specification cannot verify.
-  The prompt asks for a function outside the grammar, several curves or panels, a curve that is not a function, styling, or an axis change.
+- `complex`: the request asks for more than the grammar or the route can state.
+  It asks for a function outside the grammar, several curves or panels, a curve that is not a function, styling, or an axis change.
+  The category is a difficulty label, not a proof that no faithful specification can verify.
+  For example, the piecewise request `y = x for x below 0 and y = x^2 otherwise` has an exact admitted form through `abs`: `(x + x**2 + (x - 1) * abs(x)) / 2`.
 
 The formula route binds no request text.
-Thus, a verified `complex` reply draws a DIFFERENT curve than the request asks for.
+Thus, a verified `complex` reply can draw a different curve, or the requested curve without the requested styling or axes.
 `verified_render_rate` counts verified verdicts, because the formula route renders no chart.
 Read the gradient per category, never as one overall rate.
 The rate is not a faithfulness measure.
@@ -148,7 +152,8 @@ At that commit, the prompt states a default of 101 samples instead of the 100000
 | complex | 20 | 6 | 6 | 8 | 0 |
 
 No reply failed `resource.formula_samples`, and the guarantee held.
-Each of the 6 verified `complex` replies drew a curve that the grammar can state, not the requested figure.
+None of the 6 verified `complex` replies drew the whole requested figure.
+Five drew a different curve, and one drew the requested `x^2` curve without the requested red dashed line and legend.
 For example, the request for the standard normal density produced `abs(x - 3) * 3`.
 
 ## CURRENT-host baseline (`bench/baselines/m12-cuda/`)
@@ -193,10 +198,12 @@ VERIFIER_MODEL_TIMEOUT=900 VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BUR
 O=bench/reports/m12-cuda
 mkdir -p $O
 .venv/bin/python -m bench.sidecar $O/provenance.json start
-.venv/bin/python -m bench --timeout 1200 --out $O/report.json --details $O/details.jsonl
-.venv/bin/python -m bench.sidecar $O/provenance.json end exit_code=0
-cp $O/* bench/baselines/m12-cuda/
+.venv/bin/python -m bench --timeout 1200 --out $O/report.json --details $O/details.jsonl; rc=$?
+.venv/bin/python -m bench.sidecar $O/provenance.json end exit_code=$rc
+[ "$rc" -eq 0 ] && cp $O/* bench/baselines/m12-cuda/
 ```
+
+Copy the outputs only after a valid run (exit code 0).
 
 On this laptop GPU, a thermal slowdown can make one reply take about one minute.
 The long `--timeout` and `VERIFIER_MODEL_TIMEOUT=900` keep a slow reply from counting as an `upstream_fault`.
@@ -329,7 +336,10 @@ Otherwise, `backend.structured_output` describes the wrong server.
 It ran at commit `5a97b5d`, which is the same commit as the guided baseline in `bench/baselines/m12-cuda/`.
 The backend ran with `MODEL_BACKEND_STRUCTURED_OUTPUT=false`.
 The verifier process, prompts, model and device were the same as in the guided arm.
-`tests/test_bench_harness.py` checks that the two reports differ only in the guidance flag.
+`tests/test_bench_harness.py` checks the pairing of the two runs.
+Both reports name the same commit with a clean tree and the same prompt count.
+Both sidecars record the same model files and runtime.
+The backend provenance differs only in `structured_output` and in the dataset schema digest, which the backend reports only with guidance on.
 
 | Arm | Verified | Schema | Semantic | Policy | JSON valid | Fenced | Valid after de-fencing |
 |---|---|---|---|---|---|---|---|
