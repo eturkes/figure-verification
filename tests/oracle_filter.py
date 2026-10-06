@@ -119,7 +119,8 @@ def _candidate(
             if (
                 row is not None
                 and row.owner == user_id
-                and target == DatasetTarget(_UPLOAD_ROOT + row.filename, row.content)
+                and target
+                == DatasetTarget(_UPLOAD_ROOT + row.filename, row.content, receipt.request_text)
             ):
                 return verdict, row
         failure = "independent tool oracle returned an unowned target"

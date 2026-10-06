@@ -46,10 +46,10 @@ MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row or
 - [ ] Q1 guided-JSON bench re-baseline (MX150)
 - [ ] Q3 `derive` transform
 - [ ] Q7 polish p2 p16 p32 p34 (p16 p32 p34 on the MX150)
-- [ ] Q8 lexical term anchoring
-- [ ] Q16 G10 label/legend — waits Q8
+- [ ] Q16 G10 label/legend
 - [ ] Q19 structural FAIL-arm variant (MX150)
 - [ ] Q25 stale teammate worktrees
+- [ ] Q35 refusal-set size sweep misses `<n> closed codes`
 
 Queue = `.agent/deferred.md`, 7 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 

@@ -34,6 +34,7 @@ IDS = (
     "T7",
     "T8",
     "W1",
+    "A1",
     "F7",
     "O8",
     "Versions",
@@ -322,6 +323,8 @@ class Replay:
             self.run(
                 name, self.python("w1_width.py", PROJECT / "corpus/python/captures/m10-design")
             )
+        elif name == "A1":
+            self.run(name, self.python("a1_anchor.py"))
         elif name == "S1":
             self.run(name, self.python("s1_host.py"))
         else:

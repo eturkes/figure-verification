@@ -93,7 +93,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "aggregation_not_projected",
         "figure_orphans_mark",
     ),
-    "binding": ("source_not_supplied", "target_mismatch"),
+    "binding": ("source_not_supplied", "target_mismatch", "column_not_requested"),
     "recompute": (
         "csv_too_large",
         "csv_not_parsable",
@@ -173,12 +173,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "binding": (
         (
             "Program matches your file or formula",
-            "the file it reads is your attached file, or the formula it plots is the one you"
-            " asked for",
+            "it reads your attached file without swapping a column your request names, or it"
+            " plots the formula you asked for",
         ),
         (
             "プログラムが添付ファイルまたは依頼の数式と一致",
-            "読み込むファイルが添付ファイルであること、または描く数式が依頼した数式であること",
+            "添付ファイルを読み込み、依頼にある列を別の列に置き換えていないこと、"
+            "または依頼した数式を描くこと",
         ),
     ),
     "recompute": (

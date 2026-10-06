@@ -142,14 +142,27 @@ projection + exact recomputation and observation is additive.
   `Qwen2.5-Coder-0.5B-Instruct` on the host of record. The design must not depend on proposer
   strength: tier 1 carries the weak arm, tier 2 the strong one.
 - Request language and CSV header language may differ arbitrarily ⇒ **lexical term anchoring is NOT
-  load-bearing**. It is a deferred refinement over tiers 1-3, never a prerequisite for a verdict.
-- Text normalization that is SAFE because the model gets no vote in it: `unicodedata.normalize
-  ("NFKC", …)` + full/half-width folding + bounded edit distance against the file's REAL header, a
-  unique match required and ties refused. The target set comes from the user's bytes, so a typo fix
-  cannot invent a column.
-- Japanese has no whitespace word boundaries ⇒ every request-side match is SUBSTRING containment,
-  never tokenization. This makes anchoring more robust in Japanese than in English, which needs
-  plural and possessive handling.
+  load-bearing**: a refinement over tiers 1-3, never a prerequisite — a request naming no header
+  column anchors nothing.
+- **Request anchoring, shipped (Q8, user ruling: substitutions only).** `verify.py::_check_anchoring`
+  in the `binding` check, ahead of recompute: `DatasetTarget.request` (the user's message, threaded
+  by `selection.py`) vs the program's x/y; refuse `column_not_requested` only on a SUBSTITUTION = a
+  named column undrawn AND a drawn column unnamed. Either half alone passes: `chart revenue` leaves x
+  to the program; three named columns let a two-column chart pick two. A tie refuses too.
+- Matching is SAFE because the model gets no vote: the target set = the file's REAL header, so a
+  typo fix cannot invent a column. NFKC + `casefold`; words split at every non-word char (`_`
+  included) and where ASCII meets another script (`regionごとのrevenue`). Exact names first, longest
+  first, each consuming its span (`unit price` never also names `price`): an ASCII header ≥3 chars =
+  an exact word sequence, a non-ASCII header ≥2 chars = containment in the request's words (Japanese
+  has no word spaces). Then a one-word name ≥5 chars also matches one span within Levenshtein 1 (a
+  word; in Japanese, a stretch of near length). A span within 1 of TWO names, or one name two headers
+  fold to = tie. An unreadable header (`csvread.header_names` = None wherever `read_columns` refuses
+  by the header) or a drawn column absent from it leaves the verdict to recompute. Lexical only:
+  `temperature` never names `temp_c`, while `chronological order` names `orders` (kernel review
+  register, a false refusal the ruled matcher makes). Measured, A1 (`.agent/measurements/a1_anchor.py`): false refusals 0/18 per
+  language (EN · JA over a translated header · JA naming the English header), swaps caught 37/57 ·
+  48/57 · 54/57; `m10-design` captures: 0 FAITHFUL rows refused, the 2 verified per-city-series rows
+  now refuse.
 - A model-produced translation of the request may never become the anchor: the model would then
   control both sides of the comparison and class II would be deleted, not weakened. A translation
   reaches the user through tier 3 publication only.
@@ -459,7 +472,8 @@ call-counting bomb on `_numeric_value`, R5 an arithmetic bound under 2**63 that 
 widening reddens; and
 `_reduce_int`'s `float(sum(values))` is profile-equivalent, because C10's int32 cell bound times
 `max_table_rows` = 100,000 keeps every admitted integer sum under 2**48, and float64 carries every
-integer exactly to 2**53. `tools/mutants/csvread.toml` = 5: G11's PUBLICATION seam + Q12's four range-split predicates. The counts are
+integer exactly to 2**53. `tools/mutants/csvread.toml` = 15: G11's PUBLICATION seam + Q12's four range-split predicates +
+Q8's ten header-read predicates. The counts are
 computed in `aggregate.py` but carried forward from `read_columns`, and one module per catalogue is
 what splits them. `tools/mutants/admit.toml` = 42: the accessor ROUTE (M13.8's five + M10.10's `line` entry), M13.2's
 13 allowlist predicates (below), + 21 admission predicates, + Q26's two presentation-positional entries — the string-literal column subscript,

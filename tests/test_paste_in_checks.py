@@ -84,6 +84,7 @@ _REASON_CHECK: dict[Reason, str] = {
     "figure_orphans_mark": "chart",
     "source_not_supplied": "binding",
     "target_mismatch": "binding",
+    "column_not_requested": "binding",
     "csv_too_large": "recompute",
     "csv_not_parsable": "recompute",
     "column_not_present": "recompute",
@@ -368,7 +369,7 @@ def _site_check(module: str, function: str | None) -> str:
         return "accepted"
     if module == "project":
         return "chart"
-    if (module, function) == ("verify", "bind_target"):
+    if module == "verify" and function in {"bind_target", "_check_anchoring"}:
         return "binding"
     if module in {"csvread", "aggregate"} or (
         module == "verify"
@@ -390,7 +391,7 @@ def test_c1_check_order_and_reason_map_are_the_hand_stated_tables() -> None:
     module = _checks()
     refusal_codes = set(get_args(RefusalCode))
     outlet_codes = set(get_args(OutletCause))
-    assert len(refusal_codes) == 52
+    assert len(refusal_codes) == 53
     assert len(outlet_codes) == 14
     assert refusal_codes.isdisjoint(outlet_codes)
     assert module.CHECKS == _ORDER

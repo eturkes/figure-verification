@@ -43,7 +43,7 @@ def _sin_target(*, grid: spec.Grid | None) -> spec.FormulaTarget:
 
 
 def test_c1_declared_target_union() -> None:
-    """`DeclaredTarget = DatasetTarget(path, content) | FormulaTarget(y, grid)`.
+    """`DeclaredTarget = DatasetTarget(path, content, request) | FormulaTarget(y, grid)`.
 
     Accept: exact-set pin on the union; a total map over it carries a missing-arm mutant.
     `FormulaTarget` holds a parsed `spec.Expr` tree, so the core needs no expression parser.
@@ -51,7 +51,7 @@ def test_c1_declared_target_union() -> None:
     from verifier.pysrc import Verified, verify_python_source  # noqa: PLC0415
 
     assert get_args(spec.DeclaredTarget.__value__) == (spec.DatasetTarget, spec.FormulaTarget)
-    assert set(spec.DatasetTarget.__dataclass_fields__) == {"path", "content"}
+    assert set(spec.DatasetTarget.__dataclass_fields__) == {"path", "content", "request"}
     assert set(spec.FormulaTarget.__dataclass_fields__) == {"y", "grid"}
 
     dataset_target = spec.DatasetTarget(path="measurements.csv", content=_DATASET_BYTES)

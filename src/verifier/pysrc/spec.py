@@ -219,6 +219,9 @@ class DatasetTarget:
 
     path: str
     content: bytes
+    # The user's request text, when the caller has it: lexical anchoring (Q8) checks the program's
+    # columns against the header names it states. `None` anchors nothing.
+    request: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

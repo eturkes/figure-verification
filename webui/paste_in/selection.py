@@ -19,7 +19,8 @@ def first_verdict(
     """Return the first final verdict and the attachment it consumed, if any."""
     formula = formula_target(request_text) if request_text is not None else None
     candidates: tuple[tuple[DatasetTarget | FormulaTarget, UploadedFile | None], ...] = tuple(
-        (DatasetTarget(path=file.path, content=file.content), file) for file in attachments
+        (DatasetTarget(path=file.path, content=file.content, request=request_text), file)
+        for file in attachments
     ) + (((formula, None),) if formula is not None else ())
     outcome: Verdict | None = None
     consumed: UploadedFile | None = None

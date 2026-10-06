@@ -72,7 +72,7 @@ _REASON_GROUPS = {
         "aggregation_not_projected",
         "figure_orphans_mark",
     ),
-    "binding": ("source_not_supplied", "target_mismatch"),
+    "binding": ("source_not_supplied", "target_mismatch", "column_not_requested"),
     "recompute": (
         "csv_too_large",
         "csv_not_parsable",

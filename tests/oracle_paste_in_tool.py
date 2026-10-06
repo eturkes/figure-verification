@@ -95,10 +95,12 @@ def oracle_draw_figure(
 
     Attachment metadata authorizes no bytes or path: its top-level id selects a row, and the
     ownership-checked row supplies filename and content. Formula bytes come solely from the
-    user's current message, independently parsed by `oracle_request`.
+    user's current message, independently parsed by `oracle_request`; the same message rides every
+    dataset target as the request its column names anchor against (Q8).
     """
     if not context.user_id:
         return CHART_NOT_PRODUCED
+    request = context.user_message if isinstance(context.user_message, str) else None
     for attachment in context.attachments:
         file_id = attachment.get("id")
         if not isinstance(file_id, str):
@@ -106,13 +108,15 @@ def oracle_draw_figure(
         row = context.stored.get(file_id)
         if row is None or row.user_id != context.user_id:
             continue
-        target = spec.DatasetTarget(path=f"/mnt/uploads/{row.filename}", content=row.content)
+        target = spec.DatasetTarget(
+            path=f"/mnt/uploads/{row.filename}", content=row.content, request=request
+        )
         verdict = verify(program, declared_target=target)
         if isinstance(verdict, Verified):
             return CHART_PRODUCED
         if verdict.code != "target_mismatch":
             return CHART_NOT_PRODUCED
-    neutral = parse(context.user_message) if isinstance(context.user_message, str) else None
+    neutral = parse(request) if request is not None else None
     if neutral is not None:
         verdict = verify(program, declared_target=_formula_target(neutral))
         if isinstance(verdict, Verified):

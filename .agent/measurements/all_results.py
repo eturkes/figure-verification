@@ -200,6 +200,26 @@ def w1():
     return result
 
 
+def a1():
+    data = load("a1-result.json")
+    result = {
+        language: {
+            "faithful": leg["faithful"],
+            "false_refusals": len(leg["false_refusals"]),
+            "series": leg["series"],
+            "series_refused": len(leg["series_refused"]),
+            "swaps_verified": leg["swaps_verified"],
+            "swaps_caught": leg["swaps_caught"],
+        }
+        for language, leg in data.items()
+        if language != "capture"
+    }
+    result["capture"] = fields(
+        data["capture"], "design_rows", "baseline_verified", "changed", "faithful_refused"
+    )
+    return result
+
+
 def f7():
     data = load("f7-0283.json")
     return {
@@ -280,6 +300,7 @@ PROJECTORS = {
     "T7": t7,
     "T8": t8,
     "W1": w1,
+    "A1": a1,
     "F7": f7,
     "O8": o8,
     "Versions": versions,

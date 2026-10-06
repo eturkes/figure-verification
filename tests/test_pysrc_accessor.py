@@ -6,7 +6,7 @@ carries its predicate's acceptance check; the check is the test's specification 
 wording wins wherever a body would assert more.
 
 Both idioms are new SPELLINGS of marks the verifier already projects, so neither may widen
-`CorePlotSpec`, the 52-member refusal set, or the one-mark rule. The measured inputs are verbatim
+`CorePlotSpec`, the 53-member refusal set, or the one-mark rule. The measured inputs are verbatim
 from `corpus/python/captures/m13-design`: `kind='bar'` in 4 of 4 accessor rows, `color='skyblue'` in
 3 of 4, a positional argument in 0 of 4, and no other keyword anywhere. Two of the four group
 `weather.csv`, so nothing here may assume `sales.csv`.

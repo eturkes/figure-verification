@@ -16,7 +16,7 @@
 # of absent ones is the value-kill beside it.
 
 module = "src/verifier/pysrc/csvread.py"
-tests = ["tests/test_pysrc_aggregate.py", "tests/test_pysrc_csv.py"]
+tests = ["tests/test_pysrc_aggregate.py", "tests/test_pysrc_csv.py", "tests/test_pysrc_anchoring.py"]
 
 [[mutant]]
 id = "g11-counts-dropped-at-publication"
@@ -57,3 +57,93 @@ predicate = "a float64 reduction under bar/barh stays within the measured 2**53"
 kills = "tests/test_pysrc_aggregate.py::test_q12_a_float64_bar_reduction_stays_within_2_to_the_53"
 anchor = '''        else (-_FLOAT_HEIGHT_MAX, _FLOAT_HEIGHT_MAX)'''
 mutant = '''        else (-math.inf, math.inf)'''
+
+# Q8 `header_names`: each whole-file gate and each caught failure leaves an unreadable header
+# anchoring nothing, so recomputation's own refusal names the fault. EQUIVALENT, so unlisted:
+# dropping `PysrcRefusalError` from the caught set lets `_check_record_endings` raise from the
+# header read, and that refusal is the one `read_columns` raises for the same bytes -- every gate
+# ahead of it already passed -- so the verdict cannot differ.
+
+[[mutant]]
+id = "q8-header-size-gate-dropped"
+predicate = "an oversize file yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_oversize_file_leaves_recompute_refusal"
+anchor = '''            len(content) > limits.max_csv_bytes
+            or content.startswith(_UTF8_BOM)'''
+mutant = '''            False
+            or content.startswith(_UTF8_BOM)'''
+
+[[mutant]]
+id = "q8-header-bom-gate-dropped"
+predicate = "a BOM-prefixed file yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[bom]"
+anchor = '''            or content.startswith(_UTF8_BOM)
+            or b"\x00" in content'''
+mutant = '''            or False
+            or b"\x00" in content'''
+
+[[mutant]]
+id = "q8-header-nul-gate-dropped"
+predicate = "a file holding NUL yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[nul]"
+anchor = '''            or b"\x00" in content
+        ):'''
+mutant = '''            or False
+        ):'''
+
+[[mutant]]
+id = "q8-header-endings-gate-dropped"
+predicate = "a file with a non-LF record ending yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[cr-endings]"
+anchor = '''        _check_record_endings(content)
+        text = content.decode("utf-8")'''
+mutant = '''        text = content.decode("utf-8")'''
+
+[[mutant]]
+id = "q8-header-decode-error-escapes"
+predicate = "a non-UTF-8 file yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[not-utf8]"
+anchor = '''        WorkBudgetExceededError,
+        UnicodeDecodeError,'''
+mutant = '''        WorkBudgetExceededError,'''
+
+[[mutant]]
+id = "q8-header-empty-escapes"
+predicate = "an empty file yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[empty]"
+anchor = '''        UnicodeDecodeError,
+        StopIteration,'''
+mutant = '''        UnicodeDecodeError,'''
+
+[[mutant]]
+id = "q8-header-quote-escapes"
+predicate = "a header record csv refuses yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[header-quote]"
+anchor = '''        StopIteration,
+        csv.Error,'''
+mutant = '''        StopIteration,'''
+
+[[mutant]]
+id = "q8-header-budget-escapes"
+predicate = "a header over the work ceiling yields no header"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[header-work]"
+anchor = '''        PysrcRefusalError,
+        WorkBudgetExceededError,'''
+mutant = '''        PysrcRefusalError,'''
+
+[[mutant]]
+id = "q8-header-work-uncharged"
+predicate = "the header read charges the work `read_columns` charges for it"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[header-work]"
+anchor = '''        WorkBudget(limits.max_work).charge(_record_work(header))
+        _check_header(header, limits)'''
+mutant = '''        _check_header(header, limits)'''
+
+[[mutant]]
+id = "q8-header-checks-skipped"
+predicate = "the header read applies `read_columns`' header-record checks"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[duplicate-name]"
+anchor = '''        _check_header(header, limits)
+    except ('''
+mutant = '''        pass
+    except ('''

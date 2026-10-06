@@ -1,0 +1,115 @@
+{
+  "headers": {
+    "sales.csv": {
+      "month": "年月",
+      "region": "地域",
+      "revenue": "売上",
+      "orders": "注文数"
+    },
+    "weather.csv": {
+      "date": "日付",
+      "city": "都市",
+      "temp_c": "気温",
+      "precip_mm": "降水量",
+      "aqi": "大気質指数"
+    }
+  },
+  "prompts": {
+    "design-simple-01": {
+      "ja": "地域ごとの売上の合計を棒グラフにしてください。",
+      "ja_mixed": "regionごとのrevenueの合計を棒グラフにしてください。"
+    },
+    "design-simple-02": {
+      "ja": "都市ごとの平均気温を棒グラフで表示してください。",
+      "ja_mixed": "cityごとのtemp_cの平均を棒グラフで表示してください。"
+    },
+    "design-simple-03": {
+      "ja": "各地域の最大注文数を棒グラフで描いてください。",
+      "ja_mixed": "各regionのordersの最大値を棒で描いてください。"
+    },
+    "design-simple-04": {
+      "ja": "日付ごとの降水量の合計を縦棒グラフにしてください。",
+      "ja_mixed": "dateごとのprecip_mmの合計を縦棒グラフにしてください。"
+    },
+    "design-simple-05": {
+      "ja": "月ごとの売上を1本の折れ線グラフにしてください。",
+      "ja_mixed": "monthごとのrevenueを1本の折れ線グラフにしてください。"
+    },
+    "design-simple-06": {
+      "ja": "都市ごとに線を分けて、日付に対する気温の推移を描いてください。",
+      "ja_mixed": "cityごとに線を分けて、dateに対するtemp_cの推移を描いてください。"
+    },
+    "design-simple-07": {
+      "ja": "注文数と売上を比べる散布図を作成してください。",
+      "ja_mixed": "ordersとrevenueを比べる散布図を作成してください。"
+    },
+    "design-simple-08": {
+      "ja": "都市ごとに色を分けて、気温と大気質指数の散布図を描いてください。",
+      "ja_mixed": "cityごとに色を分けて、temp_cとaqiの散布図を描いてください。"
+    },
+    "design-simple-09": {
+      "ja": "地域別の注文数の合計を棒グラフにできますか？",
+      "ja_mixed": "region別のordersの合計を棒グラフにできますか？"
+    },
+    "design-simple-10": {
+      "ja": "都市ごとの大気質指数の平均を棒グラフで比較してください。",
+      "ja_mixed": "cityごとのaqiの平均を棒グラフで比較してください。"
+    },
+    "design-simple-11": {
+      "ja": "地域ごとに、売上の最大値を1本の棒で示してください。",
+      "ja_mixed": "regionごとに、revenueの最大値を1本の棒で示してください。"
+    },
+    "design-simple-12": {
+      "ja": "日付ごとの降水量の合計を棒グラフにしてください。",
+      "ja_mixed": "dateごとのprecip_mmの合計を棒グラフにしてください。"
+    },
+    "design-simple-13": {
+      "ja": "月ごとの注文数を折れ線で見たいです。",
+      "ja_mixed": "monthごとのordersを折れ線で見たいです。"
+    },
+    "design-simple-14": {
+      "ja": "都市ごとに1本ずつ、降水量の推移を線で描いてください。",
+      "ja_mixed": "cityごとに1本ずつ、precip_mmの推移を線で描いてください。"
+    },
+    "design-simple-15": {
+      "ja": "x軸を売上、y軸を注文数にした散布図はどうでしょう？",
+      "ja_mixed": "x軸をrevenue、y軸をordersにした散布図はどうでしょう？"
+    },
+    "design-simple-16": {
+      "ja": "都市ごとに色分けして、降水量と気温の散布図を描いてください。",
+      "ja_mixed": "cityごとに色分けして、precip_mmとtemp_cの散布図を描いてください。"
+    },
+    "design-simple-17": {
+      "ja": "地域別の売上合計を横棒グラフで表示してください。",
+      "ja_mixed": "region別のrevenueの合計を横棒グラフで表示してください。"
+    },
+    "design-simple-18": {
+      "ja": "都市ごとの平均降水量を棒グラフで見られますか？",
+      "ja_mixed": "cityごとのprecip_mmの平均を棒グラフで見られますか？"
+    },
+    "design-simple-19": {
+      "ja": "地域ごとに、月間の最小注文数を棒グラフにしてください。",
+      "ja_mixed": "regionごとに、月間のordersの最小値を棒グラフにしてください。"
+    },
+    "design-simple-20": {
+      "ja": "日ごとの降水量の合計を棒グラフで示してください。",
+      "ja_mixed": "日ごとのprecip_mmの合計を棒グラフで示してください。"
+    },
+    "design-simple-21": {
+      "ja": "売上の合計が月ごとにどう変わるかを折れ線で示してください。",
+      "ja_mixed": "revenueの合計がmonthごとにどう変わるかを折れ線で示してください。"
+    },
+    "design-simple-22": {
+      "ja": "都市ごとに線を描いて、日付ごとの大気質指数をグラフにできますか？",
+      "ja_mixed": "cityごとに線を描いて、dateごとのaqiをグラフにできますか？"
+    },
+    "design-simple-23": {
+      "ja": "注文数と売上の散布図を描いてください。",
+      "ja_mixed": "ordersとrevenueの散布図を描いてください。"
+    },
+    "design-simple-24": {
+      "ja": "都市ごとにまとめた、降水量と大気質指数の散布図をください。",
+      "ja_mixed": "cityごとにまとめた、precip_mmとaqiの散布図をください。"
+    }
+  }
+}

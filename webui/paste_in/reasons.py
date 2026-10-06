@@ -205,6 +205,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "The program does not match the attached file or the requested formula.",
         "プログラムが添付ファイルにも依頼の数式にも一致しません。",
     ),
+    "column_not_requested": (
+        "The chart replaces a requested column, or a request word fits two columns.",
+        "グラフが依頼の列を別の列に置き換えたか、依頼の語が 2 つの列に当てはまります。",
+    ),
     "csv_too_large": (
         "The CSV file is too large.",
         "CSV ファイルが大きすぎます。",

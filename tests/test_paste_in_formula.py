@@ -104,8 +104,8 @@ def test_t7_attachment_order_beats_formula_candidate(
     assert lookups == [("first", _USER_ID), ("second", _USER_ID)]
     assert reply == _READY
     assert [declaration for declaration, _verdict in seen] == [
-        DatasetTarget("/mnt/uploads/wrong.csv", _CSV_BYTES),
-        DatasetTarget("/mnt/uploads/relevant.csv", _CSV_BYTES),
+        DatasetTarget("/mnt/uploads/wrong.csv", _CSV_BYTES, _REQUEST),
+        DatasetTarget("/mnt/uploads/relevant.csv", _CSV_BYTES, _REQUEST),
     ]
     assert isinstance(seen[0][1], Refused) and seen[0][1].code == "target_mismatch"
     assert isinstance(seen[1][1], Verified)
@@ -138,7 +138,7 @@ def test_t7_formula_candidate_follows_unrelated_csv(
     assert reply == _READY
     assert lookups == [("one", _USER_ID)]
     assert len(seen) == 2
-    assert seen[0][0] == DatasetTarget("/mnt/uploads/unrelated.csv", _CSV_BYTES)
+    assert seen[0][0] == DatasetTarget("/mnt/uploads/unrelated.csv", _CSV_BYTES, _REQUEST)
     assert isinstance(seen[0][1], Refused) and seen[0][1].code == "target_mismatch"
     assert seen[1][0] == FormulaTarget(
         spec.Fn("sin", spec.Var()),

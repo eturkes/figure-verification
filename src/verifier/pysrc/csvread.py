@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
 from verifier.pysrc.aggregate import Aggregated, aggregate_series, column_dtype
-from verifier.pysrc.budget import WorkBudget
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits
 from verifier.pysrc.spec import DatasetMark, DatasetPlot
@@ -91,6 +91,50 @@ def _check_cell_sizes(row: list[str], limit: int) -> None:
         _refuse("csv_too_large")
 
 
+def header_names(content: bytes, limits: PysrcLimits) -> tuple[str, ...] | None:
+    """The first record as column names; None wherever `read_columns` refuses by the header.
+
+    That is every whole-file gate (size, BOM, NUL, record endings, UTF-8) and every header-record
+    check (`_check_header`, and its work charge against a fresh meter -- the header is the first
+    charge `read_columns` makes). Request anchoring (Q8) reads the header ahead of recomputation,
+    so a file it cannot read anchors nothing and recomputation's own refusal still names the fault;
+    a malformed LATER row is recomputation's to refuse, after binding.
+    """
+    try:
+        if (
+            len(content) > limits.max_csv_bytes
+            or content.startswith(_UTF8_BOM)
+            or b"\x00" in content
+        ):
+            return None
+        _check_record_endings(content)
+        text = content.decode("utf-8")
+        header = next(csv.reader(io.StringIO(text, newline=""), strict=True))
+        WorkBudget(limits.max_work).charge(_record_work(header))
+        _check_header(header, limits)
+    except (
+        PysrcRefusalError,
+        WorkBudgetExceededError,
+        UnicodeDecodeError,
+        StopIteration,
+        csv.Error,
+    ):
+        return None
+    return tuple(header)
+
+
+def _record_work(row: list[str]) -> int:
+    return sum(1 + len(cell) // 32 for cell in row)
+
+
+def _check_header(header: list[str], limits: PysrcLimits) -> None:
+    _check_cell_sizes(header, limits.max_csv_cell_bytes)
+    if len(header) > limits.max_csv_columns:
+        _refuse("csv_too_large")
+    if not header or any(not cell for cell in header) or len(set(header)) != len(header):
+        _refuse("csv_not_parsable")
+
+
 def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTable:
     if len(content) > limits.max_csv_bytes:
         _refuse("csv_too_large")
@@ -113,16 +157,8 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
     )
     try:
         header_row = next(reader)
-        budget.charge(sum(1 + len(cell) // 32 for cell in header_row))
-        _check_cell_sizes(header_row, limits.max_csv_cell_bytes)
-        if len(header_row) > limits.max_csv_columns:
-            _refuse("csv_too_large")
-        if (
-            not header_row
-            or any(not cell for cell in header_row)
-            or len(set(header_row)) != len(header_row)
-        ):
-            _refuse("csv_not_parsable")
+        budget.charge(_record_work(header_row))
+        _check_header(header_row, limits)
 
         rows: list[tuple[str, ...]] = []
         for row_number, row in enumerate(reader, start=1):
@@ -133,7 +169,7 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
             _check_cell_sizes(row, limits.max_csv_cell_bytes)
             if len(row) != len(header_row):
                 _refuse("csv_not_parsable")
-            budget.charge(sum(1 + len(cell) // 32 for cell in row))
+            budget.charge(_record_work(row))
             rows.append(tuple(row))
     except StopIteration:
         _refuse("csv_not_parsable")

@@ -123,6 +123,13 @@ The verifier accepts one chart per reply:
 The verifier refuses everything else. For example, it refuses several charts in one figure, a
 second axis, a changed axis scale and hand-typed data values.
 
+If the request names columns of the CSV file, the chart cannot put a different column in place of
+a named column. For example, if the request says `revenue by region`, a chart of revenue by month
+fails with the code `column_not_requested`. A request word that fits two column names fails with the
+same code. The verifier compares the words of the request with the
+column names only. It does not know synonyms or translations, so a request that names no column
+passes this check.
+
 ## Why a chart failed
 
 When the filter blocks a chart, the reply shows a status line above the failure message. The line

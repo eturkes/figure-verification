@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 27 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 28 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -56,6 +56,9 @@ the root development environment. Run a generator before its dependent host or s
 ```
 uv run --locked python .agent/measurements/w1_width.py corpus/python/captures/m10-design
 ```
+
+`A1` reads the 24 design-simple prompts, `design_intent.json`, the authored Japanese renderings in
+`a1_ja.json` and the `m10-design` captures; it writes `a1-result.json`. Held-out prompts stay unread.
 
 The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
 x column, y column and reduction; six tasks also require a separate city series or city color, which
@@ -113,6 +116,7 @@ and pandas versions for the selected build.
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs <P> t8-<v>.json`; `node t8_pyodide.mjs owui t8-0283.json` | 0.28.0, 0.28.1; installed OWUI 0.28.3 |
 | W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
+| A1 | `a1_anchor.py` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 62 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
@@ -206,6 +210,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | T8 | beyond-int32 fixed-point parsing vs host pandas AND stdlib `float`; float64-column bar heights; mixed integer/decimal tokens | Q12 production range changed: integer columns keep int32; float64 cells retain the 15-digit cap; float64 bar reductions stay within ±2**53. Evidence: 0/1,345,852 host↔Pyodide decimal disagreements/form/build through ±2**53; ≤15-digit subset 0/623,350 vs stdlib, unrestricted 215,269 disagreements; mixed column 0/1,000,049 vs both; 0/2,364 boundary + 0/2,097 mixed artist-height changes/build |
 | W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
+| A1 | request anchoring (Q8), per language (EN, JA over a translated header, JA naming the English header): refusals of the 18 intent programs needing no per-city series, refusals of the 3 that need one, x/y swaps caught; the `m10-design` capture rows whose verdict anchoring changes | `pysrc.md` request-anchoring bullets: 0 false refusals per language, the catch rates |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 62 fixture observations + PNGs (M10.10 added 6 accessor lines, Q18 the 4 nested-libm formulas), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 | M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/132 texts clamped |

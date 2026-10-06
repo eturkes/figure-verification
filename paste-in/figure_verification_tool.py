@@ -167,6 +167,9 @@ RefusalCode = Literal[
     # evident from the program itself.
     "source_not_supplied",
     "target_mismatch",
+    # A substitution (Q8): the program drops a CSV column the request names and plots one the
+    # request never names. A request naming no column anchors nothing and never reaches this code.
+    "column_not_requested",
     # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
     # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
     # domain and overflow fault arrives as a non-finite value and needs no classification.
@@ -418,6 +421,9 @@ class DatasetTarget:
 
     path: str
     content: bytes
+    # The user's request text, when the caller has it: lexical anchoring (Q8) checks the program's
+    # columns against the header names it states. `None` anchors nothing.
+    request: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,7 +618,7 @@ _SOURCES["webui.paste_in.verdicts"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The closed string set the tool returns to the model.
 
-Two members, fixed, and no refusal code among them. Five of the 52 closed codes carry the banned
+Two members, fixed, and no refusal code among them. Five of the 53 closed codes carry the banned
 stem `admit` (`call_target_not_admitted`, `keyword_not_admitted`, `statement_not_admitted`,
 `attribute_not_admitted`, `assign_target_not_admitted`), so returning a code would teach admission
 vocabulary through exactly the surface ruling 6 keeps clean. Nothing needs it either: the outlet
@@ -3590,7 +3596,7 @@ from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
 from verifier.pysrc.aggregate import Aggregated, aggregate_series, column_dtype
-from verifier.pysrc.budget import WorkBudget
+from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits
 from verifier.pysrc.spec import DatasetMark, DatasetPlot
@@ -3659,6 +3665,50 @@ def _check_cell_sizes(row: list[str], limit: int) -> None:
         _refuse("csv_too_large")
 
 
+def header_names(content: bytes, limits: PysrcLimits) -> tuple[str, ...] | None:
+    """The first record as column names; None wherever `read_columns` refuses by the header.
+
+    That is every whole-file gate (size, BOM, NUL, record endings, UTF-8) and every header-record
+    check (`_check_header`, and its work charge against a fresh meter -- the header is the first
+    charge `read_columns` makes). Request anchoring (Q8) reads the header ahead of recomputation,
+    so a file it cannot read anchors nothing and recomputation's own refusal still names the fault;
+    a malformed LATER row is recomputation's to refuse, after binding.
+    """
+    try:
+        if (
+            len(content) > limits.max_csv_bytes
+            or content.startswith(_UTF8_BOM)
+            or b"\x00" in content
+        ):
+            return None
+        _check_record_endings(content)
+        text = content.decode("utf-8")
+        header = next(csv.reader(io.StringIO(text, newline=""), strict=True))
+        WorkBudget(limits.max_work).charge(_record_work(header))
+        _check_header(header, limits)
+    except (
+        PysrcRefusalError,
+        WorkBudgetExceededError,
+        UnicodeDecodeError,
+        StopIteration,
+        csv.Error,
+    ):
+        return None
+    return tuple(header)
+
+
+def _record_work(row: list[str]) -> int:
+    return sum(1 + len(cell) // 32 for cell in row)
+
+
+def _check_header(header: list[str], limits: PysrcLimits) -> None:
+    _check_cell_sizes(header, limits.max_csv_cell_bytes)
+    if len(header) > limits.max_csv_columns:
+        _refuse("csv_too_large")
+    if not header or any(not cell for cell in header) or len(set(header)) != len(header):
+        _refuse("csv_not_parsable")
+
+
 def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTable:
     if len(content) > limits.max_csv_bytes:
         _refuse("csv_too_large")
@@ -3681,16 +3731,8 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
     )
     try:
         header_row = next(reader)
-        budget.charge(sum(1 + len(cell) // 32 for cell in header_row))
-        _check_cell_sizes(header_row, limits.max_csv_cell_bytes)
-        if len(header_row) > limits.max_csv_columns:
-            _refuse("csv_too_large")
-        if (
-            not header_row
-            or any(not cell for cell in header_row)
-            or len(set(header_row)) != len(header_row)
-        ):
-            _refuse("csv_not_parsable")
+        budget.charge(_record_work(header_row))
+        _check_header(header_row, limits)
 
         rows: list[tuple[str, ...]] = []
         for row_number, row in enumerate(reader, start=1):
@@ -3701,7 +3743,7 @@ def _read_csv(content: bytes, limits: PysrcLimits, budget: WorkBudget) -> _RawTa
             _check_cell_sizes(row, limits.max_csv_cell_bytes)
             if len(row) != len(header_row):
                 _refuse("csv_not_parsable")
-            budget.charge(sum(1 + len(cell) // 32 for cell in row))
+            budget.charge(_record_work(row))
             rows.append(tuple(row))
     except StopIteration:
         _refuse("csv_not_parsable")
@@ -3908,13 +3950,15 @@ lets M14 inline this package into a sandbox that has neither.
 """
 
 import math
+import re
+import unicodedata
 from dataclasses import dataclass
 from typing import NoReturn, assert_never
 
 from verifier.pysrc.admit import parse_admitted
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.certificate import CoreCertificate, certify
-from verifier.pysrc.csvread import read_columns
+from verifier.pysrc.csvread import header_names, read_columns
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.numeric import evaluate_expr, materialize_grid
@@ -3983,11 +4027,144 @@ def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
     raise PysrcRefusalError(code) from cause
 
 
-def bind_target(spec: CorePlotSpec, target: DeclaredTarget | None) -> DeclaredTarget | None:
+# --- request anchoring (Q8) ----------------------------------------------------------------------
+# Which CSV columns a user's request names: lexical term anchoring (user ruling Q8).
+#
+# A refinement over the three verification tiers, never a prerequisite: a request that names no
+# column anchors nothing, and the verdict proceeds exactly as before. Matching is lexical only --
+# no synonyms, no translation -- so a request names a column only by spelling its header; `売上`
+# never names `revenue`, while a Japanese request that writes `revenue` does.
+#
+# Both sides fold through NFKC (full-width forms become ASCII) and `casefold`, then split into
+# words at every non-word character, `_` included, and wherever ASCII meets another script: so
+# `unit_price` reads as `unit price`, and `regionごとのrevenue` names both columns. An ASCII header
+# matches a request word sequence exactly; a Japanese one matches inside the request's words, since
+# Japanese text carries no spaces between words. Two characters already make a Japanese word
+# (`売上`), while an ASCII name needs three (`x`, `id` are ordinary request words). A one-word name
+# of at least `_FUZZY_MIN` characters also matches a request span within Levenshtein distance 1: a
+# word for ASCII, a stretch of near length for Japanese. A span close to TWO names, or a name two
+# headers fold to, is a tie and is refused: the request does not say which column it means.
+_FUZZY_MIN = 5
+_ASCII_ANCHOR_MIN = 3
+_OTHER_ANCHOR_MIN = 2
+_WORD = re.compile(r"[a-z0-9]+|[^\Wa-z0-9_]+")
+
+
+class _AmbiguousTermError(ValueError):
+    """One request word sits within edit distance 1 of two different headers."""
+
+
+def _words(text: str) -> str:
+    """`text` as its folded words, one space apart."""
+    return " ".join(_WORD.findall(unicodedata.normalize("NFKC", text).casefold()))
+
+
+def _within_one(left: str, right: str) -> bool:
+    """Levenshtein distance at most 1, in one pass."""
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+    for index, (a, b) in enumerate(zip(left, right, strict=False)):
+        if a != b:
+            tail = index + 1 if len(left) == len(right) else index
+            return left[tail:] == right[index + 1 :]
+    return True
+
+
+def _near_names(rest: str, keys: list[str]) -> list[set[str]]:
+    """The names within one edit of each place in the request, overlapping stretches merged.
+
+    A stretch is a whole word for an ASCII name, and a substring one character shorter, as long or
+    longer for a Japanese one. Overlapping stretches are one place in the request, so a place within
+    one edit of two names is a tie even where no single stretch fits both (`収張期血圧`).
+    """
+    runs = [run for run in rest.split() if run != "\0"]
+    hits: list[tuple[int, int, int, str]] = []
+    for key in keys:
+        for index, run in enumerate(runs):
+            if run.isascii() != key.isascii():
+                continue
+            windows = (
+                [(0, len(run))]
+                if key.isascii()
+                else [
+                    (start, start + width)
+                    for width in (len(key) - 1, len(key), len(key) + 1)
+                    for start in range(len(run) - width + 1)
+                ]
+            )
+            hits += [(index, s, e, key) for s, e in windows if _within_one(run[s:e], key)]
+    places: list[set[str]] = []
+    place_run, place_end = -1, 0
+    for index, start, end, key in sorted(hits):
+        if index != place_run or start >= place_end:
+            places.append(set())
+            place_run, place_end = index, end
+        places[-1].add(key)
+        place_end = max(place_end, end)
+    return places
+
+
+def _named_columns(text: str, header: tuple[str, ...]) -> frozenset[str]:
+    """The header names `text` names; raises `_AmbiguousTermError` on a tie."""
+    by_key: dict[str, list[str]] = {}
+    for column in header:
+        by_key.setdefault(_words(column), []).append(column)
+    rest = f" {_words(text)} "
+    named: set[str] = set()
+    # Exact names first, longest first, each consuming its span: `unit price` never also names
+    # `price`, and `収縮期血圧値` never also names `収縮期血圧`.
+    for key in sorted(by_key, key=len, reverse=True):
+        needle = f" {key} " if key.isascii() else key
+        floor = _ASCII_ANCHOR_MIN if key.isascii() else _OTHER_ANCHOR_MIN
+        if len(key) >= floor and needle in rest:
+            named.add(key)
+            while needle in rest:  # adjacent occurrences share a space; one pass skips every second
+                rest = rest.replace(needle, " \0 ")
+    # Then one edit, over what exact names left, against every one-word name of 5+ characters.
+    near = _near_names(rest, [key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN])
+    named |= {key for keys in near if len(keys) == 1 for key in keys}
+    # A tie: one place in the request within one edit of two names, or one name two headers fold to.
+    tied = [sorted(keys) for keys in near if len(keys) > 1]
+    tied += [[key] for key in named if len(by_key[key]) > 1]
+    if tied:
+        message = f"request places {sorted(tied)} each fit more than one header"
+        raise _AmbiguousTermError(message)
+    return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1)
+
+
+def _check_anchoring(spec: DatasetPlot, request: str, content: bytes, limits: PysrcLimits) -> None:
+    """Q8: refuse a substitution -- the program drops a column the request names AND plots one it
+    never names (`revenue by region`, drawn over `month`).
+
+    Either half alone is no substitution: a request naming only the measure (`chart revenue`)
+    leaves the x column to the program, and a request naming three columns lets a two-column chart
+    pick two of them.
+
+    Anchoring is a refinement: an unreadable header, a plotted column absent from it (recompute's
+    own refusals) or a request naming no column leaves the verdict to the checks that follow.
+    """
+    header = header_names(content, limits)
+    plotted = {spec.x.name, spec.y.name}
+    if header is None or not plotted <= set(header):
+        return
+    try:
+        named = _named_columns(request, header)
+    except _AmbiguousTermError as exc:
+        _refuse("column_not_requested", exc)
+    if named - plotted and plotted - named:
+        _refuse("column_not_requested")
+
+
+def bind_target(
+    spec: CorePlotSpec, target: DeclaredTarget | None, limits: PysrcLimits = DEFAULT_LIMITS
+) -> DeclaredTarget | None:
     """Check the submitted program against the artifact the USER supplied.
 
-    One refusal code covers both arms: the fault shape is "this program is not about your
-    artifact", and which artifact is evident from the program. The dataset arm's path comparison is
+    One refusal code, `target_mismatch`, covers both arms' artifact comparison: the fault shape is
+    "this program is not about your artifact", and which artifact is evident from the program.
+    The dataset arm's path comparison is
     byte-for-byte -- no normalization, no `Path` resolution, no case folding -- because normalizing
     would let two different files answer to one name.
     """
@@ -3996,6 +4173,8 @@ def bind_target(spec: CorePlotSpec, target: DeclaredTarget | None) -> DeclaredTa
             _refuse("source_not_supplied")
         if spec.source.path != target.path:
             _refuse("target_mismatch")
+        if target.request is not None:
+            _check_anchoring(spec, target.request, target.content, limits)
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
@@ -4163,7 +4342,7 @@ def verify_python_source(
         text = prescan(source_bytes, limits)
         tree = parse_admitted(text)
         spec = project(tree, limits)
-        bound_target = bind_target(spec, declared_target)
+        bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
         check_integrity(spec, table)
@@ -4236,7 +4415,8 @@ def first_verdict(
     """Return the first final verdict and the attachment it consumed, if any."""
     formula = formula_target(request_text) if request_text is not None else None
     candidates: tuple[tuple[DatasetTarget | FormulaTarget, UploadedFile | None], ...] = tuple(
-        (DatasetTarget(path=file.path, content=file.content), file) for file in attachments
+        (DatasetTarget(path=file.path, content=file.content, request=request_text), file)
+        for file in attachments
     ) + (((formula, None),) if formula is not None else ())
     outcome: Verdict | None = None
     consumed: UploadedFile | None = None

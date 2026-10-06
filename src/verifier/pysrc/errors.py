@@ -76,6 +76,9 @@ RefusalCode = Literal[
     # evident from the program itself.
     "source_not_supplied",
     "target_mismatch",
+    # A substitution (Q8): the program drops a CSV column the request names and plots one the
+    # request never names. A request naming no column anchors nothing and never reaches this code.
+    "column_not_requested",
     # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
     # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
     # domain and overflow fault arrives as a non-finite value and needs no classification.

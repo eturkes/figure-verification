@@ -537,6 +537,8 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_stages() -> None:
     bind_codes = {
         "source_not_supplied",
         "target_mismatch",
+        # Q8: the request names a column the program swapped for one it never names.
+        "column_not_requested",
     }
     recompute_codes = {
         "csv_too_large",
