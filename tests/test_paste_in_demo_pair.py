@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Q37: production + demo ship separate generated pairs that differ in the anchoring rule alone.
+"""Q37: production + demo ship separate generated pairs; the anchoring rule differs (Q40 adds the
+filter inlet template, `tests/test_paste_in_inlet.py`).
 
 User ruling (session 6): production (`paste-in/`) anchors strictly; the demo
 (`webui/demo-paste-in/`) keeps Q8's substitution rule. Contract `.agent/archive/contracts/q37.md`.

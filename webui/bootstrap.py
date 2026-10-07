@@ -127,8 +127,8 @@ def run_bootstrap(client: _Provisioner, settings: Settings) -> SmokeResult:
     """Wait, authenticate, converge the filter, tool + model attachment, then smoke every readback.
 
     The tool is provisioned from the COMMITTED demo artifact, generated from the sources of the
-    production pair, which differs in its anchoring constant alone -- the demo is a live test of the
-    shared code rather than a second wiring.
+    production pair, which differs in its anchoring constant + filter inlet template alone -- the
+    demo is a live test of the shared code rather than a second wiring.
     """
     client.wait_ready()
     client.authenticate()

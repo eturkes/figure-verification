@@ -152,7 +152,7 @@ for record in records:
     prompt_id, name = record["prompt_id"], record["dataset_name"]
     _, source = defence(record["content"] or "")
     target = DatasetTarget(path=f"/mnt/uploads/{name}", content=data[name])
-    verify._check_labels = lambda _spec, _header: None
+    verify._check_labels = lambda *_args: None  # G10 neutralised, whatever it is passed
     try:
         base = verify.verify_python_source(source, declared_target=target)
     finally:

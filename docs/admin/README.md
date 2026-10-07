@@ -19,8 +19,8 @@ You paste two files into Open WebUI. The files are in the `paste-in/` directory 
 | `paste-in/figure_verification_filter.py` | Function (filter) | `figure_verification_filter` |
 
 Each file contains the complete verifier. The files use only the Python standard library and
-the `open_webui` package that Open WebUI already contains. They make no network calls. You do
-not install packages and you do not rebuild the container image.
+the `open_webui` and `pydantic` packages that Open WebUI already contains. They make no network
+calls. You do not install packages and you do not rebuild the container image.
 
 Use the two files from the same release together. Do not edit them. The repository generates
 them from its source code.

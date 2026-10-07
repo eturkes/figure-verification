@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Figure verification for Open WebUI. GENERATED FILE -- do not edit.
 
-Paste the whole file into Open WebUI. It imports the standard library, `open_webui` and `pydantic`,
-which the image already carries, and nothing else. There is no `requirements:` frontmatter and no
-network call.
+Paste the whole file into Open WebUI. It imports the standard library and packages the image
+already carries -- `open_webui`, and `pydantic` in the tool -- and nothing else. There is no
+`requirements:` frontmatter and no network call.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py`. The same command with
 `--check` fails when this file and its sources disagree, so an edit made here is lost at the next

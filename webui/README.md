@@ -16,11 +16,14 @@ browser → Open WebUI :8080
 The tool is the demo's one operation. The harness provisions it from the committed artifact
 `webui/demo-paste-in/figure_verification_tool.py`. It provisions the filter from
 `webui/demo-paste-in/figure_verification_filter.py` in the same way. The generator builds the demo
-files from the same sources as the production files in `paste-in/`. The two pairs differ in one
-rule. The demo refuses a chart that replaces a column the request names. Production also refuses a
-chart that draws an unnamed column when the request names or excludes at least one column. A column
-with a short name, such as `id`, is exempt. The harness registers no tool server, so the
-JSON-spec `proposeSpec` operation does not reach the model.
+files from the same sources as the production files in `paste-in/`. The two pairs differ in two
+places. First, the anchoring rule: the demo refuses a chart that replaces a column the request
+names. Production also refuses a chart that draws an unnamed column when the request names or
+excludes at least one column. A column with a short name, such as `id`, is exempt. An alias of
+recognized length (three ASCII characters, or two of another script) in the tool's valves ends that
+exemption. Second, the inlet template differs. The demo filter asks the model for bare source text,
+which the demo adapter turns into a tool call. The production filter omits that sentence. The
+harness registers no tool server, so the JSON-spec `proposeSpec` operation does not reach the model.
 
 Open WebUI is a trusted display and orchestration layer. The filter reads a backend-owned tool
 receipt and independently re-verifies the user's program and files. It only publishes a PNG after a
