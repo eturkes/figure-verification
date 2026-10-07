@@ -1,0 +1,35 @@
+{
+  "clinical": {
+    "added": [
+      "c04:年月",
+      "c20:年月"
+    ],
+    "baseline_refused": [],
+    "false_refusals": {
+      "strict": [
+        "c11:column_not_named"
+      ],
+      "substitution": []
+    },
+    "requests": 20
+  },
+  "noise": {
+    "added": [
+      "design-simple-05/clinical:年月",
+      "design-simple-13/clinical:年月",
+      "design-simple-21/clinical:年月",
+      "c04/sales.csv:年月",
+      "c20/sales.csv:年月"
+    ],
+    "pairs": 88
+  },
+  "own": {
+    "added": [
+      "design-simple-05:年月",
+      "design-simple-13:年月",
+      "design-simple-20:日付",
+      "design-simple-21:年月"
+    ],
+    "prompts": 24
+  }
+}

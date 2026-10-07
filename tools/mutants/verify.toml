@@ -2,7 +2,7 @@
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"
-tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py"]
 
 [[mutant]]
 id = "c2-formula-y-ignored"
@@ -501,3 +501,101 @@ predicate = "S2: a Japanese negation reports itself to the strict trigger"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_japanese_negation_triggers_strict"
 anchor = '''                negated = True'''
 mutant = '''                pass'''
+
+[[mutant]]
+id = "q41-short-names-unthreaded"
+predicate = "T1: strict anchoring reads short words"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_counts_as_named_for_the_substitution_check"
+anchor = '''        named, negated = _anchors(request, header, short_names=anchoring == "strict")'''
+mutant = '''        named, negated = _anchors(request, header, short_names=False)'''
+
+[[mutant]]
+id = "q41-demo-reads-short-names"
+predicate = "T2: the demo's substitution rule reads no short word"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t2_the_demo_rule_reads_no_short_word"
+anchor = '''        named, negated = _anchors(request, header, short_names=anchoring == "strict")'''
+mutant = '''        named, negated = _anchors(request, header, short_names=True)'''
+
+[[mutant]]
+id = "q41-drop-last-unread"
+predicate = "T1: a run equal to the name minus its last character names it"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-last]"
+anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
+mutant = '''        fits = {key for key in keys if run[0] in (key[1:],)}'''
+
+[[mutant]]
+id = "q41-drop-first-unread"
+predicate = "T1: a run equal to the name minus its first character names it"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-first]"
+anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
+mutant = '''        fits = {key for key in keys if run[0] in (key[:-1],)}'''
+
+[[mutant]]
+id = "q41-part-of-run-names"
+predicate = "T1: the WHOLE kanji run must equal the shortened name"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_whole_run_must_match_not_a_part_of_it"
+anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
+mutant = '''        fits = {key for key in keys if key[1:] in run[0] or key[:-1] in run[0]}'''
+
+[[mutant]]
+id = "q41-two-fits-name-one"
+predicate = "T1: a run fitting two names names neither"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_fitting_two_names_names_neither"
+anchor = '''        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:'''
+mutant = '''        if fits and all(len(by_key[key]) == 1 for key in fits):'''
+
+[[mutant]]
+id = "q41-negation-cue-ignored"
+predicate = "T1: a short word before a Japanese negation cue names nothing"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_before_a_negation_cue_names_nothing"
+anchor = '''        if words.startswith(_NEGATION_AFTER, end) or any('''
+mutant = '''        if False or any('''
+
+[[mutant]]
+id = "q41-exact-overlap-ignored"
+predicate = "T1: a run a Japanese header name overlaps belongs to that exact name"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_an_exact_name_covers_names_only_that_name"
+anchor = '''            key in words[max(0, start - len(key) + 1) : end + len(key) - 1] for key in exact'''
+mutant = '''            False for key in exact'''
+
+[[mutant]]
+id = "q41-run-read-after-consumption"
+predicate = "T1: a run is whole in the request before any name is consumed"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_is_whole_in_the_request_before_names_are_consumed"
+anchor = '''        named |= _short_names(words, by_key)'''
+mutant = '''        named |= _short_names(rest, by_key)'''
+
+[[mutant]]
+id = "q41-fold-twin-names"
+predicate = "T1: a name two headers fold to never names by a short word"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_column_two_headers_fold_to_reads_no_short_word"
+anchor = '''        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:'''
+mutant = '''        if len(fits) == 1:'''
+
+[[mutant]]
+id = "q41-fold-twin-leaves-the-count"
+predicate = "T1: a fold-twin name still ties a run it fits"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_fold_twin_name_still_ties_a_run_it_fits"
+anchor = '''    keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX]'''
+mutant = '''    keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX and len(by_key[key]) == 1]'''
+
+[[mutant]]
+id = "q41-supplementary-ideographs-split-a-run"
+predicate = "T1: an Ext B+ ideograph (`𠮷`) is part of a kanji run"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_spans_every_nfkc_stable_ideograph[ext-b-in-run]"
+anchor = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")'''
+mutant = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")'''
+
+[[mutant]]
+id = "q41-compatibility-ideographs-split-a-run"
+predicate = "T1: an NFKC-stable compatibility ideograph (`﨑`) is part of a kanji run"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_spans_every_nfkc_stable_ideograph[compat-in-run]"
+anchor = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")'''
+mutant = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0003ffff]+")'''
+
+[[mutant]]
+id = "q41-four-character-names-dropped"
+predicate = "T1: names of up to four characters read short words"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_reads_four_characters_and_the_one_edit_tier_reads_five"
+anchor = '''_SHORT_NAME_MAX = 4'''
+mutant = '''_SHORT_NAME_MAX = 3'''

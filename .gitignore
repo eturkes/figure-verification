@@ -74,6 +74,7 @@ CLAUDE.local.md
 !.agent/measurements/design_intent.json
 !.agent/measurements/a1_ja.json
 !.agent/measurements/a2_labels.json
+!.agent/measurements/a3_clinical.json
 .agent/measurements/*.log
 .agent/measurements/node_modules/
 .agent/measurements/pyodide-index/

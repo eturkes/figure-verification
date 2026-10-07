@@ -46,15 +46,15 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 **Resume note** — MAINTAIN queue request, session 7; the request's closing commit deletes this block.
   - Finish line = the request's `Met when` (verbatim `~/.local/app/agents/claude/prompts/auto/maintain.md` § Queue): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA). Detail log = `.scratch/q/RESUME.md`.
-  - Session-6 rulings (all in `Decisions` Production-vs-demo + contracts): p34 RETIRE · Q19 RETIRE · Q3 D4 raw `expr` confirmed · Q38 contract approved (`.agent/archive/contracts/q38.md`) · Q37 contract approved (`.agent/archive/contracts/q37.md`) · Q41 contract approved (`.agent/contracts/q41.md`) · Q39 + Q40 = their `.agent/deferred.md` rows, approved as drafted.
-  - Committed on main: p34 retire `dfc2cd3` · Q19 retire `de26001` · rulings + rows `025ed56` · Q38 `8166a19` · Q37 (this commit).
-  - Order: Q41 (`wt/q41` `c36dad0` WIP: rebase, fix its 5+-char test witness, A3 clinical leg script + `expected/A3.json` + README + `rerun_all` registration, A1 strict JA 0/18, mutants, blind review) → Q40 (`wt/q40` `dee59e4` WIP: rebase, prune its row, gate) → Q39 (`.scratch/q/s6/q39/h1_heldout_anchoring.py` → id H1, after every verifier change) → closing review on every lens → closing commit. Find to queue: Q41's clinical probe shows the suffix `別` (`診療科別`) naming `性別` and `月別` naming nothing — a closed-suffix rule needs its own row + user-approved acceptance.
+  - Session-6 rulings (all in `Decisions` Production-vs-demo + contracts): p34 RETIRE · Q19 RETIRE · Q3 D4 raw `expr` confirmed · Q38 contract approved (`.agent/archive/contracts/q38.md`) · Q37 contract approved (`.agent/archive/contracts/q37.md`) · Q41 contract approved (`.agent/archive/contracts/q41.md`) · Q39 + Q40 = their `.agent/deferred.md` rows, approved as drafted.
+  - Committed on main: p34 retire `dfc2cd3` · Q19 retire `de26001` · rulings + rows `025ed56` · Q38 `8166a19` · Q37 `541c877` · Q41 (this commit).
+  - Order: Q40 (`wt/q40` `dee59e4` WIP: rebase, prune its row, gate) → Q39 (`.scratch/q/s6/q39/h1_heldout_anchoring.py` → id H1, after every verifier change) → Q42 (contract owed to the user: one `AskUserQuestion` after the agent-side work) → closing review on every lens → closing commit.
   - Per-commit gate: `bash tools/gate.sh` on a clean tree (isolated worktree `.scratch/worktrees/gate-s6`, own `.venv`, `.scratch/q/s6/gate-at.sh <sha> <log>`), logs `.scratch/q/gates3/<unit>.log`.
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption). One unit + one commit per row, subject `<scope> (Q<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (a ruling, an approval, MX150 time).
 - [ ] Q39 held-out re-grade under request anchoring (data)
 - [ ] Q40 production inlet template (no bare-source sentence)
-- [ ] Q41 Japanese short-word naming — contract owed to the user
+- [ ] Q42 Japanese suffix naming — contract owed to the user
 
 Queue = `.agent/deferred.md`, 3 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 

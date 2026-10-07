@@ -253,6 +253,16 @@ def a2():
     return result
 
 
+def a3():
+    data = load("a3-result.json")
+    clinical = data["clinical"]
+    return {
+        "clinical": fields(clinical, "requests", "added", "baseline_refused", "false_refusals"),
+        "own": data["own"],
+        "noise": data["noise"],
+    }
+
+
 def f7():
     data = load("f7-0283.json")
     return {
@@ -335,6 +345,7 @@ PROJECTORS = {
     "W1": w1,
     "A1": a1,
     "A2": a2,
+    "A3": a3,
     "F7": f7,
     "O8": o8,
     "Versions": versions,

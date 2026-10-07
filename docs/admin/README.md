@@ -126,11 +126,14 @@ second axis, a changed axis scale and hand-typed data values.
 If the request names columns of the CSV file, the request must name each column that the chart
 draws. Write each column name as the file spells it. A one-word name of five or more characters can
 contain one typing error. A name such as `unit_price` has two words, so the request must spell both
-words exactly. For example, a request says `chart revenue` and the chart draws revenue by month.
-The chart fails with the code `column_not_named`, because the request does not name `month`. If the
-request says
+words exactly. In Japanese, a whole kanji word can also name a column of two to four characters.
+The word must equal the column name without its first or last character, so `月ごと` names `年月`.
+This rule does not apply to a kana word or to a kanji word with a suffix, such as `月別`. A short
+kanji word that fits two column names names neither column. For example, a request says
+`chart revenue` and the chart draws revenue by month. The chart fails with the code
+`column_not_named`, because the request does not name `month`. If the request says
 `revenue by region`, a chart of revenue by month fails with the code `column_not_requested`: it puts
-`month` in place of `region`. A request word that fits two column names fails with the code
+`month` in place of `region`. Any other request word that fits two column names fails with the code
 `column_not_requested`. A request that excludes a column, such as `revenue, not orders`, also names
 columns. The excluded column does not count as named. An order phrase such as
 `in chronological order` names no column. The verifier compares the words of the request with the

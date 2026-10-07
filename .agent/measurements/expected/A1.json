@@ -47,7 +47,7 @@
     "series": 3,
     "series_refused": 0,
     "stop_false_refusals": 0,
-    "strict_false_refusals": 4,
+    "strict_false_refusals": 0,
     "strict_swaps_caught": 57,
     "swaps_caught": 48,
     "swaps_verified": 57

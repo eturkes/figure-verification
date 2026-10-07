@@ -169,12 +169,29 @@ projection + exact recomputation and observation is additive.
   name (`verify.py::_nameable`: folded name ≥ the anchor minimum), else `column_not_named`. A drawn
   negated column is unnamed ⇒ refuses; a column two headers fold to can never be named ⇒ drawn
   under an anchored request it refuses. Production pays the cost in request wording, not proposer
-  strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 4/18 · JA-mixed 1/18 (one-
-  name requests: `average temperature for each city` never names `temp_c`), swaps caught 47 · 57 · 57
+  strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 0/18 (4/18 before Q41)
+  · JA-mixed 1/18 (one-name requests: `average temperature for each city` never names `temp_c`),
+  swaps caught 47 · 57 · 57
   of 57; `m10-design` captures VERIFIED 18 → 10, FAITHFUL 10 → 6. Mode lives in the generated
   artifact, never in the model's reach: `webui/paste_in/tool.py::Tools._ANCHORING` +
   `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`, the demo subclasses
   (`webui/paste_in/demo_tool.py`, `webui/paste_in/demo_filter.py`) = `substitution`.
+- **Japanese short words name short columns under strict alone (Q41,
+  `.agent/archive/contracts/q41.md`).** `verify.py::_short_names`: a whole kanji run (`々` + every
+  CJK ideograph block NFKC leaves in place: Ext A, the main block, compatibility `﨑`, Ext B+ `𠮷`)
+  of the folded request, read before any name is consumed (`診療科別` stays one run where `診療科` is a header),
+  equal to a 2-4 character Japanese name minus its first or last character names it (`月ごと` →
+  `年月`, `日ごと` → `日付`) — unless a Japanese header name overlaps the run (the exact name takes
+  it), the run fits two names (names neither) or precedes a Japanese negation cue; a name two
+  headers fold to never names this way, yet still ties a run it fits. A one-word 5+-character name
+  is the one-edit tier's: dropping one end is one edit. The shared matcher is unchanged, so the
+  demo's substitution rule + G10 labels never read short words. Trust limit: a short word names the
+  one header it fits (`年ごと` over a header whose only fit is `年齢` names `年齢`); a suffixed short
+  word names nothing (`月別`).
+  Measured: A1 strict JA 4/18 → 0/18, JA-mixed 1/18 stays (`日ごと` for the English `date` = a
+  translation), swaps caught unchanged; A3 (`.agent/measurements/a3_short_names.py`): 0 false names
+  (clinical leg adds 2, own headers 4, 88 noise pairs 5), clinical strict false refusals 1/20
+  (`月別`), substitution 0/20.
 - Matching is SAFE because the model gets no vote: the target set = the file's REAL header, so a
   typo fix cannot invent a column. NFKC + `casefold`; words split at every non-word char (`_`
   included) and where ASCII meets another script (`regionごとのrevenue`). Exact names first, longest

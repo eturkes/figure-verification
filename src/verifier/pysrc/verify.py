@@ -133,6 +133,14 @@ _STOP_PHRASES = (
 _NEGATION_BEFORE = re.compile(r" (?:not|no|without|except|excluding|rather than|instead of)(?= )")
 _FILLERS = (" the ", " any ")
 _NEGATION_AFTER = ("ではなく", "じゃなく", "でなく", "以外", "を除")
+# Q41, strict anchoring alone: Japanese writes a shorter word for a short column (`月ごと` for
+# `年月`, `日ごと` for `日付`). A whole kanji run equal to a 2-4 character name minus its first or
+# last character names it; containment cannot, and the shared matcher keeps it out, because a
+# one-kanji word also appears in unrelated words (`別` in `診療科別` fits `性別`).
+# Every CJK ideograph block NFKC can leave in place: Ext A, the main block, the compatibility
+# block (`﨑` is NFKC-stable), Ext B+ (`𠮷`); a run split at one of them is no whole run.
+_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")
+_SHORT_NAME_MAX = 4
 
 
 class _AmbiguousTermError(ValueError):
@@ -263,14 +271,41 @@ def _named_columns(
     return _anchors(text, header, ignore_ties=ignore_ties)[0]
 
 
+def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
+    """The 2-4 character Japanese names a whole kanji run names by dropping one end (Q41).
+
+    `words` = the folded request before any name is consumed, so a run is whole in the
+    request itself: `診療科別` stays one run where `診療科` is a header, and its `別` never
+    names `性別`. A run a Japanese header name overlaps belongs to that exact name; a run
+    fitting two names names neither; a run before a Japanese negation cue names nothing (as
+    N3 reads an exact name there). A name two headers fold to never names this way.
+    """
+    exact = [key for key in by_key if not key.isascii() and len(key) >= _OTHER_ANCHOR_MIN]
+    keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX]
+    found: set[str] = set()
+    for run in _KANJI_RUN.finditer(words):
+        start, end = run.span()
+        if words.startswith(_NEGATION_AFTER, end) or any(
+            key in words[max(0, start - len(key) + 1) : end + len(key) - 1] for key in exact
+        ):
+            continue
+        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}
+        # A fold-twin name joins the count, so it ties a run it fits, yet names nothing itself.
+        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:
+            found |= fits
+    return found
+
+
 def _anchors(
-    text: str, header: tuple[str, ...], *, ignore_ties: bool = False
+    text: str, header: tuple[str, ...], *, ignore_ties: bool = False, short_names: bool = False
 ) -> tuple[frozenset[str], bool]:
-    """`_named_columns`, and whether `text` negates a header name (Q38)."""
+    """`_named_columns`, and whether `text` negates a header name (Q38); `short_names` adds
+    strict anchoring's Japanese short-word tier (Q41)."""
     by_key: dict[str, list[str]] = {}
     for column in header:
         by_key.setdefault(_words(column), []).append(column)
-    rest, negated = _unnamed_places(f" {_words(text)} ", list(by_key))
+    words = f" {_words(text)} "
+    rest, negated = _unnamed_places(words, list(by_key))
     named: set[str] = set()
     # Exact names first, longest first, each consuming its span: `unit price` never also names
     # `price`, and `収縮期血圧値` never also names `収縮期血圧`.
@@ -281,6 +316,8 @@ def _anchors(
             while needle in rest:  # adjacent occurrences share a space; one pass skips every second
                 rest = rest.replace(needle, " \0 ")
     # Then one edit, over what exact names left, against every one-word name of 5+ characters.
+    if short_names:
+        named |= _short_names(words, by_key)
     near = _near_names(rest, [key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN])
     named |= {key for keys in near if len(keys) == 1 for key in keys}
     # A tie: one place in the request within one edit of two names, or one name two headers fold to.
@@ -321,7 +358,7 @@ def _check_anchoring(
     if header is None or not plotted <= set(header):
         return
     try:
-        named, negated = _anchors(request, header)
+        named, negated = _anchors(request, header, short_names=anchoring == "strict")
     except _AmbiguousTermError as exc:
         _refuse("column_not_requested", exc)
     if named - plotted and plotted - named:
