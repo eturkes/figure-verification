@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 30 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 31 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -63,7 +63,10 @@ into each faithful request (Q38); it writes `a1-result.json`. `A2` labels the sa
 tasks from `a2_labels.json` (EN + JA concept names and summary words, the `a1_ja.json` headers) and
 re-verifies the captures with G10 neutralised as baseline; it writes `a2-result.json`. `A3` reads
 `a3_clinical.json` (an authored clinical header, 3 rows, 20 Japanese requests with the chart each
-asks for) + the `a1_ja.json` renderings; it writes `a3-result.json`. Held-out prompts stay unread.
+asks for) + the `a1_ja.json` renderings; it writes `a3-result.json`. These ids leave held-out prompts
+unread. `H1` alone reads them (Q39, user ruling): it re-grades the committed `m10-heldout` records
+with each manifest prompt as the request, under each anchoring rule, and writes `h1-result.json`.
+Its control re-grades with no request and must reproduce `score.json` row for row.
 
 The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
 x column, y column and reduction; six tasks also require a separate city series or city color, which
@@ -124,6 +127,7 @@ and pandas versions for the selected build.
 | A1 | `a1_anchor.py` | none | host only |
 | A2 | `a2_labels.py` | none | host only |
 | A3 | `a3_short_names.py` | none | host only |
+| H1 | `h1_heldout_anchoring.py` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 62 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
@@ -220,6 +224,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | A1 | request anchoring (Q8), per language (EN, JA over a translated header, JA naming the English header): refusals of the 18 intent programs needing no per-city series, refusals of the 3 that need one, x/y swaps caught; refusals of the 18 with a planted stop phrase or negated undrawn column (Q38); the `m10-design` capture rows whose verdict anchoring changes; under production's strict rule (Q37) three legs again: the 18 intent programs, the swaps, the capture rows | `pysrc.md` request-anchoring bullets: substitution 0 false refusals per language + the catch rates; strict false refusals EN 5/18 · JA 0/18 · JA-mixed 1/18 + its catch rates |
 | A2 | label consistency (G10, Q16), per form (EN, JA over a translated header, JA naming the English header): refusals of the 18 labelled intent programs needing no per-city series, x-label plants naming another column, summary-word plants naming another reduction; the `m10-design` capture rows whose verdict G10 changes | `pysrc.md` G10 bullet: 0 false refusals per form, the catch rates |
 | A3 | Japanese short-word naming (Q41, strict alone): every name the short-word tier adds over the clinical leg, the A1 `ja` renderings on their own header, and 88 noise pairs (each request over an unrelated dataset's header), each name outside the request's own chart marked FALSE; the clinical requests' charts verified under both rules | `pysrc.md` Q41 bullet: 0 false names (clinical adds 2, own 4, noise 5); clinical false refusals strict 1/20 (`月別`, no short word), substitution 0/20 |
+| H1 | the held-out capture (`m10-heldout`, no new capture) re-graded with each manifest prompt as the request, under the demo's `substitution` and production's `strict` anchoring, with `score.py`'s denominators + outcome rules (transport ≠ refusal, sentinels apart); every row whose outcome differs from `score.json` | Q39 + `pysrc.md` request-anchoring bullets: substitution simple 13/20 VERIFIED (below `Intent`'s 70% bar; `heldout-simple-13` refuses `column_not_requested`), strict 7/20, complicated 20/20 BLOCKED + both sentinels under each rule; the committed score stays 14/20 |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 62 fixture observations + PNGs (M10.10 added 6 accessor lines, Q18 the 4 nested-libm formulas), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 | M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/138 texts clamped |

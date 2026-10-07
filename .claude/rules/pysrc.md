@@ -161,7 +161,9 @@ projection + exact recomputation and observation is additive.
   in the `binding` check, ahead of recompute: `DatasetTarget.request` (the user's message, threaded
   by `selection.py`) vs the program's x/y; refuse `column_not_requested` only on a SUBSTITUTION = a
   named column undrawn AND a drawn column unnamed. Either half alone passes: `chart revenue` leaves x
-  to the program; three named columns let a two-column chart pick two. A tie refuses too.
+  to the program; three named columns let a two-column chart pick two. A tie refuses too. H1
+  (Q39) re-grades the held-out capture with each prompt as the request: simple VERIFIED 14 → 13/20
+  (`heldout-simple-13`, `monthly order totals` drawn as revenue, caught), complicated 20/20.
 - **Strict anchoring = production's rule (Q37, user: strict for production, the demo functional;
   `.agent/archive/contracts/q37.md`).** `DatasetTarget.anchoring` = `strict` (default) |
   `substitution` (the demo's Q8 rule). Strict = the substitution check, then: a request that names
@@ -172,7 +174,9 @@ projection + exact recomputation and observation is additive.
   strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 0/18 (4/18 before Q41)
   · JA-mixed 1/18 (one-name requests: `average temperature for each city` never names `temp_c`),
   swaps caught 47 · 57 · 57
-  of 57; `m10-design` captures VERIFIED 18 → 10, FAITHFUL 10 → 6. Mode lives in the generated
+  of 57; `m10-design` captures VERIFIED 18 → 10, FAITHFUL 10 → 6; H1 held-out simple 14 → 7/20
+  (MAIN's reading: `heldout-simple-02` + `-12` faithful refused, `-08` `-16` `-18` `-20` unfaithful
+  caught). Mode lives in the generated
   artifact, never in the model's reach: `webui/paste_in/tool.py::Tools._ANCHORING` +
   `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`, the demo subclasses
   (`webui/paste_in/demo_tool.py`, `webui/paste_in/demo_filter.py`) = `substitution`.
