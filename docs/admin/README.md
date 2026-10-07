@@ -66,6 +66,10 @@ did not measure the per-model option.
 
 Use `system_prompt.ja.txt` when the users write in Japanese.
 
+When the user attaches a CSV file, the filter adds text to the last user message. The text gives
+the file path, the column names and a grouping instruction. The model reads this text. The verifier
+reads the user's own words.
+
 ## Step 4: Check the instance settings
 
 Set these Open WebUI settings. You can set each one as an environment variable.

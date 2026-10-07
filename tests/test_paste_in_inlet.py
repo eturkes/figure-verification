@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import csv
+import importlib
 import inspect
 import io
 from collections.abc import Coroutine
@@ -18,7 +19,7 @@ import pytest
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from capture.corpus import CORPUS_ROOT, DATA_ROOT, PromptSet, render_capture_prompt
+from capture.corpus import CORPUS_ROOT, DATA_ROOT, PromptSet, banned_terms, render_capture_prompt
 from paste_in_support import (
     REPO_ROOT,
     StoredFile,
@@ -31,6 +32,11 @@ from paste_in_support import (
 
 _OWNER = "owner-1"
 _TEMPLATE = CORPUS_ROOT / "capture_prompt_v1.txt"
+_DEMO = "webui.paste_in.demo_filter"
+# Q40, hand-stated: the paragraph production's inlet drops (Kimi calls `draw_figure` itself).
+_FORMAT_PARAGRAPH = (
+    "\n\nReturn one complete Python program as bare source text, no Markdown fences.\n"
+)
 _CHARS = st.characters(codec="utf-8", blacklist_characters="\x00\r\n\ufeff")
 _HEADER = st.lists(
     st.text(alphabet=_CHARS, min_size=1, max_size=8), min_size=1, max_size=5, unique=True
@@ -66,10 +72,12 @@ def _metadata(last: dict[str, object], *file_ids: str) -> dict[str, object]:
     }
 
 
-def _inlet(body: dict[str, object], metadata: dict[str, object]) -> dict[str, object]:
-    operation = (
-        load_filter_module().Filter().inlet(body, __user__={"id": _OWNER}, __metadata__=metadata)
-    )
+def _inlet(
+    body: dict[str, object], metadata: dict[str, object], *, production: bool = False
+) -> dict[str, object]:
+    """The demo's filter by default: its inlet renders the capture template verbatim (L1)."""
+    module = load_filter_module() if production else importlib.import_module(_DEMO)
+    operation = module.Filter().inlet(body, __user__={"id": _OWNER}, __metadata__=metadata)
     assert inspect.isawaitable(operation)
     result = asyncio.run(cast(Coroutine[Any, Any, object], operation))
     assert isinstance(result, dict)
@@ -225,3 +233,50 @@ def test_x3_generator_detects_a_template_byte_change(tmp_path: Path) -> None:
     drifted = run_generator(clone, "--check")
     assert drifted.returncode == 1, drifted.stdout + drifted.stderr
     assert "paste-in/figure_verification_filter.py" in drifted.stdout + drifted.stderr
+
+
+def test_q40_production_inlet_drops_the_bare_source_paragraph_alone(tmp_path: Path) -> None:
+    """Q40: production renders the capture template minus its format paragraph, nothing else."""
+    stored = StoredFile("sales", _OWNER, "sales.csv", (DATA_ROOT / "sales.csv").read_bytes())
+    body, last = _messages("Plot total revenue by region.")
+    metadata = _metadata(last, "sales")
+    template = _TEMPLATE.read_text(encoding="utf-8")
+    assert template.endswith(_FORMAT_PARAGRAPH)
+    expected = (template.removesuffix(_FORMAT_PARAGRAPH) + "\n").format(
+        task="Plot total revenue by region.",
+        dataset="sales.csv",
+        columns="month, region, revenue, orders",
+    )
+    with fake_open_webui((stored,), tmp_path):
+        production = _last(_inlet(copy.deepcopy(body), metadata, production=True))["content"]
+        demo = _last(_inlet(body, metadata))["content"]
+    assert production == expected
+    assert isinstance(production, str)
+    assert "bare source" not in production
+    assert "Markdown" not in production
+    for kept in ("Plot total revenue by region.", "/mnt/uploads/sales.csv", "group by"):
+        assert kept in production
+    assert demo == expected.removesuffix("\n") + _FORMAT_PARAGRAPH
+
+
+def test_q40_production_template_names_no_admission_vocabulary() -> None:
+    """Ruling 6 binds the production template as it binds the capture template (C6)."""
+    template = importlib.import_module("webui.paste_in.capture_template").PRODUCTION_TEMPLATE
+    assert banned_terms(template) == []
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "no paragraph\n",
+        "x" + _FORMAT_PARAGRAPH + "y" + _FORMAT_PARAGRAPH,
+        _FORMAT_PARAGRAPH + "x\n",
+    ],
+    ids=["absent", "twice", "not-last"],
+)
+def test_q40_generation_refuses_a_template_without_its_one_final_format_paragraph(
+    template: str,
+) -> None:
+    bundle = importlib.import_module("webui.paste_in.bundle")
+    with pytest.raises(bundle.BundleError):
+        bundle.production_template(template)

@@ -493,6 +493,7 @@ _SOURCES["webui.paste_in.capture_template"] = r'''
 
 from typing import Final
 
+# The demo's inlet template: the capture template verbatim.
 CAPTURE_TEMPLATE: Final = (
     "{task}\n\nUse the CSV file at /mnt/uploads/{dataset}. Its columns are {columns}.\nRead"
     " the CSV file with pandas. Draw the figure with matplotlib.\n\nWhen the task asks for "
@@ -501,6 +502,15 @@ CAPTURE_TEMPLATE: Final = (
     "st or lowest values, a maximum or minimum. Draw the grouped values rather than the ori"
     "ginal rows.\n\nReturn one complete Python program as bare source text, no Markdown fen"
     "ces.\n"
+)
+# Production's inlet template: the capture template without its bare-source paragraph.
+PRODUCTION_TEMPLATE: Final = (
+    "{task}\n\nUse the CSV file at /mnt/uploads/{dataset}. Its columns are {columns}.\nRead"
+    " the CSV file with pandas. Draw the figure with matplotlib.\n\nWhen the task asks for "
+    "one value per time or category, group by its named field with pandas and calculate one"
+    " plotted value per group. For totals, calculate a sum; for averages, a mean; for highe"
+    "st or lowest values, a maximum or minimum. Draw the grouped values rather than the ori"
+    "ginal rows.\n"
 )
 '''
 
@@ -5935,7 +5945,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Refused, Verified
-from webui.paste_in.capture_template import CAPTURE_TEMPLATE
+from webui.paste_in.capture_template import PRODUCTION_TEMPLATE
 from webui.paste_in.checks import breakdown_html
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
@@ -6182,6 +6192,8 @@ class Filter:
 
     # Production = strict request anchoring; the demo's generated filter overrides it (Q37).
     _ANCHORING: Anchoring = "strict"
+    # Production's inlet template carries no format sentence: Kimi calls `draw_figure` (Q40).
+    _TEMPLATE: str = PRODUCTION_TEMPLATE
 
     async def inlet(
         self,
@@ -6212,7 +6224,7 @@ class Filter:
                 )
             except (PysrcRefusalError, WorkBudgetExceededError):
                 return body
-            rendered = CAPTURE_TEMPLATE.format(
+            rendered = self._TEMPLATE.format(
                 task=task,
                 dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
                 columns=", ".join(header),
@@ -6306,13 +6318,14 @@ class Filter:
 
 _SOURCES["webui.paste_in.demo_filter"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The demo's filter: the production filter under the demo's substitution anchoring (Q37).
+"""The demo's filter: the production filter under the demo's anchoring + inlet template.
 
 The demo keeps Q8's substitution rule, the rule its OWUI ran before Q37, while production
 (`paste-in/`) runs strict anchoring. Everything else is the production filter, inherited.
 """
 
 from verifier.pysrc.spec import Anchoring
+from webui.paste_in.capture_template import CAPTURE_TEMPLATE
 from webui.paste_in.filter import Filter as ProductionFilter
 
 
@@ -6320,6 +6333,8 @@ class Filter(ProductionFilter):
     """The demo's global filter; the inlet and outlet are inherited unchanged."""
 
     _ANCHORING: Anchoring = "substitution"
+    # The demo adapter wraps a bare-source reply as the tool call, so its template asks for one.
+    _TEMPLATE: str = CAPTURE_TEMPLATE
 '''
 
 _ROOT = "webui.paste_in.demo_filter"

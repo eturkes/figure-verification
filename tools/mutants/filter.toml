@@ -525,3 +525,17 @@ predicate = "the production filter anchors strictly"
 kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[prod]"
 anchor = '''    _ANCHORING: Anchoring = "strict"'''
 mutant = '''    _ANCHORING: Anchoring = "substitution"'''
+
+[[mutant]]
+id = "q40-production-renders-the-demo-template"
+predicate = "Q40: production's inlet renders the capture template without its bare-source paragraph"
+kills = "tests/test_paste_in_inlet.py::test_q40_production_inlet_drops_the_bare_source_paragraph_alone"
+anchor = '''    _TEMPLATE: str = PRODUCTION_TEMPLATE'''
+mutant = '''    _TEMPLATE: str = PRODUCTION_TEMPLATE.removesuffix("\n") + "\n\nReturn one complete Python program as bare source text, no Markdown fences.\n"'''
+
+[[mutant]]
+id = "q40-inlet-ignores-the-class-template"
+predicate = "Q40: the inlet renders its class's template, so the demo keeps the verbatim capture template"
+kills = "tests/test_paste_in_inlet.py::test_q40_production_inlet_drops_the_bare_source_paragraph_alone"
+anchor = '''            rendered = self._TEMPLATE.format('''
+mutant = '''            rendered = PRODUCTION_TEMPLATE.format('''

@@ -23,7 +23,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Refused, Verified
-from webui.paste_in.capture_template import CAPTURE_TEMPLATE
+from webui.paste_in.capture_template import PRODUCTION_TEMPLATE
 from webui.paste_in.checks import breakdown_html
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
@@ -270,6 +270,8 @@ class Filter:
 
     # Production = strict request anchoring; the demo's generated filter overrides it (Q37).
     _ANCHORING: Anchoring = "strict"
+    # Production's inlet template carries no format sentence: Kimi calls `draw_figure` (Q40).
+    _TEMPLATE: str = PRODUCTION_TEMPLATE
 
     async def inlet(
         self,
@@ -300,7 +302,7 @@ class Filter:
                 )
             except (PysrcRefusalError, WorkBudgetExceededError):
                 return body
-            rendered = CAPTURE_TEMPLATE.format(
+            rendered = self._TEMPLATE.format(
                 task=task,
                 dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
                 columns=", ".join(header),

@@ -54,6 +54,10 @@ _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
 # so a source line that would overflow here must abort generation rather than fail the gate.
 _LINE_LIMIT = 100
 _MAX_TEMPLATE_LITERAL = 88  # indented JSON literals must fit the embedding line cap
+# The capture template's last paragraph: the demo adapter's format, never production's (Q40).
+_FORMAT_PARAGRAPH = (
+    "\n\nReturn one complete Python program as bare source text, no Markdown fences.\n"
+)
 
 # The one third-party import the artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition.
@@ -71,12 +75,11 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def generated_template_source() -> str:
-    """Encode the authored prompt once for both the dev inlet and embedded filter."""
-    template = (repo_root() / "corpus/python/capture_prompt_v1.txt").read_text(encoding="utf-8")
+def _literal_lines(text: str) -> list[str]:
+    """`text` as indented JSON string literals, each within the embedding line cap."""
     chunks: list[str] = []
     current = ""
-    for character in template:
+    for character in text:
         candidate = current + character
         if current and len(json.dumps(candidate, ensure_ascii=False)) > _MAX_TEMPLATE_LITERAL:
             chunks.append(current)
@@ -85,14 +88,37 @@ def generated_template_source() -> str:
             current = candidate
     if current or not chunks:
         chunks.append(current)
+    return [f"    {json.dumps(chunk, ensure_ascii=False)}" for chunk in chunks]
+
+
+def production_template(template: str) -> str:
+    """The capture template minus its bare-source format paragraph (Q40).
+
+    The demo adapter turns a bare-source reply into a `draw_figure` call; the production proposer
+    makes that call itself (admin system prompt), so the sentence would contradict its prompt.
+    """
+    if template.count(_FORMAT_PARAGRAPH) != 1 or not template.endswith(_FORMAT_PARAGRAPH):
+        msg = "the capture template no longer ends in its one bare-source format paragraph"
+        raise BundleError(msg)
+    return template.removesuffix(_FORMAT_PARAGRAPH) + "\n"
+
+
+def generated_template_source() -> str:
+    """Encode the authored prompt once for both the dev inlet and embedded filter."""
+    template = (repo_root() / "corpus/python/capture_prompt_v1.txt").read_text(encoding="utf-8")
     lines = [
         "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
         '"""Generated from corpus/python/capture_prompt_v1.txt; edit that file instead."""',
         "",
         "from typing import Final",
         "",
+        "# The demo's inlet template: the capture template verbatim.",
         "CAPTURE_TEMPLATE: Final = (",
-        *(f"    {json.dumps(chunk, ensure_ascii=False)}" for chunk in chunks),
+        *_literal_lines(template),
+        ")",
+        "# Production's inlet template: the capture template without its bare-source paragraph.",
+        "PRODUCTION_TEMPLATE: Final = (",
+        *_literal_lines(production_template(template)),
         ")",
         "",
     ]
