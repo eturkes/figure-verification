@@ -43,18 +43,19 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-**Resume note** — MAINTAIN queue request, paused after session 4 (session 5 resumes); the request's closing commit deletes this block.
-  - Finish line = the request's `Met when` (verbatim + every user ruling + chain mechanics = `.scratch/q/RESUME.md`): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA) + one AskUserQuestion.
-  - State at pause: all work committed, working tree clean, no uncommitted work ⇒ no `wip/*` snapshot. Last work commit `b4d97e2` = gated green on a clean tree (8 stages, skipped none, 6223 passed; `.scratch/q/gates3/c3close.log`). Teammates: none running, no worktrees, no teammate branches; leftover branches `rev/q4` `rev/q5` (Q4/Q5 review snapshots, outside Q25's row, not on `main`). Ports 8000/8001/8080 free; the MX150 is idle — the user relaunches the demo.
-  - Landed in session 4: second closing review fixes `021d1a3` `9b22c20` `8379f0c` `9f0585b` `5a97b5d` (re-review reviewer-fix-3/-4 9/9 pass) · Q1 `395e925` · p16 `fc7e650` · p32 `4a52176` + `c98ce81` · p34 priced + restored `43cc447` `caed70d` `42ac1db` + control `94ec39a` → owed · Q19 recorded owed `23b49b5` · Q25 `5ac1fba` · Q36 `c48b0e0` + `097a0b1` · closing review reviewer-c3-1/-2 → fixes R118-R125 `3674ac5` → re-review reviewer-fix-5 8/8 + reviewer-fix-6 7/8 → residual fixes `b4d97e2` (R122 = register row).
-  - Next action: one AskUserQuestion chain = (1) p34: retire the row, or a phrasing to price; (2) Q19: a wider search, another lever, or retire; (3) a held-out re-grade under anchoring + G10 as a separately named artifact (`score.py` grades held-out without the request ⇒ T4 stays green; the product's held-out rate under Q8/Q16 is unmeasured); (4) confirm the Q8 reading change (refuse iff a named column is undrawn AND a drawn column is unnamed, or a tie); (5) Q3 D4: the VCert discloses raw `expr`, not canonical text; (6) lexical false refusals (`chronological order` names `orders`; negation unread) → accept or a new row. Detail = `.scratch/q/RESUME.md` § Session 3 PAUSE. Then fund each answer as its own unit + commit + gate → closing commit (deletes this block) gated green on a clean tree → final message.
-  - Per-commit gate: `bash tools/gate.sh` in the primary tree on a clean tree, logs `.scratch/q/gates3/<unit>.log`.
+**Resume note** — MAINTAIN queue request, session 6; the request's closing commit deletes this block.
+  - Finish line = the request's `Met when` (verbatim + every user ruling + chain mechanics = `.scratch/q/RESUME.md`): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA).
+  - Session-6 user rulings: p34 RETIRE · Q19 RETIRE · Q3 D4 raw `expr` CONFIRMED · held-out re-grade = new row Q39 (contract approved) · lexical false refusals = new row Q38, fund now (contract approved; consider whether refusing a drawn negated column matters for production) · Q8: "Strict rules in general are preferred for production. Make sure to separate what you need to do for a functional demo vs. the best production version targeting Kimi K2.6." = new row Q37 (contract owed to the user before production edits).
+  - Order: p34 → Q19 → Q38 → Q37 → Q39 (Q37's strict precondition reads Q38's negation; Q39 measures the final verifier) → closing review → closing commit.
+  - Per-commit gate: `bash tools/gate.sh` on a clean tree (primary, or the isolated worktree `.scratch/worktrees/gate-s6` with its own `.venv`), logs `.scratch/q/gates3/<unit>.log`.
 
-MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption; `Q7` sub-rows = `p<n>`, `.agent/archive/polish.md` order). One unit + one commit per row, subject `<scope> (Q<n>|p<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (MX150 time while the user's demo stack holds it, a ruling, an approval).
-- [ ] Q7 polish p34 — owed (user ruling): two positive restatements priced 2 + 3 of 100 verified against the original rule's 26 (byte-identical control at `42ac1db`), original rule restored; retire the row or name a phrasing to price
-- [ ] Q19 structural FAIL-arm variant — owed (user ruling): 5 greedy ruling-6 variants screened on the 6 keyword-refused complicated rows, none passes (record in the queue row); a wider search, another lever, or retire
+MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption). One unit + one commit per row, subject `<scope> (Q<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (a ruling, an approval, MX150 time).
+- [ ] Q19 structural FAIL-arm variant — retire (user ruling)
+- [ ] Q37 strict request anchoring for production — contract owed to the user
+- [ ] Q38 negation + stop phrases in request matching (kernel)
+- [ ] Q39 held-out re-grade under request anchoring (data)
 
-Queue = `.agent/deferred.md`, 2 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 4 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
