@@ -17,6 +17,8 @@ Legs, each verified with `request=None` (baseline) and with the prompt as the re
   `chronological order` (one edit from `orders`), `negation` excludes the first undrawn header
   column (`, not <column>`; Japanese `<column>ではなく、` before the request). Every refusal of a
   plant is FALSE: the plant asks for no other column.
+- strict (Q37, production's rule): every leg above runs under the demo's substitution rule; the
+  strict leg re-runs the intent programs, swaps and captures under strict anchoring.
 
     uv run --locked python .agent/measurements/a1_anchor.py   # writes a1-result.json
 """
@@ -67,10 +69,9 @@ def program(path, mark, x, y, reduction):
     return "\n".join([*lines, "plt.show()", ""])
 
 
-def outcome(source, path, content, request):
-    verdict = verify_python_source(
-        source, declared_target=DatasetTarget(path=path, content=content, request=request)
-    )
+def outcome(source, path, content, request, anchoring="substitution"):
+    target = DatasetTarget(path=path, content=content, request=request, anchoring=anchoring)
+    verdict = verify_python_source(source, declared_target=target)
     return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
 
 
@@ -100,6 +101,8 @@ for language in LANGUAGES:
         "swaps_missed": [],
         "stop_false_refusals": [],
         "negation_false_refusals": [],
+        "strict_false_refusals": [],
+        "strict_swaps_caught": 0,
     }
     for prompt_id, task in sorted(intent.items()):
         request, path, content, columns = case(language, prompt_id)
@@ -118,6 +121,9 @@ for language in LANGUAGES:
         leg["faithful"] += 1
         if anchored != "VERIFIED":
             leg["false_refusals"].append(f"{prompt_id}:{anchored}")
+        strict = outcome(source, path, content, request, "strict")
+        if strict != "VERIFIED":
+            leg["strict_false_refusals"].append(f"{prompt_id}:{strict}")
         other = next(column for column in columns.values() if column not in (x, y))
         plants = {
             "stop": f"{request.rstrip('.')} in chronological order."
@@ -144,6 +150,8 @@ for language in LANGUAGES:
                     leg["swaps_caught"] += 1
                 else:
                     leg["swaps_missed"].append(f"{prompt_id}:{slot}={other}")
+                if outcome(swap, path, content, request, "strict") != "VERIFIED":
+                    leg["strict_swaps_caught"] += 1
     result[language] = leg
 
 records = [
@@ -156,6 +164,8 @@ records = [
 prompts = {row["id"]: row["prompt"] for row in design["prompts"]}
 changed = []
 faithful_refused = []
+strict_changed = []
+strict_faithful_refused = []
 verified = 0
 for record in records:
     if record["kind"] != "design":
@@ -168,24 +178,32 @@ for record in records:
     base = "VERIFIED" if isinstance(verdict, Verified) else verdict.code
     verified += base == "VERIFIED"
     anchored = outcome(source, path, data[name], prompts[prompt_id])
-    if anchored == base:
-        continue
-    changed.append(f"{prompt_id}:{base}->{anchored}")
+    strict = outcome(source, path, data[name], prompts[prompt_id], "strict")
     # W1's FAITHFUL reading: the verified spec equals the task intent, which needs no series.
     task = intent.get(prompt_id)
-    if (
+    faithful = (
         isinstance(verdict, Verified)
         and task is not None
         and "series_by" not in task
         and (verdict.spec.mark, verdict.spec.x.name, verdict.spec.y.name, verdict.spec.group)
         == (task["mark"], task["x"], task["y"], task["reduction"])
-    ):
+    )
+    if strict != base:
+        strict_changed.append(f"{prompt_id}:{base}->{strict}")
+        if faithful:
+            strict_faithful_refused.append(prompt_id)
+    if anchored == base:
+        continue
+    changed.append(f"{prompt_id}:{base}->{anchored}")
+    if faithful:
         faithful_refused.append(prompt_id)
 result["capture"] = {
     "design_rows": len([r for r in records if r["kind"] == "design"]),
     "baseline_verified": verified,
     "changed": changed,
     "faithful_refused": faithful_refused,
+    "strict_changed": strict_changed,
+    "strict_faithful_refused": strict_faithful_refused,
 }
 
 for language in LANGUAGES:
@@ -203,8 +221,14 @@ for language in LANGUAGES:
         f" {leg['stop_false_refusals']}; negation {len(leg['negation_false_refusals'])}"
         f"/{leg['faithful']} false {leg['negation_false_refusals']}"
     )
+    print(
+        f"  strict: false refusals {len(leg['strict_false_refusals'])}/{leg['faithful']}"
+        f" {leg['strict_false_refusals']}; swaps caught {leg['strict_swaps_caught']}"
+        f"/{leg['swaps_verified']}"
+    )
 print(
     f"capture: {verified}/{result['capture']['design_rows']} design rows VERIFIED;"
     f" FAITHFUL refused {faithful_refused}; changed by anchoring: {changed}"
 )
+print(f"capture strict: FAITHFUL refused {strict_faithful_refused}; changed: {strict_changed}")
 (HERE / "a1-result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")

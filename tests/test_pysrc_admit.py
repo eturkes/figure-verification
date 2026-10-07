@@ -539,6 +539,8 @@ def test_a11_the_refusal_vocabulary_is_exactly_its_stages() -> None:
         "target_mismatch",
         # Q8: the request names a column the program swapped for one it never names.
         "column_not_requested",
+        # Q37 (production, strict): the request names columns; the program draws an unnamed one.
+        "column_not_named",
     }
     recompute_codes = {
         "csv_too_large",

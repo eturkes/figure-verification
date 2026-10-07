@@ -21,6 +21,7 @@ Publication is the outlet filter's, not this return value: only a backend-record
 publish a figure (transport ruling), and the filter re-derives the verdict from that record.
 """
 
+from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Verified
 from webui.paste_in.owui_files import uploaded_files
 from webui.paste_in.receipt import Receipt, write_receipt
@@ -38,6 +39,9 @@ def _request_text(metadata: dict[str, object] | None) -> str | None:
 
 class Tools:
     """The pasted tool. One public method, so the model sees one operation."""
+
+    # Production = strict request anchoring; the demo's generated tool overrides it (Q37).
+    _ANCHORING: Anchoring = "strict"
 
     async def draw_figure(
         self,
@@ -66,5 +70,5 @@ class Tools:
             )
         if not isinstance(user_id, str):
             return CHART_NOT_PRODUCED
-        verdict, _consumed = first_verdict(program, attachments, request_text)
+        verdict, _consumed = first_verdict(program, attachments, request_text, self._ANCHORING)
         return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED

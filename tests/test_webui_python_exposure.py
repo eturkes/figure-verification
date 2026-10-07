@@ -26,7 +26,7 @@ from paste_in_support import (
 )
 from webui.bootstrap import SmokeResult, smoke
 from webui.client import FunctionReadback, WebUIClient
-from webui.paste_in.bundle import FILTER_ARTIFACT, artifact_text
+from webui.paste_in.bundle import DEMO_FILTER_ARTIFACT, artifact_text
 from webui.paste_in.filter import FILTER_ID
 from webui.settings import Settings
 
@@ -97,7 +97,7 @@ class _SmokeClient:
                 type="filter",
                 is_active=True,
                 is_global=True,
-                content=artifact_text(FILTER_ARTIFACT),
+                content=artifact_text(DEMO_FILTER_ARTIFACT),
             ),
         )
 

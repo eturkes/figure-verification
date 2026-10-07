@@ -34,6 +34,9 @@ type DatasetMark = Literal["line", "scatter", "bar", "barh"]
 # delta degrees of freedom) would need that parameter projected and is therefore not a member.
 type Reduction = Literal["sum", "mean", "min", "max"]
 
+# Request anchoring (Q37): `strict` = production, `substitution` = the demo's shipped Q8 rule.
+type Anchoring = Literal["strict", "substitution"]
+
 
 @dataclass(frozen=True, slots=True)
 class Num:
@@ -222,6 +225,9 @@ class DatasetTarget:
     # The user's request text, when the caller has it: lexical anchoring (Q8) checks the program's
     # columns against the header names it states. `None` anchors nothing.
     request: str | None = None
+    # The anchoring rule (Q37). Production = strict: a request naming or negating a column must
+    # name every drawn column it can name. The demo keeps Q8's substitution rule.
+    anchoring: Anchoring = "strict"
 
 
 @dataclass(frozen=True, slots=True)

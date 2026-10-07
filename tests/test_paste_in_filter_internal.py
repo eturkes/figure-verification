@@ -60,7 +60,7 @@ def test_state_carrier_is_builtin_and_replaces_prior_call(tmp_path: Path) -> Non
     stored = [StoredFile("owned", "caller", "sales.csv", _CSV)]
     metadata: dict[str, object] = {
         "files": [{"id": "foreign"}, {"id": "owned"}],
-        "user_message": {"content": "chart revenue"},
+        "user_message": {"content": "chart revenue by region"},
     }
     with fake_open_webui(stored, tmp_path) as lookups:
         first = asyncio.run(
@@ -85,9 +85,9 @@ def test_state_carrier_is_builtin_and_replaces_prior_call(tmp_path: Path) -> Non
         RECEIPT_TAG,
         "import os\n",
         ("owned",),
-        "chart revenue",
+        "chart revenue by region",
     )
-    assert read_receipt(request) == Receipt("import os\n", ("owned",), "chart revenue")
+    assert read_receipt(request) == Receipt("import os\n", ("owned",), "chart revenue by region")
 
 
 @pytest.mark.parametrize(

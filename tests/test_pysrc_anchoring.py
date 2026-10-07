@@ -11,7 +11,7 @@ from typing import SupportsIndex
 import pytest
 
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
-from verifier.pysrc.spec import DatasetTarget
+from verifier.pysrc.spec import Anchoring, DatasetTarget
 from verifier.pysrc.verify import Verified, _unnamed_places, verify_python_source
 from webui.paste_in import selection
 from webui.paste_in.owui_files import UploadedFile
@@ -35,10 +35,11 @@ def _verdict(
     request: str | None,
     content: bytes = _SALES,
     limits: PysrcLimits = DEFAULT_LIMITS,
+    anchoring: Anchoring = "substitution",
 ) -> str:
     verdict = verify_python_source(
         program,
-        declared_target=DatasetTarget("data.csv", content, request),
+        declared_target=DatasetTarget("data.csv", content, request, anchoring),
         limits=limits,
     )
     return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
@@ -256,11 +257,11 @@ def test_q8_binding_precedes_recompute() -> None:
 def test_q8_selection_threads_the_request_into_every_dataset_target() -> None:
     upload = UploadedFile("file", "/mnt/uploads/sales.csv", _SALES)
     program = _bar("month", path="/mnt/uploads/sales.csv")
-    refused, consumed = selection.first_verdict(program, (upload,), _BY_REGION)
+    refused, consumed = selection.first_verdict(program, (upload,), _BY_REGION, "substitution")
     assert consumed is upload
     assert not isinstance(refused, Verified) and refused is not None
     assert refused.code == "column_not_requested"
-    verified, _ = selection.first_verdict(program, (upload,), None)
+    verified, _ = selection.first_verdict(program, (upload,), None, "substitution")
     assert isinstance(verified, Verified)
 
 
@@ -404,7 +405,7 @@ def test_q38_k8_a_cue_scan_copies_text_linear_in_the_request() -> None:
     def copied(count: int) -> int:
         Counted.copied = 0
         text = Counted(" " + "not only " * count)
-        assert _unnamed_places(text, ["month", "revenue", "orders"]) == text
+        assert _unnamed_places(text, ["month", "revenue", "orders"]) == (text, False)
         return Counted.copied
 
     small, large = copied(128), copied(256)

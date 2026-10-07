@@ -123,16 +123,23 @@ The verifier accepts one chart per reply:
 The verifier refuses everything else. For example, it refuses several charts in one figure, a
 second axis, a changed axis scale and hand-typed data values.
 
-If the request names columns of the CSV file, the chart cannot put a different column in place of a
-named column. For example, if the request says `revenue by region`, a chart of revenue by month
-fails with the code `column_not_requested`. A request word that fits two column names fails with the
-same code. The verifier compares the words of the request with the column names only, so this check
-covers only the column names that the verifier recognizes. It does not recognize synonyms or
-translations. It also does not recognize a short column name. A short name has one or two ASCII
-characters, such as `id`, or one character of another script. If the request names no recognized
-column, the chart passes this check. A column that the request excludes does not count as named,
-such as `orders` in `revenue, not orders`. An order phrase such as `in chronological order` names
-no column.
+If the request names columns of the CSV file, the request must name each column that the chart
+draws. Write each column name as the file spells it. A one-word name of five or more characters can
+contain one typing error. A name such as `unit_price` has two words, so the request must spell both
+words exactly. For example, a request says `chart revenue` and the chart draws revenue by month.
+The chart fails with the code `column_not_named`, because the request does not name `month`. If the
+request says
+`revenue by region`, a chart of revenue by month fails with the code `column_not_requested`: it puts
+`month` in place of `region`. A request word that fits two column names fails with the code
+`column_not_requested`. A request that excludes a column, such as `revenue, not orders`, also names
+columns. The excluded column does not count as named. An order phrase such as
+`in chronological order` names no column. The verifier compares the words of the request with the
+column names only, so this check covers only the column names that the verifier recognizes. It does
+not recognize synonyms or translations. It also does not recognize a short column name. A short name
+has one or two ASCII characters, such as `id`, or one character of another script. A chart can draw
+a short column that the request does not name. If the request names no recognized column, the chart
+passes this check. For example, a Japanese request about English column names passes, unless it
+writes those English names.
 
 The labels of a chart over a CSV file obey a similar rule. A title, axis label or legend label
 cannot name a recognized CSV column that the chart does not show. The verifier does not check a

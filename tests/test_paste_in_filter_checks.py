@@ -289,7 +289,8 @@ def test_c8_renderer_exception_keeps_status_files_log_and_verdict(
     module = load_filter_module()
     calls: list[tuple[object, bool]] = []
 
-    def broken(reason: object, *, japanese: bool) -> str:
+    def broken(reason: object, *, japanese: bool, anchoring: str) -> str:
+        assert anchoring == "strict"
         calls.append((reason, japanese))
         failure = "RENDERER_EXCEPTION_SENTINEL"
         raise LookupError(failure)

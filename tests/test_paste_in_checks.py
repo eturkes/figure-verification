@@ -7,6 +7,7 @@ Contract: `.agent/archive/contracts/m16u1.md`. The renderer implementation stays
 from __future__ import annotations
 
 import ast
+import html as _html
 import re
 import unicodedata
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from verifier.pysrc.errors import RefusalCode
+from verifier.pysrc.spec import Anchoring
 from webui.paste_in import reasons
 from webui.paste_in.reasons import OutletCause, Reason
 
@@ -85,6 +87,7 @@ _REASON_CHECK: dict[Reason, str] = {
     "source_not_supplied": "binding",
     "target_mismatch": "binding",
     "column_not_requested": "binding",
+    "column_not_named": "binding",
     "csv_too_large": "recompute",
     "csv_not_parsable": "recompute",
     "column_not_present": "recompute",
@@ -170,6 +173,20 @@ _ANCHORS: dict[str, _TextPair] = {
         ),
     ),
 }
+# Q37: production's binding row under strict anchoring; the demo's rule keeps `_ANCHORS["binding"]`.
+_STRICT_BINDING: _TextPair = (
+    (
+        "Program matches your file or formula",
+        "it reads your attached file, your request names each drawn column the verifier "
+        "recognizes if it names any column, or it plots your requested formula",
+    ),
+    (
+        "プログラムが添付ファイルまたは依頼の数式と一致",
+        "添付ファイルを読み込み、依頼が列名を含む場合は、描く列のうち検証器が認識できる列が"
+        "すべて依頼にあること、または依頼した数式を描くこと",
+    ),
+)
+_ANCHORINGS: tuple[Anchoring, ...] = ("strict", "substitution")
 _ALL_REASONS: tuple[Reason | None, ...] = (*_REASON_CHECK, None)
 _ROOT = Path(__file__).resolve().parents[1]
 
@@ -182,8 +199,11 @@ class _Checks(Protocol):
     HIDE: tuple[str, str]
     UNRUN: tuple[str, str]
     MARKS: dict[_State, tuple[str, tuple[str, str]]]
+    STRICT_BINDING: _TextPair
 
-    def breakdown_html(self, reason: Reason | None, *, japanese: bool) -> str: ...
+    def breakdown_html(
+        self, reason: Reason | None, *, japanese: bool, anchoring: Anchoring
+    ) -> str: ...
 
 
 def _checks() -> _Checks:
@@ -284,7 +304,9 @@ def _assert_disclosure_style(document: _Node) -> None:
     assert closed_hide_hidden, "closed details must hide .hide"
 
 
-def _assert_rows(document: _Node, reason: Reason | None, *, japanese: bool) -> None:
+def _assert_rows(
+    document: _Node, reason: Reason | None, *, japanese: bool, anchoring: Anchoring
+) -> None:
     module = _checks()
     language = int(japanese)
     html = _one(document.nodes(tag="html"))
@@ -328,7 +350,8 @@ def _assert_rows(document: _Node, reason: Reason | None, *, japanese: bool) -> N
         assert mark.attrs.get("aria-label") == labels[language]
         assert mark.text() == glyph
         title = _one(row.nodes(cls="title"))
-        expected_title, expected_covers = module.TEXTS[check][language]
+        texts = _STRICT_BINDING if check == "binding" and anchoring == "strict" else None
+        expected_title, expected_covers = (texts or module.TEXTS[check])[language]
         assert title.text(excluding="unrun").strip() == expected_title
         assert _one(row.nodes(cls="covers")).text() == expected_covers
         unrun = row.nodes(cls="unrun")
@@ -406,7 +429,7 @@ def test_c1_check_order_and_reason_map_are_the_hand_stated_tables() -> None:
     module = _checks()
     refusal_codes = set(get_args(RefusalCode))
     outlet_codes = set(get_args(OutletCause))
-    assert len(refusal_codes) == 54
+    assert len(refusal_codes) == 55
     assert len(outlet_codes) == 14
     assert refusal_codes.isdisjoint(outlet_codes)
     assert module.CHECKS == _ORDER
@@ -472,6 +495,10 @@ def test_c3_every_text_obeys_the_text_law_and_anchors_are_byte_exact() -> None:
             _assert_text(covers, japanese=bool(language), word_limit=25)
         if check in _ANCHORS:
             assert texts == _ANCHORS[check]
+    assert module.STRICT_BINDING == _STRICT_BINDING
+    for language, (title, covers) in enumerate(module.STRICT_BINDING):
+        _assert_text(title, japanese=bool(language), word_limit=10)
+        _assert_text(covers, japanese=bool(language), word_limit=25)
     for name, word in (("SHOW", module.SHOW), ("HIDE", module.HIDE), ("UNRUN", module.UNRUN)):
         assert isinstance(cast(object, word), tuple)
         assert len(word) == 2
@@ -483,22 +510,46 @@ def test_c3_every_text_obeys_the_text_law_and_anchors_are_byte_exact() -> None:
             _assert_text(label, japanese=bool(language), require_kana=False)
 
 
+@pytest.mark.parametrize("anchoring", _ANCHORINGS)
 @pytest.mark.parametrize("reason", _ALL_REASONS)
 @pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
 def test_c4_document_rows_follow_the_failing_check(
-    reason: Reason | None, *, japanese: bool
+    reason: Reason | None, anchoring: Anchoring, *, japanese: bool
 ) -> None:
-    """C4: the full 67 x 2 domain, including both endpoint failures and PASS."""
+    """C4: the full 70 x 2 x 2 domain, including both endpoint failures and PASS."""
     module = _checks()
-    source = module.breakdown_html(reason, japanese=japanese)
+    source = module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
     assert isinstance(source, str)
-    assert source == module.breakdown_html(reason, japanese=japanese)
-    _assert_rows(_Document(source).root, reason, japanese=japanese)
+    assert source == module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
+    _assert_rows(_Document(source).root, reason, japanese=japanese, anchoring=anchoring)
 
 
-@given(st.lists(st.tuples(st.sampled_from(_ALL_REASONS), st.booleans()), min_size=1, max_size=16))
+@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
+def test_q37_the_binding_row_alone_states_the_anchoring_rule(*, japanese: bool) -> None:
+    """Q37: each artifact describes the rule it runs; every other byte of the document agrees."""
+    module = _checks()
+    strict = module.breakdown_html(None, japanese=japanese, anchoring="strict")
+    demo = module.breakdown_html(None, japanese=japanese, anchoring="substitution")
+    language = int(japanese)
+    assert strict != demo
+    assert _html.escape(_STRICT_BINDING[language][1], quote=True) in strict
+    assert _html.escape(_ANCHORS["binding"][language][1], quote=True) in demo
+    swapped = strict.replace(
+        _html.escape(_STRICT_BINDING[language][1], quote=True),
+        _html.escape(_ANCHORS["binding"][language][1], quote=True),
+    )
+    assert swapped == demo
+
+
+@given(
+    st.lists(
+        st.tuples(st.sampled_from(_ALL_REASONS), st.booleans(), st.sampled_from(_ANCHORINGS)),
+        min_size=1,
+        max_size=16,
+    )
+)
 def test_c4_renderer_is_pure_across_interleaved_inputs(
-    inputs: list[tuple[Reason | None, bool]],
+    inputs: list[tuple[Reason | None, bool, Anchoring]],
 ) -> None:
     """C4 property: interleaved calls preserve outputs and every public text/map table."""
     module = _checks()
@@ -510,11 +561,17 @@ def test_c4_renderer_is_pure_across_interleaved_inputs(
         module.HIDE,
         module.UNRUN,
         module.MARKS.copy(),
+        module.STRICT_BINDING,
         reasons.REASONS.copy(),
     )
-    outputs = [module.breakdown_html(reason, japanese=japanese) for reason, japanese in inputs]
-    for (reason, japanese), expected in reversed(list(zip(inputs, outputs, strict=True))):
-        assert module.breakdown_html(reason, japanese=japanese) == expected
+    outputs = [
+        module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
+        for reason, japanese, anchoring in inputs
+    ]
+    for (reason, japanese, anchoring), expected in reversed(
+        list(zip(inputs, outputs, strict=True))
+    ):
+        assert module.breakdown_html(reason, japanese=japanese, anchoring=anchoring) == expected
     assert before == (
         module.CHECKS,
         module.CHECK_OF,
@@ -523,6 +580,7 @@ def test_c4_renderer_is_pure_across_interleaved_inputs(
         module.HIDE,
         module.UNRUN,
         module.MARKS,
+        module.STRICT_BINDING,
         reasons.REASONS,
     )
 
@@ -538,9 +596,9 @@ def test_c4_title_covers_and_cause_are_escaped_and_round_trip(
     cause = "cause < > & \" ' sentinel"
     monkeypatch.setitem(module.TEXTS, "readable", ((title, covers), (title, covers)))
     monkeypatch.setitem(reasons.REASONS, "source_too_large", (cause, cause))
-    source = module.breakdown_html("source_too_large", japanese=japanese)
+    source = module.breakdown_html("source_too_large", japanese=japanese, anchoring="strict")
     root = _Document(source).root
-    _assert_rows(root, "source_too_large", japanese=japanese)
+    _assert_rows(root, "source_too_large", japanese=japanese, anchoring="strict")
     row = _one([node for node in root.nodes(tag="li") if node.attrs.get("class") == "fail"])
     for cls, expected in (("title", title), ("covers", covers), ("cause", cause)):
         slot = _one(row.nodes(cls=cls))
@@ -562,12 +620,15 @@ _HEIGHT_REPORTER = (
 )
 
 
+@pytest.mark.parametrize("anchoring", _ANCHORINGS)
 @pytest.mark.parametrize("reason", _ALL_REASONS)
 @pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
-def test_c5_document_is_self_contained_and_inert(reason: Reason | None, *, japanese: bool) -> None:
-    """C5: all 134 documents; the fixed reporter is the only script."""
+def test_c5_document_is_self_contained_and_inert(
+    reason: Reason | None, anchoring: Anchoring, *, japanese: bool
+) -> None:
+    """C5: all 280 documents; the fixed reporter is the only script."""
     module = _checks()
-    source = module.breakdown_html(reason, japanese=japanese)
+    source = module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
     assert len(source.encode("utf-8")) <= 16384
     assert not re.search(
         r"\b(?:src|href)\s*=|url\s*\(|@import|https?:", source, flags=re.IGNORECASE

@@ -209,6 +209,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "The chart replaces a requested column, or a request word fits two columns.",
         "グラフが依頼の列を別の列に置き換えたか、依頼の語が 2 つの列に当てはまります。",
     ),
+    "column_not_named": (
+        "Your request does not name a drawn column. Use the file's column names.",
+        "描いた列の名前が依頼にありません。列名はファイルのとおりに書いてください。",
+    ),
     "csv_too_large": (
         "The CSV file is too large.",
         "CSV ファイルが大きすぎます。",

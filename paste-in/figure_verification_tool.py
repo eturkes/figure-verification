@@ -170,6 +170,9 @@ RefusalCode = Literal[
     # A substitution (Q8): the program drops a CSV column the request names and plots one the
     # request never names. A request naming no column anchors nothing and never reaches this code.
     "column_not_requested",
+    # Strict anchoring (Q37, production): the request names or negates a column, and the program
+    # draws a nameable column the request never names.
+    "column_not_named",
     # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
     # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
     # domain and overflow fault arrives as a non-finite value and needs no classification.
@@ -238,6 +241,9 @@ type DatasetMark = Literal["line", "scatter", "bar", "barh"]
 # is what lets recomputation reproduce it exactly; a reduction needing a parameter (quantile, std's
 # delta degrees of freedom) would need that parameter projected and is therefore not a member.
 type Reduction = Literal["sum", "mean", "min", "max"]
+
+# Request anchoring (Q37): `strict` = production, `substitution` = the demo's shipped Q8 rule.
+type Anchoring = Literal["strict", "substitution"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,6 +433,9 @@ class DatasetTarget:
     # The user's request text, when the caller has it: lexical anchoring (Q8) checks the program's
     # columns against the header names it states. `None` anchors nothing.
     request: str | None = None
+    # The anchoring rule (Q37). Production = strict: a request naming or negating a column must
+    # name every drawn column it can name. The demo keeps Q8's substitution rule.
+    anchoring: Anchoring = "strict"
 
 
 @dataclass(frozen=True, slots=True)
@@ -621,7 +630,7 @@ _SOURCES["webui.paste_in.verdicts"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The closed string set the tool returns to the model.
 
-Two members, fixed, and no refusal code among them. Five of the 54 closed codes carry the banned
+Two members, fixed, and no refusal code among them. Five of the 55 closed codes carry the banned
 stem `admit` (`call_target_not_admitted`, `keyword_not_admitted`, `statement_not_admitted`,
 `attribute_not_admitted`, `assign_target_not_admitted`), so returning a code would teach admission
 vocabulary through exactly the surface ruling 6 keeps clean. Nothing needs it either: the outlet
@@ -3968,6 +3977,7 @@ from verifier.pysrc.numeric import evaluate_expr, materialize_grid
 from verifier.pysrc.prescan import prescan
 from verifier.pysrc.project import project, same_bound
 from verifier.pysrc.spec import (
+    Anchoring,
     Bin,
     Const,
     CorePlotSpec,
@@ -4144,8 +4154,9 @@ def _negated_end(rest: str, start: int, keys: list[str], fuzzy: list[str]) -> in
     return None
 
 
-def _unnamed_places(rest: str, names: list[str]) -> str:
-    """`rest` with every stop phrase and every negated name consumed (Q38).
+def _unnamed_places(rest: str, names: list[str]) -> tuple[str, bool]:
+    """`rest` with every stop phrase and every negated name consumed (Q38), and whether a name was
+    negated: strict anchoring (Q37) reads an excluded column as the request naming its columns.
 
     A negated name = the longest anchoring name right after an English cue (or after the cue + one
     `the`/`any`), else one ASCII word within one edit of a one-word name of `_FUZZY_MIN`+
@@ -4177,6 +4188,7 @@ def _unnamed_places(rest: str, names: list[str]) -> str:
             pieces += [rest[last : start + 1], "\0"]
             last = end
         rest = "".join([*pieces, rest[last:]])
+    negated = bool(spans)
     for key in keys:
         # The same place naming matches: an ASCII name as whole words, any other by containment;
         # `_words` splits an ASCII tail from the Japanese cue after it.
@@ -4185,18 +4197,26 @@ def _unnamed_places(rest: str, names: list[str]) -> str:
         for after in _NEGATION_AFTER:
             needle = f"{lead}{key}{gap}{after}"
             while needle in rest:
+                negated = True
                 rest = rest.replace(needle, f" \0 {after}")
-    return rest
+    return rest, negated
 
 
 def _named_columns(
     text: str, header: tuple[str, ...], *, ignore_ties: bool = False
 ) -> frozenset[str]:
     """The header names `text` names; a tie raises `_AmbiguousTermError`, or names nothing."""
+    return _anchors(text, header, ignore_ties=ignore_ties)[0]
+
+
+def _anchors(
+    text: str, header: tuple[str, ...], *, ignore_ties: bool = False
+) -> tuple[frozenset[str], bool]:
+    """`_named_columns`, and whether `text` negates a header name (Q38)."""
     by_key: dict[str, list[str]] = {}
     for column in header:
         by_key.setdefault(_words(column), []).append(column)
-    rest = _unnamed_places(f" {_words(text)} ", list(by_key))
+    rest, negated = _unnamed_places(f" {_words(text)} ", list(by_key))
     named: set[str] = set()
     # Exact names first, longest first, each consuming its span: `unit price` never also names
     # `price`, and `収縮期血圧値` never also names `収縮期血圧`.
@@ -4215,16 +4235,29 @@ def _named_columns(
     if tied and not ignore_ties:
         message = f"request places {sorted(tied)} each fit more than one header"
         raise _AmbiguousTermError(message)
-    return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1)
+    return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1), negated
 
 
-def _check_anchoring(spec: DatasetPlot, request: str, content: bytes, limits: PysrcLimits) -> None:
+def _nameable(column: str) -> bool:
+    """A request can name `column`: its folded name reaches the anchor minimum."""
+    key = _words(column)
+    return len(key) >= _floor(key)
+
+
+def _check_anchoring(
+    spec: DatasetPlot,
+    request: str,
+    content: bytes,
+    limits: PysrcLimits,
+    anchoring: Anchoring,
+) -> None:
     """Q8: refuse a substitution -- the program drops a column the request names AND plots one it
     never names (`revenue by region`, drawn over `month`).
 
     Either half alone is no substitution: a request naming only the measure (`chart revenue`)
     leaves the x column to the program, and a request naming three columns lets a two-column chart
-    pick two of them.
+    pick two of them. Strict anchoring (Q37, production) refuses the second half alone too: once a
+    request names or negates a column, it must name every drawn column a request can name.
 
     Anchoring is a refinement: an unreadable header, a plotted column absent from it (recompute's
     own refusals) or a request naming no column leaves the verdict to the checks that follow.
@@ -4234,11 +4267,19 @@ def _check_anchoring(spec: DatasetPlot, request: str, content: bytes, limits: Py
     if header is None or not plotted <= set(header):
         return
     try:
-        named = _named_columns(request, header)
+        named, negated = _anchors(request, header)
     except _AmbiguousTermError as exc:
         _refuse("column_not_requested", exc)
     if named - plotted and plotted - named:
         _refuse("column_not_requested")
+    match anchoring:
+        case "strict":
+            if (named or negated) and any(_nameable(c) for c in plotted - named):
+                _refuse("column_not_named")
+        case "substitution":
+            pass
+        case _ as unreachable:  # pragma: no cover - the anchoring union is closed
+            assert_never(unreachable)
 
 
 # --- label consistency (G10, Q16) ----------------------------------------------------------------
@@ -4321,7 +4362,7 @@ def bind_target(
         if spec.source.path != target.path:
             _refuse("target_mismatch")
         if target.request is not None:
-            _check_anchoring(spec, target.request, target.content, limits)
+            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
@@ -4561,7 +4602,7 @@ other refusal is final. The formula target comes from the user's request, after 
 """
 
 from verifier.pysrc.request import formula_target
-from verifier.pysrc.spec import DatasetTarget, FormulaTarget
+from verifier.pysrc.spec import Anchoring, DatasetTarget, FormulaTarget
 from verifier.pysrc.verify import Refused, Verdict, verify_python_source
 from webui.paste_in.owui_files import UploadedFile
 
@@ -4569,12 +4610,18 @@ _TARGET_MISMATCH = "target_mismatch"
 
 
 def first_verdict(
-    program: str, attachments: tuple[UploadedFile, ...], request_text: str | None
+    program: str,
+    attachments: tuple[UploadedFile, ...],
+    request_text: str | None,
+    anchoring: Anchoring,
 ) -> tuple[Verdict | None, UploadedFile | None]:
-    """Return the first final verdict and the attachment it consumed, if any."""
+    """Return the first final verdict and the attachment it consumed, if any.
+
+    `anchoring` = the artifact's request-anchoring rule: production `strict`, demo `substitution`.
+    """
     formula = formula_target(request_text) if request_text is not None else None
     candidates: tuple[tuple[DatasetTarget | FormulaTarget, UploadedFile | None], ...] = tuple(
-        (DatasetTarget(path=file.path, content=file.content, request=request_text), file)
+        (DatasetTarget(file.path, file.content, request_text, anchoring), file)
         for file in attachments
     ) + (((formula, None),) if formula is not None else ())
     outcome: Verdict | None = None
@@ -4610,6 +4657,7 @@ Publication is the outlet filter's, not this return value: only a backend-record
 publish a figure (transport ruling), and the filter re-derives the verdict from that record.
 """
 
+from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Verified
 from webui.paste_in.owui_files import uploaded_files
 from webui.paste_in.receipt import Receipt, write_receipt
@@ -4627,6 +4675,9 @@ def _request_text(metadata: dict[str, object] | None) -> str | None:
 
 class Tools:
     """The pasted tool. One public method, so the model sees one operation."""
+
+    # Production = strict request anchoring; the demo's generated tool overrides it (Q37).
+    _ANCHORING: Anchoring = "strict"
 
     async def draw_figure(
         self,
@@ -4655,7 +4706,7 @@ class Tools:
             )
         if not isinstance(user_id, str):
             return CHART_NOT_PRODUCED
-        verdict, _consumed = first_verdict(program, attachments, request_text)
+        verdict, _consumed = first_verdict(program, attachments, request_text, self._ANCHORING)
         return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED
 '''
 

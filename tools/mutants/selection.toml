@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # One shared candidate selector; the attachment order and target-mismatch continuation decide both calls.
 module = "webui/paste_in/selection.py"
-tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_formula.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_tool_differential.py", "tests/test_pysrc_anchoring.py"]
+tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_formula.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_tool_differential.py", "tests/test_pysrc_anchoring.py", "tests/test_paste_in_demo_pair.py"]
 
 [[mutant]]
 id = "f3-request-parser-skipped"
@@ -56,19 +56,26 @@ mutant = '''            return outcome, attachments[0] if attachments else None'
 id = "f3-dataset-bytes-erased"
 predicate = "the verifier receives the ownership-checked source bytes"
 kills = "tests/test_paste_in_tool.py::test_t3_core_receives_the_uploaded_bytes_for_the_named_path"
-anchor = '''DatasetTarget(path=file.path, content=file.content, request=request_text)'''
-mutant = '''DatasetTarget(path=file.path, content=b"", request=request_text)'''
+anchor = '''        (DatasetTarget(file.path, file.content, request_text, anchoring), file)'''
+mutant = '''        (DatasetTarget(file.path, b"", request_text, anchoring), file)'''
 
 [[mutant]]
 id = "f3-dataset-path-altered"
 predicate = "the verifier receives the exact uploaded path used by the program"
 kills = "tests/test_paste_in_tool.py::test_t5_target_is_the_named_path_with_the_uploaded_content"
-anchor = '''DatasetTarget(path=file.path, content=file.content, request=request_text)'''
-mutant = '''DatasetTarget(path=file.path + ".csv", content=file.content, request=request_text)'''
+anchor = '''        (DatasetTarget(file.path, file.content, request_text, anchoring), file)'''
+mutant = '''        (DatasetTarget(file.path + ".csv", file.content, request_text, anchoring), file)'''
 
 [[mutant]]
 id = "q8-request-not-threaded"
 predicate = "every dataset target carries the user's request text"
 kills = "tests/test_pysrc_anchoring.py::test_q8_selection_threads_the_request_into_every_dataset_target"
-anchor = '''request=request_text), file)'''
-mutant = '''request=None), file)'''
+anchor = '''        (DatasetTarget(file.path, file.content, request_text, anchoring), file)'''
+mutant = '''        (DatasetTarget(file.path, file.content, None, anchoring), file)'''
+
+[[mutant]]
+id = "q37-rule-unthreaded"
+predicate = "the caller's anchoring rule reaches every dataset target"
+kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_selection_threads_the_rule_into_every_dataset_target"
+anchor = '''        (DatasetTarget(file.path, file.content, request_text, anchoring), file)'''
+mutant = '''        (DatasetTarget(file.path, file.content, request_text), file)'''

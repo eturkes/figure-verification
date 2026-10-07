@@ -33,9 +33,14 @@ from webui.settings import Settings
 
 _TOOL_ARTIFACT = "paste-in/figure_verification_tool.py"
 _FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
+# Q37: production (`paste-in/`) + the demo ship separate pairs; the launcher provisions the demo.
+_DEMO_TOOL_ARTIFACT = "webui/demo-paste-in/figure_verification_tool.py"
+_DEMO_FILTER_ARTIFACT = "webui/demo-paste-in/figure_verification_filter.py"
 _EXPECTED_ARTIFACTS = {
     _TOOL_ARTIFACT: "webui.paste_in.tool",
     _FILTER_ARTIFACT: "webui.paste_in.filter",
+    _DEMO_TOOL_ARTIFACT: "webui.paste_in.demo_tool",
+    _DEMO_FILTER_ARTIFACT: "webui.paste_in.demo_filter",
 }
 
 
@@ -43,8 +48,13 @@ def _filter_source() -> str:
     return (REPO_ROOT / _FILTER_ARTIFACT).read_text(encoding="utf-8")
 
 
-def test_f8_bundle_declares_exactly_two_generated_paste_targets() -> None:
-    """F8: one tool and one outlet filter, each with its own root and no third paste target."""
+def _demo_filter_source() -> str:
+    """What the launcher provisions: the demo's generated filter."""
+    return (REPO_ROOT / _DEMO_FILTER_ARTIFACT).read_text(encoding="utf-8")
+
+
+def test_f8_bundle_declares_exactly_the_two_generated_paste_pairs() -> None:
+    """F8: one tool and one outlet filter per pair, production + demo, and no fifth target."""
     bundle = load_bundle()
     assert bundle.ARTIFACTS == _EXPECTED_ARTIFACTS
     for relative, root in _EXPECTED_ARTIFACTS.items():
@@ -54,7 +64,9 @@ def test_f8_bundle_declares_exactly_two_generated_paste_targets() -> None:
     assert check.returncode == 0, check.stdout + check.stderr
 
 
-@pytest.mark.parametrize("relative", [_TOOL_ARTIFACT, _FILTER_ARTIFACT])
+@pytest.mark.parametrize(
+    "relative", [_TOOL_ARTIFACT, _FILTER_ARTIFACT, _DEMO_TOOL_ARTIFACT, _DEMO_FILTER_ARTIFACT]
+)
 def test_f8_check_names_either_paste_target_when_its_committed_bytes_drift(
     relative: str, tmp_path: Path
 ) -> None:
@@ -136,7 +148,7 @@ class _BootstrapFake:
 def _function_rows(case: str) -> tuple[object, ...]:
     """Build A2's public NamedTuple through the new client seam, not a surrogate fake type."""
     readback = importlib.import_module("webui.client").FunctionReadback
-    content = "stale function source" if case == "drifted" else _filter_source()
+    content = "stale function source" if case == "drifted" else _demo_filter_source()
     active = case != "inactive"
     global_ = case != "nonglobal"
     filter_id = vars(bootstrap)["FILTER_ID"]
@@ -210,7 +222,7 @@ def test_f8_client_enumerates_all_functions_and_fetches_each_source_by_id() -> N
             "type": "filter",
             "is_active": True,
             "is_global": True,
-            "content": _filter_source(),
+            "content": _demo_filter_source(),
         },
         ids[1]: {
             "id": ids[1],
@@ -259,9 +271,9 @@ def test_f8_bootstrap_provisions_exact_generated_filter_source() -> None:
     assert result.ok
     assert len(client.filter_calls) == 1
     assert client.filter_calls[0][0] == vars(bootstrap)["FILTER_ID"]
-    assert client.filter_calls[0][2] == _filter_source()
+    assert client.filter_calls[0][2] == _demo_filter_source()
     assert len(client.tool_calls) == 1
-    assert client.tool_calls[0][2] == (REPO_ROOT / _TOOL_ARTIFACT).read_text(encoding="utf-8")
+    assert client.tool_calls[0][2] == (REPO_ROOT / _DEMO_TOOL_ARTIFACT).read_text(encoding="utf-8")
 
 
 def _sentinels() -> dict[str, str]:

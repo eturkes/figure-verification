@@ -212,12 +212,20 @@ def a1():
             "swaps_caught": leg["swaps_caught"],
             "stop_false_refusals": len(leg["stop_false_refusals"]),
             "negation_false_refusals": len(leg["negation_false_refusals"]),
+            "strict_false_refusals": len(leg["strict_false_refusals"]),
+            "strict_swaps_caught": leg["strict_swaps_caught"],
         }
         for language, leg in data.items()
         if language != "capture"
     }
     result["capture"] = fields(
-        data["capture"], "design_rows", "baseline_verified", "changed", "faithful_refused"
+        data["capture"],
+        "design_rows",
+        "baseline_verified",
+        "changed",
+        "faithful_refused",
+        "strict_changed",
+        "strict_faithful_refused",
     )
     return result
 

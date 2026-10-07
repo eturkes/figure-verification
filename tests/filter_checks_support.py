@@ -72,7 +72,12 @@ _REASON_GROUPS = {
         "aggregation_not_projected",
         "figure_orphans_mark",
     ),
-    "binding": ("source_not_supplied", "target_mismatch", "column_not_requested"),
+    "binding": (
+        "source_not_supplied",
+        "target_mismatch",
+        "column_not_requested",
+        "column_not_named",
+    ),
     "recompute": (
         "csv_too_large",
         "csv_not_parsable",
@@ -242,9 +247,14 @@ def japanese(metadata: object) -> bool:
     )
 
 
-def expected_document(reason: str | None, *, is_japanese: bool) -> ChecksDocument:
+def expected_document(
+    reason: str | None, *, is_japanese: bool, anchoring: str = "strict"
+) -> ChecksDocument:
+    """`anchoring` = the rule of the filter under test: production `strict`, demo `substitution`."""
     module = importlib.import_module("webui.paste_in.checks")
-    texts = cast(dict[str, tuple[tuple[str, str], tuple[str, str]]], module.TEXTS)
+    texts = dict(cast(dict[str, tuple[tuple[str, str], tuple[str, str]]], module.TEXTS))
+    if anchoring == "strict":
+        texts["binding"] = module.STRICT_BINDING
     reasons = cast(
         dict[str, tuple[str, str]], importlib.import_module("webui.paste_in.reasons").REASONS
     )
@@ -274,12 +284,16 @@ def expected_document(reason: str | None, *, is_japanese: bool) -> ChecksDocumen
     )
 
 
-def embed_event(reason: str | None, metadata: object = None) -> dict[str, object]:
+def embed_event(
+    reason: str | None, metadata: object = None, anchoring: str = "strict"
+) -> dict[str, object]:
     """Expected event: exact transport keys, semantically parsed document, independent states."""
     return {
         "type": "embeds",
         "data": {
-            "embeds": [expected_document(reason, is_japanese=japanese(metadata))],
+            "embeds": [
+                expected_document(reason, is_japanese=japanese(metadata), anchoring=anchoring)
+            ],
             "replace": True,
         },
     }

@@ -259,14 +259,14 @@ def _exercise(
 
 
 def test_d1_reason_key_set_is_every_refusal_code_plus_the_fourteen_outlet_causes() -> None:
-    """D1: exact 54 + 14 key union and disjoint OutletCause alias, not a production-derived list."""
+    """D1: exact 55 + 14 key union and disjoint OutletCause alias, not a production-derived list."""
     texts = _texts()
     alias = importlib.import_module("webui.paste_in.reasons").OutletCause
     causes = set(get_args(getattr(alias, "__value__", alias)))
     refusals = set(get_args(RefusalCode))
     assert causes == _CAUSES
     assert len(causes) == 14
-    assert len(refusals) == 54
+    assert len(refusals) == 55
     assert causes.isdisjoint(refusals)
     assert set(texts) == refusals | _CAUSES
 
@@ -282,7 +282,9 @@ def test_d2_every_reason_text_obeys_the_text_law(reason: str) -> None:
     # A sentence ends at `. `; the dot inside a code name such as `plt.show()` ends nothing.
     sentences = english[:-1].split(". ")
     assert (
-        1 <= len(sentences) <= (2 if reason in {"sandbox_unavailable", "browser_no_answer"} else 1)
+        1
+        <= len(sentences)
+        <= (2 if reason in {"sandbox_unavailable", "browser_no_answer", "column_not_named"} else 1)
     )
     assert all(1 <= len(sentence.split()) <= 25 for sentence in sentences)
     assert japanese.endswith("。")

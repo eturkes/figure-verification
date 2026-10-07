@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py"]
+tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -270,9 +270,9 @@ mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
 id = "d5-receipt-decides-language"
 predicate = "the metadata request text, never the receipt, picks the language"
 kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[True-metadata11-1]"
-anchor = '''            return await _fail(body, reason, __metadata__, __event_emitter__)'''
+anchor = '''            return await _fail(body, reason, __metadata__, __event_emitter__, self._ANCHORING)'''
 mutant = '''            text = {"user_message": {"content": receipt.request_text}} if receipt else __metadata__
-            return await _fail(body, reason, text, __event_emitter__)'''
+            return await _fail(body, reason, text, __event_emitter__, self._ANCHORING)'''
 
 [[mutant]]
 id = "d3-traceback-is-loader"
@@ -385,7 +385,7 @@ mutant = '''    task = asyncio.ensure_future(emit(event))'''
 id = "m16-embed-skipped-on-pass"
 predicate = "a PASS reply carries the check list too"
 kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
-anchor = '''        await _diagnose(__event_emitter__, None, __metadata__)'''
+anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)'''
 mutant = '''        pass'''
 
 [[mutant]]
@@ -441,10 +441,10 @@ id = "m16-renderer-unguarded"
 predicate = "a raising renderer never costs the verdict or the status line"
 kills = "tests/test_paste_in_filter_checks.py::test_c8_renderer_exception_keeps_status_files_log_and_verdict[01-no-receipt]"
 anchor = '''    try:
-        document = breakdown_html(reason, japanese=japanese)
+        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)
     except Exception:
         return'''
-mutant = '''    document = breakdown_html(reason, japanese=japanese)'''
+mutant = '''    document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
 
 [[mutant]]
 id = "m16-embed-emit-unguarded"
@@ -471,15 +471,15 @@ mutant = '''            or __metadata__ is None'''
 id = "m16-pass-document-for-fail"
 predicate = "a FAIL list marks its failing check"
 kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese)'''
-mutant = '''        document = breakdown_html(None, japanese=japanese)'''
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
+mutant = '''        document = breakdown_html(None, japanese=japanese, anchoring=anchoring)'''
 
 [[mutant]]
 id = "m16-japanese-not-passed"
 predicate = "a Japanese request gets a Japanese list"
 kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[ja-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese)'''
-mutant = '''        document = breakdown_html(reason, japanese=False)'''
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
+mutant = '''        document = breakdown_html(reason, japanese=False, anchoring=anchoring)'''
 
 [[mutant]]
 id = "m16-stale-remainder"
@@ -504,3 +504,24 @@ mutant = '''    loop = asyncio.get_running_loop()
         return
     try:
         done, _pending = await asyncio.wait({task}, timeout=remaining)'''
+
+[[mutant]]
+id = "q37-outlet-verdict-rule-fixed"
+predicate = "the outlet re-derives the verdict under its class's anchoring rule"
+kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[demo]"
+anchor = '''            receipt.program, attachments, receipt.request_text, self._ANCHORING'''
+mutant = '''            receipt.program, attachments, receipt.request_text, "strict"'''
+
+[[mutant]]
+id = "q37-check-list-rule-fixed"
+predicate = "the check list describes the class's anchoring rule"
+kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[demo]"
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
+mutant = '''        document = breakdown_html(reason, japanese=japanese, anchoring="strict")'''
+
+[[mutant]]
+id = "q37-production-rule-loosened"
+predicate = "the production filter anchors strictly"
+kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[prod]"
+anchor = '''    _ANCHORING: Anchoring = "strict"'''
+mutant = '''    _ANCHORING: Anchoring = "substitution"'''

@@ -33,14 +33,14 @@ mutant = '''        "work_budget_exceeded",
 [[mutant]]
 id = "c4-pass-boundary-off-by-one"
 predicate = "every check before the failing one shows as passed"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
 anchor = '''        state: _State = "pass" if index < failing else'''
 mutant = '''        state: _State = "pass" if index + 1 < failing else'''
 
 [[mutant]]
 id = "c4-fail-row-loses-cause"
 predicate = "the failing row carries its reason sentence"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
 anchor = '''        if state == "fail":
             detail +='''
 mutant = '''        if state == "fail" and not cause:
@@ -49,14 +49,14 @@ mutant = '''        if state == "fail" and not cause:
 [[mutant]]
 id = "c4-unrun-word-on-pass"
 predicate = "only an unrun check reads not checked"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None-strict]"
 anchor = '''</span>' if state == "skip" else ""'''
 mutant = '''</span>' if state != "fail" else ""'''
 
 [[mutant]]
 id = "c4-details-open"
 predicate = "the disclosure opens collapsed"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None-strict]"
 anchor = '''<div id="r"><details><summary>'''
 mutant = '''<div id="r"><details open><summary>'''
 
@@ -70,21 +70,21 @@ mutant = '''    return value'''
 [[mutant]]
 id = "c4-japanese-ignored"
 predicate = "a Japanese request renders every text in Japanese"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[ja-no_tool_call]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[ja-no_tool_call-strict]"
 anchor = '''    language = 1 if japanese else 0'''
 mutant = '''    language = 0'''
 
 [[mutant]]
 id = "c4-wrong-mark-label"
 predicate = "each state's mark carries that state's accessible label"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted]"
+kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
 anchor = '''    "fail": ("\N{BALLOT X}", ("failed", "不合格")),'''
 mutant = '''    "fail": ("\N{BALLOT X}", ("passed", "合格")),'''
 
 [[mutant]]
 id = "c5-reporter-extended"
 predicate = "the frame runs the fixed height reporter and nothing else"
-kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None]"
+kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None-strict]"
 anchor = '''    ").observe(r);"
 )'''
 mutant = '''    ").observe(r);document.body.remove();"
@@ -93,6 +93,13 @@ mutant = '''    ").observe(r);document.body.remove();"
 [[mutant]]
 id = "c5-reporter-height-zero"
 predicate = "the reporter sends the wrapper's own height"
-kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None]"
+kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None-strict]"
 anchor = '''    '{type:"iframe:height",height:Math.ceil(r.getBoundingClientRect().height)},"*")''''
 mutant = '''    '{type:"iframe:height",height:0},"*")''''
+
+[[mutant]]
+id = "q37-strict-binding-row-unused"
+predicate = "each artifact's binding row states the anchoring rule it runs"
+kills = "tests/test_paste_in_checks.py::test_q37_the_binding_row_alone_states_the_anchoring_rule[en]"
+anchor = '''        texts = STRICT_BINDING if check == "binding" and anchoring == "strict" else TEXTS[check]'''
+mutant = '''        texts = TEXTS[check]'''

@@ -162,6 +162,19 @@ projection + exact recomputation and observation is additive.
   by `selection.py`) vs the program's x/y; refuse `column_not_requested` only on a SUBSTITUTION = a
   named column undrawn AND a drawn column unnamed. Either half alone passes: `chart revenue` leaves x
   to the program; three named columns let a two-column chart pick two. A tie refuses too.
+- **Strict anchoring = production's rule (Q37, user: strict for production, the demo functional;
+  `.agent/archive/contracts/q37.md`).** `DatasetTarget.anchoring` = `strict` (default) |
+  `substitution` (the demo's Q8 rule). Strict = the substitution check, then: a request that names
+  OR negates ≥1 header column (`verify.py::_anchors`) must name every drawn column a request can
+  name (`verify.py::_nameable`: folded name ≥ the anchor minimum), else `column_not_named`. A drawn
+  negated column is unnamed ⇒ refuses; a column two headers fold to can never be named ⇒ drawn
+  under an anchored request it refuses. Production pays the cost in request wording, not proposer
+  strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 4/18 · JA-mixed 1/18 (one-
+  name requests: `average temperature for each city` never names `temp_c`), swaps caught 47 · 57 · 57
+  of 57; `m10-design` captures VERIFIED 18 → 10, FAITHFUL 10 → 6. Mode lives in the generated
+  artifact, never in the model's reach: `webui/paste_in/tool.py::Tools._ANCHORING` +
+  `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`, the demo subclasses
+  (`webui/paste_in/demo_tool.py`, `webui/paste_in/demo_filter.py`) = `substitution`.
 - Matching is SAFE because the model gets no vote: the target set = the file's REAL header, so a
   typo fix cannot invent a column. NFKC + `casefold`; words split at every non-word char (`_`
   included) and where ASCII meets another script (`regionごとのrevenue`). Exact names first, longest

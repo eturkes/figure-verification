@@ -2,7 +2,7 @@
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"
-tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py"]
 
 [[mutant]]
 id = "c2-formula-y-ignored"
@@ -59,9 +59,9 @@ id = "q8-anchoring-unwired"
 predicate = "a dataset target carrying the request is anchored"
 kills = "tests/test_pysrc_anchoring.py::test_q8_substitution_witness_refuses"
 anchor = '''        if target.request is not None:
-            _check_anchoring(spec, target.request, target.content, limits)'''
+            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
 mutant = '''        if False:
-            _check_anchoring(spec, target.request, target.content, limits)'''
+            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
 
 [[mutant]]
 id = "q8-named-half-dropped"
@@ -438,3 +438,66 @@ anchor = '''        if spans and cue.start() < spans[-1][1]:
 '''
 mutant = '''        pass
 '''
+
+# Q37 strict anchoring (production): one mutant per predicate.
+[[mutant]]
+id = "q37-strict-arm-dropped"
+predicate = "S2: under strict, an unnamed drawn column refuses alone"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone"
+anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "q37-mode-unthreaded"
+predicate = "S1: the target's rule, not a constant, selects the arm"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone"
+anchor = '''            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
+mutant = '''            _check_anchoring(spec, target.request, target.content, limits, "strict")'''
+
+[[mutant]]
+id = "q37-negation-does-not-trigger"
+predicate = "S2: a request that only negates a column triggers strict"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_negated_column_triggers_strict"
+anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
+mutant = '''            if named and any(_nameable(c) for c in plotted - named):'''
+
+[[mutant]]
+id = "q37-no-anchor-triggers"
+predicate = "S2: a request naming no column anchors nothing under strict"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_request_naming_no_column_anchors_nothing"
+anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
+mutant = '''            if any(_nameable(c) for c in plotted - named):'''
+
+[[mutant]]
+id = "q37-unnameable-required"
+predicate = "S2: a column no request can name is not required"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[two-char-ascii]"
+anchor = '''    return len(key) >= _floor(key)'''
+mutant = '''    return True'''
+
+[[mutant]]
+id = "q37-unnameable-japanese-required"
+predicate = "S2: a one-character Japanese column is not required"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[one-char-japanese]"
+anchor = '''    return len(key) >= _floor(key)'''
+mutant = '''    return len(key) >= 1'''
+
+[[mutant]]
+id = "q37-strict-before-substitution"
+predicate = "S2: under strict a swapped named column still reports the swap"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_substitution_keeps_its_own_code_under_strict"
+anchor = '''    if named - plotted and plotted - named:
+        _refuse("column_not_requested")
+    match anchoring:'''
+mutant = '''    if anchoring == "strict" and (named or negated) and plotted - named:
+        _refuse("column_not_named")
+    if named - plotted and plotted - named:
+        _refuse("column_not_requested")
+    match anchoring:'''
+
+[[mutant]]
+id = "q37-negation-unreported"
+predicate = "S2: a Japanese negation reports itself to the strict trigger"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_japanese_negation_triggers_strict"
+anchor = '''                negated = True'''
+mutant = '''                pass'''

@@ -134,6 +134,7 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 ├── docs/admin/            administrator guide (English, Japanese) and model system prompts
 ├── src/verifier/pysrc/    the verification core that the paste-in files embed
 ├── webui/                 paste-in sources, Open WebUI provisioning, launcher and stub model
+│   └── demo-paste-in/     the demo's generated pair: production files with the demo's column rule
 ├── model_backend/         the local model server for the demo
 ├── capture/               model capture, statistics and the held-out scorer
 ├── corpus/python/         design, held-out and sentinel prompts, and committed captures

@@ -12,6 +12,7 @@ raise it: admission raises `column_not_literal` before projection could raise it
 import html
 from typing import Final, Literal
 
+from verifier.pysrc.spec import Anchoring
 from webui.paste_in.reasons import REASONS, Reason
 
 Check = Literal[
@@ -93,7 +94,12 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "aggregation_not_projected",
         "figure_orphans_mark",
     ),
-    "binding": ("source_not_supplied", "target_mismatch", "column_not_requested"),
+    "binding": (
+        "source_not_supplied",
+        "target_mismatch",
+        "column_not_requested",
+        "column_not_named",
+    ),
     "recompute": (
         "csv_too_large",
         "csv_not_parsable",
@@ -232,6 +238,19 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
         ("返信に画像を添付", "グラフの画像をこの返信と一緒に保存"),
     ),
 }
+# The binding row under production's strict anchoring (Q37); TEXTS holds the demo's rule.
+STRICT_BINDING: Final[tuple[tuple[str, str], tuple[str, str]]] = (
+    (
+        "Program matches your file or formula",
+        "it reads your attached file, your request names each drawn column the verifier"
+        " recognizes if it names any column, or it plots your requested formula",
+    ),
+    (
+        "プログラムが添付ファイルまたは依頼の数式と一致",
+        "添付ファイルを読み込み、依頼が列名を含む場合は、描く列のうち検証器が認識できる列が"
+        "すべて依頼にあること、または依頼した数式を描くこと",
+    ),
+)
 
 # (EN, JA) per UI word.
 SHOW: Final = ("Show checks", "チェック項目を表示")
@@ -275,10 +294,11 @@ def _text(value: str) -> str:
     return html.escape(value, quote=True)
 
 
-def breakdown_html(reason: Reason | None, *, japanese: bool) -> str:
+def breakdown_html(reason: Reason | None, *, japanese: bool, anchoring: Anchoring) -> str:
     """Render every check for one reply: passed, the failing one with its cause, the unrun rest.
 
-    `reason` is the failure reason, or `None` for a published figure, whose checks all passed.
+    `reason` is the failure reason, or `None` for a published figure, whose checks all passed;
+    `anchoring` picks the binding row's text, so each artifact describes the rule it runs.
     """
     language = 1 if japanese else 0
     failing = len(CHECKS) if reason is None else CHECKS.index(CHECK_OF[reason])
@@ -287,7 +307,8 @@ def breakdown_html(reason: Reason | None, *, japanese: bool) -> str:
     for index, check in enumerate(CHECKS):
         state: _State = "pass" if index < failing else "fail" if index == failing else "skip"
         glyph, labels = MARKS[state]
-        title, covers = TEXTS[check][language]
+        texts = STRICT_BINDING if check == "binding" and anchoring == "strict" else TEXTS[check]
+        title, covers = texts[language]
         unrun = f' <span class="unrun">{_text(UNRUN[language])}</span>' if state == "skip" else ""
         detail = f'<div class="covers">{_text(covers)}</div>'
         if state == "fail":

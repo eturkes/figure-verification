@@ -7,7 +7,26 @@
       "design-simple-23:column_not_numeric->column_not_requested"
     ],
     "design_rows": 48,
-    "faithful_refused": []
+    "faithful_refused": [],
+    "strict_changed": [
+      "design-simple-02:VERIFIED->column_not_named",
+      "design-simple-04:VERIFIED->column_not_named",
+      "design-simple-05:VERIFIED->column_not_named",
+      "design-simple-06:label_not_consistent->column_not_requested",
+      "design-simple-08:VERIFIED->column_not_named",
+      "design-simple-12:VERIFIED->column_not_named",
+      "design-simple-14:VERIFIED->column_not_named",
+      "design-simple-18:VERIFIED->column_not_named",
+      "design-simple-22:label_not_consistent->column_not_requested",
+      "design-simple-23:column_not_numeric->column_not_requested",
+      "design-simple-24:VERIFIED->column_not_named"
+    ],
+    "strict_faithful_refused": [
+      "design-simple-02",
+      "design-simple-05",
+      "design-simple-12",
+      "design-simple-18"
+    ]
   },
   "en": {
     "faithful": 18,
@@ -16,6 +35,8 @@
     "series": 3,
     "series_refused": 3,
     "stop_false_refusals": 0,
+    "strict_false_refusals": 5,
+    "strict_swaps_caught": 47,
     "swaps_caught": 37,
     "swaps_verified": 57
   },
@@ -26,6 +47,8 @@
     "series": 3,
     "series_refused": 0,
     "stop_false_refusals": 0,
+    "strict_false_refusals": 4,
+    "strict_swaps_caught": 57,
     "swaps_caught": 48,
     "swaps_verified": 57
   },
@@ -36,6 +59,8 @@
     "series": 3,
     "series_refused": 0,
     "stop_false_refusals": 0,
+    "strict_false_refusals": 1,
+    "strict_swaps_caught": 57,
     "swaps_caught": 54,
     "swaps_verified": 57
   }

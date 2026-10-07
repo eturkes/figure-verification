@@ -37,7 +37,7 @@ import pytest
 
 from webui.bootstrap import SmokeResult, run_bootstrap, smoke
 from webui.client import FunctionReadback, PersistedChatResult, WebUIClient, WebUIProvisionError
-from webui.paste_in.bundle import FILTER_ARTIFACT, TOOL_ARTIFACT, artifact_text
+from webui.paste_in.bundle import DEMO_FILTER_ARTIFACT, DEMO_TOOL_ARTIFACT, artifact_text
 from webui.paste_in.filter import FILTER_DESCRIPTION, FILTER_ID, FILTER_NAME
 from webui.settings import Settings
 
@@ -206,7 +206,7 @@ class _FakeClient:
                     type="filter",
                     is_active=True,
                     is_global=True,
-                    content=artifact_text(FILTER_ARTIFACT),
+                    content=artifact_text(DEMO_FILTER_ARTIFACT),
                 ),
             )
             if functions is None
@@ -281,8 +281,8 @@ class _BootstrapTransport:
         self.filter_writes = {"create": 0, "update": 0}
         self.tool_writes = {"create": 0, "update": 0}
         self.model_writes = {"create": 0, "update": 0}
-        self.filter_content = artifact_text(FILTER_ARTIFACT)
-        self.tool_content = artifact_text(TOOL_ARTIFACT)
+        self.filter_content = artifact_text(DEMO_FILTER_ARTIFACT)
+        self.tool_content = artifact_text(DEMO_TOOL_ARTIFACT)
         self.filter_state: dict[str, object] | None = None
         self.tool_state: dict[str, object] | None = None
         self.model_config: dict[str, object] | None = None
@@ -1818,7 +1818,7 @@ def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
                     type="filter",
                     is_active=True,
                     is_global=True,
-                    content=artifact_text(FILTER_ARTIFACT) + "# drift",
+                    content=artifact_text(DEMO_FILTER_ARTIFACT) + "# drift",
                 ),
             ),
             "filter_current",
@@ -1830,7 +1830,7 @@ def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
                     type="filter",
                     is_active=False,
                     is_global=True,
-                    content=artifact_text(FILTER_ARTIFACT),
+                    content=artifact_text(DEMO_FILTER_ARTIFACT),
                 ),
             ),
             "filter_global_active",
@@ -1842,7 +1842,7 @@ def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
                     type="filter",
                     is_active=True,
                     is_global=False,
-                    content=artifact_text(FILTER_ARTIFACT),
+                    content=artifact_text(DEMO_FILTER_ARTIFACT),
                 ),
             ),
             "filter_global_active",
@@ -1854,7 +1854,7 @@ def test_smoke_reads_a_registered_tool_server_as_not_ok() -> None:
                     type="filter",
                     is_active=True,
                     is_global=True,
-                    content=artifact_text(FILTER_ARTIFACT),
+                    content=artifact_text(DEMO_FILTER_ARTIFACT),
                 ),
                 FunctionReadback(
                     id="other_filter",
@@ -1901,7 +1901,7 @@ def test_run_bootstrap_ok_in_order() -> None:
         "function_states",
     ]
     assert fake.filter_calls == [
-        (FILTER_ID, FILTER_NAME, artifact_text(FILTER_ARTIFACT), FILTER_DESCRIPTION)
+        (FILTER_ID, FILTER_NAME, artifact_text(DEMO_FILTER_ARTIFACT), FILTER_DESCRIPTION)
     ]
     # The tool is provisioned from the COMMITTED artifact: what the demo runs is byte-for-byte what
     # an admin pastes, so a render-instead-of-read would hide artifact drift here.
@@ -1909,7 +1909,7 @@ def test_run_bootstrap_ok_in_order() -> None:
         (
             settings.tool_id,
             settings.tool_name,
-            artifact_text(TOOL_ARTIFACT),
+            artifact_text(DEMO_TOOL_ARTIFACT),
             settings.tool_description,
         )
     ]
@@ -1933,13 +1933,13 @@ def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:
     expected_filter_call = (
         FILTER_ID,
         FILTER_NAME,
-        artifact_text(FILTER_ARTIFACT),
+        artifact_text(DEMO_FILTER_ARTIFACT),
         FILTER_DESCRIPTION,
     )
     expected_tool_call = (
         settings.tool_id,
         settings.tool_name,
-        artifact_text(TOOL_ARTIFACT),
+        artifact_text(DEMO_TOOL_ARTIFACT),
         settings.tool_description,
     )
     expected_model_tool_call = (settings.model_id, settings.tool_id)

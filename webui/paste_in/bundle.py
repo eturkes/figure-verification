@@ -27,6 +27,9 @@ from pathlib import Path
 
 TOOL_ARTIFACT = "paste-in/figure_verification_tool.py"
 FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
+# The demo's own pair (Q37): production + demo ship separate files; the launcher provisions these.
+DEMO_TOOL_ARTIFACT = "webui/demo-paste-in/figure_verification_tool.py"
+DEMO_FILTER_ARTIFACT = "webui/demo-paste-in/figure_verification_filter.py"
 CAPTURE_TEMPLATE_SOURCE = "webui/paste_in/capture_template.py"
 _CAPTURE_TEMPLATE_MODULE = "webui.paste_in.capture_template"
 
@@ -34,8 +37,15 @@ _CAPTURE_TEMPLATE_MODULE = "webui.paste_in.capture_template"
 ARTIFACTS: dict[str, str] = {
     TOOL_ARTIFACT: "webui.paste_in.tool",
     FILTER_ARTIFACT: "webui.paste_in.filter",
+    DEMO_TOOL_ARTIFACT: "webui.paste_in.demo_tool",
+    DEMO_FILTER_ARTIFACT: "webui.paste_in.demo_filter",
 }
-_EXPORTS = {"webui.paste_in.tool": "Tools", "webui.paste_in.filter": "Filter"}
+_EXPORTS = {
+    "webui.paste_in.tool": "Tools",
+    "webui.paste_in.filter": "Filter",
+    "webui.paste_in.demo_tool": "Tools",
+    "webui.paste_in.demo_filter": "Filter",
+}
 
 # First-party root package -> the repo-relative directory holding it.
 _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}

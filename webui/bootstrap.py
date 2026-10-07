@@ -33,7 +33,7 @@ from typing import Protocol
 import msgspec
 
 from webui.client import _TOOL_SERVER_ID_PREFIX, FunctionReadback
-from webui.paste_in.bundle import FILTER_ARTIFACT, TOOL_ARTIFACT, artifact_text
+from webui.paste_in.bundle import DEMO_FILTER_ARTIFACT, DEMO_TOOL_ARTIFACT, artifact_text
 from webui.paste_in.filter import FILTER_DESCRIPTION, FILTER_ID, FILTER_NAME
 from webui.settings import Settings
 
@@ -115,7 +115,7 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
         model_tool_attached=settings.tool_id in model_tool_ids,
         model_tool_exclusive=model_tool_ids == [settings.tool_id],
         filter_current=installed is not None
-        and installed.content == artifact_text(FILTER_ARTIFACT),
+        and installed.content == artifact_text(DEMO_FILTER_ARTIFACT),
         filter_global_active=(
             installed is not None and installed.is_active and installed.is_global
         ),
@@ -126,21 +126,22 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
 def run_bootstrap(client: _Provisioner, settings: Settings) -> SmokeResult:
     """Wait, authenticate, converge the filter, tool + model attachment, then smoke every readback.
 
-    The tool is provisioned from the COMMITTED artifact, so what the demo runs is byte-for-byte
-    what an admin pastes -- the demo is the artifact's own live test rather than a second wiring.
+    The tool is provisioned from the COMMITTED demo artifact, generated from the sources of the
+    production pair, which differs in its anchoring constant alone -- the demo is a live test of the
+    shared code rather than a second wiring.
     """
     client.wait_ready()
     client.authenticate()
     client.ensure_global_filter(
         function_id=FILTER_ID,
         name=FILTER_NAME,
-        content=artifact_text(FILTER_ARTIFACT),
+        content=artifact_text(DEMO_FILTER_ARTIFACT),
         description=FILTER_DESCRIPTION,
     )
     client.ensure_tool(
         tool_id=settings.tool_id,
         name=settings.tool_name,
-        content=artifact_text(TOOL_ARTIFACT),
+        content=artifact_text(DEMO_TOOL_ARTIFACT),
         description=settings.tool_description,
     )
     client.ensure_model_tool(model_id=settings.model_id, tool_id=settings.tool_id)

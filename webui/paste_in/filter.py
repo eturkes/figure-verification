@@ -21,6 +21,7 @@ from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
+from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Refused, Verified
 from webui.paste_in.capture_template import CAPTURE_TEMPLATE
 from webui.paste_in.checks import breakdown_html
@@ -215,7 +216,10 @@ async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) 
 
 
 async def _diagnose(
-    emit: _Emit | None, reason: Reason | None, metadata: dict[str, object] | None
+    emit: _Emit | None,
+    reason: Reason | None,
+    metadata: dict[str, object] | None,
+    anchoring: Anchoring,
 ) -> None:
     """Show the user why a figure failed, then every check it faced (`reason` None = published).
 
@@ -235,7 +239,7 @@ async def _diagnose(
         status: dict[str, object] = {"type": "status", "data": {"description": text, "done": True}}
         await _emit_bounded(emit, status, deadline)
     try:
-        document = breakdown_html(reason, japanese=japanese)
+        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)
     except Exception:
         return
     # `replace` keeps exactly this document on the message; Open WebUI otherwise appends.
@@ -248,6 +252,7 @@ async def _fail(
     reason: Reason,
     metadata: dict[str, object] | None,
     emit: _Emit | None,
+    anchoring: Anchoring,
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
@@ -256,12 +261,15 @@ async def _fail(
     """
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
-    await _diagnose(emit, reason, metadata)
+    await _diagnose(emit, reason, metadata, anchoring)
     return _rewrite(body, FAIL_TEXT)
 
 
 class Filter:
     """The global active filter; the inlet carries context, and the outlet authors the verdict."""
+
+    # Production = strict request anchoring; the demo's generated filter overrides it (Q37).
+    _ANCHORING: Anchoring = "strict"
 
     async def inlet(
         self,
@@ -314,7 +322,7 @@ class Filter:
         """Re-derive, render once, publish only when verification and rendering both succeed."""
 
         async def fail(reason: Reason) -> dict[str, object]:
-            return await _fail(body, reason, __metadata__, __event_emitter__)
+            return await _fail(body, reason, __metadata__, __event_emitter__, self._ANCHORING)
 
         receipt = read_receipt(__request__)
         user_id = (__user__ or {}).get("id")
@@ -324,7 +332,9 @@ class Filter:
             return await fail("no_user")
 
         attachments = await owned_files(receipt.file_ids, user_id)
-        verdict, consumed = first_verdict(receipt.program, attachments, receipt.request_text)
+        verdict, consumed = first_verdict(
+            receipt.program, attachments, receipt.request_text, self._ANCHORING
+        )
         if isinstance(verdict, Refused):
             return await fail(verdict.code)
         if not isinstance(verdict, Verified):
@@ -378,5 +388,5 @@ class Filter:
             )
         except Exception:
             return await fail("publish_failed")
-        await _diagnose(__event_emitter__, None, __metadata__)
+        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)
         return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")
