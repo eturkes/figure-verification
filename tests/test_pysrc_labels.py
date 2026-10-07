@@ -154,3 +154,26 @@ def test_q16_formula_labels_meet_no_header() -> None:
         'plt.plot(x, np.sin(x))\nplt.xlabel("revenue total")\nplt.show()\n'
     )
     assert isinstance(verify_python_source(program), Verified)
+
+
+@pytest.mark.parametrize("label", ["Revenue (not orders)", "Revenue in chronological order"])
+def test_q38_a_label_negating_or_ordering_names_no_column(label: str) -> None:
+    """Q38 reaches G10 through the shared matcher: neither label names `orders`."""
+    assert _verdict(_labelled({"title": label})) == "VERIFIED"
+
+
+def test_q38_a_japanese_label_negating_a_column_names_no_column() -> None:
+    content = "地域,売上,注文数\n東,1,5\n西,2,6\n".encode()
+    program = _labelled({"title": "注文数ではなく売上"}, key="地域", value="売上")
+    assert _verdict(program, content) == "VERIFIED"
+
+
+def test_q38_a_cue_before_a_non_name_negates_nothing_in_a_label() -> None:
+    """`only` is no column, so `orders` after it stays named: an undrawn column in the title."""
+    assert _verdict(_labelled({"title": "Revenue, not only orders"})) == "label_not_consistent"
+
+
+def test_q38_a_mixed_script_label_negating_a_column_names_no_column() -> None:
+    content = "地域,売上,売上JPY\n東,1,5\n西,2,6\n".encode()
+    program = _labelled({"title": "売上JPYではなく売上"}, key="地域", value="売上")
+    assert _verdict(program, content) == "VERIFIED"

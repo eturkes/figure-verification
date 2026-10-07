@@ -13,6 +13,10 @@ Legs, each verified with `request=None` (baseline) and with the prompt as the re
   VERIFIED swap that anchoring refuses is CAUGHT.
 - capture: the committed `m10-design` proposer captures (EN), every row whose verdict anchoring
   changes, with W1's FAITHFUL reading.
+- plants (Q38): each faithful intent with its request planted -- `stop` appends the stop phrase
+  `chronological order` (one edit from `orders`), `negation` excludes the first undrawn header
+  column (`, not <column>`; Japanese `<column>ではなく、` before the request). Every refusal of a
+  plant is FALSE: the plant asks for no other column.
 
     uv run --locked python .agent/measurements/a1_anchor.py   # writes a1-result.json
 """
@@ -94,6 +98,8 @@ for language in LANGUAGES:
         "swaps_verified": 0,
         "swaps_caught": 0,
         "swaps_missed": [],
+        "stop_false_refusals": [],
+        "negation_false_refusals": [],
     }
     for prompt_id, task in sorted(intent.items()):
         request, path, content, columns = case(language, prompt_id)
@@ -112,6 +118,19 @@ for language in LANGUAGES:
         leg["faithful"] += 1
         if anchored != "VERIFIED":
             leg["false_refusals"].append(f"{prompt_id}:{anchored}")
+        other = next(column for column in columns.values() if column not in (x, y))
+        plants = {
+            "stop": f"{request.rstrip('.')} in chronological order."
+            if language == "en"
+            else f"{request}(chronological order)",
+            "negation": f"{request.rstrip('.')}, not {other}."
+            if language == "en"
+            else f"{other}ではなく、{request}",
+        }
+        for plant, planted in plants.items():
+            verdict = outcome(source, path, content, planted)
+            if verdict != "VERIFIED":
+                leg[f"{plant}_false_refusals"].append(f"{prompt_id}:{verdict}")
         for slot in ("x", "y"):
             for other in columns.values():
                 if other in (x, y):
@@ -179,6 +198,11 @@ for language in LANGUAGES:
     )
     print(f"  false: {leg['false_refusals']}  series: {leg['series_refused']}")
     print(f"  missed swaps: {leg['swaps_missed']}")
+    print(
+        f"  plants: stop {len(leg['stop_false_refusals'])}/{leg['faithful']} false"
+        f" {leg['stop_false_refusals']}; negation {len(leg['negation_false_refusals'])}"
+        f"/{leg['faithful']} false {leg['negation_false_refusals']}"
+    )
 print(
     f"capture: {verified}/{result['capture']['design_rows']} design rows VERIFIED;"
     f" FAITHFUL refused {faithful_refused}; changed by anchoring: {changed}"

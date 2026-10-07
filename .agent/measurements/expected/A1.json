@@ -12,24 +12,30 @@
   "en": {
     "faithful": 18,
     "false_refusals": 0,
+    "negation_false_refusals": 0,
     "series": 3,
     "series_refused": 3,
+    "stop_false_refusals": 0,
     "swaps_caught": 37,
     "swaps_verified": 57
   },
   "ja": {
     "faithful": 18,
     "false_refusals": 0,
+    "negation_false_refusals": 0,
     "series": 3,
     "series_refused": 0,
+    "stop_false_refusals": 0,
     "swaps_caught": 48,
     "swaps_verified": 57
   },
   "ja_mixed": {
     "faithful": 18,
     "false_refusals": 0,
+    "negation_false_refusals": 0,
     "series": 3,
     "series_refused": 0,
+    "stop_false_refusals": 0,
     "swaps_caught": 54,
     "swaps_verified": 57
   }

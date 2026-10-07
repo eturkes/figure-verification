@@ -130,7 +130,9 @@ same code. The verifier compares the words of the request with the column names 
 covers only the column names that the verifier recognizes. It does not recognize synonyms or
 translations. It also does not recognize a short column name. A short name has one or two ASCII
 characters, such as `id`, or one character of another script. If the request names no recognized
-column, the chart passes this check.
+column, the chart passes this check. A column that the request excludes does not count as named,
+such as `orders` in `revenue, not orders`. An order phrase such as `in chronological order` names
+no column.
 
 The labels of a chart over a CSV file obey a similar rule. A title, axis label or legend label
 cannot name a recognized CSV column that the chart does not show. The verifier does not check a

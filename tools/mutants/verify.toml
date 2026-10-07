@@ -332,3 +332,109 @@ mutant = '''    _check_labels(spec, header)
     match spec.mark:
         case "bar" | "barh":'''
 
+
+# Q38 stop phrases + negation: one mutant per predicate of `_unnamed_places`.
+[[mutant]]
+id = "q38-stop-phrases-unread"
+predicate = "N1: a stop phrase names no header"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n1_a_stop_phrase_names_no_header[chronological order]"
+anchor = '''    for phrase in _STOP_PHRASES:'''
+mutant = '''    for phrase in ():'''
+
+[[mutant]]
+id = "q38-stop-phrase-header-consumed"
+predicate = "N1: a phrase that is a header's whole name stays a name"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n1_a_header_spelled_as_a_stop_phrase_is_still_named"
+anchor = '''        while phrase not in names and needle in rest:'''
+mutant = '''        while needle in rest:'''
+
+[[mutant]]
+id = "q38-english-negation-unread"
+predicate = "N2: a name after an English cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_an_english_cue_unnames_the_header_after_it[not]"
+anchor = '''    for cue in _NEGATION_BEFORE.finditer(rest):'''
+mutant = '''    for cue in ():'''
+
+[[mutant]]
+id = "q38-english-negation-exact-only"
+predicate = "N2: a negated word within one edit of a long name is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_a_negated_name_within_one_edit_is_unnamed"
+anchor = '''    if word.isascii() and any(_within_one(word, key) for key in fuzzy):'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q38-filler-unread"
+predicate = "N2: one `the`/`any` may sit between the cue and the name"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_an_english_cue_unnames_the_header_after_it[not the]"
+anchor = '''        if end is None and rest.startswith(_FILLERS, start):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q38-filler-read-first"
+predicate = "N2: the cue's own successor is tried as a name before a filler word"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_a_header_opening_with_a_filler_word_is_negated[any_adverse_event-Chart revenue, not any adverse event]"
+anchor = '''        end = _negated_end(rest, start, keys, fuzzy)
+        if end is None and rest.startswith(_FILLERS, start):'''
+mutant = '''        end = None
+        if rest.startswith(_FILLERS, start):'''
+
+[[mutant]]
+id = "q38-english-negation-skips-any-word"
+predicate = "N4: a cue before a non-name negates nothing"
+kills = "tests/test_pysrc_labels.py::test_q38_a_cue_before_a_non_name_negates_nothing_in_a_label"
+anchor = '''        if end is None and rest.startswith(_FILLERS, start):
+            end = _negated_end(rest, start + 4, keys, fuzzy)'''
+mutant = '''        if end is None:
+            end = _negated_end(rest, rest.find(" ", start + 1), keys, fuzzy)'''
+
+[[mutant]]
+id = "q38-negation-consumes-every-occurrence"
+predicate = "N4: a name negated at one place and named at another stays named"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n4_a_name_negated_once_and_named_elsewhere_stays_named"
+anchor = '''        rest = "".join([*pieces, rest[last:]])'''
+mutant = '''        rest = rest.replace(rest[spans[0][0] : spans[0][1] + 1], " \0 ")'''
+
+[[mutant]]
+id = "q38-negated-place-joins-a-tie"
+predicate = "N4: a negated place takes part in no tie"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n4_a_negated_place_joins_no_tie"
+anchor = '''    if word.isascii() and any(_within_one(word, key) for key in fuzzy):'''
+mutant = '''    if word.isascii() and sum(_within_one(word, key) for key in fuzzy) == 1:'''
+
+[[mutant]]
+id = "q38-japanese-negation-unread"
+predicate = "N3: a name before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_japanese_cue_unnames_the_header_before_it[dewanaku]"
+anchor = '''        for after in _NEGATION_AFTER:'''
+mutant = '''        for after in ():'''
+
+[[mutant]]
+id = "q38-japanese-negation-ascii-header-missed"
+predicate = "N3: an ASCII header before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_japanese_cue_unnames_an_ascii_header_before_it"
+anchor = '''        gap = " " if key[-1].isascii() else ""'''
+mutant = '''        gap = ""'''
+
+[[mutant]]
+id = "q38-japanese-negation-mixed-script-missed"
+predicate = "N3: a Japanese header ending in ASCII before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_mixed_script_header_ending_in_ascii_is_unnamed[dewanaku]"
+anchor = '''        gap = " " if key[-1].isascii() else ""'''
+mutant = '''        gap = " " if key.isascii() else ""'''
+
+[[mutant]]
+id = "q38-japanese-negation-containment-lost"
+predicate = "N3: a non-ASCII name before a Japanese cue is matched by containment, as naming is"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_negation_matches_by_containment_like_naming"
+anchor = '''        lead = " " if key.isascii() else ""'''
+mutant = '''        lead = " " if key[0].isascii() else ""'''
+
+[[mutant]]
+id = "q38-cue-inside-negated-name-read"
+predicate = "N4: a cue word inside a negated name is part of that name, not a second cue"
+kills = "tests/test_pysrc_anchoring.py::test_q38_a_cue_inside_a_negated_name_is_not_a_second_cue"
+anchor = '''        if spans and cue.start() < spans[-1][1]:
+            continue
+'''
+mutant = '''        pass
+'''

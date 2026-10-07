@@ -210,6 +210,8 @@ def a1():
             "series_refused": len(leg["series_refused"]),
             "swaps_verified": leg["swaps_verified"],
             "swaps_caught": leg["swaps_caught"],
+            "stop_false_refusals": len(leg["stop_false_refusals"]),
+            "negation_false_refusals": len(leg["negation_false_refusals"]),
         }
         for language, leg in data.items()
         if language != "capture"

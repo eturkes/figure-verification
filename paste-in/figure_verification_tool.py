@@ -4052,6 +4052,23 @@ _FUZZY_MIN = 5
 _ASCII_ANCHOR_MIN = 3
 _OTHER_ANCHOR_MIN = 2
 _WORD = re.compile(r"[a-z0-9]+|[^\Wa-z0-9_]+")
+# Q38: words beside a header name that do not ask for it. A stop phrase is one edit from `orders`
+# (`chronological order`); a negated name (`revenue, not orders`, `注文数ではなく`) is excluded,
+# never requested. Both are consumed before naming, so neither names a header nor joins a tie.
+_STOP_PHRASES = (
+    "chronological order",
+    "alphabetical order",
+    "descending order",
+    "ascending order",
+    "numerical order",
+    "reverse order",
+    "sorted order",
+    "sort order",
+    "in order",
+)
+_NEGATION_BEFORE = re.compile(r" (?:not|no|without|except|excluding|rather than|instead of)(?= )")
+_FILLERS = (" the ", " any ")
+_NEGATION_AFTER = ("ではなく", "じゃなく", "でなく", "以外", "を除")
 
 
 class _AmbiguousTermError(ValueError):
@@ -4110,6 +4127,68 @@ def _near_names(rest: str, keys: list[str]) -> list[set[str]]:
     return places
 
 
+def _floor(key: str) -> int:
+    """The shortest header name that anchors: `x`, `id` are ordinary request words."""
+    return _ASCII_ANCHOR_MIN if key.isascii() else _OTHER_ANCHOR_MIN
+
+
+def _negated_end(rest: str, start: int, keys: list[str], fuzzy: list[str]) -> int | None:
+    """Where the name opening at `start` (the space before it) ends, or None for a non-name."""
+    for key in keys:
+        if rest.startswith(f" {key} ", start):
+            return start + 1 + len(key)
+    end = rest.find(" ", start + 1)
+    word = rest[start + 1 : end]
+    if word.isascii() and any(_within_one(word, key) for key in fuzzy):
+        return end
+    return None
+
+
+def _unnamed_places(rest: str, names: list[str]) -> str:
+    """`rest` with every stop phrase and every negated name consumed (Q38).
+
+    A negated name = the longest anchoring name right after an English cue (or after the cue + one
+    `the`/`any`), else one ASCII word within one edit of a one-word name of `_FUZZY_MIN`+
+    characters; or a name right before a Japanese cue. A cue before anything else negates nothing
+    (`not only revenue`). The English scan reads by position and rebuilds the text once, so its
+    work stays linear in the request.
+    """
+    keys = sorted((key for key in names if len(key) >= _floor(key)), key=len, reverse=True)
+    fuzzy = [key for key in keys if " " not in key and len(key) >= _FUZZY_MIN]
+    for phrase in _STOP_PHRASES:
+        needle = f" {phrase} "
+        while phrase not in names and needle in rest:
+            rest = rest.replace(needle, " \0 ")
+    spans: list[tuple[int, int]] = []
+    for cue in _NEGATION_BEFORE.finditer(rest):
+        start = cue.end()
+        if spans and cue.start() < spans[-1][1]:
+            continue
+        end = _negated_end(rest, start, keys, fuzzy)
+        if end is None and rest.startswith(_FILLERS, start):
+            end = _negated_end(rest, start + 4, keys, fuzzy)
+            start += 4
+        if end is not None:
+            spans.append((start, end))
+    if spans:
+        pieces: list[str] = []
+        last = 0
+        for start, end in spans:
+            pieces += [rest[last : start + 1], "\0"]
+            last = end
+        rest = "".join([*pieces, rest[last:]])
+    for key in keys:
+        # The same place naming matches: an ASCII name as whole words, any other by containment;
+        # `_words` splits an ASCII tail from the Japanese cue after it.
+        lead = " " if key.isascii() else ""
+        gap = " " if key[-1].isascii() else ""
+        for after in _NEGATION_AFTER:
+            needle = f"{lead}{key}{gap}{after}"
+            while needle in rest:
+                rest = rest.replace(needle, f" \0 {after}")
+    return rest
+
+
 def _named_columns(
     text: str, header: tuple[str, ...], *, ignore_ties: bool = False
 ) -> frozenset[str]:
@@ -4117,14 +4196,13 @@ def _named_columns(
     by_key: dict[str, list[str]] = {}
     for column in header:
         by_key.setdefault(_words(column), []).append(column)
-    rest = f" {_words(text)} "
+    rest = _unnamed_places(f" {_words(text)} ", list(by_key))
     named: set[str] = set()
     # Exact names first, longest first, each consuming its span: `unit price` never also names
     # `price`, and `収縮期血圧値` never also names `収縮期血圧`.
     for key in sorted(by_key, key=len, reverse=True):
         needle = f" {key} " if key.isascii() else key
-        floor = _ASCII_ANCHOR_MIN if key.isascii() else _OTHER_ANCHOR_MIN
-        if len(key) >= floor and needle in rest:
+        if len(key) >= _floor(key) and needle in rest:
             named.add(key)
             while needle in rest:  # adjacent occurrences share a space; one pass skips every second
                 rest = rest.replace(needle, " \0 ")

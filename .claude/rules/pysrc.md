@@ -171,11 +171,19 @@ projection + exact recomputation and observation is additive.
   word; in Japanese, a stretch of near length). A span within 1 of TWO names, or one name two headers
   fold to = tie. An unreadable header (`csvread.header_names` = None wherever `read_columns` refuses
   by the header) or a drawn column absent from it leaves the verdict to recompute. Lexical only:
-  `temperature` never names `temp_c`, while `chronological order` names `orders` (kernel review
-  register, a false refusal the ruled matcher makes). Measured, A1 (`.agent/measurements/a1_anchor.py`): false refusals 0/18 per
+  `temperature` never names `temp_c`. Before naming, Q38 (`verify.py::_unnamed_places`,
+  `.agent/archive/contracts/q38.md`) consumes the closed EN stop phrases (`chronological order` … `in
+  order`, unless one is a header's whole name) + every negated name: the longest name, else one
+  ASCII word within one edit of a 5+-char name, right after `not` `no` `without` `except`
+  `excluding` `rather than` `instead of` (the cue's successor first, then past one `the`/`any`), or
+  a name right before `ではなく` `じゃなく` `でなく` `以外` `を除` (a space between them where the
+  name ends in ASCII, as `_words` splits there). The scan stays linear in the request. A consumed place names nothing + joins no tie; a cue before a
+  non-name negates nothing; the same name elsewhere still names. Shared with G10 labels. Measured, A1 (`.agent/measurements/a1_anchor.py`): false refusals 0/18 per
   language (EN · JA over a translated header · JA naming the English header), swaps caught 37/57 ·
-  48/57 · 54/57; `m10-design` captures: 0 FAITHFUL rows refused, the 2 verified per-city-series rows
-  now refuse.
+  48/57 · 54/57; plants (` in chronological order` · `, not <undrawn column>`) 0/18 each per
+  language (the pre-Q38 matcher: EN 1 + 7, JA 0 + 4, JA-mixed 0 + 1); `m10-design` captures: 0
+  VERIFIED rows refused; anchoring moves only refusal codes (06 + 22 `label_not_consistent`, 23
+  `column_not_numeric` → `column_not_requested`).
 - A model-produced translation of the request may never become the anchor: the model would then
   control both sides of the comparison and class II would be deleted, not weakened. A translation
   reaches the user through tier 3 publication only.

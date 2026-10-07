@@ -58,7 +58,8 @@ uv run --locked python .agent/measurements/w1_width.py corpus/python/captures/m1
 ```
 
 `A1` reads the 24 design-simple prompts, `design_intent.json`, the authored Japanese renderings in
-`a1_ja.json` and the `m10-design` captures; it writes `a1-result.json`. `A2` labels the same 24
+`a1_ja.json` and the `m10-design` captures, and plants a stop phrase or a negated undrawn column
+into each faithful request (Q38); it writes `a1-result.json`. `A2` labels the same 24
 tasks from `a2_labels.json` (EN + JA concept names and summary words, the `a1_ja.json` headers) and
 re-verifies the captures with G10 neutralised as baseline; it writes `a2-result.json`. Held-out
 prompts stay unread.
@@ -214,7 +215,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | T8 | beyond-int32 fixed-point parsing vs host pandas AND stdlib `float`; float64-column bar heights; mixed integer/decimal tokens | Q12 production range changed: integer columns keep int32; float64 cells retain the 15-digit cap; float64 bar reductions stay within ±2**53. Evidence: 0/1,345,852 host↔Pyodide decimal disagreements/form/build through ±2**53; ≤15-digit subset 0/623,350 vs stdlib, unrestricted 215,269 disagreements; mixed column 0/1,000,049 vs both; 0/2,364 boundary + 0/2,097 mixed artist-height changes/build |
 | W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
-| A1 | request anchoring (Q8), per language (EN, JA over a translated header, JA naming the English header): refusals of the 18 intent programs needing no per-city series, refusals of the 3 that need one, x/y swaps caught; the `m10-design` capture rows whose verdict anchoring changes | `pysrc.md` request-anchoring bullets: 0 false refusals per language, the catch rates |
+| A1 | request anchoring (Q8), per language (EN, JA over a translated header, JA naming the English header): refusals of the 18 intent programs needing no per-city series, refusals of the 3 that need one, x/y swaps caught; refusals of the 18 with a planted stop phrase or negated undrawn column (Q38); the `m10-design` capture rows whose verdict anchoring changes | `pysrc.md` request-anchoring bullets: 0 false refusals per language, the catch rates |
 | A2 | label consistency (G10, Q16), per form (EN, JA over a translated header, JA naming the English header): refusals of the 18 labelled intent programs needing no per-city series, x-label plants naming another column, summary-word plants naming another reduction; the `m10-design` capture rows whose verdict G10 changes | `pysrc.md` G10 bullet: 0 false refusals per form, the catch rates |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter and a program that never calls `show` | M10.1 F7 + M10.2 O1: four `Ue`-shaped replies each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError` |
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 62 fixture observations + PNGs (M10.10 added 6 accessor lines, Q18 the 4 nested-libm formulas), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |

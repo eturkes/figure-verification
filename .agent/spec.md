@@ -47,17 +47,16 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 **Resume note** — MAINTAIN queue request, session 6; the request's closing commit deletes this block.
   - Finish line = the request's `Met when` (verbatim + every user ruling + chain mechanics = `.scratch/q/RESUME.md`): every in-scope `.agent/deferred.md` row closed by its acceptance check in its own commit, recorded as blocked on the user with what it owes, or waiting on its re-open trigger; `bash tools/gate.sh` green on a clean tree at the closing commit; final message per the request (per-row SHA/owed/trigger, rows added, gate + skipped/not-run/missing, teammates, advisor calls, unconfirmed, `git status`, closing SHA).
   - Session-6 user rulings: p34 RETIRE · Q19 RETIRE · Q3 D4 raw `expr` CONFIRMED · held-out re-grade = new row Q39 (contract approved) · lexical false refusals = new row Q38, fund now (contract approved; consider whether refusing a drawn negated column matters for production) · Q8: "Strict rules in general are preferred for production. Make sure to separate what you need to do for a functional demo vs. the best production version targeting Kimi K2.6." = new row Q37 (contract owed to the user before production edits).
-  - Order: p34 `dfc2cd3` → Q19 `de26001` → Q38 → Q37 → Q41 → Q40 → Q39 (Q37's strict precondition reads Q38's negation; Q41's acceptance reads Q37's strict leg; Q39 measures the final verifier) → closing review → closing commit.
+  - Order: p34 `dfc2cd3` → Q19 `de26001` → Q38 (this commit) → Q37 → Q41 → Q40 → Q39 (Q37's strict precondition reads Q38's negation; Q41's acceptance reads Q37's strict leg; Q39 measures the final verifier) → closing review → closing commit.
   - Per-commit gate: `bash tools/gate.sh` on a clean tree (primary, or the isolated worktree `.scratch/worktrees/gate-s6` with its own `.venv`), logs `.scratch/q/gates3/<unit>.log`.
 
 MAINTAIN request = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption). One unit + one commit per row, subject `<scope> (Q<n>): …`; the closing commit prunes the queue row + removes its line here. Owed = needs the user (a ruling, an approval, MX150 time).
 - [ ] Q37 strict request anchoring for production (kernel; contract approved)
-- [ ] Q38 negation + stop phrases in request matching (kernel)
 - [ ] Q39 held-out re-grade under request anchoring (data)
 - [ ] Q40 production inlet template (no bare-source sentence)
 - [ ] Q41 Japanese short-word naming — contract owed to the user
 
-Queue = `.agent/deferred.md`, 5 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, 4 rows, one line + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 

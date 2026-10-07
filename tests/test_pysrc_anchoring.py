@@ -6,11 +6,13 @@ distance 1 for terms of 5+ characters; a tie refuses. A substitution = the progr
 the request names AND plots one the request never names. Contract `.agent/archive/contracts/q8.md`.
 """
 
+from typing import SupportsIndex
+
 import pytest
 
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.spec import DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from verifier.pysrc.verify import Verified, _unnamed_places, verify_python_source
 from webui.paste_in import selection
 from webui.paste_in.owui_files import UploadedFile
 
@@ -260,3 +262,164 @@ def test_q8_selection_threads_the_request_into_every_dataset_target() -> None:
     assert refused.code == "column_not_requested"
     verified, _ = selection.first_verdict(program, (upload,), None)
     assert isinstance(verified, Verified)
+
+
+# Q38: stop phrases + negation. Contract `.agent/archive/contracts/q38.md`.
+_PHRASES = [
+    "chronological order",
+    "alphabetical order",
+    "descending order",
+    "ascending order",
+    "numerical order",
+    "reverse order",
+    "sorted order",
+    "sort order",
+    "in order",
+]
+
+
+@pytest.mark.parametrize("phrase", _PHRASES)
+def test_q38_n1_a_stop_phrase_names_no_header(phrase: str) -> None:
+    """`order` is one edit from `orders`: the phrase alone made `orders` a named, undrawn column."""
+    assert _verdict(_bar("month"), f"Chart total revenue in {phrase}") == "VERIFIED"
+
+
+def test_q38_n1_a_header_spelled_as_a_stop_phrase_is_still_named() -> None:
+    content = b"sort_order,month,revenue\n1,2024-01,5\n2,2024-02,6\n"
+    request = "Chart revenue by sort order"
+    assert _verdict(_bar("month"), request, content) == "column_not_requested"
+    assert _verdict(_bar("sort_order"), request, content) == "VERIFIED"
+
+
+def test_q38_n1_a_header_beside_a_stop_phrase_is_named_by_its_own_word() -> None:
+    content = b"order,month,revenue\n1,2024-01,5\n2,2024-02,6\n"
+    request = "Chart revenue by order, in chronological order"
+    assert _verdict(_bar("month"), request, content) == "column_not_requested"
+
+
+@pytest.mark.parametrize(
+    "cue",
+    [
+        "not",
+        "no",
+        "without",
+        "except",
+        "excluding",
+        "rather than",
+        "instead of",
+        "not the",
+        "no any",
+    ],
+)
+def test_q38_n2_an_english_cue_unnames_the_header_after_it(cue: str) -> None:
+    """`orders` follows the cue: excluded, so drawing `month` substitutes nothing."""
+    assert _verdict(_bar("month"), f"Chart total revenue, {cue} orders") == "VERIFIED"
+
+
+def test_q38_n2_a_negated_name_within_one_edit_is_unnamed() -> None:
+    assert _verdict(_bar("month"), "Chart total revenue, not ordrs") == "VERIFIED"
+
+
+def test_q38_n2_a_negated_multiword_name_is_unnamed_whole() -> None:
+    content = b"price,unit_price,region\n1,2,west\n3,4,east\n"
+    program = _bar("region", "price")
+    assert _verdict(program, "average by region, not unit price", content) == "VERIFIED"
+
+
+@pytest.mark.parametrize(
+    "cue",
+    ["ではなく", "じゃなく", "でなく", "以外", "を除いて"],
+    ids=["dewanaku", "janaku", "denaku", "igai", "wo-nozoite"],
+)
+def test_q38_n3_a_japanese_cue_unnames_the_header_before_it(cue: str) -> None:
+    content = "年月,地域,売上,注文数\n2024-01,東,1,5\n2024-02,西,2,6\n".encode()
+    program = _bar("年月", "売上")
+    assert _verdict(program, f"注文数{cue}、売上の合計を表示", content) == "VERIFIED"
+
+
+def test_q38_n3_a_japanese_cue_unnames_an_ascii_header_before_it() -> None:
+    assert _verdict(_bar("month"), "ordersではなくrevenueの合計") == "VERIFIED"
+
+
+def test_q38_n4_a_cue_before_a_non_name_negates_nothing() -> None:
+    """`not only revenue but orders` names both: `orders` undrawn, `month` drawn unnamed."""
+    program = _bar("month")
+    assert _verdict(program, "Chart not only revenue but orders") == "column_not_requested"
+
+
+def test_q38_n4_a_name_negated_once_and_named_elsewhere_stays_named() -> None:
+    program = _bar("month")
+    assert _verdict(program, "Chart revenue, not orders. Well, orders too") == (
+        "column_not_requested"
+    )
+
+
+def test_q38_n4_a_negated_place_joins_no_tie() -> None:
+    """`match` is one edit from `batch` and from `patch`; negated, it asks for neither."""
+    content = b"batch,patch,value\na,b,1\nc,d,2\n"
+    assert _verdict(_bar("batch", "value"), "value, not match", content) == "VERIFIED"
+
+
+@pytest.mark.parametrize(
+    "cue",
+    ["ではなく", "じゃなく", "でなく", "以外", "を除いて"],
+    ids=["dewanaku", "janaku", "denaku", "igai", "wo-nozoite"],
+)
+def test_q38_n3_a_mixed_script_header_ending_in_ascii_is_unnamed(cue: str) -> None:
+    """Kernel review: `気温_C` folds to `気温 c`; `_words` splits it from the cue after it."""
+    content = "年月,売上,気温_C\n2024-01,1,5\n2024-02,2,6\n".encode()
+    program = _bar("年月", "売上")
+    assert _verdict(program, f"気温_C{cue}売上の合計", content) == "VERIFIED"
+
+
+@pytest.mark.parametrize(
+    ("column", "request_text"),
+    [
+        ("any", "Chart revenue, not 'any'."),
+        ("the", "Chart revenue, not 'the'."),
+        ("any_adverse_event", "Chart revenue, not any adverse event"),
+        ("the_count", "Chart revenue, without the count"),
+    ],
+)
+def test_q38_n2_a_header_opening_with_a_filler_word_is_negated(
+    column: str, request_text: str
+) -> None:
+    """Kernel review: the cue's own successor is tried as a name before `the`/`any` is a filler."""
+    content = f"{column},month,revenue\n0,2024-01,1\n1,2024-02,2\n".encode()
+    assert _verdict(_bar("month"), request_text, content) == "VERIFIED"
+
+
+def test_q38_k8_a_cue_scan_copies_text_linear_in_the_request() -> None:
+    """Kernel review: each cue once copied the whole rest of the request (quadratic in cues)."""
+
+    class Counted(str):
+        copied = 0
+
+        def __getitem__(self, key: SupportsIndex | slice) -> str:
+            result = super().__getitem__(key)
+            if isinstance(key, slice):
+                Counted.copied += len(result)
+            return result
+
+    def copied(count: int) -> int:
+        Counted.copied = 0
+        text = Counted(" " + "not only " * count)
+        assert _unnamed_places(text, ["month", "revenue", "orders"]) == text
+        return Counted.copied
+
+    small, large = copied(128), copied(256)
+    assert large <= 3 * small, (small, large)
+
+
+def test_q38_n3_negation_matches_by_containment_like_naming() -> None:
+    """Kernel re-review: `SBP値` names `BP値` by containment, so `SBP値ではなく` negates it."""
+    content = "年月,売上,BP値\n2024-01,1,5\n2024-02,2,6\n".encode()
+    assert _verdict(_bar("年月", "売上"), "SBP値ではなく売上の合計", content) == "VERIFIED"
+
+
+def test_q38_a_cue_inside_a_negated_name_is_not_a_second_cue() -> None:
+    """`not no show month`: `no show` is the negated name, so its `no` cues nothing and `month`
+    stays named -- read as a cue, it would swallow `show month` and hide `month`."""
+    content = b"no_show,show_month,month,revenue\na,b,2024-01,1\nc,d,2024-02,2\n"
+    program = _bar("show_month")
+    assert _verdict(program, "Total revenue, not no show month", content) == "column_not_requested"
