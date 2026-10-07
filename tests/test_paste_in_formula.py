@@ -280,7 +280,8 @@ def test_t10_formula_with_csv_but_no_request_carrier_blocks(tmp_path: Path) -> N
 
 
 def test_t11_generated_artifact_carries_request_core_without_new_imports() -> None:
-    """T11: the paste-in has request.py in its exact core closure and no external imports."""
+    """T11: the paste-in has request.py in its exact core closure and no external import beyond
+    the image's `pydantic` (Q43: the tool's admin `Valves`)."""
     bundle = load_bundle()
     artifact = REPO_ROOT / "paste-in" / "figure_verification_tool.py"
     text = artifact.read_text(encoding="utf-8")
@@ -289,6 +290,6 @@ def test_t11_generated_artifact_carries_request_core_without_new_imports() -> No
     assert checked.returncode == 0, checked.stdout + checked.stderr
     assert "verifier.pysrc.request" in sources
     assert_embedded_identity(sources)
-    assert offending_import_roots(bundle, text) == set()
+    assert offending_import_roots(bundle, text) == {"pydantic"}
     assert "re" in sys.stdlib_module_names
     assert "unicodedata" in sys.stdlib_module_names

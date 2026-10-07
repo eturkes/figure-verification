@@ -88,10 +88,10 @@ def test_q37_s3_the_tool_verifies_under_its_own_rule(
 
 def test_q37_s3_selection_threads_the_rule_into_every_dataset_target() -> None:
     upload = UploadedFile("file", "/mnt/uploads/sales.csv", _SALES)
-    strict, _ = selection.first_verdict(_PROGRAM, (upload,), _REQUEST, "strict")
+    strict, _ = selection.first_verdict(_PROGRAM, (upload,), _REQUEST, "strict", ())
     assert isinstance(strict, Refused)
     assert strict.code == "column_not_named"
-    demo, _ = selection.first_verdict(_PROGRAM, (upload,), _REQUEST, "substitution")
+    demo, _ = selection.first_verdict(_PROGRAM, (upload,), _REQUEST, "substitution", ())
     assert not isinstance(demo, Refused)
 
 
@@ -103,11 +103,16 @@ def test_q37_s3_selection_threads_the_rule_into_every_dataset_target() -> None:
 def test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list(
     module: object, rule: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A spy at each seam: the verdict call and the check-list renderer receive the class's rule."""
+    """A spy at each seam: the verdict call and the check-list renderer receive the class's rule;
+    the verdict call also receives the receipt's aliases (Q43)."""
     seen: list[tuple[str, object]] = []
+    aliases = (("month", "period"),)
 
-    def verdict(_program: str, _attachments: object, _text: object, anchoring: str) -> object:
+    def verdict(
+        _program: str, _attachments: object, _text: object, anchoring: str, threaded: object
+    ) -> object:
         seen.append(("verdict", anchoring))
+        assert threaded == aliases
         refused: Verdict = Refused("target_mismatch")
         return refused, None
 
@@ -127,7 +132,7 @@ def test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list(
         asyncio.run(
             module.Filter().outlet(  # type: ignore[attr-defined]
                 filter_body("MODEL_REPLY_SENTINEL"),
-                __request__=recorded_request(_PROGRAM, request_text=_REQUEST),
+                __request__=recorded_request(_PROGRAM, request_text=_REQUEST, aliases=aliases),
                 __user__={"id": _USER},
                 __metadata__={"session_id": "session"},
                 __event_call__=None,

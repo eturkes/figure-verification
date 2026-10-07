@@ -11,6 +11,7 @@ banned. A generator whose output drifts from its inputs recreates the fork silen
 byte identity, closure, order and the import surface are each pinned separately.
 """
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -36,6 +37,15 @@ from paste_in_support import (
     offending_import_roots,
     run_generator,
     without_module_restore,
+)
+
+# `pydantic` + its runtime dependencies, as the Open WebUI image ships them (Q43).
+_IMAGE_PACKAGES = (
+    "pydantic",
+    "pydantic_core",
+    "typing_extensions",
+    "annotated_types",
+    "typing_inspection",
 )
 
 
@@ -124,13 +134,16 @@ def test_b5_loading_restores_embedded_module_slots() -> None:
     """B5-1: no embedded name remains and no existing value is rebound after `exec_module`.
 
     Preload the imports before snapshotting; new standard-library keys may remain after a cold load.
-    Red under a loader whose embedded-name restore step is removed.
+    One warm load does that for the lazy imports a load makes: building the tool's `Valves` model
+    loads pydantic's plugin loader (Q43). Red under a loader whose embedded-name restore step is
+    removed.
     """
     bundle = load_bundle()
     for index, (path, _root) in enumerate(artifact_items(bundle)):
         text = path.read_text(encoding="utf-8")
         sources = bundle.embedded_sources(text)
         with artifact_import_environment(bundle, text):
+            execute_artifact(text, path, f"_paste_in_warm_{index}")
             sentinels = {name: ModuleType(name) for name in sources}
             sys.modules.update(sentinels)
             before = dict(sys.modules)
@@ -151,17 +164,28 @@ def test_b5_loading_restores_embedded_module_slots() -> None:
                 sys.modules.update(before)
 
 
-def test_b6_import_surface_is_stdlib_plus_open_webui() -> None:
-    """B6: AST scan over the wrapper AND every embedded source admits only stdlib + `open_webui`.
+def test_b6_import_surface_is_stdlib_open_webui_and_tool_pydantic() -> None:
+    """B6: AST scan over the wrapper AND every embedded source admits only stdlib + `open_webui`,
+    plus `pydantic` in the two tool artifacts alone (Q43: the admin `Valves`).
 
     The failure names every offending root. A planted `import numpy` inside a blob fails.
     """
     bundle = load_bundle()
+    beyond = {
+        "paste-in/figure_verification_tool.py": {"pydantic"},
+        "paste-in/figure_verification_filter.py": set(),
+        "webui/demo-paste-in/figure_verification_tool.py": {"pydantic"},
+        "webui/demo-paste-in/figure_verification_filter.py": set(),
+    }
+    seen = set()
     for path, _root in artifact_items(bundle):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        seen.add(relative)
         text = path.read_text(encoding="utf-8")
-        assert offending_import_roots(bundle, text) == set()
+        assert offending_import_roots(bundle, text) == beyond[relative]
         planted = mutate_embedded_blob(bundle, text, "import numpy\n")
-        assert offending_import_roots(bundle, planted) == {"numpy"}
+        assert offending_import_roots(bundle, planted) == beyond[relative] | {"numpy"}
+    assert seen == set(beyond)
 
 
 def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
@@ -194,6 +218,16 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
     assert artifact.is_file()
     isolated_artifact = tmp_path / "artifact.py"
     isolated_artifact.write_bytes(artifact.read_bytes())
+    # The Open WebUI image carries `pydantic` (Q43: the tool's `Valves`); the driver reaches it and
+    # its own dependencies alone, through `image/`, never the rest of the dev environment.
+    image = tmp_path / "image"
+    image.mkdir()
+    for name in _IMAGE_PACKAGES:
+        found = importlib.util.find_spec(name)
+        assert found is not None and found.origin is not None, name
+        source = Path(found.origin)
+        source = source.parent if found.submodule_search_locations else source
+        (image / source.name).symlink_to(source)
     (tmp_path / "payload.json").write_text(
         json.dumps(
             {
@@ -228,7 +262,7 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
                 or platstdlib in resolved.parents
             )
 
-        sys.path[:] = [entry for entry in sys.path if kept(entry)]
+        sys.path[:] = [entry for entry in sys.path if kept(entry)] + [str(here / "image")]
         assert "verifier" not in sys.modules
         for absent in ("verifier", "msgspec"):
             try:
@@ -266,7 +300,7 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
         public = [
             value
             for name, value in vars(module.Tools).items()
-            if not name.startswith("_") and callable(value)
+            if not name.startswith("_") and callable(value) and not isinstance(value, type)
         ]
         assert len(public) == 1
         namespace = public[0].__globals__['first_verdict'].__globals__

@@ -36,6 +36,9 @@ type Reduction = Literal["sum", "mean", "min", "max"]
 
 # Request anchoring (Q37): `strict` = production, `substitution` = the demo's shipped Q8 rule.
 type Anchoring = Literal["strict", "substitution"]
+# Admin-declared column aliases (Q43): (column, alias) pairs, each alias another name of the column
+# wherever a request or label names a header column. Admin configuration, never model-supplied.
+type Aliases = tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +231,8 @@ class DatasetTarget:
     # The anchoring rule (Q37). Production = strict: a request naming or negating a column must
     # name every drawn column it can name. The demo keeps Q8's substitution rule.
     anchoring: Anchoring = "strict"
+    # The admin's column aliases (Q43); `()` = header names alone.
+    aliases: Aliases = ()
 
 
 @dataclass(frozen=True, slots=True)

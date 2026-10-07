@@ -682,12 +682,15 @@ def invoke_filter(  # noqa: PLR0913 - reserved Open WebUI outlet arguments
 
 
 def recorded_request(
-    program: str, file_ids: tuple[str, ...] = (), request_text: str | None = None
+    program: str,
+    file_ids: tuple[str, ...] = (),
+    request_text: str | None = None,
+    aliases: tuple[tuple[str, str], ...] = (),
 ) -> SimpleNamespace:
     """Place a backend-style A3 tuple receipt on a fresh completion request."""
     module = load_receipt_module()
     request = filter_request()
-    module.write_receipt(request, module.Receipt(program, file_ids, request_text))
+    module.write_receipt(request, module.Receipt(program, file_ids, request_text, aliases))
     return request
 
 

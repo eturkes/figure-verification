@@ -1,0 +1,35 @@
+month = monthly, 年月, 月次
+region = area, regional, 地域, エリア
+revenue = sales, income, 売上, 売上高, 収益
+orders = order count, number of orders, 注文数, 注文件数
+date = day, daily, 日付
+city = cities, town, 都市
+temp_c = temperature, temp, 気温, 温度
+precip_mm = precipitation, rainfall, rain, 降水量, 雨量
+aqi = air quality, air quality index, 大気質, 大気質指数
+
+年月 = month, monthly
+地域 = region, area
+売上 = revenue, sales, 売上高
+注文数 = orders, order count, 注文件数
+日付 = date, day
+都市 = city, cities
+気温 = temperature, temp, 温度
+降水量 = precipitation, rainfall, 雨量
+大気質指数 = aqi, air quality, 大気質
+
+患者ID = patient id, patient number, 患者番号
+受診日 = visit date, 診察日, 来院日
+年齢 = age
+性別 = sex, gender
+診療科 = department, medical department
+病棟 = ward
+収縮期血圧 = systolic, systolic blood pressure, 最高血圧
+拡張期血圧 = diastolic, diastolic blood pressure, 最低血圧
+心拍数 = heart rate, pulse, 脈拍
+体温 = body temperature
+体重 = weight, body weight
+身長 = height
+血糖値 = blood glucose, blood sugar, 血糖
+投与量 = dose, dosage, 用量
+在院日数 = length of stay, 入院日数

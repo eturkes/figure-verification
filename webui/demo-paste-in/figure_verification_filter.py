@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Figure verification for Open WebUI. GENERATED FILE -- do not edit.
 
-Paste the whole file into Open WebUI. It imports the standard library and `open_webui`, which the
-image already carries, and nothing else. There is no `requirements:` frontmatter and no network
-call.
+Paste the whole file into Open WebUI. It imports the standard library, `open_webui` and `pydantic`,
+which the image already carries, and nothing else. There is no `requirements:` frontmatter and no
+network call.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py`. The same command with
 `--check` fails when this file and its sources disagree, so an edit made here is lost at the next
@@ -244,6 +244,9 @@ type Reduction = Literal["sum", "mean", "min", "max"]
 
 # Request anchoring (Q37): `strict` = production, `substitution` = the demo's shipped Q8 rule.
 type Anchoring = Literal["strict", "substitution"]
+# Admin-declared column aliases (Q43): (column, alias) pairs, each alias another name of the column
+# wherever a request or label names a header column. Admin configuration, never model-supplied.
+type Aliases = tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -436,6 +439,8 @@ class DatasetTarget:
     # The anchoring rule (Q37). Production = strict: a request naming or negating a column must
     # name every drawn column it can name. The demo keeps Q8's substitution rule.
     anchoring: Anchoring = "strict"
+    # The admin's column aliases (Q43); `()` = header names alone.
+    aliases: Aliases = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -597,60 +602,6 @@ async def uploaded_files(
 ) -> tuple[UploadedFile, ...]:
     """Resolve chat attachment ids through the same ownership path the filter uses."""
     return await owned_files(attachment_ids(metadata), user_id)
-'''
-
-_SOURCES["webui.paste_in.receipt"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""One backend-owned record of the last model-visible tool call.
-
-The generated paste-ins embed this module in separate namespaces. A tagged built-in tuple crosses
-their class-identity boundary; the reader validates its shape and accepts no other state value.
-"""
-
-from dataclasses import dataclass
-from typing import Final
-
-RECEIPT_ATTR: Final = "figure_verification_receipt"
-RECEIPT_TAG: Final = "figure-verification-receipt/1"
-_RECEIPT_LENGTH = 4
-
-
-@dataclass(frozen=True, slots=True)
-class Receipt:
-    """Program and user-owned candidate ids, never a verdict or uploaded bytes."""
-
-    program: str
-    file_ids: tuple[str, ...]
-    request_text: str | None
-
-
-def write_receipt(request: object, receipt: Receipt) -> None:
-    """Replace the prior call with a tagged, class-identity-independent value."""
-    state = getattr(request, "state", None)
-    if state is None:
-        return
-    setattr(
-        state,
-        RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text),
-    )
-
-
-def read_receipt(request: object) -> Receipt | None:
-    """Decode only the backend state's tagged, exactly typed carrier."""
-    state = getattr(request, "state", None)
-    value = getattr(state, RECEIPT_ATTR, None)
-    if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
-        return None
-    _, program, file_ids, request_text = value
-    if (
-        type(program) is not str
-        or type(file_ids) is not tuple
-        or any(type(file_id) is not str for file_id in file_ids)
-        or (request_text is not None and type(request_text) is not str)
-    ):
-        return None
-    return Receipt(program, file_ids, request_text)
 '''
 
 _SOURCES["verifier.pysrc.admit"] = r'''
@@ -1885,6 +1836,70 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "Open WebUI が画像を添付できませんでした。",
     ),
 }
+'''
+
+_SOURCES["webui.paste_in.receipt"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""One backend-owned record of the last model-visible tool call.
+
+The generated paste-ins embed this module in separate namespaces. A tagged built-in tuple crosses
+their class-identity boundary; the reader validates its shape and accepts no other state value.
+"""
+
+from dataclasses import dataclass
+from typing import Final
+
+from verifier.pysrc.spec import Aliases
+
+RECEIPT_ATTR: Final = "figure_verification_receipt"
+# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
+RECEIPT_TAG: Final = "figure-verification-receipt/2"
+_RECEIPT_LENGTH = 5
+_PAIR = 2
+
+
+@dataclass(frozen=True, slots=True)
+class Receipt:
+    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
+
+    program: str
+    file_ids: tuple[str, ...]
+    request_text: str | None
+    aliases: Aliases
+
+
+def write_receipt(request: object, receipt: Receipt) -> None:
+    """Replace the prior call with a tagged, class-identity-independent value."""
+    state = getattr(request, "state", None)
+    if state is None:
+        return
+    setattr(
+        state,
+        RECEIPT_ATTR,
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
+    )
+
+
+def read_receipt(request: object) -> Receipt | None:
+    """Decode only the backend state's tagged, exactly typed carrier."""
+    state = getattr(request, "state", None)
+    value = getattr(state, RECEIPT_ATTR, None)
+    if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
+        return None
+    _, program, file_ids, request_text, aliases = value
+    if (
+        type(program) is not str
+        or type(file_ids) is not tuple
+        or any(type(file_id) is not str for file_id in file_ids)
+        or (request_text is not None and type(request_text) is not str)
+        or type(aliases) is not tuple
+        or any(
+            type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
+            for pair in aliases
+        )
+    ):
+        return None
+    return Receipt(program, file_ids, request_text, aliases)
 '''
 
 _SOURCES["verifier.pysrc.aggregate"] = r'''
@@ -4629,7 +4644,7 @@ from verifier.pysrc.numeric import evaluate_expr, materialize_grid
 from verifier.pysrc.prescan import prescan
 from verifier.pysrc.project import project, same_bound
 from verifier.pysrc.spec import (
-    Anchoring,
+    Aliases,
     Bin,
     Const,
     CorePlotSpec,
@@ -4698,8 +4713,9 @@ def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
 #
 # A refinement over the three verification tiers, never a prerequisite: a request that names no
 # column anchors nothing, and the verdict proceeds exactly as before. Matching is lexical only --
-# no synonyms, no translation -- so a request names a column only by spelling its header; `売上`
-# never names `revenue`, while a Japanese request that writes `revenue` does.
+# no synonyms, no translation beyond the admin's declared aliases (Q43) -- so a request names a
+# column only by spelling its header or an alias; with no alias, `売上` never names `revenue`,
+# while a Japanese request that writes `revenue` does.
 #
 # Both sides fold through NFKC (full-width forms become ASCII) and `casefold`, then split into
 # words at every non-word character, `_` included, and wherever ASCII meets another script: so
@@ -4708,8 +4724,8 @@ def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
 # Japanese text carries no spaces between words. Two characters already make a Japanese word
 # (`売上`), while an ASCII name needs three (`x`, `id` are ordinary request words). A one-word name
 # of at least `_FUZZY_MIN` characters also matches a request span within Levenshtein distance 1: a
-# word for ASCII, a stretch of near length for Japanese. A span close to TWO names, or a name two
-# headers fold to, is a tie and is refused: the request does not say which column it means.
+# word for ASCII, a stretch of near length for Japanese. A span close to names of TWO columns, or a
+# name two headers fold to, is a tie and is refused: the request does not say which column it means.
 _FUZZY_MIN = 5
 _ASCII_ANCHOR_MIN = 3
 _OTHER_ANCHOR_MIN = 2
@@ -4866,10 +4882,25 @@ def _unnamed_places(rest: str, names: list[str]) -> tuple[str, bool]:
 
 
 def _named_columns(
-    text: str, header: tuple[str, ...], *, ignore_ties: bool = False
+    text: str, header: tuple[str, ...], aliases: Aliases = (), *, ignore_ties: bool = False
 ) -> frozenset[str]:
     """The header names `text` names; a tie raises `_AmbiguousTermError`, or names nothing."""
-    return _anchors(text, header, ignore_ties=ignore_ties)[0]
+    return _anchors(text, header, aliases, ignore_ties=ignore_ties)[0]
+
+
+def _keys(header: tuple[str, ...], aliases: Aliases) -> dict[str, list[str]]:
+    """Each folded name -> the header columns it names: every column's own name, then each admin
+    alias (Q43) of every column whose folded name matches the alias's column. A name two columns
+    share is a tie, as a fold twin is; an alias of a column the header lacks names nothing."""
+    by_key: dict[str, list[str]] = {}
+    for column in header:
+        by_key.setdefault(_words(column), []).append(column)
+    for target, alias in aliases:
+        for column in (column for column in header if _words(column) == _words(target)):
+            columns = by_key.setdefault(_words(alias), [])
+            if column not in columns:
+                columns.append(column)
+    return by_key
 
 
 def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
@@ -4879,8 +4910,8 @@ def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
     `words` = the folded request before any name is consumed, so a run is whole in the
     request itself: `診療科別` stays one run where `診療科` is a header, and its `別` never
     names `性別`. A run a Japanese header name overlaps belongs to that exact name; a run
-    fitting two names names neither; a run before a Japanese negation cue names nothing (as
-    N3 reads an exact name there). A name two headers fold to never names this way.
+    fitting names of two columns names neither; a run before a Japanese negation cue names
+    nothing (as N3 reads an exact name there). A name two headers fold to never names this way.
     """
     exact = [key for key in by_key if not key.isascii() and len(key) >= _OTHER_ANCHOR_MIN]
     keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX]
@@ -4896,20 +4927,24 @@ def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
         cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")
         stem = run[0][: len(run[0]) - len(cut)] if cut else ""
         fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}
-        # A fold-twin name joins the count, so it ties a run it fits, yet names nothing itself.
-        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:
-            found |= fits
+        # Fits naming ONE column (its name and an admin alias, Q43) name it. A fold-twin name joins
+        # the count, so it ties a run it fits, yet names nothing itself.
+        if len({column for key in fits for column in by_key[key]}) == 1:
+            found.add(min(fits))
     return found
 
 
 def _anchors(
-    text: str, header: tuple[str, ...], *, ignore_ties: bool = False, short_names: bool = False
+    text: str,
+    header: tuple[str, ...],
+    aliases: Aliases = (),
+    *,
+    ignore_ties: bool = False,
+    short_names: bool = False,
 ) -> tuple[frozenset[str], bool]:
     """`_named_columns`, and whether `text` negates a header name (Q38); `short_names` adds
     strict anchoring's Japanese short-word tier (Q41)."""
-    by_key: dict[str, list[str]] = {}
-    for column in header:
-        by_key.setdefault(_words(column), []).append(column)
+    by_key = _keys(header, aliases)
     words = f" {_words(text)} "
     rest, negated = _unnamed_places(words, list(by_key))
     named: set[str] = set()
@@ -4925,9 +4960,14 @@ def _anchors(
     if short_names:
         named |= _short_names(words, by_key)
     near = _near_names(rest, [key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN])
-    named |= {key for keys in near if len(keys) == 1 for key in keys}
-    # A tie: one place in the request within one edit of two names, or one name two headers fold to.
-    tied = [sorted(keys) for keys in near if len(keys) > 1]
+    # A tie: one place in the request within one edit of names of two columns, or one name two
+    # headers fold to. Names of ONE column (its name and an admin alias, Q43) name it.
+    tied: list[list[str]] = []
+    for keys in near:
+        if len(keys) == 1 or len({column for key in keys for column in by_key[key]}) == 1:
+            named.add(min(keys))
+        else:
+            tied.append(sorted(keys))
     tied += [[key] for key in named if len(by_key[key]) > 1]
     if tied and not ignore_ties:
         message = f"request places {sorted(tied)} each fit more than one header"
@@ -4935,18 +4975,17 @@ def _anchors(
     return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1), negated
 
 
-def _nameable(column: str) -> bool:
-    """A request can name `column`: its folded name reaches the anchor minimum."""
-    key = _words(column)
-    return len(key) >= _floor(key)
+def _nameable(column: str, aliases: Aliases = ()) -> bool:
+    """A request can name `column`: its folded name, or an admin alias of it, reaches the anchor
+    minimum."""
+    return any(
+        column in columns and len(key) >= _floor(key)
+        for key, columns in _keys((column,), aliases).items()
+    )
 
 
 def _check_anchoring(
-    spec: DatasetPlot,
-    request: str,
-    content: bytes,
-    limits: PysrcLimits,
-    anchoring: Anchoring,
+    spec: DatasetPlot, target: DatasetTarget, request: str, limits: PysrcLimits
 ) -> None:
     """Q8: refuse a substitution -- the program drops a column the request names AND plots one it
     never names (`revenue by region`, drawn over `month`).
@@ -4959,19 +4998,21 @@ def _check_anchoring(
     Anchoring is a refinement: an unreadable header, a plotted column absent from it (recompute's
     own refusals) or a request naming no column leaves the verdict to the checks that follow.
     """
-    header = header_names(content, limits)
+    header = header_names(target.content, limits)
     plotted = {spec.x.name, spec.y.name}
     if header is None or not plotted <= set(header):
         return
     try:
-        named, negated = _anchors(request, header, short_names=anchoring == "strict")
+        named, negated = _anchors(
+            request, header, target.aliases, short_names=target.anchoring == "strict"
+        )
     except _AmbiguousTermError as exc:
         _refuse("column_not_requested", exc)
     if named - plotted and plotted - named:
         _refuse("column_not_requested")
-    match anchoring:
+    match target.anchoring:
         case "strict":
-            if (named or negated) and any(_nameable(c) for c in plotted - named):
+            if (named or negated) and any(_nameable(c, target.aliases) for c in plotted - named):
                 _refuse("column_not_named")
         case "substitution":
             pass
@@ -5014,11 +5055,11 @@ _SUMMARY_WORDS: dict[str, Reduction | None] = {
 }
 
 
-def _summaries(text: str, header: tuple[str, ...]) -> set[Reduction | None]:
-    """The reductions `text` names by a summary word no header uses."""
+def _summaries(text: str, header: tuple[str, ...], aliases: Aliases = ()) -> set[Reduction | None]:
+    """The reductions `text` names by a summary word no header name or alias uses."""
     joined = _words(text)
     words = set(joined.split())
-    header_text = " ".join(_words(column) for column in header)
+    header_text = " ".join(_keys(header, aliases))
     header_words = set(header_text.split())
     found: set[Reduction | None] = set()
     for word, reduction in _SUMMARY_WORDS.items():
@@ -5030,15 +5071,15 @@ def _summaries(text: str, header: tuple[str, ...]) -> set[Reduction | None]:
     return found
 
 
-def _check_labels(spec: DatasetPlot, header: tuple[str, ...]) -> None:
+def _check_labels(spec: DatasetPlot, header: tuple[str, ...], aliases: Aliases = ()) -> None:
     drawn = {spec.x.name, spec.y.name}
     labels = spec.labels
     for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):
         if text is None:
             continue
-        if _named_columns(text, header, ignore_ties=True) - drawn:
+        if _named_columns(text, header, aliases, ignore_ties=True) - drawn:
             _refuse("label_not_consistent")
-        if spec.group is not None and _summaries(text, header) - {spec.group}:
+        if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:
             _refuse("label_not_consistent")
 
 
@@ -5059,7 +5100,7 @@ def bind_target(
         if spec.source.path != target.path:
             _refuse("target_mismatch")
         if target.request is not None:
-            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)
+            _check_anchoring(spec, target, target.request, limits)
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
@@ -5182,7 +5223,9 @@ def _formula_integrity(spec: FormulaPlot, table: PlottedTable) -> None:
             assert_never(unreachable)
 
 
-def _dataset_integrity(spec: DatasetPlot, table: PlottedTable, header: tuple[str, ...]) -> None:
+def _dataset_integrity(
+    spec: DatasetPlot, table: PlottedTable, header: tuple[str, ...], aliases: Aliases = ()
+) -> None:
     match spec.mark:
         case "bar" | "barh":
             categories = tuple(value for value in table.x if isinstance(value, str))
@@ -5194,10 +5237,12 @@ def _dataset_integrity(spec: DatasetPlot, table: PlottedTable, header: tuple[str
             pass
         case _ as unreachable:  # pragma: no cover - the mark union is closed
             assert_never(unreachable)
-    _check_labels(spec, header)
+    _check_labels(spec, header, aliases)
 
 
-def check_integrity(spec: CorePlotSpec, table: PlottedTable, header: tuple[str, ...] = ()) -> None:
+def check_integrity(
+    spec: CorePlotSpec, table: PlottedTable, header: tuple[str, ...] = (), aliases: Aliases = ()
+) -> None:
     """The G-rules that become decidable only once the table exists. Raises, or returns.
 
     `header` = the dataset's column names, which G10 matches labels against; empty for a formula.
@@ -5205,7 +5250,7 @@ def check_integrity(spec: CorePlotSpec, table: PlottedTable, header: tuple[str, 
     if isinstance(spec, FormulaPlot):
         _formula_integrity(spec, table)
     elif isinstance(spec, DatasetPlot):
-        _dataset_integrity(spec, table, header)
+        _dataset_integrity(spec, table, header, aliases)
     else:  # pragma: no cover - `CorePlotSpec` is closed
         assert_never(spec)
 
@@ -5242,7 +5287,8 @@ def verify_python_source(
         bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
-        check_integrity(spec, table, _header(bound_target, limits))
+        aliases = bound_target.aliases if isinstance(bound_target, DatasetTarget) else ()
+        check_integrity(spec, table, _header(bound_target, limits), aliases)
         certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
         return Verified(spec=spec, table=table, certificate=certificate)
     except PysrcRefusalError as exc:
@@ -5896,7 +5942,7 @@ other refusal is final. The formula target comes from the user's request, after 
 """
 
 from verifier.pysrc.request import formula_target
-from verifier.pysrc.spec import Anchoring, DatasetTarget, FormulaTarget
+from verifier.pysrc.spec import Aliases, Anchoring, DatasetTarget, FormulaTarget
 from verifier.pysrc.verify import Refused, Verdict, verify_python_source
 from webui.paste_in.owui_files import UploadedFile
 
@@ -5908,14 +5954,16 @@ def first_verdict(
     attachments: tuple[UploadedFile, ...],
     request_text: str | None,
     anchoring: Anchoring,
+    aliases: Aliases,
 ) -> tuple[Verdict | None, UploadedFile | None]:
     """Return the first final verdict and the attachment it consumed, if any.
 
     `anchoring` = the artifact's request-anchoring rule: production `strict`, demo `substitution`.
+    `aliases` = the admin's column aliases (Q43), from the tool's Valve, never the model or user.
     """
     formula = formula_target(request_text) if request_text is not None else None
     candidates: tuple[tuple[DatasetTarget | FormulaTarget, UploadedFile | None], ...] = tuple(
-        (DatasetTarget(file.path, file.content, request_text, anchoring), file)
+        (DatasetTarget(file.path, file.content, request_text, anchoring, aliases), file)
         for file in attachments
     ) + (((formula, None),) if formula is not None else ())
     outcome: Verdict | None = None
@@ -6265,7 +6313,7 @@ class Filter:
 
         attachments = await owned_files(receipt.file_ids, user_id)
         verdict, consumed = first_verdict(
-            receipt.program, attachments, receipt.request_text, self._ANCHORING
+            receipt.program, attachments, receipt.request_text, self._ANCHORING, receipt.aliases
         )
         if isinstance(verdict, Refused):
             return await fail(verdict.code)

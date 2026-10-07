@@ -80,7 +80,7 @@ resolved differently:
   refuses, because the line would double back over itself. `scatter` still requires numeric x.
 - **G10 = a label's POSITIVE mismatch, lexically (Q16).** `verify.py::_check_labels`, last in
   `_dataset_integrity`, matches `title`, `xlabel`, `ylabel` and the `label=` series text against
-  the file's header with the request-anchoring matcher (ties name nothing here): naming a column
+  the file's header + its admin aliases (Q43) with the request-anchoring matcher (ties name nothing here): naming a column
   other than x/y refuses `label_not_consistent`; over a reduction, so does a summary word of
   another reduction or `median` (`_SUMMARY_WORDS`, EN whole words + JA containment). Without a
   reduction summary words go unread (a raw column may hold totals), and a summary word inside any
@@ -168,7 +168,7 @@ projection + exact recomputation and observation is additive.
   `.agent/archive/contracts/q37.md`).** `DatasetTarget.anchoring` = `strict` (default) |
   `substitution` (the demo's Q8 rule). Strict = the substitution check, then: a request that names
   OR negates ≥1 header column (`verify.py::_anchors`) must name every drawn column a request can
-  name (`verify.py::_nameable`: folded name ≥ the anchor minimum), else `column_not_named`. A drawn
+  name (`verify.py::_nameable`: folded name or an admin alias ≥ the anchor minimum), else `column_not_named`. A drawn
   negated column is unnamed ⇒ refuses; a column two headers fold to can never be named ⇒ drawn
   under an anchored request it refuses. Production pays the cost in request wording, not proposer
   strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 0/18 (4/18 before Q41)
@@ -186,7 +186,7 @@ projection + exact recomputation and observation is additive.
   of the folded request, read before any name is consumed (`診療科別` stays one run where `診療科` is a header),
   equal to a 2-4 character Japanese name minus its first or last character names it (`月ごと` →
   `年月`, `日ごと` → `日付`) — unless a Japanese header name overlaps the run (the exact name takes
-  it), the run fits two names (names neither) or precedes a Japanese negation cue; a name two
+  it), the run fits names of two columns (names neither) or precedes a Japanese negation cue; a name two
   headers fold to never names this way, yet still ties a run it fits. A one-word 5+-character name
   is the one-edit tier's: dropping one end is one edit. The shared matcher is unchanged, so the
   demo's substitution rule + G10 labels never read short words. Trust limit: a short word names the
@@ -200,16 +200,38 @@ projection + exact recomputation and observation is additive.
   (clinical leg adds 3, own headers 4, 88 noise pairs 6, 240 suffix pairs 24 — each a column the
   request's own chart draws: `年月`, once `日付`), clinical false refusals strict 0/20 (1/20 before
   Q42: `月別`), substitution 0/20.
+- **Admin-declared column aliases (Q43, `.agent/archive/contracts/q43.md`).** `DatasetTarget.aliases`
+  (`spec.Aliases` = (column, alias) pairs; `()` default = every verdict as before) — `verify.py::_keys`
+  folds each alias onto every header column whose folded name equals the alias's column, so an alias
+  is another name of its column wherever a header name counts: exact naming, the one-edit tier, Q38
+  stop + negation, Q41/Q42 short words, G10 labels + the summary-word exemption, under both rules.
+  An alias of a column the header lacks is ignored; one two columns share, or equal to another
+  column's name, is a tie (names nothing; naming it refuses `column_not_requested`); `_nameable`
+  reads aliases, so an anchoring-length alias makes a short column nameable under strict. Names of
+  ONE column at one place (its name + an alias, or two aliases) name it in the one-edit + short-word
+  tiers, never a tie. Trust: an
+  alias is ADMIN configuration, never model-supplied — the production tool's
+  `Valves.column_aliases` text (`webui/paste_in/aliases.py::parse_aliases`), recorded in the
+  receipt (`/2`) and read by the filter from it alone (`.claude/rules/owui.md`); OWUI lets the
+  tool's owner, an admin or a write-granted user edit Valves, so the admin guide makes an
+  administrator the tool's owner and keeps write access to it away from chat users. The core stays
+  stdlib; `pydantic` lives in the wrapper alone. Measured, A4 (`.agent/measurements/a4_aliases.py`,
+  aliases `a4_aliases.txt` authored from column meanings before the run): strict false refusals EN
+  0/18 · JA 0/18 · JA-mixed 0/18 (A1 strict 5 · 0 · 1), substitution 0/18 each, plants 0; strict
+  swaps caught 56 · 57 · 57 of 57 (A1 strict 47 · 57 · 57); `m10-design` captures 0 FAITHFUL rows
+  refused (design-simple-19's title `Monthly Order Count by Region` names `month` through `monthly`:
+  `label_not_consistent`); A3 legs 0 false names; H1 with the same aliases (reported, not targeted)
+  simple 10/20 VERIFIED under each rule, complicated 20/20, both sentinels.
 - Matching is SAFE because the model gets no vote: the target set = the file's REAL header, so a
   typo fix cannot invent a column. NFKC + `casefold`; words split at every non-word char (`_`
   included) and where ASCII meets another script (`regionごとのrevenue`). Exact names first, longest
   first, each consuming its span (`unit price` never also names `price`): an ASCII header ≥3 chars =
   an exact word sequence, a non-ASCII header ≥2 chars = containment in the request's words (Japanese
   has no word spaces). Then a one-word name ≥5 chars also matches one span within Levenshtein 1 (a
-  word; in Japanese, a stretch of near length). A span within 1 of TWO names, or one name two headers
+  word; in Japanese, a stretch of near length). A span within 1 of names of TWO columns, or one name two headers
   fold to = tie. An unreadable header (`csvread.header_names` = None wherever `read_columns` refuses
   by the header) or a drawn column absent from it leaves the verdict to recompute. Lexical only:
-  `temperature` never names `temp_c`. Before naming, Q38 (`verify.py::_unnamed_places`,
+  `temperature` never names `temp_c` unless an admin alias says so (Q43). Before naming, Q38 (`verify.py::_unnamed_places`,
   `.agent/archive/contracts/q38.md`) consumes the closed EN stop phrases (`chronological order` … `in
   order`, unless one is a header's whole name) + every negated name: the longest name, else one
   ASCII word within one edit of a 5+-char name, right after `not` `no` `without` `except`
@@ -224,7 +246,8 @@ projection + exact recomputation and observation is additive.
   `column_not_numeric` → `column_not_requested`).
 - A model-produced translation of the request may never become the anchor: the model would then
   control both sides of the comparison and class II would be deleted, not weakened. A translation
-  reaches the user through tier 3 publication only.
+  reaches the user through tier 3 publication only; an ADMIN alias (Q43) is the one translation that
+  anchors, because neither the model nor the chat user writes it.
 
 ## Layering (ruling 7: embeddability is a DESIGN INPUT, not an M14 retrofit)
 

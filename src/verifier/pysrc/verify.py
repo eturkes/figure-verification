@@ -31,7 +31,7 @@ from verifier.pysrc.numeric import evaluate_expr, materialize_grid
 from verifier.pysrc.prescan import prescan
 from verifier.pysrc.project import project, same_bound
 from verifier.pysrc.spec import (
-    Anchoring,
+    Aliases,
     Bin,
     Const,
     CorePlotSpec,
@@ -100,8 +100,9 @@ def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
 #
 # A refinement over the three verification tiers, never a prerequisite: a request that names no
 # column anchors nothing, and the verdict proceeds exactly as before. Matching is lexical only --
-# no synonyms, no translation -- so a request names a column only by spelling its header; `売上`
-# never names `revenue`, while a Japanese request that writes `revenue` does.
+# no synonyms, no translation beyond the admin's declared aliases (Q43) -- so a request names a
+# column only by spelling its header or an alias; with no alias, `売上` never names `revenue`,
+# while a Japanese request that writes `revenue` does.
 #
 # Both sides fold through NFKC (full-width forms become ASCII) and `casefold`, then split into
 # words at every non-word character, `_` included, and wherever ASCII meets another script: so
@@ -110,8 +111,8 @@ def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
 # Japanese text carries no spaces between words. Two characters already make a Japanese word
 # (`売上`), while an ASCII name needs three (`x`, `id` are ordinary request words). A one-word name
 # of at least `_FUZZY_MIN` characters also matches a request span within Levenshtein distance 1: a
-# word for ASCII, a stretch of near length for Japanese. A span close to TWO names, or a name two
-# headers fold to, is a tie and is refused: the request does not say which column it means.
+# word for ASCII, a stretch of near length for Japanese. A span close to names of TWO columns, or a
+# name two headers fold to, is a tie and is refused: the request does not say which column it means.
 _FUZZY_MIN = 5
 _ASCII_ANCHOR_MIN = 3
 _OTHER_ANCHOR_MIN = 2
@@ -268,10 +269,25 @@ def _unnamed_places(rest: str, names: list[str]) -> tuple[str, bool]:
 
 
 def _named_columns(
-    text: str, header: tuple[str, ...], *, ignore_ties: bool = False
+    text: str, header: tuple[str, ...], aliases: Aliases = (), *, ignore_ties: bool = False
 ) -> frozenset[str]:
     """The header names `text` names; a tie raises `_AmbiguousTermError`, or names nothing."""
-    return _anchors(text, header, ignore_ties=ignore_ties)[0]
+    return _anchors(text, header, aliases, ignore_ties=ignore_ties)[0]
+
+
+def _keys(header: tuple[str, ...], aliases: Aliases) -> dict[str, list[str]]:
+    """Each folded name -> the header columns it names: every column's own name, then each admin
+    alias (Q43) of every column whose folded name matches the alias's column. A name two columns
+    share is a tie, as a fold twin is; an alias of a column the header lacks names nothing."""
+    by_key: dict[str, list[str]] = {}
+    for column in header:
+        by_key.setdefault(_words(column), []).append(column)
+    for target, alias in aliases:
+        for column in (column for column in header if _words(column) == _words(target)):
+            columns = by_key.setdefault(_words(alias), [])
+            if column not in columns:
+                columns.append(column)
+    return by_key
 
 
 def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
@@ -281,8 +297,8 @@ def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
     `words` = the folded request before any name is consumed, so a run is whole in the
     request itself: `診療科別` stays one run where `診療科` is a header, and its `別` never
     names `性別`. A run a Japanese header name overlaps belongs to that exact name; a run
-    fitting two names names neither; a run before a Japanese negation cue names nothing (as
-    N3 reads an exact name there). A name two headers fold to never names this way.
+    fitting names of two columns names neither; a run before a Japanese negation cue names
+    nothing (as N3 reads an exact name there). A name two headers fold to never names this way.
     """
     exact = [key for key in by_key if not key.isascii() and len(key) >= _OTHER_ANCHOR_MIN]
     keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX]
@@ -298,20 +314,24 @@ def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
         cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")
         stem = run[0][: len(run[0]) - len(cut)] if cut else ""
         fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}
-        # A fold-twin name joins the count, so it ties a run it fits, yet names nothing itself.
-        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:
-            found |= fits
+        # Fits naming ONE column (its name and an admin alias, Q43) name it. A fold-twin name joins
+        # the count, so it ties a run it fits, yet names nothing itself.
+        if len({column for key in fits for column in by_key[key]}) == 1:
+            found.add(min(fits))
     return found
 
 
 def _anchors(
-    text: str, header: tuple[str, ...], *, ignore_ties: bool = False, short_names: bool = False
+    text: str,
+    header: tuple[str, ...],
+    aliases: Aliases = (),
+    *,
+    ignore_ties: bool = False,
+    short_names: bool = False,
 ) -> tuple[frozenset[str], bool]:
     """`_named_columns`, and whether `text` negates a header name (Q38); `short_names` adds
     strict anchoring's Japanese short-word tier (Q41)."""
-    by_key: dict[str, list[str]] = {}
-    for column in header:
-        by_key.setdefault(_words(column), []).append(column)
+    by_key = _keys(header, aliases)
     words = f" {_words(text)} "
     rest, negated = _unnamed_places(words, list(by_key))
     named: set[str] = set()
@@ -327,9 +347,14 @@ def _anchors(
     if short_names:
         named |= _short_names(words, by_key)
     near = _near_names(rest, [key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN])
-    named |= {key for keys in near if len(keys) == 1 for key in keys}
-    # A tie: one place in the request within one edit of two names, or one name two headers fold to.
-    tied = [sorted(keys) for keys in near if len(keys) > 1]
+    # A tie: one place in the request within one edit of names of two columns, or one name two
+    # headers fold to. Names of ONE column (its name and an admin alias, Q43) name it.
+    tied: list[list[str]] = []
+    for keys in near:
+        if len(keys) == 1 or len({column for key in keys for column in by_key[key]}) == 1:
+            named.add(min(keys))
+        else:
+            tied.append(sorted(keys))
     tied += [[key] for key in named if len(by_key[key]) > 1]
     if tied and not ignore_ties:
         message = f"request places {sorted(tied)} each fit more than one header"
@@ -337,18 +362,17 @@ def _anchors(
     return frozenset(by_key[key][0] for key in named if len(by_key[key]) == 1), negated
 
 
-def _nameable(column: str) -> bool:
-    """A request can name `column`: its folded name reaches the anchor minimum."""
-    key = _words(column)
-    return len(key) >= _floor(key)
+def _nameable(column: str, aliases: Aliases = ()) -> bool:
+    """A request can name `column`: its folded name, or an admin alias of it, reaches the anchor
+    minimum."""
+    return any(
+        column in columns and len(key) >= _floor(key)
+        for key, columns in _keys((column,), aliases).items()
+    )
 
 
 def _check_anchoring(
-    spec: DatasetPlot,
-    request: str,
-    content: bytes,
-    limits: PysrcLimits,
-    anchoring: Anchoring,
+    spec: DatasetPlot, target: DatasetTarget, request: str, limits: PysrcLimits
 ) -> None:
     """Q8: refuse a substitution -- the program drops a column the request names AND plots one it
     never names (`revenue by region`, drawn over `month`).
@@ -361,19 +385,21 @@ def _check_anchoring(
     Anchoring is a refinement: an unreadable header, a plotted column absent from it (recompute's
     own refusals) or a request naming no column leaves the verdict to the checks that follow.
     """
-    header = header_names(content, limits)
+    header = header_names(target.content, limits)
     plotted = {spec.x.name, spec.y.name}
     if header is None or not plotted <= set(header):
         return
     try:
-        named, negated = _anchors(request, header, short_names=anchoring == "strict")
+        named, negated = _anchors(
+            request, header, target.aliases, short_names=target.anchoring == "strict"
+        )
     except _AmbiguousTermError as exc:
         _refuse("column_not_requested", exc)
     if named - plotted and plotted - named:
         _refuse("column_not_requested")
-    match anchoring:
+    match target.anchoring:
         case "strict":
-            if (named or negated) and any(_nameable(c) for c in plotted - named):
+            if (named or negated) and any(_nameable(c, target.aliases) for c in plotted - named):
                 _refuse("column_not_named")
         case "substitution":
             pass
@@ -416,11 +442,11 @@ _SUMMARY_WORDS: dict[str, Reduction | None] = {
 }
 
 
-def _summaries(text: str, header: tuple[str, ...]) -> set[Reduction | None]:
-    """The reductions `text` names by a summary word no header uses."""
+def _summaries(text: str, header: tuple[str, ...], aliases: Aliases = ()) -> set[Reduction | None]:
+    """The reductions `text` names by a summary word no header name or alias uses."""
     joined = _words(text)
     words = set(joined.split())
-    header_text = " ".join(_words(column) for column in header)
+    header_text = " ".join(_keys(header, aliases))
     header_words = set(header_text.split())
     found: set[Reduction | None] = set()
     for word, reduction in _SUMMARY_WORDS.items():
@@ -432,15 +458,15 @@ def _summaries(text: str, header: tuple[str, ...]) -> set[Reduction | None]:
     return found
 
 
-def _check_labels(spec: DatasetPlot, header: tuple[str, ...]) -> None:
+def _check_labels(spec: DatasetPlot, header: tuple[str, ...], aliases: Aliases = ()) -> None:
     drawn = {spec.x.name, spec.y.name}
     labels = spec.labels
     for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):
         if text is None:
             continue
-        if _named_columns(text, header, ignore_ties=True) - drawn:
+        if _named_columns(text, header, aliases, ignore_ties=True) - drawn:
             _refuse("label_not_consistent")
-        if spec.group is not None and _summaries(text, header) - {spec.group}:
+        if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:
             _refuse("label_not_consistent")
 
 
@@ -461,7 +487,7 @@ def bind_target(
         if spec.source.path != target.path:
             _refuse("target_mismatch")
         if target.request is not None:
-            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)
+            _check_anchoring(spec, target, target.request, limits)
         return target
     if isinstance(spec, FormulaPlot):
         if isinstance(target, FormulaTarget):
@@ -584,7 +610,9 @@ def _formula_integrity(spec: FormulaPlot, table: PlottedTable) -> None:
             assert_never(unreachable)
 
 
-def _dataset_integrity(spec: DatasetPlot, table: PlottedTable, header: tuple[str, ...]) -> None:
+def _dataset_integrity(
+    spec: DatasetPlot, table: PlottedTable, header: tuple[str, ...], aliases: Aliases = ()
+) -> None:
     match spec.mark:
         case "bar" | "barh":
             categories = tuple(value for value in table.x if isinstance(value, str))
@@ -596,10 +624,12 @@ def _dataset_integrity(spec: DatasetPlot, table: PlottedTable, header: tuple[str
             pass
         case _ as unreachable:  # pragma: no cover - the mark union is closed
             assert_never(unreachable)
-    _check_labels(spec, header)
+    _check_labels(spec, header, aliases)
 
 
-def check_integrity(spec: CorePlotSpec, table: PlottedTable, header: tuple[str, ...] = ()) -> None:
+def check_integrity(
+    spec: CorePlotSpec, table: PlottedTable, header: tuple[str, ...] = (), aliases: Aliases = ()
+) -> None:
     """The G-rules that become decidable only once the table exists. Raises, or returns.
 
     `header` = the dataset's column names, which G10 matches labels against; empty for a formula.
@@ -607,7 +637,7 @@ def check_integrity(spec: CorePlotSpec, table: PlottedTable, header: tuple[str, 
     if isinstance(spec, FormulaPlot):
         _formula_integrity(spec, table)
     elif isinstance(spec, DatasetPlot):
-        _dataset_integrity(spec, table, header)
+        _dataset_integrity(spec, table, header, aliases)
     else:  # pragma: no cover - `CorePlotSpec` is closed
         assert_never(spec)
 
@@ -644,7 +674,8 @@ def verify_python_source(
         bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
-        check_integrity(spec, table, _header(bound_target, limits))
+        aliases = bound_target.aliases if isinstance(bound_target, DatasetTarget) else ()
+        check_integrity(spec, table, _header(bound_target, limits), aliases)
         certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
         return Verified(spec=spec, table=table, certificate=certificate)
     except PysrcRefusalError as exc:

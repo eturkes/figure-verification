@@ -10,8 +10,8 @@
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
-# whose output names the expected cause: attribution rides the message, since seven tests carry
-# more than one probe -- G6, G7, G10 and S9 two each, S4 three, S6 four, S8 five -- one per conjunct of
+# whose output names the expected cause: attribution rides the message, since eight tests carry
+# more than one probe -- G6, G7, G10, S3 and S9 two each, S4 three, S6 four, S8 five -- one per conjunct of
 # a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -285,9 +285,14 @@ probe s2-artifacts-path tests/test_spec.py::test_s2_every_artifacts_path_is_trac
     'Artifacts names untracked paths' \
     sed -i 's|tools/gate-probe\.sh|tools/gate-absent.sh|' "$SPEC"
 
+# Both S3 plants append, so they fire on an empty queue too.
 probe s3-acceptance-check tests/test_spec.py::test_s3_every_deferral_carries_an_acceptance_check \
     'deferral rows with no acceptance check' \
-    sed -i '0,/Accept:/s//Someday:/' "$DEFERRED"
+    sed -i "\$a - Planted row with no closing check." "$DEFERRED"
+
+probe s3-row-shape tests/test_spec.py::test_s3_every_deferral_carries_an_acceptance_check \
+    'deferral list items that are not' \
+    sed -i "\$a * Planted row. Accept: a bullet S3 never reads." "$DEFERRED"
 
 probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
     'spec.md: .claude/rules/absent.md' \
@@ -370,7 +375,7 @@ probe b2-embedded-identity tests/test_paste_in_bundle.py::test_b2_each_embedded_
     'webui.paste_in.tool' \
     plant_embedded_blob '# planted embedded-source drift'
 
-probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_plus_open_webui \
+probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_and_tool_pydantic \
     'numpy' \
     plant_embedded_blob 'import numpy'
 

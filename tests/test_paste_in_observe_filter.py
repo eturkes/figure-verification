@@ -105,7 +105,7 @@ def _body() -> dict[str, Any]:
 def _receipt(program: str) -> SimpleNamespace:
     # Backend request state is shared between the tool and filter but their generated module
     # namespaces are not. The carrier is a built-in tuple, never the tool's Receipt instance.
-    carrier = ("figure-verification-receipt/1", program, ("owned-file",), None)
+    carrier = ("figure-verification-receipt/2", program, ("owned-file",), None, ())
     return SimpleNamespace(state=SimpleNamespace(figure_verification_receipt=carrier))
 
 

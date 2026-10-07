@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py"]
+tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -539,3 +539,11 @@ predicate = "Q40: the inlet renders its class's template, so the demo keeps the 
 kills = "tests/test_paste_in_inlet.py::test_q40_production_inlet_drops_the_bare_source_paragraph_alone"
 anchor = '''            rendered = self._TEMPLATE.format('''
 mutant = '''            rendered = PRODUCTION_TEMPLATE.format('''
+
+# Q43: the outlet's verdict reads the receipt's aliases alone.
+[[mutant]]
+id = "q43-outlet-drops-aliases"
+predicate = "V2: the outlet re-derives the verdict under the receipt's aliases"
+kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_outlet_verdict_reads_the_receipt_aliases"
+anchor = '''receipt.request_text, self._ANCHORING, receipt.aliases'''
+mutant = '''receipt.request_text, self._ANCHORING, ()'''

@@ -2,7 +2,7 @@
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"
-tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py", "tests/test_pysrc_anchoring_suffix.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py", "tests/test_pysrc_anchoring_suffix.py", "tests/test_pysrc_anchoring_aliases.py"]
 
 [[mutant]]
 id = "c2-formula-y-ignored"
@@ -59,9 +59,9 @@ id = "q8-anchoring-unwired"
 predicate = "a dataset target carrying the request is anchored"
 kills = "tests/test_pysrc_anchoring.py::test_q8_substitution_witness_refuses"
 anchor = '''        if target.request is not None:
-            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
+            _check_anchoring(spec, target, target.request, limits)'''
 mutant = '''        if False:
-            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
+            _check_anchoring(spec, target, target.request, limits)'''
 
 [[mutant]]
 id = "q8-named-half-dropped"
@@ -233,7 +233,7 @@ mutant = '''        if True:'''
 id = "q16-labels-unchecked"
 predicate = "G10 runs in the dataset integrity stage"
 kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[xlabel]"
-anchor = '''    _check_labels(spec, header)
+anchor = '''    _check_labels(spec, header, aliases)
 '''
 mutant = '''    pass
 '''
@@ -242,22 +242,22 @@ mutant = '''    pass
 id = "q16-header-not-threaded"
 predicate = "the dataset's header reaches the integrity stage"
 kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[ylabel]"
-anchor = '''        check_integrity(spec, table, _header(bound_target, limits))'''
-mutant = '''        check_integrity(spec, table)'''
+anchor = '''        check_integrity(spec, table, _header(bound_target, limits), aliases)'''
+mutant = '''        check_integrity(spec, table, (), aliases)'''
 
 [[mutant]]
 id = "q16-column-mismatch-admitted"
 predicate = "a label naming an undrawn column refuses"
 kills = "tests/test_pysrc_labels.py::test_q16_a_one_edit_spelling_names_its_column"
-anchor = '''        if _named_columns(text, header, ignore_ties=True) - drawn:'''
+anchor = '''        if _named_columns(text, header, aliases, ignore_ties=True) - drawn:'''
 mutant = '''        if False:'''
 
 [[mutant]]
 id = "q16-label-ties-refuse"
 predicate = "a tied label word names nothing rather than raising"
 kills = "tests/test_pysrc_labels.py::test_q16_a_tied_label_word_names_nothing"
-anchor = '''_named_columns(text, header, ignore_ties=True)'''
-mutant = '''_named_columns(text, header)'''
+anchor = '''_named_columns(text, header, aliases, ignore_ties=True)'''
+mutant = '''_named_columns(text, header, aliases)'''
 
 [[mutant]]
 id = "q16-ignore-ties-unhonoured"
@@ -270,15 +270,15 @@ mutant = '''    if tied:'''
 id = "q16-summary-mismatch-admitted"
 predicate = "over a reduction, another reduction's summary word refuses"
 kills = "tests/test_pysrc_labels.py::test_q16_a_summary_word_of_another_reduction_refuses[mean-Average revenue-Total revenue]"
-anchor = '''        if spec.group is not None and _summaries(text, header) - {spec.group}:'''
+anchor = '''        if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:'''
 mutant = '''        if False:'''
 
 [[mutant]]
 id = "q16-summary-read-without-reduction"
 predicate = "without a reduction summary words go unread"
 kills = "tests/test_pysrc_labels.py::test_q16_without_a_reduction_summary_words_go_unread"
-anchor = '''        if spec.group is not None and _summaries(text, header) - {spec.group}:'''
-mutant = '''        if _summaries(text, header) - {spec.group}:'''
+anchor = '''        if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:'''
+mutant = '''        if _summaries(text, header, aliases) - {spec.group}:'''
 
 [[mutant]]
 id = "q16-median-unread"
@@ -444,43 +444,43 @@ mutant = '''        pass
 id = "q37-strict-arm-dropped"
 predicate = "S2: under strict, an unnamed drawn column refuses alone"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone"
-anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
+anchor = '''            if (named or negated) and any(_nameable(c, target.aliases) for c in plotted - named):'''
 mutant = '''            if False:'''
 
 [[mutant]]
 id = "q37-mode-unthreaded"
 predicate = "S1: the target's rule, not a constant, selects the arm"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone"
-anchor = '''            _check_anchoring(spec, target.request, target.content, limits, target.anchoring)'''
-mutant = '''            _check_anchoring(spec, target.request, target.content, limits, "strict")'''
+anchor = '''    match target.anchoring:'''
+mutant = '''    match "strict":'''
 
 [[mutant]]
 id = "q37-negation-does-not-trigger"
 predicate = "S2: a request that only negates a column triggers strict"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_negated_column_triggers_strict"
-anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
-mutant = '''            if named and any(_nameable(c) for c in plotted - named):'''
+anchor = '''            if (named or negated) and any(_nameable(c, target.aliases) for c in plotted - named):'''
+mutant = '''            if named and any(_nameable(c, target.aliases) for c in plotted - named):'''
 
 [[mutant]]
 id = "q37-no-anchor-triggers"
 predicate = "S2: a request naming no column anchors nothing under strict"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_request_naming_no_column_anchors_nothing"
-anchor = '''            if (named or negated) and any(_nameable(c) for c in plotted - named):'''
-mutant = '''            if any(_nameable(c) for c in plotted - named):'''
+anchor = '''            if (named or negated) and any(_nameable(c, target.aliases) for c in plotted - named):'''
+mutant = '''            if any(_nameable(c, target.aliases) for c in plotted - named):'''
 
 [[mutant]]
 id = "q37-unnameable-required"
 predicate = "S2: a column no request can name is not required"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[two-char-ascii]"
-anchor = '''    return len(key) >= _floor(key)'''
-mutant = '''    return True'''
+anchor = '''    column in columns and len(key) >= _floor(key)'''
+mutant = '''    column in columns'''
 
 [[mutant]]
 id = "q37-unnameable-japanese-required"
 predicate = "S2: a one-character Japanese column is not required"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[one-char-japanese]"
-anchor = '''    return len(key) >= _floor(key)'''
-mutant = '''    return len(key) >= 1'''
+anchor = '''    column in columns and len(key) >= _floor(key)'''
+mutant = '''    column in columns and len(key) >= 1'''
 
 [[mutant]]
 id = "q37-strict-before-substitution"
@@ -488,12 +488,12 @@ predicate = "S2: under strict a swapped named column still reports the swap"
 kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_substitution_keeps_its_own_code_under_strict"
 anchor = '''    if named - plotted and plotted - named:
         _refuse("column_not_requested")
-    match anchoring:'''
-mutant = '''    if anchoring == "strict" and (named or negated) and plotted - named:
+    match target.anchoring:'''
+mutant = '''    if target.anchoring == "strict" and (named or negated) and plotted - named:
         _refuse("column_not_named")
     if named - plotted and plotted - named:
         _refuse("column_not_requested")
-    match anchoring:'''
+    match target.anchoring:'''
 
 [[mutant]]
 id = "q37-negation-unreported"
@@ -506,15 +506,15 @@ mutant = '''                pass'''
 id = "q41-short-names-unthreaded"
 predicate = "T1: strict anchoring reads short words"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_counts_as_named_for_the_substitution_check"
-anchor = '''        named, negated = _anchors(request, header, short_names=anchoring == "strict")'''
-mutant = '''        named, negated = _anchors(request, header, short_names=False)'''
+anchor = '''            request, header, target.aliases, short_names=target.anchoring == "strict"'''
+mutant = '''            request, header, target.aliases, short_names=False'''
 
 [[mutant]]
 id = "q41-demo-reads-short-names"
 predicate = "T2: the demo's substitution rule reads no short word"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t2_the_demo_rule_reads_no_short_word"
-anchor = '''        named, negated = _anchors(request, header, short_names=anchoring == "strict")'''
-mutant = '''        named, negated = _anchors(request, header, short_names=True)'''
+anchor = '''            request, header, target.aliases, short_names=target.anchoring == "strict"'''
+mutant = '''            request, header, target.aliases, short_names=True'''
 
 [[mutant]]
 id = "q41-drop-last-unread"
@@ -541,8 +541,8 @@ mutant = '''        fits = {key for key in keys if any(part in run[0] for part i
 id = "q41-two-fits-name-one"
 predicate = "T1: a run fitting two names names neither"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_fitting_two_names_names_neither"
-anchor = '''        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:'''
-mutant = '''        if fits and all(len(by_key[key]) == 1 for key in fits):'''
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if fits:'''
 
 [[mutant]]
 id = "q41-negation-cue-ignored"
@@ -569,8 +569,8 @@ mutant = '''        named |= _short_names(rest, by_key)'''
 id = "q41-fold-twin-names"
 predicate = "T1: a name two headers fold to never names by a short word"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_column_two_headers_fold_to_reads_no_short_word"
-anchor = '''        if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:'''
-mutant = '''        if len(fits) == 1:'''
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if len(fits) == 1 or len({column for key in fits for column in by_key[key]}) == 1:'''
 
 [[mutant]]
 id = "q41-fold-twin-leaves-the-count"
@@ -657,3 +657,96 @@ predicate = "U1: a run and its stem fitting different names name neither"
 kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_run_and_its_stem_fitting_different_names_name_neither"
 anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
 mutant = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])} or {key for key in keys if stem in (key[1:], key[:-1])}'''
+
+# Q43: admin-declared column aliases (`.agent/archive/contracts/q43.md`).
+[[mutant]]
+id = "q43-aliases-unread"
+predicate = "V3: an alias names its column"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_names_its_column_under_strict"
+anchor = '''    for target, alias in aliases:'''
+mutant = '''    for target, alias in ():'''
+
+[[mutant]]
+id = "q43-alias-column-unfolded"
+predicate = "V3: an alias binds every column whose FOLDED name equals its column"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_matches_by_folded_column_and_alias"
+anchor = '''if _words(column) == _words(target)'''
+mutant = '''if column == target'''
+
+[[mutant]]
+id = "q43-self-alias-ties"
+predicate = "V3: an alias spelling its own column's name is no tie"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_of_its_own_column_name_is_no_tie"
+anchor = '''            if column not in columns:
+                columns.append(column)'''
+mutant = '''            columns.append(column)'''
+
+[[mutant]]
+id = "q43-nameable-ignores-aliases"
+predicate = "V3: an anchoring-length alias makes a short column nameable under strict"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_makes_a_short_column_nameable_under_strict"
+anchor = '''for key, columns in _keys((column,), aliases).items()'''
+mutant = '''for key, columns in _keys((column,), ()).items()'''
+
+[[mutant]]
+id = "q43-nameable-unthreaded"
+predicate = "V3: the strict arm passes the target's aliases to nameability"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_makes_a_short_column_nameable_under_strict"
+anchor = '''any(_nameable(c, target.aliases) for c in plotted - named)'''
+mutant = '''any(_nameable(c) for c in plotted - named)'''
+
+[[mutant]]
+id = "q43-anchoring-unthreaded"
+predicate = "V3: request anchoring reads the target's aliases"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_counts_for_the_substitution_check_under_both_rules"
+anchor = '''request, header, target.aliases, short_names='''
+mutant = '''request, header, (), short_names='''
+
+[[mutant]]
+id = "q43-labels-unthreaded"
+predicate = "V3: G10 reads an alias as its column's name"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_label_naming_an_undrawn_columns_alias_refuses"
+anchor = '''_named_columns(text, header, aliases, ignore_ties=True)'''
+mutant = '''_named_columns(text, header, ignore_ties=True)'''
+
+[[mutant]]
+id = "q43-summary-exemption-unthreaded"
+predicate = "V3: a summary word an alias uses names that column, never a summary"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_summary_word_an_alias_uses_names_its_column"
+anchor = '''header_text = " ".join(_keys(header, aliases))'''
+mutant = '''header_text = " ".join(_keys(header, ()))'''
+
+[[mutant]]
+id = "q43-integrity-unthreaded"
+predicate = "V3: verification hands the bound target's aliases to the G-rules"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_label_naming_an_undrawn_columns_alias_refuses"
+anchor = '''aliases = bound_target.aliases if isinstance(bound_target, DatasetTarget) else ()'''
+mutant = '''aliases = ()'''
+
+[[mutant]]
+id = "q43-dataset-integrity-unthreaded"
+predicate = "V3: the dataset G-rules pass aliases to the label check"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_label_naming_an_undrawn_columns_alias_refuses"
+anchor = '''    _check_labels(spec, header, aliases)'''
+mutant = '''    _check_labels(spec, header)'''
+
+[[mutant]]
+id = "q43-check-integrity-unthreaded"
+predicate = "V3: check_integrity passes aliases to the dataset G-rules"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_label_naming_an_undrawn_columns_alias_refuses"
+anchor = '''        _dataset_integrity(spec, table, header, aliases)'''
+mutant = '''        _dataset_integrity(spec, table, header)'''
+
+[[mutant]]
+id = "q43-near-one-column-ties"
+predicate = "V3: one place near a column's name and its alias names that column, never a tie"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_names_of_one_column_at_one_place_are_no_tie"
+anchor = '''        if len(keys) == 1 or len({column for key in keys for column in by_key[key]}) == 1:'''
+mutant = '''        if len(keys) == 1:'''
+
+[[mutant]]
+id = "q43-short-one-column-ties"
+predicate = "V3: a kanji run fitting several names of one column names it"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_short_words_fitting_names_of_one_column_name_it"
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if len(fits) == 1 and len({column for key in fits for column in by_key[key]}) == 1:'''

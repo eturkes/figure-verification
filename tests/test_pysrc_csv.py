@@ -43,7 +43,8 @@ def _sin_target(*, grid: spec.Grid | None) -> spec.FormulaTarget:
 
 
 def test_c1_declared_target_union() -> None:
-    """`DeclaredTarget = DatasetTarget(path, content, request, anchoring) | FormulaTarget(y, grid)`.
+    """`DeclaredTarget = DatasetTarget(path, content, request, anchoring, aliases) |
+    FormulaTarget(y, grid)`.
 
     Accept: exact-set pin on the union; a total map over it carries a missing-arm mutant.
     `FormulaTarget` holds a parsed `spec.Expr` tree, so the core needs no expression parser.
@@ -56,6 +57,7 @@ def test_c1_declared_target_union() -> None:
         "content",
         "request",
         "anchoring",
+        "aliases",
     }
     assert set(spec.FormulaTarget.__dataclass_fields__) == {"y", "grid"}
 

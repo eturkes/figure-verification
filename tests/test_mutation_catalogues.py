@@ -17,6 +17,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _CATALOGUES = (
     "adapter",
     "admit",
+    "aliases",
     "aggregate",
     "app",
     "archive",
@@ -40,6 +41,7 @@ _CATALOGUES = (
     "schema",
     "score",
     "selection",
+    "tool",
     "vcert",
     "verify",
     "walkthrough",

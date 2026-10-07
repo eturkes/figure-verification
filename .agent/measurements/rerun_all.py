@@ -37,6 +37,7 @@ IDS = (
     "A1",
     "A2",
     "A3",
+    "A4",
     "H1",
     "F7",
     "O8",
@@ -59,6 +60,7 @@ HOST_ONLY = {
     "A1": "a1_anchor.py",
     "A2": "a2_labels.py",
     "A3": "a3_short_names.py",
+    "A4": "a4_aliases.py",
     "H1": "h1_heldout_anchoring.py",
     "S1": "s1_host.py",
 }

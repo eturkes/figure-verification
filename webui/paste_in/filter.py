@@ -335,7 +335,7 @@ class Filter:
 
         attachments = await owned_files(receipt.file_ids, user_id)
         verdict, consumed = first_verdict(
-            receipt.program, attachments, receipt.request_text, self._ANCHORING
+            receipt.program, attachments, receipt.request_text, self._ANCHORING, receipt.aliases
         )
         if isinstance(verdict, Refused):
             return await fail(verdict.code)

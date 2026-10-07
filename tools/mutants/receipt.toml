@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Builtin carrier across separately generated artifact classes; no verdict or bytes in state.
 module = "webui/paste_in/receipt.py"
-tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_internal.py"]
+tests = ["tests/test_paste_in_filter.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_aliases.py"]
 
 [[mutant]]
 id = "f1-first-call-persists"
@@ -10,29 +10,29 @@ kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_wit
 anchor = '''    setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text),
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
     )'''
 mutant = '''    if hasattr(state, RECEIPT_ATTR):
         return
     setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text),
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
     )'''
 
 [[mutant]]
 id = "f1-file-ids-erased"
 predicate = "the request receipt carries owned file ids in chat order"
 kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
-anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text)'''
-mutant = '''(RECEIPT_TAG, receipt.program, (), receipt.request_text)'''
+anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases)'''
+mutant = '''(RECEIPT_TAG, receipt.program, (), receipt.request_text, receipt.aliases)'''
 
 [[mutant]]
 id = "f1-request-text-erased"
 predicate = "the request receipt carries user request text for formula binding"
 kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
-anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text)'''
-mutant = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, None)'''
+anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases)'''
+mutant = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, None, receipt.aliases)'''
 
 [[mutant]]
 id = "f1-read-other-state"
@@ -90,3 +90,25 @@ predicate = "receipt API object is slotted"
 kills = "tests/test_paste_in_filter.py::test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply"
 anchor = '''@dataclass(frozen=True, slots=True)'''
 mutant = '''@dataclass(frozen=True, slots=False)'''
+
+# Q43: the receipt carries the admin's aliases (`/2`); a loose alias shape is no receipt.
+[[mutant]]
+id = "q43-aliases-erased"
+predicate = "V2: the receipt carries the aliases the tool used"
+kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_receipt_carries_aliases_as_builtin_tuples"
+anchor = '''receipt.file_ids, receipt.request_text, receipt.aliases)'''
+mutant = '''receipt.file_ids, receipt.request_text, ())'''
+
+[[mutant]]
+id = "q43-alias-container-unchecked"
+predicate = "V2: only a builtin tuple of aliases decodes"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        or type(aliases) is not tuple'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "q43-alias-pairs-unchecked"
+predicate = "V2: every alias is a builtin (column, alias) pair of str"
+kills = "tests/test_paste_in_filter.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)'''
+mutant = '''False'''

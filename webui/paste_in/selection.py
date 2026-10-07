@@ -6,7 +6,7 @@ other refusal is final. The formula target comes from the user's request, after 
 """
 
 from verifier.pysrc.request import formula_target
-from verifier.pysrc.spec import Anchoring, DatasetTarget, FormulaTarget
+from verifier.pysrc.spec import Aliases, Anchoring, DatasetTarget, FormulaTarget
 from verifier.pysrc.verify import Refused, Verdict, verify_python_source
 from webui.paste_in.owui_files import UploadedFile
 
@@ -18,14 +18,16 @@ def first_verdict(
     attachments: tuple[UploadedFile, ...],
     request_text: str | None,
     anchoring: Anchoring,
+    aliases: Aliases,
 ) -> tuple[Verdict | None, UploadedFile | None]:
     """Return the first final verdict and the attachment it consumed, if any.
 
     `anchoring` = the artifact's request-anchoring rule: production `strict`, demo `substitution`.
+    `aliases` = the admin's column aliases (Q43), from the tool's Valve, never the model or user.
     """
     formula = formula_target(request_text) if request_text is not None else None
     candidates: tuple[tuple[DatasetTarget | FormulaTarget, UploadedFile | None], ...] = tuple(
-        (DatasetTarget(file.path, file.content, request_text, anchoring), file)
+        (DatasetTarget(file.path, file.content, request_text, anchoring, aliases), file)
         for file in attachments
     ) + (((formula, None),) if formula is not None else ())
     outcome: Verdict | None = None

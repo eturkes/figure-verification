@@ -876,7 +876,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified six times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified seven times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -884,9 +884,12 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     2.7.0 -> 2.8.0 for GHSA-8988-9cw3-xx77, GHSA-gh4c-6fx4-qh6g and GHSA-vxq7-64xx-v4gw,
     dev-only through detect-secrets; no other package moved), the ruff 0.15.19 -> 0.16.9 dev
     tooling upgrade (polish p31; no other package moved) and the multidict 6.7.1 -> 6.9.1 audit
-    repair (GHSA-54p9-h82j-f925, through litestar; no other package moved, lock revision 3 -> 5)."""
+    repair (GHSA-54p9-h82j-f925, through litestar; no other package moved, lock revision 3 -> 5)
+    and Q43 (pydantic 2.13.4 dev-only, Open WebUI 0.10.2's pin, user ruling: + pydantic-core
+    2.46.4, annotated-types 0.8.0, typing-inspection 0.4.4 -- 64 purely additive lines; no other
+    package moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "dcb5503d4fa6ed07774059a6fbf998c8545f932c8fbff596d1322f37d23a24ea"
+    assert digest == "0ab72f80698cf67744db35818754162e93c69a2284387bec2c0507e299ef138f"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

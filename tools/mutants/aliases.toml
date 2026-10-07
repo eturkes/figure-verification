@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q43 V1: the admin's Valve text, one line per column; a line the format cannot read fails the save.
+module = "webui/paste_in/aliases.py"
+tests = ["tests/test_paste_in_aliases.py"]
+
+[[mutant]]
+id = "q43-blank-line-read"
+predicate = "V1: a blank line is ignored"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_valve_text_parses_one_line_per_column"
+anchor = '''        if not line.strip():
+            continue'''
+mutant = '''        if not line.strip():
+            pass'''
+
+[[mutant]]
+id = "q43-full-width-equals-unread"
+predicate = "V1: the full-width equals sign separates a column from its aliases"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_valve_text_parses_one_line_per_column"
+anchor = '''_EQUALS = re.compile("[=\uff1d]")'''
+mutant = '''_EQUALS = re.compile("[=]")'''
+
+[[mutant]]
+id = "q43-ideographic-comma-unread"
+predicate = "V1: the ideographic comma separates aliases"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_valve_text_parses_one_line_per_column"
+anchor = '''_COMMA = re.compile("[,\uff0c\u3001]")'''
+mutant = '''_COMMA = re.compile("[,\uff0c]")'''
+
+[[mutant]]
+id = "q43-alias-may-hold-equals"
+predicate = "V1: a line splits at its first equals sign alone"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_valve_text_parses_one_line_per_column"
+anchor = '''        parts = _EQUALS.split(line, maxsplit=1)
+        if len(parts) != 2:'''
+mutant = '''        parts = _EQUALS.split(line)
+        if len(parts) < 2:'''
+
+[[mutant]]
+id = "q43-no-equals-admitted"
+predicate = "V1: a line with no equals sign fails"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        if len(parts) != 2:  # noqa: PLR2004 - a column and its alias list
+            msg = f"column aliases, line {number}: write <column> = <alias>, <alias>"
+            raise ValueError(msg)
+'''
+mutant = '''        if len(parts) != 2:  # noqa: PLR2004 - a column and its alias list
+            continue
+'''
+
+[[mutant]]
+id = "q43-empty-column-admitted"
+predicate = "V1: a line with no column name fails"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        if not column:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q43-repeated-column-admitted"
+predicate = "V1: a column on a second line fails"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        if column in columns:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q43-repeated-column-unrecorded"
+predicate = "V1: each read column is remembered for the repeat check"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        columns.add(column)'''
+mutant = '''        columns.discard(column)'''
+
+[[mutant]]
+id = "q43-empty-alias-admitted"
+predicate = "V1: an empty alias fails"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        if not all(aliases):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q43-repeated-alias-admitted"
+predicate = "V1: an alias repeated in one line fails"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''        if len(set(aliases)) != len(aliases):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q43-alias-unstripped"
+predicate = "V1: an alias is read without its surrounding spaces"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_valve_text_parses_one_line_per_column"
+anchor = '''[alias.strip() for alias in _COMMA.split(parts[1])]'''
+mutant = '''[alias for alias in _COMMA.split(parts[1])]'''

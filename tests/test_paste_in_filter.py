@@ -86,9 +86,16 @@ def _tool_call(
     return result
 
 
-def _receipt(program: str, *file_ids: str, request_text: str | None = None) -> object:
+def _receipt(
+    program: str,
+    *file_ids: str,
+    request_text: str | None = None,
+    aliases: tuple[tuple[str, str], ...] = (),
+) -> object:
     module = load_receipt_module()
-    return module.Receipt(program=program, file_ids=tuple(file_ids), request_text=request_text)
+    return module.Receipt(
+        program=program, file_ids=tuple(file_ids), request_text=request_text, aliases=aliases
+    )
 
 
 def _request_with_receipt(program: str, *file_ids: str, request_text: str | None = None) -> object:
@@ -140,10 +147,11 @@ def test_f1_last_call_overwrites_receipt_with_owned_ids_and_closed_reply(tmp_pat
     assert dataclasses.is_dataclass(saved)
     assert set(vars(request.state)) == {"figure_verification_receipt"}
     assert getattr(request.state, receipt_module.RECEIPT_ATTR) == (
-        "figure-verification-receipt/1",
+        "figure-verification-receipt/2",
         program,
         ("owned-a", "owned-b"),
         _REQUEST,
+        (),
     )
 
 
@@ -178,7 +186,7 @@ def test_f1_receipt_precedes_failing_verification_and_non_string_text(
 def test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes() -> None:
     """F1/A3: a strictly tagged tuple crosses two isolated embedded Receipt classes."""
     module = load_receipt_module()
-    assert module.RECEIPT_TAG == "figure-verification-receipt/1"
+    assert module.RECEIPT_TAG == "figure-verification-receipt/2"
     assert module.read_receipt(None) is None
     assert module.read_receipt(object()) is None
     request = filter_request()
@@ -187,7 +195,7 @@ def test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes() -> No
     module.write_receipt(request, genuine)
     raw = getattr(request.state, module.RECEIPT_ATTR)
     assert type(raw) is tuple
-    assert raw == ("figure-verification-receipt/1", _sales_program(), ("one",), _REQUEST)
+    assert raw == ("figure-verification-receipt/2", _sales_program(), ("one",), _REQUEST, ())
     assert module.read_receipt(request) == genuine
     assert module.read_receipt(request) is not genuine
 
@@ -196,12 +204,21 @@ def test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes() -> No
     "invalid",
     [
         {"program": "print(1)"},
-        ("wrong-tag", "source", (), None),
-        ("figure-verification-receipt/1", "source", ()),
-        ("figure-verification-receipt/1", b"source", (), None),
-        ("figure-verification-receipt/1", "source", ["one"], None),
-        ("figure-verification-receipt/1", "source", ("one", 2), None),
-        ("figure-verification-receipt/1", "source", (), 2),
+        ("wrong-tag", "source", (), None, ()),
+        ("figure-verification-receipt/2", "source", (), None),
+        ("figure-verification-receipt/2", b"source", (), None, ()),
+        ("figure-verification-receipt/2", "source", ["one"], None, ()),
+        ("figure-verification-receipt/2", "source", ("one", 2), None, ()),
+        ("figure-verification-receipt/2", "source", (), 2, ()),
+        # Q43: a `/1` carrier holds no aliases, so it is no receipt; nor is a loose alias shape.
+        ("figure-verification-receipt/1", "source", (), None),
+        ("figure-verification-receipt/1", "source", (), None, ()),
+        ("figure-verification-receipt/2", "source", (), None, [("temp_c", "temperature")]),
+        ("figure-verification-receipt/2", "source", (), None, (["temp_c", "temperature"],)),
+        ("figure-verification-receipt/2", "source", (), None, (("temp_c",),)),
+        ("figure-verification-receipt/2", "source", (), None, (("temp_c", "temperature", "t"),)),
+        ("figure-verification-receipt/2", "source", (), None, (("temp_c", b"temperature"),)),
+        ("figure-verification-receipt/2", "source", (), None, ((1, "temperature"),)),
     ],
 )
 def test_f1_read_receipt_rejects_bad_carriers(invalid: object) -> None:

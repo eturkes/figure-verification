@@ -207,7 +207,7 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
             "foreign-state-tuple-fields",
             replace(
                 dataset,
-                receipt=("figure-verification-receipt/1", receipt.program, ["file-a"], None),
+                receipt=("figure-verification-receipt/2", receipt.program, ["file-a"], None, ()),
             ),
             False,
             0,
@@ -463,10 +463,11 @@ def _state(scenario: Scenario) -> SimpleNamespace:
     receipt = scenario.receipt
     if isinstance(receipt, ReceiptValue):
         value: object = (
-            "figure-verification-receipt/1",
+            "figure-verification-receipt/2",
             receipt.program,
             receipt.file_ids,
             receipt.request_text,
+            (),
         )
     else:
         value = receipt

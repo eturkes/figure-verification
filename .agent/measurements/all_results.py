@@ -264,6 +264,10 @@ def a3():
     }
 
 
+def a4():
+    return load("a4-result.json")
+
+
 def h1():
     return load("h1-result.json")
 
@@ -351,6 +355,7 @@ PROJECTORS = {
     "A1": a1,
     "A2": a2,
     "A3": a3,
+    "A4": a4,
     "H1": h1,
     "F7": f7,
     "O8": o8,

@@ -86,13 +86,16 @@ def test_state_carrier_is_builtin_and_replaces_prior_call(tmp_path: Path) -> Non
         "import os\n",
         ("owned",),
         "chart revenue by region",
+        (),
     )
-    assert read_receipt(request) == Receipt("import os\n", ("owned",), "chart revenue by region")
+    assert read_receipt(request) == Receipt(
+        "import os\n", ("owned",), "chart revenue by region", ()
+    )
 
 
 @pytest.mark.parametrize(
     "carrier",
-    [None, "The chart is ready.", ("wrong-tag", "x", (), None), (RECEIPT_TAG, 9, (), None)],
+    [None, "The chart is ready.", ("wrong-tag", "x", (), None, ()), (RECEIPT_TAG, 9, (), None, ())],
 )
 def test_receipt_reader_refuses_non_carrier(carrier: object) -> None:
     request = _request()
@@ -114,7 +117,7 @@ def test_png_uri_ignores_data_suffix_inside_unrelated_prose() -> None:
 def test_no_state_receipt_rewrites_prose_with_no_rpc() -> None:
     """F2/F4: user text, citations and a serialized tool result cannot authorize a figure."""
     body = _body()
-    body["receipt"] = (RECEIPT_TAG, _PROGRAM, (), None)
+    body["receipt"] = (RECEIPT_TAG, _PROGRAM, (), None, ())
     messages = cast(list[dict[str, object]], body["messages"])
     messages[-1]["content"] = "The chart is ready. " + _PNG
     messages[-1]["sources"] = [{"document": ["The chart is ready."]}]

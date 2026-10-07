@@ -38,6 +38,8 @@ from typing import NamedTuple
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _SPEC = _REPO_ROOT / ".agent" / "spec.md"
 _DEFERRED = _REPO_ROOT / ".agent" / "deferred.md"
+# A Markdown list item of any bullet or number shape, at any indent.
+_LIST_ITEM = re.compile(r"\s*(?:[-*+]|\d+[.)])(?:\s|$)")
 _REVIEW = _REPO_ROOT / ".agent" / "review.md"
 
 # S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, the two scope
@@ -176,9 +178,13 @@ def test_s2_every_artifacts_path_is_tracked() -> None:
 
 def test_s3_every_deferral_carries_an_acceptance_check() -> None:
     """S3: each queue row states what would close it. Acceptance: a row with no `Accept:` fails
-    -- an acceptance check written later is written without the evidence that motivated it."""
-    rows = [line for line in _DEFERRED.read_text(encoding="utf-8").splitlines() if line[:2] == "- "]
-    assert rows, "no deferral rows found"
+    -- an acceptance check written later is written without the evidence that motivated it. An
+    empty queue passes (a queue request's close can fund every row); every list item must then be a
+    `- ` row, since a row in another bullet shape would be read as no row at all."""
+    lines = _DEFERRED.read_text(encoding="utf-8").splitlines()
+    rows = [line for line in lines if line[:2] == "- "]
+    stray = [line[:60] for line in lines if _LIST_ITEM.match(line) and line[:2] != "- "]
+    assert not stray, f"deferral list items that are not `- ` rows: {stray}"
     missing = [row[:60] for row in rows if "Accept:" not in row]
     assert not missing, f"deferral rows with no acceptance check: {missing}"
 

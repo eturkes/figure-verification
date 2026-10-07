@@ -257,11 +257,11 @@ def test_q8_binding_precedes_recompute() -> None:
 def test_q8_selection_threads_the_request_into_every_dataset_target() -> None:
     upload = UploadedFile("file", "/mnt/uploads/sales.csv", _SALES)
     program = _bar("month", path="/mnt/uploads/sales.csv")
-    refused, consumed = selection.first_verdict(program, (upload,), _BY_REGION, "substitution")
+    refused, consumed = selection.first_verdict(program, (upload,), _BY_REGION, "substitution", ())
     assert consumed is upload
     assert not isinstance(refused, Verified) and refused is not None
     assert refused.code == "column_not_requested"
-    verified, _ = selection.first_verdict(program, (upload,), None, "substitution")
+    verified, _ = selection.first_verdict(program, (upload,), None, "substitution", ())
     assert isinstance(verified, Verified)
 
 

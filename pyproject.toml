@@ -59,6 +59,10 @@ dev = [
     # test-only: tests/test_gate.py parses the committed workflow + Dependabot YAML.
     "pyyaml>=6",
     "types-pyyaml>=6",
+    # test-only (Q43): the tool's admin `Valves` is a pydantic model, which Open WebUI builds on
+    # save and on load. Pinned EXACTLY to the version Open WebUI 0.10.2 ships, so the tests run the
+    # validation the admin's instance runs; the paste-in imports it from the OWUI image.
+    "pydantic==2.13.4",
 ]
 
 [build-system]

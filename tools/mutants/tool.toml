@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q43 V1 + V2: the admin Valve refuses unreadable text on save, and its aliases reach the verdict
+# and the receipt the outlet reads.
+module = "webui/paste_in/tool.py"
+tests = ["tests/test_paste_in_aliases.py"]
+
+[[mutant]]
+id = "q43-valve-unvalidated"
+predicate = "V1: saving unreadable alias text fails (OWUI runs Valves(**form))"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
+anchor = '''            parse_aliases(value)
+            return value'''
+mutant = '''            return value'''
+
+[[mutant]]
+id = "q43-valves-unset"
+predicate = "V1: the instance holds valves, or OWUI never sets the admin's"
+kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_default_valve_is_empty_and_the_demo_inherits_it"
+anchor = '''        self.valves = self.Valves()'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "q43-verdict-ignores-valve"
+predicate = "V2: the tool's verdict reads the Valve's aliases"
+kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_tool_verifies_and_records_its_valve_aliases"
+anchor = '''            program, attachments, request_text, self._ANCHORING, aliases'''
+mutant = '''            program, attachments, request_text, self._ANCHORING, ()'''
+
+[[mutant]]
+id = "q43-receipt-drops-valve"
+predicate = "V2: the receipt records the aliases the tool used"
+kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_tool_verifies_and_records_its_valve_aliases"
+anchor = '''                    request_text,
+                    aliases,'''
+mutant = '''                    request_text,
+                    (),'''

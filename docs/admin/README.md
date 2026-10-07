@@ -143,19 +143,50 @@ neither column. For example, a request says
 columns. The excluded column does not count as named. An order phrase such as
 `in chronological order` names no column. The verifier compares the words of the request with the
 column names only, so this check covers only the column names that the verifier recognizes. It does
-not recognize synonyms or translations. It also does not recognize a short column name. A short name
-has one or two ASCII characters, such as `id`, or one character of another script. A chart can draw
-a short column that the request does not name. If the request names no recognized column, the chart
-passes this check. For example, a Japanese request about English column names passes, unless it
-writes those English names.
+recognize a synonym or a translation only as a column alias that you set (see Column aliases). It
+also does not recognize a short column name without an alias. A short name has one or two ASCII
+characters, such as `id`, or one character of another script. A chart can draw a short column that
+the request does not name. If the request names no recognized column, the chart passes this check.
+For example, a Japanese request about English column names passes, unless it writes those English
+names or their aliases.
 
 The labels of a chart over a CSV file obey a similar rule. A title, axis label or legend label
-cannot name a recognized CSV column that the chart does not show. The verifier does not check a
+cannot name a recognized CSV column that the chart does not show. A column alias names its column
+in a label too. The verifier does not check a
 label word that fits two column names. If the chart shows a sum, mean, minimum or maximum per group,
 a label cannot name a different summary. If a column name contains a summary word, such as `total`
 in `total_revenue`, the verifier reads that word as part of the name. For example, if no column name
 contains `total`, a chart of mean revenue cannot have the title `Total revenue`. Such a chart fails
 with the code `label_not_consistent`. The verifier does not check the labels of a function chart.
+
+## Column aliases
+
+A request names a column only when it writes a name of that column. A column alias gives a column
+another name, such as `temperature` for `temp_c` or a Japanese word for an English column name. The
+verifier reads an alias as the column name in requests, excluded columns, Japanese short words and
+chart labels. The model cannot change the aliases. Open WebUI lets the tool's owner, an administrator
+and a user with write access to the tool change them. Thus, an administrator must own the tool, and
+chat users must not have write access to it.
+
+1. Open **Workspace**, then **Tools**.
+2. On the tool `figure_verification`, click **Valves**.
+3. In **Column Aliases**, write one line for each column, such as `temp_c = temperature, 気温`.
+4. Save the valves.
+
+Write the column name as the file spells it, but upper case, lower case and full-width forms do not
+matter. Separate the aliases with commas. The Japanese comma `、` and the full-width forms of `=`
+and `,` also work. Open WebUI ignores an empty line. If you write a line that has no `=`, no column
+name or an empty alias, Open WebUI does not save the valves. It also refuses a line that repeats an
+alias or repeats the column of an earlier line. Its error message names the line.
+
+An alias of a column that the file does not have has no effect. An alias that two columns share, or
+that equals another column name, names neither column. A word that fits a column name and an alias
+of the same column names that column. A request that writes such a shared alias fails with
+the code `column_not_requested`. An alias needs the length of a recognized name: three ASCII
+characters, or two characters of another script. An alias can make a short column recognized. Then,
+if the chart draws that column, a request that names any column must also name it. Otherwise the
+chart fails with the code `column_not_named`. The filter reads the aliases that the tool used for the same reply, so a change
+applies from the next reply.
 
 ## Why a chart failed
 

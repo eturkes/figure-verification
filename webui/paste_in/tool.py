@@ -19,10 +19,19 @@ name, and `get_tools()` strips the same names again before the spec reaches the 
 
 Publication is the outlet filter's, not this return value: only a backend-recorded tool call may
 publish a figure (transport ruling), and the filter re-derives the verdict from that record.
+
+`Valves` = the admin's settings (Q43: column aliases). Open WebUI builds it on every save
+(`Valves(**form)`, a failed validation refuses the save) and on every load, and sets it on the
+instance only when the instance already holds `valves`; the model never supplies it. The
+tool records the parsed aliases in its receipt, so the outlet's verdict reads the same aliases.
+`pydantic` is part of the Open WebUI image, as `open_webui` is.
 """
+
+from pydantic import BaseModel, Field, field_validator
 
 from verifier.pysrc.spec import Anchoring
 from verifier.pysrc.verify import Verified
+from webui.paste_in.aliases import parse_aliases
 from webui.paste_in.owui_files import uploaded_files
 from webui.paste_in.receipt import Receipt, write_receipt
 from webui.paste_in.selection import first_verdict
@@ -43,6 +52,27 @@ class Tools:
     # Production = strict request anchoring; the demo's generated tool overrides it (Q37).
     _ANCHORING: Anchoring = "strict"
 
+    class Valves(BaseModel):
+        """The admin's settings for this tool."""
+
+        column_aliases: str = Field(
+            default="",
+            description=(
+                "Other names for CSV columns, one line per column: column = alias, alias."
+                " A request or chart label that writes an alias names its column."
+            ),
+        )
+
+        @field_validator("column_aliases")
+        @classmethod
+        def check_column_aliases(cls, value: str) -> str:
+            """Refuse the save of text that `parse_aliases` cannot read."""
+            parse_aliases(value)
+            return value
+
+    def __init__(self) -> None:
+        self.valves = self.Valves()
+
     async def draw_figure(
         self,
         program: str,
@@ -54,6 +84,7 @@ class Tools:
 
         :param program: The complete Python program that draws the chart.
         """
+        aliases = parse_aliases(self.valves.column_aliases)
         user_id = (__user__ or {}).get("id")
         request_text = _request_text(__metadata__)
         attachments = (
@@ -66,9 +97,12 @@ class Tools:
                     program,
                     tuple(attachment.file_id for attachment in attachments),
                     request_text,
+                    aliases,
                 ),
             )
         if not isinstance(user_id, str):
             return CHART_NOT_PRODUCED
-        verdict, _consumed = first_verdict(program, attachments, request_text, self._ANCHORING)
+        verdict, _consumed = first_verdict(
+            program, attachments, request_text, self._ANCHORING, aliases
+        )
         return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED
