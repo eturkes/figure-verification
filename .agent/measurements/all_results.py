@@ -260,6 +260,7 @@ def a3():
         "clinical": fields(clinical, "requests", "added", "baseline_refused", "false_refusals"),
         "own": data["own"],
         "noise": data["noise"],
+        "suffix": data["suffix"],
     }
 
 

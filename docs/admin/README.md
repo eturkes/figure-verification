@@ -132,8 +132,9 @@ draws. Write each column name as the file spells it. A one-word name of five or 
 contain one typing error. A name such as `unit_price` has two words, so the request must spell both
 words exactly. In Japanese, a whole kanji word can also name a column of two to four characters.
 The word must equal the column name without its first or last character, so `月ごと` names `年月`.
-This rule does not apply to a kana word or to a kanji word with a suffix, such as `月別`. A short
-kanji word that fits two column names names neither column. For example, a request says
+The rule also applies to a kanji word that ends in one of the suffixes `別`, `毎`, `次` or `単位`,
+such as `月別`. It does not apply to a kana word. A short kanji word that fits two column names names
+neither column. For example, a request says
 `chart revenue` and the chart draws revenue by month. The chart fails with the code
 `column_not_named`, because the request does not name `month`. If the request says
 `revenue by region`, a chart of revenue by month fails with the code `column_not_requested`: it puts

@@ -190,12 +190,16 @@ projection + exact recomputation and observation is additive.
   headers fold to never names this way, yet still ties a run it fits. A one-word 5+-character name
   is the one-edit tier's: dropping one end is one edit. The shared matcher is unchanged, so the
   demo's substitution rule + G10 labels never read short words. Trust limit: a short word names the
-  one header it fits (`年ごと` over a header whose only fit is `年齢` names `年齢`); a suffixed short
-  word names nothing (`月別`).
+  one header it fits (`年ごと` over a header whose only fit is `年齢` names `年齢`). Q42
+  (`.agent/archive/contracts/q42.md`): a run ending in one grouping suffix (`verify.py::_SUFFIXES` = `単位`
+  `別` `毎` `次`, cut once, at the end) is read again without it (`月別` → `年月`); the run and its
+  stem fitting different names = a tie. Risk: a word ending in a listed suffix by itself (`区別`,
+  `目次`) can name a header its stem fits (`区` → `地区`).
   Measured: A1 strict JA 4/18 → 0/18, JA-mixed 1/18 stays (`日ごと` for the English `date` = a
   translation), swaps caught unchanged; A3 (`.agent/measurements/a3_short_names.py`): 0 false names
-  (clinical leg adds 2, own headers 4, 88 noise pairs 5), clinical strict false refusals 1/20
-  (`月別`), substitution 0/20.
+  (clinical leg adds 3, own headers 4, 88 noise pairs 6, 240 suffix pairs 24 — each a column the
+  request's own chart draws: `年月`, once `日付`), clinical false refusals strict 0/20 (1/20 before
+  Q42: `月別`), substitution 0/20.
 - Matching is SAFE because the model gets no vote: the target set = the file's REAL header, so a
   typo fix cannot invent a column. NFKC + `casefold`; words split at every non-word char (`_`
   included) and where ASCII meets another script (`regionごとのrevenue`). Exact names first, longest

@@ -2,7 +2,7 @@
 # Structural target binding: one mutant for each independently compared field and arm crossing.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/verify.py"
-tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py", "tests/test_pysrc_anchoring_suffix.py"]
 
 [[mutant]]
 id = "c2-formula-y-ignored"
@@ -520,22 +520,22 @@ mutant = '''        named, negated = _anchors(request, header, short_names=True)
 id = "q41-drop-last-unread"
 predicate = "T1: a run equal to the name minus its last character names it"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-last]"
-anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
-mutant = '''        fits = {key for key in keys if run[0] in (key[1:],)}'''
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if {run[0], stem} & {key[1:]}}'''
 
 [[mutant]]
 id = "q41-drop-first-unread"
 predicate = "T1: a run equal to the name minus its first character names it"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-first]"
-anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
-mutant = '''        fits = {key for key in keys if run[0] in (key[:-1],)}'''
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if {run[0], stem} & {key[:-1]}}'''
 
 [[mutant]]
 id = "q41-part-of-run-names"
 predicate = "T1: the WHOLE kanji run must equal the shortened name"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_whole_run_must_match_not_a_part_of_it"
-anchor = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}'''
-mutant = '''        fits = {key for key in keys if key[1:] in run[0] or key[:-1] in run[0]}'''
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if any(part in run[0] for part in (key[1:], key[:-1]))}'''
 
 [[mutant]]
 id = "q41-two-fits-name-one"
@@ -599,3 +599,61 @@ predicate = "T1: names of up to four characters read short words"
 kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_reads_four_characters_and_the_one_edit_tier_reads_five"
 anchor = '''_SHORT_NAME_MAX = 4'''
 mutant = '''_SHORT_NAME_MAX = 3'''
+
+[[mutant]]
+id = "q42-suffix-unread"
+predicate = "U1: a run ending in a grouping suffix is read without it"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_counts_for_the_substitution_check"
+anchor = '''cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")'''
+mutant = '''cut = ""'''
+
+[[mutant]]
+id = "q42-betsu-dropped"
+predicate = "U1: `別` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[betsu]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "毎", "次")'''
+
+[[mutant]]
+id = "q42-mai-dropped"
+predicate = "U1: `毎` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[mai]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "別", "次")'''
+
+[[mutant]]
+id = "q42-ji-dropped"
+predicate = "U1: `次` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[ji]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "別", "毎")'''
+
+[[mutant]]
+id = "q42-tani-dropped"
+predicate = "U1: `単位` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[tani]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("別", "毎", "次")'''
+
+[[mutant]]
+id = "q42-cut-anywhere"
+predicate = "U2: the suffix is cut at the run's end only"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u2_the_suffix_is_cut_at_the_end_only"
+anchor = '''        cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")
+        stem = run[0][: len(run[0]) - len(cut)] if cut else ""'''
+mutant = '''        cut = next((suffix for suffix in _SUFFIXES if suffix in run[0]), "")
+        stem = run[0].replace(cut, "") if cut else ""'''
+
+[[mutant]]
+id = "q42-cut-repeatedly"
+predicate = "U2: the suffix is cut once"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u2_the_suffix_is_cut_once"
+anchor = '''        stem = run[0][: len(run[0]) - len(cut)] if cut else ""'''
+mutant = '''        stem = run[0].rstrip("".join(_SUFFIXES)) if cut else ""'''
+
+[[mutant]]
+id = "q42-run-before-stem"
+predicate = "U1: a run and its stem fitting different names name neither"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_run_and_its_stem_fitting_different_names_name_neither"
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])} or {key for key in keys if stem in (key[1:], key[:-1])}'''

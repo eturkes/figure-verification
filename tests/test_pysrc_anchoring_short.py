@@ -66,8 +66,8 @@ def test_q41_t1_a_run_fitting_two_names_names_neither() -> None:
 
 
 def test_q41_t1_a_whole_run_must_match_not_a_part_of_it() -> None:
-    """`月別` is one run; dropping one end of `年月` gives `月`, never `月別`."""
-    assert _verdict(_bar("年月", "売上"), "月別の売上の合計") == "column_not_named"
+    """`月例` is one run; dropping one end of `年月` gives `月`, never `月例`."""
+    assert _verdict(_bar("年月", "売上"), "月例の売上の合計") == "column_not_named"
 
 
 def test_q41_t1_reads_four_characters_and_the_one_edit_tier_reads_five() -> None:

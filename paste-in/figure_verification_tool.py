@@ -4087,6 +4087,9 @@ _NEGATION_AFTER = ("ではなく", "じゃなく", "でなく", "以外", "を�
 # block (`﨑` is NFKC-stable), Ext B+ (`𠮷`); a run split at one of them is no whole run.
 _KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")
 _SHORT_NAME_MAX = 4
+# Q42: grouping suffixes a short word takes (`月別`, `月毎`, `月次`, `月単位`), longest
+# first; one is cut from a run's end before Q41 reads it.
+_SUFFIXES = ("単位", "別", "毎", "次")
 
 
 class _AmbiguousTermError(ValueError):
@@ -4218,7 +4221,8 @@ def _named_columns(
 
 
 def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
-    """The 2-4 character Japanese names a whole kanji run names by dropping one end (Q41).
+    """The 2-4 character Japanese names a whole kanji run names by dropping one end (Q41), the
+    run read also without one grouping suffix (Q42: `月別` → `年月`).
 
     `words` = the folded request before any name is consumed, so a run is whole in the
     request itself: `診療科別` stays one run where `診療科` is a header, and its `別` never
@@ -4235,7 +4239,11 @@ def _short_names(words: str, by_key: dict[str, list[str]]) -> set[str]:
             key in words[max(0, start - len(key) + 1) : end + len(key) - 1] for key in exact
         ):
             continue
-        fits = {key for key in keys if run[0] in (key[1:], key[:-1])}
+        # Q42: the run read whole, and again with one grouping suffix cut from its end; a run
+        # and its stem fitting different names is a tie like any other.
+        cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")
+        stem = run[0][: len(run[0]) - len(cut)] if cut else ""
+        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}
         # A fold-twin name joins the count, so it ties a run it fits, yet names nothing itself.
         if len(fits) == 1 and len(by_key[next(iter(fits))]) == 1:
             found |= fits

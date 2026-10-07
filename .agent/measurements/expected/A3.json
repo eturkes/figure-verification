@@ -2,13 +2,12 @@
   "clinical": {
     "added": [
       "c04:年月",
+      "c11:年月",
       "c20:年月"
     ],
     "baseline_refused": [],
     "false_refusals": {
-      "strict": [
-        "c11:column_not_named"
-      ],
+      "strict": [],
       "substitution": []
     },
     "requests": 20
@@ -19,6 +18,7 @@
       "design-simple-13/clinical:年月",
       "design-simple-21/clinical:年月",
       "c04/sales.csv:年月",
+      "c11/sales.csv:年月",
       "c20/sales.csv:年月"
     ],
     "pairs": 88
@@ -31,5 +31,34 @@
       "design-simple-21:年月"
     ],
     "prompts": 24
+  },
+  "suffix": {
+    "added": [
+      "c04別/clinical:年月",
+      "c04別/sales.csv:年月",
+      "c04毎/clinical:年月",
+      "c04毎/sales.csv:年月",
+      "c04次/clinical:年月",
+      "c04次/sales.csv:年月",
+      "c04単位/clinical:年月",
+      "c04単位/sales.csv:年月",
+      "c11別/clinical:年月",
+      "c11別/sales.csv:年月",
+      "c11毎/clinical:年月",
+      "c11毎/sales.csv:年月",
+      "c11次/clinical:年月",
+      "c11次/sales.csv:年月",
+      "c11単位/clinical:年月",
+      "c11単位/sales.csv:年月",
+      "c20別/clinical:年月",
+      "c20別/sales.csv:年月",
+      "c20毎/clinical:年月",
+      "c20毎/sales.csv:年月",
+      "c20次/clinical:年月",
+      "c20次/sales.csv:年月",
+      "c20単位/clinical:年月",
+      "c20単位/sales.csv:年月"
+    ],
+    "pairs": 240
   }
 }

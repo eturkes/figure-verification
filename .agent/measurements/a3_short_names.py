@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""A3 -- Japanese short-word naming (Q41): every name the strict-only tier adds, false ones marked.
+"""A3 -- Japanese short-word naming (Q41 + Q42 suffixes): every name the strict-only tier adds.
 
 Corpus = `a3_clinical.json` (an authored clinical header, 3 rows, 20 Japanese requests, each with
 the chart it asks for) + A1's Japanese renderings (`a1_ja.json`). Held-out prompts stay unread.
@@ -13,6 +13,10 @@ Legs:
 - noise: each A1 `ja` rendering over the OTHER dataset's translated header and over the clinical
   header, and each clinical request over both translated headers. An added name is FALSE unless it
   spells a column the request asks for in its own dataset (`年月` is the month column in both).
+- suffix (Q42): each clinical request rewritten with each grouping suffix (`別` `毎` `次`
+  `単位`): its grouping word (`ごと`, or the one suffix it already holds) replaced, or, in a scatter
+  request with no grouping word, the suffix glued to its x-axis word; over the clinical header and
+  both translated headers; FALSE as in the noise leg.
 
     uv run --locked python .agent/measurements/a3_short_names.py   # writes a3-result.json
 """
@@ -116,10 +120,29 @@ for number, task in enumerate(clinical["requests"], 1):
         )
 result["noise"] = {"pairs": pairs, "added": noise}
 
+suffixed = []
+suffix_pairs = 0
+SUFFIXES = ("別", "毎", "次", "単位")
+for number, task in enumerate(clinical["requests"], 1):
+    text = task["request"]
+    if not task["reduction"]:
+        word, glue = task["x"], task["x"]
+    else:
+        word, glue = "ごと" if "ごと" in text else next(w for w in SUFFIXES if w in text), ""
+    assert text.count(word) == 1, text
+    for suffix in SUFFIXES:
+        request = text.replace(word, glue + suffix)
+        for name, header in [("clinical", CLINICAL), *sorted(headers.items())]:
+            suffix_pairs += 1
+            label = f"c{number:02}{suffix}/{name}"
+            suffixed += marked(label, added(request, header), {task["x"], task["y"]})
+result["suffix"] = {"pairs": suffix_pairs, "added": suffixed}
+
 print(f"clinical: {leg['requests']} requests; added {leg['added']}")
 print(f"  baseline refused {leg['baseline_refused']}; false refusals {leg['false_refusals']}")
 print(f"own: added {own}")
 print(f"noise: {pairs} pairs; added {noise}")
+print(f"suffix: {suffix_pairs} pairs; added {suffixed}")
 (HERE / "a3-result.json").write_text(
     json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 )
