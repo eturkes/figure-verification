@@ -1,34 +1,57 @@
 {
   "version": "demo-ja-1",
-  "capture": null,
+  "capture": {
+    "repo": {
+      "git_commit": "6a7f92dbd9434c2e8156d794ced7c42b19a8e972",
+      "git_dirty": false,
+      "model_repo_id": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "model_revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+      "engine_dtype": "float16",
+      "runtime_lock_sha256": "762a1d7d19d1a5dfe6bdc2a0f66aaf955c895dc1010adad03a313031020105b1",
+      "capture_prompt_sha256": "9ceee9a4561aa46c8ec08931666379bf939b26ecaffb87dbe57395ff9307d71f"
+    },
+    "service": {
+      "model_name": "Qwen2.5-Coder-0.5B-Instruct",
+      "device": "cuda",
+      "structured_output": true
+    },
+    "host": {
+      "driver_version": "580.178.04",
+      "compute_cap": "6.1",
+      "gpu_name": "NVIDIA GeForce MX150",
+      "memory_total_mib": 2048
+    },
+    "temperature": 0.0,
+    "max_tokens": 512
+  },
   "prompts": [
     {
       "id": "ja-sales-simple",
       "dataset": "sales.csv",
       "expect": "pass",
       "prompt": "地域ごとの総売上を棒グラフにしてください。",
-      "content": ""
+      "content": "```python\nimport pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file into a DataFrame\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_sum = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped sum\nplt.figure(figsize=(10, 6))\ngrouped_sum.plot(kind='bar', color='skyblue')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.xticks(rotation=45)\nplt.grid(True)\nplt.show()\n```\n\nThis Python script reads the sales data from a CSV file, groups the data by region, calculates the total revenue for each region, and then plots this data using a bar chart."
     },
     {
       "id": "ja-sales-elaborate",
       "dataset": "sales.csv",
       "expect": "fail",
       "prompt": "sales.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした売上の面グラフ、地域別の注文数のグループ化棒グラフ、地域で色分けした売上対注文数のバブル散布図、KPI パネルを配置し、ダークテーマにしてピーク月に注釈を付けてください。",
-      "content": ""
+      "content": "```python\nimport pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by month and region\ngrouped_df = df.groupby(['month', 'region'])\n\n# Calculate the total revenue and orders for each group\ntotal_revenue = grouped_df['revenue'].sum()\ntotal_orders = grouped_df['orders'].sum()\n\n# Create subplots\nfig, axs = plt.subplots(2, 2, figsize=(10, 8))\n\n# Plot the revenue and orders for each group\naxs[0, 0].bar(grouped_df.index, grouped_df['revenue'], color='skyblue')\naxs[0, 0].set_title('Revenue by Month and Region')\naxs[0, 0].set_xlabel('Month')\naxs[0, 0].set_ylabel('Revenue')\n\naxs[0, 1].bar(grouped_df.index, grouped_df['orders'], color='lightcoral')\naxs[0, 1].set_title('Orders by Month and Region')\naxs[0, 1].set_xlabel('Month')\naxs[0, 1].set_ylabel('Orders')\n\n# Plot the average revenue and orders for each group\naxs[1, 0].bar(grouped_df.index, grouped_df['revenue'] / grouped_df['orders'], color='orange')\naxs[1, 0].set_title('Average Revenue by Month and Region')\naxs[1, 0].set_xlabel('Month')\naxs[1, 0].set_ylabel('Average Revenue')\n\naxs[1, 1].bar(grouped_df.index, grouped_df['orders'] / grouped_df['revenue'], color='green')\naxs[1, 1].set_title('Average Orders by Month and Region')\naxs[1, 1].set_xlabel('Month')\naxs[1, 1].set_ylabel('Average Orders')\n\n# Plot the highest and lowest revenue and orders for each group\naxs[2, 0].bar(grouped_df.index, grouped_df['revenue'].max(), color='red')\naxs[2, 0].set_title('Highest Revenue by Month and Region')\naxs[2, 0].set_xlabel('Month')\naxs[2, 0].set_ylabel('Highest Revenue')\n\naxs[2, 1].bar(grouped_df"
     },
     {
       "id": "ja-clinic-simple",
       "dataset": "clinic_ja.csv",
       "expect": "pass",
       "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。",
-      "content": ""
+      "content": "```python\nimport pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV file\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\n\n# Group by '年月' and calculate the average waiting time\ngrouped_df = df.groupby('年月')['平均待ち時間'].mean()\n\n# Plot the grouped data\nplt.figure(figsize=(10, 6))\ngrouped_df.plot(kind='line')\nplt.title('年月ごとの平均待ち時間折れ線グラフ')\nplt.xlabel('年月')\nplt.ylabel('平均待ち時間')\nplt.grid(True)\nplt.show()\n```\n\nThis Python script reads the CSV file, groups the data by year and month, calculates the average waiting time for each group, and then plots this data using matplotlib."
     },
     {
       "id": "ja-clinic-elaborate",
       "dataset": "clinic_ja.csv",
       "expect": "fail",
       "prompt": "clinic_ja.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした患者数の面グラフ、診療科別の平均待ち時間のグループ化棒グラフ、診療科で色分けした患者数対待ち時間のバブル散布図、KPI パネルを配置し、ダークテーマにして患者数が最も多い月に注釈を付けてください。",
-      "content": ""
+      "content": "```python\nimport pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\n\n# Group by '年月' and calculate '患者数' and '平均待ち時間'\ngrouped_df = df.groupby('年月')['患者数', '平均待ち時間'].sum()\n\n# Plotting the data\nplt.figure(figsize=(10, 6))\n\n# Bar chart for '患者数'\nplt.bar(grouped_df.index, grouped_df['患者数'], color='skyblue')\n\n# Line chart for '平均待ち時間'\nplt.plot(grouped_df.index, grouped_df['平均待ち時間'], color='orange')\n\n# Adding labels and title\nplt.xlabel('年月')\nplt.ylabel('患者数/平均待ち時間')\nplt.title('患者数と平均待ち時間の比較')\n\n# Adding a legend\nplt.legend()\n\n# Show the plot\nplt.show()\n```\n\nThis Python script reads the CSV file, groups the data by year and month, calculates the total number of patients and average waiting time for each group, and then plots these values using matplotlib. The plot includes a bar chart for the total number of patients and a line chart for the average waiting time. The script also adds a legend to the plot and displays it."
     }
   ]
 }

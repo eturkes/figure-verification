@@ -261,6 +261,17 @@ done
 #    calibration unit records both arms live through the inlet + adapter transport.
 simple_prompt="Chart the total revenue of each region using bars."
 elaborate_prompt="Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated."
+# Japanese set (webui/demo_ja.json, M17): twins over sales.csv, then a pair over clinic_ja.csv.
+ja_simple_prompt="地域ごとの総売上を棒グラフにしてください。"
+ja_elaborate_prompt="sales.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした売上の面グラフ、地域別の注文数のグループ化棒グラフ、地域で色分けした売上対注文数のバブル散布図、KPI パネルを配置し、ダークテーマにしてピーク月に注釈を付けてください。"
+ja_clinic_simple_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。"
+ja_clinic_elaborate_prompt="clinic_ja.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした患者数の面グラフ、診療科別の平均待ち時間のグループ化棒グラフ、診療科で色分けした患者数対待ち時間のバブル散布図、KPI パネルを配置し、ダークテーマにして患者数が最も多い月に注釈を付けてください。"
+printf -v ja_prompts '%s\n' \
+  "    Japanese prompts. Attach the CSV file shown before each prompt:" \
+  "      3) [data/sales.csv] ${ja_simple_prompt}" \
+  "      4) [data/sales.csv] ${ja_elaborate_prompt}" \
+  "      5) [data/clinic_ja.csv] ${ja_clinic_simple_prompt}" \
+  "      6) [data/clinic_ja.csv] ${ja_clinic_elaborate_prompt}"
 if (( USE_STUB )); then
   model_desc="deterministic stub (hardware-free)"
   printf -v try_typing '%s\n' \
@@ -274,7 +285,12 @@ if (( USE_STUB )); then
     "           Prompt 1: the verifier accepts that program. Prompt 2: the verifier refuses it." \
     "           Other messages, for example \"hello\", get no tool call." \
     "           Recorded once: prompt 1 showed a chart and the pass message, and" \
-    "           prompt 2 showed the failure message and no image."
+    "           prompt 2 showed the failure message and no image." \
+    "" \
+    "${ja_prompts}" \
+    "           The stub calls the figure tool with the program the real model wrote for each" \
+    "           Japanese prompt. Prompts 3 and 5: the verifier accepts it. Prompts 4 and 6: the" \
+    "           verifier refuses it. Not yet recorded in a browser."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
@@ -288,6 +304,9 @@ else
     "           Recorded on an MX150 GPU with this model, 5 runs for each prompt:" \
     "           Prompt 1 showed a bar chart and Figure verification passed in 5 of 5 runs." \
     "           Prompt 2 showed Figure verification failed, no image produced in 5 of 5 runs." \
+    "" \
+    "${ja_prompts}" \
+    "           Japanese prompts are not yet recorded with this model." \
     "           Use --stub to run the demo without a model."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"

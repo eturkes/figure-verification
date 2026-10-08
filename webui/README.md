@@ -98,8 +98,17 @@ curl -fsS http://127.0.0.1:8001/v1/models
 ```
 
 The stub is a deterministic integration fixture. It is not a model. On the legacy selector turn
-for the pinned simple prompt, it calls `draw_figure` with a committed Python program. Other requests
+for the pinned simple prompt, it calls `draw_figure` with a committed Python program. It does the
+same for the elaborate prompt and for each Japanese banner prompt. For a Japanese prompt, the
+program is the reply that the real model wrote for it, stored in `webui/demo_ja.json`. Other requests
 receive prose. The stub tests wiring, not model selection or generation quality.
+
+To capture the Japanese replies again, start the real model backend. Then run this command. It
+rewrites `webui/demo_ja.json`:
+
+```sh
+uv run --locked python -m webui.demo_ja
+```
 
 For a real-model run, use the CUDA backend through the launcher. Keep its URL and model ID aligned
 with the provisioner settings below.

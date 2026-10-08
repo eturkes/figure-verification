@@ -8,8 +8,9 @@ and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.mo
 structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
 prompt-classified (see _scripted_reply): the inlet-rendered simple banner prompt selects the
-committed verified program, the rendered complicated prompt selects the refused program, and
-other turns stay prose. This makes both outlet verdicts repeatable without measuring model quality.
+committed verified program, the rendered complicated prompt selects the refused program, each
+rendered Japanese demo prompt (`webui/demo_ja.json`) selects its captured program, and other turns
+stay prose. This makes every outlet verdict repeatable without measuring model quality.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
@@ -39,6 +40,8 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
+from webui.demo_ja import load as load_demo_ja
+from webui.demo_ja import rendered as rendered_demo_ja
 from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
@@ -82,6 +85,21 @@ def _tool_call_reply(program: str) -> str:
 
 _TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-simple"))
 _COMPLICATED_TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-complicated"))
+
+
+def _demo_ja_replies() -> tuple[tuple[str, str], ...]:
+    """Pair each rendered Japanese request with its captured reply, de-fenced like the adapter."""
+    replies: list[tuple[str, str]] = []
+    for prompt in load_demo_ja().prompts:
+        _, program = defence(prompt.content)
+        if not program:
+            msg = f"capture {prompt.id} has no program"
+            raise ValueError(msg)
+        replies.append((rendered_demo_ja(prompt), _tool_call_reply(program)))
+    return tuple(replies)
+
+
+_DEMO_JA_REPLIES = _demo_ja_replies()
 # The filter, not the stub's prose, publishes the final verdict on either path.
 _FINAL_REPLY = "Chart request completed."
 
@@ -101,6 +119,9 @@ def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:
             return _TOOL_CALL_REPLY
         if _selector_query(user, _COMPLICATED_PROMPT):
             return _COMPLICATED_TOOL_CALL_REPLY
+        for prompt, reply in _DEMO_JA_REPLIES:
+            if _selector_query(user, prompt):
+                return reply
     return _FINAL_REPLY
 
 
@@ -117,7 +138,7 @@ def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletio
 
     Builds the same ChatCompletionResponse SHAPE as model_backend/app.py (Choice wraps a
     ChatMessage, every field required) so the wire schema and field order match, but the VALUES are
-    synthetic: _scripted_reply selects one of three constants, finish_reason is always "stop" (the
+    synthetic: _scripted_reply selects one of the fixed replies, finish_reason is always "stop" (the
     live backend may also emit "length"), and usage is a word-count proxy (prompt = summed message
     words, completion = reply words). Generation params (temperature / max_tokens) are ignored.
     """
