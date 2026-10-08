@@ -521,7 +521,7 @@ PRODUCTION_TEMPLATE: Final = (
 
 _SOURCES["webui.paste_in.owui_files"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The ONLY module that imports `open_webui`: the user's uploaded bytes, fetched in-process.
+"""The ONLY module that imports `open_webui`: uploaded bytes + the bundled CJK font, in-process.
 
 The truth source for every recomputed number is the user's own upload (`.claude/rules/pysrc.md`,
 comparison class II), so the bytes come from Open WebUI's own store and not from the chat metadata,
@@ -546,6 +546,8 @@ from pathlib import Path
 # Where Open WebUI's Pyodide worker writes each attached file before it runs the program. An
 # admitted `read_csv` literal must name exactly this, and the core compares byte-for-byte.
 UPLOAD_DIR = "/mnt/uploads/"
+# Open WebUI ships this font for its own chat-PDF export; the sandbox's matplotlib has no CJK glyph.
+CJK_FONT_NAME = "NotoSansJP-Regular.ttf"
 
 
 @dataclass(frozen=True, slots=True)
@@ -602,6 +604,20 @@ async def uploaded_files(
 ) -> tuple[UploadedFile, ...]:
     """Resolve chat attachment ids through the same ownership path the filter uses."""
     return await owned_files(attachment_ids(metadata), user_id)
+
+
+async def cjk_font() -> bytes | None:
+    """Open WebUI's bundled Japanese font from its configured fonts directory, else `None`.
+
+    A missing font only withholds Japanese text from the figure, which then fails as before, so
+    every fault here degrades to `None` instead of costing the verdict.
+    """
+    try:
+        from open_webui.env import FONTS_DIR  # noqa: PLC0415 - see the module docstring
+
+        return await asyncio.to_thread(Path(FONTS_DIR, CJK_FONT_NAME).read_bytes)
+    except Exception:
+        return None
 '''
 
 _SOURCES["verifier.pysrc.admit"] = r'''
@@ -6009,7 +6025,13 @@ from webui.paste_in.observe import (
     observation_matches,
     parse_observation,
 )
-from webui.paste_in.owui_files import UPLOAD_DIR, owned_files, uploaded_files
+from webui.paste_in.owui_files import (
+    UPLOAD_DIR,
+    UploadedFile,
+    cjk_font,
+    owned_files,
+    uploaded_files,
+)
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.selection import first_verdict
@@ -6025,6 +6047,7 @@ _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
 _DATA_PREFIX = re.compile(r"(?<!\w)data:")
 _TRACEBACK = "Traceback (most recent call last):"
+_FONT_PATH = "/tmp/figure-verification-cjk.ttf"  # noqa: S108 - the sandbox's own in-memory FS
 # A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
 # marks such as `・` or `ー` occur beside kanji alone.
 _KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
@@ -6036,16 +6059,35 @@ FILTER_NAME: Final = "Figure Verification Filter"
 FILTER_DESCRIPTION: Final = "Shows a chart only after the verifier checks its program and data."
 
 
-def wrapper_code(program: str) -> str:
+def _payload(data: bytes) -> str:
+    """Base64 source for `data`, split wherever it spells the plotting name OWUI patches on."""
+    parts = base64.b64encode(data).decode("ascii").split("matplotlib")
+    return " + 'mat' + 'plotlib' + ".join(repr(part) for part in parts)
+
+
+def wrapper_code(program: str, font: bytes | None = None) -> str:
     """Run the submitted program bytes inside the browser, with one trusted PNG output hook.
 
     OWUI detects packages only from literal imports in the RPC source, missing encoded programs.
     Load the stack quietly through Pyodide; select Agg as OWUI's own patch prelude does, without
     triggering that broken prelude. Split the plotting name and any matching base64 RPC payload.
+    A `font` becomes matplotlib's fallback after DejaVu Sans, before the program runs: ordinary
+    text then draws its CJK glyphs, while mathtext keeps its own font set.
     """
-    encoded = base64.b64encode(program.encode("utf-8")).decode("ascii")
-    parts = encoded.split("matplotlib")
-    payload = " + 'mat' + 'plotlib' + ".join(repr(part) for part in parts)
+    font_lines = (
+        ()
+        if font is None
+        else (
+            f"_fv_font = {_FONT_PATH!r}",
+            "with open(_fv_font, 'wb') as _fv_handle:",
+            f"    _fv_handle.write(_b64.b64decode({_payload(font)}))",
+            "_fv_fonts = _imports.import_module('mat' + 'plotlib.font_manager')",
+            "_fv_fonts.fontManager.addfont(_fv_font)",
+            "_plt.rcParams['font.family'] = [",
+            "    'DejaVu Sans', _fv_fonts.FontProperties(fname=_fv_font).get_name()",
+            "]",
+        )
+    )
     return (
         "\n".join(
             (
@@ -6059,6 +6101,7 @@ def wrapper_code(program: str) -> str:
                 "_os.environ['MPLBACKEND'] = 'AGG'",
                 "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",
                 "plt = _plt",
+                *font_lines,
                 *OBSERVER_SOURCE.splitlines(),
                 "_shown = False",
                 "def _show(*_args, **_kwargs):",
@@ -6075,7 +6118,7 @@ def wrapper_code(program: str) -> str:
                 "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
                 "    _plt.close('all')",
                 "_plt.show = _show",
-                f"_source = _b64.b64decode({payload})",
+                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
                 "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",
                 "if not _shown:",
                 "    _show()",
@@ -6083,6 +6126,19 @@ def wrapper_code(program: str) -> str:
         )
         + "\n"
     )
+
+
+def _needs_font(verdict: Verified, consumed: UploadedFile | None) -> bool:
+    """Whether the figure can draw ordinary text outside ASCII, which the sandbox fonts may lack.
+
+    Text reaches an admitted figure only through its projected labels or, dataset arm, through the
+    CSV: category ticks and the header names pandas puts on its axes. Over-inclusion costs bytes.
+    """
+    labels = verdict.spec.labels
+    texts = (labels.title, labels.xlabel, labels.ylabel, labels.series)
+    if any(text is not None and not text.isascii() for text in texts):
+        return True
+    return consumed is not None and not consumed.content.isascii()
 
 
 def _png_uri(stdout: object) -> str | None:
@@ -6327,11 +6383,12 @@ class Filter:
             or "session_id" not in __metadata__
         ):
             return await fail("no_browser")
+        font = await cjk_font() if _needs_font(verdict, consumed) else None
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {
                 "id": str(uuid.uuid4()),
-                "code": wrapper_code(receipt.program),
+                "code": wrapper_code(receipt.program, font),
                 "session_id": __metadata__["session_id"],
                 "files": (
                     [{"id": consumed.file_id, "filename": consumed.path.rsplit("/", 1)[-1]}]

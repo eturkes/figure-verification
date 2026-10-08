@@ -90,18 +90,30 @@ function shapeReply(worker) {
 
 const { version } = JSON.parse(readFileSync(resolve(bundle, "package.json"), "utf8"));
 const { loadPyodide } = await import(pathToFileURL(resolve(bundle, "pyodide.mjs")).href);
-const pyodide = await loadPyodide({ indexURL: `${bundle}/` });
-pyodide.FS.mkdirTree("/mnt/uploads");
+// M17.1: the Japanese legs carry the font the installed Open WebUI ships beside this bundle.
+const font = resolve(bundle, "../../static/fonts/NotoSansJP-Regular.ttf");
 const exported = JSON.parse(
-  execFileSync("uv", ["run", "--no-sync", "--locked", "python", ".agent/measurements/f7_export.py"], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, PYTHONPATH: `${root}:${resolve(root, "src")}` },
-  }),
+  execFileSync(
+    "uv",
+    ["run", "--no-sync", "--locked", "python", ".agent/measurements/f7_export.py", font],
+    {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, PYTHONPATH: `${root}:${resolve(root, "src")}` },
+    },
+  ),
 );
-pyodide.FS.writeFile("/mnt/uploads/sales.csv", Uint8Array.fromHex(exported.dataset));
+async function runtime() {
+  const fresh = await loadPyodide({ indexURL: `${bundle}/` });
+  fresh.FS.mkdirTree("/mnt/uploads");
+  fresh.FS.writeFile("/mnt/uploads/sales.csv", Uint8Array.fromHex(exported.dataset));
+  fresh.FS.writeFile("/mnt/uploads/clinic_ja.csv", Uint8Array.fromHex(exported.clinic));
+  return fresh;
+}
+const pyodide = await runtime();
 
-async function execute(code) {
+async function execute(code, pyodide) {
   let stdout = null;
   let stderr = null;
   let result = null;
@@ -160,8 +172,11 @@ async function execute(code) {
 }
 
 const results = {};
-for (const [name, code] of Object.entries(exported.wrappers)) results[name] = await execute(code);
-results["literal-control"] = await execute("import matplotlib.pyplot as plt\nplt.show()\n");
+for (const [name, code] of Object.entries(exported.wrappers)) results[name] = await execute(code, pyodide);
+results["literal-control"] = await execute("import matplotlib.pyplot as plt\nplt.show()\n", pyodide);
+for (const [name, code] of Object.entries(exported.japanese)) {
+  results[name] = await execute(code, await runtime());
+}
 const report = {
   pyodide: version,
   python: pyodide.runPython("import sys; sys.version.split()[0]"),
@@ -170,9 +185,18 @@ const report = {
 };
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report));
-const plots = Object.entries(results).filter(([name]) => name !== "literal-control");
+// ja-no-font (control) + ja-mathtext (declared limit) must write their glyph warning; every other
+// plot must stay clean, ja-font included.
+const controls = { "ja-no-font": "missing from current font", "ja-mathtext": "does not have a glyph" };
+const plots = Object.entries(results).filter(
+  ([name]) => name !== "literal-control" && !Object.hasOwn(controls, name),
+);
 if (
-  plots.length !== 4 ||
+  plots.length !== 5 ||
+  Object.entries(controls).some(
+    ([name, cause]) =>
+      !(results[name]?.stderr ?? "").includes(cause) || results[name].png_lines !== 1,
+  ) ||
   plots.some(
     ([, {
       stdout_lines, observation_lines, observation_parseable, png_lines, png_second,

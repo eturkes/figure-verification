@@ -33,6 +33,7 @@ _CATALOGUES = (
     "formula_walkthrough",
     "observe",
     "openapi",
+    "owui_files",
     "project",
     "receipt",
     "render",

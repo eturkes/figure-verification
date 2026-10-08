@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py"]
+tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_filter_font.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -547,3 +547,109 @@ predicate = "V2: the outlet re-derives the verdict under the receipt's aliases"
 kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_outlet_verdict_reads_the_receipt_aliases"
 anchor = '''receipt.request_text, self._ANCHORING, receipt.aliases'''
 mutant = '''receipt.request_text, self._ANCHORING, ()'''
+
+[[mutant]]
+id = "m17-font-on-ascii"
+predicate = "an ASCII figure's RPC carries no font and reads none"
+kills = "tests/test_paste_in_filter_font.py::test_f5_outlet_reads_the_font_only_on_a_verified_non_ascii_figure[ascii]"
+anchor = '''        font = await cjk_font() if _needs_font(verdict, consumed) else None'''
+mutant = '''        font = await cjk_font()'''
+
+[[mutant]]
+id = "m17-font-dropped"
+predicate = "a figure with a Japanese label carries the font"
+kills = "tests/test_paste_in_filter_font.py::test_f5_outlet_reads_the_font_only_on_a_verified_non_ascii_figure[label]"
+anchor = '''        font = await cjk_font() if _needs_font(verdict, consumed) else None'''
+mutant = '''        font = None'''
+
+[[mutant]]
+id = "m17-csv-trigger-dropped"
+predicate = "non-ASCII bytes in the consumed CSV take the font"
+kills = "tests/test_paste_in_filter_font.py::test_f3_every_consumed_csv_byte_counts[ja-tick]"
+anchor = '''    return consumed is not None and not consumed.content.isascii()'''
+mutant = '''    return False'''
+
+[[mutant]]
+id = "m17-series-trigger-dropped"
+predicate = "every projected label field counts toward the trigger, the series label included"
+kills = "tests/test_paste_in_filter_font.py::test_f3_trigger_is_non_ascii_in_labels_or_consumed_csv"
+anchor = '''    texts = (labels.title, labels.xlabel, labels.ylabel, labels.series)'''
+mutant = '''    texts = (labels.title, labels.xlabel, labels.ylabel)'''
+
+[[mutant]]
+id = "m17-font-read-before-verdict"
+predicate = "no font is read for a figure that never reaches a Verified verdict"
+kills = "tests/test_paste_in_filter_font.py::test_f5_pre_rpc_failures_never_read_a_font[refused]"
+anchor = '''        attachments = await owned_files(receipt.file_ids, user_id)'''
+mutant = '''        await cjk_font()
+        attachments = await owned_files(receipt.file_ids, user_id)'''
+
+[[mutant]]
+id = "m17-font-payload-unsplit"
+predicate = "the font payload never spells the plotting name OWUI patches on"
+kills = "tests/test_paste_in_filter_font.py::test_f2_font_payload_splits_the_plotting_name"
+anchor = '''            f"    _fv_handle.write(_b64.b64decode({_payload(font)}))",'''
+mutant = '''            f"    _fv_handle.write(_b64.b64decode({base64.b64encode(font).decode()!r}))",'''
+
+[[mutant]]
+id = "m17-fallback-order-reversed"
+predicate = "DejaVu Sans stays first, so Latin text never changes font"
+kills = "tests/test_paste_in_filter_font.py::test_f2_font_prelude_registers_the_fallback_before_the_program_runs"
+anchor = '''            "    'DejaVu Sans', _fv_fonts.FontProperties(fname=_fv_font).get_name()",'''
+mutant = '''            "    _fv_fonts.FontProperties(fname=_fv_font).get_name(), 'DejaVu Sans'",'''
+
+[[mutant]]
+id = "m17-none-font-builds-prelude"
+predicate = "no font = the pre-unit wrapper, never a prelude over nothing"
+kills = "tests/test_paste_in_filter_font.py::test_f1_no_font_wrapper_is_byte_identical_to_the_pre_unit_wrapper[sentinel-simple]"
+anchor = '''        ()
+        if font is None
+        else ('''
+mutant = '''        ()
+        if font is None and False
+        else ('''
+
+[[mutant]]
+id = "m17-font-after-program"
+predicate = "the font is registered before the program draws any text"
+kills = "tests/test_paste_in_filter_font.py::test_f2_font_prelude_registers_the_fallback_before_the_program_runs"
+anchor = '''                "plt = _plt",
+                *font_lines,
+                *OBSERVER_SOURCE.splitlines(),
+                "_shown = False",
+                "def _show(*_args, **_kwargs):",
+                "    global _shown",
+                "    if _shown:",
+                "        return",
+                "    _shown = True",
+                "    _fig = _plt.gcf()",
+                "    _fig.canvas.draw()",
+                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
+                "    _png = _io.BytesIO()",
+                "    _fig.savefig(_png, format='png')",
+                "    print('data:image/png;base64,' +",
+                "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
+                "    _plt.close('all')",
+                "_plt.show = _show",
+                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
+                "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",'''
+mutant = '''                "plt = _plt",
+                *OBSERVER_SOURCE.splitlines(),
+                "_shown = False",
+                "def _show(*_args, **_kwargs):",
+                "    global _shown",
+                "    if _shown:",
+                "        return",
+                "    _shown = True",
+                "    _fig = _plt.gcf()",
+                "    _fig.canvas.draw()",
+                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
+                "    _png = _io.BytesIO()",
+                "    _fig.savefig(_png, format='png')",
+                "    print('data:image/png;base64,' +",
+                "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
+                "    _plt.close('all')",
+                "_plt.show = _show",
+                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
+                "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",
+                *font_lines,'''

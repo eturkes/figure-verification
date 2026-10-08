@@ -61,6 +61,8 @@ class Scenario:
     body_fields: dict[str, object] = field(default_factory=dict)
     emitter_present: bool = True
     publish_raises: bool = False
+    labels: tuple[str, ...] = ()
+    font_bytes: bytes | None = b"\x00\x01\x00\x00independent fake font\xff"
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +73,7 @@ class RpcFacts:
     session_id: object = None
     valid_uuid4: bool = True
     code_without_literal: bool = True
+    font: bytes | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,7 +229,16 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
     ):
         return failed("no_browser")
     files = ((consumed.file_id, consumed.filename),) if consumed is not None else ()
-    rpc = RpcFacts(1, files, receipt.program, scenario.metadata["session_id"])
+    needs_font = any(ord(char) > 127 for label in scenario.labels for char in label) or (
+        consumed is not None and any(byte > 127 for byte in consumed.content)
+    )
+    rpc = RpcFacts(
+        1,
+        files,
+        receipt.program,
+        scenario.metadata["session_id"],
+        font=scenario.font_bytes if needs_font else None,
+    )
     if scenario.rpc.kind == "timeout":
         return failed("browser_timeout")
     if scenario.rpc.kind == "raises":

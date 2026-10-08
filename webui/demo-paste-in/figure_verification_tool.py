@@ -494,7 +494,7 @@ here fails generation instead of failing a paste.
 
 _SOURCES["webui.paste_in.owui_files"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The ONLY module that imports `open_webui`: the user's uploaded bytes, fetched in-process.
+"""The ONLY module that imports `open_webui`: uploaded bytes + the bundled CJK font, in-process.
 
 The truth source for every recomputed number is the user's own upload (`.claude/rules/pysrc.md`,
 comparison class II), so the bytes come from Open WebUI's own store and not from the chat metadata,
@@ -519,6 +519,8 @@ from pathlib import Path
 # Where Open WebUI's Pyodide worker writes each attached file before it runs the program. An
 # admitted `read_csv` literal must name exactly this, and the core compares byte-for-byte.
 UPLOAD_DIR = "/mnt/uploads/"
+# Open WebUI ships this font for its own chat-PDF export; the sandbox's matplotlib has no CJK glyph.
+CJK_FONT_NAME = "NotoSansJP-Regular.ttf"
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,6 +577,20 @@ async def uploaded_files(
 ) -> tuple[UploadedFile, ...]:
     """Resolve chat attachment ids through the same ownership path the filter uses."""
     return await owned_files(attachment_ids(metadata), user_id)
+
+
+async def cjk_font() -> bytes | None:
+    """Open WebUI's bundled Japanese font from its configured fonts directory, else `None`.
+
+    A missing font only withholds Japanese text from the figure, which then fails as before, so
+    every fault here degrades to `None` instead of costing the verdict.
+    """
+    try:
+        from open_webui.env import FONTS_DIR  # noqa: PLC0415 - see the module docstring
+
+        return await asyncio.to_thread(Path(FONTS_DIR, CJK_FONT_NAME).read_bytes)
+    except Exception:
+        return None
 '''
 
 _SOURCES["webui.paste_in.verdicts"] = r'''

@@ -1,6 +1,17 @@
 {
   "build": "0.28.3",
   "cases": {
+    "ja-font": {
+      "error": null,
+      "observation_lines": 1,
+      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
     "line": {
       "error": null,
       "observation_lines": 1,
@@ -44,6 +55,16 @@
       "result": null,
       "stderr": null,
       "stdout_lines": 2
+    }
+  },
+  "controls": {
+    "ja-mathtext": {
+      "png_lines": 1,
+      "stderr_class": "mathtext-glyph"
+    },
+    "ja-no-font": {
+      "png_lines": 1,
+      "stderr_class": "missing-glyph"
     }
   },
   "literal_control_syntax_error": true

@@ -290,11 +290,28 @@ def f7():
                 "error",
             )
             for name, row in data["results"].items()
-            if name != "literal-control"
+            if name not in {"literal-control", "ja-no-font", "ja-mathtext"}
+        },
+        # M17.1 controls: the outcome CLASS of each stderr, never its platform-specific bytes.
+        "controls": {
+            name: {
+                "png_lines": data["results"][name]["png_lines"],
+                "stderr_class": glyph_class(data["results"][name]["stderr"]),
+            }
+            for name in ("ja-no-font", "ja-mathtext")
         },
         "literal_control_syntax_error": "SyntaxError"
         in (data["results"]["literal-control"]["stderr"] or ""),
     }
+
+
+def glyph_class(stderr):
+    text = stderr or ""
+    if "missing from current font" in text:
+        return "missing-glyph"
+    if "does not have a glyph" in text:
+        return "mathtext-glyph"
+    return "clean" if not text else "other"
 
 
 def o8():

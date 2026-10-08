@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import base64
 import binascii
@@ -23,6 +22,7 @@ from hypothesis import strategies as st
 from hypothesis.strategies import DrawFn
 
 from filter_checks_support import embed_event, normalize_event
+from filter_font_support import encoded_payloads
 from observe_support import stdout_for_verified
 from oracle_filter import (
     FAIL_TEXT,
@@ -121,6 +121,37 @@ def _formula(*, rpc: RpcOutcome | None = None) -> Scenario:
     )
 
 
+def _font_scenario(kind: str, *, label: str = "年") -> Scenario:
+    scenario = _formula() if kind == "formula-label" else _dataset()
+    receipt = cast(ReceiptValue, scenario.receipt)
+    labels = (label,) if kind != "csv" else ()
+    program = (
+        receipt.program.replace("plt.show()", f"plt.title({label!r})\nplt.show()")
+        if labels
+        else receipt.program
+    )
+    if kind == "formula-label":
+        target = formula_target(_FORMULA_REQUEST)
+        assert isinstance(target, FormulaTarget)
+        verdict = verify_python_source(program, declared_target=target)
+        rows = scenario.stored
+    else:
+        content = "region,revenue\n日本,12\nEU,9\n".encode() if kind == "csv" else _SALES
+        verdict = verify_python_source(
+            program, declared_target=DatasetTarget("/mnt/uploads/a.csv", content)
+        )
+        rows = (FileRow("file-a", "caller", "a.csv", content),)
+    assert isinstance(verdict, Verified), verdict
+    return replace(
+        scenario,
+        receipt=replace(receipt, program=program),
+        stored=rows,
+        labels=labels,
+        rpc=_reply(stdout_for_verified(verdict, _PNG)),
+        font_bytes=None if kind == "unavailable" else scenario.font_bytes,
+    )
+
+
 def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
     dataset = _dataset()
     formula = _formula()
@@ -144,6 +175,10 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
     return (
         ("dataset-pass", dataset, True, 1, 1),
         ("formula-pass", formula, True, 1, 1),
+        ("ja-label-pass", _font_scenario("label"), True, 1, 1),
+        ("ja-csv-pass", _font_scenario("csv"), True, 1, 1),
+        ("ja-formula-label-pass", _font_scenario("formula-label"), True, 1, 1),
+        ("ja-font-unavailable-pass", _font_scenario("unavailable"), True, 1, 1),
         ("mismatch-continues-to-second", mismatch_then_match, True, 1, 1),
         ("first-other-refusal-stops", refusal_then_match, False, 0, 0),
         ("no-receipt-prose", replace(dataset, receipt=None), False, 0, 0),
@@ -476,53 +511,26 @@ def _state(scenario: Scenario) -> SimpleNamespace:
     return state
 
 
-def _b64_program(code: str) -> str:  # noqa: PLR0912 - translation rejects each unknown AST shape
-    """Read the source literal consumed by b64decode; never execute the sandbox wrapper."""
+def _b64_program(code: str, scenario: Scenario) -> tuple[str, bytes | None]:
+    """Classify decoded content, independently of payload variable names or their source order."""
     try:
-        tree = ast.parse(code)
-    except SyntaxError as exc:
-        failure = "RPC code is not parseable Python"
+        payloads = list(encoded_payloads(code))
+    except (SyntaxError, binascii.Error, ValueError) as exc:
+        failure = "RPC source is not parseable base64 Python"
         raise AssertionError(failure) from exc
-    values: dict[str, str | bytes] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
-            value = node.value.value
-            if isinstance(value, str | bytes):
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        values[target.id] = value
-    encoded: list[str | bytes] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        function = node.func
-        if not (
-            (isinstance(function, ast.Name) and function.id == "b64decode")
-            or (isinstance(function, ast.Attribute) and function.attr == "b64decode")
-        ):
-            continue
-        if not node.args:
-            failure = "b64decode call has no source argument"
-            raise AssertionError(failure)
-        source = node.args[0]
-        if isinstance(source, ast.Constant) and isinstance(source.value, str | bytes):
-            encoded.append(source.value)
-        elif isinstance(source, ast.Name) and source.id in values:
-            encoded.append(values[source.id])
-        else:
-            failure = "unmapped base64 source shape"
-            raise AssertionError(failure)
-    if len(encoded) != 1:
-        failure = f"expected one encoded program, found {len(encoded)}"
-        raise AssertionError(failure)
-    try:
-        return base64.b64decode(encoded[0], validate=True).decode("utf-8")
-    except (UnicodeDecodeError, binascii.Error, ValueError) as exc:
-        failure = "RPC source is not base64 UTF-8"
-        raise AssertionError(failure) from exc
+    receipt = scenario.receipt
+    assert isinstance(receipt, ReceiptValue), "RPC without a program receipt"
+    program = receipt.program.encode("utf-8")
+    assert payloads.count(program) == 1, "RPC must contain exactly one unchanged program"
+    payloads.remove(program)
+    if not payloads:
+        return receipt.program, None
+    assert len(payloads) == 1, "RPC contains extra encoded payloads"
+    assert payloads[0] == scenario.font_bytes, "RPC font differs from the supplied font bytes"
+    return receipt.program, payloads[0]
 
 
-def _rpc_facts(calls: list[dict[str, object]]) -> RpcFacts:
+def _rpc_facts(calls: list[dict[str, object]], scenario: Scenario) -> RpcFacts:
     if not calls:
         return RpcFacts(0)
     if len(calls) != 1:
@@ -555,13 +563,15 @@ def _rpc_facts(calls: list[dict[str, object]]) -> RpcFacts:
         uuid4_valid = False
     else:
         uuid4_valid = str(parsed_id) == identifier and parsed_id.version == 4
+    program, font = _b64_program(code, scenario)
     return RpcFacts(
         count=1,
         files=tuple(mapped_files),
-        program=_b64_program(code),
+        program=program,
         session_id=data["session_id"],
         valid_uuid4=uuid4_valid,
         code_without_literal="matplotlib" not in code,
+        font=font,
     )
 
 
@@ -594,6 +604,10 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
             failure = "file publication failed"
             raise RuntimeError(failure)
 
+    async def cjk_font() -> bytes | None:
+        return scenario.font_bytes
+
+    patch.setattr(module, "cjk_font", cjk_font, raising=False)
     if scenario.rpc.kind == "timeout":
         patch.setattr(module, "RPC_TIMEOUT_SECONDS", 0.002)
     else:
@@ -681,7 +695,7 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
         content,
         tuple(output),
         tuple(files_events),
-        _rpc_facts(calls),
+        _rpc_facts(calls, scenario),
         tuple(status_events),
         tuple(embed_events),
     )
@@ -691,12 +705,19 @@ def _assert_agrees(scenario: Scenario, module: ModuleType, patch: pytest.MonkeyP
     expected = oracle_outlet(scenario)
     with TemporaryDirectory(prefix="filter-oracle-") as directory, patch.context() as scoped:
         observed = _translate_outlet(scenario, module, Path(directory), scoped)
+    assert observed.rpc.font == expected.rpc.font, (
+        "RPC font payload differs from independent trigger"
+    )
     assert observed == expected, (scenario, expected, observed)
 
 
 @st.composite
 def _pass_scenarios(draw: DrawFn) -> Scenario:
-    arm = draw(st.sampled_from(("dataset", "formula")))
+    arm = draw(st.sampled_from(("dataset", "formula", "font")))
+    if arm == "font":
+        kind = draw(st.sampled_from(("label", "csv", "formula-label", "unavailable")))
+        label = draw(st.sampled_from(("年", "平均", "é", "ASCII", "")))
+        return _font_scenario(kind, label=label)
     prose = draw(st.sampled_from((False, True)))
     if arm == "formula":
         verdict = _formula_verdict()
@@ -773,3 +794,68 @@ def test_outlet_fixed_anchor(
     module = _load_filter()
     with pytest.MonkeyPatch.context() as patch:
         _assert_agrees(scenario, module, patch)
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("ascii", None),
+        ("label", b"\x00\x01\x00\x00independent fake font\xff"),
+        ("csv", b"\x00\x01\x00\x00independent fake font\xff"),
+        ("formula-label", b"\x00\x01\x00\x00independent fake font\xff"),
+        ("unavailable", None),
+    ],
+)
+def test_f6_oracle_font_expectations_are_hand_stated(kind: str, expected: bytes | None) -> None:
+    scenario = _dataset() if kind == "ascii" else _font_scenario(kind)
+    assert oracle_outlet(scenario).rpc.font == expected
+
+
+def _payload_source(*payloads: bytes) -> str:
+    return "\n".join(f"base64.b64decode({base64.b64encode(value)!r})" for value in payloads)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_f6_differential_separates_font_and_program_payloads(*, reverse: bool) -> None:
+    scenario = _font_scenario("label")
+    receipt = cast(ReceiptValue, scenario.receipt)
+    assert scenario.font_bytes is not None
+    payloads: tuple[bytes, ...] = (receipt.program.encode(), scenario.font_bytes)
+    if reverse:
+        payloads = tuple(reversed(payloads))
+    assert _b64_program(_payload_source(*payloads), scenario) == (
+        receipt.program,
+        scenario.font_bytes,
+    )
+
+
+@pytest.mark.parametrize(
+    "fault", ["corrupt-font", "duplicate-font", "duplicate-program", "wrong-program"]
+)
+def test_f6_translation_rejects_altered_or_extra_payloads(fault: str) -> None:
+    scenario = _font_scenario("label")
+    receipt = cast(ReceiptValue, scenario.receipt)
+    assert scenario.font_bytes is not None
+    program, font = receipt.program.encode(), scenario.font_bytes
+    payloads = {
+        "corrupt-font": (program, b"another font"),
+        "duplicate-font": (program, font, font),
+        "duplicate-program": (program, program, font),
+        "wrong-program": (b"print('substituted')", font),
+    }
+    with pytest.raises(AssertionError):
+        _b64_program(_payload_source(*payloads[fault]), scenario)
+
+
+def test_f6_translation_exposes_absent_and_unexpected_font() -> None:
+    ascii_scenario = _dataset()
+    ja_scenario = _font_scenario("label")
+    for scenario in (ascii_scenario, ja_scenario):
+        receipt = cast(ReceiptValue, scenario.receipt)
+        assert scenario.font_bytes is not None
+        expected_font = oracle_outlet(scenario).rpc.font
+        payloads: tuple[bytes, ...] = (receipt.program.encode(),)
+        if expected_font is None:
+            payloads += (scenario.font_bytes,)
+        _program_text, observed_font = _b64_program(_payload_source(*payloads), scenario)
+        assert observed_font != expected_font
