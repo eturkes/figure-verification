@@ -1,0 +1,74 @@
+{
+ "what": "every Japanese phrasing tried for the M17.3 demo set: one greedy reply each from the real backend (MX150, fp16 Qwen2.5-Coder-0.5B-Instruct, demo template, temperature 0.0, max_tokens 512), graded by first_verdict with the prompt as the request; probe = .scratch/ja/probe.py at 9c9ff14 + an uncommitted CSV switch",
+ "chosen": {
+  "ja-sales-simple": "ja-simple-b",
+  "ja-sales-elaborate": "ja-elaborate",
+  "ja-clinic-simple": "cj-simple-c",
+  "ja-clinic-elaborate": "cj-elaborate"
+ },
+ "phrasings": [
+  {
+   "probe_id": "ja-simple-a",
+   "dataset": "sales.csv",
+   "prompt": "各地域の売上合計を棒グラフで表示してください。",
+   "substitution": "Refused:column_not_literal",
+   "strict": "Refused:column_not_literal"
+  },
+  {
+   "probe_id": "ja-simple-b",
+   "dataset": "sales.csv",
+   "prompt": "地域ごとの総売上を棒グラフにしてください。",
+   "substitution": "Verified",
+   "strict": "Verified"
+  },
+  {
+   "probe_id": "ja-simple-c",
+   "dataset": "sales.csv",
+   "prompt": "地域別の売上の合計を棒で描いてください。",
+   "substitution": "Verified",
+   "strict": "Verified"
+  },
+  {
+   "probe_id": "ja-simple-cols",
+   "dataset": "sales.csv",
+   "prompt": "region ごとの revenue の合計を棒グラフで表示してください。",
+   "substitution": "Verified",
+   "strict": "Verified"
+  },
+  {
+   "probe_id": "ja-elaborate",
+   "dataset": "sales.csv",
+   "prompt": "sales.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした売上の面グラフ、地域別の注文数のグループ化棒グラフ、地域で色分けした売上対注文数のバブル散布図、KPI パネルを配置し、ダークテーマにしてピーク月に注釈を付けてください。",
+   "substitution": "Refused:source_not_tokenizable",
+   "strict": "Refused:source_not_tokenizable"
+  },
+  {
+   "probe_id": "cj-simple-a",
+   "dataset": "clinic_ja.csv",
+   "prompt": "診療科ごとの患者数の合計を棒グラフで表示してください。",
+   "substitution": "Refused:column_not_requested",
+   "strict": "Refused:column_not_requested"
+  },
+  {
+   "probe_id": "cj-simple-b",
+   "dataset": "clinic_ja.csv",
+   "prompt": "診療科別の総患者数を棒グラフにしてください。",
+   "substitution": "Refused:column_not_requested",
+   "strict": "Refused:column_not_requested"
+  },
+  {
+   "probe_id": "cj-simple-c",
+   "dataset": "clinic_ja.csv",
+   "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。",
+   "substitution": "Verified",
+   "strict": "Verified"
+  },
+  {
+   "probe_id": "cj-elaborate",
+   "dataset": "clinic_ja.csv",
+   "prompt": "clinic_ja.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした患者数の面グラフ、診療科別の平均待ち時間のグループ化棒グラフ、診療科で色分けした患者数対待ち時間のバブル散布図、KPI パネルを配置し、ダークテーマにして患者数が最も多い月に注釈を付けてください。",
+   "substitution": "Refused:column_not_literal",
+   "strict": "Refused:column_not_literal"
+  }
+ ]
+}

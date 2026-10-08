@@ -1,0 +1,34 @@
+{
+  "version": "demo-ja-1",
+  "capture": null,
+  "prompts": [
+    {
+      "id": "ja-sales-simple",
+      "dataset": "sales.csv",
+      "expect": "pass",
+      "prompt": "地域ごとの総売上を棒グラフにしてください。",
+      "content": ""
+    },
+    {
+      "id": "ja-sales-elaborate",
+      "dataset": "sales.csv",
+      "expect": "fail",
+      "prompt": "sales.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした売上の面グラフ、地域別の注文数のグループ化棒グラフ、地域で色分けした売上対注文数のバブル散布図、KPI パネルを配置し、ダークテーマにしてピーク月に注釈を付けてください。",
+      "content": ""
+    },
+    {
+      "id": "ja-clinic-simple",
+      "dataset": "clinic_ja.csv",
+      "expect": "pass",
+      "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。",
+      "content": ""
+    },
+    {
+      "id": "ja-clinic-elaborate",
+      "dataset": "clinic_ja.csv",
+      "expect": "fail",
+      "prompt": "clinic_ja.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした患者数の面グラフ、診療科別の平均待ち時間のグループ化棒グラフ、診療科で色分けした患者数対待ち時間のバブル散布図、KPI パネルを配置し、ダークテーマにして患者数が最も多い月に注釈を付けてください。",
+      "content": ""
+    }
+  ]
+}
