@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from typing import NoReturn, cast
 
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
+from verifier.pysrc.position import SourceMap, Span, node_span
 
 # Module -> required alias. The alias is fixed, not merely required: admitting an arbitrary alias
 # would make every downstream target string depend on model-chosen text.
@@ -158,8 +159,10 @@ class _Scope:
     bound: set[str] = field(default_factory=set)
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode, cause: BaseException | None = None, at: tuple[Span, ...] = ()
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at) from cause
 
 
 def _dotted(node: ast.Attribute) -> tuple[str, str]:
@@ -422,32 +425,42 @@ def _admit_call(node: ast.Call, scope: _Scope) -> None:
         _admit_expr(arg, scope)
 
 
-def _admit_expr(node: ast.expr, scope: _Scope) -> None:
-    if isinstance(node, ast.Constant):
-        if type(node.value) not in _ADMITTED_LITERAL_TYPES:
-            _refuse("literal_not_admitted")
-    elif isinstance(node, ast.Name):
-        if node.id not in scope.bound:
-            _refuse("name_not_bound")
-    elif isinstance(node, ast.Attribute):
-        _admit_constant_attr(node, scope)
-    elif isinstance(node, ast.Call):
-        _admit_call_or_aggregation(node, scope)
-    elif isinstance(node, ast.BinOp):
-        if not isinstance(node.op, _ADMITTED_BINOPS):
-            _refuse("operator_not_admitted")
-        _admit_expr(node.left, scope)
-        _admit_expr(node.right, scope)
-    elif isinstance(node, ast.UnaryOp):
-        if not isinstance(node.op, _ADMITTED_UNARYOPS):
-            _refuse("operator_not_admitted")
-        _admit_expr(node.operand, scope)
-    elif isinstance(node, ast.Subscript):
-        _admit_column(node, scope)
-    else:
-        # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
-        # starred args, walrus, comparisons, boolean and conditional expressions.
-        _refuse("expression_not_admitted")
+def _admit_expr(node: ast.expr, scope: _Scope) -> None:  # noqa: PLR0912 - one closed dispatch
+    """Admit one expression; a refusal points at the innermost expression that raised it.
+
+    The location is attached HERE, in the recursing frame itself: a wrapper function would double
+    the Python frames per nesting level and halve the depth a program can reach before the
+    interpreter's recursion limit.
+    """
+    try:
+        if isinstance(node, ast.Constant):
+            if type(node.value) not in _ADMITTED_LITERAL_TYPES:
+                _refuse("literal_not_admitted")
+        elif isinstance(node, ast.Name):
+            if node.id not in scope.bound:
+                _refuse("name_not_bound")
+        elif isinstance(node, ast.Attribute):
+            _admit_constant_attr(node, scope)
+        elif isinstance(node, ast.Call):
+            _admit_call_or_aggregation(node, scope)
+        elif isinstance(node, ast.BinOp):
+            if not isinstance(node.op, _ADMITTED_BINOPS):
+                _refuse("operator_not_admitted")
+            _admit_expr(node.left, scope)
+            _admit_expr(node.right, scope)
+        elif isinstance(node, ast.UnaryOp):
+            if not isinstance(node.op, _ADMITTED_UNARYOPS):
+                _refuse("operator_not_admitted")
+            _admit_expr(node.operand, scope)
+        elif isinstance(node, ast.Subscript):
+            _admit_column(node, scope)
+        else:
+            # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
+            # starred args, walrus, comparisons, boolean and conditional expressions.
+            _refuse("expression_not_admitted")
+    except PysrcRefusalError as exc:
+        exc.at = exc.at or (node_span(node),)
+        raise
 
 
 def _admit_column(node: ast.Subscript, scope: _Scope) -> None:
@@ -515,9 +528,14 @@ def parse_admitted(text: str) -> ast.Module:
     # The pre-scan tokenizes but does not parse, so a tokenizable-yet-unparsable program reaches
     # here and must become a verdict rather than a traceback.
     except SyntaxError as exc:
-        _refuse("source_not_parsable", exc)
+        _refuse("source_not_parsable", exc, SourceMap(text).syntax_error(exc))
 
     scope = _Scope()
     for statement in tree.body:
-        _admit_stmt(statement, scope)
+        try:
+            _admit_stmt(statement, scope)
+        except PysrcRefusalError as exc:
+            # A fault no expression owns -- an import, an assignment target -- is its statement's.
+            exc.at = exc.at or (node_span(statement),)
+            raise
     return tree

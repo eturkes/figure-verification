@@ -13,6 +13,8 @@ surface -- the one place this project must never let the model write.
 
 from typing import Literal
 
+from verifier.pysrc.position import Role, Span
+
 # Closed set. A new member needs a distinct fault shape, not a new phrasing of an existing one.
 # Grouped by the stage that can raise it; a stage never raises another stage's code.
 RefusalCode = Literal[
@@ -102,11 +104,20 @@ RefusalCode = Literal[
 
 
 class PysrcRefusalError(Exception):
-    """The submitted source is refused. `code` is the whole verdict; there is no free text."""
+    """The submitted source is refused. `code` is the whole verdict; there is no free text.
 
-    def __init__(self, code: RefusalCode) -> None:
+    `at` = where in the program the refusal points, `()` for a whole-program fault; `role` = the
+    kind of statement to point at instead, for a stage that sees the spec rather than the tree.
+    Both are diagnostics: integers and a closed role, never source bytes.
+    """
+
+    def __init__(
+        self, code: RefusalCode, *, at: tuple[Span, ...] = (), role: Role | None = None
+    ) -> None:
         super().__init__(code)
         self.code: RefusalCode = code
+        self.at = at
+        self.role = role
 
 
 class PysrcCallerError(Exception):

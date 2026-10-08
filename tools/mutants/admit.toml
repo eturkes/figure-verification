@@ -174,11 +174,11 @@ id = "M7-expr-catch-all"
 predicate = "the closed expression tail becomes a permissive catch-all"
 kills = "tests/test_pysrc_admit.py::test_a2_admission_is_positive_not_a_denylist"
 anchor = '''
-        # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
-        # starred args, walrus, comparisons, boolean and conditional expressions.
-        _refuse("expression_not_admitted")'''
+            # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
+            # starred args, walrus, comparisons, boolean and conditional expressions.
+            _refuse("expression_not_admitted")'''
 mutant = '''
-        pass'''
+            pass'''
 
 [[mutant]]
 id = "M8-import-alias-conjunct"
@@ -456,3 +456,26 @@ predicate = "`plt.tight_layout` admits no positional argument; projection no lon
 kills = "tests/test_pysrc_presentation.py::test_w4_tight_layout_admits_bare_and_once"
 anchor = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.tight_layout", "plt.xticks"})'''
 mutant = '''_NO_POSITIONAL_TARGETS = frozenset({"plt.figure", "plt.xticks"})'''
+
+# --- M18.1: where an admission refusal points -------------------------------------------------
+
+[[mutant]]
+id = "m18-admit-outer-node-overwrites"
+predicate = "the innermost expression admission was examining owns the refusal, never an enclosing one"
+kills = "tests/test_pysrc_position.py::test_p4_admission_places[inner-call]"
+anchor = '''        exc.at = exc.at or (node_span(node),)'''
+mutant = '''        exc.at = (node_span(node),)'''
+
+[[mutant]]
+id = "m18-admit-statement-fallback-skipped"
+predicate = "a refusal no expression owns points at its statement"
+kills = "tests/test_pysrc_position.py::test_p4_admission_places[tuple-assignment]"
+anchor = '''            exc.at = exc.at or (node_span(statement),)'''
+mutant = '''            exc.at = exc.at'''
+
+[[mutant]]
+id = "m18-admit-parse-error-unlocated"
+predicate = "a parse failure points at the parser's position"
+kills = "tests/test_pysrc_position.py::test_p4_admission_places[parse-end]"
+anchor = '''        _refuse("source_not_parsable", exc, SourceMap(text).syntax_error(exc))'''
+mutant = '''        _refuse("source_not_parsable", exc)'''

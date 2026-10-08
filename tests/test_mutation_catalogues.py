@@ -34,6 +34,8 @@ _CATALOGUES = (
     "observe",
     "openapi",
     "owui_files",
+    "position",
+    "prescan",
     "project",
     "receipt",
     "render",

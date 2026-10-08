@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Source positions (M18.1): every conversion between a stage's coordinates and the `Span`
+# convention (ast lines at \r\n|\r|\n, UTF-8 byte columns) earns one mutant naming one red.
+module = "src/verifier/pysrc/position.py"
+tests = ["tests/test_pysrc_position.py", "tests/test_pysrc_position_map.py"]
+
+[[mutant]]
+id = "m18-columns-in-characters"
+predicate = "a Span column counts UTF-8 bytes, not characters"
+kills = "tests/test_pysrc_position.py::test_p3_prescan_places[line-cap]"
+anchor = '''    return len(text.encode("utf-8", "surrogatepass"))'''
+mutant = '''    return len(text)'''
+
+[[mutant]]
+id = "m18-token-rows-as-lines"
+predicate = "tokenize rows split at \\n alone, so a bare \\r shifts them off the Span lines"
+kills = "tests/test_pysrc_position_map.py::test_a_token_row_after_a_bare_cr_maps_to_its_span_line"
+anchor = '''        start = self._token_starts[index]'''
+mutant = '''        start = self._starts[min(index, len(self._starts) - 1)]'''
+
+[[mutant]]
+id = "m18-token-column-unclamped"
+predicate = "a tokenizer column past its row's end stays on that row"
+kills = "tests/test_pysrc_position.py::test_p3_prescan_places[token-error-eof-clamped]"
+anchor = '''        return min(start + max(0, column), len(self._text) if end is None else end)'''
+mutant = '''        return min(start + max(0, column), len(self._text))'''
+
+[[mutant]]
+id = "m18-syntax-offset-zero-based"
+predicate = "a SyntaxError offset is 1-based"
+kills = "tests/test_pysrc_position.py::test_p4_admission_places[parse-end-non-ascii]"
+anchor = '''        start = self.offset(error.lineno, (error.offset or 1) - 1)'''
+mutant = '''        start = self.offset(error.lineno, error.offset or 0)'''
+
+[[mutant]]
+id = "m18-break-joins-next-line"
+predicate = "an offset on a line break belongs to the end of the line it closes"
+kills = "tests/test_pysrc_position_map.py::test_a_crlf_break_belongs_to_the_line_it_closes"
+anchor = '''        return index, min(offset, self._ends[index])'''
+mutant = '''        return index, offset'''
+
+[[mutant]]
+id = "m18-point-marks-a-break"
+predicate = "a position with no character is a point, never a span over a line break"
+kills = "tests/test_pysrc_position.py::test_p4_admission_places[parse-no-end]"
+anchor = '''        return self.span(start, start + 1 if start < self._ends[index] else start)'''
+mutant = '''        return self.span(start, start + 1)'''

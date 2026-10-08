@@ -32,6 +32,7 @@ from verifier.pysrc.admit import (
 )
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
+from verifier.pysrc.position import Role, Span, Step, Trace, node_span
 from verifier.pysrc.spec import (
     MAX_EXPR_DEPTH,
     Bin,
@@ -251,8 +252,15 @@ _BINOPS: dict[type[ast.operator], BinOp] = {
 }
 
 
-def _refuse(code: RefusalCode) -> NoReturn:
-    raise PysrcRefusalError(code)
+def _refuse(code: RefusalCode, at: tuple[Span, ...] = ()) -> NoReturn:
+    raise PysrcRefusalError(code, at=at)
+
+
+def _within(inner: Span, outer: Span) -> bool:
+    return (outer.line, outer.column) <= (inner.line, inner.column) and (
+        inner.end_line,
+        inner.end_column,
+    ) <= (outer.end_line, outer.end_column)
 
 
 def _dotted(node: ast.Attribute) -> str:
@@ -365,6 +373,9 @@ class _Projector:
             if self._depth > MAX_EXPR_DEPTH:
                 _refuse("expression_not_projected")
             return self._expr_node(node, grid_name)
+        except PysrcRefusalError as exc:
+            exc.at = exc.at or (node_span(node),)
+            raise
         finally:
             self._depth -= 1
 
@@ -716,6 +727,19 @@ class _Projector:
         _refuse("statement_not_projected")
 
     def _statement(self, node: ast.stmt) -> None:
+        """Project one statement; a refusal points at the innermost expression that raised it,
+        plus this statement when that expression was substituted in from an earlier binding."""
+        try:
+            self._project_statement(node)
+        except PysrcRefusalError as exc:
+            statement = node_span(node)
+            if not exc.at:
+                exc.at = (statement,)
+            elif not _within(exc.at[0], statement):
+                exc.at = (*exc.at, statement)
+            raise
+
+    def _project_statement(self, node: ast.stmt) -> None:
         if self._terminal:
             _refuse("statement_after_terminal")
         if isinstance(node, ast.Import):
@@ -910,7 +934,7 @@ class _Projector:
             for node in tree.body
         )
         if self._pandas and _uses_grid(tree):
-            _refuse("arm_ambiguous")
+            _refuse("arm_ambiguous", _arm_selectors(tree))
         for statement in tree.body:
             self._statement(statement)
         if self._mark is None:
@@ -930,8 +954,66 @@ class _Projector:
         if unused:
             # Bound, admitted, executed, and absent from the spec: exactly the gap this module
             # exists to close.
-            _refuse("statement_not_projected")
+            _refuse("statement_not_projected", _first_binding(tree, unused))
         return plot
+
+
+def _arm_selectors(tree: ast.Module) -> tuple[Span, ...]:
+    """Both arm selectors: every `import pandas`, then every statement holding a grid call."""
+    imports = [
+        node_span(node)
+        for node in tree.body
+        if isinstance(node, ast.Import) and any(alias.name == "pandas" for alias in node.names)
+    ]
+    grids = [node_span(node) for node in tree.body if _uses_grid(ast.Module([node], []))]
+    return (*imports, *grids)
+
+
+def _first_binding(tree: ast.Module, names: set[str]) -> tuple[Span, ...]:
+    """The first statement in source order binding one of `names`."""
+    for node in tree.body:
+        target = node.targets[0] if isinstance(node, ast.Assign) else None
+        if isinstance(target, ast.Name) and target.id in names:
+            return (node_span(node),)
+    return ()  # pragma: no cover - every unused name was bound by an assignment
+
+
+# Call statement target -> its role in the chart. Closed over what projection lets through.
+_CALL_ROLES: dict[str, Role] = {
+    "plt.plot": "mark",
+    "plt.scatter": "mark",
+    "plt.bar": "mark",
+    "plt.barh": "mark",
+    "plt.title": "title",
+    "plt.xlabel": "xlabel",
+    "plt.ylabel": "ylabel",
+    "plt.legend": "decoration",
+    "plt.grid": "decoration",
+    "plt.figure": "layout",
+    "plt.tight_layout": "layout",
+    "plt.xticks": "layout",
+    "plt.show": "show",
+}
+
+
+def _role(node: ast.stmt) -> Role:
+    if isinstance(node, ast.Import):
+        return "import"
+    if isinstance(node, ast.Assign):
+        value = node.value
+        source = isinstance(value, ast.Call) and _target(value) == _SOURCE_CALL
+        return "source" if source else "data"
+    # Projection lets through imports, assignments and call statements alone.
+    call = cast("ast.Call", cast("ast.Expr", node).value)
+    if accessor_receiver(call) is not None:
+        return "mark"
+    return _CALL_ROLES[cast("str", _target(call))]
+
+
+def statement_trace(tree: ast.Module) -> Trace:
+    """Each top-level statement's span and role, in source order. Positions alone: no name, no
+    text. Precondition: `project(tree)` returned, so every statement has a role."""
+    return tuple(Step(_role(node), node_span(node)) for node in tree.body)
 
 
 def project(tree: ast.Module, limits: PysrcLimits = DEFAULT_LIMITS) -> CorePlotSpec:

@@ -312,15 +312,15 @@ mutant = '''        elif False:'''
 id = "q16-title-unread"
 predicate = "the title is a label G10 reads"
 kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[title]"
-anchor = '''    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):'''
-mutant = '''    for text in (labels.xlabel, labels.ylabel, labels.series):'''
+anchor = '''        ("title", labels.title),'''
+mutant = '''        ("title", None),'''
 
 [[mutant]]
 id = "q16-series-unread"
 predicate = "the legend label is a label G10 reads"
 kills = "tests/test_pysrc_labels.py::test_q16_a_label_naming_an_undrawn_column_refuses[series]"
-anchor = '''    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):'''
-mutant = '''    for text in (labels.title, labels.xlabel, labels.ylabel):'''
+anchor = '''        ("mark", labels.series),'''
+mutant = '''        ("mark", None),'''
 
 [[mutant]]
 id = "q16-labels-before-mark-rules"
@@ -750,3 +750,56 @@ predicate = "V3: a kanji run fitting several names of one column names it"
 kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_short_words_fitting_names_of_one_column_name_it"
 anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
 mutant = '''        if len(fits) == 1 and len({column for key in fits for column in by_key[key]}) == 1:'''
+
+# --- M18.1: positions + trace on the verdict ----------------------------------------------------
+
+[[mutant]]
+id = "m18-verify-source-hint-dropped"
+predicate = "a dataset path mismatch points at the read_csv statement"
+kills = "tests/test_pysrc_position.py::test_p6_post_projection_places[dataset-path-mismatch]"
+anchor = '''            _refuse("target_mismatch", role="source")'''
+mutant = '''            _refuse("target_mismatch")'''
+
+[[mutant]]
+id = "m18-verify-label-hint-swapped"
+predicate = "a refused title points at the title statement, an x label at the xlabel statement"
+kills = "tests/test_pysrc_position.py::test_p6_post_projection_places[inconsistent-title]"
+anchor = '''        ("title", labels.title),
+        ("xlabel", labels.xlabel),'''
+mutant = '''        ("xlabel", labels.title),
+        ("title", labels.xlabel),'''
+
+[[mutant]]
+id = "m18-verify-role-unresolved"
+predicate = "a role hint becomes the spans of that role's statements"
+kills = "tests/test_pysrc_position.py::test_p6_post_projection_places[source-not-supplied]"
+anchor = '''        at = exc.at or tuple(step.span for step in trace if step.role == exc.role)'''
+mutant = '''        at = exc.at'''
+
+[[mutant]]
+id = "m18-verify-refused-trace-dropped"
+predicate = "a refusal after projection carries the statement trace"
+kills = "tests/test_pysrc_position.py::test_p6_post_projection_places[column-not-named]"
+anchor = '''        return Refused(code=exc.code, at=at, trace=trace)'''
+mutant = '''        return Refused(code=exc.code, at=at)'''
+
+[[mutant]]
+id = "m18-verify-verified-trace-dropped"
+predicate = "a verified figure carries the statement trace"
+kills = "tests/test_pysrc_position.py::test_p7_trace_literals[pair-all-roles]"
+anchor = '''        return Verified(spec=spec, table=table, certificate=certificate, trace=trace)'''
+mutant = '''        return Verified(spec=spec, table=table, certificate=certificate)'''
+
+[[mutant]]
+id = "m18-verify-at-joins-identity"
+predicate = "a refusal's position stays outside the verdict's identity"
+kills = "tests/test_pysrc_position.py::test_p8_positions_stay_outside_verdict_identity"
+anchor = '''    at: tuple[Span, ...] = field(default=(), compare=False)'''
+mutant = '''    at: tuple[Span, ...] = field(default=())'''
+
+[[mutant]]
+id = "m18-verify-encode-error-unlocated"
+predicate = "an unencodable character points at its own position"
+kills = "tests/test_pysrc_position.py::test_p3_prescan_places[surrogate-first]"
+anchor = '''            _refuse("source_not_utf8", exc, at=(SourceMap(source).char(exc.start),))'''
+mutant = '''            _refuse("source_not_utf8", exc)'''

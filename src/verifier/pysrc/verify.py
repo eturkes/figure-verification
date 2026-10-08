@@ -18,7 +18,7 @@ lets M14 inline this package into a sandbox that has neither.
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NoReturn, assert_never
 
 from verifier.pysrc.admit import parse_admitted
@@ -28,8 +28,9 @@ from verifier.pysrc.csvread import header_names, read_columns
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.numeric import evaluate_expr, materialize_grid
+from verifier.pysrc.position import Role, SourceMap, Span, Trace
 from verifier.pysrc.prescan import prescan
-from verifier.pysrc.project import project, same_bound
+from verifier.pysrc.project import project, same_bound, statement_trace
 from verifier.pysrc.spec import (
     Aliases,
     Bin,
@@ -56,23 +57,35 @@ __all__ = ["Refused", "Verdict", "Verified", "verify_python_source"]
 
 @dataclass(frozen=True, slots=True)
 class Verified:
-    """Carries the projection, the recomputation and the certificate -- and nothing else.
+    """Carries the projection, the recomputation and the certificate, plus where each statement
+    sits.
 
-    Deliberately holds NO byte derived from the source beyond the certificate's `source_sha256`:
-    no line number, no AST node, no source text. The one place this project must never let the
-    model write is the operator surface, and a verdict is on that surface.
+    Deliberately holds no raw source text, no AST node and no unprojected identifier: the spec
+    carries only what the figure states (its literal labels included) and the certificate the
+    source's digest. The one place this project must never let the model write is the operator
+    surface, and a verdict is on that surface. `trace` is integers and a closed role per statement
+    -- what a reader needs to find the code in the program they already hold -- and is a
+    diagnostic outside the verdict's identity.
     """
 
     spec: CorePlotSpec
     table: PlottedTable
     certificate: CoreCertificate
+    trace: Trace = field(default=(), compare=False)
 
 
 @dataclass(frozen=True, slots=True)
 class Refused:
-    """The closed code IS the whole verdict. There is no free text and no echoed input."""
+    """The closed code IS the whole verdict. There is no free text and no echoed input.
+
+    `at` = where in the program the refusal points (`()` = no single place: a whole-program fault,
+    or one in the file, the data or the request); `trace` = the statement roles once projection
+    succeeded. Both are diagnostics outside the verdict's identity.
+    """
 
     code: RefusalCode
+    at: tuple[Span, ...] = field(default=(), compare=False)
+    trace: Trace = field(default=(), compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,8 +104,14 @@ class Recomputation:
 type Verdict = Verified | Refused
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode,
+    cause: BaseException | None = None,
+    *,
+    at: tuple[Span, ...] = (),
+    role: Role | None = None,
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at, role=role) from cause
 
 
 # --- request anchoring (Q8) ----------------------------------------------------------------------
@@ -461,13 +480,20 @@ def _summaries(text: str, header: tuple[str, ...], aliases: Aliases = ()) -> set
 def _check_labels(spec: DatasetPlot, header: tuple[str, ...], aliases: Aliases = ()) -> None:
     drawn = {spec.x.name, spec.y.name}
     labels = spec.labels
-    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):
+    # Each label with the statement that wrote it: the series text is the mark's `label=`.
+    texts: tuple[tuple[Role, str | None], ...] = (
+        ("title", labels.title),
+        ("xlabel", labels.xlabel),
+        ("ylabel", labels.ylabel),
+        ("mark", labels.series),
+    )
+    for role, text in texts:
         if text is None:
             continue
         if _named_columns(text, header, aliases, ignore_ties=True) - drawn:
-            _refuse("label_not_consistent")
+            _refuse("label_not_consistent", role=role)
         if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:
-            _refuse("label_not_consistent")
+            _refuse("label_not_consistent", role=role)
 
 
 def bind_target(
@@ -483,9 +509,9 @@ def bind_target(
     """
     if isinstance(spec, DatasetPlot):
         if not isinstance(target, DatasetTarget):
-            _refuse("source_not_supplied")
+            _refuse("source_not_supplied", role="source")
         if spec.source.path != target.path:
-            _refuse("target_mismatch")
+            _refuse("target_mismatch", role="source")
         if target.request is not None:
             _check_anchoring(spec, target, target.request, limits)
         return target
@@ -663,20 +689,24 @@ def verify_python_source(
     a lone surrogate -- which no UTF-8 encoder accepts -- refuses like any other non-UTF-8 input
     rather than escaping as a `UnicodeEncodeError`.
     """
+    trace: Trace = ()
     try:
         try:
             source_bytes = source.encode("utf-8")
         except UnicodeEncodeError as exc:
-            _refuse("source_not_utf8", exc)
+            _refuse("source_not_utf8", exc, at=(SourceMap(source).char(exc.start),))
         text = prescan(source_bytes, limits)
         tree = parse_admitted(text)
         spec = project(tree, limits)
+        trace = statement_trace(tree)
         bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
         aliases = bound_target.aliases if isinstance(bound_target, DatasetTarget) else ()
         check_integrity(spec, table, _header(bound_target, limits), aliases)
         certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
-        return Verified(spec=spec, table=table, certificate=certificate)
+        return Verified(spec=spec, table=table, certificate=certificate, trace=trace)
     except PysrcRefusalError as exc:
-        return Refused(code=exc.code)
+        # A stage that sees the spec, not the tree, names the ROLE of the statement to point at.
+        at = exc.at or tuple(step.span for step in trace if step.role == exc.role)
+        return Refused(code=exc.code, at=at, trace=trace)

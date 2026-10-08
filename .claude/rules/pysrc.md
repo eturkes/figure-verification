@@ -520,6 +520,10 @@ z3 cannot be inlined.
   precedence witness must be a program admission ADMITS. The distinguishing mutant is the ORDER of
   resolve-vs-count at a SECOND faulty mark; at a first faulty mark the two orders are equivalent.
 
+## Source positions (M18.1, `.agent/archive/contracts/m18u1.md`)
+
+`position.py` = `Span` (ast convention: lines at `\r\n|\r|\n`, UTF-8 byte columns, exclusive end; a point = no character) + `Step(role, span)` + `Trace`. `Refused.at` = a GENUINE program location alone: the innermost instrumented node (admission + projection attach it in the recursing frame itself — a wrapper function doubled the frames per level and turned a 600-term chain into `RecursionError`, reviewer-1 F1), the pre-scan's character/token/line, or a role hint at exactly three codes (`source_not_supplied` + dataset `target_mismatch` → the `source` statement, `label_not_consistent` → the failing label's statement); every other post-projection refusal (file, data, request, limit) = `()`. `trace` = `project.statement_trace(tree)`, one closed role per top-level statement, set once projection returned. Both are `compare=False`: positions never enter verdict identity, and they are integers + roles, never source bytes. Tokenizer coordinates are converted (rows split at `\n` alone; its `unexpected EOF` column counts bytes ⇒ clamped into the row); a tokenizer `UnicodeDecodeError` (CPython 3.13, bare `\r` + non-ASCII) refuses `source_not_tokenizable`.
+
 ## Binding rules
 
 - The archived AND executed artifact is the EXACT submitted bytes, hashed under a new domain tag.

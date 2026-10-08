@@ -287,10 +287,10 @@ predicate = "both arm selectors present is a refusal, never a silent precedence"
 kills = "tests/test_pysrc_dataset.py::test_d1_arm_selection_is_closed"
 anchor = '''
         if self._pandas and _uses_grid(tree):
-            _refuse("arm_ambiguous")'''
+            _refuse("arm_ambiguous", _arm_selectors(tree))'''
 mutant = '''
         if False:
-            _refuse("arm_ambiguous")'''
+            _refuse("arm_ambiguous", _arm_selectors(tree))'''
 
 [[mutant]]
 id = "d1-grid-selector-is-deep"
@@ -765,3 +765,64 @@ predicate = "a declared bound taller than the projection bound mismatches before
 kills = "tests/test_pysrc_project.py::test_q34_a_declared_bound_deeper_than_projection_never_folds"
 anchor = '''    if expr_height(declared) > MAX_EXPR_DEPTH:'''
 mutant = '''    if False:'''
+
+# --- M18.1: where a projection refusal points ---------------------------------------------------
+
+[[mutant]]
+id = "m18-project-outer-expression-overwrites"
+predicate = "the innermost projected expression owns the refusal, never an enclosing one"
+kills = "tests/test_pysrc_position.py::test_p5_projection_places[substituted-binding]"
+anchor = '''        except PysrcRefusalError as exc:
+            exc.at = exc.at or (node_span(node),)
+            raise'''
+mutant = '''        except PysrcRefusalError as exc:
+            exc.at = (node_span(node),)
+            raise'''
+
+[[mutant]]
+id = "m18-project-statement-fallback-skipped"
+predicate = "a refusal no expression owns points at its statement"
+kills = "tests/test_pysrc_position.py::test_p5_projection_places[multiple-marks]"
+anchor = '''            if not exc.at:
+                exc.at = (statement,)'''
+mutant = '''            if False:
+                exc.at = (statement,)'''
+
+[[mutant]]
+id = "m18-project-substituted-statement-dropped"
+predicate = "a refused expression substituted in from an earlier binding also points at the statement using it"
+kills = "tests/test_pysrc_position.py::test_p5_projection_places[substituted-binding]"
+anchor = '''                exc.at = (*exc.at, statement)'''
+mutant = '''                exc.at = exc.at'''
+
+[[mutant]]
+id = "m18-project-last-unused-binding"
+predicate = "an unused binding refusal points at the FIRST unused binding in source order"
+kills = "tests/test_pysrc_position.py::test_p5_projection_places[first-unused-binding]"
+anchor = '''    for node in tree.body:
+        target = node.targets[0] if isinstance(node, ast.Assign) else None'''
+mutant = '''    for node in reversed(tree.body):
+        target = node.targets[0] if isinstance(node, ast.Assign) else None'''
+
+[[mutant]]
+id = "m18-project-arm-grids-dropped"
+predicate = "an ambiguous arm points at both selectors: the pandas import and every grid statement"
+kills = "tests/test_pysrc_position.py::test_p5_projection_places[ambiguous-arm]"
+anchor = '''    return (*imports, *grids)'''
+mutant = '''    return tuple(imports)'''
+
+[[mutant]]
+id = "m18-trace-assign-roles-merged"
+predicate = "a read_csv assignment plays the source role, every other assignment the data role"
+kills = "tests/test_pysrc_position.py::test_p7_trace_literals[pair-all-roles]"
+anchor = '''        return "source" if source else "data"'''
+mutant = '''        return "data"'''
+
+[[mutant]]
+id = "m18-trace-accessor-unmarked"
+predicate = "the pandas plotting accessor is the mark statement"
+kills = "tests/test_pysrc_position.py::test_p7_trace_literals[aggregate-accessor]"
+anchor = '''    if accessor_receiver(call) is not None:
+        return "mark"'''
+mutant = '''    if False:
+        return "mark"'''

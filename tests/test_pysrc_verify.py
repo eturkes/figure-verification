@@ -136,8 +136,8 @@ def test_e1_single_public_entry() -> None:
 
     assert set(pysrc.__all__) == {"verify_python_source", "Verdict", "Verified", "Refused"}
     assert get_args(Verdict.__value__) == (Verified, Refused)
-    assert set(Verified.__dataclass_fields__) == {"spec", "table", "certificate"}
-    assert set(Refused.__dataclass_fields__) == {"code"}
+    assert set(Verified.__dataclass_fields__) == {"spec", "table", "certificate", "trace"}
+    assert set(Refused.__dataclass_fields__) == {"code", "at", "trace"}
 
     parameters = inspect.signature(verify_python_source).parameters
     assert tuple(parameters) == ("source", "declared_target", "limits")
@@ -220,8 +220,8 @@ def test_e3_stage_order(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_e4_verified_carries_no_source_bytes() -> None:
-    """`Verified` holds `spec`, `table`, `certificate` and no model-authored byte beyond the
-    certificate's `source_sha256`.
+    """`Verified` holds `spec`, `table`, `certificate` + a position-only `trace`, and no raw source
+    text, AST node or unprojected identifier (literal labels are projected figure text).
 
     Accept: `__dataclass_fields__` pinned as an exact set; a recursive scan of a verified result
     for a distinctive submitted identifier finds no occurrence.
@@ -240,7 +240,7 @@ def test_e4_verified_carries_no_source_bytes() -> None:
     result = verify_python_source(source)
 
     assert isinstance(result, Verified)
-    assert set(result.__dataclass_fields__) == {"spec", "table", "certificate"}
+    assert set(result.__dataclass_fields__) == {"spec", "table", "certificate", "trace"}
     assert not [
         value for value in _walk_values(result) if isinstance(value, str) and marker in value
     ]

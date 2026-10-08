@@ -88,121 +88,138 @@ class WorkBudget:
         self.consumed += required
 '''
 
-_SOURCES["verifier.pysrc.errors"] = r'''
+_SOURCES["verifier.pysrc.position"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Refusal and caller-error types for the portable core.
+"""Where in the submitted program a verdict points: integer spans and statement roles, no bytes.
 
-Two families, deliberately unrelated: `PysrcRefusalError` is a verdict about UNTRUSTED input and is
-always convertible into a check result, while `PysrcCallerError` means the operator configured the
-verifier wrongly and no verdict about the source exists. Collapsing them would let a
-misconfiguration read as a refused program.
+A position is diagnostic and never part of a verdict's identity. The wrapper that shows a user the
+refused code quotes the program it already holds; the core only says where to look, so no model
+byte enters a verdict through this module.
 
-A refusal carries a closed `code` and never any bytes from the source. Echoing input back into a
-message would smuggle model-authored text into logs, verdicts and, through those, into the operator
-surface -- the one place this project must never let the model write.
+`Span` follows `ast`: lines count from 1 at `\\r\\n`, `\\r` or `\\n` (never `str.splitlines`'s wider
+set), columns are UTF-8 byte offsets within the line, and the end is exclusive. A span whose end
+equals its start is a POINT: a place with no character, such as the end of a line.
 """
 
-from typing import Literal
+import re
+from dataclasses import dataclass
+from typing import Literal, Protocol, cast
 
-# Closed set. A new member needs a distinct fault shape, not a new phrasing of an existing one.
-# Grouped by the stage that can raise it; a stage never raises another stage's code.
-RefusalCode = Literal[
-    # prescan
-    "source_too_large",
-    "source_not_utf8",
-    "source_has_nul",
-    "line_too_long",
-    "source_not_tokenizable",
-    "too_many_tokens",
-    "nesting_too_deep",
-    "unbalanced_brackets",
-    "indent_too_deep",
-    # admit
-    "source_not_parsable",
-    "statement_not_admitted",
-    "expression_not_admitted",
-    "import_not_admitted",
-    "assign_target_not_admitted",
-    "call_target_not_admitted",
-    "keyword_not_admitted",
-    "attribute_not_admitted",
-    "operator_not_admitted",
-    "literal_not_admitted",
-    "name_not_bound",
-    # project -- what an ADMITTED program fails to say about the figure it draws. Distinct from
-    # admission: these bytes may run, and the refusal is that the verifier cannot state what they
-    # would draw. A construct admitted without a projection rule lands on one of these, never on
-    # silence.
-    "no_mark",
-    "multiple_marks",
-    "mark_arity_not_projected",
-    "mark_not_valid_for_arm",
-    "x_not_a_grid",
-    "y_not_over_grid",
-    "grid_not_representable",
-    "expression_not_projected",
-    "label_not_literal",
-    "name_rebound",
-    "no_terminal",
-    "statement_after_terminal",
-    "statement_not_projected",
-    # project, dataset arm -- each names a fault shape the formula arm cannot produce.
-    "arm_ambiguous",
-    "no_source",
-    "multiple_sources",
-    "source_not_literal",
-    "column_not_literal",
-    "column_not_from_source",
-    # An admitted `groupby` chain whose MEANING the projection cannot state. Distinct from
-    # `statement_not_projected`: the statement is a projectable kind, and distinct from
-    # `column_not_from_source`: the columns may be perfectly valid. What is missing is a rule for
-    # the shape -- `.reset_index()` re-spells the channels, a bare column selection reduces nothing.
-    "aggregation_not_projected",
-    # `plt.figure` after anything already drawn. The new figure would not contain it, so the
-    # emitted artifact and the spec would disagree about what the chart holds. Distinct from
-    # `statement_not_projected`: the call IS projectable, just not in that position.
-    "figure_orphans_mark",
-    # bind -- the submitted program versus the artifact the USER supplied. One code covers both
-    # arms: the fault shape is "this program is not about your artifact", and which artifact is
-    # evident from the program itself.
-    "source_not_supplied",
-    "target_mismatch",
-    # A substitution (Q8): the program drops a CSV column the request names and plots one the
-    # request never names. A request naming no column anchors nothing and never reaches this code.
-    "column_not_requested",
-    # Strict anchoring (Q37, production): the request names or negates a column, and the program
-    # draws a nameable column the request never names.
-    "column_not_named",
-    # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
-    # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
-    # domain and overflow fault arrives as a non-finite value and needs no classification.
-    "csv_too_large",
-    "csv_not_parsable",
-    "column_not_present",
-    "column_not_numeric",
-    "value_not_in_profile",
-    "value_not_finite",
-    "work_budget_exceeded",
-    # integrity -- what an otherwise-recomputable figure would misrepresent.
-    "category_not_unique",
-    "x_not_ordered",
-    # G10 (Q16): a title, axis label or legend label names a CSV column the chart does not draw,
-    # or -- over a reduction -- the summary word of another reduction.
-    "label_not_consistent",
+Role = Literal[
+    "import", "source", "data", "mark", "title", "xlabel", "ylabel", "decoration", "layout", "show"
 ]
 
-
-class PysrcRefusalError(Exception):
-    """The submitted source is refused. `code` is the whole verdict; there is no free text."""
-
-    def __init__(self, code: RefusalCode) -> None:
-        super().__init__(code)
-        self.code: RefusalCode = code
+_NEWLINE = re.compile(r"\r\n|\r|\n")
 
 
-class PysrcCallerError(Exception):
-    """The verifier was called wrongly -- a limit it cannot honour, or arguments that disagree with
-    each other. Never a verdict about source, and never reachable from submitted bytes."""
+@dataclass(frozen=True, slots=True)
+class Span:
+    line: int
+    column: int
+    end_line: int
+    end_column: int
+
+
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One top-level statement and the part it plays in the chart."""
+
+    role: Role
+    span: Span
+
+
+type Trace = tuple[Step, ...]
+
+
+class _Located(Protocol):
+    """An `ast` statement or expression, typed structurally: the pre-scan imports this module and
+    must not import `ast`."""
+
+    lineno: int
+    col_offset: int
+    end_lineno: int | None
+    end_col_offset: int | None
+
+
+def node_span(node: _Located) -> Span:
+    # Every node `ast.parse` returns carries its end; only hand-built nodes lack one.
+    return Span(
+        node.lineno, node.col_offset, cast("int", node.end_lineno), cast("int", node.end_col_offset)
+    )
+
+
+def _utf8_length(text: str) -> int:
+    # `surrogatepass`: a lone surrogate reaches here only as the character a refusal points at.
+    return len(text.encode("utf-8", "surrogatepass"))
+
+
+class SourceMap:
+    """Character offsets in one text -> spans. Every offset is clamped into the text, so a locator
+    fed a position past the end still returns a valid span rather than raising."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        breaks = list(_NEWLINE.finditer(text))
+        self._starts = [0, *(match.end() for match in breaks)]
+        self._ends = [*(match.start() for match in breaks), len(text)]
+        # `tokenize` reads through `readline`, which splits at `\n` alone.
+        self._token_starts = [0, *(match.end() for match in re.finditer("\n", text))]
+
+    def _locate(self, offset: int) -> tuple[int, int]:
+        """`(line index, offset)`, the offset clamped into the text and off any line break: a
+        break belongs to the end of the line it closes."""
+        offset = max(0, min(offset, len(self._text)))
+        # Linear: a locator runs once or twice per refusal, over a program the byte cap bounds.
+        index = sum(1 for start in self._starts if start <= offset) - 1
+        return index, min(offset, self._ends[index])
+
+    def _position(self, offset: int) -> tuple[int, int]:
+        index, offset = self._locate(offset)
+        return index + 1, _utf8_length(self._text[self._starts[index] : offset])
+
+    def span(self, start: int, end: int) -> Span:
+        line, column = self._position(start)
+        end_line, end_column = self._position(max(start, end))
+        return Span(line, column, end_line, end_column)
+
+    def char(self, offset: int) -> Span:
+        """The one character at `offset`, or a point where there is none (a line break, the end)."""
+        index, start = self._locate(offset)
+        return self.span(start, start + 1 if start < self._ends[index] else start)
+
+    def offset(self, line: int, column: int) -> int:
+        """`line` in the `Span` convention, `column` in characters."""
+        index = max(0, min(line - 1, len(self._starts) - 1))
+        start = self._starts[index]
+        return start + max(0, min(column, self._ends[index] - start))
+
+    def token_offset(self, row: int, column: int) -> int:
+        """`tokenize`'s `(row, column)`: rows split at `\\n` alone, columns in characters, clamped
+        into the row -- its `unexpected EOF` error counts the row's BYTES instead (measured on
+        3.13), and the clamp keeps that past-the-end column on its own row."""
+        index = max(0, min(row - 1, len(self._token_starts) - 1))
+        start = self._token_starts[index]
+        end = self._token_starts[index + 1] - 1 if index + 1 < len(self._token_starts) else None
+        return min(start + max(0, column), len(self._text) if end is None else end)
+
+    def syntax_error(self, error: SyntaxError) -> tuple[Span, ...]:
+        """Where `ast.parse` stopped: `lineno` + 1-based CHARACTER `offset`, the end used only
+        when it lies after the start (CPython reports 0 or -1 for an unknown end)."""
+        if error.lineno is None:
+            return ()
+        start = self.offset(error.lineno, (error.offset or 1) - 1)
+        end = start
+        if error.end_lineno is not None and error.end_offset is not None:
+            end = self.offset(error.end_lineno, error.end_offset - 1)
+        return (self.span(start, end) if end > start else self.char(start),)
+
+    def token_error(self, position: object) -> tuple[Span, ...]:
+        """Where `tokenize` stopped: `(row, 1-based column)` in its own `\\n`-only rows."""
+        match position:
+            case (int() as row, int() as column):
+                return (self.char(self.token_offset(row, column - 1)),)
+            case _:
+                return ()
 '''
 
 _SOURCES["verifier.pysrc.spec"] = r'''
@@ -613,6 +630,499 @@ CHART_NOT_PRODUCED = "No chart was produced."
 TOOL_VERDICTS = frozenset({CHART_PRODUCED, CHART_NOT_PRODUCED})
 '''
 
+_SOURCES["verifier.pysrc.errors"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Refusal and caller-error types for the portable core.
+
+Two families, deliberately unrelated: `PysrcRefusalError` is a verdict about UNTRUSTED input and is
+always convertible into a check result, while `PysrcCallerError` means the operator configured the
+verifier wrongly and no verdict about the source exists. Collapsing them would let a
+misconfiguration read as a refused program.
+
+A refusal carries a closed `code` and never any bytes from the source. Echoing input back into a
+message would smuggle model-authored text into logs, verdicts and, through those, into the operator
+surface -- the one place this project must never let the model write.
+"""
+
+from typing import Literal
+
+from verifier.pysrc.position import Role, Span
+
+# Closed set. A new member needs a distinct fault shape, not a new phrasing of an existing one.
+# Grouped by the stage that can raise it; a stage never raises another stage's code.
+RefusalCode = Literal[
+    # prescan
+    "source_too_large",
+    "source_not_utf8",
+    "source_has_nul",
+    "line_too_long",
+    "source_not_tokenizable",
+    "too_many_tokens",
+    "nesting_too_deep",
+    "unbalanced_brackets",
+    "indent_too_deep",
+    # admit
+    "source_not_parsable",
+    "statement_not_admitted",
+    "expression_not_admitted",
+    "import_not_admitted",
+    "assign_target_not_admitted",
+    "call_target_not_admitted",
+    "keyword_not_admitted",
+    "attribute_not_admitted",
+    "operator_not_admitted",
+    "literal_not_admitted",
+    "name_not_bound",
+    # project -- what an ADMITTED program fails to say about the figure it draws. Distinct from
+    # admission: these bytes may run, and the refusal is that the verifier cannot state what they
+    # would draw. A construct admitted without a projection rule lands on one of these, never on
+    # silence.
+    "no_mark",
+    "multiple_marks",
+    "mark_arity_not_projected",
+    "mark_not_valid_for_arm",
+    "x_not_a_grid",
+    "y_not_over_grid",
+    "grid_not_representable",
+    "expression_not_projected",
+    "label_not_literal",
+    "name_rebound",
+    "no_terminal",
+    "statement_after_terminal",
+    "statement_not_projected",
+    # project, dataset arm -- each names a fault shape the formula arm cannot produce.
+    "arm_ambiguous",
+    "no_source",
+    "multiple_sources",
+    "source_not_literal",
+    "column_not_literal",
+    "column_not_from_source",
+    # An admitted `groupby` chain whose MEANING the projection cannot state. Distinct from
+    # `statement_not_projected`: the statement is a projectable kind, and distinct from
+    # `column_not_from_source`: the columns may be perfectly valid. What is missing is a rule for
+    # the shape -- `.reset_index()` re-spells the channels, a bare column selection reduces nothing.
+    "aggregation_not_projected",
+    # `plt.figure` after anything already drawn. The new figure would not contain it, so the
+    # emitted artifact and the spec would disagree about what the chart holds. Distinct from
+    # `statement_not_projected`: the call IS projectable, just not in that position.
+    "figure_orphans_mark",
+    # bind -- the submitted program versus the artifact the USER supplied. One code covers both
+    # arms: the fault shape is "this program is not about your artifact", and which artifact is
+    # evident from the program itself.
+    "source_not_supplied",
+    "target_mismatch",
+    # A substitution (Q8): the program drops a CSV column the request names and plots one the
+    # request never names. A request naming no column anchors nothing and never reaches this code.
+    "column_not_requested",
+    # Strict anchoring (Q37, production): the request names or negates a column, and the program
+    # draws a nameable column the request never names.
+    "column_not_named",
+    # recompute -- reading the user's bytes, then evaluating. `value_not_finite` is the SOLE
+    # domain refusal: the evaluator reproduces numpy's IEEE results instead of raising, so every
+    # domain and overflow fault arrives as a non-finite value and needs no classification.
+    "csv_too_large",
+    "csv_not_parsable",
+    "column_not_present",
+    "column_not_numeric",
+    "value_not_in_profile",
+    "value_not_finite",
+    "work_budget_exceeded",
+    # integrity -- what an otherwise-recomputable figure would misrepresent.
+    "category_not_unique",
+    "x_not_ordered",
+    # G10 (Q16): a title, axis label or legend label names a CSV column the chart does not draw,
+    # or -- over a reduction -- the summary word of another reduction.
+    "label_not_consistent",
+]
+
+
+class PysrcRefusalError(Exception):
+    """The submitted source is refused. `code` is the whole verdict; there is no free text.
+
+    `at` = where in the program the refusal points, `()` for a whole-program fault; `role` = the
+    kind of statement to point at instead, for a stage that sees the spec rather than the tree.
+    Both are diagnostics: integers and a closed role, never source bytes.
+    """
+
+    def __init__(
+        self, code: RefusalCode, *, at: tuple[Span, ...] = (), role: Role | None = None
+    ) -> None:
+        super().__init__(code)
+        self.code: RefusalCode = code
+        self.at = at
+        self.role = role
+
+
+class PysrcCallerError(Exception):
+    """The verifier was called wrongly -- a limit it cannot honour, or arguments that disagree with
+    each other. Never a verdict about source, and never reachable from submitted bytes."""
+'''
+
+_SOURCES["verifier.pysrc.numeric"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Binary64 evaluation of a projected expression, and materialization of a projected grid.
+
+Written for this job rather than ported from `verifier.expr`. `expr.py` is exact over `Fraction`
+and rounds once at the end; the executed program is numpy float64 and rounds at EVERY operator, so
+an exact engine computes a number the program never computes. The more precise engine is the less
+faithful one, and faithfulness is the whole claim.
+
+Every node rounds to binary64 before its parent reads it. No exact intermediate exists, and a
+`Fraction` literal converts through `float()` so a source `0.1` becomes the float64 `0.1` the
+program passes to numpy -- not a rounded `1/10`.
+
+Domain and overflow faults are never raised out of here. They reproduce numpy's IEEE values, so
+`x/0` is `+-inf` and `log(0)` is `-inf`, and a single downstream refusal rejects any non-finite
+that reaches the table. `pow` is the one operator where reproducing numpy takes real logic; see
+`_pow`.
+"""
+
+import math
+from fractions import Fraction
+from typing import Literal, assert_never, cast
+
+from verifier.pysrc.budget import WorkBudget
+from verifier.pysrc.spec import Bin, BinOp, Const, ConstName, Expr, Fn, FnName, Grid, Neg, Num, Var
+
+__all__ = ["NUMERIC_PROFILE", "OPERATOR_CLASSES", "evaluate_expr", "materialize_grid"]
+
+# Published in every certificate. The name is load-bearing: the LEGACY JSON formula mode runs
+# `rational-half-even-v1` and is exact, and `examples/index.json` ships a sentence about that
+# exactness. A reader must never carry one mode's guarantee onto the other, so the profiles are
+# separately named and the certificate prints this one verbatim.
+NUMERIC_PROFILE = "binary64-libm-v1"
+OPERATOR_CLASSES: dict[str, frozenset[str]] = {
+    "standard-exact": frozenset(
+        {
+            "add",
+            "sub",
+            "mul",
+            "div",
+            "neg",
+            "abs",
+            "sqrt",
+            "literal",
+            "pi",
+            "e",
+            "linspace",
+            "arange",
+        }
+    ),
+    "libm-dependent": frozenset({"sin", "cos", "tan", "exp", "log", "pow"}),
+}
+
+_NEGATIVE_NAN = -math.nan
+
+
+def _fraction_float(value: Fraction) -> float:
+    try:
+        return float(value)
+    except OverflowError:
+        return -math.inf if value.numerator < 0 else math.inf
+
+
+def _divide(left: float, right: float) -> float:
+    try:
+        return left / right
+    except ZeroDivisionError:
+        if math.isnan(left):
+            return left
+        if left == 0.0:
+            return _NEGATIVE_NAN
+        sign = math.copysign(1.0, left) * math.copysign(1.0, right)
+        return math.copysign(math.inf, sign)
+
+
+def _odd_integer(value: float) -> bool:
+    return math.isfinite(value) and value.is_integer() and math.fmod(abs(value), 2.0) == 1.0
+
+
+def _pow(base: float, exponent: float) -> float:
+    """`math.pow` with its exceptions mapped to C99 / numpy values.
+
+    `ValueError` is ambiguous: it covers zero-base poles and negative-base domains, which numpy
+    maps to infinities and NaNs respectively. The operands, including negative zero's sign bit,
+    decide which result the executed program receives.
+    """
+    try:
+        return math.pow(base, exponent)
+    except OverflowError:
+        negative = base < 0.0 and _odd_integer(exponent)
+        return -math.inf if negative else math.inf
+    except ValueError:
+        if base == 0.0:
+            negative = math.copysign(1.0, base) < 0.0 and _odd_integer(exponent)
+            return -math.inf if negative else math.inf
+        return math.copysign(math.nan, base)
+
+
+def _trig(name: Literal["sin", "cos", "tan"], value: float) -> float:
+    try:
+        if name == "sin":
+            return math.sin(value)
+        if name == "cos":
+            return math.cos(value)
+        if name == "tan":
+            return math.tan(value)
+        raise AssertionError(name)  # pragma: no cover - the literal type is closed
+    except ValueError:
+        return _NEGATIVE_NAN
+
+
+def _exp(value: float) -> float:
+    try:
+        return math.exp(value)
+    except OverflowError:
+        return math.inf
+
+
+def _log(value: float) -> float:
+    try:
+        return math.log(value)
+    except ValueError:
+        return -math.inf if value == 0.0 else math.nan
+
+
+def _sqrt(value: float) -> float:
+    try:
+        return math.sqrt(value)
+    except ValueError:
+        return math.copysign(math.nan, value)
+
+
+def _function(name: FnName, value: float) -> float:
+    match name:
+        case "sin" | "cos" | "tan":
+            return _trig(name, value)
+        case "abs":
+            return abs(value)
+        case "exp":
+            return _exp(value)
+        case "log":
+            return _log(value)
+        case "sqrt":
+            return _sqrt(value)
+        case _ as unreachable:  # pragma: no cover - `FnName` is closed
+            assert_never(unreachable)
+
+
+def _binary(operator: BinOp, left: float, right: float) -> float:
+    if operator == "add":
+        return left + right
+    if operator == "sub":
+        return left - right
+    if operator == "mul":
+        return left * right
+    if operator == "div":
+        return _divide(left, right)
+    if operator == "pow":
+        return _pow(left, right)
+    assert_never(operator)  # pragma: no cover - `BinOp` is closed
+
+
+type _CompoundExpr = Neg | Fn | Bin
+
+
+def _constant(name: ConstName) -> float:
+    if name == "pi":
+        return math.pi
+    if name == "e":
+        return math.e
+    assert_never(name)  # pragma: no cover - `ConstName` is closed
+
+
+def _start_node(
+    node: Expr,
+    x: float,
+    pending: list[tuple[Expr, bool]],
+    values: list[float],
+) -> None:
+    if isinstance(node, Num):
+        values.append(_fraction_float(node.value))
+    elif isinstance(node, Var):
+        values.append(x)
+    elif isinstance(node, Const):
+        values.append(_constant(node.name))
+    elif isinstance(node, Neg):
+        pending.extend(((node, True), (node.operand, False)))
+    elif isinstance(node, Fn):
+        pending.extend(((node, True), (node.arg, False)))
+    elif isinstance(node, Bin):
+        pending.extend(((node, True), (node.right, False), (node.left, False)))
+    else:  # pragma: no cover - `Expr` is a closed union
+        assert_never(node)
+
+
+def _finish_node(node: _CompoundExpr, values: list[float]) -> None:
+    if isinstance(node, Neg):
+        values.append(-values.pop())
+    elif isinstance(node, Fn):
+        values.append(_function(node.name, values.pop()))
+    elif isinstance(node, Bin):
+        right = values.pop()
+        left = values.pop()
+        values.append(_binary(node.op, left, right))
+    else:  # pragma: no cover - `_CompoundExpr` is a closed union
+        assert_never(node)
+
+
+def _evaluate_expr(
+    expr: Expr,
+    x: float,
+    budget: WorkBudget,
+    *,
+    charge_nodes: bool,
+) -> float:
+    pending: list[tuple[Expr, bool]] = [(expr, False)]
+    values: list[float] = []
+    while pending:
+        node, ready = pending.pop()
+        if ready:
+            _finish_node(cast("_CompoundExpr", node), values)
+        else:
+            if charge_nodes:
+                budget.charge(1)
+            _start_node(node, x, pending, values)
+    return values[0]
+
+
+def evaluate_expr(expr: Expr, x: float, budget: WorkBudget) -> float:
+    """Evaluate `expr` at `x`, rounding per node and charging each node once."""
+    return _evaluate_expr(expr, x, budget, charge_nodes=True)
+
+
+def materialize_grid(grid: Grid, budget: WorkBudget) -> tuple[float, ...]:
+    """Materialize the normalized grid without expression-node charges.
+
+    `Grid.stop` is inclusive for both constructors -- projection already normalized `arange`'s
+    excluded bound onto the inclusive triple, and `arange` bounds are integers only (M13.3).
+    """
+    start = _evaluate_expr(grid.start, 0.0, budget, charge_nodes=False)
+    stop = _evaluate_expr(grid.stop, 0.0, budget, charge_nodes=False)
+    count = grid.samples
+    delta = stop - start
+    divisor = count - 1
+    step = delta / divisor
+    if step == 0.0:
+        values = tuple((float(index) / divisor) * delta + start for index in range(count))
+    else:
+        values = tuple(float(index) * step + start for index in range(count))
+    return (*values[:-1], stop)
+'''
+
+_SOURCES["webui.paste_in.aliases"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Admin-declared column aliases (Q43): the tool Valve's text, parsed.
+
+One line per column, `<column> = <alias>, <alias>`; blank lines are ignored. The full-width equals
+sign + comma (U+FF1D, U+FF0C) and the ideographic comma `、` separate as their ASCII forms do: a
+Japanese admin types them, and read as alias text `、` would join two aliases into one two-word
+name. A line the format cannot read fails the parse, so Open WebUI refuses to save it
+(`Valves(**form)` runs the validator).
+"""
+
+import re
+
+from verifier.pysrc.spec import Aliases
+
+_EQUALS = re.compile("[=\uff1d]")
+_COMMA = re.compile("[,\uff0c\u3001]")
+
+
+def parse_aliases(text: str) -> Aliases:
+    """`text` as (column, alias) pairs, in line order; raise `ValueError` naming the bad line."""
+    pairs: list[tuple[str, str]] = []
+    columns: set[str] = set()
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        parts = _EQUALS.split(line, maxsplit=1)
+        if len(parts) != 2:  # noqa: PLR2004 - a column and its alias list
+            msg = f"column aliases, line {number}: write <column> = <alias>, <alias>"
+            raise ValueError(msg)
+        column = parts[0].strip()
+        aliases = [alias.strip() for alias in _COMMA.split(parts[1])]
+        if not column:
+            msg = f"column aliases, line {number}: the column name is empty"
+            raise ValueError(msg)
+        if column in columns:
+            msg = f"column aliases, line {number}: {column} already has a line"
+            raise ValueError(msg)
+        if not all(aliases):
+            msg = f"column aliases, line {number}: an alias is empty"
+            raise ValueError(msg)
+        if len(set(aliases)) != len(aliases):
+            msg = f"column aliases, line {number}: an alias repeats"
+            raise ValueError(msg)
+        columns.add(column)
+        pairs += [(column, alias) for alias in aliases]
+    return tuple(pairs)
+'''
+
+_SOURCES["webui.paste_in.receipt"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""One backend-owned record of the last model-visible tool call.
+
+The generated paste-ins embed this module in separate namespaces. A tagged built-in tuple crosses
+their class-identity boundary; the reader validates its shape and accepts no other state value.
+"""
+
+from dataclasses import dataclass
+from typing import Final
+
+from verifier.pysrc.spec import Aliases
+
+RECEIPT_ATTR: Final = "figure_verification_receipt"
+# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
+RECEIPT_TAG: Final = "figure-verification-receipt/2"
+_RECEIPT_LENGTH = 5
+_PAIR = 2
+
+
+@dataclass(frozen=True, slots=True)
+class Receipt:
+    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
+
+    program: str
+    file_ids: tuple[str, ...]
+    request_text: str | None
+    aliases: Aliases
+
+
+def write_receipt(request: object, receipt: Receipt) -> None:
+    """Replace the prior call with a tagged, class-identity-independent value."""
+    state = getattr(request, "state", None)
+    if state is None:
+        return
+    setattr(
+        state,
+        RECEIPT_ATTR,
+        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
+    )
+
+
+def read_receipt(request: object) -> Receipt | None:
+    """Decode only the backend state's tagged, exactly typed carrier."""
+    state = getattr(request, "state", None)
+    value = getattr(state, RECEIPT_ATTR, None)
+    if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
+        return None
+    _, program, file_ids, request_text, aliases = value
+    if (
+        type(program) is not str
+        or type(file_ids) is not tuple
+        or any(type(file_id) is not str for file_id in file_ids)
+        or (request_text is not None and type(request_text) is not str)
+        or type(aliases) is not tuple
+        or any(
+            type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
+            for pair in aliases
+        )
+    ):
+        return None
+    return Receipt(program, file_ids, request_text, aliases)
+'''
+
 _SOURCES["verifier.pysrc.admit"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Positive AST allowlist for `pysrc-0.1`. This IS the pass/fail boundary.
@@ -643,6 +1153,7 @@ from dataclasses import dataclass, field
 from typing import NoReturn, cast
 
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
+from verifier.pysrc.position import SourceMap, Span, node_span
 
 # Module -> required alias. The alias is fixed, not merely required: admitting an arbitrary alias
 # would make every downstream target string depend on model-chosen text.
@@ -774,8 +1285,10 @@ class _Scope:
     bound: set[str] = field(default_factory=set)
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode, cause: BaseException | None = None, at: tuple[Span, ...] = ()
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at) from cause
 
 
 def _dotted(node: ast.Attribute) -> tuple[str, str]:
@@ -1038,32 +1551,42 @@ def _admit_call(node: ast.Call, scope: _Scope) -> None:
         _admit_expr(arg, scope)
 
 
-def _admit_expr(node: ast.expr, scope: _Scope) -> None:
-    if isinstance(node, ast.Constant):
-        if type(node.value) not in _ADMITTED_LITERAL_TYPES:
-            _refuse("literal_not_admitted")
-    elif isinstance(node, ast.Name):
-        if node.id not in scope.bound:
-            _refuse("name_not_bound")
-    elif isinstance(node, ast.Attribute):
-        _admit_constant_attr(node, scope)
-    elif isinstance(node, ast.Call):
-        _admit_call_or_aggregation(node, scope)
-    elif isinstance(node, ast.BinOp):
-        if not isinstance(node.op, _ADMITTED_BINOPS):
-            _refuse("operator_not_admitted")
-        _admit_expr(node.left, scope)
-        _admit_expr(node.right, scope)
-    elif isinstance(node, ast.UnaryOp):
-        if not isinstance(node.op, _ADMITTED_UNARYOPS):
-            _refuse("operator_not_admitted")
-        _admit_expr(node.operand, scope)
-    elif isinstance(node, ast.Subscript):
-        _admit_column(node, scope)
-    else:
-        # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
-        # starred args, walrus, comparisons, boolean and conditional expressions.
-        _refuse("expression_not_admitted")
+def _admit_expr(node: ast.expr, scope: _Scope) -> None:  # noqa: PLR0912 - one closed dispatch
+    """Admit one expression; a refusal points at the innermost expression that raised it.
+
+    The location is attached HERE, in the recursing frame itself: a wrapper function would double
+    the Python frames per nesting level and halve the depth a program can reach before the
+    interpreter's recursion limit.
+    """
+    try:
+        if isinstance(node, ast.Constant):
+            if type(node.value) not in _ADMITTED_LITERAL_TYPES:
+                _refuse("literal_not_admitted")
+        elif isinstance(node, ast.Name):
+            if node.id not in scope.bound:
+                _refuse("name_not_bound")
+        elif isinstance(node, ast.Attribute):
+            _admit_constant_attr(node, scope)
+        elif isinstance(node, ast.Call):
+            _admit_call_or_aggregation(node, scope)
+        elif isinstance(node, ast.BinOp):
+            if not isinstance(node.op, _ADMITTED_BINOPS):
+                _refuse("operator_not_admitted")
+            _admit_expr(node.left, scope)
+            _admit_expr(node.right, scope)
+        elif isinstance(node, ast.UnaryOp):
+            if not isinstance(node.op, _ADMITTED_UNARYOPS):
+                _refuse("operator_not_admitted")
+            _admit_expr(node.operand, scope)
+        elif isinstance(node, ast.Subscript):
+            _admit_column(node, scope)
+        else:
+            # The closed tail: comprehensions, lambdas, f-strings, list/dict/set/tuple displays,
+            # starred args, walrus, comparisons, boolean and conditional expressions.
+            _refuse("expression_not_admitted")
+    except PysrcRefusalError as exc:
+        exc.at = exc.at or (node_span(node),)
+        raise
 
 
 def _admit_column(node: ast.Subscript, scope: _Scope) -> None:
@@ -1131,11 +1654,16 @@ def parse_admitted(text: str) -> ast.Module:
     # The pre-scan tokenizes but does not parse, so a tokenizable-yet-unparsable program reaches
     # here and must become a verdict rather than a traceback.
     except SyntaxError as exc:
-        _refuse("source_not_parsable", exc)
+        _refuse("source_not_parsable", exc, SourceMap(text).syntax_error(exc))
 
     scope = _Scope()
     for statement in tree.body:
-        _admit_stmt(statement, scope)
+        try:
+            _admit_stmt(statement, scope)
+        except PysrcRefusalError as exc:
+            # A fault no expression owns -- an import, an assignment target -- is its statement's.
+            exc.at = exc.at or (node_span(statement),)
+            raise
     return tree
 '''
 
@@ -1208,258 +1736,6 @@ def validate_limits(limits: PysrcLimits) -> None:
             raise PysrcCallerError(message)
 '''
 
-_SOURCES["verifier.pysrc.numeric"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Binary64 evaluation of a projected expression, and materialization of a projected grid.
-
-Written for this job rather than ported from `verifier.expr`. `expr.py` is exact over `Fraction`
-and rounds once at the end; the executed program is numpy float64 and rounds at EVERY operator, so
-an exact engine computes a number the program never computes. The more precise engine is the less
-faithful one, and faithfulness is the whole claim.
-
-Every node rounds to binary64 before its parent reads it. No exact intermediate exists, and a
-`Fraction` literal converts through `float()` so a source `0.1` becomes the float64 `0.1` the
-program passes to numpy -- not a rounded `1/10`.
-
-Domain and overflow faults are never raised out of here. They reproduce numpy's IEEE values, so
-`x/0` is `+-inf` and `log(0)` is `-inf`, and a single downstream refusal rejects any non-finite
-that reaches the table. `pow` is the one operator where reproducing numpy takes real logic; see
-`_pow`.
-"""
-
-import math
-from fractions import Fraction
-from typing import Literal, assert_never, cast
-
-from verifier.pysrc.budget import WorkBudget
-from verifier.pysrc.spec import Bin, BinOp, Const, ConstName, Expr, Fn, FnName, Grid, Neg, Num, Var
-
-__all__ = ["NUMERIC_PROFILE", "OPERATOR_CLASSES", "evaluate_expr", "materialize_grid"]
-
-# Published in every certificate. The name is load-bearing: the LEGACY JSON formula mode runs
-# `rational-half-even-v1` and is exact, and `examples/index.json` ships a sentence about that
-# exactness. A reader must never carry one mode's guarantee onto the other, so the profiles are
-# separately named and the certificate prints this one verbatim.
-NUMERIC_PROFILE = "binary64-libm-v1"
-OPERATOR_CLASSES: dict[str, frozenset[str]] = {
-    "standard-exact": frozenset(
-        {
-            "add",
-            "sub",
-            "mul",
-            "div",
-            "neg",
-            "abs",
-            "sqrt",
-            "literal",
-            "pi",
-            "e",
-            "linspace",
-            "arange",
-        }
-    ),
-    "libm-dependent": frozenset({"sin", "cos", "tan", "exp", "log", "pow"}),
-}
-
-_NEGATIVE_NAN = -math.nan
-
-
-def _fraction_float(value: Fraction) -> float:
-    try:
-        return float(value)
-    except OverflowError:
-        return -math.inf if value.numerator < 0 else math.inf
-
-
-def _divide(left: float, right: float) -> float:
-    try:
-        return left / right
-    except ZeroDivisionError:
-        if math.isnan(left):
-            return left
-        if left == 0.0:
-            return _NEGATIVE_NAN
-        sign = math.copysign(1.0, left) * math.copysign(1.0, right)
-        return math.copysign(math.inf, sign)
-
-
-def _odd_integer(value: float) -> bool:
-    return math.isfinite(value) and value.is_integer() and math.fmod(abs(value), 2.0) == 1.0
-
-
-def _pow(base: float, exponent: float) -> float:
-    """`math.pow` with its exceptions mapped to C99 / numpy values.
-
-    `ValueError` is ambiguous: it covers zero-base poles and negative-base domains, which numpy
-    maps to infinities and NaNs respectively. The operands, including negative zero's sign bit,
-    decide which result the executed program receives.
-    """
-    try:
-        return math.pow(base, exponent)
-    except OverflowError:
-        negative = base < 0.0 and _odd_integer(exponent)
-        return -math.inf if negative else math.inf
-    except ValueError:
-        if base == 0.0:
-            negative = math.copysign(1.0, base) < 0.0 and _odd_integer(exponent)
-            return -math.inf if negative else math.inf
-        return math.copysign(math.nan, base)
-
-
-def _trig(name: Literal["sin", "cos", "tan"], value: float) -> float:
-    try:
-        if name == "sin":
-            return math.sin(value)
-        if name == "cos":
-            return math.cos(value)
-        if name == "tan":
-            return math.tan(value)
-        raise AssertionError(name)  # pragma: no cover - the literal type is closed
-    except ValueError:
-        return _NEGATIVE_NAN
-
-
-def _exp(value: float) -> float:
-    try:
-        return math.exp(value)
-    except OverflowError:
-        return math.inf
-
-
-def _log(value: float) -> float:
-    try:
-        return math.log(value)
-    except ValueError:
-        return -math.inf if value == 0.0 else math.nan
-
-
-def _sqrt(value: float) -> float:
-    try:
-        return math.sqrt(value)
-    except ValueError:
-        return math.copysign(math.nan, value)
-
-
-def _function(name: FnName, value: float) -> float:
-    match name:
-        case "sin" | "cos" | "tan":
-            return _trig(name, value)
-        case "abs":
-            return abs(value)
-        case "exp":
-            return _exp(value)
-        case "log":
-            return _log(value)
-        case "sqrt":
-            return _sqrt(value)
-        case _ as unreachable:  # pragma: no cover - `FnName` is closed
-            assert_never(unreachable)
-
-
-def _binary(operator: BinOp, left: float, right: float) -> float:
-    if operator == "add":
-        return left + right
-    if operator == "sub":
-        return left - right
-    if operator == "mul":
-        return left * right
-    if operator == "div":
-        return _divide(left, right)
-    if operator == "pow":
-        return _pow(left, right)
-    assert_never(operator)  # pragma: no cover - `BinOp` is closed
-
-
-type _CompoundExpr = Neg | Fn | Bin
-
-
-def _constant(name: ConstName) -> float:
-    if name == "pi":
-        return math.pi
-    if name == "e":
-        return math.e
-    assert_never(name)  # pragma: no cover - `ConstName` is closed
-
-
-def _start_node(
-    node: Expr,
-    x: float,
-    pending: list[tuple[Expr, bool]],
-    values: list[float],
-) -> None:
-    if isinstance(node, Num):
-        values.append(_fraction_float(node.value))
-    elif isinstance(node, Var):
-        values.append(x)
-    elif isinstance(node, Const):
-        values.append(_constant(node.name))
-    elif isinstance(node, Neg):
-        pending.extend(((node, True), (node.operand, False)))
-    elif isinstance(node, Fn):
-        pending.extend(((node, True), (node.arg, False)))
-    elif isinstance(node, Bin):
-        pending.extend(((node, True), (node.right, False), (node.left, False)))
-    else:  # pragma: no cover - `Expr` is a closed union
-        assert_never(node)
-
-
-def _finish_node(node: _CompoundExpr, values: list[float]) -> None:
-    if isinstance(node, Neg):
-        values.append(-values.pop())
-    elif isinstance(node, Fn):
-        values.append(_function(node.name, values.pop()))
-    elif isinstance(node, Bin):
-        right = values.pop()
-        left = values.pop()
-        values.append(_binary(node.op, left, right))
-    else:  # pragma: no cover - `_CompoundExpr` is a closed union
-        assert_never(node)
-
-
-def _evaluate_expr(
-    expr: Expr,
-    x: float,
-    budget: WorkBudget,
-    *,
-    charge_nodes: bool,
-) -> float:
-    pending: list[tuple[Expr, bool]] = [(expr, False)]
-    values: list[float] = []
-    while pending:
-        node, ready = pending.pop()
-        if ready:
-            _finish_node(cast("_CompoundExpr", node), values)
-        else:
-            if charge_nodes:
-                budget.charge(1)
-            _start_node(node, x, pending, values)
-    return values[0]
-
-
-def evaluate_expr(expr: Expr, x: float, budget: WorkBudget) -> float:
-    """Evaluate `expr` at `x`, rounding per node and charging each node once."""
-    return _evaluate_expr(expr, x, budget, charge_nodes=True)
-
-
-def materialize_grid(grid: Grid, budget: WorkBudget) -> tuple[float, ...]:
-    """Materialize the normalized grid without expression-node charges.
-
-    `Grid.stop` is inclusive for both constructors -- projection already normalized `arange`'s
-    excluded bound onto the inclusive triple, and `arange` bounds are integers only (M13.3).
-    """
-    start = _evaluate_expr(grid.start, 0.0, budget, charge_nodes=False)
-    stop = _evaluate_expr(grid.stop, 0.0, budget, charge_nodes=False)
-    count = grid.samples
-    delta = stop - start
-    divisor = count - 1
-    step = delta / divisor
-    if step == 0.0:
-        values = tuple((float(index) / divisor) * delta + start for index in range(count))
-    else:
-        values = tuple(float(index) * step + start for index in range(count))
-    return (*values[:-1], stop)
-'''
-
 _SOURCES["verifier.pysrc.table"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The plotted table -- recomputation's static product, and the thing the certificate binds.
@@ -1530,119 +1806,6 @@ class PlottedTable:
             encoded.extend(_field(x))
             encoded.extend(_field(y))
         return bytes(encoded)
-'''
-
-_SOURCES["webui.paste_in.aliases"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Admin-declared column aliases (Q43): the tool Valve's text, parsed.
-
-One line per column, `<column> = <alias>, <alias>`; blank lines are ignored. The full-width equals
-sign + comma (U+FF1D, U+FF0C) and the ideographic comma `、` separate as their ASCII forms do: a
-Japanese admin types them, and read as alias text `、` would join two aliases into one two-word
-name. A line the format cannot read fails the parse, so Open WebUI refuses to save it
-(`Valves(**form)` runs the validator).
-"""
-
-import re
-
-from verifier.pysrc.spec import Aliases
-
-_EQUALS = re.compile("[=\uff1d]")
-_COMMA = re.compile("[,\uff0c\u3001]")
-
-
-def parse_aliases(text: str) -> Aliases:
-    """`text` as (column, alias) pairs, in line order; raise `ValueError` naming the bad line."""
-    pairs: list[tuple[str, str]] = []
-    columns: set[str] = set()
-    for number, line in enumerate(text.splitlines(), 1):
-        if not line.strip():
-            continue
-        parts = _EQUALS.split(line, maxsplit=1)
-        if len(parts) != 2:  # noqa: PLR2004 - a column and its alias list
-            msg = f"column aliases, line {number}: write <column> = <alias>, <alias>"
-            raise ValueError(msg)
-        column = parts[0].strip()
-        aliases = [alias.strip() for alias in _COMMA.split(parts[1])]
-        if not column:
-            msg = f"column aliases, line {number}: the column name is empty"
-            raise ValueError(msg)
-        if column in columns:
-            msg = f"column aliases, line {number}: {column} already has a line"
-            raise ValueError(msg)
-        if not all(aliases):
-            msg = f"column aliases, line {number}: an alias is empty"
-            raise ValueError(msg)
-        if len(set(aliases)) != len(aliases):
-            msg = f"column aliases, line {number}: an alias repeats"
-            raise ValueError(msg)
-        columns.add(column)
-        pairs += [(column, alias) for alias in aliases]
-    return tuple(pairs)
-'''
-
-_SOURCES["webui.paste_in.receipt"] = r'''
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""One backend-owned record of the last model-visible tool call.
-
-The generated paste-ins embed this module in separate namespaces. A tagged built-in tuple crosses
-their class-identity boundary; the reader validates its shape and accepts no other state value.
-"""
-
-from dataclasses import dataclass
-from typing import Final
-
-from verifier.pysrc.spec import Aliases
-
-RECEIPT_ATTR: Final = "figure_verification_receipt"
-# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
-RECEIPT_TAG: Final = "figure-verification-receipt/2"
-_RECEIPT_LENGTH = 5
-_PAIR = 2
-
-
-@dataclass(frozen=True, slots=True)
-class Receipt:
-    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
-
-    program: str
-    file_ids: tuple[str, ...]
-    request_text: str | None
-    aliases: Aliases
-
-
-def write_receipt(request: object, receipt: Receipt) -> None:
-    """Replace the prior call with a tagged, class-identity-independent value."""
-    state = getattr(request, "state", None)
-    if state is None:
-        return
-    setattr(
-        state,
-        RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
-    )
-
-
-def read_receipt(request: object) -> Receipt | None:
-    """Decode only the backend state's tagged, exactly typed carrier."""
-    state = getattr(request, "state", None)
-    value = getattr(state, RECEIPT_ATTR, None)
-    if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
-        return None
-    _, program, file_ids, request_text, aliases = value
-    if (
-        type(program) is not str
-        or type(file_ids) is not tuple
-        or any(type(file_id) is not str for file_id in file_ids)
-        or (request_text is not None and type(request_text) is not str)
-        or type(aliases) is not tuple
-        or any(
-            type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
-            for pair in aliases
-        )
-    ):
-        return None
-    return Receipt(program, file_ids, request_text, aliases)
 '''
 
 _SOURCES["verifier.pysrc.aggregate"] = r'''
@@ -1862,40 +2025,65 @@ Order is load-bearing and cheapest-first: every step assumes its predecessors he
 """
 
 import io
+import re
 import tokenize
 from tokenize import TokenInfo
 from typing import NoReturn
 
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits, validate_limits
+from verifier.pysrc.position import SourceMap, Span
 
 _OPENERS = frozenset("([{")
 _CLOSERS = frozenset(")]}")
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode, cause: BaseException | None = None, at: tuple[Span, ...] = ()
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at) from cause
+
+
+_BYTE_BREAK = re.compile(rb"\r\n|\r|\n")
 
 
 def _decode(source: bytes) -> str:
     try:
         return source.decode("utf-8")
     except UnicodeDecodeError as exc:
-        _refuse("source_not_utf8", exc)
+        # No text exists to map, so the undecodable byte is located over the bytes themselves.
+        breaks = list(_BYTE_BREAK.finditer(source, 0, exc.start))
+        line = len(breaks) + 1
+        column = exc.start - (breaks[-1].end() if breaks else 0)
+        _refuse("source_not_utf8", exc, (Span(line, column, line, column + 1),))
 
 
-def _tokenize(text: str) -> list[TokenInfo]:
+def _tokenize(text: str, source: SourceMap) -> list[TokenInfo]:
     try:
         return list(tokenize.generate_tokens(io.StringIO(text).readline))
     # A malformed program must produce a verdict, never a tokenizer traceback. `TokenError` is the
     # actual shape on 3.13 (measured: unterminated string, unterminated triple-quote, trailing
     # backslash) and derives straight from `Exception`, so catching `ValueError` alone would have
     # caught nothing; `SyntaxError` is what the 3.12+ f-string tokenizer raises instead.
-    except (tokenize.TokenError, SyntaxError) as exc:
+    except tokenize.TokenError as exc:
+        # `TokenError(message, (row, column))`, the column 1-based (measured on 3.13).
+        position = exc.args[1] if len(exc.args) > 1 else None
+        _refuse("source_not_tokenizable", exc, source.token_error(position))
+    except SyntaxError as exc:
+        _refuse("source_not_tokenizable", exc, source.token_error((exc.lineno, exc.offset)))
+    # CPython 3.13's tokenizer raises this while building its OWN error message for some texts
+    # mixing a bare `\r` with non-ASCII (measured: 6,755 of 200,000 random fragments), so the
+    # position it was reporting is lost too.
+    except UnicodeDecodeError as exc:
         _refuse("source_not_tokenizable", exc)
 
 
-def _check_bracket_depth(tokens: list[TokenInfo], limit: int) -> None:
+def _token_span(token: TokenInfo, source: SourceMap) -> tuple[Span, ...]:
+    start = source.token_offset(*token.start)
+    return (source.span(start, source.token_offset(*token.end)),)
+
+
+def _check_bracket_depth(tokens: list[TokenInfo], limit: int, source: SourceMap) -> None:
     depth = 0
     for token in tokens:
         if token.type != tokenize.OP:
@@ -1903,22 +2091,22 @@ def _check_bracket_depth(tokens: list[TokenInfo], limit: int) -> None:
         if token.string in _OPENERS:
             depth += 1
             if depth > limit:
-                _refuse("nesting_too_deep")
+                _refuse("nesting_too_deep", at=_token_span(token, source))
         elif token.string in _CLOSERS:
             depth -= 1
             # A closer with no opener never balances later; refusing here keeps the counter from
             # going negative and masking a genuinely deep region further on.
             if depth < 0:
-                _refuse("unbalanced_brackets")
+                _refuse("unbalanced_brackets", at=_token_span(token, source))
 
 
-def _check_indent_depth(tokens: list[TokenInfo], limit: int) -> None:
+def _check_indent_depth(tokens: list[TokenInfo], limit: int, source: SourceMap) -> None:
     depth = 0
     for token in tokens:
         if token.type == tokenize.INDENT:
             depth += 1
             if depth > limit:
-                _refuse("indent_too_deep")
+                _refuse("indent_too_deep", at=_token_span(token, source))
         elif token.type == tokenize.DEDENT:
             depth -= 1
 
@@ -1940,19 +2128,22 @@ def prescan(source: bytes, limits: PysrcLimits) -> str:
 
     # The parser rejects NUL too, but only after accepting the buffer; refusing here keeps the
     # closed refusal vocabulary total over inputs the parser would answer with its own error.
+    located = SourceMap(text)
     if "\x00" in text:
-        _refuse("source_has_nul")
+        _refuse("source_has_nul", at=(located.char(text.index("\x00")),))
 
-    for line in text.splitlines():
+    start = 0
+    for line, ended in zip(text.splitlines(), text.splitlines(keepends=True), strict=True):
         if len(line.encode("utf-8")) > limits.max_line_bytes:
-            _refuse("line_too_long")
+            _refuse("line_too_long", at=(located.span(start, start + len(line)),))
+        start += len(ended)
 
-    tokens = _tokenize(text)
+    tokens = _tokenize(text, located)
     if len(tokens) > limits.max_tokens:
         _refuse("too_many_tokens")
 
-    _check_bracket_depth(tokens, limits.max_bracket_depth)
-    _check_indent_depth(tokens, limits.max_indent_depth)
+    _check_bracket_depth(tokens, limits.max_bracket_depth, located)
+    _check_indent_depth(tokens, limits.max_indent_depth, located)
     return text
 '''
 
@@ -1991,6 +2182,7 @@ from verifier.pysrc.admit import (
 )
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
+from verifier.pysrc.position import Role, Span, Step, Trace, node_span
 from verifier.pysrc.spec import (
     MAX_EXPR_DEPTH,
     Bin,
@@ -2210,8 +2402,15 @@ _BINOPS: dict[type[ast.operator], BinOp] = {
 }
 
 
-def _refuse(code: RefusalCode) -> NoReturn:
-    raise PysrcRefusalError(code)
+def _refuse(code: RefusalCode, at: tuple[Span, ...] = ()) -> NoReturn:
+    raise PysrcRefusalError(code, at=at)
+
+
+def _within(inner: Span, outer: Span) -> bool:
+    return (outer.line, outer.column) <= (inner.line, inner.column) and (
+        inner.end_line,
+        inner.end_column,
+    ) <= (outer.end_line, outer.end_column)
 
 
 def _dotted(node: ast.Attribute) -> str:
@@ -2324,6 +2523,9 @@ class _Projector:
             if self._depth > MAX_EXPR_DEPTH:
                 _refuse("expression_not_projected")
             return self._expr_node(node, grid_name)
+        except PysrcRefusalError as exc:
+            exc.at = exc.at or (node_span(node),)
+            raise
         finally:
             self._depth -= 1
 
@@ -2675,6 +2877,19 @@ class _Projector:
         _refuse("statement_not_projected")
 
     def _statement(self, node: ast.stmt) -> None:
+        """Project one statement; a refusal points at the innermost expression that raised it,
+        plus this statement when that expression was substituted in from an earlier binding."""
+        try:
+            self._project_statement(node)
+        except PysrcRefusalError as exc:
+            statement = node_span(node)
+            if not exc.at:
+                exc.at = (statement,)
+            elif not _within(exc.at[0], statement):
+                exc.at = (*exc.at, statement)
+            raise
+
+    def _project_statement(self, node: ast.stmt) -> None:
         if self._terminal:
             _refuse("statement_after_terminal")
         if isinstance(node, ast.Import):
@@ -2869,7 +3084,7 @@ class _Projector:
             for node in tree.body
         )
         if self._pandas and _uses_grid(tree):
-            _refuse("arm_ambiguous")
+            _refuse("arm_ambiguous", _arm_selectors(tree))
         for statement in tree.body:
             self._statement(statement)
         if self._mark is None:
@@ -2889,8 +3104,66 @@ class _Projector:
         if unused:
             # Bound, admitted, executed, and absent from the spec: exactly the gap this module
             # exists to close.
-            _refuse("statement_not_projected")
+            _refuse("statement_not_projected", _first_binding(tree, unused))
         return plot
+
+
+def _arm_selectors(tree: ast.Module) -> tuple[Span, ...]:
+    """Both arm selectors: every `import pandas`, then every statement holding a grid call."""
+    imports = [
+        node_span(node)
+        for node in tree.body
+        if isinstance(node, ast.Import) and any(alias.name == "pandas" for alias in node.names)
+    ]
+    grids = [node_span(node) for node in tree.body if _uses_grid(ast.Module([node], []))]
+    return (*imports, *grids)
+
+
+def _first_binding(tree: ast.Module, names: set[str]) -> tuple[Span, ...]:
+    """The first statement in source order binding one of `names`."""
+    for node in tree.body:
+        target = node.targets[0] if isinstance(node, ast.Assign) else None
+        if isinstance(target, ast.Name) and target.id in names:
+            return (node_span(node),)
+    return ()  # pragma: no cover - every unused name was bound by an assignment
+
+
+# Call statement target -> its role in the chart. Closed over what projection lets through.
+_CALL_ROLES: dict[str, Role] = {
+    "plt.plot": "mark",
+    "plt.scatter": "mark",
+    "plt.bar": "mark",
+    "plt.barh": "mark",
+    "plt.title": "title",
+    "plt.xlabel": "xlabel",
+    "plt.ylabel": "ylabel",
+    "plt.legend": "decoration",
+    "plt.grid": "decoration",
+    "plt.figure": "layout",
+    "plt.tight_layout": "layout",
+    "plt.xticks": "layout",
+    "plt.show": "show",
+}
+
+
+def _role(node: ast.stmt) -> Role:
+    if isinstance(node, ast.Import):
+        return "import"
+    if isinstance(node, ast.Assign):
+        value = node.value
+        source = isinstance(value, ast.Call) and _target(value) == _SOURCE_CALL
+        return "source" if source else "data"
+    # Projection lets through imports, assignments and call statements alone.
+    call = cast("ast.Call", cast("ast.Expr", node).value)
+    if accessor_receiver(call) is not None:
+        return "mark"
+    return _CALL_ROLES[cast("str", _target(call))]
+
+
+def statement_trace(tree: ast.Module) -> Trace:
+    """Each top-level statement's span and role, in source order. Positions alone: no name, no
+    text. Precondition: `project(tree)` returned, so every statement has a role."""
+    return tuple(Step(_role(node), node_span(node)) for node in tree.body)
 
 
 def project(tree: ast.Module, limits: PysrcLimits = DEFAULT_LIMITS) -> CorePlotSpec:
@@ -4124,7 +4397,7 @@ lets M14 inline this package into a sandbox that has neither.
 import math
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NoReturn, assert_never
 
 from verifier.pysrc.admit import parse_admitted
@@ -4134,8 +4407,9 @@ from verifier.pysrc.csvread import header_names, read_columns
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits, validate_limits
 from verifier.pysrc.numeric import evaluate_expr, materialize_grid
+from verifier.pysrc.position import Role, SourceMap, Span, Trace
 from verifier.pysrc.prescan import prescan
-from verifier.pysrc.project import project, same_bound
+from verifier.pysrc.project import project, same_bound, statement_trace
 from verifier.pysrc.spec import (
     Aliases,
     Bin,
@@ -4162,23 +4436,35 @@ __all__ = ["Refused", "Verdict", "Verified", "verify_python_source"]
 
 @dataclass(frozen=True, slots=True)
 class Verified:
-    """Carries the projection, the recomputation and the certificate -- and nothing else.
+    """Carries the projection, the recomputation and the certificate, plus where each statement
+    sits.
 
-    Deliberately holds NO byte derived from the source beyond the certificate's `source_sha256`:
-    no line number, no AST node, no source text. The one place this project must never let the
-    model write is the operator surface, and a verdict is on that surface.
+    Deliberately holds no raw source text, no AST node and no unprojected identifier: the spec
+    carries only what the figure states (its literal labels included) and the certificate the
+    source's digest. The one place this project must never let the model write is the operator
+    surface, and a verdict is on that surface. `trace` is integers and a closed role per statement
+    -- what a reader needs to find the code in the program they already hold -- and is a
+    diagnostic outside the verdict's identity.
     """
 
     spec: CorePlotSpec
     table: PlottedTable
     certificate: CoreCertificate
+    trace: Trace = field(default=(), compare=False)
 
 
 @dataclass(frozen=True, slots=True)
 class Refused:
-    """The closed code IS the whole verdict. There is no free text and no echoed input."""
+    """The closed code IS the whole verdict. There is no free text and no echoed input.
+
+    `at` = where in the program the refusal points (`()` = no single place: a whole-program fault,
+    or one in the file, the data or the request); `trace` = the statement roles once projection
+    succeeded. Both are diagnostics outside the verdict's identity.
+    """
 
     code: RefusalCode
+    at: tuple[Span, ...] = field(default=(), compare=False)
+    trace: Trace = field(default=(), compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -4197,8 +4483,14 @@ class Recomputation:
 type Verdict = Verified | Refused
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode,
+    cause: BaseException | None = None,
+    *,
+    at: tuple[Span, ...] = (),
+    role: Role | None = None,
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at, role=role) from cause
 
 
 # --- request anchoring (Q8) ----------------------------------------------------------------------
@@ -4567,13 +4859,20 @@ def _summaries(text: str, header: tuple[str, ...], aliases: Aliases = ()) -> set
 def _check_labels(spec: DatasetPlot, header: tuple[str, ...], aliases: Aliases = ()) -> None:
     drawn = {spec.x.name, spec.y.name}
     labels = spec.labels
-    for text in (labels.title, labels.xlabel, labels.ylabel, labels.series):
+    # Each label with the statement that wrote it: the series text is the mark's `label=`.
+    texts: tuple[tuple[Role, str | None], ...] = (
+        ("title", labels.title),
+        ("xlabel", labels.xlabel),
+        ("ylabel", labels.ylabel),
+        ("mark", labels.series),
+    )
+    for role, text in texts:
         if text is None:
             continue
         if _named_columns(text, header, aliases, ignore_ties=True) - drawn:
-            _refuse("label_not_consistent")
+            _refuse("label_not_consistent", role=role)
         if spec.group is not None and _summaries(text, header, aliases) - {spec.group}:
-            _refuse("label_not_consistent")
+            _refuse("label_not_consistent", role=role)
 
 
 def bind_target(
@@ -4589,9 +4888,9 @@ def bind_target(
     """
     if isinstance(spec, DatasetPlot):
         if not isinstance(target, DatasetTarget):
-            _refuse("source_not_supplied")
+            _refuse("source_not_supplied", role="source")
         if spec.source.path != target.path:
-            _refuse("target_mismatch")
+            _refuse("target_mismatch", role="source")
         if target.request is not None:
             _check_anchoring(spec, target, target.request, limits)
         return target
@@ -4769,23 +5068,27 @@ def verify_python_source(
     a lone surrogate -- which no UTF-8 encoder accepts -- refuses like any other non-UTF-8 input
     rather than escaping as a `UnicodeEncodeError`.
     """
+    trace: Trace = ()
     try:
         try:
             source_bytes = source.encode("utf-8")
         except UnicodeEncodeError as exc:
-            _refuse("source_not_utf8", exc)
+            _refuse("source_not_utf8", exc, at=(SourceMap(source).char(exc.start),))
         text = prescan(source_bytes, limits)
         tree = parse_admitted(text)
         spec = project(tree, limits)
+        trace = statement_trace(tree)
         bound_target = bind_target(spec, declared_target, limits)
         recomputation = recompute(spec, bound_target, limits)
         table = recomputation.table
         aliases = bound_target.aliases if isinstance(bound_target, DatasetTarget) else ()
         check_integrity(spec, table, _header(bound_target, limits), aliases)
         certificate = certify(spec, table, source_bytes, bound_target, recomputation.group_counts)
-        return Verified(spec=spec, table=table, certificate=certificate)
+        return Verified(spec=spec, table=table, certificate=certificate, trace=trace)
     except PysrcRefusalError as exc:
-        return Refused(code=exc.code)
+        # A stage that sees the spec, not the tree, names the ROLE of the statement to point at.
+        at = exc.at or tuple(step.span for step in trace if step.role == exc.role)
+        return Refused(code=exc.code, at=at, trace=trace)
 '''
 
 _SOURCES["verifier.pysrc"] = r'''

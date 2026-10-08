@@ -15,40 +15,65 @@ Order is load-bearing and cheapest-first: every step assumes its predecessors he
 """
 
 import io
+import re
 import tokenize
 from tokenize import TokenInfo
 from typing import NoReturn
 
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.limits import PysrcLimits, validate_limits
+from verifier.pysrc.position import SourceMap, Span
 
 _OPENERS = frozenset("([{")
 _CLOSERS = frozenset(")]}")
 
 
-def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
-    raise PysrcRefusalError(code) from cause
+def _refuse(
+    code: RefusalCode, cause: BaseException | None = None, at: tuple[Span, ...] = ()
+) -> NoReturn:
+    raise PysrcRefusalError(code, at=at) from cause
+
+
+_BYTE_BREAK = re.compile(rb"\r\n|\r|\n")
 
 
 def _decode(source: bytes) -> str:
     try:
         return source.decode("utf-8")
     except UnicodeDecodeError as exc:
-        _refuse("source_not_utf8", exc)
+        # No text exists to map, so the undecodable byte is located over the bytes themselves.
+        breaks = list(_BYTE_BREAK.finditer(source, 0, exc.start))
+        line = len(breaks) + 1
+        column = exc.start - (breaks[-1].end() if breaks else 0)
+        _refuse("source_not_utf8", exc, (Span(line, column, line, column + 1),))
 
 
-def _tokenize(text: str) -> list[TokenInfo]:
+def _tokenize(text: str, source: SourceMap) -> list[TokenInfo]:
     try:
         return list(tokenize.generate_tokens(io.StringIO(text).readline))
     # A malformed program must produce a verdict, never a tokenizer traceback. `TokenError` is the
     # actual shape on 3.13 (measured: unterminated string, unterminated triple-quote, trailing
     # backslash) and derives straight from `Exception`, so catching `ValueError` alone would have
     # caught nothing; `SyntaxError` is what the 3.12+ f-string tokenizer raises instead.
-    except (tokenize.TokenError, SyntaxError) as exc:
+    except tokenize.TokenError as exc:
+        # `TokenError(message, (row, column))`, the column 1-based (measured on 3.13).
+        position = exc.args[1] if len(exc.args) > 1 else None
+        _refuse("source_not_tokenizable", exc, source.token_error(position))
+    except SyntaxError as exc:
+        _refuse("source_not_tokenizable", exc, source.token_error((exc.lineno, exc.offset)))
+    # CPython 3.13's tokenizer raises this while building its OWN error message for some texts
+    # mixing a bare `\r` with non-ASCII (measured: 6,755 of 200,000 random fragments), so the
+    # position it was reporting is lost too.
+    except UnicodeDecodeError as exc:
         _refuse("source_not_tokenizable", exc)
 
 
-def _check_bracket_depth(tokens: list[TokenInfo], limit: int) -> None:
+def _token_span(token: TokenInfo, source: SourceMap) -> tuple[Span, ...]:
+    start = source.token_offset(*token.start)
+    return (source.span(start, source.token_offset(*token.end)),)
+
+
+def _check_bracket_depth(tokens: list[TokenInfo], limit: int, source: SourceMap) -> None:
     depth = 0
     for token in tokens:
         if token.type != tokenize.OP:
@@ -56,22 +81,22 @@ def _check_bracket_depth(tokens: list[TokenInfo], limit: int) -> None:
         if token.string in _OPENERS:
             depth += 1
             if depth > limit:
-                _refuse("nesting_too_deep")
+                _refuse("nesting_too_deep", at=_token_span(token, source))
         elif token.string in _CLOSERS:
             depth -= 1
             # A closer with no opener never balances later; refusing here keeps the counter from
             # going negative and masking a genuinely deep region further on.
             if depth < 0:
-                _refuse("unbalanced_brackets")
+                _refuse("unbalanced_brackets", at=_token_span(token, source))
 
 
-def _check_indent_depth(tokens: list[TokenInfo], limit: int) -> None:
+def _check_indent_depth(tokens: list[TokenInfo], limit: int, source: SourceMap) -> None:
     depth = 0
     for token in tokens:
         if token.type == tokenize.INDENT:
             depth += 1
             if depth > limit:
-                _refuse("indent_too_deep")
+                _refuse("indent_too_deep", at=_token_span(token, source))
         elif token.type == tokenize.DEDENT:
             depth -= 1
 
@@ -93,17 +118,20 @@ def prescan(source: bytes, limits: PysrcLimits) -> str:
 
     # The parser rejects NUL too, but only after accepting the buffer; refusing here keeps the
     # closed refusal vocabulary total over inputs the parser would answer with its own error.
+    located = SourceMap(text)
     if "\x00" in text:
-        _refuse("source_has_nul")
+        _refuse("source_has_nul", at=(located.char(text.index("\x00")),))
 
-    for line in text.splitlines():
+    start = 0
+    for line, ended in zip(text.splitlines(), text.splitlines(keepends=True), strict=True):
         if len(line.encode("utf-8")) > limits.max_line_bytes:
-            _refuse("line_too_long")
+            _refuse("line_too_long", at=(located.span(start, start + len(line)),))
+        start += len(ended)
 
-    tokens = _tokenize(text)
+    tokens = _tokenize(text, located)
     if len(tokens) > limits.max_tokens:
         _refuse("too_many_tokens")
 
-    _check_bracket_depth(tokens, limits.max_bracket_depth)
-    _check_indent_depth(tokens, limits.max_indent_depth)
+    _check_bracket_depth(tokens, limits.max_bracket_depth, located)
+    _check_indent_depth(tokens, limits.max_indent_depth, located)
     return text
