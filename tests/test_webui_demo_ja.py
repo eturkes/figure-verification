@@ -178,3 +178,37 @@ def test_x6e_demo_selection_verdicts(prompt_id: str) -> None:
         assert _needs_font(verdict, consumed) is (prompt.dataset == "clinic_ja.csv")
     else:
         assert isinstance(verdict, Refused), verdict
+
+
+def _grade(program: str, dataset: str, prompt: str) -> dict[str, str]:
+    upload = UploadedFile(
+        file_id="f1",
+        path=f"/mnt/uploads/{dataset}",
+        content=(REPO_ROOT / "data" / dataset).read_bytes(),
+    )
+    graded: dict[str, str] = {}
+    for anchoring in ("substitution", "strict"):
+        verdict, _ = first_verdict(program, (upload,), prompt, anchoring, ())
+        graded[anchoring] = (
+            f"Refused:{verdict.code}" if isinstance(verdict, Refused) else type(verdict).__name__
+        )
+    return graded
+
+
+def test_x6f_phrasing_ledger_regrades_and_binds_the_chosen_captures() -> None:
+    """X6f (closing review F1): every tried phrasing keeps its program, which re-grades to the
+    recorded verdict under both rules; each chosen row equals its committed capture, de-fenced."""
+    ledger = json.loads(
+        (REPO_ROOT / ".agent/measurements/m17u3_phrasings.json").read_text(encoding="utf-8")
+    )
+    rows = {row["probe_id"]: row for row in ledger["phrasings"]}
+    assert len(rows) == 9
+    for probe_id, row in rows.items():
+        expected = {"substitution": row["substitution"], "strict": row["strict"]}
+        assert _grade(row["program"], row["dataset"], row["prompt"]) == expected, probe_id
+    prompts = _prompts()
+    assert set(ledger["chosen"]) == set(_IDS)
+    for prompt_id, probe_id in ledger["chosen"].items():
+        prompt, row = prompts[prompt_id], rows[probe_id]
+        assert (prompt.prompt, prompt.dataset) == (row["prompt"], row["dataset"]), prompt_id
+        assert defence(prompt.content)[1] == row["program"], prompt_id

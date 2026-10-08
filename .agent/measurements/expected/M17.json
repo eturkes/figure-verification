@@ -1,0 +1,44 @@
+{
+  "arms": {
+    "ja-clinic-elaborate": {
+      "after": "fail",
+      "before": "fail",
+      "error": null,
+      "file_pngs": 0,
+      "interpretation_head": null,
+      "status_code": "column_not_literal",
+      "status_kana": true,
+      "verdict_line": "Figure verification failed, no image produced"
+    },
+    "ja-clinic-simple": {
+      "after": "pass",
+      "before": "pass",
+      "error": null,
+      "file_pngs": 1,
+      "interpretation_head": "グラフの種類: 折れ線グラフ。",
+      "status_code": null,
+      "status_kana": false,
+      "verdict_line": "Figure verification passed"
+    },
+    "ja-elaborate": {
+      "after": "fail",
+      "before": "fail",
+      "error": null,
+      "file_pngs": 0,
+      "interpretation_head": null,
+      "status_code": "source_not_tokenizable",
+      "status_kana": true,
+      "verdict_line": "Figure verification failed, no image produced"
+    },
+    "ja-simple": {
+      "after": "pass",
+      "before": "pass",
+      "error": null,
+      "file_pngs": 1,
+      "interpretation_head": "グラフの種類: 棒グラフ。",
+      "status_code": null,
+      "status_kana": false,
+      "verdict_line": "Figure verification passed"
+    }
+  }
+}

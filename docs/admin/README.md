@@ -32,6 +32,9 @@ them from its source code.
   pandas and numpy). The chart program runs in this runtime inside the user's browser.
 - A browser connection with WebSocket support. The filter runs the program through this
   connection.
+- The Japanese font that Open WebUI 0.10.2 contains (`NotoSansJP-Regular.ttf` in its `FONTS_DIR`).
+  The filter sends this font to the browser when a chart contains Japanese text. Without the font,
+  such a chart fails with the code `sandbox_error`.
 - A chat model that can call tools.
 
 ## Step 1: Add the tool
@@ -110,7 +113,8 @@ reason.
 
 The pass message does not mean that the chart answers the question. The chart can show a
 different measure or a different grouping than the user wanted. Read the text below the chart. It
-states what the chart shows.
+states what the chart shows. If the request contains Japanese kana, that text is in Japanese. The
+pass message itself stays in English.
 
 The verifier trusts the browser, Pyodide, matplotlib and the pixels on the screen. It does not
 check them.
@@ -227,6 +231,6 @@ There are two types of reason code:
 | The reply fails with the code `no_target` | The verifier cannot read a CSV file or a function in the request. | Attach a CSV file, or state the function and its interval. The section "What the verifier accepts" gives an example. |
 | The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
 | Every chart fails with the code `sandbox_unavailable` | The browser could not load the Pyodide runtime. A content blocker is a common cause. For example, the "Block Outsider Intrusion into LAN" list of uBlock Origin Lite blocks it. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
-| The reply fails with the code `sandbox_error` | The browser runtime reported an error. | Reload the page and send the request again. |
+| The reply fails with the code `sandbox_error` | The browser runtime reported an error. Japanese text inside `$` signs (math text) or in a text marker is a known cause, because the math font has no Japanese characters. Such text can also show empty symbols instead of an error. | Reload the page and send the request again. Ask for chart text without `$` signs. |
 | The reply fails with the code `observation_mismatch` | The values that Pyodide drew differ from the recomputed values. | Make sure that the browser uses the Pyodide runtime of Open WebUI 0.10.2. If the code stays, keep the chat and report it. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |

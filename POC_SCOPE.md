@@ -404,13 +404,15 @@ Open WebUI is trusted display and orchestration, not a verifier. The demo expose
 values. The tool writes a backend-owned receipt, and the filter independently fetches the user's owned
 files and re-runs the shared verifier against the submitted program. Only a `Verified` verdict plus
 exactly one PNG from the browser's Pyodide sandbox permits publication. The filter then attaches that
-image and writes `Figure verification passed` with the certificate interpretation. With no receipt,
+image and writes `Figure verification passed` with the certificate interpretation (its Japanese
+rendering when the request holds a kana letter). With no receipt,
 a refused verdict, or a failed render, it rewrites the final assistant reply to
 `Figure verification failed, no image produced`. Message text, fenced code and tool-result prose grant
 no publication authority. The verifier checks admitted code against the recomputed table and
 certificate, and the filter releases the PNG only when the array values the sandbox reports drawing
 match the recomputed table (`webui/paste_in/observe.py`). Backend request state, the sandbox and its
-self-report, the renderer and the pixels remain trusted.
+self-report, the renderer, the Open WebUI-bundled Japanese font the filter sends for non-ASCII
+chart text, and the pixels remain trusted.
 
 The `proposeSpec` + iframe flow described above belongs to the separate JSON-spec dataset service.
 The demo registers no tool server; `proposeSpec` reaches a model only after an operator separately

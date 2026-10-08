@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 32 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 33 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -137,6 +137,7 @@ and pandas versions for the selected build.
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 | M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 | M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
+| M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-elaborate` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-elaborate` over `clinic_ja.csv`) | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 
 ## Reduction claims — M13.6
 
@@ -234,6 +235,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 62 fixture observations + PNGs (M10.10 added 6 accessor lines, Q18 the 4 nested-libm formulas), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 | M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/138 texts clamped |
 | M16 | the "Show checks" embed in a live `--stub` chat: elaborate prompt, a kana prompt, the simple prompt; one frame after the status line + before the verdict, collapsed < 60 px, expanded = its content (no inner scroll), collapsed again, rows + marks + texts + cause per state, before + after reload; REST `content`/`output`/`embeds`; the expanded FAIL at 760 px; light + dark screenshots | M16.1 L1-L5: exit code 0 = 3/3 cases + the narrow re-size; screenshots inspected by hand |
+| M17 | the Japanese banner prompts in a live `--stub` chat, one attempt per arm over its own CSV: verdict before + after reload, the verdict line, the interpretation's first sentence, the PNG attachment count, the status line's code + language | M17.4 L2: `ja-simple` + `ja-clinic-simple` pass with 1 PNG and a Japanese interpretation (`グラフの種類: 棒グラフ。`, `グラフの種類: 折れ線グラフ。`); `ja-elaborate` + `ja-clinic-elaborate` fail with 0 PNGs and a Japanese status line ending `(source_not_tokenizable)`, `(column_not_literal)` |
 
 Rerun O8 from the repository root after the host input generators. `o8_observe.mjs` obtains the wrapper from the tracked filter and writes the observed JSON into `tests/fixtures/observe/`; a second run should leave those bytes unchanged.
 

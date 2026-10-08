@@ -1,0 +1,53 @@
+{
+  "arm": "ja-clinic-simple",
+  "attempt": 1,
+  "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。",
+  "dataset": "clinic_ja.csv",
+  "csv_sha256": "c05b21f8ec2ce099235d6f5b7b407e24d26f873f77ae4fea04cda6fa774adc25",
+  "composed_identical": true,
+  "chat_id": "eb66a746-ec71-42d6-a04a-f02bfd134b0b",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\nグラフの種類: 折れ線グラフ。データはファイル \"/mnt/uploads/clinic_ja.csv\" から読み込みます。X 軸は列 \"年月\" のグループを表します。Y 軸は各グループの列 \"平均待ち時間\" の平均を表します。9 行から 3 個のグループを描画します。数値はプロファイル binary64-libm-v1 に従います。X 軸ラベル: \"年月\"。Y 軸ラベル: \"平均待ち時間\"。タイトル: \"年月ごとの平均待ち時間折れ線グラフ\"。",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 1000,
+        "height": 600
+      }
+    ],
+    "png_sha256": [
+      "27877512d209e1ae3633a63d2d6256216906d408d30be0251ec632322b46df38"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": null
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\nグラフの種類: 折れ線グラフ。データはファイル \"/mnt/uploads/clinic_ja.csv\" から読み込みます。X 軸は列 \"年月\" のグループを表します。Y 軸は各グループの列 \"平均待ち時間\" の平均を表します。9 行から 3 個のグループを描画します。数値はプロファイル binary64-libm-v1 に従います。X 軸ラベル: \"年月\"。Y 軸ラベル: \"平均待ち時間\"。タイトル: \"年月ごとの平均待ち時間折れ線グラフ\"。",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 1000,
+        "height": 600
+      }
+    ],
+    "png_sha256": [
+      "27877512d209e1ae3633a63d2d6256216906d408d30be0251ec632322b46df38"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": null
+  },
+  "error": null,
+  "seconds": 94
+}

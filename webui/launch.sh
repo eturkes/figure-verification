@@ -290,7 +290,8 @@ if (( USE_STUB )); then
     "${ja_prompts}" \
     "           The stub calls the figure tool with the program the real model wrote for each" \
     "           Japanese prompt. Prompts 3 and 5: the verifier accepts it. Prompts 4 and 6: the" \
-    "           verifier refuses it. Not yet recorded in a browser."
+    "           verifier refuses it. Recorded once each: prompts 3 and 5 showed a chart and the" \
+    "           pass message with Japanese text, and prompts 4 and 6 showed the failure message."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \
@@ -306,7 +307,9 @@ else
     "           Prompt 2 showed Figure verification failed, no image produced in 5 of 5 runs." \
     "" \
     "${ja_prompts}" \
-    "           Japanese prompts are not yet recorded with this model." \
+    "           Recorded on the same GPU with this model, 5 runs for each Japanese prompt:" \
+    "           Prompts 3 and 5 showed a chart and Figure verification passed in 5 of 5 runs." \
+    "           Prompts 4 and 6 showed Figure verification failed, no image produced in 5 of 5 runs." \
     "           Use --stub to run the demo without a model."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"

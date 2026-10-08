@@ -1,0 +1,39 @@
+{
+  "arm": "ja-clinic-elaborate",
+  "attempt": 5,
+  "prompt": "clinic_ja.csv の派手なダッシュボードを作ってください。2x2 のサブプロットに、グラデーションで塗りつぶした患者数の面グラフ、診療科別の平均待ち時間のグループ化棒グラフ、診療科で色分けした患者数対待ち時間のバブル散布図、KPI パネルを配置し、ダークテーマにして患者数が最も多い月に注釈を付けてください。",
+  "dataset": "clinic_ja.csv",
+  "csv_sha256": "c05b21f8ec2ce099235d6f5b7b407e24d26f873f77ae4fea04cda6fa774adc25",
+  "composed_identical": true,
+  "chat_id": "2df8915b-c780-47ca-a322-3c8adba7df0c",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "content": "Figure verification failed, no image produced",
+    "output_items": 1,
+    "file_pngs": 0,
+    "dom_pngs": [],
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": "列の選択またはグループ化が、固定の列名 1 つで書かれていません。 (column_not_literal)"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "content": "Figure verification failed, no image produced",
+    "output_items": 1,
+    "file_pngs": 0,
+    "dom_pngs": [],
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": "列の選択またはグループ化が、固定の列名 1 つで書かれていません。 (column_not_literal)"
+  },
+  "error": null,
+  "seconds": 41
+}

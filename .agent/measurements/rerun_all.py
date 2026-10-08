@@ -44,6 +44,7 @@ IDS = (
     "Versions",
     "M15",
     "M16",
+    "M17",
     "R1",
     "R2",
     "R3",
@@ -65,6 +66,12 @@ HOST_ONLY = {
     "S1": "s1_host.py",
 }
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
+M17_ARMS = {
+    "ja-simple": "sales.csv",
+    "ja-elaborate": "sales.csv",
+    "ja-clinic-simple": "clinic_ja.csv",
+    "ja-clinic-elaborate": "clinic_ja.csv",
+}
 GENERATORS = {
     "S2": (("make_s2_inputs.py", False),),
     "S3": (("make_s3_grids.py", False),),
@@ -282,11 +289,28 @@ class Replay:
             )
             args = [csv, str(dump), str(self.state / "logs/webui.log"), str(DATA / "m15")]
             script = "m15u1_status.mjs"
-        else:
+        elif name == "M16":
             dump = DATA / "checks.json"
             self.run("checks-dump", self.python("m16u1_dump.py", dump))
             args = [csv, str(dump), str(DATA / "m16")]
             script = "m16u1_checks.mjs"
+        else:
+            # M17.4: one stub-arm attempt per Japanese banner prompt, each over its own CSV.
+            for arm, dataset in M17_ARMS.items():
+                self.run(
+                    f"M17-{arm}",
+                    [
+                        "node",
+                        str(ROOT / "m10u3_demo.mjs"),
+                        browser_url,
+                        webui_url,
+                        str(PROJECT / "data" / dataset),
+                        arm,
+                        "1",
+                        str(DATA / "m17"),
+                    ],
+                )
+            return
         self.run(name, ["node", str(ROOT / script), browser_url, webui_url, *args])
 
     def measurement(self, name):
@@ -300,7 +324,7 @@ class Replay:
                     f"{name}-{build}",
                     ["node", str(ROOT / script), package, f"{name.lower()}-{build}.json"],
                 )
-        elif name in ("M15", "M16"):
+        elif name in ("M15", "M16", "M17"):
             self.live_measurement(name)
         elif name.startswith("R"):
             self.run("reductions", ["bash", str(ROOT / "r_run.sh")])

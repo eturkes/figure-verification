@@ -33,11 +33,14 @@ A chart passes when all of these statements are true:
    verifier computes from the formula.
 
 After a pass, the chat also shows a sentence that states what the chart shows, for example the sum of
-revenue for each region. Read that sentence. A pass does not mean that the chart answers the
+revenue for each region. If the request contains Japanese kana, that sentence is in Japanese. Read
+that sentence. A pass does not mean that the chart answers the
 question. The chart can show a different measure or grouping than the user wanted.
 
-The verifier trusts the browser, the Pyodide runtime, matplotlib and the pixels. It does not check
-them. The verifier accepts a small subset of pandas, numpy and matplotlib:
+The verifier trusts the browser, the Pyodide runtime, matplotlib, the Japanese font that Open
+WebUI contains and the pixels. It does not check them. Japanese text in a chart needs that font,
+which the filter sends to the browser. The font does not cover Japanese text inside `$` signs (math
+text). Such a chart failed in the recorded tests, and it can also show empty symbols. The verifier accepts a small subset of pandas, numpy and matplotlib:
 
 - a bar, horizontal bar, line or scatter chart over two CSV columns;
 - one sum, mean, minimum or maximum for each group;
@@ -63,8 +66,18 @@ an NVIDIA MX150 with greedy decoding. A different model or device can give diffe
   simple banner prompt showed a bar chart and the pass message in 5 of 5 recorded runs. The
   elaborate dashboard prompt showed the failure message and no image in 5 of 5 runs. The records are in
   `.agent/measurements/m10u3/`.
+- **Japanese browser demo.** The same setup recorded 5 runs of each Japanese banner prompt. Two
+  prompts ask for one simple chart each: a bar chart over `data/sales.csv` and a line chart over
+  `data/clinic_ja.csv`. Each showed a chart and the pass message in 5 of 5 runs. The clinic chart
+  drew its Japanese title and labels. The text below each chart was in Japanese. The two Japanese
+  dashboard prompts showed the failure message and no image in 5 of 5 runs each, with a Japanese
+  status line. The records are in `.agent/measurements/m17u4/`. The project picked each prompt
+  from faithful translations by one model reply each. `.agent/measurements/m17u3_phrasings.json`
+  lists every phrasing that the project tried. This result is not a success rate for Japanese
+  requests.
 - **Stub model.** With `--stub`, the simple prompt showed a chart and the pass message. The
-  elaborate prompt showed the failure message and no image. One recorded run of each.
+  elaborate prompt showed the failure message and no image. One recorded run of each. The four
+  Japanese prompts behaved the same way in one recorded run of each.
 
 ## Install
 
@@ -103,8 +116,9 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
   webui/launch.sh
   ```
 
-  The launcher prints a banner with the address, the login and two prompts to try. Attach
-  `data/sales.csv` to a new chat. Send one of the prompts. Press `Ctrl-C` to stop.
+  The launcher prints a banner with the address, the login and the prompts to try: two in English
+  and four in Japanese. Attach the CSV file that the banner shows for the prompt to a new chat.
+  Send the prompt. Press `Ctrl-C` to stop.
 
 - Recompute the held-out score from the committed capture. The command writes nothing unless you add
   `--write`.

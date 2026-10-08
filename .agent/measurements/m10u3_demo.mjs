@@ -1,33 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// M10.3: drive the launcher's banner prompts through the signed-in Open WebUI chat, one fresh
-// chat per attempt, and record what the user saw before AND after a reload.
+// M10.3 + M17.4: drive the launcher's banner prompts through the signed-in Open WebUI chat, one
+// fresh chat per attempt, and record what the user saw before AND after a reload.
 //
 //   node m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>
 //
-// arm = simple | elaborate. The harness signs in with FV_WEBUI_EMAIL / FV_WEBUI_PASSWORD when the
-// page asks for it. Records land as <out-dir>/<arm>-<n>.json + <arm>-<n>-<moment>.png; the PNG
-// attachment itself is hashed, never trusted as a verdict.
+// arm = simple | elaborate | ja-simple | ja-elaborate | ja-clinic-simple | ja-clinic-elaborate; its
+// prompt is read from the webui/launch.sh assignment, and <csv> must be the file the arm names.
+// The harness signs in with FV_WEBUI_EMAIL / FV_WEBUI_PASSWORD when the page asks for it. Records
+// land as <out-dir>/<arm>-<n>.json + <arm>-<n>-<moment>.png; the PNG attachment itself is hashed,
+// never trusted as a verdict.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const [browserURL, webuiURL, csvPath, arm, attemptsText, outDir] = process.argv.slice(2);
-// Byte-identical to webui/launch.sh `simple_prompt` / `elaborate_prompt`; checked below at start.
-const PROMPTS = {
-  simple: "Chart the total revenue of each region using bars.",
-  elaborate:
-    "Build a fancy sales.csv dashboard: a 2x2 grid of subplots with a gradient-filled revenue area chart, a grouped orders-by-region bar chart, a revenue-versus-orders bubble scatter colored by region, and a KPI panel, on a dark theme with the peak month annotated.",
+const ARMS = {
+  simple: ["simple_prompt", "sales.csv"],
+  elaborate: ["elaborate_prompt", "sales.csv"],
+  "ja-simple": ["ja_simple_prompt", "sales.csv"],
+  "ja-elaborate": ["ja_elaborate_prompt", "sales.csv"],
+  "ja-clinic-simple": ["ja_clinic_simple_prompt", "clinic_ja.csv"],
+  "ja-clinic-elaborate": ["ja_clinic_elaborate_prompt", "clinic_ja.csv"],
 };
 const PASS = "Figure verification passed";
 const FAIL = "Figure verification failed, no image produced";
-if (!Object.hasOwn(PROMPTS, arm) || !outDir) {
+if (!Object.hasOwn(ARMS, arm) || !outDir) {
   throw new Error("usage: m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>");
 }
+const [variable, dataset] = ARMS[arm];
+if (basename(csvPath) !== dataset) throw new Error(`arm ${arm} needs ${dataset}, got ${csvPath}`);
 const launcher = readFileSync(new URL("../../webui/launch.sh", import.meta.url), "utf8");
-for (const [name, text] of [["simple_prompt", PROMPTS.simple], ["elaborate_prompt", PROMPTS.elaborate]]) {
-  if (!launcher.includes(`${name}="${text}"`)) throw new Error(`${name} differs from webui/launch.sh`);
-}
+const assigned = launcher.match(new RegExp(`^${variable}="([^"\\n]*)"$`, "m"));
+if (!assigned) throw new Error(`${variable} missing from webui/launch.sh`);
+const PROMPT = assigned[1];
 const attempts = Number.parseInt(attemptsText, 10);
 mkdirSync(outDir, { recursive: true });
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -62,6 +68,7 @@ async function readback(chatId) {
     const messages = Object.values(payload.chat?.history?.messages ?? {});
     const assistant = messages.filter((m) => m.role === "assistant").at(-1);
     const user = messages.filter((m) => m.role === "user").at(-1);
+    const status = (assistant?.statusHistory ?? []).at(-1);
     const last = [...document.querySelectorAll(".chat-assistant")].at(-1);
     return {
       done: assistant?.done ?? false,
@@ -70,6 +77,7 @@ async function readback(chatId) {
       files: (assistant?.files ?? []).map((f) => ({ type: f.type ?? null, url: String(f.url ?? "") })),
       messages: messages.length,
       user_files: (user?.files ?? []).map((f) => String(f.name ?? f.file?.filename ?? f.type ?? "")),
+      status: typeof status?.description === "string" ? status.description : null,
       dom_images: last
         ? [...last.querySelectorAll("img")]
             .filter((img) => img.src.startsWith("data:image/png;base64,"))
@@ -98,12 +106,13 @@ function summarize(state) {
     png_sha256: [...new Set(pngs)],
     messages: state.messages,
     user_files: state.user_files,
+    status: state.status,
   };
 }
 
 const settled = (text) => text.includes(PASS) || text.includes(FAIL);
 for (let n = 1; n <= attempts; n += 1) {
-  const record = { arm, attempt: n, prompt: PROMPTS[arm], csv_sha256: sha256(readFileSync(csvPath)) };
+  const record = { arm, attempt: n, prompt: PROMPT, dataset, csv_sha256: sha256(readFileSync(csvPath)) };
   const started = Date.now();
   try {
     await page.goto(`${webuiURL}/`, { waitUntil: "domcontentloaded", timeout: 90000 });
@@ -119,14 +128,14 @@ for (let n = 1; n <= attempts; n += 1) {
     const input = await page.$("input[type=file][multiple]");
     if (!input) throw new Error("Open WebUI multi-file input missing");
     await input.uploadFile(csvPath);
-    await page.waitForFunction(() => document.body.innerText.includes("sales.csv"), { timeout: 90000 });
+    await page.waitForFunction((name) => document.body.innerText.includes(name), { timeout: 90000 }, dataset);
     // Settle time for the upload to finish server-side; `user_files` in the record shows whether
     // the sent message actually carried the attachment.
     await new Promise((r) => setTimeout(r, 3000));
     await page.click("#chat-input");
-    await cdp.send("Input.insertText", { text: PROMPTS[arm] });
+    await cdp.send("Input.insertText", { text: PROMPT });
     const composed = await page.$eval("#chat-input", (node) => node.textContent);
-    record.composed_identical = composed === PROMPTS[arm];
+    record.composed_identical = composed === PROMPT;
     if (!record.composed_identical) throw new Error("composer changed the pinned prompt");
     await page.waitForSelector("#send-message-button", { visible: true, timeout: 30000 });
     await page.click("#send-message-button");

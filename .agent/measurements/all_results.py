@@ -356,6 +356,28 @@ def m16():
     }
 
 
+def m17():
+    arms = {}
+    for arm in ("ja-simple", "ja-elaborate", "ja-clinic-simple", "ja-clinic-elaborate"):
+        record = load(f"all-data/m17/{arm}-1.json")
+        after = record.get("after") or {}
+        verdict, _, interpretation = str(after.get("content") or "").partition("\n\n")
+        status = after.get("status")
+        code = re.search(r"\(([a-z_]+)\)$", status or "")
+        head = interpretation.split("。", 1)[0] + "。" if interpretation else None
+        arms[arm] = {
+            "before": (record.get("before") or {}).get("verdict"),
+            "after": after.get("verdict"),
+            "verdict_line": verdict,
+            "interpretation_head": head,
+            "file_pngs": after.get("file_pngs"),
+            "status_code": code[1] if code else None,
+            "status_kana": bool(status) and re.search(r"[\u3041-\u30ff]", status) is not None,
+            "error": record.get("error"),
+        }
+    return {"arms": arms}
+
+
 PROJECTORS = {
     "S1": lambda: unary(load("all-data/S1.log")),
     "S2": s2,
@@ -379,6 +401,7 @@ PROJECTORS = {
     "Versions": versions,
     "M15": m15,
     "M16": m16,
+    "M17": m17,
 }
 
 if __name__ == "__main__":
