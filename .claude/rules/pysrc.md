@@ -22,7 +22,9 @@ Three tiers, ordered by what each needs to know about the user:
    misrepresenting encodings. Total over the rule set.
 3. **Interpretation** — the certificate publishes in plain words exactly what was verified (`sum of
    sales grouped by quarter · 4 groups · 1 null row dropped · y from 0`). It PUBLISHES the residual
-   intent gap instead of closing it; a human reads it in one glance.
+   intent gap instead of closing it; a human reads it in one glance. Two renderings of ONE
+   statement (`CoreCertificate.interpretation` + `interpretation_ja`, M17.2); the reader picks by
+   request language, and both renderings are present whatever language it picks.
 
 Fidelity to INTENT is never claimed: intent lives in a person's head, and a chat sentence is not a
 specification. Tier 3 makes that gap visible; nothing hides it. Coverage grows by adding a mark —

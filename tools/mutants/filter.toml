@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Outlet publication boundary: every mutant names one test whose verdict/effect changes.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_filter_font.py"]
+tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_filter_font.py", "tests/test_paste_in_filter_ja.py"]
 
 [[mutant]]
 id = "f2-body-receipt"
@@ -106,7 +106,7 @@ mutant = '''        if verdict is None:
 id = "f5-interpretation-dropped"
 predicate = "PASS publishes the re-derived certificate interpretation"
 kills = "tests/test_paste_in_filter_outlet.py::test_f5_verified_formula_publishes_one_file_and_recomputed_interpretation"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
 mutant = '''        return _rewrite(body, PASS_TEXT)'''
 
 [[mutant]]
@@ -216,9 +216,9 @@ mutant = '''        if not attachments:
 id = "d4-status-on-pass"
 predicate = "a PASS emits no status event"
 kills = "tests/test_paste_in_filter_reasons.py::test_d4_one_status_event_per_fail_and_none_on_pass[good]"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
 mutant = '''        await __event_emitter__({"type": "status", "data": {"description": "ok", "done": True}})
-        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")'''
+        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
 
 [[mutant]]
 id = "d8-status-unguarded"
@@ -653,3 +653,31 @@ mutant = '''                "plt = _plt",
                 f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
                 "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",
                 *font_lines,'''
+
+[[mutant]]
+id = "m17-ja-flag-inverted"
+predicate = "a kana request reads the Japanese interpretation, every other request the English one"
+kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[hiragana-dataset]"
+anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
+mutant = '''        interpretation = certificate.interpretation if japanese else certificate.interpretation_ja'''
+
+[[mutant]]
+id = "m17-ja-on-every-request"
+predicate = "a request without a kana letter keeps the pre-unit English reply"
+kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[kanji-only-dataset]"
+anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
+mutant = '''        interpretation = certificate.interpretation_ja'''
+
+[[mutant]]
+id = "m17-ja-never"
+predicate = "the PASS reply carries the Japanese interpretation on a kana request"
+kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[kana-formula-pass]"
+anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
+mutant = '''        interpretation = certificate.interpretation'''
+
+[[mutant]]
+id = "m17-ja-blank-line-dropped"
+predicate = "the interpretation follows the verdict line after one blank line"
+kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[katakana-formula]"
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
+mutant = '''        return _rewrite(body, f"{PASS_TEXT}\n{interpretation}" if japanese else f"{PASS_TEXT}\n\n{interpretation}")'''

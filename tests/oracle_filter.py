@@ -159,14 +159,19 @@ def _message_item(text: str) -> dict[str, object]:
     }
 
 
-def status_event(reason: str, metadata: dict[str, object] | None = None) -> dict[str, object]:
-    """M15.1: independent carrier, kana predicate and shape; production provides text ONLY."""
+def request_is_japanese(metadata: dict[str, object] | None) -> bool:
+    """M15.1/M17.2: language comes from metadata kana LETTERS, never the receipt or model."""
     user_message = (metadata or {}).get("user_message")
     content = user_message.get("content") if isinstance(user_message, dict) else None
     prefixes = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
-    japanese = isinstance(content, str) and any(
+    return isinstance(content, str) and any(
         unicodedata.name(char, "").startswith(prefixes) for char in content
     )
+
+
+def status_event(reason: str, metadata: dict[str, object] | None = None) -> dict[str, object]:
+    """M15.1: independent carrier, kana predicate and shape; production provides text ONLY."""
+    japanese = request_is_japanese(metadata)
     texts = cast(
         dict[str, tuple[str, str]], importlib.import_module("webui.paste_in.reasons").REASONS
     )
@@ -252,7 +257,8 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
     )
     if scenario.publish_raises:
         return failed("publish_failed", events)
-    text = PASS_TEXT + "\n\n" + verdict.certificate.interpretation
+    field = "interpretation_ja" if request_is_japanese(scenario.metadata) else "interpretation"
+    text = PASS_TEXT + "\n\n" + cast(str, getattr(verdict.certificate, field))
     return Expected(
         text, (_message_item(text),), events, rpc, (), (embed_event(None, scenario.metadata),)
     )

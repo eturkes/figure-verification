@@ -2,7 +2,7 @@
 # Certificate evidence: every formula binding form publishes its own exact residual gaps.
 # Run tools/mutate.py with a private UV_PROJECT_ENVIRONMENT; each kill names one test.
 module = "src/verifier/pysrc/certificate.py"
-tests = ["tests/test_pysrc_formula_target.py"]
+tests = ["tests/test_pysrc_formula_target.py", "tests/test_pysrc_certificate_ja.py"]
 
 [[mutant]]
 id = "c4-formula-consumption-erased"
@@ -87,3 +87,83 @@ anchor = '''        return same_bound(spec.grid.start, target.grid.start) and sa
             spec.grid.stop, target.grid.stop
         )'''
 mutant = '''        return spec.grid.start == target.grid.start and spec.grid.stop == target.grid.stop'''
+
+[[mutant]]
+id = "j1-mark-word-swapped"
+predicate = "a Japanese reader sees the mark the figure draws (bar is not barh)"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[pair-bar]"
+anchor = '''    "bar": "棒グラフ",'''
+mutant = '''    "bar": "横棒グラフ",'''
+
+[[mutant]]
+id = "j1-reduction-word-swapped"
+predicate = "a Japanese aggregate names its own reduction (min is not max)"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[aggregate-min-barh]"
+anchor = '''    "min": "最小値",'''
+mutant = '''    "min": "最大値",'''
+
+[[mutant]]
+id = "j1-barh-axis-swap-dropped"
+predicate = "the Japanese text names the axis barh actually draws each channel on"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[pair-barh]"
+anchor = '''    first, second = _AXIS_LETTERS[spec.mark]
+    source = (
+        f"グラフの種類: {_JA_MARK_WORDS[spec.mark]}。"'''
+mutant = '''    first, second = ("X", "Y")
+    source = (
+        f"グラフの種類: {_JA_MARK_WORDS[spec.mark]}。"'''
+
+[[mutant]]
+id = "j1-grid-bound-weakened"
+predicate = "a Grid-bound formula says the sample count matched too"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[formula-grid]"
+anchor = '''                bound = "数式、x の区間、サンプル数は依頼と一致します。"'''
+mutant = '''                bound = "数式と x の区間は依頼と一致します。"'''
+
+[[mutant]]
+id = "j1-interval-bound-dropped"
+predicate = "an Interval-bound formula says the interval matched"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[formula-interval]"
+anchor = '''                bound = "数式と x の区間は依頼と一致します。"'''
+mutant = '''                bound = ""'''
+
+[[mutant]]
+id = "j1-target-bound-dropped"
+predicate = "a formula bound without a grid says the formula matched"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[formula-target-only]"
+anchor = '''                bound = "数式は依頼と一致します。"'''
+mutant = '''                bound = ""'''
+
+[[mutant]]
+id = "j1-label-order-swapped"
+predicate = "Japanese label sentences keep the X, Y, title order"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[pair-bar-label-all]"
+anchor = '''    if labels.xlabel is not None:
+        sentences.append(f"X 軸ラベル: {_quote(labels.xlabel)}。")
+    if labels.ylabel is not None:
+        sentences.append(f"Y 軸ラベル: {_quote(labels.ylabel)}。")'''
+mutant = '''    if labels.ylabel is not None:
+        sentences.append(f"Y 軸ラベル: {_quote(labels.ylabel)}。")
+    if labels.xlabel is not None:
+        sentences.append(f"X 軸ラベル: {_quote(labels.xlabel)}。")'''
+
+[[mutant]]
+id = "j1-counts-swapped"
+predicate = "the Japanese aggregate sentence keeps rows and groups apart (G11)"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[aggregate-sum]"
+anchor = '''        f"{sum(counts)} 行から {len(table.x)} 個のグループを描画します。"'''
+mutant = '''        f"{len(table.x)} 行から {sum(counts)} 個のグループを描画します。"'''
+
+[[mutant]]
+id = "j1-row-count-dropped"
+predicate = "the Japanese column-pair sentence states the plotted row count"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[pair-bar]"
+anchor = '''            f"描画する行は {len(table.x)} 行です。数値はプロファイル {NUMERIC_PROFILE} に従います。"'''
+mutant = '''            f"数値はプロファイル {NUMERIC_PROFILE} に従います。"'''
+
+[[mutant]]
+id = "j1-built-from-english"
+predicate = "interpretation_ja is the Japanese rendering, never the English text"
+kills = "tests/test_pysrc_certificate_ja.py::test_i2_japanese_bytes_per_branch[pair-bar]"
+anchor = '''        interpretation_ja=_interpretation_ja(spec, table, group_counts, target),'''
+mutant = '''        interpretation_ja=_interpretation(spec, table, group_counts, target),'''

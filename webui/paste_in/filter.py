@@ -432,4 +432,7 @@ class Filter:
         except Exception:
             return await fail("publish_failed")
         await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)
-        return _rewrite(body, f"{PASS_TEXT}\n\n{verdict.certificate.interpretation}")
+        certificate = verdict.certificate
+        japanese = _japanese(__metadata__)
+        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation
+        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")

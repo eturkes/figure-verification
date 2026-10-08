@@ -34,6 +34,7 @@ from oracle_filter import (
     RpcOutcome,
     Scenario,
     oracle_outlet,
+    request_is_japanese,
     status_event,
 )
 from paste_in_support import REPO_ROOT, StoredFile, fake_open_webui
@@ -175,6 +176,33 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
     return (
         ("dataset-pass", dataset, True, 1, 1),
         ("formula-pass", formula, True, 1, 1),
+        (
+            "kana-dataset-pass",
+            replace(
+                dataset, metadata={"session_id": "session-1", "user_message": {"content": "あ"}}
+            ),
+            True,
+            1,
+            1,
+        ),
+        (
+            "kana-formula-pass",
+            replace(
+                formula, metadata={"session_id": "session-2", "user_message": {"content": "ｶ"}}
+            ),
+            True,
+            1,
+            1,
+        ),
+        (
+            "kanji-only-pass",
+            replace(
+                dataset, metadata={"session_id": "session-1", "user_message": {"content": "漢字"}}
+            ),
+            True,
+            1,
+            1,
+        ),
         ("ja-label-pass", _font_scenario("label"), True, 1, 1),
         ("ja-csv-pass", _font_scenario("csv"), True, 1, 1),
         ("ja-formula-label-pass", _font_scenario("formula-label"), True, 1, 1),
@@ -469,7 +497,8 @@ def test_oracle_hand_stated_contract_cases(
     assert len(expected.output) == 1, name
     assert expected.output[0]["status"] == "completed", name
     if passes:
-        assert expected.content.split("\n\n", 1)[1].startswith("Chart type: ")
+        prefix = "グラフの種類: " if request_is_japanese(scenario.metadata) else "Chart type: "
+        assert expected.content.split("\n\n", 1)[1].startswith(prefix)
 
 
 def _load_filter() -> ModuleType:
@@ -712,7 +741,7 @@ def _assert_agrees(scenario: Scenario, module: ModuleType, patch: pytest.MonkeyP
 
 
 @st.composite
-def _pass_scenarios(draw: DrawFn) -> Scenario:
+def _render_scenarios(draw: DrawFn) -> Scenario:
     arm = draw(st.sampled_from(("dataset", "formula", "font")))
     if arm == "font":
         kind = draw(st.sampled_from(("label", "csv", "formula-label", "unavailable")))
@@ -730,6 +759,14 @@ def _pass_scenarios(draw: DrawFn) -> Scenario:
         stdout += "\n"
     response = _reply(stdout=stdout)
     return _formula(rpc=response) if filename is None else _dataset(filename, rpc=response)
+
+
+@st.composite
+def _pass_scenarios(draw: DrawFn) -> Scenario:
+    scenario = draw(_render_scenarios())
+    content = draw(st.text(alphabet="ASCII request 漢字あカｶ゙・ー", max_size=24))
+    assert scenario.metadata is not None
+    return replace(scenario, metadata={**scenario.metadata, "user_message": {"content": content}})
 
 
 @st.composite

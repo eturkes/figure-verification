@@ -3368,6 +3368,8 @@ class CoreCertificate:
     checks: tuple[CertifiedCheck, ...]
     declared_open: tuple[str, ...]
     interpretation: str
+    # The same statement in Japanese, for a reader whose request was Japanese; the caller picks.
+    interpretation_ja: str
 
 
 _CHECKS = tuple(
@@ -3401,6 +3403,19 @@ _REDUCTION_WORDS: dict[Reduction, str] = {
     "mean": "mean",
     "min": "minimum",
     "max": "maximum",
+}
+
+_JA_REDUCTION_WORDS: dict[Reduction, str] = {
+    "sum": "合計",
+    "mean": "平均",
+    "min": "最小値",
+    "max": "最大値",
+}
+_JA_MARK_WORDS: dict[DatasetMark, str] = {
+    "bar": "棒グラフ",
+    "barh": "横棒グラフ",
+    "line": "折れ線グラフ",
+    "scatter": "散布図",
 }
 
 # (first channel's axis, second channel's axis) as RENDERED, per mark.
@@ -3590,6 +3605,70 @@ def _dataset_text(
     )
 
 
+def _append_labels_ja(text: str, labels: Labels) -> str:
+    sentences: list[str] = []
+    if labels.xlabel is not None:
+        sentences.append(f"X 軸ラベル: {_quote(labels.xlabel)}。")
+    if labels.ylabel is not None:
+        sentences.append(f"Y 軸ラベル: {_quote(labels.ylabel)}。")
+    if labels.title is not None:
+        sentences.append(f"タイトル: {_quote(labels.title)}。")
+    return "".join((text, *sentences))
+
+
+def _dataset_text_ja(
+    spec: DatasetPlot, table: PlottedTable, group_counts: tuple[int, ...] | None
+) -> str:
+    first, second = _AXIS_LETTERS[spec.mark]
+    source = (
+        f"グラフの種類: {_JA_MARK_WORDS[spec.mark]}。"
+        f"データはファイル {_quote(spec.source.path)} から読み込みます。"
+    )
+    if spec.group is None:
+        return (
+            f"{source}{first} 軸は列 {_quote(spec.x.name)} を表します。"
+            f"{second} 軸は列 {_quote(spec.y.name)} を表します。"
+            f"描画する行は {len(table.x)} 行です。数値はプロファイル {NUMERIC_PROFILE} に従います。"
+        )
+    counts = cast("tuple[int, ...]", group_counts)
+    return (
+        f"{source}{first} 軸は列 {_quote(spec.x.name)} のグループを表します。"
+        f"{second} 軸は各グループの列 {_quote(spec.y.name)} の"
+        f"{_JA_REDUCTION_WORDS[spec.group]}を表します。"
+        f"{sum(counts)} 行から {len(table.x)} 個のグループを描画します。"
+        f"数値はプロファイル {NUMERIC_PROFILE} に従います。"
+    )
+
+
+def _interpretation_ja(
+    spec: CorePlotSpec,
+    table: PlottedTable,
+    group_counts: tuple[int, ...] | None,
+    target: DeclaredTarget | None,
+) -> str:
+    if isinstance(spec, FormulaPlot):
+        bound = ""
+        if isinstance(target, FormulaTarget):
+            if isinstance(target.grid, Grid):
+                bound = "数式、x の区間、サンプル数は依頼と一致します。"
+            elif isinstance(target.grid, Interval):
+                bound = "数式と x の区間は依頼と一致します。"
+            else:
+                bound = "数式は依頼と一致します。"
+        text = (
+            f"グラフの種類: {_JA_MARK_WORDS[spec.mark]}。"
+            f"データは送信されたプログラムから計算します。{bound}"
+            f"Y は {_expr_text(spec.y)} を計算します。"
+            f"X は {_expr_text(spec.grid.start)} から {_expr_text(spec.grid.stop)} までの "
+            f"{spec.grid.samples} 点です。"
+            f"数値はプロファイル {NUMERIC_PROFILE} に従います。"
+        )
+        return _append_labels_ja(text, spec.labels)
+    if isinstance(spec, DatasetPlot):
+        return _append_labels_ja(_dataset_text_ja(spec, table, group_counts), spec.labels)
+    assert_never(spec)  # pragma: no cover - `CorePlotSpec` is a closed union
+
+
 def _interpretation(
     spec: CorePlotSpec,
     table: PlottedTable,
@@ -3660,6 +3739,7 @@ def certify(
         checks=_CHECKS,
         declared_open=tuple(declared_open),
         interpretation=_interpretation(spec, table, group_counts, target),
+        interpretation_ja=_interpretation_ja(spec, table, group_counts, target),
     )
 '''
 

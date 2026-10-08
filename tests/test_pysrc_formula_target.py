@@ -340,7 +340,7 @@ def test_q9_certificate_reads_a_grid_sample_mismatch_as_unconsumed() -> None:
 
 
 def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
-    """C7: version, K1's field set and all 55 refusal codes stay unchanged."""
+    """C7/M17.2 U4b: append interpretation_ja; retain version and all 55 refusal codes."""
     assert CERTIFICATE_VERSION == "pysrc-cert-0.1"
     assert set(CoreCertificate.__dataclass_fields__) == {
         "version",
@@ -354,6 +354,7 @@ def test_c7_certificate_and_refusal_vocabulary_stay_closed() -> None:
         "checks",
         "declared_open",
         "interpretation",
+        "interpretation_ja",
     }
     assert len(get_args(RefusalCode)) == 55
 

@@ -209,7 +209,14 @@ def test_c7_pass_emits_files_then_one_all_pass_embed(
     if arm == "formula":
         case = replace(_case("pass"), metadata=metadata)
         result, calls, events, _completed = _exercise(case, load_filter_module())
-        text = _expected_pass()
+        text = (
+            "Figure verification passed\n\n"
+            "グラフの種類: 折れ線グラフ。データは送信されたプログラムから計算します。"
+            "数式、x の区間、サンプル数は依頼と一致します。Y は sin(x) を計算します。"
+            "X は 0 から 1 までの 3 点です。数値はプロファイル binary64-libm-v1 に従います。"
+            if japanese
+            else _expected_pass()
+        )
     else:
         content = b"key,value\nwest,1.25\neast,2.5\n"
         source = (
@@ -241,7 +248,12 @@ def test_c7_pass_emits_files_then_one_all_pass_embed(
                 event_call=rpc,
                 event_emitter=emit,
             )
-        text = "Figure verification passed\n\n" + verified.certificate.interpretation
+        interpretation = (
+            cast(str, getattr(verified.certificate, "interpretation_ja"))  # noqa: B009
+            if japanese
+            else verified.certificate.interpretation
+        )
+        text = "Figure verification passed\n\n" + interpretation
     assert_filter_text(result, text)
     assert len(calls) == 1
     assert [event["type"] for event in events] == ["files", "embeds"]
