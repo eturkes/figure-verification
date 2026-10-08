@@ -4,8 +4,9 @@
 Stdlib-only frozen dataclasses, deliberately not the `msgspec` structs of `verifier.schema`: M14
 inlines this package into one pasted file, so a dependency here becomes a dependency there.
 
-The spec holds NO `ast` node, line number or source text. Two consequences that are the point:
-a projection is comparable by value, and no model-authored byte can ride a verdict into a log.
+The spec holds NO `ast` node, line number or raw source text; only what the figure states survives,
+its literal labels and source path included. Two consequences that are the point: a projection is
+comparable by value, and no unprojected program byte can ride a verdict into a log.
 
 Numbers are exact `Fraction`. A source `0.1` is projected as `Fraction(0.1)` -- the exact float64
 the executed program actually passes to numpy -- and NOT as `Fraction(1, 10)`, which is the decimal

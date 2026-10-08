@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// M16.1 L1-L5: the "Show checks" embed between the status line and the verdict text.
+// M16.1 L1-L5 + M18.4 L1-L3: the "Show checks" embed between the status line and the verdict
+// text, and each row's own disclosure (what the check does, the code it read, why, the link).
 //
 //   node m16u1_checks.mjs <browser-url> <webui-url> <csv> <checks.json> <out-dir>
 //
@@ -10,8 +11,10 @@
 // inner scroll), lists the expected row states with their texts, and shrinks again on `Hide
 // checks`; the same holds after a reload, and the REST readback keeps `content`/`output` fixed with
 // one stored embed. The expanded FAIL must also fit at a 760 px viewport. Then every expanded reply
-// is captured under the light AND the dark theme for inspection. Exit code 0 = every check holds.
-// FV_CASES=<name,...> runs a subset.
+// is captured under the light AND the dark theme for inspection. M18.4: with the list expanded, the
+// case's row opens on click, grows the frame to its content, shows the hand-stated program lines +
+// marked line + reference link, opens that link in a new tab, and closes again; live + reload.
+// Exit code 0 = every check holds. FV_CASES=<name,...> runs a subset.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
@@ -25,10 +28,20 @@ const pinned = (name) => new RegExp(`${name}="([^"]+)"`).exec(launcher)[1];
 const table = JSON.parse(readFileSync(checksPath, "utf8"));
 // Row states are hand-stated per case: the failing check of each expected reason.
 const states = (failing) => table.checks.map((_, i) => (i < failing ? "pass" : i === failing ? "fail" : "skip"));
+// M18.4: the row each case opens, hand-stated from the stub's committed programs: sentinel-complicated
+// (39 scanned lines, refused at line 8's list display) and sentinel-simple (18 scanned lines).
+const REFERENCE = [
+  "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
+  "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
+];
+const span = (n) => Array.from({ length: n }, (_, i) => i + 1);
 const CASES = [
-  { name: "refused", prompt: pinned("elaborate_prompt"), csv: true, reason: "expression_not_admitted", lang: 0, states: states(3) },
-  { name: "japanese", prompt: "地域ごとの売上を棒グラフにしてください。", csv: false, reason: "no_tool_call", lang: 1, states: states(0) },
-  { name: "pass", prompt: pinned("simple_prompt"), csv: true, reason: null, lang: 0, states: states(11) },
+  { name: "refused", prompt: pinned("elaborate_prompt"), csv: true, reason: "expression_not_admitted", lang: 0, states: states(3),
+    row: { check: "accepted", lines: span(39), at: [8], marks: ["['lightblue', 'lightgreen']"] } },
+  { name: "japanese", prompt: "地域ごとの売上を棒グラフにしてください。", csv: false, reason: "no_tool_call", lang: 1, states: states(0),
+    row: { check: "program", lines: null, at: [], marks: [] } },
+  { name: "pass", prompt: pinned("simple_prompt"), csv: true, reason: null, lang: 0, states: states(11),
+    row: { check: "chart", lines: span(18), at: [], marks: [] } },
 ].filter((item) => !process.env.FV_CASES || process.env.FV_CASES.split(",").includes(item.name));
 // An unknown or empty FV_CASES selection would otherwise grade zero cases green.
 const requested = process.env.FV_CASES ? process.env.FV_CASES.split(",") : [];
@@ -116,6 +129,60 @@ async function expand(frame) {
 }
 const collapse = expand;
 
+// M18.4: the case's own row, by its position in the check order.
+const rowSelector = (item) => `ol > li:nth-child(${table.checks.indexOf(item.row.check) + 1}) > details > summary`;
+const readRow = (frame, item) =>
+  frame.evaluate((index) => {
+    const li = document.querySelectorAll("ol > li")[index];
+    const details = li?.querySelector(":scope > details");
+    const lines = [...(li?.querySelectorAll(".code .line") ?? [])];
+    return {
+      open: details?.open ?? null,
+      sections: [...(li?.querySelectorAll(".more > div, .more > p") ?? [])].map((node) => node.className),
+      lines: lines.length ? lines.map((line) => Number(line.querySelector(".ln")?.textContent)) : null,
+      at: lines.filter((line) => line.classList.contains("at")).map((line) => Number(line.querySelector(".ln")?.textContent)),
+      marks: [...(li?.querySelectorAll(".code mark") ?? [])].map((mark) => mark.textContent),
+      href: li?.querySelector("a.spec")?.href ?? null,
+      target: li?.querySelector("a.spec")?.target ?? null,
+      inner_scroll: document.documentElement.scrollHeight - window.innerHeight,
+      wrapper: Math.ceil(document.getElementById("r").getBoundingClientRect().height),
+    };
+  }, table.checks.indexOf(item.row.check));
+
+function rowHolds(item, read) {
+  const want = item.row;
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  return (
+    read.open === true &&
+    same(read.lines, want.lines) &&
+    same(read.at, want.at) &&
+    same(read.marks, want.marks) &&
+    read.sections.includes("what") &&
+    read.sections.includes("code") === (want.lines !== null) &&
+    read.sections.includes("why") === (item.reason !== null) &&
+    read.sections.includes("link") &&
+    read.href === `${REFERENCE[item.lang]}#check-${want.check}` &&
+    read.target === "_blank"
+  );
+}
+
+// L2: the opened row's link opens one NEW tab at the reference section (URL read over CDP).
+// `waitForTarget` also matches targets that already exist, so only a target absent before the
+// click counts, and exactly one such page must appear (reviewer-3 K5-F1).
+async function followLink(frame, item) {
+  const want = `${REFERENCE[item.lang]}#check-${item.row.check}`;
+  const before = new Set(browser.targets());
+  const fresh = () => browser.targets().filter((target) => !before.has(target) && target.type() === "page");
+  await frame.click(`ol > li:nth-child(${table.checks.indexOf(item.row.check) + 1}) a.spec`);
+  const target = await browser
+    .waitForTarget((t) => !before.has(t) && t.type() === "page" && t.url() === want, { timeout: 30000 })
+    .catch(() => null);
+  await settle(500);
+  const created = fresh();
+  for (const extra of created) await (await extra.page().catch(() => null))?.close();
+  return target !== null && created.length === 1 && created[0] === target;
+}
+
 function rowsHold(item, read, expanded) {
   const lang = item.lang;
   const hidden = expanded ? table.hide[lang] : table.show[lang];
@@ -191,6 +258,26 @@ for (const item of CASES) {
       const expandedFacts = (await frameFacts()).facts;
       const expanded = frame ? await readRows(frame) : null;
       if (phase === "live") await page.screenshot({ path: join(outDir, `${item.name}-expanded.png`) });
+      let row = null;
+      if (frame) {
+        await frame.click(rowSelector(item));
+        await settle(800);
+        const read = await readRow(frame, item);
+        const opened = (await frameFacts()).facts.height;
+        const link = phase === "live" ? await followLink(frame, item) : null;
+        if (phase === "live") await page.screenshot({ path: join(outDir, `${item.name}-row.png`) });
+        await frame.click(rowSelector(item));
+        await settle(800);
+        const closed = (await frameFacts()).facts.height;
+        const shut = await readRow(frame, item);
+        row = {
+          read, opened_height: opened, closed_height: closed, link,
+          ok: rowHolds(item, read) && opened > expandedFacts.height &&
+            Math.abs(opened - read.wrapper) <= 2 && read.inner_scroll <= 1 &&
+            shut.open === false && Math.abs(closed - expandedFacts.height) <= 2 &&
+            (phase !== "live" || link === true),
+        };
+      }
       if (frame) await collapse(frame);
       const recollapsed = (await frameFacts()).facts;
       record[phase] = {
@@ -202,6 +289,7 @@ for (const item of CASES) {
         expanded_ok: Boolean(expanded && rowsHold(item, expanded, true)),
         inner_scroll: expanded?.inner_scroll ?? null,
         states: expanded?.rows.map((row) => row.state) ?? null,
+        row,
       };
     }
     record.rest = await readback(record.chat_id);
@@ -218,7 +306,7 @@ for (const item of CASES) {
       p.wrapper_height !== null && Math.abs(p.expanded_height - p.wrapper_height) <= 2 &&
       p.inner_scroll !== null && p.inner_scroll <= 1 &&
       p.recollapsed_height !== null && p.recollapsed_height < 60 &&
-      p.collapsed_ok && p.expanded_ok;
+      p.collapsed_ok && p.expanded_ok && p.row?.ok === true;
     record.ok =
       phaseOk(record.live) && phaseOk(record.reload) && record.rest.embeds === 1 &&
       (item.reason === null
@@ -265,7 +353,12 @@ for (const theme of ["light", "dark"]) {
     await verdictShown();
     await settle(2500);
     const { frame } = await frameFacts();
-    if (frame) await expand(frame);
+    if (frame) {
+      await expand(frame);
+      const item = CASES.find((c) => c.name === record.case);
+      await frame.click(rowSelector(item));
+      await settle(800);
+    }
     await page.evaluate(() => [...document.querySelectorAll(".chat-assistant")].at(-1)?.querySelector("iframe")?.scrollIntoView({ block: "center" }));
     await settle(500);
     const path = join(outDir, `${record.case}-${theme}.png`);

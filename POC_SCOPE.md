@@ -408,7 +408,10 @@ image and writes `Figure verification passed` with the certificate interpretatio
 rendering when the request holds a kana letter). With no receipt,
 a refused verdict, or a failed render, it rewrites the final assistant reply to
 `Figure verification failed, no image produced`. Message text, fenced code and tool-result prose grant
-no publication authority. The verifier checks admitted code against the recomputed table and
+no publication authority. Diagnostics never move a verdict: a FAIL adds a status line + a log record,
+and every reply carries one "Show checks" embed (stored on the message, never sent to a model) whose
+rows quote the submitted program escaped, mark the core's refused span (`Refused.at`) and link the
+python-mode reference `docs/verification.md`. The verifier checks admitted code against the recomputed table and
 certificate, and the filter releases the PNG only when the array values the sandbox reports drawing
 match the recomputed table (`webui/paste_in/observe.py`). Backend request state, the sandbox and its
 self-report, the renderer, the Open WebUI-bundled Japanese font the filter sends for non-ASCII

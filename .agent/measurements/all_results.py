@@ -350,6 +350,14 @@ def m16():
     data = load("all-data/m16/m16u1_checks.json")
     return {
         "cases": {row["case"]: row["ok"] for row in data["results"]},
+        # M18.4: each case's opened row, live + reload (link followed live).
+        "rows": {
+            row["case"]: all(
+                (row.get(phase) or {}).get("row", {}).get("ok") is True
+                for phase in ("live", "reload")
+            )
+            for row in data["results"]
+        },
         "narrow_ok": data["narrow"]["ok"],
         "screenshots": len(data["shots"]),
         "ok": data["ok"],

@@ -6,5 +6,10 @@
   },
   "narrow_ok": true,
   "ok": true,
+  "rows": {
+    "japanese": true,
+    "pass": true,
+    "refused": true
+  },
   "screenshots": 6
 }

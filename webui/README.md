@@ -27,8 +27,10 @@ harness registers no tool server, so the JSON-spec `proposeSpec` operation does 
 
 Open WebUI is a trusted display and orchestration layer. The filter reads a backend-owned tool
 receipt and independently re-verifies the user's program and files. It only publishes a PNG after a
-successful browser render. Bootstrap proves provisioning only. It sends no chat request and makes
-no model-reliability claim.
+successful browser render. Each reply also has a `Show checks` list. Click a check to open it: it
+shows what the check does, the program lines that it read and why it failed. It also links to the
+[verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
+chat request and makes no model-reliability claim.
 
 ## One-time setup
 

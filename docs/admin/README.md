@@ -211,6 +211,14 @@ The checks after the failed check show `not checked`. If the chart passed, every
 The list uses the same language as the status line. It stays with the reply after a page reload, and
 Open WebUI does not send it to the model.
 
+Click a check in the list to open it. The opened check states what the check does and shows the
+program lines that the check read. When the verifier knows the exact place of a fault, it marks that
+code. A failed check also states why it failed. Each opened check links to its section of the
+verification reference, [docs/verification.md](../verification.md). The link opens GitHub in a new
+browser tab, so the user's browser needs network access, also when the Open WebUI instance has none.
+The code shown is the model's own program, as the tool received it. It can contain any text that the
+program holds, for example a file name or words copied from the request.
+
 The status line, the check list and the log record are for diagnosis only. If the filter cannot
 deliver one of them, the verdict does not change.
 

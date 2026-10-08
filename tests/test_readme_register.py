@@ -15,7 +15,13 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
-_READMES = ("README.md", "webui/README.md", "bench/README.md", "demo/README.md")
+_READMES = (
+    "README.md",
+    "webui/README.md",
+    "bench/README.md",
+    "demo/README.md",
+    "docs/verification.md",
+)
 _MAX_WORDS = 25
 _FENCE = re.compile(r"^\s*```")
 # A fence closes only on a bare backtick run: ```"""` inside a fenced heredoc is content.
