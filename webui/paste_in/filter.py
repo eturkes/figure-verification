@@ -22,9 +22,9 @@ from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.spec import Anchoring
-from verifier.pysrc.verify import Refused, Verified
+from verifier.pysrc.verify import Refused, Verdict, Verified
 from webui.paste_in.capture_template import PRODUCTION_TEMPLATE
-from webui.paste_in.checks import breakdown_html
+from webui.paste_in.checks import Evidence, breakdown_html
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
     OBSERVER_SOURCE,
@@ -260,6 +260,7 @@ async def _diagnose(
     reason: Reason | None,
     metadata: dict[str, object] | None,
     anchoring: Anchoring,
+    evidence: Evidence,
 ) -> None:
     """Show the user why a figure failed, then every check it faced (`reason` None = published).
 
@@ -279,7 +280,7 @@ async def _diagnose(
         status: dict[str, object] = {"type": "status", "data": {"description": text, "done": True}}
         await _emit_bounded(emit, status, deadline)
     try:
-        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)
+        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)
     except Exception:
         return
     # `replace` keeps exactly this document on the message; Open WebUI otherwise appends.
@@ -287,22 +288,34 @@ async def _diagnose(
     await _emit_bounded(emit, embed, deadline)
 
 
-async def _fail(
+async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
     emit: _Emit | None,
     anchoring: Anchoring,
+    *,
+    evidence: Evidence,
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
-    Neither surface carries sandbox output, program bytes or request text, because an error
-    message can quote the user's clinical data.
+    Neither the log nor the status line carries sandbox output, program bytes or request text,
+    because an error message can quote the user's clinical data; the check list quotes the
+    program alone, inside the user's own chat.
     """
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
-    await _diagnose(emit, reason, metadata, anchoring)
+    await _diagnose(emit, reason, metadata, anchoring, evidence)
     return _rewrite(body, FAIL_TEXT)
+
+
+def _evidence(program: str, verdict: Verdict | None) -> Evidence:
+    """The program with what the core found in it: where a refusal points, each statement's role."""
+    if isinstance(verdict, Refused):
+        return Evidence(program, verdict.at, verdict.trace)
+    if isinstance(verdict, Verified):
+        return Evidence(program, trace=verdict.trace)
+    return Evidence(program)
 
 
 class Filter:
@@ -363,13 +376,19 @@ class Filter:
     ) -> dict[str, object]:
         """Re-derive, render once, publish only when verification and rendering both succeed."""
 
+        # What the check list may quote, widened as the outlet learns more; `fail` reads it late.
+        evidence = Evidence()
+
         async def fail(reason: Reason) -> dict[str, object]:
-            return await _fail(body, reason, __metadata__, __event_emitter__, self._ANCHORING)
+            return await _fail(
+                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+            )
 
         receipt = read_receipt(__request__)
         user_id = (__user__ or {}).get("id")
         if receipt is None:
             return await fail("no_tool_call")
+        evidence = Evidence(receipt.program)
         if not isinstance(user_id, str):
             return await fail("no_user")
 
@@ -377,6 +396,7 @@ class Filter:
         verdict, consumed = first_verdict(
             receipt.program, attachments, receipt.request_text, self._ANCHORING, receipt.aliases
         )
+        evidence = _evidence(receipt.program, verdict)
         if isinstance(verdict, Refused):
             return await fail(verdict.code)
         if not isinstance(verdict, Verified):
@@ -431,7 +451,7 @@ class Filter:
             )
         except Exception:
             return await fail("publish_failed")
-        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)
+        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
         certificate = verdict.certificate
         japanese = _japanese(__metadata__)
         interpretation = certificate.interpretation_ja if japanese else certificate.interpretation

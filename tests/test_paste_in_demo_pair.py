@@ -117,7 +117,8 @@ def test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list(
         refused: Verdict = Refused("target_mismatch")
         return refused, None
 
-    def render(_reason: object, *, japanese: bool, anchoring: str) -> str:
+    def render(_reason: object, *, japanese: bool, anchoring: str, evidence: object) -> str:
+        assert evidence is not None
         assert japanese is False
         seen.append(("render", anchoring))
         return "<p>checks</p>"

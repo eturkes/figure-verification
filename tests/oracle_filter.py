@@ -11,7 +11,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
-from filter_checks_support import embed_event
+from filter_checks_support import CHECK_IDS, REASON_CHECK, embed_event
 from oracle_observe import oracle_matches, oracle_parse
 from oracle_paste_in_tool import ToolContext, oracle_draw_figure
 from paste_in_support import StoredFile
@@ -63,6 +63,8 @@ class Scenario:
     publish_raises: bool = False
     labels: tuple[str, ...] = ()
     font_bytes: bytes | None = b"\x00\x01\x00\x00independent fake font\xff"
+    trace_lines: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    at_lines: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,61 @@ class RpcFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class DetailRow:
+    check: str
+    lines: tuple[int, ...]
+    at: tuple[int, ...]
+    linked: bool
+
+
+_CODE_ROLES: dict[str, str | tuple[str, ...] | None] = {
+    "program": "all",
+    "data": None,
+    "readable": "all",
+    "accepted": "all",
+    "chart": "all",
+    "binding": ("source", "data", "mark"),
+    "recompute": ("source", "data", "mark"),
+    "integrity": ("data", "mark", "title", "xlabel", "ylabel"),
+    "render": "all",
+    "match": ("mark",),
+    "attach": None,
+}
+
+
+def expected_details(scenario: Scenario, reason: str | None) -> tuple[DetailRow, ...]:
+    """M18 E8: finite scenario geometry from literals, never verdict.at/trace or CODE_ROLES."""
+    if not scenario.emitter_present:
+        return ()
+    stop = 11 if reason is None else CHECK_IDS.index(REASON_CHECK[reason])
+    receipt = scenario.receipt
+    program = (
+        receipt.program if isinstance(receipt, ReceiptValue) and scenario.request_present else None
+    )
+    scanned = (
+        tuple(range(1, len(re.split(r"\r\n|\r|\n", program)) + 1)) if program is not None else ()
+    )
+    trace = scenario.trace_lines if stop >= 5 else ()
+    result = []
+    for index, check in enumerate(CHECK_IDS):
+        roles = _CODE_ROLES[check]
+        selected: set[int] = set()
+        if index <= stop and roles is not None and program is not None:
+            if roles == "all":
+                selected.update(scanned)
+            else:
+                selected.update(
+                    number for role, lines in trace if role in roles for number in lines
+                )
+            if index == stop:
+                selected.update(scenario.at_lines)
+        selected.intersection_update(scanned)
+        at = tuple(sorted(selected.intersection(scenario.at_lines))) if index == stop else ()
+        result.append(DetailRow(check, tuple(sorted(selected)), at, linked=True))
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
 class Expected:
     content: str
     output: tuple[dict[str, object], ...]
@@ -84,6 +141,7 @@ class Expected:
     rpc: RpcFacts
     status_events: tuple[dict[str, object], ...]
     embed_events: tuple[dict[str, object], ...]
+    details: tuple[DetailRow, ...] = ()
 
 
 def _candidate(
@@ -214,7 +272,15 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
     def failed(reason: str, files: tuple[dict[str, object], ...] = ()) -> Expected:
         statuses = (status_event(reason, scenario.metadata),) if scenario.emitter_present else ()
         embeds = (embed_event(reason, scenario.metadata),) if scenario.emitter_present else ()
-        return Expected(FAIL_TEXT, (_message_item(FAIL_TEXT),), files, rpc, statuses, embeds)
+        return Expected(
+            FAIL_TEXT,
+            (_message_item(FAIL_TEXT),),
+            files,
+            rpc,
+            statuses,
+            embeds,
+            expected_details(scenario, reason),
+        )
 
     receipt = scenario.receipt
     if not scenario.request_present or not isinstance(receipt, ReceiptValue):
@@ -260,5 +326,11 @@ def oracle_outlet(scenario: Scenario) -> Expected:  # noqa: PLR0911 - ordered co
     field = "interpretation_ja" if request_is_japanese(scenario.metadata) else "interpretation"
     text = PASS_TEXT + "\n\n" + cast(str, getattr(verdict.certificate, field))
     return Expected(
-        text, (_message_item(text),), events, rpc, (), (embed_event(None, scenario.metadata),)
+        text,
+        (_message_item(text),),
+        events,
+        rpc,
+        (),
+        (embed_event(None, scenario.metadata),),
+        expected_details(scenario, None),
     )

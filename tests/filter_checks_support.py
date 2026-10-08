@@ -191,9 +191,9 @@ def parse_document(html: str) -> ChecksDocument:
     nodes = parser.root.descendants()
     language = _one(nodes, tag="html").attrs.get("lang")
     assert language in {"en", "ja"}
-    details = _one(nodes, tag="details")
+    details = _one([node for node in nodes if node.attrs.get("class") != "row"], tag="details")
     assert "open" not in details.attrs, "disclosure starts expanded"
-    summary = _one(details.descendants(), tag="summary")
+    summary = _one([node for node in details.children if isinstance(node, _Node)], tag="summary")
     show = _one(summary.descendants(), tag="span", cls="show")
     hide = _one(summary.descendants(), tag="span", cls="hide")
     assert summary.descendants().index(show) < summary.descendants().index(hide)
@@ -206,7 +206,14 @@ def parse_document(html: str) -> ChecksDocument:
     for item in items:
         state = item.attrs.get("class")
         assert state in _MARKS, "row must have exactly one state class"
-        children = item.descendants()
+        nested = [node for node in item.descendants() if node.tag == "details"]
+        if nested:
+            disclosure = _one(nested)
+            assert disclosure.attrs == {"class": "row"}
+            summary = _one(disclosure.descendants(), tag="summary")
+            children = summary.descendants()
+        else:
+            children = item.descendants()
         mark = _one(children, tag="span", cls="mark")
         title = _one(children, cls="title")
         covers = _one(children, cls="covers")

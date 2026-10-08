@@ -18,7 +18,7 @@ from typing import cast, get_args
 
 import pytest
 
-from filter_checks_support import embed_event, normalized_events, parse_document
+from filter_checks_support import embed_event, normalized_events
 from observe_support import stdout_for_verified
 from paste_in_support import (
     StoredFile,
@@ -30,6 +30,8 @@ from paste_in_support import (
     recorded_request,
     valid_png_uri,
 )
+from test_paste_in_checks import _Document
+from test_paste_in_checks_detail_support import rows
 from test_paste_in_filter_reasons import (
     _BY_NAME,
     _CASES,
@@ -301,7 +303,8 @@ def test_c8_renderer_exception_keeps_status_files_log_and_verdict(
     module = load_filter_module()
     calls: list[tuple[object, bool]] = []
 
-    def broken(reason: object, *, japanese: bool, anchoring: str) -> str:
+    def broken(reason: object, *, japanese: bool, anchoring: str, evidence: object = None) -> str:
+        del evidence
         assert anchoring == "strict"
         calls.append((reason, japanese))
         failure = "RENDERER_EXCEPTION_SENTINEL"
@@ -584,12 +587,12 @@ def test_c8_absent_emitter_has_no_diagnostics(name: str, caplog: pytest.LogCaptu
 @pytest.mark.parametrize(
     "arm", [4, 10, 11, 12, 0], ids=["refusal", "loader", "sandbox", "image", "pass"]
 )
-def test_c9_embed_carries_no_untrusted_bytes(
+def test_c9_embed_quotes_the_program_alone(
     arm: int,
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """C9: six independent taint sources, valid dataset and observation on the PASS control."""
+    """M18 E6 supersedes C9: program/path only in listings; all other sources stay absent."""
     caplog.set_level(logging.INFO, logger=_LOGGER)
     sentinels = (
         "STDERR_SENTINEL_OMEGA",
@@ -603,11 +606,11 @@ def test_c9_embed_carries_no_untrusted_bytes(
     content = f"key,value\n{csv},1\nother,2\n".encode()
     program = (
         "import pandas as pd\nimport matplotlib.pyplot as plt\n"
-        f'df = pd.read_csv("/mnt/uploads/{filename}.csv")\n'
+        'df = pd.read_csv("/mnt/uploads/chart.csv")\n'
         'plt.bar(df["key"], df["value"])\n' + f"# {source}\nplt.show()\n"
     )
     verified = verify_python_source(
-        program, declared_target=DatasetTarget(f"/mnt/uploads/{filename}.csv", content)
+        program, declared_target=DatasetTarget("/mnt/uploads/chart.csv", content)
     )
     assert isinstance(verified, Verified)
     if arm == 4:
@@ -628,11 +631,17 @@ def test_c9_embed_carries_no_untrusted_bytes(
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
 
-    with fake_open_webui([StoredFile("upload", "owner", filename + ".csv", content)], tmp_path):
+    with fake_open_webui(
+        [
+            StoredFile("unused", "owner", filename + ".csv", content),
+            StoredFile("upload", "owner", "chart.csv", content),
+        ],
+        tmp_path,
+    ):
         result = invoke_filter(
             load_filter_module(),
             filter_body(out),
-            request=recorded_request(program, ("upload",), request),
+            request=recorded_request(program, ("unused", "upload"), request),
             user={"id": "owner"},
             metadata={"session_id": "session", "user_message": {"content": request}},
             event_call=rpc,
@@ -656,6 +665,16 @@ def test_c9_embed_carries_no_untrusted_bytes(
     assert normalized_events(embeds) == [embed_event(reason)]
     data = cast(dict[str, object], embeds[0]["data"])
     document = cast(list[str], data["embeds"])[0]
-    surfaced = document + repr(parse_document(document))
-    for sentinel in sentinels:
+    root = _Document(document).root
+    surfaced = document + root.text()
+    for sentinel in (err, out, request, filename, csv):
         assert sentinel not in surfaced
+    assert source in root.text()
+    assert "/mnt/uploads/chart.csv" in root.text()
+    outside = root.text(excluding="src")
+    assert source not in outside and "/mnt/uploads/chart.csv" not in outside
+    for row in rows(document).values():
+        codes = row.nodes(cls="code")
+        assert all(
+            any(src in code.nodes(cls="src") for code in codes) for src in row.nodes(cls="src")
+        )

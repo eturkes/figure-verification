@@ -1,7 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # "Show checks" renderer: every mutant names one test whose document or map verdict changes.
 module = "webui/paste_in/checks.py"
-tests = ["tests/test_paste_in_checks.py", "tests/test_paste_in_filter_checks.py"]
+tests = [
+  "tests/test_paste_in_checks.py",
+  "tests/test_paste_in_filter_checks.py",
+  "tests/test_paste_in_checks_detail.py",
+  "tests/test_paste_in_checks_detail_listing.py",
+]
 
 [[mutant]]
 id = "c2-code-one-check-later"
@@ -103,3 +108,119 @@ predicate = "each artifact's binding row states the anchoring rule it runs"
 kills = "tests/test_paste_in_checks.py::test_q37_the_binding_row_alone_states_the_anchoring_rule[en]"
 anchor = '''        texts = STRICT_BINDING if check == "binding" and anchoring == "strict" else TEXTS[check]'''
 mutant = '''        texts = TEXTS[check]'''
+
+# --- M18.2: the opened row ----------------------------------------------------------------------
+
+[[mutant]]
+id = "m18-dot-unescaped"
+predicate = "model text never spells `.` raw, so it cannot spell `Chart.` or a resource reference"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_source_escaping_is_byte_exact"
+anchor = '''    {"-": "&#45;", ".": "&#46;", "(": "&#40;", ":": "&#58;", "=": "&#61;", "@": "&#64;"}'''
+mutant = '''    {"-": "&#45;", "(": "&#40;", ":": "&#58;", "=": "&#61;", "@": "&#64;"}'''
+
+[[mutant]]
+id = "m18-invisible-rendered-raw"
+predicate = "a control, format or unassigned character shows as a visible symbol"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_listings_are_the_hand_stated_lines_and_marks[invisible-categories]"
+anchor = '''    if character == "\t" or unicodedata.category(character) not in _HIDDEN:'''
+mutant = '''    if True:'''
+
+[[mutant]]
+id = "m18-scan-cap-removed"
+predicate = "a listing reads at most the program's first 65,536 characters"
+kills = "tests/test_paste_in_checks_detail.py::test_e9b_scan_boundary_is_exact[65537-True]"
+anchor = '''_SCAN = 65_536'''
+mutant = '''_SCAN = 10**9'''
+
+[[mutant]]
+id = "m18-at-lines-not-first"
+predicate = "marked lines and their neighbours win the line cap"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
+anchor = '''    for number in (*sorted(marked), *near, *chosen):'''
+mutant = '''    for number in chosen:'''
+
+[[mutant]]
+id = "m18-byte-column-as-character"
+predicate = "a Span column counts UTF-8 bytes, so a mark after non-ASCII text lands on its own characters"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_listings_are_the_hand_stated_lines_and_marks[nul-byte-column]"
+anchor = '''        width += len(character.encode("utf-8", "surrogatepass"))'''
+mutant = '''        width += 1'''
+
+[[mutant]]
+id = "m18-integrity-drops-titles"
+predicate = "the integrity row quotes the label statements it reads"
+kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[ja-formula-label-pass]"
+anchor = '''    "integrity": ("data", "mark", "title", "xlabel", "ylabel"),'''
+mutant = '''    "integrity": ("data", "mark", "xlabel", "ylabel"),'''
+
+[[mutant]]
+id = "m18-stopped-dropped"
+predicate = "a failed row with a marked line says the check stopped there"
+kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
+anchor = '''        if stopped:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "m18-skip-row-shows-code"
+predicate = "a check that did not run quotes no code"
+kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
+anchor = '''    if state != "skip" and quoted is not None:'''
+mutant = '''    if quoted is not None:'''
+
+[[mutant]]
+id = "m18-pass-row-marks"
+predicate = "a passed row never marks code"
+kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
+anchor = '''            at = quoted.at if state == "fail" else ()'''
+mutant = '''            at = quoted.at'''
+
+[[mutant]]
+id = "m18-fragment-without-prefix"
+predicate = "each row links its own `#check-<id>` section"
+kills = "tests/test_paste_in_checks_detail.py::test_e4_each_row_links_its_reference_section[en]"
+anchor = '''    href = _code(f"{SPECIFICATION[language]}#check-{check}")'''
+mutant = '''    href = _code(f"{SPECIFICATION[language]}#{check}")'''
+
+[[mutant]]
+id = "m18-english-url-for-japanese"
+predicate = "a Japanese list links the Japanese reference"
+kills = "tests/test_paste_in_checks_detail.py::test_e4_each_row_links_its_reference_section[ja]"
+anchor = '''    href = _code(f"{SPECIFICATION[language]}#check-{check}")'''
+mutant = '''    href = _code(f"{SPECIFICATION[0]}#check-{check}")'''
+
+[[mutant]]
+id = "m18-row-open"
+predicate = "every row starts collapsed"
+kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-None-strict-full]"
+anchor = '''<li class="{state}"><details class="row"><summary>'''
+mutant = '''<li class="{state}"><details class="row" open><summary>'''
+
+[[mutant]]
+id = "m18-elided-off-by-one"
+predicate = "the elision note counts exactly the selected lines not shown"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
+anchor = '''        elided = ELIDED[language].format(n=len(chosen) - len(taken))'''
+mutant = '''        elided = ELIDED[language].format(n=len(chosen) - len(taken) + 1)'''
+
+[[mutant]]
+id = "m18-line-cap-raised"
+predicate = "a listing shows at most 60 lines"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_more_than_sixty_at_lines_are_taken_in_source_order[100]"
+anchor = '''_MAX_LINES = 60'''
+mutant = '''_MAX_LINES = 61'''
+
+[[mutant]]
+id = "m18-long-line-uncut"
+predicate = "a line longer than 400 characters is cut and ends in an ellipsis"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_long_line_marks_clip_before_the_ellipsis[1000]"
+anchor = '''    if len(line) > _LINE_CHARACTERS:
+        pieces.append("\N{HORIZONTAL ELLIPSIS}")'''
+mutant = '''    if False:
+        pieces.append("\N{HORIZONTAL ELLIPSIS}")'''
+
+[[mutant]]
+id = "m18-neighbours-dropped"
+predicate = "a marked line's two neighbours on each side win the line cap with it"
+kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
+anchor = '''    around = {m + d for m in marked for d in range(-_CONTEXT, _CONTEXT + 1)}'''
+mutant = '''    around = {m + d for m in marked for d in range(0, 1)}'''

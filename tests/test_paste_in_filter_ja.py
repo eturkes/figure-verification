@@ -91,6 +91,27 @@ _LANGUAGE_CASES = (
 )
 
 
+# M18 E8: each witness program's statement roles, hand-stated, so the oracle can expect the lines
+# every check row quotes.
+_TRACE_LINES: dict[str, tuple[tuple[str, tuple[int, ...]], ...]] = {
+    "dataset": (
+        ("import", (1,)),
+        ("import", (2,)),
+        ("source", (3,)),
+        ("mark", (4,)),
+        ("show", (5,)),
+    ),
+    "formula": (
+        ("import", (1,)),
+        ("import", (2,)),
+        ("data", (3,)),
+        ("data", (4,)),
+        ("mark", (5,)),
+        ("show", (6,)),
+    ),
+}
+
+
 def _witness(arm: str) -> tuple[str, Verified, list[StoredFile], tuple[str, ...]]:
     if arm == "dataset":
         source = _DATASET
@@ -217,6 +238,7 @@ def test_i6_differential_expects_the_language_from_its_own_rule(
         RpcOutcome(
             "returns", {"stdout": stdout_for_verified(verified, valid_png_uri()), "stderr": None}
         ),
+        trace_lines=_TRACE_LINES[arm],
     )
     module = _load_filter()
 

@@ -507,7 +507,9 @@ def test_d7_status_and_log_carry_no_untrusted_bytes(
     assert len(calls) == (0 if arm == 4 else 1)
     _assert_log(caplog, reason)
     assert normalized_events(events) == [_status(reason), embed_event(reason)]
-    surfaced = repr(events) + repr(_records(caplog))
+    surfaced = repr([event for event in events if event["type"] == "status"]) + repr(
+        _records(caplog)
+    )
     for sentinel in sentinels:
         assert sentinel not in surfaced
 

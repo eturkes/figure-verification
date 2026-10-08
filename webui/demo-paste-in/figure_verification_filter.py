@@ -3842,16 +3842,24 @@ _SOURCES["webui.paste_in.checks"] = r'''
 """The "Show checks" breakdown: every check a figure faces, as one self-contained HTML document.
 
 Data plus one pure renderer; `filter.py` sends the document as an Open WebUI message embed, which
-the chat renders in a sandboxed iframe and never sends to a model. Every text slot comes from the
-tables here or from `REASONS`, so no program, request, file or sandbox byte reaches the user.
+the chat renders in a sandboxed iframe and never sends to a model. Each row opens to what its check
+does, the program lines it read, why it failed and a link to its section of the reference. Every
+text slot comes from the tables here or from `REASONS`; the one exception is the program itself,
+quoted escaped inside a code listing with whatever it spells. Request text, file contents and
+sandbox output are never added from any other source.
 
 A check shows as passed only when it completed, so each reason maps to the EARLIEST check that can
 raise it: admission raises `column_not_literal` before projection could raise its own copy.
 """
 
 import html
+import itertools
+import re
+import unicodedata
+from dataclasses import dataclass
 from typing import Final, Literal
 
+from verifier.pysrc.position import Role, Span, Trace
 from verifier.pysrc.spec import Anchoring
 from webui.paste_in.reasons import REASONS, Reason
 
@@ -4102,6 +4110,134 @@ MARKS: Final[dict[_State, tuple[str, tuple[str, str]]]] = {
     "skip": ("\N{EN DASH}", UNRUN),
 }
 
+# check -> (EN, JA): what the check does, shown when its row is opened.
+EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
+    "program": (
+        "The model must send its chart program through the chart tool. The verifier checks the"
+        " last program sent in this reply.",
+        "モデルはグラフのプログラムをグラフ用のツールで送る必要があります。"
+        "検証器は、この返信で最後に送られたプログラムをチェックします。",
+    ),
+    "data": (
+        "The verifier needs data that you supplied. This is a CSV file attached to the chat, or"
+        " one formula and one interval in your request.",
+        "検証器には、あなたが用意したデータが必要です。"
+        "チャットに添付した CSV ファイル、または依頼文にある 1 つの数式と 1 つの区間です。",
+    ),
+    "readable": (
+        "The verifier reads the program as Python text before it examines it. It checks the size,"
+        " text encoding, line length, tokens, brackets and indentation, then parses the syntax.",
+        "検証器は、内容を調べる前にプログラムを Python のテキストとして読み取ります。"
+        "サイズ、文字コード、行の長さ、トークン、括弧、インデントを確認してから、構文を解析します。",
+    ),
+    "accepted": (
+        "The verifier accepts only a fixed set of Python statements, imports, function calls and"
+        " arguments. Anything outside that set stops the check, also when Python could run it.",
+        "検証器が受け入れるのは、決まった範囲の Python の文、import、関数呼び出し、引数だけです。"
+        "その範囲の外にあるものは、Python で実行できる場合でもチェックを止めます。",
+    ),
+    "chart": (
+        "The verifier reads which chart the program draws: one data source, one plot call, the"
+        " labels, and plt.show() at the end. Every statement must contribute to that chart.",
+        "検証器は、プログラムが描くグラフを読み取ります。"
+        "データの読み込み 1 つ、描画呼び出し 1 つ、ラベル、最後の plt.show() です。"
+        "すべての文がそのグラフに関係する必要があります。",
+    ),
+    "binding": (
+        "The verifier checks that the program uses your data: it reads your attached file, or it"
+        " plots the formula in your request. Column names in your request are compared with the"
+        " columns that the chart draws.",
+        "検証器は、プログラムがあなたのデータを使うことを確認します。"
+        "添付ファイルを読み込むこと、または依頼文の数式を描くことです。"
+        "依頼文にある列名は、グラフが描く列と比べます。",
+    ),
+    "recompute": (
+        "The verifier computes every plotted value again from your file or formula, with its own"
+        " code. Then it checks that each result is a finite number within the limits.",
+        "検証器は、描画するすべての値を、ファイルまたは数式から独自のコードで計算し直します。"
+        "その後、各結果が上限内の有限の数であることを確認します。",
+    ),
+    "integrity": (
+        "The verifier checks rules that keep the chart honest. Bars start at zero, there is one"
+        " set of axes with linear scales, and no row is left out. Categories do not repeat, and"
+        " line x values are in order. A label must not name another file column that the"
+        " verifier recognizes.",
+        "検証器は、グラフを正しく見せるための規則を確認します。"
+        "棒はゼロから始まり、軸は 1 組で目盛りは線形、行の欠落はありません。"
+        "カテゴリは重複せず、折れ線の x の値は順序どおりです。"
+        "ラベルは、検証器が認識できるファイルの列名のうち、グラフが描かない列名を挙げてはいけません。",
+    ),
+    "render": (
+        "Your browser runs the model's program, unchanged, in the Open WebUI sandbox. The run must"
+        " return one PNG image and the values that it drew.",
+        "ブラウザは、モデルのプログラムを変更せずに Open WebUI のサンドボックスで実行します。"
+        "実行結果として、PNG 画像 1 枚と描画した値を返す必要があります。",
+    ),
+    "match": (
+        "The verifier compares the values that the browser drew with the values that it computed."
+        " File values must be equal. Formula values must stay within the checked numerical"
+        " bounds.",
+        "検証器は、ブラウザが描画した値と、検証器が計算した値を比べます。"
+        "ファイルの値は完全に一致する必要があります。"
+        "数式の値は、定めた数値誤差の範囲内である必要があります。",
+    ),
+    "attach": (
+        "The chart image is stored with this reply. If storing fails, the verifier shows no image.",
+        "グラフの画像をこの返信と一緒に保存します。保存できない場合、検証器は画像を表示しません。",
+    ),
+}
+WHAT: Final = ("What this check does", "このチェックの内容")
+CODE: Final = ("Code checked", "チェックしたコード")
+WHY: Final = ("Why it failed", "不合格の理由")
+NOT_RUN: Final = (
+    "This check did not run, because an earlier check failed.",
+    "前のチェックが不合格だったため、このチェックは実施していません。",
+)
+STOPPED: Final = (
+    "The check stopped at the marked code.",
+    "印の付いたコードでチェックが止まりました。",
+)
+SPEC: Final = ("Read the full specification of this check", "このチェックの詳しい仕様を読む")
+ELIDED: Final = ("Lines not shown: {n}.", "表示していない行: {n} 行。")
+BEYOND: Final = (
+    "The program is too long to show in full.",
+    "プログラムが長すぎるため、すべては表示できません。",
+)
+# The python-mode reference on GitHub, one section per check (`#check-<id>`). A fixed link: the
+# instance may have no network, but the browser a user reads it in does (user ruling, M18).
+SPECIFICATION: Final = (
+    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
+    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
+)
+
+# Which program lines each check reads: every line, the statements of these roles, or none.
+# A check after projection reads the spec, not the source, so its lines are the statements that
+# spec came from: related code, marked only where the core's `at` points at a genuine location.
+CODE_ROLES: Final[dict[Check, tuple[Role, ...] | Literal["all"] | None]] = {
+    "program": "all",
+    "data": None,
+    "readable": "all",
+    "accepted": "all",
+    "chart": "all",
+    "binding": ("source", "data", "mark"),
+    "recompute": ("source", "data", "mark"),
+    "integrity": ("data", "mark", "title", "xlabel", "ylabel"),
+    "render": "all",
+    "match": ("mark",),
+    "attach": None,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Evidence:
+    """What the outlet holds about one reply's program: its text, where a refusal points, and the
+    role of each statement. Empty = no program reached the verifier."""
+
+    program: str | None = None
+    at: tuple[Span, ...] = ()
+    trace: Trace = ()
+
+
 # The frame cannot see Open WebUI's theme class, so every colour is a mid tone that reads on the
 # light and the dark theme alike; a `prefers-color-scheme` rule would pick the wrong extreme when
 # the theme and the OS disagree.
@@ -4109,16 +4245,31 @@ _STYLE = (
     "body{margin:0;color:#7d7d7d;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"
     '"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans",sans-serif}'
     "#r{padding:2px 0}"
-    "summary{cursor:pointer;width:max-content;user-select:none}"
-    "details[open] .show,details:not([open]) .hide{display:none}"
+    "#r>details>summary{cursor:pointer;width:max-content;user-select:none}"
+    "#r>details[open]>summary .show,#r>details:not([open])>summary .hide{display:none}"
     "ol{list-style:none;margin:6px 0 0;padding:0}"
-    "li{display:flex;gap:8px;padding:3px 0}"
+    "li{padding:3px 0}"
+    ".row>summary{display:flex;gap:8px;cursor:pointer;list-style:none}"
+    ".row>summary::before{content:'\\25B8';flex:none;width:.8em}"
+    ".row[open]>summary::before{content:'\\25BE'}"
     ".mark{flex:none;width:1.1em;text-align:center;font-weight:700}"
     ".pass .mark{color:#2a9354}"
     ".fail .mark,.cause{color:#d64541}"
     ".title{font-weight:500}"
-    ".covers,.unrun{font-size:12.5px}"
+    ".covers,.unrun,.more{font-size:12.5px}"
     ".skip{opacity:.7}"
+    ".more{margin:2px 0 8px 2.6em}"
+    ".more p{margin:2px 0}"
+    ".label{display:block;font-weight:600;margin-top:6px}"
+    ".listing{margin:4px 0;padding:6px 8px;border-radius:6px;background:rgba(125,125,125,.12);"
+    'font:12px/1.5 ui-monospace,Menlo,Consolas,"Noto Sans Mono CJK JP",monospace;'
+    "white-space:pre-wrap;overflow-wrap:anywhere}"
+    ".line,.gap{display:block}"
+    ".ln{display:inline-block;min-width:2.4em;padding-right:8px;text-align:right;opacity:.7;"
+    "user-select:none}"
+    ".at{background:rgba(214,69,65,.14)}"
+    "mark{background:rgba(214,69,65,.38);color:inherit;border-radius:2px}"
+    "a.spec{color:#3d8bd9}"
 )
 # Open WebUI sizes an embed only from the frame's own `iframe:height` message, since the sandbox
 # denies it access to the frame's document.
@@ -4134,15 +4285,195 @@ def _text(value: str) -> str:
     return html.escape(value, quote=True)
 
 
-def breakdown_html(reason: Reason | None, *, japanese: bool, anchoring: Anchoring) -> str:
+# A listing reads at most this much of the program, so a huge receipt costs bounded work; past it,
+# the row says the program is not shown in full.
+_SCAN = 65_536
+_MAX_LINES = 60
+_MAX_CHARACTERS = 3_000
+_LINE_CHARACTERS = 400
+_CONTEXT = 2
+_BREAK = re.compile(r"\r\n|\r|\n")
+_HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+# Open WebUI injects Alpine.js or Chart.js into an embed whose raw text holds `x-<directive>`,
+# `new Chart(` or `Chart.` (same-origin frames). Character references keep the program from
+# spelling one, or a resource reference (`src=`, `url(`, `@import`, `https:`) a static check could
+# mistake for a load; the browser shows the same characters.
+_TRIGGER_SAFE = str.maketrans(
+    {"-": "&#45;", ".": "&#46;", "(": "&#40;", ":": "&#58;", "=": "&#61;", "@": "&#64;"}
+)
+
+
+def _visible(character: str) -> str:
+    """A character that would draw nothing, or reorder the text around it, as a visible symbol."""
+    if character == "\t" or unicodedata.category(character) not in _HIDDEN:
+        return character
+    code = ord(character)
+    if code < 0x20:  # noqa: PLR2004 - the C0 controls map onto U+2400-U+241F
+        return chr(0x2400 + code)
+    return "\N{SYMBOL FOR DELETE}" if code == 0x7F else "\N{REPLACEMENT CHARACTER}"  # noqa: PLR2004
+
+
+def _code(value: str) -> str:
+    return _text("".join(map(_visible, value))).translate(_TRIGGER_SAFE)
+
+
+def _character(line: str, column: int) -> int:
+    """The character index at UTF-8 byte offset `column` of `line` (the `Span` convention)."""
+    width = 0
+    for index, character in enumerate(line):
+        if width >= column:
+            return index
+        width += len(character.encode("utf-8", "surrogatepass"))
+    return len(line)
+
+
+def _numbers(span: Span, count: int) -> range:
+    return range(max(span.line, 1), min(span.end_line, count) + 1)
+
+
+def _marked(lines: list[str], at: tuple[Span, ...]) -> dict[int, set[int]]:
+    """Line number -> the shown character indices the spans cover; a point covers none."""
+    marked: dict[int, set[int]] = {}
+    for span in at:
+        for number in _numbers(span, len(lines)):
+            line = lines[number - 1]
+            start = _character(line, span.column) if number == span.line else 0
+            end = _character(line, span.end_column) if number == span.end_line else len(line)
+            marked.setdefault(number, set()).update(range(start, min(end, _LINE_CHARACTERS)))
+    return marked
+
+
+def _line(number: int, line: str, marks: set[int] | None) -> str:
+    shown = line[:_LINE_CHARACTERS]
+    pieces: list[str] = []
+    for inside, run in itertools.groupby(
+        range(len(shown)), key=lambda index: index in (marks or ())
+    ):
+        indices = list(run)
+        text = _code(shown[indices[0] : indices[-1] + 1])
+        pieces.append(f"<mark>{text}</mark>" if inside else text)
+    if len(line) > _LINE_CHARACTERS:
+        pieces.append("\N{HORIZONTAL ELLIPSIS}")
+    kind = "line" if marks is None else "line at"
+    return (
+        f'<span class="{kind}"><span class="ln">{number}</span>'
+        f'<span class="src">{"".join(pieces)}</span></span>'
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Quoted:
+    """The program as the rows quote it: its scanned lines, whether the scan cut it, and where."""
+
+    lines: list[str]
+    cut: bool
+    at: tuple[Span, ...]
+    trace: Trace
+
+
+def _quoted(evidence: Evidence) -> _Quoted | None:
+    program = evidence.program
+    if program is None:
+        return None
+    return _Quoted(_BREAK.split(program[:_SCAN]), len(program) > _SCAN, evidence.at, evidence.trace)
+
+
+def _listing(
+    quoted: _Quoted, selected: set[int], at: tuple[Span, ...], language: int
+) -> tuple[str, bool]:
+    """The selected lines within the caps, refused spans marked; and whether a mark is shown."""
+    lines = quoted.lines
+    chosen = sorted(selected)
+    marked = {number: marks for number, marks in _marked(lines, at).items() if number in selected}
+    # A set, not a scan per marked line: a refusal can span thousands of lines (reviewer-2 K5-F1).
+    around = {m + d for m in marked for d in range(-_CONTEXT, _CONTEXT + 1)}
+    near = [n for n in chosen if n in around]
+    taken: set[int] = set()
+    cost = 0
+    for number in (*sorted(marked), *near, *chosen):
+        weight = min(len(lines[number - 1]), _LINE_CHARACTERS)
+        if number in taken or len(taken) == _MAX_LINES or cost + weight > _MAX_CHARACTERS:
+            continue
+        taken.add(number)
+        cost += weight
+    rows: list[str] = []
+    for number in sorted(taken):
+        if rows and number - 1 not in taken:
+            rows.append('<span class="gap">\N{VERTICAL ELLIPSIS}</span>')
+        rows.append(_line(number, lines[number - 1], marked.get(number)))
+    listing = f'<pre class="listing">{"".join(rows)}</pre>'
+    if len(chosen) > len(taken):
+        elided = ELIDED[language].format(n=len(chosen) - len(taken))
+        listing += f'<p class="elided">{_text(elided)}</p>'
+    if quoted.cut:
+        listing += f'<p class="beyond">{_text(BEYOND[language])}</p>'
+    return listing, any(number in marked for number in taken)
+
+
+def _selected(check: Check, quoted: _Quoted, *, failing: bool) -> set[int]:
+    roles = CODE_ROLES[check]
+    count = len(quoted.lines)
+    if roles is None:
+        return set()
+    if roles == "all":
+        numbers = set(range(1, count + 1))
+    else:
+        numbers = {
+            n for step in quoted.trace if step.role in roles for n in _numbers(step.span, count)
+        }
+    if failing:
+        numbers.update(n for span in quoted.at for n in _numbers(span, count))
+    return numbers
+
+
+def _section(kind: str, label: str, body: str) -> str:
+    return f'<div class="{kind}"><span class="label">{_text(label)}</span>{body}</div>'
+
+
+def _more(
+    check: Check, state: _State, reason: Reason | None, language: int, quoted: _Quoted | None
+) -> str:
+    """The opened row: what the check does, whether it ran, the code it read, why, the link."""
+    sections = [_section("what", WHAT[language], f"<p>{_text(EXPLAIN[check][language])}</p>")]
+    if state == "skip":
+        sections.append(f'<div class="unrun-note"><p>{_text(NOT_RUN[language])}</p></div>')
+    stopped = False
+    if state != "skip" and quoted is not None:
+        selected = _selected(check, quoted, failing=state == "fail")
+        if selected:
+            at = quoted.at if state == "fail" else ()
+            listing, stopped = _listing(quoted, selected, at, language)
+            sections.append(_section("code", CODE[language], listing))
+    if reason is not None and state == "fail":
+        why = f"<p>{_text(f'{REASONS[reason][language]} ({reason})')}</p>"
+        if stopped:
+            why += f'<p class="stopped">{_text(STOPPED[language])}</p>'
+        sections.append(_section("why", WHY[language], why))
+    href = _code(f"{SPECIFICATION[language]}#check-{check}")
+    sections.append(
+        f'<p class="link"><a class="spec" href="{href}" target="_blank"'
+        f' rel="noopener noreferrer">{_text(SPEC[language])}</a></p>'
+    )
+    return f'<div class="more">{"".join(sections)}</div>'
+
+
+def breakdown_html(
+    reason: Reason | None,
+    *,
+    japanese: bool,
+    anchoring: Anchoring,
+    evidence: Evidence = Evidence(),  # noqa: B008 - frozen, so one shared default is safe
+) -> str:
     """Render every check for one reply: passed, the failing one with its cause, the unrun rest.
 
     `reason` is the failure reason, or `None` for a published figure, whose checks all passed;
-    `anchoring` picks the binding row's text, so each artifact describes the rule it runs.
+    `anchoring` picks the binding row's text, so each artifact describes the rule it runs;
+    `evidence` = the program + its positions, quoted in each row that read it.
     """
     language = 1 if japanese else 0
     failing = len(CHECKS) if reason is None else CHECKS.index(CHECK_OF[reason])
     cause = "" if reason is None else REASONS[reason][language]
+    quoted = _quoted(evidence)
     rows: list[str] = []
     for index, check in enumerate(CHECKS):
         state: _State = "pass" if index < failing else "fail" if index == failing else "skip"
@@ -4154,9 +4485,10 @@ def breakdown_html(reason: Reason | None, *, japanese: bool, anchoring: Anchorin
         if state == "fail":
             detail += f'<div class="cause">{_text(cause)}</div>'
         rows.append(
-            f'<li class="{state}"><span class="mark" role="img"'
+            f'<li class="{state}"><details class="row"><summary><span class="mark" role="img"'
             f' aria-label="{_text(labels[language])}">{glyph}</span>'
-            f'<div><div class="title">{_text(title)}{unrun}</div>{detail}</div></li>'
+            f'<div><div class="title">{_text(title)}{unrun}</div>{detail}</div></summary>'
+            f"{_more(check, state, reason, language, quoted)}</details></li>"
         )
     return (
         f'<!DOCTYPE html><html lang="{"ja" if japanese else "en"}"><head><meta charset="utf-8">'
@@ -6399,9 +6731,9 @@ from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from verifier.pysrc.spec import Anchoring
-from verifier.pysrc.verify import Refused, Verified
+from verifier.pysrc.verify import Refused, Verdict, Verified
 from webui.paste_in.capture_template import PRODUCTION_TEMPLATE
-from webui.paste_in.checks import breakdown_html
+from webui.paste_in.checks import Evidence, breakdown_html
 from webui.paste_in.observe import (
     OBSERVATION_TAG,
     OBSERVER_SOURCE,
@@ -6637,6 +6969,7 @@ async def _diagnose(
     reason: Reason | None,
     metadata: dict[str, object] | None,
     anchoring: Anchoring,
+    evidence: Evidence,
 ) -> None:
     """Show the user why a figure failed, then every check it faced (`reason` None = published).
 
@@ -6656,7 +6989,7 @@ async def _diagnose(
         status: dict[str, object] = {"type": "status", "data": {"description": text, "done": True}}
         await _emit_bounded(emit, status, deadline)
     try:
-        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)
+        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)
     except Exception:
         return
     # `replace` keeps exactly this document on the message; Open WebUI otherwise appends.
@@ -6664,22 +6997,34 @@ async def _diagnose(
     await _emit_bounded(emit, embed, deadline)
 
 
-async def _fail(
+async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
     emit: _Emit | None,
     anchoring: Anchoring,
+    *,
+    evidence: Evidence,
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
-    Neither surface carries sandbox output, program bytes or request text, because an error
-    message can quote the user's clinical data.
+    Neither the log nor the status line carries sandbox output, program bytes or request text,
+    because an error message can quote the user's clinical data; the check list quotes the
+    program alone, inside the user's own chat.
     """
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
-    await _diagnose(emit, reason, metadata, anchoring)
+    await _diagnose(emit, reason, metadata, anchoring, evidence)
     return _rewrite(body, FAIL_TEXT)
+
+
+def _evidence(program: str, verdict: Verdict | None) -> Evidence:
+    """The program with what the core found in it: where a refusal points, each statement's role."""
+    if isinstance(verdict, Refused):
+        return Evidence(program, verdict.at, verdict.trace)
+    if isinstance(verdict, Verified):
+        return Evidence(program, trace=verdict.trace)
+    return Evidence(program)
 
 
 class Filter:
@@ -6740,13 +7085,19 @@ class Filter:
     ) -> dict[str, object]:
         """Re-derive, render once, publish only when verification and rendering both succeed."""
 
+        # What the check list may quote, widened as the outlet learns more; `fail` reads it late.
+        evidence = Evidence()
+
         async def fail(reason: Reason) -> dict[str, object]:
-            return await _fail(body, reason, __metadata__, __event_emitter__, self._ANCHORING)
+            return await _fail(
+                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+            )
 
         receipt = read_receipt(__request__)
         user_id = (__user__ or {}).get("id")
         if receipt is None:
             return await fail("no_tool_call")
+        evidence = Evidence(receipt.program)
         if not isinstance(user_id, str):
             return await fail("no_user")
 
@@ -6754,6 +7105,7 @@ class Filter:
         verdict, consumed = first_verdict(
             receipt.program, attachments, receipt.request_text, self._ANCHORING, receipt.aliases
         )
+        evidence = _evidence(receipt.program, verdict)
         if isinstance(verdict, Refused):
             return await fail(verdict.code)
         if not isinstance(verdict, Verified):
@@ -6808,7 +7160,7 @@ class Filter:
             )
         except Exception:
             return await fail("publish_failed")
-        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)
+        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
         certificate = verdict.certificate
         japanese = _japanese(__metadata__)
         interpretation = certificate.interpretation_ja if japanese else certificate.interpretation

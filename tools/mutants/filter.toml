@@ -270,9 +270,13 @@ mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
 id = "d5-receipt-decides-language"
 predicate = "the metadata request text, never the receipt, picks the language"
 kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[True-metadata11-1]"
-anchor = '''            return await _fail(body, reason, __metadata__, __event_emitter__, self._ANCHORING)'''
+anchor = '''            return await _fail(
+                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+            )'''
 mutant = '''            text = {"user_message": {"content": receipt.request_text}} if receipt else __metadata__
-            return await _fail(body, reason, text, __event_emitter__, self._ANCHORING)'''
+            return await _fail(
+                body, reason, text, __event_emitter__, self._ANCHORING, evidence=evidence
+            )'''
 
 [[mutant]]
 id = "d3-traceback-is-loader"
@@ -385,7 +389,7 @@ mutant = '''    task = asyncio.ensure_future(emit(event))'''
 id = "m16-embed-skipped-on-pass"
 predicate = "a PASS reply carries the check list too"
 kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
-anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING)'''
+anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)'''
 mutant = '''        pass'''
 
 [[mutant]]
@@ -396,7 +400,7 @@ anchor = '''        try:
             await __event_emitter__(
                 {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
             )'''
-mutant = '''        await _diagnose(__event_emitter__, None, __metadata__)
+mutant = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
         try:
             await __event_emitter__(
                 {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
@@ -408,7 +412,7 @@ predicate = "a FAIL shows its status line first, then the check list"
 kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
 anchor = '''    if reason is not None:
         english, japanese_text = REASONS[reason]'''
-mutant = '''    early = {"type": "embeds", "data": {"embeds": [breakdown_html(reason, japanese=japanese)], "replace": True}}
+mutant = '''    early = {"type": "embeds", "data": {"embeds": [breakdown_html(reason, japanese=japanese, anchoring=anchoring)], "replace": True}}
     await _emit_bounded(emit, early, deadline)
     if reason is not None:
         english, japanese_text = REASONS[reason]'''
@@ -441,10 +445,10 @@ id = "m16-renderer-unguarded"
 predicate = "a raising renderer never costs the verdict or the status line"
 kills = "tests/test_paste_in_filter_checks.py::test_c8_renderer_exception_keeps_status_files_log_and_verdict[01-no-receipt]"
 anchor = '''    try:
-        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)
+        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)
     except Exception:
         return'''
-mutant = '''    document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
+mutant = '''    document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
 
 [[mutant]]
 id = "m16-embed-emit-unguarded"
@@ -471,15 +475,15 @@ mutant = '''            or __metadata__ is None'''
 id = "m16-pass-document-for-fail"
 predicate = "a FAIL list marks its failing check"
 kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
-mutant = '''        document = breakdown_html(None, japanese=japanese, anchoring=anchoring)'''
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
+mutant = '''        document = breakdown_html(None, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
 
 [[mutant]]
 id = "m16-japanese-not-passed"
 predicate = "a Japanese request gets a Japanese list"
 kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[ja-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
-mutant = '''        document = breakdown_html(reason, japanese=False, anchoring=anchoring)'''
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
+mutant = '''        document = breakdown_html(reason, japanese=False, anchoring=anchoring, evidence=evidence)'''
 
 [[mutant]]
 id = "m16-stale-remainder"
@@ -516,8 +520,8 @@ mutant = '''            receipt.program, attachments, receipt.request_text, "str
 id = "q37-check-list-rule-fixed"
 predicate = "the check list describes the class's anchoring rule"
 kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[demo]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring)'''
-mutant = '''        document = breakdown_html(reason, japanese=japanese, anchoring="strict")'''
+anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
+mutant = '''        document = breakdown_html(reason, japanese=japanese, anchoring="strict", evidence=evidence)'''
 
 [[mutant]]
 id = "q37-production-rule-loosened"
@@ -681,3 +685,58 @@ predicate = "the interpretation follows the verdict line after one blank line"
 kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[katakana-formula]"
 anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
 mutant = '''        return _rewrite(body, f"{PASS_TEXT}\n{interpretation}" if japanese else f"{PASS_TEXT}\n\n{interpretation}")'''
+
+# --- M18.2: the evidence each outlet arm hands the check list ------------------------------------
+
+[[mutant]]
+id = "m18-refused-at-dropped"
+predicate = "a refusal's position reaches the check list"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-04-call-refusal]"
+anchor = '''        return Evidence(program, verdict.at, verdict.trace)'''
+mutant = '''        return Evidence(program, (), verdict.trace)'''
+
+[[mutant]]
+id = "m18-refused-trace-dropped"
+predicate = "a refusal's statement trace reaches the check list"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-04-call-refusal]"
+anchor = '''        return Evidence(program, verdict.at, verdict.trace)'''
+mutant = '''        return Evidence(program, verdict.at)'''
+
+[[mutant]]
+id = "m18-verified-trace-dropped"
+predicate = "a verified figure's statement trace reaches the check list"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-pass]"
+anchor = '''        return Evidence(program, trace=verdict.trace)'''
+mutant = '''        return Evidence(program)'''
+
+[[mutant]]
+id = "m18-no-target-drops-program"
+predicate = "a reply with no target still quotes the program it received"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-03-no-target]"
+anchor = '''        return Evidence(program, trace=verdict.trace)
+    return Evidence(program)'''
+mutant = '''        return Evidence(program, trace=verdict.trace)
+    return Evidence()'''
+
+[[mutant]]
+id = "m18-no-user-drops-program"
+predicate = "a reply with no user still quotes the program it received"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-02-no-user]"
+anchor = '''        evidence = Evidence(receipt.program)'''
+mutant = '''        evidence = Evidence()'''
+
+[[mutant]]
+id = "m18-no-call-invents-program"
+predicate = "a reply with no tool call quotes no program"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-01-no-receipt]"
+anchor = '''        evidence = Evidence()
+'''
+mutant = '''        evidence = Evidence("PLANTED")
+'''
+
+[[mutant]]
+id = "m18-pass-evidence-dropped"
+predicate = "a PASS check list quotes the program"
+kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-pass]"
+anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)'''
+mutant = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, Evidence())'''

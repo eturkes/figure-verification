@@ -304,16 +304,21 @@ def _assert_disclosure_style(document: _Node) -> None:
     assert closed_hide_hidden, "closed details must hide .hide"
 
 
-def _assert_rows(
+def _assert_rows(  # noqa: PLR0915 - preserve every document-shape conjunct
     document: _Node, reason: Reason | None, *, japanese: bool, anchoring: Anchoring
 ) -> None:
     module = _checks()
     language = int(japanese)
     html = _one(document.nodes(tag="html"))
     assert html.attrs.get("lang") == ("ja" if japanese else "en")
-    details = _one(document.nodes(tag="details"))
+    details = _one(
+        [node for node in document.nodes(tag="details") if node.attrs.get("class") != "row"]
+    )
+    assert len(document.nodes(tag="details")) == 12
     assert "open" not in details.attrs
-    summary = _one(details.nodes(tag="summary"))
+    summary = _one(
+        [child for child in details.children if isinstance(child, _Node) and child.tag == "summary"]
+    )
     summary_nodes = [child for child in summary.children if isinstance(child, _Node)]
     assert [(node.tag, node.attrs.get("class")) for node in summary_nodes] == [
         ("span", "show"),
@@ -337,6 +342,9 @@ def _assert_rows(
             "pass" if index < failure_index else "fail" if index == failure_index else "skip"
         )
         assert row.attrs.get("class") == state, (reason, check)
+        disclosure = _one(row.nodes(tag="details"))
+        assert disclosure.attrs == {"class": "row"}
+        assert len(disclosure.nodes(tag="summary")) == 1
         slots = [
             node.attrs.get("class")
             for node in row.nodes()
@@ -629,10 +637,12 @@ def test_c5_document_is_self_contained_and_inert(
     """C5: all 280 documents; the fixed reporter is the only script."""
     module = _checks()
     source = module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
-    assert len(source.encode("utf-8")) <= 16384
-    assert not re.search(
-        r"\b(?:src|href)\s*=|url\s*\(|@import|https?:", source, flags=re.IGNORECASE
-    )
+    assert len(source.encode("utf-8")) <= 262144
+    assert not re.search(r"\bsrc\s*=|url\s*\(|@import|https?:", source, flags=re.IGNORECASE)
+    root = _Document(source).root
+    for node in root.nodes():
+        if "href" in node.attrs:
+            assert node.tag == "a" and node.attrs.get("class") == "spec"
     triggers = (
         "x-data",
         "x-init",

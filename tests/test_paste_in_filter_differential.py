@@ -27,17 +27,20 @@ from observe_support import stdout_for_verified
 from oracle_filter import (
     FAIL_TEXT,
     PASS_TEXT,
+    DetailRow,
     Expected,
     FileRow,
     ReceiptValue,
     RpcFacts,
     RpcOutcome,
     Scenario,
+    expected_details,
     oracle_outlet,
     request_is_japanese,
     status_event,
 )
 from paste_in_support import REPO_ROOT, StoredFile, fake_open_webui
+from test_paste_in_checks_detail_support import listing, rows
 from verifier.pysrc import DatasetTarget, FormulaTarget, Verified, verify_python_source
 from verifier.pysrc.request import formula_target
 
@@ -108,6 +111,13 @@ def _dataset(filename: str = "a.csv", *, rpc: RpcOutcome | None = None) -> Scena
         _assistant(),
         {"session_id": "session-1"},
         rpc if rpc is not None else _reply(stdout_for_verified(_dataset_verdict(filename), _PNG)),
+        trace_lines=(
+            ("import", (1,)),
+            ("import", (2,)),
+            ("source", (3,)),
+            ("mark", (4,)),
+            ("show", (5,)),
+        ),
     )
 
 
@@ -119,6 +129,13 @@ def _formula(*, rpc: RpcOutcome | None = None) -> Scenario:
         _assistant(),
         {"session_id": "session-2"},
         rpc if rpc is not None else _reply(stdout_for_verified(_formula_verdict(), _PNG)),
+        trace_lines=(
+            ("import", (1,)),
+            ("import", (2,)),
+            ("data", (3,)),
+            ("mark", (4,)),
+            ("show", (5,)),
+        ),
     )
 
 
@@ -150,6 +167,11 @@ def _font_scenario(kind: str, *, label: str = "年") -> Scenario:
         labels=labels,
         rpc=_reply(stdout_for_verified(verdict, _PNG)),
         font_bytes=None if kind == "unavailable" else scenario.font_bytes,
+        trace_lines=(
+            (*scenario.trace_lines[:-1], ("title", (5,)), ("show", (6,)))
+            if labels
+            else scenario.trace_lines
+        ),
     )
 
 
@@ -299,7 +321,9 @@ def _anchors() -> tuple[tuple[str, Scenario, bool, int, int], ...]:
         ),
         (
             "refused-program",
-            replace(dataset, receipt=ReceiptValue(_FAILING_PROGRAM, ("file-a",), None)),
+            replace(
+                dataset, receipt=ReceiptValue(_FAILING_PROGRAM, ("file-a",), None), at_lines=(1,)
+            ),
             False,
             0,
             0,
@@ -397,7 +421,9 @@ def _cause_anchors() -> tuple[tuple[str, Scenario, str], ...]:
         ("no-target", replace(dataset, stored=()), "no_target"),
         (
             "lone-csv-mismatch",
-            replace(dataset, receipt=ReceiptValue(_program("b.csv"), ("file-a",), None)),
+            replace(
+                dataset, receipt=ReceiptValue(_program("b.csv"), ("file-a",), None), at_lines=(3,)
+            ),
             "target_mismatch",
         ),
         ("no-metadata", replace(dataset, metadata=None), "no_browser"),
@@ -604,7 +630,7 @@ def _rpc_facts(calls: list[dict[str, object]], scenario: Scenario) -> RpcFacts:
     )
 
 
-def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conjunct
+def _translate_outlet(  # noqa: PLR0912, PLR0915 - preserve every publication-shape conjunct
     scenario: Scenario, module: ModuleType, root: Path, patch: pytest.MonkeyPatch
 ) -> Expected:
     """Drive the real outlet through strict fakes; reject every effect outside F2-F6."""
@@ -695,6 +721,21 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
     files_events: list[dict[str, object]] = []
     status_events: list[dict[str, object]] = []
     embed_events: list[dict[str, object]] = []
+    details: list[DetailRow] = []
+    for event in events:
+        if event["type"] == "embeds":
+            data = cast(dict[str, object], event["data"])
+            source = cast(list[str], data["embeds"])[0]
+            for check, row in rows(source).items():
+                lines = listing(row)
+                details.append(
+                    DetailRow(
+                        check,
+                        tuple(item[0] for item in lines),
+                        tuple(item[0] for item in lines if item[1]),
+                        len(row.nodes(tag="a", cls="spec")) == 1,
+                    )
+                )
     mapped_events = [normalize_event(event) for event in events]
     for event in mapped_events:
         if event.get("type") == "status":
@@ -727,6 +768,7 @@ def _translate_outlet(  # noqa: PLR0915 - preserve every publication-shape conju
         _rpc_facts(calls, scenario),
         tuple(status_events),
         tuple(embed_events),
+        tuple(details),
     )
 
 
@@ -896,3 +938,70 @@ def test_f6_translation_exposes_absent_and_unexpected_font() -> None:
             payloads += (scenario.font_bytes,)
         _program_text, observed_font = _b64_program(_payload_source(*payloads), scenario)
         assert observed_font != expected_font
+
+
+@pytest.mark.parametrize(
+    "arm", ["dataset", "formula", "refused", "binding", "no-target", "no-receipt"]
+)
+def test_e8_oracle_detail_expectations_are_hand_stated(arm: str) -> None:
+    scenario = _formula() if arm == "formula" else _dataset()
+    reason = None
+    if arm == "refused":
+        scenario = replace(
+            scenario, receipt=ReceiptValue(_FAILING_PROGRAM, ("file-a",), None), at_lines=(1,)
+        )
+        reason = "call_target_not_admitted"
+    elif arm == "binding":
+        scenario = replace(
+            scenario, receipt=ReceiptValue(_program("b.csv"), ("file-a",), None), at_lines=(3,)
+        )
+        reason = "target_mismatch"
+    elif arm == "no-target":
+        scenario = replace(scenario, stored=())
+        reason = "no_target"
+    elif arm == "no-receipt":
+        scenario = replace(scenario, receipt=None)
+        reason = "no_tool_call"
+    all_lines = (1, 2) if arm == "refused" else (1, 2, 3, 4, 5, 6)
+    expected = {
+        "dataset": (
+            all_lines,
+            (),
+            all_lines,
+            all_lines,
+            all_lines,
+            (3, 4),
+            (3, 4),
+            (4,),
+            all_lines,
+            (4,),
+            (),
+        ),
+        "formula": (
+            all_lines,
+            (),
+            all_lines,
+            all_lines,
+            all_lines,
+            (3, 4),
+            (3, 4),
+            (3, 4),
+            all_lines,
+            (4,),
+            (),
+        ),
+        "refused": (all_lines, (), all_lines, all_lines, (), (), (), (), (), (), ()),
+        "binding": (all_lines, (), all_lines, all_lines, all_lines, (3, 4), (), (), (), (), ()),
+        "no-target": (all_lines, (), (), (), (), (), (), (), (), (), ()),
+        "no-receipt": ((), (), (), (), (), (), (), (), (), (), ()),
+    }
+    details = expected_details(scenario, reason)
+    assert tuple(row.lines for row in details) == expected[arm]
+    assert tuple(row.at for row in details) == (
+        ((), (), (), (1,), (), (), (), (), (), (), ())
+        if arm == "refused"
+        else ((), (), (), (), (), (3,), (), (), (), (), ())
+        if arm == "binding"
+        else ((),) * 11
+    )
+    assert all(row.linked for row in details)
