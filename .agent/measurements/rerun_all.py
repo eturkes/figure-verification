@@ -58,6 +58,7 @@ IDS = (
     "I1",
     "I2",
     "I3",
+    "C1",
 )
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
@@ -74,6 +75,7 @@ BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
 BUNDLE_PAIRS = {
     "I1": ("i1_census.py", "i1_pyodide.mjs", "i1-0283.json"),
     "I3": ("i3_export.py", "i3_pyodide.mjs", "i3-0283.json"),
+    "C1": ("c1_export.py", "c1_pyodide.mjs", "c1-0283.json"),
 }
 M17_ARMS = {
     "ja-simple": "sales.csv",

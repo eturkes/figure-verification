@@ -389,6 +389,47 @@ table.plot(kind="bar")
 '''
 
 [[case]]
+id = "stacked-bars-truncated"
+expect = "zero_not_in_limits"
+site = 5
+csv = "sales.csv"
+request = "Revenue per month for each region, stacked"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot(kind="bar", stacked=True)
+plt.ylim(15000, 30000)
+'''
+
+[[case]]
+id = "grouped-bars-truncated"
+expect = "zero_not_in_limits"
+site = 5
+csv = "sales.csv"
+request = "Revenue per month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot(kind="bar")
+plt.ylim(8000, 16000)
+'''
+
+[[case]]
+id = "second-panel-truncated"
+expect = "zero_not_in_limits"
+site = 5
+request = "Bars a 3 and b 5 in two panels, 1 to 9"
+program = '''
+import matplotlib.pyplot as plt
+fig, (left, right) = plt.subplots(1, 2)
+left.bar(["a", "b"], [3, 5])
+right.bar(["a", "b"], [3, 5])
+right.set_ylim(2, 6)
+'''
+
+[[case]]
 id = "unordered-line"
 expect = "x_not_ordered"
 site = 2

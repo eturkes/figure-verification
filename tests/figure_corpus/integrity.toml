@@ -54,10 +54,11 @@ id = "image-not-figure"
 expect = "no_figure"
 request = "Plot 1, 4, 9"
 program = '''
+import io
 from PIL import Image, ImageDraw
 image = Image.new("RGB", (60, 40), "white")
 ImageDraw.Draw(image).line([(0, 40), (30, 20), (60, 0)], fill="black")
-image.save("/tmp/chart.png")
+image.save(io.BytesIO(), format="PNG")
 '''
 
 [[case]]
@@ -236,6 +237,18 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 plt.plot([1, 2], [1, 2])
 plt.gca().add_patch(patches.Rectangle((1, 1), 0.5, 0.5))
+'''
+
+[[case]]
+id = "user-line-collection"
+expect = "artist_not_judged"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+plt.plot([1, 2])
+plt.gca().add_collection(LineCollection([[(0, 1), (1, 2)]]))
 '''
 
 [[case]]

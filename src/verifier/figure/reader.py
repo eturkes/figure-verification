@@ -24,6 +24,7 @@ import inspect
 import io
 import json
 import math
+import re
 import sys
 import warnings
 from collections.abc import Callable, Iterable
@@ -73,7 +74,9 @@ _AXIS_CALLS = {
     "set_major_locator": "ticks",
     "set_inverted": "invert",
 }
-_GLYPH = "missing from font"
+# A missing glyph's warning: "Glyph <n> (<c>) missing from current font." (matplotlib 3.8, the
+# sandbox) or "Glyph <n> (<c>) missing from font(s) <names>." (3.9, the gate host).
+_GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)
 _DATE_MODULES = ("matplotlib.dates", "pandas.")
 _MATRIX = 2  # a facecolor array is rows of RGBA
 
@@ -111,7 +114,7 @@ class _Run:
             except Exception:  # a figure the program left undrawable
                 self.error = self.error or {"kind": "draw", "name": "draw", "line": None}
                 continue
-            self.glyphs += sum(_GLYPH in str(item.message) for item in caught)
+            self.glyphs += sum(_GLYPH.match(str(item.message)) is not None for item in caught)
             if not self.too_large:
                 try:
                     self.figures.append(_figure(figure, self))
@@ -907,7 +910,7 @@ def run(source: str, font: str | None = None) -> str:
                 except BaseException as exc:  # every outcome of the program is a fact to report
                     current.error = _error(exc, "exception")
             current.capture()
-            current.glyphs += sum(_GLYPH in str(item.message) for item in caught)
+            current.glyphs += sum(_GLYPH.match(str(item.message)) is not None for item in caught)
     finally:
         holder.run = None
     return _render(current)

@@ -80,7 +80,11 @@ keyed series (seed 19, 10,000 trials per size). `I3` (M19.2) runs the same 52 pr
 reader on the host and through the production `wrapper_code` in the installed bundle, one runtime
 in order (the reader's holder reused across replies), and publishes, per program, the description
 fields that differ: `boxplot` labels, `reference` span shape (`Rectangle` vs `Polygon`), `subplots`
-positions after `tight_layout`.
+positions after `tight_layout`. `C1` (M19.6) runs every rule-corpus case (`tests/figure_corpus/`)
+through the production `wrapper_code` in the installed bundle (matplotlib 3.8.4, one runtime, no
+font, the CSVs under `/mnt/uploads`), judges each bundle description on the host with the case's
+own Sources, and publishes the cases whose bundle verdict misses the case's expectation or differs
+from the host verdict (its first run found the 3.8 glyph-warning wording the reader missed).
 
 The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
 x column, y column and reduction; six tasks also require a separate city series or city color, which
@@ -141,6 +145,7 @@ and pandas versions for the selected build.
 | I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-0283.json` | host matplotlib 3.9.4 vs installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
 | I2 | `i2_ambiguity.py` | none | host only |
 | I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-0283.json` | host reader (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 |
+| C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-0283.json` | rule corpus: host judge (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
 | A1 | `a1_anchor.py` | none | host only |
 | A2 | `a2_labels.py` | none | host only |
 | A3 | `a3_short_names.py` | none | host only |

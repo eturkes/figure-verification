@@ -91,7 +91,7 @@ mutant = '''    if kind == "PathCollection":
 id = "m19-glyph-count"
 predicate = "a missing-glyph warning counts"
 kills = "tests/test_figure_reader.py::test_p4_glyphs_count_missing_characters"
-anchor = '''            self.glyphs += sum(_GLYPH in str(item.message) for item in caught)'''
+anchor = '''            self.glyphs += sum(_GLYPH.match(str(item.message)) is not None for item in caught)'''
 mutant = '''            self.glyphs += 0'''
 
 [[mutant]]
@@ -200,3 +200,10 @@ predicate = "the reader records each wedge's drawn label Text"
 kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
 anchor = '''                "texts": list(result[1]),'''
 mutant = '''                "texts": [],'''
+
+[[mutant]]
+id = "m19-glyph-host-wording-only"
+predicate = "a missing glyph counts in matplotlib 3.8's wording (the sandbox), not only 3.9's"
+kills = "tests/test_figure_reader.py::test_m19_6_a_missing_glyph_counts_in_either_matplotlib"
+anchor = '''_GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)'''
+mutant = '''_GLYPH = re.compile(r"\AGlyph \d+ .* missing from font", re.DOTALL)'''

@@ -477,6 +477,45 @@ def i3():
     }
 
 
+def c1():
+    """Judge each bundle description with its case's Sources; report every verdict that differs
+    from the case's expectation or from the host verdict."""
+    sys.path[:0] = [str(ROOT.parents[1] / "src"), str(ROOT.parents[1])]
+    from verifier.figure.description import parse_description  # noqa: PLC0415
+    from verifier.figure.judge import Passed, Sources, judge  # noqa: PLC0415
+
+    host, sandbox = load("c1-host.json"), load("c1-0283.json")["results"]
+    corpus = ROOT.parents[1] / "tests" / "figure_corpus"
+    data = ROOT.parents[1] / "data"
+    faults, verdicts = [], {}
+    for name in sorted(host):
+        case, run = host[name], sandbox[name]
+        described = parse_description(run["description"] or "")
+        if run["error"] or run["stderr"] or described is None:
+            faults.append(name)
+            continue
+        files = ()
+        if case["csv"] is not None:
+            path = data / case["csv"]
+            files = (
+                (case["csv"], (path if path.is_file() else corpus / case["csv"]).read_bytes()),
+            )
+        outcome = judge(described, Sources(files, case["request"], case["anchoring"]))
+        verdicts[name] = "pass" if isinstance(outcome, Passed) else outcome.reason
+    return {
+        "cases": len(host),
+        "same_cases": sorted(host) == sorted(sandbox),
+        "sandbox_faults": faults,
+        "host_misses": {
+            n: [c["expect"], c["verdict"]] for n, c in host.items() if c["verdict"] != c["expect"]
+        },
+        "bundle_misses": {
+            n: [host[n]["expect"], v] for n, v in verdicts.items() if v != host[n]["expect"]
+        },
+        "host_bundle_differ": sorted(n for n, v in verdicts.items() if v != host[n]["verdict"]),
+    }
+
+
 PROJECTORS = {
     "S1": lambda: unary(load("all-data/S1.log")),
     "S2": s2,
@@ -504,6 +543,7 @@ PROJECTORS = {
     "I1": i1,
     "I2": i2,
     "I3": i3,
+    "C1": c1,
 }
 
 if __name__ == "__main__":

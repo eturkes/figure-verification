@@ -773,3 +773,20 @@ def test_proxy_handles_drawn_elsewhere_carry_their_own_colour() -> None:
         ("b", None, (0.0, 0.0, 1.0, 1.0)),
         ("e", None, None),
     ]
+
+
+@pytest.mark.parametrize(
+    ("message", "counted"),
+    [
+        # matplotlib 3.8.4 (the Pyodide sandbox), measured by the C1 bundle leg (M19.6).
+        ("Glyph 22770 (\\N{CJK UNIFIED IDEOGRAPH-58F2}) missing from current font.", True),
+        # matplotlib 3.9.4 (the gate host).
+        ("Glyph 22770 (\\N{CJK UNIFIED IDEOGRAPH-58F2}) missing from font(s) DejaVu Sans.", True),
+        ("Glyph missing from current font.", False),
+        ("Font family 'x' not found.", False),
+    ],
+)
+def test_m19_6_a_missing_glyph_counts_in_either_matplotlib(message: str, *, counted: bool) -> None:
+    """The sandbox's matplotlib words the warning differently from the host's; both count."""
+    pattern = vars(reader)["_GLYPH"]
+    assert (pattern.match(message) is not None) is counted
