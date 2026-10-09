@@ -53,7 +53,11 @@ what the verifier does not check.
   message. The three misleading prompts showed the failure message with the expected reason and no
   image. One recorded run of each, in headless Chromium 151; the records are in
   `.agent/measurements/m19u5/`.
-- **Real model.** No run with the real model has recorded the new checks yet.
+- **Real model.** The demo model ran each launcher prompt 5 times. The host was an NVIDIA MX150
+  with fp16 Qwen2.5-Coder-0.5B-Instruct, greedy decoding, Open WebUI 0.10.2 and headless Chromium
+  151. All 15 honest runs showed a chart and the pass message. All 15 misleading runs drew the
+  requested limits and showed the failure message with the expected code. The records are in
+  `.agent/measurements/m19u9/`.
 
 The earlier verifier read the program text instead of the finished figure. Its measurements are in
 `.agent/archive/` and do not apply to this verifier.

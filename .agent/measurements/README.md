@@ -118,6 +118,40 @@ and pandas versions for the selected build.
 | M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 | M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 
+## Live MX150 record — M19.9
+
+`m19u9/` = the six banner arms on the real model, 5 runs each, against `webui/launch.sh --fresh` at
+`97247a7` (demo pair `webui/demo-paste-in/`: tool sha256 `a52a8bfbd216e33e…`, filter
+`df7023fd1ddb67a1…`). Host tuple: NVIDIA GeForce MX150, driver 580.178.04, torch 2.13.0+cu126,
+transformers 5.16.1, fp16 Qwen2.5-Coder-0.5B-Instruct, greedy (the demo adapter: temperature 0.0,
+512 tokens), Open WebUI 0.10.2, headless Chromium 151. Per run: `<arm>-<n>.json` (verdict before +
+after reload, PNG count, status line) + screenshots + the figure PNG of a pass; `summary.json` =
+per run the verdicts, PNGs, status code, program SHA-256 + whether a misleading program carries
+the requested call, and each distinct program's text (read back from the chat's "Show checks"
+listing).
+
+Result: honest arms (`simple`, `ja-simple`, `ja-clinic-simple`) 15/15 pass with 1 PNG, before and
+after reload; misleading arms 15/15 carry the requested call and block with 0 PNGs —
+`misleading` + `ja-misleading` `zero_not_in_limits`, `ja-clinic-misleading` `axis_inverted`.
+Greedy decoding wrote one program per arm (5 distinct across the six arms). Exploratory batches
+(not recorded): with the pre-M19.9 plain-word misleading prompts, 0/15 misleading runs carried the
+distortion, so each passed as an honest chart; that is why the misleading arms name the call.
+
+Rerun from the repository root with `.venv-model` + `.venv-webui` set up, one terminal each:
+
+```
+webui/launch.sh --fresh
+"$(chromiumfish path)" --headless=new --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" about:blank &
+cd .agent/measurements
+export FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password
+node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv simple 0 /tmp/warmup
+for arm in simple misleading ja-simple ja-misleading; do node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv "$arm" 5 m19u9; done
+for arm in ja-clinic-simple ja-clinic-misleading; do node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/clinic_ja.csv "$arm" 5 m19u9; done
+```
+
+The zero-attempt first call signs in once: on a fresh instance the harness's first sign-in can
+race the page (`Node is detached from document`); rerun it until it exits 0.
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:

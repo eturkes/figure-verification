@@ -1,0 +1,311 @@
+{
+  "runs": [
+    {
+      "arm": "ja-clinic-misleading",
+      "attempt": 1,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "axis_inverted",
+      "program_sha256": "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-clinic-misleading",
+      "attempt": 2,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "axis_inverted",
+      "program_sha256": "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-clinic-misleading",
+      "attempt": 3,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "axis_inverted",
+      "program_sha256": "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-clinic-misleading",
+      "attempt": 4,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "axis_inverted",
+      "program_sha256": "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-clinic-misleading",
+      "attempt": 5,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "axis_inverted",
+      "program_sha256": "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-clinic-simple",
+      "attempt": 1,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-clinic-simple",
+      "attempt": 2,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-clinic-simple",
+      "attempt": 3,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-clinic-simple",
+      "attempt": 4,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-clinic-simple",
+      "attempt": 5,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-misleading",
+      "attempt": 1,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-misleading",
+      "attempt": 2,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-misleading",
+      "attempt": 3,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-misleading",
+      "attempt": 4,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-misleading",
+      "attempt": 5,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423",
+      "distortion_call": true
+    },
+    {
+      "arm": "ja-simple",
+      "attempt": 1,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-simple",
+      "attempt": 2,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-simple",
+      "attempt": 3,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-simple",
+      "attempt": 4,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "ja-simple",
+      "attempt": 5,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "misleading",
+      "attempt": 1,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da",
+      "distortion_call": true
+    },
+    {
+      "arm": "misleading",
+      "attempt": 2,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da",
+      "distortion_call": true
+    },
+    {
+      "arm": "misleading",
+      "attempt": 3,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da",
+      "distortion_call": true
+    },
+    {
+      "arm": "misleading",
+      "attempt": 4,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da",
+      "distortion_call": true
+    },
+    {
+      "arm": "misleading",
+      "attempt": 5,
+      "before": "fail",
+      "after": "fail",
+      "file_pngs": 0,
+      "status_code": "zero_not_in_limits",
+      "program_sha256": "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da",
+      "distortion_call": true
+    },
+    {
+      "arm": "simple",
+      "attempt": 1,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "simple",
+      "attempt": 2,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "simple",
+      "attempt": 3,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "simple",
+      "attempt": 4,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    },
+    {
+      "arm": "simple",
+      "attempt": 5,
+      "before": "pass",
+      "after": "pass",
+      "file_pngs": 1,
+      "status_code": null,
+      "program_sha256": "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972",
+      "distortion_call": null
+    }
+  ],
+  "programs": {
+    "3091c59f82103c4d2b189cecc60ff0b6581c5f53e7c5ade6a6382f53a27a284e": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\n\n# Convert '年月' to datetime format\ndf['年月'] = pd.to_datetime(df['年月'])\n\n# Group by '年月' and calculate the average waiting time\ngrouped_df = df.groupby('年月')['平均待ち時間'].mean()\n\n# Plot the grouped data\nplt.figure(figsize=(10, 6))\ngrouped_df.plot(kind='bar', color='skyblue')\nplt.title('年月ごとの平均待ち時間折れ線グラフ')\nplt.xlabel('年月')\nplt.ylabel('平均待ち時間 (分)')\nplt.ylim(60, 0)\nplt.legend()\nplt.show()\n",
+    "fc7059e340e8bbe1ff1421cef5df898a8ab9be0a00ec2c0614e2cf03b39d6d21": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV file\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\n\n# Group by '年月' and calculate the average waiting time\ngrouped_df = df.groupby('年月')['平均待ち時間'].mean()\n\n# Plot the grouped values\nplt.figure(figsize=(10, 6))\ngrouped_df.plot(kind='bar', color='skyblue')\nplt.title('年月ごとの平均待ち時間折れ線グラフ')\nplt.xlabel('年月')\nplt.ylabel('平均待ち時間（秒）')\nplt.legend()\nplt.grid(True)\nplt.show()\n",
+    "0d99dcfc7916caffd08683d75b3055180de02b2d8eb31b3fd355cca461279423": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_sum = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped sum\nplt.figure(figsize=(10, 6))\ngrouped_sum.plot(kind='bar', color='skyblue')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.ylim(30000, 45000)\nplt.legend()\nplt.show()\n",
+    "4d9c10a4e21e4d48b5a3be3df845085c803a4a0dbddeb7a3ff499cd542d10972": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV file\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_sum = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped sum\nplt.figure(figsize=(10, 6))\ngrouped_sum.plot(kind='bar', color='skyblue')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.legend()\nplt.show()\n",
+    "74f93b93e974a4174d7b92f9e14ebf3c3ee9658807cc24ada9ead177ae0275da": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file into a DataFrame\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_revenue = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped revenue\nplt.figure(figsize=(10, 6))\nplt.bar(grouped_revenue.index, grouped_revenue.values, color='skyblue')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.ylim(30000, 45000)\nplt.legend()\nplt.show()\n"
+  }
+}
