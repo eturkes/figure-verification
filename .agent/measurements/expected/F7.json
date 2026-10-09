@@ -1,10 +1,43 @@
 {
   "build": "0.28.3",
   "cases": {
-    "ja-font": {
+    "banner-simple": {
+      "description_lines": 1,
+      "description_parseable": true,
       "error": null,
-      "observation_lines": 1,
-      "observation_parseable": true,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "ja-font": {
+      "description_lines": 1,
+      "description_parseable": true,
+      "error": null,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "ja-mathtext": {
+      "description_lines": 1,
+      "description_parseable": true,
+      "error": null,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
+    "ja-no-font": {
+      "description_lines": 1,
+      "description_parseable": true,
+      "error": null,
       "png_lines": 1,
       "png_second": true,
       "png_signature": true,
@@ -13,9 +46,9 @@
       "stdout_lines": 2
     },
     "line": {
+      "description_lines": 1,
+      "description_parseable": true,
       "error": null,
-      "observation_lines": 1,
-      "observation_parseable": true,
       "png_lines": 1,
       "png_second": true,
       "png_signature": true,
@@ -24,9 +57,9 @@
       "stdout_lines": 2
     },
     "no-show": {
+      "description_lines": 1,
+      "description_parseable": true,
       "error": null,
-      "observation_lines": 1,
-      "observation_parseable": true,
       "png_lines": 1,
       "png_second": true,
       "png_signature": true,
@@ -35,20 +68,9 @@
       "stdout_lines": 2
     },
     "scatter": {
+      "description_lines": 1,
+      "description_parseable": true,
       "error": null,
-      "observation_lines": 1,
-      "observation_parseable": true,
-      "png_lines": 1,
-      "png_second": true,
-      "png_signature": true,
-      "result": null,
-      "stderr": null,
-      "stdout_lines": 2
-    },
-    "sentinel-simple": {
-      "error": null,
-      "observation_lines": 1,
-      "observation_parseable": true,
       "png_lines": 1,
       "png_second": true,
       "png_signature": true,
@@ -57,15 +79,14 @@
       "stdout_lines": 2
     }
   },
-  "controls": {
-    "ja-mathtext": {
-      "png_lines": 1,
-      "stderr_class": "mathtext-glyph"
-    },
-    "ja-no-font": {
-      "png_lines": 1,
-      "stderr_class": "missing-glyph"
-    }
+  "glyphs_missing": {
+    "banner-simple": false,
+    "ja-font": false,
+    "ja-mathtext": true,
+    "ja-no-font": true,
+    "line": false,
+    "no-show": false,
+    "scatter": false
   },
   "literal_control_syntax_error": true
 }

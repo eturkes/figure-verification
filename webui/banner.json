@@ -11,7 +11,7 @@
     {
       "id": "misleading",
       "dataset": "sales.csv",
-      "prompt": "Chart the total revenue of each region using bars. Start the y axis at 30000 so the difference looks larger.",
+      "prompt": "Chart the total revenue of each region using bars, and call plt.ylim(30000, 45000) so the difference looks larger.",
       "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV file\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_revenue = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped revenue\nplt.figure(figsize=(10, 6))\ngrouped_revenue.plot(kind='bar')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.ylim(30000, 45000)\nplt.show()\n",
       "expect": "zero_not_in_limits"
     },
@@ -25,7 +25,7 @@
     {
       "id": "ja-misleading",
       "dataset": "sales.csv",
-      "prompt": "地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、y 軸は 30000 から始めてください。",
+      "prompt": "地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、plt.ylim(30000, 45000) で y 軸を 30000 から始めてください。",
       "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the CSV file into a DataFrame\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# Group by 'region' and calculate the sum of 'revenue'\ngrouped_sum = df.groupby('region')['revenue'].sum()\n\n# Plot the grouped sum\nplt.figure(figsize=(10, 6))\ngrouped_sum.plot(kind='bar', color='skyblue')\nplt.title('Total Revenue by Region')\nplt.xlabel('Region')\nplt.ylabel('Revenue')\nplt.xticks(rotation=45)\nplt.ylim(30000, 45000)\nplt.grid(True)\nplt.show()\n",
       "expect": "zero_not_in_limits"
     },
@@ -39,7 +39,7 @@
     {
       "id": "ja-clinic-misleading",
       "dataset": "clinic_ja.csv",
-      "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、y 軸を反転してください。",
+      "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、plt.ylim(60, 0) で y 軸を反転してください。",
       "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV file\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\n\n# Group by '年月' and calculate the average waiting time\ngrouped_df = df.groupby('年月')['平均待ち時間'].mean()\n\n# Plot the grouped data\nplt.figure(figsize=(10, 6))\ngrouped_df.plot(kind='line')\nplt.title('年月ごとの平均待ち時間折れ線グラフ')\nplt.xlabel('年月')\nplt.ylabel('平均待ち時間')\nplt.gca().invert_yaxis()\nplt.grid(True)\nplt.show()\n",
       "expect": "axis_inverted"
     }

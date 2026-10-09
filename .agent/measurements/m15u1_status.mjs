@@ -35,7 +35,7 @@ const pinned = (name) => new RegExp(`${name}="([^"]+)"`).exec(launcher)[1];
 const reasons = JSON.parse(readFileSync(reasonsPath, "utf8"));
 // csv: attach the CSV; block: abort every pyodide.js load, as a LAN-blocking ad blocker does.
 const CASES = [
-  { name: "refused", prompt: pinned("elaborate_prompt"), csv: true, block: false, expect: "expression_not_admitted", lang: 0 },
+  { name: "refused", prompt: pinned("misleading_prompt"), csv: true, block: false, expect: "zero_not_in_limits", lang: 0 },
   { name: "japanese", prompt: "地域ごとの売上を棒グラフにしてください。", csv: false, block: false, expect: "no_tool_call", lang: 1 },
   { name: "blocked", prompt: pinned("simple_prompt"), csv: true, block: true, expect: "sandbox_unavailable", lang: 0 },
   { name: "pass", prompt: pinned("simple_prompt"), csv: true, block: false, expect: null, lang: 0 },

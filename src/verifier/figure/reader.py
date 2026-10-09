@@ -23,6 +23,7 @@ import importlib
 import inspect
 import io
 import json
+import logging
 import math
 import re
 import sys
@@ -77,6 +78,10 @@ _AXIS_CALLS = {
 # A missing glyph's warning: "Glyph <n> (<c>) missing from current font." (matplotlib 3.8, the
 # sandbox) or "Glyph <n> (<c>) missing from font(s) <names>." (3.9, the gate host).
 _GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)
+# Mathtext reports a glyph its font set lacks through matplotlib's LOGGER, never `warnings`:
+# "Font 'default' does not have a glyph for '\u5e74' [U+5e74], substituting with a dummy symbol."
+_MATHTEXT_LOG = "matplotlib.mathtext"
+_MATHTEXT_GLYPH = re.compile(r"\AFont .* does not have a glyph for ", re.DOTALL)
 _DATE_MODULES = ("matplotlib.dates", "pandas.")
 _MATRIX = 2  # a facecolor array is rows of RGBA
 
@@ -122,6 +127,17 @@ class _Run:
                     self.too_large = True
             self.pngs.append(base64.b64encode(png.getvalue()).decode("ascii"))
         plt.close("all")
+
+
+class _GlyphLog(logging.Handler):
+    """Counts the mathtext missing-glyph records into the active run."""
+
+    def __init__(self, run: _Run) -> None:
+        super().__init__(logging.WARNING)
+        self.run = run
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.run.glyphs += _MATHTEXT_GLYPH.match(record.getMessage()) is not None
 
 
 class _Holder:
@@ -892,6 +908,8 @@ def run(source: str, font: str | None = None) -> str:
     current = _Run()
     holder.run = current
     sink = io.StringIO()
+    glyph_log = _GlyphLog(current)
+    logging.getLogger(_MATHTEXT_LOG).addHandler(glyph_log)
     try:
         with (
             warnings.catch_warnings(record=True) as caught,
@@ -913,6 +931,7 @@ def run(source: str, font: str | None = None) -> str:
             current.glyphs += sum(_GLYPH.match(str(item.message)) is not None for item in caught)
     finally:
         holder.run = None
+        logging.getLogger(_MATHTEXT_LOG).removeHandler(glyph_log)
     return _render(current)
 
 

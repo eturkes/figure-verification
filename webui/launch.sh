@@ -238,13 +238,14 @@ done
 # 4) banner. Every stated outcome names its recorded run count or says it is unrecorded; the
 #    stub arm's verdict sentences are test-backed (tests/test_webui_banner_prompts.py). The arms +
 #    the stub's scripted programs live in webui/banner.json: each request asked honestly, then
-#    asked for a named distortion.
+#    asked for a named distortion through the call that makes it (the 0.5B demo model ignores a
+#    distortion asked in plain words: 0/15 live runs carried one).
 simple_prompt="Chart the total revenue of each region using bars."
-misleading_prompt="Chart the total revenue of each region using bars. Start the y axis at 30000 so the difference looks larger."
+misleading_prompt="Chart the total revenue of each region using bars, and call plt.ylim(30000, 45000) so the difference looks larger."
 ja_simple_prompt="地域ごとの総売上を棒グラフにしてください。"
-ja_misleading_prompt="地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、y 軸は 30000 から始めてください。"
+ja_misleading_prompt="地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、plt.ylim(30000, 45000) で y 軸を 30000 から始めてください。"
 ja_clinic_simple_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。"
-ja_clinic_misleading_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、y 軸を反転してください。"
+ja_clinic_misleading_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、plt.ylim(60, 0) で y 軸を反転してください。"
 printf -v prompts '%s\n' \
   "    Attach the CSV file shown before a prompt to a new chat. Then paste the prompt:" \
   "      1) [data/sales.csv] ${simple_prompt}" \

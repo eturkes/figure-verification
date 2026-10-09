@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Export the committed sentinel, three plotting programs and the Japanese legs (M17.1).
+"""Export the banner's simple program, three plotting programs and the Japanese legs (M17.1).
 
 The Japanese legs carry the installed Open WebUI's own font, read from the path given as argv[1].
 """
@@ -8,23 +8,14 @@ import json
 import sys
 from pathlib import Path
 
-from model_backend.adapter import defence
+from webui.banner import load
 from webui.paste_in.sandbox import wrapper_code
 
 root = Path(__file__).resolve().parents[2]
-records = root / "corpus/python/captures/m10-design/records.ndjson"
-sentinel = next(
-    json.loads(line)["content"]
-    for line in records.read_text().splitlines()
-    if json.loads(line)["prompt_id"] == "sentinel-simple"
-)
-fenced, program = defence(sentinel)
-if not fenced or not program:
-    msg = "sentinel-simple capture has no Python program"
-    raise ValueError(msg)
+program = next(arm.program for arm in load().arms if arm.id == "simple")
 
 programs = {
-    "sentinel-simple": program,
+    "banner-simple": program,
     "line": (
         "import pandas as pd\n"
         "import matplotlib.pyplot as plt\n"

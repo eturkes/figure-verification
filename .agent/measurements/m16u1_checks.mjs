@@ -28,20 +28,21 @@ const pinned = (name) => new RegExp(`${name}="([^"]+)"`).exec(launcher)[1];
 const table = JSON.parse(readFileSync(checksPath, "utf8"));
 // Row states are hand-stated per case: the failing check of each expected reason.
 const states = (failing) => table.checks.map((_, i) => (i < failing ? "pass" : i === failing ? "fail" : "skip"));
-// M18.4: the row each case opens, hand-stated from the stub's committed programs: sentinel-complicated
-// (39 scanned lines, refused at line 8's list display) and sentinel-simple (18 scanned lines).
+// M18.4 + M19.5: the row each case opens, hand-stated from the stub's banner programs
+// (`webui/banner.json`): `misleading` (18 lines, `plt.ylim(30000, 45000)` at line 16 marked) and
+// `simple` (18 lines, listed unmarked on the passed program row).
 const REFERENCE = [
   "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
   "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
 ];
 const span = (n) => Array.from({ length: n }, (_, i) => i + 1);
 const CASES = [
-  { name: "refused", prompt: pinned("elaborate_prompt"), csv: true, reason: "expression_not_admitted", lang: 0, states: states(3),
-    row: { check: "accepted", lines: span(39), at: [8], marks: ["['lightblue', 'lightgreen']"] } },
+  { name: "refused", prompt: pinned("misleading_prompt"), csv: true, reason: "zero_not_in_limits", lang: 0, states: states(4),
+    row: { check: "axes", lines: span(18), at: [16], marks: ["plt.ylim(30000, 45000)"] } },
   { name: "japanese", prompt: "地域ごとの売上を棒グラフにしてください。", csv: false, reason: "no_tool_call", lang: 1, states: states(0),
     row: { check: "program", lines: null, at: [], marks: [] } },
-  { name: "pass", prompt: pinned("simple_prompt"), csv: true, reason: null, lang: 0, states: states(11),
-    row: { check: "chart", lines: span(18), at: [], marks: [] } },
+  { name: "pass", prompt: pinned("simple_prompt"), csv: true, reason: null, lang: 0, states: states(9),
+    row: { check: "program", lines: span(18), at: [], marks: [] } },
 ].filter((item) => !process.env.FV_CASES || process.env.FV_CASES.split(",").includes(item.name));
 // An unknown or empty FV_CASES selection would otherwise grade zero cases green.
 const requested = process.env.FV_CASES ? process.env.FV_CASES.split(",") : [];

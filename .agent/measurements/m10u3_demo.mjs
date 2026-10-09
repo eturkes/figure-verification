@@ -40,7 +40,7 @@ mkdirSync(outDir, { recursive: true });
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 // protocolTimeout 0: puppeteer's 180 s default cut the verdict wait mid-generation on every
-// elaborate attempt (generation ~180 s on the MX150), so the wait timeouts below are the only bound.
+// long attempt (generation ~180 s on the MX150), so the wait timeouts below are the only bound.
 const browser = await puppeteer.connect({ browserURL, protocolTimeout: 0 });
 const page = (await browser.pages()).find((p) => p.url().startsWith(webuiURL)) ?? (await browser.newPage());
 await page.setViewport({ width: 1440, height: 900 });

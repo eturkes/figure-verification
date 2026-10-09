@@ -207,3 +207,17 @@ predicate = "a missing glyph counts in matplotlib 3.8's wording (the sandbox), n
 kills = "tests/test_figure_reader.py::test_m19_6_a_missing_glyph_counts_in_either_matplotlib"
 anchor = '''_GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)'''
 mutant = '''_GLYPH = re.compile(r"\AGlyph \d+ .* missing from font", re.DOTALL)'''
+
+[[mutant]]
+id = "m19-mathtext-glyph-unlogged"
+predicate = "a mathtext glyph the font set lacks counts: matplotlib logs it, never warns"
+kills = "tests/test_figure_reader.py::test_m19_9_a_mathtext_glyph_the_font_lacks_counts"
+anchor = '''    logging.getLogger(_MATHTEXT_LOG).addHandler(glyph_log)'''
+mutant = '''    logging.getLogger("matplotlib.unused").addHandler(glyph_log)'''
+
+[[mutant]]
+id = "m19-mathtext-glyph-uncounted"
+predicate = "a mathtext missing-glyph record adds to the run's glyph count"
+kills = "tests/test_figure_reader.py::test_m19_9_a_mathtext_glyph_the_font_lacks_counts"
+anchor = '''        self.run.glyphs += _MATHTEXT_GLYPH.match(record.getMessage()) is not None'''
+mutant = '''        self.run.glyphs += 0'''

@@ -62,9 +62,9 @@ BUNDLE_PAIRS = {
 }
 M17_ARMS = {
     "ja-simple": "sales.csv",
-    "ja-elaborate": "sales.csv",
+    "ja-misleading": "sales.csv",
     "ja-clinic-simple": "clinic_ja.csv",
-    "ja-clinic-elaborate": "clinic_ja.csv",
+    "ja-clinic-misleading": "clinic_ja.csv",
 }
 GENERATORS = {
     "S6": (("make_s6_csv.py", True),),

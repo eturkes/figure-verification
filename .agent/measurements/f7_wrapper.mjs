@@ -135,15 +135,17 @@ async function execute(code, pyodide) {
   }
   const reply = shapeReply({ stdout, stderr, result });
   const lines = typeof reply.stdout === "string" ? reply.stdout.trimEnd().split("\n").filter(Boolean) : [];
-  const tag = "FIGURE_VERIFICATION_OBSERVATION:";
+  const tag = "FIGURE_VERIFICATION_DESCRIPTION:";
   const tagged = lines.filter((line) => line.startsWith(tag));
-  let observationParseable = false;
+  let descriptionParseable = false;
+  let glyphs = null;
   if (tagged.length === 1 && lines[0] === tagged[0]) {
     try {
       const value = JSON.parse(tagged[0].slice(tag.length));
-      observationParseable = value !== null && typeof value === "object" && !Array.isArray(value);
+      descriptionParseable = value !== null && typeof value === "object" && !Array.isArray(value);
+      glyphs = Number.isInteger(value?.glyphs) ? value.glyphs : null;
     } catch {
-      observationParseable = false;
+      descriptionParseable = false;
     }
   }
   const pngs = lines.filter((line) => line.startsWith("data:image/png;base64,"));
@@ -152,8 +154,9 @@ async function execute(code, pyodide) {
     packages,
     stdout_lines: lines.length,
     stdout_other: lines.filter((line) => !line.startsWith("data:image/png;base64,")).map((line) => line.slice(0, 200)),
-    observation_lines: tagged.length,
-    observation_parseable: observationParseable,
+    description_lines: tagged.length,
+    description_parseable: descriptionParseable,
+    glyphs,
     png_lines: pngs.length,
     png_second: lines.length === 2 && /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(lines[1]),
     stderr_bytes: Buffer.byteLength(reply.stderr ?? ""),
@@ -185,26 +188,22 @@ const report = {
 };
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report));
-// ja-no-font (control) + ja-mathtext (declared limit) must write their glyph warning; every other
-// plot must stay clean, ja-font included.
-const controls = { "ja-no-font": "missing from current font", "ja-mathtext": "does not have a glyph" };
-const plots = Object.entries(results).filter(
-  ([name]) => name !== "literal-control" && !Object.hasOwn(controls, name),
-);
+// Every plot, the two glyph legs included, replies one parseable description line + one PNG line
+// with an empty stderr (the reader catches the program's warnings). ja-no-font (control) +
+// ja-mathtext (declared limit) report missing glyphs in the description; every other plot none.
+const controls = ["ja-no-font", "ja-mathtext"];
+const plots = Object.entries(results).filter(([name]) => name !== "literal-control");
 if (
-  plots.length !== 5 ||
-  Object.entries(controls).some(
-    ([name, cause]) =>
-      !(results[name]?.stderr ?? "").includes(cause) || results[name].png_lines !== 1,
-  ) ||
+  plots.length !== 7 ||
   plots.some(
-    ([, {
-      stdout_lines, observation_lines, observation_parseable, png_lines, png_second,
+    ([name, {
+      stdout_lines, description_lines, description_parseable, glyphs, png_lines, png_second,
       stderr_bytes, stderr, result, png_signature, error,
     }]) =>
-      stdout_lines !== 2 || observation_lines !== 1 || !observation_parseable ||
+      stdout_lines !== 2 || description_lines !== 1 || !description_parseable ||
       png_lines !== 1 || !png_second || stderr_bytes !== 0 || stderr !== null ||
-      result !== null || !png_signature || error,
+      result !== null || !png_signature || error ||
+      (controls.includes(name) ? !(glyphs > 0) : glyphs !== 0),
   ) ||
   !results["literal-control"].stderr.includes("SyntaxError")
 ) {

@@ -155,8 +155,8 @@ def f7():
             name: fields(
                 row,
                 "stdout_lines",
-                "observation_lines",
-                "observation_parseable",
+                "description_lines",
+                "description_parseable",
                 "png_lines",
                 "png_second",
                 "stderr",
@@ -165,28 +165,17 @@ def f7():
                 "error",
             )
             for name, row in data["results"].items()
-            if name not in {"literal-control", "ja-no-font", "ja-mathtext"}
+            if name != "literal-control"
         },
-        # M17.1 controls: the outcome CLASS of each stderr, never its platform-specific bytes.
-        "controls": {
-            name: {
-                "png_lines": data["results"][name]["png_lines"],
-                "stderr_class": glyph_class(data["results"][name]["stderr"]),
-            }
-            for name in ("ja-no-font", "ja-mathtext")
+        # M17.1 + M19: the reader counts missing glyphs; their presence per leg, never the count.
+        "glyphs_missing": {
+            name: (row["glyphs"] or 0) > 0
+            for name, row in data["results"].items()
+            if name != "literal-control"
         },
         "literal_control_syntax_error": "SyntaxError"
         in (data["results"]["literal-control"]["stderr"] or ""),
     }
-
-
-def glyph_class(stderr):
-    text = stderr or ""
-    if "missing from current font" in text:
-        return "missing-glyph"
-    if "does not have a glyph" in text:
-        return "mathtext-glyph"
-    return "clean" if not text else "other"
 
 
 def versions():
@@ -227,7 +216,7 @@ def m16():
 
 def m17():
     arms = {}
-    for arm in ("ja-simple", "ja-elaborate", "ja-clinic-simple", "ja-clinic-elaborate"):
+    for arm in ("ja-simple", "ja-misleading", "ja-clinic-simple", "ja-clinic-misleading"):
         record = load(f"all-data/m17/{arm}-1.json")
         after = record.get("after") or {}
         verdict, _, interpretation = str(after.get("content") or "").partition("\n\n")

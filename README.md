@@ -46,7 +46,9 @@ what the verifier does not check.
 ## Measured results
 
 - **Rule corpus.** For every rule, at least one misleading program blocks with that rule's reason
-  and at least one honest twin passes. The corpus runs in the test suite on matplotlib 3.9.4.
+  and at least one honest twin passes. The corpus runs in the test suite on matplotlib 3.9.4. The
+  same 189 cases also ran through the production wrapper in the Pyodide bundle of Open WebUI
+  0.10.2, with matplotlib 3.8.4. All 189 verdicts matched the expected verdict and the host verdict.
 - **Stub model.** With `--stub`, the launcher's three honest prompts showed a chart and the pass
   message. The three misleading prompts showed the failure message with the expected reason and no
   image. One recorded run of each, in headless Chromium 151; the records are in

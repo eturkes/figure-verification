@@ -85,6 +85,26 @@ plt.title("売上")
 '''
 
 [[case]]
+id = "mathtext-missing-glyph"
+expect = "glyph_missing"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title("$年$")
+'''
+
+[[case]]
+id = "mathtext-honest"
+expect = "pass"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title("$x^2$ growth")
+'''
+
+[[case]]
 id = "too-large"
 expect = "figure_too_large"
 request = "Plot 0 through 30000"

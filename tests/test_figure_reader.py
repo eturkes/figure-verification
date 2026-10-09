@@ -790,3 +790,14 @@ def test_m19_6_a_missing_glyph_counts_in_either_matplotlib(message: str, *, coun
     """The sandbox's matplotlib words the warning differently from the host's; both count."""
     pattern = vars(reader)["_GLYPH"]
     assert (pattern.match(message) is not None) is counted
+
+
+@pytest.mark.parametrize(("title", "missing"), [("$年$", True), ("$x^2$", False)])
+def test_m19_9_a_mathtext_glyph_the_font_lacks_counts(title: str, *, missing: bool) -> None:
+    """Mathtext reports a glyph its font set lacks through matplotlib's LOGGER, not `warnings`
+    (`Font 'default' does not have a glyph for …, substituting with a dummy symbol.`), so the
+    warnings capture alone drew tofu and passed it (F7's `ja-mathtext` leg, M19.9)."""
+    program = f"import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.title({title!r})\n"
+    described = parse_description(reader.run(program))
+    assert described is not None
+    assert (described.glyphs > 0) is missing
