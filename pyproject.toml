@@ -2,29 +2,18 @@
 [project]
 name = "verifier"
 version = "0.2.0"
-description = "Trusted core for the verified-plot PoC: independently recompute and verify chart specs before render."
+description = "Figure verifier for Open WebUI: a trusted reader + judge decide whether a model-drawn matplotlib figure may appear."
 # Pinned to the 3.13.x line for reproducibility: msgspec ships per-interpreter compiled
 # wheels and stdlib behavior can drift across minors, so a wider floor would admit an
-# untested interpreter. Golden hash vectors (tests) are the actual canonical-form guard, and
-# they run under an injected fixed TCB so every patch release in this line reproduces them;
-# VCert stamps verifier/Z3/python/msgspec/unidata plus canonicalization/render versions, and
-# separate tests pin each stamp to its live source.
+# untested interpreter.
 requires-python = ">=3.13,<3.14"
 license = "Apache-2.0 WITH LLVM-exception"
 license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
-# msgspec (NOT Pydantic): strict, fail-closed decode — float/bool/unknown-key tokens
-# are rejected at decode, so a valid spec is never partial or coerced.
-# vl-convert-python: the deterministic VPlot→Vega-Lite→SVG renderer. Ships py.typed
-# (no mypy override) and is a src dep (no TID251 ban, unlike the dev-only duckdb oracle).
-# litestar + uvicorn: the local HTTP transport wrapping the verifier — msgspec-native
-# serialization, built-in body cap, single-worker 127.0.0.1. Both ship py.typed.
-# httpx: the async client the model-proposer client POSTs the local backend with. Ships
-# py.typed; a direct runtime dep, also reachable transitively through litestar's TestClient.
-# z3-solver: finite concrete obligations behind verifier.formal's typed boundary. Its
-# dynamic API has no PEP-561 marker, so direct imports outside that module are lint-blocked below.
-# cryptography: PyCA's typed Ed25519 implementation; verifier.attestation owns the tiny
-# DSSE profile and deliberately exposes no algorithm agility.
+# The verifier core (src/verifier) is stdlib-only. msgspec + litestar + uvicorn + httpx serve the
+# demo harness (model stub, model backend wire types, Open WebUI provisioning client).
+# vl-convert-python, z3-solver + cryptography served the retired JSON-spec service; they stay
+# pinned until the queue's dependency-pruning row (`.agent/deferred.md`) removes them.
 dependencies = [
     "msgspec>=0.21,<1",
     "vl-convert-python>=1.9,<2",
@@ -96,14 +85,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# asserts + bare magic values are idiomatic in tests; TID251 lets tests import jsonschema.
+# asserts + bare magic values are idiomatic in tests; TID251 lets tests import numpy.
 "tests/**" = ["S101", "PLR2004", "TID251"]
-# The sole production boundary around z3-solver's dynamic API.
-"src/verifier/formal.py" = ["TID251"]
-# The guidance oracle is a probe, never shipped code and never imported by the server: it holds
-# live guided output to the same validator the gate uses, and the isolated runtime project pins
-# jsonschema in a dev group for exactly that.
-"model_backend/guidance_oracle.py" = ["TID251"]
 # Measurement harnesses: frozen records of how a published number was obtained, never imported by
 # anything. Each of these four rules is inapplicable BY CONSTRUCTION here, not merely inconvenient.
 # numpy/pandas ARE the subject under measurement (TID251); stdout IS the result (T201); the stratum
@@ -114,23 +97,17 @@ ignore = [
 ".agent/measurements/**" = ["S101", "PLR2004", "T201", "TID251"]
 
 [tool.ruff.lint.isort]
-# model_backend (hardware-gated local model server), bench (failure-eval harness), demo
-# (hardware-free hardening walkthrough), and webui (Open WebUI integration harness) are
-# repo-root packages, not under src/ — declare them first-party so their imports sort with
+# model_backend (hardware-gated local model server) and webui (Open WebUI integration harness)
+# are repo-root packages, not under src/ — declare them first-party so their imports sort with
 # verifier's.
-known-first-party = ["verifier", "model_backend", "bench", "capture", "demo", "webui"]
+known-first-party = ["verifier", "model_backend", "capture", "webui"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-# jsonschema is a dev/test-only dep (no py.typed). Ban it outside tests/ and the guidance
-# oracle so a stray src import fails the gate instead of silently becoming Any under the
-# global mypy override.
+# numpy is a dev/test-only dep: ban it outside tests/ so a stray core import fails the gate.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
-"jsonschema".msg = "test-only (golden assertion); do not import from src/"
-"duckdb".msg = "test-only (dual-engine oracle); do not import from src/"
 "numpy".msg = "test-only (numeric differential); the core is stdlib-only and the paste-in has no deps"
-"z3".msg = "dynamic runtime boundary; import only from verifier.formal"
 
 # --- types -------------------------------------------------------------------
 [tool.mypy]
@@ -138,7 +115,7 @@ python_version = "3.13"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
-files = ["src", "tests", "tools", "model_backend", "bench", "capture", "demo", "webui"]
+files = ["src", "tests", "tools", "model_backend", "capture", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
@@ -149,20 +126,7 @@ enable_error_code = [
     "possibly-undefined",
 ]
 
-# jsonschema ships no py.typed; this override is GLOBAL. jsonschema is dev/test-only and
-# the ruff TID251 ban keeps it out of src/, so a stray src import fails the gate (ruff)
-# rather than silently type-checking as Any here.
-[[tool.mypy.overrides]]
-module = "jsonschema.*"
-ignore_missing_imports = true
-
-# z3-solver is a typed-runtime boundary without PEP-561 metadata. verifier.formal is its only
-# production importer and projects the dynamic AST/model API into closed typed facts/results.
-[[tool.mypy.overrides]]
-module = ["z3", "z3.*"]
-ignore_missing_imports = true
-
-# The proposer runtime (torch + Transformers + XGrammar) resolves from the SEPARATE py3.12 project
+# The proposer runtime (torch + Transformers) resolves from the SEPARATE py3.12 project
 # at model_backend/runtime/, never into this py3.13 gate venv, and its stubs are absent or partial.
 # model_backend is their only importer; the engine isolates the resulting Any behind typed
 # boundaries. accelerate and tokenizers stay OUT: they are transitive runtime deps that no module
@@ -173,10 +137,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["transformers", "transformers.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["xgrammar", "xgrammar.*"]
 ignore_missing_imports = true
 
 # open_webui resolves inside the target image and in the SEPARATE py3.12 .venv-webui, never into
@@ -192,9 +152,8 @@ ignore_missing_imports = true
 minversion = "8.0"
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib --cov --cov-report=term-missing"
 testpaths = ["tests"]
-# tests/ so `import oracle` (the dev-only DuckDB oracle) resolves; the repo root so
-# `import bench` resolves (the uninstalled repo-root harness whose pure classifiers
-# tests/test_bench_harness.py locks -- bench itself stays coverage-excluded).
+# tests/ so test support modules resolve; the repo root so the uninstalled `webui` +
+# `model_backend` packages resolve.
 pythonpath = ["tests", "."]
 xfail_strict = true
 

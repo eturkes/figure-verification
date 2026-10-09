@@ -16,8 +16,8 @@ pinned file belongs is `mismatched` however its target reads, and a symlink that
 `unexpected`. `.cache/` directories at any depth are skipped — hf_hub writes download metadata
 below the snapshot root that is not part of the revision.
 
-Interpreter = the ROOT `.venv` (py3.13): stdlib + msgspec only. Importing `torch`, `transformers`,
-`xgrammar` or `huggingface_hub` here would bind the gate to the py3.12 runtime venv, so those stay
+Interpreter = the ROOT `.venv` (py3.13): stdlib + msgspec only. Importing `torch`, `transformers`
+or `huggingface_hub` here would bind the gate to the py3.12 runtime venv, so those stay
 out. Fetching the snapshot is a documented operator step (`model_backend/runtime/README.md`), never
 a gate step.
 """

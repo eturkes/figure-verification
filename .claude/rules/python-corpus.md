@@ -64,7 +64,7 @@ paths:
   the truncation shape. `parsed` needs ≥1 statement (`ast.parse("")` succeeds on an empty module)
   and is total over adversarial bytes (byte cap ahead of the parse; `SyntaxError`/`ValueError`/
   `MemoryError`/`RecursionError` score not-parsed). `ast.parse` here is a TCB addition for
-  `capture/` ALONE — `src/verifier/expr.py` keeps its no-`ast` property. Rates count REPLIES not
+  `capture/` ALONE. Rates count REPLIES not
   records, an undefined rate is `None` never `0.0`, and sentinels are per-row facts outside every
   category denominator (one per category ⇒ a rate over n=1 is a category error). S4 = the PARTITION
   predicate (category SET + the run's own sentinel rows + every record counted once against

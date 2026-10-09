@@ -13,9 +13,8 @@ provisioning took:
   ENABLE_OPENAI_API on);
 - tool_provisioned: the pasted tool's id appears in GET /api/v1/tools/, so the artifact loaded and
   Open WebUI generated its spec (a tool whose module fails to import is rejected at write time);
-- no_tool_servers: NO ``server:``-prefixed id appears in the same readback. The JSON-spec
-  ``proposeSpec`` operation reached the model through a registered tool server, so its absence is
-  what makes that operation unreachable -- python mode is the demo's ONE operation;
+- no_tool_servers: NO ``server:``-prefixed id appears in the same readback, so the pasted tool is
+  the demo's ONE operation;
 - model_tool_attached: the pasted tool's id appears in the workspace model's ``meta.toolIds``;
 - model_tool_exclusive: that list contains ONLY the pasted tool. Existing operator-set tool ids
   remain untouched, but a persisted extra makes bootstrap fail rather than launch a second callable;

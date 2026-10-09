@@ -26,9 +26,8 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv-model" UV_LINK_MODE=copy \
 `--locked` installs the committed resolution. If `uv` reports that the lock is stale, then stop and
 report it. Do not relock to make the command pass.
 
-The command also installs the `dev` group. That group holds one package: the schema validator that
-`model_backend/guidance_oracle.py` needs. The server itself never imports it. Add `--no-dev` to
-install the served packages alone.
+The command also installs the `dev` group. That group holds one package that the server never
+imports. The queue removes it later. Add `--no-dev` to install the served packages alone.
 
 Check the installed metadata:
 
@@ -86,7 +85,7 @@ The device and model values below come from this host.
 | Model | `Qwen/Qwen2.5-Coder-0.5B-Instruct`, 494M parameters, Apache-2.0 |
 | Weights | 942.3 MiB resident |
 
-The guidance oracle and the HTTP smoke probe report their own token rates. State the prompt length,
+The HTTP smoke probe reports its own token rate. State the prompt length,
 GPU clock, and temperature with a rate. The smoke probe uses one short reply. Its rate does not
 measure sustained throughput.
 

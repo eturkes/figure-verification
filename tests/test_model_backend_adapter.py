@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any, cast
 import pytest
 from litestar.testing import TestClient
 
-from capture.harness import defence
-from model_backend.settings import GuidanceSchemaId, Settings
+from model_backend.adapter import defence
+from model_backend.settings import Settings
 
 if TYPE_CHECKING:
     from model_backend.engine import GenResult
@@ -33,7 +33,6 @@ class _RecordingEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         self.calls.append(
             (
@@ -41,7 +40,6 @@ class _RecordingEngine:
                 {
                     "temperature": temperature,
                     "max_tokens": max_tokens,
-                    "guided_schema": guided_schema,
                 },
             )
         )
@@ -57,14 +55,13 @@ class _RecordingEngine:
         )
 
 
-def _completion(  # noqa: PLR0913 - independent request parameters expose selector overrides
+def _completion(
     monkeypatch: pytest.MonkeyPatch,
     messages: list[dict[str, str]],
     output: str,
     *,
     temperature: float = 0.75,
     max_tokens: int = 7,
-    guided_schema: str | None = "vplot-0.1",
 ) -> tuple[_RecordingEngine, dict[str, Any]]:
     if "transformers" not in sys.modules:
         importlib.import_module("test_model_backend")
@@ -72,9 +69,7 @@ def _completion(  # noqa: PLR0913 - independent request parameters expose select
 
     engine = _RecordingEngine(output)
     monkeypatch.setattr(app.Engine, "load", classmethod(lambda _cls, _settings: engine))
-    with TestClient(
-        app=app.create_app(Settings(structured_output=False, max_tokens=1024))
-    ) as client:
+    with TestClient(app=app.create_app(Settings(max_tokens=1024))) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -82,7 +77,6 @@ def _completion(  # noqa: PLR0913 - independent request parameters expose select
                 "messages": messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "guided_schema": guided_schema,
             },
         )
     assert response.status_code == 200, response.text
@@ -133,7 +127,7 @@ def test_x4_selector_reuses_capture_params_and_round_trips_program(
     assert engine.calls == [
         (
             [{"role": "user", "content": query}],
-            {"temperature": 0.0, "max_tokens": 512, "guided_schema": None},
+            {"temperature": 0.0, "max_tokens": 512},
         )
     ]
     reply = _reply(body)
@@ -174,7 +168,7 @@ def test_x4_non_selector_keeps_original_generation_and_reply(
     assert engine.calls == [
         (
             messages,
-            {"temperature": 0.25, "max_tokens": 31, "guided_schema": "vplot-0.1"},
+            {"temperature": 0.25, "max_tokens": 31},
         )
     ]
     assert _reply(body) == "ordinary answer"

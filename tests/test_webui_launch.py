@@ -4,7 +4,7 @@
 Contract: `.agent/archive/contracts/m12u4.md` §L.
 
 The launcher is the only orchestration surface no in-process suite reaches: it selects the model
-tier, preflights the CUDA runtime, refuses foreign listeners, and tears three process groups down.
+tier, preflights the CUDA runtime, refuses foreign listeners, and tears both process groups down.
 M12.4a shipped its CUDA arm with L1-L3 smoked by hand and L4-L9 unencoded; this file is where every
 one of them becomes a rerunnable predicate.
 
@@ -51,7 +51,7 @@ _CONNECT_TIMEOUT_S = 0.25
 @dataclass(frozen=True)
 class _Harness:
     env: dict[str, str]
-    ports: tuple[int, int, int]
+    ports: tuple[int, int]
     fuser_log: Path
     model_log: Path
     uv_log: Path
@@ -71,13 +71,13 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _free_ports() -> tuple[int, int, int]:
+def _free_ports() -> tuple[int, int]:
     ports: list[int] = []
-    while len(ports) < 3:
+    while len(ports) < 2:
         port = _free_port()
         if port not in ports:
             ports.append(port)
-    return ports[0], ports[1], ports[2]
+    return ports[0], ports[1]
 
 
 def _write_executable(path: Path, source: str) -> None:
@@ -140,7 +140,6 @@ args = sys.argv[1:]
 with Path(os.environ["FAKE_UV_LOG"]).open("a", encoding="utf-8") as stream:
     print(json.dumps(args), file=stream)
 routes = {
-    ("run", "--locked", "python", "-m", "verifier.service"): ("VERIFIER_PORT", "verifier"),
     ("run", "--locked", "python", "-m", "webui", "stub"): ("MODEL_BACKEND_PORT", "model"),
     ("run", "--locked", "python", "-m", "webui", "serve"): ("WEBUI_PROVISION_PORT", "webui"),
 }
@@ -217,30 +216,24 @@ raise SystemExit(64)
     env = dict(os.environ)
     for inherited in (
         "MODEL_BACKEND_DEVICE",
-        "WEBUI_PROVISION_VERIFIER_URL",
         "WEBUI_PROVISION_MODEL_BACKEND_URL",
-        "VERIFIER_MODEL_BASE_URL",
     ):
         env.pop(inherited, None)
     env.update(
         {
             "PATH": f"{fake_bin}{os.pathsep}{env.get('PATH', '')}",
             "LAUNCH_HEALTH_HOST": "127.0.0.1",
-            "VERIFIER_PORT": str(ports[0]),
-            "MODEL_BACKEND_PORT": str(ports[1]),
-            "WEBUI_PROVISION_PORT": str(ports[2]),
+            "MODEL_BACKEND_PORT": str(ports[0]),
+            "WEBUI_PROVISION_PORT": str(ports[1]),
             "UV_PROJECT_ENVIRONMENT": str(project_venv),
             "UV_LINK_MODE": "copy",
             "WEBUI_PROVISION_WEBUI_BIN": str(owui_bin),
             "MODEL_BACKEND_PYTHON": str(model_python),
             "WEBUI_PROVISION_DATA_DIR": str(tmp_path / "webui-data"),
             "LAUNCH_LOG_DIR": str(log_dir),
-            "LAUNCH_VERIFIER_READY_S": "5",
             "LAUNCH_MODEL_READY_S": "5",
             "LAUNCH_WEBUI_READY_S": "5",
-            "WEBUI_PROVISION_VERIFIER_URL": f"http://127.0.0.1:{ports[0]}",
-            "WEBUI_PROVISION_MODEL_BACKEND_URL": f"http://127.0.0.1:{ports[1]}/v1",
-            "VERIFIER_MODEL_BASE_URL": f"http://127.0.0.1:{ports[1]}/v1",
+            "WEBUI_PROVISION_MODEL_BACKEND_URL": f"http://127.0.0.1:{ports[0]}/v1",
             "FAKE_HTTP_HELPER": str(helper),
             "FAKE_PID_DIR": str(pid_dir),
             "FAKE_FUSER_LOG": str(fuser_log),
@@ -484,7 +477,7 @@ def test_l4_a_refusal_installs_no_teardown_trap(tmp_path: Path) -> None:
             expected = "CUDA preflight failed"
         else:
             expected = f"port {harness.ports[0]} is already in use"
-        listener_port = harness.ports[0] if case == "port" else harness.ports[2]
+        listener_port = harness.ports[0] if case == "port" else harness.ports[1]
         listener = _listen(listener_port)
         try:
             result = _run_launcher(harness)
@@ -523,12 +516,10 @@ def test_l5_stub_bypasses_every_cuda_preflight(tmp_path: Path) -> None:
 
 
 def test_l6_a_foreign_listener_is_refused_and_survives(tmp_path: Path) -> None:
-    """L6: a foreign listener on `VERIFIER_PORT` / `MODEL_BACKEND_PORT` / `WEBUI_PROVISION_PORT` is
-    refused, not adopted, and survives. Acceptance: parametrized over all three ports — non-zero
-    exit naming that port, the socket still accepting a connection, and zero fake-`fuser` calls."""
-    for index, port_name in enumerate(
-        ("VERIFIER_PORT", "MODEL_BACKEND_PORT", "WEBUI_PROVISION_PORT")
-    ):
+    """L6: a foreign listener on `MODEL_BACKEND_PORT` / `WEBUI_PROVISION_PORT` is refused, not
+    adopted, and survives. Acceptance: over both ports — non-zero exit naming that port, the socket
+    still accepting a connection, and zero fake-`fuser` calls."""
+    for index, port_name in enumerate(("MODEL_BACKEND_PORT", "WEBUI_PROVISION_PORT")):
         harness = _make_harness(tmp_path / port_name.lower())
         occupied_port = harness.ports[index]
         listener = _listen(occupied_port)
@@ -544,9 +535,9 @@ def test_l6_a_foreign_listener_is_refused_and_survives(tmp_path: Path) -> None:
             listener.close()
 
 
-def test_l7_teardown_frees_all_three_ports_and_removes_the_pidfile(tmp_path: Path) -> None:
+def test_l7_teardown_frees_both_ports_and_removes_the_pidfile(tmp_path: Path) -> None:
     """L7: a full fake stack reaches READY, then SIGINT tears it down. Acceptance: launcher exit
-    130, all three ports refuse connections, `${LAUNCH_LOG_DIR}/launch.pid` is gone, and no helper
+    130, both ports refuse connections, `${LAUNCH_LOG_DIR}/launch.pid` is gone, and no helper
     process survives — process-group teardown, so real `setsid` must not be stubbed."""
     harness = _make_harness(tmp_path)
     process, stderr_path = _start_launcher(harness, "--stub")
@@ -558,7 +549,7 @@ def test_l7_teardown_frees_all_three_ports_and_removes_the_pidfile(tmp_path: Pat
             pid_path.stem: int(pid_path.read_text(encoding="utf-8"))
             for pid_path in harness.pid_dir.glob("*.pid")
         }
-        assert helper_pids.keys() == {"verifier", "model", "webui"}
+        assert helper_pids.keys() == {"model", "webui"}
         assert all(_pid_is_alive(pid) for pid in helper_pids.values())
         assert all(_can_connect(port) for port in harness.ports)
 
@@ -580,11 +571,11 @@ def test_l10_a_crashed_service_is_named_by_its_tracked_leader_pid(tmp_path: Path
     process, stderr_path = _start_launcher(harness, "--stub")
     try:
         _wait_for_text(stderr_path, "READY --", process)
-        verifier_pid = int((harness.pid_dir / "verifier.pid").read_text(encoding="utf-8"))
-        os.kill(verifier_pid, signal.SIGKILL)
+        model_pid = int((harness.pid_dir / "model.pid").read_text(encoding="utf-8"))
+        os.kill(model_pid, signal.SIGKILL)
         assert process.wait(timeout=_SUBPROCESS_TIMEOUT_S) != 0
         stderr = stderr_path.read_text(encoding="utf-8")
-        assert f"service verifier (pid {verifier_pid}) exited" in stderr
+        assert f"service model (pid {model_pid}) exited" in stderr
         assert not any(_can_connect(port) for port in harness.ports)
     finally:
         _force_stop(process, harness)

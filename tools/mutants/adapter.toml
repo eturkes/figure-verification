@@ -42,24 +42,16 @@ id = "x4-capture-temperature"
 predicate = "a selector forces the capture's greedy decoding rather than caller temperature"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
-anchor = '''        temperature=DEFAULT_TEMPERATURE'''
-mutant = '''        temperature=data.temperature'''
+anchor = '''        temperature=ADAPTER_TEMPERATURE if selector is not None else data.temperature,'''
+mutant = '''        temperature=data.temperature,'''
 
 [[mutant]]
 id = "x4-capture-token-cap"
 predicate = "a selector forces the capture's 512-token cap rather than the caller cap"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
-anchor = '''        max_tokens = DEFAULT_MAX_TOKENS'''
-mutant = '''        max_tokens = min(data.max_tokens or settings.max_tokens, settings.max_tokens)'''
-
-[[mutant]]
-id = "x4-no-guided-schema"
-predicate = "selector generation never applies a caller's guidance schema"
-kills = """tests/test_model_backend_adapter.py::\
-  test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
-anchor = '''        guided_schema=None if selector is not None else data.guided_schema,'''
-mutant = '''        guided_schema=data.guided_schema,'''
+anchor = '''        max_tokens = ADAPTER_MAX_TOKENS'''
+mutant = '''        max_tokens = max(1, min(requested, settings.max_tokens))'''
 
 [[mutant]]
 id = "x4-empty-reply-envelope"

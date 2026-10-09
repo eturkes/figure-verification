@@ -2,11 +2,11 @@
 """Live law cites tracked code by `path.py::symbol`, never by `path.py:<line>`.
 
 A line number strands on the first edit above it, and nothing notices: one wave of edits left 16
-of `VPlot_SEMANTICS.md`'s ranges pointing at the wrong code. A symbol citation survives edits and
-can be decided, so this resolves each one against the cited file's top-level or class-level
-definitions. Scope = `VPlot_SEMANTICS.md` + `.claude/rules/*.md`. A cited path is tracked when it
+of a law file's ranges pointing at the wrong code. A symbol citation survives edits and can be
+decided, so this resolves each one against the cited file's top-level or class-level
+definitions. Scope = `.claude/rules/*.md`. A cited path is tracked when it
 equals a tracked `.py` path or is the `/`-suffix of one, and a symbol citation must name exactly
-one; the upstream sources the rules quote (Open WebUI, transformers, xgrammar) match no tracked path
+one; the upstream sources the rules quote (Open WebUI, transformers) match no tracked path
 and stay line-cited.
 """
 
@@ -37,10 +37,7 @@ def _tracked() -> tuple[str, ...]:
 
 def _scope() -> list[str]:
     return [
-        name
-        for name in _tracked()
-        if name == "VPlot_SEMANTICS.md"
-        or (name.startswith(".claude/rules/") and name.endswith(".md"))
+        name for name in _tracked() if name.startswith(".claude/rules/") and name.endswith(".md")
     ]
 
 
@@ -109,22 +106,25 @@ def test_the_check_fires_on_planted_citations_and_passes_resolvable_ones() -> No
     """Positive control: each planted fault is found on its own line; resolvable forms pass."""
     planted = (
         "intro\n"
-        "see `src/verifier/vcert.py::NoSuchSymbol`\n"
-        "see `vcert.py:12`, `checks.py:5` and `checks.py::run_checks`\n"
-        "see `src/verifier/vcert.py::DisclosedFilter.value` + `vcert.py::vcert_bytes`\n"
-        "see `src/verifier/vcert.py::DisclosedFilter.value.extra`\n"
+        "see `src/verifier/figure/description.py::NoSuchSymbol`\n"
+        "see `description.py:12`, `settings.py:5` and `settings.py::Settings`\n"
+        "see `src/verifier/figure/description.py::Artist.site` + `description.py::Artist`\n"
+        "see `src/verifier/figure/description.py::Artist.site.extra`\n"
         "upstream `utils/middleware.py:1102-1124` stays line-cited"
     )
     assert _findings(planted) == [
-        (2, "src/verifier/vcert.py::NoSuchSymbol: no such definition in src/verifier/vcert.py"),
-        (3, "line citation vcert.py:12"),
-        (3, "line citation checks.py:5"),
-        (3, "checks.py::run_checks: no single tracked path"),
+        (
+            2,
+            "src/verifier/figure/description.py::NoSuchSymbol: no such definition in "
+            "src/verifier/figure/description.py",
+        ),
+        (3, "line citation description.py:12"),
+        (3, "line citation settings.py:5"),
+        (3, "settings.py::Settings: no single tracked path"),
         (
             5,
-            "src/verifier/vcert.py::DisclosedFilter.value.extra: no such definition in "
-            "src/verifier/vcert.py",
+            "src/verifier/figure/description.py::Artist.site.extra: no such definition in "
+            "src/verifier/figure/description.py",
         ),
     ]
-    assert "VPlot_SEMANTICS.md" in _scope()
     assert ".claude/rules/ops.md" in _scope()

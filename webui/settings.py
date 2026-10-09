@@ -23,10 +23,10 @@ Persistent-config is OFF (env-over-DB every boot), so runtime config lives in en
 DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap).
 Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fixed
 origin and /v1 joins; the bind/client host is a separate bare ASCII hostname. Defaults bind
-loopback only -- OWUI on 8080, the verifier on 8000, the model backend's OpenAI /v1 on 8001 -- and
+loopback only -- OWUI on 8080, the model backend's OpenAI /v1 on 8001 -- and
 the secret_key / admin_password are loopback dev defaults an operator overrides. All names and
 defaults were verified against open-webui 0.10.2 source (config.py / env.py). This package is an
-out-of-tree harness like model_backend and bench: coverage-excluded, unshipped, importing only
+out-of-tree harness like model_backend: coverage-excluded, unshipped, importing only
 gate-venv deps.
 """
 
@@ -50,7 +50,6 @@ _DEFAULT_SECRET_KEY = "loopback-dev-secret-key-for-local-poc"  # noqa: S105
 _DEFAULT_ADMIN_NAME = "operator"
 _DEFAULT_ADMIN_EMAIL = "operator@localhost"
 _DEFAULT_ADMIN_PASSWORD = "loopback-dev-password"  # noqa: S105
-_DEFAULT_VERIFIER_URL = "http://127.0.0.1:8000"
 _DEFAULT_MODEL_BACKEND_URL = "http://127.0.0.1:8001/v1"
 _DEFAULT_MODEL_ID = "Qwen2.5-Coder-0.5B-Instruct"
 _DEFAULT_WEBUI_BIN = ".venv-webui/bin/open-webui"
@@ -158,12 +157,11 @@ _BASE_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "
 def _require_http_url(name: str, value: str, *, path: str) -> None:
     """Fail closed unless value is one canonical http(s) endpoint with the exact path.
 
-    verifier_url and model_backend_url are emitted into the OWUI env / tool-server JSON, where a
-    blank or scheme-less value fails OPEN not loud: OWUI rewrites an empty OpenAI base-url to
-    https://api.openai.com/v1 (config.py) and silently drops a tool server whose url will not
-    url-join. Query/fragment/path confusion, userinfo, and browser-reinterpreted authority bytes
-    likewise corrupt the fixed `/schema/openapi.json`, `/models`, and `/chat/completions` joins, so
-    a misconfigured deploy must raise here instead of surfacing at first request.
+    model_backend_url is emitted into the OWUI env, where a blank or scheme-less value fails OPEN
+    not loud: OWUI rewrites an empty OpenAI base-url to https://api.openai.com/v1 (config.py).
+    Query/fragment/path confusion, userinfo, and browser-reinterpreted authority bytes likewise
+    corrupt the fixed `/models` and `/chat/completions` joins, so a misconfigured deploy must raise
+    here instead of surfacing at first request.
     """
     try:
         parsed = urlparse(value)
@@ -203,7 +201,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     admin_name: str = _DEFAULT_ADMIN_NAME
     admin_email: str = _DEFAULT_ADMIN_EMAIL
     admin_password: str = _DEFAULT_ADMIN_PASSWORD
-    verifier_url: str = _DEFAULT_VERIFIER_URL
     model_backend_url: str = _DEFAULT_MODEL_BACKEND_URL
     model_id: str = _DEFAULT_MODEL_ID
     webui_bin: Path = Path(_DEFAULT_WEBUI_BIN)
@@ -240,10 +237,9 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             if not math.isfinite(seconds) or seconds <= 0:
                 msg = f"{name} must be a finite value > 0, got {seconds}"
                 raise ValueError(msg)
-        # verifier_url / model_backend_url reach fixed OWUI joins; host backs both its bind argv and
-        # the bootstrap base_url. Validate their complete syntax so malformed values fail here,
-        # not as a misdirected request or invalid client URL downstream (see the helper).
-        _require_http_url("verifier_url", self.verifier_url, path="")
+        # model_backend_url reaches fixed OWUI joins; host backs both its bind argv and the
+        # bootstrap base_url. Validate their complete syntax so malformed values fail here, not as
+        # a misdirected request or invalid client URL downstream (see the helper).
         _require_http_url("model_backend_url", self.model_backend_url, path="/v1")
         if _CLEAN_HOST.fullmatch(self.host) is None:
             msg = (
@@ -318,7 +314,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             admin_name=env.get("WEBUI_PROVISION_ADMIN_NAME", _DEFAULT_ADMIN_NAME),
             admin_email=env.get("WEBUI_PROVISION_ADMIN_EMAIL", _DEFAULT_ADMIN_EMAIL),
             admin_password=env.get("WEBUI_PROVISION_ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD),
-            verifier_url=env.get("WEBUI_PROVISION_VERIFIER_URL", _DEFAULT_VERIFIER_URL),
             model_backend_url=env.get(
                 "WEBUI_PROVISION_MODEL_BACKEND_URL", _DEFAULT_MODEL_BACKEND_URL
             ),

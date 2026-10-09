@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""verifier — trusted core for the verified-plot PoC.
+"""verifier — trusted core of the figure verifier.
 
-Its job, as the trusted core: the model proposes only a restricted VPlot spec;
-this package validates it, independently recomputes the plotted table from the
-source data, runs the verification checks, and emits only verified output with a
-provenance badge. See POC_SCOPE.md for the boundary and the claim this PoC makes.
+The model writes a chart program; `verifier.figure.reader` reports what the finished matplotlib
+figure holds, and the stdlib judge (`verifier.figure`) decides whether it may appear.
 """
 
 __version__ = "0.2.0"

@@ -1,15 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Transformers engine wrapper — the untrusted local proposer.
 
-Isolates the untyped native imports (transformers and xgrammar; mypy overrides in pyproject make
-both resolve to Any so `mypy --strict` type-checks this package without the native runtime
-present) and serializes generation behind a single lock: one model, one accelerator. Tests
-therefore install TWO `sys.modules` fakes here, not one. The module states NO torch import:
-`dtype=` accepts a string that transformers resolves itself, `generate` is already decorated
-`@torch.no_grad()`, and `from_pretrained` already returns an eval-mode module, so tensors stay
-opaque behind `.shape`, slicing and `int()`. That is a rule about this module's own import
-statements — `import xgrammar` pulls torch in transitively and always has. Durable API facts:
-.claude/rules/transformers.md + .claude/rules/xgrammar.md.
+Isolates the untyped native import (transformers; a mypy override in pyproject makes it resolve to
+Any so `mypy --strict` type-checks this package without the native runtime present) and serializes
+generation behind a single lock: one model, one accelerator. Tests therefore install one
+`sys.modules` fake here. The module states NO torch import: `dtype=` accepts a string that
+transformers resolves itself, `generate` is already decorated `@torch.no_grad()`, and
+`from_pretrained` already returns an eval-mode module, so tensors stay opaque behind `.shape`,
+slicing and `int()`. Durable API facts: .claude/rules/transformers.md.
 
 - Chat is STATELESS: apply the chat template to the full messages array each call, in ONE
   tokenizing call (`tokenize=True, return_dict=True`). That form tokenizes its own rendered text
@@ -28,27 +26,15 @@ statements — `import xgrammar` pulls torch in transitively and always has. Dur
 - Bound the emitted RESPONSE size: after generation, reject a decoded reply whose UTF-8 byte
   length exceeds the ceiling (over-cap -> BackendError, read as an upstream fault). A
   post-generation guard on response bytes; max_new_tokens (per call) bounds the work itself.
-- Schema guidance is loaded, digested and COMPILED into one grammar per operator-pinned schema at
-  load, then applied per request as a fresh logits processor. A compilation fault refuses loudly
-  at load rather than degrading to unconstrained output. What the grammar buys is bounded: it
-  constrains generation TOWARD the guidance schema, evidenced by the live oracle's named
-  witnesses, while strict verifier re-decode remains the sole authority on admission. The grammar
-  is compiled from the pattern/format-STRIPPED guidance schema, so guided output can satisfy that
-  schema and still be strict-invalid; xgrammar also silently ignores schema keywords it does not
-  support — never describe the grammar as enforcing the schema.
 """
 
 import threading
-from collections.abc import Mapping
 from typing import Any, Literal, Self, TypeGuard
 
 import msgspec
-from transformers import AutoModelForCausalLM, AutoTokenizer, LogitsProcessorList
-from xgrammar import GrammarCompiler, TokenizerInfo
-from xgrammar.contrib.hf import LogitsProcessor
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from model_backend.schema_guidance import load_guidance_schema, schema_digest
-from model_backend.settings import GuidanceSchemaId, Settings
+from model_backend.settings import Settings
 
 # transformers resolves this string via getattr(torch, ...) — a module constant, not a settings
 # field: fp16 is the sole supported path for the pinned snapshot on the pinned accelerator.
@@ -56,10 +42,6 @@ _DTYPE = "float16"
 # Closed container domain for token-id metadata. str and bytes are iterable and a generator is
 # single-shot; none of them carries token ids, so all three refuse rather than being coerced.
 _TOKEN_ID_CONTAINERS = (list, tuple, set, frozenset)
-# Longest whitespace run the grammar admits between elements. Unbounded whitespace lets a greedy
-# model pad a finished document instead of emitting EOS; 8 still admits ordinary separators and
-# shallow indentation, and every measured arm terminated under it.
-_MAX_GUIDANCE_WHITESPACE = 8
 
 
 def _is_token_id(value: object) -> TypeGuard[int]:
@@ -108,77 +90,6 @@ class GenResult(msgspec.Struct, frozen=True, kw_only=True):
     finish_reason: Literal["stop", "length"]
 
 
-def _compile_guidance(
-    tokenizer: Any,
-    model: Any,
-    guidance_schemas: Mapping[GuidanceSchemaId, str],
-    eos_ids: frozenset[int],
-) -> dict[GuidanceSchemaId, Any]:
-    """Compile one immutable grammar per operator-pinned schema, or refuse loudly.
-
-    Every preparation fault lands on ONE surface (500 ``guidance_unusable``): a schema→grammar
-    converter that fails OPEN would leave a green-looking run serving unconstrained output, so
-    the whole defense is failing closed here, at load, before the device transfer. Only
-    Exception is caught — a BaseException signalling interpreter teardown must still escape.
-
-    Two arguments are load-bearing and are spelled explicitly:
-
-    - ``vocab_size`` comes from the MODEL config, never from len(tokenizer) and never from the
-      library default. The default derives its width from the tokenizer (151665 on this
-      snapshot, against a declared 151936), then masks 151936-wide scores through a bitmask
-      rounded up to 151680 bits and applied WITHOUT a width check, leaving exactly 256 logits
-      unconstrained. That failure is silent by construction, so passing the right width is
-      necessary but not sufficient: the built width is verified too, and a library version that
-      re-derived it internally would refuse here rather than pass every test while guiding
-      nothing.
-    - ``stop_token_ids`` comes from the same normalized model set that drives finish-reason
-      classification. Omitted, xgrammar derives stop ids from the TOKENIZER, whose set is
-      NARROWER here — the grammar's termination authority would then disagree with the
-      stopping criterion's and could mask an EOS the model relies on.
-
-    The two FORMAT bounds are measured, not chosen. any_order=True reads weaker — properties in
-    any order — but it also drops uniqueness and leaves the entry count unbounded above, so an
-    endless run of one property is admissible; greedy decoding walks straight into it and neither
-    schema terminated within 768 tokens. Unbounded whitespace is the other half: at the library
-    default a finished document can still be padded with spaces instead of an EOS. Under
-    any_order=False with an 8-character whitespace bound every measured arm stopped inside 217
-    tokens and parsed. Both bounds constrain FORMAT alone: strict verifier re-decode still owns
-    admission, and the model still chooses every value. strict_mode=True matches the current
-    library default and is spelled so a default change cannot silently move guidance strength.
-    """
-    vocab_size: Any = model.config.vocab_size
-    try:
-        tokenizer_info: Any = TokenizerInfo.from_huggingface(
-            tokenizer,
-            vocab_size=vocab_size,
-            stop_token_ids=sorted(eos_ids),
-        )
-    except Exception as exc:
-        msg = f"schema guidance could not read the tokenizer: {exc}"
-        raise BackendError(msg, status=500, error_type="guidance_unusable") from exc
-    if tokenizer_info.vocab_size != vocab_size:
-        msg = (
-            f"schema guidance derived a {tokenizer_info.vocab_size}-token vocabulary against the "
-            f"model's {vocab_size}: the mask would leave the excess logits unconstrained"
-        )
-        raise BackendError(msg, status=500, error_type="guidance_unusable")
-    try:
-        compiler: Any = GrammarCompiler(tokenizer_info)
-        compiled = {
-            schema_id: compiler.compile_json_schema(
-                text,
-                strict_mode=True,
-                any_order=False,
-                max_whitespace_cnt=_MAX_GUIDANCE_WHITESPACE,
-            )
-            for schema_id, text in guidance_schemas.items()
-        }
-    except Exception as exc:
-        msg = f"schema guidance could not be compiled into a grammar: {exc}"
-        raise BackendError(msg, status=500, error_type="guidance_unusable") from exc
-    return compiled
-
-
 class Engine:
     """A loaded model + tokenizer guarded by a lock. Build via Engine.load (blocking)."""
 
@@ -192,9 +103,6 @@ class Engine:
         pad_token_id: int,
         max_prompt_len: int,
         max_response_bytes: int,
-        guidance_schemas: Mapping[GuidanceSchemaId, str] | None = None,
-        schema_digests: Mapping[GuidanceSchemaId, str] | None = None,
-        compiled_grammars: Mapping[GuidanceSchemaId, Any] | None = None,
     ) -> None:
         self._model = model
         self._tok = tokenizer
@@ -203,60 +111,26 @@ class Engine:
         self._pad_token_id = pad_token_id
         self._max_prompt_len = max_prompt_len
         self._max_response_bytes = max_response_bytes
-        # Both maps are total over GuidanceSchemaId or both are None: None means guidance is
-        # disabled wholesale (settings.structured_output false), never that one mode is missing.
-        self._guidance_schemas = guidance_schemas
-        self._schema_digests = schema_digests
-        # Total over GuidanceSchemaId whenever guidance is enabled, None when it is disabled —
-        # the same all-or-nothing rule as the two maps above. One immutable grammar per id,
-        # compiled once at load and shared across every matcher that follows.
-        self._compiled_grammars = compiled_grammars
         # One model on one accelerator: serialize generation. Per-call generation state is
         # deep-copied upstream, but shared mutation exists on cache-length, compile-config and
         # rotary buffers, and the installed source declares no concurrency contract, so
         # re-entrancy stays UNSETTLED BY EVIDENCE and the lock is the safe default.
         self._lock = threading.Lock()
 
-    def schema_sha256(self, schema_id: GuidanceSchemaId) -> str | None:
-        """Return that operator schema's raw-byte digest, or None while guidance is disabled.
-
-        Subscripts the loaded map directly: a member of the closed id set is always present, so
-        there is no default arm to hide a mode whose schema silently failed to load.
-        """
-        if self._schema_digests is None:
-            return None
-        return self._schema_digests[schema_id]
-
     @classmethod
     def load(cls, settings: Settings) -> Self:
         """Load the tokenizer and the model, then move the model onto settings.device (blocking).
-        Raises loudly if the model path, its metadata, or a pinned schema is unusable.
+        Raises loudly if the model path or its metadata is unusable.
 
-        Order is schemas -> tokenizer -> model -> id normalization -> grammar compile -> device
-        transfer, so a schema or tokenizer fault costs zero model loads, unusable id metadata
-        costs zero grammar work, and a grammar fault costs zero device transfers. Every one of
+        Order is tokenizer -> model -> id normalization -> device transfer, so a tokenizer fault
+        costs zero model loads and unusable id metadata costs zero device transfers. Every one of
         those faults is decidable from metadata; deferring any to generation time would spend a
         full host allocation and an accelerator context first.
 
         local_files_only is NOT what resolves a valid local directory — local resolution already
         precedes every Hub path. It is what keeps a MISSING or typo'd model_dir from being read as
         a Hub repository identifier and reaching the network before it fails.
-
-        Structured guidance is derived once at load when settings.structured_output is enabled —
-        for EVERY operator-pinned schema, so a mode can never be selected at request time and find
-        its schema unloaded. A missing, unreadable, or invalid JSON schema aborts loading rather
-        than silently serving unconstrained output, and so does a schema that reaches xgrammar but
-        yields no grammar. Disabled, the whole path is skipped: zero tokenizer introspection, zero
-        compiler construction, zero compiles.
         """
-        if settings.structured_output:
-            paths = settings.guidance_schema_paths()
-            guidance_schemas = {sid: load_guidance_schema(path) for sid, path in paths.items()}
-            # Intentionally re-read raw bytes after parsing: tiny static files, blocking load path.
-            schema_digests = {sid: schema_digest(path) for sid, path in paths.items()}
-        else:
-            guidance_schemas = None
-            schema_digests = None
         model_dir = str(settings.model_dir)
         tokenizer = AutoTokenizer.from_pretrained(model_dir, local_files_only=True)
         model = AutoModelForCausalLM.from_pretrained(model_dir, dtype=_DTYPE, local_files_only=True)
@@ -274,13 +148,6 @@ class Engine:
         # min() rather than the library's own first-element pick: order-independent, reproducible.
         declared_pad: Any = generation_config.pad_token_id
         pad_token_id: int = declared_pad if _is_token_id(declared_pad) else min(eos_ids)
-        # Grammar compilation sits HERE — after id normalization, before the device transfer.
-        # Unusable ids cost zero grammar work, and a grammar fault costs zero device transfers.
-        compiled_grammars = (
-            None
-            if guidance_schemas is None
-            else _compile_guidance(tokenizer, model, guidance_schemas, eos_ids)
-        )
         return cls(
             model.to(settings.device),
             tokenizer,
@@ -289,9 +156,6 @@ class Engine:
             pad_token_id=pad_token_id,
             max_prompt_len=settings.max_prompt_len,
             max_response_bytes=settings.max_response_bytes,
-            guidance_schemas=guidance_schemas,
-            schema_digests=schema_digests,
-            compiled_grammars=compiled_grammars,
         )
 
     def generate(
@@ -300,7 +164,6 @@ class Engine:
         *,
         temperature: float,
         max_tokens: int,
-        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         """Generate one completion for the full messages array (stateless chat template).
 
@@ -309,10 +172,6 @@ class Engine:
         num_beams is pinned too, and temperature is passed only when sampling. Raises BackendError
         before generation if the exact templated prompt exceeds the token ceiling, and after
         generation if decoded text exceeds the response-byte ceiling.
-
-        A named guided_schema attaches that id's compiled grammar as a fresh logits processor.
-        Naming one while guidance is DISABLED generates unguided and does not raise: the wire
-        contract is best-effort, honored only while structured_output is enabled.
 
         No eos override reaches generate: the model's own generation_config already carries the
         authoritative set, and this method classifies against that same set.
@@ -346,19 +205,6 @@ class Engine:
             }
             if options["do_sample"]:
                 options["temperature"] = temperature
-            if guided_schema is not None and self._compiled_grammars is not None:
-                # Applied AFTER admission, at the site the previous build refused from, so an
-                # over-cap-plus-guided request keeps the same wire outcome across both units.
-                # A FRESH processor per call: it owns matcher, bitmask and prefill state and
-                # exposes no reset, so reuse would carry a finished matcher into the next
-                # request. Subscripts directly — the map is total over the closed id set, so
-                # there is no default arm to hide a mode whose grammar failed to compile.
-                # LogitsProcessorList rather than a bare list: that is generate's declared
-                # parameter type. The merge appends this mask after every default processor,
-                # and a -inf survives temperature, top-k and top-p alike, so no sampling warper
-                # can re-admit a masked token.
-                processor: Any = LogitsProcessor(self._compiled_grammars[guided_schema])
-                options["logits_processor"] = LogitsProcessorList([processor])
             output: Any = self._model.generate(**admitted, **options)
             # Decoder-only output is prompt+suffix and the caller's tensor is never mutated.
             suffix: Any = output[0, prompt_tokens:]

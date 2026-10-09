@@ -21,9 +21,6 @@ reference](docs/verification.md).
 - **A demo harness.** One command starts a local Open WebUI with a local model or a stub model. The
   harness also holds the measurement tools and the test suite.
 
-The repository also contains an older JSON-spec verifier service. That service runs headless and is
-not part of the Open WebUI deliverable. See [docs/json-spec.md](docs/json-spec.md).
-
 ## What "verified" means
 
 A chart passes when all of these statements are true:
@@ -129,9 +126,7 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 ├── corpus/python/         design, held-out and sentinel prompts, and committed captures
 ├── data/                  demo CSV files
 ├── tools/                 gate, positive controls, mutation driver and paste-in generator
-├── tests/                 the test suite
-├── src/verifier/          the JSON-spec verifier service (headless)
-└── docs/json-spec.md      the JSON-spec service claim, trust spine and acceptance record
+└── tests/                 the test suite
 ```
 
 ## License

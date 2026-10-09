@@ -24,7 +24,7 @@ from litestar import Litestar, Request, Response, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_200_OK
 
-from capture.harness import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, defence
+from model_backend.adapter import ADAPTER_MAX_TOKENS, ADAPTER_TEMPERATURE, defence
 from model_backend.engine import BackendError, Engine
 from model_backend.models import (
     ChatCompletionRequest,
@@ -38,29 +38,16 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
-from model_backend.settings import DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID, Settings
-from model_backend.verified_chart import VERIFIED_CHART_REPLY, is_verified_chart_summary
+from model_backend.settings import Settings
 
 _SELECTOR_MESSAGE_COUNT = 2
 
 
 @get("/health", sync_to_thread=False)
 def health(state: State) -> HealthResponse:
-    """Report backend liveness and loaded model/schema provenance.
-
-    One digest per operator-pinned schema: an operator reading /health can tell which pinned
-    document each proposer mode is actually guided by, and both go None together when
-    structured_output is disabled.
-    """
+    """Report backend liveness and the loaded model."""
     settings = cast("Settings", state["settings"])
-    engine = cast("Engine", state["engine"])
-    return HealthResponse(
-        model_name=settings.model_name,
-        device=settings.device,
-        structured_output=settings.structured_output,
-        vplot_schema_sha256=engine.schema_sha256(DATASET_SCHEMA_ID),
-        formula_schema_sha256=engine.schema_sha256(FORMULA_SCHEMA_ID),
-    )
+    return HealthResponse(model_name=settings.model_name, device=settings.device)
 
 
 def _completion(
@@ -117,9 +104,8 @@ def _selector_prompt(messages: tuple[ChatMessage, ...]) -> str | None:
 async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
     """Generate one non-streaming chat completion from the local model.
 
-    Open WebUI's post-verified-chart summarize turn returns a fixed reply. Its legacy selector
-    instead generates bare source from the capture request and wraps the de-fenced bytes as one
-    tool call. All other turns preserve the original generation route and optional schema guidance.
+    Open WebUI's legacy selector generates bare source from the demo inlet's request and wraps the
+    de-fenced bytes as one `draw_figure` tool call. All other turns run the model as asked.
 
     Ordinary requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
     single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
@@ -127,31 +113,18 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
     """
     settings = cast("Settings", state["settings"])
     engine = cast("Engine", state["engine"])
-    if is_verified_chart_summary(data.messages):
-        # The verifier already certified and embedded the chart, and OWUI re-prompts for a
-        # human-facing closing line. Return one fixed sentence rather than let the 0.5B proposer
-        # emit unrelated filler. The ONLY canned path — tool selection, the verifier's guided spec
-        # generation, and ordinary chat all still run the model below.
-        return _completion(
-            settings,
-            text=VERIFIED_CHART_REPLY,
-            finish_reason="stop",
-            prompt_tokens=sum(len(m.content.split()) for m in data.messages),
-            completion_tokens=len(VERIFIED_CHART_REPLY.split()),
-        )
     requested = data.max_tokens if data.max_tokens is not None else settings.max_tokens
     max_tokens = max(1, min(requested, settings.max_tokens))
     messages = [{"role": m.role, "content": m.content} for m in data.messages]
     selector = _selector_prompt(data.messages)
     if selector is not None:
         messages = [{"role": "user", "content": selector}]
-        max_tokens = DEFAULT_MAX_TOKENS
+        max_tokens = ADAPTER_MAX_TOKENS
     gen = await asyncio.to_thread(
         engine.generate,
         messages,
-        temperature=DEFAULT_TEMPERATURE if selector is not None else data.temperature,
+        temperature=ADAPTER_TEMPERATURE if selector is not None else data.temperature,
         max_tokens=max_tokens,
-        guided_schema=None if selector is not None else data.guided_schema,
     )
     text = gen.text
     if selector is not None:

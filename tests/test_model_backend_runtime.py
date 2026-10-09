@@ -16,13 +16,13 @@ import tomllib
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Protocol, cast, get_args
+from typing import Protocol, cast
 
 import msgspec
 import pytest
 
 import model_backend.settings as backend_settings
-from model_backend.settings import GuidanceSchemaId, Settings
+from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -215,9 +215,6 @@ def test_p01_settings_defaults_are_literal_pins() -> None:
     assert settings.device == "cuda"
     assert settings.model_dir == Path("models/Qwen2.5-Coder-0.5B-Instruct")
     assert settings.model_name == "Qwen2.5-Coder-0.5B-Instruct"
-    assert settings.structured_output is True
-    assert settings.vplot_schema_path == Path("schema/vplot-0.1.schema.json")
-    assert settings.formula_schema_path == Path("schema/vplot-formula-0.1.schema.json")
     assert settings.max_prompt_len == 1536
     assert settings.max_body_bytes == 131072
     assert settings.host == "127.0.0.1"
@@ -232,9 +229,6 @@ def test_p02_struct_fields_exact_tuple() -> None:
         "model_dir",
         "model_name",
         "device",
-        "structured_output",
-        "vplot_schema_path",
-        "formula_schema_path",
         "max_prompt_len",
         "max_body_bytes",
         "host",
@@ -251,9 +245,6 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
             "MODEL_BACKEND_MODEL_DIR": "custom/model-dir",
             "MODEL_BACKEND_MODEL_NAME": "custom-model-name",
             "MODEL_BACKEND_DEVICE": "custom-device",
-            "MODEL_BACKEND_STRUCTURED_OUTPUT": "false",
-            "MODEL_BACKEND_VPLOT_SCHEMA_PATH": "custom/vplot.json",
-            "MODEL_BACKEND_FORMULA_SCHEMA_PATH": "custom/formula.json",
             "MODEL_BACKEND_MAX_PROMPT_LEN": "101",
             "MODEL_BACKEND_MAX_BODY_BYTES": "102",
             "MODEL_BACKEND_HOST": "192.0.2.10",
@@ -269,9 +260,6 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         model_dir=Path("custom/model-dir"),
         model_name="custom-model-name",
         device="custom-device",
-        structured_output=False,
-        vplot_schema_path=Path("custom/vplot.json"),
-        formula_schema_path=Path("custom/formula.json"),
         max_prompt_len=101,
         max_body_bytes=102,
         host="192.0.2.10",
@@ -283,9 +271,6 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         "MODEL_BACKEND_MODEL_DIR",
         "MODEL_BACKEND_MODEL_NAME",
         "MODEL_BACKEND_DEVICE",
-        "MODEL_BACKEND_STRUCTURED_OUTPUT",
-        "MODEL_BACKEND_VPLOT_SCHEMA_PATH",
-        "MODEL_BACKEND_FORMULA_SCHEMA_PATH",
         "MODEL_BACKEND_MAX_PROMPT_LEN",
         "MODEL_BACKEND_MAX_BODY_BYTES",
         "MODEL_BACKEND_HOST",
@@ -293,25 +278,6 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         "MODEL_BACKEND_MAX_TOKENS",
         "MODEL_BACKEND_MAX_RESPONSE_BYTES",
     }
-
-
-def test_p04_guidance_schema_id_has_no_python_member() -> None:
-    """P4 pins the closed selector and refuses the nearest deferred-mode id."""
-    assert get_args(GuidanceSchemaId.__value__) == (
-        "vplot-0.1",
-        "vplot-formula-0.1",
-    )
-    paths = Settings(
-        vplot_schema_path=Path("pinned/dataset.json"),
-        formula_schema_path=Path("pinned/formula.json"),
-    ).guidance_schema_paths()
-    assert set(paths) == {"vplot-0.1", "vplot-formula-0.1"}
-    assert paths == {
-        "vplot-0.1": Path("pinned/dataset.json"),
-        "vplot-formula-0.1": Path("pinned/formula.json"),
-    }
-    with pytest.raises(KeyError):
-        cast("dict[str, Path]", paths)["pysrc-0.1"]
 
 
 def test_p05_bound_guards_still_refuse_zero() -> None:
@@ -736,12 +702,10 @@ def test_p15_runtime_pyproject_pins() -> None:
 
 
 def test_p15b_runtime_dev_group_pins_the_oracle_validator() -> None:
-    """P15b keeps the guidance oracle's validator declared and resolved, and off the served app.
+    """P15b keeps the runtime dev group's validator pin resolved and off the served app.
 
-    The oracle holds live guided output to the guidance and strict schemas, so an undeclared
-    jsonschema would leave that gate depending on whatever the environment happened to carry.
-    The pin lives in a dev group, never in project.dependencies: that set stays exactly the
-    packages the server itself needs.
+    Its consumer (the guidance oracle) retired with the JSON-spec modes; the pin stays until the
+    queue's dependency-pruning row removes it. The served set stays exactly what the server needs.
     """
     document = cast(
         "dict[str, object]",
@@ -864,11 +828,8 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
     # The closed set, hand-stated: a deny-list of known-unused packages would admit any other
     # override (a restored retired `openvino_genai` group passed the earlier form).
     assert module_groups == {
-        frozenset({"jsonschema.*"}),
-        frozenset({"z3", "z3.*"}),
         frozenset({"torch", "torch.*"}),
         frozenset({"transformers", "transformers.*"}),
-        frozenset({"xgrammar", "xgrammar.*"}),
         frozenset({"open_webui", "open_webui.*"}),
     }
 

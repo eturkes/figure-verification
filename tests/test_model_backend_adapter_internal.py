@@ -11,7 +11,7 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from model_backend.settings import GuidanceSchemaId, Settings
+from model_backend.settings import Settings
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class _Gen:
 class _RecordingEngine:
     def __init__(self, text: str = "ordinary reply") -> None:
         self.text = text
-        self.calls: list[tuple[list[dict[str, str]], float, int, GuidanceSchemaId | None]] = []
+        self.calls: list[tuple[list[dict[str, str]], float, int]] = []
 
     def generate(
         self,
@@ -33,9 +33,8 @@ class _RecordingEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided_schema: GuidanceSchemaId | None,
     ) -> _Gen:
-        self.calls.append((messages, temperature, max_tokens, guided_schema))
+        self.calls.append((messages, temperature, max_tokens))
         return _Gen(text=self.text, prompt_tokens=3, completion_tokens=2, finish_reason="length")
 
 
@@ -104,13 +103,12 @@ def test_selector_near_misses_preserve_ordinary_generation(
                 "messages": messages,
                 "temperature": 0.375,
                 "max_tokens": 7,
-                "guided_schema": "vplot-0.1",
             },
         )
 
     assert response.status_code == 200
     assert response.json()["choices"][0]["message"]["content"] == "ordinary reply"
-    assert engine.calls == [(messages, 0.375, 7, "vplot-0.1")]
+    assert engine.calls == [(messages, 0.375, 7)]
 
 
 @pytest.mark.parametrize(
@@ -145,4 +143,4 @@ def test_selector_wraps_source_even_when_empty(
         "tool_calls": [{"name": "draw_figure", "parameters": {"program": program}}]
     }
     assert choice["finish_reason"] == "length"
-    assert engine.calls == [([{"role": "user", "content": "chart"}], 0.0, 512, None)]
+    assert engine.calls == [([{"role": "user", "content": "chart"}], 0.0, 512)]

@@ -4,7 +4,7 @@ This out-of-tree, unshipped harness starts Open WebUI in a hermetic environment.
 first administrator and installs the generated global outlet filter. It also installs the generated
 figure-verification tool and attaches it to the model's default tools. Bootstrap checks eight facts
 from four readbacks. The project type-checks and lint-checks this harness. It excludes the harness
-from coverage, like `bench/` and `model_backend/`.
+from coverage, like `model_backend/`.
 
 ```text
 browser → Open WebUI :8080
@@ -22,14 +22,15 @@ names. Production also refuses a chart that draws an unnamed column when the req
 excludes at least one column. A column with a short name, such as `id`, is exempt. An alias of
 recognized length (three ASCII characters, or two of another script) in the tool's valves ends that
 exemption. Second, the inlet template differs. The demo filter asks the model for bare source text,
-which the demo adapter turns into a tool call. The production filter omits that sentence. The
-harness registers no tool server, so the JSON-spec `proposeSpec` operation does not reach the model.
+which the demo adapter turns into a tool call. The production filter asks for the tool call
+directly. The harness registers no tool server.
 
 Open WebUI is a trusted display and orchestration layer. The filter reads a backend-owned tool
-receipt and independently re-verifies the user's program and files. It only publishes a PNG after a
-successful browser render. Each reply also has a `Show checks` list. Click a check to open it: it
-shows what the check does, the program lines that it read and why it failed. It also links to the
-[verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
+receipt. It runs the receipt's program unchanged in the user's browser, with the trusted figure
+reader around it. It then judges the finished figure against the user's own files and request. It
+only publishes a PNG after the figure passes. Each reply also has a `Show checks` list. Click a
+check to open it: it shows what the check does, the program line that drew the failed part and why
+it failed. It also links to the [verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
 chat request and makes no model-reliability claim.
 
 ## One-time setup
@@ -49,10 +50,10 @@ It never imports Open WebUI into the verifier environment.
 ## One-command interactive instance
 
 From the repository root, run `webui/launch.sh`. This single command automates the complete
-per-terminal recipe below. The launcher starts the verifier, the model tier, and Open WebUI in that
-order. It waits for each readiness endpoint. It runs `bootstrap` and prints the browser
+per-terminal recipe below. The launcher starts the model tier and Open WebUI in that order. It
+waits for each readiness endpoint. It runs `bootstrap` and prints the browser
 URL and administrator login. It then blocks until an interrupt. At exit, it stops each child and
-frees all three ports. Bootstrap makes Figure Verifier a default tool on the configured model.
+frees both ports. Bootstrap makes Figure Verifier a default tool on the configured model.
 Thus, browser chats offer it without a manual tool toggle.
 
 ```sh
@@ -78,18 +79,6 @@ WebUI process. The project ignores `.webui-data/`. You can discard that director
 
 ```sh
 rm -rf .webui-data
-VERIFIER_WORK_RATE_PER_MINUTE=10000 VERIFIER_WORK_BURST=10000 \
-  uv run --locked python -m verifier.service
-```
-
-This deterministic integration smoke raises the process-local work rate. Thus, repeated tool probes
-exercise Open WebUI instead of the admission policy. When these overrides are absent, the
-production defaults stay in force.
-
-Before you continue, wait for the verifier:
-
-```sh
-curl -fsS http://127.0.0.1:8000/health
 ```
 
 Start the OpenAI-compatible hardware-free stub. Then wait for its model list:
@@ -100,33 +89,23 @@ curl -fsS http://127.0.0.1:8001/v1/models
 ```
 
 The stub is a deterministic integration fixture. It is not a model. On the legacy selector turn
-for the pinned simple prompt, it calls `draw_figure` with a committed Python program. It does the
-same for the elaborate prompt and for each Japanese banner prompt. For a Japanese prompt, the
-program is the reply that the real model wrote for it, stored in `webui/demo_ja.json`. Other requests
-receive prose. The stub tests wiring, not model selection or generation quality.
-
-To capture the Japanese replies again, start the real model backend. Then run this command. It
-rewrites `webui/demo_ja.json`:
-
-```sh
-uv run --locked python -m webui.demo_ja
-```
+for each banner prompt, it calls `draw_figure` with that prompt's scripted Python program from
+`webui/banner.json`. Other requests receive prose. The stub tests wiring, not model selection or
+generation quality.
 
 For a real-model run, use the CUDA backend through the launcher. Keep its URL and model ID aligned
 with the provisioner settings below.
 
-Only after both upstreams answer, start Open WebUI. Then wait for application readiness:
+Only after the stub answers, start Open WebUI. Then wait for application readiness:
 
 ```sh
 uv run --locked python -m webui serve
 curl -fsS http://127.0.0.1:8080/ready
 ```
 
-The pasted tool runs in Open WebUI and calls no verifier server. Bootstrap does not need the
-verifier first. Start it before Open WebUI when you use the legacy JSON-spec iframe path; that path
-serves `/chart/<plot_id>` from `:8000`.
+The pasted tool and filter run in Open WebUI and call no other server.
 
-In a fourth terminal, run the provisioning smoke-check:
+In a third terminal, run the provisioning smoke-check:
 
 ```sh
 uv run --locked python -m webui bootstrap
@@ -150,66 +129,9 @@ The launcher disables persistent configuration for its settings. The launch envi
 tool, model, and legacy-function-calling configuration. The administrator user, owned function, and
 workspace model configuration persist in `.webui-data/`.
 
-## Historical: recorded JSON-spec E2E (earlier wiring)
+## Persisted-chat CLI
 
-This section is historical. It records the JSON-spec chain measured on the earlier wiring, where a registered tool
-server published `proposeSpec`. The harness no longer registers that server, so these steps need an
-operator to register it first. Read them as evidence for the chain they measured, not as the current
-demo path. The root [README](../README.md#measured-results) records the python-mode demo.
-
-With the hardware-free stack provisioned and the verifier registered as a tool server, run this
-synchronous request. It proves the legacy selector, server tool, VPlot proposal, verifier, and clean
-verdict-context chain:
-
-```sh
-uv run --locked python - <<'PY'
-import json
-
-import httpx
-
-from webui.settings import Settings
-
-settings = Settings.from_env()
-prompt = "Create a verified bar chart of total revenue by month from sales.csv."
-
-with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) as client:
-    auth = client.post(
-        "/api/v1/auths/signin",
-        json={"email": settings.admin_email, "password": settings.admin_password},
-    )
-    auth.raise_for_status()
-    client.headers["Authorization"] = f"Bearer {auth.json()['token']}"
-    response = client.post(
-        "/api/chat/completions",
-        json={
-            "model": settings.model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-            "tool_ids": ["server:verifier"],
-        },
-    )
-    response.raise_for_status()
-    result = response.json()
-
-assert result["choices"][0]["message"]["content"] == (
-    "Figure Verifier confirmed the chart; all checks passed."
-)
-assert result["sources"][0]["source"]["name"] == "server:verifier/proposeSpec"
-assert "Verified chart for sales.csv: all 10 checks passed." in json.dumps(result["sources"])
-print("legacy-FC tool/verifier chain: PASS")
-PY
-```
-
-For persisted browser evidence, send the same completion with `parent_id: null` and a non-empty
-`session_id`. Include an assistant `id`. Include a complete `user_message` with its own ID, role,
-content, timestamp, `parentId: null`, and `childrenIds: [<assistant-id>]`. The response supplies
-`chat_id`. Poll `GET /api/v1/chats/{chat_id}` until that assistant has `done: true`. Then open
-`/c/{chat_id}`. In Open WebUI 0.10.2, the persisted final text is the first `output_text` content of a
-`message` output item; a reasoning item can come first. The legacy `content` stays empty. In this
-legacy chain, the verifier URL is in `embeds[0]`.
-The rendered iframe must contain the verified chart. Its sandbox must omit `allow-same-origin`.
-
-Use the persisted-chat CLI to run that flow without duplicate request construction:
+Use the persisted-chat CLI to send one prompt and read the stored reply:
 
 ```sh
 uv run --locked python -m webui chat --prompt \
@@ -219,29 +141,7 @@ uv run --locked python -m webui chat --prompt \
 The CLI calls `WebUIClient.run_persisted_chat`. It waits for the persisted assistant message. It
 then prints the final text: the first `output_text` content of a `message` output item. When an
 embed is an `http://` or `https://` URL, the CLI also prints the first such URL. It never prints an
-HTML embed, such as the Show-checks list that python mode puts first.
-
-On the ORIGIN host, an NPU run replaced the stub and measured the weak model separately. For that
-device and configuration, a raw, unconstrained ten-prompt sample selected the tool on 5/10 prompts. The sample
-produced no verified chart. Four calls reached the verifier with undecodable fenced specs. One call
-omitted a required argument. That observation is not a bound. The deterministic fixture above
-proves only that the integration works when its untrusted proposer supplies valid protocol
-messages.
-
-On the earlier JSON-spec wiring, the default schema guided selected `proposeSpec` generations.
-It steered the weak model toward schema-representable structure instead of fenced prose. In the
-fixed 100-prompt live NPU run, `verified_render=0.26`, compared with `0.00` in the same-commit
-unguided arm. Every reply had
-the `bare_object` surface form and began `{`. The run had 0 fenced replies, compared with 52 in that
-arm. Also, 83/100 replies parsed as JSON. However, 51/100 replies still failed strict VPlot decode.
-Also, 23/100 replies failed a semantic check. Thus, the real model can render a verified chart
-for some well-formed requests. However, the verifier blocks most attempts. These results are observations,
-not bounds. They are reproducible only for the measured device and configuration. They do not
-expand what the deterministic fixture proves. The 100-prompt bench calls `/propose-spec` directly.
-Therefore, it measures neither Open WebUI tool selection nor guard coverage. The
-`webui/launch.sh` banner now states the python-mode outcomes recorded with the real model. The
-[bench recipe](../bench/README.md) documents
-reproduction and the session-logged, gitignored reports.
+HTML embed, such as the Show-checks list that the filter adds.
 
 ## Live outlet assertion
 
@@ -313,13 +213,12 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_ADMIN_NAME` | `operator` | Sets the first administrator's display name.
 `WEBUI_PROVISION_ADMIN_EMAIL` | `operator@localhost` | Sets the signup and signin identity.
 `WEBUI_PROVISION_ADMIN_PASSWORD` | fixed loopback dev value | Sets the signup and signin password.
-`WEBUI_PROVISION_VERIFIER_URL` | `http://127.0.0.1:8000` | Keeps the validated legacy verifier origin. It registers no tool server.
 `WEBUI_PROVISION_MODEL_BACKEND_URL` | `http://127.0.0.1:8001/v1` | Sets the canonical OpenAI-compatible backend `/v1` base URL.
 `WEBUI_PROVISION_MODEL_ID` | `Qwen2.5-Coder-0.5B-Instruct` | Sets the model that the smoke requires.
 `WEBUI_PROVISION_WEBUI_BIN` | `.venv-webui/bin/open-webui` | Sets the binary execution target.
 `WEBUI_PROVISION_REQUEST_TIMEOUT` | `30` | Sets the timeout in seconds for each provisioning request.
 `WEBUI_PROVISION_READY_TIMEOUT` | `60` | Sets the seconds allowed for `/ready`.
 
-The default credentials are constant, throwaway PoC values. All three services bind to loopback.
+The default credentials are constant, throwaway PoC values. Both services bind to loopback.
 For the verified recipe, keep that boundary. For any network-exposed deployment, use fresh
 credentials. Generate a secret for that deployment. Obtain a separate production security review.

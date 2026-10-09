@@ -319,14 +319,8 @@ imports, inlinable into one pasted file:
    in first-occurrence order, which is exactly why a duplicate category overplots and G8 refuses it.
    Full profile + its closed refusal complement = `.agent/archive/contracts/m13u5.md` § The C10 ruling.
 
-Python mode ships in the Open WebUI paste-in alone; the :8000 service stays JSON-spec-only (user
-ruling, `.agent/spec.md` Demo shape), so no python-mode certificate kind, archive widening,
-`AttemptRoute` member, replay or `/verify-python` route exists. The archived roadmap § M13 scope
-sketch that enumerated those wrappers is history, not a plan.
-
 Where "reuse the shipped evaluator" conflicts with core isolation, **embeddability wins** (user
-word): extract into the core rather than import the service stack. `formal.py` stays demo-side —
-z3 cannot be inlined.
+word): extract into the core rather than import the service stack.
 
 ## Projection law (formula arm)
 
@@ -444,19 +438,7 @@ z3 cannot be inlined.
   3/25 → 0/25, with `column_not_numeric` 2 → 3 as one row's true fault stopped being masked. The
   adversarial NA case is banked on fixtures that are NOT `data/sales.csv`, three ways:
   `tests/test_pysrc_aggregate.py`'s 19 hand-stated spellings through the VALUE column, its
-  key-column end-to-end refusal (S2), and `data/deliberately_dirty.csv`, which keeps its literal
-  `NA` for JSON mode's "only an empty cell is null" claim. The digest of `data/sales.csv` is cited
-  in 24 tracked files (`tests/test_dataset_digests.py` `_SALES_CITATION_FLOOR`), so a data edit is replayed by `uv run --locked python
-  tools/rederive_dataset_hashes.py` — idempotent, recomputing each citation from the CSV — and
-  `tests/test_dataset_digests.py` states the same law independently. Read that law at its real
-  strength: a `sha256:<64 lower-case hex>` token in a tracked file naming a tracked `data/*.csv`
-  must equal that dataset's live digest, the owner being the last such name before the token or the
-  first after it, swept over BYTES so a non-UTF-8 file is covered. It does NOT decide a citation
-  whose nearest named CSV is not its owner, an upper-case token, a name outside `[A-Za-z0-9_-]+`,
-  or a token split across literals. Three exemptions, all BY PATH and each pinned rather than
-  trusted — the archive, the two deliberate-mismatch fixtures (pinned NON-LIVE, so a vector carrying
-  some other wrong digest is not silently repaired into a passing one), and the two files that
-  hand-state canonical-encoding digests.
+  key-column end-to-end refusal (S2), and `data/deliberately_dirty.csv`.
 - **The SECOND mark is CANCELLED (user ruling), and `CorePlotSpec` keeps ONE mark.** It converts
   zero held-out prompts. It existed for heldout simple 06/14 ("separate city lines"), but
   `weather.csv` is LONG — 8 rows = 4 dates x 2 cities — so two marks over two columns cannot draw
@@ -532,8 +514,7 @@ z3 cannot be inlined.
 - Claims: recomputation strong · admission BY ALLOWLIST · containment TRUSTED (the Pyodide iframe
   and its bundled matplotlib/pandas/numpy join the TCB).
 - `ast.parse` over untrusted bytes is a TCB addition for this module ALONE — it runs the CPython
-  parser on adversarial input, so the byte cap and nesting pre-scan must precede it. `expr.py` keeps
-  its no-`ast` property.
+  parser on adversarial input, so the byte cap and nesting pre-scan must precede it.
 - Subset designed by IDIOM CLASS on the design set alone; held-out untouched until the config is
   frozen. A ≥70% figure taken on the design set is not evidence.
 - No prompt text, prompt hash, sample-specific field list or raw model reply may appear in

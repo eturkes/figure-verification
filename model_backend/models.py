@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """OpenAI-shaped request/response models for the local backend.
 
-A minimal subset of the OpenAI Chat Completions + Models schema — enough for the verifier's
-verifier client (and, later, Open WebUI) to talk to the local proposer. The REQUEST struct
-deliberately does NOT forbid unknown fields: this is an OpenAI-compatible endpoint and
-callers send extra params (stream, top_p, ...) the backend ignores. That tolerance is
-NOT a trust weakening — this backend is the untrusted proposer; the verifier re-decodes every
-reply with the strict VPlot decoder (POC_SCOPE). RESPONSE structs are built here and
+A minimal subset of the OpenAI Chat Completions + Models schema — enough for Open WebUI to
+talk to the local proposer. The REQUEST struct deliberately does NOT forbid unknown fields: this
+is an OpenAI-compatible endpoint and callers send extra params (stream, top_p, ...) the backend
+ignores. That tolerance is NOT a trust weakening — this backend is the untrusted proposer; the
+verifier judges the figure its program draws. RESPONSE structs are built here and
 serialized by Litestar's msgspec encoder.
 
 Arrays are tuples (deeply immutable + hashable — the msgspec house rule; see memory Stack).
@@ -17,8 +16,6 @@ accepts a JSON int token for a float field (0 -> 0.0), so a caller may send eith
 from typing import Annotated, Literal
 
 import msgspec
-
-from model_backend.settings import GuidanceSchemaId
 
 __all__ = [
     "ChatCompletionRequest",
@@ -49,15 +46,6 @@ class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
 class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     """An OpenAI chat-completion request (unknown fields tolerated — see module docstring).
 
-    Schema-guided (constrained) decoding is opt-in per request via guided_schema, which NAMES one
-    operator-pinned schema (settings.GuidanceSchemaId): the verifier's proposeSpec selects
-    "vplot-0.1" and proposeFormula selects "vplot-formula-0.1", each steering output toward that
-    mode's schema-representable structure (strict decode still owns rejection), while generic
-    OpenAI/OWUI callers omit it (default None) and stay unconstrained. The closed Literal is the
-    whole admission rule: an unknown id and a caller-supplied schema DOCUMENT are both rejected 400
-    at decode, so a request can never install a schema the operator did not pin.
-    Best-effort: the backend honors it only while structured_output is enabled.
-
     messages is required and non-empty; model/temperature/max_tokens are optional (the server
     supplies model_name, greedy temperature 0, the configured max_tokens ceiling). temperature
     is bounded to OpenAI's [0, 2] at decode (a negative would silently mean greedy, an absurd
@@ -69,7 +57,6 @@ class ChatCompletionRequest(msgspec.Struct, frozen=True, kw_only=True):
     model: str | None = None
     temperature: Annotated[float, msgspec.Meta(ge=0.0, le=2.0)] = 0.0
     max_tokens: int | None = None
-    guided_schema: GuidanceSchemaId | None = None
 
 
 class Choice(msgspec.Struct, frozen=True, kw_only=True):
@@ -100,13 +87,10 @@ class ChatCompletionResponse(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class HealthResponse(msgspec.Struct, frozen=True, kw_only=True):
-    """Backend liveness plus model provenance and one digest per operator-pinned schema."""
+    """Backend liveness plus model provenance."""
 
     model_name: str
     device: str
-    structured_output: bool
-    vplot_schema_sha256: str | None
-    formula_schema_sha256: str | None
     status: Literal["ok"] = "ok"
 
 

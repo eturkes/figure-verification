@@ -9,7 +9,6 @@ authority, so the tokenizer stand-in carries none.
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 import threading
@@ -17,38 +16,21 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Literal, cast, get_args
+from typing import Any, Literal, cast
 
-import msgspec
 import pytest
-from jsonschema import Draft202012Validator, ValidationError
 from litestar.testing import TestClient
 
 from model_backend.models import ChatMessage, ModelCard
-from model_backend.schema_guidance import (
-    _DRAFT_2020_12,
-    load_guidance_schema,
-    schema_digest,
-    strip_guidance,
-)
-from model_backend.settings import DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID, GuidanceSchemaId, Settings
-from model_backend.verified_chart import VERIFIED_CHART_REPLY, is_verified_chart_summary
-
-# The strict formula decoder is imported here on purpose: the weak-guidance claim is the PAIR
-# "guidance admits it, strict decode rejects it". Splitting the pair weakens that claim.
-from verifier.schema import decode_formula_spec
+from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
-_SCHEMA_PATH = _ROOT / "schema" / "vplot-0.1.schema.json"
-_FORMULA_SCHEMA_PATH = _ROOT / "schema" / "vplot-formula-0.1.schema.json"
-_GOOD_SPECS_DIR = _ROOT / "examples" / "good_specs"
 _ENGINE_PATH = _ROOT / "model_backend" / "engine.py"
 _SMOKE_PATH = _ROOT / "model_backend" / "smoke.py"
-_ORACLE_PATH = _ROOT / "model_backend" / "guidance_oracle.py"
-# The package's two probes. Both run only on the isolated .venv-model runtime and both import
-# packages the served app never carries: torch, and the oracle's jsonschema validator.
-_PROBE_PATHS = (_SMOKE_PATH, _ORACLE_PATH)
-_PROBE_ONLY_IMPORTS = re.compile(r"^\s*(?:import|from)\s+(?:torch|jsonschema)\b", re.MULTILINE)
+# The package's probe runs only on the isolated .venv-model runtime and imports torch, which the
+# served app never carries.
+_PROBE_PATHS = (_SMOKE_PATH,)
+_PROBE_ONLY_IMPORTS = re.compile(r"^\s*(?:import|from)\s+torch\b", re.MULTILINE)
 
 
 class _Vector:
@@ -220,84 +202,14 @@ class _FakeAutoModelForCausalLM:
         pytest.fail("test must install a model loader")
 
 
-class _LogitsProcessorList(list[object]):
-    """Stands in for transformers' own container; the real one is a plain list subclass."""
-
-
-class _TokenizerInfo:
-    """Reports back exactly the width it was handed, which is what the real API promises."""
-
-    def __init__(self, vocab_size: object, stop_token_ids: object) -> None:
-        self.vocab_size = vocab_size
-        self.stop_token_ids = stop_token_ids
-
-
-class _FakeTokenizerInfo:
-    @classmethod
-    def from_huggingface(
-        cls,
-        _tokenizer: object,
-        *,
-        vocab_size: object = None,
-        stop_token_ids: object = None,
-    ) -> _TokenizerInfo:
-        return _TokenizerInfo(vocab_size, stop_token_ids)
-
-
-class _CompiledGrammar:
-    def __init__(self, schema: str) -> None:
-        self.schema = schema
-
-
-class _FakeGrammarCompiler:
-    def __init__(self, tokenizer_info: object) -> None:
-        self.tokenizer_info = tokenizer_info
-
-    def compile_json_schema(
-        self,
-        schema: str,
-        *,
-        strict_mode: bool = True,
-        any_order: bool = False,
-        max_whitespace_cnt: int | None = None,
-    ) -> _CompiledGrammar:
-        # Every keyword the real signature declares, with the real defaults: a fake that drops one
-        # leaves that argument unpinned here and raises on the live call instead.
-        del strict_mode, any_order, max_whitespace_cnt
-        return _CompiledGrammar(schema)
-
-
-class _FakeLogitsProcessor:
-    def __init__(self, compiled_grammar: object) -> None:
-        self.compiled_grammar = compiled_grammar
-
-
-# engine.py imports transformers AND xgrammar, so this seam installs BOTH fakes. Importing the
-# real xgrammar would pull torch into a test environment that deliberately has neither. These
-# fakes stay PERMISSIVE on purpose: the guidance predicates live in tests/test_m12u3_guidance.py,
-# which builds its own strict fakes under an isolated import, and duplicating that strictness
-# here would fork one contract across two harnesses.
+# engine.py imports transformers alone; importing the real one would pull torch into a test
+# environment that deliberately has neither.
 _TRANSFORMERS = ModuleType("transformers")
 _TRANSFORMERS.AutoTokenizer = _FakeAutoTokenizer  # type: ignore[attr-defined]
 _TRANSFORMERS.AutoModelForCausalLM = _FakeAutoModelForCausalLM  # type: ignore[attr-defined]
-_TRANSFORMERS.LogitsProcessorList = _LogitsProcessorList  # type: ignore[attr-defined]
 sys.modules["transformers"] = _TRANSFORMERS
 
-_XGRAMMAR = ModuleType("xgrammar")
-_XGRAMMAR.__path__ = []
-_XGRAMMAR.TokenizerInfo = _FakeTokenizerInfo  # type: ignore[attr-defined]
-_XGRAMMAR.GrammarCompiler = _FakeGrammarCompiler  # type: ignore[attr-defined]
-_XGRAMMAR_CONTRIB = ModuleType("xgrammar.contrib")
-_XGRAMMAR_CONTRIB.__path__ = []
-_XGRAMMAR_HF = ModuleType("xgrammar.contrib.hf")
-_XGRAMMAR_HF.LogitsProcessor = _FakeLogitsProcessor  # type: ignore[attr-defined]
-_XGRAMMAR_CONTRIB.hf = _XGRAMMAR_HF  # type: ignore[attr-defined]
-_XGRAMMAR.contrib = _XGRAMMAR_CONTRIB  # type: ignore[attr-defined]
-sys.modules["xgrammar"] = _XGRAMMAR
-sys.modules["xgrammar.contrib"] = _XGRAMMAR_CONTRIB
-sys.modules["xgrammar.contrib.hf"] = _XGRAMMAR_HF
 
-import model_backend.engine as engine_module  # noqa: E402
 from model_backend.app import create_app  # noqa: E402
 from model_backend.engine import BackendError, Engine, GenResult  # noqa: E402
 
@@ -346,7 +258,7 @@ def _loaded_engine(
     model: _Model | None = None,
 ) -> tuple[Any, _Runtime]:
     runtime = _patch_runtime(monkeypatch, tokenizer=tokenizer, model=model)
-    selected = settings if settings is not None else Settings(structured_output=False)
+    selected = settings if settings is not None else Settings()
     return Engine.load(selected), runtime
 
 
@@ -355,7 +267,6 @@ def _generate(engine: Any, *, temperature: float = 0.0, max_tokens: int = 7) -> 
         [{"role": "user", "content": "hello"}],
         temperature=temperature,
         max_tokens=max_tokens,
-        guided_schema=None,
     )
 
 
@@ -369,307 +280,13 @@ def _assert_backend_error(
         assert str(exc) == message
 
 
-def _read_json_object(path: Path) -> dict[str, Any]:
-    loaded: Any = json.loads(path.read_text(encoding="utf-8"))
-    assert isinstance(loaded, dict)
-    return cast("dict[str, Any]", loaded)
-
-
-def test_strip_guidance_removes_only_pattern_and_format_recursively() -> None:
-    source: dict[str, Any] = {
-        "pattern": "^root$",
-        "format": "date-time",
-        "required": ["outer"],
-        "additionalProperties": False,
-        "$defs": {
-            "Inner": {
-                "anyOf": [
-                    {"type": "string", "pattern": "^x$", "minLength": 1},
-                    {
-                        "type": "object",
-                        "properties": {"value": {"type": "string", "format": "uri"}},
-                    },
-                ]
-            }
-        },
-    }
-
-    assert strip_guidance(source) == {
-        "required": ["outer"],
-        "additionalProperties": False,
-        "$defs": {
-            "Inner": {
-                "anyOf": [
-                    {"type": "string", "minLength": 1},
-                    {
-                        "type": "object",
-                        "properties": {"value": {"type": "string"}},
-                    },
-                ]
-            }
-        },
-    }
-    assert source["pattern"] == "^root$"
-    assert source["format"] == "date-time"
-
-    strict = _read_json_object(_SCHEMA_PATH)
-    strict_text = json.dumps(strict)
-    assert '"pattern"' in strict_text
-    guidance_text = json.dumps(strip_guidance(strict))
-    assert '"pattern"' not in guidance_text
-    assert '"format"' not in guidance_text
-    for structural_key in ("required", "additionalProperties", "anyOf", "$defs"):
-        assert f'"{structural_key}"' in guidance_text
-
-
-def test_guidance_schema_is_valid_and_accepts_all_good_goldens() -> None:
-    strict = _read_json_object(_SCHEMA_PATH)
-    guidance = strip_guidance(strict)
-    Draft202012Validator.check_schema(guidance)
-    validator = Draft202012Validator(guidance)
-    good_specs = sorted(_GOOD_SPECS_DIR.glob("g*.json"))
-    assert len(good_specs) == 10
-    for spec_path in good_specs:
-        validator.validate(_read_json_object(spec_path))
-
-
-def _formula_spec(**overrides: Any) -> dict[str, Any]:
-    """A shape-valid FormulaPlotSpec instance, overridable field by field."""
-    spec: dict[str, Any] = {
-        "version": "vplot-formula-0.1",
-        "formula": "x * x",
-        "domain": {"start": "0", "stop": "10", "samples": 64, "x_scale": 2, "y_scale": 2},
-        "numeric_profile": "rational-half-even-v1",
-        "mark": "line",
-        "encoding": {
-            "x": {"field": "x", "type": "quantitative"},
-            "y": {"field": "y", "type": "quantitative"},
-        },
-    }
-    spec.update(overrides)
-    return spec
-
-
-def _guidance_object(path: Path) -> dict[str, Any]:
-    """The exact guidance the engine installs for that schema, decoded as a JSON object."""
-    loaded: Any = json.loads(load_guidance_schema(path))
-    assert isinstance(loaded, dict)
-    return cast("dict[str, Any]", loaded)
-
-
-def test_formula_guidance_keeps_structure_while_admitting_text_strict_decode_rejects() -> None:
-    guidance_text = load_guidance_schema(_FORMULA_SCHEMA_PATH)
-    guidance = _guidance_object(_FORMULA_SCHEMA_PATH)
-    Draft202012Validator.check_schema(guidance)
-    validator = Draft202012Validator(guidance)
-    assert '"pattern"' not in guidance_text
-    assert '"format"' not in guidance_text
-
-    # What survives stripping: the six-field closed object, every closed enum, the length cap,
-    # and the integer ranges. This is the "weak but not empty" half of the guidance claim.
-    spec_def = guidance["$defs"]["FormulaPlotSpec"]
-    assert spec_def["required"] == [
-        "version",
-        "formula",
-        "domain",
-        "numeric_profile",
-        "mark",
-        "encoding",
-    ]
-    assert spec_def["additionalProperties"] is False
-    assert spec_def["properties"]["version"]["enum"] == ["vplot-formula-0.1"]
-    assert spec_def["properties"]["mark"]["enum"] == ["line", "scatter"]
-    assert spec_def["properties"]["formula"] == {"type": "string", "maxLength": 1024}
-    domain_def = guidance["$defs"]["FormulaDomain"]
-    assert domain_def["properties"]["samples"] == {
-        "type": "integer",
-        "minimum": 2,
-        "maximum": 100000,
-    }
-    assert domain_def["properties"]["x_scale"] == {"type": "integer", "minimum": 0, "maximum": 12}
-
-    validator.validate(_formula_spec())
-    assert decode_formula_spec(json.dumps(_formula_spec())).mark == "line"
-    for broken in (
-        _formula_spec(title="chart"),
-        {k: v for k, v in _formula_spec().items() if k != "mark"},
-        _formula_spec(mark="bar"),
-        _formula_spec(version="vplot-0.1"),
-        _formula_spec(
-            domain={"start": "0", "stop": "10", "samples": 1, "x_scale": 2, "y_scale": 2}
-        ),
-        _formula_spec(
-            domain={"start": "0", "stop": "10", "samples": 64, "x_scale": 13, "y_scale": 2}
-        ),
-    ):
-        with pytest.raises(ValidationError):
-            validator.validate(broken)
-
-    # The weakness itself: the three stripped patterns leave `formula`, `start`, and `stop` as bare
-    # strings, so guidance ADMITS prose and Python that strict decode then REJECTS. Guidance steers
-    # structure; rejection stays the verifier's decoder, never the proposer's grammar.
-    for formula in ("plot y = sin(x), please!", "__import__('os').system('id')"):
-        admitted = _formula_spec(
-            formula=formula,
-            domain={"start": "zero", "stop": "ten", "samples": 64, "x_scale": 2, "y_scale": 2},
-        )
-        validator.validate(admitted)
-        with pytest.raises(msgspec.ValidationError):
-            decode_formula_spec(json.dumps(admitted))
-
-
-def test_load_guidance_schema_round_trips_and_fails_closed(tmp_path: Path) -> None:
-    strict = _read_json_object(_SCHEMA_PATH)
-    guidance_text = load_guidance_schema(_SCHEMA_PATH)
-
-    assert '"pattern"' not in guidance_text
-    assert '"format"' not in guidance_text
-    assert json.loads(guidance_text) == strip_guidance(strict)
-    with pytest.raises(FileNotFoundError):
-        load_guidance_schema(tmp_path / "missing.json")
-
-    invalid = tmp_path / "invalid.json"
-    invalid.write_text("{", encoding="utf-8")
-    with pytest.raises(json.JSONDecodeError):
-        load_guidance_schema(invalid)
-
-
-def test_load_guidance_schema_rejects_duplicate_keys(tmp_path: Path) -> None:
-    schema_path = tmp_path / "duplicate.json"
-    schema_path.write_text('{"type":"object","type":"array"}', encoding="utf-8")
-
-    with pytest.raises(ValueError, match="duplicate JSON object key"):
-        load_guidance_schema(schema_path)
-
-
-@pytest.mark.parametrize(
-    "source",
-    ['{"type": NaN}', '{"type": Infinity}', '{"type": -Infinity}', '{"minimum": 1e400}'],
-    ids=["nan", "positive-infinity", "negative-infinity", "overflow-float"],
-)
-def test_load_guidance_schema_rejects_non_finite_numbers(tmp_path: Path, source: str) -> None:
-    schema_path = tmp_path / "non-finite.json"
-    schema_path.write_text(source, encoding="utf-8")
-
-    with pytest.raises(ValueError, match="non-finite JSON"):
-        load_guidance_schema(schema_path)
-
-
-@pytest.mark.parametrize("source", ["{}", '{"foo": 1}'], ids=["empty", "no-schema-keyword"])
-def test_load_guidance_schema_rejects_non_schema_objects(tmp_path: Path, source: str) -> None:
-    schema_path = tmp_path / "not-schema.json"
-    schema_path.write_text(source, encoding="utf-8")
-
-    with pytest.raises(ValueError, match="non-empty JSON Schema"):
-        load_guidance_schema(schema_path)
-
-
-@pytest.mark.parametrize(
-    ("source", "message"),
-    [
-        ('{"type": "object"}', r"must declare \$schema"),
-        (
-            '{"$schema": "http://json-schema.org/draft-07/schema#", "type": "object"}',
-            r"must declare \$schema",
-        ),
-        (
-            f'{{"$schema": "{_DRAFT_2020_12}", "title": "vacuous"}}',
-            "structural JSON Schema keyword",
-        ),
-        (
-            f'{{"$schema": "{_DRAFT_2020_12}", "$defs": {{"a": {{"type": "string"}}}}}}',
-            "structural JSON Schema keyword",
-        ),
-    ],
-    ids=["absent-dialect", "draft-07", "annotation-only", "definitions-only"],
-)
-def test_load_guidance_schema_rejects_foreign_dialects_and_vacuous_roots(
-    tmp_path: Path, source: str, message: str
-) -> None:
-    """Recognising one keyword is not a schema: pin the dialect AND an asserting root."""
-    schema_path = tmp_path / "dialect.json"
-    schema_path.write_text(source, encoding="utf-8")
-
-    with pytest.raises(ValueError, match=message):
-        load_guidance_schema(schema_path)
-
-
-def test_load_guidance_schema_keeps_non_object_root_as_type_error(tmp_path: Path) -> None:
-    schema_path = tmp_path / "array.json"
-    schema_path.write_text("[]", encoding="utf-8")
-
-    with pytest.raises(TypeError, match="root must be a JSON object"):
-        load_guidance_schema(schema_path)
-
-
-def test_schema_digest_is_stable_raw_byte_sha256(tmp_path: Path) -> None:
-    compact = tmp_path / "compact.json"
-    spaced = tmp_path / "spaced.json"
-    compact.write_text('{"type":"object"}', encoding="utf-8")
-    spaced.write_text('{"type": "object"}', encoding="utf-8")
-
-    digest = schema_digest(compact)
-    hex_digest = digest.removeprefix("sha256:")
-    assert digest.startswith("sha256:")
-    assert len(hex_digest) == 64
-    assert hex_digest == hex_digest.lower()
-    assert set(hex_digest) <= set("0123456789abcdef")
-    assert schema_digest(compact) == digest
-    assert schema_digest(spaced) != digest
-
-
-def test_structured_output_settings_defaults_and_env(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    assert Settings().structured_output is True
-    assert Settings().vplot_schema_path == Path("schema/vplot-0.1.schema.json")
-    assert Settings().formula_schema_path == Path("schema/vplot-formula-0.1.schema.json")
-
-    monkeypatch.delenv("MODEL_BACKEND_STRUCTURED_OUTPUT", raising=False)
-    monkeypatch.delenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", raising=False)
-    monkeypatch.delenv("MODEL_BACKEND_FORMULA_SCHEMA_PATH", raising=False)
-    assert Settings.from_env().structured_output is True
-
-    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "TrUe")
-    assert Settings.from_env().structured_output is True
-    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "OFF")
-    assert Settings.from_env().structured_output is False
-
-    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "yes")
-    monkeypatch.setenv("MODEL_BACKEND_VPLOT_SCHEMA_PATH", "custom/vplot.json")
-    monkeypatch.setenv("MODEL_BACKEND_FORMULA_SCHEMA_PATH", "custom/formula.json")
-    assert Settings.from_env().vplot_schema_path == Path("custom/vplot.json")
-    assert Settings.from_env().formula_schema_path == Path("custom/formula.json")
-
-    monkeypatch.setenv("MODEL_BACKEND_STRUCTURED_OUTPUT", "sometimes")
-    with pytest.raises(ValueError, match="invalid boolean value"):
-        Settings.from_env()
-
-
-def test_guidance_schema_paths_is_total_over_the_closed_selector_set() -> None:
-    settings = Settings(
-        vplot_schema_path=Path("pinned/dataset.json"),
-        formula_schema_path=Path("pinned/formula.json"),
-    )
-
-    paths = settings.guidance_schema_paths()
-
-    # Both sets are hand-stated literals, never derived from the production alias or map: a new
-    # selector id must break this test rather than inherit an unreviewed path binding.
-    assert set(get_args(GuidanceSchemaId.__value__)) == {"vplot-0.1", "vplot-formula-0.1"}
-    assert set(paths) == {"vplot-0.1", "vplot-formula-0.1"}
-    assert (DATASET_SCHEMA_ID, FORMULA_SCHEMA_ID) == ("vplot-0.1", "vplot-formula-0.1")
-    assert paths[DATASET_SCHEMA_ID] == Path("pinned/dataset.json")
-    assert paths[FORMULA_SCHEMA_ID] == Path("pinned/formula.json")
-
-
 def test_p01_over_cap_prompt_raises_exact_backend_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tokenizer = _Tokenizer(encoding=_Encoding((1, 2, 3, 4)))
     engine, _runtime = _loaded_engine(
         monkeypatch,
-        settings=Settings(structured_output=False, max_prompt_len=3),
+        settings=Settings(max_prompt_len=3),
         tokenizer=tokenizer,
     )
 
@@ -690,7 +307,7 @@ def test_p02_default_prompt_cap_emits_canonical_http_bytes(
     tokenizer = _Tokenizer(encoding=_Encoding(tuple(range(1537))))
     runtime = _patch_runtime(monkeypatch, tokenizer=tokenizer)
 
-    with TestClient(app=create_app(Settings(structured_output=False))) as client:
+    with TestClient(app=create_app(Settings())) as client:
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
@@ -714,7 +331,7 @@ def test_p03_over_cap_prompt_never_calls_model_generate(
     model = _Model(generate_hook=generation_bomb)
     engine, runtime = _loaded_engine(
         monkeypatch,
-        settings=Settings(structured_output=False, max_prompt_len=2),
+        settings=Settings(max_prompt_len=2),
         tokenizer=_Tokenizer(encoding=_Encoding((1, 2, 3))),
         model=model,
     )
@@ -748,7 +365,6 @@ def test_p05_chat_template_call_is_single_and_exact(
         messages,
         temperature=0.0,
         max_tokens=7,
-        guided_schema=None,
     )
 
     assert tokenizer.apply_calls == [
@@ -768,7 +384,7 @@ def test_p06_encoding_move_uses_the_configured_nondefault_device(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     encoding = _Encoding()
-    settings = Settings(structured_output=False, device="cuda:7")
+    settings = Settings(device="cuda:7")
     engine, _runtime = _loaded_engine(
         monkeypatch,
         settings=settings,
@@ -926,7 +542,7 @@ def test_p12_response_ceiling_is_exact_and_checked_after_lock_release(
     tokenizer = _Tokenizer(decoded=(_BlockingText("éé", encode_entered, release_encode), "ok"))
     engine, _runtime = _loaded_engine(
         monkeypatch,
-        settings=Settings(structured_output=False, max_response_bytes=3),
+        settings=Settings(max_response_bytes=3),
         tokenizer=tokenizer,
         model=_Model(suffixes=((7, 2), (7, 2)), generate_hook=note_generation),
     )
@@ -952,103 +568,12 @@ def test_p12_response_ceiling_is_exact_and_checked_after_lock_release(
     assert second_result.text == "ok"
 
 
-# P13 is DELETED, not repaired: it pinned "a named guidance schema is a loud pre-generation
-# refusal", which M12.3a reverses on purpose. Guidance now applies when enabled and generates
-# UNGUIDED when disabled, per the best-effort wire contract. Replacements live in
-# tests/test_m12u3_guidance.py as G10 (enabled selects that id's grammar), G12 (disabled plus a
-# named schema succeeds unguided) and G14 (admission still precedes guidance).
-
-
-def test_p14_null_guidance_generates_without_guidance_objects(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    engine, runtime = _loaded_engine(monkeypatch)
-
-    _generate(engine)
-
-    kwargs = runtime.model.generate_calls[0]
-    assert not any("guid" in key or "schema" in key or "processor" in key for key in kwargs)
-
-
-def test_p15_schema_loading_and_digests_are_enabled_together(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    load_calls: list[Path] = []
-    digest_calls: list[Path] = []
-
-    def fake_load(path: Path) -> str:
-        load_calls.append(path)
-        return f"schema:{path}"
-
-    def fake_digest(path: Path) -> str:
-        digest_calls.append(path)
-        return f"sha256:{path}"
-
-    monkeypatch.setattr(engine_module, "load_guidance_schema", fake_load)
-    monkeypatch.setattr(engine_module, "schema_digest", fake_digest)
-    settings = Settings(
-        vplot_schema_path=Path("pins/dataset.json"),
-        formula_schema_path=Path("pins/formula.json"),
-    )
-    engine, _runtime = _loaded_engine(monkeypatch, settings=settings)
-
-    assert load_calls == [Path("pins/dataset.json"), Path("pins/formula.json")]
-    assert digest_calls == [Path("pins/dataset.json"), Path("pins/formula.json")]
-    assert engine.schema_sha256(DATASET_SCHEMA_ID) == "sha256:pins/dataset.json"
-    assert engine.schema_sha256(FORMULA_SCHEMA_ID) == "sha256:pins/formula.json"
-
-    load_calls.clear()
-    digest_calls.clear()
-    disabled, _runtime = _loaded_engine(
-        monkeypatch,
-        settings=Settings(
-            structured_output=False,
-            vplot_schema_path=Path("missing/dataset.json"),
-            formula_schema_path=Path("missing/formula.json"),
-        ),
-    )
-    assert load_calls == []
-    assert digest_calls == []
-    assert disabled.schema_sha256(DATASET_SCHEMA_ID) is None
-    assert disabled.schema_sha256(FORMULA_SCHEMA_ID) is None
-
-
-def test_engine_load_fails_closed_when_either_pinned_schema_is_missing(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    runtime = _patch_runtime(monkeypatch)
-
-    with pytest.raises(FileNotFoundError):
-        Engine.load(Settings(formula_schema_path=tmp_path / "missing.json"))
-
-    assert runtime.tokenizer_load_calls == []
-    assert runtime.model_load_calls == []
-
-
-def test_schema_digest_lookup_has_no_default_arm(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-
-    def partial_paths(_settings: Settings) -> dict[GuidanceSchemaId, Path]:
-        return {DATASET_SCHEMA_ID: Path("pins/dataset.json")}
-
-    monkeypatch.setattr(Settings, "guidance_schema_paths", partial_paths)
-    monkeypatch.setattr(engine_module, "load_guidance_schema", lambda _path: "{}")
-    monkeypatch.setattr(engine_module, "schema_digest", lambda _path: "sha256:" + "0" * 64)
-    engine, _runtime = _loaded_engine(monkeypatch, settings=Settings())
-
-    assert engine.schema_sha256(DATASET_SCHEMA_ID) == "sha256:" + "0" * 64
-    with pytest.raises(KeyError):
-        engine.schema_sha256(FORMULA_SCHEMA_ID)
-
-
 def test_p16_pretrained_calls_and_model_placement_are_exact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
         model_dir=Path("snapshots/model"),
         device="cuda:9",
-        structured_output=False,
     )
     _engine, runtime = _loaded_engine(monkeypatch, settings=settings)
 
@@ -1102,7 +627,7 @@ def test_p17_eos_refuses_every_inadmissible_shape(
     runtime = _patch_runtime(monkeypatch, model=_Model(eos_token_id=raw_eos))
 
     with pytest.raises(BackendError) as exc_info:
-        Engine.load(Settings(structured_output=False))
+        Engine.load(Settings())
 
     _assert_backend_error(exc_info.value, status=500, error_type="generation_config_unusable")
     assert runtime.model.to_calls == []
@@ -1244,7 +769,7 @@ def test_p22_model_cards_are_backend_neutral_in_struct_and_http(
 ) -> None:
     assert ModelCard(id="model", created=0).owned_by == "local"
     _patch_runtime(monkeypatch)
-    with TestClient(app=create_app(Settings(structured_output=False))) as client:
+    with TestClient(app=create_app(Settings())) as client:
         response = client.get("/v1/models")
     assert response.status_code == 200
     assert response.json()["data"][0]["owned_by"] == "local"
@@ -1277,7 +802,7 @@ def test_p26_bool_eos_refuses_while_bool_pad_uses_eos_fallback(
     for raw_eos in (False, [False]):
         runtime = _patch_runtime(monkeypatch, model=_Model(eos_token_id=raw_eos))
         with pytest.raises(BackendError) as exc_info:
-            Engine.load(Settings(structured_output=False))
+            Engine.load(Settings())
         _assert_backend_error(exc_info.value, status=500, error_type="generation_config_unusable")
         assert runtime.model.to_calls == []
 
@@ -1295,7 +820,7 @@ def test_p27_negative_eos_refuses_while_negative_pad_uses_distinct_fallback(
     for raw_eos in (-1, [3, -1]):
         runtime = _patch_runtime(monkeypatch, model=_Model(eos_token_id=raw_eos))
         with pytest.raises(BackendError) as exc_info:
-            Engine.load(Settings(structured_output=False))
+            Engine.load(Settings())
         _assert_backend_error(exc_info.value, status=500, error_type="generation_config_unusable")
         assert runtime.model.to_calls == []
 
@@ -1307,35 +832,6 @@ def test_p27_negative_eos_refuses_while_negative_pad_uses_distinct_fallback(
     )
     _generate(engine)
     assert runtime.model.generate_calls[0]["pad_token_id"] == 3
-
-
-def test_p28_over_cap_named_guidance_preserves_prompt_policy_precedence(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model = _Model(generate_hook=lambda _index: pytest.fail("generation must stay unreachable"))
-    runtime = _patch_runtime(
-        monkeypatch,
-        tokenizer=_Tokenizer(encoding=_Encoding((1, 2))),
-        model=model,
-    )
-    settings = Settings(structured_output=False, max_prompt_len=1)
-
-    with TestClient(app=create_app(settings)) as client:
-        response = client.post(
-            "/v1/chat/completions",
-            json={
-                "messages": [{"role": "user", "content": "hello"}],
-                "guided_schema": "vplot-0.1",
-            },
-        )
-
-    assert response.status_code == 400
-    assert response.headers["content-type"] == "application/json"
-    assert response.content == (
-        b'{"error":{"message":"tokenized prompt exceeds the 1-token ceiling",'
-        b'"type":"prompt_too_long"}}'
-    )
-    assert runtime.model.generate_calls == []
 
 
 def test_p29_admission_forwards_maskless_mapping_but_requires_input_ids(
@@ -1369,20 +865,13 @@ def test_p29_admission_forwards_maskless_mapping_but_requires_input_ids(
 
 
 def test_p30_load_order_costs_nothing_downstream_of_each_fault(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Call-counting bombs rather than outcome assertions: a schema fault costs zero loads of
-    # either native artifact, and unusable id metadata costs zero device transfers. Both faults
-    # are decidable from metadata, so neither may reach a host allocation it cannot use.
-    schema_runtime = _patch_runtime(monkeypatch)
-    with pytest.raises(FileNotFoundError):
-        Engine.load(Settings(vplot_schema_path=tmp_path / "missing.json"))
-    assert schema_runtime.tokenizer_load_calls == []
-    assert schema_runtime.model_load_calls == []
-
+    # A call-counting bomb rather than an outcome assertion: unusable id metadata is decidable
+    # from metadata, so it costs zero device transfers.
     id_runtime = _patch_runtime(monkeypatch, model=_Model(eos_token_id=str(3)))
     with pytest.raises(BackendError) as exc_info:
-        Engine.load(Settings(structured_output=False))
+        Engine.load(Settings())
 
     _assert_backend_error(exc_info.value, status=500, error_type="generation_config_unusable")
     assert len(id_runtime.tokenizer_load_calls) == 1
@@ -1408,11 +897,10 @@ def test_p31_probe_only_imports_never_reach_a_served_module() -> None:
         "__main__.py",
         "app.py",
         "engine.py",
+        "adapter.py",
         "models.py",
-        "schema_guidance.py",
         "settings.py",
         "snapshot.py",
-        "verified_chart.py",
     }
     for name in sorted(served):
         text = (_ROOT / "model_backend" / name).read_text(encoding="utf-8")
@@ -1422,7 +910,6 @@ def test_p31_probe_only_imports_never_reach_a_served_module() -> None:
 class _AppEngine:
     def __init__(self) -> None:
         self.generate_calls = 0
-        self.last_guided_schema: GuidanceSchemaId | None = None
 
     def generate(
         self,
@@ -1430,13 +917,11 @@ class _AppEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         assert messages == [{"role": "user", "content": "hello"}]
         assert temperature == 0.0
         assert max_tokens >= 1
         self.generate_calls += 1
-        self.last_guided_schema = guided_schema
         return GenResult(text="{}", prompt_tokens=1, completion_tokens=1, finish_reason="stop")
 
 
@@ -1447,11 +932,9 @@ class _RejectingAppEngine:
         *,
         temperature: float,
         max_tokens: int,
-        guided_schema: GuidanceSchemaId | None,
     ) -> GenResult:
         assert temperature == 0.0
         assert max_tokens >= 1
-        assert guided_schema is None
         msg = "prompt is too long"
         raise BackendError(msg, status=400, error_type="prompt_too_long")
 
@@ -1480,59 +963,6 @@ def test_backend_body_cap_accepts_boundary_and_rejects_plus_one_before_decode(
 
 
 _MESSAGES_FIELD = b'"messages":[{"role":"user","content":"hello"}]'
-
-
-@pytest.mark.parametrize(
-    ("selector_field", "expected"),
-    [
-        (b',"guided_schema":"vplot-0.1"', DATASET_SCHEMA_ID),
-        (b',"guided_schema":"vplot-formula-0.1"', FORMULA_SCHEMA_ID),
-        (b"", None),
-        (b',"guided_schema":null', None),
-        # The retired spelling is now an unknown field on an OpenAI-compatible request, so it is
-        # tolerated and IGNORED. A stale caller therefore goes unguided instead of silently
-        # installing the dataset schema over whatever mode it meant.
-        (b',"guided_json":true', None),
-    ],
-    ids=["dataset", "formula", "omitted", "explicit-null", "retired-guided-json"],
-)
-def test_backend_threads_the_named_guided_schema_per_request(
-    monkeypatch: pytest.MonkeyPatch, selector_field: bytes, expected: GuidanceSchemaId | None
-) -> None:
-    engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
-
-    with TestClient(app=create_app(Settings())) as client:
-        response = client.post(
-            "/v1/chat/completions", content=b"{" + _MESSAGES_FIELD + selector_field + b"}"
-        )
-
-    assert response.status_code == 200
-    assert engine.generate_calls == 1
-    assert engine.last_guided_schema == expected
-
-
-@pytest.mark.parametrize(
-    "selector",
-    [b'"vplot-0.2"', b'"vplot-formula-0.2"', b'""', b'{"type":"object"}', b"true"],
-    ids=["unknown-dataset-id", "unknown-formula-id", "empty-id", "schema-document", "boolean"],
-)
-def test_backend_refuses_a_guided_schema_the_operator_did_not_pin(
-    monkeypatch: pytest.MonkeyPatch, selector: bytes
-) -> None:
-    engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
-
-    with TestClient(app=create_app(Settings())) as client:
-        response = client.post(
-            "/v1/chat/completions",
-            content=b"{" + _MESSAGES_FIELD + b',"guided_schema":' + selector + b"}",
-        )
-
-    # The closed Literal is the whole admission rule: an unpinned id and a caller-supplied schema
-    # DOCUMENT are both refused at decode, before any generation is scheduled.
-    assert response.status_code == 400
-    assert engine.generate_calls == 0
 
 
 def test_backend_request_body_setting_default_env_and_validation(
@@ -1575,83 +1005,3 @@ _OWUI_SUMMARIZE_SYSTEM = f'<source id="1" name="verifier/proposeSpec">{_VERIFIER
 
 def _msg(role: Literal["system", "user", "assistant"], content: str) -> ChatMessage:
     return ChatMessage(role=role, content=content)
-
-
-@pytest.mark.parametrize(
-    "messages",
-    [
-        (_msg("system", _OWUI_SUMMARIZE_SYSTEM), _msg("user", "Plot revenue vs orders.")),
-        (_msg("user", _OWUI_SUMMARIZE_SYSTEM),),  # RAG-into-user-message injection variant
-        (_msg("system", "Verified chart for orders.parquet: all 12 checks passed."),),
-    ],
-    ids=["system-context", "user-context", "other-dataset-and-count"],
-)
-def test_is_verified_chart_summary_detects_post_chart_turn(
-    messages: tuple[ChatMessage, ...],
-) -> None:
-    assert is_verified_chart_summary(messages) is True
-
-
-@pytest.mark.parametrize(
-    "messages",
-    [
-        (_msg("system", "Available Tools: proposeSpec"), _msg("user", "plot revenue by month")),
-        (
-            _msg("system", "You are proposing a VPlot v0.1 chart specification."),
-            _msg("user", "total revenue by month"),
-        ),
-        (_msg("user", "Can you verify my chart? It has 5 checks."),),
-        (_msg("user", "hello there world"),),
-    ],
-    ids=["tool-selector", "vplot-proposer", "near-miss-prose", "plain-chat"],
-)
-def test_is_verified_chart_summary_ignores_other_turns(
-    messages: tuple[ChatMessage, ...],
-) -> None:
-    assert is_verified_chart_summary(messages) is False
-
-
-def test_backend_returns_fixed_reply_without_generating_on_verified_chart_turn(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
-    payload = {
-        "messages": [
-            {"role": "system", "content": _OWUI_SUMMARIZE_SYSTEM},
-            {"role": "user", "content": "Plot a scatter chart of revenue versus orders."},
-        ]
-    }
-    with TestClient(app=create_app(Settings())) as client:
-        response = client.post("/v1/chat/completions", json=payload)
-
-    assert response.status_code == 200
-    body = response.json()
-    # The fixed closing line replaces the 0.5B proposer's free-text filler; the model never ran.
-    assert engine.generate_calls == 0
-    assert body["object"] == "chat.completion"
-    assert body["model"] == Settings().model_name
-    choice = body["choices"][0]
-    assert choice["finish_reason"] == "stop"
-    assert choice["message"] == {"role": "assistant", "content": VERIFIED_CHART_REPLY}
-    # Usage is a word-count proxy (no generation ran), matching the hardware-free stub's shape.
-    usage = body["usage"]
-    assert usage["completion_tokens"] == len(VERIFIED_CHART_REPLY.split())
-    assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
-
-
-def test_backend_generates_when_no_verified_chart_summary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    engine = _AppEngine()
-    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
-    with TestClient(app=create_app(Settings())) as client:
-        response = client.post(
-            "/v1/chat/completions",
-            json={"messages": [{"role": "user", "content": "hello"}]},
-        )
-
-    assert response.status_code == 200
-    # No verifier summary -> the model runs (canned path is summary-gated, not the default).
-    assert engine.generate_calls == 1
-    assert response.json()["choices"][0]["message"]["content"] == "{}"

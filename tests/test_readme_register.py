@@ -18,8 +18,6 @@ _ROOT = Path(__file__).resolve().parents[1]
 _READMES = (
     "README.md",
     "webui/README.md",
-    "bench/README.md",
-    "demo/README.md",
     "docs/verification.md",
 )
 _MAX_WORDS = 25

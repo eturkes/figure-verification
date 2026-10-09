@@ -1,71 +1,42 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Backend settings — operator config for the local model server.
 
-A frozen container built from MODEL_BACKEND_* env, mirroring the verifier service's Settings
-pattern: field defaults and from_env fallbacks share one set of constants (no drift), and
-__post_init__ rejects non-positive bounds so a misconfigured deploy fails closed.
+A frozen container built from MODEL_BACKEND_* env: field defaults and from_env fallbacks share
+one set of constants (no drift), and __post_init__ rejects non-positive bounds so a
+misconfigured deploy fails closed.
 This server is the UNTRUSTED proposer, not the trusted verifier, so these bounds guard request
 allocation, the single compiled pipeline / lock, and response size, never a verification claim.
-Defaults bind loopback on port 8001 (the verifier service defaults to 8000) and target device
+Defaults bind loopback on port 8001 and target device
 "cuda" running an fp16 Qwen2.5-Coder-0.5B-Instruct snapshot, pinned by content in
 model_backend/runtime/snapshot.json (verifier: model_backend/snapshot.py). That tuple is a fresh
 (device, config) baseline — the model family AND the quant class both changed with the runtime
 port, so no earlier proposer measurement transfers to it.
-
-Guided decoding is backed by operator-pinned schema FILES, one per proposer mode. This module
-owns both halves of that pin — the closed id vocabulary and guidance_schema_paths, the single
-map from id to path — so a caller can only ever name an id, never supply a schema document.
 """
 
 import os
 from pathlib import Path
-from typing import Literal, Self
+from typing import Self
 
 import msgspec
-
-# Each id is its own schema's `version` literal, so the wire value names the pinned document.
-type GuidanceSchemaId = Literal["vplot-0.1", "vplot-formula-0.1"]
-
-DATASET_SCHEMA_ID: GuidanceSchemaId = "vplot-0.1"
-FORMULA_SCHEMA_ID: GuidanceSchemaId = "vplot-formula-0.1"
 
 _DEFAULT_MODEL_DIR = "models/Qwen2.5-Coder-0.5B-Instruct"
 _DEFAULT_MODEL_NAME = "Qwen2.5-Coder-0.5B-Instruct"
 _DEFAULT_DEVICE = "cuda"
-_DEFAULT_STRUCTURED_OUTPUT = True
-_DEFAULT_VPLOT_SCHEMA_PATH = "schema/vplot-0.1.schema.json"
-_DEFAULT_FORMULA_SCHEMA_PATH = "schema/vplot-formula-0.1.schema.json"
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8001
 _DEFAULT_MAX_BODY_BYTES = 128 * 1024
 # max_prompt_len is the largest prompt (in tokens) the engine admits — a LOGICAL cap, held on
 # every device: Engine pre-tokenizes each templated prompt and returns prompt_too_long before
-# native generation, and the verifier maps only that exact protocol shape to policy 422. 1536
-# clears the ~770-token proposer prompt with wide headroom while keeping the per-request
-# allocation small.
+# native generation. 1536 clears the ~770-token proposer prompt with wide headroom while
+# keeping the per-request allocation small.
 _DEFAULT_MAX_PROMPT_LEN = 1536
-# A weak proposer's VPlot JSON spec is small; this caps generation both as the per-request
+# A chart program is small; this caps generation both as the per-request
 # ceiling and as the fallback when a caller omits max_tokens (the engine always sets
 # max_new_tokens — a fresh GenerationConfig would otherwise generate up to 2**64-1 tokens).
 _DEFAULT_MAX_TOKENS = 512
 # The response-byte ceiling: a belt over the token cap, guarding the single accelerator/lock against
 # a generation that outgrows the configured bound (over-cap -> upstream fault at the client).
 _DEFAULT_MAX_RESPONSE_BYTES = 65536
-
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-_FALSY = frozenset({"0", "false", "no", "off"})
-
-
-def _parse_bool(value: str | None, *, default: bool) -> bool:
-    if value is None:
-        return default
-    normalized = value.casefold()
-    if normalized in _TRUTHY:
-        return True
-    if normalized in _FALSY:
-        return False
-    msg = f"invalid boolean value {value!r}; expected one of 0, 1, false, no, off, on, true, yes"
-    raise ValueError(msg)
 
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
@@ -74,9 +45,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     model_dir: Path = Path(_DEFAULT_MODEL_DIR)
     model_name: str = _DEFAULT_MODEL_NAME
     device: str = _DEFAULT_DEVICE
-    structured_output: bool = _DEFAULT_STRUCTURED_OUTPUT
-    vplot_schema_path: Path = Path(_DEFAULT_VPLOT_SCHEMA_PATH)
-    formula_schema_path: Path = Path(_DEFAULT_FORMULA_SCHEMA_PATH)
     max_prompt_len: int = _DEFAULT_MAX_PROMPT_LEN
     max_body_bytes: int = _DEFAULT_MAX_BODY_BYTES
     host: str = _DEFAULT_HOST
@@ -103,18 +71,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             msg = f"max_prompt_len must be >= 1, got {self.max_prompt_len}"
             raise ValueError(msg)
 
-    def guidance_schema_paths(self) -> dict[GuidanceSchemaId, Path]:
-        """Return the total id -> operator schema path map guided decoding is pinned to.
-
-        Total over GuidanceSchemaId by construction: the engine loads exactly these entries and
-        subscripts this map's keys directly, so an unmapped id is a type error here rather than a
-        silent fallback at generation time.
-        """
-        return {
-            DATASET_SCHEMA_ID: self.vplot_schema_path,
-            FORMULA_SCHEMA_ID: self.formula_schema_path,
-        }
-
     @classmethod
     def from_env(cls) -> Self:
         """Build from MODEL_BACKEND_* environment variables, falling back to field defaults."""
@@ -123,16 +79,6 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             model_dir=Path(env.get("MODEL_BACKEND_MODEL_DIR", _DEFAULT_MODEL_DIR)),
             model_name=env.get("MODEL_BACKEND_MODEL_NAME", _DEFAULT_MODEL_NAME),
             device=env.get("MODEL_BACKEND_DEVICE", _DEFAULT_DEVICE),
-            structured_output=_parse_bool(
-                env.get("MODEL_BACKEND_STRUCTURED_OUTPUT"),
-                default=_DEFAULT_STRUCTURED_OUTPUT,
-            ),
-            vplot_schema_path=Path(
-                env.get("MODEL_BACKEND_VPLOT_SCHEMA_PATH", _DEFAULT_VPLOT_SCHEMA_PATH)
-            ),
-            formula_schema_path=Path(
-                env.get("MODEL_BACKEND_FORMULA_SCHEMA_PATH", _DEFAULT_FORMULA_SCHEMA_PATH)
-            ),
             max_prompt_len=int(
                 env.get("MODEL_BACKEND_MAX_PROMPT_LEN", str(_DEFAULT_MAX_PROMPT_LEN))
             ),

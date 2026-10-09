@@ -13,7 +13,7 @@ The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it wi
 those paths stay absent by design until the row closes.
 
 S4 and S7 sweep past `spec.md` itself, each as far as its question stays decidable. S4 adds the
-ledger, the scope sources and every `.claude/rules/*.md`, which carry pointers that strand
+queue, the ledger and every `.claude/rules/*.md`, which carry pointers that strand
 exactly as the spec's do, and stops at `.agent/archive/**`, where a record legitimately names a file
 since deleted outright. S7 covers every tracked file, archived records and rules included, because
 its target does not vanish -- closing a unit MOVES the contract, so a citation of the pre-archive
@@ -42,8 +42,8 @@ _DEFERRED = _REPO_ROOT / ".agent" / "deferred.md"
 _LIST_ITEM = re.compile(r"\s*(?:[-*+]|\d+[.)])(?:\s|$)")
 _REVIEW = _REPO_ROOT / ".agent" / "review.md"
 
-# S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, the two scope
-# sources `ops.md` names, and every project-law file under `.claude/rules/`. Those rule
+# S4's sweep: the attached state, the queue and ledger CLAUDE.md binds beside it, and every
+# project-law file under `.claude/rules/`. Those rule
 # files also cite by bare basename (`ops.md`, `oracle.py`) and by brace aggregate
 # (`.agent/archive/{roadmap,polish,memory}.md`): a bare basename names no root, so the root filter
 # below leaves it unread, and a brace token is a set, skipped as a placeholder -- only rooted paths
@@ -54,8 +54,6 @@ _POINTER_SURFACE = (
     _SPEC,
     _DEFERRED,
     _REVIEW,
-    _REPO_ROOT / "POC_SCOPE.md",
-    _REPO_ROOT / "VPlot_SEMANTICS.md",
     *sorted(_RULES.glob("*.md")),
 )
 _CONTRACTS = _REPO_ROOT / ".agent" / "contracts"
@@ -69,8 +67,8 @@ _EXPECTED_SECTIONS = ("Intent", "Artifacts", "Decisions", "Tasks", "Phase")
 _PHASES = frozenset({"PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"})
 _SCOPE = re.compile(r"; scope = \S")
 
-# Roots whose contents are tracked, so a pointer at one either resolves or is dead. Bare `corpus/`
-# and `bench/` stay out: rows legitimately name run outputs that no commit carries.
+# Roots whose contents are tracked, so a pointer at one either resolves or is dead. Other roots
+# stay out: rows legitimately name run outputs that no commit carries.
 _POINTER_ROOTS = (".agent/", ".claude/rules/", "docs/")
 
 # A gitignored runtime env, built by `uv sync` rather than committed, so `git ls-files` never
@@ -190,8 +188,8 @@ def test_s3_every_deferral_carries_an_acceptance_check() -> None:
 
 
 def test_s4_every_rules_docs_and_archive_pointer_resolves() -> None:
-    """S4: rules, docs and archive pointers in the attached state, the ledger and the scope
-    sources resolve. Acceptance: a moved or deleted target fails -- the pointer is how detail
+    """S4: rules, docs and archive pointers in the attached state, the queue, the ledger and the
+    rules resolve. Acceptance: a moved or deleted target fails -- the pointer is how detail
     stays out of the citing file, so a dead one silently deletes the detail instead of relocating
     it."""
     tracked = _tracked()

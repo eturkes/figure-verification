@@ -5,7 +5,7 @@ webui/ is a coverage-excluded harness, not part of the verifier claim, so these 
 regression net rather than a 100%-branch gate. Locked here:
 
 - every fail-closed bound (__post_init__): port range, >=32-byte secret, non-empty admin email /
-  password, finite-positive request and ready timeouts, http(s) verifier / model-backend URLs,
+  password, finite-positive request and ready timeouts, an http(s) model-backend URL,
   bare host;
 - launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the four
   per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
@@ -27,14 +27,10 @@ from pathlib import Path
 import pytest
 
 from model_backend.settings import _DEFAULT_MODEL_NAME as _BACKEND_MODEL_NAME
-from verifier.service.settings import _DEFAULT_MODEL_NAME as _VERIFIER_MODEL_NAME
 from webui.settings import _FIXED_ENV, Settings
 
-# The three-tier model identity. model_backend SERVES this name on /v1/models; webui SELECTS it as
-# OWUI's completion model; the verifier SENDS it as the `model` field of /propose-spec. Only the
-# first pair is launch-blocking (the backend decodes `model` and then ignores it), but a divergent
-# verifier default is a latent trap the day any backend starts validating it, so all three are held
-# equal and stated here as a literal rather than read off any of the three constants.
+# The two-tier model identity: model_backend SERVES this name on /v1/models and webui SELECTS it as
+# OWUI's completion model, so the two are held equal and stated here as a literal.
 _SERVED_MODEL_NAME = "Qwen2.5-Coder-0.5B-Instruct"
 
 _PROVISION_ENV_VARS = (
@@ -45,7 +41,6 @@ _PROVISION_ENV_VARS = (
     "WEBUI_PROVISION_ADMIN_NAME",
     "WEBUI_PROVISION_ADMIN_EMAIL",
     "WEBUI_PROVISION_ADMIN_PASSWORD",
-    "WEBUI_PROVISION_VERIFIER_URL",
     "WEBUI_PROVISION_MODEL_BACKEND_URL",
     "WEBUI_PROVISION_MODEL_ID",
     "WEBUI_PROVISION_WEBUI_BIN",
@@ -79,15 +74,6 @@ _BAD_CONFIGS: list[tuple[Callable[[], Settings], str]] = [
     (lambda: Settings(ready_timeout=0.0), "ready_timeout"),
     (lambda: Settings(ready_timeout=math.inf), "ready_timeout"),
     (lambda: Settings(ready_timeout=math.nan), "ready_timeout"),
-    (lambda: Settings(verifier_url=""), "verifier_url"),
-    (lambda: Settings(verifier_url="ftp://127.0.0.1"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://127.0.0.1:8000/base"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://127.0.0.1:8000?x=1"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://trusted@127.0.0.1:8000"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://127.0.0.1:8000\\evil"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://tést.example"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://[::1"), "verifier_url"),
-    (lambda: Settings(verifier_url="http://127.0.0.1:0"), "verifier_url"),
     (lambda: Settings(model_backend_url=""), "model_backend_url"),
     (lambda: Settings(model_backend_url="http://"), "model_backend_url"),
     (lambda: Settings(model_backend_url="http://127.0.0.1:8001"), "model_backend_url"),
@@ -126,17 +112,14 @@ def test_model_identity_agrees_across_the_three_tiers() -> None:
     # between two production constants passes just as happily when both drift together.
     assert _BACKEND_MODEL_NAME == _SERVED_MODEL_NAME
     assert Settings().model_id == _SERVED_MODEL_NAME
-    assert _VERIFIER_MODEL_NAME == _SERVED_MODEL_NAME
 
 
 def test_accepts_clean_endpoint_authorities() -> None:
     settings = Settings(
-        verifier_url="https://[2001:db8::1]:8443",
-        model_backend_url="https://models.example.test/v1",
+        model_backend_url="https://[2001:db8::1]:8443/v1",
         host="webui.local",
     )
-    assert settings.verifier_url == "https://[2001:db8::1]:8443"
-    assert settings.model_backend_url == "https://models.example.test/v1"
+    assert settings.model_backend_url == "https://[2001:db8::1]:8443/v1"
     assert settings.base_url == "http://webui.local:8080"
 
 

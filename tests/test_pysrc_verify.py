@@ -427,24 +427,13 @@ def test_t4_table_bounded_before_it_is_built(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_w1_meter_lives_in_the_core() -> None:
-    """One meter, in `verifier.pysrc.budget`; the legacy JSON mode imports it from there.
+    """One meter, in `verifier.pysrc.budget`.
 
-    Accept: `verifier/work.py` absent; `verifier.expr` and `verifier.eval` import from the core;
-    the core's closed-import pin still passes.
+    Accept: `verifier/work.py` absent; the core's closed-import pin still passes.
     """
     package_file = verifier.__file__
     package = Path(package_file).parent
     assert not (package / "work.py").exists()
-
-    for module_name in ("expr.py", "eval.py"):
-        tree = ast.parse((package / module_name).read_text(encoding="utf-8"))
-        imported = {
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        }
-        assert "verifier.pysrc.budget" in imported
-        assert "verifier.work" not in imported
 
     budget_tree = ast.parse((package / "pysrc" / "budget.py").read_text(encoding="utf-8"))
     budget_roots = {

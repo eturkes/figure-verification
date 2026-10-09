@@ -1,31 +1,29 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# webui/launch.sh -- one-command standup of the verified-plot browser instance.
+# webui/launch.sh -- one-command standup of the figure-verification browser instance.
 #
-# Brings up the three local services the PoC needs, provisioned, so an operator can open
-# http://127.0.0.1:8080 in a browser and interactively exercise the verified-plot pipeline:
+# Brings up the two local services the demo needs, provisioned, so an operator can open
+# http://127.0.0.1:8080 in a browser and exercise the paste-in tool + filter:
 #
-#     verifier (:8000)  ->  model tier (:8001)  ->  Open WebUI (:8080)
+#     model tier (:8001)  ->  Open WebUI (:8080)
 #
 # The model tier is EITHER the real local model_backend (default; hardware-gated; CUDA dGPU per
-# model_backend/runtime/README.md) XOR a deterministic hardware-free stub (--stub). Open WebUI,
-# its function runner, the iframe/browser, and pixels stay trusted display/orchestration -- the
-# verifier adds no trust here and no claim boundary moves (POC_SCOPE TCB).
-# This launcher is orchestration only; every service, provisioning step, and the chart/embed
-# contract already exists (model_backend, webui/, the verifier, persisted chat + demo).
+# model_backend/runtime/README.md) XOR a deterministic hardware-free stub (--stub). The verifier
+# runs inside the provisioned Open WebUI filter; the browser, its Pyodide sandbox and the pixels
+# stay trusted (`.claude/rules/figure.md`). This launcher is orchestration only.
 #
 # Run from the repository root:
 #     webui/launch.sh            # real local model on the dGPU
 #     webui/launch.sh --stub     # deterministic, hardware-free
 #     webui/launch.sh --fresh    # wipe the persisted Open WebUI instance first
 #
-# Ctrl-C (SIGINT) tears every child down and frees :8000 / :8001 / :8080.
+# Ctrl-C (SIGINT) tears every child down and frees :8001 / :8080.
 set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-webui/launch.sh -- one-command standup of the verified-plot browser instance.
+webui/launch.sh -- one-command standup of the figure-verification browser instance.
 
 Usage:
   webui/launch.sh [--stub] [--fresh]
@@ -36,31 +34,24 @@ Options:
   --fresh     Wipe the persisted Open WebUI instance (.webui-data) first.
   -h, --help  Show this help and exit.
 
-This script starts the verifier (:8000), the model tier (:8001), and Open WebUI (:8080).
-The script provisions Open WebUI, then waits until you press Ctrl-C. Ctrl-C frees all
-three ports. Environment variables override the configuration defaults. The
+This script starts the model tier (:8001) and Open WebUI (:8080). The script provisions
+Open WebUI, then waits until you press Ctrl-C. Ctrl-C frees both ports. Environment variables override the configuration defaults. The
 configuration section of this script lists the variables.
 USAGE
 }
 
 # --- Configuration: every value is an env override with a confirmed default. ---
 HEALTH_HOST="${LAUNCH_HEALTH_HOST:-127.0.0.1}"
-VERIFIER_PORT="${VERIFIER_PORT:-8000}"
 MODEL_BACKEND_PORT="${MODEL_BACKEND_PORT:-8001}"
 WEBUI_PROVISION_PORT="${WEBUI_PROVISION_PORT:-8080}"
 WEBUI_PROVISION_ADMIN_EMAIL="${WEBUI_PROVISION_ADMIN_EMAIL:-operator@localhost}"
 WEBUI_PROVISION_ADMIN_PASSWORD="${WEBUI_PROVISION_ADMIN_PASSWORD:-loopback-dev-password}"
 WEBUI_PROVISION_DATA_DIR="${WEBUI_PROVISION_DATA_DIR:-.webui-data}"
 WEBUI_PROVISION_WEBUI_BIN="${WEBUI_PROVISION_WEBUI_BIN:-.venv-webui/bin/open-webui}"
-# Open WebUI reaches the verifier + model backend, the verifier reaches the model backend for
-# /propose-spec, and the stub binds the backend URL -- all through these URLs. Derive them from the
-# ports above so a single VERIFIER_PORT / MODEL_BACKEND_PORT override wires through to provisioning,
-# the verifier's model client, the stub bind, and (via VERIFIER_PORT, which the verifier turns into
-# its chart Location) the certificate links. An explicit URL override still wins, and at the default
-# ports these are byte-identical to the previous defaults.
-WEBUI_PROVISION_VERIFIER_URL="${WEBUI_PROVISION_VERIFIER_URL:-http://${HEALTH_HOST}:${VERIFIER_PORT}}"
+# Open WebUI reaches the model backend and the stub binds the backend URL through this URL. Derive
+# it from the port above so a single MODEL_BACKEND_PORT override wires through to provisioning and
+# the stub bind. An explicit URL override still wins.
 WEBUI_PROVISION_MODEL_BACKEND_URL="${WEBUI_PROVISION_MODEL_BACKEND_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
-VERIFIER_MODEL_BASE_URL="${VERIFIER_MODEL_BASE_URL:-http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1}"
 # Real-model device + its interpreter. The backend venv is a SEPARATE uv project
 # (model_backend/runtime) carrying the CUDA torch stack, so the real arm runs on its own python and
 # never through `uv run`, which resolves the container venv. `-m model_backend` resolves the package
@@ -70,21 +61,16 @@ MODEL_BACKEND_PYTHON="${MODEL_BACKEND_PYTHON:-.venv-model/bin/python}"
 # Per-service logs (*.log + launch.pid; the dir is gitignored).
 LOG_DIR="${LAUNCH_LOG_DIR:-.launch-logs}"
 # Health-poll ceilings (seconds) -- generous for a cold boot.
-VERIFIER_READY_S="${LAUNCH_VERIFIER_READY_S:-90}"
 MODEL_READY_S="${LAUNCH_MODEL_READY_S:-180}"
 WEBUI_READY_S="${LAUNCH_WEBUI_READY_S:-180}"
 
-# Raise the verifier's process-local work rate so interactive clicking is not 429-throttled
-# (production defaults stay in force when the operator does not override).
-export VERIFIER_WORK_RATE_PER_MINUTE="${VERIFIER_WORK_RATE_PER_MINUTE:-10000}"
-export VERIFIER_WORK_BURST="${VERIFIER_WORK_BURST:-10000}"
 # uv resolves the container project venv; --locked pins the gate lockfile.
 export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-.venv}"
 export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 # The webui / model children read these from the environment.
 export WEBUI_PROVISION_ADMIN_EMAIL WEBUI_PROVISION_ADMIN_PASSWORD WEBUI_PROVISION_PORT
-export WEBUI_PROVISION_DATA_DIR MODEL_BACKEND_DEVICE MODEL_BACKEND_PORT VERIFIER_PORT
-export WEBUI_PROVISION_WEBUI_BIN WEBUI_PROVISION_VERIFIER_URL WEBUI_PROVISION_MODEL_BACKEND_URL VERIFIER_MODEL_BASE_URL
+export WEBUI_PROVISION_DATA_DIR MODEL_BACKEND_DEVICE MODEL_BACKEND_PORT
+export WEBUI_PROVISION_WEBUI_BIN WEBUI_PROVISION_MODEL_BACKEND_URL
 
 USE_STUB=0
 FRESH=0
@@ -151,12 +137,11 @@ cleanup() {
   for pid in "${SERVICE_PIDS[@]}"; do
     kill -KILL -- "-${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
   done
-  free_port "$VERIFIER_PORT"
   free_port "$MODEL_BACKEND_PORT"
   free_port "$WEBUI_PROVISION_PORT"
   wait 2>/dev/null || true
   rm -f "${LOG_DIR}/launch.pid"
-  log "down; ports ${VERIFIER_PORT}/${MODEL_BACKEND_PORT}/${WEBUI_PROVISION_PORT} freed"
+  log "down; ports ${MODEL_BACKEND_PORT}/${WEBUI_PROVISION_PORT} freed"
 }
 
 wait_http() {
@@ -207,7 +192,7 @@ fi
 # Refuse to start if a target port is already taken: keeps the readiness poll from adopting a
 # foreign listener and keeps the fuser -k teardown scoped to this launcher's own children. This runs
 # BEFORE the cleanup trap is installed so a refusal never fuser -k's the pre-existing listener.
-for _port in "$VERIFIER_PORT" "$MODEL_BACKEND_PORT" "$WEBUI_PROVISION_PORT"; do
+for _port in "$MODEL_BACKEND_PORT" "$WEBUI_PROVISION_PORT"; do
   if port_in_use "$_port"; then
     die "port ${_port} is already in use -- stop whatever is bound there (or override the port) before launching"
   fi
@@ -224,12 +209,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 printf '%s\n' "$$" > "${LOG_DIR}/launch.pid"
 
-# 1) verifier
-start_bg verifier "${LOG_DIR}/verifier.log" uv run --locked python -m verifier.service
-wait_http verifier "http://${HEALTH_HOST}:${VERIFIER_PORT}/health" "$VERIFIER_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/verifier.log" \
-  || die "verifier did not become ready"
-
-# 2) model tier -- deterministic stub XOR the real dGPU-backed model_backend
+# 1) model tier -- deterministic stub XOR the real dGPU-backed model_backend
 if (( USE_STUB )); then
   start_bg model "${LOG_DIR}/model.log" uv run --locked python -m webui stub
 else
@@ -238,13 +218,12 @@ fi
 wait_http model "http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1/models" "$MODEL_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/model.log" \
   || die "model tier did not become ready"
 
-# 3) Open WebUI
+# 2) Open WebUI
 start_bg webui "${LOG_DIR}/webui.log" uv run --locked python -m webui serve
 wait_http webui "http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}/ready" "$WEBUI_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/webui.log" \
   || die "Open WebUI did not become ready"
 
-# 4) provision Open WebUI. The pasted tool reads uploaded bytes in-process; its bootstrap readback
-#    no longer fetches the verifier's OpenAPI or registers a tool server.
+# 3) provision Open WebUI: admin, model, the demo's generated tool + filter.
 log "provisioning Open WebUI (admin + model + pasted figure tool)..."
 uv run --locked python -m webui bootstrap \
   || die "Open WebUI bootstrap failed (see output above and ${LOG_DIR}/webui.log)"
@@ -256,7 +235,7 @@ for _i in "${!SERVICE_PIDS[@]}"; do
     || die "${SERVICE_NAMES[$_i]} (pid ${SERVICE_PIDS[$_i]}) exited before READY (see ${LOG_DIR})"
 done
 
-# 5) banner. Every stated outcome names its recorded run count or says it is unrecorded; the
+# 4) banner. Every stated outcome names its recorded run count or says it is unrecorded; the
 #    stub arm's verdict sentences are test-backed (tests/test_webui_banner_prompts.py). The arms +
 #    the stub's scripted programs live in webui/banner.json: each request asked honestly, then
 #    asked for a named distortion.
@@ -307,13 +286,13 @@ cat >&2 <<BANNER
 
 ${try_typing}
 
-    Logs       ${LOG_DIR}/{verifier,model,webui}.log
-    Stop       Ctrl-C  (frees :${VERIFIER_PORT} / :${MODEL_BACKEND_PORT} / :${WEBUI_PROVISION_PORT})
+    Logs       ${LOG_DIR}/{model,webui}.log
+    Stop       Ctrl-C  (frees :${MODEL_BACKEND_PORT} / :${WEBUI_PROVISION_PORT})
   ============================================================
 
 BANNER
 
-# 6) Block until a REQUIRED service exits. SIGINT/SIGTERM are handled by their own traps (which exit
+# 5) Block until a REQUIRED service exits. SIGINT/SIGTERM are handled by their own traps (which exit
 #    130/143 before returning here); getting past `wait -n` means a child died on its own -- a
 #    failure. Name it and exit non-zero so automation never reads a crashed stack as a clean launch;
 #    the EXIT trap still tears everything down.
