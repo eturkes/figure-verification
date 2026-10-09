@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The M19.3 closed artist set + legends + bands + ticks: one mutant per predicate, one red each
+# (`.agent/archive/contracts/m19u3.md` J2-J4).
+module = "src/verifier/figure/parts.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-twin-same-position"
+predicate = "a shared axis is a twin only at the same position"
+kills = "tests/test_figure_corpus.py::test_corpus_case[twin-axes-twin]"
+anchor = '''            if (second in a.shared_x or second in a.shared_y) and a.position == b.position:'''
+mutant = '''            if second in a.shared_x or second in a.shared_y:'''
+
+[[mutant]]
+id = "m19-span-polygon-judged"
+predicate = "a span drawn as a Polygon (matplotlib 3.8) is a judged reference"
+kills = "tests/test_figure_judge.py::test_j3_reference_spans_in_either_shape"
+anchor = '''    return "reference" if (artist.origin or "") in _REFERENCE_SPANS else None'''
+mutant = '''    return None'''
+
+[[mutant]]
+id = "m19-rotated-bar"
+predicate = "a rotated rectangle is no bar"
+kills = "tests/test_figure_corpus.py::test_corpus_case[rotated-bar-clip]"
+anchor = '''    upright = cast("RectGeometry", artist.geometry).angle == 0.0'''
+mutant = '''    upright = True'''
+
+[[mutant]]
+id = "m19-colorbar-contents"
+predicate = "a colorbar axes holds its own parts alone"
+kills = "tests/test_figure_corpus.py::test_corpus_case[colorbar-user-patch]"
+anchor = '''        if (artist.cls, artist.origin) not in _COLORBAR_PARTS:'''
+mutant = '''        if False:'''

@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.3 legends: each legend predicate earns one mutant naming one red.
+module = "src/verifier/figure/legends.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-legend-names-every-series"
+predicate = "a legend over two or more series names every series"
+kills = "tests/test_figure_corpus.py::test_corpus_case[legend-misses-a-series]"
+anchor = '''        if named and len(series) >= 2 and len(named) != len(series):  # noqa: PLR2004'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "m19-proxy-colour"
+predicate = "a proxy names a series by label and colour together"
+kills = "tests/test_figure_judge.py::test_legend_a_proxy_in_a_series_colour_must_carry_its_label"
+anchor = '''        if rgb is not None and own_label == entry.text and own == rgb'''
+mutant = '''        if rgb is not None and own == rgb'''

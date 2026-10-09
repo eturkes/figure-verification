@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The M19.3 mark rules: each rule's comparison earns one mutant naming one red
+# (`.agent/archive/contracts/m19u3.md` J4).
+module = "src/verifier/figure/mark_rules.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-stack-same-side"
+predicate = "a bar continuing another runs the same way from its base"
+kills = "tests/test_figure_judge.py::test_j4_a_bar_continuing_another_runs_the_same_way"
+anchor = '''    return same_side and any('''
+mutant = '''    return any('''
+
+[[mutant]]
+id = "m19-overlap-later-bar"
+predicate = "an overlap marks the later-drawn bar"
+kills = "tests/test_figure_corpus.py::test_corpus_case[overplotted-bars]"
+anchor = '''                block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar'''
+mutant = '''                block("bars_overlap", axes.artists[min(index, other)].site)'''
+
+[[mutant]]
+id = "m19-monotone-either-way"
+predicate = "a line monotone in x either way passes"
+kills = "tests/test_figure_corpus.py::test_corpus_case[reversed-line]"
+anchor = '''            if any(step < 0 for step in steps) and any(step > 0 for step in steps):'''
+mutant = '''            if any(step < 0 for step in steps):'''
+
+[[mutant]]
+id = "m19-hist-dropped-input"
+predicate = "an input outside the drawn bins blocks (R2)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[hist-dropped-values]"
+anchor = '''        if not bins[0] <= value <= bins[-1]:
+            return None'''
+mutant = '''        if not bins[0] <= value <= bins[-1]:
+            continue'''
+
+[[mutant]]
+id = "m19-hist-last-bin-closed"
+predicate = "the last bin holds its right edge"
+kills = "tests/test_figure_corpus.py::test_corpus_case[hist-honest]"
+anchor = '''        index = next(i for i in range(len(counts)) if value < bins[i + 1] or i == len(counts) - 1)'''
+mutant = '''        index = next(i for i in range(len(counts)) if value < bins[i + 1])'''
+
+[[mutant]]
+id = "m19-pie-span"
+predicate = "each wedge spans its share of 360 degrees"
+kills = "tests/test_figure_judge.py::test_j4_pie_rules[boundary-moved]"
+anchor = '''        if abs((end - start) - 360.0 * share) > _PIE_DEGREES:'''
+mutant = '''        if abs((end - start) - 360.0 * share) > 10.0:'''
+
+[[mutant]]
+id = "m19-size-varies"
+predicate = "two distinct marker sizes vary"
+kills = "tests/test_figure_corpus.py::test_corpus_case[sizes-unexplained]"
+anchor = '''    if len(set(geometry.sizes)) > 1 and ("sizes",) not in explained:'''
+mutant = '''    if len(set(geometry.sizes)) > 2 and ("sizes",) not in explained:'''
+
+[[mutant]]
+id = "m19-colorbar-own-collection"
+predicate = "a colorbar explains the collection it is linked to alone"
+kills = "tests/test_figure_judge.py::test_j4_a_colorbar_explains_its_own_collection_alone"
+anchor = '''            colorbar = linked and (panel.index, index) in colorbars'''
+mutant = '''            colorbar = bool(colorbars)'''
+
+[[mutant]]
+id = "m19-ink-scatter"
+predicate = "a scatter with no size or no ink is hidden"
+kills = "tests/test_figure_corpus.py::test_corpus_case[zero-size-scatter]"
+anchor = '''        return not any(geometry.sizes) or not (faces or edges)'''
+mutant = '''        return not (faces or edges)'''
+
+[[mutant]]
+id = "m19-hidden-panel"
+predicate = "a hidden axes hides every mark it holds"
+kills = "tests/test_figure_corpus.py::test_corpus_case[hidden-panel]"
+anchor = '''    if not axes.visible:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "m19-band-inputs"
+predicate = "a band that drew fewer points than its call received dropped a value"
+kills = "tests/test_figure_corpus.py::test_corpus_case[missing-area-input]"
+anchor = '''        if dropped or not all(math.isfinite(value) for value in values):'''
+mutant = '''        if not all(math.isfinite(value) for value in values):'''
+
+[[mutant]]
+id = "m19-overlap-height-own-scale"
+predicate = "the key-axis overlap tolerance never scales with the values"
+kills = "tests/test_figure_corpus.py::test_corpus_case[large-bars-overlap]"
+anchor = '''            if width > _TOLERANCE * max(1.0, abs(x1)) and height > _TOLERANCE * max('''
+mutant = '''            if width > _TOLERANCE * max(1.0, abs(x1), abs(y1)) and height > _TOLERANCE * max('''

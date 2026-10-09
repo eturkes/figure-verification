@@ -1,0 +1,664 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19 rule corpus, axes + marks: per rule, programs that must block with that rule's reason and
+# honest twins that must pass. Format = `integrity.toml`'s.
+
+# --- axes -----------------------------------------------------------------------------------------
+
+[[case]]
+id = "line-in-axes-coordinates"
+expect = "mark_not_in_data"
+site = 2
+request = "Plot 0 and 1"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1], transform=plt.gca().transAxes)
+'''
+
+[[case]]
+id = "log-scale-unstated"
+expect = "scale_not_linear"
+site = 3
+request = "Plot 1, 10, 100, 1000"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale("log")
+'''
+
+[[case]]
+id = "log-scale-stated"
+expect = "pass"
+rule = "scale_not_linear"
+request = "Plot 1, 10, 100, 1000"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale("log")
+plt.ylabel("Value (log scale)")
+'''
+
+[[case]]
+id = "log-scale-stated-title"
+expect = "pass"
+rule = "scale_not_linear"
+request = "Plot 1, 10, 100, 1000"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale("log")
+plt.title("Growth, logarithmic axis")
+'''
+
+[[case]]
+id = "symlog-labelled-log"
+expect = "scale_not_linear"
+site = 3
+request = "Plot 1, 10, 100, 1000"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale("symlog")
+plt.ylabel("log value")
+'''
+
+[[case]]
+id = "inverted-value-axis"
+expect = "axis_inverted"
+site = 3
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.gca().invert_yaxis()
+'''
+
+[[case]]
+id = "inverted-category-axis"
+expect = "axis_inverted"
+site = 5
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.barh(totals.index, totals.values)
+plt.gca().invert_yaxis()
+'''
+
+[[case]]
+id = "truncated-bars"
+expect = "zero_not_in_limits"
+site = 5
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.ylim(30000, 41000)
+'''
+
+[[case]]
+id = "truncated-bars-twin"
+expect = "pass"
+rule = "zero_not_in_limits"
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel("revenue")
+'''
+
+[[case]]
+id = "truncated-area"
+expect = "zero_not_in_limits"
+site = 5
+csv = "sales.csv"
+request = "Revenue per month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot.area()
+plt.ylim(5000, 30000)
+'''
+
+[[case]]
+id = "relabelled-values"
+expect = "tick_label_mismatch"
+site = 3
+request = "Plot 5, 6, 7"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([5, 6, 7])
+plt.yticks([5, 6, 7], ["50", "60", "70"])
+'''
+
+[[case]]
+id = "relabelled-values-twin"
+expect = "pass"
+rule = "tick_label_mismatch"
+request = "Plot 5, 6, 7"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([5, 6, 7])
+plt.yticks([5, 6, 7])
+'''
+
+[[case]]
+id = "money-labels"
+expect = "pass"
+rule = "tick_label_mismatch"
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.StrMethodFormatter("${x:,.0f}"))
+'''
+
+[[case]]
+id = "money-labels-scaled"
+expect = "tick_label_mismatch"
+site = 6
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v / 10:,.0f}"))
+'''
+
+[[case]]
+id = "percent-wrong-scale"
+expect = "tick_label_mismatch"
+site = 4
+request = "Plot 0.1, 0.2, 0.5"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.plot([0.1, 0.2, 0.5])
+plt.gca().yaxis.set_major_formatter(ticker.PercentFormatter(0.5))
+'''
+
+[[case]]
+id = "percent-right-scale"
+expect = "pass"
+rule = "tick_label_mismatch"
+request = "Plot 0.1, 0.2, 0.5"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.plot([0.1, 0.2, 0.5])
+plt.gca().yaxis.set_major_formatter(ticker.PercentFormatter(1.0))
+'''
+
+[[case]]
+id = "category-labels-swapped"
+expect = "tick_label_mismatch"
+site = 3
+request = "Bars a 1 and b 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [1, 2])
+plt.gca().set_xticks([0, 1], ["b", "a"])
+'''
+
+[[case]]
+id = "date-labels-shifted"
+expect = "tick_label_mismatch"
+csv = "weather.csv"
+request = "London temp_c by date"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv", parse_dates=["date"])
+london = df[df["city"] == "London"]
+plt.plot(london["date"], london["temp_c"])
+plt.xticks(london["date"], ["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"])
+'''
+
+[[case]]
+id = "date-labels-honest"
+expect = "pass"
+rule = "tick_label_mismatch"
+csv = "weather.csv"
+request = "London temp_c by date"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv", parse_dates=["date"])
+london = df[df["city"] == "London"]
+plt.plot(london["date"], london["temp_c"], label="London")
+plt.xticks(london["date"], ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"])
+plt.legend()
+'''
+
+[[case]]
+id = "date-axis-default"
+expect = "pass"
+rule = "tick_label_mismatch"
+csv = "weather.csv"
+request = "London temp_c by date"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv", parse_dates=["date"])
+london = df[df["city"] == "London"]
+plt.plot(london["date"], london["temp_c"], label="London")
+plt.legend()
+'''
+
+[[case]]
+id = "clipped-point"
+expect = "point_clipped"
+site = 3
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], marker="o")
+plt.ylim(0, 5)
+'''
+
+[[case]]
+id = "clipped-scatter"
+expect = "point_clipped"
+site = 3
+request = "Points 1 1, 2 2, 9 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([1, 2, 9], [1, 2, 9])
+plt.xlim(0, 5)
+'''
+
+[[case]]
+id = "autoscaled-line"
+expect = "pass"
+rule = "point_clipped"
+csv = "sales.csv"
+request = "Total revenue by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.plot(totals.index, totals.values, marker="o")
+plt.title("Total revenue by month")
+'''
+
+# --- marks ----------------------------------------------------------------------------------------
+
+[[case]]
+id = "invisible-line"
+expect = "mark_hidden"
+site = 2
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], alpha=0)
+'''
+
+[[case]]
+id = "hidden-bars"
+expect = "mark_hidden"
+site = 2
+request = "Bars a 1 and b 2"
+program = '''
+import matplotlib.pyplot as plt
+bars = plt.bar(["a", "b"], [1, 2])
+bars[1].set_visible(False)
+'''
+
+[[case]]
+id = "gap-in-line"
+expect = "value_not_finite"
+site = 2
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1, 2, 3], [1, 4, float("nan"), 9])
+'''
+
+[[case]]
+id = "floating-bars"
+expect = "bar_not_from_zero"
+site = 2
+request = "Bars a 1 and b 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [1, 2], bottom=1)
+plt.ylim(0, 4)
+'''
+
+[[case]]
+id = "stacked-bars"
+expect = "pass"
+rule = "bar_not_from_zero"
+csv = "sales.csv"
+request = "Revenue per month for each region, stacked"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot(kind="bar", stacked=True)
+'''
+
+[[case]]
+id = "stacked-negative-bars"
+expect = "pass"
+rule = "bar_not_from_zero"
+request = "Stack a 1 and -2 with b 3 and -4 at x and y"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.DataFrame({"a": [1, -2], "b": [3, -4]}, index=["x", "y"]).plot(kind="bar", stacked=True)
+'''
+
+[[case]]
+id = "overplotted-bars"
+expect = "bars_overlap"
+site = 3
+request = "Bars a 1 and b 2, then a 3 and b 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [1, 2])
+plt.bar(["a", "b"], [3, 4])
+'''
+
+[[case]]
+id = "grouped-bars"
+expect = "pass"
+rule = "bars_overlap"
+csv = "sales.csv"
+request = "Revenue per month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot(kind="bar")
+'''
+
+[[case]]
+id = "unordered-line"
+expect = "x_not_ordered"
+site = 2
+request = "Points 1 1, 3 9, 2 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 3, 2], [1, 9, 4])
+'''
+
+[[case]]
+id = "reversed-line"
+expect = "pass"
+rule = "x_not_ordered"
+request = "Points 3 9, 2 4, 1 1"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([3, 2, 1], [9, 4, 1])
+'''
+
+[[case]]
+id = "hist-dropped-values"
+expect = "hist_counts"
+site = 2
+request = "Histogram of 1, 2, 2, 3, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 9], bins=3, range=(0, 4))
+'''
+
+[[case]]
+id = "hist-weighted"
+expect = "hist_counts"
+site = 2
+request = "Histogram of 1, 2, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3], bins=3, weights=[1, 1, 1, 5])
+'''
+
+[[case]]
+id = "hist-cumulative"
+expect = "hist_counts"
+site = 2
+request = "Histogram of 1, 2, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3], bins=3, cumulative=True)
+'''
+
+[[case]]
+id = "hist-honest"
+expect = "pass"
+rule = "hist_counts"
+csv = "sales.csv"
+request = "Histogram of orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+plt.hist(pd.read_csv("{data}/sales.csv")["orders"], bins=4)
+'''
+
+[[case]]
+id = "hist-density"
+expect = "pass"
+rule = "hist_counts"
+csv = "weather.csv"
+request = "Density histogram of temp_c"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.read_csv("{data}/weather.csv")["temp_c"].plot.hist(bins=3, density=True)
+'''
+
+[[case]]
+id = "partial-pie"
+expect = "pie_not_whole"
+site = 2
+request = "Pie of 0.1, 0.2 and 0.3"
+program = '''
+import matplotlib.pyplot as plt
+plt.pie([0.1, 0.2, 0.3], labels=["a", "b", "c"], normalize=False)
+'''
+
+[[case]]
+id = "pie-radius-changed"
+expect = "pie_not_whole"
+site = 2
+request = "Pie of a 1, b 2, c 3"
+program = '''
+import matplotlib.pyplot as plt
+wedges, labels = plt.pie([1, 2, 3], labels=["a", "b", "c"])
+wedges[0].set_radius(1.1)
+'''
+
+[[case]]
+id = "pie-honest"
+expect = "pass"
+rule = "pie_not_whole"
+csv = "sales.csv"
+request = "Share of total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum().plot.pie(autopct="%1.0f%%")
+'''
+
+[[case]]
+id = "donut-exploded"
+expect = "pass"
+rule = "pie_not_whole"
+request = "Pie of a 1, b 2, c 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.pie([1, 2, 3], labels=["a", "b", "c"], explode=[0.1, 0, 0], wedgeprops={"width": 0.4})
+'''
+
+[[case]]
+id = "floating-area"
+expect = "area_not_from_zero"
+site = 2
+request = "Fill between 5 and 6, 8, 7"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], [5, 5, 5], [6, 8, 7])
+plt.ylim(0, 10)
+'''
+
+[[case]]
+id = "stackplot-honest"
+expect = "pass"
+rule = "area_not_from_zero"
+request = "Stack 1, 2, 3 on 2, 2, 2 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.stackplot([1, 2, 3], [2, 2, 2], [1, 2, 3], labels=["base", "growth"])
+plt.legend()
+'''
+
+[[case]]
+id = "pandas-area-honest"
+expect = "pass"
+rule = "area_not_from_zero"
+csv = "sales.csv"
+request = "Revenue per month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot.area()
+'''
+
+[[case]]
+id = "sizes-unexplained"
+expect = "marker_size_varies"
+site = 2
+request = "Points 1 3 and 2 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], s=[10, 400])
+'''
+
+[[case]]
+id = "sizes-explained"
+expect = "pass"
+rule = "marker_size_varies"
+request = "Points 1 3 and 2 4"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 400])
+plt.legend(*dots.legend_elements("sizes"))
+'''
+
+[[case]]
+id = "colors-unexplained"
+expect = "marker_color_varies"
+site = 2
+request = "Points 1 3 and 2 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], c=[1, 2])
+'''
+
+[[case]]
+id = "colors-explained"
+expect = "pass"
+rule = "marker_color_varies"
+request = "Points 1 3 and 2 4"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], c=[1, 2])
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "legend-names-nothing"
+expect = "legend_mismatch"
+site = 5
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+plt.plot([1, 4, 9], label="values")
+proxy = patches.Patch(color="red", label="forecast")
+plt.legend(handles=[proxy])
+'''
+
+[[case]]
+id = "legend-misses-a-series"
+expect = "legend_mismatch"
+site = 4
+request = "Plot 1, 4, 9 and 2, 3, 5"
+program = '''
+import matplotlib.pyplot as plt
+first, = plt.plot([1, 4, 9], label="first")
+plt.plot([2, 3, 5], label="second")
+plt.legend(handles=[first])
+'''
+
+[[case]]
+id = "legend-honest-lines"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue per month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", values="revenue")
+table.plot()
+'''
+
+# --- honest twins of the remaining rules ----------------------------------------------------------
+
+[[case]]
+id = "line-in-data"
+expect = "pass"
+rule = "mark_not_in_data"
+request = "Plot 0 and 1"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1])
+'''
+
+[[case]]
+id = "upright-axes"
+expect = "pass"
+rule = "axis_inverted"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.ylim(0, 10)
+'''
+
+[[case]]
+id = "visible-line"
+expect = "pass"
+rule = "mark_hidden"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], alpha=0.5)
+'''
+
+[[case]]
+id = "complete-line"
+expect = "pass"
+rule = "value_not_finite"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1, 3], [1, 4, 9])
+'''

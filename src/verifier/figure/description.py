@@ -48,6 +48,10 @@ class LineGeometry:
     marker: str
     linestyle: str
     drawstyle: str
+    linewidth: float
+    markersize: float
+    marker_face: Color
+    marker_edge: Color
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +62,8 @@ class RectGeometry:
     height: float
     angle: float
     color: Color
+    edge: Color
+    linewidth: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,12 +75,16 @@ class WedgeGeometry:
     theta1: float
     theta2: float
     color: Color
+    edge: Color
+    linewidth: float
 
 
 @dataclass(frozen=True, slots=True)
 class PolygonGeometry:
     xy: tuple[Pair, ...]
     color: Color
+    edge: Color
+    linewidth: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +92,8 @@ class ScatterGeometry:
     offsets: tuple[Pair, ...]
     sizes: tuple[float, ...]
     colors: tuple[Color, ...]
+    edges: tuple[Color, ...]
+    linewidths: tuple[float, ...]
     array: tuple[float, ...] | None
     colorbar: bool
 
@@ -99,7 +111,10 @@ class BandArrays:
 class BandGeometry:
     paths: tuple[tuple[Pair, ...], ...]
     color: Color | None
+    edge: Color | None
+    linewidth: float
     band: BandArrays | None
+    inputs: int | None  # how many points the `fill_between` call received
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +182,7 @@ class PieRecord:
 @dataclass(frozen=True, slots=True)
 class LegendEntry:
     text: str
+    axes: int | None  # the axes holding the named artist/container/collection
     target: int | None
     container: int | None
     proxy_color: Color | None
@@ -201,6 +217,7 @@ class Axis:
 class Axes:
     cls: str
     site: int | None
+    visible: bool
     position: tuple[float, float, float, float]
     colorbar_of: tuple[int, int] | None
     shared_x: tuple[int, ...]
@@ -332,7 +349,22 @@ def _calls(value: object) -> tuple[tuple[str, int], ...]:
 
 
 def _line(item: dict[str, object]) -> LineGeometry:
-    item = _object(item, ("kind", "x", "y", "color", "marker", "linestyle", "drawstyle"))
+    item = _object(
+        item,
+        (
+            "kind",
+            "x",
+            "y",
+            "color",
+            "marker",
+            "linestyle",
+            "drawstyle",
+            "linewidth",
+            "markersize",
+            "marker_face",
+            "marker_edge",
+        ),
+    )
     x, y = _tuple(item["x"], _float), _tuple(item["y"], _float)
     if len(x) != len(y):
         raise _InvalidError
@@ -343,11 +375,17 @@ def _line(item: dict[str, object]) -> LineGeometry:
         _str(item["marker"]),
         _str(item["linestyle"]),
         _str(item["drawstyle"]),
+        _float(item["linewidth"]),
+        _float(item["markersize"]),
+        _color(item["marker_face"]),
+        _color(item["marker_edge"]),
     )
 
 
 def _rect(item: dict[str, object]) -> RectGeometry:
-    item = _object(item, ("kind", "x", "y", "width", "height", "angle", "color"))
+    item = _object(
+        item, ("kind", "x", "y", "width", "height", "angle", "color", "edge", "linewidth")
+    )
     return RectGeometry(
         _float(item["x"]),
         _float(item["y"]),
@@ -355,11 +393,16 @@ def _rect(item: dict[str, object]) -> RectGeometry:
         _float(item["height"]),
         _float(item["angle"]),
         _color(item["color"]),
+        _color(item["edge"]),
+        _float(item["linewidth"]),
     )
 
 
 def _wedge(item: dict[str, object]) -> WedgeGeometry:
-    item = _object(item, ("kind", "cx", "cy", "r", "width", "theta1", "theta2", "color"))
+    item = _object(
+        item,
+        ("kind", "cx", "cy", "r", "width", "theta1", "theta2", "color", "edge", "linewidth"),
+    )
     return WedgeGeometry(
         _float(item["cx"]),
         _float(item["cy"]),
@@ -368,20 +411,32 @@ def _wedge(item: dict[str, object]) -> WedgeGeometry:
         _float(item["theta1"]),
         _float(item["theta2"]),
         _color(item["color"]),
+        _color(item["edge"]),
+        _float(item["linewidth"]),
     )
 
 
 def _polygon(item: dict[str, object]) -> PolygonGeometry:
-    item = _object(item, ("kind", "xy", "color"))
-    return PolygonGeometry(_tuple(item["xy"], _pair), _color(item["color"]))
+    item = _object(item, ("kind", "xy", "color", "edge", "linewidth"))
+    return PolygonGeometry(
+        _tuple(item["xy"], _pair),
+        _color(item["color"]),
+        _color(item["edge"]),
+        _float(item["linewidth"]),
+    )
 
 
 def _scatter(item: dict[str, object]) -> ScatterGeometry:
-    item = _object(item, ("kind", "offsets", "sizes", "colors", "array", "colorbar"))
+    item = _object(
+        item,
+        ("kind", "offsets", "sizes", "colors", "edges", "linewidths", "array", "colorbar"),
+    )
     return ScatterGeometry(
         _tuple(item["offsets"], _pair),
         _tuple(item["sizes"], _float),
         _tuple(item["colors"], _color),
+        _tuple(item["edges"], _color),
+        _tuple(item["linewidths"], _float),
         _optional(item["array"], lambda value: _tuple(value, _float)),
         _bool(item["colorbar"]),
     )
@@ -396,11 +451,14 @@ def _band_arrays(value: object) -> BandArrays:
 
 
 def _band(item: dict[str, object]) -> BandGeometry:
-    item = _object(item, ("kind", "paths", "color", "band"))
+    item = _object(item, ("kind", "paths", "color", "edge", "linewidth", "band", "inputs"))
     return BandGeometry(
         _tuple(item["paths"], lambda value: _tuple(value, _pair)),
         _optional(item["color"], _color),
+        _optional(item["edge"], _color),
+        _float(item["linewidth"]),
         _optional(item["band"], _band_arrays),
+        _optional(item["inputs"], _int),
     )
 
 
@@ -494,9 +552,10 @@ def _elements(value: object) -> tuple[int | None, str]:
 
 
 def _entry(value: object) -> LegendEntry:
-    item = _object(value, ("text", "target", "container", "proxy_color", "elements_of"))
+    item = _object(value, ("text", "axes", "target", "container", "proxy_color", "elements_of"))
     return LegendEntry(
         _str(item["text"]),
+        _optional(item["axes"], _int),
         _optional(item["target"], _int),
         _optional(item["container"], _int),
         _optional(item["proxy_color"], _color),
@@ -586,6 +645,7 @@ def _position(value: object) -> tuple[float, float, float, float]:
 _AXES_KEYS = (
     "cls",
     "site",
+    "visible",
     "position",
     "colorbar_of",
     "shared_x",
@@ -606,6 +666,7 @@ def _axes(value: object) -> Axes:
     return Axes(
         _str(item["cls"]),
         _optional(item["site"], _int),
+        _bool(item["visible"]),
         _position(item["position"]),
         _optional(item["colorbar_of"], _index_pair),
         _tuple(item["shared_x"], _int),

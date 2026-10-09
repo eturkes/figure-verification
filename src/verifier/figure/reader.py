@@ -197,7 +197,8 @@ def _called(slot: str) -> Callable[[Any], object]:
         def hooked(self: Any, *args: object, **kwargs: object) -> object:
             line = _direct_line(sys._getframe(1))
             if line is not None:
-                self.__dict__.setdefault("_fv_calls", {}).setdefault(slot, line)
+                # The last call decides the property, so the listing marks the last one.
+                self.__dict__.setdefault("_fv_calls", {})[slot] = line
             return original(self, *args, **kwargs)
 
         return hooked
@@ -319,6 +320,8 @@ def _fill_between(original: Callable[..., Any]) -> Callable[..., Any]:
         def record() -> None:
             call = _bound(original, args, kwargs)
             result._fv_plain = call["where"] is None and call["step"] is None
+            # How many points the call received: a non-finite one leaves the polygon unseen.
+            result._fv_inputs = len(_argument(call, "x"))
 
         _recording(record)
         return result
@@ -434,6 +437,19 @@ def _line(artist: Any, run: _Run) -> dict[str, Any]:
         "marker": str(artist.get_marker()),
         "linestyle": str(artist.get_linestyle()),
         "drawstyle": str(artist.get_drawstyle()),
+        "linewidth": _number(artist.get_linewidth()),
+        "markersize": _number(artist.get_markersize()),
+        "marker_face": _rgba(artist.get_markerfacecolor()),
+        "marker_edge": _rgba(artist.get_markeredgecolor()),
+    }
+
+
+def _ink(patch: Any) -> dict[str, Any]:
+    """A patch's face and edge: what decides whether it shows any ink."""
+    return {
+        "color": _rgba(patch.get_facecolor()),
+        "edge": _rgba(patch.get_edgecolor()),
+        "linewidth": _number(patch.get_linewidth()),
     }
 
 
@@ -446,7 +462,7 @@ def _rect(artist: Any, run: _Run) -> dict[str, Any]:
         "width": _number(artist.get_width()),
         "height": _number(artist.get_height()),
         "angle": _number(artist.get_angle()),
-        "color": _rgba(artist.get_facecolor()),
+        **_ink(artist),
     }
 
 
@@ -460,7 +476,7 @@ def _wedge(artist: Any, run: _Run) -> dict[str, Any]:
         "width": None if artist.width is None else _number(artist.width),
         "theta1": _number(artist.theta1),
         "theta2": _number(artist.theta2),
-        "color": _rgba(artist.get_facecolor()),
+        **_ink(artist),
     }
 
 
@@ -470,7 +486,7 @@ def _polygon(artist: Any, run: _Run) -> dict[str, Any]:
     return {
         "kind": "polygon",
         "xy": [[_number(x), _number(y)] for x, y in xy],
-        "color": _rgba(artist.get_facecolor()),
+        **_ink(artist),
     }
 
 
@@ -483,6 +499,8 @@ def _scatter(artist: Any, run: _Run) -> dict[str, Any]:
         "offsets": [[_number(x), _number(y)] for x, y in offsets],
         "sizes": [_number(s) for s in artist.get_sizes()],
         "colors": [_rgba(c) for c in artist.get_facecolors()],
+        "edges": [_rgba(c) for c in artist.get_edgecolors()],
+        "linewidths": [_number(w) for w in artist.get_linewidths()],
         "array": None if array is None else _floats(array),
         "colorbar": getattr(artist, "colorbar", None) is not None,
     }
@@ -518,12 +536,20 @@ def _band(artist: Any, run: _Run) -> dict[str, Any]:
     plain = getattr(artist, "_fv_plain", False) is True and len(paths) == 1
     band = _band_arrays(paths[0]) if plain else None
     run.spend(sum(len(path) for path in paths) + (0 if band is None else 3 * len(band["x"])))
-    faces = artist.get_facecolors()
+    faces, edges, widths = (
+        artist.get_facecolors(),
+        artist.get_edgecolors(),
+        artist.get_linewidths(),
+    )
+    inputs = getattr(artist, "_fv_inputs", None)
     return {
         "kind": "band",
         "paths": [[[_number(x), _number(y)] for x, y in path] for path in paths],
         "color": _rgba(faces[0]) if len(faces) else None,
+        "edge": _rgba(edges[0]) if len(edges) else None,
+        "linewidth": _number(widths[0]) if len(widths) else 0.0,
         "band": band,
+        "inputs": inputs if isinstance(inputs, int) else None,
     }
 
 
@@ -694,12 +720,19 @@ def _handle_color(handle: Any) -> list[float] | None:
     return _rgba(handle.get_color()) if hasattr(handle, "get_color") else None
 
 
-def _legend(legend: Any, artists: list[Any], containers: list[Any]) -> dict[str, Any]:
-    """Each entry: its text, and the drawn artist or container it names, else its own colour.
+def _find(figure: Any, handle: object) -> tuple[int, int | None, int | None] | None:
+    """(axes, artist, container) of the drawn object `handle` is, anywhere in the figure."""
+    for number, axes in enumerate(figure.axes):
+        artist = next((i for i, child in enumerate(_children(axes)) if child is handle), None)
+        container = next((i for i, c in enumerate(axes.containers) if c is handle), None)
+        if artist is not None or container is not None:
+            return number, artist, container
+    return None
 
-    `artists`/`containers` = the axes' own; a figure legend passes none, so every entry it holds
-    is matched by text + colour.
-    """
+
+def _legend(legend: Any, figure: Any) -> dict[str, Any]:
+    """Each entry: its displayed text, and the drawn artist or container it names (anywhere in
+    the figure), else its own colour; a `legend_elements` key names its collection."""
     handles, _labels = getattr(legend, "_fv_entries", ([], []))
     shown = iter(legend.texts)  # one text per handle the legend could draw, as finally displayed
     entries = []
@@ -707,23 +740,20 @@ def _legend(legend: Any, artists: list[Any], containers: list[Any]) -> dict[str,
         if drawn is None:
             continue
         label = next(shown).get_text()
-        target = next((i for i, a in enumerate(artists) if a is handle), None)
-        container = next((i for i, c in enumerate(containers) if c is handle), None)
+        found = _find(figure, handle)
         elements = getattr(handle, "_fv_elements", None)
+        keyed = None if elements is None else _find(figure, elements[0])
+        axes = found[0] if found is not None else (keyed[0] if keyed is not None else None)
         entries.append(
             {
                 "text": _cut(str(label)),
-                "target": target,
-                "container": container,
-                "proxy_color": None
-                if target is not None or container is not None
-                else _handle_color(handle),
+                "axes": axes,
+                "target": None if found is None else found[1],
+                "container": None if found is None else found[2],
+                "proxy_color": _handle_color(handle) if found is None else None,
                 "elements_of": None
                 if elements is None
-                else [
-                    next((i for i, a in enumerate(artists) if a is elements[0]), None),
-                    elements[1],
-                ],
+                else [None if keyed is None else keyed[1], elements[1]],
             }
         )
     return {"site": getattr(legend, "_fv_site", None), "entries": entries}
@@ -761,6 +791,7 @@ def _axes(axes: Any, figure: Any, run: _Run) -> dict[str, Any]:
     return {
         "cls": type(axes).__name__,
         "site": getattr(axes, "_fv_site", None),
+        "visible": bool(axes.get_visible()),
         "position": [_number(v) for v in (position.x0, position.y0, position.x1, position.y1)],
         "colorbar_of": None if colorbar is None else _locate(siblings, colorbar.mappable),
         "shared_x": _shared(siblings, axes, axes.get_shared_x_axes()),
@@ -772,7 +803,7 @@ def _axes(axes: Any, figure: Any, run: _Run) -> dict[str, Any]:
         "artists": artists,
         "containers": described,
         "pies": pies,
-        "legend": None if axes.legend_ is None else _legend(axes.legend_, children, containers),
+        "legend": None if axes.legend_ is None else _legend(axes.legend_, figure),
     }
 
 
@@ -805,7 +836,7 @@ def _figure(figure: Any, run: _Run) -> dict[str, Any]:
             for t in (_text(text) for text in figure.texts if all(text is not s for s in supers))
             if t is not None
         ],
-        "legends": [_legend(legend, [], []) for legend in figure.legends],
+        "legends": [_legend(legend, figure) for legend in figure.legends],
         "others": [
             {
                 "cls": type(child).__name__,

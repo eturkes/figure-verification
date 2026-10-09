@@ -1,0 +1,440 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19 rule corpus, integrity half: per rule, programs that must block with that rule's reason and
+# honest twins that must pass (`.claude/rules/figure.md`). `{data}` = the directory holding
+# `data/*.csv` (the repo on the host, /mnt/uploads in the sandbox); `csv` = the attached file;
+# `request` = the user's message. `expect` = "pass" or the blocking reason; `site` = the program
+# line the failing row marks (absent = no line).
+
+# --- figure ---------------------------------------------------------------------------------------
+
+[[case]]
+id = "syntax-error"
+expect = "program_syntax_error"
+site = 2
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9]
+'''
+
+[[case]]
+id = "runtime-error"
+expect = "program_error"
+site = 3
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title(missing_name)
+'''
+
+[[case]]
+id = "runtime-error-twin"
+expect = "pass"
+rule = "program_error"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title("Squares")
+'''
+
+[[case]]
+id = "other-plotting-library"
+expect = "module_not_available"
+site = 1
+request = "Plot 1, 4, 9"
+program = '''
+import plotly.express as px
+px.line(y=[1, 4, 9]).show()
+'''
+
+[[case]]
+id = "image-not-figure"
+expect = "no_figure"
+request = "Plot 1, 4, 9"
+program = '''
+from PIL import Image, ImageDraw
+image = Image.new("RGB", (60, 40), "white")
+ImageDraw.Draw(image).line([(0, 40), (30, 20), (60, 0)], fill="black")
+image.save("/tmp/chart.png")
+'''
+
+[[case]]
+id = "two-figures"
+expect = "multiple_figures"
+site = 4
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.figure()
+plt.plot([1, 4, 9])
+plt.figure()
+plt.bar(["a", "b"], [1, 4])
+'''
+
+[[case]]
+id = "missing-glyph"
+expect = "glyph_missing"
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title("売上")
+'''
+
+[[case]]
+id = "too-large"
+expect = "figure_too_large"
+request = "Plot 0 through 30000"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot(range(30001))
+'''
+
+# --- parts ----------------------------------------------------------------------------------------
+
+[[case]]
+id = "errorbar"
+expect = "artist_not_judged"
+site = 2
+request = "Plot 3 and 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.errorbar([1, 2], [3, 4], yerr=[1, 1])
+'''
+
+[[case]]
+id = "boxplot"
+expect = "artist_not_judged"
+site = 2
+request = "Box plot of 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.boxplot([1, 2, 3])
+'''
+
+[[case]]
+id = "violin"
+expect = "artist_not_judged"
+site = 2
+request = "Violin plot of 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.violinplot([1, 2, 3])
+'''
+
+[[case]]
+id = "contour"
+expect = "artist_not_judged"
+site = 3
+request = "Contour of 1 to 3"
+program = '''
+import matplotlib.pyplot as plt
+grid = [[1, 2, 3], [2, 3, 1], [3, 1, 2]]
+plt.contour(grid)
+'''
+
+[[case]]
+id = "hexbin"
+expect = "artist_not_judged"
+site = 2
+request = "Plot 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.hexbin([1, 2, 3], [1, 2, 3], gridsize=3)
+'''
+
+[[case]]
+id = "quiver"
+expect = "artist_not_judged"
+site = 2
+request = "Arrows at 0 and 1"
+program = '''
+import matplotlib.pyplot as plt
+plt.quiver([0, 1], [0, 1], [1, 1], [1, 0])
+'''
+
+[[case]]
+id = "eventplot"
+expect = "artist_not_judged"
+site = 2
+request = "Events at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.eventplot([1, 2, 3])
+'''
+
+[[case]]
+id = "stem"
+expect = "artist_not_judged"
+site = 2
+request = "Stems 1, 3, 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.stem([1, 2, 3], [1, 3, 2])
+'''
+
+[[case]]
+id = "broken-barh"
+expect = "artist_not_judged"
+site = 2
+request = "Ranges 1 to 3 and 4 to 5"
+program = '''
+import matplotlib.pyplot as plt
+plt.broken_barh([(1, 2), (4, 1)], (0, 1))
+'''
+
+[[case]]
+id = "table"
+expect = "artist_not_judged"
+site = 3
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [1, 2])
+plt.table(cellText=[["1", "2"]], loc="bottom")
+'''
+
+[[case]]
+id = "fill-polygon"
+expect = "artist_not_judged"
+site = 2
+request = "Plot 0 and 1"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill([0, 1, 1], [0, 0, 1])
+'''
+
+[[case]]
+id = "fill-betweenx"
+expect = "artist_not_judged"
+site = 2
+request = "Plot 1, 2, 3 and 1, 4, 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_betweenx([1, 2, 3], [1, 4, 2])
+'''
+
+[[case]]
+id = "step-histogram"
+expect = "artist_not_judged"
+site = 2
+request = "Histogram of 1, 2, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3], bins=2, histtype="step")
+'''
+
+[[case]]
+id = "user-patch"
+expect = "artist_not_judged"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+plt.plot([1, 2], [1, 2])
+plt.gca().add_patch(patches.Rectangle((1, 1), 0.5, 0.5))
+'''
+
+[[case]]
+id = "user-line"
+expect = "artist_not_judged"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.lines as lines
+plt.plot([1, 2], [1, 2])
+plt.gca().add_line(lines.Line2D([1, 2], [2, 1]))
+'''
+
+[[case]]
+id = "inset-axes"
+expect = "artist_not_judged"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.plot([1, 2], [1, 2])
+inset = ax.inset_axes([0.6, 0.6, 0.3, 0.3])
+inset.plot([1, 2], [2, 1])
+'''
+
+[[case]]
+id = "secondary-axis"
+expect = "artist_not_judged"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.plot([1, 2], [1, 2])
+ax.secondary_yaxis("right", functions=(lambda v: v * 2, lambda v: v / 2))
+'''
+
+[[case]]
+id = "imshow"
+expect = "raster_image"
+site = 2
+request = "Image of 1, 2, 3, 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.imshow([[1, 2], [3, 4]])
+'''
+
+[[case]]
+id = "pcolormesh"
+expect = "raster_image"
+site = 2
+request = "Grid of 1, 2, 3, 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.pcolormesh([[1, 2], [3, 4]])
+'''
+
+[[case]]
+id = "figimage"
+expect = "raster_image"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.plot([1, 2], [1, 2])
+fig.figimage([[1, 2], [3, 4]])
+'''
+
+[[case]]
+id = "polar"
+expect = "axes_not_judged"
+site = 2
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+ax = plt.subplot(projection="polar")
+ax.plot([0, 1], [1, 2])
+'''
+
+[[case]]
+id = "twin-axes"
+expect = "axes_twin"
+site = 6
+csv = "sales.csv"
+request = "Revenue and orders by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv").groupby("month").sum(numeric_only=True)
+ax = plt.gca()
+ax.plot(df.index, df["revenue"])
+ax.twinx().plot(df.index, df["orders"], color="red")
+'''
+
+[[case]]
+id = "twin-axes-twin"
+expect = "pass"
+rule = "axes_twin"
+csv = "sales.csv"
+request = "Revenue and orders by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv").groupby("month").sum(numeric_only=True)
+fig, (top, bottom) = plt.subplots(2, 1, sharex=True)
+top.plot(df.index, df["revenue"])
+top.set_ylabel("revenue")
+bottom.plot(df.index, df["orders"])
+bottom.set_ylabel("orders")
+'''
+
+[[case]]
+id = "overlapping-axes"
+expect = "axes_overlap"
+site = 4
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.8, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.5, 0.5, 0.4, 0.4]).plot([1, 2], [2, 1])
+'''
+
+[[case]]
+id = "empty-axes"
+expect = "no_data"
+site = 2
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title("Nothing")
+'''
+
+# --- honest twins of the parts rules -------------------------------------------------------------
+
+[[case]]
+id = "judged-families"
+expect = "pass"
+rule = "artist_not_judged"
+csv = "sales.csv"
+request = "Revenue by region: bars, a line, points, a reference line at 30000 and value labels"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+bars = plt.bar(totals.index, totals.values, label="revenue")
+plt.plot(totals.index, totals.values, color="black", label="line")
+plt.scatter(totals.index, totals.values, color="red", label="points")
+plt.axhline(30000, color="gray", linestyle="--")
+plt.bar_label(bars)
+plt.text(0, 1000, "note")
+plt.legend()
+'''
+
+[[case]]
+id = "vector-chart"
+expect = "pass"
+rule = "raster_image"
+request = "Bars a 1 and b 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [1, 2])
+'''
+
+[[case]]
+id = "cartesian-axes"
+expect = "pass"
+rule = "axes_not_judged"
+request = "Plot 0 and 1, then 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+ax = plt.subplot()
+ax.plot([0, 1], [1, 2])
+'''
+
+[[case]]
+id = "side-by-side-axes"
+expect = "pass"
+rule = "axes_overlap"
+request = "Plot 1 and 2, then 2 and 1"
+program = '''
+import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.35, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.55, 0.1, 0.35, 0.8]).plot([1, 2], [2, 1])
+'''
+
+[[case]]
+id = "axes-with-data"
+expect = "pass"
+rule = "no_data"
+request = "Plot 1 and 2"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title("Something")
+ax.plot([1, 2], [1, 2])
+'''

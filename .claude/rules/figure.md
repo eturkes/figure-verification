@@ -33,12 +33,12 @@ Binding sources: `.agent/spec.md` `Intent` + Decisions "Integrity-redesign rulin
 | `columns` | `column_not_requested` `column_not_named` `label_not_consistent` |
 | `attach` | `publish_failed` |
 
-Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or `calls` line (call) that caused it, else none (listing unmarked).
+Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or the LAST program `calls` line (call) that set the offending property, else none (listing unmarked).
 
 ## Closed artist set (parts)
 
 - Figure: exactly one shown figure (`no_figure` / `multiple_figures`). Children: patch · judged axes · `suptitle` (judged title) · figure legends (judged) · figure texts (listed) · anything else → `artist_not_judged`; `FigureImage` → `raster_image`.
-- Axes: class exactly `Axes`, owned by the figure (`fig.axes`), never a child of another axes (inset) → else `axes_not_judged` (polar, 3D, `SecondaryAxis`, inset). A colorbar axes passes only as the colorbar of a judged mappable. Two judged axes sharing an axis at the same position = `axes_twin` (G2); overlapping positions otherwise = `axes_overlap`. Each panel judged alone.
+- Axes: class exactly `Axes`, owned by the figure (`fig.axes`), never a child of another axes (inset) → else `axes_not_judged` (polar, 3D, `SecondaryAxis`, inset). A colorbar axes passes only as the colorbar of a judged scatter, holding its own solids + dividers alone, its tick labels naming their values. A rotated bar is no bar. Two judged axes sharing an axis at the same position = `axes_twin` (G2); overlapping positions otherwise = `axes_overlap`. Each panel judged alone.
 - Axes children = structural slots (patch, 4 spines, x/y axis, 3 titles, legend) + data artists keyed (class, origin):
 
 | family | class | origin |
@@ -60,23 +60,23 @@ Judge order = figure → parts → axes → marks → values → columns; inside
 - `mark_not_in_data`: a data artist's data-bearing transform ≠ `transData` (line/area/pie: `get_transform`; bar: `get_data_transform`; scatter: `get_offset_transform`); reference marks: their data coordinate on the blended data axis (user: closed reference family).
 - `scale_not_linear` (R3): a non-linear axis passes only when it is `log` AND that axis label or the panel title names it (`log`, `logarithmic`, `対数`, word-bounded / containment for JA); every other scale blocks.
 - `axis_inverted`: either axis inverted (ruling 3; both axes).
-- `tick_label_mismatch`: a visible non-empty major tick label in view must denote its position. Category axis: the category at that position. Date axis: a trusted date formatter (matplotlib.dates / pandas) passes; any other label must parse (ISO `YYYY-MM-DD[ HH:MM[:SS]]` | `YYYY-MM`) to the reader's date at that position. Numeric axis with a value role: the label parses as a number (NFKC; `−`→`-`; mathtext `$\mathdefault{…}$`, `10^{k}`, `a\times10^{k}`; `,` thousands; one leading `$ ¥ € £`; trailing `%` ⇒ candidates v/100 and v; SI prefix under `EngFormatter` alone) whose value × 10^order + offset (ScalarFormatter) lies within half a unit of its last shown digit of the position. Numeric key axis carrying set labels (`set_ticklabels` / pandas / FixedFormatter) = a LABELLED KEY axis: its labels are keys (values row), not numbers.
-- `point_clipped`: any drawn data coordinate (points, bar base + top, band edges, reference coordinate) outside the view interval.
+- `tick_label_mismatch`: a visible non-empty major tick label in view must denote its position. Category axis: the category at that position. Date axis: a trusted date formatter (matplotlib.dates / pandas) passes; any other label must parse (ISO `YYYY-MM-DD[ HH:MM[:SS]]` | `YYYY-MM`) to the reader's date at that position. Numeric axis with a value role: the label parses as a number (NFKC; `−`→`-`; mathtext `$\mathdefault{…}$`, `10^{k}`, `a\times10^{k}`; `,` thousands; one leading `$ ¥ € £`; trailing `%` ⇒ candidates v/100 and v; one SI prefix (`1k` at 1000), powers `b^{k}` exact) whose value × 10^order + offset (ScalarFormatter) lies within half a unit of its last shown digit of the position. Numeric key axis carrying set labels (`set_ticklabels` / pandas / FixedFormatter) = a LABELLED KEY axis: its labels are keys (values row), not numbers.
+- `point_clipped`: any drawn data coordinate (points, bar base + top, band vertices, every reference coordinate) outside the view interval; pie wedges are exempt (matplotlib draws them unclipped).
 - `zero_not_in_limits` (R1): a magnitude mark (bar, hist, area) ⇒ 0 inside its value-axis view interval. Line + scatter may autoscale.
 
 ## Mark rules
 
-- `mark_hidden`: a data artist not visible or alpha 0.
-- `value_not_finite`: NaN / ±inf among drawn data (a gap or a dropped point).
+- `mark_hidden`: a hidden axes, or a data artist not visible, alpha 0, or drawing no ink (transparent face + edge, no line and no marker, zero marker size).
+- `value_not_finite`: NaN / ±inf among drawn data or recorded inputs, or a band that drew fewer points than its call received (a dropped point).
 - `bar_not_from_zero` (G1, R1): every bar's base = 0, or (stacked) exactly the far end of another bar at the same position + thickness on the same side of 0.
 - `bars_overlap`: two bars' rectangles overlap with positive area (grouped bars sit side by side).
 - `category_not_unique`: two points of one series share a key (G8 overplot).
-- `x_not_ordered` (G9): a line's key positions decrease along the line.
+- `x_not_ordered` (G9): a line's key positions run both ways (monotone either way passes).
 - `hist_counts`: hist rects contiguous on the recorded bin edges, heights = counts (or density) of the recorded inputs over those edges (numpy semantics, last bin closed); an input outside the edges, weights, `cumulative` or > 1 dataset blocks.
-- `pie_not_whole`: wedges share one center + radius, spans contiguous, total 360°, each span = 360 · value / Σ values (recorded inputs; |Δ| ≤ 1e-9°); `normalize=False` partial pie blocks.
-- `area_not_from_zero`: each band's bottom = 0 or exactly another band's top at every x; band vertices = the fill_between layout of its recorded arrays.
+- `pie_not_whole`: wedges share one radius + width (an exploded centre passes), spans contiguous, total 360°, each span = 360 · value / Σ values (recorded inputs; |Δ| ≤ 1e-4°: matplotlib computes angles in float32); a partial `normalize=False` pie misses 360°.
+- `area_not_from_zero`: each band GROUNDED: its base edge all zero, or exactly the far edge of a grounded band at the same x (bands resting only on each other block); arrays = the final polygon read back in the `fill_between` layout.
 - `marker_size_varies` / `marker_color_varies`: a scatter collection whose sizes / face colours vary passes only with a size legend from that collection's `legend_elements` / a colorbar of that collection.
-- `legend_mismatch`: each legend entry names one drawn series (handle = that artist/container, or a proxy with the series' label + colour); with ≥ 2 series in a legended axes, every series named once.
+- `legend_mismatch`: each legend entry names one judged mark (handle = that artist/container anywhere in the figure, or a proxy with a mark's label + colour), or is a `legend_elements` key of a judged scatter; with ≥ 2 series (line, points, bars, area) in a legended axes, every one named; pies + reference marks may stay unnamed.
 
 ## Values (ruling 4; R2, R4; user: series filter, ties)
 
@@ -88,6 +88,6 @@ Judge order = figure → parts → axes → marks → values → columns; inside
 
 ## Columns
 
-- Drawn columns per CSV = every explanation's K, V and label column C. Anchoring = the shipped matcher (`anchoring.py`, moved from `pysrc/verify.py`): substitution (demo) | strict (production), aliases, short words + suffixes, Q38 stops + negation.
+- Drawn columns per CSV = every explanation's K and V; a label column C filters rows (R6) and draws nothing. Anchoring = the shipped matcher (`anchoring.py`, moved from `pysrc/verify.py`): substitution (demo) | strict (production), aliases, short words + suffixes, Q38 stops + negation.
 - G10 (`label_not_consistent`): titles, axis labels, suptitle, legend entries, colorbar label naming a header column not drawn; over a reduction, another reduction's summary word.
 - Publication (tier 3): per-group counts beside every reduction (G11), `N of M` subsets, listed on-chart text, integrity-only status.

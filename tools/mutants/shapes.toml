@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.3 shared mark geometry: the band base rule earns one mutant naming one red.
+module = "src/verifier/figure/shapes.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-band-base"
+predicate = "a band's base is the edge at zero or on another band"
+kills = "tests/test_figure_corpus.py::test_corpus_case[floating-area]"
+anchor = '''                if all(value == 0.0 for value in base) or base in tops:'''
+mutant = '''                if True:'''

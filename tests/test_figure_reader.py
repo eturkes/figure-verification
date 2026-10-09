@@ -190,25 +190,13 @@ def test_p4_category_bars() -> None:
     assert axes.x.categories == (("b", 0.0), ("a", 1.0))
     assert axes.x.ticks == ((0.0, "b"), (1.0, "a"))
     assert axes.titles == (None, Text("T", 3), None)
+    blue = (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0)
     rects = [artist.geometry for artist in axes.artists]
-    assert rects == [
-        RectGeometry(
-            -0.4,
-            0.0,
-            0.8,
-            1.5,
-            0.0,
-            (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
-        ),
-        RectGeometry(
-            0.6,
-            0.0,
-            0.8,
-            2.0,
-            0.0,
-            (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
-        ),
-    ]
+    assert [
+        (r.x, r.y, r.width, r.height, r.angle, r.color)
+        for r in rects
+        if isinstance(r, RectGeometry)
+    ] == [(-0.4, 0.0, 0.8, 1.5, 0.0, blue), (0.6, 0.0, 0.8, 2.0, 0.0, blue)]
     assert [(c.cls, c.orientation, c.members) for c in axes.containers] == [
         ("BarContainer", "vertical", (0, 1))
     ]
@@ -571,11 +559,11 @@ def test_legend_handle_colours_by_family() -> None:
         + "fig.legend([bars, empty, dots, image, line], ['b', 'e', 's', 'i', 'l'])\n"
     )
     entries = _describe(source).figures[0].legends[0].entries
-    assert [(e.text, e.proxy_color) for e in entries] == [
-        ("b", (1.0, 0.0, 0.0, 1.0)),
-        ("e", None),
-        ("s", None),
-        ("l", (0.0, 0.0, 1.0, 1.0)),
+    assert [(e.text, e.axes, e.target, e.container, e.proxy_color) for e in entries] == [
+        ("b", 0, None, 0, None),
+        ("e", 0, None, 1, None),
+        ("s", 0, 1, None, None),
+        ("l", 0, 3, None, None),
     ]
 
 
@@ -758,3 +746,26 @@ def test_a_band_reads_back_only_the_fill_between_layout(
     assert isinstance(geometry, BandGeometry)
     read = None if geometry.band is None else (geometry.band.x, geometry.band.y1)
     assert read == expected
+
+
+def test_proxy_handles_drawn_elsewhere_carry_their_own_colour() -> None:
+    """A handle from a figure the program closed is no drawn artist: its colour is read off it."""
+    source = (
+        _PLT
+        + "other = plt.figure().gca()\n"
+        + "dots = other.scatter([1], [1], color='red')\n"
+        + "rings = other.scatter([1], [1], facecolors='none', edgecolors='k')\n"
+        + "bars = other.bar([1], [1], color='blue')\n"
+        + "empty = other.bar([], [])\n"
+        + "plt.close(other.figure)\n"
+        + "plt.plot([1, 2])\n"
+        + "plt.legend([dots, rings, bars, empty], ['d', 'r', 'b', 'e'])\n"
+    )
+    legend = _describe(source).figures[0].axes[0].legend
+    assert legend is not None
+    assert [(e.text, e.axes, e.proxy_color) for e in legend.entries] == [
+        ("d", None, (1.0, 0.0, 0.0, 1.0)),
+        ("r", None, None),
+        ("b", None, (0.0, 0.0, 1.0, 1.0)),
+        ("e", None, None),
+    ]

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.3 tick labels: each label form's comparison earns one mutant naming one red
+# (`.agent/archive/contracts/m19u3.md` U4).
+module = "src/verifier/figure/ticks.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-category-label"
+predicate = "a category label is the category drawn at its position"
+kills = "tests/test_figure_corpus.py::test_corpus_case[category-labels-swapped]"
+anchor = '''            ok = categories.get(position) == text'''
+mutant = '''            ok = True'''
+
+[[mutant]]
+id = "m19-date-formatters-trusted"
+predicate = "a matplotlib or pandas date formatter's labels pass"
+kills = "tests/test_figure_corpus.py::test_corpus_case[date-axis-default]"
+anchor = '''            ok = axis.formatter_module.startswith(_DATE_FORMATTERS) or _date_ok('''
+mutant = '''            ok = _date_ok('''
+
+[[mutant]]
+id = "m19-half-unit"
+predicate = "a number label lies within half a unit of its last digit of its position"
+kills = "tests/test_figure_judge.py::test_j3_a_number_label_must_show_its_position_to_its_last_digit"
+anchor = '''        tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))'''
+mutant = '''        tolerance = 10 * half * scale + _ABSOLUTE * max(1.0, abs(position))'''

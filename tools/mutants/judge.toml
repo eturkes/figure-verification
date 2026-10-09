@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The M19.3 judge: every integrity rule's comparison and the stage order earn one mutant naming one
+# red (`.agent/archive/contracts/m19u3.md` J1-J5). Rule witnesses = the corpus + the judge tests.
+module = "src/verifier/figure/axes_rules.py"
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+
+[[mutant]]
+id = "m19-zero-before-clip"
+predicate = "a truncated bar axis reports the zero rule, not the clip it implies"
+kills = "tests/test_figure_corpus.py::test_corpus_case[truncated-bars]"
+anchor = '''    _check_zero(axes, panel)
+    _check_ticks(axes, panel)
+    _check_clipping(axes, panel)'''
+mutant = '''    _check_ticks(axes, panel)
+    _check_clipping(axes, panel)
+    _check_zero(axes, panel)'''
+
+[[mutant]]
+id = "m19-log-scale-only"
+predicate = "a stated scale passes only when it is the log scale"
+kills = "tests/test_figure_corpus.py::test_corpus_case[symlog-labelled-log]"
+anchor = '''        stated = axis.scale == "log" and _names_log([axis.label, *axes.titles])'''
+mutant = '''        stated = _names_log([axis.label, *axes.titles])'''
+
+[[mutant]]
+id = "m19-log-whole-word"
+predicate = "`log` names the scale as a whole word"
+kills = "tests/test_figure_judge.py::test_j3_log_must_be_its_own_word"
+anchor = '''_LOG_WORDS: Final = re.compile(r"(?<![a-z])log(?:arithmic)?(?![a-z])")'''
+mutant = '''_LOG_WORDS: Final = re.compile(r"log")'''
+
+[[mutant]]
+id = "m19-inverted"
+predicate = "an inverted axis blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-value-axis]"
+anchor = '''        if axis.inverted:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "m19-zero-magnitude-only"
+predicate = "the zero rule binds magnitude marks alone (R1)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[autoscaled-line]"
+anchor = '''_MAGNITUDE: Final = frozenset({"bar", "hist", "band"})'''
+mutant = '''_MAGNITUDE: Final = frozenset({"bar", "hist", "band", "line"})'''
+
+[[mutant]]
+id = "m19-key-labels-on-key-axes"
+predicate = "set labels read as keys only on an axis carrying keys alone"
+kills = "tests/test_figure_corpus.py::test_corpus_case[relabelled-values]"
+anchor = '''        if mismatched_tick(axis, key_labels=keys and labelled(axis)) is not None:'''
+mutant = '''        if mismatched_tick(axis, key_labels=labelled(axis)) is not None:'''
+
+[[mutant]]
+id = "m19-clip-inclusive"
+predicate = "a coordinate on the view's edge is inside it"
+kills = "tests/test_figure_corpus.py::test_corpus_case[truncated-bars-twin]"
+anchor = '''            if math.isfinite(value) and not low <= value <= high:'''
+mutant = '''            if math.isfinite(value) and not low < value < high:'''
+
+[[mutant]]
+id = "m19-pie-unclipped"
+predicate = "a pie's wedges are never clipped by the limits"
+kills = "tests/test_figure_corpus.py::test_corpus_case[wide-exploded-pie]"
+anchor = '''        if mark.family == "pie":  # matplotlib draws wedges unclipped: no limit hides a share'''
+mutant = '''        if False:'''

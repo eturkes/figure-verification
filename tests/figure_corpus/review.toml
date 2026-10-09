@@ -1,0 +1,308 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.3 review witnesses (reviewer-2): each blocks for its rule or passes as an honest chart.
+# No data source is supplied, so a passing case is judged for integrity alone. Format =
+# `integrity.toml`'s.
+
+[[case]]
+id = "repeated-limit-site"
+expect = "point_clipped"
+site = 4
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,4,9])
+plt.ylim(0,10)
+plt.ylim(0,5)
+'''
+
+[[case]]
+id = "mixed-bars-missed"
+expect = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([3], [1], width=0.8)
+plt.barh([0.5], [4], height=0.5)
+'''
+
+[[case]]
+id = "large-bars-overlap"
+expect = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([1], [2e9], width=0.8)
+plt.bar([1], [3e9], width=0.8)
+'''
+
+[[case]]
+id = "mixed-bars-overlap"
+expect = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([2], [4], width=1)
+plt.barh([2], [4], height=1)
+'''
+
+[[case]]
+id = "mixed-bars-separated"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([3], [1], width=1)
+plt.barh([3], [1], height=1)
+'''
+
+[[case]]
+id = "rotated-bar-clip"
+expect = "artist_not_judged"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([1], [4], width=0.8, angle=45)
+plt.xlim(0,2)
+plt.ylim(0,5)
+'''
+
+[[case]]
+id = "wide-exploded-pie"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.pie([1,2,3], labels=['a','b','c'], explode=[0.5,0,0])
+'''
+
+[[case]]
+id = "diagonal-exploded-pie"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.pie([1,11], labels=['a','b'], startangle=30, explode=[0.4,0])
+'''
+
+[[case]]
+id = "honest-currency-negative-dollar"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.plot([-100,-200,-300])
+plt.gca().yaxis.set_major_formatter(ticker.StrMethodFormatter('${x:.0f}'))
+'''
+
+[[case]]
+id = "honest-short-number-label"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0.1,0.2])
+plt.yticks([0.1,0.2], ['.1','.2'])
+'''
+
+[[case]]
+id = "floating-area-cycle"
+expect = "area_not_from_zero"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_between([1,2,3], [10,10,10], [20,20,20])
+plt.fill_between([1,2,3], [20,20,20], [30,30,30])
+plt.ylim(0,40)
+'''
+
+[[case]]
+id = "colorbar-lying-ticks"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1,2],[1,2],c=[1,2])
+cb = plt.colorbar(dots)
+cb.set_ticks([1,2], labels=['100','200'])
+'''
+
+[[case]]
+id = "colorbar-user-patch"
+expect = "artist_not_judged"
+program = '''
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+dots = plt.scatter([1,2],[1,2],c=[1,2])
+cb = plt.colorbar(dots)
+cb.ax.add_patch(Circle((0.5,1.5),0.1))
+'''
+
+[[case]]
+id = "transparent-line"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,4,9], color=(1,0,0,0))
+'''
+
+[[case]]
+id = "no-ink-line"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,4,9], linestyle='None', marker='None')
+'''
+
+[[case]]
+id = "zero-size-scatter"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([1,2],[1,2],s=0)
+'''
+
+[[case]]
+id = "hidden-panel"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+ax = plt.gca()
+ax.plot([1,4,9])
+ax.set_visible(False)
+'''
+
+[[case]]
+id = "clipped-reference-end"
+expect = "point_clipped"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,2], [1,2])
+line = plt.axhline(1)
+line.set_ydata([1,100])
+plt.ylim(0,5)
+'''
+
+[[case]]
+id = "missing-area-input"
+expect = "value_not_finite"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_between([0,1,2,3], [float('nan'),1,2,3])
+'''
+
+[[case]]
+id = "figure-size-legend"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1,2],[1,2],s=[10,40])
+plt.gcf().legend(*dots.legend_elements('sizes', num=None))
+'''
+
+[[case]]
+id = "pie-legend"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+wedges, texts = plt.pie([1,2,3], labels=['a','b','c'])
+plt.legend(wedges, ['a','b','c'])
+'''
+
+[[case]]
+id = "reference-legend"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,2],[1,2], label='observed')
+plt.axhline(1.5, label='target', color='red')
+plt.legend()
+'''
+
+[[case]]
+id = "honest-rotated-labels"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(['a','b'],[1,2])
+plt.xticks(rotation=45)
+plt.grid(axis='y')
+plt.tight_layout()
+'''
+
+[[case]]
+id = "honest-months-pandas"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+import pandas as pd
+pd.Series([1,2,3], index=pd.date_range('2026-01-01', periods=3, freq='MS')).plot()
+plt.tight_layout()
+'''
+
+[[case]]
+id = "honest-negative-bars"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(['a','b'], [-1,-2])
+'''
+
+[[case]]
+id = "honest-horizontal-hist"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1,2,2,3], bins=3, orientation='horizontal')
+'''
+
+[[case]]
+id = "honest-unequal-hist"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1,2,2,3], bins=[0,1.5,3.1], density=True)
+'''
+
+[[case]]
+id = "honest-hist-gaps"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1,2,2,3], bins=3, rwidth=0.8)
+'''
+
+[[case]]
+id = "huge-exponent-label"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,2])
+plt.yticks([1,2], ['1e999','2e999'])
+'''
+
+[[case]]
+id = "honest-log-base2"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1,2,4,8])
+plt.yscale('log', base=2)
+plt.ylabel('log scale')
+'''
+
+[[case]]
+id = "honest-currency-negative"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.plot([-100,-200,-300])
+plt.gca().yaxis.set_major_formatter(ticker.StrMethodFormatter('${x:.0f}'))
+'''
+
+[[case]]
+id = "honest-small-sci"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1e-5, 2e-5, 3e-5])
+'''
+
+[[case]]
+id = "honest-latex-percent"
+expect = "pass"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+plt.plot([0.1,0.2])
+plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda x,_: f'$ {x*100:.0f}\\% $'))
+'''
