@@ -10,8 +10,8 @@ widened `GITHUB_TOKEN` or a CI step that calls a tool directly instead of the ga
 green gate behind while quietly deleting coverage. Each is stated as a literal rather than read
 back from the file it guards -- a test that derives its expectation from the artifact pins nothing.
 
-This file imports no `verifier` symbol: coverage measures the verifier core (and capture's two
-graders), so an import here would add gate-tooling lines to a suite that never runs them.
+This file imports no `verifier` symbol: coverage measures the verifier core, so an import here
+would add gate-tooling lines to a suite that never runs them.
 """
 
 import re
@@ -248,11 +248,11 @@ def test_g13_audit_stage_covers_every_lock() -> None:
 def test_g14_tracked_sources_carry_spdx_header() -> None:
     """G14: tracked sources carry the licensed comment in their first three lines.
 
-    Generated lockfiles (`uv.lock`, `pnpm-lock.yaml`) and the held-out corpus are exempt.
+    Generated lockfiles (`uv.lock`, `pnpm-lock.yaml`) are exempt.
     Acceptance: every missing source path appears in the failure message.
     """
     tracked = subprocess.run(
-        ["/usr/bin/git", "ls-files", "-z", "--", ":(exclude)corpus/python/heldout/**"],
+        ["/usr/bin/git", "ls-files", "-z"],
         cwd=_REPO_ROOT,
         capture_output=True,
         check=True,
@@ -261,7 +261,7 @@ def test_g14_tracked_sources_carry_spdx_header() -> None:
     lockfiles = {"uv.lock", "pnpm-lock.yaml"}
     missing = []
     for name in sorted(tracked.stdout.decode("utf-8").split("\0")):
-        if not name or name.startswith("corpus/python/heldout/"):
+        if not name:
             continue
         path = Path(name)
         if path.suffix not in suffixes or path.name in lockfiles:

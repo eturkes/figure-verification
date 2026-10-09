@@ -100,7 +100,7 @@ ignore = [
 # model_backend (hardware-gated local model server) and webui (Open WebUI integration harness)
 # are repo-root packages, not under src/ — declare them first-party so their imports sort with
 # verifier's.
-known-first-party = ["verifier", "model_backend", "capture", "webui"]
+known-first-party = ["verifier", "model_backend", "webui"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -115,7 +115,7 @@ python_version = "3.13"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
-files = ["src", "tests", "tools", "model_backend", "capture", "webui"]
+files = ["src", "tests", "tools", "model_backend", "webui"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
@@ -159,16 +159,10 @@ xfail_strict = true
 
 [tool.coverage.run]
 branch = true
-# Two scopes, one pytest run: the verifier core, and capture's two GRADERS (record.py validates a
-# committed capture run, score.py scores it). Capture's live I/O -- HTTP harness, corpus files, CLI
-# shim -- is measured by neither.
-source = ["verifier", "capture"]
-omit = ["*/capture/harness.py", "*/capture/corpus.py", "*/capture/__main__.py"]
+source = ["verifier"]
 
 [tool.coverage.report]
 show_missing = true
-# This report (pytest-cov's) is the verifier scope; tools/gate.sh's `tests` stage states the
-# capture graders' own floor in a second report over the same data.
 include = ["*/src/verifier/*"]
 fail_under = 100
 exclude_also = [

@@ -8,8 +8,8 @@ G10 labels keep the shared matcher (T2). Contract `.agent/archive/contracts/q41.
 
 import pytest
 
-from verifier.pysrc.spec import Anchoring, DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from anchoring_support import verdict
+from verifier.figure.anchoring import Anchoring
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = "年月,地域,売上,注文数\n2024-01,東,1,5\n2024-02,西,2,6\n".encode()
@@ -27,9 +27,7 @@ def _bar(key: str, value: str) -> str:
 def _verdict(
     program: str, request: str, content: bytes = _SALES, anchoring: Anchoring = "strict"
 ) -> str:
-    target = DatasetTarget("data.csv", content, request, anchoring)
-    verdict = verify_python_source(program, declared_target=target)
-    return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
+    return verdict(program, request, content, anchoring=anchoring)
 
 
 @pytest.mark.parametrize(
@@ -102,7 +100,7 @@ def test_q41_t1_a_short_word_before_a_negation_cue_names_nothing() -> None:
 
 
 def test_q41_t1_a_column_two_headers_fold_to_reads_no_short_word() -> None:
-    content = "年月,年月 ,売上\n2024-01,1,1\n2024-02,2,2\n".encode()
+    content = "年月,年月 ,売上\n2024-01,3,1\n2024-02,4,2\n".encode()
     assert _verdict(_bar("年月", "売上"), "月ごとの売上の合計", content) == "column_not_named"
 
 
@@ -121,7 +119,7 @@ def test_q41_t1_a_run_spans_every_nfkc_stable_ideograph(
 ) -> None:
     """`𠮷` (Ext B) + `﨑` (an NFKC-stable compatibility ideograph) are kanji: `月𠮷` is one
     whole run that fits no name, and `𠮷` alone names `𠮷田`."""
-    content = f"{header}\n1,1\n2,2\n".encode()
+    content = f"{header}\na,1\nb,2\n".encode()
     assert _verdict(_bar(key, "売上"), ask, content) == expected
 
 

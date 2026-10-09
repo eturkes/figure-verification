@@ -16,7 +16,7 @@ from verifier.pysrc.csvread import (
     _classify_column,
     _numeric_values,
     _read_csv,
-    _x_values,
+    key_values,
 )
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
@@ -64,7 +64,7 @@ def _column(name: str, texts: tuple[str, ...]) -> Column:
     except PysrcRefusalError:
         numbers = None
     try:
-        keys = _x_values(texts, "bar", grouped=True)
+        keys = key_values(texts)
     except PysrcRefusalError:
         keys = texts
     integer = numbers is not None and not any("." in text for text in texts)

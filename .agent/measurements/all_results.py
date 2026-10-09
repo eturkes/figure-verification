@@ -19,47 +19,10 @@ def fields(data, *names):
     return {name: data[name] for name in names}
 
 
-def unary(data):
-    return {name: fields(data[name], "samples", "disagreements", "max_ulp") for name in FUNCTIONS}
-
-
-def s2():
-    return {build: unary(load(f"s2-{build}.json")["functions"]) for build in BUILDS}
-
-
-def s3():
-    return {
-        build: {
-            name: {
-                **fields(grid, "cases", "value_disagreements", "length_disagreements", "max_ulp"),
-                "all_values_compared": grid["compared_values"] == grid["expected_values"],
-            }
-            for name, grid in load(f"s3-{build}.json")["grids"].items()
-        }
-        for build in BUILDS
-    }
-
-
 def s6():
     return {
         build: fields(load(f"s6-{build}.json"), "values", "disagreements", "max_ulp")
         for build in BUILDS
-    }
-
-
-def pow_band(data):
-    return fields(data, "samples", "disagreements", "max_ulp", "category_splits")
-
-
-def s7():
-    return {
-        **{build: pow_band(load(f"s7-{build}.json")) for build in BUILDS},
-        "mapping": fields(
-            load("s7-mapping.json"),
-            "samples",
-            "specific_mapping_disagreements",
-            "blanket_value_error_to_nan_disagreements",
-        ),
     }
 
 
@@ -184,94 +147,6 @@ def t8():
     return results
 
 
-def w1():
-    text = (ROOT / "all-data/W1.log").read_text()
-    result = {}
-    for name, pattern in (
-        ("verified", r"=== design simple: (\d+)/(\d+) VERIFIED"),
-        ("faithful", r"=== design simple: (\d+)/(\d+) FAITHFUL"),
-        ("blocked", r"=== design complicated: (\d+)/(\d+) BLOCKED"),
-    ):
-        match = re.search(pattern, text)
-        if match is None:
-            message = f"W1 missing {name} denominator"
-            raise ValueError(message)
-        result[name] = {"count": int(match[1]), "total": int(match[2])}
-    return result
-
-
-def a1():
-    data = load("a1-result.json")
-    result = {
-        language: {
-            "faithful": leg["faithful"],
-            "false_refusals": len(leg["false_refusals"]),
-            "series": leg["series"],
-            "series_refused": len(leg["series_refused"]),
-            "swaps_verified": leg["swaps_verified"],
-            "swaps_caught": leg["swaps_caught"],
-            "stop_false_refusals": len(leg["stop_false_refusals"]),
-            "negation_false_refusals": len(leg["negation_false_refusals"]),
-            "strict_false_refusals": len(leg["strict_false_refusals"]),
-            "strict_swaps_caught": leg["strict_swaps_caught"],
-        }
-        for language, leg in data.items()
-        if language != "capture"
-    }
-    result["capture"] = fields(
-        data["capture"],
-        "design_rows",
-        "baseline_verified",
-        "changed",
-        "faithful_refused",
-        "strict_changed",
-        "strict_faithful_refused",
-    )
-    return result
-
-
-def a2():
-    data = load("a2-result.json")
-    result = {
-        form: fields(
-            leg,
-            "faithful",
-            "series",
-            "column_plants",
-            "column_caught",
-            "summary_plants",
-            "summary_caught",
-        )
-        | {
-            "false_refusals": len(leg["false_refusals"]),
-            "series_refused": len(leg["series_refused"]),
-        }
-        for form, leg in data.items()
-        if form != "capture"
-    }
-    result["capture"] = data["capture"]
-    return result
-
-
-def a3():
-    data = load("a3-result.json")
-    clinical = data["clinical"]
-    return {
-        "clinical": fields(clinical, "requests", "added", "baseline_refused", "false_refusals"),
-        "own": data["own"],
-        "noise": data["noise"],
-        "suffix": data["suffix"],
-    }
-
-
-def a4():
-    return load("a4-result.json")
-
-
-def h1():
-    return load("h1-result.json")
-
-
 def f7():
     data = load("f7-0283.json")
     return {
@@ -312,20 +187,6 @@ def glyph_class(stderr):
     if "does not have a glyph" in text:
         return "mathtext-glyph"
     return "clean" if not text else "other"
-
-
-def o8():
-    data = load("o8-0283.json")
-    return {
-        "unary": {
-            name: fields(row, "samples", "max_ulp")
-            for name, row in load("s2-0283.json")["functions"].items()
-        },
-        "pow": fields(load("s7-0283.json"), "samples", "max_ulp", "category_splits"),
-        "wrapper": fields(
-            data, "build", "cases", "observations", "pngs", "stderr", "fixture_differences"
-        ),
-    }
 
 
 def versions():
@@ -517,25 +378,14 @@ def c1():
 
 
 PROJECTORS = {
-    "S1": lambda: unary(load("all-data/S1.log")),
-    "S2": s2,
-    "S3": s3,
     "S6": s6,
-    "S7": s7,
     "T3": t3,
     "T4": t4,
     "T5": t5,
     "T6": t6,
     "T7": t7,
     "T8": t8,
-    "W1": w1,
-    "A1": a1,
-    "A2": a2,
-    "A3": a3,
-    "A4": a4,
-    "H1": h1,
     "F7": f7,
-    "O8": o8,
     "Versions": versions,
     "M15": m15,
     "M16": m16,

@@ -90,6 +90,6 @@ A reason maps to the stage that raises it: `category_not_unique` (G8) needs the 
 
 ## Columns
 
-- Drawn columns per CSV = every explanation's K and V, channel series included (R8); a label column C filters rows (R6) and draws nothing. Anchoring = the shipped matcher (`anchoring.py`, moved from `pysrc/verify.py`): substitution (demo) | strict (production), aliases, short words + suffixes, Q38 stops + negation.
+- Drawn columns per CSV = every explanation's K and V, channel series included (R8); a label column C filters rows (R6) and draws nothing. Anchoring = the shipped matcher (`anchoring.py`, law `.claude/rules/pysrc.md`): substitution (demo) | strict (production), aliases, short words + suffixes, Q38 stops + negation.
 - G10 (`label_not_consistent`): titles, axis labels, axes legend entries, the panel's colorbar labels (against that panel's reductions) + suptitle/supxlabel/supylabel, figure legend entries (against every panel's) naming a header column not drawn; over a reduction, another reduction's summary word.
 - Publication (tier 3): per-group counts beside every reduction (G11), `N of M` subsets, listed on-chart text, integrity-only status.

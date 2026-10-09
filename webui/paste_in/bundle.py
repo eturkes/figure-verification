@@ -6,18 +6,17 @@ under `src/verifier/`; the artifact embeds it BY GENERATION, and a hand fork is 
 generator whose output drifts from its inputs recreates that fork silently, so `--check` compares
 committed bytes against a fresh render on every gate run.
 
-Concatenating the sources is unsound and that is measured, not feared: `_dotted` means different
-things in `admit.py` and `project.py`, `_refuse` is defined in six modules, `_REDUCTIONS` in two
-and `__all__` in seven. Module namespaces are therefore preserved -- each source is embedded whole
-and executed into its own `types.ModuleType` -- and emission order is topological, because an
-alphabetical order runs `verifier/pysrc/__init__.py` before the modules it imports from and the
-artifact fails to load.
+Concatenating the sources is unsound: module-private names repeat across modules (`_refuse`,
+`__all__`), each meaning its own module's. Module namespaces are therefore preserved -- each source
+is embedded whole and executed into its own `types.ModuleType` -- and emission order is topological,
+because an alphabetical order runs `verifier/pysrc/__init__.py` before the modules it imports from
+and the artifact fails to load.
 
 Embedding is one transform and one only: a raw triple-single-quoted literal holding a leading
 newline followed by the tracked bytes. The newline is load-bearing -- without it a source's first
-line continues the assignment's physical line, and `certificate.py`'s would then exceed the
-100-column cap. The delimiter is `'''` because every tracked source contains `\"\"\"`, which is
-what stops `ruff format` from rewriting the quotes and breaking `--check` on the next gate run.
+line continues the assignment's physical line and can exceed the 100-column cap. The delimiter is
+`'''` because every tracked source contains `\"\"\"`, which is what stops `ruff format` from
+rewriting the quotes and breaking `--check` on the next gate run.
 """
 
 import ast

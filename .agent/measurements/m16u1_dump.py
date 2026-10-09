@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from capture.harness import defence
+from model_backend.adapter import defence
 from verifier.pysrc import DatasetTarget, Verified, verify_python_source
 from webui.paste_in import checks
 from webui.paste_in.filter import PASS_TEXT

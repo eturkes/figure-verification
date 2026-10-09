@@ -19,16 +19,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Final, Literal, cast
 
-from verifier.figure.anchoring import AmbiguousTermError, anchors
+from verifier.figure.anchoring import Aliases, AmbiguousTermError, anchors
 from verifier.figure.keys import Key
 from verifier.figure.reasons import FigureReason
 from verifier.figure.request import Request
 from verifier.figure.series import Point, Series
 from verifier.figure.sources import Column, Table, Unreadable
-from verifier.pysrc.aggregate import aggregate_series
+from verifier.pysrc.aggregate import Reduction, aggregate_series
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError
-from verifier.pysrc.spec import Aliases, Reduction
 from verifier.pysrc.table import CellValue
 
 type Family = Literal["raw", "index", "sum", "mean", "min", "max", "count"]

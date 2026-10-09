@@ -8,8 +8,9 @@ substitution rule. Contract `.agent/archive/contracts/q37.md`.
 
 import pytest
 
-from verifier.pysrc.spec import Anchoring, DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from anchoring_support import verdict
+from verifier.figure.anchoring import Anchoring
+from verifier.figure.judge import Sources
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = b"region,month,revenue,orders\nwest,2024-01,1,5\neast,2024-02,2,6\n"
@@ -29,9 +30,7 @@ def _verdict(
     anchoring: Anchoring = "strict",
     content: bytes = _SALES,
 ) -> str:
-    target = DatasetTarget("data.csv", content, request, anchoring)
-    verdict = verify_python_source(program, declared_target=target)
-    return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
+    return verdict(program, request, content, anchoring=anchoring)
 
 
 def test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone() -> None:
@@ -42,12 +41,9 @@ def test_q37_s2_an_unnamed_drawn_column_refuses_under_strict_alone() -> None:
 
 
 def test_q37_s1_the_default_rule_is_strict() -> None:
-    """Production first: a target built without a rule reads the request strictly."""
-    target = DatasetTarget("data.csv", _SALES, "Chart total revenue")
-    assert target.anchoring == "strict"
-    verdict = verify_python_source(_bar("month"), declared_target=target)
-    assert not isinstance(verdict, Verified)
-    assert verdict.code == "column_not_named"
+    """Production first: sources built without a rule read the request strictly."""
+    assert Sources().anchoring == "strict"
+    assert verdict(_bar("month"), "Chart total revenue", _SALES) == "column_not_named"
 
 
 def test_q37_s2_a_request_naming_no_column_anchors_nothing() -> None:
@@ -73,7 +69,7 @@ def test_q37_s2_a_drawn_negated_column_refuses_under_strict_alone() -> None:
     ("content", "key", "value", "ask"),
     [
         (b"id,revenue\na,1\nb,2\n", "id", "revenue", "Chart total revenue"),
-        ("月,売上\n1,1\n2,2\n".encode(), "月", "売上", "売上の合計"),
+        ("月,売上\n1,10\n2,20\n".encode(), "月", "売上", "売上の合計"),
     ],
     ids=["two-char-ascii", "one-char-japanese"],
 )

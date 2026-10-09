@@ -10,10 +10,8 @@ from typing import SupportsIndex
 
 import pytest
 
-from verifier.figure.anchoring import _unnamed_places
-from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
-from verifier.pysrc.spec import Anchoring, DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from anchoring_support import verdict
+from verifier.figure.anchoring import Anchoring, _unnamed_places
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = b"region,month,revenue,orders\nwest,2024-01,1,5\neast,2024-02,2,6\n"
@@ -33,15 +31,9 @@ def _verdict(
     program: str,
     request: str | None,
     content: bytes = _SALES,
-    limits: PysrcLimits = DEFAULT_LIMITS,
     anchoring: Anchoring = "substitution",
 ) -> str:
-    verdict = verify_python_source(
-        program,
-        declared_target=DatasetTarget("data.csv", content, request, anchoring),
-        limits=limits,
-    )
-    return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
+    return verdict(program, request, content, anchoring=anchoring)
 
 
 def test_q8_substitution_witness_refuses() -> None:
@@ -191,7 +183,7 @@ def test_q8_japanese_headers_anchor_inside_the_request() -> None:
 
 def test_q8_one_character_japanese_headers_never_anchor() -> None:
     """`月` sits inside too many words (`月曜`, `今月`) to name a column."""
-    content = "月,地域,売上\n1,東,1\n2,西,2\n".encode()
+    content = "月,地域,売上\n3,東,1\n4,西,2\n".encode()
     assert _verdict(_bar("地域", "売上"), "月ごとの売上を棒グラフに", content) == "VERIFIED"
 
 
@@ -213,44 +205,23 @@ def test_q8_an_unreadable_header_leaves_recompute_refusal(content: bytes) -> Non
     assert _verdict(_bar("month"), _BY_REGION, content) == alone
 
 
-def test_q8_an_oversize_file_leaves_recompute_refusal() -> None:
-    limits = PysrcLimits(max_csv_bytes=len(_SALES) - 1)
-    assert _verdict(_bar("month"), _BY_REGION, limits=limits) == "csv_too_large"
-
-
 _REFUSED_HEADER = {
-    "duplicate-name": (b"region,month,revenue,region\nwest,2024-01,1,a\neast,2024-02,2,b\n", None),
-    "empty-name": (b"region,month,revenue,\nwest,2024-01,1,a\neast,2024-02,2,b\n", None),
-    "too-many-columns": (_SALES, PysrcLimits(max_csv_columns=3)),
-    "oversize-name": (_SALES, PysrcLimits(max_csv_cell_bytes=6)),
-    "header-work": (_SALES, PysrcLimits(max_work=3)),
+    "duplicate-name": b"region,month,revenue,region\nwest,2024-01,1,a\neast,2024-02,2,b\n",
+    "empty-name": b"region,month,revenue,\nwest,2024-01,1,a\neast,2024-02,2,b\n",
 }
 
 
-@pytest.mark.parametrize(("content", "limits"), _REFUSED_HEADER.values(), ids=_REFUSED_HEADER)
-def test_q8_a_header_read_columns_refuses_leaves_recompute_refusal(
-    content: bytes, limits: PysrcLimits | None
-) -> None:
-    """Each header-record check `read_columns` applies, mirrored: the refusal stays its own."""
-    chosen = limits or DEFAULT_LIMITS
-    alone = _verdict(_bar("month"), None, content, chosen)
+@pytest.mark.parametrize("content", _REFUSED_HEADER.values(), ids=_REFUSED_HEADER)
+def test_q8_a_header_read_columns_refuses_leaves_recompute_refusal(content: bytes) -> None:
+    """A header record the CSV profile refuses anchors nothing: the file's own refusal stays."""
+    alone = _verdict(_bar("month"), None, content)
     assert alone not in {"VERIFIED", "column_not_requested"}
-    assert _verdict(_bar("month"), _BY_REGION, content, chosen) == alone
+    assert _verdict(_bar("month"), _BY_REGION, content) == alone
 
 
 def test_q8_a_plotted_column_absent_from_the_header_leaves_recompute_refusal() -> None:
-    assert _verdict(_bar("regoin"), _BY_REGION) == "column_not_present"
-
-
-def test_q8_binding_precedes_recompute() -> None:
-    """A substitution whose y is also categorical reports the substitution first."""
-    program = (
-        _PRELUDE + 'df = pd.read_csv("data.csv")\nplt.scatter(df["orders"], df["region"])\n'
-        "plt.show()\n"
-    )
-    request = "Draw orders against revenue as a scatter plot."
-    assert _verdict(program, None) == "column_not_numeric"
-    assert _verdict(program, request) == "column_not_requested"
+    """The program itself fails on the missing column; anchoring never pre-empts that."""
+    assert _verdict(_bar("regoin"), _BY_REGION) == "program_error"
 
 
 # Q38: stop phrases + negation. Contract `.agent/archive/contracts/q38.md`.

@@ -22,25 +22,14 @@ ROOT = Path(__file__).resolve().parent
 PROJECT = ROOT.parents[1]
 DATA = ROOT / "all-data"
 IDS = (
-    "S1",
-    "S2",
-    "S3",
     "S6",
-    "S7",
     "T3",
     "T4",
     "T5",
     "T6",
     "T7",
     "T8",
-    "W1",
-    "A1",
-    "A2",
-    "A3",
-    "A4",
-    "H1",
     "F7",
-    "O8",
     "Versions",
     "M15",
     "M16",
@@ -62,13 +51,7 @@ IDS = (
 )
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
-    "A1": "a1_anchor.py",
-    "A2": "a2_labels.py",
-    "A3": "a3_short_names.py",
-    "A4": "a4_aliases.py",
-    "H1": "h1_heldout_anchoring.py",
     "I2": "i2_ambiguity.py",
-    "S1": "s1_host.py",
 }
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
 # M19: a host leg, then its Node leg in the installed Open WebUI bundle (0.28.3).
@@ -84,20 +67,13 @@ M17_ARMS = {
     "ja-clinic-elaborate": "clinic_ja.csv",
 }
 GENERATORS = {
-    "S2": (("make_s2_inputs.py", False),),
-    "S3": (("make_s3_grids.py", False),),
     "S6": (("make_s6_csv.py", True),),
-    "S7": (("make_s7_pow.py", False), ("s7_mapping.py", False)),
     "T6": (("make_s6_csv.py", True),),
     "T7": (("t7_profile.py", True), ("t7_quoted.py", True)),
     "T8": (("make_t8_inputs.py", False), ("t8_profile.py", True)),
-    "O8": (("make_s2_inputs.py", False), ("make_s7_pow.py", False)),
 }
 NODE_SCRIPTS = {
-    "S2": "s2_pyodide.mjs",
-    "S3": "s3_pyodide.mjs",
     "S6": "s6_pyodide.mjs",
-    "S7": "s7_pyodide.mjs",
     "T6": "t6_pyodide.mjs",
     "T7": "t7_pyodide.mjs",
     "T8": "t8_pyodide.mjs",
@@ -350,31 +326,10 @@ class Replay:
                     str(ROOT / "f7-0283.json"),
                 ],
             )
-        elif name == "O8":
-            for script, output in (
-                ("s2_pyodide.mjs", "s2-0283.json"),
-                ("s7_pyodide.mjs", "s7-0283.json"),
-            ):
-                self.run(output, ["node", str(ROOT / script), "owui", output])
-            self.run(
-                name,
-                [
-                    "node",
-                    str(ROOT / "o8_observe.mjs"),
-                    "owui",
-                    "o8-0283.json",
-                    "wrapper",
-                    "--check-fixtures",
-                ],
-            )
         elif name in BUNDLE_PAIRS:
             host, node, result = BUNDLE_PAIRS[name]
             self.run(f"{name}-host", self.python(host))
             self.run(name, ["node", str(ROOT / node), "owui", result])
-        elif name == "W1":
-            self.run(
-                name, self.python("w1_width.py", PROJECT / "corpus/python/captures/m10-design")
-            )
         elif name in HOST_ONLY:
             self.run(name, self.python(HOST_ONLY[name]))
         else:

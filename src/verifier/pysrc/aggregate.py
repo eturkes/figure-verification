@@ -28,10 +28,14 @@ from typing import Literal, NoReturn, assert_never
 
 from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
-from verifier.pysrc.spec import Reduction
 from verifier.pysrc.table import CellValue
 
-__all__ = ["Aggregated", "ColumnDtype", "aggregate_series", "column_dtype"]
+__all__ = ["Aggregated", "ColumnDtype", "Reduction", "aggregate_series", "column_dtype"]
+
+# Grouped reductions, closed. Each one is a total function from a group's cells to one number,
+# which is what lets the judge reproduce it exactly; a reduction needing a parameter (quantile,
+# std's delta degrees of freedom) is not a member.
+type Reduction = Literal["sum", "mean", "min", "max"]
 
 # The dtype `pd.read_csv` infers for a column inside the admitted cell profile. There is no third
 # member: the profile refuses every NA spelling, every boolean text and every non-fixed-point token

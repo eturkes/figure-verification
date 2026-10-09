@@ -66,12 +66,9 @@ shell_lint() {
     return 0
 }
 
-# One pytest run, two coverage scopes (pyproject `[tool.coverage]`): pytest's own report holds the
-# verifier core at 100% branch; the second holds the capture graders at their explicit floor, since
-# an unreached branch in a grader is an ungraded artifact.
+# pytest's own coverage report holds the verifier core at 100% branch (pyproject `[tool.coverage]`).
 run_tests() {
-    uv run --locked pytest || return
-    uv run --locked coverage report --include='*/capture/record.py,*/capture/score.py' --fail-under=100
+    uv run --locked pytest
 }
 
 main() {

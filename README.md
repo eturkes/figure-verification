@@ -122,8 +122,6 @@ CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 ├── webui/                 paste-in sources, Open WebUI provisioning, launcher and stub model
 │   └── demo-paste-in/     the demo's generated pair: production files with the demo's column rule
 ├── model_backend/         the local model server for the demo
-├── capture/               model capture, statistics and the held-out scorer
-├── corpus/python/         design, held-out and sentinel prompts, and committed captures
 ├── data/                  demo CSV files
 ├── tools/                 gate, positive controls, mutation driver and paste-in generator
 └── tests/                 the test suite

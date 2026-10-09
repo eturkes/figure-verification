@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 36 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 26 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -22,8 +22,7 @@ an explicit subset; `--check-only` compares prior results without rerunning meas
 
 Logs + raw results → `all-data/`; reduction evidence → `r-data/`. The driver shares successful
 input generators within one invocation. Both npm builds run wherever the table names both.
-F7/O8/T8 read the installed Open WebUI bundle through the repository's common Git directory.
-O8 uses `--check-fixtures`: emitted fixture bytes must match, and tracked fixtures stay untouched.
+F7/T8/I1/I3/C1 read the installed Open WebUI bundle through the repository's common Git directory.
 
 M15/M16 start a private `webui/launch.sh --stub` stack with fresh loopback ports and a headless
 `chromiumfish` CDP browser. Open WebUI must already exist in `.venv-webui` of the primary checkout.
@@ -50,27 +49,6 @@ Run each host script in the table with `uv run --locked python .agent/measuremen
 For `make_s6_csv.py`, `t3.py`, `t4.py`, `t5.py`, `t7_profile.py`, `t7_quoted.py`, and
 `t8_profile.py`, use `uv run --locked --with pandas==2.3.1 python .agent/measurements/<script>.py`: pandas is not in
 the root development environment. Run a generator before its dependent host or sandbox leg.
-`W1` reads committed capture records and accepts an optional run directory; its default is
-`corpus/python/captures/m10-design`. Re-run the design-only outcome and intent counts with:
-
-```
-uv run --locked python .agent/measurements/w1_width.py corpus/python/captures/m10-design
-```
-
-`A1` reads the 24 design-simple prompts, `design_intent.json`, the authored Japanese renderings in
-`a1_ja.json` and the `m10-design` captures, and plants a stop phrase or a negated undrawn column
-into each faithful request (Q38); it writes `a1-result.json`. `A2` labels the same 24
-tasks from `a2_labels.json` (EN + JA concept names and summary words, the `a1_ja.json` headers) and
-re-verifies the captures with G10 neutralised as baseline; it writes `a2-result.json`. `A3` reads
-`a3_clinical.json` (an authored clinical header, 3 rows, 20 Japanese requests with the chart each
-asks for) + the `a1_ja.json` renderings; it writes `a3-result.json`. These ids leave held-out prompts
-unread. `H1` reads them (Q39, user ruling): it re-grades the committed `m10-heldout` records
-with each manifest prompt as the request, under each anchoring rule, and writes `h1-result.json`.
-Its control re-grades with no request and must reproduce `score.json` row for row. `A4` (Q43)
-re-runs the A1, A3 and H1 legs with the admin alias file `a4_aliases.txt` (the tool Valve's text
-format, authored from column meanings before any A4 run); its H1 leg reads the held-out prompts
-too and is reported, never targeted. It writes `a4-result.json`.
-
 `I1` (M19) runs 52 chart programs over the M19 scope and its out-of-scope census, and records each
 axes child as (class, origin, data transform) — origin = the outermost Axes-module frame
 (`.claude/rules/figure.md`). The projection compares the host leg with the installed bundle and
@@ -85,11 +63,6 @@ through the production `wrapper_code` in the installed bundle (matplotlib 3.8.4,
 font, the CSVs under `/mnt/uploads`), judges each bundle description on the host with the case's
 own Sources, and publishes the cases whose bundle verdict misses the case's expectation or differs
 from the host verdict (its first run found the 3.8 glyph-warning wording the reader missed).
-
-The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
-x column, y column and reduction; six tasks also require a separate city series or city color, which
-one `DatasetPlot` cannot express. A row is FAITHFUL only when the verified projected spec equals
-those fields and the task requires no unrepresented series.
 
 Run each Node command from `.agent/measurements/`. Replace `<P>` with `pyodide` (0.28.0) or
 `pyodide0281` (0.28.1), and `<v>` with `0280` or `0281`, respectively. Every `.mjs` takes `<P>` as
@@ -111,9 +84,7 @@ tagged observation line before one PNG line with a valid signature; the shaped r
 `stderr: null` and `result: null`. A literal plotting import must trigger the installed prelude's
 `SyntaxError`.
 
-`o8_observe.mjs` takes `owui`, a result filename, then `wrapper`; it exports the production
-`wrapper_code` through `o8_export.py` and overwrites 62 self-contained fixtures. For the other
-Node commands:
+The other Node commands:
 
 ```
 cd .agent/measurements
@@ -130,29 +101,18 @@ and pandas versions for the selected build.
 
 | id | host script(s), in run order | Node command | build behind the published number |
 |---|---|---|---|
-| S1 | `s1_host.py` | none | host only |
-| S2 | `make_s2_inputs.py` | `node s2_pyodide.mjs <P> s2-<v>.json` | 0.28.0 and 0.28.1 |
-| S3 | `make_s3_grids.py` | `node s3_pyodide.mjs <P> s3-<v>.json` | 0.28.0 and 0.28.1 |
 | S6 | `make_s6_csv.py` | `node s6_pyodide.mjs <P> s6-<v>.json` | 0.28.1; 0.28.0 rerun |
-| S7 | `make_s7_pow.py`, then `s7_mapping.py` | `node s7_pyodide.mjs <P> s7-<v>.json` | 0.28.0 and 0.28.1 |
 | T3 | `t3.py` | none | host only |
 | T4 | `t4.py` | none | host only |
 | T5 | `t5.py` | none | host only |
 | T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs <P> t6-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs <P> t8-<v>.json`; `node t8_pyodide.mjs owui t8-0283.json` | 0.28.0, 0.28.1; installed OWUI 0.28.3 |
-| W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
 | I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-0283.json` | host matplotlib 3.9.4 vs installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
 | I2 | `i2_ambiguity.py` | none | host only |
 | I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-0283.json` | host reader (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 |
 | C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-0283.json` | rule corpus: host judge (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
-| A1 | `a1_anchor.py` | none | host only |
-| A2 | `a2_labels.py` | none | host only |
-| A3 | `a3_short_names.py` | none | host only |
-| A4 | `a4_aliases.py` | none | host only |
-| H1 | `h1_heldout_anchoring.py` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
-| O8 | `make_s2_inputs.py`, `make_s7_pow.py`; `o8_export.py` called by Node | `node s2_pyodide.mjs owui s2-0283.json`; `node s7_pyodide.mjs owui s7-0283.json`; `node o8_observe.mjs owui o8-0283.json wrapper` | installed Open WebUI bundle, 0.28.3; 1M unary values/function and 1M pow pairs; 62 production-wrapper figures |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 | M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 | M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
@@ -233,38 +193,17 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 
 | id | measures | backs |
 |---|---|---|
-| S1 | host CPython `math` vs host NumPy, 6 unary functions | host leg contributes 0 ulp; S2's band is the WASM gap alone |
-| S2 | host NumPy vs Pyodide NumPy, `sin cos tan exp log sqrt` | `binary64-libm-v1`'s 1-ulp band; N7 |
-| S3 | `linspace` + `arange` agreement, values and lengths | N6's bit-for-bit grid claim; the int64-vs-int32 dtype note |
 | S6 | host pandas vs Pyodide pandas, parsed cells | CSV divergence is stdlib-vs-pandas, not host-vs-wasm |
-| S7 | `pow` band; `math.pow` and `**` exception classes against NumPy's value categories; C99 mapping | N8's 1-ulp band and 0 category splits; N3p's 0/1,000,000 vs a blanket rule's 184,343 |
 | T3 | whether ANY significant-digit cap makes stdlib `float` agree with default `pd.read_csv` | C10's "no cap repairs it" |
 | T4 | stdlib-vs-pandas structural divergences (BOM, ragged rows, post-quote junk) | C6's four refusal witnesses |
 | T5 | default NA spellings pandas recognises | C9's 19-spelling literal |
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | T8 | beyond-int32 fixed-point parsing vs host pandas AND stdlib `float`; float64-column bar heights; mixed integer/decimal tokens | Q12 production range changed: integer columns keep int32; float64 cells retain the 15-digit cap; float64 bar reductions stay within ±2**53. Evidence: 0/1,345,852 host↔Pyodide decimal disagreements/form/build through ±2**53; ≤15-digit subset 0/623,350 vs stdlib, unrestricted 215,269 disagreements; mixed column 0/1,000,049 vs both; 0/2,364 boundary + 0/2,097 mixed artist-height changes/build |
-| W1 | shipped verifier's verdict and task-intent comparison over one design run, per 24-row category, idiom, row, and separate sentinel | M13.6's measured width aim; M10.6's design-only proposer guard |
-| A1 | request anchoring (Q8), per language (EN, JA over a translated header, JA naming the English header): refusals of the 18 intent programs needing no per-city series, refusals of the 3 that need one, x/y swaps caught; refusals of the 18 with a planted stop phrase or negated undrawn column (Q38); the `m10-design` capture rows whose verdict anchoring changes; under production's strict rule (Q37) three legs again: the 18 intent programs, the swaps, the capture rows | `pysrc.md` request-anchoring bullets: substitution 0 false refusals per language + the catch rates; strict false refusals EN 5/18 · JA 0/18 · JA-mixed 1/18 + its catch rates |
-| A2 | label consistency (G10, Q16), per form (EN, JA over a translated header, JA naming the English header): refusals of the 18 labelled intent programs needing no per-city series, x-label plants naming another column, summary-word plants naming another reduction; the `m10-design` capture rows whose verdict G10 changes | `pysrc.md` G10 bullet: 0 false refusals per form, the catch rates |
-| A3 | Japanese short-word naming (Q41 + Q42 suffixes, strict alone): every name the short-word tier adds over the clinical leg, the A1 `ja` renderings on their own header, 88 noise pairs (each request over an unrelated dataset's header) and 240 suffix pairs (each clinical request rewritten with `別` `毎` `次` `単位`: its grouping word replaced, or the suffix glued to a scatter's x-axis word), each name outside the request's own chart marked FALSE; the clinical requests' charts verified under both rules | `pysrc.md` Q41 bullet: 0 false names (clinical adds 3, own 4, noise 6, suffix 24); clinical false refusals strict 0/20, substitution 0/20 |
-| A4 | admin-declared column aliases (Q43): A1's legs per language (the 18 faithful intents, swaps, stop + negation plants, series tasks; each under both rules), the `m10-design` capture rows strict anchoring changes, every A3 leg, and H1's held-out re-grade, each with the alias file `a4_aliases.txt` (Valve text format, authored from column meanings) | `pysrc.md` aliases bullet: strict false refusals EN 0/18 · JA 0/18 · JA-mixed 0/18 (A1 strict 5 · 0 · 1), substitution 0/18 each, plants 0; strict swaps caught 56 · 57 · 57 of 57 (A1 strict 47 · 57 · 57); capture: 0 FAITHFUL rows refused; A3 0 false names; H1 reported, not targeted: simple 10/20 VERIFIED under each rule, complicated 20/20 BLOCKED, both sentinels |
-| H1 | the held-out capture (`m10-heldout`, no new capture) re-graded with each manifest prompt as the request, under the demo's `substitution` and production's `strict` anchoring, with `score.py`'s denominators + outcome rules (transport ≠ refusal, sentinels apart); every row whose outcome differs from `score.json` | Q39 + `pysrc.md` request-anchoring bullets: substitution simple 13/20 VERIFIED (below `Intent`'s 70% bar; `heldout-simple-13` refuses `column_not_requested`), strict 7/20, complicated 20/20 BLOCKED + both sentinels under each rule; the committed score stays 14/20 |
 | F7 | the production `wrapper_code` in the installed bundle: sentinel-simple, a line, a scatter, a program that never calls `show`, and three Japanese legs, each in a fresh runtime (M17.1: Japanese title + category ticks with the installed Open WebUI's `NotoSansJP-Regular.ttf`; the same without the font; a `$…$` Japanese title with the font) | M10.1 F7 + M10.2 O1: the four replies + `ja-font` each have one tagged parseable observation line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers `SyntaxError`; M17.1: `ja-no-font` writes the missing-glyph warning (control), `ja-mathtext` the mathtext glyph warning (declared limit), each class projected, never its bytes |
-| O8 | installed bundle libm band and production wrapper artist reports: S2 sin/cos/tan/exp/log/sqrt ≤1/1/1/1/0/0 ulp, S7 pow ≤1 ulp with zero category splits, 62 fixture observations + PNGs (M10.10 added 6 accessor lines, Q18 the 4 nested-libm formulas), zero stderr | M10.2 O8's interval bound and the recorded artists underlying O3/O5/O7 |
 | M15 | the failure status line in a live `--stub` chat: elaborate prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/138 texts clamped |
 | M16 | the "Show checks" embed in a live `--stub` chat: elaborate prompt, a kana prompt, the simple prompt; one frame after the status line + before the verdict, collapsed < 60 px, expanded = its content (no inner scroll), collapsed again, rows + marks + texts + cause per state, before + after reload; REST `content`/`output`/`embeds`; the expanded FAIL at 760 px; light + dark screenshots; M18.4: per case one row opened (refused `accepted`, kana `program`, pass `chart`) = hand-stated listing lines + marked line + mark text + `#check-<id>` link, frame grows to the row and fits, the link opens one new tab at that URL (live), the row closes again, live + reload | M16.1 L1-L5 + M18.4 L1-L3: exit code 0 = 3/3 cases with their rows + the narrow re-size; screenshots inspected by hand (`chromiumfish` draws every font family, generic `monospace` included, in one serif face, so its PNGs show the listing proportional; BrowserOS Neo measured the shipped stack monospace) |
 | M17 | the Japanese banner prompts in a live `--stub` chat, one attempt per arm over its own CSV: verdict before + after reload, the verdict line, the interpretation's first sentence, the PNG attachment count, the status line's code + language | M17.4 L2: `ja-simple` + `ja-clinic-simple` pass with 1 PNG and a Japanese interpretation (`グラフの種類: 棒グラフ。`, `グラフの種類: 折れ線グラフ。`); `ja-elaborate` + `ja-clinic-elaborate` fail with 0 PNGs and a Japanese status line ending `(source_not_tokenizable)`, `(column_not_literal)` |
-
-Rerun O8 from the repository root after the host input generators. `o8_observe.mjs` obtains the wrapper from the tracked filter and writes the observed JSON into `tests/fixtures/observe/`; a second run should leave those bytes unchanged.
-
-```
-uv run --locked python .agent/measurements/make_s2_inputs.py
-uv run --locked python .agent/measurements/make_s7_pow.py
-node .agent/measurements/s2_pyodide.mjs owui s2-0283.json
-node .agent/measurements/s7_pyodide.mjs owui s7-0283.json
-node .agent/measurements/o8_observe.mjs owui o8-0283.json wrapper
-```
 
 T8's `t8-data/` corpus separates ≤15-significant-digit candidates from 16–22-digit diagnostic
 probes. Every decimal token has a point and 1–6 fractional digits; magnitudes span 2**31 through
@@ -285,7 +224,7 @@ T8's one-count control plants `expected/T8.json`'s `0280.corpora.decimals.plain.
 
 Each result JSON carries environment details and a per-region breakdown when regions apply. A
 region's `disagreements` is the count that matters. `max_ulp` applies only where both values are
-finite; S7 reports category splits separately.
+finite.
 
 Rerun M15 against a stub instance and a browser that exposes CDP. OWUI hosts its Pyodide iframe
 out of process unless the browser runs with `--disable-features=IsolateSandboxedIframes`, and the

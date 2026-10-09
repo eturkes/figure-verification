@@ -1,8 +1,0 @@
-{task}
-
-Use the CSV file at /mnt/uploads/{dataset}. Its columns are {columns}.
-Read the CSV file with pandas. Draw the figure with matplotlib.
-
-When the task asks for one value per time or category, group by its named field with pandas and calculate one plotted value per group. For totals, calculate a sum; for averages, a mean; for highest or lowest values, a maximum or minimum. Draw the grouped values rather than the original rows.
-
-Return one complete Python program as bare source text, no Markdown fences.

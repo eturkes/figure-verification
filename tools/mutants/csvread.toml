@@ -1,31 +1,58 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Mutation catalogue for the CSV read seam. Run: `uv run --locked python
-# tools/mutate.py tools/mutants/csvread.toml`. One mutant per predicate, each naming the ONE test
-# that must go red under it.
+# Mutation catalogue for the CSV profile the judge reads the user's file with. Run: `uv run --locked
+# python tools/mutate.py tools/mutants/csvread.toml`. One mutant per predicate, each naming the ONE
+# test that must go red under it; the tests read through the consumer, `sources.read_table`.
 #
-# G11 is why this catalogue exists at all. The counts are COMPUTED in `aggregate.py`, which
-# `aggregate.toml` mutates, but they are PUBLISHED from here, and the driver mutates one module per
-# catalogue. Publication is where the plausible defect sits: an implementation that reduces
-# correctly and then forgets to carry the counts forward ships a G11-less certificate for an
-# aggregate figure, and no aggregate-catalogue mutant reaches that line.
-#
-# `g11-counts-dropped-at-publication` kills by RAISING rather than by failing an assertion, and
-# that is the credit rather than a defect in the mutant: `certify` refuses a grouped spec whose
-# counts are absent (`PysrcCallerError`), so the drop cannot reach a certificate at all. The verdict
-# still differs, which is what the driver grades, and a future mutant carrying WRONG counts instead
-# of absent ones is the value-kill beside it.
+# EQUIVALENT, so unlisted: dropping the NA-spelling sweep in `_check_selected_text`. Every NA
+# spelling either fails stdlib `float` (a text column) or fails the fixed-point profile (`NaN`,
+# `nan`), so the column offers no numbers either way.
 
 module = "src/verifier/pysrc/csvread.py"
-tests = ["tests/test_pysrc_aggregate.py", "tests/test_pysrc_csv.py", "tests/test_pysrc_anchoring.py"]
+tests = ["tests/test_pysrc_csv.py"]
 
 [[mutant]]
-id = "g11-counts-dropped-at-publication"
-predicate = "an aggregate publishes its per-group counts -- reducing correctly is not enough"
-kills = "tests/test_pysrc_aggregate.py::test_g11_per_group_counts_are_published"
-anchor = '''
-        return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=reduced.counts)'''
-mutant = '''
-        return DatasetSeries(x=reduced.keys, y=reduced.values, group_counts=None)'''
+id = "c6-bom-gate-dropped"
+predicate = "a file opening with a UTF-8 BOM is refused whole (pandas and stdlib read the header apart)"
+kills = "tests/test_pysrc_csv.py::test_c6_strict_structural_profile"
+anchor = '''    if content.startswith(_UTF8_BOM) or b"\x00" in content:'''
+mutant = '''    if b"\x00" in content:'''
+
+[[mutant]]
+id = "c6-ragged-row-accepted"
+predicate = "a row whose width differs from the header's is refused whole"
+kills = "tests/test_pysrc_csv.py::test_c6_strict_structural_profile"
+anchor = '''            if len(row) != len(header_row):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "c6-header-only-accepted"
+predicate = "a file with no data row is refused whole"
+kills = "tests/test_pysrc_csv.py::test_c6_strict_structural_profile"
+anchor = '''    if not rows:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "c10-fixed-point-shape-dropped"
+predicate = "a number outside the fixed-point shape (exponent, sign, padding, hex) offers no number"
+kills = "tests/test_pysrc_csv.py::test_c10_profile_boundaries_leave_no_numbers"
+anchor = '''        _NUMBER.fullmatch(text) is None
+        or'''
+mutant = '''        False
+        or'''
+
+[[mutant]]
+id = "c10-int32-max-exclusive"
+predicate = "an integer column admits 2**31 - 1 itself: the int32 clause is inclusive at the top"
+kills = "tests/test_pysrc_csv.py::test_c10_an_integer_column_admits_both_int32_endpoints"
+anchor = '''_INT32_MAX = 2**31 - 1'''
+mutant = '''_INT32_MAX = 2**31 - 2'''
+
+[[mutant]]
+id = "c10-int32-min-exclusive"
+predicate = "an integer column admits -2**31 itself: the int32 clause is inclusive at the bottom"
+kills = "tests/test_pysrc_csv.py::test_c10_an_integer_column_admits_both_int32_endpoints"
+anchor = '''_INT32_MIN = -(2**31)'''
+mutant = '''_INT32_MIN = -(2**31) + 1'''
 
 [[mutant]]
 id = "q12-integer-column-range-dropped"
@@ -49,101 +76,3 @@ predicate = "the column's inferred dtype, not each token alone, picks the range 
 kills = "tests/test_pysrc_csv.py::test_q12_a_float64_column_admits_magnitudes_past_int32"
 anchor = '''    integer_column = column_dtype(texts) == "int64"'''
 mutant = '''    integer_column = all("." not in text for text in texts[:1])'''
-
-
-[[mutant]]
-id = "q12-float-bar-reduction-unbounded"
-predicate = "a float64 reduction under bar/barh stays within the measured 2**53"
-kills = "tests/test_pysrc_aggregate.py::test_q12_a_float64_bar_reduction_stays_within_2_to_the_53"
-anchor = '''        else (-_FLOAT_HEIGHT_MAX, _FLOAT_HEIGHT_MAX)'''
-mutant = '''        else (-math.inf, math.inf)'''
-
-# Q8 `header_names`: each whole-file gate and each caught failure leaves an unreadable header
-# anchoring nothing, so recomputation's own refusal names the fault. EQUIVALENT, so unlisted:
-# dropping `PysrcRefusalError` from the caught set lets `_check_record_endings` raise from the
-# header read, and that refusal is the one `read_columns` raises for the same bytes -- every gate
-# ahead of it already passed -- so the verdict cannot differ.
-
-[[mutant]]
-id = "q8-header-size-gate-dropped"
-predicate = "an oversize file yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_oversize_file_leaves_recompute_refusal"
-anchor = '''            len(content) > limits.max_csv_bytes
-            or content.startswith(_UTF8_BOM)'''
-mutant = '''            False
-            or content.startswith(_UTF8_BOM)'''
-
-[[mutant]]
-id = "q8-header-bom-gate-dropped"
-predicate = "a BOM-prefixed file yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[bom]"
-anchor = '''            or content.startswith(_UTF8_BOM)
-            or b"\x00" in content'''
-mutant = '''            or False
-            or b"\x00" in content'''
-
-[[mutant]]
-id = "q8-header-nul-gate-dropped"
-predicate = "a file holding NUL yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[nul]"
-anchor = '''            or b"\x00" in content
-        ):'''
-mutant = '''            or False
-        ):'''
-
-[[mutant]]
-id = "q8-header-endings-gate-dropped"
-predicate = "a file with a non-LF record ending yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[cr-endings]"
-anchor = '''        _check_record_endings(content)
-        text = content.decode("utf-8")'''
-mutant = '''        text = content.decode("utf-8")'''
-
-[[mutant]]
-id = "q8-header-decode-error-escapes"
-predicate = "a non-UTF-8 file yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[not-utf8]"
-anchor = '''        WorkBudgetExceededError,
-        UnicodeDecodeError,'''
-mutant = '''        WorkBudgetExceededError,'''
-
-[[mutant]]
-id = "q8-header-empty-escapes"
-predicate = "an empty file yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[empty]"
-anchor = '''        UnicodeDecodeError,
-        StopIteration,'''
-mutant = '''        UnicodeDecodeError,'''
-
-[[mutant]]
-id = "q8-header-quote-escapes"
-predicate = "a header record csv refuses yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_an_unreadable_header_leaves_recompute_refusal[header-quote]"
-anchor = '''        StopIteration,
-        csv.Error,'''
-mutant = '''        StopIteration,'''
-
-[[mutant]]
-id = "q8-header-budget-escapes"
-predicate = "a header over the work ceiling yields no header"
-kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[header-work]"
-anchor = '''        PysrcRefusalError,
-        WorkBudgetExceededError,'''
-mutant = '''        PysrcRefusalError,'''
-
-[[mutant]]
-id = "q8-header-work-uncharged"
-predicate = "the header read charges the work `read_columns` charges for it"
-kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[header-work]"
-anchor = '''        WorkBudget(limits.max_work).charge(_record_work(header))
-        _check_header(header, limits)'''
-mutant = '''        _check_header(header, limits)'''
-
-[[mutant]]
-id = "q8-header-checks-skipped"
-predicate = "the header read applies `read_columns`' header-record checks"
-kills = "tests/test_pysrc_anchoring.py::test_q8_a_header_read_columns_refuses_leaves_recompute_refusal[duplicate-name]"
-anchor = '''        _check_header(header, limits)
-    except ('''
-mutant = '''        pass
-    except ('''

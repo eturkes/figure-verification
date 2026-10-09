@@ -16,11 +16,9 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[1]
 _CATALOGUES = (
     "adapter",
-    "admit",
     "aggregate",
     "aliases",
     "anchoring",
-    "certificate",
     "checks",
     "columns",
     "csvread",
@@ -36,18 +34,12 @@ _CATALOGUES = (
     "mark_rules",
     "owui_files",
     "parts",
-    "position",
-    "prescan",
-    "project",
     "reader",
     "receipt",
-    "request",
-    "score",
     "series",
     "shapes",
     "ticks",
     "tool",
-    "verify",
 )
 
 
@@ -74,17 +66,17 @@ def test_every_kill_names_an_existing_test_function(name: str) -> None:
             if test_file.is_file()
             else set()
         )
-        name = selector.partition("[")[0]
+        function = selector.partition("[")[0]
         # pytest collects `test_*` functions alone: a helper name exists but still exits rc 4.
-        if not name.startswith("test_") or name not in functions:
+        if not function.startswith("test_") or function not in functions:
             missing.append((mutant["id"], mutant["kills"]))
     assert not missing, f"{name}.toml credits tests that do not exist: {missing}"
 
 
 def test_a_non_test_helper_is_not_a_kill(monkeypatch: pytest.MonkeyPatch) -> None:
     """A helper function exists in the module but pytest never collects it (closing review K3)."""
-    catalogue = tomllib.loads((_ROOT / "tools/mutants/admit.toml").read_text("utf-8"))
-    catalogue["mutant"][0]["kills"] = "tests/test_pysrc_accessor_line.py::_source"
+    catalogue = tomllib.loads((_ROOT / "tools/mutants/aggregate.toml").read_text("utf-8"))
+    catalogue["mutant"][0]["kills"] = "tests/test_pysrc_aggregate.py::_aggregate"
     monkeypatch.setattr(tomllib, "loads", lambda _text: catalogue)
-    with pytest.raises(AssertionError, match="credits tests that do not exist"):
-        test_every_kill_names_an_existing_test_function("admit")
+    with pytest.raises(AssertionError, match=r"aggregate\.toml credits tests that do not exist"):
+        test_every_kill_names_an_existing_test_function("aggregate")

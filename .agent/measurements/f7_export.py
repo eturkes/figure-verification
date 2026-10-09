@@ -8,8 +8,8 @@ import json
 import sys
 from pathlib import Path
 
-from capture.harness import defence
-from webui.paste_in.filter import wrapper_code
+from model_backend.adapter import defence
+from webui.paste_in.sandbox import wrapper_code
 
 root = Path(__file__).resolve().parents[2]
 records = root / "corpus/python/captures/m10-design/records.ndjson"

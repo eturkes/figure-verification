@@ -9,11 +9,19 @@ Contract `.agent/archive/contracts/q16.md`.
 
 import pytest
 
-from verifier.pysrc.spec import DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from anchoring_support import verdict
+from verifier.figure import reader
+from verifier.figure.description import parse_description
+from verifier.figure.judge import Passed, Sources, judge
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = b"region,month,revenue,orders\nwest,2024-01,1,5\neast,2024-02,2,6\n"
+# Two rows per region: a group of one row is a raw value, so its reductions coincide and no
+# summary word is read; here sum, mean, min + max differ in every group.
+_GROUPED = (
+    b"region,month,revenue,orders\n"
+    b"west,2024-01,1,5\nwest,2024-02,3,6\neast,2024-01,2,7\neast,2024-02,6,8\n"
+)
 
 
 def _labelled(
@@ -40,8 +48,7 @@ def _labelled(
 
 
 def _verdict(program: str, content: bytes = _SALES) -> str:
-    verdict = verify_python_source(program, declared_target=DatasetTarget("data.csv", content))
-    return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
+    return verdict(program, None, content)
 
 
 @pytest.mark.parametrize("position", ["title", "xlabel", "ylabel", "series"])
@@ -60,20 +67,25 @@ def test_q16_a_one_edit_spelling_names_its_column() -> None:
     [
         ("sum", "Total revenue", "Average revenue"),
         ("mean", "Average revenue", "Total revenue"),
-        ("min", "Minimum revenue", "Maximum revenue"),
-        ("max", "Max revenue", "Min revenue"),
     ],
 )
 def test_q16_a_summary_word_of_another_reduction_refuses(
     reduction: str, consistent: str, inconsistent: str
 ) -> None:
     program = _labelled({"title": inconsistent}, reduction=reduction)
-    assert _verdict(program) == "label_not_consistent"
-    assert _verdict(_labelled({"title": consistent}, reduction=reduction)) == "VERIFIED"
+    assert _verdict(program, _GROUPED) == "label_not_consistent"
+    assert _verdict(_labelled({"title": consistent}, reduction=reduction), _GROUPED) == "VERIFIED"
+
+
+@pytest.mark.parametrize(("reduction", "label"), [("min", "Max revenue"), ("max", "Min revenue")])
+def test_q16_a_group_min_or_max_reads_as_raw_cells(reduction: str, label: str) -> None:
+    """A group's min or max IS one of its cells, so the drawn values are a raw subset (R2) and
+    the canonical explanation is raw: no reduction is drawn, so no summary word is read."""
+    assert _verdict(_labelled({"title": label}, reduction=reduction), _GROUPED) == "VERIFIED"
 
 
 def test_q16_a_summary_no_reduction_computes_refuses() -> None:
-    assert _verdict(_labelled({"ylabel": "Median revenue"})) == "label_not_consistent"
+    assert _verdict(_labelled({"ylabel": "Median revenue"}), _GROUPED) == "label_not_consistent"
 
 
 def test_q16_without_a_reduction_summary_words_go_unread() -> None:
@@ -86,13 +98,13 @@ def test_q16_without_a_reduction_summary_words_go_unread() -> None:
 
 
 def test_q16_a_summary_word_inside_a_header_names_the_column() -> None:
-    content = b"region,total_revenue\nwest,1\neast,2\n"
+    content = b"region,total_revenue\nwest,1\nwest,3\neast,2\neast,6\n"
     program = _labelled({"title": "Average total revenue"}, value="total_revenue", reduction="mean")
     assert _verdict(program, content) == "VERIFIED"
 
 
 def test_q16_japanese_summary_words_match_inside_the_label() -> None:
-    content = "地域,売上\n東,1\n西,2\n".encode()
+    content = "地域,売上\n東,1\n東,3\n西,2\n西,6\n".encode()
     mean = {"key": "地域", "value": "売上", "reduction": "mean"}
     assert _verdict(_labelled({"title": "地域ごとの売上合計"}, **mean), content) == (
         "label_not_consistent"
@@ -101,7 +113,7 @@ def test_q16_japanese_summary_words_match_inside_the_label() -> None:
 
 
 def test_q16_a_japanese_summary_word_inside_a_header_names_the_column() -> None:
-    content = "地域,合計金額\n東,1\n西,2\n".encode()
+    content = "地域,合計金額\n東,1\n東,3\n西,2\n西,6\n".encode()
     program = _labelled({"title": "合計金額の平均"}, key="地域", value="合計金額", reduction="mean")
     assert _verdict(program, content) == "VERIFIED"
 
@@ -139,21 +151,25 @@ def test_q16_a_label_naming_nothing_checkable_passes() -> None:
 
 
 def test_q16_mark_rules_refuse_before_labels() -> None:
-    """A repeated category and a bad label: the drawn data's fault reports first."""
+    """A repeated category and a bad label: the drawn data's fault reports first (two bars on one
+    category overlap, a mark rule, before the columns stage reads any label)."""
     program = (
         _PRELUDE + 'df = pd.read_csv("data.csv")\nplt.bar(df["region"], df["revenue"])\n'
         'plt.xlabel("Month")\nplt.show()\n'
     )
     content = b"region,month,revenue\nwest,2024-01,1\nwest,2024-02,2\n"
-    assert _verdict(program, content) == "category_not_unique"
+    assert _verdict(program, content) == "bars_overlap"
 
 
-def test_q16_formula_labels_meet_no_header() -> None:
+def test_q16_labels_without_a_file_meet_no_header() -> None:
+    """A computed curve and no attached file: no header, so G10 reads nothing."""
     program = (
         "import numpy as np\nimport matplotlib.pyplot as plt\nx = np.linspace(0, 1, 3)\n"
         'plt.plot(x, np.sin(x))\nplt.xlabel("revenue total")\nplt.show()\n'
     )
-    assert isinstance(verify_python_source(program), Verified)
+    described = parse_description(reader.run(program))
+    assert described is not None
+    assert isinstance(judge(described, Sources()), Passed)
 
 
 @pytest.mark.parametrize("label", ["Revenue (not orders)", "Revenue in chronological order"])

@@ -10,8 +10,9 @@ anchoring-length alias becomes nameable under strict.
 
 import pytest
 
-from verifier.pysrc.spec import Anchoring, DatasetTarget
-from verifier.pysrc.verify import Verified, verify_python_source
+from anchoring_support import verdict
+from verifier.figure.anchoring import Anchoring
+from verifier.figure.judge import Sources
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _WEATHER = b"date,city,temp_c,precip_mm\n2024-01-01,Sapporo,1.5,0.5\n2024-01-02,Naha,2.5,1.5\n"
@@ -37,9 +38,7 @@ def _verdict(
     content: bytes = _WEATHER,
     anchoring: Anchoring = "strict",
 ) -> str:
-    target = DatasetTarget("data.csv", content, request, anchoring, aliases)
-    verdict = verify_python_source(program, declared_target=target)
-    return "VERIFIED" if isinstance(verdict, Verified) else verdict.code
+    return verdict(program, request, content, anchoring=anchoring, aliases=aliases)
 
 
 def test_q43_v3_an_alias_names_its_column_under_strict() -> None:
@@ -135,15 +134,15 @@ def test_q43_v3_a_label_naming_an_undrawn_columns_alias_refuses(anchoring: Ancho
 
 def test_q43_v3_a_summary_word_an_alias_uses_names_its_column() -> None:
     """`Total` over a mean refuses as a summary word, unless an alias makes it a column name."""
-    content = b"city,amount\nSapporo,1\nNaha,2\n"
+    content = b"city,amount\nSapporo,1\nSapporo,3\nNaha,2\nNaha,6\n"
     program = _bar("city", "amount", 'plt.ylabel("Total")\n')
     assert _verdict(program, None, content=content) == "label_not_consistent"
     assert _verdict(program, None, (("amount", "total"),), content) == "VERIFIED"
 
 
 def test_q43_v3_no_alias_is_the_default() -> None:
-    assert DatasetTarget("data.csv", _WEATHER).aliases == ()
-    assert DatasetTarget("data.csv", _WEATHER) == DatasetTarget("data.csv", _WEATHER, aliases=())
+    assert Sources().aliases == ()
+    assert Sources((("data.csv", _WEATHER),)) == Sources((("data.csv", _WEATHER),), aliases=())
 
 
 @pytest.mark.parametrize("anchoring", ["strict", "substitution"])
