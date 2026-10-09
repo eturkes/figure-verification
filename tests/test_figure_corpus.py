@@ -14,7 +14,7 @@ import pytest
 
 from verifier.figure import reader
 from verifier.figure.description import parse_description
-from verifier.figure.judge import integrity
+from verifier.figure.judge import Sources, judge
 from verifier.figure.reasons import Blocked
 
 _CORPUS = Path(__file__).parent / "figure_corpus"
@@ -33,10 +33,16 @@ _ALL = _cases()
 
 @pytest.mark.parametrize("case", _ALL, ids=[case["id"] for case in _ALL])
 def test_corpus_case(case: dict[str, Any]) -> None:
-    program = case["program"].replace("{data}", str(_DATA))
+    program = case["program"].replace("{data}", str(_DATA)).replace("{corpus}", str(_CORPUS))
     described = parse_description(reader.run(program))
     assert described is not None
-    verdict = integrity(described)
+    files: tuple[tuple[str, bytes], ...] = ()
+    if "csv" in case:
+        path = _DATA / case["csv"]
+        path = path if path.is_file() else _CORPUS / case["csv"]
+        files = ((case["csv"], path.read_bytes()),)
+    sources = Sources(files, case.get("request"), case.get("anchoring", "strict"))
+    verdict = judge(described, sources)
     if case["expect"] == "pass":
         assert not isinstance(verdict, Blocked), verdict
     else:
@@ -85,10 +91,17 @@ _RULES = (
     "marker_size_varies",
     "marker_color_varies",
     "legend_mismatch",
+    "category_not_unique",
+    "value_not_found",
+    "label_not_in_request",
+    "column_not_requested",
+    "column_not_named",
+    "label_not_consistent",
 )
+_SOURCE_FAULTS = ("csv_not_parsable",)
 
 
-@pytest.mark.parametrize("reason", _RUN + _RULES)
+@pytest.mark.parametrize("reason", _RUN + _RULES + _SOURCE_FAULTS)
 def test_every_integrity_reason_has_a_blocking_case(reason: str) -> None:
     assert any(case["expect"] == reason for case in _ALL)
 

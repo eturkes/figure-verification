@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 series: what each judged mark shows as values (`.agent/archive/contracts/m19u4.md` U1).
+module = "src/verifier/figure/series.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-pie-legend-unread"
+predicate = "an unlabelled pie takes its legend names as keys"
+kills = "tests/test_figure_values.py::test_series_unlabelled_pie_takes_legend_names"
+anchor = '''        _drawn_label(axes, text) or names.get((position, wedge))'''
+mutant = '''        _drawn_label(axes, text)'''
+
+[[mutant]]
+id = "m19-pie-call-labels"
+predicate = "a pie's keys are its labels as drawn"
+kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
+anchor = '''    return shown if artist.visible and shown.strip() else None'''
+mutant = '''    return shown'''
+
+[[mutant]]
+id = "m19-span-one-edge"
+predicate = "a span shows both edges"
+kills = "tests/test_figure_values.py::test_spans_explain_both_edges_in_either_shape"
+anchor = '''        values = (start, start + extent)'''
+mutant = '''        values = (start,)'''
+
+[[mutant]]
+id = "m19-legend-name-unread"
+predicate = "a legend entry names its series"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[request]"
+anchor = '''    return names.get((position, mark.artists[0]))'''
+mutant = '''    return None'''
+
+[[mutant]]
+id = "m19-channels-unread"
+predicate = "a shown colour channel is a drawn series"
+kills = "tests/test_figure_corpus.py::test_corpus_case[colour-made-up]"
+anchor = '''        if values and (panel.index, mark.artists[0], channel) in shown:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "m19-channels-unshown"
+predicate = "a colour no colorbar or key shows is no drawn value"
+kills = "tests/test_figure_values.py::test_channels_show_only_where_displayed"
+anchor = '''        if values and (panel.index, mark.artists[0], channel) in shown:'''
+mutant = '''        if values:'''
+
+[[mutant]]
+id = "m19-channel-not-cycled"
+predicate = "a shorter channel array cycles over the points"
+kills = "tests/test_figure_values.py::test_channels_show_only_where_displayed"
+anchor = '''values[i % len(values)]'''
+mutant = '''values[i]'''

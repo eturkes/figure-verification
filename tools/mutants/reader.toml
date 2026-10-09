@@ -2,7 +2,7 @@
 # The M19.2 sandbox reader: every fact it attributes, captures or caps earns one mutant naming
 # one red (`.agent/archive/contracts/m19u2.md` P1-P5).
 module = "src/verifier/figure/reader.py"
-tests = ["tests/test_figure_reader.py"]
+tests = ["tests/test_figure_reader.py", "tests/test_figure_values.py"]
 
 [[mutant]]
 id = "m19-origin-module-set"
@@ -193,3 +193,10 @@ anchor = '''        or path[count + 1] != backward[-1]
 '''
 mutant = '''        or path[count + 1] != backward[-1]
 '''
+
+[[mutant]]
+id = "m19-pie-texts-unrecorded"
+predicate = "the reader records each wedge's drawn label Text"
+kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
+anchor = '''                "texts": list(result[1]),'''
+mutant = '''                "texts": [],'''

@@ -94,7 +94,7 @@ def test_j2_a_bar_outside_any_container_is_unjudged() -> None:
 
 def test_j2_a_pie_record_without_wedges_adds_no_mark() -> None:
     def empty_pie(raw: dict[str, Any]) -> None:
-        _axes(raw)["pies"].append({"values": [], "normalize": True, "wedges": [], "labels": None})
+        _axes(raw)["pies"].append({"values": [], "normalize": True, "wedges": [], "texts": []})
 
     verdict = _edited(_PLT + "plt.plot([1, 2])\n", empty_pie)
     assert isinstance(verdict, Judged)

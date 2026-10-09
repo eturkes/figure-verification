@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 publication (tier 3): each clause of the plain-words record (`.agent/archive/contracts/m19u4.md` V9).
+module = "src/verifier/figure/interpret.py"
+tests = ["tests/test_figure_values.py"]
+
+[[mutant]]
+id = "m19-subset-unpublished"
+predicate = "a drawn subset publishes N of M (R2)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[subset]"
+anchor = '''    if choice.matched < total:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "m19-counts-unpublished"
+predicate = "a reduction publishes its per-group row counts (G11)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[group]"
+anchor = '''    if explanation.counts is not None and explanation.family != "count":'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "m19-channel-noun"
+predicate = "a channel's sentence names the channel"
+kills = "tests/test_figure_values.py::test_channels_publish_their_own_sentence"
+anchor = '''    mark = _MARKS[series.mark.family if series.channel == "value" else series.channel]['''
+mutant = '''    mark = _MARKS[series.mark.family]['''
+
+[[mutant]]
+id = "m19-filter-unpublished"
+predicate = "an R6 filter publishes the rows it read"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[filter]"
+anchor = '''    if explanation.where is not None:
+        column, cell = explanation.where'''
+mutant = '''    if False:
+        column, cell = explanation.where'''
+
+[[mutant]]
+id = "m19-typed-unpublished"
+predicate = "request-typed values beside a file are published"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[mixed]"
+anchor = '''    if choice.from_request:
+        parts.append(
+            f"依頼文'''
+mutant = '''    if False:
+        parts.append(
+            f"依頼文'''
+
+[[mutant]]
+id = "m19-shared-unpublished"
+predicate = "reference values several columns hold are published as such"
+kills = "tests/test_figure_values.py::test_a_shared_reference_value_says_so"
+anchor = '''    if choice.shared:'''
+mutant = '''    if False:'''

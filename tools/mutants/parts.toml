@@ -2,7 +2,7 @@
 # The M19.3 closed artist set + legends + bands + ticks: one mutant per predicate, one red each
 # (`.agent/archive/contracts/m19u3.md` J2-J4).
 module = "src/verifier/figure/parts.py"
-tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
+tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py", "tests/test_figure_values.py"]
 
 [[mutant]]
 id = "m19-twin-same-position"
@@ -31,3 +31,10 @@ predicate = "a colorbar axes holds its own parts alone"
 kills = "tests/test_figure_corpus.py::test_corpus_case[colorbar-user-patch]"
 anchor = '''        if (artist.cls, artist.origin) not in _COLORBAR_PARTS:'''
 mutant = '''        if False:'''
+
+[[mutant]]
+id = "m19-pie-labels-as-text"
+predicate = "a pie's drawn labels are keys, apart from the listed on-chart text"
+kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
+anchor = '''                (labels if number in keys else texts).append(text)'''
+mutant = '''                texts.append(text)'''

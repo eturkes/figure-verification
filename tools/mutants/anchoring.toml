@@ -1,0 +1,498 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Request anchoring + G10 summary words (`anchoring.py`, moved from `pysrc/verify.py` by M19.4):
+# one mutant per predicate of the substitution + strict rules and their matcher.
+module = "src/verifier/figure/anchoring.py"
+tests = ["tests/test_pysrc_anchoring.py", "tests/test_pysrc_labels.py", "tests/test_pysrc_anchoring_strict.py", "tests/test_pysrc_anchoring_short.py", "tests/test_pysrc_anchoring_suffix.py", "tests/test_pysrc_anchoring_aliases.py"]
+
+[[mutant]]
+id = "q8-fuzzy-min-lowered"
+predicate = "edit-distance matching starts at five characters"
+kills = "tests/test_pysrc_anchoring.py::test_q8_fuzzy_matching_needs_five_characters"
+anchor = '''_FUZZY_MIN = 5'''
+mutant = '''_FUZZY_MIN = 4'''
+
+[[mutant]]
+id = "q8-ascii-min-lowered"
+predicate = "an ASCII header shorter than three characters never anchors"
+kills = "tests/test_pysrc_anchoring.py::test_q8_ascii_headers_shorter_than_three_never_anchor"
+anchor = '''_ASCII_ANCHOR_MIN = 3'''
+mutant = '''_ASCII_ANCHOR_MIN = 2'''
+
+[[mutant]]
+id = "q8-other-min-lowered"
+predicate = "a one-character Japanese header never anchors"
+kills = "tests/test_pysrc_anchoring.py::test_q8_one_character_japanese_headers_never_anchor"
+anchor = '''_OTHER_ANCHOR_MIN = 2'''
+mutant = '''_OTHER_ANCHOR_MIN = 1'''
+
+[[mutant]]
+id = "q8-other-min-raised"
+predicate = "a two-character Japanese header anchors"
+kills = "tests/test_pysrc_anchoring.py::test_q8_japanese_headers_anchor_inside_the_request"
+anchor = '''_OTHER_ANCHOR_MIN = 2'''
+mutant = '''_OTHER_ANCHOR_MIN = 3'''
+
+[[mutant]]
+id = "q8-script-boundary-dropped"
+predicate = "words split where ASCII meets another script"
+kills = "tests/test_pysrc_anchoring.py::test_q8_words_split_where_ascii_meets_japanese"
+anchor = '''_WORD = re.compile(r"[a-z0-9]+|[^\Wa-z0-9_]+")'''
+mutant = '''_WORD = re.compile(r"[^\W_]+")'''
+
+[[mutant]]
+id = "q8-underscore-kept"
+predicate = "an underscore separates words"
+kills = "tests/test_pysrc_anchoring.py::test_q8_underscore_reads_as_a_space"
+anchor = '''_WORD = re.compile(r"[a-z0-9]+|[^\Wa-z0-9_]+")'''
+mutant = '''_WORD = re.compile(r"[a-z0-9_]+|[^\Wa-z0-9_]+")'''
+
+[[mutant]]
+id = "q8-width-fold-dropped"
+predicate = "NFKC folds full-width forms before matching"
+kills = "tests/test_pysrc_anchoring.py::test_q8_width_folds_before_matching"
+anchor = '''_WORD.findall(unicodedata.normalize("NFKC", text).casefold())'''
+mutant = '''_WORD.findall(text.casefold())'''
+
+[[mutant]]
+id = "q8-case-fold-dropped"
+predicate = "case folds before matching"
+kills = "tests/test_pysrc_anchoring.py::test_q8_case_folds_before_matching"
+anchor = '''_WORD.findall(unicodedata.normalize("NFKC", text).casefold())'''
+mutant = '''_WORD.findall(unicodedata.normalize("NFKC", text))'''
+
+[[mutant]]
+id = "q8-length-gap-unbounded"
+predicate = "two words whose lengths differ by two are more than one edit apart"
+kills = "tests/test_pysrc_anchoring.py::test_q8_two_edits_name_nothing"
+anchor = '''    if abs(len(left) - len(right)) > 1:'''
+mutant = '''    if abs(len(left) - len(right)) > 2:'''
+
+[[mutant]]
+id = "q8-substitution-tail-misaligned"
+predicate = "an equal-length pair skips the substituted character on both sides"
+kills = "tests/test_pysrc_anchoring.py::test_q8_one_edit_names_a_long_header[inner-substitution]"
+anchor = '''            tail = index + 1 if len(left) == len(right) else index'''
+mutant = '''            tail = index'''
+
+[[mutant]]
+id = "q8-insertion-tail-misaligned"
+predicate = "an unequal-length pair skips the inserted character on the longer side alone"
+kills = "tests/test_pysrc_anchoring.py::test_q8_one_edit_names_a_long_header[deletion]"
+anchor = '''            tail = index + 1 if len(left) == len(right) else index'''
+mutant = '''            tail = index + 1'''
+
+[[mutant]]
+id = "q8-tie-admitted"
+predicate = "a span within one edit of two names, or a name two headers fold to, refuses"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_word_within_one_edit_of_two_headers_is_a_tie"
+anchor = '''    if tied and not ignore_ties:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q8-tie-beside-exact-name-lost"
+predicate = "a tie is judged per span, whatever names the rest of the request matches exactly"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_tie_beside_an_exact_name_still_refuses"
+anchor = '''[key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN]'''
+mutant = '''[key for key in by_key if " " not in key and len(key) >= _FUZZY_MIN and key not in named]'''
+
+[[mutant]]
+id = "q8-fold-collision-admitted"
+predicate = "one name that two headers fold to is a tie"
+kills = "tests/test_pysrc_anchoring.py::test_q8_two_headers_folding_to_one_name_tie"
+anchor = '''    tied += [[key] for key in named if len(by_key[key]) > 1]'''
+mutant = '''    tied += []'''
+
+[[mutant]]
+id = "q8-exact-span-not-consumed"
+predicate = "an exact name consumes its span, so no shorter name matches inside it"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_longer_name_consumes_the_shorter_one_inside_it"
+anchor = '''            while needle in rest:  # adjacent occurrences share a space; one pass skips every second
+                rest = rest.replace(needle, " \0 ")'''
+mutant = '''            pass'''
+
+[[mutant]]
+id = "q8-longest-first-dropped"
+predicate = "exact names match longest first"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_longer_name_consumes_the_shorter_one_inside_it"
+anchor = '''    for key in sorted(by_key, key=len, reverse=True):'''
+mutant = '''    for key in by_key:'''
+
+[[mutant]]
+id = "q8-japanese-near-dropped"
+predicate = "a Japanese name of 5+ characters matches a stretch of near length within one edit"
+kills = "tests/test_pysrc_anchoring.py::test_q8_one_edit_names_a_long_japanese_header"
+anchor = '''for width in (len(key) - 1, len(key), len(key) + 1)'''
+mutant = '''for width in ()'''
+
+[[mutant]]
+id = "q8-repeat-not-consumed"
+predicate = "an exact name consumes every occurrence, adjacent ones included"
+kills = "tests/test_pysrc_anchoring.py::test_q8_a_name_twice_in_a_row_is_consumed_both_times"
+anchor = '''            while needle in rest:  # adjacent occurrences share a space; one pass skips every second'''
+mutant = '''            if needle in rest:'''
+
+[[mutant]]
+id = "q8-places-not-merged"
+predicate = "overlapping near stretches are one place, so two names there tie"
+kills = "tests/test_pysrc_anchoring.py::test_q8_overlapping_near_matches_are_one_place"
+anchor = '''        if index != place_run or start >= place_end:'''
+mutant = '''        if True:'''
+
+
+# Q16 G10: summary words, one mutant per predicate.
+[[mutant]]
+id = "q16-ignore-ties-unhonoured"
+predicate = "the matcher honours a caller's request to ignore ties"
+kills = "tests/test_pysrc_labels.py::test_q16_a_tied_label_word_names_nothing"
+anchor = '''    if tied and not ignore_ties:'''
+mutant = '''    if tied:'''
+
+[[mutant]]
+id = "q16-median-unread"
+predicate = "a summary no admitted reduction computes refuses"
+kills = "tests/test_pysrc_labels.py::test_q16_a_summary_no_reduction_computes_refuses"
+anchor = '''    "median": None,'''
+mutant = '''    "never-a-summary": None,'''
+
+[[mutant]]
+id = "q16-header-word-read-as-summary"
+predicate = "an ASCII summary word that is a header word names that column"
+kills = "tests/test_pysrc_labels.py::test_q16_a_summary_word_inside_a_header_names_the_column"
+anchor = '''            if word in words and word not in header_words:'''
+mutant = '''            if word in words:'''
+
+[[mutant]]
+id = "q16-header-text-read-as-summary"
+predicate = "a Japanese summary word inside a header names that column"
+kills = "tests/test_pysrc_labels.py::test_q16_a_japanese_summary_word_inside_a_header_names_the_column"
+anchor = '''        elif word in joined and word not in header_text:'''
+mutant = '''        elif word in joined:'''
+
+[[mutant]]
+id = "q16-japanese-summary-unread"
+predicate = "Japanese summary words match inside the label"
+kills = "tests/test_pysrc_labels.py::test_q16_japanese_summary_words_match_inside_the_label"
+anchor = '''        elif word in joined and word not in header_text:'''
+mutant = '''        elif False:'''
+
+# Q38 stop phrases + negation: one mutant per predicate of `_unnamed_places`.
+[[mutant]]
+id = "q38-stop-phrases-unread"
+predicate = "N1: a stop phrase names no header"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n1_a_stop_phrase_names_no_header[chronological order]"
+anchor = '''    for phrase in _STOP_PHRASES:'''
+mutant = '''    for phrase in ():'''
+
+[[mutant]]
+id = "q38-stop-phrase-header-consumed"
+predicate = "N1: a phrase that is a header's whole name stays a name"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n1_a_header_spelled_as_a_stop_phrase_is_still_named"
+anchor = '''        while phrase not in names and needle in rest:'''
+mutant = '''        while needle in rest:'''
+
+[[mutant]]
+id = "q38-english-negation-unread"
+predicate = "N2: a name after an English cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_an_english_cue_unnames_the_header_after_it[not]"
+anchor = '''    for cue in _NEGATION_BEFORE.finditer(rest):'''
+mutant = '''    for cue in ():'''
+
+[[mutant]]
+id = "q38-english-negation-exact-only"
+predicate = "N2: a negated word within one edit of a long name is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_a_negated_name_within_one_edit_is_unnamed"
+anchor = '''    if word.isascii() and any(_within_one(word, key) for key in fuzzy):'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q38-filler-unread"
+predicate = "N2: one `the`/`any` may sit between the cue and the name"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_an_english_cue_unnames_the_header_after_it[not the]"
+anchor = '''        if end is None and rest.startswith(_FILLERS, start):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q38-filler-read-first"
+predicate = "N2: the cue's own successor is tried as a name before a filler word"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n2_a_header_opening_with_a_filler_word_is_negated[any_adverse_event-Chart revenue, not any adverse event]"
+anchor = '''        end = _negated_end(rest, start, keys, fuzzy)
+        if end is None and rest.startswith(_FILLERS, start):'''
+mutant = '''        end = None
+        if rest.startswith(_FILLERS, start):'''
+
+[[mutant]]
+id = "q38-english-negation-skips-any-word"
+predicate = "N4: a cue before a non-name negates nothing"
+kills = "tests/test_pysrc_labels.py::test_q38_a_cue_before_a_non_name_negates_nothing_in_a_label"
+anchor = '''        if end is None and rest.startswith(_FILLERS, start):
+            end = _negated_end(rest, start + 4, keys, fuzzy)'''
+mutant = '''        if end is None:
+            end = _negated_end(rest, rest.find(" ", start + 1), keys, fuzzy)'''
+
+[[mutant]]
+id = "q38-negation-consumes-every-occurrence"
+predicate = "N4: a name negated at one place and named at another stays named"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n4_a_name_negated_once_and_named_elsewhere_stays_named"
+anchor = '''        rest = "".join([*pieces, rest[last:]])'''
+mutant = '''        rest = rest.replace(rest[spans[0][0] : spans[0][1] + 1], " \0 ")'''
+
+[[mutant]]
+id = "q38-negated-place-joins-a-tie"
+predicate = "N4: a negated place takes part in no tie"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n4_a_negated_place_joins_no_tie"
+anchor = '''    if word.isascii() and any(_within_one(word, key) for key in fuzzy):'''
+mutant = '''    if word.isascii() and sum(_within_one(word, key) for key in fuzzy) == 1:'''
+
+[[mutant]]
+id = "q38-japanese-negation-unread"
+predicate = "N3: a name before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_japanese_cue_unnames_the_header_before_it[dewanaku]"
+anchor = '''        for after in _NEGATION_AFTER:'''
+mutant = '''        for after in ():'''
+
+[[mutant]]
+id = "q38-japanese-negation-ascii-header-missed"
+predicate = "N3: an ASCII header before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_japanese_cue_unnames_an_ascii_header_before_it"
+anchor = '''        gap = " " if key[-1].isascii() else ""'''
+mutant = '''        gap = ""'''
+
+[[mutant]]
+id = "q38-japanese-negation-mixed-script-missed"
+predicate = "N3: a Japanese header ending in ASCII before a Japanese cue is unnamed"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_a_mixed_script_header_ending_in_ascii_is_unnamed[dewanaku]"
+anchor = '''        gap = " " if key[-1].isascii() else ""'''
+mutant = '''        gap = " " if key.isascii() else ""'''
+
+[[mutant]]
+id = "q38-japanese-negation-containment-lost"
+predicate = "N3: a non-ASCII name before a Japanese cue is matched by containment, as naming is"
+kills = "tests/test_pysrc_anchoring.py::test_q38_n3_negation_matches_by_containment_like_naming"
+anchor = '''        lead = " " if key.isascii() else ""'''
+mutant = '''        lead = " " if key[0].isascii() else ""'''
+
+[[mutant]]
+id = "q38-cue-inside-negated-name-read"
+predicate = "N4: a cue word inside a negated name is part of that name, not a second cue"
+kills = "tests/test_pysrc_anchoring.py::test_q38_a_cue_inside_a_negated_name_is_not_a_second_cue"
+anchor = '''        if spans and cue.start() < spans[-1][1]:
+            continue
+'''
+mutant = '''        pass
+'''
+
+# Q37 strict anchoring (production): one mutant per predicate.
+[[mutant]]
+id = "q37-unnameable-required"
+predicate = "S2: a column no request can name is not required"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[two-char-ascii]"
+anchor = '''    column in columns and len(key) >= _floor(key)'''
+mutant = '''    column in columns'''
+
+[[mutant]]
+id = "q37-unnameable-japanese-required"
+predicate = "S2: a one-character Japanese column is not required"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_column_no_request_can_name_is_not_required[one-char-japanese]"
+anchor = '''    column in columns and len(key) >= _floor(key)'''
+mutant = '''    column in columns and len(key) >= 1'''
+
+[[mutant]]
+id = "q37-negation-unreported"
+predicate = "S2: a Japanese negation reports itself to the strict trigger"
+kills = "tests/test_pysrc_anchoring_strict.py::test_q37_s2_a_japanese_negation_triggers_strict"
+anchor = '''                negated = True'''
+mutant = '''                pass'''
+
+# Q41-Q42: Japanese short words + suffixes.
+[[mutant]]
+id = "q41-drop-last-unread"
+predicate = "T1: a run equal to the name minus its last character names it"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-last]"
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if {run[0], stem} & {key[1:]}}'''
+
+[[mutant]]
+id = "q41-drop-first-unread"
+predicate = "T1: a run equal to the name minus its first character names it"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict[drop-first]"
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if {run[0], stem} & {key[:-1]}}'''
+
+[[mutant]]
+id = "q41-part-of-run-names"
+predicate = "T1: the WHOLE kanji run must equal the shortened name"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_whole_run_must_match_not_a_part_of_it"
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if any(part in run[0] for part in (key[1:], key[:-1]))}'''
+
+[[mutant]]
+id = "q41-two-fits-name-one"
+predicate = "T1: a run fitting two names names neither"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_fitting_two_names_names_neither"
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if fits:'''
+
+[[mutant]]
+id = "q41-negation-cue-ignored"
+predicate = "T1: a short word before a Japanese negation cue names nothing"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_before_a_negation_cue_names_nothing"
+anchor = '''        if words.startswith(_NEGATION_AFTER, end) or any('''
+mutant = '''        if False or any('''
+
+[[mutant]]
+id = "q41-exact-overlap-ignored"
+predicate = "T1: a run a Japanese header name overlaps belongs to that exact name"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_an_exact_name_covers_names_only_that_name"
+anchor = '''            key in words[max(0, start - len(key) + 1) : end + len(key) - 1] for key in exact'''
+mutant = '''            False for key in exact'''
+
+[[mutant]]
+id = "q41-run-read-after-consumption"
+predicate = "T1: a run is whole in the request before any name is consumed"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_is_whole_in_the_request_before_names_are_consumed"
+anchor = '''        named |= _short_names(words, by_key)'''
+mutant = '''        named |= _short_names(rest, by_key)'''
+
+[[mutant]]
+id = "q41-fold-twin-names"
+predicate = "T1: a name two headers fold to never names by a short word"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_column_two_headers_fold_to_reads_no_short_word"
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if len(fits) == 1 or len({column for key in fits for column in by_key[key]}) == 1:'''
+
+[[mutant]]
+id = "q41-fold-twin-leaves-the-count"
+predicate = "T1: a fold-twin name still ties a run it fits"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_fold_twin_name_still_ties_a_run_it_fits"
+anchor = '''    keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX]'''
+mutant = '''    keys = [key for key in exact if len(key) <= _SHORT_NAME_MAX and len(by_key[key]) == 1]'''
+
+[[mutant]]
+id = "q41-supplementary-ideographs-split-a-run"
+predicate = "T1: an Ext B+ ideograph (`𠮷`) is part of a kanji run"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_spans_every_nfkc_stable_ideograph[ext-b-in-run]"
+anchor = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")'''
+mutant = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")'''
+
+[[mutant]]
+id = "q41-compatibility-ideographs-split-a-run"
+predicate = "T1: an NFKC-stable compatibility ideograph (`﨑`) is part of a kanji run"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_a_run_spans_every_nfkc_stable_ideograph[compat-in-run]"
+anchor = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003ffff]+")'''
+mutant = '''_KANJI_RUN = re.compile(r"[\u3005\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0003ffff]+")'''
+
+[[mutant]]
+id = "q41-four-character-names-dropped"
+predicate = "T1: names of up to four characters read short words"
+kills = "tests/test_pysrc_anchoring_short.py::test_q41_t1_reads_four_characters_and_the_one_edit_tier_reads_five"
+anchor = '''_SHORT_NAME_MAX = 4'''
+mutant = '''_SHORT_NAME_MAX = 3'''
+
+[[mutant]]
+id = "q42-suffix-unread"
+predicate = "U1: a run ending in a grouping suffix is read without it"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_counts_for_the_substitution_check"
+anchor = '''cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")'''
+mutant = '''cut = ""'''
+
+[[mutant]]
+id = "q42-betsu-dropped"
+predicate = "U1: `別` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[betsu]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "毎", "次")'''
+
+[[mutant]]
+id = "q42-mai-dropped"
+predicate = "U1: `毎` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[mai]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "別", "次")'''
+
+[[mutant]]
+id = "q42-ji-dropped"
+predicate = "U1: `次` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[ji]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("単位", "別", "毎")'''
+
+[[mutant]]
+id = "q42-tani-dropped"
+predicate = "U1: `単位` is a listed suffix"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict[tani]"
+anchor = '''_SUFFIXES = ("単位", "別", "毎", "次")'''
+mutant = '''_SUFFIXES = ("別", "毎", "次")'''
+
+[[mutant]]
+id = "q42-cut-anywhere"
+predicate = "U2: the suffix is cut at the run's end only"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u2_the_suffix_is_cut_at_the_end_only"
+anchor = '''        cut = next((suffix for suffix in _SUFFIXES if run[0].endswith(suffix)), "")
+        stem = run[0][: len(run[0]) - len(cut)] if cut else ""'''
+mutant = '''        cut = next((suffix for suffix in _SUFFIXES if suffix in run[0]), "")
+        stem = run[0].replace(cut, "") if cut else ""'''
+
+[[mutant]]
+id = "q42-cut-repeatedly"
+predicate = "U2: the suffix is cut once"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u2_the_suffix_is_cut_once"
+anchor = '''        stem = run[0][: len(run[0]) - len(cut)] if cut else ""'''
+mutant = '''        stem = run[0].rstrip("".join(_SUFFIXES)) if cut else ""'''
+
+[[mutant]]
+id = "q42-run-before-stem"
+predicate = "U1: a run and its stem fitting different names name neither"
+kills = "tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_run_and_its_stem_fitting_different_names_name_neither"
+anchor = '''        fits = {key for key in keys if {run[0], stem} & {key[1:], key[:-1]}}'''
+mutant = '''        fits = {key for key in keys if run[0] in (key[1:], key[:-1])} or {key for key in keys if stem in (key[1:], key[:-1])}'''
+
+# Q43: admin-declared column aliases (`.agent/archive/contracts/q43.md`).
+[[mutant]]
+id = "q43-aliases-unread"
+predicate = "V3: an alias names its column"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_names_its_column_under_strict"
+anchor = '''    for target, alias in aliases:'''
+mutant = '''    for target, alias in ():'''
+
+[[mutant]]
+id = "q43-alias-column-unfolded"
+predicate = "V3: an alias binds every column whose FOLDED name equals its column"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_matches_by_folded_column_and_alias"
+anchor = '''if _words(column) == _words(target)'''
+mutant = '''if column == target'''
+
+[[mutant]]
+id = "q43-self-alias-ties"
+predicate = "V3: an alias spelling its own column's name is no tie"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_of_its_own_column_name_is_no_tie"
+anchor = '''            if column not in columns:
+                columns.append(column)'''
+mutant = '''            columns.append(column)'''
+
+[[mutant]]
+id = "q43-nameable-ignores-aliases"
+predicate = "V3: an anchoring-length alias makes a short column nameable under strict"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_an_alias_makes_a_short_column_nameable_under_strict"
+anchor = '''for key, columns in _keys((column,), aliases).items()'''
+mutant = '''for key, columns in _keys((column,), ()).items()'''
+
+[[mutant]]
+id = "q43-summary-exemption-unthreaded"
+predicate = "V3: a summary word an alias uses names that column, never a summary"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_a_summary_word_an_alias_uses_names_its_column"
+anchor = '''header_text = " ".join(_keys(header, aliases))'''
+mutant = '''header_text = " ".join(_keys(header, ()))'''
+
+[[mutant]]
+id = "q43-near-one-column-ties"
+predicate = "V3: one place near a column's name and its alias names that column, never a tie"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_names_of_one_column_at_one_place_are_no_tie"
+anchor = '''        if len(keys) == 1 or len({column for key in keys for column in by_key[key]}) == 1:'''
+mutant = '''        if len(keys) == 1:'''
+
+[[mutant]]
+id = "q43-short-one-column-ties"
+predicate = "V3: a kanji run fitting several names of one column names it"
+kills = "tests/test_pysrc_anchoring_aliases.py::test_q43_v3_short_words_fitting_names_of_one_column_name_it"
+anchor = '''        if len({column for key in fits for column in by_key[key]}) == 1:'''
+mutant = '''        if len(fits) == 1 and len({column for key in fits for column in by_key[key]}) == 1:'''

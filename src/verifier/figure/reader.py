@@ -297,12 +297,11 @@ def _pie(original: Callable[..., Any]) -> Callable[..., Any]:
 
         def record() -> None:
             call = _bound(original, args, kwargs)
-            labels = _argument(call, "labels")
             facts = {
                 "values": _floats(_argument(call, "x")),
                 "normalize": bool(call["normalize"]),
                 "wedges": list(result[0]),
-                "labels": None if labels is None else [str(label) for label in labels],
+                "texts": list(result[1]),
             }
             call["self"].__dict__.setdefault("_fv_pies", []).append(facts)
 
@@ -784,7 +783,17 @@ def _axes(axes: Any, figure: Any, run: _Run) -> dict[str, Any]:
     pies = []
     for record in getattr(axes, "_fv_pies", ()):
         run.spend(len(record["values"]))
-        pies.append({**record, "wedges": _member_indices(record["wedges"], children)})
+        pies.append(
+            {
+                **record,
+                "wedges": _member_indices(record["wedges"], children),
+                # A label Text the program removed reads as None: that wedge shows no label.
+                "texts": [
+                    next((index for index, child in enumerate(children) if child is text), None)
+                    for text in record["texts"]
+                ],
+            }
+        )
     colorbar = getattr(axes, "_colorbar", None)
     position = axes.get_position()
     siblings = figure.axes

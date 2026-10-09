@@ -7,7 +7,7 @@ level, so every closed key set and exact type check is reached through `parse_de
 
 import json
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -17,6 +17,7 @@ from verifier.figure.description import (
     TAG,
     Description,
     NoGeometry,
+    TextGeometry,
     parse_description,
 )
 
@@ -69,7 +70,10 @@ def test_p6_round_trip_reaches_every_geometry() -> None:
     }
     first, second, third = described.figures[0].axes
     assert first.legend is not None and len(first.legend.entries) == 2
-    assert second.pies[0].labels == ("x", "y")
+    assert [second.artists[cast("int", i)].geometry for i in second.pies[0].texts] == [
+        TextGeometry("x"),
+        TextGeometry("y"),
+    ]
     assert third.containers[0].hist is not None
     assert isinstance(third.artists[-1].geometry, NoGeometry)
 

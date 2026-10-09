@@ -1,0 +1,740 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19 rule corpus, values + columns: per rule, programs that must block with that rule's reason and
+# honest twins that must pass. Format = `integrity.toml`'s; `anchoring` = "strict" (production,
+# the default) or "substitution" (the demo).
+
+# --- values ---------------------------------------------------------------------------------------
+
+[[case]]
+id = "made-up-values"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "US"], [50000, 60000])
+'''
+
+[[case]]
+id = "computed-curve"
+expect = "value_not_found"
+site = 4
+request = "Plot a sine wave from 0 to 6"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+x = np.arange(0, 7)
+plt.plot(x, np.sin(x))
+'''
+
+[[case]]
+id = "typed-values"
+expect = "pass"
+rule = "value_not_found"
+request = "Plot 3, 1, 4, 1, 5"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([3, 1, 4, 1, 5], marker="o")
+'''
+
+[[case]]
+id = "typed-range"
+expect = "pass"
+rule = "value_not_found"
+request = "Bars for 1 through 5"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(range(1, 6), range(1, 6))
+'''
+
+[[case]]
+id = "typed-range-ja"
+expect = "pass"
+rule = "value_not_found"
+request = "1から5までの棒グラフ"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(range(1, 6), range(1, 6))
+'''
+
+[[case]]
+id = "csv-and-target"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue by month with a target line at 25000"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.plot(totals.index, totals.values, marker="o", label="revenue")
+plt.axhline(25000, color="red", linestyle="--", label="target")
+plt.legend()
+'''
+
+[[case]]
+id = "subset-of-groups"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Total revenue for the US region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index[1:], totals.values[1:])
+'''
+
+[[case]]
+id = "series-label-swapped"
+expect = "value_not_found"
+site = 5
+csv = "weather.csv"
+request = "London temp_c by date"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv", parse_dates=["date"])
+london = df[df["city"] == "London"]
+plt.plot(london["date"], london["temp_c"], label="Cairo")
+plt.legend()
+'''
+
+[[case]]
+id = "labels-not-typed"
+expect = "label_not_in_request"
+site = 2
+request = "Plot 3, 5, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["apples", "pears", "plums"], [3, 5, 9])
+'''
+
+[[case]]
+id = "labels-typed"
+expect = "pass"
+rule = "label_not_in_request"
+request = "Plot apples 3, pears 5, plums 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["apples", "pears", "plums"], [3, 5, 9])
+'''
+
+[[case]]
+id = "repeated-category"
+expect = "category_not_unique"
+site = 3
+request = "Bars a 1 and a 2"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=["a", "a"]).plot(kind="bar")
+'''
+
+[[case]]
+id = "unique-categories"
+expect = "pass"
+rule = "category_not_unique"
+request = "Bars a 1 and b 2"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=["a", "b"]).plot(kind="bar")
+'''
+
+[[case]]
+id = "unreadable-csv"
+expect = "csv_not_parsable"
+site = 2
+csv = "ragged.csv"
+request = "Chart the values"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [1, 2])
+'''
+
+# V1: each explanation family passes honest and blocks one changed value and one changed key.
+
+[[case]]
+id = "raw-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue against orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+plt.scatter(df["orders"], df["revenue"])
+'''
+
+[[case]]
+id = "raw-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Revenue against orders"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([80, 61, 93], [12000, 9000, 15001])
+'''
+
+[[case]]
+id = "raw-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Revenue against orders"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([80, 61, 94], [12000, 9000, 15000])
+'''
+
+[[case]]
+id = "index-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Revenue per row"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([12000, 9000, 15000, 11000, 13000, 14001])
+'''
+
+[[case]]
+id = "index-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Revenue per row"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1, 2, 3, 4, 6], [12000, 9000, 15000, 11000, 13000, 14000])
+'''
+
+[[case]]
+id = "sum-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "US"], [34000, 40001])
+'''
+
+[[case]]
+id = "sum-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "UK"], [34000, 40000])
+'''
+
+[[case]]
+id = "mean-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Average revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+means = df.groupby("region")["revenue"].mean()
+plt.bar(means.index, means.values)
+'''
+
+[[case]]
+id = "mean-rounded"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Average revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "US"], [11333.33, 13333.33])
+'''
+
+[[case]]
+id = "mean-swapped-keys"
+expect = "value_not_found"
+site = 5
+csv = "sales.csv"
+request = "Average revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+means = df.groupby("region")["revenue"].mean()
+plt.bar(means.index, means.values[::-1])
+'''
+
+[[case]]
+id = "max-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Highest revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+peaks = df.groupby("region")["revenue"].max()
+plt.bar(peaks.index, peaks.values)
+'''
+
+[[case]]
+id = "max-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Highest revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "US"], [14000, 15500])
+'''
+
+[[case]]
+id = "max-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Highest revenue by region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "UK"], [14000, 15000])
+'''
+
+[[case]]
+id = "min-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Lowest orders by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+lows = pd.read_csv("{data}/sales.csv").groupby("month")["orders"].min()
+plt.bar(lows.index, lows.values)
+'''
+
+[[case]]
+id = "min-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Lowest orders by month"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["2026-01", "2026-02", "2026-03"], [61, 70, 87])
+'''
+
+[[case]]
+id = "min-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Lowest orders by month"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["2026-01", "2026-02", "2026-04"], [61, 70, 86])
+'''
+
+[[case]]
+id = "count-changed-value"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Rows per region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "US"], [3, 4])
+'''
+
+[[case]]
+id = "count-changed-key"
+expect = "value_not_found"
+site = 2
+csv = "sales.csv"
+request = "Rows per region"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["EU", "UK"], [3, 3])
+'''
+
+[[case]]
+id = "series-label-filters"
+expect = "pass"
+rule = "value_not_found"
+csv = "weather.csv"
+request = "London temp_c by date"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv", parse_dates=["date"])
+london = df[df["city"] == "London"]
+plt.plot(london["date"], london["temp_c"], label="London")
+plt.legend()
+'''
+
+[[case]]
+id = "labels-typed-ja"
+expect = "pass"
+rule = "label_not_in_request"
+request = "Ａは3、Ｂは5の棒グラフ"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["A", "B"], [3, 5])
+'''
+
+[[case]]
+id = "labels-not-typed-ja"
+expect = "label_not_in_request"
+site = 2
+request = "Ａは3、Ｂは5の棒グラフ"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["A", "C"], [3, 5])
+'''
+
+# --- columns --------------------------------------------------------------------------------------
+
+[[case]]
+id = "substituted-column"
+expect = "column_not_requested"
+csv = "sales.csv"
+request = "Chart revenue by region"
+anchoring = "substitution"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["orders"].sum()
+plt.bar(totals.index, totals.values)
+'''
+
+[[case]]
+id = "requested-column"
+expect = "pass"
+rule = "column_not_requested"
+csv = "sales.csv"
+request = "Chart orders by region"
+anchoring = "substitution"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["orders"].sum()
+plt.bar(totals.index, totals.values)
+'''
+
+[[case]]
+id = "tied-columns"
+expect = "column_not_requested"
+site = 4
+csv = "twins.csv"
+request = "Chart the values by name"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/twins.csv")
+plt.bar(df["name"], df["first"])
+'''
+
+[[case]]
+id = "tie-broken-by-request"
+expect = "pass"
+rule = "column_not_requested"
+csv = "twins.csv"
+request = "Chart first by name"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/twins.csv")
+plt.bar(df["name"], df["first"])
+'''
+
+[[case]]
+id = "unnamed-column-strict"
+expect = "column_not_named"
+csv = "sales.csv"
+request = "Total revenue"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+'''
+
+[[case]]
+id = "named-columns-strict"
+expect = "pass"
+rule = "column_not_named"
+csv = "sales.csv"
+request = "Total revenue by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+'''
+
+[[case]]
+id = "unnamed-column-substitution"
+expect = "pass"
+rule = "column_not_named"
+csv = "sales.csv"
+request = "Total revenue"
+anchoring = "substitution"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+'''
+
+[[case]]
+id = "title-names-another-column"
+expect = "label_not_consistent"
+site = 5
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.title("Orders by region")
+'''
+
+[[case]]
+id = "title-names-another-reduction"
+expect = "label_not_consistent"
+site = 5
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.title("Average revenue by region")
+'''
+
+[[case]]
+id = "title-consistent"
+expect = "pass"
+rule = "label_not_consistent"
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals.values)
+plt.title("Total revenue by region")
+plt.xlabel("region")
+plt.ylabel("revenue")
+'''
+
+# Encoded channels (user, M19.4): colour values a colorbar or colour key shows and sizes a size
+# key shows are drawn values, keyed like their points; that column counts as drawn.
+
+[[case]]
+id = "colour-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=df["orders"])
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "colour-made-up"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=[1, 2, 3, 4, 5, 6])
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "colour-shuffled"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=df["orders"][::-1].values)
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "colour-key-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=df["orders"])
+plt.legend(*dots.legend_elements())
+'''
+
+[[case]]
+id = "size-honest"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], s=df["orders"])
+plt.legend(*dots.legend_elements("sizes"))
+'''
+
+[[case]]
+id = "size-scaled"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], s=df["orders"] * 3)
+plt.legend(*dots.legend_elements("sizes"))
+'''
+
+[[case]]
+id = "colour-column-unnamed"
+expect = "column_not_named"
+csv = "weather.csv"
+request = "temp_c against precip_mm"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv")
+dots = plt.scatter(df["precip_mm"], df["temp_c"], c=df["aqi"])
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "colour-column-named"
+expect = "pass"
+rule = "column_not_named"
+csv = "weather.csv"
+request = "temp_c against precip_mm, coloured by aqi"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv")
+dots = plt.scatter(df["precip_mm"], df["temp_c"], c=df["aqi"])
+plt.colorbar(dots)
+'''
+
+[[case]]
+id = "colorbar-label-other-column"
+expect = "label_not_consistent"
+site = 6
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=df["orders"])
+bar = plt.colorbar(dots)
+bar.set_label("month")
+'''
+
+[[case]]
+id = "colorbar-label-consistent"
+expect = "pass"
+rule = "label_not_consistent"
+csv = "sales.csv"
+request = "Revenue against orders, coloured by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], c=df["orders"])
+bar = plt.colorbar(dots)
+bar.set_label("orders")
+'''
+
+# --- the shipped banner programs ------------------------------------------------------------------
+
+[[case]]
+id = "sentinel-simple"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Chart the total revenue of each region using bars."
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Read the CSV file
+df = pd.read_csv('{data}/sales.csv')
+
+# Group by 'region' and calculate the sum of 'revenue'
+grouped_revenue = df.groupby('region')['revenue'].sum()
+
+# Plot the grouped revenue
+plt.figure(figsize=(10, 6))
+grouped_revenue.plot(kind='bar')
+plt.title('Total Revenue by Region')
+plt.xlabel('Region')
+plt.ylabel('Revenue')
+plt.xticks(rotation=45)
+plt.show()
+'''
+
+[[case]]
+id = "ja-sales-simple"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "地域ごとの総売上を棒グラフにしてください。"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Load the CSV file into a DataFrame
+df = pd.read_csv('{data}/sales.csv')
+
+# Group by 'region' and calculate the sum of 'revenue'
+grouped_sum = df.groupby('region')['revenue'].sum()
+
+# Plot the grouped sum
+plt.figure(figsize=(10, 6))
+grouped_sum.plot(kind='bar', color='skyblue')
+plt.title('Total Revenue by Region')
+plt.xlabel('Region')
+plt.ylabel('Revenue')
+plt.xticks(rotation=45)
+plt.grid(True)
+plt.show()
+'''

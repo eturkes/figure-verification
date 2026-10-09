@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 keys: what each key axis shows at a point's position (`.agent/archive/contracts/m19u4.md` U2).
+module = "src/verifier/figure/keys.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-half-gap-widened"
+predicate = "a label names a point within half the gap between labelled ticks"
+kills = "tests/test_figure_values.py::test_keys_labels_within_half_the_tick_gap"
+anchor = '''        self._half = min(gaps) / 2 if gaps else _BAND'''
+mutant = '''        self._half = min(gaps) if gaps else _BAND'''
+
+[[mutant]]
+id = "m19-slot-rounded"
+predicate = "only an integral position is a slot"
+kills = "tests/test_figure_values.py::test_keys_a_point_off_every_label_has_no_key"
+anchor = '''        return Key(slot=int(position)) if position.is_integer() and position >= 0 else _NONE'''
+mutant = '''        return Key(slot=int(position)) if position >= 0 else _NONE'''
+
+[[mutant]]
+id = "m19-labels-ignored"
+predicate = "a labelled numeric axis shows its labels, not its numbers"
+kills = "tests/test_figure_values.py::test_keys_labels_within_half_the_tick_gap"
+anchor = '''        if not self._labelled:'''
+mutant = '''        if True:'''

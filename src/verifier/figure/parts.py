@@ -66,6 +66,7 @@ class Panel:
     axes: Axes
     marks: tuple[Mark, ...]
     texts: tuple[str, ...]
+    pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -214,6 +215,8 @@ def _judged_axes(figure: Figure) -> list[int]:
 def _panel(index: int, axes: Axes) -> Panel:
     families: dict[int, Family] = {}
     texts: list[str] = []
+    labels: list[str] = []
+    keys = {text for pie in axes.pies for text in pie.texts if text is not None}
     for number, artist in enumerate(axes.artists):
         if artist.cls in _RASTER:
             block("raster_image", artist.site)
@@ -221,7 +224,9 @@ def _panel(index: int, axes: Axes) -> Panel:
         if kind is None:
             block("artist_not_judged", artist.site)
         if kind == "text":
-            texts.append(cast("TextGeometry", artist.geometry).text)
+            text = cast("TextGeometry", artist.geometry).text
+            if text.strip():
+                (labels if number in keys else texts).append(text)
         else:
             families[number] = kind
     bands = [axes.artists[i] for i, family in families.items() if family == "band"]
@@ -231,7 +236,7 @@ def _panel(index: int, axes: Axes) -> Panel:
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
-    return Panel(index, axes, tuple(marks), tuple(texts))
+    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels))
 
 
 def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:

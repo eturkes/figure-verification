@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 request numbers + ranges (`.agent/archive/contracts/m19u4.md` V3). Renamed `request.toml`
+# once `pysrc/request.py` and its catalogue retire.
+module = "src/verifier/figure/request.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-hyphen-range"
+predicate = "an ASCII hyphen joins no number"
+kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
+anchor = '''(?<![0-9]-)(?P<sign>'''
+mutant = '''(?P<sign>'''
+
+[[mutant]]
+id = "m19-comma-one-reading"
+predicate = "`1,200` reads both ways"
+kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
+anchor = '''    return (whole, *listed)'''
+mutant = '''    return (whole,)'''
+
+[[mutant]]
+id = "m19-word-number"
+predicate = "a digit inside a word is no number"
+kills = "tests/test_figure_values.py::test_request_ranges_need_their_words"
+anchor = '''(?<![0-9A-Za-z_.])'''
+mutant = '''(?<![0-9_.])'''
+
+[[mutant]]
+id = "m19-through-unread"
+predicate = "`a through b` expands"
+kills = "tests/test_figure_corpus.py::test_corpus_case[typed-range]"
+anchor = '''(?:through|thru|to)'''
+mutant = '''(?:thru|to)'''
+
+[[mutant]]
+id = "m19-kara-unread"
+predicate = "`aからbまで` expands"
+kills = "tests/test_figure_corpus.py::test_corpus_case[typed-range-ja]"
+anchor = '''~〜]\\s*$|^\\s*から\\s*$'''
+mutant = '''~〜]\\s*$'''
+
+[[mutant]]
+id = "m19-made-unneeded"
+predicate = "`aからb` without まで is no range"
+kills = "tests/test_figure_values.py::test_request_ranges_need_their_words"
+anchor = '''            ranged = folded.startswith(_UNTIL, right.end())'''
+mutant = '''            ranged = True'''
+
+[[mutant]]
+id = "m19-range-unbounded"
+predicate = "a range past MAX_RANGE adds its ends alone"
+kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
+anchor = '''        if high - low < MAX_RANGE:'''
+mutant = '''        if True:'''
+
+[[mutant]]
+id = "m19-range-one-way"
+predicate = "a descending range expands"
+kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
+anchor = '''        low, high = min(start, end), max(start, end)'''
+mutant = '''        low, high = start, end'''
+
+[[mutant]]
+id = "m19-label-unfolded"
+predicate = "typed labels compare after NFKC"
+kills = "tests/test_figure_corpus.py::test_corpus_case[labels-typed-ja]"
+anchor = '''    return unicodedata.normalize("NFKC", text).replace("\N{MINUS SIGN}", "-").casefold()'''
+mutant = '''    return text.replace("\N{MINUS SIGN}", "-").casefold()'''

@@ -176,7 +176,7 @@ class PieRecord:
     values: tuple[float, ...]
     normalize: bool
     wedges: tuple[int, ...]
-    labels: tuple[str, ...] | None
+    texts: tuple[int | None, ...]  # each wedge's drawn label Text (artist index), if any
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,12 +535,12 @@ def _container(value: object) -> Container:
 
 
 def _pie(value: object) -> PieRecord:
-    item = _object(value, ("values", "normalize", "wedges", "labels"))
+    item = _object(value, ("values", "normalize", "wedges", "texts"))
     return PieRecord(
         _tuple(item["values"], _float),
         _bool(item["normalize"]),
         _tuple(item["wedges"], _int),
-        _optional(item["labels"], lambda labels: _tuple(labels, _str)),
+        _tuple(item["texts"], lambda index: _optional(index, _int)),
     )
 
 

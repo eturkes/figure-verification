@@ -169,8 +169,8 @@ projection + exact recomputation and observation is additive.
 - **Strict anchoring = production's rule (Q37, user: strict for production, the demo functional;
   `.agent/archive/contracts/q37.md`).** `DatasetTarget.anchoring` = `strict` (default) |
   `substitution` (the demo's Q8 rule). Strict = the substitution check, then: a request that names
-  OR negates ≥1 header column (`verify.py::_anchors`) must name every drawn column a request can
-  name (`verify.py::_nameable`: folded name or an admin alias ≥ the anchor minimum), else `column_not_named`. A drawn
+  OR negates ≥1 header column (`anchoring.py::anchors`) must name every drawn column a request can
+  name (`anchoring.py::nameable`: folded name or an admin alias ≥ the anchor minimum), else `column_not_named`. A drawn
   negated column is unnamed ⇒ refuses; a column two headers fold to can never be named ⇒ drawn
   under an anchored request it refuses. Production pays the cost in request wording, not proposer
   strength. A1 strict leg: false refusals of faithful intents EN 5/18 · JA 0/18 (4/18 before Q41)
@@ -183,7 +183,7 @@ projection + exact recomputation and observation is additive.
   `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`, the demo subclasses
   (`webui/paste_in/demo_tool.py`, `webui/paste_in/demo_filter.py`) = `substitution`.
 - **Japanese short words name short columns under strict alone (Q41,
-  `.agent/archive/contracts/q41.md`).** `verify.py::_short_names`: a whole kanji run (`々` + every
+  `.agent/archive/contracts/q41.md`).** `anchoring.py::_short_names`: a whole kanji run (`々` + every
   CJK ideograph block NFKC leaves in place: Ext A, the main block, compatibility `﨑`, Ext B+ `𠮷`)
   of the folded request, read before any name is consumed (`診療科別` stays one run where `診療科` is a header),
   equal to a 2-4 character Japanese name minus its first or last character names it (`月ごと` →
@@ -193,7 +193,7 @@ projection + exact recomputation and observation is additive.
   is the one-edit tier's: dropping one end is one edit. The shared matcher is unchanged, so the
   demo's substitution rule + G10 labels never read short words. Trust limit: a short word names the
   one header it fits (`年ごと` over a header whose only fit is `年齢` names `年齢`). Q42
-  (`.agent/archive/contracts/q42.md`): a run ending in one grouping suffix (`verify.py::_SUFFIXES` = `単位`
+  (`.agent/archive/contracts/q42.md`): a run ending in one grouping suffix (`anchoring.py::_SUFFIXES` = `単位`
   `別` `毎` `次`, cut once, at the end) is read again without it (`月別` → `年月`); the run and its
   stem fitting different names = a tie. Risk: a word ending in a listed suffix by itself (`区別`,
   `目次`) can name a header its stem fits (`区` → `地区`).
@@ -203,7 +203,7 @@ projection + exact recomputation and observation is additive.
   request's own chart draws: `年月`, once `日付`), clinical false refusals strict 0/20 (1/20 before
   Q42: `月別`), substitution 0/20.
 - **Admin-declared column aliases (Q43, `.agent/archive/contracts/q43.md`).** `DatasetTarget.aliases`
-  (`spec.Aliases` = (column, alias) pairs; `()` default = every verdict as before) — `verify.py::_keys`
+  (`spec.Aliases` = (column, alias) pairs; `()` default = every verdict as before) — `anchoring.py::_keys`
   folds each alias onto every header column whose folded name equals the alias's column, so an alias
   is another name of its column wherever a header name counts: exact naming, the one-edit tier, Q38
   stop + negation, Q41/Q42 short words, G10 labels + the summary-word exemption, under both rules.
@@ -233,7 +233,7 @@ projection + exact recomputation and observation is additive.
   word; in Japanese, a stretch of near length). A span within 1 of names of TWO columns, or one name two headers
   fold to = tie. An unreadable header (`csvread.header_names` = None wherever `read_columns` refuses
   by the header) or a drawn column absent from it leaves the verdict to recompute. Lexical only:
-  `temperature` never names `temp_c` unless an admin alias says so (Q43). Before naming, Q38 (`verify.py::_unnamed_places`,
+  `temperature` never names `temp_c` unless an admin alias says so (Q43). Before naming, Q38 (`anchoring.py::_unnamed_places`,
   `.agent/archive/contracts/q38.md`) consumes the closed EN stop phrases (`chronological order` … `in
   order`, unless one is a header's whole name) + every negated name: the longest name, else one
   ASCII word within one edit of a 5+-char name, right after `not` `no` `without` `except`

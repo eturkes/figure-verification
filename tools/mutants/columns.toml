@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 columns: anchoring over value-derived columns + G10 (`.agent/archive/contracts/m19u4.md` U6).
+module = "src/verifier/figure/columns.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-substitution-tightened"
+predicate = "substitution blocks only a named column swapped for another"
+kills = "tests/test_figure_corpus.py::test_corpus_case[unnamed-column-substitution]"
+anchor = '''        if named - plotted and plotted - named:'''
+mutant = '''        if plotted - named:'''
+
+[[mutant]]
+id = "m19-strict-without-a-name"
+predicate = "strict anchoring binds once the request names a column"
+kills = "tests/test_figure_values.py::test_strict_anchoring_needs_a_named_column_first"
+anchor = '''            and (named or negated)
+            and any('''
+mutant = '''            and any('''
+
+[[mutant]]
+id = "m19-strict-everywhere"
+predicate = "the demo keeps substitution anchoring"
+kills = "tests/test_figure_corpus.py::test_corpus_case[unnamed-column-substitution]"
+anchor = '''            context.strict
+            and'''
+mutant = '''            True
+            and'''
+
+[[mutant]]
+id = "m19-g10-columns-unread"
+predicate = "a label naming an undrawn column blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[title-names-another-column]"
+anchor = '''            if named_columns(text.text, header, aliases, ignore_ties=True) - columns.of(table):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "m19-g10-summaries-unread"
+predicate = "a label naming another reduction blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[title-names-another-reduction]"
+anchor = '''            if reductions and summaries(text.text, header, aliases) - reductions:'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "m19-g10-figure-against-panel"
+predicate = "figure labels read every panel's reductions"
+kills = "tests/test_figure_values.py::test_g10_figure_labels_read_every_panel"
+anchor = '''    _check(figure_texts, every, context, columns)'''
+mutant = '''    _check(figure_texts, reductions, context, columns)'''
+
+[[mutant]]
+id = "m19-g10-panel-against-figure"
+predicate = "a panel label reads its own panel's reductions"
+kills = "tests/test_figure_values.py::test_g10_figure_labels_read_every_panel"
+anchor = '''        _check(_panel_labels(figure, panel), reductions, context, columns)'''
+mutant = '''        _check(_panel_labels(figure, panel), every | reductions, context, columns)'''
+
+[[mutant]]
+id = "m19-g10-colorbar-label"
+predicate = "a colorbar label is a judged label"
+kills = "tests/test_figure_corpus.py::test_corpus_case[colorbar-label-other-column]"
+anchor = '''            texts += [other.x.label, other.y.label]'''
+mutant = '''            pass'''
+
+[[mutant]]
+id = "m19-g10-figure-legends"
+predicate = "figure legends are judged labels"
+kills = "tests/test_figure_values.py::test_g10_reads_figure_legends"
+anchor = '''    figure_texts = [*figure.titles, *(e for legend in figure.legends for e in _entries(legend))]'''
+mutant = '''    figure_texts = [*figure.titles]'''

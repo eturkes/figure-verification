@@ -10,9 +10,10 @@ from typing import SupportsIndex
 
 import pytest
 
+from verifier.figure.anchoring import _unnamed_places
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.spec import Anchoring, DatasetTarget
-from verifier.pysrc.verify import Verified, _unnamed_places, verify_python_source
+from verifier.pysrc.verify import Verified, verify_python_source
 from webui.paste_in import selection
 from webui.paste_in.owui_files import UploadedFile
 

@@ -1,0 +1,265 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 values: each explanation family, the R6 filter, injective matching, per-value EITHER,
+# R7 ties and reference marks earn one mutant naming one red (`.agent/archive/contracts/m19u4.md`).
+module = "src/verifier/figure/explain.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-stack-base-ignored"
+predicate = "an upper band's value = its far edge minus the band under it"
+kills = "tests/test_figure_values.py::test_stacked_bands_read_their_own_values"
+anchor = '''    return point.base + candidate == point.value'''
+mutant = '''    return candidate == point.value'''
+
+[[mutant]]
+id = "m19-filter-inverted"
+predicate = "a legend name reads the rows holding that cell (R6)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[series-label-filters]"
+anchor = '''    return [row for row, text in enumerate(column.texts) if text == where[1]]'''
+mutant = '''    return [row for row, text in enumerate(column.texts) if text != where[1]]'''
+
+[[mutant]]
+id = "m19-filter-dropped"
+predicate = "a named series never reads every row (R6)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[series-label-swapped]"
+anchor = '''    if series.name is None:
+        return [None]'''
+mutant = '''    if True:
+        return [None]'''
+
+[[mutant]]
+id = "m19-label-column-drawn"
+predicate = "the R6 label column draws nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[series-label-filters]"
+anchor = '''        return frozenset(name for name in (self.key, self.value) if name is not None)'''
+mutant = '''        return frozenset(
+            name
+            for name in (self.key, self.value, self.where and self.where[0])
+            if name is not None
+        )'''
+
+[[mutant]]
+id = "m19-index-dropped"
+predicate = "index(V) explains a series drawn in row order"
+kills = "tests/test_figure_values.py::test_v1_index_explanation_reads_row_positions"
+anchor = '''            "index",
+            None,
+            value.name,
+            where,
+            tuple((row, numbers[row]) for row in rows),'''
+mutant = '''            "index",
+            None,
+            value.name,
+            where,
+            (),'''
+
+[[mutant]]
+id = "m19-raw-dropped"
+predicate = "raw(K,V) explains a series drawn cell by cell"
+kills = "tests/test_figure_values.py::test_v1_raw_reads_repeated_keys"
+anchor = '''                tuple((key.keys[row], numbers[row]) for row in rows),'''
+mutant = '''                (),'''
+
+[[mutant]]
+id = "m19-groups-dropped"
+predicate = "group(K,V,r) explains a reduced series"
+kills = "tests/test_figure_corpus.py::test_corpus_case[mean-honest]"
+anchor = '''            for grouped in _group(table, key, value, rows, budget):'''
+mutant = '''            for grouped in ():'''
+
+[[mutant]]
+id = "m19-count-dropped"
+predicate = "count(K) explains a row count"
+kills = "tests/test_figure_values.py::test_v1_count_explanation"
+anchor = '''    for key in usable:
+        counted = _count(table, key, rows)'''
+mutant = '''    for key in ():
+        counted = _count(table, key, rows)'''
+
+[[mutant]]
+id = "m19-keyed-not-injective"
+predicate = "a row backs one keyed point"
+kills = "tests/test_figure_values.py::test_matching_is_injective"
+anchor = '''                    if position not in used and _fits(point, explanation, position)'''
+mutant = '''                    if _fits(point, explanation, position)'''
+
+[[mutant]]
+id = "m19-values-not-injective"
+predicate = "a row backs one keyless point"
+kills = "tests/test_figure_values.py::test_matching_is_injective"
+anchor = '''            pool[point.value] -= 1'''
+mutant = '''            pass'''
+
+[[mutant]]
+id = "m19-partial-unbacked"
+predicate = "a partial explanation leaves only request-typed points"
+kills = "tests/test_figure_corpus.py::test_corpus_case[sum-changed-value]"
+anchor = '''        elif any(matched) and all(m or r for m, r in zip(matched, by_request, strict=True)):'''
+mutant = '''        elif any(matched):'''
+
+[[mutant]]
+id = "m19-request-any"
+predicate = "request numbers alone explain a series only when they explain every point"
+kills = "tests/test_figure_values.py::test_keyless_series_need_values_alone"
+anchor = '''    elif all(by_request):'''
+mutant = '''    elif any(by_request):'''
+
+[[mutant]]
+id = "m19-keyless-needs-keys"
+predicate = "a keyless series needs its values alone"
+kills = "tests/test_figure_values.py::test_keyless_series_need_values_alone"
+anchor = '''    return series.shape == "values" or [point.key.number for point in points] == ['''
+mutant = '''    return [point.key.number for point in points] == ['''
+
+[[mutant]]
+id = "m19-typed-label-unread"
+predicate = "a typed label must occur in the request (R4)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[labels-not-typed]"
+anchor = '''        return request.names(key.text)  # R4'''
+mutant = '''        return True'''
+
+[[mutant]]
+id = "m19-typed-key-unread"
+predicate = "a numeric key the request did not type is no key"
+kills = "tests/test_figure_values.py::test_v3_numeric_keys_must_be_typed"
+anchor = '''        return positional or key.number in request.numbers'''
+mutant = '''        return True'''
+
+[[mutant]]
+id = "m19-tie-both-named"
+predicate = "a tie both sides of which the request names stays a tie (R7)"
+kills = "tests/test_figure_values.py::test_a_tie_named_on_both_sides_stays_a_tie"
+anchor = '''        if len(named) != 1:'''
+mutant = '''        if not named:'''
+
+[[mutant]]
+id = "m19-tie-unbroken"
+predicate = "the request breaks a tie it names one side of (R7)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[tie-broken-by-request]"
+anchor = '''        named = [group for group in groups if group[1] <= _named(context, tables[group[0]])]'''
+mutant = '''        named = []'''
+
+[[mutant]]
+id = "m19-preference-reversed"
+predicate = "same columns publish the raw reading first"
+kills = "tests/test_figure_values.py::test_same_columns_prefer_the_raw_reading"
+anchor = '''    return min(members, key=lambda e: _PREFERENCE.index(e.family))'''
+mutant = '''    return max(members, key=lambda e: _PREFERENCE.index(e.family))'''
+
+[[mutant]]
+id = "m19-pivot-order-dropped"
+predicate = "a raw table binds slots in key-sorted order too"
+kills = "tests/test_figure_values.py::test_v3_slots_bind_key_sorted_rows"
+anchor = '''    return [list(range(len(pairs))), resorted]'''
+mutant = '''    return [list(range(len(pairs)))]'''
+
+[[mutant]]
+id = "m19-reference-zero-unexplained"
+predicate = "a zero reference line needs no source"
+kills = "tests/test_figure_values.py::test_v6_reference_values_from_a_column"
+anchor = '''        if point.value == 0.0 or point.value in context.request.numbers:'''
+mutant = '''        if point.value in context.request.numbers:'''
+
+[[mutant]]
+id = "m19-reference-reductions-dropped"
+predicate = "a reference line may be a whole-column reduction"
+kills = "tests/test_figure_values.py::test_v6_reference_values_from_a_column"
+anchor = '''    for explanation in _group(table, whole, column, rows, budget):'''
+mutant = '''    for explanation in ():'''
+
+[[mutant]]
+id = "m19-reference-any-holder"
+predicate = "a reference value two columns hold names neither"
+kills = "tests/test_figure_values.py::test_a_reference_two_columns_hold_names_no_column"
+anchor = '''        if len(found) == 1:
+            holders |= found'''
+mutant = '''        if found:
+            holders |= found'''
+
+[[mutant]]
+id = "m19-reference-per-value"
+predicate = "each reference value that one column alone holds draws it"
+kills = "tests/test_figure_values.py::test_span_edges_from_two_columns_draw_both"
+anchor = '''        if len(found) == 1:
+            holders |= found'''
+mutant = '''        if len(found) == 1 and not holders:
+            holders |= found'''
+
+[[mutant]]
+id = "m19-partner-unchecked"
+predicate = "a channel value binds to its own point's row"
+kills = "tests/test_figure_values.py::test_r8_a_channel_stays_with_its_own_point[colour]"
+anchor = '''        partners is None or partners[position] == point.partner'''
+mutant = '''        partners is None or point.partner is not None'''
+
+[[mutant]]
+id = "m19-channel-groups-unbound"
+predicate = "a grouped channel is a reduction over its point's group"
+kills = "tests/test_figure_values.py::test_r8_grouped_channels_bind_to_their_group"
+anchor = '''        for grouped in _group(table, cast("Column", key), column, rows, budget):'''
+mutant = '''        for grouped in ():'''
+
+[[mutant]]
+id = "m19-channel-request-only"
+predicate = "a typed scatter's channels must be typed too"
+kills = "tests/test_figure_values.py::test_r8_grouped_channels_bind_to_their_group"
+anchor = '''    if explanation is None:
+        return _explain_series(series, iter(()), context)'''
+mutant = '''    if explanation is None:
+        return Choice(series, None, 0, len(series.points))'''
+
+[[mutant]]
+id = "m19-slots-not-first"
+predicate = "slot points bind before keyed points"
+kills = "tests/test_figure_values.py::test_slots_take_their_rows_before_keyed_points"
+anchor = '''    slots_first = sorted(range(len(points)), key=lambda i: points[i].key.slot is None)'''
+mutant = '''    slots_first = list(range(len(points)))'''
+
+[[mutant]]
+id = "m19-attribution-every-point"
+predicate = "attribution reads only points no file explanation backs"
+kills = "tests/test_figure_values.py::test_attribution_reads_only_unbacked_points"
+anchor = '''            not done
+            and _request_value(point, request)'''
+mutant = '''            _request_value(point, request)'''
+
+[[mutant]]
+id = "m19-filter-key-excluded"
+predicate = "a filtered series may key by its own label"
+kills = "tests/test_figure_values.py::test_r6_a_filtered_series_may_key_by_its_label"
+anchor = '''    usable = table.columns  # a filter column may be the key: the series shows its own label'''
+mutant = '''    usable = tuple(c for c in table.columns if where is None or c.name != where[0])'''
+
+[[mutant]]
+id = "m19-filter-in-tie"
+predicate = "two filters over the same drawn columns are one reading"
+kills = "tests/test_figure_values.py::test_r6_two_filter_columns_with_one_reading_are_no_tie"
+anchor = '''        groups.setdefault((explanation.table, explanation.columns), []).append(explanation)'''
+mutant = '''        groups.setdefault(
+            (explanation.table, explanation.columns | {str(explanation.where)}), []
+        ).append(explanation)'''
+
+[[mutant]]
+id = "m19-unreadable-overrides"
+predicate = "an unreadable file explains only an unexplained value"
+kills = "tests/test_figure_values.py::test_an_unreadable_file_leaves_other_reasons_alone"
+anchor = '''                if outcome.reason == "value_not_found" and unreadable:'''
+mutant = '''                if unreadable:'''
+
+[[mutant]]
+id = "m19-self-raw-dropped"
+predicate = "a column may be drawn against itself: raw(K, K)"
+kills = "tests/test_figure_values.py::test_v1_a_column_against_itself"
+anchor = '''        for key in usable:
+            budget.charge(len(rows))'''
+mutant = '''        for key in usable:
+            if key is value:
+                continue
+            budget.charge(len(rows))'''
+
+[[mutant]]
+id = "m19-scatter-duplicates"
+predicate = "a scatter may repeat a category (both points show)"
+kills = "tests/test_figure_values.py::test_a_scatter_may_repeat_a_category"
+anchor = '''    if series.shape != "keyed" or series.mark.family == "scatter":'''
+mutant = '''    if series.shape != "keyed":'''

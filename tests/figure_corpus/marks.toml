@@ -554,7 +554,7 @@ plt.scatter([1, 2], [3, 4], s=[10, 400])
 id = "sizes-explained"
 expect = "pass"
 rule = "marker_size_varies"
-request = "Points 1 3 and 2 4"
+request = "Points 1 3 and 2 4, sized 10 and 400"
 program = '''
 import matplotlib.pyplot as plt
 dots = plt.scatter([1, 2], [3, 4], s=[10, 400])
@@ -657,7 +657,7 @@ plt.plot([1, 4, 9], alpha=0.5)
 id = "complete-line"
 expect = "pass"
 rule = "value_not_finite"
-request = "Plot 1, 4, 9"
+request = "Plot 1, 4, 9 at 0, 1 and 3"
 program = '''
 import matplotlib.pyplot as plt
 plt.plot([0, 1, 3], [1, 4, 9])

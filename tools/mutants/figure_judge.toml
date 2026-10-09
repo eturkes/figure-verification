@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M19.4 `judge()`: the user's sources reach every stage (`.agent/archive/contracts/m19u4.md`).
+module = "src/verifier/figure/judge.py"
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+
+[[mutant]]
+id = "m19-integrity-only-widened"
+predicate = "request numbers alone are a data source"
+kills = "tests/test_figure_corpus.py::test_corpus_case[computed-curve]"
+anchor = '''    integrity_only = not sources.files and not request.numbers'''
+mutant = '''    integrity_only = not sources.files'''
+
+[[mutant]]
+id = "m19-anchoring-unthreaded"
+predicate = "the demo's substitution rule reaches anchoring"
+kills = "tests/test_figure_corpus.py::test_corpus_case[unnamed-column-substitution]"
+anchor = '''        tables, request, sources.request, sources.aliases, sources.anchoring == "strict"'''
+mutant = '''        tables, request, sources.request, sources.aliases, True'''
+
+[[mutant]]
+id = "m19-colorbars-unshown"
+predicate = "a colorbar shows its scatter's colour values"
+kills = "tests/test_figure_corpus.py::test_corpus_case[colour-made-up]"
+anchor = '''        (*axes.colorbar_of, "colors") for axes in judged.figure.axes if axes.colorbar_of is not None'''
+mutant = '''        (*axes.colorbar_of, "none") for axes in judged.figure.axes if axes.colorbar_of is not None'''
+
+[[mutant]]
+id = "m19-pie-labels-listed"
+predicate = "drawn pie labels are listed only when no values were compared"
+kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
+anchor = '''    if integrity_only:
+        listed += [text for panel in judged.panels for text in panel.pie_labels]'''
+mutant = '''    if True:
+        listed += [text for panel in judged.panels for text in panel.pie_labels]'''
+
+[[mutant]]
+id = "m19-aliases-unthreaded"
+predicate = "admin aliases reach anchoring"
+kills = "tests/test_figure_values.py::test_aliases_reach_anchoring"
+anchor = '''        tables, request, sources.request, sources.aliases, sources.anchoring == "strict"'''
+mutant = '''        tables, request, sources.request, (), sources.anchoring == "strict"'''

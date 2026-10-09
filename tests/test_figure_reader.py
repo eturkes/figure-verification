@@ -8,6 +8,7 @@ Every program runs through `reader.run` on the host's matplotlib 3.9.4 and is re
 import contextlib
 import io
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -20,6 +21,7 @@ from verifier.figure.description import (
     RectGeometry,
     ScatterGeometry,
     Text,
+    TextGeometry,
     WedgeGeometry,
     parse_description,
 )
@@ -315,9 +317,10 @@ def test_p4_hist_pie_and_band_records() -> None:
         1,
     )
     pie = _describe(_PLT + "plt.pie([1, 3], labels=['a', 'b'])\n").figures[0].axes[0]
-    assert [(p.values, p.normalize, p.wedges, p.labels) for p in pie.pies] == [
-        ((1.0, 3.0), True, (0, 2), ("a", "b"))
+    assert [(p.values, p.normalize, p.wedges, p.texts) for p in pie.pies] == [
+        ((1.0, 3.0), True, (0, 2), (1, 3))
     ]
+    assert [pie.artists[i].geometry for i in (1, 3)] == [TextGeometry("a"), TextGeometry("b")]
     wedge = pie.artists[0].geometry
     assert isinstance(wedge, WedgeGeometry)
     assert (wedge.theta1, wedge.theta2, wedge.r) == (0.0, 90.0, 1.0)
@@ -612,7 +615,8 @@ def test_f3_recorders_keep_valid_calls_valid(body: str) -> None:
     if records:
         assert records[0].values == (1.0, 2.0, 2.0)
     if axes.pies:
-        assert (axes.pies[0].values, axes.pies[0].labels) == ((1.0, 3.0), ("a", "b"))
+        texts = [axes.artists[cast("int", i)].geometry for i in axes.pies[0].texts]
+        assert (axes.pies[0].values, texts) == ((1.0, 3.0), [TextGeometry("a"), TextGeometry("b")])
 
 
 def test_f3_a_record_matplotlib_cannot_express_as_numbers_is_skipped() -> None:
