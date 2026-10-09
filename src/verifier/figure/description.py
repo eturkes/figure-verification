@@ -209,8 +209,10 @@ class Axis:
     order: int
     percent_xmax: float | None
     ticks: tuple[tuple[float, str], ...]
+    minor: tuple[tuple[float, str], ...]  # visible non-empty minor labels
+    minor_formatter_module: str
     dates: tuple[tuple[float, str | None], ...]
-    calls: tuple[tuple[str, int], ...]
+    calls: tuple[tuple[str, int, int], ...]  # (slot, program line, call clock)
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +227,7 @@ class Axes:
     titles: tuple[Text | None, Text | None, Text | None]
     x: Axis
     y: Axis
-    calls: tuple[tuple[str, int], ...]
+    calls: tuple[tuple[str, int, int], ...]  # (slot, program line, call clock)
     artists: tuple[Artist, ...]
     containers: tuple[Container, ...]
     pies: tuple[PieRecord, ...]
@@ -342,10 +344,22 @@ def _titles(value: object) -> tuple[Text | None, Text | None, Text | None]:
     return first, second, third
 
 
-def _calls(value: object) -> tuple[tuple[str, int], ...]:
+def _call(key: str, value: object) -> tuple[str, int, int]:
+    items = _list(value)
+    if len(items) != 2:  # noqa: PLR2004 - (line, clock)
+        raise _InvalidError
+    return _str(key), _int(items[0]), _int(items[1])
+
+
+def _calls(value: object) -> tuple[tuple[str, int, int], ...]:
     if type(value) is not dict:
         raise _InvalidError
-    return tuple((_str(key), _int(line)) for key, line in value.items())
+    return tuple(_call(key, call) for key, call in value.items())
+
+
+def call_line(calls: tuple[tuple[str, int, int], ...], slot: str) -> int | None:
+    """The program line of `slot`'s last recorded call, or None."""
+    return next((line for name, line, _ in calls if name == slot), None)
 
 
 def _line(item: dict[str, object]) -> LineGeometry:
@@ -602,6 +616,8 @@ _AXIS_KEYS = (
     "order",
     "percent_xmax",
     "ticks",
+    "minor",
+    "minor_formatter_module",
     "dates",
     "calls",
 )
@@ -622,6 +638,8 @@ def _axis(value: object) -> Axis:
         _int(item["order"]),
         _optional(item["percent_xmax"], _float),
         _tuple(item["ticks"], _tick),
+        _tuple(item["minor"], _tick),
+        _str(item["minor_formatter_module"]),
         _tuple(item["dates"], _date),
         _calls(item["calls"]),
     )

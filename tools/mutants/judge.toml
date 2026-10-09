@@ -63,3 +63,17 @@ predicate = "a pie's wedges are never clipped by the limits"
 kills = "tests/test_figure_corpus.py::test_corpus_case[wide-exploded-pie]"
 anchor = '''        if mark.family == "pie":  # matplotlib draws wedges unclipped: no limit hides a share'''
 mutant = '''        if False:'''
+
+[[mutant]]
+id = "m19-site-slot-priority"
+predicate = "the marked line is the latest call among the property's setters, not the first slot's"
+kills = "tests/test_figure_corpus.py::test_corpus_case[latest-inversion-site]"
+anchor = '''    return max(calls)[1] if calls else None'''
+mutant = '''    return calls[0][1] if calls else None'''
+
+[[mutant]]
+id = "m19-site-source-line"
+predicate = "the latest call is ordered by the reader's clock, never by its source line"
+kills = "tests/test_figure_corpus.py::test_corpus_case[helper-inversion-site]"
+anchor = '''    return max(calls)[1] if calls else None'''
+mutant = '''    return max(line for _, line in calls) if calls else None'''

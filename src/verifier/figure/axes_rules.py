@@ -31,9 +31,11 @@ _REFERENCE_TRANSFORMS: Final = {
 
 
 def call(axes: Axes, axis: Axis, *slots: str) -> int | None:
-    """The first recorded program line among `slots` (axes calls, then `axis-` axis calls)."""
-    calls = dict(axes.calls) | {f"axis-{name}": line for name, line in axis.calls}
-    return next((calls[slot] for slot in slots if slot in calls), None)
+    """The program line of the LATEST call among `slots` (axes calls + `axis-` axis calls): each
+    slot keeps its last call and the reader's clock orders them (display only, ruling 13)."""
+    calls = [(clock, line) for slot, line, clock in axes.calls if slot in slots]
+    calls += [(clock, line) for slot, line, clock in axis.calls if f"axis-{slot}" in slots]
+    return max(calls)[1] if calls else None
 
 
 def view(axis: Axis) -> tuple[float, float]:

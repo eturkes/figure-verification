@@ -20,6 +20,7 @@ from verifier.figure.description import (
     LineGeometry,
     RectGeometry,
     TextGeometry,
+    call_line,
 )
 from verifier.figure.reasons import block
 from verifier.figure.ticks import mismatched_tick
@@ -185,7 +186,7 @@ def _check_colorbar(axes: Axes) -> None:
             block("artist_not_judged", artist.site)
     for name, axis in (("x", axes.x), ("y", axes.y)):
         if mismatched_tick(axis, key_labels=False) is not None:
-            block("tick_label_mismatch", dict(axes.calls).get(f"{name}ticks", axes.site))
+            block("tick_label_mismatch", call_line(axes.calls, f"{name}ticks") or axes.site)
 
 
 def _judged_axes(figure: Figure) -> list[int]:
@@ -206,7 +207,7 @@ def _judged_axes(figure: Figure) -> list[int]:
         for second in judged[position + 1 :]:
             a, b = figure.axes[first], figure.axes[second]
             if (second in a.shared_x or second in a.shared_y) and a.position == b.position:
-                block("axes_twin", dict(a.calls).get("twin", b.site))
+                block("axes_twin", call_line(a.calls, "twin") or b.site)
             if _overlap(a.position, b.position):
                 block("axes_overlap", b.site)
     return judged

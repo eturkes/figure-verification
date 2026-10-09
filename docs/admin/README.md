@@ -162,8 +162,9 @@ the request names no recognized column, the chart passes this check.
 
 The labels of a chart over a CSV file obey a similar rule. A title, axis label, legend label or
 color bar label cannot name a recognized CSV column that the chart does not show. A column alias
-names its column in a label too. If the chart shows a total, mean, minimum or maximum per group, a
-label cannot name a different summary. If a column name contains a summary word, such as `total` in
+names its column in a label too. If the chart shows a total or a mean per group, a label cannot
+name a different summary. A minimum or maximum per group draws values of the column itself, so the
+verifier does not read summary words over it. If a column name contains a summary word, such as `total` in
 `total_revenue`, the verifier reads that word as part of the name. For example, if no column name
 contains `total`, a chart of mean revenue cannot have the title `Total revenue`. Such a chart fails
 with the code `label_not_consistent`.

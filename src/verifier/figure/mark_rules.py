@@ -54,6 +54,23 @@ def _clear(rgba: tuple[float, ...] | None) -> bool:
     return rgba is None or rgba[3] == 0.0
 
 
+def _cycled[T](values: tuple[T, ...], index: int) -> T | None:
+    """matplotlib cycles a collection's per-point properties over its points."""
+    return values[index % len(values)] if values else None
+
+
+def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
+    """Whether scatter point `index` draws any ink: a size above zero, and a visible face or a
+    visible edge of nonzero width."""
+    face = _cycled(geometry.colors, index)
+    edge = _cycled(geometry.edges, index)
+    width = _cycled(geometry.linewidths, index)
+    return bool(_cycled(geometry.sizes, index)) and (
+        (face is not None and not _clear(face))
+        or (edge is not None and not _clear(edge) and bool(width))
+    )
+
+
 def _no_ink(geometry: Geometry) -> bool:
     """The artist's final styling draws nothing: transparent, no line and no marker, zero size."""
     if isinstance(geometry, LineGeometry):
@@ -67,9 +84,7 @@ def _no_ink(geometry: Geometry) -> bool:
         )
         return not line and not marker
     if isinstance(geometry, ScatterGeometry):
-        faces = any(not _clear(face) for face in geometry.colors)
-        edges = any(not _clear(edge) for edge in geometry.edges) and any(geometry.linewidths)
-        return not any(geometry.sizes) or not (faces or edges)
+        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))
     patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
     return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
 

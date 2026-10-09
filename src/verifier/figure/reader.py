@@ -22,6 +22,7 @@ import functools
 import importlib
 import inspect
 import io
+import itertools
 import json
 import logging
 import math
@@ -100,6 +101,9 @@ class _Run:
         self.coordinates = 0
         self.too_large = False
         self.error: dict[str, Any] | None = None
+        # One clock per run for every recorded call: the latest call among a property's setters
+        # is the one that set it, whichever axes or axis carried it, wherever its line sits.
+        self.clock = itertools.count()
 
     def spend(self, count: int) -> None:
         self.coordinates += count
@@ -217,7 +221,9 @@ def _called(slot: str) -> Callable[[Any], object]:
             line = _direct_line(sys._getframe(1))
             if line is not None:
                 # The last call decides the property, so the listing marks the last one.
-                self.__dict__.setdefault("_fv_calls", {})[slot] = line
+                run = _holder().run
+                clock = next(run.clock) if run is not None else 0
+                self.__dict__.setdefault("_fv_calls", {})[slot] = [line, clock]
             return original(self, *args, **kwargs)
 
         return hooked
@@ -652,9 +658,8 @@ def _date(axes: Any, axis: Any, position: float) -> str | None:
         return None
 
 
-def _formatter(axis: Any) -> tuple[str, str]:
+def _formatter(formatter: Any) -> tuple[str, str]:
     """The tick formatter's class, and the module whose code writes the label text."""
-    formatter = axis.get_major_formatter()
     function = getattr(formatter, "func", None)
     while isinstance(function, functools.partial):
         function = function.func
@@ -666,20 +671,32 @@ def _axis(axes: Any, axis: Any, positions: Iterable[object]) -> dict[str, Any]:
     low, high = (float(value) for value in axis.get_view_interval())
     lo, hi = min(low, high), max(low, high)
     formatter = axis.get_major_formatter()
-    name, module = _formatter(axis)
+    name, module = _formatter(formatter)
     kind = _axis_kind(axis)
     ticks: list[list[object]] = []
+    minor: list[list[object]] = []
     if axes.axison and axis.get_visible():
         for tick in axis.get_major_ticks():
             position = float(tick.get_loc())
             shown = [label for label in (tick.label1, tick.label2) if label.get_visible()]
             if lo <= position <= hi and shown:
                 ticks.append([_number(position), _cut(shown[0].get_text())])
+        # A minor label is a label too; the default minor formatter writes none. Its formatter is
+        # not the major one, so the judge reads it under no formatter's trust.
+        for tick in axis.get_minor_ticks():
+            position = float(tick.get_loc())
+            shown = [
+                label
+                for label in (tick.label1, tick.label2)
+                if label.get_visible() and label.get_text()
+            ]
+            if lo <= position <= hi and shown:
+                minor.append([_number(position), _cut(shown[0].get_text())])
     mapping = axis.units._mapping if kind == "category" else None
     dates: list[list[object]] = []
     if kind == "date":
         wanted = {p for p in positions if isinstance(p, float)}
-        wanted |= {t[0] for t in ticks if isinstance(t[0], float)}
+        wanted |= {t[0] for t in (*ticks, *minor) if isinstance(t[0], float)}
         dates = [[p, _date(axes, axis, p)] for p in sorted(wanted)]
     scalar = name == "ScalarFormatter"
     return {
@@ -697,6 +714,8 @@ def _axis(axes: Any, axis: Any, positions: Iterable[object]) -> dict[str, Any]:
         "order": int(formatter.orderOfMagnitude if scalar else 0),
         "percent_xmax": _number(formatter.xmax) if name == "PercentFormatter" else None,
         "ticks": ticks,
+        "minor": minor,
+        "minor_formatter_module": _formatter(axis.get_minor_formatter())[1],
         "dates": dates,
         "calls": dict(sorted(getattr(axis, "_fv_calls", {}).items())),
     }

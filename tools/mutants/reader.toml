@@ -221,3 +221,10 @@ predicate = "a mathtext missing-glyph record adds to the run's glyph count"
 kills = "tests/test_figure_reader.py::test_m19_9_a_mathtext_glyph_the_font_lacks_counts"
 anchor = '''        self.run.glyphs += _MATHTEXT_GLYPH.match(record.getMessage()) is not None'''
 mutant = '''        self.run.glyphs += 0'''
+
+[[mutant]]
+id = "m19-minor-labels-unread"
+predicate = "a visible minor tick label is reported as a tick label"
+kills = "tests/test_figure_corpus.py::test_corpus_case[minor-tick-lie]"
+anchor = '''        for tick in axis.get_minor_ticks():'''
+mutant = '''        for tick in ():'''

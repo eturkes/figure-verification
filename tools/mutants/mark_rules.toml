@@ -66,8 +66,8 @@ mutant = '''            colorbar = bool(colorbars)'''
 id = "m19-ink-scatter"
 predicate = "a scatter with no size or no ink is hidden"
 kills = "tests/test_figure_corpus.py::test_corpus_case[zero-size-scatter]"
-anchor = '''        return not any(geometry.sizes) or not (faces or edges)'''
-mutant = '''        return not (faces or edges)'''
+anchor = '''        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))'''
+mutant = '''        return False'''
 
 [[mutant]]
 id = "m19-hidden-panel"
@@ -89,3 +89,17 @@ predicate = "the key-axis overlap tolerance never scales with the values"
 kills = "tests/test_figure_corpus.py::test_corpus_case[large-bars-overlap]"
 anchor = '''            if width > _TOLERANCE * max(1.0, abs(x1)) and height > _TOLERANCE * max('''
 mutant = '''            if width > _TOLERANCE * max(1.0, abs(x1), abs(y1)) and height > _TOLERANCE * max('''
+
+[[mutant]]
+id = "m19-scatter-ink-collection-wide"
+predicate = "one scatter point of zero size hides that point, whatever the others draw"
+kills = "tests/test_figure_corpus.py::test_corpus_case[one-zero-size-point]"
+anchor = '''    return bool(_cycled(geometry.sizes, index)) and ('''
+mutant = '''    return any(geometry.sizes) and ('''
+
+[[mutant]]
+id = "m19-scatter-face-collection-wide"
+predicate = "one scatter point with a clear face and no edge hides that point"
+kills = "tests/test_figure_corpus.py::test_corpus_case[one-faceless-point]"
+anchor = '''        (face is not None and not _clear(face))'''
+mutant = '''        any(not _clear(color) for color in geometry.colors)'''

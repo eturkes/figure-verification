@@ -603,8 +603,10 @@ class Axis:
     order: int
     percent_xmax: float | None
     ticks: tuple[tuple[float, str], ...]
+    minor: tuple[tuple[float, str], ...]  # visible non-empty minor labels
+    minor_formatter_module: str
     dates: tuple[tuple[float, str | None], ...]
-    calls: tuple[tuple[str, int], ...]
+    calls: tuple[tuple[str, int, int], ...]  # (slot, program line, call clock)
 
 
 @dataclass(frozen=True, slots=True)
@@ -619,7 +621,7 @@ class Axes:
     titles: tuple[Text | None, Text | None, Text | None]
     x: Axis
     y: Axis
-    calls: tuple[tuple[str, int], ...]
+    calls: tuple[tuple[str, int, int], ...]  # (slot, program line, call clock)
     artists: tuple[Artist, ...]
     containers: tuple[Container, ...]
     pies: tuple[PieRecord, ...]
@@ -736,10 +738,22 @@ def _titles(value: object) -> tuple[Text | None, Text | None, Text | None]:
     return first, second, third
 
 
-def _calls(value: object) -> tuple[tuple[str, int], ...]:
+def _call(key: str, value: object) -> tuple[str, int, int]:
+    items = _list(value)
+    if len(items) != 2:  # noqa: PLR2004 - (line, clock)
+        raise _InvalidError
+    return _str(key), _int(items[0]), _int(items[1])
+
+
+def _calls(value: object) -> tuple[tuple[str, int, int], ...]:
     if type(value) is not dict:
         raise _InvalidError
-    return tuple((_str(key), _int(line)) for key, line in value.items())
+    return tuple(_call(key, call) for key, call in value.items())
+
+
+def call_line(calls: tuple[tuple[str, int, int], ...], slot: str) -> int | None:
+    """The program line of `slot`'s last recorded call, or None."""
+    return next((line for name, line, _ in calls if name == slot), None)
 
 
 def _line(item: dict[str, object]) -> LineGeometry:
@@ -996,6 +1010,8 @@ _AXIS_KEYS = (
     "order",
     "percent_xmax",
     "ticks",
+    "minor",
+    "minor_formatter_module",
     "dates",
     "calls",
 )
@@ -1016,6 +1032,8 @@ def _axis(value: object) -> Axis:
         _int(item["order"]),
         _optional(item["percent_xmax"], _float),
         _tuple(item["ticks"], _tick),
+        _tuple(item["minor"], _tick),
+        _str(item["minor_formatter_module"]),
         _tuple(item["dates"], _date),
         _calls(item["calls"]),
     )
@@ -1156,6 +1174,7 @@ import functools
 import importlib
 import inspect
 import io
+import itertools
 import json
 import logging
 import math
@@ -1234,6 +1253,9 @@ class _Run:
         self.coordinates = 0
         self.too_large = False
         self.error: dict[str, Any] | None = None
+        # One clock per run for every recorded call: the latest call among a property's setters
+        # is the one that set it, whichever axes or axis carried it, wherever its line sits.
+        self.clock = itertools.count()
 
     def spend(self, count: int) -> None:
         self.coordinates += count
@@ -1351,7 +1373,9 @@ def _called(slot: str) -> Callable[[Any], object]:
             line = _direct_line(sys._getframe(1))
             if line is not None:
                 # The last call decides the property, so the listing marks the last one.
-                self.__dict__.setdefault("_fv_calls", {})[slot] = line
+                run = _holder().run
+                clock = next(run.clock) if run is not None else 0
+                self.__dict__.setdefault("_fv_calls", {})[slot] = [line, clock]
             return original(self, *args, **kwargs)
 
         return hooked
@@ -1786,9 +1810,8 @@ def _date(axes: Any, axis: Any, position: float) -> str | None:
         return None
 
 
-def _formatter(axis: Any) -> tuple[str, str]:
+def _formatter(formatter: Any) -> tuple[str, str]:
     """The tick formatter's class, and the module whose code writes the label text."""
-    formatter = axis.get_major_formatter()
     function = getattr(formatter, "func", None)
     while isinstance(function, functools.partial):
         function = function.func
@@ -1800,20 +1823,32 @@ def _axis(axes: Any, axis: Any, positions: Iterable[object]) -> dict[str, Any]:
     low, high = (float(value) for value in axis.get_view_interval())
     lo, hi = min(low, high), max(low, high)
     formatter = axis.get_major_formatter()
-    name, module = _formatter(axis)
+    name, module = _formatter(formatter)
     kind = _axis_kind(axis)
     ticks: list[list[object]] = []
+    minor: list[list[object]] = []
     if axes.axison and axis.get_visible():
         for tick in axis.get_major_ticks():
             position = float(tick.get_loc())
             shown = [label for label in (tick.label1, tick.label2) if label.get_visible()]
             if lo <= position <= hi and shown:
                 ticks.append([_number(position), _cut(shown[0].get_text())])
+        # A minor label is a label too; the default minor formatter writes none. Its formatter is
+        # not the major one, so the judge reads it under no formatter's trust.
+        for tick in axis.get_minor_ticks():
+            position = float(tick.get_loc())
+            shown = [
+                label
+                for label in (tick.label1, tick.label2)
+                if label.get_visible() and label.get_text()
+            ]
+            if lo <= position <= hi and shown:
+                minor.append([_number(position), _cut(shown[0].get_text())])
     mapping = axis.units._mapping if kind == "category" else None
     dates: list[list[object]] = []
     if kind == "date":
         wanted = {p for p in positions if isinstance(p, float)}
-        wanted |= {t[0] for t in ticks if isinstance(t[0], float)}
+        wanted |= {t[0] for t in (*ticks, *minor) if isinstance(t[0], float)}
         dates = [[p, _date(axes, axis, p)] for p in sorted(wanted)]
     scalar = name == "ScalarFormatter"
     return {
@@ -1831,6 +1866,8 @@ def _axis(axes: Any, axis: Any, positions: Iterable[object]) -> dict[str, Any]:
         "order": int(formatter.orderOfMagnitude if scalar else 0),
         "percent_xmax": _number(formatter.xmax) if name == "PercentFormatter" else None,
         "ticks": ticks,
+        "minor": minor,
+        "minor_formatter_module": _formatter(axis.get_minor_formatter())[1],
         "dates": dates,
         "calls": dict(sorted(getattr(axis, "_fv_calls", {}).items())),
     }
@@ -2685,13 +2722,14 @@ def _reading(text: str) -> list[tuple[float, float]] | None:
     return [(value / 100.0, half / 100.0), (value, half)]
 
 
-def _numeric_ok(position: float, text: str, axis: Axis) -> bool:
+def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
+    """`axis` = the major formatter's offset + order; None = a label under no formatter's trust."""
     readings = _reading(_plain(text))
     if readings is None:
         return False
-    scale = 10.0**axis.order
+    scale = 10.0 ** (axis.order if axis is not None else 0)
     for value, half in readings:
-        shown = value * scale + axis.offset
+        shown = value * scale + (axis.offset if axis is not None else 0.0)
         tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))
         if math.isfinite(shown) and abs(shown - position) <= tolerance:
             return True
@@ -2727,6 +2765,19 @@ def mismatched_tick(axis: Axis, *, key_labels: bool) -> float | None:
             ok = key_labels or _numeric_ok(position, text, axis)
         else:
             ok = False
+        if not ok:
+            return position
+    # Minor labels: a trusted date formatter of their OWN (pandas' month names) is trusted; any
+    # other label must denote its position under no formatter's offset or order.
+    for position, text in axis.minor:
+        if axis.kind == "category":
+            ok = categories.get(position) == text
+        elif axis.kind == "date":
+            ok = axis.minor_formatter_module.startswith(_DATE_FORMATTERS) or _date_ok(
+                position, text, axis
+            )
+        else:
+            ok = axis.kind == "numeric" and _numeric_ok(position, text, None)
         if not ok:
             return position
     return None
@@ -3411,6 +3462,7 @@ from verifier.figure.description import (
     LineGeometry,
     RectGeometry,
     TextGeometry,
+    call_line,
 )
 from verifier.figure.reasons import block
 from verifier.figure.ticks import mismatched_tick
@@ -3576,7 +3628,7 @@ def _check_colorbar(axes: Axes) -> None:
             block("artist_not_judged", artist.site)
     for name, axis in (("x", axes.x), ("y", axes.y)):
         if mismatched_tick(axis, key_labels=False) is not None:
-            block("tick_label_mismatch", dict(axes.calls).get(f"{name}ticks", axes.site))
+            block("tick_label_mismatch", call_line(axes.calls, f"{name}ticks") or axes.site)
 
 
 def _judged_axes(figure: Figure) -> list[int]:
@@ -3597,7 +3649,7 @@ def _judged_axes(figure: Figure) -> list[int]:
         for second in judged[position + 1 :]:
             a, b = figure.axes[first], figure.axes[second]
             if (second in a.shared_x or second in a.shared_y) and a.position == b.position:
-                block("axes_twin", dict(a.calls).get("twin", b.site))
+                block("axes_twin", call_line(a.calls, "twin") or b.site)
             if _overlap(a.position, b.position):
                 block("axes_overlap", b.site)
     return judged
@@ -4654,9 +4706,11 @@ _REFERENCE_TRANSFORMS: Final = {
 
 
 def call(axes: Axes, axis: Axis, *slots: str) -> int | None:
-    """The first recorded program line among `slots` (axes calls, then `axis-` axis calls)."""
-    calls = dict(axes.calls) | {f"axis-{name}": line for name, line in axis.calls}
-    return next((calls[slot] for slot in slots if slot in calls), None)
+    """The program line of the LATEST call among `slots` (axes calls + `axis-` axis calls): each
+    slot keeps its last call and the reader's clock orders them (display only, ruling 13)."""
+    calls = [(clock, line) for slot, line, clock in axes.calls if slot in slots]
+    calls += [(clock, line) for slot, line, clock in axis.calls if f"axis-{slot}" in slots]
+    return max(calls)[1] if calls else None
 
 
 def view(axis: Axis) -> tuple[float, float]:
@@ -4943,6 +4997,23 @@ def _clear(rgba: tuple[float, ...] | None) -> bool:
     return rgba is None or rgba[3] == 0.0
 
 
+def _cycled[T](values: tuple[T, ...], index: int) -> T | None:
+    """matplotlib cycles a collection's per-point properties over its points."""
+    return values[index % len(values)] if values else None
+
+
+def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
+    """Whether scatter point `index` draws any ink: a size above zero, and a visible face or a
+    visible edge of nonzero width."""
+    face = _cycled(geometry.colors, index)
+    edge = _cycled(geometry.edges, index)
+    width = _cycled(geometry.linewidths, index)
+    return bool(_cycled(geometry.sizes, index)) and (
+        (face is not None and not _clear(face))
+        or (edge is not None and not _clear(edge) and bool(width))
+    )
+
+
 def _no_ink(geometry: Geometry) -> bool:
     """The artist's final styling draws nothing: transparent, no line and no marker, zero size."""
     if isinstance(geometry, LineGeometry):
@@ -4956,9 +5027,7 @@ def _no_ink(geometry: Geometry) -> bool:
         )
         return not line and not marker
     if isinstance(geometry, ScatterGeometry):
-        faces = any(not _clear(face) for face in geometry.colors)
-        edges = any(not _clear(edge) for edge in geometry.edges) and any(geometry.linewidths)
-        return not any(geometry.sizes) or not (faces or edges)
+        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))
     patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
     return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
 
@@ -5904,8 +5973,9 @@ def _explain_reference(
 # --- every series ------------------------------------------------------------------------------
 
 
-def _duplicate_key(series: Series) -> bool:
-    """G8: two points of one keyed series show the same category (they overplot)."""
+def duplicate_key(series: Series) -> bool:
+    """G8: two points of one keyed series show the same category (they overplot). An integrity
+    rule: it binds every figure, a figure with no data source included."""
     if series.shape != "keyed" or series.mark.family == "scatter":
         return False
     texts = [point.key.text for point in series.points if point.key.text is not None]
@@ -5918,9 +5988,6 @@ def explain(
     """One choice per series, or the first series no source explains (with its reason)."""
     budget = WorkBudget(MAX_WORK)
     choices: list[Choice] = []
-    for series in every:
-        if _duplicate_key(series):
-            return Unexplained(series, "category_not_unique")
     try:
         for series in every:
             if series.shape == "reference":
@@ -6242,7 +6309,7 @@ from verifier.figure.anchoring import Aliases, Anchoring
 from verifier.figure.axes_rules import check_axes
 from verifier.figure.columns import check_anchoring, check_labels, drawn
 from verifier.figure.description import Description, Figure
-from verifier.figure.explain import Choice, Context, Unexplained, explain
+from verifier.figure.explain import Choice, Context, Unexplained, duplicate_key, explain
 from verifier.figure.interpret import interpretation
 from verifier.figure.legends import Legends, read_legends
 from verifier.figure.mark_rules import check_marks
@@ -6350,6 +6417,9 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
     )
     choices: tuple[Choice, ...] = ()
     try:
+        for each in every:
+            if duplicate_key(each):
+                block("category_not_unique", each.site)
         if not integrity_only:
             outcome = explain(every, context, unreadable)
             if isinstance(outcome, Unexplained):

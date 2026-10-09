@@ -12,7 +12,7 @@ from verifier.figure.anchoring import Aliases, Anchoring
 from verifier.figure.axes_rules import check_axes
 from verifier.figure.columns import check_anchoring, check_labels, drawn
 from verifier.figure.description import Description, Figure
-from verifier.figure.explain import Choice, Context, Unexplained, explain
+from verifier.figure.explain import Choice, Context, Unexplained, duplicate_key, explain
 from verifier.figure.interpret import interpretation
 from verifier.figure.legends import Legends, read_legends
 from verifier.figure.mark_rules import check_marks
@@ -120,6 +120,9 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
     )
     choices: tuple[Choice, ...] = ()
     try:
+        for each in every:
+            if duplicate_key(each):
+                block("category_not_unique", each.site)
         if not integrity_only:
             outcome = explain(every, context, unreadable)
             if isinstance(outcome, Unexplained):

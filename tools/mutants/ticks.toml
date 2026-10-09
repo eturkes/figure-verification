@@ -8,8 +8,12 @@ tests = ["tests/test_figure_corpus.py", "tests/test_figure_judge.py"]
 id = "m19-category-label"
 predicate = "a category label is the category drawn at its position"
 kills = "tests/test_figure_corpus.py::test_corpus_case[category-labels-swapped]"
-anchor = '''            ok = categories.get(position) == text'''
-mutant = '''            ok = True'''
+anchor = '''            continue
+        if axis.kind == "category":
+            ok = categories.get(position) == text'''
+mutant = '''            continue
+        if axis.kind == "category":
+            ok = True'''
 
 [[mutant]]
 id = "m19-date-formatters-trusted"
@@ -24,3 +28,25 @@ predicate = "a number label lies within half a unit of its last digit of its pos
 kills = "tests/test_figure_judge.py::test_j3_a_number_label_must_show_its_position_to_its_last_digit"
 anchor = '''        tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))'''
 mutant = '''        tolerance = 10 * half * scale + _ABSOLUTE * max(1.0, abs(position))'''
+
+[[mutant]]
+id = "m19-minor-date-trusted"
+predicate = "a minor date label is judged under no formatter's trust: it must name its own date"
+kills = "tests/test_figure_corpus.py::test_corpus_case[minor-date-lie]"
+anchor = '''            ok = axis.minor_formatter_module.startswith(_DATE_FORMATTERS) or _date_ok('''
+mutant = '''            ok = axis.formatter_module.startswith(_DATE_FORMATTERS) or _date_ok('''
+
+[[mutant]]
+id = "m19-minor-labels-skipped"
+predicate = "minor tick labels are judged at all"
+kills = "tests/test_figure_corpus.py::test_corpus_case[minor-tick-lie]"
+anchor = '''    for position, text in axis.minor:'''
+mutant = '''    for position, text in ():'''
+
+[[mutant]]
+id = "m19-minor-date-untrusted"
+predicate = "a minor date label under its own trusted date formatter (pandas' month names) is trusted"
+kills = "tests/test_figure_corpus.py::test_corpus_case[honest-months-pandas]"
+anchor = '''            ok = axis.minor_formatter_module.startswith(_DATE_FORMATTERS) or _date_ok('''
+mutant = '''            ok = False or _date_ok('''
+

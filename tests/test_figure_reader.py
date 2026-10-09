@@ -101,9 +101,12 @@ def test_p1_calls_record_the_program_line_alone() -> None:
         + "plt.gca().yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: str(v)))\n"
     )
     axes = _describe(source).figures[0].axes[0]
-    assert dict(axes.calls) == {"xinvert": 5, "ylim": 4}
-    assert dict(axes.y.calls) == {"ticks": 6}
-    assert dict(axes.x.calls) == {}
+    assert {slot: line for slot, line, _ in axes.calls} == {"xinvert": 5, "ylim": 4}
+    assert {slot: line for slot, line, _ in axes.y.calls} == {"ticks": 6}
+    assert axes.x.calls == ()
+    # One clock orders every call, across the axes and axis objects that carried them.
+    clocks = {slot: clock for slot, _, clock in (*axes.calls, *axes.y.calls)}
+    assert clocks["ylim"] < clocks["xinvert"] < clocks["ticks"]
 
 
 # --- P2 capture ------------------------------------------------------------------------------
@@ -342,7 +345,7 @@ def test_p4_twin_axes_share_x() -> None:
         (0,),
         True,
     )
-    assert dict(first.calls) == {"twin": 4}
+    assert {slot: line for slot, line, _ in first.calls} == {"twin": 4}
 
 
 def test_p4_inset_and_figure_parts() -> None:

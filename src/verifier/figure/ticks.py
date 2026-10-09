@@ -103,13 +103,14 @@ def _reading(text: str) -> list[tuple[float, float]] | None:
     return [(value / 100.0, half / 100.0), (value, half)]
 
 
-def _numeric_ok(position: float, text: str, axis: Axis) -> bool:
+def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
+    """`axis` = the major formatter's offset + order; None = a label under no formatter's trust."""
     readings = _reading(_plain(text))
     if readings is None:
         return False
-    scale = 10.0**axis.order
+    scale = 10.0 ** (axis.order if axis is not None else 0)
     for value, half in readings:
-        shown = value * scale + axis.offset
+        shown = value * scale + (axis.offset if axis is not None else 0.0)
         tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))
         if math.isfinite(shown) and abs(shown - position) <= tolerance:
             return True
@@ -145,6 +146,19 @@ def mismatched_tick(axis: Axis, *, key_labels: bool) -> float | None:
             ok = key_labels or _numeric_ok(position, text, axis)
         else:
             ok = False
+        if not ok:
+            return position
+    # Minor labels: a trusted date formatter of their OWN (pandas' month names) is trusted; any
+    # other label must denote its position under no formatter's offset or order.
+    for position, text in axis.minor:
+        if axis.kind == "category":
+            ok = categories.get(position) == text
+        elif axis.kind == "date":
+            ok = axis.minor_formatter_module.startswith(_DATE_FORMATTERS) or _date_ok(
+                position, text, axis
+            )
+        else:
+            ok = axis.kind == "numeric" and _numeric_ok(position, text, None)
         if not ok:
             return position
     return None

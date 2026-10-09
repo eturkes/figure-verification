@@ -33,7 +33,7 @@ Binding sources: `.agent/spec.md` `Intent` + Decisions "Integrity-redesign rulin
 | `columns` | `column_not_requested` `column_not_named` `label_not_consistent` |
 | `attach` | `no_image` `publish_failed` |
 
-A reason maps to the stage that raises it: `category_not_unique` (G8) needs the drawn keys, so the values stage raises it; `no_image` follows a pass (the PNG exists only for exactly one figure). Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or the LAST program `calls` line (call) that set the offending property, else none (listing unmarked).
+A reason maps to the stage that raises it: `category_not_unique` (G8) needs the drawn keys, so the values stage raises it — for every figure, a no-source one included, ahead of any explanation; `no_image` follows a pass (the PNG exists only for exactly one figure). Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or the LATEST program `calls` line among the property's setters (each slot keeps its last call; the highest line wins), else none (listing unmarked).
 
 ## Closed artist set (parts)
 
@@ -60,13 +60,13 @@ A reason maps to the stage that raises it: `category_not_unique` (G8) needs the 
 - `mark_not_in_data`: a data artist's data-bearing transform ≠ `transData` (line/area/pie: `get_transform`; bar: `get_data_transform`; scatter: `get_offset_transform`); reference marks: their data coordinate on the blended data axis (user: closed reference family).
 - `scale_not_linear` (R3): a non-linear axis passes only when it is `log` AND that axis label or the panel title names it (`log`, `logarithmic`, `対数`, word-bounded / containment for JA); every other scale blocks.
 - `axis_inverted`: either axis inverted (ruling 3; both axes).
-- `tick_label_mismatch`: a visible non-empty major tick label in view must denote its position. Category axis: the category at that position. Date axis: a trusted date formatter (matplotlib.dates / pandas) passes; any other label must parse (ISO `YYYY-MM-DD[ HH:MM[:SS]]` | `YYYY-MM`) to the reader's date at that position. Numeric axis with a value role: the label parses as a number (NFKC; `−`→`-`; mathtext `$\mathdefault{…}$`, `10^{k}`, `a\times10^{k}`; `,` thousands; one leading `$ ¥ € £`; trailing `%` ⇒ candidates v/100 and v; one SI prefix (`1k` at 1000), powers `b^{k}` exact) whose value × 10^order + offset (ScalarFormatter) lies within half a unit of its last shown digit of the position. Numeric key axis carrying set labels (`set_ticklabels` / pandas / FixedFormatter) = a LABELLED KEY axis: its labels are keys (values row), not numbers.
+- `tick_label_mismatch`: a visible non-empty tick label in view — major, or minor (the default minor formatter writes none) — must denote its position. Category axis: the category at that position. Date axis: a trusted date formatter (matplotlib.dates / pandas) passes; any other label must parse (ISO `YYYY-MM-DD[ HH:MM[:SS]]` | `YYYY-MM`) to the reader's date at that position. Numeric axis with a value role: the label parses as a number (NFKC; `−`→`-`; mathtext `$\mathdefault{…}$`, `10^{k}`, `a\times10^{k}`; `,` thousands; one leading `$ ¥ € £`; trailing `%` ⇒ candidates v/100 and v; one SI prefix (`1k` at 1000), powers `b^{k}` exact) whose value × 10^order + offset (ScalarFormatter) lies within half a unit of its last shown digit of the position. Numeric key axis carrying set labels (`set_ticklabels` / pandas / FixedFormatter) = a LABELLED KEY axis: its labels are keys (values row), not numbers.
 - `point_clipped`: any drawn data coordinate (points, bar base + top, band vertices, every reference coordinate) outside the view interval; pie wedges are exempt (matplotlib draws them unclipped).
 - `zero_not_in_limits` (R1): a magnitude mark (bar, hist, area) ⇒ 0 inside its value-axis view interval. Line + scatter may autoscale.
 
 ## Mark rules
 
-- `mark_hidden`: a hidden axes, or a data artist not visible, alpha 0, or drawing no ink (transparent face + edge, no line and no marker, zero marker size).
+- `mark_hidden`: a hidden axes, or a data artist not visible, alpha 0, or drawing no ink (transparent face + edge, no line and no marker, zero marker size); a scatter blocks when ANY point draws no ink (its cycled size 0, or a clear face with no visible edge).
 - `value_not_finite`: NaN / ±inf among drawn data or recorded inputs, or a band that drew fewer points than its call received (a dropped point).
 - `bar_not_from_zero` (G1, R1): every bar's base = 0, or (stacked) exactly the far end of another bar at the same position + thickness on the same side of 0.
 - `bars_overlap`: two bars' rectangles overlap with positive area (grouped bars sit side by side).

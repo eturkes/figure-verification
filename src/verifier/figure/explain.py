@@ -576,8 +576,9 @@ def _explain_reference(
 # --- every series ------------------------------------------------------------------------------
 
 
-def _duplicate_key(series: Series) -> bool:
-    """G8: two points of one keyed series show the same category (they overplot)."""
+def duplicate_key(series: Series) -> bool:
+    """G8: two points of one keyed series show the same category (they overplot). An integrity
+    rule: it binds every figure, a figure with no data source included."""
     if series.shape != "keyed" or series.mark.family == "scatter":
         return False
     texts = [point.key.text for point in series.points if point.key.text is not None]
@@ -590,9 +591,6 @@ def explain(
     """One choice per series, or the first series no source explains (with its reason)."""
     budget = WorkBudget(MAX_WORK)
     choices: list[Choice] = []
-    for series in every:
-        if _duplicate_key(series):
-            return Unexplained(series, "category_not_unique")
     try:
         for series in every:
             if series.shape == "reference":

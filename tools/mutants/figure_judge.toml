@@ -39,3 +39,16 @@ predicate = "admin aliases reach anchoring"
 kills = "tests/test_figure_values.py::test_aliases_reach_anchoring"
 anchor = '''        tables, request, sources.request, sources.aliases, sources.anchoring == "strict"'''
 mutant = '''        tables, request, sources.request, (), sources.anchoring == "strict"'''
+
+[[mutant]]
+id = "m19-g8-source-free-skipped"
+predicate = "G8 binds a figure with no data source: two points on one category block before explaining"
+kills = "tests/test_figure_corpus.py::test_corpus_case[source-free-duplicate-category]"
+anchor = '''        for each in every:
+            if duplicate_key(each):
+                block("category_not_unique", each.site)
+        if not integrity_only:'''
+mutant = '''        for each in every:
+            if duplicate_key(each) and not integrity_only:
+                block("category_not_unique", each.site)
+        if not integrity_only:'''

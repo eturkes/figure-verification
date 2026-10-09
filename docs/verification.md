@@ -256,8 +256,10 @@ suffix such as `月別`.
 - **Demo.** The chart must not replace a column that your request names with another column.
 
 When the values fit two columns equally, your request must name one of them. A title, axis label,
-legend or color bar label must not name a column that the chart does not draw. Over a summary per
-group, it must not name another kind of summary, for example `average` on a chart of totals.
+legend or color bar label must not name a column that the chart does not draw. Over a total or a
+mean per group, it must not name another kind of summary, for example `average` on a chart of
+totals. A minimum or maximum per group draws values of the column itself, so this rule does not
+read its labels.
 
 | Reason | Meaning |
 |---|---|
