@@ -1,0 +1,195 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The M19.2 sandbox reader: every fact it attributes, captures or caps earns one mutant naming
+# one red (`.agent/archive/contracts/m19u2.md` P1-P5).
+module = "src/verifier/figure/reader.py"
+tests = ["tests/test_figure_reader.py"]
+
+[[mutant]]
+id = "m19-origin-module-set"
+predicate = "the Axes method module is one of the origin modules"
+kills = "tests/test_figure_reader.py::test_p1_bar_spellings_share_one_origin"
+anchor = '''    {"matplotlib.axes._axes", "matplotlib.axes._base", "matplotlib.stackplot"}'''
+mutant = '''    {"matplotlib.axes._base", "matplotlib.stackplot"}'''
+
+[[mutant]]
+id = "m19-origin-outermost"
+predicate = "the OUTERMOST Axes-module frame names the family"
+kills = "tests/test_figure_reader.py::test_p1_the_outermost_axes_method_names_the_family"
+anchor = '''        if frame.f_globals.get("__name__") in _AXES_MODULES:
+            origin = frame.f_code.co_qualname'''
+mutant = '''        if frame.f_globals.get("__name__") in _AXES_MODULES and origin is None:
+            origin = frame.f_code.co_qualname'''
+
+[[mutant]]
+id = "m19-site-innermost"
+predicate = "an artist's site is the INNERMOST program frame's line"
+kills = "tests/test_figure_reader.py::test_p1_site_is_the_innermost_program_line"
+anchor = '''def _program_line(frame: FrameType | None) -> int | None:
+    while frame is not None:
+        if frame.f_code.co_filename == PROGRAM:
+            return frame.f_lineno
+        frame = frame.f_back
+    return None'''
+mutant = '''def _program_line(frame: FrameType | None) -> int | None:
+    line = None
+    while frame is not None:
+        if frame.f_code.co_filename == PROGRAM:
+            line = frame.f_lineno
+        frame = frame.f_back
+    return line'''
+
+[[mutant]]
+id = "m19-calls-direct-only"
+predicate = "a call records its line only when the program made it, directly or through pyplot"
+kills = "tests/test_figure_reader.py::test_p1_calls_record_the_program_line_alone"
+anchor = '''            line = _direct_line(sys._getframe(1))'''
+mutant = '''            line = _program_line(sys._getframe(1))'''
+
+[[mutant]]
+id = "m19-capture-at-end"
+predicate = "figures still open when the program ends are captured"
+kills = "tests/test_figure_reader.py::test_p2_open_figures_are_captured_at_the_end"
+anchor = '''            current.capture()
+            current.glyphs'''
+mutant = '''            current.glyphs'''
+
+[[mutant]]
+id = "m19-stdout-sink"
+predicate = "the program's stdout never reaches the reply"
+kills = "tests/test_figure_reader.py::test_p2_program_output_never_reaches_the_reply"
+anchor = '''            contextlib.redirect_stdout(sink),
+'''
+mutant = '''            contextlib.nullcontext(sink),
+'''
+
+[[mutant]]
+id = "m19-png-one-figure"
+predicate = "a PNG line ships only for exactly one figure"
+kills = "tests/test_figure_reader.py::test_p2_two_figures_carry_no_png_line"
+anchor = '''    png = None if current.too_large or len(current.pngs) != 1 else current.pngs[0]'''
+mutant = '''    png = None if current.too_large or not current.pngs else current.pngs[0]'''
+
+[[mutant]]
+id = "m19-error-innermost-line"
+predicate = "an exception's line is the innermost program frame's"
+kills = "tests/test_figure_reader.py::test_p3_errors[innermost]"
+anchor = '''        if trace.tb_frame.f_code.co_filename == PROGRAM:
+            line = trace.tb_lineno'''
+mutant = '''        if trace.tb_frame.f_code.co_filename == PROGRAM and line is None:
+            line = trace.tb_lineno'''
+
+[[mutant]]
+id = "m19-scatter-offset-transform"
+predicate = "a scatter's data-bearing transform is its offset transform"
+kills = "tests/test_figure_reader.py::test_p4_scatter_colorbar_and_size_legend"
+anchor = '''    if kind == "PathCollection":
+        transform = artist.get_offset_transform()'''
+mutant = '''    if kind == "PathCollection":
+        transform = artist.get_transform()'''
+
+[[mutant]]
+id = "m19-glyph-count"
+predicate = "a missing-glyph warning counts"
+kills = "tests/test_figure_reader.py::test_p4_glyphs_count_missing_characters"
+anchor = '''            self.glyphs += sum(_GLYPH in str(item.message) for item in caught)'''
+mutant = '''            self.glyphs += 0'''
+
+[[mutant]]
+id = "m19-defaults-each-run"
+predicate = "each run starts from matplotlib's defaults"
+kills = "tests/test_figure_reader.py::test_p4_each_run_starts_from_matplotlib_defaults"
+anchor = '''    mpl.rcdefaults()
+'''
+mutant = '''    pass
+'''
+
+[[mutant]]
+id = "m19-coordinate-cap"
+predicate = "the coordinate cap admits exactly MAX_COORDINATES"
+kills = "tests/test_figure_reader.py::test_p5_caps[coordinates]"
+anchor = '''        if self.coordinates > MAX_COORDINATES:'''
+mutant = '''        if self.coordinates >= MAX_COORDINATES:'''
+
+[[mutant]]
+id = "m19-children-cap"
+predicate = "the children cap admits exactly MAX_CHILDREN"
+kills = "tests/test_figure_reader.py::test_p5_caps[children]"
+anchor = '''    if len(figure.axes) > MAX_AXES or sum(len(_children(ax)) for ax in figure.axes) > MAX_CHILDREN:'''
+mutant = '''    if len(figure.axes) > MAX_AXES or sum(len(_children(ax)) for ax in figure.axes) >= MAX_CHILDREN:'''
+
+[[mutant]]
+id = "m19-axes-cap"
+predicate = "the axes cap admits exactly MAX_AXES"
+kills = "tests/test_figure_reader.py::test_p5_caps[axes]"
+anchor = '''    if len(figure.axes) > MAX_AXES or sum(len(_children(ax)) for ax in figure.axes) > MAX_CHILDREN:'''
+mutant = '''    if len(figure.axes) >= MAX_AXES or sum(len(_children(ax)) for ax in figure.axes) > MAX_CHILDREN:'''
+
+[[mutant]]
+id = "m19-description-bytes"
+predicate = "a description over MAX_DESCRIPTION_BYTES becomes the too_large record"
+kills = "tests/test_figure_reader.py::test_p5_reply_sizes[MAX_DESCRIPTION_BYTES-200]"
+anchor = '''    if len(text.encode("utf-8")) > MAX_DESCRIPTION_BYTES or ('''
+mutant = '''    if False or ('''
+
+[[mutant]]
+id = "m19-holder-version"
+predicate = "a holder from another reader version is unwound"
+kills = "tests/test_figure_reader.py::test_a_holder_from_another_reader_is_unwound"
+anchor = '''    if getattr(found, "version", None) == VERSION:'''
+mutant = '''    if found is not None:'''
+
+[[mutant]]
+id = "m19-children-per-figure"
+predicate = "the children cap counts every axes of the figure together"
+kills = "tests/test_figure_reader.py::test_f7_the_children_cap_counts_the_whole_figure"
+anchor = '''    if len(figure.axes) > MAX_AXES or sum(len(_children(ax)) for ax in figure.axes) > MAX_CHILDREN:'''
+mutant = '''    if len(figure.axes) > MAX_AXES or max(len(_children(ax)) for ax in figure.axes) > MAX_CHILDREN:'''
+
+[[mutant]]
+id = "m19-tick-second-label"
+predicate = "a tick shown on the right or top side is a reported tick"
+kills = "tests/test_figure_reader.py::test_f4_right_hand_tick_labels_are_reported"
+anchor = '''            shown = [label for label in (tick.label1, tick.label2) if label.get_visible()]'''
+mutant = '''            shown = [label for label in (tick.label1,) if label.get_visible()]'''
+
+[[mutant]]
+id = "m19-legend-displayed-text"
+predicate = "a legend entry's text is the text it displays"
+kills = "tests/test_figure_reader.py::test_f5_legend_entries_read_their_displayed_text"
+anchor = '''        label = next(shown).get_text()'''
+mutant = '''        label = _labels[handles.index(handle)]'''
+
+[[mutant]]
+id = "m19-recording-never-raises"
+predicate = "a construction record that cannot be made never fails the program"
+kills = "tests/test_figure_reader.py::test_f3_a_record_matplotlib_cannot_express_as_numbers_is_skipped"
+anchor = '''    with contextlib.suppress(Exception):
+        record()'''
+mutant = '''    record()'''
+
+[[mutant]]
+id = "m19-ascii-transport"
+predicate = "every non-ASCII character travels escaped, so no line separator splits the line"
+kills = "tests/test_figure_reader.py::test_f11_line_separators_inside_text_survive_the_transport"
+anchor = '''    text = json.dumps(description, separators=(",", ":"), allow_nan=False)'''
+mutant = '''    text = json.dumps(description, ensure_ascii=False, separators=(",", ":"), allow_nan=False)'''
+
+[[mutant]]
+id = "m19-band-turn"
+predicate = "a band's far end must turn at the last x"
+kills = "tests/test_figure_reader.py::test_a_band_reads_back_only_the_fill_between_layout[turn-moved]"
+anchor = '''        or path[0] != backward[0]
+        or path[count + 1] != backward[-1]
+'''
+mutant = '''        or path[0] != backward[0]
+'''
+
+[[mutant]]
+id = "m19-band-x"
+predicate = "a band's two edges share their x values"
+kills = "tests/test_figure_reader.py::test_a_band_reads_back_only_the_fill_between_layout[x-moved]"
+anchor = '''        or path[count + 1] != backward[-1]
+        or [x for x, _ in forward] != [x for x, _ in backward]
+'''
+mutant = '''        or path[count + 1] != backward[-1]
+'''

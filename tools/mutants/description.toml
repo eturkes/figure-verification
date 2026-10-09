@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The M19.2 description decoder: every closed key set, exact type and line-shape check earns one
+# mutant naming one red (`.agent/archive/contracts/m19u2.md` P6).
+module = "src/verifier/figure/description.py"
+tests = ["tests/test_figure_description.py", "tests/test_figure_reader.py"]
+
+[[mutant]]
+id = "m19-keys-closed"
+predicate = "an object holds exactly its stated keys, no extra one"
+kills = "tests/test_figure_description.py::test_p6_every_level_refuses_a_wrong_shape[figure-extra]"
+anchor = '''    if type(value) is not dict or set(value) != set(keys):'''
+mutant = '''    if type(value) is not dict or not set(keys) <= set(value):'''
+
+[[mutant]]
+id = "m19-int-exact"
+predicate = "an integer is exactly int, never bool"
+kills = "tests/test_figure_description.py::test_p6_every_level_refuses_a_wrong_shape[glyphs-bool]"
+anchor = '''    if type(value) is not int:'''
+mutant = '''    if not isinstance(value, int):'''
+
+[[mutant]]
+id = "m19-float-exact"
+predicate = "a float is exactly float, never int"
+kills = "tests/test_figure_description.py::test_p6_every_level_refuses_a_wrong_shape[view-int]"
+anchor = '''    if type(value) is float and math.isfinite(value):  # `1e999` parses to inf: never a number
+        return value'''
+mutant = '''    if type(value) in (float, int) and math.isfinite(value):
+        return float(value)'''
+
+[[mutant]]
+id = "m19-one-tagged-line"
+predicate = "exactly one tagged line"
+kills = "tests/test_figure_description.py::test_p6_two_valid_lines_refuse"
+anchor = '''    if len(lines) != 1 or len(lines[0][len(TAG) :].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
+mutant = '''    if not lines or len(lines[0][len(TAG) :].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
+
+[[mutant]]
+id = "m19-byte-cap"
+predicate = "a tagged line over MAX_BYTES refuses"
+kills = "tests/test_figure_description.py::test_p6_oversize_refuses"
+anchor = '''    if len(lines) != 1 or len(lines[0][len(TAG) :].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
+mutant = '''    if len(lines) != 1:'''
+
+[[mutant]]
+id = "m19-version"
+predicate = "only this description version decodes"
+kills = "tests/test_figure_description.py::test_p6_version_must_match"
+anchor = '''        if item["version"] != VERSION:
+            return None'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "m19-line-lengths"
+predicate = "a line's x and y hold the same number of points"
+kills = "tests/test_figure_description.py::test_p6_every_level_refuses_a_wrong_shape[line-y-short]"
+anchor = '''    x, y = _tuple(item["x"], _float), _tuple(item["y"], _float)
+    if len(x) != len(y):
+        raise _InvalidError'''
+mutant = '''    x, y = _tuple(item["x"], _float), _tuple(item["y"], _float)'''
+
+[[mutant]]
+id = "m19-geometry-closed"
+predicate = "an unknown geometry kind refuses"
+kills = "tests/test_figure_description.py::test_p6_every_level_refuses_a_wrong_shape[geometry-unknown]"
+anchor = '''    read = _GEOMETRIES.get(value["kind"])
+    if read is None:
+        raise _InvalidError'''
+mutant = '''    read = _GEOMETRIES.get(value["kind"], _no_geometry)'''
+
+[[mutant]]
+id = "m19-float-finite"
+predicate = "a JSON number that overflows to infinity is no number"
+kills = "tests/test_figure_description.py::test_f9_numeric_overflow_is_no_number"
+anchor = '''    if type(value) is float and math.isfinite(value):'''
+mutant = '''    if type(value) is float:'''
+
+[[mutant]]
+id = "m19-closed-words"
+predicate = "a closed word field refuses any other word"
+kills = "tests/test_figure_description.py::test_f10_closed_word_fields_refuse_other_words[axis.kind]"
+anchor = '''    if type(value) is not str or value not in allowed:'''
+mutant = '''    if type(value) is not str:'''
+
+[[mutant]]
+id = "m19-cap-measures-the-body"
+predicate = "the decoder's byte cap measures the JSON after the tag, as the reader's does"
+kills = "tests/test_figure_reader.py::test_f8_a_description_at_the_cap_decodes"
+anchor = '''    if len(lines) != 1 or len(lines[0][len(TAG) :].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
+mutant = '''    if len(lines) != 1 or len(lines[0].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''

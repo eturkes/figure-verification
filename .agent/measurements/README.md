@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 35 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 36 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -76,7 +76,11 @@ axes child as (class, origin, data transform) — origin = the outermost Axes-mo
 (`.claude/rules/figure.md`). The projection compares the host leg with the installed bundle and
 publishes the bundle's family set. `I2` measures keyed value-explanation ambiguity over `data/*.csv`:
 cross-column full-series ties, shared points, tied k-point subsets and chance matches of made-up
-keyed series (seed 19, 10,000 trials per size).
+keyed series (seed 19, 10,000 trials per size). `I3` (M19.2) runs the same 52 programs through the
+reader on the host and through the production `wrapper_code` in the installed bundle, one runtime
+in order (the reader's holder reused across replies), and publishes, per program, the description
+fields that differ: `boxplot` labels, `reference` span shape (`Rectangle` vs `Polygon`), `subplots`
+positions after `tight_layout`.
 
 The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
 x column, y column and reduction; six tasks also require a separate city series or city color, which
@@ -136,6 +140,7 @@ and pandas versions for the selected build.
 | W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
 | I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-0283.json` | host matplotlib 3.9.4 vs installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
 | I2 | `i2_ambiguity.py` | none | host only |
+| I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-0283.json` | host reader (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 |
 | A1 | `a1_anchor.py` | none | host only |
 | A2 | `a2_labels.py` | none | host only |
 | A3 | `a3_short_names.py` | none | host only |

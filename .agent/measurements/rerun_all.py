@@ -57,6 +57,7 @@ IDS = (
     "R-BAR",
     "I1",
     "I2",
+    "I3",
 )
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
@@ -69,6 +70,11 @@ HOST_ONLY = {
     "S1": "s1_host.py",
 }
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
+# M19: a host leg, then its Node leg in the installed Open WebUI bundle (0.28.3).
+BUNDLE_PAIRS = {
+    "I1": ("i1_census.py", "i1_pyodide.mjs", "i1-0283.json"),
+    "I3": ("i3_export.py", "i3_pyodide.mjs", "i3-0283.json"),
+}
 M17_ARMS = {
     "ja-simple": "sales.csv",
     "ja-elaborate": "sales.csv",
@@ -359,9 +365,10 @@ class Replay:
                     "--check-fixtures",
                 ],
             )
-        elif name == "I1":
-            self.run("I1-host", self.python("i1_census.py"))
-            self.run(name, ["node", str(ROOT / "i1_pyodide.mjs"), "owui", "i1-0283.json"])
+        elif name in BUNDLE_PAIRS:
+            host, node, result = BUNDLE_PAIRS[name]
+            self.run(f"{name}-host", self.python(host))
+            self.run(name, ["node", str(ROOT / node), "owui", result])
         elif name == "W1":
             self.run(
                 name, self.python("w1_width.py", PROJECT / "corpus/python/captures/m10-design")

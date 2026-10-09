@@ -7192,6 +7192,8 @@ def _load() -> types.ModuleType:
         sys.modules[name] = module
     try:
         for name, source in _SOURCES.items():
+            # The figure reader ships its own text to the browser (M19), so each module keeps it.
+            modules[name].__dict__["__paste_in_source__"] = source[1:]
             code = compile(source[1:], f"<paste-in:{name}>", "exec")
             exec(code, modules[name].__dict__)  # noqa: S102 - embedding IS this file's job
         return modules[_ROOT]

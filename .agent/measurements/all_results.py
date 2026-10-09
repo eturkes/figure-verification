@@ -431,6 +431,52 @@ def i2():
     }
 
 
+def _difference(a, b, path, out):
+    if type(a) is not type(b):
+        out.add(path)
+    elif isinstance(a, dict):
+        for key in set(a) | set(b):
+            if key in a and key in b:
+                _difference(a[key], b[key], key, out)
+            else:
+                out.add(key)
+    elif isinstance(a, list):
+        if len(a) != len(b):
+            out.add(path)
+        for x, y in zip(a, b, strict=False):
+            _difference(x, y, path, out)
+    elif a != b:
+        out.add(path)
+
+
+def i3():
+    tag = "FIGURE_VERIFICATION_DESCRIPTION:"
+    host, sandbox = load("i3-host.json"), load("i3-0283.json")["results"]
+    differing = {}
+    for name in sorted(host):
+        run = sandbox[name]
+        if run["error"] or run["stderr"] or run["description"] is None:
+            differing[name] = ["sandbox-fault"]
+            continue
+        fields = set()
+        _difference(
+            json.loads(host[name][len(tag) :]),
+            json.loads(run["description"][len(tag) :]),
+            "",
+            fields,
+        )
+        if fields:
+            differing[name] = sorted(fields)
+    return {
+        "programs": len(host),
+        "same_programs": sorted(host) == sorted(sandbox),
+        "differing_fields": differing,
+        "png_lines": {
+            name: run["png_lines"] for name, run in sorted(sandbox.items()) if run["png_lines"] != 1
+        },
+    }
+
+
 PROJECTORS = {
     "S1": lambda: unary(load("all-data/S1.log")),
     "S2": s2,
@@ -457,6 +503,7 @@ PROJECTORS = {
     "M17": m17,
     "I1": i1,
     "I2": i2,
+    "I3": i3,
 }
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+{
+  "differing_fields": {
+    "boxplot": [
+      "label"
+    ],
+    "reference": [
+      "angle",
+      "cls",
+      "height",
+      "kind",
+      "width",
+      "x",
+      "xy",
+      "y"
+    ],
+    "subplots": [
+      "position"
+    ]
+  },
+  "png_lines": {
+    "nothing": 0,
+    "two_figs": 0
+  },
+  "programs": 52,
+  "same_programs": true
+}
