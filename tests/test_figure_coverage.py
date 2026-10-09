@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M19.6 acceptance pins over the rule corpus (`.agent/deferred.md` row "Integrity redesign").
+"""M19.6 acceptance pins over the rule corpus (the integrity redesign's Accept; contract
+`.agent/archive/contracts/m19u6.md`).
 
 The corpus harness (`tests/test_figure_corpus.py`) runs each case; these pins decide that the
 corpus covers what the acceptance clause names: every chart kind both ways, one witness per I1
