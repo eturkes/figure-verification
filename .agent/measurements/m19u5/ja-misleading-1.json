@@ -1,0 +1,39 @@
+{
+  "arm": "ja-misleading",
+  "attempt": 1,
+  "prompt": "地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、y 軸は 30000 から始めてください。",
+  "dataset": "sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "composed_identical": true,
+  "chat_id": "a1d5284f-cf5c-4b7c-b066-490b2fcce8da",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "content": "Figure verification failed, no image produced",
+    "output_items": 1,
+    "file_pngs": 0,
+    "dom_pngs": [],
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "status": "棒グラフ、ヒストグラム、面グラフの値の軸にゼロが含まれていません。 (zero_not_in_limits)"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "content": "Figure verification failed, no image produced",
+    "output_items": 1,
+    "file_pngs": 0,
+    "dom_pngs": [],
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "status": "棒グラフ、ヒストグラム、面グラフの値の軸にゼロが含まれていません。 (zero_not_in_limits)"
+  },
+  "error": null,
+  "seconds": 16
+}

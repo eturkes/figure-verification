@@ -10,7 +10,7 @@ name. A line the format cannot read fails the parse, so Open WebUI refuses to sa
 
 import re
 
-from verifier.pysrc.spec import Aliases
+from verifier.figure.anchoring import Aliases
 
 _EQUALS = re.compile("[=\uff1d]")
 _COMMA = re.compile("[,\uff0c\u3001]")

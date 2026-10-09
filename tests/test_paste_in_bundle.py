@@ -189,32 +189,30 @@ def test_b6_import_surface_is_stdlib_open_webui_and_tool_pydantic() -> None:
 
 
 def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
-    """B7: with `verifier` absent and `src/` off `sys.path`, the artifact still verifies.
+    """B7: with `verifier` absent and `src/` off `sys.path`, the filter artifact still judges.
 
-    A subprocess with a scrubbed path returns the same verdicts as the in-tree core for one
-    known-good and one known-bad program.
+    A subprocess with a scrubbed path decodes and judges two real reader descriptions (an honest
+    bar chart and bars cut off by `plt.ylim`) through the artifact's own embedded judge, and
+    returns the same verdicts as the in-tree judge.
     """
-    from verifier.pysrc import DatasetTarget, Refused, verify_python_source  # noqa: PLC0415
+    from verifier.figure import reader  # noqa: PLC0415
+    from verifier.figure.description import parse_description  # noqa: PLC0415
+    from verifier.figure.judge import Passed, Sources, judge  # noqa: PLC0415
 
-    good = (
-        "import pandas as pd\n"
-        "import matplotlib.pyplot as plt\n"
-        'df = pd.read_csv("measurements.csv")\n'
-        'plt.bar(df["site"], df["value"])\n'
-        "plt.show()\n"
-    )
-    bad = "import os\n"
+    plot = "import matplotlib.pyplot as plt\nplt.bar(['west', 'east'], [3.25, 1])\n"
     content = b"site,value\nwest,3.25\neast,1\ncentral,2.5\n"
-    target = DatasetTarget(path="measurements.csv", content=content)
+    descriptions = [reader.run(plot), reader.run(plot + "plt.ylim(1, 4)\n")]
 
-    def summarize(source: str) -> dict[str, str | None]:
-        verdict = verify_python_source(source, declared_target=target)
+    def summarize(text: str) -> dict[str, str | None]:
+        described = parse_description(text)
+        assert described is not None
+        verdict = judge(described, Sources((("measurements.csv", content),), "value by site"))
         return {
-            "kind": "refused" if isinstance(verdict, Refused) else "verified",
-            "code": verdict.code if isinstance(verdict, Refused) else None,
+            "kind": "passed" if isinstance(verdict, Passed) else "blocked",
+            "code": None if isinstance(verdict, Passed) else verdict.reason,
         }
 
-    artifact = REPO_ROOT / "paste-in" / "figure_verification_tool.py"
+    artifact = REPO_ROOT / "paste-in" / "figure_verification_filter.py"
     assert artifact.is_file()
     isolated_artifact = tmp_path / "artifact.py"
     isolated_artifact.write_bytes(artifact.read_bytes())
@@ -231,8 +229,7 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
     (tmp_path / "payload.json").write_text(
         json.dumps(
             {
-                "sources": [good, bad],
-                "path": "measurements.csv",
+                "descriptions": descriptions,
                 "content_hex": content.hex(),
             }
         ),
@@ -291,41 +288,23 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
                 module.__getattr__ = missing
 
         sys.meta_path.insert(0, OpenWebUIStub())
-        spec = importlib.util.spec_from_file_location("isolated_tool", here / "artifact.py")
+        spec = importlib.util.spec_from_file_location("isolated_filter", here / "artifact.py")
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         assert "verifier" not in sys.modules
 
-        public = [
-            value
-            for name, value in vars(module.Tools).items()
-            if not name.startswith("_") and callable(value) and not isinstance(value, type)
-        ]
-        assert len(public) == 1
-        namespace = public[0].__globals__['first_verdict'].__globals__
-        verify = next(
-            value
-            for value in namespace.values()
-            if callable(value) and getattr(value, "__name__", "") == "verify_python_source"
-        )
-        target_type = next(
-            value
-            for value in namespace.values()
-            if isinstance(value, type) and value.__name__ == "DatasetTarget"
+        namespace = module.Filter.outlet.__globals__
+        parse, judge, sources = (
+            namespace["parse_description"], namespace["judge"], namespace["Sources"]
         )
         payload = json.loads((here / "payload.json").read_text(encoding="utf-8"))
-        target_value = target_type(
-            path=payload["path"],
-            content=bytes.fromhex(payload["content_hex"]),
-        )
+        content = bytes.fromhex(payload["content_hex"])
         observed = []
-        for source in payload["sources"]:
-            verdict = verify(source, declared_target=target_value)
-            code = getattr(verdict, "code", None)
-            observed.append(
-                {"kind": "refused" if code is not None else "verified", "code": code}
-            )
+        for text in payload["descriptions"]:
+            verdict = judge(parse(text), sources((("measurements.csv", content),), "value by site"))
+            code = getattr(verdict, "reason", None)
+            observed.append({"kind": "blocked" if code is not None else "passed", "code": code})
         print(json.dumps(observed, sort_keys=True))
         """
     )
@@ -343,7 +322,10 @@ def test_b7_artifact_is_self_contained_without_the_repo(tmp_path: Path) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == [summarize(good), summarize(bad)]
+    expected = [summarize(text) for text in descriptions]
+    assert expected[0] == {"kind": "passed", "code": None}
+    assert expected[1]["kind"] == "blocked"
+    assert json.loads(result.stdout) == expected
 
 
 def test_b8_generation_fails_closed_on_an_unembeddable_source(tmp_path: Path) -> None:

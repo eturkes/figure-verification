@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// M10.3 + M17.4: drive the launcher's banner prompts through the signed-in Open WebUI chat, one
-// fresh chat per attempt, and record what the user saw before AND after a reload.
+// M10.3 + M17.4, arms re-keyed by M19.5: drive the launcher's banner prompts through the signed-in
+// Open WebUI chat, one fresh chat per attempt, and record what the user saw before AND after a
+// reload.
 //
 //   node m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>
 //
-// arm = simple | elaborate | ja-simple | ja-elaborate | ja-clinic-simple | ja-clinic-elaborate; its
+// arm = simple | misleading | ja-simple | ja-misleading | ja-clinic-simple | ja-clinic-misleading; its
 // prompt is read from the webui/launch.sh assignment, and <csv> must be the file the arm names.
 // The harness signs in with FV_WEBUI_EMAIL / FV_WEBUI_PASSWORD when the page asks for it. Records
 // land as <out-dir>/<arm>-<n>.json + <arm>-<n>-<moment>.png; the PNG attachment itself is hashed,
@@ -17,11 +18,11 @@ import puppeteer from "puppeteer-core";
 const [browserURL, webuiURL, csvPath, arm, attemptsText, outDir] = process.argv.slice(2);
 const ARMS = {
   simple: ["simple_prompt", "sales.csv"],
-  elaborate: ["elaborate_prompt", "sales.csv"],
+  misleading: ["misleading_prompt", "sales.csv"],
   "ja-simple": ["ja_simple_prompt", "sales.csv"],
-  "ja-elaborate": ["ja_elaborate_prompt", "sales.csv"],
+  "ja-misleading": ["ja_misleading_prompt", "sales.csv"],
   "ja-clinic-simple": ["ja_clinic_simple_prompt", "clinic_ja.csv"],
-  "ja-clinic-elaborate": ["ja_clinic_elaborate_prompt", "clinic_ja.csv"],
+  "ja-clinic-misleading": ["ja_clinic_misleading_prompt", "clinic_ja.csv"],
 };
 const PASS = "Figure verification passed";
 const FAIL = "Figure verification failed, no image produced";

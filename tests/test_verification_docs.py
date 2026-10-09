@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M18.3 D3-D7 + D9: the python-mode reference names every check, reason, accepted name + limit.
+"""M18.3 D3-D7 + D9, re-keyed by M19.5: the python-mode reference names every check, reason +
+limit.
 
-Contract: `.agent/archive/contracts/m18u3.md`. The reference is what each "Show checks" row links
-to, so it must move with the code: a check, a reason, an admitted call or a limit added without its
-sentence here fails this module. Presence is all a token scan decides; whether a sentence is TRUE
-stays the closing review's (D8).
+Contracts: `.agent/archive/contracts/m18u3.md`, `.agent/archive/contracts/m19u5.md` (W6). The
+reference is what each "Show checks" row links to, so it must move with the code: a check, a reason
+or a limit added without its sentence here fails this module. Presence is all a token scan decides;
+whether a sentence is TRUE stays the closing review's (D8). D5 (every admitted Python name) retired
+with the static admission path.
 """
 
-import dataclasses
 import os
 import re
 import subprocess
@@ -16,10 +17,11 @@ from typing import get_args
 
 import pytest
 
-from verifier.pysrc import admit
-from verifier.pysrc.errors import RefusalCode
+from verifier.figure import explain, reader, request
+from verifier.figure.reasons import FigureReason
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from webui.paste_in import checks
+from webui.paste_in import filter as filter_module
 from webui.paste_in.reasons import OutletCause
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -47,7 +49,7 @@ def _sections(text: str) -> dict[str, str]:
 
 @pytest.mark.parametrize("language", ["en", "ja"])
 def test_d3_each_check_has_its_anchor_and_title(language: str) -> None:
-    """D3: 11 `check-<id>` anchors in CHECKS order, each before its TEXTS title heading."""
+    """D3: 9 `check-<id>` anchors in CHECKS order, each before its TEXTS title heading."""
     text = _text(language)
     assert [mark.group(1) for mark in _ANCHOR.finditer(text)] == list(checks.CHECKS)
     column = 0 if language == "en" else 1
@@ -60,51 +62,46 @@ def test_d3_each_check_has_its_anchor_and_title(language: str) -> None:
 
 @pytest.mark.parametrize("language", ["en", "ja"])
 def test_d4_each_reason_sits_in_its_check_section(language: str) -> None:
-    """D4: all 69 reasons, each inside its CHECK_OF section, both languages."""
-    reasons = set(get_args(RefusalCode)) | set(get_args(OutletCause))
-    assert len(reasons) == 69
+    """D4: all 51 reasons (39 figure + 12 outlet), each inside its CHECK_OF section only."""
+    reasons = set(get_args(FigureReason)) | set(get_args(OutletCause))
+    assert len(reasons) == 51
     sections = _sections(_text(language))
     for reason in sorted(reasons):
         owners = [check for check, body in sections.items() if f"`{reason}`" in body]
         assert owners == [checks.CHECK_OF[reason]], (reason, owners)
 
 
-def _accepted_names() -> set[str]:
-    """Read off the live admission tables, so a name admitted later without its sentence fails."""
-    names = set(admit.ADMITTED_CALL_TARGETS) | set(admit.ADMITTED_CONSTANT_ATTRS)
-    names |= {*admit.ADMITTED_IMPORTS, *admit.ADMITTED_IMPORTS.values()}
-    names |= {keyword for keywords in admit.ADMITTED_KEYWORDS.values() for keyword in keywords}
-    names |= set(admit.ADMITTED_VALUE_ATTRS) | set(admit.ADMITTED_ACCESSOR_KINDS)
-    names |= set(admit.ADMITTED_ACCESSOR_KEYWORDS) | set(admit.ADMITTED_UNWRAPPED_ATTRS)
-    # The reduction set has no public name; reading the private one is the point (reviewer-3 K7-F1).
-    return names | set(admit._REDUCTIONS)
+# Hand-stated: each published limit -> the module that owns it (the value is read live, so a
+# changed value without its sentence fails here).
+_LIMITS = {
+    "MAX_AXES": reader,
+    "MAX_CHILDREN": reader,
+    "MAX_COORDINATES": reader,
+    "MAX_TEXT": reader,
+    "MAX_DESCRIPTION_BYTES": reader,
+    "MAX_PNG_CHARACTERS": reader,
+    "MAX_GROUPS": explain,
+    "MAX_WORK": explain,
+    "MAX_RANGE": request,
+    "RPC_TIMEOUT_SECONDS": filter_module,
+}
+_CSV_LIMITS = ("max_csv_bytes", "max_csv_rows", "max_csv_columns", "max_csv_cell_bytes")
 
 
-@pytest.mark.parametrize("language", ["en", "ja"])
-def test_d5_every_accepted_name_is_named(language: str) -> None:
-    """D5: imports, call targets, keywords, attributes, accessor kinds, unwraps, reductions."""
-    text = _text(language)
-    spans = re.findall(r"`([^`\n]+)`", text)
-    missing = sorted(
-        name
-        for name in _accepted_names()
-        if not any(re.search(rf"(?<!\w){re.escape(name)}(?!\w)", span) for span in spans)
-    )
-    assert not missing, missing
-    # A call target counts only when written whole, never as two words (`np` + `sin`).
-    whole = sorted(name for name in admit.ADMITTED_CALL_TARGETS if f"`{name}`" not in text)
-    assert not whole, whole
+def _limit_row(text: str, name: str) -> int:
+    row = re.search(rf"^\| `{name}` \| ([0-9,_]+) \|", text, re.MULTILINE)
+    assert row is not None, name
+    return int(row.group(1).replace(",", "").replace("_", ""))
 
 
 @pytest.mark.parametrize("language", ["en", "ja"])
 def test_d6_every_limit_is_named_with_its_value(language: str) -> None:
-    """D6: every DEFAULT_LIMITS field + value, both languages."""
+    """D6: every published limit + its live value, both languages."""
     text = _text(language)
-    for field in dataclasses.fields(DEFAULT_LIMITS):
-        value: int = getattr(DEFAULT_LIMITS, field.name)
-        row = re.search(rf"^\| `{field.name}` \| ([0-9,_]+) \|", text, re.MULTILINE)
-        assert row is not None, field.name
-        assert int(row.group(1).replace(",", "").replace("_", "")) == value, field.name
+    for name, module in _LIMITS.items():
+        assert _limit_row(text, name) == getattr(module, name), name
+    for name in _CSV_LIMITS:
+        assert _limit_row(text, name) == getattr(DEFAULT_LIMITS, name), name
 
 
 @pytest.mark.parametrize("language", ["en", "ja"])

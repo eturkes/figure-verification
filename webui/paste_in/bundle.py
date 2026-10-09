@@ -2,7 +2,7 @@
 """The generator: tracked first-party sources in, one pasteable artifact out.
 
 The single-source ruling is what this module implements. The verification core is written once
-under `src/verifier/pysrc/`; the artifact embeds it BY GENERATION, and a hand fork is banned. A
+under `src/verifier/`; the artifact embeds it BY GENERATION, and a hand fork is banned. A
 generator whose output drifts from its inputs recreates that fork silently, so `--check` compares
 committed bytes against a fresh render on every gate run.
 
@@ -21,7 +21,6 @@ what stops `ruff format` from rewriting the quotes and breaking `--check` on the
 """
 
 import ast
-import json
 import sys
 from pathlib import Path
 
@@ -30,8 +29,6 @@ FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
 # The demo's own pair (Q37): production + demo ship separate files; the launcher provisions these.
 DEMO_TOOL_ARTIFACT = "webui/demo-paste-in/figure_verification_tool.py"
 DEMO_FILTER_ARTIFACT = "webui/demo-paste-in/figure_verification_filter.py"
-CAPTURE_TEMPLATE_SOURCE = "webui/paste_in/capture_template.py"
-_CAPTURE_TEMPLATE_MODULE = "webui.paste_in.capture_template"
 
 # Each root names the one class Open WebUI discovers after its source closure loads.
 ARTIFACTS: dict[str, str] = {
@@ -53,12 +50,6 @@ _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
 # `pyproject.toml` [tool.ruff] line-length. The artifact is linted like any other tracked source,
 # so a source line that would overflow here must abort generation rather than fail the gate.
 _LINE_LIMIT = 100
-_MAX_TEMPLATE_LITERAL = 88  # indented JSON literals must fit the embedding line cap
-# The capture template's last paragraph: the demo adapter's format, never production's (Q40).
-_FORMAT_PARAGRAPH = (
-    "\n\nReturn one complete Python program as bare source text, no Markdown fences.\n"
-)
-
 # The third-party imports an artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition;
 # its own dependency `pydantic` builds the tool's admin `Valves` (Q43).
@@ -74,56 +65,6 @@ class BundleError(RuntimeError):
 def repo_root() -> Path:
     """The repository root, resolved from this file rather than from the process cwd."""
     return Path(__file__).resolve().parents[2]
-
-
-def _literal_lines(text: str) -> list[str]:
-    """`text` as indented JSON string literals, each within the embedding line cap."""
-    chunks: list[str] = []
-    current = ""
-    for character in text:
-        candidate = current + character
-        if current and len(json.dumps(candidate, ensure_ascii=False)) > _MAX_TEMPLATE_LITERAL:
-            chunks.append(current)
-            current = character
-        else:
-            current = candidate
-    if current or not chunks:
-        chunks.append(current)
-    return [f"    {json.dumps(chunk, ensure_ascii=False)}" for chunk in chunks]
-
-
-def production_template(template: str) -> str:
-    """The capture template minus its bare-source format paragraph (Q40).
-
-    The demo adapter turns a bare-source reply into a `draw_figure` call; the production proposer
-    makes that call itself (admin system prompt), so the sentence would contradict its prompt.
-    """
-    if template.count(_FORMAT_PARAGRAPH) != 1 or not template.endswith(_FORMAT_PARAGRAPH):
-        msg = "the capture template no longer ends in its one bare-source format paragraph"
-        raise BundleError(msg)
-    return template.removesuffix(_FORMAT_PARAGRAPH) + "\n"
-
-
-def generated_template_source() -> str:
-    """Encode the authored prompt once for both the dev inlet and embedded filter."""
-    template = (repo_root() / "corpus/python/capture_prompt_v1.txt").read_text(encoding="utf-8")
-    lines = [
-        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
-        '"""Generated from corpus/python/capture_prompt_v1.txt; edit that file instead."""',
-        "",
-        "from typing import Final",
-        "",
-        "# The demo's inlet template: the capture template verbatim.",
-        "CAPTURE_TEMPLATE: Final = (",
-        *_literal_lines(template),
-        ")",
-        "# Production's inlet template: the capture template without its bare-source paragraph.",
-        "PRODUCTION_TEMPLATE: Final = (",
-        *_literal_lines(production_template(template)),
-        ")",
-        "",
-    ]
-    return "\n".join(lines)
 
 
 def artifact_text(relative: str) -> str:
@@ -158,7 +99,7 @@ def module_path(name: str) -> Path:
     if package.is_file():
         return package
     module = base.with_suffix(".py")
-    if module.is_file() or name == _CAPTURE_TEMPLATE_MODULE:
+    if module.is_file():
         return module
     msg = f"no tracked source for module {name!r}"
     raise BundleError(msg)
@@ -192,11 +133,7 @@ def _embeddable_source(name: str) -> str:
     `ast.parse` would raise a bare `SyntaxError` carrying no path, and generation must abort naming
     the source it refused.
     """
-    source = (
-        generated_template_source()
-        if name == _CAPTURE_TEMPLATE_MODULE
-        else module_path(name).read_text(encoding="utf-8")
-    )
+    source = module_path(name).read_text(encoding="utf-8")
     _check_embeddable(name, source)
     return source
 
@@ -354,7 +291,7 @@ already carries -- `open_webui`, and `pydantic` in the tool -- and nothing else.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py`. The same command with
 `--check` fails when this file and its sources disagree, so an edit made here is lost at the next
-gate run: change `webui/paste_in/` or `src/verifier/pysrc/` instead.
+gate run: change `webui/paste_in/` or `src/verifier/` instead.
 """
 
 import sys

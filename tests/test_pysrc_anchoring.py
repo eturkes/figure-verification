@@ -14,8 +14,6 @@ from verifier.figure.anchoring import _unnamed_places
 from verifier.pysrc.limits import DEFAULT_LIMITS, PysrcLimits
 from verifier.pysrc.spec import Anchoring, DatasetTarget
 from verifier.pysrc.verify import Verified, verify_python_source
-from webui.paste_in import selection
-from webui.paste_in.owui_files import UploadedFile
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = b"region,month,revenue,orders\nwest,2024-01,1,5\neast,2024-02,2,6\n"
@@ -253,17 +251,6 @@ def test_q8_binding_precedes_recompute() -> None:
     request = "Draw orders against revenue as a scatter plot."
     assert _verdict(program, None) == "column_not_numeric"
     assert _verdict(program, request) == "column_not_requested"
-
-
-def test_q8_selection_threads_the_request_into_every_dataset_target() -> None:
-    upload = UploadedFile("file", "/mnt/uploads/sales.csv", _SALES)
-    program = _bar("month", path="/mnt/uploads/sales.csv")
-    refused, consumed = selection.first_verdict(program, (upload,), _BY_REGION, "substitution", ())
-    assert consumed is upload
-    assert not isinstance(refused, Verified) and refused is not None
-    assert refused.code == "column_not_requested"
-    verified, _ = selection.first_verdict(program, (upload,), None, "substitution", ())
-    assert isinstance(verified, Verified)
 
 
 # Q38: stop phrases + negation. Contract `.agent/archive/contracts/q38.md`.

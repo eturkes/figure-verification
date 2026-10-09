@@ -1,742 +1,276 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Outlet publication boundary: every mutant names one test whose verdict/effect changes.
+# M19.5 outlet (`.agent/archive/contracts/m19u5.md` O1-O7): order, payload, Sources threading, replies,
+# bounded diagnostics, inlet templates. Each mutant names one red in the M19.5 suite.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_filter_checks.py", "tests/test_paste_in_filter.py", "tests/test_paste_in_filter_outlet.py", "tests/test_paste_in_filter_differential.py", "tests/test_paste_in_filter_internal.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_inlet_internal.py", "tests/test_paste_in_filter_reasons.py", "tests/test_paste_in_observe_filter.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_filter_font.py", "tests/test_paste_in_filter_ja.py"]
+tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py"]
 
 [[mutant]]
-id = "f2-body-receipt"
-predicate = "model-controlled body receipt is never an authority for PASS"
-kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[no-receipt-body-field]"
-anchor = '''        receipt = read_receipt(__request__)'''
-mutant = '''        receipt = read_receipt(__request__) or body.get("receipt")'''
-
-[[mutant]]
-id = "f3-metadata-user"
-predicate = "owner-checked refetch uses __user__, never untrusted metadata identity"
-kills = "tests/test_paste_in_filter.py::test_f3_filter_uses_current_user_to_refetch_and_drops_foreign_or_missing_ids"
-anchor = '''        receipt = read_receipt(__request__)
-        user_id = (__user__ or {}).get("id")'''
-mutant = '''        receipt = read_receipt(__request__)
-        user_id = (__metadata__ or {}).get("user", {}).get("id") or (__user__ or {}).get("id")'''
-
-[[mutant]]
-id = "f3-selection-duplicate"
-predicate = "tool and filter bind the same selection function object"
-kills = "tests/test_paste_in_filter.py::test_f3_tool_and_filter_bind_one_shared_selection_function"
-anchor = '''from webui.paste_in.selection import first_verdict'''
-mutant = '''from webui.paste_in.selection import first_verdict as _selection_verdict
-
-def first_verdict(*args, **kwargs):
-    return _selection_verdict(*args, **kwargs)'''
-
-[[mutant]]
-id = "f4-two-png-accepted"
-predicate = "exactly one PNG line, not the first of several, may publish"
-kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[two-png]"
-anchor = '''    if len(lines) != 1 or _PNG_URI.fullmatch(lines[0]) is None:'''
-mutant = '''    if not lines or _PNG_URI.fullmatch(lines[0]) is None:'''
-
-[[mutant]]
-id = "f4-embedded-second-png"
-predicate = "a second URI inside other stdout prose blocks publication"
-kills = "tests/test_paste_in_filter_internal.py::test_png_uri_rejects_a_second_uri_embedded_in_prose"
-anchor = '''    lines = [line.strip() for line in stdout.splitlines() if _DATA_PREFIX.search(line)]'''
-mutant = '''    lines = [line.strip() for line in stdout.splitlines() if line.strip().startswith("data:")]'''
-
-[[mutant]]
-id = "f5-prose-suffix-not-uri"
-predicate = "a word ending in data: is not another URI token"
-kills = "tests/test_paste_in_filter_internal.py::test_png_uri_ignores_data_suffix_inside_unrelated_prose"
-anchor = '''    lines = [line.strip() for line in stdout.splitlines() if _DATA_PREFIX.search(line)]'''
-mutant = '''    lines = [line.strip() for line in stdout.splitlines() if "data:" in line]'''
-
-[[mutant]]
-id = "f5-unicode-word-boundary"
-predicate = "a Japanese word suffix ending in data: is not a URI token"
-kills = "tests/test_paste_in_filter_internal.py::test_png_uri_ignores_data_suffix_inside_unrelated_prose"
-anchor = '''_DATA_PREFIX = re.compile(r"(?<!\w)data:")'''
-mutant = '''_DATA_PREFIX = re.compile(r"(?<![A-Za-z0-9_])data:")'''
-
-[[mutant]]
-id = "f4-stderr-ignored"
-predicate = "sandbox stderr must be empty before any publication"
-kills = "tests/test_paste_in_filter_outlet.py::test_f4_render_failures_withhold_image_and_model_prose[stderr]"
-anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):
-        return "sandbox_unavailable"
-    return "sandbox_error"'''
-mutant = '''    return None'''
-
-[[mutant]]
-id = "f4-output-not-rewritten"
-predicate = "persistent output carries the same authored FAIL or PASS as content"
-kills = "tests/test_paste_in_filter.py::test_f2_missing_request_or_state_receipt_always_fails[None]"
-anchor = '''    assistant["output"] = ['''
-mutant = '''    assistant["unused_output"] = ['''
-
-[[mutant]]
-id = "f4-last-assistant-only"
-predicate = "a verdict rewrites the current assistant turn, leaving prior assistant turns untouched"
-kills = "tests/test_paste_in_filter_outlet.py::test_f4_multiturn_rewrites_only_last_assistant_on_fail_and_pass[fail]"
-anchor = '''            for message in reversed(messages)'''
-mutant = '''            for message in messages'''
-
-[[mutant]]
-id = "f4-files-on-fail"
-predicate = "a missing receipt emits no files event"
-kills = "tests/test_paste_in_filter.py::test_f2_assistant_content_output_sources_and_metadata_cannot_author_pass[tool-reply]"
+id = "m19-receipt-unguarded"
+predicate = "no receipt blocks before any other work"
+kills = "tests/test_paste_in_outlet.py::test_o1_receipt_precedes_user_files_font_and_rpc"
 anchor = '''        if receipt is None:
             return await fail("no_tool_call")'''
-mutant = '''        if receipt is None:
-            if __event_emitter__ is not None:
-                await __event_emitter__({"type": "files", "data": {"files": []}})
+mutant = '''        if False:
             return await fail("no_tool_call")'''
 
 [[mutant]]
-id = "f4-refusal-rpc"
-predicate = "no verifier refusal may request sandbox execution"
-kills = "tests/test_paste_in_filter_outlet.py::test_f4_absent_refused_or_unbound_receipt_blocks_every_reply[refused]"
-anchor = '''        if isinstance(verdict, Refused):
-            return await fail(verdict.code)
-        if not isinstance(verdict, Verified):
-            return await fail("no_target")'''
-mutant = '''        if verdict is None:
-            return await fail("no_target")'''
+id = "m19-empty-user-accepted"
+predicate = "an empty user id is no user"
+kills = "tests/test_paste_in_outlet.py::test_o1_no_user_precedes_owned_files_font_and_rpc[user2]"
+anchor = '''        if not isinstance(user_id, str) or not user_id:'''
+mutant = '''        if not isinstance(user_id, str):'''
 
 [[mutant]]
-id = "f5-interpretation-dropped"
-predicate = "PASS publishes the re-derived certificate interpretation"
-kills = "tests/test_paste_in_filter_outlet.py::test_f5_verified_formula_publishes_one_file_and_recomputed_interpretation"
+id = "m19-session-type-unchecked"
+predicate = "a non-string session id is no browser"
+kills = "tests/test_paste_in_outlet.py::test_o1_no_browser_precedes_file_fetch_and_font[wrong-type]"
+anchor = '''        if not isinstance(session, str):
+            session = None'''
+mutant = '''        if False:
+            session = None'''
+
+[[mutant]]
+id = "m19-emitter-unchecked"
+predicate = "no event emitter is no browser"
+kills = "tests/test_paste_in_outlet.py::test_o1_no_browser_precedes_file_fetch_and_font[emitter]"
+anchor = '''        if __event_call__ is None or __event_emitter__ is None or not session:'''
+mutant = '''        if __event_call__ is None or not session:'''
+
+[[mutant]]
+id = "m19-font-files-ignored"
+predicate = "a non-ASCII attached file asks for the font"
+kills = "tests/test_paste_in_outlet.py::test_o2_font_trigger_reads_program_and_all_owned_bytes_only"
+anchor = '''    return not program.isascii() or any(not file.content.isascii() for file in files)'''
+mutant = '''    return not program.isascii()'''
+
+[[mutant]]
+id = "m19-one-file-sent"
+predicate = "every owned file reaches the RPC"
+kills = "tests/test_paste_in_outlet.py::test_o2_every_owned_file_reaches_rpc_in_receipt_order"
+anchor = '''                    for file in files
+                ],'''
+mutant = '''                    for file in files[:1]
+                ],'''
+
+[[mutant]]
+id = "m19-timeout-misnamed"
+predicate = "an RPC timeout is browser_timeout"
+kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
+anchor = '''        except TimeoutError:
+            return await fail("browser_timeout")'''
+mutant = '''        except TimeoutError:
+            return await fail("browser_error")'''
+
+[[mutant]]
+id = "m19-non-dict-reply"
+predicate = "a non-dict reply is malformed"
+kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
+anchor = '''        if not isinstance(response, dict):
+            return await fail("reply_malformed")'''
+mutant = '''        if False:
+            return await fail("reply_malformed")'''
+
+[[mutant]]
+id = "m19-fault-ignored"
+predicate = "a reply fault blocks before the description"
+kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
+anchor = '''        if fault is not None:
+            return await fail(fault)'''
+mutant = '''        if False:
+            return await fail(fault)'''
+
+[[mutant]]
+id = "m19-empty-stderr-fault"
+predicate = "an empty stderr string is a clean run"
+kills = "tests/test_paste_in_outlet.py::test_o1_clean_browser_reply_runs_real_judge_before_publication"
+anchor = '''    if stderr is None or (type(stderr) is str and stderr == ""):'''
+mutant = '''    if stderr is None:'''
+
+[[mutant]]
+id = "m19-description-unguarded"
+predicate = "an absent description blocks as no_description"
+kills = "tests/test_paste_in_outlet.py::test_o1_no_description_never_judges_or_publishes"
+anchor = '''        if description is None:
+            return await fail("no_description")'''
+mutant = '''        if False:
+            return await fail("no_description")'''
+
+[[mutant]]
+id = "m19-files-unthreaded"
+predicate = "the owned files reach the judge"
+kills = "tests/test_paste_in_outlet.py::test_o3_owned_csv_bytes_decide_values"
+anchor = '''            tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),'''
+mutant = '''            (),'''
+
+[[mutant]]
+id = "m19-request-unthreaded"
+predicate = "the receipt's request reaches the judge"
+kills = "tests/test_paste_in_outlet.py::test_o3_receipt_request_not_mutated_metadata_decides_values"
+anchor = '''            receipt.request_text,
+            self._ANCHORING,'''
+mutant = '''            None,
+            self._ANCHORING,'''
+
+[[mutant]]
+id = "m19-anchoring-unthreaded"
+predicate = "the artifact's anchoring reaches the judge"
+kills = "tests/test_paste_in_outlet.py::test_o3_artifact_anchoring_changes_the_real_judge_verdict"
+anchor = '''            receipt.request_text,
+            self._ANCHORING,'''
+mutant = '''            receipt.request_text,
+            "strict",'''
+
+[[mutant]]
+id = "m19-aliases-unthreaded"
+predicate = "the receipt's aliases reach the judge"
+kills = "tests/test_paste_in_outlet.py::test_o3_receipt_aliases_change_the_real_judge_verdict"
+anchor = '''            receipt.aliases,
+        )'''
+mutant = '''            (),
+        )'''
+
+[[mutant]]
+id = "m19-blocked-published"
+predicate = "a blocked figure never publishes"
+kills = "tests/test_paste_in_outlet.py::test_o1_blocked_judge_precedes_missing_png_and_threads_site"
+anchor = '''        if not isinstance(verdict, Passed):
+            return await fail(verdict.reason, verdict.site)'''
+mutant = '''        if False:
+            return await fail(verdict.reason, verdict.site)'''
+
+[[mutant]]
+id = "m19-site-dropped"
+predicate = "the judge's site reaches the check list"
+kills = "tests/test_paste_in_outlet.py::test_o1_blocked_judge_precedes_missing_png_and_threads_site"
+anchor = '''            return await fail(verdict.reason, verdict.site)'''
+mutant = '''            return await fail(verdict.reason)'''
+
+[[mutant]]
+id = "m19-png-unguarded"
+predicate = "a pass without one PNG line blocks"
+kills = "tests/test_paste_in_outlet.py::test_o1_pass_without_exactly_one_standalone_png_line_blocks"
+anchor = '''        if uri is None:
+            return await fail("no_image")'''
+mutant = '''        if False:
+            return await fail("no_image")'''
+
+[[mutant]]
+id = "m19-png-in-description"
+predicate = "the description line is never the PNG line"
+kills = "tests/test_paste_in_outlet.py::test_o1_a_description_naming_data_keeps_its_png"
+anchor = '''        if not line.startswith(TAG) and _DATA_PREFIX.search(line)'''
+mutant = '''        if _DATA_PREFIX.search(line)'''
+
+[[mutant]]
+id = "m19-publish-unguarded"
+predicate = "a failed files event blocks"
+kills = "tests/test_paste_in_outlet.py::test_o1_files_emit_failure_blocks_instead_of_publishing_pass"
+anchor = '''        except Exception:
+            return await fail("publish_failed")'''
+mutant = '''        except Exception:
+            pass'''
+
+[[mutant]]
+id = "m19-pass-without-interpretation"
+predicate = "a pass publishes its interpretation"
+kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
 anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
 mutant = '''        return _rewrite(body, PASS_TEXT)'''
 
 [[mutant]]
-id = "f7-pandas-wheel-omitted"
-predicate = "wrapper loads every plotting dependency before its first plotting import"
-kills = "tests/test_paste_in_filter_internal.py::test_wrapper_loads_plotting_stack_before_import"
-anchor = '''                "await _pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'],",'''
-mutant = '''                "await _pyodide.loadPackage(['numpy', 'mat' + 'plotlib'],",'''
+id = "m19-japanese-ignored"
+predicate = "a kana request reads the Japanese interpretation"
+kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
+anchor = '''        interpretation = verdict.interpretation_ja if japanese else verdict.interpretation'''
+mutant = '''        interpretation = verdict.interpretation'''
 
 [[mutant]]
-id = "f6-wrapper-literal-patch-trigger"
-predicate = "RPC source avoids OWUI's plotting-source trigger substring"
-kills = "tests/test_paste_in_filter_outlet.py::test_f7_wrapper_compiles_with_own_show_hook_and_no_literal_plotting_module"
-anchor = '''                "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",'''
-mutant = '''                "_plt = _imports.import_module('matplotlib.pyplot')",'''
-
-[[mutant]]
-id = "f6-all-files-in-rpc"
-predicate = "RPC receives only the one attachment consumed by verification"
-kills = "tests/test_paste_in_filter_outlet.py::test_f6_dataset_rpc_uses_only_the_owned_file_consumed_by_verification"
-anchor = '''                "files": (
-                    [{"id": consumed.file_id, "filename": consumed.path.rsplit("/", 1)[-1]}]
-                    if consumed is not None
-                    else []
-                ),'''
-mutant = '''                "files": [
-                    {"id": file.file_id, "filename": file.path.rsplit("/", 1)[-1]}
-                    for file in attachments
-                ],'''
-
-[[mutant]]
-id = "f6-timeout-unbounded"
-predicate = "browser callback has an explicit deadline of no more than sixty seconds"
-kills = "tests/test_paste_in_filter_outlet.py::test_f6_rpc_timeout_is_bounded_by_sixty_seconds"
-anchor = '''RPC_TIMEOUT_SECONDS: Final = 60'''
-mutant = '''RPC_TIMEOUT_SECONDS: Final = 120'''
-
-[[mutant]]
-id = "o6-missing-observation-passes"
-predicate = "a valid PNG without one matching observation never publishes"
-kills = "tests/test_paste_in_observe_filter.py::test_o6_verified_with_bad_observation_withholds_figure[missing]"
-anchor = '''        if observed is None:
-            return await fail("no_observation")
-        if not observation_matches(verdict, observed):'''
-mutant = '''        if observed is not None and not observation_matches(verdict, observed):'''
-
-[[mutant]]
-id = "a6-empty-string-only"
-predicate = "OWUI's present null stderr is empty and permits a verified PNG"
-kills = "tests/test_paste_in_filter_outlet.py::test_a6_owui_clean_reply_null_stderr_publishes_pass"
-anchor = '''    if stderr is None or (type(stderr) is str and stderr == ""):
-        return None'''
-mutant = '''    if stderr == "":
-        return None'''
-
-[[mutant]]
-id = "a6-truthy-stderr"
-predicate = "a missing stderr key and falsy non-string values must fail closed"
-kills = "tests/test_paste_in_filter_outlet.py::test_a6_reply_without_stderr_key_fails"
-anchor = '''    if "stderr" not in response:
-        return "browser_no_answer" if "error" in response else "reply_malformed"
-    stderr = response["stderr"]
-    if stderr is None or (type(stderr) is str and stderr == ""):
-        return None
-    if type(stderr) is not str:
-        return "reply_malformed"'''
-mutant = '''    stderr = response.get("stderr")
-    if not stderr:
-        return None
-    if type(stderr) is not str:
-        return "reply_malformed"'''
-
-[[mutant]]
-id = "x2-inlet-metadata-message"
-predicate = "the inlet never replaces the metadata user-message content"
-kills = "tests/test_paste_in_inlet.py::test_x2_aliasing_keeps_request_metadata_and_prior_message_objects"
-anchor = '''            updated[index] = {**message, "content": rendered}'''
-mutant = '''            __metadata__["user_message"]["content"] = rendered
-            updated[index] = {**message, "content": rendered}'''
-
-[[mutant]]
-id = "x2-inlet-in-place"
-predicate = "the inlet returns a new message without mutating the aliased original"
-kills = "tests/test_paste_in_inlet.py::test_x2_aliasing_keeps_request_metadata_and_prior_message_objects"
-anchor = '''            updated[index] = {**message, "content": rendered}'''
-mutant = '''            message["content"] = rendered
-            updated[index] = message'''
-
-[[mutant]]
-id = "x1-inlet-first-owned"
-predicate = "the last owned attachment in chat order supplies the prompt header"
-kills = "tests/test_paste_in_inlet.py::test_x1_last_owned_file_and_last_user_message_win"
-anchor = '''                    attachments[-1].content,'''
-mutant = '''                    attachments[0].content,'''
-
-[[mutant]]
-id = "x1-inlet-no-attachment"
-predicate = "no owned attachment leaves the proposer prompt unchanged"
-kills = "tests/test_paste_in_inlet.py::test_x1_unrenderable_input_keeps_body_equal[no-file]"
-anchor = '''        if not attachments:
-            return body'''
-mutant = '''        if not attachments:
-            from webui.paste_in.owui_files import UploadedFile
-            attachments = (UploadedFile("invented", UPLOAD_DIR + "invented.csv", b"x,y\na,1\n"),)'''
-
-[[mutant]]
-id = "d4-status-on-pass"
-predicate = "a PASS emits no status event"
-kills = "tests/test_paste_in_filter_reasons.py::test_d4_one_status_event_per_fail_and_none_on_pass[good]"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
-mutant = '''        await __event_emitter__({"type": "status", "data": {"description": "ok", "done": True}})
-        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
-
-[[mutant]]
-id = "d8-status-unguarded"
-predicate = "a raising status emit never costs the FAIL verdict"
-kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_or_pending_emitter_never_costs_the_verdict[raises-01-no-receipt]"
-anchor = '''    if error is not None and not isinstance(error, Exception):
-        raise error'''
-mutant = '''    if error is not None:
-        raise error'''
-
-[[mutant]]
-id = "d8-status-unbounded"
-predicate = "a stalled status emit is cut at its deadline"
-kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_or_pending_emitter_never_costs_the_verdict[pending-01-no-receipt]"
-anchor = '''        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
-mutant = '''        done, _pending = await asyncio.wait({task})'''
-
-[[mutant]]
-id = "d8-log-unguarded"
-predicate = "a raising log handler never costs the verdict or the status line"
-kills = "tests/test_paste_in_filter_reasons.py::test_d8_a_raising_log_handler_never_costs_the_verdict_or_status[RuntimeError]"
-anchor = '''    with contextlib.suppress(Exception):
-        _LOGGER.info('''
-mutant = '''    if True:
-        _LOGGER.info('''
-
-[[mutant]]
-id = "d5-kanji-is-japanese"
-predicate = "kanji alone selects English"
-kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata8-0]"
-anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
-mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER", "CJK")'''
-
-[[mutant]]
-id = "d5-kana-marks-are-japanese"
-predicate = "a middle dot or prolonged-sound mark beside kanji selects English"
-kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata9-0]"
-anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
-mutant = '''_KANA_LETTERS = ("HIRAGANA", "KATAKANA", "HALFWIDTH KATAKANA")'''
-
-[[mutant]]
-id = "d5-halfwidth-dropped"
-predicate = "half-width katakana alone selects Japanese"
-kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[False-metadata13-1]"
+id = "m19-halfwidth-kana"
+predicate = "half-width katakana marks a Japanese request"
+kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
 anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
 mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
 
 [[mutant]]
-id = "d5-receipt-decides-language"
-predicate = "the metadata request text, never the receipt, picks the language"
-kills = "tests/test_paste_in_filter_reasons.py::test_d5_language_follows_kana_in_the_metadata_request_text[True-metadata11-1]"
-anchor = '''            return await _fail(
-                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
-            )'''
-mutant = '''            text = {"user_message": {"content": receipt.request_text}} if receipt else __metadata__
-            return await _fail(
-                body, reason, text, __event_emitter__, self._ANCHORING, evidence=evidence
-            )'''
-
-[[mutant]]
-id = "d3-traceback-is-loader"
-predicate = "a Python traceback naming loadPyodide is not the loader failure"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[11-traceback-loader]"
-anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):'''
-mutant = '''    if "loadPyodide" in stderr:'''
-
-[[mutant]]
-id = "d3-every-stderr-is-loader"
-predicate = "only stderr naming loadPyodide earns the ad-blocker fix"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[11-sandbox]"
-anchor = '''    if "loadPyodide" in stderr and not stderr.startswith(_TRACEBACK):'''
-mutant = '''    if not stderr.startswith(_TRACEBACK):'''
-
-[[mutant]]
-id = "d3-caller-error-malformed"
-predicate = "OWUI's error-only reply reads as a tab that did not answer"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[08-caller-error]"
-anchor = '''        return "browser_no_answer" if "error" in response else "reply_malformed"'''
-mutant = '''        return "reply_malformed"'''
-
-[[mutant]]
-id = "d3-timeout-as-error"
-predicate = "an RPC deadline reads as a timeout, not a call error"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[06-timeout]"
-anchor = '''        except TimeoutError:
-            return await fail("browser_timeout")
-        except Exception:'''
-mutant = '''        except Exception:'''
-
-[[mutant]]
-id = "d3-no-image-misnamed"
-predicate = "a reply without exactly one PNG reads as no image"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[12-no-image]"
-anchor = '''        if uri is None:
-            return await fail("no_image")'''
-mutant = '''        if uri is None:
-            return await fail("no_observation")'''
-
-[[mutant]]
-id = "d3-non-string-stderr-sandbox"
-predicate = "a non-string stderr is a malformed reply, not a sandbox fault"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[09-false-stderr]"
-anchor = '''    if type(stderr) is not str:
-        return "reply_malformed"'''
-mutant = '''    if type(stderr) is not str:
-        return "sandbox_error"'''
-
-[[mutant]]
-id = "d7-log-carries-stderr"
-predicate = "the log record never carries sandbox output"
-kills = "tests/test_paste_in_filter_reasons.py::test_d7_status_and_log_carry_no_untrusted_bytes[11-sandbox_error]"
-anchor = '''        if fault is not None:
-            return await fail(fault)'''
-mutant = '''        if fault is not None:
-            _LOGGER.info("stderr=%s", response.get("stderr"))
-            return await fail(fault)'''
-
-[[mutant]]
-id = "d3-no-user-as-no-call"
-predicate = "a missing user id reads apart from a missing tool call"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[02-no-user]"
-anchor = '''        if not isinstance(user_id, str):
-            return await fail("no_user")'''
-mutant = '''        if not isinstance(user_id, str):
-            return await fail("no_tool_call")'''
-
-[[mutant]]
-id = "d3-mismatch-as-no-target"
-predicate = "an attached CSV the program does not read reports target_mismatch"
-kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[lone-csv-mismatch]"
-anchor = '''        if isinstance(verdict, Refused):
-            return await fail(verdict.code)'''
-mutant = '''        if isinstance(verdict, Refused):
-            code = verdict.code
-            return await fail("no_target" if code == "target_mismatch" else code)'''
-
-[[mutant]]
-id = "d3-no-target-proceeds"
-predicate = "only a Verified verdict reaches the sandbox"
-kills = "tests/test_paste_in_filter_reasons.py::test_d3_each_arm_yields_its_reason_and_the_fixed_fail_verdict[03-no-target]"
-anchor = '''        if not isinstance(verdict, Verified):
-            return await fail("no_target")'''
-mutant = '''        if verdict is None and False:
-            return await fail("no_target")'''
-
-[[mutant]]
-id = "d8-status-awaits-cleanup"
-predicate = "a timed-out status emit is cancelled, never awaited, so its cleanup cannot delay the verdict"
-kills = "tests/test_paste_in_filter_reasons.py::test_d8_slow_emitter_cleanup_never_delays_the_verdict"
-anchor = '''    if not done:
-        task.cancel()'''
-mutant = '''    if not done:
-        task.cancel()
-        with contextlib.suppress(BaseException):
-            await task'''
-
-[[mutant]]
-id = "d8-emit-call-unguarded"
-predicate = "an emitter raising on call, before any await, never costs the verdict"
-kills = "tests/test_paste_in_filter_reasons.py::test_d8_an_emitter_raising_before_it_returns_an_awaitable_keeps_the_verdict"
-anchor = '''    try:
-        task = asyncio.ensure_future(emit(event))
-    except Exception:  # an emitter that raises before it returns an awaitable
-        return'''
-mutant = '''    task = asyncio.ensure_future(emit(event))'''
-
-[[mutant]]
-id = "m16-embed-skipped-on-pass"
-predicate = "a PASS reply carries the check list too"
-kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
-anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)'''
-mutant = '''        pass'''
-
-[[mutant]]
-id = "m16-embed-before-files-on-pass"
-predicate = "a PASS shows its check list only after the image is attached"
-kills = "tests/test_paste_in_filter_checks.py::test_c7_pass_emits_files_then_one_all_pass_embed[en-dataset]"
-anchor = '''        try:
-            await __event_emitter__(
-                {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
-            )'''
-mutant = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
-        try:
-            await __event_emitter__(
-                {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
-            )'''
-
-[[mutant]]
-id = "m16-embed-before-status"
-predicate = "a FAIL shows its status line first, then the check list"
-kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
+id = "m19-status-on-pass"
+predicate = "a pass emits no status line"
+kills = "tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log"
 anchor = '''    if reason is not None:
         english, japanese_text = REASONS[reason]'''
-mutant = '''    early = {"type": "embeds", "data": {"embeds": [breakdown_html(reason, japanese=japanese, anchoring=anchoring)], "replace": True}}
-    await _emit_bounded(emit, early, deadline)
-    if reason is not None:
-        english, japanese_text = REASONS[reason]'''
+mutant = '''    if reason is not None or True:
+        english, japanese_text = REASONS[reason or 'no_image']'''
 
 [[mutant]]
-id = "m16-replace-dropped"
-predicate = "the embed replaces earlier embeds, so the reply stores exactly one list"
-kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-01-no-receipt]"
-anchor = '''"embeds": [document], "replace": True}}'''
-mutant = '''"embeds": [document]}}'''
+id = "m19-status-without-code"
+predicate = "the status line ends with its code"
+kills = "tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log"
+anchor = '''        text = f"{japanese_text if japanese else english} ({reason})"'''
+mutant = '''        text = f"{japanese_text if japanese else english}"'''
 
 [[mutant]]
-id = "m16-unshared-deadline"
-predicate = "status and embed share one deadline"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_status_spends_the_embed_budget_too[01-no-receipt]"
-anchor = '''        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
-mutant = '''        done, _pending = await asyncio.wait({task}, timeout=STATUS_TIMEOUT_SECONDS)'''
+id = "m19-embed-appends"
+predicate = "the embed replaces earlier embeds"
+kills = "tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log"
+anchor = '''"replace": True}}'''
+mutant = '''"replace": False}}'''
 
 [[mutant]]
-id = "m16-late-start-skip-dropped"
-predicate = "no emit starts after the shared deadline"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_an_emit_never_starts_after_the_shared_deadline"
+id = "m19-deadline-ignored"
+predicate = "an emit not started by the deadline is skipped"
+kills = "tests/test_paste_in_outlet.py::test_o5_pending_status_consumes_one_deadline_and_skips_embed"
 anchor = '''    if loop.time() >= deadline:
         return'''
 mutant = '''    if False:
         return'''
 
 [[mutant]]
-id = "m16-renderer-unguarded"
-predicate = "a raising renderer never costs the verdict or the status line"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_renderer_exception_keeps_status_files_log_and_verdict[01-no-receipt]"
-anchor = '''    try:
-        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)
-    except Exception:
+id = "m19-cancellation-swallowed"
+predicate = "a cancelled emit wait propagates"
+kills = "tests/test_paste_in_outlet.py::test_o5_cancellation_propagates_at_every_async_boundary"
+anchor = '''    except asyncio.CancelledError:
+        task.cancel()
+        raise'''
+mutant = '''    except asyncio.CancelledError:
+        task.cancel()
         return'''
-mutant = '''    document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
 
 [[mutant]]
-id = "m16-embed-emit-unguarded"
-predicate = "a raising embed emit never costs the verdict"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_emit_exception_keeps_the_other_diagnostic_and_the_verdict[await-embeds-01-no-receipt]"
-anchor = '''    await _emit_bounded(emit, embed, deadline)'''
-mutant = '''    await emit(embed)'''
+id = "m19-earlier-message-rewritten"
+predicate = "the last assistant message alone is rewritten"
+kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
+anchor = '''            for message in reversed(messages)'''
+mutant = '''            for message in messages'''
 
 [[mutant]]
-id = "m16-language-read-unguarded"
-predicate = "a non-dict metadata selects English without raising"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_non_dict_metadata_defaults_to_english_without_exception[7-01-no-receipt]"
-anchor = '''    message = metadata.get("user_message") if isinstance(metadata, dict) else None'''
-mutant = '''    message = (metadata or {}).get("user_message")'''
+id = "m19-inlet-no-file-ignored"
+predicate = "no attachment renders the no-file template"
+kills = "tests/test_paste_in_inlet.py::test_o7_missing_owned_or_refused_last_header_uses_no_file_template"
+anchor = '''        if not attachments:
+            return self._TEMPLATES.no_file.format(task=task)'''
+mutant = '''        if not attachments:
+            return self._TEMPLATES.file.format(task=task, dataset='', columns='')'''
 
 [[mutant]]
-id = "m16-non-dict-metadata-reaches-rpc"
-predicate = "a non-dict metadata reads as no browser, never as a session"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_non_dict_metadata_defaults_to_english_without_exception[session_id-11-sandbox]"
-anchor = '''            or not isinstance(__metadata__, dict)'''
-mutant = '''            or __metadata__ is None'''
+id = "m19-inlet-refused-header"
+predicate = "a refused header renders the no-file template"
+kills = "tests/test_paste_in_inlet.py::test_o7_missing_owned_or_refused_last_header_uses_no_file_template"
+anchor = '''        except (PysrcRefusalError, WorkBudgetExceededError):
+            return self._TEMPLATES.no_file.format(task=task)'''
+mutant = '''        except (PysrcRefusalError, WorkBudgetExceededError):
+            return task'''
 
 [[mutant]]
-id = "m16-pass-document-for-fail"
-predicate = "a FAIL list marks its failing check"
-kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[en-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
-mutant = '''        document = breakdown_html(None, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
+id = "m19-inlet-first-file"
+predicate = "the last owned attachment binds the template"
+kills = "tests/test_paste_in_inlet.py::test_o7_last_owned_file_and_last_user_win_without_mutation"
+anchor = '''                attachments[-1].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)'''
+mutant = '''                attachments[0].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)'''
 
 [[mutant]]
-id = "m16-japanese-not-passed"
-predicate = "a Japanese request gets a Japanese list"
-kills = "tests/test_paste_in_filter_checks.py::test_c6_every_fail_arm_emits_status_then_one_embed[ja-04-call-refusal]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
-mutant = '''        document = breakdown_html(reason, japanese=False, anchoring=anchoring, evidence=evidence)'''
-
-[[mutant]]
-id = "m16-stale-remainder"
-predicate = "the wait gets only the time left after a blocking emitter call (reviewer-1 K3)"
-kills = "tests/test_paste_in_filter_checks.py::test_c8_a_blocking_emitter_call_spends_the_shared_deadline"
-anchor = '''    loop = asyncio.get_running_loop()
-    if loop.time() >= deadline:
-        return
-    try:
-        task = asyncio.ensure_future(emit(event))
-    except Exception:  # an emitter that raises before it returns an awaitable
-        return
-    try:
-        done, _pending = await asyncio.wait({task}, timeout=max(0.0, deadline - loop.time()))'''
-mutant = '''    loop = asyncio.get_running_loop()
-    remaining = deadline - loop.time()
-    if remaining <= 0:
-        return
-    try:
-        task = asyncio.ensure_future(emit(event))
-    except Exception:  # an emitter that raises before it returns an awaitable
-        return
-    try:
-        done, _pending = await asyncio.wait({task}, timeout=remaining)'''
-
-[[mutant]]
-id = "q37-outlet-verdict-rule-fixed"
-predicate = "the outlet re-derives the verdict under its class's anchoring rule"
-kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[demo]"
-anchor = '''            receipt.program, attachments, receipt.request_text, self._ANCHORING'''
-mutant = '''            receipt.program, attachments, receipt.request_text, "strict"'''
-
-[[mutant]]
-id = "q37-check-list-rule-fixed"
-predicate = "the check list describes the class's anchoring rule"
-kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[demo]"
-anchor = '''        document = breakdown_html(reason, japanese=japanese, anchoring=anchoring, evidence=evidence)'''
-mutant = '''        document = breakdown_html(reason, japanese=japanese, anchoring="strict", evidence=evidence)'''
-
-[[mutant]]
-id = "q37-production-rule-loosened"
-predicate = "the production filter anchors strictly"
-kills = "tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list[prod]"
-anchor = '''    _ANCHORING: Anchoring = "strict"'''
-mutant = '''    _ANCHORING: Anchoring = "substitution"'''
-
-[[mutant]]
-id = "q40-production-renders-the-demo-template"
-predicate = "Q40: production's inlet renders the capture template without its bare-source paragraph"
-kills = "tests/test_paste_in_inlet.py::test_q40_production_inlet_drops_the_bare_source_paragraph_alone"
-anchor = '''    _TEMPLATE: str = PRODUCTION_TEMPLATE'''
-mutant = '''    _TEMPLATE: str = PRODUCTION_TEMPLATE.removesuffix("\n") + "\n\nReturn one complete Python program as bare source text, no Markdown fences.\n"'''
-
-[[mutant]]
-id = "q40-inlet-ignores-the-class-template"
-predicate = "Q40: the inlet renders its class's template, so the demo keeps the verbatim capture template"
-kills = "tests/test_paste_in_inlet.py::test_q40_production_inlet_drops_the_bare_source_paragraph_alone"
-anchor = '''            rendered = self._TEMPLATE.format('''
-mutant = '''            rendered = PRODUCTION_TEMPLATE.format('''
-
-# Q43: the outlet's verdict reads the receipt's aliases alone.
-[[mutant]]
-id = "q43-outlet-drops-aliases"
-predicate = "V2: the outlet re-derives the verdict under the receipt's aliases"
-kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_outlet_verdict_reads_the_receipt_aliases"
-anchor = '''receipt.request_text, self._ANCHORING, receipt.aliases'''
-mutant = '''receipt.request_text, self._ANCHORING, ()'''
-
-[[mutant]]
-id = "m17-font-on-ascii"
-predicate = "an ASCII figure's RPC carries no font and reads none"
-kills = "tests/test_paste_in_filter_font.py::test_f5_outlet_reads_the_font_only_on_a_verified_non_ascii_figure[ascii]"
-anchor = '''        font = await cjk_font() if _needs_font(verdict, consumed) else None'''
-mutant = '''        font = await cjk_font()'''
-
-[[mutant]]
-id = "m17-font-dropped"
-predicate = "a figure with a Japanese label carries the font"
-kills = "tests/test_paste_in_filter_font.py::test_f5_outlet_reads_the_font_only_on_a_verified_non_ascii_figure[label]"
-anchor = '''        font = await cjk_font() if _needs_font(verdict, consumed) else None'''
-mutant = '''        font = None'''
-
-[[mutant]]
-id = "m17-csv-trigger-dropped"
-predicate = "non-ASCII bytes in the consumed CSV take the font"
-kills = "tests/test_paste_in_filter_font.py::test_f3_every_consumed_csv_byte_counts[ja-tick]"
-anchor = '''    return consumed is not None and not consumed.content.isascii()'''
-mutant = '''    return False'''
-
-[[mutant]]
-id = "m17-series-trigger-dropped"
-predicate = "every projected label field counts toward the trigger, the series label included"
-kills = "tests/test_paste_in_filter_font.py::test_f3_trigger_is_non_ascii_in_labels_or_consumed_csv"
-anchor = '''    texts = (labels.title, labels.xlabel, labels.ylabel, labels.series)'''
-mutant = '''    texts = (labels.title, labels.xlabel, labels.ylabel)'''
-
-[[mutant]]
-id = "m17-font-read-before-verdict"
-predicate = "no font is read for a figure that never reaches a Verified verdict"
-kills = "tests/test_paste_in_filter_font.py::test_f5_pre_rpc_failures_never_read_a_font[refused]"
-anchor = '''        attachments = await owned_files(receipt.file_ids, user_id)'''
-mutant = '''        await cjk_font()
-        attachments = await owned_files(receipt.file_ids, user_id)'''
-
-[[mutant]]
-id = "m17-font-payload-unsplit"
-predicate = "the font payload never spells the plotting name OWUI patches on"
-kills = "tests/test_paste_in_filter_font.py::test_f2_font_payload_splits_the_plotting_name"
-anchor = '''            f"    _fv_handle.write(_b64.b64decode({_payload(font)}))",'''
-mutant = '''            f"    _fv_handle.write(_b64.b64decode({base64.b64encode(font).decode()!r}))",'''
-
-[[mutant]]
-id = "m17-fallback-order-reversed"
-predicate = "DejaVu Sans stays first, so Latin text never changes font"
-kills = "tests/test_paste_in_filter_font.py::test_f2_font_prelude_registers_the_fallback_before_the_program_runs"
-anchor = '''            "    'DejaVu Sans', _fv_fonts.FontProperties(fname=_fv_font).get_name()",'''
-mutant = '''            "    _fv_fonts.FontProperties(fname=_fv_font).get_name(), 'DejaVu Sans'",'''
-
-[[mutant]]
-id = "m17-none-font-builds-prelude"
-predicate = "no font = the pre-unit wrapper, never a prelude over nothing"
-kills = "tests/test_paste_in_filter_font.py::test_f1_no_font_wrapper_is_byte_identical_to_the_pre_unit_wrapper[sentinel-simple]"
-anchor = '''        ()
-        if font is None
-        else ('''
-mutant = '''        ()
-        if font is None and False
-        else ('''
-
-[[mutant]]
-id = "m17-font-after-program"
-predicate = "the font is registered before the program draws any text"
-kills = "tests/test_paste_in_filter_font.py::test_f2_font_prelude_registers_the_fallback_before_the_program_runs"
-anchor = '''                "plt = _plt",
-                *font_lines,
-                *OBSERVER_SOURCE.splitlines(),
-                "_shown = False",
-                "def _show(*_args, **_kwargs):",
-                "    global _shown",
-                "    if _shown:",
-                "        return",
-                "    _shown = True",
-                "    _fig = _plt.gcf()",
-                "    _fig.canvas.draw()",
-                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
-                "    _png = _io.BytesIO()",
-                "    _fig.savefig(_png, format='png')",
-                "    print('data:image/png;base64,' +",
-                "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
-                "    _plt.close('all')",
-                "_plt.show = _show",
-                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
-                "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",'''
-mutant = '''                "plt = _plt",
-                *OBSERVER_SOURCE.splitlines(),
-                "_shown = False",
-                "def _show(*_args, **_kwargs):",
-                "    global _shown",
-                "    if _shown:",
-                "        return",
-                "    _shown = True",
-                "    _fig = _plt.gcf()",
-                "    _fig.canvas.draw()",
-                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
-                "    _png = _io.BytesIO()",
-                "    _fig.savefig(_png, format='png')",
-                "    print('data:image/png;base64,' +",
-                "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
-                "    _plt.close('all')",
-                "_plt.show = _show",
-                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
-                "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",
-                *font_lines,'''
-
-[[mutant]]
-id = "m17-ja-flag-inverted"
-predicate = "a kana request reads the Japanese interpretation, every other request the English one"
-kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[hiragana-dataset]"
-anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
-mutant = '''        interpretation = certificate.interpretation if japanese else certificate.interpretation_ja'''
-
-[[mutant]]
-id = "m17-ja-on-every-request"
-predicate = "a request without a kana letter keeps the pre-unit English reply"
-kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[kanji-only-dataset]"
-anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
-mutant = '''        interpretation = certificate.interpretation_ja'''
-
-[[mutant]]
-id = "m17-ja-never"
-predicate = "the PASS reply carries the Japanese interpretation on a kana request"
-kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[kana-formula-pass]"
-anchor = '''        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation'''
-mutant = '''        interpretation = certificate.interpretation'''
-
-[[mutant]]
-id = "m17-ja-blank-line-dropped"
-predicate = "the interpretation follows the verdict line after one blank line"
-kills = "tests/test_paste_in_filter_ja.py::test_i5_pass_reply_language_follows_the_request[katakana-formula]"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
-mutant = '''        return _rewrite(body, f"{PASS_TEXT}\n{interpretation}" if japanese else f"{PASS_TEXT}\n\n{interpretation}")'''
-
-# --- M18.2: the evidence each outlet arm hands the check list ------------------------------------
-
-[[mutant]]
-id = "m18-refused-at-dropped"
-predicate = "a refusal's position reaches the check list"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-04-call-refusal]"
-anchor = '''        return Evidence(program, verdict.at, verdict.trace)'''
-mutant = '''        return Evidence(program, (), verdict.trace)'''
-
-[[mutant]]
-id = "m18-refused-trace-dropped"
-predicate = "a refusal's statement trace reaches the check list"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-04-call-refusal]"
-anchor = '''        return Evidence(program, verdict.at, verdict.trace)'''
-mutant = '''        return Evidence(program, verdict.at)'''
-
-[[mutant]]
-id = "m18-verified-trace-dropped"
-predicate = "a verified figure's statement trace reaches the check list"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-pass]"
-anchor = '''        return Evidence(program, trace=verdict.trace)'''
-mutant = '''        return Evidence(program)'''
-
-[[mutant]]
-id = "m18-no-target-drops-program"
-predicate = "a reply with no target still quotes the program it received"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-03-no-target]"
-anchor = '''        return Evidence(program, trace=verdict.trace)
-    return Evidence(program)'''
-mutant = '''        return Evidence(program, trace=verdict.trace)
-    return Evidence()'''
-
-[[mutant]]
-id = "m18-no-user-drops-program"
-predicate = "a reply with no user still quotes the program it received"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-02-no-user]"
-anchor = '''        evidence = Evidence(receipt.program)'''
-mutant = '''        evidence = Evidence()'''
-
-[[mutant]]
-id = "m18-no-call-invents-program"
-predicate = "a reply with no tool call quotes no program"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-01-no-receipt]"
-anchor = '''        evidence = Evidence()
-'''
-mutant = '''        evidence = Evidence("PLANTED")
-'''
-
-[[mutant]]
-id = "m18-pass-evidence-dropped"
-predicate = "a PASS check list quotes the program"
-kills = "tests/test_paste_in_checks_detail_filter.py::test_e7_each_outlet_arm_passes_the_evidence_it_holds[en-pass]"
-anchor = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)'''
-mutant = '''        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, Evidence())'''
+id = "m19-inlet-non-text"
+predicate = "a non-text last user message stays unchanged"
+kills = "tests/test_paste_in_inlet.py::test_o7_non_text_last_user_stays_unchanged"
+anchor = '''            if not isinstance(task, str):
+                return body'''
+mutant = '''            if not isinstance(task, str):
+                task = str(task)'''

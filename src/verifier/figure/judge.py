@@ -8,6 +8,7 @@ the reader's description, the user's CSV bytes and the request text, and nothing
 
 from dataclasses import dataclass
 
+from verifier.figure.anchoring import Aliases, Anchoring
 from verifier.figure.axes_rules import check_axes
 from verifier.figure.columns import check_anchoring, check_labels, drawn
 from verifier.figure.description import Description, Figure
@@ -20,7 +21,6 @@ from verifier.figure.reasons import Blocked, BlockedError, block
 from verifier.figure.request import read_request
 from verifier.figure.series import series
 from verifier.figure.sources import Table, Unreadable, read_table
-from verifier.pysrc.spec import Aliases, Anchoring
 
 _MISSING_MODULES = frozenset({"ModuleNotFoundError", "ImportError"})
 

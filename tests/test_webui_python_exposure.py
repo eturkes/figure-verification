@@ -18,7 +18,6 @@ from typing import cast
 import httpx
 import pytest
 
-from capture.corpus import banned_terms
 from paste_in_support import (
     load_tool_module,
     owui_tool_descriptions,
@@ -249,16 +248,15 @@ def test_e2_tool_provisioning_converges_to_the_artifact_bytes() -> None:
     assert content.encode("utf-8") == artifact_bytes
 
 
-def test_e3_tool_description_carries_no_admission_vocabulary(tmp_path: Path) -> None:
-    """E3: `capture/corpus.py`'s banned-stem regex finds no match in the model-facing description.
-
-    A planted stem fires it. Ruling 6 binds every model-facing string, not only corpus prompts.
+def test_e3_tool_description_states_the_chart_rules(tmp_path: Path) -> None:
+    """E3 (re-keyed by M19.5, ruling 8): Open WebUI's own model-facing description of the tool
+    states the chart rules; the admission-vocabulary ban it replaced retired with the static path.
     """
     descriptions = owui_tool_descriptions(tmp_path)
     assert len(descriptions) == 1
     description = descriptions[0]
-    assert banned_terms(description) == []
-    assert banned_terms(f"{description} Validate the source.") == ["Validate"]
+    for rule in ("start at zero", "not inverted", "inside the axis limits", "one set of axes"):
+        assert rule in description, rule
 
 
 def test_e4_bootstrap_smoke_reports_the_python_tool_attached() -> None:

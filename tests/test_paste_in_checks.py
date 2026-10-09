@@ -1,678 +1,242 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M16.1 C1-C5: independent tables + parsed disclosure semantics.
-
-Contract: `.agent/archive/contracts/m16u1.md`. The renderer implementation stays unread.
-"""
+"""M19.5 O8/O9: literal stage map + independent listing oracle, implementation unread."""
 
 from __future__ import annotations
 
-import ast
-import html as _html
 import re
 import unicodedata
-from dataclasses import dataclass, field
-from html import unescape
-from html.parser import HTMLParser
-from importlib import import_module
-from pathlib import Path
-from typing import Literal, Protocol, cast, get_args
+from typing import cast
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from verifier.pysrc.errors import RefusalCode
-from verifier.pysrc.spec import Anchoring
-from webui.paste_in import reasons
-from webui.paste_in.reasons import OutletCause, Reason
-
-_ORDER = (
-    "program",
-    "data",
-    "readable",
-    "accepted",
-    "chart",
-    "binding",
-    "recompute",
-    "integrity",
-    "render",
-    "match",
-    "attach",
+from outlet_support import (
+    ORDER,
+    REASON_CHECK,
+    SPECIFICATION,
+    Document,
+    Node,
+    assert_states,
+    listing,
+    load,
+    one,
+    rows,
+    texts,
 )
-_REASON_CHECK: dict[Reason, str] = {
-    "no_tool_call": "program",
-    "no_user": "data",
-    "no_target": "data",
-    "source_too_large": "readable",
-    "source_not_utf8": "readable",
-    "source_has_nul": "readable",
-    "line_too_long": "readable",
-    "source_not_tokenizable": "readable",
-    "too_many_tokens": "readable",
-    "nesting_too_deep": "readable",
-    "unbalanced_brackets": "readable",
-    "indent_too_deep": "readable",
-    "source_not_parsable": "readable",
-    "statement_not_admitted": "accepted",
-    "expression_not_admitted": "accepted",
-    "import_not_admitted": "accepted",
-    "assign_target_not_admitted": "accepted",
-    "call_target_not_admitted": "accepted",
-    "keyword_not_admitted": "accepted",
-    "attribute_not_admitted": "accepted",
-    "operator_not_admitted": "accepted",
-    "literal_not_admitted": "accepted",
-    "name_not_bound": "accepted",
-    "column_not_literal": "accepted",
-    "no_mark": "chart",
-    "multiple_marks": "chart",
-    "mark_arity_not_projected": "chart",
-    "mark_not_valid_for_arm": "chart",
-    "x_not_a_grid": "chart",
-    "y_not_over_grid": "chart",
-    "grid_not_representable": "chart",
-    "expression_not_projected": "chart",
-    "label_not_literal": "chart",
-    "name_rebound": "chart",
-    "no_terminal": "chart",
-    "statement_after_terminal": "chart",
-    "statement_not_projected": "chart",
-    "arm_ambiguous": "chart",
-    "no_source": "chart",
-    "multiple_sources": "chart",
-    "source_not_literal": "chart",
-    "column_not_from_source": "chart",
-    "aggregation_not_projected": "chart",
-    "figure_orphans_mark": "chart",
-    "source_not_supplied": "binding",
-    "target_mismatch": "binding",
-    "column_not_requested": "binding",
-    "column_not_named": "binding",
-    "csv_too_large": "recompute",
-    "csv_not_parsable": "recompute",
-    "column_not_present": "recompute",
-    "column_not_numeric": "recompute",
-    "value_not_in_profile": "recompute",
-    "value_not_finite": "recompute",
-    "work_budget_exceeded": "recompute",
-    "category_not_unique": "integrity",
-    "x_not_ordered": "integrity",
-    "label_not_consistent": "integrity",
-    "no_browser": "render",
-    "browser_timeout": "render",
-    "browser_error": "render",
-    "browser_no_answer": "render",
-    "reply_malformed": "render",
-    "sandbox_unavailable": "render",
-    "sandbox_error": "render",
-    "no_image": "render",
-    "no_observation": "match",
-    "observation_mismatch": "match",
-    "publish_failed": "attach",
-}
-_UI = {
-    "SHOW": ("Show checks", "チェック項目を表示"),
-    "HIDE": ("Hide checks", "チェック項目を隠す"),
-    "UNRUN": ("not checked", "未実施"),
-}
-_State = Literal["pass", "fail", "skip"]
-_MARKS: dict[_State, tuple[str, tuple[str, str]]] = {
-    "pass": ("✓", ("passed", "合格")),
-    "fail": ("✗", ("failed", "不合格")),
-    "skip": ("–", ("not checked", "未実施")),  # noqa: RUF001 - contract glyph
-}
-_TextPair = tuple[tuple[str, str], tuple[str, str]]
-_ANCHORS: dict[str, _TextPair] = {
-    "binding": (
-        (
-            "Program matches your file or formula",
-            "it reads your attached file without swapping a column your request names, if the "
-            "verifier recognizes the name, or it plots your requested formula",
+
+# Older detail helpers import these parser names; their old check ids remain their own fixture.
+_Document = Document
+_Node = Node
+_one = one
+
+
+def _render(
+    reason: str | None = None,
+    *,
+    program: str | None = None,
+    site: int | None = None,
+    japanese: bool = False,
+    anchoring: str = "strict",
+) -> str:
+    api = load("checks")
+    return cast(
+        str,
+        api.breakdown_html(
+            reason,
+            japanese=japanese,
+            anchoring=anchoring,
+            evidence=api.Evidence(program=program, site=site),
         ),
-        (
-            "プログラムが添付ファイルまたは依頼の数式と一致",
-            "添付ファイルを読み込み、依頼にある列名のうち検証器が認識した列を"
-            "別の列に置き換えていないこと、または依頼した数式を描くこと",
-        ),
-    ),
-    "recompute": (
-        (
-            "Plotted values recomputed from your data",
-            "file readable, columns present, y numeric, x numeric or categories, values in "
-            "accepted form and size, results finite, computation within the limit",
-        ),
-        (
-            "描画する値をデータから再計算",
-            "ファイルの読み取り、列の有無、y は数値、x は数値またはカテゴリ、値の形式と大きさ、"
-            "結果が有限、計算量の上限",
-        ),
-    ),
-    "integrity": (
-        (
-            "Chart integrity",
-            "bars from zero, one set of axes, linear scales, no row dropped, no repeated "
-            "category, ordered line x, no label naming another recognized file column",
-        ),
-        (
-            "グラフの完全性",
-            "棒はゼロから、軸は 1 組、線形の目盛り、行の欠落なし、カテゴリの重複なし、"
-            "折れ線の x は減少しないかファイルの順序どおり、"
-            "ラベルは検証器が認識したファイルの列名のうち、描いていない列名を挙げない",
-        ),
-    ),
-    "match": (
-        (
-            "Drawn values checked against recomputed values",
-            "the values the browser reports drawing: file values equal exactly, formula values "
-            "stay within the checked numerical bounds",
-        ),
-        (
-            "描画された値を再計算した値と照合",
-            "ブラウザが報告した描画値。ファイルの値は完全に一致し、"
-            "数式の値は定めた数値誤差の範囲内",
-        ),
-    ),
-}
-# Q37: production's binding row under strict anchoring; the demo's rule keeps `_ANCHORS["binding"]`.
-_STRICT_BINDING: _TextPair = (
-    (
-        "Program matches your file or formula",
-        "it reads your attached file, your request names each drawn column the verifier "
-        "recognizes if it names any column, or it plots your requested formula",
-    ),
-    (
-        "プログラムが添付ファイルまたは依頼の数式と一致",
-        "添付ファイルを読み込み、依頼が列名を含む場合は、描く列のうち検証器が認識できる列が"
-        "すべて依頼にあること、または依頼した数式を描くこと",
-    ),
-)
-_ANCHORINGS: tuple[Anchoring, ...] = ("strict", "substitution")
-_ALL_REASONS: tuple[Reason | None, ...] = (*_REASON_CHECK, None)
-_ROOT = Path(__file__).resolve().parents[1]
+    )
 
 
-class _Checks(Protocol):
-    CHECKS: tuple[str, ...]
-    CHECK_OF: dict[Reason, str]
-    TEXTS: dict[str, _TextPair]
-    SHOW: tuple[str, str]
-    HIDE: tuple[str, str]
-    UNRUN: tuple[str, str]
-    MARKS: dict[_State, tuple[str, tuple[str, str]]]
-    STRICT_BINDING: _TextPair
-
-    def breakdown_html(
-        self, reason: Reason | None, *, japanese: bool, anchoring: Anchoring
-    ) -> str: ...
+def test_o8_check_order_reason_map_and_text_tables_are_total() -> None:
+    api = load("checks")
+    assert tuple(api.CHECKS) == ORDER
+    assert api.CHECK_OF == REASON_CHECK
+    assert set(api.TEXTS) == set(ORDER)
+    assert set(api.EXPLAIN) == set(ORDER)
+    for check in ORDER:
+        assert len(api.TEXTS[check]) == 2
+        assert all(len(pair) == 2 and all(pair) for pair in api.TEXTS[check])
+        assert len(api.EXPLAIN[check]) == 2 and all(api.EXPLAIN[check])
+    assert api.TEXTS["columns"] != api.STRICT_COLUMNS
 
 
-def _checks() -> _Checks:
-    module = import_module("webui.paste_in.checks")
-    assert Path(cast(str, module.__file__)).resolve() == _ROOT / "webui/paste_in/checks.py"
-    return cast(_Checks, module)
-
-
-@dataclass
-class _Text:
-    value: str
-    source: str
-
-
-@dataclass
-class _Node:
-    tag: str
-    attrs: dict[str, str | None] = field(default_factory=dict)
-    children: list[_Node | _Text] = field(default_factory=list)
-
-    def nodes(self, *, tag: str | None = None, cls: str | None = None) -> list[_Node]:
-        result: list[_Node] = []
-        for child in self.children:
-            if isinstance(child, _Node):
-                if (tag is None or child.tag == tag) and (
-                    cls is None or cls in (child.attrs.get("class") or "").split()
-                ):
-                    result.append(child)
-                result.extend(child.nodes(tag=tag, cls=cls))
-        return result
-
-    def text(self, *, excluding: str | None = None, raw: bool = False) -> str:
-        parts: list[str] = []
-        for child in self.children:
-            if isinstance(child, _Text):
-                parts.append(child.source if raw else child.value)
-            elif excluding not in (child.attrs.get("class") or "").split():
-                parts.append(child.text(excluding=excluding, raw=raw))
-        return "".join(parts)
-
-
-class _Document(HTMLParser):
-    def __init__(self, source: str) -> None:
-        super().__init__(convert_charrefs=False)
-        self.root = _Node("document")
-        self.stack = [self.root]
-        self.feed(source)
-        self.close()
-        assert self.stack == [self.root], "unclosed HTML elements"
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        assert len(attrs) == len(dict(attrs)), "duplicate HTML attribute"
-        node = _Node(tag, dict(attrs))
-        self.stack[-1].children.append(node)
-        if tag not in {"meta", "link", "br", "hr", "img", "input", "wbr"}:
-            self.stack.append(node)
-
-    def handle_endtag(self, tag: str) -> None:
-        assert len(self.stack) > 1 and self.stack[-1].tag == tag, f"unbalanced HTML: {tag}"
-        self.stack.pop()
-
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        self.handle_starttag(tag, attrs)
-        if self.stack[-1].tag == tag:
-            self.stack.pop()
-
-    def handle_data(self, data: str) -> None:
-        self.stack[-1].children.append(_Text(data, data))
-
-    def handle_entityref(self, name: str) -> None:
-        source = f"&{name};"
-        self.stack[-1].children.append(_Text(unescape(source), source))
-
-    def handle_charref(self, name: str) -> None:
-        source = f"&#{name};"
-        self.stack[-1].children.append(_Text(unescape(source), source))
-
-
-def _one(nodes: list[_Node]) -> _Node:
-    assert len(nodes) == 1
-    return nodes[0]
-
-
-def _assert_disclosure_style(document: _Node) -> None:
-    css = "\n".join(node.text() for node in document.nodes(tag="style"))
-    rules = re.findall(r"([^{}]+)\{([^{}]+)\}", css)
-    open_show_hidden = False
-    closed_hide_hidden = False
-    for selectors, declarations in rules:
-        if re.search(r"\bdisplay\s*:\s*none\b", declarations):
-            for selector in selectors.split(","):
-                compact = re.sub(r"\s+", "", selector)
-                open_show_hidden |= "details[open]" in compact and ".show" in compact
-                closed_hide_hidden |= ".hide" in compact and (
-                    "[open]" not in compact or "details:not([open])" in compact
-                )
-    assert open_show_hidden, "details[open] must hide .show"
-    assert closed_hide_hidden, "closed details must hide .hide"
-
-
-def _assert_rows(  # noqa: PLR0915 - preserve every document-shape conjunct
-    document: _Node, reason: Reason | None, *, japanese: bool, anchoring: Anchoring
+@pytest.mark.parametrize("reason", [None, *REASON_CHECK])
+@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
+def test_o9_all_reasons_have_exact_completed_prefix_and_one_cause(
+    reason: str | None, *, japanese: bool
 ) -> None:
-    module = _checks()
-    language = int(japanese)
-    html = _one(document.nodes(tag="html"))
-    assert html.attrs.get("lang") == ("ja" if japanese else "en")
-    details = _one(
-        [node for node in document.nodes(tag="details") if node.attrs.get("class") != "row"]
+    html = _render(reason, japanese=japanese)
+    root = Document(html).root
+    assert one(root.nodes(tag="html")).attrs["lang"] == ("ja" if japanese else "en")
+    assert len(root.nodes(tag="details")) == 10
+    outer = [d for d in root.nodes(tag="details") if d.attrs.get("class") != "row"]
+    assert "open" not in one(outer).attrs
+    assert one(root.nodes(cls="show")).text() == (
+        "チェック項目を表示" if japanese else "Show checks"
     )
-    assert len(document.nodes(tag="details")) == 12
-    assert "open" not in details.attrs
-    summary = _one(
-        [child for child in details.children if isinstance(child, _Node) and child.tag == "summary"]
-    )
-    summary_nodes = [child for child in summary.children if isinstance(child, _Node)]
-    assert [(node.tag, node.attrs.get("class")) for node in summary_nodes] == [
-        ("span", "show"),
-        ("span", "hide"),
-    ]
-    assert [node.text() for node in summary_nodes] == [
-        _UI["SHOW"][language],
-        _UI["HIDE"][language],
-    ]
-    assert not any(isinstance(child, _Text) and child.value.strip() for child in summary.children)
-    _assert_disclosure_style(document)
-    ordered = _one(document.nodes(tag="ol"))
-    assert _one(details.nodes(tag="ol")) is ordered
-    rows = ordered.nodes(tag="li")
-    assert len(rows) == 11
-    assert len(document.nodes(tag="li")) == 11
-    assert all(child.tag == "li" for child in ordered.children if isinstance(child, _Node))
-    failure_index = 11 if reason is None else _ORDER.index(_REASON_CHECK[reason])
-    for index, (check, row) in enumerate(zip(_ORDER, rows, strict=True)):
-        state: _State = (
-            "pass" if index < failure_index else "fail" if index == failure_index else "skip"
-        )
-        assert row.attrs.get("class") == state, (reason, check)
-        disclosure = _one(row.nodes(tag="details"))
+    assert_states(html, reason)
+    for check, row in rows(html).items():
+        disclosure = one(row.nodes(tag="details"))
         assert disclosure.attrs == {"class": "row"}
         assert len(disclosure.nodes(tag="summary")) == 1
-        slots = [
-            node.attrs.get("class")
-            for node in row.nodes()
-            if node.attrs.get("class") in {"mark", "title", "covers", "cause"}
-        ]
-        assert slots == ["mark", "title", "covers", *(["cause"] if state == "fail" else [])]
-        mark = _one(row.nodes(cls="mark"))
-        glyph, labels = _MARKS[state]
-        assert mark.tag == "span"
-        assert mark.attrs.get("role") == "img"
-        assert mark.attrs.get("aria-label") == labels[language]
-        assert mark.text() == glyph
-        title = _one(row.nodes(cls="title"))
-        texts = _STRICT_BINDING if check == "binding" and anchoring == "strict" else None
-        expected_title, expected_covers = (texts or module.TEXTS[check])[language]
-        assert title.text(excluding="unrun").strip() == expected_title
-        assert _one(row.nodes(cls="covers")).text() == expected_covers
-        unrun = row.nodes(cls="unrun")
-        if state == "skip":
-            skipped = _one(unrun)
-            assert skipped.tag == "span"
-            assert _one(title.nodes(cls="unrun")) is skipped
-            assert skipped.text() == _UI["UNRUN"][language]
-        else:
-            assert unrun == []
+        assert one(row.nodes(cls="title")).text().strip()
+        assert one(row.nodes(cls="covers")).text().strip()
+        links = row.nodes(tag="a")
+        assert len(links) == 1
+        assert links[0].attrs["href"] == SPECIFICATION[int(japanese)] + "#check-" + check
+        assert links[0].attrs["target"] == "_blank"
+        assert links[0].text().strip()
         causes = row.nodes(cls="cause")
-        if state == "fail":
-            assert reason is not None
-            assert _one(causes).text() == reasons.REASONS[reason][language]
+        if reason is not None and check == REASON_CHECK[reason]:
+            assert one(causes).text() == texts()[reason][int(japanese)]
         else:
-            assert causes == []
-    assert len(document.nodes(cls="cause")) == (0 if reason is None else 1)
-    assert len(document.nodes(cls="unrun")) == max(0, 10 - failure_index)
+            assert not causes
+        if row.attrs["class"] == "skip":
+            assert one(row.nodes(cls="unrun")).text() == ("未実施" if japanese else "not checked")
+        else:
+            assert not row.nodes(cls="unrun")
+    assert not root.nodes(cls="code")
 
 
-class _Sites(ast.NodeVisitor):
-    def __init__(self, codes: set[str]) -> None:
-        self.codes = codes
-        self.outer: str | None = None
-        self.found: list[tuple[str, str | None]] = []
-
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self._function(node)
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self._function(node)
-
-    def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        previous = self.outer
-        if previous is None:
-            self.outer = node.name
-        self.generic_visit(node)
-        self.outer = previous
-
-    def visit_Constant(self, node: ast.Constant) -> None:
-        if isinstance(node.value, str) and node.value in self.codes:
-            self.found.append((node.value, self.outer))
+@pytest.mark.parametrize("japanese", [False, True])
+def test_o9_columns_cover_the_actual_artifact_policy(*, japanese: bool) -> None:
+    strict = rows(_render(japanese=japanese, anchoring="strict"))
+    demo = rows(_render(japanese=japanese, anchoring="substitution"))
+    for check in ORDER:
+        a = one(strict[check].nodes(cls="covers")).text()
+        b = one(demo[check].nodes(cls="covers")).text()
+        assert (a != b) == (check == "columns")
 
 
-def _site_check(module: str, function: str | None) -> str:
-    if module == "prescan" or (module, function) in {
-        ("verify", "verify_python_source"),
-        ("admit", "parse_admitted"),
-    }:
-        return "readable"
-    if module == "admit":
-        return "accepted"
-    if module == "project":
-        return "chart"
-    if module == "verify" and function in {"bind_target", "_check_anchoring"}:
-        return "binding"
-    if module in {"csvread", "aggregate"} or (
-        module == "verify"
-        and function
-        in {"_check_expr_size", "_finish_table", "_formula_table", "_dataset_table", "recompute"}
-    ):
-        return "recompute"
-    assert module == "verify" and function in {
-        "_check_line_order",
-        "_check_labels",
-        "_formula_integrity",
-        "_dataset_integrity",
-        "check_integrity",
-    }, f"unmapped refusal site: {module}.{function}"
-    return "integrity"
-
-
-def test_c1_check_order_and_reason_map_are_the_hand_stated_tables() -> None:
-    """C1: the complete map, not a key-set-only expectation."""
-    module = _checks()
-    refusal_codes = set(get_args(RefusalCode))
-    outlet_codes = set(get_args(OutletCause))
-    assert len(refusal_codes) == 55
-    assert len(outlet_codes) == 14
-    assert refusal_codes.isdisjoint(outlet_codes)
-    assert module.CHECKS == _ORDER
-    assert set(module.CHECK_OF) == refusal_codes | outlet_codes == set(_REASON_CHECK)
-    assert set(module.CHECK_OF.values()) <= set(_ORDER)
-    assert module.CHECK_OF == _REASON_CHECK
-
-
-def test_c2_each_refusal_maps_to_its_earliest_raise_site_check() -> None:
-    """C2: all AST string sites; class traversal + outermost function attribution."""
-    module = _checks()
-    codes = set(get_args(RefusalCode))
-    sites: dict[str, list[tuple[str, str | None, str]]] = {code: [] for code in codes}
-    sources = sorted((_ROOT / "src/verifier/pysrc").glob("*.py"))
-    assert len(sources) >= 2
-    for source in sources:
-        if source.name != "errors.py":
-            visitor = _Sites(codes)
-            visitor.visit(ast.parse(source.read_text(encoding="utf-8"), filename=str(source)))
-            for code, function in visitor.found:
-                check = _site_check(source.stem, function)
-                sites[code].append((source.stem, function, check))
-    for code, locations in sorted(sites.items()):
-        assert locations, f"refusal without a site: {code}"
-        earliest = min((check for _, _, check in locations), key=_ORDER.index)
-        assert module.CHECK_OF[cast(RefusalCode, code)] == earliest, (code, locations)
-
-
-def _assert_text(
-    text: str, *, japanese: bool, word_limit: int | None = None, require_kana: bool = True
-) -> None:
-    assert text
-    assert not any(char in text for char in '<>&"\n')
-    assert "Chart." not in text
-    assert "x-" not in text
-    if japanese and require_kana:
-        assert any(
-            unicodedata.name(char, "").startswith(
-                ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
+@pytest.mark.parametrize("reason", [None, *REASON_CHECK])
+def test_o9_only_passed_program_and_failing_row_list_source(reason: str | None) -> None:
+    program = "first = 1\nsecond = 2\nthird = 3"
+    observed = rows(_render(reason, program=program, site=2))
+    failed = None if reason is None else REASON_CHECK[reason]
+    for check, row in observed.items():
+        shown = listing(row)
+        if check in ("program", failed):
+            assert tuple((line, text) for line, _at, text, _marks in shown) == (
+                (1, "first = 1"),
+                (2, "second = 2"),
+                (3, "third = 3"),
             )
-            for char in text
-        )
-    elif not japanese:
-        assert all(" " <= char <= "~" for char in text)
-        if word_limit is not None:
-            assert len(text.split()) <= word_limit
+            assert tuple(line for line, at, _text, _marks in shown if at) == (
+                (2,) if check == failed else ()
+            )
+            assert tuple(mark for _line, _at, _text, marks in shown for mark in marks) == (
+                ("second = 2",) if check == failed else ()
+            )
+        else:
+            assert shown == ()
 
 
-def test_c3_every_text_obeys_the_text_law_and_anchors_are_byte_exact() -> None:
-    """C3: all localized slots; UI/marks + four claim-bearing rows anchored independently."""
-    module = _checks()
-    assert set(module.TEXTS) == set(_ORDER)
-    assert {name: getattr(module, name) for name in _UI} == _UI
-    assert module.MARKS == _MARKS
-    for check, texts in module.TEXTS.items():
-        assert isinstance(cast(object, texts), tuple)
-        assert len(texts) == 2
-        for language, pair in enumerate(texts):
-            assert isinstance(cast(object, pair), tuple)
-            assert len(pair) == 2
-            title, covers = pair
-            _assert_text(title, japanese=bool(language), word_limit=10)
-            _assert_text(covers, japanese=bool(language), word_limit=25)
-        if check in _ANCHORS:
-            assert texts == _ANCHORS[check]
-    assert module.STRICT_BINDING == _STRICT_BINDING
-    for language, (title, covers) in enumerate(module.STRICT_BINDING):
-        _assert_text(title, japanese=bool(language), word_limit=10)
-        _assert_text(covers, japanese=bool(language), word_limit=25)
-    for name, word in (("SHOW", module.SHOW), ("HIDE", module.HIDE), ("UNRUN", module.UNRUN)):
-        assert isinstance(cast(object, word), tuple)
-        assert len(word) == 2
-        for language, text in enumerate(word):
-            _assert_text(text, japanese=bool(language), require_kana=name != "UNRUN")
-    # Kanji-only status words are exact anchors; kana binds titles/covers and SHOW/HIDE.
-    for _, labels in module.MARKS.values():
-        for language, label in enumerate(labels):
-            _assert_text(label, japanese=bool(language), require_kana=False)
-
-
-@pytest.mark.parametrize("anchoring", _ANCHORINGS)
-@pytest.mark.parametrize("reason", _ALL_REASONS)
-@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
-def test_c4_document_rows_follow_the_failing_check(
-    reason: Reason | None, anchoring: Anchoring, *, japanese: bool
-) -> None:
-    """C4: the full 70 x 2 x 2 domain, including both endpoint failures and PASS."""
-    module = _checks()
-    source = module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
-    assert isinstance(source, str)
-    assert source == module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
-    _assert_rows(_Document(source).root, reason, japanese=japanese, anchoring=anchoring)
-
-
-@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
-def test_q37_the_binding_row_alone_states_the_anchoring_rule(*, japanese: bool) -> None:
-    """Q37: each artifact describes the rule it runs; every other byte of the document agrees."""
-    module = _checks()
-    strict = module.breakdown_html(None, japanese=japanese, anchoring="strict")
-    demo = module.breakdown_html(None, japanese=japanese, anchoring="substitution")
-    language = int(japanese)
-    assert strict != demo
-    assert _html.escape(_STRICT_BINDING[language][1], quote=True) in strict
-    assert _html.escape(_ANCHORS["binding"][language][1], quote=True) in demo
-    swapped = strict.replace(
-        _html.escape(_STRICT_BINDING[language][1], quote=True),
-        _html.escape(_ANCHORS["binding"][language][1], quote=True),
+@pytest.mark.parametrize("site", [None, -1, 0, 4, 100000])
+def test_o9_absent_or_out_of_program_site_keeps_listing_unmarked(site: int | None) -> None:
+    document = rows(_render("axis_inverted", program="one\ntwo\nthree", site=site))
+    assert listing(document["axes"]) == (
+        (1, False, "one", ()),
+        (2, False, "two", ()),
+        (3, False, "three", ()),
     )
-    assert swapped == demo
+    assert not document["program"].nodes(tag="mark")
+
+
+def _visible(char: str) -> str:
+    if char != "\t" and unicodedata.category(char) in {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"}:
+        return chr(0x2400 + ord(char)) if ord(char) < 32 else "␡" if ord(char) == 127 else "�"
+    return char
+
+
+def _reference(
+    program: str, site: int | None
+) -> tuple[tuple[int, bool, str, tuple[str, ...]], ...]:
+    lines = re.split(r"\r\n|\r|\n", program[:65536])
+    point = site if site is not None and 1 <= site <= len(lines) else None
+    near = set() if point is None else set(range(point - 2, point + 3))
+    priority = sorted(
+        range(1, len(lines) + 1),
+        key=lambda n: (0 if n == point else 1 if n in near else 2, n),
+    )
+    kept: list[int] = []
+    cost = 0
+    for number in priority:
+        extra = min(len(lines[number - 1]), 400)
+        if len(kept) < 60 and cost + extra <= 3000:
+            kept.append(number)
+            cost += extra
+    result = []
+    for number in sorted(kept):
+        raw = lines[number - 1]
+        text = "".join(_visible(char) for char in raw[:400])
+        marks = (text,) if number == point and text else ()
+        result.append((number, number == point, text + ("…" if len(raw) > 400 else ""), marks))
+    return tuple(result)
 
 
 @given(
-    st.lists(
-        st.tuples(st.sampled_from(_ALL_REASONS), st.booleans(), st.sampled_from(_ANCHORINGS)),
+    lines=st.lists(
+        st.text(alphabet="ab年é<>\"'&.-(:=@\t\x00\u202e\u2028", min_size=1, max_size=450),
         min_size=1,
-        max_size=16,
-    )
+        max_size=85,
+    ),
+    point=st.integers(min_value=-3, max_value=95),
+    newline=st.sampled_from(("\n", "\r", "\r\n")),
 )
-def test_c4_renderer_is_pure_across_interleaved_inputs(
-    inputs: list[tuple[Reason | None, bool, Anchoring]],
+@settings(max_examples=64, deadline=None)
+def test_o9_generated_listings_match_independent_budget_and_site_oracle(
+    lines: list[str], point: int, newline: str
 ) -> None:
-    """C4 property: interleaved calls preserve outputs and every public text/map table."""
-    module = _checks()
-    before = (
-        module.CHECKS,
-        module.CHECK_OF.copy(),
-        module.TEXTS.copy(),
-        module.SHOW,
-        module.HIDE,
-        module.UNRUN,
-        module.MARKS.copy(),
-        module.STRICT_BINDING,
-        reasons.REASONS.copy(),
-    )
-    outputs = [
-        module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
-        for reason, japanese, anchoring in inputs
-    ]
-    for (reason, japanese, anchoring), expected in reversed(
-        list(zip(inputs, outputs, strict=True))
-    ):
-        assert module.breakdown_html(reason, japanese=japanese, anchoring=anchoring) == expected
-    assert before == (
-        module.CHECKS,
-        module.CHECK_OF,
-        module.TEXTS,
-        module.SHOW,
-        module.HIDE,
-        module.UNRUN,
-        module.MARKS,
-        module.STRICT_BINDING,
-        reasons.REASONS,
-    )
+    program = newline.join(lines)
+    document = rows(_render("value_not_found", program=program, site=point))
+    assert listing(document["values"]) == _reference(program, point)
+    assert listing(document["program"]) == _reference(program, None)
 
 
-@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
-def test_c4_title_covers_and_cause_are_escaped_and_round_trip(
-    monkeypatch: pytest.MonkeyPatch, *, japanese: bool
-) -> None:
-    """C4: independent slot plants include both quotes and all three markup characters."""
-    module = _checks()
-    title = "title < > & \" ' sentinel"
-    covers = "covers < > & \" ' sentinel"
-    cause = "cause < > & \" ' sentinel"
-    monkeypatch.setitem(module.TEXTS, "readable", ((title, covers), (title, covers)))
-    monkeypatch.setitem(reasons.REASONS, "source_too_large", (cause, cause))
-    source = module.breakdown_html("source_too_large", japanese=japanese, anchoring="strict")
-    root = _Document(source).root
-    _assert_rows(root, "source_too_large", japanese=japanese, anchoring="strict")
-    row = _one([node for node in root.nodes(tag="li") if node.attrs.get("class") == "fail"])
-    for cls, expected in (("title", title), ("covers", covers), ("cause", cause)):
-        slot = _one(row.nodes(cls=cls))
-        assert slot.text() == expected
-        raw = slot.text(raw=True)
-        assert not any(char in raw for char in "<>\"'")
-        assert "&" not in re.sub(r"&(?:[A-Za-z][A-Za-z0-9]*|#\d+|#x[0-9A-Fa-f]+);", "", raw)
-        assert unescape(raw) == expected
-        assert expected not in source
+@pytest.mark.parametrize("length", [399, 400, 401, 3000, 65535, 65536, 65537])
+def test_o9_scan_and_per_line_boundaries(length: int) -> None:
+    program = "z" * length + "\nBEYOND_SCAN"
+    result = rows(_render("program_error", program=program, site=2))
+    assert listing(result["run"]) == _reference(program, 2)
+    assert all("BEYOND_SCAN" not in item[2] for item in listing(result["run"])) == (length >= 65535)
 
 
-# Hand-stated (reviewer-2 K7): reading the reporter from another rendered document let an
-# appended statement pass in every document at once.
-_HEIGHT_REPORTER = (
-    'const r=document.getElementById("r");'
-    "new ResizeObserver(()=>parent.postMessage("
-    '{type:"iframe:height",height:Math.ceil(r.getBoundingClientRect().height)},"*")'
-    ").observe(r);"
+def test_o9_site_and_neighbors_take_priority_inside_caps() -> None:
+    program = "\n".join(f"row{n:03d}" for n in range(1, 201))
+    actual = listing(rows(_render("axis_inverted", program=program, site=198))["axes"])
+    assert tuple(item[0] for item in actual) == (*range(1, 56), 196, 197, 198, 199, 200)
+    assert tuple(item for item in actual if item[1]) == ((198, True, "row198", ("row198",)),)
+    assert actual == _reference(program, 198)
+
+
+def test_o9_source_escaping_is_exact_and_confined_to_listing() -> None:
+    program = "-.(:=@<>&\"'\t\x00\u202e\x7f"
+    document = Document(_render("bar_not_from_zero", program=program, site=1)).root
+    expected = "&#45;&#46;&#40;&#58;&#61;&#64;&lt;&gt;&amp;&quot;&#x27;\t␀�␡"
+    sources = document.nodes(cls="src")
+    assert len(sources) == 2
+    assert all(source.text(raw=True) == expected for source in sources)
+    assert all(source.text() == "-.(:=@<>&\"'\t␀�␡" for source in sources)
+    assert program not in document.text(excluding="code")
+    assert not document.nodes(tag="img")
+
+
+@pytest.mark.parametrize(
+    ("program", "site"),
+    [
+        ("\n".join("x" * 1 for _ in range(61)), 1),  # 61 one-character lines: the line cap binds
+        ("\n".join(["y" * 375] * 8 + ["z"]), 1),  # 3,000 characters exactly, then one more
+        ("\n".join("w" for _ in range(100)), 101),  # a site past the program keeps number order
+        ("\n".join("v" for _ in range(100)), -1),
+    ],
+    ids=["line-cap", "character-cap", "site-past-end", "site-before-start"],
 )
-
-
-@pytest.mark.parametrize("anchoring", _ANCHORINGS)
-@pytest.mark.parametrize("reason", _ALL_REASONS)
-@pytest.mark.parametrize("japanese", [False, True], ids=["en", "ja"])
-def test_c5_document_is_self_contained_and_inert(
-    reason: Reason | None, anchoring: Anchoring, *, japanese: bool
-) -> None:
-    """C5: all 280 documents; the fixed reporter is the only script."""
-    module = _checks()
-    source = module.breakdown_html(reason, japanese=japanese, anchoring=anchoring)
-    assert len(source.encode("utf-8")) <= 262144
-    assert not re.search(r"\bsrc\s*=|url\s*\(|@import|https?:", source, flags=re.IGNORECASE)
-    root = _Document(source).root
-    for node in root.nodes():
-        if "href" in node.attrs:
-            assert node.tag == "a" and node.attrs.get("class") == "spec"
-    triggers = (
-        "x-data",
-        "x-init",
-        "x-show",
-        "x-bind",
-        "x-on",
-        "x-text",
-        "x-html",
-        "x-model",
-        "x-modelable",
-        "x-ref",
-        "x-for",
-        "x-if",
-        "x-effect",
-        "x-transition",
-        "x-cloak",
-        "x-ignore",
-        "x-teleport",
-        "x-id",
-        "new Chart(",
-        "Chart.",
-    )
-    assert not any(trigger in source for trigger in triggers)
-    script = _one(_Document(source).root.nodes(tag="script"))
-    assert "src" not in script.attrs
-    body = script.text()
-    assert body == _HEIGHT_REPORTER
-    assert re.search(r"new\s+ResizeObserver\s*\(", body)
-    assert re.search(r"\.observe\s*\(", body)
-    assert re.search(r"parent\.postMessage\s*\(", body)
-    assert re.search(r"\btype\s*:\s*[\"']iframe:height[\"']", body)
-    assert re.search(r"\bheight\b", body)
-    assert re.search(r",\s*[\"']\*[\"']\s*\)", body)
+def test_o9_caps_bind_at_their_exact_boundaries(program: str, site: int) -> None:
+    """MAIN's boundary witnesses beside the generated oracle: each cap and an out-of-program site
+    at the point where one more line or character would change the listing."""
+    document = rows(_render("axis_inverted", program=program, site=site))
+    assert listing(document["axes"]) == _reference(program, site)

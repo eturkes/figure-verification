@@ -29,9 +29,12 @@ from paste_in_support import (
     load_filter_module,
     recorded_request,
 )
+from verifier.figure import reader
 from webui.paste_in import demo_tool, tool
 from webui.paste_in.aliases import parse_aliases
 from webui.paste_in.receipt import RECEIPT_ATTR, Receipt, read_receipt, write_receipt
+from webui.paste_in.sandbox import wrapper_code
+from webui.paste_in.verdicts import CHART_SENT
 
 _USER = "user-1"
 _WEATHER = b"date,city,temp_c,precip_mm\n2024-01-01,Sapporo,1.5,0.5\n2024-01-02,Naha,2.5,1.5\n"
@@ -115,7 +118,7 @@ def test_q43_v1_the_default_valve_is_empty_and_the_demo_inherits_it() -> None:
 def test_q43_v2_the_model_supplies_no_alias() -> None:
     """The one model-visible parameter stays `program`; reserved names never reach the model."""
     parameters = inspect.signature(tool.Tools.draw_figure).parameters
-    assert list(parameters) == ["self", "program", "__metadata__", "__user__", "__request__"]
+    assert list(parameters) == ["self", "program", "__metadata__", "__request__"]
 
 
 @pytest.mark.parametrize(
@@ -134,33 +137,26 @@ def test_q43_v1_each_generated_tool_carries_the_valve(relative: str) -> None:
             module.Tools.Valves(column_aliases="temp_c = heat, heat")
 
 
-def _draw(tools: tool.Tools, tmp_path: Path) -> tuple[str, Receipt | None]:
+def _draw(tools: tool.Tools) -> tuple[str, Receipt | None]:
     request = filter_request()
-    stored = [StoredFile("file-0", _USER, "weather.csv", _WEATHER)]
     metadata: dict[str, object] = {
         "files": [{"id": "file-0"}],
         "user_message": {"content": _REQUEST},
     }
-    with fake_open_webui(stored, tmp_path):
-        reply = asyncio.run(
-            tools.draw_figure(
-                _PROGRAM, __metadata__=metadata, __user__={"id": _USER}, __request__=request
-            )
-        )
+    reply = asyncio.run(tools.draw_figure(_PROGRAM, __metadata__=metadata, __request__=request))
     return reply, read_receipt(request)
 
 
-def test_q43_v2_the_tool_verifies_and_records_its_valve_aliases(tmp_path: Path) -> None:
-    """Strict: `temperature` names `temp_c` only through the admin's alias."""
-    plain = tool.Tools()
-    reply, receipt = _draw(plain, tmp_path)
-    assert reply == "No chart was produced."
-    assert receipt is not None and receipt.aliases == ()
+def test_q43_v2_the_tool_records_its_valve_aliases() -> None:
+    """The tool decides nothing (M19.5): it records the parsed Valve aliases in its receipt."""
+    reply, receipt = _draw(tool.Tools())
+    assert reply == CHART_SENT
+    assert receipt == Receipt(_PROGRAM, ("file-0",), _REQUEST, ())
 
     aliased = tool.Tools()
     aliased.valves = tool.Tools.Valves(column_aliases=_TEXT)
-    reply, receipt = _draw(aliased, tmp_path)
-    assert reply == "The chart is ready."
+    reply, receipt = _draw(aliased)
+    assert reply == CHART_SENT
     assert receipt == Receipt(_PROGRAM, ("file-0",), _REQUEST, _PARSED)
 
 
@@ -173,24 +169,39 @@ def test_q43_v2_the_receipt_carries_aliases_as_builtin_tuples() -> None:
 
 
 def _outlet_reason(aliases: tuple[tuple[str, str], ...], tmp_path: Path) -> str:
-    """The outlet's own verdict: `no_browser` = Verified (no RPC caller), else the refusal."""
+    """The outlet's own verdict over a host-reader browser: `pass`, else the status reason."""
     events: list[dict[str, object]] = []
+    uploads = tmp_path / "uploads"
+    uploads.mkdir(parents=True)
+    (uploads / "weather.csv").write_bytes(_WEATHER)
 
     async def emit(event: dict[str, object]) -> None:
         events.append(event)
 
+    async def browser(payload: dict[str, object]) -> dict[str, object]:
+        data = payload["data"]
+        assert isinstance(data, dict)
+        assert data["code"] == wrapper_code(_PROGRAM)
+        program = _PROGRAM.replace("/mnt/uploads/", f"{uploads}/")
+        return {"stdout": reader.run(program), "stderr": None}
+
     stored = [StoredFile("file-0", _USER, "weather.csv", _WEATHER)]
     with fake_open_webui(stored, tmp_path):
-        invoke_filter(
+        body = invoke_filter(
             load_filter_module(),
             filter_body("MODEL_REPLY_SENTINEL"),
             request=recorded_request(_PROGRAM, ("file-0",), _REQUEST, aliases),
             user={"id": _USER},
             metadata={"session_id": "session"},
+            event_call=browser,
             event_emitter=emit,
         )
     statuses = [event for event in events if event["type"] == "status"]
-    assert len(statuses) == 1
+    if not statuses:
+        messages = body["messages"]
+        assert isinstance(messages, list)
+        assert str(messages[-1]["content"]).startswith("Figure verification passed")
+        return "pass"
     data = statuses[0]["data"]
     assert isinstance(data, dict)
     description = data["description"]
@@ -199,5 +210,5 @@ def _outlet_reason(aliases: tuple[tuple[str, str], ...], tmp_path: Path) -> str:
 
 
 def test_q43_v2_the_outlet_verdict_reads_the_receipt_aliases(tmp_path: Path) -> None:
-    assert _outlet_reason((), tmp_path) == "column_not_named"
-    assert _outlet_reason(_PARSED, tmp_path) == "no_browser"
+    assert _outlet_reason((), tmp_path / "plain") == "column_not_named"
+    assert _outlet_reason(_PARSED, tmp_path / "aliased") == "pass"

@@ -902,7 +902,8 @@ def run(source: str, font: str | None = None) -> str:
                 current.error = _error(exc, "syntax")
             else:
                 try:
-                    exec(code, {"__name__": "__main__"})  # noqa: S102 - running the program IS the job
+                    # Running the program IS the job (ruling 7: a non-adversarial program).
+                    exec(code, {"__name__": "__main__"})  # noqa: S102
                 except BaseException as exc:  # every outcome of the program is a fact to report
                     current.error = _error(exc, "exception")
             current.capture()

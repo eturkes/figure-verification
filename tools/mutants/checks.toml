@@ -1,226 +1,111 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# "Show checks" renderer: every mutant names one test whose document or map verdict changes.
+# M19.5 check list (`.agent/archive/contracts/m19u5.md` O8 CHECK_OF, O9 rows + listing): each mutant names
+# one red in the M19.5 suite.
 module = "webui/paste_in/checks.py"
-tests = [
-  "tests/test_paste_in_checks.py",
-  "tests/test_paste_in_filter_checks.py",
-  "tests/test_paste_in_checks_detail.py",
-  "tests/test_paste_in_checks_detail_listing.py",
-]
+tests = ["tests/test_paste_in_checks.py"]
 
 [[mutant]]
-id = "c2-code-one-check-later"
-predicate = "a code maps to the earliest check that raises it, so no unrun check reads as passed"
-kills = "tests/test_paste_in_checks.py::test_c2_each_refusal_maps_to_its_earliest_raise_site_check"
-anchor = '''        "name_not_bound",
-        "column_not_literal",
-    ),
-    "chart": (
-        "no_mark",'''
-mutant = '''        "name_not_bound",
-    ),
-    "chart": (
-        "column_not_literal",
-        "no_mark",'''
-
-[[mutant]]
-id = "c1-code-one-check-earlier"
-predicate = "a code never maps to a check before the one that raises it"
-kills = "tests/test_paste_in_checks.py::test_c1_check_order_and_reason_map_are_the_hand_stated_tables"
+id = "m19-g8-under-marks"
+predicate = "a repeated category is a values-check reason"
+kills = "tests/test_paste_in_checks.py::test_o8_check_order_reason_map_and_text_tables_are_total"
 anchor = '''        "work_budget_exceeded",
-    ),
-    "integrity": ("category_not_unique", "x_not_ordered", "label_not_consistent"),'''
-mutant = '''        "work_budget_exceeded",
-        "category_not_unique",
-    ),
-    "integrity": ("x_not_ordered", "label_not_consistent"),'''
+        "category_not_unique",'''
+mutant = '''        "work_budget_exceeded",'''
 
 [[mutant]]
-id = "c4-pass-boundary-off-by-one"
-predicate = "every check before the failing one shows as passed"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
-anchor = '''        state: _State = "pass" if index < failing else'''
-mutant = '''        state: _State = "pass" if index + 1 < failing else'''
+id = "m19-no-image-under-run"
+predicate = "a missing PNG is an attach-check reason"
+kills = "tests/test_paste_in_checks.py::test_o8_check_order_reason_map_and_text_tables_are_total"
+anchor = '''    "attach": ("no_image", "publish_failed"),'''
+mutant = '''    "attach": ("publish_failed",),'''
 
 [[mutant]]
-id = "c4-fail-row-loses-cause"
-predicate = "the failing row carries its reason sentence"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
-anchor = '''        if state == "fail":
-            detail +='''
-mutant = '''        if state == "fail" and not cause:
-            detail +='''
-
-[[mutant]]
-id = "c4-unrun-word-on-pass"
-predicate = "only an unrun check reads not checked"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None-strict]"
-anchor = '''</span>' if state == "skip" else ""'''
-mutant = '''</span>' if state != "fail" else ""'''
-
-[[mutant]]
-id = "c4-details-open"
-predicate = "the disclosure opens collapsed"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-None-strict]"
-anchor = '''<div id="r"><details><summary>'''
-mutant = '''<div id="r"><details open><summary>'''
-
-[[mutant]]
-id = "c4-text-unescaped"
-predicate = "every text slot is HTML-escaped"
-kills = "tests/test_paste_in_checks.py::test_c4_title_covers_and_cause_are_escaped_and_round_trip[en]"
-anchor = '''    return html.escape(value, quote=True)'''
-mutant = '''    return value'''
-
-[[mutant]]
-id = "c4-japanese-ignored"
-predicate = "a Japanese request renders every text in Japanese"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[ja-no_tool_call-strict]"
-anchor = '''    language = 1 if japanese else 0'''
-mutant = '''    language = 0'''
-
-[[mutant]]
-id = "c4-wrong-mark-label"
-predicate = "each state's mark carries that state's accessible label"
-kills = "tests/test_paste_in_checks.py::test_c4_document_rows_follow_the_failing_check[en-expression_not_admitted-strict]"
-anchor = '''    "fail": ("\N{BALLOT X}", ("failed", "不合格")),'''
-mutant = '''    "fail": ("\N{BALLOT X}", ("passed", "合格")),'''
-
-[[mutant]]
-id = "c5-reporter-extended"
-predicate = "the frame runs the fixed height reporter and nothing else"
-kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None-strict]"
-anchor = '''    ").observe(r);"
-)'''
-mutant = '''    ").observe(r);document.body.remove();"
-)'''
-
-[[mutant]]
-id = "c5-reporter-height-zero"
-predicate = "the reporter sends the wrapper's own height"
-kills = "tests/test_paste_in_checks.py::test_c5_document_is_self_contained_and_inert[en-None-strict]"
-anchor = '''    '{type:"iframe:height",height:Math.ceil(r.getBoundingClientRect().height)},"*")''''
-mutant = '''    '{type:"iframe:height",height:0},"*")''''
-
-[[mutant]]
-id = "q37-strict-binding-row-unused"
-predicate = "each artifact's binding row states the anchoring rule it runs"
-kills = "tests/test_paste_in_checks.py::test_q37_the_binding_row_alone_states_the_anchoring_rule[en]"
-anchor = '''        texts = STRICT_BINDING if check == "binding" and anchoring == "strict" else TEXTS[check]'''
+id = "m19-columns-one-text"
+predicate = "the columns row states the artifact's own rule"
+kills = "tests/test_paste_in_checks.py::test_o9_columns_cover_the_actual_artifact_policy"
+anchor = '''        texts = STRICT_COLUMNS if check == "columns" and anchoring == "strict" else TEXTS[check]'''
 mutant = '''        texts = TEXTS[check]'''
 
-# --- M18.2: the opened row ----------------------------------------------------------------------
+[[mutant]]
+id = "m19-listing-every-row"
+predicate = "only the passed program row and the failing row list code"
+kills = "tests/test_paste_in_checks.py::test_o9_only_passed_program_and_failing_row_list_source"
+anchor = '''    quoted = state == "fail" or (check == "program" and state == "pass")'''
+mutant = '''    quoted = state != "skip"'''
 
 [[mutant]]
-id = "m18-dot-unescaped"
-predicate = "model text never spells `.` raw, so it cannot spell `Chart.` or a resource reference"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_source_escaping_is_byte_exact"
-anchor = '''    {"-": "&#45;", ".": "&#46;", "(": "&#40;", ":": "&#58;", "=": "&#61;", "@": "&#64;"}'''
-mutant = '''    {"-": "&#45;", "(": "&#40;", ":": "&#58;", "=": "&#61;", "@": "&#64;"}'''
+id = "m19-site-on-pass"
+predicate = "the program row stays unmarked"
+kills = "tests/test_paste_in_checks.py::test_o9_only_passed_program_and_failing_row_list_source"
+anchor = '''        site = evidence.site if state == "fail" else None'''
+mutant = '''        site = evidence.site'''
 
 [[mutant]]
-id = "m18-invisible-rendered-raw"
-predicate = "a control, format or unassigned character shows as a visible symbol"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_listings_are_the_hand_stated_lines_and_marks[invisible-categories]"
-anchor = '''    if character == "\t" or unicodedata.category(character) not in _HIDDEN:'''
-mutant = '''    if True:'''
+id = "m19-site-unbounded"
+predicate = "a site outside the program marks nothing"
+kills = "tests/test_paste_in_checks.py::test_o9_caps_bind_at_their_exact_boundaries"
+anchor = '''    marked = site if site is not None and 1 <= site <= len(lines) else None'''
+mutant = '''    marked = site'''
 
 [[mutant]]
-id = "m18-scan-cap-removed"
-predicate = "a listing reads at most the program's first 65,536 characters"
-kills = "tests/test_paste_in_checks_detail.py::test_e9b_scan_boundary_is_exact[65537-True]"
+id = "m19-empty-mark"
+predicate = "an empty marked line carries no mark element"
+kills = "tests/test_paste_in_checks.py::test_o9_scan_and_per_line_boundaries"
+anchor = '''    if marked and shown:'''
+mutant = '''    if marked:'''
+
+[[mutant]]
+id = "m19-scan-widened"
+predicate = "the listing scans 65,536 characters"
+kills = "tests/test_paste_in_checks.py::test_o9_scan_and_per_line_boundaries"
 anchor = '''_SCAN = 65_536'''
-mutant = '''_SCAN = 10**9'''
+mutant = '''_SCAN = 65_537'''
 
 [[mutant]]
-id = "m18-at-lines-not-first"
-predicate = "marked lines and their neighbours win the line cap"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
-anchor = '''    for number in (*sorted(marked), *near, *chosen):'''
-mutant = '''    for number in chosen:'''
+id = "m19-line-cut-widened"
+predicate = "a listed line is cut at 400 characters"
+kills = "tests/test_paste_in_checks.py::test_o9_scan_and_per_line_boundaries"
+anchor = '''_LINE_CHARACTERS = 400'''
+mutant = '''_LINE_CHARACTERS = 401'''
 
 [[mutant]]
-id = "m18-byte-column-as-character"
-predicate = "a Span column counts UTF-8 bytes, so a mark after non-ASCII text lands on its own characters"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_listings_are_the_hand_stated_lines_and_marks[nul-byte-column]"
-anchor = '''        width += len(character.encode("utf-8", "surrogatepass"))'''
-mutant = '''        width += 1'''
-
-[[mutant]]
-id = "m18-integrity-drops-titles"
-predicate = "the integrity row quotes the label statements it reads"
-kills = "tests/test_paste_in_filter_differential.py::test_outlet_fixed_anchor[ja-formula-label-pass]"
-anchor = '''    "integrity": ("data", "mark", "title", "xlabel", "ylabel"),'''
-mutant = '''    "integrity": ("data", "mark", "xlabel", "ylabel"),'''
-
-[[mutant]]
-id = "m18-stopped-dropped"
-predicate = "a failed row with a marked line says the check stopped there"
-kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
-anchor = '''        if stopped:'''
-mutant = '''        if False:'''
-
-[[mutant]]
-id = "m18-skip-row-shows-code"
-predicate = "a check that did not run quotes no code"
-kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
-anchor = '''    if state != "skip" and quoted is not None:'''
-mutant = '''    if quoted is not None:'''
-
-[[mutant]]
-id = "m18-pass-row-marks"
-predicate = "a passed row never marks code"
-kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-source_not_parsable-strict-full]"
-anchor = '''            at = quoted.at if state == "fail" else ()'''
-mutant = '''            at = quoted.at'''
-
-[[mutant]]
-id = "m18-fragment-without-prefix"
-predicate = "each row links its own `#check-<id>` section"
-kills = "tests/test_paste_in_checks_detail.py::test_e4_each_row_links_its_reference_section[en]"
-anchor = '''    href = _code(f"{SPECIFICATION[language]}#check-{check}")'''
-mutant = '''    href = _code(f"{SPECIFICATION[language]}#{check}")'''
-
-[[mutant]]
-id = "m18-english-url-for-japanese"
-predicate = "a Japanese list links the Japanese reference"
-kills = "tests/test_paste_in_checks_detail.py::test_e4_each_row_links_its_reference_section[ja]"
-anchor = '''    href = _code(f"{SPECIFICATION[language]}#check-{check}")'''
-mutant = '''    href = _code(f"{SPECIFICATION[0]}#check-{check}")'''
-
-[[mutant]]
-id = "m18-row-open"
-predicate = "every row starts collapsed"
-kills = "tests/test_paste_in_checks_detail.py::test_e2_every_row_is_its_own_collapsed_disclosure[en-None-strict-full]"
-anchor = '''<li class="{state}"><details class="row"><summary>'''
-mutant = '''<li class="{state}"><details class="row" open><summary>'''
-
-[[mutant]]
-id = "m18-elided-off-by-one"
-predicate = "the elision note counts exactly the selected lines not shown"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
-anchor = '''        elided = ELIDED[language].format(n=len(chosen) - len(taken))'''
-mutant = '''        elided = ELIDED[language].format(n=len(chosen) - len(taken) + 1)'''
-
-[[mutant]]
-id = "m18-line-cap-raised"
+id = "m19-lines-widened"
 predicate = "a listing shows at most 60 lines"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_more_than_sixty_at_lines_are_taken_in_source_order[100]"
+kills = "tests/test_paste_in_checks.py::test_o9_caps_bind_at_their_exact_boundaries"
 anchor = '''_MAX_LINES = 60'''
 mutant = '''_MAX_LINES = 61'''
 
 [[mutant]]
-id = "m18-long-line-uncut"
-predicate = "a line longer than 400 characters is cut and ends in an ellipsis"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_long_line_marks_clip_before_the_ellipsis[1000]"
-anchor = '''    if len(line) > _LINE_CHARACTERS:
-        pieces.append("\N{HORIZONTAL ELLIPSIS}")'''
-mutant = '''    if False:
-        pieces.append("\N{HORIZONTAL ELLIPSIS}")'''
+id = "m19-characters-widened"
+predicate = "a listing shows at most 3,000 characters"
+kills = "tests/test_paste_in_checks.py::test_o9_caps_bind_at_their_exact_boundaries"
+anchor = '''_MAX_CHARACTERS = 3_000'''
+mutant = '''_MAX_CHARACTERS = 3_001'''
 
 [[mutant]]
-id = "m18-neighbours-dropped"
-predicate = "a marked line's two neighbours on each side win the line cap with it"
-kills = "tests/test_paste_in_checks_detail_listing.py::test_e3_at_lines_and_their_neighbors_win_the_sixty_line_cap[en]"
-anchor = '''    around = {m + d for m in marked for d in range(-_CONTEXT, _CONTEXT + 1)}'''
-mutant = '''    around = {m + d for m in marked for d in range(0, 1)}'''
+id = "m19-context-narrowed"
+predicate = "the site's neighbours come first"
+kills = "tests/test_paste_in_checks.py::test_o9_site_and_neighbors_take_priority_inside_caps"
+anchor = '''_CONTEXT = 2'''
+mutant = '''_CONTEXT = 1'''
+
+[[mutant]]
+id = "m19-at-unescaped"
+predicate = "`@` in the program is a character reference"
+kills = "tests/test_paste_in_checks.py::test_o9_source_escaping_is_exact_and_confined_to_listing"
+anchor = '''"=": "&#61;", "@": "&#64;"'''
+mutant = '''"=": "&#61;"'''
+
+[[mutant]]
+id = "m19-prefix-shifted"
+predicate = "rows before the failing check pass"
+kills = "tests/test_paste_in_checks.py::test_o9_all_reasons_have_exact_completed_prefix_and_one_cause"
+anchor = '''    failing = len(CHECKS) if reason is None else CHECKS.index(CHECK_OF[reason])'''
+mutant = '''    failing = len(CHECKS) if reason is None else CHECKS.index(CHECK_OF[reason]) + 1'''
+
+[[mutant]]
+id = "m19-cause-dropped"
+predicate = "the failing row shows its cause"
+kills = "tests/test_paste_in_checks.py::test_o9_all_reasons_have_exact_completed_prefix_and_one_cause"
+anchor = '''            detail += f'<div class="cause">{_text(cause)}</div>''''
+mutant = '''            pass'''

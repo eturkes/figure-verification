@@ -3,122 +3,44 @@
 
 Data plus one pure renderer; `filter.py` sends the document as an Open WebUI message embed, which
 the chat renders in a sandboxed iframe and never sends to a model. Each row opens to what its check
-does, the program lines it read, why it failed and a link to its section of the reference. Every
-text slot comes from the tables here or from `REASONS`; the one exception is the program itself,
-quoted escaped inside a code listing with whatever it spells. Request text, file contents and
-sandbox output are never added from any other source.
+does, why it failed and a link to its section of the reference; the passed `program` row and the
+failing row also quote the program, the failing row marking the line that drew the offending part
+or made the offending call (ruling 13: display only, never a verdict input). Every text slot comes
+from the tables here or from `REASONS`; the one exception is the program itself, quoted escaped
+inside a code listing with whatever it spells. Request text, file contents and sandbox output are
+never added from any other source.
 
-A check shows as passed only when it completed, so each reason maps to the EARLIEST check that can
-raise it: admission raises `column_not_literal` before projection could raise its own copy.
+A check shows as passed only when it completed, so each reason maps to the check whose stage
+raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
 """
 
 import html
-import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from verifier.pysrc.position import Role, Span, Trace
-from verifier.pysrc.spec import Anchoring
+from verifier.figure.anchoring import Anchoring
 from webui.paste_in.reasons import REASONS, Reason
 
-Check = Literal[
-    "program",
-    "data",
-    "readable",
-    "accepted",
-    "chart",
-    "binding",
-    "recompute",
-    "integrity",
-    "render",
-    "match",
-    "attach",
-]
+Check = Literal["program", "run", "figure", "parts", "axes", "marks", "values", "columns", "attach"]
 type _State = Literal["pass", "fail", "skip"]
 
 CHECKS: Final[tuple[Check, ...]] = (
     "program",
-    "data",
-    "readable",
-    "accepted",
-    "chart",
-    "binding",
-    "recompute",
-    "integrity",
-    "render",
-    "match",
+    "run",
+    "figure",
+    "parts",
+    "axes",
+    "marks",
+    "values",
+    "columns",
     "attach",
 )
 
 _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
-    "program": ("no_tool_call",),
-    "data": ("no_user", "no_target"),
-    "readable": (
-        "source_too_large",
-        "source_not_utf8",
-        "source_has_nul",
-        "line_too_long",
-        "source_not_tokenizable",
-        "too_many_tokens",
-        "nesting_too_deep",
-        "unbalanced_brackets",
-        "indent_too_deep",
-        "source_not_parsable",
-    ),
-    "accepted": (
-        "statement_not_admitted",
-        "expression_not_admitted",
-        "import_not_admitted",
-        "assign_target_not_admitted",
-        "call_target_not_admitted",
-        "keyword_not_admitted",
-        "attribute_not_admitted",
-        "operator_not_admitted",
-        "literal_not_admitted",
-        "name_not_bound",
-        "column_not_literal",
-    ),
-    "chart": (
-        "no_mark",
-        "multiple_marks",
-        "mark_arity_not_projected",
-        "mark_not_valid_for_arm",
-        "x_not_a_grid",
-        "y_not_over_grid",
-        "grid_not_representable",
-        "expression_not_projected",
-        "label_not_literal",
-        "name_rebound",
-        "no_terminal",
-        "statement_after_terminal",
-        "statement_not_projected",
-        "arm_ambiguous",
-        "no_source",
-        "multiple_sources",
-        "source_not_literal",
-        "column_not_from_source",
-        "aggregation_not_projected",
-        "figure_orphans_mark",
-    ),
-    "binding": (
-        "source_not_supplied",
-        "target_mismatch",
-        "column_not_requested",
-        "column_not_named",
-    ),
-    "recompute": (
-        "csv_too_large",
-        "csv_not_parsable",
-        "column_not_present",
-        "column_not_numeric",
-        "value_not_in_profile",
-        "value_not_finite",
-        "work_budget_exceeded",
-    ),
-    "integrity": ("category_not_unique", "x_not_ordered", "label_not_consistent"),
-    "render": (
+    "program": ("no_tool_call", "no_user"),
+    "run": (
         "no_browser",
         "browser_timeout",
         "browser_error",
@@ -126,10 +48,52 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "reply_malformed",
         "sandbox_unavailable",
         "sandbox_error",
-        "no_image",
+        "no_description",
+        "program_syntax_error",
+        "program_error",
+        "module_not_available",
+        "figure_too_large",
     ),
-    "match": ("no_observation", "observation_mismatch"),
-    "attach": ("publish_failed",),
+    "figure": ("no_figure", "multiple_figures", "glyph_missing"),
+    "parts": (
+        "raster_image",
+        "axes_not_judged",
+        "axes_twin",
+        "axes_overlap",
+        "artist_not_judged",
+        "no_data",
+    ),
+    "axes": (
+        "mark_not_in_data",
+        "scale_not_linear",
+        "axis_inverted",
+        "zero_not_in_limits",
+        "tick_label_mismatch",
+        "point_clipped",
+    ),
+    "marks": (
+        "mark_hidden",
+        "value_not_finite",
+        "bar_not_from_zero",
+        "bars_overlap",
+        "x_not_ordered",
+        "hist_counts",
+        "pie_not_whole",
+        "area_not_from_zero",
+        "marker_size_varies",
+        "marker_color_varies",
+        "legend_mismatch",
+    ),
+    "values": (
+        "csv_too_large",
+        "csv_not_parsable",
+        "work_budget_exceeded",
+        "category_not_unique",
+        "value_not_found",
+        "label_not_in_request",
+    ),
+    "columns": ("column_not_requested", "column_not_named", "label_not_consistent"),
+    "attach": ("no_image", "publish_failed"),
 }
 CHECK_OF: Final[dict[Reason, Check]] = {
     reason: check for check, reasons in _REASONS_OF.items() for reason in reasons
@@ -141,122 +105,93 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
         ("Chart program received from the model", "one program, sent through the chart tool"),
         ("モデルからグラフのプログラムを受信", "グラフ用のツールで送られた 1 つのプログラム"),
     ),
-    "data": (
+    "run": (
         (
-            "An attached file or a formula in your request",
-            "your uploaded file, or one formula and one interval in your request",
+            "Program run in your browser",
+            "the program runs unchanged in the Open WebUI sandbox and finishes without an error",
         ),
         (
-            "添付ファイルまたは依頼文の数式",
-            "アップロードしたファイル、または依頼文にある 1 つの数式と 1 つの区間",
-        ),
-    ),
-    "readable": (
-        (
-            "Readable Python",
-            "size, text encoding, line length, tokens, brackets, indentation, syntax",
-        ),
-        (
-            "Python として読み取り可能",
-            "サイズ、文字コード、行の長さ、トークン、括弧、インデント、構文",
+            "ブラウザでプログラムを実行",
+            "プログラムを変更せずに Open WebUI のサンドボックスで実行し、エラーなく終了",
         ),
     ),
-    "accepted": (
+    "figure": (
+        ("One figure drawn", "one matplotlib figure, every character drawable"),
+        ("図を 1 つ描画", "matplotlib の図が 1 つ、すべての文字を描画可能"),
+    ),
+    "parts": (
         (
-            "Accepted Python only",
-            "statements, imports, function calls, arguments, attributes, operators,"
-            " literal values, fixed column names, defined names",
+            "Only chart parts the verifier checks",
+            "plain axes with bars, lines, points, histograms, pies, areas, reference lines and"
+            " text; no images, second axes or overlapping panels",
         ),
         (
-            "検証器が受け入れる Python のみ使用",
-            "文、import、関数呼び出し、引数、属性、演算子、リテラル値、固定の列名、定義済みの名前",
+            "検証器がチェックできる部品だけを使用",
+            "通常の軸と、棒、折れ線、点、ヒストグラム、円、面、基準線、テキスト。"
+            "画像、2 つ目の軸、重なるパネルはなし",
         ),
     ),
-    "chart": (
+    "axes": (
         (
-            "Chart read from the program",
-            "one plot call of x and y, one CSV read or one formula grid, columns from that CSV,"
-            " labels, plt.show() last",
+            "Honest axes",
+            "marks at their values, linear or named log scales, no inverted axis, zero on bar"
+            " and area axes, true tick labels, all points inside",
         ),
         (
-            "プログラムからグラフを読み取り可能",
-            "x と y の描画呼び出し 1 つ、CSV の読み込み 1 回または数式のグリッド 1 つ、"
-            "その CSV の列、ラベル、最後の plt.show()",
-        ),
-    ),
-    "binding": (
-        (
-            "Program matches your file or formula",
-            "it reads your attached file without swapping a column your request names, if the"
-            " verifier recognizes the name, or it plots your requested formula",
-        ),
-        (
-            "プログラムが添付ファイルまたは依頼の数式と一致",
-            "添付ファイルを読み込み、依頼にある列名のうち検証器が認識した列を"
-            "別の列に置き換えていないこと、"
-            "または依頼した数式を描くこと",
+            "正しい軸",
+            "データの値の位置に描画、線形または明記した対数、反転なし、棒と面の軸にゼロ、"
+            "正しい目盛りラベル、範囲外の点なし",
         ),
     ),
-    "recompute": (
+    "marks": (
         (
-            "Plotted values recomputed from your data",
-            "file readable, columns present, y numeric, x numeric or categories, values in"
-            " accepted form and size, results finite, computation within the limit",
+            "Honest marks",
+            "visible finite values, bars and areas from zero, no overlapping bars, true"
+            " histograms and pies, ordered lines, keyed sizes and colors, a true legend",
         ),
         (
-            "描画する値をデータから再計算",
-            "ファイルの読み取り、列の有無、y は数値、x は数値またはカテゴリ、値の形式と大きさ、"
-            "結果が有限、計算量の上限",
-        ),
-    ),
-    "integrity": (
-        (
-            "Chart integrity",
-            "bars from zero, one set of axes, linear scales, no row dropped, no repeated"
-            " category, ordered line x, no label naming another recognized file column",
-        ),
-        (
-            "グラフの完全性",
-            "棒はゼロから、軸は 1 組、線形の目盛り、行の欠落なし、カテゴリの重複なし、"
-            "折れ線の x は減少しないかファイルの順序どおり、"
-            "ラベルは検証器が認識したファイルの列名のうち、描いていない列名を挙げない",
+            "正しいグラフ要素",
+            "見える有限の値、ゼロから始まる棒と面、重ならない棒、正しいヒストグラムと円、"
+            "順序どおりの折れ線、凡例のある大きさと色、正しい凡例",
         ),
     ),
-    "render": (
+    "values": (
         (
-            "Chart drawn in your browser",
-            "the program runs in your browser and returns one PNG image",
+            "Drawn values come from your data",
+            "each value is in your CSV file, one summary per group of it, or a number in your"
+            " request; each category once",
         ),
-        ("ブラウザでグラフを描画", "プログラムをブラウザで実行し、PNG 画像を 1 枚返す"),
+        (
+            "描画した値があなたのデータにある",
+            "各値が CSV ファイルの値、そのグループごとの集計、または依頼文の数値。"
+            "カテゴリの重複なし",
+        ),
     ),
-    "match": (
+    "columns": (
         (
-            "Drawn values checked against recomputed values",
-            "the values the browser reports drawing: file values equal exactly, formula values"
-            " stay within the checked numerical bounds",
+            "Drawn columns match your request",
+            "no drawn column replaces a column your request names; labels name only drawn columns",
         ),
         (
-            "描画された値を再計算した値と照合",
-            "ブラウザが報告した描画値。ファイルの値は完全に一致し、"
-            "数式の値は定めた数値誤差の範囲内",
+            "描いた列が依頼と一致",
+            "依頼にある列を別の列に置き換えない。ラベルは描いた列だけを挙げる",
         ),
     ),
     "attach": (
-        ("Image attached to the reply", "the chart image is stored with this reply"),
-        ("返信に画像を添付", "グラフの画像をこの返信と一緒に保存"),
+        ("Image attached to the reply", "one PNG image, stored with this reply"),
+        ("返信に画像を添付", "PNG 画像 1 枚をこの返信と一緒に保存"),
     ),
 }
-# The binding row under production's strict anchoring (Q37); TEXTS holds the demo's rule.
-STRICT_BINDING: Final[tuple[tuple[str, str], tuple[str, str]]] = (
+# The columns row under production's strict anchoring (Q37); TEXTS holds the demo's rule.
+STRICT_COLUMNS: Final[tuple[tuple[str, str], tuple[str, str]]] = (
     (
-        "Program matches your file or formula",
-        "it reads your attached file, your request names each drawn column the verifier"
-        " recognizes if it names any column, or it plots your requested formula",
+        "Drawn columns match your request",
+        "if your request names a column, it names every drawn column; labels name only drawn"
+        " columns",
     ),
     (
-        "プログラムが添付ファイルまたは依頼の数式と一致",
-        "添付ファイルを読み込み、依頼が列名を含む場合は、描く列のうち検証器が認識できる列が"
-        "すべて依頼にあること、または依頼した数式を描くこと",
+        "描いた列が依頼と一致",
+        "依頼が列名を含む場合は、描いた列をすべて含む。ラベルは描いた列だけを挙げる",
     ),
 )
 
@@ -278,84 +213,79 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
         "モデルはグラフのプログラムをグラフ用のツールで送る必要があります。"
         "検証器は、この返信で最後に送られたプログラムをチェックします。",
     ),
-    "data": (
-        "The verifier needs data that you supplied. This is a CSV file attached to the chat, or"
-        " one formula and one interval in your request.",
-        "検証器には、あなたが用意したデータが必要です。"
-        "チャットに添付した CSV ファイル、または依頼文にある 1 つの数式と 1 つの区間です。",
-    ),
-    "readable": (
-        "The verifier reads the program as Python text before it examines it. It checks the size,"
-        " text encoding, line length, tokens, brackets and indentation, then parses the syntax.",
-        "検証器は、内容を調べる前にプログラムを Python のテキストとして読み取ります。"
-        "サイズ、文字コード、行の長さ、トークン、括弧、インデントを確認してから、構文を解析します。",
-    ),
-    "accepted": (
-        "The verifier accepts only a fixed set of Python statements, imports, function calls and"
-        " arguments. Anything outside that set stops the check, also when Python could run it.",
-        "検証器が受け入れるのは、決まった範囲の Python の文、import、関数呼び出し、引数だけです。"
-        "その範囲の外にあるものは、Python で実行できる場合でもチェックを止めます。",
-    ),
-    "chart": (
-        "The verifier reads which chart the program draws: one data source, one plot call, the"
-        " labels, and plt.show() at the end. Every statement must contribute to that chart.",
-        "検証器は、プログラムが描くグラフを読み取ります。"
-        "データの読み込み 1 つ、描画呼び出し 1 つ、ラベル、最後の plt.show() です。"
-        "すべての文がそのグラフに関係する必要があります。",
-    ),
-    "binding": (
-        "The verifier checks that the program uses your data: it reads your attached file, or it"
-        " plots the formula in your request. Column names in your request are compared with the"
-        " columns that the chart draws.",
-        "検証器は、プログラムがあなたのデータを使うことを確認します。"
-        "添付ファイルを読み込むこと、または依頼文の数式を描くことです。"
-        "依頼文にある列名は、グラフが描く列と比べます。",
-    ),
-    "recompute": (
-        "The verifier computes every plotted value again from your file or formula, with its own"
-        " code. Then it checks that each result is a finite number within the limits.",
-        "検証器は、描画するすべての値を、ファイルまたは数式から独自のコードで計算し直します。"
-        "その後、各結果が上限内の有限の数であることを確認します。",
-    ),
-    "integrity": (
-        "The verifier checks rules that keep the chart honest. Bars start at zero, there is one"
-        " set of axes with linear scales, and no row is left out. Categories do not repeat, and"
-        " line x values are in order. A label must not name another file column that the"
-        " verifier recognizes.",
-        "検証器は、グラフを正しく見せるための規則を確認します。"
-        "棒はゼロから始まり、軸は 1 組で目盛りは線形、行の欠落はありません。"
-        "カテゴリは重複せず、折れ線の x の値は順序どおりです。"
-        "ラベルは、検証器が認識できるファイルの列名のうち、グラフが描かない列名を挙げてはいけません。",
-    ),
-    "render": (
-        "Your browser runs the model's program, unchanged, in the Open WebUI sandbox. The run must"
-        " return one PNG image and the values that it drew.",
+    "run": (
+        "Your browser runs the model's program, unchanged, in the Open WebUI sandbox. The program"
+        " must finish without an error, and the run reports the figure that it drew.",
         "ブラウザは、モデルのプログラムを変更せずに Open WebUI のサンドボックスで実行します。"
-        "実行結果として、PNG 画像 1 枚と描画した値を返す必要があります。",
+        "プログラムはエラーなく終了し、実行結果として描いた図を報告する必要があります。",
     ),
-    "match": (
-        "The verifier compares the values that the browser drew with the values that it computed."
-        " File values must be equal. Formula values must stay within the checked numerical"
-        " bounds.",
-        "検証器は、ブラウザが描画した値と、検証器が計算した値を比べます。"
-        "ファイルの値は完全に一致する必要があります。"
-        "数式の値は、定めた数値誤差の範囲内である必要があります。",
+    "figure": (
+        "The program must draw exactly one matplotlib figure. Charts from pandas are matplotlib"
+        " figures too. The available fonts must draw every character of its text.",
+        "プログラムは matplotlib の図をちょうど 1 つ描く必要があります。"
+        "pandas のグラフも matplotlib の図です。"
+        "使用できるフォントで、図のすべての文字を描ける必要があります。",
+    ),
+    "parts": (
+        "Each part of the figure must be a kind that the verifier checks. These are plain axes,"
+        " bars, lines, points, histograms, pies, filled areas, reference lines and text. Images,"
+        " polar or 3D axes, a second y axis and overlapping panels stop the figure.",
+        "図の各部品は、検証器がチェックできる種類である必要があります。"
+        "通常の軸、棒、折れ線、点、ヒストグラム、円、面、基準線、テキストです。"
+        "画像、極座標や 3D の軸、2 つ目の y 軸、重なるパネルがあると、図は表示されません。",
+    ),
+    "axes": (
+        "Each axis must show the data honestly. Marks sit at their data values, scales are"
+        " linear unless an axis label or title names a log scale, and no axis is inverted. Bar,"
+        " histogram and area axes include zero, each tick label shows the value at its position,"
+        " and no data point is outside the axis limits.",
+        "各軸はデータを正しく示す必要があります。"
+        "グラフ要素はデータの値の位置にあり、軸ラベルかタイトルが対数と明記しない限り目盛りは線形で、"
+        "反転した軸はありません。"
+        "棒グラフ、ヒストグラム、面グラフの軸はゼロを含み、各目盛りのラベルはその位置の値を示し、"
+        "軸の範囲の外にデータ点はありません。",
+    ),
+    "marks": (
+        "Each mark must show its values honestly. Bars and filled areas start at zero or on"
+        " another bar or area, bars do not overlap, and histograms and pies match their data."
+        " Lines run in one direction, varying sizes and colors have a legend or color bar, and"
+        " the legend names the series.",
+        "各グラフ要素は値を正しく示す必要があります。"
+        "棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、ヒストグラムと円はデータと一致します。"
+        "折れ線は一方向に進み、異なる大きさや色には凡例かカラーバーがあり、凡例は系列を正しく示します。",
+    ),
+    "values": (
+        "Each drawn value must come from your data. It is a value in your CSV file or a number in"
+        " your request. It can also be one total, mean, minimum, maximum or row count per group"
+        " of the file. Category labels come from the same rows or from your request.",
+        "描画した各値は、あなたのデータにある必要があります。"
+        "CSV ファイルの値、そのグループごとの合計、平均、最小値、最大値、行数、"
+        "または依頼文の数値です。"
+        "カテゴリのラベルは、同じ行または依頼文にある必要があります。",
+    ),
+    "columns": (
+        "When your request names columns, the chart must draw those columns. A title, axis label"
+        " or legend must not name a column or summary that the chart does not draw.",
+        "依頼文に列名がある場合、グラフはその列を描く必要があります。"
+        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。",
     ),
     "attach": (
-        "The chart image is stored with this reply. If storing fails, the verifier shows no image.",
-        "グラフの画像をこの返信と一緒に保存します。保存できない場合、検証器は画像を表示しません。",
+        "The run returns one PNG image, and Open WebUI stores it with this reply. If either"
+        " step fails, the verifier shows no image.",
+        "実行結果として PNG 画像が 1 枚返り、Open WebUI がそれをこの返信と一緒に保存します。"
+        "どちらかに失敗した場合、検証器は画像を表示しません。",
     ),
 }
 WHAT: Final = ("What this check does", "このチェックの内容")
-CODE: Final = ("Code checked", "チェックしたコード")
+CODE: Final = ("Program", "プログラム")
 WHY: Final = ("Why it failed", "不合格の理由")
 NOT_RUN: Final = (
     "This check did not run, because an earlier check failed.",
     "前のチェックが不合格だったため、このチェックは実施していません。",
 )
-STOPPED: Final = (
-    "The check stopped at the marked code.",
-    "印の付いたコードでチェックが止まりました。",
+DREW: Final = (
+    "The marked line drew the part, or made the call, that failed this check.",
+    "印の付いた行が、このチェックで不合格になった部分を描いたか、その呼び出しを行いました。",
 )
 SPEC: Final = ("Read the full specification of this check", "このチェックの詳しい仕様を読む")
 ELIDED: Final = ("Lines not shown: {n}.", "表示していない行: {n} 行。")
@@ -370,32 +300,14 @@ SPECIFICATION: Final = (
     "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
 )
 
-# Which program lines each check reads: every line, the statements of these roles, or none.
-# A check after projection reads the spec, not the source, so its lines are the statements that
-# spec came from: related code, marked only where the core's `at` points at a genuine location.
-CODE_ROLES: Final[dict[Check, tuple[Role, ...] | Literal["all"] | None]] = {
-    "program": "all",
-    "data": None,
-    "readable": "all",
-    "accepted": "all",
-    "chart": "all",
-    "binding": ("source", "data", "mark"),
-    "recompute": ("source", "data", "mark"),
-    "integrity": ("data", "mark", "title", "xlabel", "ylabel"),
-    "render": "all",
-    "match": ("mark",),
-    "attach": None,
-}
-
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
-    """What the outlet holds about one reply's program: its text, where a refusal points, and the
-    role of each statement. Empty = no program reached the verifier."""
+    """The program the outlet ran and the line the judge's failure points at (display only).
+    Empty = no program reached the outlet."""
 
     program: str | None = None
-    at: tuple[Span, ...] = ()
-    trace: Trace = ()
+    site: int | None = None
 
 
 # The frame cannot see Open WebUI's theme class, so every colour is a mid tone that reads on the
@@ -477,82 +389,32 @@ def _code(value: str) -> str:
     return _text("".join(map(_visible, value))).translate(_TRIGGER_SAFE)
 
 
-def _character(line: str, column: int) -> int:
-    """The character index at UTF-8 byte offset `column` of `line` (the `Span` convention)."""
-    width = 0
-    for index, character in enumerate(line):
-        if width >= column:
-            return index
-        width += len(character.encode("utf-8", "surrogatepass"))
-    return len(line)
-
-
-def _numbers(span: Span, count: int) -> range:
-    return range(max(span.line, 1), min(span.end_line, count) + 1)
-
-
-def _marked(lines: list[str], at: tuple[Span, ...]) -> dict[int, set[int]]:
-    """Line number -> the shown character indices the spans cover; a point covers none."""
-    marked: dict[int, set[int]] = {}
-    for span in at:
-        for number in _numbers(span, len(lines)):
-            line = lines[number - 1]
-            start = _character(line, span.column) if number == span.line else 0
-            end = _character(line, span.end_column) if number == span.end_line else len(line)
-            marked.setdefault(number, set()).update(range(start, min(end, _LINE_CHARACTERS)))
-    return marked
-
-
-def _line(number: int, line: str, marks: set[int] | None) -> str:
-    shown = line[:_LINE_CHARACTERS]
-    pieces: list[str] = []
-    for inside, run in itertools.groupby(
-        range(len(shown)), key=lambda index: index in (marks or ())
-    ):
-        indices = list(run)
-        text = _code(shown[indices[0] : indices[-1] + 1])
-        pieces.append(f"<mark>{text}</mark>" if inside else text)
+def _line(number: int, line: str, *, marked: bool) -> str:
+    shown = _code(line[:_LINE_CHARACTERS])
+    if marked and shown:
+        shown = f"<mark>{shown}</mark>"
     if len(line) > _LINE_CHARACTERS:
-        pieces.append("\N{HORIZONTAL ELLIPSIS}")
-    kind = "line" if marks is None else "line at"
+        shown += "\N{HORIZONTAL ELLIPSIS}"
+    kind = "line at" if marked else "line"
     return (
-        f'<span class="{kind}"><span class="ln">{number}</span>'
-        f'<span class="src">{"".join(pieces)}</span></span>'
+        f'<span class="{kind}"><span class="ln">{number}</span><span class="src">{shown}</span>'
+        "</span>"
     )
 
 
-@dataclass(frozen=True, slots=True)
-class _Quoted:
-    """The program as the rows quote it: its scanned lines, whether the scan cut it, and where."""
-
-    lines: list[str]
-    cut: bool
-    at: tuple[Span, ...]
-    trace: Trace
-
-
-def _quoted(evidence: Evidence) -> _Quoted | None:
-    program = evidence.program
-    if program is None:
-        return None
-    return _Quoted(_BREAK.split(program[:_SCAN]), len(program) > _SCAN, evidence.at, evidence.trace)
-
-
-def _listing(
-    quoted: _Quoted, selected: set[int], at: tuple[Span, ...], language: int
-) -> tuple[str, bool]:
-    """The selected lines within the caps, refused spans marked; and whether a mark is shown."""
-    lines = quoted.lines
-    chosen = sorted(selected)
-    marked = {number: marks for number, marks in _marked(lines, at).items() if number in selected}
-    # A set, not a scan per marked line: a refusal can span thousands of lines (reviewer-2 K5-F1).
-    around = {m + d for m in marked for d in range(-_CONTEXT, _CONTEXT + 1)}
-    near = [n for n in chosen if n in around]
+def _listing(program: str, site: int | None, language: int) -> tuple[str, bool]:
+    """The program's lines within the caps, the `site` line first and marked with its context;
+    and whether a mark is shown."""
+    lines = _BREAK.split(program[:_SCAN])
+    marked = site if site is not None and 1 <= site <= len(lines) else None
+    near = [] if marked is None else [marked + d for d in range(-_CONTEXT, _CONTEXT + 1)]
     taken: set[int] = set()
     cost = 0
-    for number in (*sorted(marked), *near, *chosen):
+    for number in (*near, *range(1, len(lines) + 1)):
+        if not 1 <= number <= len(lines) or number in taken:
+            continue
         weight = min(len(lines[number - 1]), _LINE_CHARACTERS)
-        if number in taken or len(taken) == _MAX_LINES or cost + weight > _MAX_CHARACTERS:
+        if len(taken) == _MAX_LINES or cost + weight > _MAX_CHARACTERS:
             continue
         taken.add(number)
         cost += weight
@@ -560,30 +422,14 @@ def _listing(
     for number in sorted(taken):
         if rows and number - 1 not in taken:
             rows.append('<span class="gap">\N{VERTICAL ELLIPSIS}</span>')
-        rows.append(_line(number, lines[number - 1], marked.get(number)))
+        rows.append(_line(number, lines[number - 1], marked=number == marked))
     listing = f'<pre class="listing">{"".join(rows)}</pre>'
-    if len(chosen) > len(taken):
-        elided = ELIDED[language].format(n=len(chosen) - len(taken))
+    if len(lines) > len(taken):
+        elided = ELIDED[language].format(n=len(lines) - len(taken))
         listing += f'<p class="elided">{_text(elided)}</p>'
-    if quoted.cut:
+    if len(program) > _SCAN:
         listing += f'<p class="beyond">{_text(BEYOND[language])}</p>'
-    return listing, any(number in marked for number in taken)
-
-
-def _selected(check: Check, quoted: _Quoted, *, failing: bool) -> set[int]:
-    roles = CODE_ROLES[check]
-    count = len(quoted.lines)
-    if roles is None:
-        return set()
-    if roles == "all":
-        numbers = set(range(1, count + 1))
-    else:
-        numbers = {
-            n for step in quoted.trace if step.role in roles for n in _numbers(step.span, count)
-        }
-    if failing:
-        numbers.update(n for span in quoted.at for n in _numbers(span, count))
-    return numbers
+    return listing, marked in taken
 
 
 def _section(kind: str, label: str, body: str) -> str:
@@ -591,23 +437,22 @@ def _section(kind: str, label: str, body: str) -> str:
 
 
 def _more(
-    check: Check, state: _State, reason: Reason | None, language: int, quoted: _Quoted | None
+    check: Check, state: _State, reason: Reason | None, language: int, evidence: Evidence
 ) -> str:
-    """The opened row: what the check does, whether it ran, the code it read, why, the link."""
+    """The opened row: what the check does, whether it ran, the program, why, the link."""
     sections = [_section("what", WHAT[language], f"<p>{_text(EXPLAIN[check][language])}</p>")]
     if state == "skip":
         sections.append(f'<div class="unrun-note"><p>{_text(NOT_RUN[language])}</p></div>')
-    stopped = False
-    if state != "skip" and quoted is not None:
-        selected = _selected(check, quoted, failing=state == "fail")
-        if selected:
-            at = quoted.at if state == "fail" else ()
-            listing, stopped = _listing(quoted, selected, at, language)
-            sections.append(_section("code", CODE[language], listing))
+    quoted = state == "fail" or (check == "program" and state == "pass")
+    drew = False
+    if quoted and evidence.program is not None:
+        site = evidence.site if state == "fail" else None
+        listing, drew = _listing(evidence.program, site, language)
+        sections.append(_section("code", CODE[language], listing))
     if reason is not None and state == "fail":
         why = f"<p>{_text(f'{REASONS[reason][language]} ({reason})')}</p>"
-        if stopped:
-            why += f'<p class="stopped">{_text(STOPPED[language])}</p>'
+        if drew:
+            why += f'<p class="drew">{_text(DREW[language])}</p>'
         sections.append(_section("why", WHY[language], why))
     href = _code(f"{SPECIFICATION[language]}#check-{check}")
     sections.append(
@@ -627,18 +472,17 @@ def breakdown_html(
     """Render every check for one reply: passed, the failing one with its cause, the unrun rest.
 
     `reason` is the failure reason, or `None` for a published figure, whose checks all passed;
-    `anchoring` picks the binding row's text, so each artifact describes the rule it runs;
-    `evidence` = the program + its positions, quoted in each row that read it.
+    `anchoring` picks the columns row's text, so each artifact describes the rule it runs;
+    `evidence` = the program + the line the failure points at.
     """
     language = 1 if japanese else 0
     failing = len(CHECKS) if reason is None else CHECKS.index(CHECK_OF[reason])
     cause = "" if reason is None else REASONS[reason][language]
-    quoted = _quoted(evidence)
     rows: list[str] = []
     for index, check in enumerate(CHECKS):
         state: _State = "pass" if index < failing else "fail" if index == failing else "skip"
         glyph, labels = MARKS[state]
-        texts = STRICT_BINDING if check == "binding" and anchoring == "strict" else TEXTS[check]
+        texts = STRICT_COLUMNS if check == "columns" and anchoring == "strict" else TEXTS[check]
         title, covers = texts[language]
         unrun = f' <span class="unrun">{_text(UNRUN[language])}</span>' if state == "skip" else ""
         detail = f'<div class="covers">{_text(covers)}</div>'
@@ -648,7 +492,7 @@ def breakdown_html(
             f'<li class="{state}"><details class="row"><summary><span class="mark" role="img"'
             f' aria-label="{_text(labels[language])}">{glyph}</span>'
             f'<div><div class="title">{_text(title)}{unrun}</div>{detail}</div></summary>'
-            f"{_more(check, state, reason, language, quoted)}</details></li>"
+            f"{_more(check, state, reason, language, evidence)}</details></li>"
         )
     return (
         f'<!DOCTYPE html><html lang="{"ja" if japanese else "en"}"><head><meta charset="utf-8">'

@@ -10,36 +10,36 @@ model_backend.models, so shape drift versus the live backend surfaces here witho
 
 import json
 
-import msgspec
 import pytest
 import uvicorn
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
-from webui.model_stub import (
-    _COMPLICATED_PROMPT as _STUB_COMPLICATED_PROMPT,
-)
-from webui.model_stub import (
-    _FINAL_REPLY,
-    _SELECTOR_MARKER,
-    _TOOL_CALL_REPLY,
-    create_app,
-    serve,
-)
-from webui.model_stub import (
-    _SIMPLE_PROMPT as _STUB_SIMPLE_PROMPT,
-)
+from webui.banner import load, rendered
+from webui.model_stub import _FINAL_REPLY, _SELECTOR_MARKER, create_app, serve
 from webui.settings import Settings
 
-_PUBLIC_SENTINELS = {
-    row.id: row
-    for row in msgspec.json.decode(
-        (CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet
-    ).prompts
-}
-_SIMPLE_PROMPT = render_capture_prompt(_PUBLIC_SENTINELS["sentinel-simple"])
-_COMPLICATED_PROMPT = render_capture_prompt(_PUBLIC_SENTINELS["sentinel-complicated"])
+_ARMS = {arm.id: arm for arm in load().arms}
+_SIMPLE_PROMPT = rendered(_ARMS["simple"])
+_COMPLICATED_PROMPT = rendered(_ARMS["misleading"])
+
+
+def _reply_to(user: str) -> str:
+    with TestClient(app=create_app("stub-model")) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "messages": [
+                    {"role": "system", "content": _SELECTOR_MARKER},
+                    {"role": "user", "content": user},
+                ]
+            },
+        )
+    content = response.json()["choices"][0]["message"]["content"]
+    assert isinstance(content, str)
+    return content
+
+
 _HISTORY_PREFIX = 'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier reply"""\nQuery: '
 
 
@@ -133,8 +133,8 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
         ),
         (_SELECTOR_MARKER, _SIMPLE_PROMPT, "prose"),
         (_SELECTOR_MARKER, _COMPLICATED_PROMPT, "prose"),
-        (_SELECTOR_MARKER, f"Query: {_PUBLIC_SENTINELS['sentinel-simple'].prompt}", "prose"),
-        (_SELECTOR_MARKER, f"Query: {_PUBLIC_SENTINELS['sentinel-complicated'].prompt}", "prose"),
+        (_SELECTOR_MARKER, f"Query: {_ARMS['simple'].prompt}", "prose"),
+        (_SELECTOR_MARKER, f"Query: {_ARMS['misleading'].prompt}", "prose"),
         (_SELECTOR_MARKER, "Query: other request", "prose"),
         (_SELECTOR_MARKER, f"Query: {_SIMPLE_PROMPT} please", "prose"),
         (_SELECTOR_MARKER, f"Query: {_COMPLICATED_PROMPT} please", "prose"),
@@ -174,13 +174,10 @@ def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, kind: str) 
     assert response.status_code == 200
     body = response.json()
     reply = body["choices"][0]["message"]["content"]
-    if kind == "simple":
-        assert reply == _TOOL_CALL_REPLY
-    elif kind == "complicated":
+    if kind in ("simple", "complicated"):
+        arm = _ARMS["simple" if kind == "simple" else "misleading"]
         calls = json.loads(reply)["tool_calls"]
-        assert len(calls) == 1
-        assert calls[0]["name"] == "draw_figure"
-        assert "plt.subplots(2, 2" in calls[0]["parameters"]["program"]
+        assert calls == [{"name": "draw_figure", "parameters": {"program": arm.program}}]
     else:
         assert reply == _FINAL_REPLY
     assert body["usage"]["completion_tokens"] == len(reply.split())
@@ -194,7 +191,7 @@ def test_chat_final_turn_does_not_repeat_tool_call() -> None:
             json={
                 "messages": [
                     {"role": "system", "content": _SELECTOR_MARKER},
-                    {"role": "assistant", "content": _TOOL_CALL_REPLY},
+                    {"role": "assistant", "content": _reply_to(f"Query: {_SIMPLE_PROMPT}")},
                     {"role": "user", "content": _SIMPLE_PROMPT},
                 ]
             },
@@ -204,9 +201,7 @@ def test_chat_final_turn_does_not_repeat_tool_call() -> None:
 
 
 def test_scripted_tool_call_is_exact_draw_figure_request() -> None:
-    assert _STUB_SIMPLE_PROMPT == _SIMPLE_PROMPT
-    assert _STUB_COMPLICATED_PROMPT == _COMPLICATED_PROMPT
-    reply = json.loads(_TOOL_CALL_REPLY)
+    reply = json.loads(_reply_to(f"Query: {_SIMPLE_PROMPT}"))
     assert set(reply) == {"tool_calls"}
     assert len(reply["tool_calls"]) == 1
     call = reply["tool_calls"][0]

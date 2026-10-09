@@ -11,11 +11,14 @@ from typing import Literal
 
 # The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
 type Aliases = tuple[tuple[str, str], ...]
+type Anchoring = Literal["strict", "substitution"]  # production | demo (Q37)
 type Reduction = Literal["sum", "mean", "min", "max"]
 
 __all__ = [
     "SUMMARY_WORDS",
+    "Aliases",
     "AmbiguousTermError",
+    "Anchoring",
     "anchors",
     "nameable",
     "named_columns",

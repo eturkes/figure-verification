@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The only outlet that can publish a verified figure in Open WebUI.
+"""The only outlet that can publish a figure in Open WebUI.
 
 The model's reply and tool-result prose never grant permission. A tool call leaves a tagged record
-in backend request state; this outlet refetches the user's files and runs the same verifier over
-that record. The browser sandbox is trusted to render a passing program, not to admit it.
+in backend request state; this outlet refetches the user's files, runs the recorded program
+unchanged in the user's browser sandbox with the trusted reader around it, and judges the finished
+figure the reader describes. The browser, the sandbox and matplotlib are trusted to draw and to
+report; every decision is the judge's.
 """
 
 import asyncio
@@ -15,22 +17,16 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Final
+from typing import Final, cast
 
+from verifier.figure.anchoring import Anchoring
+from verifier.figure.description import TAG, parse_description
+from verifier.figure.judge import Passed, Sources, judge
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
-from verifier.pysrc.spec import Anchoring
-from verifier.pysrc.verify import Refused, Verdict, Verified
-from webui.paste_in.capture_template import PRODUCTION_TEMPLATE
 from webui.paste_in.checks import Evidence, breakdown_html
-from webui.paste_in.observe import (
-    OBSERVATION_TAG,
-    OBSERVER_SOURCE,
-    observation_matches,
-    parse_observation,
-)
 from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
@@ -40,7 +36,8 @@ from webui.paste_in.owui_files import (
 )
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
-from webui.paste_in.selection import first_verdict
+from webui.paste_in.sandbox import wrapper_code
+from webui.paste_in.templates import PRODUCTION_TEMPLATES, Templates
 
 type _Emit = Callable[[dict[str, object]], Awaitable[object]]
 
@@ -53,7 +50,6 @@ _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
 _DATA_PREFIX = re.compile(r"(?<!\w)data:")
 _TRACEBACK = "Traceback (most recent call last):"
-_FONT_PATH = "/tmp/figure-verification-cjk.ttf"  # noqa: S108 - the sandbox's own in-memory FS
 # A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
 # marks such as `・` or `ー` occur beside kanji alone.
 _KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
@@ -62,96 +58,23 @@ _LOGGER = logging.getLogger(__name__)
 # Admin-facing identity; the function source itself comes from the generated paste-in artifact.
 FILTER_ID: Final = "figure_verification_filter"
 FILTER_NAME: Final = "Figure Verification Filter"
-FILTER_DESCRIPTION: Final = "Shows a chart only after the verifier checks its program and data."
+FILTER_DESCRIPTION: Final = "Shows a chart only after the verifier checks the finished figure."
 
 
-def _payload(data: bytes) -> str:
-    """Base64 source for `data`, split wherever it spells the plotting name OWUI patches on."""
-    parts = base64.b64encode(data).decode("ascii").split("matplotlib")
-    return " + 'mat' + 'plotlib' + ".join(repr(part) for part in parts)
+def _needs_font(program: str, files: tuple[UploadedFile, ...]) -> bool:
+    """Whether the figure can draw text outside ASCII, which the sandbox fonts may lack: the
+    program or an attached file holds a non-ASCII character (over-inclusion costs bytes alone)."""
+    return not program.isascii() or any(not file.content.isascii() for file in files)
 
 
-def wrapper_code(program: str, font: bytes | None = None) -> str:
-    """Run the submitted program bytes inside the browser, with one trusted PNG output hook.
-
-    OWUI detects packages only from literal imports in the RPC source, missing encoded programs.
-    Load the stack quietly through Pyodide; select Agg as OWUI's own patch prelude does, without
-    triggering that broken prelude. Split the plotting name and any matching base64 RPC payload.
-    A `font` becomes matplotlib's fallback after DejaVu Sans, before the program runs: ordinary
-    text then draws its CJK glyphs, while mathtext keeps its own font set.
-    """
-    font_lines = (
-        ()
-        if font is None
-        else (
-            f"_fv_font = {_FONT_PATH!r}",
-            "with open(_fv_font, 'wb') as _fv_handle:",
-            f"    _fv_handle.write(_b64.b64decode({_payload(font)}))",
-            "_fv_fonts = _imports.import_module('mat' + 'plotlib.font_manager')",
-            "_fv_fonts.fontManager.addfont(_fv_font)",
-            "_plt.rcParams['font.family'] = [",
-            "    'DejaVu Sans', _fv_fonts.FontProperties(fname=_fv_font).get_name()",
-            "]",
-        )
-    )
-    return (
-        "\n".join(
-            (
-                "import pyodide_js as _pyodide",
-                "await _pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'],",
-                "                              messageCallback=lambda _message: None)",
-                "import base64 as _b64",
-                "import io as _io",
-                "import importlib as _imports",
-                "import os as _os",
-                "_os.environ['MPLBACKEND'] = 'AGG'",
-                "_plt = _imports.import_module('mat' + 'plotlib.pyplot')",
-                "plt = _plt",
-                *font_lines,
-                *OBSERVER_SOURCE.splitlines(),
-                "_shown = False",
-                "def _show(*_args, **_kwargs):",
-                "    global _shown",
-                "    if _shown:",
-                "        return",
-                "    _shown = True",
-                "    _fig = _plt.gcf()",
-                "    _fig.canvas.draw()",
-                f"    print({OBSERVATION_TAG!r} + _figure_verification_observe())",
-                "    _png = _io.BytesIO()",
-                "    _fig.savefig(_png, format='png')",
-                "    print('data:image/png;base64,' +",
-                "          _b64.b64encode(_png.getvalue()).decode('ascii'))",
-                "    _plt.close('all')",
-                "_plt.show = _show",
-                f"_source = _b64.b64decode({_payload(program.encode('utf-8'))})",
-                "exec(compile(_source, '<verified-figure>', 'exec'), {'__name__': '__main__'})",
-                "if not _shown:",
-                "    _show()",
-            )
-        )
-        + "\n"
-    )
-
-
-def _needs_font(verdict: Verified, consumed: UploadedFile | None) -> bool:
-    """Whether the figure can draw ordinary text outside ASCII, which the sandbox fonts may lack.
-
-    Text reaches an admitted figure only through its projected labels or, dataset arm, through the
-    CSV: category ticks and the header names pandas puts on its axes. Over-inclusion costs bytes.
-    """
-    labels = verdict.spec.labels
-    texts = (labels.title, labels.xlabel, labels.ylabel, labels.series)
-    if any(text is not None and not text.isascii() for text in texts):
-        return True
-    return consumed is not None and not consumed.content.isascii()
-
-
-def _png_uri(stdout: object) -> str | None:
-    """Accept exactly one complete PNG data-URI line with a valid base64 PNG signature."""
-    if not isinstance(stdout, str):
-        return None
-    lines = [line.strip() for line in stdout.splitlines() if _DATA_PREFIX.search(line)]
+def _png_uri(stdout: str) -> str | None:
+    """Accept exactly one complete PNG data-URI line, outside the description line, carrying a
+    valid base64 PNG signature."""
+    lines = [
+        line.strip()
+        for line in stdout.splitlines()
+        if not line.startswith(TAG) and _DATA_PREFIX.search(line)
+    ]
     if len(lines) != 1 or _PNG_URI.fullmatch(lines[0]) is None:
         return None
     try:
@@ -309,22 +232,13 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     return _rewrite(body, FAIL_TEXT)
 
 
-def _evidence(program: str, verdict: Verdict | None) -> Evidence:
-    """The program with what the core found in it: where a refusal points, each statement's role."""
-    if isinstance(verdict, Refused):
-        return Evidence(program, verdict.at, verdict.trace)
-    if isinstance(verdict, Verified):
-        return Evidence(program, trace=verdict.trace)
-    return Evidence(program)
-
-
 class Filter:
     """The global active filter; the inlet carries context, and the outlet authors the verdict."""
 
     # Production = strict request anchoring; the demo's generated filter overrides it (Q37).
     _ANCHORING: Anchoring = "strict"
-    # Production's inlet template carries no format sentence: Kimi calls `draw_figure` (Q40).
-    _TEMPLATE: str = PRODUCTION_TEMPLATE
+    # Production's inlet templates carry no format sentence: Kimi calls `draw_figure` (Q40).
+    _TEMPLATES: Templates = PRODUCTION_TEMPLATES
 
     async def inlet(
         self,
@@ -332,13 +246,11 @@ class Filter:
         __user__: dict[str, object] | None = None,
         __metadata__: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        """Render the capture prompt over an owned CSV without changing the user's evidence."""
+        """Render the prompt template around the last user message, with the last owned CSV's
+        path and header when one is attached, without changing the user's evidence."""
         user_id = (__user__ or {}).get("id")
         messages = body.get("messages")
         if not isinstance(user_id, str) or not isinstance(messages, list):
-            return body
-        attachments = await uploaded_files(__metadata__, user_id)
-        if not attachments:
             return body
         for index in range(len(messages) - 1, -1, -1):
             message = messages[index]
@@ -347,25 +259,28 @@ class Filter:
             task = message.get("content")
             if not isinstance(task, str):
                 return body
-            try:
-                header, _rows = _read_csv(
-                    attachments[-1].content,
-                    DEFAULT_LIMITS,
-                    WorkBudget(DEFAULT_LIMITS.max_work),
-                )
-            except (PysrcRefusalError, WorkBudgetExceededError):
-                return body
-            rendered = self._TEMPLATE.format(
-                task=task,
-                dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
-                columns=", ".join(header),
-            )
+            rendered = self._render(task, await uploaded_files(__metadata__, user_id))
             updated = list(messages)
             updated[index] = {**message, "content": rendered}
             return {**body, "messages": updated}
         return body
 
-    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 - fixed OWUI hook signature
+    def _render(self, task: str, attachments: tuple[UploadedFile, ...]) -> str:
+        if not attachments:
+            return self._TEMPLATES.no_file.format(task=task)
+        try:
+            header, _rows = _read_csv(
+                attachments[-1].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)
+            )
+        except (PysrcRefusalError, WorkBudgetExceededError):
+            return self._TEMPLATES.no_file.format(task=task)
+        return self._TEMPLATES.file.format(
+            task=task,
+            dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
+            columns=", ".join(header),
+        )
+
+    async def outlet(  # noqa: PLR0911, PLR0913, PLR0917 - fixed OWUI hook signature
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,
@@ -374,53 +289,43 @@ class Filter:
         __event_emitter__: _Emit | None = None,
         __metadata__: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        """Re-derive, render once, publish only when verification and rendering both succeed."""
-
-        # What the check list may quote, widened as the outlet learns more; `fail` reads it late.
+        """Run the recorded program in the browser, judge the figure, publish only a pass."""
         evidence = Evidence()
 
-        async def fail(reason: Reason) -> dict[str, object]:
+        async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
             return await _fail(
-                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+                body,
+                reason,
+                __metadata__,
+                __event_emitter__,
+                self._ANCHORING,
+                evidence=Evidence(evidence.program, site),
             )
 
         receipt = read_receipt(__request__)
-        user_id = (__user__ or {}).get("id")
         if receipt is None:
             return await fail("no_tool_call")
         evidence = Evidence(receipt.program)
-        if not isinstance(user_id, str):
+        user_id = (__user__ or {}).get("id")
+        if not isinstance(user_id, str) or not user_id:
             return await fail("no_user")
-
-        attachments = await owned_files(receipt.file_ids, user_id)
-        verdict, consumed = first_verdict(
-            receipt.program, attachments, receipt.request_text, self._ANCHORING, receipt.aliases
-        )
-        evidence = _evidence(receipt.program, verdict)
-        if isinstance(verdict, Refused):
-            return await fail(verdict.code)
-        if not isinstance(verdict, Verified):
-            return await fail("no_target")
-
-        if (
-            __event_call__ is None
-            or __event_emitter__ is None
-            or not isinstance(__metadata__, dict)
-            or "session_id" not in __metadata__
-        ):
+        session = __metadata__.get("session_id") if isinstance(__metadata__, dict) else None
+        if not isinstance(session, str):
+            session = None
+        if __event_call__ is None or __event_emitter__ is None or not session:
             return await fail("no_browser")
-        font = await cjk_font() if _needs_font(verdict, consumed) else None
+        files = await owned_files(receipt.file_ids, user_id)
+        font = await cjk_font() if _needs_font(receipt.program, files) else None
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {
                 "id": str(uuid.uuid4()),
                 "code": wrapper_code(receipt.program, font),
-                "session_id": __metadata__["session_id"],
-                "files": (
-                    [{"id": consumed.file_id, "filename": consumed.path.rsplit("/", 1)[-1]}]
-                    if consumed is not None
-                    else []
-                ),
+                "session_id": session,
+                "files": [
+                    {"id": file.file_id, "filename": file.path.removeprefix(UPLOAD_DIR)}
+                    for file in files
+                ],
             },
         }
         try:
@@ -435,16 +340,21 @@ class Filter:
         if fault is not None:
             return await fail(fault)
         stdout = response.get("stdout")
-        if not isinstance(stdout, str):
-            return await fail("no_image")
-        uri = _png_uri(stdout)
+        description = parse_description(stdout) if isinstance(stdout, str) else None
+        if description is None:
+            return await fail("no_description")
+        sources = Sources(
+            tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
+            receipt.request_text,
+            self._ANCHORING,
+            receipt.aliases,
+        )
+        verdict = judge(description, sources)
+        if not isinstance(verdict, Passed):
+            return await fail(verdict.reason, verdict.site)
+        uri = _png_uri(cast("str", stdout))
         if uri is None:
             return await fail("no_image")
-        observed = parse_observation(stdout)
-        if observed is None:
-            return await fail("no_observation")
-        if not observation_matches(verdict, observed):
-            return await fail("observation_mismatch")
         try:
             await __event_emitter__(
                 {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
@@ -452,7 +362,6 @@ class Filter:
         except Exception:
             return await fail("publish_failed")
         await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
-        certificate = verdict.certificate
         japanese = _japanese(__metadata__)
-        interpretation = certificate.interpretation_ja if japanese else certificate.interpretation
+        interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
         return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")

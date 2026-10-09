@@ -104,7 +104,8 @@ def _date(text: str) -> str | None:
         for part, default in zip(match.groups(), ("0", "0", "1", "0", "0", "0"), strict=True)
     )
     try:
-        return datetime(year, month, day, hour, minute, second).isoformat()  # noqa: DTZ001 - calendar text
+        # Calendar text, not an instant: no time zone applies.
+        return datetime(year, month, day, hour, minute, second).isoformat()  # noqa: DTZ001
     except ValueError:
         return None
 

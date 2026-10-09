@@ -7,10 +7,9 @@ routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it 
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec
 structs only, no torch import), so OWUI sees the SAME /v1 wire SHAPE as the live backend (same
 routes, status codes, object literals, and msgspec field order). Reply VALUES are synthetic and
-prompt-classified (see _scripted_reply): the inlet-rendered simple banner prompt selects the
-committed verified program, the rendered complicated prompt selects the refused program, each
-rendered Japanese demo prompt (`webui/demo_ja.json`) selects its captured program, and other turns
-stay prose. This makes every outlet verdict repeatable without measuring model quality.
+prompt-classified (see _scripted_reply): each banner arm's inlet-rendered request
+(`webui/banner.json`) selects that arm's scripted program, and other turns stay prose. This makes
+every outlet verdict repeatable without measuring model quality.
 
 Not the trusted verifier and not even a model -- a scripted test fixture. It cannot support model
 quality or tool-selection claims. Like the rest of webui/ it is coverage-excluded and unshipped,
@@ -23,14 +22,11 @@ import uuid
 from typing import cast
 from urllib.parse import urlparse
 
-import msgspec
 import uvicorn
 from litestar import Litestar, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_200_OK
 
-from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
-from capture.harness import defence
 from model_backend.models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -40,40 +36,11 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
-from webui.demo_ja import load as load_demo_ja
-from webui.demo_ja import rendered as rendered_demo_ja
+from webui.banner import load as load_banner
+from webui.banner import rendered as rendered_banner
 from webui.settings import Settings
 
 _SELECTOR_MARKER = "Available Tools:"
-_CAPTURE_RECORDS = CORPUS_ROOT / "captures" / "m10-design" / "records.ndjson"
-
-
-def _rendered_sentinel(prompt_id: str) -> str:
-    """Use the public task and the capture renderer, never a second authored template."""
-    rows = msgspec.json.decode((CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet)
-    prompt = next((row for row in rows.prompts if row.id == prompt_id), None)
-    if prompt is None:
-        msg = f"no public sentinel {prompt_id}"
-        raise ValueError(msg)
-    return render_capture_prompt(prompt)
-
-
-def _captured_program(prompt_id: str) -> str:
-    """Take the model-authored bytes from the committed run, de-fenced at the capture seam."""
-    rows = (json.loads(line) for line in _CAPTURE_RECORDS.read_text().splitlines())
-    captured = next((row for row in rows if row["prompt_id"] == prompt_id), None)
-    if captured is None or not isinstance(captured["content"], str):
-        msg = f"no captured program for {prompt_id}"
-        raise ValueError(msg)
-    fenced, source = defence(captured["content"])
-    if not fenced or not source:
-        msg = f"capture {prompt_id} has no de-fenced program"
-        raise ValueError(msg)
-    return source
-
-
-_SIMPLE_PROMPT = _rendered_sentinel("sentinel-simple")
-_COMPLICATED_PROMPT = _rendered_sentinel("sentinel-complicated")
 
 
 def _tool_call_reply(program: str) -> str:
@@ -83,23 +50,10 @@ def _tool_call_reply(program: str) -> str:
     )
 
 
-_TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-simple"))
-_COMPLICATED_TOOL_CALL_REPLY = _tool_call_reply(_captured_program("sentinel-complicated"))
-
-
-def _demo_ja_replies() -> tuple[tuple[str, str], ...]:
-    """Pair each rendered Japanese request with its captured reply, de-fenced like the adapter."""
-    replies: list[tuple[str, str]] = []
-    for prompt in load_demo_ja().prompts:
-        _, program = defence(prompt.content)
-        if not program:
-            msg = f"capture {prompt.id} has no program"
-            raise ValueError(msg)
-        replies.append((rendered_demo_ja(prompt), _tool_call_reply(program)))
-    return tuple(replies)
-
-
-_DEMO_JA_REPLIES = _demo_ja_replies()
+# Each banner arm's rendered request -> one `draw_figure` call carrying the arm's program.
+_BANNER_REPLIES = tuple(
+    (rendered_banner(arm), _tool_call_reply(arm.program)) for arm in load_banner().arms
+)
 # The filter, not the stub's prose, publishes the final verdict on either path.
 _FINAL_REPLY = "Chart request completed."
 
@@ -115,11 +69,7 @@ def _scripted_reply(messages: tuple[ChatMessage, ...]) -> str:
     system = "\n".join(message.content for message in messages if message.role == "system")
     user = next((message.content for message in reversed(messages) if message.role == "user"), "")
     if _SELECTOR_MARKER in system:
-        if _selector_query(user, _SIMPLE_PROMPT):
-            return _TOOL_CALL_REPLY
-        if _selector_query(user, _COMPLICATED_PROMPT):
-            return _COMPLICATED_TOOL_CALL_REPLY
-        for prompt, reply in _DEMO_JA_REPLIES:
+        for prompt, reply in _BANNER_REPLIES:
             if _selector_query(user, prompt):
                 return reply
     return _FINAL_REPLY

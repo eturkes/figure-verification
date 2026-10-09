@@ -19,7 +19,6 @@ from verifier.pysrc.admit import (
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.project import project
 from verifier.pysrc.spec import CorePlotSpec, DatasetPlot, DatasetTarget
-from webui.paste_in import observe
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PRELUDE = 'import pandas as pd\nimport matplotlib.pyplot as plt\ndf = pd.read_csv("sales.csv")\n'
@@ -170,7 +169,7 @@ def test_a7_the_int32_renderer_bound_binds_bars_alone(kind: str) -> None:
 
 
 def test_a8_the_width_invariants_hold() -> None:
-    """A8: 55 refusal codes, two spec members and four reader keys, all hand-stated."""
+    """A8: 55 refusal codes and two spec members, all hand-stated (the observation reader's keys
+    retired with `webui/paste_in/observe.py`, M19.5)."""
     assert len(get_args(RefusalCode)) == 55
     assert len(get_args(CorePlotSpec.__value__)) == 2
-    assert set(observe.READERS) == {"line", "scatter", "bar", "barh"}

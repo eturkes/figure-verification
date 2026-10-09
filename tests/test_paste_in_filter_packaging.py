@@ -6,17 +6,12 @@ filter is retired; a byte-drifted or second active global filter cannot satisfy 
 """
 
 import importlib
-import json
 from pathlib import Path
 from typing import cast
 
 import httpx
-import msgspec
 import pytest
 
-from capture.corpus import CORPUS_ROOT, PromptSet, render_capture_prompt
-from capture.harness import defence
-from model_backend.models import ChatMessage
 from paste_in_support import (
     REPO_ROOT,
     assert_embedded_identity,
@@ -26,8 +21,7 @@ from paste_in_support import (
     offending_import_roots,
     run_generator,
 )
-from verifier.pysrc import DatasetTarget, Refused, Verified, verify_python_source
-from webui import bootstrap, model_stub
+from webui import bootstrap
 from webui.client import WebUIClient
 from webui.settings import Settings
 
@@ -89,8 +83,9 @@ def test_f8_filter_artifact_has_exact_import_closure_and_only_allowed_roots() ->
     assert_embedded_identity(sources)
     assert offending_import_roots(bundle, text) == set()
     assert "webui.paste_in.receipt" in sources
-    assert "webui.paste_in.selection" in sources
-    assert "verifier.pysrc.verify" in sources
+    assert "webui.paste_in.sandbox" in sources
+    assert "verifier.figure.judge" in sources
+    assert "verifier.figure.reader" in sources
 
 
 def test_f8_legacy_filter_and_its_behavioral_tests_are_gone() -> None:
@@ -276,50 +271,6 @@ def test_f8_bootstrap_provisions_exact_generated_filter_source() -> None:
     assert client.tool_calls[0][2] == (REPO_ROOT / _DEMO_TOOL_ARTIFACT).read_text(encoding="utf-8")
 
 
-def _sentinels() -> dict[str, str]:
-    payload: dict[str, object] = json.loads(
-        (REPO_ROOT / "corpus/python/sentinels.json").read_text()
-    )
-    rows = cast(list[dict[str, object]], payload["prompts"])
-    return {cast(str, row["id"]): cast(str, row["prompt"]) for row in rows}
-
-
-def _rendered_sentinel(prompt_id: str) -> str:
-    sentinels = msgspec.json.decode((CORPUS_ROOT / "sentinels.json").read_bytes(), type=PromptSet)
-    prompt = next(row for row in sentinels.prompts if row.id == prompt_id)
-    return render_capture_prompt(prompt)
-
-
-def _captured_program(prompt_id: str) -> str:
-    """Extract source from committed design capture, independent of the stub constants."""
-    records = REPO_ROOT / "corpus/python/captures/m10-design/records.ndjson"
-    rows = (json.loads(line) for line in records.read_text().splitlines())
-    captured = next(row for row in rows if row["prompt_id"] == prompt_id)
-    content = captured["content"]
-    assert isinstance(content, str)
-    fenced, source = defence(content)
-    assert fenced
-    assert "pd.read_csv('/mnt/uploads/sales.csv')" in source
-    return source
-
-
-def _sales_verdict(source: str) -> Verified | Refused:
-    return verify_python_source(
-        source,
-        declared_target=DatasetTarget(
-            "/mnt/uploads/sales.csv", (REPO_ROOT / "data/sales.csv").read_bytes()
-        ),
-    )
-
-
-def _stub_reply(user_prompt: str) -> str:
-    messages = (
-        ChatMessage(role="system", content="Available Tools: draw_figure"),
-        ChatMessage(role="user", content=user_prompt),
-    )
-    return model_stub._scripted_reply(messages)
-
-
 def test_f9_embedding_bypass_is_pinned_against_ambient_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -328,47 +279,3 @@ def test_f9_embedding_bypass_is_pinned_against_ambient_config(
     settings = Settings()
     assert settings.launch_env()["BYPASS_EMBEDDING_AND_RETRIEVAL"] == "true"
     assert settings.child_env()["BYPASS_EMBEDDING_AND_RETRIEVAL"] == "true"
-
-
-@pytest.mark.parametrize(
-    "prefix",
-    [
-        "Query: ",
-        'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier reply"""\nQuery: ',
-    ],
-    ids=["fresh", "history"],
-)
-def test_f9_simple_banner_prompt_calls_draw_figure_with_committed_sentinel_program(
-    prefix: str,
-) -> None:
-    """F9/A4: both legacy selector shapes carry the committed verified program byte for byte."""
-    simple = _sentinels()["sentinel-simple"]
-    assert f'simple_prompt="{simple}"' in (REPO_ROOT / "webui/launch.sh").read_text()
-    source = _captured_program("sentinel-simple")
-    assert isinstance(_sales_verdict(source), Verified)
-    assert _stub_reply(prefix + simple) == model_stub._FINAL_REPLY
-    reply = json.loads(_stub_reply(prefix + _rendered_sentinel("sentinel-simple")))
-    assert reply == {"tool_calls": [{"name": "draw_figure", "parameters": {"program": source}}]}
-
-
-@pytest.mark.parametrize(
-    "prefix",
-    [
-        "Query: ",
-        'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier reply"""\nQuery: ',
-    ],
-    ids=["fresh", "history"],
-)
-def test_f9_complicated_banner_prompt_calls_draw_figure_with_refused_capture(
-    prefix: str,
-) -> None:
-    """F9/A4: the refused capture reaches the verifier via a real draw_figure selector call."""
-    complicated = _sentinels()["sentinel-complicated"]
-    assert f'elaborate_prompt="{complicated}"' in (REPO_ROOT / "webui/launch.sh").read_text()
-    source = _captured_program("sentinel-complicated")
-    refusal = _sales_verdict(source)
-    assert isinstance(refusal, Refused)
-    assert refusal.code == "expression_not_admitted"
-    assert _stub_reply(prefix + complicated) == model_stub._FINAL_REPLY
-    reply = json.loads(_stub_reply(prefix + _rendered_sentinel("sentinel-complicated")))
-    assert reply == {"tool_calls": [{"name": "draw_figure", "parameters": {"program": source}}]}

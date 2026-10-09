@@ -8,7 +8,7 @@ their class-identity boundary; the reader validates its shape and accepts no oth
 from dataclasses import dataclass
 from typing import Final
 
-from verifier.pysrc.spec import Aliases
+from verifier.figure.anchoring import Aliases
 
 RECEIPT_ATTR: Final = "figure_verification_receipt"
 # `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.

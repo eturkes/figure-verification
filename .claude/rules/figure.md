@@ -24,16 +24,16 @@ Binding sources: `.agent/spec.md` `Intent` + Decisions "Integrity-redesign rulin
 | check | reasons |
 |---|---|
 | `program` | `no_tool_call` `no_user` |
-| `run` | `no_browser` `browser_timeout` `browser_error` `browser_no_answer` `reply_malformed` `sandbox_unavailable` `sandbox_error` `no_image` `no_description` `program_syntax_error` `program_error` `module_not_available` `figure_too_large` |
+| `run` | `no_browser` `browser_timeout` `browser_error` `browser_no_answer` `reply_malformed` `sandbox_unavailable` `sandbox_error` `no_description` `program_syntax_error` `program_error` `module_not_available` `figure_too_large` |
 | `figure` | `no_figure` `multiple_figures` `glyph_missing` |
 | `parts` | `raster_image` `axes_not_judged` `axes_twin` `axes_overlap` `artist_not_judged` `no_data` |
 | `axes` | `mark_not_in_data` `scale_not_linear` `axis_inverted` `tick_label_mismatch` `point_clipped` `zero_not_in_limits` |
-| `marks` | `mark_hidden` `value_not_finite` `bar_not_from_zero` `bars_overlap` `category_not_unique` `x_not_ordered` `hist_counts` `pie_not_whole` `area_not_from_zero` `marker_size_varies` `marker_color_varies` `legend_mismatch` |
-| `values` | `csv_too_large` `csv_not_parsable` `work_budget_exceeded` `value_not_found` `label_not_in_request` |
+| `marks` | `mark_hidden` `value_not_finite` `bar_not_from_zero` `bars_overlap` `x_not_ordered` `hist_counts` `pie_not_whole` `area_not_from_zero` `marker_size_varies` `marker_color_varies` `legend_mismatch` |
+| `values` | `csv_too_large` `csv_not_parsable` `work_budget_exceeded` `category_not_unique` `value_not_found` `label_not_in_request` |
 | `columns` | `column_not_requested` `column_not_named` `label_not_consistent` |
-| `attach` | `publish_failed` |
+| `attach` | `no_image` `publish_failed` |
 
-Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or the LAST program `calls` line (call) that set the offending property, else none (listing unmarked).
+A reason maps to the stage that raises it: `category_not_unique` (G8) needs the drawn keys, so the values stage raises it; `no_image` follows a pass (the PNG exists only for exactly one figure). Judge order = figure → parts → axes → marks → values → columns; inside a stage: figures, axes, artists in description order, first failure wins. Each failure carries the `site` (artist) or the LAST program `calls` line (call) that set the offending property, else none (listing unmarked).
 
 ## Closed artist set (parts)
 

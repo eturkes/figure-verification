@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop.
 module = "webui/paste_in/owui_files.py"
-tests = ["tests/test_paste_in_filter_font.py"]
+tests = ["tests/test_paste_in_owui_files.py"]
 
 [[mutant]]
 id = "of-file-error-uncaught"
 predicate = "a missing or unreadable font file degrades to None"
-kills = "tests/test_paste_in_filter_font.py::test_f4_font_source_swallows_each_exception_family[file]"
+kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_swallows_each_exception_family[file]"
 anchor = '''    except Exception:
         return None'''
 mutant = '''    except ImportError:
@@ -15,7 +15,7 @@ mutant = '''    except ImportError:
 [[mutant]]
 id = "of-cancellation-swallowed"
 predicate = "a cancelled read propagates instead of degrading"
-kills = "tests/test_paste_in_filter_font.py::test_f4_font_source_propagates_cancellation"
+kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_propagates_cancellation"
 anchor = '''    except Exception:
         return None'''
 mutant = '''    except BaseException:
@@ -24,21 +24,21 @@ mutant = '''    except BaseException:
 [[mutant]]
 id = "of-read-on-loop"
 predicate = "the 5.7 MB read runs in a worker thread, never on the event loop"
-kills = "tests/test_paste_in_filter_font.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
+kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
 anchor = '''        return await asyncio.to_thread(Path(FONTS_DIR, CJK_FONT_NAME).read_bytes)'''
 mutant = '''        return Path(FONTS_DIR, CJK_FONT_NAME).read_bytes()'''
 
 [[mutant]]
 id = "of-wrong-font-file"
 predicate = "the static Noto Sans JP file OWUI ships for its own PDF export"
-kills = "tests/test_paste_in_filter_font.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
+kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
 anchor = '''CJK_FONT_NAME = "NotoSansJP-Regular.ttf"'''
 mutant = '''CJK_FONT_NAME = "NotoSansJP-Variable.ttf"'''
 
 [[mutant]]
 id = "of-fault-logged-unguarded"
 predicate = "the degrade path runs nothing that can raise, so a failing log sink never costs the verdict"
-kills = "tests/test_paste_in_filter_font.py::test_f4_font_source_survives_a_raising_log_sink"
+kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_survives_a_raising_log_sink"
 anchor = '''    except Exception:
         return None'''
 mutant = '''    except Exception:

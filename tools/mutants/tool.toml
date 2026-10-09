@@ -1,36 +1,41 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Q43 V1 + V2: the admin Valve refuses unreadable text on save, and its aliases reach the verdict
-# and the receipt the outlet reads.
+# M19.5 tool (`.agent/archive/contracts/m19u5.md` O6): transport alone; each mutant names one red.
 module = "webui/paste_in/tool.py"
-tests = ["tests/test_paste_in_aliases.py"]
+tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_aliases.py"]
 
 [[mutant]]
-id = "q43-valve-unvalidated"
-predicate = "V1: saving unreadable alias text fails (OWUI runs Valves(**form))"
-kills = "tests/test_paste_in_aliases.py::test_q43_v1_a_malformed_line_fails_the_save"
-anchor = '''            parse_aliases(value)
-            return value'''
-mutant = '''            return value'''
+id = "m19-receipt-skipped"
+predicate = "every call writes the receipt"
+kills = "tests/test_paste_in_tool.py::test_o6_arbitrary_program_bytes_are_receipted_without_a_verdict"
+anchor = '''        if __request__ is not None:
+            write_receipt('''
+mutant = '''        if False:
+            write_receipt('''
 
 [[mutant]]
-id = "q43-valves-unset"
-predicate = "V1: the instance holds valves, or OWUI never sets the admin's"
-kills = "tests/test_paste_in_aliases.py::test_q43_v1_the_default_valve_is_empty_and_the_demo_inherits_it"
-anchor = '''        self.valves = self.Valves()'''
-mutant = '''        pass'''
+id = "m19-ids-dropped"
+predicate = "the receipt carries every attachment id"
+kills = "tests/test_paste_in_tool.py::test_o6_last_call_wins_with_all_ids_request_and_parsed_aliases"
+anchor = '''                    tuple(attachment_ids(__metadata__)),'''
+mutant = '''                    (),'''
 
 [[mutant]]
-id = "q43-verdict-ignores-valve"
-predicate = "V2: the tool's verdict reads the Valve's aliases"
-kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_tool_verifies_and_records_its_valve_aliases"
-anchor = '''            program, attachments, request_text, self._ANCHORING, aliases'''
-mutant = '''            program, attachments, request_text, self._ANCHORING, ()'''
+id = "m19-request-dropped"
+predicate = "the receipt carries the request text"
+kills = "tests/test_paste_in_tool.py::test_o6_last_call_wins_with_all_ids_request_and_parsed_aliases"
+anchor = '''                    _request_text(__metadata__),'''
+mutant = '''                    None,'''
 
 [[mutant]]
-id = "q43-receipt-drops-valve"
-predicate = "V2: the receipt records the aliases the tool used"
-kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_tool_verifies_and_records_its_valve_aliases"
-anchor = '''                    request_text,
-                    aliases,'''
-mutant = '''                    request_text,
-                    (),'''
+id = "m19-aliases-dropped"
+predicate = "the receipt carries the parsed Valve aliases"
+kills = "tests/test_paste_in_tool.py::test_o6_last_call_wins_with_all_ids_request_and_parsed_aliases"
+anchor = '''                    parse_aliases(self.valves.column_aliases),'''
+mutant = '''                    (),'''
+
+[[mutant]]
+id = "m19-reply-changed"
+predicate = "the tool returns its one fixed string"
+kills = "tests/test_paste_in_tool.py::test_o6_arbitrary_program_bytes_are_receipted_without_a_verdict"
+anchor = '''        return CHART_SENT'''
+mutant = '''        return ""'''

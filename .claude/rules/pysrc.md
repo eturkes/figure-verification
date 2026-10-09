@@ -179,9 +179,9 @@ projection + exact recomputation and observation is additive.
   of 57; `m10-design` captures VERIFIED 18 → 10, FAITHFUL 10 → 6; H1 held-out simple 14 → 7/20
   (MAIN's reading: `heldout-simple-02` + `-12` faithful refused, `-08` `-16` `-18` `-20` unfaithful
   caught). Mode lives in the generated
-  artifact, never in the model's reach: `webui/paste_in/tool.py::Tools._ANCHORING` +
-  `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`, the demo subclasses
-  (`webui/paste_in/demo_tool.py`, `webui/paste_in/demo_filter.py`) = `substitution`.
+  artifact, never in the model's reach: `webui/paste_in/filter.py::Filter._ANCHORING` = `strict`,
+  the demo subclass (`webui/paste_in/demo_filter.py`) = `substitution`; the tool decides nothing
+  (M19.5).
 - **Japanese short words name short columns under strict alone (Q41,
   `.agent/archive/contracts/q41.md`).** `anchoring.py::_short_names`: a whole kanji run (`々` + every
   CJK ideograph block NFKC leaves in place: Ext A, the main block, compatibility `﨑`, Ext B+ `𠮷`)

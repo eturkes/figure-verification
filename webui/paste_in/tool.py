@@ -1,15 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The one model-visible operation: a program in, a fixed string out.
 
-Transport, never authority. The method hands the model's exact bytes and the user's exact uploaded
-bytes to `verify_python_source` and reports what that returns. It re-parses nothing, normalizes
-nothing and decides nothing -- a second opinion here would be a pass/fail boundary outside the
-verifier, which ruling 5 forbids.
-
-Target selection is the one choice it makes, and it moves no boundary because every candidate is a
-user artifact and the core decides each one. Owned attachments are tried in chat order; the formula
-target parsed from the user's own request follows them. The first verdict other than
-a `target_mismatch` wins. No program byte or assistant message supplies the formula target.
+Transport, never authority. The method records the model's exact program bytes, the chat's
+attachment ids (the outlet re-resolves each against the requesting user), the request text and the
+admin's aliases in backend request state, and returns one fixed string. It runs nothing and decides
+nothing: the outlet filter runs the recorded program in the user's browser and judges the finished
+figure, and only that outlet may publish (tool-call-only PASS transport).
 
 `Tools` is Open WebUI's fixed entry name; it instantiates the class once and exposes every public
 method to the model (`utils/plugin.py`, `utils/tools.py`), so a helper here must stay private or it
@@ -17,25 +13,19 @@ becomes a second operation. The reserved `__…__` parameters are injected by Op
 absent from the model-facing schema: pydantic's `create_model` drops a leading-underscore field
 name, and `get_tools()` strips the same names again before the spec reaches the model.
 
-Publication is the outlet filter's, not this return value: only a backend-recorded tool call may
-publish a figure (transport ruling), and the filter re-derives the verdict from that record.
-
 `Valves` = the admin's settings (Q43: column aliases). Open WebUI builds it on every save
 (`Valves(**form)`, a failed validation refuses the save) and on every load, and sets it on the
-instance only when the instance already holds `valves`; the model never supplies it. The
-tool records the parsed aliases in its receipt, so the outlet's verdict reads the same aliases.
+instance only when the instance already holds `valves`; the model never supplies it. The tool
+records the parsed aliases in its receipt, so the outlet's verdict reads the same aliases.
 `pydantic` is part of the Open WebUI image, as `open_webui` is.
 """
 
 from pydantic import BaseModel, Field, field_validator
 
-from verifier.pysrc.spec import Anchoring
-from verifier.pysrc.verify import Verified
 from webui.paste_in.aliases import parse_aliases
-from webui.paste_in.owui_files import uploaded_files
+from webui.paste_in.owui_files import attachment_ids
 from webui.paste_in.receipt import Receipt, write_receipt
-from webui.paste_in.selection import first_verdict
-from webui.paste_in.verdicts import CHART_NOT_PRODUCED, CHART_PRODUCED
+from webui.paste_in.verdicts import CHART_SENT
 
 
 def _request_text(metadata: dict[str, object] | None) -> str | None:
@@ -48,9 +38,6 @@ def _request_text(metadata: dict[str, object] | None) -> str | None:
 
 class Tools:
     """The pasted tool. One public method, so the model sees one operation."""
-
-    # Production = strict request anchoring; the demo's generated tool overrides it (Q37).
-    _ANCHORING: Anchoring = "strict"
 
     class Valves(BaseModel):
         """The admin's settings for this tool."""
@@ -77,32 +64,27 @@ class Tools:
         self,
         program: str,
         __metadata__: dict[str, object] | None = None,
-        __user__: dict[str, object] | None = None,
         __request__: object | None = None,
     ) -> str:
-        """Draw a chart from a complete Python program over the attached CSV file.
+        """Draw one chart with matplotlib from a complete Python program.
+
+        Plot only values from the attached CSV file or numbers written in the request, as they
+        are or as one total, mean, minimum, maximum or row count per group. Keep the chart honest:
+        bars and filled areas start at zero, axes stay linear and not inverted, every value stays
+        inside the axis limits, each panel has one set of axes, a legend names every series when
+        there are two or more, and varying marker sizes or colors have a size legend or a color
+        bar. The reply shows the chart only when it follows these rules.
 
         :param program: The complete Python program that draws the chart.
         """
-        aliases = parse_aliases(self.valves.column_aliases)
-        user_id = (__user__ or {}).get("id")
-        request_text = _request_text(__metadata__)
-        attachments = (
-            await uploaded_files(__metadata__, user_id) if isinstance(user_id, str) else ()
-        )
         if __request__ is not None:
             write_receipt(
                 __request__,
                 Receipt(
                     program,
-                    tuple(attachment.file_id for attachment in attachments),
-                    request_text,
-                    aliases,
+                    tuple(attachment_ids(__metadata__)),
+                    _request_text(__metadata__),
+                    parse_aliases(self.valves.column_aliases),
                 ),
             )
-        if not isinstance(user_id, str):
-            return CHART_NOT_PRODUCED
-        verdict, _consumed = first_verdict(
-            program, attachments, request_text, self._ANCHORING, aliases
-        )
-        return CHART_PRODUCED if isinstance(verdict, Verified) else CHART_NOT_PRODUCED
+        return CHART_SENT
