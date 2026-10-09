@@ -1,0 +1,90 @@
+{
+  "clinic_ja.csv": {
+    "chance_hits": {
+      "1": 313,
+      "2": 3,
+      "3": 0,
+      "4": 0,
+      "5": 0
+    },
+    "full_ties": [],
+    "numeric_columns": 2,
+    "rows": 9,
+    "shared_points": 1,
+    "subsets": {
+      "1": {
+        "subsets": 216,
+        "tied": 3
+      },
+      "2": {
+        "subsets": 702,
+        "tied": 0
+      },
+      "3": {
+        "subsets": 1530,
+        "tied": 0
+      }
+    },
+    "trials": 10000
+  },
+  "deliberately_dirty.csv": {
+    "numeric_columns": 0,
+    "rows": 6
+  },
+  "sales.csv": {
+    "chance_hits": {
+      "1": 3,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0
+    },
+    "full_ties": [],
+    "numeric_columns": 2,
+    "rows": 6,
+    "shared_points": 0,
+    "subsets": {
+      "1": {
+        "subsets": 153,
+        "tied": 0
+      },
+      "2": {
+        "subsets": 306,
+        "tied": 0
+      },
+      "3": {
+        "subsets": 369,
+        "tied": 0
+      }
+    },
+    "trials": 10000
+  },
+  "weather.csv": {
+    "chance_hits": {
+      "1": 350,
+      "2": 2,
+      "3": 0,
+      "4": 1,
+      "5": 6
+    },
+    "full_ties": [],
+    "numeric_columns": 3,
+    "rows": 8,
+    "shared_points": 1,
+    "subsets": {
+      "1": {
+        "subsets": 387,
+        "tied": 4
+      },
+      "2": {
+        "subsets": 1105,
+        "tied": 0
+      },
+      "3": {
+        "subsets": 1990,
+        "tied": 0
+      }
+    },
+    "trials": 10000
+  }
+}

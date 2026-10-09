@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 33 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 35 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -71,6 +71,13 @@ re-runs the A1, A3 and H1 legs with the admin alias file `a4_aliases.txt` (the t
 format, authored from column meanings before any A4 run); its H1 leg reads the held-out prompts
 too and is reported, never targeted. It writes `a4-result.json`.
 
+`I1` (M19) runs 52 chart programs over the M19 scope and its out-of-scope census, and records each
+axes child as (class, origin, data transform) — origin = the outermost Axes-module frame
+(`.claude/rules/figure.md`). The projection compares the host leg with the installed bundle and
+publishes the bundle's family set. `I2` measures keyed value-explanation ambiguity over `data/*.csv`:
+cross-column full-series ties, shared points, tied k-point subsets and chance matches of made-up
+keyed series (seed 19, 10,000 trials per size).
+
 The 24-row denominators exclude sentinels. `design_intent.json` binds each design-simple task's mark,
 x column, y column and reduction; six tasks also require a separate city series or city color, which
 one `DatasetPlot` cannot express. A row is FAITHFUL only when the verified projected spec equals
@@ -127,6 +134,8 @@ and pandas versions for the selected build.
 | T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
 | T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs <P> t8-<v>.json`; `node t8_pyodide.mjs owui t8-0283.json` | 0.28.0, 0.28.1; installed OWUI 0.28.3 |
 | W1 | `w1_width.py corpus/python/captures/m10-design` | none | host only |
+| I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-0283.json` | host matplotlib 3.9.4 vs installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
+| I2 | `i2_ambiguity.py` | none | host only |
 | A1 | `a1_anchor.py` | none | host only |
 | A2 | `a2_labels.py` | none | host only |
 | A3 | `a3_short_names.py` | none | host only |

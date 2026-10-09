@@ -55,6 +55,8 @@ IDS = (
     "R-ACCEL",
     "R-PORT",
     "R-BAR",
+    "I1",
+    "I2",
 )
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
@@ -63,6 +65,7 @@ HOST_ONLY = {
     "A3": "a3_short_names.py",
     "A4": "a4_aliases.py",
     "H1": "h1_heldout_anchoring.py",
+    "I2": "i2_ambiguity.py",
     "S1": "s1_host.py",
 }
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
@@ -356,6 +359,9 @@ class Replay:
                     "--check-fixtures",
                 ],
             )
+        elif name == "I1":
+            self.run("I1-host", self.python("i1_census.py"))
+            self.run(name, ["node", str(ROOT / "i1_pyodide.mjs"), "owui", "i1-0283.json"])
         elif name == "W1":
             self.run(
                 name, self.python("w1_width.py", PROJECT / "corpus/python/captures/m10-design")

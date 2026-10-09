@@ -386,6 +386,51 @@ def m17():
     return {"arms": arms}
 
 
+def i1():
+    host, sandbox = load("i1-host.json"), load("i1-0283.json")
+    families = sorted(
+        {
+            f"{child[0]}|{child[1]}|{child[2]}"
+            for case in sandbox["cases"].values()
+            for figure in case["figures"]
+            for axes in figure["axes"]
+            for child in axes["children"]
+        }
+    )
+    return {
+        "cases": len(sandbox["cases"]),
+        "same_case_names": sorted(host["cases"]) == sorted(sandbox["cases"]),
+        "differing_cases": sorted(
+            name for name in sandbox["cases"] if sandbox["cases"][name] != host["cases"][name]
+        ),
+        "matplotlib": {
+            "host": host["versions"]["matplotlib"],
+            "sandbox": sandbox["versions"]["matplotlib"],
+        },
+        "sandbox_families": families,
+    }
+
+
+def i2():
+    data = load("i2-result.json")
+    return {
+        name: {
+            key: leg[key]
+            for key in (
+                "rows",
+                "numeric_columns",
+                "full_ties",
+                "shared_points",
+                "subsets",
+                "chance_hits",
+                "trials",
+            )
+            if key in leg
+        }
+        for name, leg in data.items()
+    }
+
+
 PROJECTORS = {
     "S1": lambda: unary(load("all-data/S1.log")),
     "S2": s2,
@@ -410,6 +455,8 @@ PROJECTORS = {
     "M15": m15,
     "M16": m16,
     "M17": m17,
+    "I1": i1,
+    "I2": i2,
 }
 
 if __name__ == "__main__":

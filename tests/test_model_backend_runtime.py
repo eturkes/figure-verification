@@ -887,9 +887,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     repair (GHSA-54p9-h82j-f925, through litestar; no other package moved, lock revision 3 -> 5)
     and Q43 (pydantic 2.13.4 dev-only, Open WebUI 0.10.2's pin, user ruling: + pydantic-core
     2.46.4, annotated-types 0.8.0, typing-inspection 0.4.4 -- 64 purely additive lines; no other
-    package moved)."""
+    package moved) and M19.1 (matplotlib 3.9.4 + pandas 2.3.1 dev-only, the figure reader's host
+    stack: + contourpy, cycler, fonttools, kiwisolver, pillow, pyparsing, python-dateutil, pytz,
+    six -- 196 purely additive lines; no other package moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "0ab72f80698cf67744db35818754162e93c69a2284387bec2c0507e299ef138f"
+    assert digest == "f251b9d9ccd8e287ededf4477dfeb84da31eaea78241c4f86136fae779995557"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:
