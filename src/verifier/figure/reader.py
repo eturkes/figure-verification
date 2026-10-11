@@ -242,13 +242,24 @@ def _artist_init(original: Callable[..., None]) -> Callable[..., None]:
     return hooked
 
 
+def _setter_line(frame: FrameType | None) -> int | None:
+    """The program line behind a `set_text` call, or None inside a draw: `Text.draw` re-sets its
+    own text, so a draw the program starts (`show`, `savefig`) would otherwise become the site."""
+    while frame is not None and frame.f_code.co_filename != PROGRAM:
+        if frame.f_code.co_name == "draw":
+            return None
+        frame = frame.f_back
+    return frame.f_lineno if frame is not None else None
+
+
 def _set_text(original: Callable[..., None]) -> Callable[..., None]:
-    """A text's site = the program line that last set it (`plt.title` sets an existing artist)."""
+    """A text's site = the program line that last set it outside a draw (`plt.title` sets an
+    existing artist)."""
 
     @functools.wraps(original)
     def hooked(self: Any, *args: object, **kwargs: object) -> None:
         original(self, *args, **kwargs)
-        line = _program_line(sys._getframe(1))
+        line = _setter_line(sys._getframe(1))
         if line is not None:
             self._fv_site = line
 

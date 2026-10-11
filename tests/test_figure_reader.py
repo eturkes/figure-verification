@@ -804,3 +804,40 @@ def test_m19_9_a_mathtext_glyph_the_font_lacks_counts(title: str, *, missing: bo
     described = parse_description(reader.run(program))
     assert described is not None
     assert (described.glyphs > 0) is missing
+
+
+_TEXTS = (
+    "import io\n"  # 1
+    "import matplotlib.pyplot as plt\n"  # 2
+    "fig, ax = plt.subplots()\n"  # 3
+    "ax.bar(['a', 'b'], [1, 2], label='n')\n"  # 4
+    "ax.set_title('T')\n"  # 5
+    "plt.xlabel('X')\n"  # 6
+    "ax.set_ylabel('Y')\n"  # 7
+    "fig.suptitle('S')\n"  # 8
+    "fig.text(0.1, 0.1, 'F')\n"  # 9
+    "ax.text(0, 1, 'A')\n"  # 10
+)
+
+
+@pytest.mark.parametrize(
+    "draw",
+    ["plt.show()\n", "plt.savefig(io.BytesIO())\n", "fig.canvas.draw()\n", ""],
+    ids=["show", "savefig", "canvas-draw", "no-draw"],
+)
+def test_m20_1_a_draw_keeps_each_text_site_at_the_line_that_set_it(draw: str) -> None:
+    """Text.draw re-sets its own text, so a draw the program starts (line 11) became every text's
+    site; a text site = the last program line that set it outside a draw (M20.1 P1)."""
+    figure = _describe(_TEXTS + draw).figures[0]
+    axes = figure.axes[0]
+    assert axes.titles == (None, Text("T", 5), None)
+    assert (axes.x.label, axes.y.label) == (Text("X", 6), Text("Y", 7))
+    assert figure.titles == (Text("S", 8), None, None)
+    assert figure.texts == (Text("F", 9),)
+    assert [a.site for a in axes.artists if isinstance(a.geometry, TextGeometry)] == [10]
+
+
+def test_m20_1_a_later_program_set_still_wins_after_a_draw() -> None:
+    """The program's own later set moves the site, before and after a draw (M20.1 P2)."""
+    source = _TEXTS + "plt.savefig(io.BytesIO())\nax.set_title('U')\nfig.canvas.draw()\n"
+    assert _describe(source).figures[0].axes[0].titles == (None, Text("U", 12), None)

@@ -228,3 +228,19 @@ predicate = "a visible minor tick label is reported as a tick label"
 kills = "tests/test_figure_corpus.py::test_corpus_case[minor-tick-lie]"
 anchor = '''        for tick in axis.get_minor_ticks():'''
 mutant = '''        for tick in ():'''
+
+[[mutant]]
+id = "m20-text-site-in-draw"
+predicate = "a set_text inside a draw keeps the text's site (M20.1 P1)"
+kills = "tests/test_figure_reader.py::test_m20_1_a_draw_keeps_each_text_site_at_the_line_that_set_it"
+anchor = '''        if frame.f_code.co_name == "draw":
+            return None'''
+mutant = '''        if frame.f_code.co_name == "never":
+            return None'''
+
+[[mutant]]
+id = "m20-text-site-program-line"
+predicate = "a text's site is the program frame's line outside a draw (M20.1 P2)"
+kills = "tests/test_figure_reader.py::test_m20_1_a_later_program_set_still_wins_after_a_draw"
+anchor = '''    return frame.f_lineno if frame is not None else None'''
+mutant = '''    return None'''

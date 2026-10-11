@@ -7,12 +7,17 @@ does not use, and a planted mismatch fires it. The verdict carries no free text 
 Contract `.agent/archive/contracts/q16.md`.
 """
 
+import contextlib
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from anchoring_support import verdict
 from verifier.figure import reader
 from verifier.figure.description import parse_description
 from verifier.figure.judge import Passed, Sources, judge
+from verifier.figure.reasons import Blocked
 
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _SALES = b"region,month,revenue,orders\nwest,2024-01,1,5\neast,2024-02,2,6\n"
@@ -193,3 +198,19 @@ def test_q38_a_mixed_script_label_negating_a_column_names_no_column() -> None:
     content = "地域,売上,売上JPY\n東,1,5\n西,2,6\n".encode()
     program = _labelled({"title": "売上JPYではなく売上"}, key="地域", value="売上")
     assert _verdict(program, content) == "VERIFIED"
+
+
+@pytest.mark.parametrize(("position", "line"), [("title", 6), ("xlabel", 7), ("ylabel", 8)])
+def test_m20_1_a_refused_label_marks_the_line_that_set_it(position: str, line: int) -> None:
+    """The refusal's site is the label's own line, never the `plt.show()` that drew it (M20.1 P3):
+    every label is set, the planted one alone names an undrawn column."""
+    labels = {"title": "Revenue", "xlabel": "Region", "ylabel": "Revenue"} | {position: "Month"}
+    program = _labelled(labels)
+    with tempfile.TemporaryDirectory() as scratch, contextlib.chdir(scratch):
+        Path("data.csv").write_bytes(_SALES)
+        described = parse_description(reader.run(program))
+    assert described is not None
+    assert program.splitlines()[line - 1] == f'plt.{position}("Month")'
+    assert judge(described, Sources((("data.csv", _SALES),))) == Blocked(
+        "label_not_consistent", line
+    )
