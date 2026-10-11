@@ -48,10 +48,12 @@ IDS = (
     "I2",
     "I3",
     "C1",
+    "X1",
 )
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
     "I2": "i2_ambiguity.py",
+    "X1": "x1_transforms.py",
 }
 BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
 # M19: a host leg, then its Node leg in the installed Open WebUI bundle (0.28.3).

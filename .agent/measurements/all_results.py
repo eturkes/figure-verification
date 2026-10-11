@@ -270,6 +270,11 @@ def i1():
     }
 
 
+def x1():
+    data = load("x1-result.json")
+    return {"trials": data["trials"], "csv": data["csv"], "request": data["request"]}
+
+
 def i2():
     data = load("i2-result.json")
     return {
@@ -392,6 +397,7 @@ PROJECTORS = {
     "I2": i2,
     "I3": i3,
     "C1": c1,
+    "X1": x1,
 }
 
 if __name__ == "__main__":

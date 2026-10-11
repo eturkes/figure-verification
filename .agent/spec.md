@@ -45,7 +45,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 ## Tasks
 
 MAINTAIN queue request (session 10) = every `.agent/deferred.md` row in rank order (`Q<n>` = row order at adoption: Q44 font subset · Q45 computed values · Q46 dependency prune · Q47 gate probe · Q48 branches). One unit + one commit per row, subject `<scope> (Q<n>): …`; the closing commit prunes the queue row + its line here. Owed = needs the user (a ruling, an approval). Baseline at ee9518e: gate 8/8 rc 0 (2096 passed); `tools/gate-probe.sh` fired 40, MISSED `e3-description-stem`, rc 1.
-- [ ] Q45 computed values: measure each candidate transform's chance-match rate + draft contract; owed = the admitted list + the `Intent` edit (user)
+- [ ] Q45 computed values: agent side done (X1 rates + draft contract `.agent/contracts/q45.md`); owed = the admitted list + the `Intent` edit (user)
 - [ ] Q46 prune the retired JSON-spec dependencies; MX150 re-proof on the new runtime lock
 - [ ] Q47 gate probe `e3-description-stem` + a probe-node existence check
 - [ ] Q48 leftover `wt/*` + `rev/*` branches

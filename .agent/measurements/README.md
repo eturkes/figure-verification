@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 26 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
+All 27 table IDs compare against hand-stated published predicates in `expected/<id>.json`.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
 JSON shape/types/values; a singleton `{"$le": n}` or `{"$ge": n}` encodes a published numeric bound.
 
@@ -114,6 +114,7 @@ and pandas versions for the selected build.
 | I2 | `i2_ambiguity.py` | none | host only |
 | I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-0283.json` | host reader (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 |
 | C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-0283.json` | rule corpus: host judge (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
+| X1 | `x1_transforms.py` | none | host only |
 | F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
 | Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
 | M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
@@ -240,6 +241,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | M15 | the failure status line in a live `--stub` chat: the misleading banner prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/102 texts clamped (M19.5 reasons) |
 | M16 | the "Show checks" embed in a live `--stub` chat: the misleading banner prompt, a kana prompt, the simple prompt; one frame after the status line + before the verdict, collapsed < 60 px, expanded = its content (no inner scroll), collapsed again, rows + marks + texts + cause per state, before + after reload; REST `content`/`output`/`embeds`; the expanded FAIL at 760 px; light + dark screenshots; M18.4 + M20.2 + M20.4 (M19.5 rows): per case each listed row opened (misleading: `axes` = related lines 12-16 with `plt.ylim(30000, 45000)` marked, `run` = its note, not-checked `values` = nothing; kana: `program`; pass: `program` = all 18 lines, `axes` = 12-16 (`plt.xticks(rotation=45)` at 16, M20.4), `values` = 5 · 8 · 12, `columns` = 5 · 8 · 12-15, `attach` = its note) = hand-stated listing label + lines + marked line + mark text or note + `#check-<id>` link, frame grows to the row and fits, the first row's link opens one new tab at that URL (live), the row closes again, live + reload | M16.1 L1-L5 + M18.4 L1-L3 + M20.2: exit code 0 = 3/3 cases with all their rows + the narrow re-size; screenshots inspected by hand (`chromiumfish` draws every font family, generic `monospace` included, in one serif face, so its PNGs show the listing proportional; BrowserOS Neo measured the shipped stack monospace) |
 | M17 | the Japanese banner prompts in a live `--stub` chat, one attempt per arm over its own CSV: verdict before + after reload, the verdict line, the interpretation's first sentence, the PNG attachment count, the status line's code + language | M17.4 L2 (M19.5 arms): `ja-simple` + `ja-clinic-simple` pass with 1 PNG and a Japanese interpretation (`棒: sales.csv の region 列ごとの revenue 列の合計。`, `折れ線: clinic_ja.csv の 年月 列ごとの 平均待ち時間 列の平均。`); `ja-misleading` + `ja-clinic-misleading` fail with 0 PNGs and a Japanese status line ending `(zero_not_in_limits)`, `(axis_inverted)` |
+| X1 | chance matches of nine candidate computed-value transforms (square, cumsum, share, percent, consecutive diff of one vocabulary series; ratio, difference, product, total of two columns per row or per group sum) over `data/*.csv` + made-up requests (`1 to m`, m random integers): made-up keyed series of 1-10 points, 10,000 trials per size per grid (`int`, `dec2` over [0, 2M], M = the transform's largest value), counted only when the vocabulary alone fails; full-series ties with vocabulary series over other columns | the `Computed values` queue row (Q45): the per-transform rates the user rules on |
 
 T8's `t8-data/` corpus separates ≤15-significant-digit candidates from 16–22-digit diagnostic
 probes. Every decimal token has a point and 1–6 fractional digits; magnitudes span 2**31 through
