@@ -76,12 +76,13 @@ link to this reference. It also shows the program lines that relate to the check
 - **Chart program received from the model**: the whole program.
 - **Program run in your browser**: a note that the program ran to its end. If the run failed, the
   row shows the line that raised the error, or else the whole program.
-- **One figure drawn**: the line that made the figure, and the lines that set its text.
+- **One figure drawn**: the line that made the figure, and the lines that set its text or the tick
+  style.
 - **Only chart parts the verifier checks**: each line that drew a part of the figure.
 - **Honest axes**: the lines that made the axes or set their titles and labels, and the calls that
   set limits, scales, inversion or ticks. This includes the calls that set the tick style, such as
-  `plt.xticks(rotation=45)` and `ax.tick_params`. Other calls that change tick labels, such as
-  `plt.setp` or `fig.autofmt_xdate()`, are not listed.
+  `plt.xticks(rotation=45)` and `ax.tick_params`. The verifier does not list other calls that change
+  tick labels, such as `plt.setp` or `fig.autofmt_xdate()`.
 - **Honest marks**: the lines that drew the marks and the legends.
 - **Drawn values come from your data**: the lines that drew the marks, and earlier lines that can
   prepare their data, such as `pd.read_csv` or `groupby`.

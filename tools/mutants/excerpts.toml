@@ -372,14 +372,13 @@ mutant = '''            first = None'''
 [[mutant]]
 id = "m20-style-axes-row"
 predicate = "the axes row lists the tick-style calls"
-kills = "tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_axes_row_alone"
-anchor = '''    "style",
-    "xlim",'''
-mutant = '''    "xlim",'''
+kills = "tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_figure_and_axes_rows"
+anchor = '''            rows["axes"] |= axes_site | labels | _calls(axes, _AXIS_SLOTS)'''
+mutant = '''            rows["axes"] |= axes_site | labels | _calls(axes, _AXIS_SLOTS - {"style"})'''
 
 [[mutant]]
-id = "m20-style-not-figure"
-predicate = "the figure row leaves the tick-style calls out"
-kills = "tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_axes_row_alone"
-anchor = '''_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks"})'''
-mutant = '''_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks", "style"})'''
+id = "m20-style-figure-row"
+predicate = "the figure row lists the tick-style calls (closing review R180)"
+kills = "tests/test_paste_in_excerpts.py::test_r180_a_tick_font_that_drops_a_glyph_shows_in_the_figure_row"
+anchor = '''            rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS)'''
+mutant = '''            rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS - {"style"})'''

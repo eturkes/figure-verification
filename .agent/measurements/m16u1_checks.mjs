@@ -32,7 +32,8 @@ const states = (failing) => table.checks.map((_, i) => (i < failing ? "pass" : i
 // M18.4 + M19.5 + M20.2: the rows each case opens, hand-stated from the stub's banner programs
 // (`webui/banner.json`, 18 lines each). `misleading`: the axes row lists the axes line 12, title +
 // labels 13-15 and `plt.ylim(30000, 45000)` at 16, marked; the run row its note; the not-checked
-// values row nothing. `simple`: the program row all 18 lines; the values row `read_csv` 5, `groupby`
+// values row nothing. `simple`: the program row all 18 lines; the axes row the axes line 12, title +
+// labels 13-15 and `plt.xticks(rotation=45)` at 16 (M20.4); the values row `read_csv` 5, `groupby`
 // 8 and the drawing line 12; the columns row those + title + labels 13-15; attach its note.
 const REFERENCE = [
   "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
@@ -54,6 +55,7 @@ const CASES = [
   { name: "pass", prompt: pinned("simple_prompt"), csv: true, reason: null, lang: 0, states: states(9),
     rows: [
       row("program", span(18), { label: "code" }),
+      row("axes", [12, 13, 14, 15, 16]),
       row("values", [5, 8, 12]),
       row("columns", [5, 8, 12, 13, 14, 15]),
       row("attach", null, { note: "no_lines" }),

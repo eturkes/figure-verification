@@ -25,7 +25,7 @@ from verifier.figure.description import (
     WedgeGeometry,
     parse_description,
 )
-from verifier.figure.judge import Sources, judge
+from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reasons import Blocked
 
 _DATA = Path(__file__).resolve().parents[1] / "data"
@@ -954,3 +954,95 @@ def test_m20_4_t4_pyplot_ticks_with_labels_keep_their_mark() -> None:
     line walk crosses that hook, so the call still marks a mismatch (T1, T4)."""
     source = _PLT + "plt.bar(['a', 'b'], [1, 2])\nplt.xticks([0, 1], ['b', 'a'], rotation=45)\n"
     assert judge(_describe(source), Sources()) == Blocked("tick_label_mismatch", 3)
+
+
+# --- M20.4 closing review (M20.5): R178 R179 -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "refused",
+    ["plt.gca().xaxis.set_tick_params(rotate=30)", "plt.gca().xaxis.set_tick_params(which='no')"],
+    ids=["keyword", "which"],
+)
+def test_r178_a_refused_call_keeps_the_last_accepted_line(refused: str) -> None:
+    """A call records once matplotlib accepts it: a refused style or limit call the program
+    catches keeps the accepted line, and with it the mark (closing review R178)."""
+    source = (
+        _PLT
+        + "plt.plot([1, 4, 9])\n"  # 2
+        + "plt.gca().xaxis.set_tick_params(rotation=10)\n"  # 3
+        + "plt.ylim(0, 5)\n"  # 4
+        + "for call in (\n"  # 5
+        + f"    lambda: {refused},\n"  # 6
+        + "    lambda: plt.ylim(0, float('nan')),\n"  # 7
+        + "):\n"  # 8
+        + "    try:\n"  # 9
+        + "        call()\n"  # 10
+        + "    except ValueError:\n"  # 11
+        + "        pass\n"  # 12
+    )
+    described = _describe(source)
+    assert {slot: line for slot, line, _ in described.figures[0].axes[0].x.calls} == {"style": 3}
+    assert judge(described, Sources()) == Blocked("point_clipped", 4)
+
+
+def test_r179_pyplot_ticks_style_the_axes_they_read_first() -> None:
+    """`plt.xticks` styles the axes it looks up first; a formatter that makes another axes current
+    while the labels update leaves the style with the first (closing review R179)."""
+    source = (
+        _PLT
+        + "fig, (left, right) = plt.subplots(1, 2)\n"  # 2
+        + "left.plot([1, 2], [3, 4])\n"  # 3
+        + "right.plot([1, 2], [3, 4])\n"  # 4
+        + "switching = True\n"  # 5
+        + "def label(value, _):\n"  # 6
+        + "    if switching:\n"  # 7
+        + "        plt.sca(right)\n"  # 8
+        + "    return str(value)\n"  # 9
+        + "left.xaxis.set_major_formatter(plt.FuncFormatter(label))\n"  # 10
+        + "plt.sca(left)\n"  # 11
+        + "plt.xticks(rotation=45)\n"  # 12
+        + "switching = False\n"  # 13
+    )
+    left, right = _describe(source).figures[0].axes
+    assert {slot: line for slot, line, _ in left.x.calls} == {"ticks": 10, "style": 12}
+    assert right.x.calls == ()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        # a label callback closes the figure while pyplot updates the labels
+        "fig, ax = plt.subplots()\n"
+        "ax.plot([1, 2], [3, 4])\n"
+        "for label in ax.get_xticklabels():\n"
+        "    label.add_callback(lambda artist: plt.close(fig))\n"
+        "plt.xticks(rotation=45)\n",
+        # Python refuses the arguments before pyplot looks up any axes
+        "try:\n    plt.xticks([1], ['a'], 'extra')\nexcept TypeError:\n    pass\n",
+    ],
+    ids=["callback-closes-figure", "refused-arguments"],
+)
+def test_r179_pyplot_ticks_open_no_figure(call: str) -> None:
+    """A lookup after the call opened a blank figure, so the chart drawn next made two
+    (`multiple_figures`); the lookup before it is pyplot's own (closing review R179)."""
+    source = _PLT + call + "plt.figure()\nplt.bar(['a', 'b'], [1, 2])\n"
+    described = _describe(source)
+    assert len(described.figures) == 1
+    assert isinstance(judge(described, Sources()), Passed)
+
+
+@pytest.mark.parametrize(("axis", "draw"), [("y", "bar"), ("x", "barh")])
+def test_r183_a_setter_a_callback_runs_keeps_the_slot(axis: str, draw: str) -> None:
+    """A limits callback that sets the limits during the program's own call decides them: the
+    call that started last keeps the slot and the mark (closing re-review R183)."""
+    source = (
+        _PLT
+        + "fig, ax = plt.subplots()\n"  # 2
+        + f"ax.{draw}(['a', 'b'], [1, 2])\n"  # 3
+        + "def narrow(changed):\n"  # 4
+        + f"    changed.set_{axis}lim(0.5, 3, emit=False)\n"  # 5
+        + f"ax.callbacks.connect('{axis}lim_changed', narrow)\n"  # 6
+        + f"ax.set_{axis}lim(0, 3)\n"  # 7
+    )
+    assert judge(_describe(source), Sources()) == Blocked("zero_not_in_limits", 5)

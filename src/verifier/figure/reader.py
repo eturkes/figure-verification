@@ -221,11 +221,18 @@ def _bound(
     return dict(arguments.arguments)
 
 
-def _record(owner: Any, slot: str, line: int) -> None:
-    # The last call decides the property, so the listing marks the last one.
+def _clock() -> int:
+    """A call's place in the run, taken as it starts."""
     run = _holder().run
-    clock = next(run.clock) if run is not None else 0
-    owner.__dict__.setdefault("_fv_calls", {})[slot] = [line, clock]
+    return next(run.clock) if run is not None else 0
+
+
+def _record(owner: Any, slot: str, line: int, clock: int) -> None:
+    """Record an accepted call: the last call decides the property, so the listing marks the last
+    one to start. A setter a callback ran during this call started later and keeps the slot."""
+    calls = owner.__dict__.setdefault("_fv_calls", {})
+    if calls.get(slot, (None, -1))[1] <= clock:
+        calls[slot] = [line, clock]
 
 
 def _called(slot: str) -> Callable[[Any], object]:
@@ -233,9 +240,11 @@ def _called(slot: str) -> Callable[[Any], object]:
         @functools.wraps(original)
         def hooked(self: Any, *args: object, **kwargs: object) -> object:
             line = _direct_line(sys._getframe(1))
-            if line is not None:
-                _record(self, slot, line)
-            return original(self, *args, **kwargs)
+            clock = _clock() if line is not None else 0
+            result = original(self, *args, **kwargs)
+            if line is not None:  # once matplotlib accepts it: a refused call sets nothing
+                _record(self, slot, line, clock)
+            return result
 
         return hooked
 
@@ -249,12 +258,13 @@ def _tick_params(original: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(original)
     def hooked(self: Any, *args: object, **kwargs: object) -> object:
         line = _direct_line(sys._getframe(1))
+        clock = _clock() if line is not None else 0
         result = original(self, *args, **kwargs)
         if line is not None:
             axis = _bound(original, (self, *args), kwargs)["axis"]
             for name in ("x", "y"):
                 if axis in (name, "both"):
-                    _record(getattr(self, f"{name}axis"), _STYLE, line)
+                    _record(getattr(self, f"{name}axis"), _STYLE, line, clock)
         return result
 
     return hooked
@@ -268,10 +278,18 @@ def _ticks(name: str) -> Callable[[Any], object]:
         @functools.wraps(original)
         def hooked(*args: object, **kwargs: object) -> object:
             line = _direct_line(sys._getframe(1))
+            if line is None or not (args or kwargs.keys() - {"minor"}):
+                return original(*args, **kwargs)
+            try:
+                inspect.signature(original).bind(*args, **kwargs)
+            except TypeError:  # refused before pyplot looks up its axes
+                return original(*args, **kwargs)
+            # pyplot's own first step: a lookup after the call can meet the axes a callback made
+            # current, or open a figure where a callback closed one.
+            axes = importlib.import_module(_PYPLOT).gca()
+            clock = _clock()
             result = original(*args, **kwargs)
-            if line is not None and (args or kwargs.keys() - {"minor"}):
-                axes = importlib.import_module(_PYPLOT).gca()
-                _record(getattr(axes, f"{name}axis"), _STYLE, line)
+            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)
             return result
 
         return hooked

@@ -43,11 +43,11 @@ id = "m19-calls-direct-only"
 predicate = "a call records its line only when the program made it, directly or through pyplot"
 kills = "tests/test_figure_reader.py::test_p1_calls_record_the_program_line_alone"
 anchor = '''            line = _direct_line(sys._getframe(1))
-            if line is not None:
-                _record(self, slot, line)'''
+            clock = _clock() if line is not None else 0
+            result = original(self, *args, **kwargs)'''
 mutant = '''            line = _program_line(sys._getframe(1))
-            if line is not None:
-                _record(self, slot, line)'''
+            clock = _clock() if line is not None else 0
+            result = original(self, *args, **kwargs)'''
 
 [[mutant]]
 id = "m19-capture-at-end"
@@ -284,47 +284,40 @@ mutant = '''    holder.replace(module("pyplot"), "yticks", _ticks("x"))'''
 id = "m20-style-ticks-named-axis"
 predicate = "a pyplot ticks hook records on the axis it names"
 kills = "tests/test_figure_reader.py::test_m20_4_t1_pyplot_ticks_style_the_current_axis"
-anchor = '''                _record(getattr(axes, f"{name}axis"), _STYLE, line)'''
-mutant = '''                _record(axes.xaxis, _STYLE, line)'''
+anchor = '''            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)'''
+mutant = '''            _record(axes.xaxis, _STYLE, line, clock)'''
 
 [[mutant]]
 id = "m20-style-query"
 predicate = "a pyplot ticks call with no argument is a query"
 kills = "tests/test_figure_reader.py::test_m20_4_t1_pyplot_ticks_style_the_current_axis"
-anchor = '''            if line is not None and (args or kwargs.keys() - {"minor"}):'''
-mutant = '''            if line is not None:'''
+anchor = '''            if line is None or not (args or kwargs.keys() - {"minor"}):'''
+mutant = '''            if line is None:'''
 
 [[mutant]]
 id = "m20-style-minor-query"
 predicate = "`minor` alone leaves a pyplot ticks call a query"
 kills = "tests/test_figure_reader.py::test_m20_4_t1_pyplot_ticks_style_the_current_axis"
-anchor = '''            if line is not None and (args or kwargs.keys() - {"minor"}):'''
-mutant = '''            if line is not None and (args or kwargs):'''
+anchor = '''            if line is None or not (args or kwargs.keys() - {"minor"}):'''
+mutant = '''            if line is None or not (args or kwargs):'''
 
 [[mutant]]
 id = "m20-style-ticks-return"
 predicate = "a pyplot ticks hook returns what matplotlib returns"
 kills = "tests/test_figure_reader.py::test_m20_4_t1_pyplot_ticks_return_what_matplotlib_returns"
-anchor = '''                _record(getattr(axes, f"{name}axis"), _STYLE, line)
+anchor = '''            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)
             return result'''
-mutant = '''                _record(getattr(axes, f"{name}axis"), _STYLE, line)
+mutant = '''            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)
             return None'''
 
 [[mutant]]
 id = "m20-style-ticks-after-call"
 predicate = "a pyplot ticks call matplotlib refuses records nothing"
 kills = "tests/test_figure_reader.py::test_m20_4_t2_a_refused_call_raises_and_records_nothing"
-anchor = '''            line = _direct_line(sys._getframe(1))
-            result = original(*args, **kwargs)
-            if line is not None and (args or kwargs.keys() - {"minor"}):
-                axes = importlib.import_module(_PYPLOT).gca()
-                _record(getattr(axes, f"{name}axis"), _STYLE, line)
-            return result'''
-mutant = '''            line = _direct_line(sys._getframe(1))
-            if line is not None and (args or kwargs.keys() - {"minor"}):
-                axes = importlib.import_module(_PYPLOT).gca()
-                _record(getattr(axes, f"{name}axis"), _STYLE, line)
-            return original(*args, **kwargs)'''
+anchor = '''            result = original(*args, **kwargs)
+            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)'''
+mutant = '''            _record(getattr(axes, f"{name}axis"), _STYLE, line, clock)
+            result = original(*args, **kwargs)'''
 
 [[mutant]]
 id = "m20-style-tick-params-hooked"
@@ -352,15 +345,15 @@ mutant = '''                if axis == name:'''
 id = "m20-style-tick-params-after-call"
 predicate = "a `tick_params` call matplotlib refuses records nothing"
 kills = "tests/test_figure_reader.py::test_m20_4_t2_a_refused_call_raises_and_records_nothing"
-anchor = '''        line = _direct_line(sys._getframe(1))
+anchor = '''        clock = _clock() if line is not None else 0
         result = original(self, *args, **kwargs)
         if line is not None:'''
-mutant = '''        line = _direct_line(sys._getframe(1))
+mutant = '''        clock = _clock() if line is not None else 0
         if line is not None:
             axis = _bound(original, (self, *args), kwargs)["axis"]
             for name in ("x", "y"):
                 if axis in (name, "both"):
-                    _record(getattr(self, f"{name}axis"), _STYLE, line)
+                    _record(getattr(self, f"{name}axis"), _STYLE, line, clock)
         result = original(self, *args, **kwargs)
         if False:'''
 
@@ -369,9 +362,9 @@ id = "m20-style-tick-params-direct"
 predicate = "a library's own `tick_params` call records nothing"
 kills = "tests/test_figure_reader.py::test_m20_4_t3_library_tick_params_record_nothing"
 anchor = '''        line = _direct_line(sys._getframe(1))
-        result = original(self, *args, **kwargs)'''
+        clock = _clock() if line is not None else 0'''
 mutant = '''        line = _program_line(sys._getframe(1))
-        result = original(self, *args, **kwargs)'''
+        clock = _clock() if line is not None else 0'''
 
 [[mutant]]
 id = "m20-style-axis-calls"
@@ -380,3 +373,61 @@ kills = "tests/test_figure_reader.py::test_m20_4_t2_t3_tick_params_style_the_axe
 anchor = '''    "set_inverted": "invert",
     "set_tick_params": _STYLE,'''
 mutant = '''    "set_inverted": "invert",'''
+
+[[mutant]]
+id = "m20-calls-after-accept"
+predicate = "a recorded call records once matplotlib accepts it (closing review R178)"
+kills = "tests/test_figure_reader.py::test_r178_a_refused_call_keeps_the_last_accepted_line"
+anchor = '''            result = original(self, *args, **kwargs)
+            if line is not None:  # once matplotlib accepts it: a refused call sets nothing
+                _record(self, slot, line, clock)
+            return result'''
+mutant = '''            if line is not None:  # once matplotlib accepts it: a refused call sets nothing
+                _record(self, slot, line, clock)
+            result = original(self, *args, **kwargs)
+            return result'''
+
+[[mutant]]
+id = "m20-style-recipient"
+predicate = "a pyplot ticks call styles the axes pyplot looks up first (closing review R179)"
+kills = "tests/test_figure_reader.py::test_r179_pyplot_ticks_style_the_axes_they_read_first"
+anchor = '''            axes = importlib.import_module(_PYPLOT).gca()
+            clock = _clock()
+            result = original(*args, **kwargs)'''
+mutant = '''            clock = _clock()
+            result = original(*args, **kwargs)
+            axes = importlib.import_module(_PYPLOT).gca()'''
+
+[[mutant]]
+id = "m20-style-bind-first"
+predicate = "a pyplot ticks call Python refuses at its arguments looks up no axes (closing review R179)"
+kills = "tests/test_figure_reader.py::test_r179_pyplot_ticks_open_no_figure"
+anchor = '''            try:
+                inspect.signature(original).bind(*args, **kwargs)
+            except TypeError:  # refused before pyplot looks up its axes
+                return original(*args, **kwargs)
+            # pyplot's own first step'''
+mutant = '''            # pyplot's own first step'''
+
+[[mutant]]
+id = "m20-style-slot-isolated"
+predicate = "the style slot is no slot a failure mark reads (closing review R181)"
+kills = "tests/test_figure_reader.py::test_m20_4_t4_a_tick_style_never_takes_the_mark"
+anchor = '''_STYLE = "style"'''
+mutant = '''_STYLE = "ticks"'''
+
+[[mutant]]
+id = "m20-calls-latest-start"
+predicate = "a slot keeps the accepted call that started last (closing re-review R183)"
+kills = "tests/test_figure_reader.py::test_r183_a_setter_a_callback_runs_keeps_the_slot"
+anchor = '''    if calls.get(slot, (None, -1))[1] <= clock:'''
+mutant = '''    if True:'''
+
+[[mutant]]
+id = "m20-calls-clock-at-start"
+predicate = "a call's clock is taken as it starts (closing re-review R183)"
+kills = "tests/test_figure_reader.py::test_r183_a_setter_a_callback_runs_keeps_the_slot"
+anchor = '''            clock = _clock() if line is not None else 0
+            result = original(self, *args, **kwargs)'''
+mutant = '''            result = original(self, *args, **kwargs)
+            clock = _clock() if line is not None else 0'''

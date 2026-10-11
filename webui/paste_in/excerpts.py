@@ -43,10 +43,9 @@ _CHANGERS: Final = frozenset(
     }
 )
 # Recorded call slots (`reader.py` `_AXES_CALLS` + `_AXIS_CALLS`): what sets an axis or its ticks.
-# A tick style (`style`) changes no glyph, so the figure row leaves it out.
-_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks"})
+# A tick style can change the tick font, and with it the glyphs the figure check counts.
+_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks", "style"})
 _AXIS_SLOTS: Final = _TICK_SLOTS | {
-    "style",
     "xlim",
     "ylim",
     "xscale",
