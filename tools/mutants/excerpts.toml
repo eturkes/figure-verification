@@ -368,3 +368,18 @@ predicate = "a match statement's own lines end before its first case header"
 kills = "tests/test_paste_in_excerpts.py::test_r1_f3_a_case_header_widens_like_an_except_header"
 anchor = '''            first = blocks[0][0].start if blocks and blocks[0][0] else None'''
 mutant = '''            first = None'''
+
+[[mutant]]
+id = "m20-style-axes-row"
+predicate = "the axes row lists the tick-style calls"
+kills = "tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_axes_row_alone"
+anchor = '''    "style",
+    "xlim",'''
+mutant = '''    "xlim",'''
+
+[[mutant]]
+id = "m20-style-not-figure"
+predicate = "the figure row leaves the tick-style calls out"
+kills = "tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_axes_row_alone"
+anchor = '''_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks"})'''
+mutant = '''_TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks", "style"})'''

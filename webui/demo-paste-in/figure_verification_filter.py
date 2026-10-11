@@ -1200,7 +1200,7 @@ _AXES_MODULES = frozenset(
     {"matplotlib.axes._axes", "matplotlib.axes._base", "matplotlib.stackplot"}
 )
 _PYPLOT = "matplotlib.pyplot"
-# Methods whose program call line the Show checks listing marks (ruling 13): name -> slot.
+# Methods whose program call line the Show checks listing shows (ruling 13): name -> slot.
 _AXES_CALLS = {
     "set_xlim": "xlim",
     "set_ylim": "ylim",
@@ -1221,12 +1221,16 @@ _AXES_CALLS = {
     "inset_axes": "inset",
     "legend": "legend",
 }
+# How an axis draws its ticks (`plt.xticks(rotation=45)`): listed, never marked, since a later
+# rotation would otherwise take the mark from the line that set the labels (M20.4).
+_STYLE = "style"
 _AXIS_CALLS = {
     "set_ticks": "ticks",
     "set_ticklabels": "ticks",
     "set_major_formatter": "ticks",
     "set_major_locator": "ticks",
     "set_inverted": "invert",
+    "set_tick_params": _STYLE,
 }
 # A missing glyph's warning: "Glyph <n> (<c>) missing from current font." (matplotlib 3.8, the
 # sandbox) or "Glyph <n> (<c>) missing from font(s) <names>." (3.9, the gate host).
@@ -1334,8 +1338,11 @@ def _origin(frame: FrameType | None) -> str | None:
 
 
 def _direct_line(frame: FrameType | None) -> int | None:
-    """The program line when the program itself made this call, directly or through pyplot."""
-    while frame is not None and frame.f_globals.get("__name__") == _PYPLOT:
+    """The program line when the program itself made this call, directly or through pyplot (and
+    this reader's hooks on pyplot: `plt.xticks(ticks, labels)` sets its ticks through one)."""
+    while frame is not None and (
+        frame.f_globals.get("__name__") == _PYPLOT or frame.f_globals is globals()
+    ):
         frame = frame.f_back
     if frame is not None and frame.f_code.co_filename == PROGRAM:
         return frame.f_lineno
@@ -1366,17 +1373,58 @@ def _bound(
     return dict(arguments.arguments)
 
 
+def _record(owner: Any, slot: str, line: int) -> None:
+    # The last call decides the property, so the listing marks the last one.
+    run = _holder().run
+    clock = next(run.clock) if run is not None else 0
+    owner.__dict__.setdefault("_fv_calls", {})[slot] = [line, clock]
+
+
 def _called(slot: str) -> Callable[[Any], object]:
     def make(original: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(original)
         def hooked(self: Any, *args: object, **kwargs: object) -> object:
             line = _direct_line(sys._getframe(1))
             if line is not None:
-                # The last call decides the property, so the listing marks the last one.
-                run = _holder().run
-                clock = next(run.clock) if run is not None else 0
-                self.__dict__.setdefault("_fv_calls", {})[slot] = [line, clock]
+                _record(self, slot, line)
             return original(self, *args, **kwargs)
+
+        return hooked
+
+    return make
+
+
+def _tick_params(original: Callable[..., Any]) -> Callable[..., Any]:
+    """`Axes.tick_params` styles each axis its `axis` names; its own `Axis.set_tick_params`
+    calls come from matplotlib and record nothing."""
+
+    @functools.wraps(original)
+    def hooked(self: Any, *args: object, **kwargs: object) -> object:
+        line = _direct_line(sys._getframe(1))
+        result = original(self, *args, **kwargs)
+        if line is not None:
+            axis = _bound(original, (self, *args), kwargs)["axis"]
+            for name in ("x", "y"):
+                if axis in (name, "both"):
+                    _record(getattr(self, f"{name}axis"), _STYLE, line)
+        return result
+
+    return hooked
+
+
+def _ticks(name: str) -> Callable[[Any], object]:
+    """`plt.xticks` / `plt.yticks` style the current axes' axis; with no argument but `minor`, the
+    call is a query."""
+
+    def make(original: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(original)
+        def hooked(*args: object, **kwargs: object) -> object:
+            line = _direct_line(sys._getframe(1))
+            result = original(*args, **kwargs)
+            if line is not None and (args or kwargs.keys() - {"minor"}):
+                axes = importlib.import_module(_PYPLOT).gca()
+                _record(getattr(axes, f"{name}axis"), _STYLE, line)
+            return result
 
         return hooked
 
@@ -1551,6 +1599,9 @@ def _install(holder: _Holder) -> None:
         holder.replace(module("axes").Axes, name, _called(slot))
     for name, slot in _AXIS_CALLS.items():
         holder.replace(module("axis").Axis, name, _called(slot))
+    holder.replace(module("axes").Axes, "tick_params", _tick_params)
+    holder.replace(module("pyplot"), "xticks", _ticks("x"))
+    holder.replace(module("pyplot"), "yticks", _ticks("y"))
     holder.replace(module("text").Text, "set_text", _set_text)
     holder.replace(module("legend").Legend, "__init__", _legend_init)
     holder.replace(module("axes").Axes, "hist", _hist)
@@ -4767,8 +4818,10 @@ _CHANGERS: Final = frozenset(
     }
 )
 # Recorded call slots (`reader.py` `_AXES_CALLS` + `_AXIS_CALLS`): what sets an axis or its ticks.
+# A tick style (`style`) changes no glyph, so the figure row leaves it out.
 _TICK_SLOTS: Final = frozenset({"xticks", "yticks", "ticks"})
 _AXIS_SLOTS: Final = _TICK_SLOTS | {
+    "style",
     "xlim",
     "ylim",
     "xscale",

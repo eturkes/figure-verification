@@ -273,6 +273,20 @@ def test_e3_marks_and_axes_list_no_preparation() -> None:
     assert (rows["marks"], rows["axes"], rows["values"]) == ((4,), (4,), (3, 4))
 
 
+def test_m20_4_t5_tick_style_calls_join_the_axes_row_alone() -> None:
+    """A tick style changes no glyph: the axes row lists it, the figure row keeps the tick-label
+    calls alone (`.agent/archive/contracts/m20u4.md` T5)."""
+    program = (
+        _PLT  # 1
+        + "plt.bar(['a', 'b'], [1, 2])\n"  # 2
+        + "plt.xticks(rotation=45)\n"  # 3
+        + "plt.gca().tick_params(axis='y', labelsize=8)\n"  # 4
+        + "plt.gca().set_xticks([0, 1])\n"  # 5
+    )
+    rows = _rows(program)
+    assert (rows["figure"], rows["axes"]) == ((2, 5), (2, 3, 4, 5))
+
+
 # --- closing review (M20.3): reviewer-1 F1-F3, reviewer-3 F1-F2 -----------------------------
 
 

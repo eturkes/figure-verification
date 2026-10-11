@@ -25,6 +25,8 @@ from verifier.figure.description import (
     WedgeGeometry,
     parse_description,
 )
+from verifier.figure.judge import Sources, judge
+from verifier.figure.reasons import Blocked
 
 _DATA = Path(__file__).resolve().parents[1] / "data"
 _PLT = "import matplotlib.pyplot as plt\n"
@@ -841,3 +843,114 @@ def test_m20_1_a_later_program_set_still_wins_after_a_draw() -> None:
     """The program's own later set moves the site, before and after a draw (M20.1 P2)."""
     source = _TEXTS + "plt.savefig(io.BytesIO())\nax.set_title('U')\nfig.canvas.draw()\n"
     assert _describe(source).figures[0].axes[0].titles == (None, Text("U", 12), None)
+
+
+# --- M20.4 tick-style calls (`.agent/archive/contracts/m20u4.md`) ---------------------------------
+
+
+def _slots(source: str) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """The axes' recorded calls, then its x axis' and its y axis', each as slot -> line."""
+    axes = _describe(source).figures[0].axes[0]
+    axes_calls, x_calls, y_calls = (
+        {slot: line for slot, line, _ in calls}
+        for calls in (axes.calls, axes.x.calls, axes.y.calls)
+    )
+    return axes_calls, x_calls, y_calls
+
+
+@pytest.mark.parametrize(
+    ("call", "axes_calls", "x_calls", "y_calls"),
+    [
+        ("plt.xticks(rotation=45)", {}, {"style": 3}, {}),
+        ("plt.yticks(fontsize=8)", {}, {}, {"style": 3}),
+        ("plt.xticks([1, 2], ['a', 'b'])", {"xticks": 3}, {"style": 3}, {}),
+        ("plt.xticks(ticks=[1, 2], minor=True)", {"xticks": 3}, {"style": 3}, {}),
+        ("locs, labels = plt.xticks()", {}, {}, {}),
+        ("plt.yticks(minor=True)", {}, {}, {}),
+    ],
+    ids=["x-rotation", "y-fontsize", "x-ticks-labels", "x-minor-ticks", "x-query", "y-minor-query"],
+)
+def test_m20_4_t1_pyplot_ticks_style_the_current_axis(
+    call: str, axes_calls: dict[str, int], x_calls: dict[str, int], y_calls: dict[str, int]
+) -> None:
+    """`plt.xticks(rotation=45)` sets no ticks and no labels, so no recorded setter ran (T1)."""
+    source = _PLT + "plt.plot([1, 2], [3, 4])\n" + call + "\n"
+    assert _slots(source) == (axes_calls, x_calls, y_calls)
+
+
+def test_m20_4_t1_pyplot_ticks_return_what_matplotlib_returns() -> None:
+    source = (
+        _PLT
+        + "plt.plot([1, 2], [3, 4])\n"
+        + "locs, labels = plt.xticks([1, 2], ['a', 'b'], rotation=45)\n"
+        + "plt.title(f'{len(locs)} {[t.get_text() for t in labels]} {labels[0].get_rotation()}')\n"
+    )
+    axes = _describe(source).figures[0].axes[0]
+    assert axes.titles[1] == Text("2 ['a', 'b'] 45.0", 4)
+
+
+@pytest.mark.parametrize(
+    ("call", "x_calls", "y_calls"),
+    [
+        ("plt.gca().tick_params(axis='x', rotation=45)", {"style": 3}, {}),
+        ("plt.gca().tick_params('y', labelsize=8)", {}, {"style": 3}),
+        ("plt.gca().tick_params(labelsize=8)", {"style": 3}, {"style": 3}),
+        ("plt.tick_params(axis='x', rotation=45)", {"style": 3}, {}),
+        ("plt.gca().xaxis.set_tick_params(rotation=45)", {"style": 3}, {}),
+        ("plt.gca().yaxis.set_tick_params(labelsize=8)", {}, {"style": 3}),
+    ],
+    ids=["axes-x", "axes-y-positional", "axes-both", "pyplot-x", "axis-x", "axis-y"],
+)
+def test_m20_4_t2_t3_tick_params_style_the_axes_it_names(
+    call: str, x_calls: dict[str, int], y_calls: dict[str, int]
+) -> None:
+    source = _PLT + "plt.plot([1, 2], [3, 4])\n" + call + "\n"
+    assert _slots(source) == ({}, x_calls, y_calls)
+
+
+def test_m20_4_t2_a_refused_call_raises_and_records_nothing() -> None:
+    """A style records once matplotlib accepts the call: an unknown axis, an unknown keyword and
+    labels without ticks each raise matplotlib's own error (T1, T2)."""
+    source = (
+        _PLT
+        + "plt.plot([1, 2], [3, 4])\n"
+        + "errors = []\n"
+        + "for call in (\n"
+        + "    lambda: plt.gca().tick_params(axis='z', rotation=45),\n"
+        + "    lambda: plt.gca().tick_params(axis='x', rotate=45),\n"
+        + "    lambda: plt.xticks(labels=['a']),\n"
+        + "):\n"
+        + "    try:\n"
+        + "        call()\n"
+        + "    except (TypeError, ValueError) as error:\n"
+        + "        errors.append(type(error).__name__)\n"
+        + "plt.title(' '.join(errors))\n"
+    )
+    axes = _describe(source).figures[0].axes[0]
+    assert axes.titles[1] == Text("ValueError ValueError TypeError", 13)
+    assert _slots(source) == ({}, {}, {})
+
+
+def test_m20_4_t3_library_tick_params_record_nothing() -> None:
+    """pandas' `boxplot` calls `ax.tick_params(axis="both", labelsize=fontsize)` itself."""
+    source = _PD + "pd.DataFrame({'a': [1, 2, 3]}).boxplot(fontsize=8)\n"
+    assert _slots(source) == ({}, {}, {})
+
+
+def test_m20_4_t4_a_tick_style_never_takes_the_mark() -> None:
+    """The labels line keeps `tick_label_mismatch`'s mark under a later rotation call (T4)."""
+    source = (
+        _PLT
+        + "plt.bar(['a', 'b'], [1, 2])\n"
+        + "plt.gca().set_xticks([0, 1], ['b', 'a'])\n"
+        + "plt.xticks(rotation=45)\n"
+        + "plt.gca().tick_params(axis='x', labelsize=8)\n"
+    )
+    assert judge(_describe(source), Sources()) == Blocked("tick_label_mismatch", 3)
+
+
+def test_m20_4_t4_pyplot_ticks_with_labels_keep_their_mark() -> None:
+    """`plt.xticks(ticks, labels)` sets them through the reader's own pyplot hook; the setter's
+    line walk crosses that hook, so the call still marks a mismatch (T1, T4)."""
+    source = _PLT + "plt.bar(['a', 'b'], [1, 2])\nplt.xticks([0, 1], ['b', 'a'], rotation=45)\n"
+    assert judge(_describe(source), Sources()) == Blocked("tick_label_mismatch", 3)
