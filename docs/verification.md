@@ -81,22 +81,26 @@ link to this reference. It also shows the program lines that relate to the check
 - **Honest axes**: the lines that made the axes or set their titles and labels, and the calls that
   set limits, scales, inversion or ticks.
 - **Honest marks**: the lines that drew the marks and the legends.
-- **Drawn values come from your data**: the lines that drew the marks, and the earlier lines that
-  prepare their data, such as `pd.read_csv` and `groupby`.
+- **Drawn values come from your data**: the lines that drew the marks, and earlier lines that can
+  prepare their data, such as `pd.read_csv` or `groupby`.
 - **Drawn columns match your request**: the lines of the values row, and the lines that set the
   titles, axis labels and legends.
 - **Image attached to the reply**: a note that no program line takes part in this check.
 
-Each listed line shows its whole statement and the `for`, `if`, `with` or `try` lines around it. A
-row that did not run shows no lines. In the failed row, the verifier marks the program line that drew
+Each listed line shows its whole statement and the `for`, `if`, `with`, `try` or `match` lines
+around it. This applies when the program has at most 65,536 characters and Python can read it.
+Otherwise, the row shows the recorded lines alone. A listing shows at most 60 lines and 3,000
+characters, cuts a line at 400 characters and states how many lines it leaves out. A row that did
+not run shows no lines. In the failed row, the verifier marks the program line that drew
 the failed part or made the failed call. An example is the `plt.ylim` call that cut off the bars. A
 failed row with no related line shows the whole program, without a mark when no line caused the
 failure.
 
 The verifier finds the data preparation lines in the program text alone. It follows the names that
-a drawing line uses back to the lines that set or change them. It does not follow a value from a
-function to the line that calls the function. These lines are for display only and never change the
-result.
+a drawing line uses back to every earlier line that can set or change them. It also lists a line
+that sets a value on another path, such as an `except` fallback, when that line did not run. It can
+miss a line, for example an argument that a function receives from its caller. For a very long
+program, the search can stop early. These lines are for display only and never change the result.
 
 The listing shows the model's program exactly as it was sent. It can contain any text that the
 program holds, for example a file name or a word copied from your request. Characters that are not

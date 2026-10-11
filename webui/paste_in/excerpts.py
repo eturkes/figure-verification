@@ -5,11 +5,13 @@ The reader records the program line that created each part of the figure, or mad
 set an axis (ruling 13). A row lists the lines of the parts its check reads, each widened to its
 whole statement and the headers of the blocks around it. The values and columns rows add the
 statements that prepare the drawn data: a static trace back from each drawing statement through
-the statements that bind or change the names it reads. The trace reads the program text with
-`ast`, so it can miss a line (a function's caller, a value a call changes) and decides nothing.
+the statements that may bind or change the names it reads, on any path. The trace reads the program
+text with `ast`, so it can list a statement that did not run (an `except` fallback), miss one (an
+argument's caller, a value a call changes) or stop at its work budget, and decides nothing.
 """
 
 import ast
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -20,10 +22,13 @@ type Lines = tuple[tuple[Check, frozenset[int]], ...]
 
 # The listing's own scan bound: a longer program keeps its recorded lines as they are.
 _PARSE = 65_536
-# Calls that change their receiver in place; with `inplace=True`, any call does.
+# Statements the preparation trace may visit per program: the outlet runs it on Open WebUI's event
+# loop, and one walk per drawing statement over 13,000 statements took 72 s (reviewer-3, M20.3).
+_WORK = 100_000
+# Calls that change their receiver in place; with `inplace=True`, any call does. `add` stays out:
+# pandas' `add` returns a copy.
 _CHANGERS: Final = frozenset(
     {
-        "add",
         "append",
         "clear",
         "discard",
@@ -49,6 +54,7 @@ _AXIS_SLOTS: Final = _TICK_SLOTS | {
     "invert",
 }
 _SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
 _ROWS: Final[tuple[Check, ...]] = ("figure", "parts", "axes", "marks", "values", "columns")
 
 
@@ -99,7 +105,7 @@ def _recorded(description: Description) -> _Recorded:
             rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS)
             rows["parts"] |= axes_site | drawn | words | labels | legend
             rows["axes"] |= axes_site | labels | _calls(axes, _AXIS_SLOTS)
-            rows["marks"] |= drawn | legend
+            rows["marks"] |= drawn | legend | (axes_site if axes.colorbar_of is not None else set())
             rows["values"] |= drawn
             rows["columns"] |= drawn | labels | legend
     return _Recorded(rows, marks, made)
@@ -141,24 +147,57 @@ def _parameters(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> se
     return {arg.arg for arg in every} | {arg.arg for arg in rest if arg is not None}
 
 
-def _reads(nodes: list[ast.AST]) -> set[str]:
-    """The names the nodes read, less those an inner scope binds (lambda, comprehension, and a
-    def or class read whole)."""
-    loads: set[str] = set()
-    inner: set[str] = set()
-    for node in nodes:
-        whole = isinstance(node, _SCOPES)
-        for sub in ast.walk(node):
-            if isinstance(sub, ast.Name):
-                if isinstance(sub.ctx, ast.Load):
-                    loads.add(sub.id)
-                elif whole:
-                    inner.add(sub.id)
-            elif isinstance(sub, ast.Lambda | ast.FunctionDef | ast.AsyncFunctionDef):
-                inner |= _parameters(sub)
-            elif isinstance(sub, ast.comprehension):
-                inner |= _names(sub.target)
-    return loads - inner
+def _locals(body: list[ast.stmt]) -> set[str]:
+    """The names a def or class body binds in its own scope (nested scopes excluded)."""
+    found: set[str] = set()
+    declared: set[str] = set()
+    stack: list[ast.AST] = list(body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.Global | ast.Nonlocal):
+            declared.update(node.names)
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            found.add(node.id)
+        elif isinstance(node, _SCOPES):
+            found.add(node.name)
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            found |= {(alias.asname or alias.name).partition(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.add(node.name)
+        if not isinstance(node, (*_SCOPES, ast.Lambda, *_COMPREHENSIONS)):
+            stack.extend(ast.iter_child_nodes(node))
+    return found - declared
+
+
+def _free(node: ast.AST) -> set[str]:
+    """The names an expression or statement reads from its enclosing scope: a lambda's
+    parameters, a comprehension's targets and a def's own locals are its own."""
+    if isinstance(node, ast.Name):
+        return {node.id} if isinstance(node.ctx, ast.Load) else set()
+    if isinstance(node, ast.Lambda):
+        defaults = [*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)]
+        return _reads(defaults) | (_free(node.body) - _parameters(node))
+    if isinstance(node, _COMPREHENSIONS):
+        first, *rest = node.generators
+        parts: list[ast.AST] = [first.target, *first.ifs]
+        for generator in rest:
+            parts += [generator.target, generator.iter, *generator.ifs]
+        parts += [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+        bound = {name for generator in node.generators for name in _names(generator.target)}
+        return _free(first.iter) | (_reads(parts) - bound)
+    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+        arguments = node.args
+        defaults = [*arguments.defaults, *(d for d in arguments.kw_defaults if d is not None)]
+        own = _parameters(node) | _locals(node.body)
+        return _reads([*node.decorator_list, *defaults]) | (_reads(node.body) - own)
+    if isinstance(node, ast.ClassDef):
+        outer = [*node.decorator_list, *node.bases, *node.keywords]
+        return _reads(outer) | (_reads(node.body) - _locals(node.body))
+    return _reads(list(ast.iter_child_nodes(node)))
+
+
+def _reads(nodes: Sequence[ast.AST]) -> set[str]:
+    return set().union(*(_free(node) for node in nodes))
 
 
 def _header(node: ast.stmt) -> list[ast.AST]:
@@ -237,18 +276,26 @@ def _span(first: int, body: list[ast.stmt]) -> range:
 
 
 def _blocks(node: ast.stmt) -> list[tuple[range | None, list[ast.stmt]]]:
-    """Each block a statement holds, with the header of the `except` handler that opens it."""
+    """Each block a statement holds, with the header of the `except` or `case` that opens it."""
     blocks: list[tuple[range | None, list[ast.stmt]]] = [
         (None, getattr(node, name, [])) for name in ("body", "orelse", "finalbody")
     ]
     blocks += [(_span(h.lineno, h.body), h.body) for h in getattr(node, "handlers", ())]
-    blocks += [(None, case.body) for case in getattr(node, "cases", ())]
+    if isinstance(node, ast.Match):
+        # A `case` carries no line of its own: its header runs from the line after the subject
+        # or the previous case's body.
+        end = node.subject.end_lineno or node.lineno
+        for case in node.cases:
+            blocks.append((_span(end + 1, case.body), case.body))
+            end = case.body[-1].end_lineno or end
     return [(header, body) for header, body in blocks if body]
 
 
-def _statements(tree: ast.Module) -> list[_Statement]:
-    """Every statement in source order, nested blocks included."""
+def _statements(tree: ast.Module) -> tuple[list[_Statement], dict[int, set[int]]]:
+    """Every statement in source order, nested blocks included; and each line of an `except` or
+    `case` header with the lines it shows (a failure can point into one)."""
     found: list[_Statement] = []
+    headers: dict[int, set[int]] = {}
 
     def visit(
         body: list[ast.stmt],
@@ -261,38 +308,58 @@ def _statements(tree: ast.Module) -> list[_Statement]:
             start = min([node.lineno, *(decorator.lineno for decorator in decorators)])
             whole = range(start, (node.end_lineno or node.lineno) + 1)
             blocks = _blocks(node)
-            own = _span(start, blocks[0][1]) if blocks else whole
+            # A block statement's own lines end before its first block, or before the `case`
+            # header that opens it.
+            first = blocks[0][0].start if blocks and blocks[0][0] else None
+            own = (
+                (range(start, first) if first else _span(start, blocks[0][1])) if blocks else whole
+            )
             found.append(_Statement(node, own, whole, outer, ancestors, scopes))
             inner = scopes | {id(node)} if isinstance(node, _SCOPES) else scopes
             for header, block in blocks:
                 around = (*outer, own) if header is None else (*outer, own, header)
+                if header is not None:
+                    headers.update(dict.fromkeys(header, set().union(*around)))
                 visit(block, around, ancestors | {id(node)}, inner)
 
     visit(tree.body, (), frozenset(), frozenset())
-    return found
+    return found, headers
 
 
 def _shown(statement: _Statement, *, whole: bool = False) -> set[int]:
     return set(statement.whole if whole else statement.own).union(*statement.outer)
 
 
+@dataclass(frozen=True, slots=True)
+class _Facts:
+    binds: set[str]
+    changes: set[str]
+    reads: set[str]
+
+
 class _Program:
     """The parsed program: the statements each line belongs to, and the preparation trace."""
 
     def __init__(self, tree: ast.Module) -> None:
-        self.statements = _statements(tree)
+        self.statements, self.headers = _statements(tree)
         self.at: dict[int, list[int]] = {}
         for index, statement in enumerate(self.statements):
             for line in statement.own:
                 self.at.setdefault(line, []).append(index)
+        self.facts: dict[int, _Facts] = {}
+        self.callers: dict[int, int] = {}
+        self.work = _WORK
 
     def widen(self, lines: set[int]) -> set[int]:
-        """Each line as its statements + the headers around them (E2); a line no statement holds
-        stays as it is."""
+        """Each line as its statements + the headers around them (E2); a line no statement or
+        header holds stays as it is."""
         shown: set[int] = set()
         for line in lines:
             held = self.at.get(line, [])
-            shown |= set().union(*(_shown(self.statements[i]) for i in held)) if held else {line}
+            if held:
+                shown |= set().union(*(_shown(self.statements[i]) for i in held))
+            else:
+                shown |= self.headers.get(line, {line})
         return shown
 
     def prepared(self, marks: set[int], made: set[int]) -> set[int]:
@@ -307,30 +374,62 @@ class _Program:
             shown |= _shown(statement, whole=isinstance(statement.node, _SCOPES))
         return shown
 
+    def _fact(self, index: int) -> _Facts:
+        if index not in self.facts:
+            node = self.statements[index].node
+            self.facts[index] = _Facts(_binds(node), _changes(node), _reads(_header(node)))
+        return self.facts[index]
+
+    def _caller(self, index: int, node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+        """Where the trace resumes past the def at `index`: just before the last statement of
+        its own body that calls it, else at that body's last statement."""
+        if index not in self.callers:
+            scopes = self.statements[index].scopes
+            body = [
+                later
+                for later in range(index + 1, len(self.statements))
+                if self.statements[later].scopes == scopes
+            ]
+            self.work -= len(body)
+            calls = [later for later in body if node.name in self._fact(later).reads]
+            self.callers[index] = calls[-1] - 1 if calls else (body[-1] if body else index - 1)
+        return self.callers[index]
+
     def _trace(self, index: int, builders: set[int]) -> set[int]:
         seed = self.statements[index]
-        needed = _reads(_header(seed.node))
+        needed = set(self._fact(index).reads)
+        scopes = seed.scopes
+        left: set[int] = set()
         taken: set[int] = set()
-        for earlier in range(index - 1, -1, -1):
-            if not needed:
-                break
+        position = index - 1
+        while position >= 0 and needed and self.work > 0:
+            self.work -= 1
+            earlier, position = position, position - 1
             statement = self.statements[earlier]
-            if not statement.scopes <= seed.scopes:
-                continue  # a def that does not enclose the seed binds its own names
             node = statement.node
-            around = id(node) in seed.ancestors
-            if around and isinstance(node, _SCOPES):
-                # An enclosing def binds its parameters; its caller is not followed.
-                needed -= _parameters(node) if not isinstance(node, ast.ClassDef) else set()
+            if not statement.scopes <= scopes:
+                continue  # a def that does not enclose the seed binds its own names
+            if id(node) in seed.ancestors and isinstance(node, _SCOPES):
+                if earlier not in left and not isinstance(node, ast.ClassDef):
+                    # Past an enclosing def, its free names resolve where it is called.
+                    left.add(earlier)
+                    needed -= _parameters(node)
+                    scopes = statement.scopes
+                    position = self._caller(earlier, node)
                 continue
-            bound = _binds(node)
-            if not (bound | _changes(node)) & needed:
+            facts = self._fact(earlier)
+            if not (facts.binds | facts.changes) & needed:
                 continue
-            needed -= bound
+            # A binding the seed's path may skip (a branch, a loop body, a loop that runs zero
+            # times) keeps the name needed: an earlier binding can still reach the seed.
+            if statement.ancestors <= seed.ancestors and not (
+                isinstance(node, ast.For | ast.AsyncFor) and id(node) not in seed.ancestors
+            ):
+                needed -= facts.binds
             # A statement that made the figure or an axes builds the chart, never its data.
             if earlier in builders or isinstance(node, ast.Import | ast.ImportFrom):
                 continue
-            needed |= _reads(_header(node))
+            needed |= facts.reads
             taken.add(earlier)  # an enclosing block shows as a header already
         return taken
 

@@ -217,9 +217,10 @@ The list uses the same language as the status line. It stays with the reply afte
 Open WebUI does not send it to the model.
 
 Click a check in the list to open it. The opened check states what the check does, and a failed
-check states why it failed. The first check shows the model's program. Each other check that ran
-shows the program lines that relate to it, for example the `pd.read_csv` and `groupby` lines that
-prepare the drawn values. A check that did not run shows no lines. In the failed check, the verifier
+check states why it failed. The first check shows the model's program. Most other checks that ran
+show the program lines that relate to them, for example the `pd.read_csv` and `groupby` lines that
+can prepare the drawn values. A passed run check and the image check show a short note instead. A
+check that did not run shows no lines. In the failed check, the verifier
 marks the program line that drew the failed part or made the failed call, for example a `plt.ylim`
 call that cut off the bars. The verifier finds the related lines for display only, so they never
 change the verdict. Each opened check links to its section of

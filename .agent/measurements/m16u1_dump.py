@@ -41,6 +41,10 @@ table = {
     "hide": checks.HIDE,
     "unrun": checks.UNRUN,
     "marks": checks.MARKS,
+    "code": checks.CODE,
+    "related": checks.RELATED,
+    "ran": checks.RAN,
+    "no_lines": checks.NO_LINES,
     "reasons": REASONS,
     "pass_text": f"{PASS_TEXT}\n\n{verdict.interpretation}",
 }

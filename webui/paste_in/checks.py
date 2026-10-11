@@ -3,7 +3,8 @@
 
 Data plus one pure renderer; `filter.py` sends the document as an Open WebUI message embed, which
 the chat renders in a sandboxed iframe and never sends to a model. Each row opens to what its check
-does, the program lines related to it (`excerpts.py`; the `program` row quotes the whole program),
+does, the program lines related to it or a note (`excerpts.py`; the `program` row quotes the whole
+program),
 why it failed and a link to its section of the reference; the failing row marks the line that drew
 the offending part or made the offending call (ruling 13: display only, never a verdict input).
 Every text slot comes from the tables here or from `REASONS`; the one exception is the program
@@ -454,8 +455,9 @@ def _note(text: str) -> str:
 
 
 def _program(check: Check, state: _State, language: int, evidence: Evidence) -> tuple[str, bool]:
-    """A row's program section and whether it marks a line: the `program` row and a failing row
-    with no related line quote the whole program; any other row that ran, its related lines."""
+    """A row's program section and whether it marks a line: the attach row and a passed run row
+    carry a note; the `program` row and a failing row with no related line quote the whole
+    program; any other row that ran, its related lines."""
     if check == "attach":
         return _note(NO_LINES[language]), False
     if check == "run" and state == "pass":

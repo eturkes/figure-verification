@@ -10,6 +10,7 @@ import pytest
 
 from verifier.figure.description import parse_description
 from verifier.figure.reader import run
+from webui.paste_in import excerpts as excerpts_module
 from webui.paste_in.excerpts import excerpts
 
 _PLT = "import matplotlib.pyplot as plt\n"
@@ -270,3 +271,167 @@ def test_e3_values_list_the_statements_that_prepare_the_drawn_data(
 def test_e3_marks_and_axes_list_no_preparation() -> None:
     rows = _rows(_PD + "df = pd.DataFrame({'v': [1, 2]})\nplt.plot(df['v'])\n")
     assert (rows["marks"], rows["axes"], rows["values"]) == ((4,), (4,), (3, 4))
+
+
+# --- closing review (M20.3): reviewer-1 F1-F3, reviewer-3 F1-F2 -----------------------------
+
+
+def test_r1_f1_a_colorbar_axes_made_on_its_own_line_joins_marks() -> None:
+    program = (
+        _PLT  # 1
+        + "fig, ax = plt.subplots()\n"  # 2
+        + "points = ax.scatter([1, 2], [3, 4], c=[1, 2])\n"  # 3
+        + "cax = fig.add_axes([0.9, 0.1, 0.03, 0.8])\n"  # 4
+        + "fig.colorbar(points, cax=cax)\n"  # 5
+    )
+    assert _rows(program)["marks"] == (3, 4, 5)
+
+
+@pytest.mark.parametrize(
+    "drawn",
+    [
+        "ys = [value for value in value]\n",  # the first iterable reads the outer name
+        "ys = [(lambda value: value)(1), value[0]]\n",  # a lambda's parameter binds its body alone
+    ],
+    ids=["comprehension-iterable", "lambda-sibling"],
+)
+def test_r1_f2_an_inner_scope_binds_only_its_own_reads(drawn: str) -> None:
+    program = _PLT + "value = [1, 2]\n" + drawn + "plt.plot(ys)\n"
+    assert _rows(program)["values"] == (2, 3, 4)
+
+
+def test_r1_f3_a_failure_in_an_except_header_widens_to_that_header() -> None:
+    program = (
+        "try:\n    raise ValueError('stop')\nexcept (\n    UndefinedException,\n):\n    pass\n"
+    )
+    assert _rows(program, "run", 4, described=False) == {"run": (1, 3, 4, 5)}
+
+
+def test_r1_f3_a_case_header_widens_like_an_except_header() -> None:
+    program = "match 1:\n    case 0:\n        pass\n    case (\n        1\n    ):\n        pass\n"
+    assert _rows(program, "run", 5, described=False) == {"run": (1, 4, 5, 6)}
+    assert _rows(program, "run", 3, described=False) == {"run": (1, 2, 3)}
+
+
+@pytest.mark.parametrize(
+    ("program", "values"),
+    [
+        pytest.param(
+            _PD
+            + "df = pd.DataFrame({'x': [1, 2], 'y': [3, 4]})\n"  # 3
+            + "df.add(100)\n"  # 4: returns a new frame
+            + "plt.plot(df['x'], df['y'])\n",  # 5
+            (3, 5),
+            id="discarded-result",
+        ),
+        pytest.param(
+            _PLT
+            + "values = [99, 99]\n"  # 2: rebound before the helper runs
+            + "def draw_chart():\n"  # 3
+            + "    plt.plot([1, 2], values)\n"  # 4
+            + "values = [3, 4]\n"  # 5
+            + "draw_chart()\n",  # 6
+            (3, 4, 5),
+            id="global-read-at-the-call",
+        ),
+        pytest.param(
+            _PD
+            + "df = pd.DataFrame({'y': [3, 4]})\n"  # 3
+            + "try:\n"  # 4
+            + "    values = df['y'].tolist()\n"  # 5: may run, so the arm below may too
+            + "except KeyError:\n"  # 6
+            + "    values = [99, 99]\n"  # 7
+            + "plt.plot([1, 2], values)\n",  # 8
+            (3, 4, 5, 6, 7, 8),
+            id="every-arm-that-may-bind",
+        ),
+        pytest.param(
+            _PLT
+            + "values = [3, 4]\n"  # 2
+            + "for values in []:\n"  # 3: a loop may run zero times
+            + "    pass\n"  # 4
+            + "plt.plot([1, 2], values)\n",  # 5
+            (2, 3, 5),
+            id="loop-that-may-not-run",
+        ),
+    ],
+)
+def test_r3_f1_every_binding_that_may_reach_the_drawing_line(
+    program: str, values: tuple[int, ...]
+) -> None:
+    """A binding the drawing line's path may skip keeps the earlier one listed (the real data
+    line was dropped); a call that returns a copy changes nothing; a helper's global is read
+    where the helper is called."""
+    assert _rows(program)["values"] == values
+
+
+def test_r3_f2_the_trace_stops_at_its_work_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One walk per drawing line over 13,000 statements took 72 s on the event loop; past the
+    budget the trace stops, and the lines it found stand."""
+    program = _PLT + "x = [1, 2]\n" + "a = 0\n" * 50 + "plt.plot(x)\n"
+    assert _rows(program)["values"] == (2, 53)
+    monkeypatch.setattr(excerpts_module, "_WORK", 10)
+    assert _rows(program)["values"] == (53,)
+
+
+_SCOPE_NAMES = (
+    _PLT  # 1
+    + "total = [1, 2]\n"  # 2: `global` keeps the def reading it
+    + "math = 0\n"  # 3: shadowed by the def's own import
+    + "e = 7\n"  # 4: shadowed by the def's `except ... as e`
+    + "inner = 9\n"  # 5: shadowed by the def's own def
+    + "scale = 3\n"  # 6: read by the class body
+    + "class Box:\n"  # 7
+    + "    size = scale\n"  # 8
+    + "def make():\n"  # 9
+    + "    global total\n"  # 10
+    + "    import math\n"  # 11
+    + "    total = list(total)\n"  # 12
+    + "    try:\n"  # 13
+    + "        pass\n"  # 14
+    + "    except ValueError as e:\n"  # 15
+    + "        return [e]\n"  # 16
+    + "    def inner():\n"  # 17
+    + "        return 1\n"  # 18
+    + "    return [math.floor(t) * Box.size * inner() for t in total]\n"  # 19
+    + "y = make()\n"  # 20
+    + "plt.plot(y)\n"  # 21
+)
+
+
+def test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself() -> None:
+    """A def read whole reads the free names of its body: a `global` name, a class it uses; its
+    own import, `except ... as` name and inner def shadow the outer ones."""
+    assert _rows(_SCOPE_NAMES)["values"] == (2, 6, 7, 8, *range(9, 20), 20, 21)
+
+
+@pytest.mark.parametrize(
+    ("program", "values"),
+    [
+        pytest.param(
+            _PLT + "v = [9]\nys = [(lambda v: v)(1), 2]\nplt.plot(ys)\n",
+            (3, 4),
+            id="lambda-own-parameter",
+        ),
+    ],
+)
+def test_r1_f2_a_lambda_parameter_shadows_the_outer_name(
+    program: str, values: tuple[int, ...]
+) -> None:
+    assert _rows(program)["values"] == values
+
+
+def test_r3_f2_finding_a_helper_s_caller_spends_the_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    program = (
+        _PLT  # 1
+        + "values = [1, 2]\n"  # 2
+        + "def draw():\n"  # 3
+        + "    plt.plot(values)\n"  # 4
+        + "draw()\n"  # 5
+        + "a = 0\n" * 50  # 6-55: the body the caller scan reads
+    )
+    assert _rows(program)["values"] == (2, 3, 4)
+    monkeypatch.setattr(excerpts_module, "_WORK", 20)
+    assert _rows(program)["values"] == (3, 4)

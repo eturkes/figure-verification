@@ -142,25 +142,22 @@ mutant = '''            if earlier in builders:'''
 id = "m20-scope-filter"
 predicate = "a def that does not enclose the seed binds its own names"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''            if not statement.scopes <= seed.scopes:'''
+anchor = '''            if not statement.scopes <= scopes:'''
 mutant = '''            if False:'''
 
 [[mutant]]
 id = "m20-rebinding-kept"
-predicate = "a whole rebinding ends the need for the name"
+predicate = "a binding on the seed's path ends the need for the name"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''            needed -= bound
-            # A statement'''
-mutant = '''            needed -= set()
-            # A statement'''
+anchor = '''                needed -= facts.binds'''
+mutant = '''                needed -= set()'''
 
 [[mutant]]
 id = "m20-reads-dropped"
 predicate = "a taken statement's reads become needed"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''            needed |= _reads(_header(node))
-            taken.add(earlier)'''
-mutant = '''            taken.add(earlier)'''
+anchor = '''            needed |= facts.reads'''
+mutant = '''            pass'''
 
 [[mutant]]
 id = "m20-changers-append"
@@ -197,8 +194,8 @@ mutant = '''        return _parts(node.target)'''
 id = "m20-parameters"
 predicate = "an enclosing def binds its parameters"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''                needed -= _parameters(node) if not isinstance(node, ast.ClassDef) else set()'''
-mutant = '''                needed -= set()'''
+anchor = '''                    needed -= _parameters(node)'''
+mutant = '''                    needed -= set()'''
 
 [[mutant]]
 id = "m20-def-whole"
@@ -211,17 +208,15 @@ mutant = '''            shown |= _shown(statement)'''
 id = "m20-def-locals"
 predicate = "a def read whole reads no name it binds itself"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''                elif whole:
-                    inner.add(sub.id)'''
-mutant = '''                elif False:
-                    inner.add(sub.id)'''
+anchor = '''        own = _parameters(node) | _locals(node.body)'''
+mutant = '''        own = _parameters(node)'''
 
 [[mutant]]
 id = "m20-comprehension-names"
-predicate = "a comprehension's own names are not needed"
+predicate = "a comprehension's own targets are not needed"
 kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
-anchor = '''                inner |= _names(sub.target)'''
-mutant = '''                pass'''
+anchor = '''        return _free(first.iter) | (_reads(parts) - bound)'''
+mutant = '''        return _free(first.iter) | _reads(parts)'''
 
 [[mutant]]
 id = "m20-walrus"
@@ -238,3 +233,138 @@ anchor = '''            if item.optional_vars is not None
             for name in _names(item.optional_vars)'''
 mutant = '''            if item.optional_vars is None
             for name in _names(item.optional_vars)'''
+
+[[mutant]]
+id = "m20-comprehension-first-iter"
+predicate = "a comprehension's first iterable reads the enclosing scope"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_an_inner_scope_binds_only_its_own_reads"
+anchor = '''        return _free(first.iter) | (_reads(parts) - bound)'''
+mutant = '''        return _reads([first.iter, *parts]) - bound'''
+
+[[mutant]]
+id = "m20-lambda-parameters"
+predicate = "a lambda's parameters bind its body alone"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_lambda_parameter_shadows_the_outer_name"
+anchor = '''        return _reads(defaults) | (_free(node.body) - _parameters(node))'''
+mutant = '''        return _reads(defaults) | _free(node.body)'''
+
+
+[[mutant]]
+id = "m20-global-declared"
+predicate = "a `global` name stays free in its def"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself"
+anchor = '''    return found - declared'''
+mutant = '''    return found'''
+
+[[mutant]]
+id = "m20-local-imports"
+predicate = "a def's own import shadows the outer name"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself"
+anchor = '''            found |= {(alias.asname or alias.name).partition(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ExceptHandler)'''
+mutant = '''            pass
+        elif isinstance(node, ast.ExceptHandler)'''
+
+[[mutant]]
+id = "m20-local-handler-name"
+predicate = "a def's own `except ... as` name shadows the outer name"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself"
+anchor = '''        elif isinstance(node, ast.ExceptHandler) and node.name:
+            found.add(node.name)'''
+mutant = '''        elif isinstance(node, ast.ExceptHandler) and node.name:
+            pass'''
+
+[[mutant]]
+id = "m20-local-defs"
+predicate = "a def's own inner def shadows the outer name"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself"
+anchor = '''        elif isinstance(node, _SCOPES):
+            found.add(node.name)
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            found |='''
+mutant = '''        elif isinstance(node, _SCOPES):
+            pass
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            found |='''
+
+[[mutant]]
+id = "m20-class-free"
+predicate = "a class read whole reads the free names of its body"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f2_a_def_reads_every_name_it_does_not_bind_itself"
+anchor = '''        return _reads(outer) | (_reads(node.body) - _locals(node.body))'''
+mutant = '''        return set()'''
+
+[[mutant]]
+id = "m20-branch-uncertain"
+predicate = "a binding inside a block the seed is not in keeps the name needed"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f1_every_binding_that_may_reach_the_drawing_line"
+anchor = '''            if statement.ancestors <= seed.ancestors and not ('''
+mutant = '''            if True and not ('''
+
+[[mutant]]
+id = "m20-loop-may-not-run"
+predicate = "a loop the seed is not in may bind nothing"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f1_every_binding_that_may_reach_the_drawing_line"
+anchor = '''                isinstance(node, ast.For | ast.AsyncFor) and id(node) not in seed.ancestors'''
+mutant = '''                False'''
+
+[[mutant]]
+id = "m20-caller-resume"
+predicate = "past an enclosing def the trace resumes at its call"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f1_every_binding_that_may_reach_the_drawing_line"
+anchor = '''                    position = self._caller(earlier, node)'''
+mutant = '''                    pass'''
+
+[[mutant]]
+id = "m20-add-copies"
+predicate = "`add` returns a copy, so it changes nothing"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f1_every_binding_that_may_reach_the_drawing_line"
+anchor = '''        "append",
+        "clear",'''
+mutant = '''        "add",
+        "append",
+        "clear",'''
+
+[[mutant]]
+id = "m20-work-budget"
+predicate = "the trace stops at its work budget"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f2_the_trace_stops_at_its_work_budget"
+anchor = '''        while position >= 0 and needed and self.work > 0:'''
+mutant = '''        while position >= 0 and needed:'''
+
+[[mutant]]
+id = "m20-caller-work"
+predicate = "finding a helper's caller spends the budget"
+kills = "tests/test_paste_in_excerpts.py::test_r3_f2_finding_a_helper_s_caller_spends_the_budget"
+anchor = '''            self.work -= len(body)'''
+mutant = '''            pass'''
+
+[[mutant]]
+id = "m20-colorbar-marks"
+predicate = "a colorbar axes' own line joins marks"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f1_a_colorbar_axes_made_on_its_own_line_joins_marks"
+anchor = '''            rows["marks"] |= drawn | legend | (axes_site if axes.colorbar_of is not None else set())'''
+mutant = '''            rows["marks"] |= drawn | legend'''
+
+[[mutant]]
+id = "m20-header-lines"
+predicate = "a line inside an except or case header widens to it"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f3_a_failure_in_an_except_header_widens_to_that_header"
+anchor = '''                if header is not None:
+                    headers.update'''
+mutant = '''                if False:
+                    headers.update'''
+
+[[mutant]]
+id = "m20-case-header"
+predicate = "a case opens its own header"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f3_a_case_header_widens_like_an_except_header"
+anchor = '''            blocks.append((_span(end + 1, case.body), case.body))'''
+mutant = '''            blocks.append((None, case.body))'''
+
+[[mutant]]
+id = "m20-match-own"
+predicate = "a match statement's own lines end before its first case header"
+kills = "tests/test_paste_in_excerpts.py::test_r1_f3_a_case_header_widens_like_an_except_header"
+anchor = '''            first = blocks[0][0].start if blocks and blocks[0][0] else None'''
+mutant = '''            first = None'''

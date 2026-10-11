@@ -244,3 +244,12 @@ predicate = "a text's site is the program frame's line outside a draw (M20.1 P2)
 kills = "tests/test_figure_reader.py::test_m20_1_a_later_program_set_still_wins_after_a_draw"
 anchor = '''    return frame.f_lineno if frame is not None else None'''
 mutant = '''    return None'''
+
+[[mutant]]
+id = "m20-label-site-in-draw"
+predicate = "a refused label carries the line that set it, not the drawing call (M20.1 P3)"
+kills = "tests/test_pysrc_labels.py::test_m20_1_a_refused_label_marks_the_line_that_set_it"
+anchor = '''        if frame.f_code.co_name == "draw":
+            return None'''
+mutant = '''        if frame.f_code.co_name == "never":
+            return None'''
