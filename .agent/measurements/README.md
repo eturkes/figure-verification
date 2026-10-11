@@ -121,6 +121,21 @@ and pandas versions for the selected build.
 | M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 | M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
 
+## Live MX150 record — Q46
+
+`q46_mx150.sh <out-prefix>` starts `.venv-model/bin/python -m model_backend` (port 8001, the dGPU),
+sends the smoke prompt and one chart prompt three times each at temperature 0 (content SHA-256 per
+reply), then runs `python -m model_backend.smoke` three times; `LONG=' '` skips the chart prompt.
+Host tuple: NVIDIA GeForce MX150, driver 580.178.04, torch 2.13.0+cu126, transformers 5.16.1,
+accelerate 1.15.0, fp16 Qwen2.5-Coder-0.5B-Instruct. Same probe on the unpruned runtime lock
+(`ee9518e`, `.venv-model` then one audit bump behind its lock: multidict 6.7.1 vs 6.9.1) and on
+the pruned lock (Q46, synced): the short reply `print(2 + 3)` (8 tokens) and the 420-token chart
+reply are byte-identical in all 3 runs of each, and identical across the two locks (SHA-256
+`bdee2c42f73aed06…`, `e440fe5711654d55…`). Cool start (GPU 59 °C, smoke 63-64 °C, 1657-1670 MHz):
+smoke 26.01-26.25 tok/s unpruned, 25.86-26.30 pruned (M10.5 baseline: 24.397 at 52-53 °C). Under
+sustained chart replies both decay as the host heats (69 °C, 1480 MHz): pruned 25.8, 23.5, 18.5
+tok/s, then smoke 11.5-22.6; unpruned 25.1, 21.2, 12.6, then smoke 11.8-12.1.
+
 ## Live MX150 record — M19.9
 
 `m19u9/` = the six banner arms on the real model, 5 runs each, against `webui/launch.sh --fresh` at

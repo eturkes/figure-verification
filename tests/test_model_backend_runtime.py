@@ -684,7 +684,6 @@ def test_p15_runtime_pyproject_pins() -> None:
         "transformers==5.16.1",
         "accelerate==1.15.0",
         "tokenizers==0.23.1",
-        "xgrammar==0.2.3",
     }
 
     tool = _string_table(document["tool"])
@@ -701,23 +700,16 @@ def test_p15_runtime_pyproject_pins() -> None:
     assert torch_source["index"] == "pytorch-cu126"
 
 
-def test_p15b_runtime_dev_group_pins_the_oracle_validator() -> None:
-    """P15b keeps the runtime dev group's validator pin resolved and off the served app.
-
-    Its consumer (the guidance oracle) retired with the JSON-spec modes; the pin stays until the
-    queue's dependency-pruning row removes it. The served set stays exactly what the server needs.
+def test_p15b_runtime_lock_holds_no_retired_guidance_package() -> None:
+    """P15b: the runtime project declares no dependency group and its lock resolves neither the
+    guidance library nor the validator its retired oracle used (Q46: both left with the JSON-spec
+    modes), so the lock is exactly the served app.
     """
     document = cast(
         "dict[str, object]",
         tomllib.loads(Path("model_backend/runtime/pyproject.toml").read_text(encoding="utf-8")),
     )
-    groups = _string_table(document["dependency-groups"])
-    development = groups["dev"]
-    assert isinstance(development, list)
-    assert set(development) == {"jsonschema==4.26.0"}
-    served = _string_table(document["project"])["dependencies"]
-    assert isinstance(served, list)
-    assert [pin for pin in served if "jsonschema" in str(pin)] == []
+    assert "dependency-groups" not in document
 
     lock = cast(
         "dict[str, object]",
@@ -725,13 +717,9 @@ def test_p15b_runtime_dev_group_pins_the_oracle_validator() -> None:
     )
     packages = lock["package"]
     assert isinstance(packages, list)
-    resolved = [
-        _string_table(package)
-        for package in packages
-        if _string_table(package).get("name") == "jsonschema"
-    ]
-    assert len(resolved) == 1
-    assert resolved[0]["version"] == "4.26.0"
+    names = {_string_table(package).get("name") for package in packages}
+    assert names.isdisjoint({"xgrammar", "jsonschema"})
+    assert {"torch", "transformers", "accelerate", "litestar"} <= names
 
 
 def test_p16_runtime_lock_pins_torch_cu126() -> None:
@@ -837,7 +825,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified nine times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified ten times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -852,9 +840,12 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     stack: + contourpy, cycler, fonttools, kiwisolver, pillow, pyparsing, python-dateutil, pytz,
     six -- 196 purely additive lines; no other package moved) and Q44 (fonttools 4.66.1 -> 4.63.0,
     dev-only, Open WebUI 0.10.2's version through fpdf2 2.8.7, so the tests cut the font as the
-    image cuts it; no other package moved)."""
+    image cuts it; no other package moved) and Q46 (the retired JSON-spec service's
+    vl-convert-python, z3-solver + cryptography and dev jsonschema + duckdb removed, with attrs,
+    cffi, jsonschema-specifications, pycparser, referencing + rpds-py: 73 -> 62 packages, removals
+    alone, no version moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "33fcdc3b529b95cfea19727b08233f10d14414c2e828a4ce8e241fdc61ac8c84"
+    assert digest == "332c4f39d82ba15748b30098a8a261f44ff020b30efc354a14618a6cb5d72d93"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

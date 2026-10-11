@@ -8,8 +8,8 @@ wheels for `torch` stop at Python 3.12. A separate project keeps the two locks a
 
 | File | Content |
 | --- | --- |
-| `pyproject.toml` | The eight direct pins, the probe validator group, and the CUDA 12.6 wheel index. |
-| `uv.lock` | The full transitive resolution. The file lists 79 entries, including this project. |
+| `pyproject.toml` | The seven direct pins and the CUDA 12.6 wheel index. |
+| `uv.lock` | The full transitive resolution. The file lists 68 entries, including this project. |
 | `snapshot.json` | The model revision and one SHA-256 digest per file. |
 
 ## Build the environment
@@ -25,9 +25,6 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv-model" UV_LINK_MODE=copy \
 
 `--locked` installs the committed resolution. If `uv` reports that the lock is stale, then stop and
 report it. Do not relock to make the command pass.
-
-The command also installs the `dev` group. That group holds one package that the server never
-imports. The queue removes it later. Add `--no-dev` to install the served packages alone.
 
 Check the installed metadata:
 
