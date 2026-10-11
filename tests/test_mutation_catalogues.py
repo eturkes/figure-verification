@@ -23,6 +23,7 @@ _CATALOGUES = (
     "columns",
     "csvread",
     "description",
+    "excerpts",
     "explain",
     "figure_judge",
     "figure_request",

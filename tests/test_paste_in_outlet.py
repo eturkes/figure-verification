@@ -1041,3 +1041,81 @@ def test_o1_a_description_naming_data_keeps_its_png() -> None:
     )
     messages = cast(list[dict[str, object]], result["messages"])
     assert str(messages[-1]["content"]).startswith("Figure verification passed")
+
+
+# --- M20.2 related lines (`.agent/archive/contracts/m20u2.md` E5) ---------------------------------
+
+_PREPARED = (
+    "import matplotlib.pyplot as plt\n"  # 1
+    "heights = [3, 5, 9]\n"  # 2
+    "plt.bar([0, 1, 2], heights)\n"  # 3: makes the figure + axes, draws the bars
+    "plt.title('Heights')\n"  # 4
+    "plt.show()\n"  # 5
+)
+
+
+def _listed(document: str) -> dict[str, tuple[tuple[int, ...], tuple[int, ...]]]:
+    """Each row's (listed lines, marked lines)."""
+    return {
+        check: (tuple(n for n, *_ in listing(row)), tuple(n for n, at, *_ in listing(row) if at))
+        for check, row in rows(document).items()
+    }
+
+
+def test_m20_2_a_passed_reply_lists_each_row_s_related_lines() -> None:
+    browser = Browser(_PREPARED)
+    result = browser.exercise()
+    assert str(cast(list[dict[str, object]], result["messages"])[-1]["content"]).startswith(PASS)
+    assert _listed(embed(browser.events)) == {
+        "program": ((1, 2, 3, 4, 5, 6), ()),
+        "run": ((), ()),
+        "figure": ((3, 4), ()),
+        "parts": ((3, 4), ()),
+        "axes": ((3, 4), ()),
+        "marks": ((3,), ()),
+        "values": ((2, 3), ()),
+        "columns": ((2, 3, 4), ()),
+        "attach": ((), ()),
+    }
+
+
+def test_m20_2_a_blocked_reply_lists_the_failing_row_s_lines_with_the_mark() -> None:
+    browser = Browser(TRUNCATED)
+    assert_failure(browser.exercise(), browser.events, "zero_not_in_limits")
+    listed = _listed(embed(browser.events))
+    assert listed["axes"] == ((2, 3), (3,))
+    assert listed["figure"] == ((2,), ())
+    assert listed["marks"] == listed["values"] == ((), ())
+
+
+@pytest.mark.parametrize("program", [_PREPARED, TRUNCATED], ids=["pass", "block"])
+def test_m20_2_a_raising_excerpt_finder_leaves_the_verdict_and_the_program(
+    monkeypatch: pytest.MonkeyPatch, program: str
+) -> None:
+    """Display only: the verdict holds, and the listing falls back to the pre-M20 program rows."""
+    bomb = Bomb()
+    browser = Browser(program)
+    with patched_filter(monkeypatch, (("webui.paste_in.excerpts", "excerpts", bomb),)) as api:
+        result = asyncio.run(_async_outlet(browser, browser.emit, module=api))
+    assert bomb.calls == 1
+    listed = _listed(embed(browser.events))
+    every = tuple(range(1, program.count("\n") + 2))
+    if program == TRUNCATED:
+        assert_failure(result, browser.events, "zero_not_in_limits")
+        assert listed["axes"] == (every, (3,))
+    else:
+        assert str(cast(list[dict[str, object]], result["messages"])[-1]["content"]).startswith(
+            PASS
+        )
+        assert listed["axes"] == ((), ())
+    assert listed["program"] == (every, ())
+
+
+def test_m20_2_a_raising_program_lists_the_raising_statement() -> None:
+    """A run-stage failure has no description: its line reaches the run row alone (M20.2 E5)."""
+    program = TRUNCATED.replace("plt.ylim(30000, 45000)", "raise ValueError(\n    'stop'\n)")
+    browser = Browser(program)
+    assert_failure(browser.exercise(), browser.events, "program_error")
+    listed = _listed(embed(browser.events))
+    assert listed["run"] == ((3, 4, 5), (3,))
+    assert listed["figure"] == ((), ())

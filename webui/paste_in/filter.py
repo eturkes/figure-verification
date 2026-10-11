@@ -20,13 +20,14 @@ from collections.abc import Awaitable, Callable
 from typing import Final, cast
 
 from verifier.figure.anchoring import Anchoring
-from verifier.figure.description import TAG, parse_description
+from verifier.figure.description import TAG, Description, parse_description
 from verifier.figure.judge import Passed, Sources, judge
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
-from webui.paste_in.checks import Evidence, breakdown_html
+from webui.paste_in.checks import CHECK_OF, Evidence, breakdown_html
+from webui.paste_in.excerpts import excerpts
 from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
@@ -211,6 +212,20 @@ async def _diagnose(
     await _emit_bounded(emit, embed, deadline)
 
 
+def _evidence(
+    program: str | None, description: Description | None, reason: Reason | None, site: int | None
+) -> Evidence:
+    """The program, the line a failure points at and each check's related lines, for display
+    alone: a fault while finding the lines leaves the program and the line, never the verdict."""
+    if program is None:
+        return Evidence(None, site)
+    try:
+        lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)
+    except Exception:
+        return Evidence(program, site)
+    return Evidence(program, site, lines)
+
+
 async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
     body: dict[str, object],
     reason: Reason,
@@ -290,7 +305,8 @@ class Filter:
         __metadata__: dict[str, object] | None = None,
     ) -> dict[str, object]:
         """Run the recorded program in the browser, judge the figure, publish only a pass."""
-        evidence = Evidence()
+        program: str | None = None
+        description: Description | None = None
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
             return await _fail(
@@ -299,13 +315,13 @@ class Filter:
                 __metadata__,
                 __event_emitter__,
                 self._ANCHORING,
-                evidence=Evidence(evidence.program, site),
+                evidence=_evidence(program, description, reason, site),
             )
 
         receipt = read_receipt(__request__)
         if receipt is None:
             return await fail("no_tool_call")
-        evidence = Evidence(receipt.program)
+        program = receipt.program
         user_id = (__user__ or {}).get("id")
         if not isinstance(user_id, str) or not user_id:
             return await fail("no_user")
@@ -361,6 +377,7 @@ class Filter:
             )
         except Exception:
             return await fail("publish_failed")
+        evidence = _evidence(program, description, None, None)
         await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
         japanese = _japanese(__metadata__)
         interpretation = verdict.interpretation_ja if japanese else verdict.interpretation

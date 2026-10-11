@@ -54,7 +54,8 @@ def test_explanations_obey_the_sentence_budget(check: str) -> None:
 
 
 def test_ui_words_obey_the_law() -> None:
-    for name in ("SHOW", "HIDE", "WHAT", "CODE", "WHY", "NOT_RUN", "DREW", "SPEC", "BEYOND"):
+    names = ("SHOW", "HIDE", "WHAT", "CODE", "RELATED", "RAN", "NO_LINES", "WHY", "NOT_RUN")
+    for name in (*names, "DREW", "SPEC", "BEYOND"):
         for language, text in enumerate(getattr(checks, name)):
             _law(text, japanese=bool(language), kana=name != "CODE")
             if not language:

@@ -37,7 +37,9 @@ def test_every_document_carries_the_reporter_alone_and_no_trigger(
         reason,  # type: ignore[arg-type]
         japanese=japanese,
         anchoring=anchoring,  # type: ignore[arg-type]
-        evidence=checks.Evidence(_PROGRAM, 3),
+        evidence=checks.Evidence(
+            _PROGRAM, 3, tuple((check, frozenset({1, 2, 3})) for check in checks.CHECKS)
+        ),
     )
     scripts = re.findall(r"<script>(.*?)</script>", source, flags=re.DOTALL)
     assert scripts == [_HEIGHT_REPORTER]

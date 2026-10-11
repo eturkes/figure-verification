@@ -274,3 +274,33 @@ anchor = '''            if not isinstance(task, str):
                 return body'''
 mutant = '''            if not isinstance(task, str):
                 task = str(task)'''
+
+[[mutant]]
+id = "m20-evidence-lines-dropped"
+predicate = "each row's related lines reach the check list (M20.2 E5)"
+kills = "tests/test_paste_in_outlet.py::test_m20_2_a_passed_reply_lists_each_row_s_related_lines"
+anchor = '''    return Evidence(program, site, lines)'''
+mutant = '''    return Evidence(program, site)'''
+
+[[mutant]]
+id = "m20-evidence-failing-check"
+predicate = "the failure's line joins its own row (M20.2 E5)"
+kills = "tests/test_paste_in_outlet.py::test_m20_2_a_raising_program_lists_the_raising_statement"
+anchor = '''        lines = excerpts(program, description, None if reason is None else CHECK_OF[reason], site)'''
+mutant = '''        lines = excerpts(program, description, None, site)'''
+
+[[mutant]]
+id = "m20-evidence-unguarded"
+predicate = "a fault while finding the lines never costs the verdict (M20.2 E5)"
+kills = "tests/test_paste_in_outlet.py::test_m20_2_a_raising_excerpt_finder_leaves_the_verdict_and_the_program"
+anchor = '''    except Exception:
+        return Evidence(program, site)'''
+mutant = '''    except ZeroDivisionError:
+        return Evidence(program, site)'''
+
+[[mutant]]
+id = "m20-evidence-description"
+predicate = "the parsed description reaches the line finder (M20.2 E5)"
+kills = "tests/test_paste_in_outlet.py::test_m20_2_a_passed_reply_lists_each_row_s_related_lines"
+anchor = '''        evidence = _evidence(program, description, None, None)'''
+mutant = '''        evidence = _evidence(program, None, None, None)'''

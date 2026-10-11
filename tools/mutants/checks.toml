@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# M19.5 check list (`.agent/archive/contracts/m19u5.md` O8 CHECK_OF, O9 rows + listing): each mutant names
-# one red in the M19.5 suite.
+# M19.5 check list (`.agent/archive/contracts/m19u5.md` O8 CHECK_OF, O9 rows + listing) + M20.2 related
+# lines (`.agent/archive/contracts/m20u2.md` E4): each mutant names one red.
 module = "webui/paste_in/checks.py"
 tests = ["tests/test_paste_in_checks.py"]
 
@@ -27,25 +27,91 @@ anchor = '''        texts = STRICT_COLUMNS if check == "columns" and anchoring =
 mutant = '''        texts = TEXTS[check]'''
 
 [[mutant]]
-id = "m19-listing-every-row"
-predicate = "only the passed program row and the failing row list code"
-kills = "tests/test_paste_in_checks.py::test_o9_only_passed_program_and_failing_row_list_source"
-anchor = '''    quoted = state == "fail" or (check == "program" and state == "pass")'''
-mutant = '''    quoted = state != "skip"'''
+id = "m20-related-on-skip"
+predicate = "a not-checked row lists no lines (M20.2 X3)"
+kills = "tests/test_paste_in_checks.py::test_m20_2_each_row_that_ran_lists_its_related_lines"
+anchor = '''    if state == "skip":
+        sections.append(f'<div class="unrun-note"><p>{_text(NOT_RUN[language])}</p></div>')
+    else:'''
+mutant = '''    if state == "skip":
+        sections.append(f'<div class="unrun-note"><p>{_text(NOT_RUN[language])}</p></div>')
+    if True:'''
+
+[[mutant]]
+id = "m20-attach-lists"
+predicate = "the attach row carries its note, never program lines (M20.2 X2)"
+kills = "tests/test_paste_in_checks.py::test_o9_without_related_lines_the_program_and_failing_rows_quote_the_program"
+anchor = '''    if check == "attach":
+        return _note(NO_LINES[language]), False'''
+mutant = '''    if check == "never":
+        return _note(NO_LINES[language]), False'''
+
+[[mutant]]
+id = "m20-run-pass-lists"
+predicate = "a passed run row carries its note (M20.2 X2)"
+kills = "tests/test_paste_in_checks.py::test_m20_2_each_row_that_ran_lists_its_related_lines"
+anchor = '''    if check == "run" and state == "pass":'''
+mutant = '''    if check == "run" and state == "never":'''
+
+[[mutant]]
+id = "m20-program-row-excerpt"
+predicate = "the program row quotes the whole program (M20.2 X4)"
+kills = "tests/test_paste_in_checks.py::test_m20_2_each_row_that_ran_lists_its_related_lines"
+anchor = '''    if check == "program" or (state == "fail" and not related):'''
+mutant = '''    if state == "fail" and not related:'''
+
+[[mutant]]
+id = "m20-failing-no-fallback"
+predicate = "a failing row with no related line quotes the whole program (M20.2 X4)"
+kills = "tests/test_paste_in_checks.py::test_m20_2_a_failing_row_with_no_related_line_quotes_the_program"
+anchor = '''    if check == "program" or (state == "fail" and not related):'''
+mutant = '''    if check == "program":'''
+
+[[mutant]]
+id = "m20-passed-row-whole"
+predicate = "a passed row with no related line lists nothing"
+kills = "tests/test_paste_in_checks.py::test_m20_2_a_passed_row_with_no_related_line_lists_nothing"
+anchor = '''    if not related:
+        return "", False'''
+mutant = '''    if not related:
+        related = frozenset(range(1, len(lines) + 1))'''
+
+[[mutant]]
+id = "m20-related-unbounded"
+predicate = "related lines outside the scanned program count as none"
+kills = "tests/test_paste_in_checks.py::test_m20_2_related_listings_match_the_independent_oracle"
+anchor = '''    related = frozenset(n for n in dict(evidence.lines).get(check, ()) if 1 <= n <= len(lines))'''
+mutant = '''    related = frozenset(dict(evidence.lines).get(check, ()))'''
+
+[[mutant]]
+id = "m20-related-ignored"
+predicate = "a row lists its related lines alone"
+kills = "tests/test_paste_in_checks.py::test_m20_2_each_row_that_ran_lists_its_related_lines"
+anchor = '''    pool = [n for n in range(1, len(lines) + 1) if related is None or n in related]'''
+mutant = '''    pool = list(range(1, len(lines) + 1))'''
 
 [[mutant]]
 id = "m19-site-on-pass"
-predicate = "the program row stays unmarked"
-kills = "tests/test_paste_in_checks.py::test_o9_only_passed_program_and_failing_row_list_source"
-anchor = '''        site = evidence.site if state == "fail" else None'''
-mutant = '''        site = evidence.site'''
+predicate = "a passed row stays unmarked"
+kills = "tests/test_paste_in_checks.py::test_o9_without_related_lines_the_program_and_failing_rows_quote_the_program"
+anchor = '''    site = evidence.site if state == "fail" else None'''
+mutant = '''    site = evidence.site'''
 
 [[mutant]]
 id = "m19-site-unbounded"
-predicate = "a site outside the program marks nothing"
-kills = "tests/test_paste_in_checks.py::test_o9_caps_bind_at_their_exact_boundaries"
-anchor = '''    marked = site if site is not None and 1 <= site <= len(lines) else None'''
+predicate = "a site outside the listed lines marks nothing"
+kills = "tests/test_paste_in_checks.py::test_m20_2_a_site_outside_the_related_lines_marks_nothing"
+anchor = '''    marked = site if site in members else None'''
 mutant = '''    marked = site'''
+
+[[mutant]]
+id = "m20-elided-program-lines"
+predicate = "the elided count is the listed set's lines the caps drop"
+kills = "tests/test_paste_in_checks.py::test_m20_2_elided_counts_related_lines_the_caps_drop"
+anchor = '''    if len(pool) > len(taken):
+        elided = ELIDED[language].format(n=len(pool) - len(taken))'''
+mutant = '''    if len(lines) > len(taken):
+        elided = ELIDED[language].format(n=len(lines) - len(taken))'''
 
 [[mutant]]
 id = "m19-empty-mark"

@@ -29,8 +29,8 @@ Open WebUI is a trusted display and orchestration layer. The filter reads a back
 receipt. It runs the receipt's program unchanged in the user's browser, with the trusted figure
 reader around it. It then judges the finished figure against the user's own files and request. It
 only publishes a PNG after the figure passes. Each reply also has a `Show checks` list. Click a
-check to open it: it shows what the check does, the program line that drew the failed part and why
-it failed. It also links to the [verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
+check to open it: it shows what the check does, the program lines that relate to it and why it
+failed. The failed check marks the program line that drew the failed part. It also links to the [verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
 chat request and makes no model-reliability claim.
 
 ## One-time setup

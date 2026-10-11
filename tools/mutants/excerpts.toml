@@ -1,0 +1,240 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M20.2 related program lines (`.agent/archive/contracts/m20u2.md` E1-E3): each row's recorded lines, the
+# statement widening and the data-preparation trace; each mutant names one red.
+module = "webui/paste_in/excerpts.py"
+tests = ["tests/test_paste_in_excerpts.py"]
+
+[[mutant]]
+id = "m20-figure-site"
+predicate = "the figure row lists the line that made the figure"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''        rows["figure"] |= _sites(figure.site) | titles | texts | legends'''
+mutant = '''        rows["figure"] |= titles | texts | legends'''
+
+[[mutant]]
+id = "m20-figure-ticks"
+predicate = "the figure row lists the tick-label calls"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''            rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS)'''
+mutant = '''            rows["figure"] |= labels | words | legend'''
+
+[[mutant]]
+id = "m20-parts-others"
+predicate = "the parts row lists the figure's other parts"
+kills = "tests/test_paste_in_excerpts.py::test_e1_a_figure_level_part_joins_parts"
+anchor = '''        rows["parts"] |= titles | texts | legends | _sites(*(part.site for part in figure.others))'''
+mutant = '''        rows["parts"] |= titles | texts | legends'''
+
+[[mutant]]
+id = "m20-axes-calls"
+predicate = "the axes row lists the calls that set an axis"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''            rows["axes"] |= axes_site | labels | _calls(axes, _AXIS_SLOTS)'''
+mutant = '''            rows["axes"] |= axes_site | labels'''
+
+[[mutant]]
+id = "m20-axis-slot-limits"
+predicate = "a limit call is an axis call"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''    "ylim",
+    "xscale",'''
+mutant = '''    "xscale",'''
+
+[[mutant]]
+id = "m20-text-is-no-mark"
+predicate = "an axes text is listed text, never a mark"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''                *(a.site for a in axes.artists if not isinstance(a.geometry, TextGeometry))'''
+mutant = '''                *(a.site for a in axes.artists)'''
+
+[[mutant]]
+id = "m20-values-drawn"
+predicate = "the values row lists the drawing lines"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            rows["values"] |= drawn'''
+mutant = '''            rows["values"] |= set()'''
+
+[[mutant]]
+id = "m20-columns-labels"
+predicate = "the columns row lists the titles + axis labels"
+kills = "tests/test_paste_in_excerpts.py::test_e1_each_row_lists_the_parts_its_check_reads"
+anchor = '''            rows["columns"] |= drawn | labels | legend'''
+mutant = '''            rows["columns"] |= drawn | legend'''
+
+[[mutant]]
+id = "m20-failing-site"
+predicate = "the failure's own line joins the failing row"
+kills = "tests/test_paste_in_excerpts.py::test_e1_a_failing_site_joins_its_row"
+anchor = '''        rows[failing] = rows.get(failing, set()) | {site}'''
+mutant = '''        rows[failing] = rows.get(failing, set())'''
+
+[[mutant]]
+id = "m20-widen-off"
+predicate = "a listed line widens to its whole statement"
+kills = "tests/test_paste_in_excerpts.py::test_e2_a_line_widens_to_its_statement_and_the_blocks_around_it"
+anchor = '''        rows = {check: parsed.widen(lines) for check, lines in rows.items()}'''
+mutant = '''        rows = {check: set(lines) for check, lines in rows.items()}'''
+
+[[mutant]]
+id = "m20-outer-headers"
+predicate = "a listed statement brings the headers of its blocks"
+kills = "tests/test_paste_in_excerpts.py::test_e2_a_line_widens_to_its_statement_and_the_blocks_around_it"
+anchor = '''    return set(statement.whole if whole else statement.own).union(*statement.outer)'''
+mutant = '''    return set(statement.whole if whole else statement.own)'''
+
+[[mutant]]
+id = "m20-handler-header"
+predicate = "an except handler shows its own header"
+kills = "tests/test_paste_in_excerpts.py::test_e2_a_handler_shows_its_own_header"
+anchor = '''                around = (*outer, own) if header is None else (*outer, own, header)'''
+mutant = '''                around = (*outer, own)'''
+
+[[mutant]]
+id = "m20-parse-bound-widened"
+predicate = "a program past 65,536 characters keeps its recorded lines"
+kills = "tests/test_paste_in_excerpts.py::test_e2_without_a_parse_the_recorded_lines_stay"
+anchor = '''_PARSE = 65_536'''
+mutant = '''_PARSE = 65_537'''
+
+[[mutant]]
+id = "m20-parse-bound-inclusive"
+predicate = "a program of exactly 65,536 characters parses"
+kills = "tests/test_paste_in_excerpts.py::test_e2_without_a_parse_the_recorded_lines_stay"
+anchor = '''    if len(program) > _PARSE:'''
+mutant = '''    if len(program) >= _PARSE:'''
+
+[[mutant]]
+id = "m20-prep-values"
+predicate = "the values row adds the data preparation"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''        for check in ("values", "columns"):'''
+mutant = '''        for check in ("columns",):'''
+
+[[mutant]]
+id = "m20-prep-columns"
+predicate = "the columns row adds the data preparation"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''        for check in ("values", "columns"):'''
+mutant = '''        for check in ("values",):'''
+
+[[mutant]]
+id = "m20-prep-marks"
+predicate = "the marks + axes rows add no preparation"
+kills = "tests/test_paste_in_excerpts.py::test_e3_marks_and_axes_list_no_preparation"
+anchor = '''        for check in ("values", "columns"):'''
+mutant = '''        for check in ("values", "columns", "marks", "axes"):'''
+
+[[mutant]]
+id = "m20-builders-taken"
+predicate = "a statement that made the figure or an axes is no preparation"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            if earlier in builders or isinstance(node, ast.Import | ast.ImportFrom):'''
+mutant = '''            if isinstance(node, ast.Import | ast.ImportFrom):'''
+
+[[mutant]]
+id = "m20-imports-taken"
+predicate = "an import is no preparation"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            if earlier in builders or isinstance(node, ast.Import | ast.ImportFrom):'''
+mutant = '''            if earlier in builders:'''
+
+[[mutant]]
+id = "m20-scope-filter"
+predicate = "a def that does not enclose the seed binds its own names"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            if not statement.scopes <= seed.scopes:'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "m20-rebinding-kept"
+predicate = "a whole rebinding ends the need for the name"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            needed -= bound
+            # A statement'''
+mutant = '''            needed -= set()
+            # A statement'''
+
+[[mutant]]
+id = "m20-reads-dropped"
+predicate = "a taken statement's reads become needed"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            needed |= _reads(_header(node))
+            taken.add(earlier)'''
+mutant = '''            taken.add(earlier)'''
+
+[[mutant]]
+id = "m20-changers-append"
+predicate = "`append` changes its receiver"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''        "append",
+        "clear",'''
+mutant = '''        "clear",'''
+
+[[mutant]]
+id = "m20-inplace-ignored"
+predicate = "a call with inplace=True changes its receiver"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''    return _root(method.value) if method.attr in _CHANGERS or inplace else set()'''
+mutant = '''    return _root(method.value) if method.attr in _CHANGERS else set()'''
+
+[[mutant]]
+id = "m20-target-parts"
+predicate = "a subscript or attribute target changes its root name"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''    if isinstance(target, ast.Attribute | ast.Subscript):
+        return _root(target)'''
+mutant = '''    if isinstance(target, ast.Attribute | ast.Subscript):
+        return set()'''
+
+[[mutant]]
+id = "m20-augassign"
+predicate = "an augmented assignment changes its name"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''        return _names(node.target) | _parts(node.target)'''
+mutant = '''        return _parts(node.target)'''
+
+[[mutant]]
+id = "m20-parameters"
+predicate = "an enclosing def binds its parameters"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''                needed -= _parameters(node) if not isinstance(node, ast.ClassDef) else set()'''
+mutant = '''                needed -= set()'''
+
+[[mutant]]
+id = "m20-def-whole"
+predicate = "a taken def lists its whole body"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            shown |= _shown(statement, whole=isinstance(statement.node, _SCOPES))'''
+mutant = '''            shown |= _shown(statement)'''
+
+[[mutant]]
+id = "m20-def-locals"
+predicate = "a def read whole reads no name it binds itself"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''                elif whole:
+                    inner.add(sub.id)'''
+mutant = '''                elif False:
+                    inner.add(sub.id)'''
+
+[[mutant]]
+id = "m20-comprehension-names"
+predicate = "a comprehension's own names are not needed"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''                inner |= _names(sub.target)'''
+mutant = '''                pass'''
+
+[[mutant]]
+id = "m20-walrus"
+predicate = "an assignment expression binds its name"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''        found |= {sub.target.id for sub in ast.walk(part) if isinstance(sub, ast.NamedExpr)}'''
+mutant = '''        pass'''
+
+[[mutant]]
+id = "m20-with-binds"
+predicate = "a with statement binds its `as` names"
+kills = "tests/test_paste_in_excerpts.py::test_e3_values_list_the_statements_that_prepare_the_drawn_data"
+anchor = '''            if item.optional_vars is not None
+            for name in _names(item.optional_vars)'''
+mutant = '''            if item.optional_vars is None
+            for name in _names(item.optional_vars)'''

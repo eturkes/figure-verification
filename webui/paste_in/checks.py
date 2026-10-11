@@ -3,12 +3,12 @@
 
 Data plus one pure renderer; `filter.py` sends the document as an Open WebUI message embed, which
 the chat renders in a sandboxed iframe and never sends to a model. Each row opens to what its check
-does, why it failed and a link to its section of the reference; the passed `program` row and the
-failing row also quote the program, the failing row marking the line that drew the offending part
-or made the offending call (ruling 13: display only, never a verdict input). Every text slot comes
-from the tables here or from `REASONS`; the one exception is the program itself, quoted escaped
-inside a code listing with whatever it spells. Request text, file contents and sandbox output are
-never added from any other source.
+does, the program lines related to it (`excerpts.py`; the `program` row quotes the whole program),
+why it failed and a link to its section of the reference; the failing row marks the line that drew
+the offending part or made the offending call (ruling 13: display only, never a verdict input).
+Every text slot comes from the tables here or from `REASONS`; the one exception is the program
+itself, quoted escaped inside a code listing with whatever it spells. Request text, file contents
+and sandbox output are never added from any other source.
 
 A check shows as passed only when it completed, so each reason maps to the check whose stage
 raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
@@ -278,6 +278,15 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
 }
 WHAT: Final = ("What this check does", "このチェックの内容")
 CODE: Final = ("Program", "プログラム")
+RELATED: Final = ("Related program lines", "関連するプログラムの行")
+RAN: Final = (
+    "The program ran to its end without an error.",
+    "プログラムはエラーなく最後まで実行されました。",
+)
+NO_LINES: Final = (
+    "No program line takes part in this check.",
+    "このチェックに関わるプログラムの行はありません。",
+)
 WHY: Final = ("Why it failed", "不合格の理由")
 NOT_RUN: Final = (
     "This check did not run, because an earlier check failed.",
@@ -303,11 +312,12 @@ SPECIFICATION: Final = (
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
-    """The program the outlet ran and the line the judge's failure points at (display only).
-    Empty = no program reached the outlet."""
+    """The program the outlet ran, the line the judge's failure points at, and each check's related
+    program lines (display only). Empty = no program reached the outlet."""
 
     program: str | None = None
     site: int | None = None
+    lines: tuple[tuple[Check, frozenset[int]], ...] = ()
 
 
 # The frame cannot see Open WebUI's theme class, so every colour is a mid tone that reads on the
@@ -402,16 +412,19 @@ def _line(number: int, line: str, *, marked: bool) -> str:
     )
 
 
-def _listing(program: str, site: int | None, language: int) -> tuple[str, bool]:
-    """The program's lines within the caps, the `site` line first and marked with its context;
-    and whether a mark is shown."""
-    lines = _BREAK.split(program[:_SCAN])
-    marked = site if site is not None and 1 <= site <= len(lines) else None
+def _listing(
+    program: str, lines: list[str], related: frozenset[int] | None, site: int | None, language: int
+) -> tuple[str, bool]:
+    """The `related` lines of the scanned program (`None` = every line) within the caps, the
+    `site` line first and marked, then its neighbours among them; and whether a mark is shown."""
+    pool = [n for n in range(1, len(lines) + 1) if related is None or n in related]
+    members = set(pool)
+    marked = site if site in members else None
     near = [] if marked is None else [marked + d for d in range(-_CONTEXT, _CONTEXT + 1)]
     taken: set[int] = set()
     cost = 0
-    for number in (*near, *range(1, len(lines) + 1)):
-        if not 1 <= number <= len(lines) or number in taken:
+    for number in (*near, *pool):
+        if number not in members or number in taken:
             continue
         weight = min(len(lines[number - 1]), _LINE_CHARACTERS)
         if len(taken) == _MAX_LINES or cost + weight > _MAX_CHARACTERS:
@@ -424,8 +437,8 @@ def _listing(program: str, site: int | None, language: int) -> tuple[str, bool]:
             rows.append('<span class="gap">\N{VERTICAL ELLIPSIS}</span>')
         rows.append(_line(number, lines[number - 1], marked=number == marked))
     listing = f'<pre class="listing">{"".join(rows)}</pre>'
-    if len(lines) > len(taken):
-        elided = ELIDED[language].format(n=len(lines) - len(taken))
+    if len(pool) > len(taken):
+        elided = ELIDED[language].format(n=len(pool) - len(taken))
         listing += f'<p class="elided">{_text(elided)}</p>'
     if len(program) > _SCAN:
         listing += f'<p class="beyond">{_text(BEYOND[language])}</p>'
@@ -436,19 +449,42 @@ def _section(kind: str, label: str, body: str) -> str:
     return f'<div class="{kind}"><span class="label">{_text(label)}</span>{body}</div>'
 
 
+def _note(text: str) -> str:
+    return f'<div class="lines-note"><p>{_text(text)}</p></div>'
+
+
+def _program(check: Check, state: _State, language: int, evidence: Evidence) -> tuple[str, bool]:
+    """A row's program section and whether it marks a line: the `program` row and a failing row
+    with no related line quote the whole program; any other row that ran, its related lines."""
+    if check == "attach":
+        return _note(NO_LINES[language]), False
+    if check == "run" and state == "pass":
+        return _note(RAN[language]), False
+    if evidence.program is None:
+        return "", False
+    lines = _BREAK.split(evidence.program[:_SCAN])
+    related = frozenset(n for n in dict(evidence.lines).get(check, ()) if 1 <= n <= len(lines))
+    site = evidence.site if state == "fail" else None
+    if check == "program" or (state == "fail" and not related):
+        listing, drew = _listing(evidence.program, lines, None, site, language)
+        return _section("code", CODE[language], listing), drew
+    if not related:
+        return "", False
+    listing, drew = _listing(evidence.program, lines, related, site, language)
+    return _section("code", RELATED[language], listing), drew
+
+
 def _more(
     check: Check, state: _State, reason: Reason | None, language: int, evidence: Evidence
 ) -> str:
-    """The opened row: what the check does, whether it ran, the program, why, the link."""
+    """The opened row: what the check does, whether it ran, its program lines, why, the link."""
     sections = [_section("what", WHAT[language], f"<p>{_text(EXPLAIN[check][language])}</p>")]
+    drew = False
     if state == "skip":
         sections.append(f'<div class="unrun-note"><p>{_text(NOT_RUN[language])}</p></div>')
-    quoted = state == "fail" or (check == "program" and state == "pass")
-    drew = False
-    if quoted and evidence.program is not None:
-        site = evidence.site if state == "fail" else None
-        listing, drew = _listing(evidence.program, site, language)
-        sections.append(_section("code", CODE[language], listing))
+    else:
+        program, drew = _program(check, state, language, evidence)
+        sections.append(program)
     if reason is not None and state == "fail":
         why = f"<p>{_text(f'{REASONS[reason][language]} ({reason})')}</p>"
         if drew:

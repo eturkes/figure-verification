@@ -6,8 +6,8 @@ chart. The user's browser runs that program unchanged, and the verifier reads th
 matplotlib drew. The chart appears only when every check passes. Otherwise the chat shows `Figure
 verification failed, no image produced`, and a status line above that message states the reason.
 Each chart reply also has a `Show checks` list of every check and its result. Click a check to open
-it: it shows what the check does and why it failed. The failed check also marks the program line
-that drew the failed part, and each check links to its section of the [verification
+it: it shows what the check does, the program lines that relate to it and why it failed. The failed
+check also marks the program line that drew the failed part, and each check links to its section of the [verification
 reference](docs/verification.md).
 
 ## What this repository delivers

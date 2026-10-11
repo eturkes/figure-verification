@@ -217,9 +217,12 @@ The list uses the same language as the status line. It stays with the reply afte
 Open WebUI does not send it to the model.
 
 Click a check in the list to open it. The opened check states what the check does, and a failed
-check states why it failed. The first check and the failed check also show the model's program. In
-the failed check, the verifier marks the program line that drew the failed part or made the failed
-call, for example a `plt.ylim` call that cut off the bars. Each opened check links to its section of
+check states why it failed. The first check shows the model's program. Each other check that ran
+shows the program lines that relate to it, for example the `pd.read_csv` and `groupby` lines that
+prepare the drawn values. A check that did not run shows no lines. In the failed check, the verifier
+marks the program line that drew the failed part or made the failed call, for example a `plt.ylim`
+call that cut off the bars. The verifier finds the related lines for display only, so they never
+change the verdict. Each opened check links to its section of
 the verification reference, [docs/verification.md](../verification.md). The link opens GitHub in a
 new browser tab, so the user's browser needs network access, also when the Open WebUI instance has
 none. The program shown is the model's own program, as the tool received it. It can contain any text
