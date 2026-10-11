@@ -32,8 +32,11 @@ from its source code.
   and numpy). The chart program runs in this runtime inside the user's browser.
 - A browser connection with WebSocket support. The filter runs the program through this connection.
 - The Japanese font that Open WebUI 0.10.2 contains (`NotoSansJP-Regular.ttf` in its `FONTS_DIR`).
-  The filter sends this font to the browser when the program or an attached file contains non-ASCII
-  text. Without the font, a chart with Japanese text fails with the code `glyph_missing`.
+  The filter sends part of this font to the browser when the program or an attached file contains
+  non-ASCII text. The part holds ASCII and the characters of the program and the attached files. The
+  filter cuts the font with `fontTools`, which Open WebUI 0.10.2 also contains. Without `fontTools`,
+  the filter sends the whole font. Without the font, a chart with Japanese text fails with the code
+  `glyph_missing`.
 - A chat model that can call tools.
 
 ## Step 1: Add the tool
@@ -249,6 +252,6 @@ There are two types of reason code:
 | The reply fails with the code `value_not_found` | A drawn value is not in the attached file or in the request. | Attach the CSV file, or write the values in the request. |
 | The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
 | Every chart fails with the code `sandbox_unavailable` | The browser could not load the Pyodide runtime. A content blocker is a common cause. For example, the "Block Outsider Intrusion into LAN" list of uBlock Origin Lite blocks it. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
-| The reply fails with the code `glyph_missing` | The chart has characters that the fonts cannot draw. Japanese text inside `$` signs (math text) is a known cause, because the math font has no Japanese characters. | Ask for chart text without `$` signs. Make sure that `NotoSansJP-Regular.ttf` is in the `FONTS_DIR` of Open WebUI. |
+| The reply fails with the code `glyph_missing` | The chart has characters that the fonts cannot draw. Japanese text inside `$` signs (math text) is a known cause, because the math font has no Japanese characters. Another cause is a Japanese character that the program makes while it runs, such as `chr(0x6708)`. This applies when the program text and the attached files do not contain it. The filter sends only the characters that the program and the attached files contain. | Ask for chart text without `$` signs, written out in the program. Make sure that `NotoSansJP-Regular.ttf` is in the `FONTS_DIR` of Open WebUI. |
 | The reply fails with the code `module_not_available` | The program imports a package that the Pyodide runtime does not have. | Ask for a chart with matplotlib or pandas. The Pyodide runtime of Open WebUI 0.10.2 has no seaborn. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |

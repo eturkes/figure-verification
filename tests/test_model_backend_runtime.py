@@ -837,7 +837,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified seven times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified nine times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -850,9 +850,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     2.46.4, annotated-types 0.8.0, typing-inspection 0.4.4 -- 64 purely additive lines; no other
     package moved) and M19.1 (matplotlib 3.9.4 + pandas 2.3.1 dev-only, the figure reader's host
     stack: + contourpy, cycler, fonttools, kiwisolver, pillow, pyparsing, python-dateutil, pytz,
-    six -- 196 purely additive lines; no other package moved)."""
+    six -- 196 purely additive lines; no other package moved) and Q44 (fonttools 4.66.1 -> 4.63.0,
+    dev-only, Open WebUI 0.10.2's version through fpdf2 2.8.7, so the tests cut the font as the
+    image cuts it; no other package moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "f251b9d9ccd8e287ededf4477dfeb84da31eaea78241c4f86136fae779995557"
+    assert digest == "33fcdc3b529b95cfea19727b08233f10d14414c2e828a4ce8e241fdc61ac8c84"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

@@ -28,6 +28,7 @@ _CATALOGUES = (
     "figure_judge",
     "figure_request",
     "filter",
+    "fonts",
     "interpret",
     "judge",
     "keys",

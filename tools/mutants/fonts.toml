@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The Japanese font cut (`.agent/archive/contracts/q44.md` F1-F4): what it keeps, how it degrades, where the
+# sandbox writes it. Each mutant names one red in the Q44 suite.
+module = "webui/paste_in/fonts.py"
+tests = ["tests/test_paste_in_font.py"]
+
+[[mutant]]
+id = "q44-ascii-dropped"
+predicate = "the cut keeps printable ASCII, so the family alone draws digits (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_a_program_naming_the_family_alone_draws_with_the_cut"
+anchor = '''_ALWAYS = frozenset(chr(code) for code in range(0x20, 0x7F)) | {"\u2212"}'''
+mutant = '''_ALWAYS = frozenset({"\u2212"})'''
+
+[[mutant]]
+id = "q44-minus-dropped"
+predicate = "the cut keeps U+2212, the minus in negative tick labels (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_a_program_naming_the_family_alone_draws_with_the_cut"
+anchor = '''_ALWAYS = frozenset(chr(code) for code in range(0x20, 0x7F)) | {"\u2212"}'''
+mutant = '''_ALWAYS = frozenset(chr(code) for code in range(0x20, 0x7F))'''
+
+[[mutant]]
+id = "q44-program-skipped"
+predicate = "the program text's characters join the cut (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_characters_are_ascii_the_minus_and_every_program_and_file_character"
+anchor = '''    found.update(program)'''
+mutant = '''    found.update("")'''
+
+[[mutant]]
+id = "q44-files-skipped"
+predicate = "each attached file's characters join the cut (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_characters_are_ascii_the_minus_and_every_program_and_file_character"
+anchor = '''        found.update(content.decode("utf-8", "ignore"))'''
+mutant = '''        found.update("")'''
+
+[[mutant]]
+id = "q44-strict-decode"
+predicate = "undecodable file bytes are dropped, never raised (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_characters_are_ascii_the_minus_and_every_program_and_file_character"
+anchor = '''        found.update(content.decode("utf-8", "ignore"))'''
+mutant = '''        found.update(content.decode("utf-8"))'''
+
+[[mutant]]
+id = "q44-keep-ignored"
+predicate = "the cut holds the glyphs of the kept characters alone (F1)"
+kills = "tests/test_paste_in_font.py::test_q44_f1_the_cut_keeps_the_kept_characters_and_the_family_name"
+anchor = '''        subsetter.populate(unicodes=sorted(map(ord, keep)))'''
+mutant = '''        subsetter.populate(unicodes=[0x20])'''
+
+[[mutant]]
+id = "q44-fault-raises"
+predicate = "any fault while cutting sends the whole font (F2)"
+kills = "tests/test_paste_in_font.py::test_q44_f2_a_fault_while_cutting_sends_the_whole_font"
+anchor = '''    except Exception:
+        return font'''
+mutant = '''    except ImportError:
+        return font'''
+
+[[mutant]]
+id = "q44-absent-fonttools-raises"
+predicate = "an image without fontTools sends the whole font (F2)"
+kills = "tests/test_paste_in_font.py::test_q44_f2_without_fonttools_the_whole_font_is_sent[fontTools]"
+anchor = '''    except Exception:
+        return font'''
+mutant = '''    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError):
+        return font'''
+
+[[mutant]]
+id = "q44-shared-path"
+predicate = "each distinct font gets its own sandbox path (F4)"
+kills = "tests/test_paste_in_font.py::test_q44_f4_each_font_has_its_own_sandbox_path"
+anchor = '''    return f"/tmp/figure-verification-cjk-{hashlib.sha256(font).hexdigest()[:16]}.ttf"  # noqa: S108'''
+mutant = '''    return "/tmp/figure-verification-cjk.ttf"  # noqa: S108'''
+
+[[mutant]]
+id = "q44-readback-outside-fallback"
+predicate = "a fault reading the cut back sends the whole font (F2, Q44 review)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_fault_reading_the_cut_back_sends_the_whole_font"
+anchor = '''        loaded.save(out)
+        return out.getvalue()
+    except Exception:
+        return font'''
+mutant = '''        loaded.save(out)
+    except Exception:
+        return font
+    return out.getvalue()'''

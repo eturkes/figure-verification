@@ -75,13 +75,15 @@ def test_f8_check_names_either_paste_target_when_its_committed_bytes_drift(
 
 
 def test_f8_filter_artifact_has_exact_import_closure_and_only_allowed_roots() -> None:
-    """F8/B6: the second artifact embeds every first-party dependency, with no external root."""
+    """F8/B6: the second artifact embeds every first-party dependency; its one external root is
+    `fontTools`, which the Open WebUI image carries (Q44: the Japanese font cut)."""
     bundle = load_bundle()
     text = _filter_source()
     sources = bundle.embedded_sources(text)
     assert_exact_closure("webui.paste_in.filter", sources)
     assert_embedded_identity(sources)
-    assert offending_import_roots(bundle, text) == set()
+    assert offending_import_roots(bundle, text) == {"fontTools"}
+    assert "webui.paste_in.fonts" in sources
     assert "webui.paste_in.receipt" in sources
     assert "webui.paste_in.sandbox" in sources
     assert "verifier.figure.judge" in sources

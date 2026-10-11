@@ -30,7 +30,7 @@ import re
 import sys
 import warnings
 from collections.abc import Callable, Iterable
-from types import FrameType, TracebackType
+from types import CodeType, FrameType, TracebackType
 from typing import Any, cast
 
 PROGRAM = "<verified-figure>"
@@ -85,7 +85,6 @@ _AXIS_CALLS = {
 _GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)
 # Mathtext reports a glyph its font set lacks through matplotlib's LOGGER, never `warnings`:
 # "Font 'default' does not have a glyph for '\u5e74' [U+5e74], substituting with a dummy symbol."
-_MATHTEXT_LOG = "matplotlib.mathtext"
 _MATHTEXT_GLYPH = re.compile(r"\AFont .* does not have a glyph for ", re.DOTALL)
 _DATE_MODULES = ("matplotlib.dates", "pandas.")
 _MATRIX = 2  # a facecolor array is rows of RGBA
@@ -137,15 +136,23 @@ class _Run:
         plt.close("all")
 
 
-class _GlyphLog(logging.Handler):
-    """Counts the mathtext missing-glyph records into the active run."""
+class _MathtextLog:
+    """Mathtext's module logger, counting each missing-glyph warning into the active run as it is
+    issued: a logger drops a record below its level or under `logging.disable` before any handler
+    sees it, so a quieting call (`plt.set_loglevel('error')`) would hide the miss."""
 
-    def __init__(self, run: _Run) -> None:
-        super().__init__(logging.WARNING)
-        self.run = run
+    def __init__(self, log: logging.Logger, holder: "_Holder") -> None:
+        self.log = log
+        self.holder = holder
 
-    def emit(self, record: logging.LogRecord) -> None:
-        self.run.glyphs += _MATHTEXT_GLYPH.match(record.getMessage()) is not None
+    def warning(self, message: object, *args: object, **kwargs: Any) -> None:
+        run = self.holder.run
+        if run is not None:
+            run.glyphs += _MATHTEXT_GLYPH.match(str(message)) is not None
+        self.log.warning(message, *args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.log, name)
 
 
 class _Holder:
@@ -153,6 +160,7 @@ class _Holder:
 
     def __init__(self) -> None:
         self.version = VERSION
+        self.text = _TEXT
         self.run: _Run | None = None
         self.originals: list[tuple[object, str, object]] = []
 
@@ -475,13 +483,26 @@ def _install(holder: _Holder) -> None:
     holder.replace(module("axes").Axes, "fill_between", _fill_between)
     holder.replace(module("collections").PathCollection, "legend_elements", _legend_elements)
     holder.replace(module("pyplot"), "show", _show(holder))
+    holder.replace(module("_mathtext"), "_log", lambda log: _MathtextLog(log, holder))
+
+
+def _shape(code: CodeType) -> tuple[object, ...]:
+    """What a code object does, recursively, without its file or line numbers."""
+    consts = tuple(_shape(c) if isinstance(c, CodeType) else c for c in code.co_consts)
+    return (code.co_code, code.co_names, code.co_varnames, consts)
+
+
+# This reader text, as compiled: equal for the same text exec'd again, unequal once a hook changes.
+_TEXT = hash(_shape(sys._getframe(0).f_code))
 
 
 def _holder() -> _Holder:
     martist = importlib.import_module("matplotlib.artist")
     found = getattr(martist, _HOLDER, None)
-    if getattr(found, "version", None) == VERSION:
-        # The same reader exec'd again in this runtime: its hooks call back through this holder.
+    if getattr(found, "text", None) == _TEXT:
+        # The same reader text exec'd again in this runtime: its hooks call back through this
+        # holder. Open WebUI keeps the runtime across a filter update, so another text's holder
+        # (older hooks) comes off, even under the same description version.
         return cast("_Holder", found)
     if found is not None:
         found.unwind()
@@ -994,10 +1015,18 @@ def _prepare(font: str | None) -> None:
     mpl.use("Agg")
     plt = importlib.import_module(_PYPLOT)
     plt.close("all")
+    # A text marker parses through one module-wide parser whose cache outlives the reply: a cached
+    # parse logs no missing glyph, so a repeated miss would pass, and a new cut would not be used.
+    importlib.import_module("matplotlib.mathtext").MathTextParser._parse_cached.cache_clear()
     if font is not None:
         fonts = importlib.import_module("matplotlib.font_manager")
-        fonts.fontManager.addfont(font)
-        plt.rcParams["font.family"] = ["DejaVu Sans", fonts.FontProperties(fname=font).get_name()]
+        name = fonts.FontProperties(fname=font).get_name()
+        # Each reply ships its own cut of one family, and `findfont` takes the first entry of a
+        # name: an earlier reply's cut would shadow this one.
+        manager = fonts.fontManager
+        manager.ttflist = [entry for entry in manager.ttflist if entry.name != name]
+        manager.addfont(font)
+        plt.rcParams["font.family"] = ["DejaVu Sans", name]
 
 
 def run(source: str, font: str | None = None) -> str:
@@ -1007,8 +1036,6 @@ def run(source: str, font: str | None = None) -> str:
     current = _Run()
     holder.run = current
     sink = io.StringIO()
-    glyph_log = _GlyphLog(current)
-    logging.getLogger(_MATHTEXT_LOG).addHandler(glyph_log)
     try:
         with (
             warnings.catch_warnings(record=True) as caught,
@@ -1030,7 +1057,6 @@ def run(source: str, font: str | None = None) -> str:
             current.glyphs += sum(_GLYPH.match(str(item.message)) is not None for item in caught)
     finally:
         holder.run = None
-        logging.getLogger(_MATHTEXT_LOG).removeHandler(glyph_log)
     return _render(current)
 
 

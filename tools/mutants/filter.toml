@@ -304,3 +304,17 @@ predicate = "the parsed description reaches the line finder (M20.2 E5)"
 kills = "tests/test_paste_in_outlet.py::test_m20_2_a_passed_reply_lists_each_row_s_related_lines"
 anchor = '''        evidence = _evidence(program, description, None, None)'''
 mutant = '''        evidence = _evidence(program, None, None, None)'''
+
+[[mutant]]
+id = "q44-whole-font-sent"
+predicate = "the outlet sends the font cut to the figure's characters (Q44 F1)"
+kills = "tests/test_paste_in_font.py::test_q44_outlet_sends_the_cut_made_off_the_event_loop"
+anchor = '''    return await asyncio.to_thread(lambda: cut(font, characters(program, contents)))'''
+mutant = '''    return font'''
+
+[[mutant]]
+id = "q44-cut-on-loop"
+predicate = "the cut parses the font off the event loop (Q44 F2)"
+kills = "tests/test_paste_in_font.py::test_q44_outlet_sends_the_cut_made_off_the_event_loop"
+anchor = '''    return await asyncio.to_thread(lambda: cut(font, characters(program, contents)))'''
+mutant = '''    return cut(font, characters(program, contents))'''

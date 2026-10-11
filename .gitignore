@@ -77,6 +77,7 @@ CLAUDE.local.md
 !.agent/measurements/a3_clinical.json
 !.agent/measurements/m17u3_phrasings.json
 .agent/measurements/*.log
+.agent/measurements/f7-*.png
 .agent/measurements/node_modules/
 .agent/measurements/pyodide-index/
 

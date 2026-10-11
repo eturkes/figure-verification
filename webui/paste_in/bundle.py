@@ -51,8 +51,9 @@ _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
 _LINE_LIMIT = 100
 # The third-party imports an artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition;
-# its own dependency `pydantic` builds the tool's admin `Valves` (Q43).
-_ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic"})
+# its own dependency `pydantic` builds the tool's admin `Valves` (Q43), and `fontTools` (through
+# `fpdf2`) cuts the filter's Japanese font (Q44).
+_ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic", "fontTools"})
 
 _ASSIGNMENT = "_SOURCES[\"{name}\"] = r'''\n{source}'''\n"
 
@@ -250,7 +251,7 @@ def embedded_sources(text: str) -> dict[str, str]:
 
 
 def offending_import_roots(text: str) -> list[str]:
-    """Root packages a rendered artifact imports outside stdlib, `open_webui` and `pydantic`.
+    """Root packages a rendered artifact imports outside stdlib and the admitted image packages.
 
     Scans the wrapper AND every embedded source, because an import inside a blob is invisible to a
     scan of the artifact's own AST. First-party roots are admitted: those modules are embedded, so
@@ -285,8 +286,8 @@ _PREAMBLE = '''\
 """Figure verification for Open WebUI. GENERATED FILE -- do not edit.
 
 Paste the whole file into Open WebUI. It imports the standard library and packages the image
-already carries -- `open_webui`, and `pydantic` in the tool -- and nothing else. There is no
-`requirements:` frontmatter and no network call.
+already carries -- `open_webui`, `pydantic` in the tool, `fontTools` in the filter -- and nothing
+else. There is no `requirements:` frontmatter and no network call.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py`. The same command with
 `--check` fails when this file and its sources disagree, so an edit made here is lost at the next

@@ -475,13 +475,14 @@ def test_non_finite_coordinates_travel_as_strings() -> None:
 
 
 def test_a_holder_from_another_reader_is_unwound() -> None:
-    """A runtime that ran an older reader: its hooks come off before this version's go on."""
+    """A runtime that ran another reader text: its hooks come off before this one's go on (Q44
+    re-review: the holder is the installing text's, never the description version's)."""
     import matplotlib.artist as martist  # noqa: PLC0415 - imported where the reader imports it
 
     reader.run(_PLT + "plt.plot([1])\n")
     old = getattr(martist, "_figure_verification_hooks")  # noqa: B009 - the stored holder
     hooked_init = martist.Artist.__init__
-    old.version = "figure-description/0"
+    old.text = None
     reader.run(_PLT + "plt.plot([1])\n")
     new = getattr(martist, "_figure_verification_hooks")  # noqa: B009
     assert new is not old and old.originals == []

@@ -375,7 +375,7 @@ probe b2-embedded-identity tests/test_paste_in_bundle.py::test_b2_each_embedded_
     'webui.paste_in.tool' \
     plant_embedded_blob '# planted embedded-source drift'
 
-probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_and_tool_pydantic \
+probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_tool_pydantic_filter_fonttools \
     'numpy' \
     plant_embedded_blob 'import numpy'
 

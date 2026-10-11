@@ -58,6 +58,10 @@ dev = [
     # and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
     "matplotlib==3.9.4",
     "pandas==2.3.1",
+    # test-only (Q44): the filter cuts the Japanese font with the fontTools Open WebUI 0.10.2 ships
+    # (through `fpdf2`); pinned EXACTLY to that version, so the tests cut as the admin's instance
+    # cuts. matplotlib needs `fonttools>=4.22`.
+    "fonttools==4.63.0",
 ]
 
 [build-system]

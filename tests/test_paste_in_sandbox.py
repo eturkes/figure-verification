@@ -19,7 +19,7 @@ import pytest
 
 from verifier.figure import reader
 from verifier.figure.description import Text, parse_description
-from webui.paste_in import sandbox
+from webui.paste_in import fonts, sandbox
 
 _PLT = "import matplotlib.pyplot as plt\n"
 # OWUI 0.10.2's package detector, one entry per bundled module it routes (`.claude/rules/owui.md`).
@@ -69,14 +69,15 @@ def test_u3_program_bytes_survive_exactly() -> None:
 def test_u3_the_font_is_written_then_registered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Q44: the test font, so the reader's same-name replacement drops no bundled family."""
     import matplotlib as mpl  # noqa: PLC0415 - the reader imports it lazily too
 
     target = tmp_path / "font.ttf"
-    monkeypatch.setattr(sandbox, "FONT_PATH", str(target))
-    font = (Path(mpl.get_data_path()) / "fonts" / "ttf" / "DejaVuSerif.ttf").read_bytes()
+    monkeypatch.setattr(fonts, "path", lambda _font: str(target))
+    font = (Path(__file__).parent / "fonts" / "NotoSansJP-subset.ttf").read_bytes()
     _execute(sandbox.wrapper_code(_PLT + "plt.plot([1])\n", font))
     assert target.read_bytes() == font
-    assert mpl.rcParams["font.family"] == ["DejaVu Sans", "DejaVu Serif"]
+    assert mpl.rcParams["font.family"] == ["DejaVu Sans", "Noto Sans JP"]
 
 
 def test_u3_the_shipped_reader_is_the_tracked_reader(monkeypatch: pytest.MonkeyPatch) -> None:

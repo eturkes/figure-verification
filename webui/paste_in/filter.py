@@ -28,6 +28,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from webui.paste_in.checks import CHECK_OF, Evidence, breakdown_html
 from webui.paste_in.excerpts import excerpts
+from webui.paste_in.fonts import characters, cut
 from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
@@ -66,6 +67,18 @@ def _needs_font(program: str, files: tuple[UploadedFile, ...]) -> bool:
     """Whether the figure can draw text outside ASCII, which the sandbox fonts may lack: the
     program or an attached file holds a non-ASCII character (over-inclusion costs bytes alone)."""
     return not program.isascii() or any(not file.content.isascii() for file in files)
+
+
+async def _font(program: str, files: tuple[UploadedFile, ...]) -> bytes | None:
+    """Open WebUI's Japanese font cut to what the figure can draw, when it can draw text outside
+    ASCII. The cut parses a 5.7 MB font, so it runs off the event loop."""
+    if not _needs_font(program, files):
+        return None
+    font = await cjk_font()
+    if font is None:
+        return None
+    contents = [file.content for file in files]
+    return await asyncio.to_thread(lambda: cut(font, characters(program, contents)))
 
 
 def _png_uri(stdout: str) -> str | None:
@@ -331,7 +344,7 @@ class Filter:
         if __event_call__ is None or __event_emitter__ is None or not session:
             return await fail("no_browser")
         files = await owned_files(receipt.file_ids, user_id)
-        font = await cjk_font() if _needs_font(receipt.program, files) else None
+        font = await _font(receipt.program, files)
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {

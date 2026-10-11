@@ -137,9 +137,9 @@ mutant = '''    if False or ('''
 
 [[mutant]]
 id = "m19-holder-version"
-predicate = "a holder from another reader version is unwound"
+predicate = "a holder from another reader text is unwound"
 kills = "tests/test_figure_reader.py::test_a_holder_from_another_reader_is_unwound"
-anchor = '''    if getattr(found, "version", None) == VERSION:'''
+anchor = '''    if getattr(found, "text", None) == _TEXT:'''
 mutant = '''    if found is not None:'''
 
 [[mutant]]
@@ -216,15 +216,15 @@ mutant = '''_GLYPH = re.compile(r"\AGlyph \d+ .* missing from font", re.DOTALL)'
 id = "m19-mathtext-glyph-unlogged"
 predicate = "a mathtext glyph the font set lacks counts: matplotlib logs it, never warns"
 kills = "tests/test_figure_reader.py::test_m19_9_a_mathtext_glyph_the_font_lacks_counts"
-anchor = '''    logging.getLogger(_MATHTEXT_LOG).addHandler(glyph_log)'''
-mutant = '''    logging.getLogger("matplotlib.unused").addHandler(glyph_log)'''
+anchor = '''    holder.replace(module("_mathtext"), "_log", lambda log: _MathtextLog(log, holder))'''
+mutant = '''    holder.replace(module("_mathtext"), "_log", lambda log: log)'''
 
 [[mutant]]
 id = "m19-mathtext-glyph-uncounted"
 predicate = "a mathtext missing-glyph record adds to the run's glyph count"
 kills = "tests/test_figure_reader.py::test_m19_9_a_mathtext_glyph_the_font_lacks_counts"
-anchor = '''        self.run.glyphs += _MATHTEXT_GLYPH.match(record.getMessage()) is not None'''
-mutant = '''        self.run.glyphs += 0'''
+anchor = '''            run.glyphs += _MATHTEXT_GLYPH.match(str(message)) is not None'''
+mutant = '''            run.glyphs += 0'''
 
 [[mutant]]
 id = "m19-minor-labels-unread"
@@ -431,3 +431,33 @@ anchor = '''            clock = _clock() if line is not None else 0
             result = original(self, *args, **kwargs)'''
 mutant = '''            result = original(self, *args, **kwargs)
             clock = _clock() if line is not None else 0'''
+
+[[mutant]]
+id = "q44-earlier-cut-kept"
+predicate = "the shipped font replaces every earlier registration of its family name (Q44 F4)"
+kills = "tests/test_paste_in_font.py::test_q44_f4_a_later_cut_of_the_family_draws_every_glyph"
+anchor = '''        manager.ttflist = [entry for entry in manager.ttflist if entry.name != name]'''
+mutant = '''        manager.ttflist = list(manager.ttflist)'''
+
+[[mutant]]
+id = "q44-mathtext-cache-kept"
+predicate = "each reply clears the text-marker parse cache, so a repeated miss still counts (Q44 review)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_repeated_mathtext_marker_miss_fails_every_reply"
+anchor = '''    importlib.import_module("matplotlib.mathtext").MathTextParser._parse_cached.cache_clear()'''
+mutant = '''    importlib.import_module("matplotlib.mathtext")'''
+
+[[mutant]]
+id = "q44-mathtext-level-gated"
+predicate = "a mathtext miss counts whatever level or `logging.disable` the program set (Q44 review)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_quieted_logger_still_counts_a_mathtext_miss"
+anchor = '''        run = self.holder.run
+        if run is not None:'''
+mutant = '''        run = self.holder.run
+        if run is not None and self.log.isEnabledFor(logging.WARNING):'''
+
+[[mutant]]
+id = "q44-holder-kept-across-readers"
+predicate = "a reader reuses only a holder its own text installed, so a tab's next reader installs its own hooks (Q44 re-review RR-R1)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_later_reader_text_installs_its_own_hooks"
+anchor = '''    if getattr(found, "text", None) == _TEXT:'''
+mutant = '''    if getattr(found, "version", None) == VERSION:'''

@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Final
 
 from verifier.figure import reader
+from webui.paste_in import fonts
 
-FONT_PATH: Final = "/tmp/figure-verification-cjk.ttf"  # noqa: S108 - the sandbox's in-memory FS
 _PLOTTING: Final = "mat" + "plotlib"
 
 
@@ -43,7 +43,7 @@ def wrapper_code(program: str, font: bytes | None = None) -> str:
         ("_fv_font = None",)
         if font is None
         else (
-            f"_fv_font = {FONT_PATH!r}",
+            f"_fv_font = {fonts.path(font)!r}",
             "with open(_fv_font, 'wb') as _fv_handle:",
             f"    _fv_handle.write(_fv_b64.b64decode({_payload(font)}))",
         )

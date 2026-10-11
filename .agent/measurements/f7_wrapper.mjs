@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Replay the installed OWUI package detector and iframe execute path against its Pyodide bundle.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -151,7 +152,10 @@ async function execute(code, pyodide) {
   const pngs = lines.filter((line) => line.startsWith("data:image/png;base64,"));
   const png = pngs.length === 1 ? Buffer.from(pngs[0].slice(22), "base64") : Buffer.alloc(0);
   return {
+    png,
     packages,
+    source_bytes: Buffer.byteLength(code),
+    png_sha256: createHash("sha256").update(png).digest("hex"),
     stdout_lines: lines.length,
     stdout_other: lines.filter((line) => !line.startsWith("data:image/png;base64,")).map((line) => line.slice(0, 200)),
     description_lines: tagged.length,
@@ -180,21 +184,41 @@ results["literal-control"] = await execute("import matplotlib.pyplot as plt\nplt
 for (const [name, code] of Object.entries(exported.japanese)) {
   results[name] = await execute(code, await runtime());
 }
+// Q44: each sequence = replies in ONE runtime; the leg is its last reply, every earlier one clean.
+const earlier = {};
+for (const [name, codes] of Object.entries(exported.sequences)) {
+  const shared = await runtime();
+  earlier[name] = [];
+  for (const code of codes.slice(0, -1)) earlier[name].push(await execute(code, shared));
+  results[name] = await execute(codes.at(-1), shared);
+}
+// Q44: the Japanese PNGs beside the result, for inspection.
+for (const [name, { png }] of Object.entries(results)) {
+  if (name.startsWith("ja-") && png.length) writeFileSync(`${output.replace(/\.json$/, "")}.${name}.png`, png);
+}
+for (const row of [...Object.values(results), ...Object.values(earlier).flat()]) delete row.png;
 const report = {
   pyodide: version,
+  fonttools: exported.fonttools,
   python: pyodide.runPython("import sys; sys.version.split()[0]"),
   detector_entries: rules.length,
   results,
+  earlier,
 };
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report));
 // Every plot, the two glyph legs included, replies one parseable description line + one PNG line
 // with an empty stderr (the reader catches the program's warnings). ja-no-font (control) +
 // ja-mathtext (declared limit) report missing glyphs in the description; every other plot none.
-const controls = ["ja-no-font", "ja-mathtext"];
+// Q44: ja-miss draws a character outside its cut (glyphs > 0); ja-second's earlier reply is clean
+// too; both replies of ja-marker-repeat count the text marker's missing glyph. The cut lacks FreeType's CJK autohinter reference glyphs, so its PNG differs from ja-whole's
+// in antialiasing alone (inspect both PNGs).
+const controls = ["ja-no-font", "ja-mathtext", "ja-miss", "ja-marker-repeat"];
 const plots = Object.entries(results).filter(([name]) => name !== "literal-control");
 if (
-  plots.length !== 7 ||
+  plots.length !== 11 ||
+  earlier["ja-marker-repeat"].some((reply) => !(reply.glyphs > 0)) ||
+  earlier["ja-second"].some((reply) => reply.glyphs !== 0 || !reply.png_signature) ||
   plots.some(
     ([name, {
       stdout_lines, description_lines, description_parseable, glyphs, png_lines, png_second,

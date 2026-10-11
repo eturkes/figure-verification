@@ -173,6 +173,15 @@ def f7():
             for name, row in data["results"].items()
             if name != "literal-control"
         },
+        # Q44: the cut font's RPC source size + each one-runtime sequence's earlier replies.
+        "cut": {
+            "fonttools": data["fonttools"],
+            "ja_font_source_bytes": data["results"]["ja-font"]["source_bytes"],
+            "earlier_glyphs_missing": {
+                name: [(row["glyphs"] or 0) > 0 for row in rows]
+                for name, rows in data["earlier"].items()
+            },
+        },
         "literal_control_syntax_error": "SyntaxError"
         in (data["results"]["literal-control"]["stderr"] or ""),
     }

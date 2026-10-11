@@ -32,7 +32,8 @@ def _characters() -> set[int]:
         capture_output=True,
         check=True,
     ).stdout.split(b"\0")
-    found = set(range(0x20, 0x7F)) | set(_KANA)
+    # U+2212 = the minus matplotlib's tick formatters write; the filter's cut keeps it (Q44).
+    found = set(range(0x20, 0x7F)) | set(_KANA) | {0x2212}
     for name in filter(None, listed):
         if name.endswith(b".ttf"):
             continue
