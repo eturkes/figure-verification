@@ -464,6 +464,23 @@ def _show(holder: _Holder) -> Callable[[Any], object]:
     return make
 
 
+def _layout(holder: _Holder) -> Callable[[Any], object]:
+    """A path text (`TextPath`, a text marker) lays out glyph by glyph and draws `.notdef` for a
+    glyph no font holds, warning nothing, unlike drawn text: each such glyph counts here."""
+
+    def make(original: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(original)
+        def hooked(*args: object, **kwargs: object) -> Any:
+            for item in original(*args, **kwargs):
+                if holder.run is not None and item.glyph_idx == 0:
+                    holder.run.glyphs += 1
+                yield item
+
+        return hooked
+
+    return make
+
+
 def _install(holder: _Holder) -> None:
     def module(name: str) -> Any:
         return importlib.import_module(f"matplotlib.{name}")
@@ -484,6 +501,7 @@ def _install(holder: _Holder) -> None:
     holder.replace(module("collections").PathCollection, "legend_elements", _legend_elements)
     holder.replace(module("pyplot"), "show", _show(holder))
     holder.replace(module("_mathtext"), "_log", lambda log: _MathtextLog(log, holder))
+    holder.replace(module("_text_helpers"), "layout", _layout(holder))
 
 
 def _shape(code: CodeType) -> tuple[object, ...]:

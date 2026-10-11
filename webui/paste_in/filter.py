@@ -28,7 +28,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from webui.paste_in.checks import CHECK_OF, Evidence, breakdown_html
 from webui.paste_in.excerpts import excerpts
-from webui.paste_in.fonts import characters, cut
+from webui.paste_in.fonts import cut_for
 from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
@@ -77,8 +77,7 @@ async def _font(program: str, files: tuple[UploadedFile, ...]) -> bytes | None:
     font = await cjk_font()
     if font is None:
         return None
-    contents = [file.content for file in files]
-    return await asyncio.to_thread(lambda: cut(font, characters(program, contents)))
+    return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])
 
 
 def _png_uri(stdout: str) -> str | None:

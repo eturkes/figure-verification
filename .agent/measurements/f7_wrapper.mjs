@@ -213,10 +213,10 @@ console.log(JSON.stringify(report));
 // Q44: ja-miss draws a character outside its cut (glyphs > 0); ja-second's earlier reply is clean
 // too; both replies of ja-marker-repeat count the text marker's missing glyph. The cut lacks FreeType's CJK autohinter reference glyphs, so its PNG differs from ja-whole's
 // in antialiasing alone (inspect both PNGs).
-const controls = ["ja-no-font", "ja-mathtext", "ja-miss", "ja-marker-repeat"];
+const controls = ["ja-no-font", "ja-mathtext", "ja-miss", "ja-marker-repeat", "ja-textpath"];
 const plots = Object.entries(results).filter(([name]) => name !== "literal-control");
 if (
-  plots.length !== 11 ||
+  plots.length !== 12 ||
   earlier["ja-marker-repeat"].some((reply) => !(reply.glyphs > 0)) ||
   earlier["ja-second"].some((reply) => reply.glyphs !== 0 || !reply.png_signature) ||
   plots.some(

@@ -78,6 +78,17 @@
       "stderr": null,
       "stdout_lines": 2
     },
+    "ja-textpath": {
+      "description_lines": 1,
+      "description_parseable": true,
+      "error": null,
+      "png_lines": 1,
+      "png_second": true,
+      "png_signature": true,
+      "result": null,
+      "stderr": null,
+      "stdout_lines": 2
+    },
     "ja-whole": {
       "description_lines": 1,
       "description_parseable": true,
@@ -145,6 +156,7 @@
     "ja-miss": true,
     "ja-no-font": true,
     "ja-second": false,
+    "ja-textpath": true,
     "ja-whole": false,
     "line": false,
     "no-show": false,

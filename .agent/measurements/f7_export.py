@@ -79,7 +79,15 @@ _CUT = (
     "print(json.dumps({'fonttools': fontTools.version, 'cuts': cuts}))\n"
 )
 marker = japanese.replace("plt.show()", "plt.plot([0, 1], [100, 200], marker='$週$')\nplt.show()")
+# Closing review G1: a TextPath marker lays its glyphs out without a warning; the reader counts each
+# `.notdef` it lays out.
+textpath = japanese.replace(
+    "plt.show()",
+    "from matplotlib.textpath import TextPath\n"
+    "plt.plot([0, 1], [100, 200], marker=TextPath((0, 0), chr(0x9031)))\nplt.show()",
+)
 legs = {
+    "ja-textpath": textpath,
     "ja-font": japanese,
     "ja-mathtext": mathtext,
     "ja-miss": miss,
@@ -117,6 +125,7 @@ print(
                 "ja-no-font": wrapper_code(japanese),
                 "ja-mathtext": wrapper_code(mathtext, cuts["ja-mathtext"]),
                 "ja-miss": wrapper_code(miss, cuts["ja-miss"]),
+                "ja-textpath": wrapper_code(textpath, cuts["ja-textpath"]),
             },
             # Each sequence shares one fresh runtime, as Open WebUI's one worker per tab does.
             "sequences": {

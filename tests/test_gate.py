@@ -18,6 +18,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 
@@ -217,19 +218,32 @@ def test_g12_every_static_config_check_ships_a_positive_control() -> None:
 
 
 def test_g15_every_probe_node_names_a_test() -> None:
-    """G15: every pytest node `tools/gate-probe.sh` runs is a `def` in its file. Acceptance: a
-    renamed test strands its probe, which then reports MISSED for a reason the check never saw (or
-    plants an input the renamed test no longer reads) -- this names the stale node instead."""
+    """G15: every pytest node `tools/gate-probe.sh` runs is one pytest collects -- a function, or
+    a parameter of one. Acceptance: a renamed test or parameter strands its probe, which then
+    reports MISSED for a reason the check never saw (or plants an input nothing reads); this
+    names the stale node instead."""
     probe = _GATE_PROBE.read_text(encoding="utf-8")
-    nodes = re.findall(r"(tests/[\w/]+\.py)::(\w+)", probe)
+    nodes = sorted(set(re.findall(r"tests/[\w/]+\.py::[\w\[\]./-]+", probe)))
     assert nodes, "no probe nodes found"
-    stale = []
-    for path, name in nodes:
-        source = _REPO_ROOT / path
-        text = source.read_text(encoding="utf-8") if source.is_file() else ""
-        if re.search(rf"^def {name}\(", text, re.MULTILINE) is None:
-            stale.append(f"{path}::{name}")
-    assert not stale, f"gate-probe.sh names no such test: {stale}"
+    collected = subprocess.run(  # noqa: S603 - fixed argv
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "-q",
+            "--no-cov",
+            "-p",
+            "no:cacheprovider",
+            *nodes,
+        ],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stale = re.findall(r"ERROR: not found: \S*?(tests/\S+)", collected.stdout + collected.stderr)
+    assert collected.returncode == 0 and not stale, f"gate-probe.sh names no such test: {stale}"
 
 
 def test_g13_audit_stage_covers_every_lock() -> None:

@@ -6,13 +6,14 @@ group(K,V,r) r in sum mean min max, count(K), plus the request's numbers. Each c
 widens it. Per transform, over each `data/*.csv` with numeric columns and over made-up requests:
 - `outputs`: the transform's series; `ties`: of those, how many equal a vocabulary series over
   other columns (a tie the request must break);
-- `added`: made-up keyed series (I2's shape: keys from one real key column) of n = 1..10 points,
-  TRIALS each per value grid, that the transform explains while the vocabulary does not. Grids:
+- `added`: made-up keyed series (I2's shape: n distinct keys from one real key column holding at
+  least n keys; `null` where no column holds n) of n = 1..10 points, TRIALS each per value grid,
+  that the transform explains while the vocabulary does not, both matched injectively. Grids:
   `int` = integers in [0, 2M], `dec2` = two-decimal numbers in [0, 2M], M = the largest |value|
   the transform yields on that CSV (a made-up value in the transform's own range).
 Request leg: numbers `1 to m` (m = 3, 5, 10) and m random distinct integers in [1, 100]; series are
-values alone (pairing is not inferred, R4); a hit = every value in transform(numbers), injectively,
-and not every value in the numbers. Host only:
+values alone (pairing is not inferred, R4); a hit = every value in transform(numbers) and not every
+value in the numbers, each by membership as the verifier matches typed numbers. Host only:
 `uv run --locked python .agent/measurements/x1_transforms.py`.
 """
 
@@ -164,10 +165,14 @@ def measure(path, rng):
         for grid in GRIDS:
             added[grid] = {}
             for size in SIZES:
+                eligible = [column for column in keys if len(pools[column]) >= size]
+                if not eligible:  # no key column holds `size` distinct keys
+                    added[grid][str(size)] = None
+                    continue
                 hits = 0
                 for _ in range(TRIALS):
-                    column = rng.choice(keys)
-                    picked = rng.sample(pools[column], min(size, len(pools[column])))
+                    column = rng.choice(eligible)
+                    picked = rng.sample(pools[column], size)
                     drawn = list(zip(picked, made_up(rng, grid, top, len(picked)), strict=True))
                     counted = Counter(drawn)
                     hits += any(p.explains(drawn, counted) for p in candidates) and not any(
@@ -187,10 +192,7 @@ def request_leg(rng):
         result[how] = {}
         for label, numbers in lists.items():
             made = [value for _key, value in of_series(list(enumerate(numbers)), how) or []]
-            transformed, typed = (
-                Points([(None, v) for v in made]),
-                Points([(None, v) for v in numbers]),
-            )
+            transformed, typed = set(made), set(numbers)
             top = max((abs(v) for v in made), default=0.0) or 1.0
             added = {}
             for grid in GRIDS:
@@ -198,11 +200,8 @@ def request_leg(rng):
                 for size in SIZES:
                     hits = 0
                     for _ in range(TRIALS):
-                        drawn = [(None, v) for v in made_up(rng, grid, top, size)]
-                        counted = Counter(drawn)
-                        hits += transformed.explains(drawn, counted) and not typed.explains(
-                            drawn, counted
-                        )
+                        drawn = made_up(rng, grid, top, size)
+                        hits += transformed.issuperset(drawn) and not typed.issuperset(drawn)
                     added[grid][str(size)] = hits
             result[how][label] = added
     return result

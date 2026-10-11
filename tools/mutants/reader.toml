@@ -461,3 +461,17 @@ predicate = "a reader reuses only a holder its own text installed, so a tab's ne
 kills = "tests/test_paste_in_font.py::test_q44_r_a_later_reader_text_installs_its_own_hooks"
 anchor = '''    if getattr(found, "text", None) == _TEXT:'''
 mutant = '''    if getattr(found, "version", None) == VERSION:'''
+
+[[mutant]]
+id = "q44-path-text-unhooked"
+predicate = "path text (a TextPath marker) is laid out through the counting hook (closing review G1)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_path_text_glyph_outside_the_cut_fails"
+anchor = '''    holder.replace(module("_text_helpers"), "layout", _layout(holder))'''
+mutant = '''    module("_text_helpers")'''
+
+[[mutant]]
+id = "q44-path-text-notdef-uncounted"
+predicate = "a path-text glyph laid out as `.notdef` (index 0) counts as missing (closing review G1)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_path_text_glyph_outside_the_cut_fails"
+anchor = '''                if holder.run is not None and item.glyph_idx == 0:'''
+mutant = '''                if holder.run is not None and item.glyph_idx < 0:'''

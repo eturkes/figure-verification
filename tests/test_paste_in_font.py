@@ -283,3 +283,30 @@ def test_q44_r_a_mathtext_miss_outside_a_run_is_matplotlib_s_own(
         plt.plot([1, 2], [1, 2], marker="$鬱$")
     plt.close("all")
     assert ["does not have a glyph" in r.getMessage() for r in caplog.records] == [True]
+
+
+def test_q44_r_a_fault_collecting_the_characters_sends_the_whole_font(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Closing review G2: the collection runs inside the cut's fallback."""
+
+    def explode(*_args: object) -> frozenset[str]:
+        message = "planted collection failure"
+        raise MemoryError(message)
+
+    monkeypatch.setattr(_fonts(), "characters", explode)
+    assert _fonts().cut_for(SOURCE, _PLT + "plt.title('患者')\n", [b"x"]) == SOURCE
+
+
+def test_q44_r_a_path_text_glyph_outside_the_cut_fails(tmp_path: Path) -> None:
+    """Closing review G1: a `TextPath` marker lays its glyphs out without a warning; a glyph the
+    cut lacks draws `.notdef` and must still fail, while the whole font draws it."""
+    program = (
+        _PLT + "from matplotlib.textpath import TextPath\nplt.title('患者')\n"
+        "plt.plot([1, 2], [1, 2], marker=TextPath((0, 0), chr(0x9031)))\nplt.show()\n"
+    )
+    assert "週" not in _characters(program, [])
+    cut = _write(_cut(SOURCE, _characters(program, [])), tmp_path)
+    assert _glyphs(reader.run(program, cut)) > 0
+    assert _glyphs(reader.run(program, _write(SOURCE, tmp_path))) == 0
+    assert _glyphs(reader.run(program.replace("chr(0x9031)", "'患'"), cut)) == 0

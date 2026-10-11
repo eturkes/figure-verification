@@ -50,18 +50,22 @@ mutant = '''        subsetter.populate(unicodes=[0x20])'''
 id = "q44-fault-raises"
 predicate = "any fault while cutting sends the whole font (F2)"
 kills = "tests/test_paste_in_font.py::test_q44_f2_a_fault_while_cutting_sends_the_whole_font"
-anchor = '''    except Exception:
+anchor = '''        return out.getvalue()
+    except Exception:
         return font'''
-mutant = '''    except ImportError:
+mutant = '''        return out.getvalue()
+    except ImportError:
         return font'''
 
 [[mutant]]
 id = "q44-absent-fonttools-raises"
 predicate = "an image without fontTools sends the whole font (F2)"
 kills = "tests/test_paste_in_font.py::test_q44_f2_without_fonttools_the_whole_font_is_sent[fontTools]"
-anchor = '''    except Exception:
+anchor = '''        return out.getvalue()
+    except Exception:
         return font'''
-mutant = '''    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError):
+mutant = '''        return out.getvalue()
+    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError):
         return font'''
 
 [[mutant]]
@@ -83,3 +87,14 @@ mutant = '''        loaded.save(out)
     except Exception:
         return font
     return out.getvalue()'''
+
+[[mutant]]
+id = "q44-collect-outside-fallback"
+predicate = "a fault while collecting the characters sends the whole font (F2, closing review G2)"
+kills = "tests/test_paste_in_font.py::test_q44_r_a_fault_collecting_the_characters_sends_the_whole_font"
+anchor = '''    try:
+        keep = characters(program, contents)
+    except Exception:
+        return font
+    return cut(font, keep)'''
+mutant = '''    return cut(font, characters(program, contents))'''

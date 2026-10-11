@@ -665,7 +665,7 @@ def test_p13_four_fault_classes_are_disjoint_and_independent(tmp_path: Path) -> 
 
 
 def test_p15_runtime_pyproject_pins() -> None:
-    """P15 pins the isolated Python 3.12 runtime and its eight direct packages."""
+    """P15 pins the isolated Python 3.12 runtime and its seven direct packages."""
     runtime_project_path = Path("model_backend/runtime/pyproject.toml")
     assert runtime_project_path.is_file(), "P15 feature absent: runtime pyproject.toml"
     source = runtime_project_path.read_text(encoding="utf-8")

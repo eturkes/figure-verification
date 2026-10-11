@@ -1616,6 +1616,23 @@ def _show(holder: _Holder) -> Callable[[Any], object]:
     return make
 
 
+def _layout(holder: _Holder) -> Callable[[Any], object]:
+    """A path text (`TextPath`, a text marker) lays out glyph by glyph and draws `.notdef` for a
+    glyph no font holds, warning nothing, unlike drawn text: each such glyph counts here."""
+
+    def make(original: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(original)
+        def hooked(*args: object, **kwargs: object) -> Any:
+            for item in original(*args, **kwargs):
+                if holder.run is not None and item.glyph_idx == 0:
+                    holder.run.glyphs += 1
+                yield item
+
+        return hooked
+
+    return make
+
+
 def _install(holder: _Holder) -> None:
     def module(name: str) -> Any:
         return importlib.import_module(f"matplotlib.{name}")
@@ -1636,6 +1653,7 @@ def _install(holder: _Holder) -> None:
     holder.replace(module("collections").PathCollection, "legend_elements", _legend_elements)
     holder.replace(module("pyplot"), "show", _show(holder))
     holder.replace(module("_mathtext"), "_log", lambda log: _MathtextLog(log, holder))
+    holder.replace(module("_text_helpers"), "layout", _layout(holder))
 
 
 def _shape(code: CodeType) -> tuple[object, ...]:
@@ -2578,8 +2596,8 @@ The whole font is 5.7 MB and rides inside the RPC. The cut keeps printable ASCII
 that matplotlib's tick formatters write, so a program that names the font family alone still draws
 numbers, plus every character of the program text and of each attached file. A character in
 neither (one the program builds with `chr`) is outside the cut: drawn with no other font holding
-it, matplotlib warns that its glyph is missing, and the reader's count fails the figure, so a miss
-can only block.
+it, the reader counts its missing glyph (matplotlib's warning, mathtext's log record, or a
+`.notdef` glyph path text lays out) and the figure fails, so a miss can only block.
 
 fontTools ships in the Open WebUI image (`fpdf2`). Its import is function-local: without it, or on
 any fault while cutting, the whole font goes, as before.
@@ -2622,6 +2640,16 @@ def cut(font: bytes, keep: frozenset[str]) -> bytes:
         return out.getvalue()
     except Exception:
         return font
+
+
+def cut_for(font: bytes, program: str, contents: Iterable[bytes]) -> bytes:
+    """`font` cut to what this figure can draw, else the whole `font`: collecting the characters
+    is part of the cut, so its faults degrade the same way."""
+    try:
+        keep = characters(program, contents)
+    except Exception:
+        return font
+    return cut(font, keep)
 
 
 def path(font: bytes) -> str:
@@ -7141,7 +7169,7 @@ from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.limits import DEFAULT_LIMITS
 from webui.paste_in.checks import CHECK_OF, Evidence, breakdown_html
 from webui.paste_in.excerpts import excerpts
-from webui.paste_in.fonts import characters, cut
+from webui.paste_in.fonts import cut_for
 from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
@@ -7190,8 +7218,7 @@ async def _font(program: str, files: tuple[UploadedFile, ...]) -> bytes | None:
     font = await cjk_font()
     if font is None:
         return None
-    contents = [file.content for file in files]
-    return await asyncio.to_thread(lambda: cut(font, characters(program, contents)))
+    return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])
 
 
 def _png_uri(stdout: str) -> str | None:
