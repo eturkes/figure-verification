@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G14, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G15, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
@@ -203,18 +203,22 @@ path.write_bytes(data.replace(marker, marker + argv[2].encode() + b"\n", 1))
 PY
 }
 
-plant_model_description_stem() {
+plant_model_description_rule() {
     "$UV_PROJECT_ENVIRONMENT/bin/python" - "$ARTIFACT" <<'PY'
 from pathlib import Path
 from sys import argv
 
 path = Path(argv[1])
 data = path.read_bytes()
-old = b'        """Draw a chart from a complete Python program over the attached CSV file.'
-new = old.replace(b'Draw', b'Validate', 1)
+old = b'start at zero'
 assert data.count(old) == 1
-path.write_bytes(data.replace(old, new, 1))
+path.write_bytes(data.replace(old, b'start at one', 1))
 PY
+}
+
+plant_stale_probe_node() {
+    # Renames a test this script names; G15 must then name the node the probe still runs.
+    sed -i 's/^def test_g11_ops_rules_record_the_gate_invocation(/def test_g11_renamed(/' "$TEST_GATE"
 }
 
 probe g6-ci-gate-step tests/test_gate.py::test_g6_ci_runs_the_gate_script_and_no_tool_directly \
@@ -236,6 +240,10 @@ probe g13-nested-lock-audit tests/test_gate.py::test_g13_audit_stage_covers_ever
 probe g14-spdx-header tests/test_gate.py::test_g14_tracked_sources_carry_spdx_header \
     "$SPDX_PROBE" \
     strip_spdx_header
+
+probe g15-probe-node tests/test_gate.py::test_g15_every_probe_node_names_a_test \
+    'test_gate.py::test_g11_ops_rules_record_the_gate_invocation' \
+    plant_stale_probe_node
 
 probe g7-ecosystem tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert covered == {' \
@@ -379,9 +387,9 @@ probe b6-import-surface tests/test_paste_in_bundle.py::test_b6_import_surface_is
     'numpy' \
     plant_embedded_blob 'import numpy'
 
-probe e3-description-stem tests/test_webui_python_exposure.py::test_e3_tool_description_carries_no_admission_vocabulary \
-    'Validate' \
-    plant_model_description_stem
+probe e3-description-rule tests/test_webui_python_exposure.py::test_e3_tool_description_states_the_chart_rules \
+    'AssertionError: start at zero' \
+    plant_model_description_rule
 
 # The last two need the binary itself: without it the pytest node skips (rc 0, indistinguishable
 # from a check that cannot fire) and shell_lint would fail at 127 rather than on its own ban.

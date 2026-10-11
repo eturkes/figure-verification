@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G14: static-config invariants of the one gate command.
+"""G6-G15: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
-`.agent/archive/contracts/m10u7.md` (G14).
+`.agent/archive/contracts/m10u7.md` (G14); G15 = queue row Q47 (its row text is the contract).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -214,6 +214,22 @@ def test_g12_every_static_config_check_ships_a_positive_control() -> None:
     assert checks, "no checks found to cover"
     missing = [name for name in checks if name not in probe]
     assert not missing, f"no positive control in gate-probe.sh for {missing}"
+
+
+def test_g15_every_probe_node_names_a_test() -> None:
+    """G15: every pytest node `tools/gate-probe.sh` runs is a `def` in its file. Acceptance: a
+    renamed test strands its probe, which then reports MISSED for a reason the check never saw (or
+    plants an input the renamed test no longer reads) -- this names the stale node instead."""
+    probe = _GATE_PROBE.read_text(encoding="utf-8")
+    nodes = re.findall(r"(tests/[\w/]+\.py)::(\w+)", probe)
+    assert nodes, "no probe nodes found"
+    stale = []
+    for path, name in nodes:
+        source = _REPO_ROOT / path
+        text = source.read_text(encoding="utf-8") if source.is_file() else ""
+        if re.search(rf"^def {name}\(", text, re.MULTILINE) is None:
+            stale.append(f"{path}::{name}")
+    assert not stale, f"gate-probe.sh names no such test: {stale}"
 
 
 def test_g13_audit_stage_covers_every_lock() -> None:
