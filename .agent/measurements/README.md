@@ -56,7 +56,8 @@ axes child as (class, origin, data transform) — origin = the outermost Axes-mo
 (`.claude/rules/figure.md`). The projection compares the host leg with the installed bundle and
 publishes the bundle's family set. `I2` measures keyed value-explanation ambiguity over `data/*.csv`:
 cross-column full-series ties, shared points, tied k-point subsets and chance matches of made-up
-keyed series (seed 19, 10,000 trials per size). `I3` (M19.2) runs the same 52 programs through the
+keyed series of k distinct keys from one key column holding at least k (seed 19, 10,000 trials per
+size, k = 1-5; `null` where no key column holds k: these CSVs hold 2-4 keys per key column). `I3` (M19.2) runs the same 52 programs through the
 reader on the host and through the production `wrapper_code` in the installed bundle, one runtime
 in order (the reader's holder reused across replies), and publishes, per program, the description
 fields that differ: `boxplot` labels, `reference` span shape (`Rectangle` vs `Polygon`), `subplots`

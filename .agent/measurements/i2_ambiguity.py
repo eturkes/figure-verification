@@ -5,9 +5,10 @@ Explanations (closed, `.claude/rules/figure.md`): raw(K,V), index(V), group(K,V,
 min max, count(K). A point = (key, value). Measures, per CSV: (a) full-series ties between
 explanations with different column sets; (b) keyed points shared by explanations with different
 column sets; (c) k-point subsets (k = 1..3) of one explanation also explained, injectively, by an
-explanation with other columns; (d) chance: made-up series over a real key column's keys with
-values uniform in [0, 2 * column max], k = 1..5 points, 10,000 trials each, explained by any
-explanation. Host only: `uv run --locked python .agent/measurements/i2_ambiguity.py`.
+explanation with other columns; (d) chance: made-up series of k distinct keys from one key column
+holding at least k (`null` where none does) with values uniform in [0, 2 * column max], k = 1..5,
+10,000 trials each, explained by any explanation. Host only:
+`uv run --locked python .agent/measurements/i2_ambiguity.py`.
 """
 
 import csv
@@ -92,13 +93,17 @@ def measure(path, rng):
         subsets[str(size)] = {"subsets": total, "tied": tied}
     keys = [c for c in header if c not in numeric] or header
     top = max(abs(number(r[c])) for r in rows for c in numeric)
+    pools = {column: sorted({r[column] for r in rows}) for column in keys}
     chance = {}
     for size in range(1, 6):
+        eligible = [column for column in keys if len(pools[column]) >= size]
+        if not eligible:  # no key column holds `size` distinct keys
+            chance[str(size)] = None
+            continue
         hits = 0
         for _ in range(TRIALS):
-            column = rng.choice(keys)
-            pool = sorted({r[column] for r in rows})
-            picked = rng.sample(pool, min(size, len(pool)))
+            column = rng.choice(eligible)
+            picked = rng.sample(pools[column], size)
             series = [(key, float(rng.randint(0, int(2 * top)))) for key in picked]
             hits += any(explains(found[name], series) for name in names)
         chance[str(size)] = hits
