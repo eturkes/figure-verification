@@ -2343,9 +2343,11 @@ group look alike. An integer range expands to every integer between its ends: `a
 never a range,
 because dates and negative numbers use it. A range longer than `MAX_RANGE` terms adds its ends
 alone.
+
+`sequence` keeps the numbers in typed order for the computations on typed numbers (Q45): each
+number's whole reading, a range expanded in place in its typed direction.
 """
 
-import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -2368,6 +2370,7 @@ class Request:
 
     numbers: frozenset[float]
     text: str
+    sequence: tuple[float, ...] = ()
 
     def names(self, label: str) -> bool:
         """R4: a category label the request typed, after NFKC + casefold on both sides."""
@@ -2405,20 +2408,29 @@ def read_request(text: str | None) -> Request:
     folded = fold(text)
     matches = list(_NUMBER.finditer(folded))
     numbers: set[float] = set()
-    for match in matches:
+    sequence: list[float] = []
+    for index, match in enumerate(matches):
         numbers.update(_readings(match))
-    for left, right in itertools.pairwise(matches):
-        start, end = _integer(left), _integer(right)
-        between = folded[left.end() : right.start()]
-        ranged = _RANGE.match(between) is not None
-        if ranged and between.strip() == "から":
-            ranged = folded.startswith(_UNTIL, right.end())
-        if not ranged or start is None or end is None:
-            continue
-        low, high = min(start, end), max(start, end)
-        if high - low < MAX_RANGE:
-            numbers.update(float(value) for value in range(low, high + 1))
-    return Request(frozenset(numbers), folded)
+        expanded = _expanded(folded, matches[index - 1], match) if index else None
+        if expanded is None:
+            sequence.append(_readings(match)[0])
+        else:
+            numbers.update(expanded)
+            sequence += expanded[1:]
+    return Request(frozenset(numbers), folded, tuple(sequence))
+
+
+def _expanded(folded: str, left: re.Match[str], right: re.Match[str]) -> list[float] | None:
+    """The integers from `left` to `right` in typed order when the two spell a range."""
+    start, end = _integer(left), _integer(right)
+    between = folded[left.end() : right.start()]
+    ranged = _RANGE.match(between) is not None
+    if ranged and between.strip() == "から":
+        ranged = folded.startswith(_UNTIL, right.end())
+    if not ranged or start is None or end is None or abs(end - start) >= MAX_RANGE:
+        return None
+    step = 1 if end >= start else -1
+    return [float(value) for value in range(start, end + step, step)]
 '''
 
 _SOURCES["verifier.pysrc"] = r'''
@@ -3003,6 +3015,7 @@ functions the reduction carries NO measured ulp band, so a disagreement here is 
 an environment gap.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
@@ -3010,7 +3023,14 @@ from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.table import CellValue
 
-__all__ = ["Aggregated", "ColumnDtype", "Reduction", "aggregate_series", "column_dtype"]
+__all__ = [
+    "Aggregated",
+    "ColumnDtype",
+    "Reduction",
+    "aggregate_series",
+    "column_dtype",
+    "kahan_sum",
+]
 
 # Grouped reductions, closed. Each one is a total function from a group's cells to one number,
 # which is what lets the judge reproduce it exactly; a reduction needing a parameter (quantile,
@@ -3057,7 +3077,7 @@ def column_dtype(texts: tuple[str, ...]) -> ColumnDtype:
     return "float64" if any("." in text for text in texts) else "int64"
 
 
-def _kahan_sum(values: tuple[float, ...]) -> float:
+def kahan_sum(values: Sequence[float]) -> float:
     """Ordered binary64 Kahan compensation. Not naive, not `fsum`, not Neumaier.
 
     The compensation reset pandas performs for NaN is absent because NaN cannot arrive: the cell
@@ -3085,11 +3105,11 @@ def _extremum[T: (float, int)](values: tuple[T, ...], *, greater: bool) -> T:
 def _reduce_float(values: tuple[float, ...], reduction: Reduction) -> float:
     match reduction:
         case "sum":
-            return _kahan_sum(values)
+            return kahan_sum(values)
         case "mean":
             # Sum THEN divide, in that order. A running mean and a compensated divide each land on a
             # different last bit, and this is the order pandas takes.
-            return _kahan_sum(values) / len(values)
+            return kahan_sum(values) / len(values)
         case "min":
             return _extremum(values, greater=False)
         case "max":
@@ -3108,7 +3128,7 @@ def _reduce_int(values: tuple[int, ...], reduction: Reduction) -> float:
         case "mean":
             # Per-value float cast, THEN Kahan, THEN divide. Not the exact integer mean: pandas
             # rounds each value into float64 first, and `[2**53, 1, 0]` is where the two split.
-            return _kahan_sum(tuple(float(value) for value in values)) / len(values)
+            return kahan_sum(tuple(float(value) for value in values)) / len(values)
         case "min":
             return float(_extremum(values, greater=False))
         case "max":
@@ -3559,6 +3579,185 @@ def wrapper_code(program: str, font: bytes | None = None) -> str:
         )
         + "\n"
     )
+'''
+
+_SOURCES["verifier.figure.computed"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The admitted computations of the user's data (Q45, `.agent/archive/contracts/q45.md`; stdlib).
+
+Closed list: of one series — `square`, `cumsum`, `diff`, `share`, `percent`; of two numeric
+columns — `ratio`, `difference`, `product`, `total`. Each is evaluated the ways an honest program
+evaluates it, one whole-series VARIANT at a time, and matched exactly like every other
+explanation: the judge cannot run the sandbox's numpy, so it reproduces the bits of the spellings
+it admits. A total is numpy's pairwise sum (`Series.sum`, `np.sum`), a sequential sum (`sum` over
+numpy scalars, a loop), CPython's Neumaier `sum` over floats, pandas' Kahan group sum, or
+`math.fsum`; a percent is `(100*v)/t`, `(v/t)*100` or `v*(100/t)`. A value that is not finite, or
+the share of a zero total, is no candidate (None).
+"""
+
+import itertools
+import math
+from collections.abc import Callable, Iterator, Sequence
+from typing import Final, Literal
+
+from verifier.pysrc.aggregate import kahan_sum
+
+type Transform = Literal[
+    "square", "cumsum", "diff", "share", "percent", "ratio", "difference", "product", "total"
+]
+type Values = tuple[float | None, ...]
+
+# Canonical order: the published reading when several computations explain the same columns.
+ORDER: Final[tuple[Transform, ...]] = (
+    "square",
+    "cumsum",
+    "diff",
+    "share",
+    "percent",
+    "ratio",
+    "difference",
+    "product",
+    "total",
+)
+UNARY: Final[tuple[Transform, ...]] = ORDER[:5]
+BINARY: Final[tuple[Transform, ...]] = ORDER[5:]
+# numpy's pairwise summation: blocks below 8 sum left to right, up to 128 through 8 accumulators;
+# a reduction reaches it one 8192-value buffer at a time, the buffers summed left to right.
+_UNROLL: Final = 8
+_BLOCK: Final = 128
+_BUFFER: Final = 8192
+
+
+def pairwise_sum(values: Sequence[float]) -> float:
+    """`np.add.reduce` over float64 (`Series.sum`, `np.sum`), bit for bit."""
+    total = 0.0
+    for start in range(0, len(values), _BUFFER):
+        total += _pairwise(values[start : start + _BUFFER])
+    return total
+
+
+def _pairwise(values: Sequence[float]) -> float:
+    """numpy's `pairwise_sum` over one buffer."""
+    count = len(values)
+    if count < _UNROLL:
+        total = 0.0
+        for value in values:
+            total += value
+        return total
+    if count <= _BLOCK:
+        lanes = list(values[:_UNROLL])
+        end = count - count % _UNROLL
+        for start in range(_UNROLL, end, _UNROLL):
+            for lane in range(_UNROLL):
+                lanes[lane] += values[start + lane]
+        total = ((lanes[0] + lanes[1]) + (lanes[2] + lanes[3])) + (
+            (lanes[4] + lanes[5]) + (lanes[6] + lanes[7])
+        )
+        for value in values[end:]:
+            total += value
+        return total
+    half = count // 2
+    half -= half % _UNROLL
+    return _pairwise(values[:half]) + _pairwise(values[half:])
+
+
+def sequential_sum(values: Sequence[float]) -> float:
+    total = 0.0
+    for value in values:
+        total += value
+    return total
+
+
+def neumaier_sum(values: Sequence[float]) -> float:
+    """CPython's `sum` over floats (3.12 onward): Neumaier compensation, added at the end."""
+    total = compensation = 0.0
+    for value in values:
+        running = total + value
+        if abs(total) >= abs(value):
+            compensation += (total - running) + value
+        else:
+            compensation += (value - running) + total
+        total = running
+    if compensation and math.isfinite(compensation):
+        total += compensation
+    return total
+
+
+def exact_sum(values: Sequence[float]) -> float:
+    """`math.fsum`; its overflow or an infinite input (a typed `1e999`) is no total."""
+    try:
+        return math.fsum(values)
+    except (OverflowError, ValueError):
+        return math.inf
+
+
+_TOTALS: Final[tuple[Callable[[Sequence[float]], float], ...]] = (
+    pairwise_sum,
+    sequential_sum,
+    neumaier_sum,
+    kahan_sum,
+    exact_sum,
+)
+_PERCENTS: Final[tuple[Callable[[float, float], float], ...]] = (
+    lambda value, total: (100.0 * value) / total,
+    lambda value, total: (value / total) * 100.0,
+    lambda value, total: value * (100.0 / total),
+)
+
+
+def _finite(value: float) -> float | None:
+    return value if math.isfinite(value) else None
+
+
+def _distinct(found: Iterator[tuple[Transform, Values]]) -> Iterator[tuple[Transform, Values]]:
+    """Each transform's variants once: an integer series' totals all agree."""
+    seen: set[tuple[Transform, Values]] = set()
+    for each in found:
+        if each not in seen:
+            seen.add(each)
+            yield each
+
+
+def _unary(values: Sequence[float]) -> Iterator[tuple[Transform, Values]]:
+    yield "square", tuple(_finite(value * value) for value in values)
+    yield "cumsum", tuple(_finite(total) for total in itertools.accumulate(values))
+    yield "diff", (None, *(_finite(right - left) for left, right in itertools.pairwise(values)))
+    # Equal totals give equal shares: an integer series' five totals are one.
+    totals = list(dict.fromkeys(total(values) for total in _TOTALS))
+    for total in totals:
+        if total and math.isfinite(total):
+            yield "share", tuple(_finite(value / total) for value in values)
+    for percent in _PERCENTS:
+        for total in totals:
+            if total and math.isfinite(total):
+                yield "percent", tuple(_finite(percent(value, total)) for value in values)
+
+
+def unary(values: Sequence[float]) -> Iterator[tuple[Transform, Values]]:
+    """Every one-series computation of `values` (in their drawn order), one variant per yield; a
+    pair with no defined value is None (`diff`'s first, a non-finite result)."""
+    return _distinct(_unary(values))
+
+
+def _apply(op: Transform, left: float, right: float) -> float | None:
+    if op == "ratio":
+        return _finite(left / right) if right else None
+    if op == "difference":
+        return _finite(left - right)
+    if op == "product":
+        return _finite(left * right)
+    return _finite(left + right)
+
+
+def binary(op: Transform, left: Sequence[float], right: Sequence[float]) -> Values:
+    """One two-column computation, element by element."""
+    return tuple(_apply(op, a, b) for a, b in zip(left, right, strict=True))
+
+
+def typed(sequence: Sequence[float]) -> Iterator[tuple[Transform, frozenset[float]]]:
+    """Each computation of the request's numbers, as the set of values it yields (R4 membership)."""
+    for transform, values in unary(sequence):
+        yield transform, frozenset(value for value in values if value is not None)
 '''
 
 _SOURCES["verifier.figure.keys"] = r'''
@@ -4259,13 +4458,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "values": (
         (
             "Drawn values come from your data",
-            "each value is in your CSV file, one summary per group of it, or a number in your"
-            " request; each category once",
+            "each value is in your CSV file, one summary per group, a number in your request, or"
+            " one admitted computation of these; each category once",
         ),
         (
             "描画した値があなたのデータにある",
-            "各値が CSV ファイルの値、そのグループごとの集計、または依頼文の数値。"
-            "カテゴリの重複なし",
+            "各値が CSV ファイルの値、そのグループごとの集計、依頼文の数値、"
+            "またはそれらの認められた計算。カテゴリの重複なし",
         ),
     ),
     "columns": (
@@ -4358,10 +4557,12 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     "values": (
         "Each drawn value must come from your data. It is a value in your CSV file or a number in"
         " your request. It can also be one total, mean, minimum, maximum or row count per group"
-        " of the file. Category labels come from the same rows or from your request.",
+        " of the file. It can also be one admitted computation of these, such as a running total"
+        " or a ratio of two columns. Category labels come from the same rows or from your request.",
         "描画した各値は、あなたのデータにある必要があります。"
         "CSV ファイルの値、そのグループごとの合計、平均、最小値、最大値、行数、"
-        "または依頼文の数値です。"
+        "または依頼文の数値です。累計や 2 つの列の比率のような、それらの認められた計算でも"
+        "かまいません。"
         "カテゴリのラベルは、同じ行または依頼文にある必要があります。",
     ),
     "columns": (
@@ -6104,17 +6305,26 @@ Matching is injective (a row backs one point) and exact in binary64; a strict su
 published as N of M (R2). Two explanations over different columns that both explain a series tie;
 the request breaks the tie when it names the columns of exactly one (R7), else
 `column_not_requested`.
+
+Q45: with `computed`, the admitted computations (`computed.py`) compete with that vocabulary per
+series (the judge's second pass), and a series still unexplained may be one computation of the
+request's numbers.
 """
 
+import dataclasses
+import functools
+import itertools
 import math
 import re
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final, Literal, cast
 
+from verifier.figure import computed
 from verifier.figure.anchoring import Aliases, AmbiguousTermError, anchors
+from verifier.figure.computed import BINARY, ORDER, Transform, Values
 from verifier.figure.keys import Key
 from verifier.figure.reasons import FigureReason
 from verifier.figure.request import Request
@@ -6151,10 +6361,15 @@ class Explanation:
     # A channel explanation (R8): per pair, the main series' value of the same row or group, so a
     # colour or size binds to its own point, never to another point with the same key.
     partners: tuple[float, ...] | None = None
+    # Q45: the admitted computation, a two-column computation's second column (`value` = its
+    # first), and a row-keyed computation's source row per pair (a pair can drop out).
+    transform: Transform | None = None
+    other: str | None = None
+    rows: tuple[int, ...] | None = None
 
     @property
     def columns(self) -> frozenset[str]:
-        return frozenset(name for name in (self.key, self.value) if name is not None)
+        return frozenset(name for name in (self.key, self.value, self.other) if name is not None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -6170,6 +6385,9 @@ class Choice:
     # and how many of its values several columns hold (those draw no column).
     reference: tuple[tuple[str, str], ...] = ()
     shared: int = 0
+    # Q45: one computation of the request's numbers explains every point, over these operands.
+    typed: Transform | None = None
+    operands: tuple[float, ...] = ()
 
     @property
     def columns(self) -> tuple[tuple[str, frozenset[str]], ...]:
@@ -6223,10 +6441,11 @@ def _canon_text(text: str) -> set[Canon]:
     return forms
 
 
-def _canon_cell(value: CellValue | int) -> set[Canon]:
+@functools.lru_cache(maxsize=1 << 16)  # a key column repeats its cells across every candidate
+def _canon_cell(value: CellValue | int) -> frozenset[Canon]:
     if isinstance(value, str):
-        return _canon_text(value)
-    return {("n", float(value))}
+        return frozenset(_canon_text(value))
+    return frozenset({("n", float(value))})
 
 
 def _canon_key(key: Key) -> set[Canon]:
@@ -6379,7 +6598,7 @@ def _orders(explanation: Explanation) -> list[list[int]]:
     """The pair orders a positional key may bind to: pandas' own, and a raw table re-sorted by key
     (a pivot sorts its index)."""
     pairs = explanation.pairs
-    if explanation.family != "raw":
+    if explanation.family != "raw" or explanation.transform is not None:
         return [list(range(len(pairs)))]
     resorted = sorted(range(len(pairs)), key=lambda at: _sort_value(pairs[at][0]))
     return [list(range(len(pairs))), resorted]
@@ -6513,13 +6732,236 @@ def _pick(
             return Unexplained(series, "column_not_requested")
         groups = {named[0]: groups[named[0]]}
     (members,) = groups.values()
-    return min(members, key=lambda e: _PREFERENCE.index(e.family))  # stable: first filter wins
+    points = len(series.points)
+    # Stable: the first filter, then the first variant, wins.
+    return min(members, key=lambda e: _preference(e, points))
+
+
+def _preference(explanation: Explanation, points: int) -> tuple[int, int, int]:
+    """Same columns: the vocabulary first, then `computed.ORDER`; a computation drawn whole
+    before one drawn in part (a running total over rows coincides with the running total of
+    group sums at each group's last row); then the base family."""
+    transform = explanation.transform
+    if transform is None:
+        return -1, 0, _PREFERENCE.index(explanation.family)
+    part = int(len(explanation.pairs) != points)
+    return ORDER.index(transform), part, _PREFERENCE.index(explanation.family)
 
 
 def _candidates(series: Series, context: Context, budget: WorkBudget) -> Iterator[Explanation]:
     for table in context.tables:
         for where in _where(series, table):
             yield from explanations(table, where, budget)
+
+
+def _computed_candidates(
+    series: Series, context: Context, budget: WorkBudget
+) -> Iterator[Explanation]:
+    points = series.points
+    # A computation holding none of the drawn values backs no point: never build it (a stacked
+    # point's drawn value is its top, so stacked series take every computation).
+    wanted = None if any(p.base is not None for p in points) else frozenset(p.value for p in points)
+    for table in context.tables:
+        for where in _where(series, table):
+            yield from computations(table, where, budget, wanted)
+
+
+# --- the admitted computations (Q45) -------------------------------------------------------------
+
+
+def _kept(values: Sequence[float | None]) -> list[int]:
+    return [at for at, value in enumerate(values) if value is not None]
+
+
+type _Memo = dict[tuple[float, ...], list[tuple[Transform, Values]]]
+
+
+def _unary_of(
+    base: Explanation,
+    rows: Sequence[int] | None,
+    budget: WorkBudget,
+    memo: _Memo,
+    wanted: frozenset[float] | None = None,
+) -> Iterator[Explanation]:
+    """Each one-series computation of `base` in its own pair order, pairs with no value dropped;
+    `rows` = a row-keyed base's source rows, carried so a channel binds to the same row. `memo`
+    holds each value sequence's computations: `raw(K, V)` repeats `V`'s for every key K."""
+    values = tuple(value for _key, value in base.pairs)
+    if values not in memo:
+        memo[values] = list(computed.unary(values))
+    for transform, found in memo[values]:
+        budget.charge(len(values))
+        if wanted is not None and wanted.isdisjoint(found):
+            continue
+        kept = _kept(found)
+        yield dataclasses.replace(
+            base,
+            pairs=tuple((base.pairs[at][0], cast("float", found[at])) for at in kept),
+            counts=None if base.counts is None else tuple(base.counts[at] for at in kept),
+            partners=None if base.partners is None else tuple(base.partners[at] for at in kept),
+            transform=transform,
+            rows=None if rows is None else tuple(rows[at] for at in kept),
+        )
+
+
+def _sums(
+    key: Column, value: Column, rows: list[int], budget: WorkBudget
+) -> tuple[tuple[CellValue, ...], tuple[float, ...], tuple[int, ...]] | None:
+    """`value`'s Kahan sum per `key` group over `rows` (pandas `groupby().sum()`), else None."""
+    numbers = cast("tuple[float, ...]", value.numbers)
+    try:
+        reduced = aggregate_series(
+            tuple(key.keys[row] for row in rows),
+            tuple(value.texts[row] for row in rows),
+            tuple(numbers[row] for row in rows),
+            "sum",
+            budget=budget,
+            max_groups=MAX_GROUPS,
+        )
+    except PysrcRefusalError:
+        return None
+    return reduced.keys, reduced.values, reduced.counts
+
+
+def _ops(table: Table) -> Iterator[tuple[Transform, Column, Column]]:
+    """Every two-column computation: ordered pairs for ratio + difference, once for the rest."""
+    numeric = [column for column in table.columns if column.numbers is not None]
+    for left, right in itertools.permutations(numeric, 2):
+        for op in BINARY:
+            if op in ("ratio", "difference") or numeric.index(left) < numeric.index(right):
+                yield op, left, right
+
+
+def _binary_rows(
+    table: Table,
+    where: tuple[str, str] | None,
+    rows: list[int],
+    budget: WorkBudget,
+    wanted: frozenset[float] | None,
+) -> Iterator[Explanation]:
+    """Per row: keyed by row position (`index`) or by any column's cells (`raw`)."""
+    for op, left, right in _ops(table):
+        budget.charge(len(rows))
+        found = computed.binary(
+            op,
+            [cast("tuple[float, ...]", left.numbers)[row] for row in rows],
+            [cast("tuple[float, ...]", right.numbers)[row] for row in rows],
+        )
+        if wanted is not None and wanted.isdisjoint(found):
+            continue
+        kept = tuple(rows[at] for at in _kept(found))
+        values = tuple(value for value in found if value is not None)
+        indexed = Explanation(
+            table.name,
+            "index",
+            None,
+            left.name,
+            where,
+            tuple(zip(kept, values, strict=True)),
+            None,
+            transform=op,
+            other=right.name,
+            rows=kept,
+        )
+        yield indexed
+        for key in table.columns:
+            budget.charge(len(kept))
+            yield dataclasses.replace(
+                indexed,
+                family="raw",
+                key=key.name,
+                pairs=tuple(zip((key.keys[row] for row in kept), values, strict=True)),
+            )
+
+
+def _group_ops(
+    table: Table, key: Column, rows: list[int], budget: WorkBudget
+) -> Iterator[tuple[Transform, Column, Column, tuple[CellValue, ...], Values, tuple[int, ...]]]:
+    """Each two-column computation over both columns' Kahan sums per `key` group (pandas
+    `groupby().sum()`): the operation, its columns, the groups, the values and the row counts."""
+    sums: dict[str, tuple[tuple[CellValue, ...], tuple[float, ...], tuple[int, ...]] | None] = {}
+    for op, left, right in _ops(table):
+        if key is left or key is right:
+            continue
+        for column in (left, right):
+            if column.name not in sums:
+                sums[column.name] = _sums(key, column, rows, budget)
+        left_sums, right_sums = sums[left.name], sums[right.name]
+        if left_sums is None or right_sums is None:
+            continue
+        groups, values, counts = left_sums
+        yield op, left, right, groups, computed.binary(op, values, right_sums[1]), counts
+
+
+def _binary_groups(
+    table: Table,
+    where: tuple[str, str] | None,
+    rows: list[int],
+    budget: WorkBudget,
+    wanted: frozenset[float] | None,
+) -> Iterator[Explanation]:
+    """Per group of a third column K: both columns' Kahan group sums, then the operation."""
+    for key in table.columns:
+        for op, left, right, groups, found, counts in _group_ops(table, key, rows, budget):
+            if wanted is not None and wanted.isdisjoint(found):
+                continue
+            kept = _kept(found)
+            yield Explanation(
+                table.name,
+                "sum",
+                key.name,
+                left.name,
+                where,
+                tuple((groups[at], cast("float", found[at])) for at in kept),
+                tuple(counts[at] for at in kept),
+                transform=op,
+                other=right.name,
+            )
+
+
+def computations(
+    table: Table,
+    where: tuple[str, str] | None,
+    budget: WorkBudget,
+    wanted: frozenset[float] | None = None,
+) -> Iterator[Explanation]:
+    """Every admitted computation over `table` (R6 `where` as for the vocabulary), fixed order;
+    `wanted` = the drawn values, when a computation holding none of them may be skipped."""
+    rows = _rows(table, where)
+    memo: _Memo = {}
+    for base in explanations(table, where, budget):
+        row_keyed = base.family in ("raw", "index")
+        yield from _unary_of(base, rows if row_keyed else None, budget, memo, wanted)
+    yield from _binary_rows(table, where, rows, budget, wanted)
+    yield from _binary_groups(table, where, rows, budget, wanted)
+
+
+def summary(explanation: Explanation) -> str | None:
+    """The reduction a label may name over `explanation` (G10, Q45 D7): a one-series computation
+    keeps its base's; a ratio of group sums is an average per unit; per row, none."""
+    if explanation.transform in BINARY:
+        if explanation.family != "sum":
+            return None
+        return "mean" if explanation.transform == "ratio" else "sum"
+    return explanation.family if explanation.family in _REDUCTIONS else None
+
+
+def _typed(series: Series, request: Request, budget: WorkBudget) -> Choice | None:
+    """One computation of the request's numbers explaining every point; keys as R4 requires."""
+    positional = _keys_free(series)
+    points = series.points
+    if not all(_request_key(point.key, request, positional=positional) for point in points):
+        return None
+    for transform, values in computed.typed(request.sequence):
+        budget.charge(len(request.sequence) + len(points))
+        if all(
+            point.value in values
+            if point.base is None
+            else any(point.base + value == point.value for value in values)
+            for point in points
+        ):
+            return Choice(series, None, 0, len(points), typed=transform, operands=request.sequence)
+    return None
 
 
 def _explain_series(
@@ -6534,7 +6976,13 @@ def _explain_series(
     full: list[Explanation] = []
     partial: list[tuple[int, Explanation]] = []
     backed = [False] * len(series.points)  # the most points any one explanation backs
+    # A candidate holding none of the drawn values backs no point: skip its matching (a stacked
+    # point's drawn value is its top, so stacked series are matched in full).
+    points = series.points
+    drawn = None if any(p.base is not None for p in points) else {p.value for p in points}
     for explanation in candidates:
+        if drawn is not None and drawn.isdisjoint(value for _key, value in explanation.pairs):
+            continue
         matched = _coverage(series, explanation)
         if sum(matched) > sum(backed):
             backed = matched
@@ -6576,54 +7024,168 @@ def _unexplained_reason(
 
 
 def _channel_explanations(
-    table: Table, main: Explanation, budget: WorkBudget
+    table: Table, main: Explanation, budget: WorkBudget, *, admitted: bool
 ) -> Iterator[Explanation]:
     """A channel's candidates: the main explanation's rows or groups, another numeric column's
-    cells (or one reduction of it per group), each pair carrying the main value it sits beside."""
-    rows = _rows(table, main.where)
+    cells (or one reduction of it per group), each pair carrying the main value it sits beside;
+    `admitted` adds their Q45 computations, bound the same way."""
+    if main.family in ("raw", "index"):
+        yield from _row_channels(table, main, budget, admitted=admitted)
+    else:
+        yield from _group_channels(table, main, budget, admitted=admitted)
+
+
+def _row_channels(
+    table: Table, main: Explanation, budget: WorkBudget, *, admitted: bool
+) -> Iterator[Explanation]:
+    every = _rows(table, main.where)
+    rows = list(main.rows) if main.rows is not None else every
+    at_row = {row: at for at, row in enumerate(every)}
     key = None if main.key is None else table.columns[table.header.index(main.key)]
+    keys = list(rows) if key is None else [key.keys[row] for row in rows]
+    partners = tuple(value for _key, value in main.pairs)
     for column in table.columns:
         numbers = column.numbers
         if numbers is None:
             continue
         budget.charge(len(rows))
-        if main.family in ("raw", "index"):
-            keys = list(rows) if key is None else [key.keys[row] for row in rows]
+        yield Explanation(
+            table.name,
+            main.family,
+            main.key,
+            column.name,
+            main.where,
+            tuple(zip(keys, (numbers[row] for row in rows), strict=True)),
+            None,
+            partners,
+        )
+        if not admitted:
+            continue
+        # Over ALL its rows (a share's total is the whole column's), then its points' rows.
+        for transform, found in computed.unary(tuple(numbers[row] for row in every)):
+            budget.charge(len(rows))
+            picked = [at for at, row in enumerate(rows) if found[at_row[row]] is not None]
             yield Explanation(
                 table.name,
                 main.family,
                 main.key,
                 column.name,
                 main.where,
-                tuple(zip(keys, (numbers[row] for row in rows), strict=True)),
+                tuple((keys[at], cast("float", found[at_row[rows[at]]])) for at in picked),
                 None,
-                tuple(value for _key, value in main.pairs),
+                tuple(partners[at] for at in picked),
+                transform=transform,
+                rows=tuple(rows[at] for at in picked),
             )
+    if not admitted:
+        return
+    for op, left, right in _ops(table):
+        budget.charge(len(rows))
+        found = computed.binary(
+            op,
+            [cast("tuple[float, ...]", left.numbers)[row] for row in rows],
+            [cast("tuple[float, ...]", right.numbers)[row] for row in rows],
+        )
+        kept = _kept(found)
+        yield Explanation(
+            table.name,
+            main.family,
+            main.key,
+            left.name,
+            main.where,
+            tuple((keys[at], cast("float", found[at])) for at in kept),
+            None,
+            tuple(partners[at] for at in kept),
+            transform=op,
+            other=right.name,
+            rows=tuple(rows[at] for at in kept),
+        )
+
+
+def _group_channels(
+    table: Table, main: Explanation, budget: WorkBudget, *, admitted: bool
+) -> Iterator[Explanation]:
+    rows = _rows(table, main.where)
+    key = table.columns[table.header.index(cast("str", main.key))]
+    partner = dict(main.pairs)  # a computation can drop a group (`diff`'s first): it binds none
+    for column in table.columns:
+        if column.numbers is None:
             continue
-        partner = dict(main.pairs)
-        for grouped in _group(table, cast("Column", key), column, rows, budget):
+        budget.charge(len(rows))
+        for grouped in _group(table, key, column, rows, budget):
+            pairs, counts = grouped.pairs, cast("tuple[int, ...]", grouped.counts)
+            kept = [at for at, (group, _value) in enumerate(pairs) if group in partner]
             yield Explanation(
                 table.name,
                 grouped.family,
                 main.key,
                 column.name,
                 main.where,
-                grouped.pairs,
-                grouped.counts,
-                tuple(partner[group] for group, _value in grouped.pairs),
+                tuple(pairs[at] for at in kept),
+                tuple(counts[at] for at in kept),
+                tuple(partner[pairs[at][0]] for at in kept),
             )
+            if not admitted:
+                continue
+            # Over ALL its groups, then its points' groups.
+            for transform, found in computed.unary(tuple(value for _g, value in pairs)):
+                budget.charge(len(pairs))
+                picked = [at for at in kept if found[at] is not None]
+                yield Explanation(
+                    table.name,
+                    grouped.family,
+                    main.key,
+                    column.name,
+                    main.where,
+                    tuple((pairs[at][0], cast("float", found[at])) for at in picked),
+                    tuple(counts[at] for at in picked),
+                    tuple(partner[pairs[at][0]] for at in picked),
+                    transform=transform,
+                )
+    if not admitted:
+        return
+    for op, left, right, groups, found, counts in _group_ops(table, key, rows, budget):
+        kept = [at for at in _kept(found) if groups[at] in partner]
+        yield Explanation(
+            table.name,
+            "sum",
+            main.key,
+            left.name,
+            main.where,
+            tuple((groups[at], cast("float", found[at])) for at in kept),
+            tuple(counts[at] for at in kept),
+            tuple(partner[groups[at]] for at in kept),
+            transform=op,
+            other=right.name,
+        )
+
+
+def _explain_admitted(series: Series, context: Context, budget: WorkBudget) -> Choice | Unexplained:
+    """The vocabulary and the computations compete; a series they leave unexplained may be one
+    computation of the request's numbers."""
+    candidates = itertools.chain(
+        _candidates(series, context, budget), _computed_candidates(series, context, budget)
+    )
+    outcome = _explain_series(series, candidates, context)
+    if isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":
+        return _typed(series, context.request, budget) or outcome
+    return outcome
 
 
 def _explain_channel(
-    series: Series, main: Choice, context: Context, budget: WorkBudget
+    series: Series, main: Choice, context: Context, budget: WorkBudget, *, admitted: bool
 ) -> Choice | Unexplained:
     """A colour or size channel: from the rows or groups of its scatter's own explanation, else
     request numbers alone (a scatter typed in the request types its channels too)."""
     explanation = main.explanation
     if explanation is None:
-        return _explain_series(series, iter(()), context)
+        outcome = _explain_series(series, iter(()), context)
+        if admitted and isinstance(outcome, Unexplained):
+            return _typed(series, context.request, budget) or outcome
+        return outcome
     table = next(table for table in context.tables if table.name == explanation.table)
-    return _explain_series(series, _channel_explanations(table, explanation, budget), context)
+    candidates = _channel_explanations(table, explanation, budget, admitted=admitted)
+    return _explain_series(series, candidates, context)
 
 
 # --- reference marks -----------------------------------------------------------------------------
@@ -6681,9 +7243,14 @@ def duplicate_key(series: Series) -> bool:
 
 
 def explain(
-    every: tuple[Series, ...], context: Context, unreadable: tuple[Unreadable, ...]
+    every: tuple[Series, ...],
+    context: Context,
+    unreadable: tuple[Unreadable, ...],
+    *,
+    admitted: bool = False,
 ) -> tuple[Choice, ...] | Unexplained:
-    """One choice per series, or the first series no source explains (with its reason)."""
+    """One choice per series, or the first series no source explains (with its reason);
+    `admitted` = the judge's second pass, where the Q45 computations compete too."""
     budget = WorkBudget(MAX_WORK)
     choices: list[Choice] = []
     try:
@@ -6692,7 +7259,9 @@ def explain(
                 outcome = _explain_reference(series, context, budget)
             elif series.channel != "value":
                 main = next(c for c in reversed(choices) if c.series.mark is series.mark)
-                outcome = _explain_channel(series, main, context, budget)
+                outcome = _explain_channel(series, main, context, budget, admitted=admitted)
+            elif admitted:
+                outcome = _explain_admitted(series, context, budget)
             else:
                 outcome = _explain_series(series, _candidates(series, context, budget), context)
             if isinstance(outcome, Unexplained):
@@ -6726,12 +7295,10 @@ from verifier.figure.anchoring import (
     summaries,
 )
 from verifier.figure.description import Figure, Legend, Text
-from verifier.figure.explain import Choice, Context
+from verifier.figure.explain import Choice, Context, summary
 from verifier.figure.parts import Panel
 from verifier.figure.reasons import block
 from verifier.figure.sources import Table
-
-_REDUCTIONS: frozenset[str] = frozenset({"sum", "mean", "min", "max"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -6819,11 +7386,11 @@ def check_labels(
     every: set[str] = set()
     for position, panel in enumerate(panels):
         reductions: set[str] = {
-            choice.explanation.family
+            reduction
             for choice in choices
-            if choice.series.panel == position
-            and choice.explanation is not None
-            and choice.explanation.family in _REDUCTIONS
+            if choice.series.panel == position and choice.explanation is not None
+            for reduction in (summary(choice.explanation),)
+            if reduction is not None
         }
         every |= reductions
         _check(_panel_labels(figure, panel), reductions, context, columns)
@@ -6837,11 +7404,12 @@ _SOURCES["verifier.figure.interpret"] = r'''
 
 One sentence per drawn series names where its values come from: a CSV column, one reduction per
 group with each group's row count (G11), a filter by its legend name (R6), the request's typed
-numbers, or none. A drawn subset says N of M (R2). A figure with no data source says it was
+numbers, one admitted computation of any of these (Q45: its operands in order), or none. A
+drawn subset says N of M (R2). A figure with no data source says it was
 checked for integrity alone (ruling 4). Text on the chart is listed, never judged (ruling 6).
 """
 
-from typing import Final
+from typing import Final, cast
 
 from verifier.figure.explain import Choice, Explanation
 
@@ -6873,6 +7441,30 @@ _SOURCES: Final = {
     ),
 }
 _WHERE: Final = (", rows where {column} is {cell}", " ({column} 列が {cell} の行)")
+# Q45: one computation of a source (`{base}` = its sentence part above, or the typed numbers).
+_UNARY: Final = {
+    "square": ("the square of {base}", "{base}の2乗"),
+    "cumsum": ("the running total of {base}", "{base}の累計"),
+    "diff": ("the change from the previous point of {base}", "{base}の前の点からの変化"),
+    "share": ("the share of the total of {base}", "{base}の合計に対する割合"),
+    "percent": ("the percent of the total of {base}", "{base}の合計に対する百分率"),
+}
+_BINARY: Final = {
+    "ratio": ("{a} divided by {b}", "{a} 列を {b} 列で割った値"),
+    "difference": ("{a} minus {b}", "{a} 列から {b} 列を引いた値"),
+    "product": ("{a} times {b}", "{a} 列と {b} 列の積"),
+    "total": ("{a} plus {b}", "{a} 列と {b} 列の和"),
+}
+_BINARY_SOURCES: Final = {
+    "raw": ("{op} by {key} from {file}", "{file} の {op} ({key} 列ごと)"),
+    "index": ("{op} in row order from {file}", "{file} の {op} (行の順)"),
+    "sum": ("{op}, each summed per {key}, from {file}", "{file} の {key} 列ごとに合計した {op}"),
+}
+_OPERANDS: Final = (
+    "the numbers typed in the request ({numbers})",
+    "依頼文の数値 ({numbers}) ",
+)
+_OPERANDS_SHOWN: Final = 8
 # A reference mark's clauses.
 _HELD: Final = ("a value of {columns} from {file}", "{file} の {columns} 列の値")
 _AND: Final = (" and ", "、")
@@ -6907,7 +7499,43 @@ def _groups(explanation: Explanation, *, japanese: bool) -> str:
     return "rows per group: " + ", ".join(shown) + (", …" if more else "")
 
 
+def _number(value: float) -> str:
+    return str(int(value)) if value.is_integer() and abs(value) < 2**53 else repr(value)
+
+
+def _operands(numbers: tuple[float, ...], *, japanese: bool) -> str:
+    shown = [_number(value) for value in numbers[:_OPERANDS_SHOWN]]
+    more = len(numbers) > _OPERANDS_SHOWN
+    text = ("、" if japanese else ", ").join(shown) + (
+        ("、…" if japanese else ", …") if more else ""
+    )
+    return _OPERANDS[1 if japanese else 0].format(numbers=text)
+
+
+def _binary(explanation: Explanation, *, japanese: bool) -> str:
+    language = 1 if japanese else 0
+    transform = cast("str", explanation.transform)
+    op = _BINARY[transform][language].format(a=explanation.value, b=explanation.other)
+    return _BINARY_SOURCES[explanation.family][language].format(
+        op=op, key=explanation.key, file=explanation.table
+    )
+
+
 def _source(explanation: Explanation, *, japanese: bool) -> str:
+    transform = explanation.transform
+    if transform is not None and transform in _BINARY:
+        text = _binary(explanation, japanese=japanese)
+    else:
+        text = _base(explanation, japanese=japanese)
+        if transform is not None:
+            text = _UNARY[transform][1 if japanese else 0].format(base=text)
+    if explanation.where is not None:
+        column, cell = explanation.where
+        text += _WHERE[1 if japanese else 0].format(column=column, cell=cell)
+    return text
+
+
+def _base(explanation: Explanation, *, japanese: bool) -> str:
     family, language = explanation.family, 1 if japanese else 0
     if family in ("sum", "mean", "min", "max"):
         form = "reduced"
@@ -6915,16 +7543,12 @@ def _source(explanation: Explanation, *, japanese: bool) -> str:
         form = "self"
     else:
         form = family
-    text = _SOURCES[form][language].format(
+    return _SOURCES[form][language].format(
         file=explanation.table,
         key=explanation.key,
         value=explanation.value,
         reduction=_REDUCTIONS[family][language] if form == "reduced" else "",
     )
-    if explanation.where is not None:
-        column, cell = explanation.where
-        text += _WHERE[language].format(column=column, cell=cell)
-    return text
 
 
 def _reference(named: str, choice: Choice, *, japanese: bool) -> str:
@@ -6953,7 +7577,11 @@ def _sentence(choice: Choice, *, japanese: bool) -> str:
     if explanation is None:
         if series.shape == "reference":
             return _reference(named, choice, japanese=japanese)
-        source = "依頼文に入力された数値" if japanese else "numbers typed in the request"
+        if choice.typed is not None:
+            operands = _operands(choice.operands, japanese=japanese)
+            source = _UNARY[choice.typed][1 if japanese else 0].format(base=operands)
+        else:
+            source = "依頼文に入力された数値" if japanese else "numbers typed in the request"
         return f"{named}: {source}。" if japanese else f"{named}: {source}."
     parts = [_source(explanation, japanese=japanese)]
     total = len(explanation.pairs)
@@ -6963,7 +7591,9 @@ def _sentence(choice: Choice, *, japanese: bool) -> str:
             if japanese
             else f"{choice.matched} of {total} drawn"
         )
-    if explanation.counts is not None and explanation.family != "count":
+    if explanation.counts is not None and (
+        explanation.family != "count" or explanation.transform is not None
+    ):
         parts.append(_groups(explanation, japanese=japanese))
     if choice.from_request:
         parts.append(
@@ -6999,6 +7629,10 @@ _SOURCES["verifier.figure.judge"] = r'''
 Stages, each blocking before the next runs: figure (the run and its one figure) → parts (the
 closed artist set) → axes → marks → values → columns. The judge is pure and stdlib: it reads
 the reader's description, the user's CSV bytes and the request text, and nothing else.
+
+Values + columns run twice at most (Q45 D1): today's vocabulary first; a figure that pass blocks on
+a value or a column runs them again with the admitted computations competing, and keeps the first
+pass's verdict unless the second passes or explains every value and blocks on a column.
 """
 
 from dataclasses import dataclass
@@ -7094,11 +7728,30 @@ def _texts(judged: Judged, *, integrity_only: bool) -> tuple[str, ...]:
     return tuple(listed)
 
 
+# A second pass can change these verdicts; every other block stands. When the first pass found no
+# source for a value and the second explains every value but blocks on its columns, the second
+# pass's reason is the one that tells the user what to fix.
+_VALUE_REASONS = frozenset({"value_not_found", "label_not_in_request"})
+_COLUMN_REASONS = frozenset({"column_not_requested", "column_not_named", "label_not_consistent"})
+
+
 def judge(description: Description, sources: Sources) -> Passed | Blocked:
-    """Every stage: integrity, then the drawn values, then the columns they name."""
+    """Every stage: integrity, then the drawn values, then the columns they name; values +
+    columns once more with the admitted computations when the first pass blocks on them."""
     judged = integrity(description)
     if isinstance(judged, Blocked):
         return judged
+    first, _explained = _values(judged, sources, admitted=False)
+    if isinstance(first, Blocked) and first.reason in _VALUE_REASONS | _COLUMN_REASONS:
+        second, explained = _values(judged, sources, admitted=True)
+        if isinstance(second, Passed) or (explained and first.reason in _VALUE_REASONS):
+            return second
+    return first
+
+
+def _values(judged: Judged, sources: Sources, *, admitted: bool) -> tuple[Passed | Blocked, bool]:
+    """The values + columns stages, and whether every series was explained before any block
+    (so a block after it is a column's)."""
     read = [read_table(name, content) for name, content in sources.files]
     tables = tuple(table for table in read if isinstance(table, Table))
     unreadable = tuple(table for table in read if isinstance(table, Unreadable))
@@ -7114,28 +7767,31 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
         judged.panels, judged.legends.names, judged.legends.encodings | frozenset(colorbars)
     )
     choices: tuple[Choice, ...] = ()
+    explained = False
     try:
         for each in every:
             if duplicate_key(each):
                 block("category_not_unique", each.site)
         if not integrity_only:
-            outcome = explain(every, context, unreadable)
+            outcome = explain(every, context, unreadable, admitted=admitted)
             if isinstance(outcome, Unexplained):
                 block(outcome.reason, outcome.series.site)
             choices = outcome
+        explained = True
         columns = drawn(choices)
         check_anchoring(context, columns)
         check_labels(judged.figure, judged.panels, choices, context, columns)
     except BlockedError as error:
-        return error.blocked
+        return error.blocked, explained
     texts = _texts(judged, integrity_only=integrity_only)
-    return Passed(
+    passed = Passed(
         judged,
         choices,
         integrity_only,
         interpretation(choices, texts, integrity_only=integrity_only, japanese=False),
         interpretation(choices, texts, integrity_only=integrity_only, japanese=True),
     )
+    return passed, True
 '''
 
 _SOURCES["webui.paste_in.filter"] = r'''
@@ -7518,7 +8174,8 @@ class Filter:
             self._ANCHORING,
             receipt.aliases,
         )
-        verdict = judge(description, sources)
+        # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
+        verdict = await asyncio.to_thread(judge, description, sources)
         if not isinstance(verdict, Passed):
             return await fail(verdict.reason, verdict.site)
         uri = _png_uri(cast("str", stdout))

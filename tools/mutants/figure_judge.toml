@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.4 `judge()`: the user's sources reach every stage (`.agent/archive/contracts/m19u4.md`).
 module = "src/verifier/figure/judge.py"
-tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py", "tests/test_figure_computed.py"]
 
 [[mutant]]
 id = "m19-integrity-only-widened"
@@ -52,3 +52,47 @@ mutant = '''        for each in every:
             if duplicate_key(each) and not integrity_only:
                 block("category_not_unique", each.site)
         if not integrity_only:'''
+
+[[mutant]]
+id = "q45-second-pass"
+predicate = "a value block runs the second pass"
+kills = "tests/test_figure_corpus.py::test_corpus_case[square-honest]"
+anchor = '''    if isinstance(first, Blocked) and first.reason in _VALUE_REASONS | _COLUMN_REASONS:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q45-second-pass-columns"
+predicate = "a column block runs the second pass too"
+kills = "tests/test_figure_corpus.py::test_corpus_case[computed-beats-coincident-column]"
+anchor = '''    if isinstance(first, Blocked) and first.reason in _VALUE_REASONS | _COLUMN_REASONS:'''
+mutant = '''    if isinstance(first, Blocked) and first.reason in _VALUE_REASONS:'''
+
+[[mutant]]
+id = "q45-surface-column-reason"
+predicate = "a second pass that explains every value surfaces its column reason"
+kills = "tests/test_figure_computed.py::test_the_second_pass_reason_shows_only_once_it_explains_every_value"
+anchor = '''        if isinstance(second, Passed) or (explained and first.reason in _VALUE_REASONS):'''
+mutant = '''        if isinstance(second, Passed):'''
+
+[[mutant]]
+id = "q45-keep-first-reason"
+predicate = "an unexplaining second pass leaves the first verdict"
+kills = "tests/test_figure_computed.py::test_an_exhausted_second_pass_leaves_the_first_verdict"
+anchor = '''        if isinstance(second, Passed) or (explained and first.reason in _VALUE_REASONS):'''
+mutant = '''        if isinstance(second, Passed) or first.reason in _VALUE_REASONS:'''
+
+[[mutant]]
+id = "q45-admitted-threaded"
+predicate = "the second pass explains with the computations admitted"
+kills = "tests/test_figure_corpus.py::test_corpus_case[share-honest]"
+anchor = '''            outcome = explain(every, context, unreadable, admitted=admitted)'''
+mutant = '''            outcome = explain(every, context, unreadable, admitted=False)'''
+
+[[mutant]]
+id = "q45-explained-after-values"
+predicate = "a pass counts as explaining every value only once explain returns its choices"
+kills = "tests/test_figure_computed.py::test_a_second_pass_tie_never_hides_a_later_invented_series"
+anchor = '''    explained = False
+    try:'''
+mutant = '''    explained = True
+    try:'''

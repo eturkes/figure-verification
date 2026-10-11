@@ -4,6 +4,10 @@
 Stages, each blocking before the next runs: figure (the run and its one figure) → parts (the
 closed artist set) → axes → marks → values → columns. The judge is pure and stdlib: it reads
 the reader's description, the user's CSV bytes and the request text, and nothing else.
+
+Values + columns run twice at most (Q45 D1): today's vocabulary first; a figure that pass blocks on
+a value or a column runs them again with the admitted computations competing, and keeps the first
+pass's verdict unless the second passes or explains every value and blocks on a column.
 """
 
 from dataclasses import dataclass
@@ -99,11 +103,30 @@ def _texts(judged: Judged, *, integrity_only: bool) -> tuple[str, ...]:
     return tuple(listed)
 
 
+# A second pass can change these verdicts; every other block stands. When the first pass found no
+# source for a value and the second explains every value but blocks on its columns, the second
+# pass's reason is the one that tells the user what to fix.
+_VALUE_REASONS = frozenset({"value_not_found", "label_not_in_request"})
+_COLUMN_REASONS = frozenset({"column_not_requested", "column_not_named", "label_not_consistent"})
+
+
 def judge(description: Description, sources: Sources) -> Passed | Blocked:
-    """Every stage: integrity, then the drawn values, then the columns they name."""
+    """Every stage: integrity, then the drawn values, then the columns they name; values +
+    columns once more with the admitted computations when the first pass blocks on them."""
     judged = integrity(description)
     if isinstance(judged, Blocked):
         return judged
+    first, _explained = _values(judged, sources, admitted=False)
+    if isinstance(first, Blocked) and first.reason in _VALUE_REASONS | _COLUMN_REASONS:
+        second, explained = _values(judged, sources, admitted=True)
+        if isinstance(second, Passed) or (explained and first.reason in _VALUE_REASONS):
+            return second
+    return first
+
+
+def _values(judged: Judged, sources: Sources, *, admitted: bool) -> tuple[Passed | Blocked, bool]:
+    """The values + columns stages, and whether every series was explained before any block
+    (so a block after it is a column's)."""
     read = [read_table(name, content) for name, content in sources.files]
     tables = tuple(table for table in read if isinstance(table, Table))
     unreadable = tuple(table for table in read if isinstance(table, Unreadable))
@@ -119,25 +142,28 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
         judged.panels, judged.legends.names, judged.legends.encodings | frozenset(colorbars)
     )
     choices: tuple[Choice, ...] = ()
+    explained = False
     try:
         for each in every:
             if duplicate_key(each):
                 block("category_not_unique", each.site)
         if not integrity_only:
-            outcome = explain(every, context, unreadable)
+            outcome = explain(every, context, unreadable, admitted=admitted)
             if isinstance(outcome, Unexplained):
                 block(outcome.reason, outcome.series.site)
             choices = outcome
+        explained = True
         columns = drawn(choices)
         check_anchoring(context, columns)
         check_labels(judged.figure, judged.panels, choices, context, columns)
     except BlockedError as error:
-        return error.blocked
+        return error.blocked, explained
     texts = _texts(judged, integrity_only=integrity_only)
-    return Passed(
+    passed = Passed(
         judged,
         choices,
         integrity_only,
         interpretation(choices, texts, integrity_only=integrity_only, japanese=False),
         interpretation(choices, texts, integrity_only=integrity_only, japanese=True),
     )
+    return passed, True

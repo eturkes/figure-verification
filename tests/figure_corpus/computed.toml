@@ -1,0 +1,507 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q45 rule corpus, computed values (`.agent/archive/contracts/q45.md`): per admitted computation
+# (`computed` = its name; `typed-` = over the request's numbers) an honest twin that passes and a
+# wrong-value program that blocks `value_not_found`. Format = `integrity.toml`'s; `shop.csv` sits
+# beside this file.
+
+# --- one CSV series --------------------------------------------------------------------------------
+
+[[case]]
+id = "cumsum-honest"
+computed = "cumsum"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Running total of revenue by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.plot(monthly.index, monthly.cumsum(), marker="o")
+'''
+
+[[case]]
+id = "cumsum-wrong"
+computed = "cumsum"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Running total of revenue by month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.plot(monthly.index, monthly.cumsum() + [0, 0, 5000], marker="o")
+'''
+
+[[case]]
+id = "share-honest"
+computed = "share"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Share of total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals / totals.sum())
+'''
+
+[[case]]
+id = "share-wrong"
+computed = "share"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Share of total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals / 70000)
+'''
+
+[[case]]
+id = "percent-honest"
+computed = "percent"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Percent of all orders by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+orders = pd.read_csv("{data}/sales.csv").groupby("region")["orders"].sum()
+plt.bar(orders.index, orders / orders.sum() * 100)
+'''
+
+[[case]]
+id = "percent-honest-python"
+computed = "percent"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Percent of all orders by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+orders = pd.read_csv("{data}/sales.csv").groupby("region")["orders"].sum()
+total = sum(orders.tolist())
+plt.bar(list(orders.index), [100 * value / total for value in orders.tolist()])
+'''
+
+[[case]]
+id = "percent-rounded"
+computed = "percent"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Percent of all orders by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+orders = pd.read_csv("{data}/sales.csv").groupby("region")["orders"].sum()
+plt.bar(orders.index, (orders / orders.sum() * 100).round(1))
+'''
+
+[[case]]
+id = "diff-honest"
+computed = "diff"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Change in total revenue from the previous month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+change = monthly.diff().dropna()
+plt.bar(change.index, change)
+'''
+
+[[case]]
+id = "diff-wrong"
+computed = "diff"
+expect = "value_not_found"
+site = 5
+csv = "sales.csv"
+request = "Change in total revenue from the previous month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+change = monthly.diff().dropna()
+plt.bar(change.index, change * 2)
+'''
+
+[[case]]
+id = "square-honest"
+computed = "square"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Orders squared in row order"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+plt.plot(df["orders"] ** 2, marker="o")
+'''
+
+[[case]]
+id = "square-wrong"
+computed = "square"
+expect = "value_not_found"
+site = 4
+csv = "sales.csv"
+request = "Orders squared in row order"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+plt.plot(df["orders"] ** 3, marker="o")
+'''
+
+# --- two CSV columns -------------------------------------------------------------------------------
+
+[[case]]
+id = "ratio-honest"
+computed = "ratio"
+expect = "pass"
+rule = "value_not_found"
+csv = "shop.csv"
+request = "Cost divided by price for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["cost"] / df["price"])
+'''
+
+[[case]]
+id = "ratio-wrong"
+computed = "ratio"
+expect = "value_not_found"
+site = 4
+csv = "shop.csv"
+request = "Cost divided by price for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["price"] / df["cost"] / 2)
+'''
+
+[[case]]
+id = "ratio-group-honest"
+computed = "ratio"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Average revenue per order by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+sums = pd.read_csv("{data}/sales.csv").groupby("region")[["revenue", "orders"]].sum()
+plt.bar(sums.index, sums["revenue"] / sums["orders"])
+plt.title("Average revenue per order")
+'''
+
+[[case]]
+id = "difference-honest"
+computed = "difference"
+expect = "pass"
+rule = "value_not_found"
+csv = "shop.csv"
+request = "Price minus cost for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["price"] - df["cost"])
+'''
+
+[[case]]
+id = "difference-wrong"
+computed = "difference"
+expect = "value_not_found"
+site = 4
+csv = "shop.csv"
+request = "Price minus cost for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["price"] - df["cost"] + 1)
+'''
+
+[[case]]
+id = "product-honest"
+computed = "product"
+expect = "pass"
+rule = "value_not_found"
+csv = "shop.csv"
+request = "Morning sales: price times morning units for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["price"] * df["morning"])
+'''
+
+[[case]]
+id = "product-wrong"
+computed = "product"
+expect = "value_not_found"
+site = 4
+csv = "shop.csv"
+request = "Morning sales: price times morning units for each product"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shop.csv")
+plt.bar(df["product"], df["price"] * df["evening"] * 2)
+'''
+
+[[case]]
+id = "total-group-honest"
+computed = "total"
+expect = "pass"
+rule = "value_not_found"
+csv = "shop.csv"
+request = "Morning plus evening units by shop"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+sums = pd.read_csv("{corpus}/shop.csv").groupby("shop")[["morning", "evening"]].sum()
+plt.bar(sums.index, sums["morning"] + sums["evening"])
+'''
+
+[[case]]
+id = "total-wrong"
+computed = "total"
+expect = "value_not_found"
+site = 4
+csv = "shop.csv"
+request = "Morning plus evening units by shop"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+sums = pd.read_csv("{corpus}/shop.csv").groupby("shop")[["morning", "evening"]].sum()
+plt.bar(sums.index, sums["morning"] + sums["evening"] + 10)
+'''
+
+# --- the request's numbers -------------------------------------------------------------------------
+
+[[case]]
+id = "typed-square-honest"
+computed = "typed-square"
+expect = "pass"
+rule = "value_not_found"
+request = "Plot the squares of 1 to 10"
+program = '''
+import matplotlib.pyplot as plt
+x = list(range(1, 11))
+plt.plot(x, [n ** 2 for n in x], marker="o")
+'''
+
+[[case]]
+id = "typed-square-wrong"
+computed = "typed-square"
+expect = "value_not_found"
+site = 3
+request = "Plot the squares of 1 to 10"
+program = '''
+import matplotlib.pyplot as plt
+x = list(range(1, 11))
+plt.plot(x, [n ** 3 for n in x], marker="o")
+'''
+
+[[case]]
+id = "typed-cumsum-honest"
+computed = "typed-cumsum"
+expect = "pass"
+rule = "value_not_found"
+request = "Running total of 3, 5, 2 and 8"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+plt.plot(np.cumsum([3, 5, 2, 8]), marker="o")
+'''
+
+[[case]]
+id = "typed-cumsum-wrong"
+computed = "typed-cumsum"
+expect = "value_not_found"
+site = 3
+request = "Running total of 3, 5, 2 and 8"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+plt.plot(np.cumsum([3, 5, 2, 8]) + 1, marker="o")
+'''
+
+[[case]]
+id = "typed-diff-honest"
+computed = "typed-diff"
+expect = "pass"
+rule = "value_not_found"
+request = "Daily change for 120, 135, 128 and 150"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+plt.bar(range(3), np.diff([120, 135, 128, 150]))
+'''
+
+[[case]]
+id = "typed-diff-wrong"
+computed = "typed-diff"
+expect = "value_not_found"
+site = 3
+request = "Daily change for 120, 135, 128 and 150"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+plt.bar(range(3), np.diff([120, 135, 128, 151]))
+'''
+
+[[case]]
+id = "typed-share-honest"
+computed = "typed-share"
+expect = "pass"
+rule = "value_not_found"
+request = "Share of the total for 30, 45 and 25"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+values = np.array([30, 45, 25])
+plt.bar(range(3), values / values.sum())
+'''
+
+[[case]]
+id = "typed-share-wrong"
+computed = "typed-share"
+expect = "value_not_found"
+site = 4
+request = "Share of the total for 30, 45 and 25"
+program = '''
+import numpy as np
+import matplotlib.pyplot as plt
+values = np.array([30, 45, 25])
+plt.bar(range(3), values / 90)
+'''
+
+[[case]]
+id = "typed-percent-honest"
+computed = "typed-percent"
+expect = "pass"
+rule = "value_not_found"
+request = "Percent of the total for 12, 30 and 18"
+program = '''
+import matplotlib.pyplot as plt
+values = [12, 30, 18]
+plt.bar(range(3), [value / sum(values) * 100 for value in values])
+'''
+
+[[case]]
+id = "typed-percent-wrong"
+computed = "typed-percent"
+expect = "value_not_found"
+site = 3
+request = "Percent of the total for 12, 30 and 18"
+program = '''
+import matplotlib.pyplot as plt
+values = [12, 30, 18]
+plt.bar(range(3), [value / 50 * 100 for value in values])
+'''
+
+# --- passes, keys, channels and labels -------------------------------------------------------------
+
+[[case]]
+id = "computed-beats-coincident-column"
+computed = "square"
+expect = "pass"
+rule = "column_not_requested"
+csv = "shadow.csv"
+request = "Plot the square of base by category"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/shadow.csv")
+plt.plot(df["category"], df["base"] ** 2, marker="o")
+'''
+
+[[case]]
+id = "operand-as-key"
+computed = "ratio"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue per order against orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+plt.scatter(df["orders"], df["revenue"] / df["orders"])
+'''
+
+[[case]]
+id = "channel-percent"
+computed = "percent"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Revenue against orders, sized by each row's percent of all orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], s=100 * df["orders"] / df["orders"].sum())
+plt.legend(*dots.legend_elements("sizes"))
+'''
+
+[[case]]
+id = "median-over-square"
+computed = "square"
+expect = "label_not_consistent"
+site = 5
+csv = "sales.csv"
+request = "Square of total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.bar(totals.index, totals ** 2)
+plt.title("Median revenue by region")
+'''
+
+[[case]]
+id = "ratio-beside-sum"
+computed = "ratio"
+expect = "pass"
+rule = "label_not_consistent"
+csv = "sales.csv"
+request = "Total revenue and average revenue per order by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+sums = pd.read_csv("{data}/sales.csv").groupby("region")[["revenue", "orders"]].sum()
+plt.bar(sums.index, sums["revenue"])
+plt.plot(sums.index, sums["revenue"] / sums["orders"], color="black", marker="o")
+plt.title("Total revenue and average revenue per order")
+'''
+
+[[case]]
+id = "running-count-dissolves-a-tie"
+computed = "cumsum"
+expect = "pass"
+rule = "column_not_requested"
+csv = "twins12.csv"
+request = "Chart the values by name"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{corpus}/twins12.csv")
+plt.bar(df["name"], df["first"])
+'''

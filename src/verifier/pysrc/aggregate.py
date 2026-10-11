@@ -23,6 +23,7 @@ functions the reduction carries NO measured ulp band, so a disagreement here is 
 an environment gap.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal, NoReturn, assert_never
 
@@ -30,7 +31,14 @@ from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.table import CellValue
 
-__all__ = ["Aggregated", "ColumnDtype", "Reduction", "aggregate_series", "column_dtype"]
+__all__ = [
+    "Aggregated",
+    "ColumnDtype",
+    "Reduction",
+    "aggregate_series",
+    "column_dtype",
+    "kahan_sum",
+]
 
 # Grouped reductions, closed. Each one is a total function from a group's cells to one number,
 # which is what lets the judge reproduce it exactly; a reduction needing a parameter (quantile,
@@ -77,7 +85,7 @@ def column_dtype(texts: tuple[str, ...]) -> ColumnDtype:
     return "float64" if any("." in text for text in texts) else "int64"
 
 
-def _kahan_sum(values: tuple[float, ...]) -> float:
+def kahan_sum(values: Sequence[float]) -> float:
     """Ordered binary64 Kahan compensation. Not naive, not `fsum`, not Neumaier.
 
     The compensation reset pandas performs for NaN is absent because NaN cannot arrive: the cell
@@ -105,11 +113,11 @@ def _extremum[T: (float, int)](values: tuple[T, ...], *, greater: bool) -> T:
 def _reduce_float(values: tuple[float, ...], reduction: Reduction) -> float:
     match reduction:
         case "sum":
-            return _kahan_sum(values)
+            return kahan_sum(values)
         case "mean":
             # Sum THEN divide, in that order. A running mean and a compensated divide each land on a
             # different last bit, and this is the order pandas takes.
-            return _kahan_sum(values) / len(values)
+            return kahan_sum(values) / len(values)
         case "min":
             return _extremum(values, greater=False)
         case "max":
@@ -128,7 +136,7 @@ def _reduce_int(values: tuple[int, ...], reduction: Reduction) -> float:
         case "mean":
             # Per-value float cast, THEN Kahan, THEN divide. Not the exact integer mean: pandas
             # rounds each value into float64 first, and `[2**53, 1, 0]` is where the two split.
-            return _kahan_sum(tuple(float(value) for value in values)) / len(values)
+            return kahan_sum(tuple(float(value) for value in values)) / len(values)
         case "min":
             return float(_extremum(values, greater=False))
         case "max":

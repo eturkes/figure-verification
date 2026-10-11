@@ -380,7 +380,7 @@ def test_a_scatter_may_repeat_a_category() -> None:
 
 def test_a_tie_named_on_both_sides_stays_a_tie() -> None:
     content = (Path(__file__).parent / "figure_corpus" / "twins.csv").read_bytes()
-    program = _PLT + "plt.bar(['x', 'y'], [1, 2])\n"
+    program = _PLT + "plt.bar(['x', 'y'], [3, 7])\n"
     sources = Sources((("twins.csv", content),), "first and second by name")
     assert _judge(program, sources) == Blocked("column_not_requested", 2)
 
@@ -399,8 +399,8 @@ def test_same_columns_prefer_the_raw_reading() -> None:
 
 def test_a_reference_two_columns_hold_names_no_column() -> None:
     content = (Path(__file__).parent / "figure_corpus" / "twins.csv").read_bytes()
-    program = _PLT + "plt.bar(['x', 'y'], [1, 2])\nplt.axhline(2)\n"
-    verdict = _judge(program, Sources((("twins.csv", content),), "first by name, line at 2"))
+    program = _PLT + "plt.bar(['x', 'y'], [3, 7])\nplt.axhline(7)\n"
+    verdict = _judge(program, Sources((("twins.csv", content),), "first by name, line at 7"))
     assert isinstance(verdict, Passed)
     assert (verdict.choices[1].reference, verdict.choices[1].shared) == ((), 0)
     held = _judge(program, Sources((("twins.csv", content),), "first by name"))
@@ -562,7 +562,7 @@ def test_span_edges_from_two_columns_draw_both() -> None:
 
 def test_a_shared_reference_value_says_so() -> None:
     content = (Path(__file__).parent / "figure_corpus" / "twins.csv").read_bytes()
-    program = _PLT + "plt.bar(['x', 'y'], [1, 2])\nplt.axhline(2)\nplt.axhline(0)\n"
+    program = _PLT + "plt.bar(['x', 'y'], [3, 7])\nplt.axhline(7)\nplt.axhline(0)\n"
     verdict = _judge(program, Sources((("twins.csv", content),), "first by name"))
     assert isinstance(verdict, Passed)
     assert verdict.interpretation.split("\n")[1:] == [

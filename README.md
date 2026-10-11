@@ -31,7 +31,8 @@ A chart passes when all of these statements are true:
    normal direction and no value lies outside the axis limits.
 2. **Provenance.** The user can attach a CSV file or type numbers in the request. Every drawn value
    then comes from that data: a value of one column, one summary per group of one column, or a typed
-   number. A chart without such data passes on integrity alone, and the reply says so.
+   number. It can also be one admitted computation of that data, such as a running total or a ratio
+   of two columns. A chart without such data passes on integrity alone, and the reply says so.
 3. **Interpretation.** The reply states in plain words where each drawn value comes from. If the
    request contains Japanese kana, that text is in Japanese.
 

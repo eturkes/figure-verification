@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.4 publication (tier 3): each clause of the plain-words record (`.agent/archive/contracts/m19u4.md` V9).
 module = "src/verifier/figure/interpret.py"
-tests = ["tests/test_figure_values.py"]
+tests = ["tests/test_figure_values.py", "tests/test_figure_computed.py"]
 
 [[mutant]]
 id = "m19-subset-unpublished"
@@ -14,7 +14,9 @@ mutant = '''    if False:'''
 id = "m19-counts-unpublished"
 predicate = "a reduction publishes its per-group row counts (G11)"
 kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[group]"
-anchor = '''    if explanation.counts is not None and explanation.family != "count":'''
+anchor = '''    if explanation.counts is not None and (
+        explanation.family != "count" or explanation.transform is not None
+    ):'''
 mutant = '''    if False:'''
 
 [[mutant]]
@@ -50,3 +52,40 @@ predicate = "reference values several columns hold are published as such"
 kills = "tests/test_figure_values.py::test_a_shared_reference_value_says_so"
 anchor = '''    if choice.shared:'''
 mutant = '''    if False:'''
+
+[[mutant]]
+id = "q45-binary-phrase"
+predicate = "a two-column computation reads as its operation"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''    if transform is not None and transform in _BINARY:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q45-unary-phrase"
+predicate = "a one-series computation names itself around its base"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''        if transform is not None:
+            text = _UNARY[transform][1 if japanese else 0].format(base=text)'''
+mutant = '''        if False:
+            text = _UNARY[transform][1 if japanese else 0].format(base=text)'''
+
+[[mutant]]
+id = "q45-typed-phrase"
+predicate = "a typed computation names itself and its operands"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''        if choice.typed is not None:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "q45-operands-cut"
+predicate = "the operands show 8 numbers, then an ellipsis"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''    more = len(numbers) > _OPERANDS_SHOWN'''
+mutant = '''    more = False'''
+
+[[mutant]]
+id = "q45-count-computation-counts"
+predicate = "a computation over row counts publishes the counts"
+kills = "tests/test_figure_computed.py::test_a_computed_row_count_publishes_its_counts"
+anchor = '''        explanation.family != "count" or explanation.transform is not None'''
+mutant = '''        explanation.family != "count"'''

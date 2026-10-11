@@ -74,7 +74,7 @@ id = "r2-running-mean"
 predicate = "a float64 mean is the Kahan sum THEN the divide, never a running mean"
 kills = "tests/test_pysrc_aggregate.py::test_r2_float_mean_is_kahan_sum_over_count"
 anchor = '''
-            return _kahan_sum(values) / len(values)'''
+            return kahan_sum(values) / len(values)'''
 mutant = '''
             mean = 0.0
             for count, value in enumerate(values, start=1):
@@ -86,7 +86,7 @@ id = "r3-exact-int-mean"
 predicate = "an int64 mean casts each value to float64 BEFORE summing -- it is not the exact one"
 kills = "tests/test_pysrc_aggregate.py::test_r3_int_mean_casts_before_summing"
 anchor = '''
-            return _kahan_sum(tuple(float(value) for value in values)) / len(values)'''
+            return kahan_sum(tuple(float(value) for value in values)) / len(values)'''
 mutant = '''
             return sum(values) / len(values)'''
 

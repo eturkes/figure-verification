@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.4 columns: anchoring over value-derived columns + G10 (`.agent/archive/contracts/m19u4.md` U6).
 module = "src/verifier/figure/columns.py"
-tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py", "tests/test_figure_computed.py"]
 
 [[mutant]]
 id = "m19-substitution-tightened"
@@ -68,3 +68,10 @@ predicate = "figure legends are judged labels"
 kills = "tests/test_figure_values.py::test_g10_reads_figure_legends"
 anchor = '''    figure_texts = [*figure.titles, *(e for legend in figure.legends for e in _entries(legend))]'''
 mutant = '''    figure_texts = [*figure.titles]'''
+
+[[mutant]]
+id = "q45-g10-summary"
+predicate = "G10 reads a computation's summary, not its base family"
+kills = "tests/test_figure_corpus.py::test_corpus_case[ratio-beside-sum]"
+anchor = '''            for reduction in (summary(choice.explanation),)'''
+mutant = '''            for reduction in (choice.explanation.family,)'''

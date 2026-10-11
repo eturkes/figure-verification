@@ -9,9 +9,11 @@ group look alike. An integer range expands to every integer between its ends: `a
 never a range,
 because dates and negative numbers use it. A range longer than `MAX_RANGE` terms adds its ends
 alone.
+
+`sequence` keeps the numbers in typed order for the computations on typed numbers (Q45): each
+number's whole reading, a range expanded in place in its typed direction.
 """
 
-import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -34,6 +36,7 @@ class Request:
 
     numbers: frozenset[float]
     text: str
+    sequence: tuple[float, ...] = ()
 
     def names(self, label: str) -> bool:
         """R4: a category label the request typed, after NFKC + casefold on both sides."""
@@ -71,17 +74,26 @@ def read_request(text: str | None) -> Request:
     folded = fold(text)
     matches = list(_NUMBER.finditer(folded))
     numbers: set[float] = set()
-    for match in matches:
+    sequence: list[float] = []
+    for index, match in enumerate(matches):
         numbers.update(_readings(match))
-    for left, right in itertools.pairwise(matches):
-        start, end = _integer(left), _integer(right)
-        between = folded[left.end() : right.start()]
-        ranged = _RANGE.match(between) is not None
-        if ranged and between.strip() == "から":
-            ranged = folded.startswith(_UNTIL, right.end())
-        if not ranged or start is None or end is None:
-            continue
-        low, high = min(start, end), max(start, end)
-        if high - low < MAX_RANGE:
-            numbers.update(float(value) for value in range(low, high + 1))
-    return Request(frozenset(numbers), folded)
+        expanded = _expanded(folded, matches[index - 1], match) if index else None
+        if expanded is None:
+            sequence.append(_readings(match)[0])
+        else:
+            numbers.update(expanded)
+            sequence += expanded[1:]
+    return Request(frozenset(numbers), folded, tuple(sequence))
+
+
+def _expanded(folded: str, left: re.Match[str], right: re.Match[str]) -> list[float] | None:
+    """The integers from `left` to `right` in typed order when the two spell a range."""
+    start, end = _integer(left), _integer(right)
+    between = folded[left.end() : right.start()]
+    ranged = _RANGE.match(between) is not None
+    if ranged and between.strip() == "から":
+        ranged = folded.startswith(_UNTIL, right.end())
+    if not ranged or start is None or end is None or abs(end - start) >= MAX_RANGE:
+        return None
+    step = 1 if end >= start else -1
+    return [float(value) for value in range(start, end + step, step)]

@@ -219,3 +219,31 @@ def test_every_chart_kind_passes_honest_and_blocks_misleading(kind: str) -> None
 )
 def test_the_named_acceptance_cases_exist(case_id: str, expect: str) -> None:
     assert _ALL[case_id]["expect"] == expect
+
+
+# Q45 (`.agent/archive/contracts/q45.md` C4), hand-stated: each admitted computation of CSV data
+# and of the request's numbers has an honest twin that passes and a wrong-value program that blocks.
+_COMPUTED = (
+    "square",
+    "cumsum",
+    "diff",
+    "share",
+    "percent",
+    "ratio",
+    "difference",
+    "product",
+    "total",
+    "typed-square",
+    "typed-cumsum",
+    "typed-diff",
+    "typed-share",
+    "typed-percent",
+)
+
+
+@pytest.mark.parametrize("computed", _COMPUTED)
+def test_every_computation_passes_honest_and_blocks_a_wrong_value(computed: str) -> None:
+    cases = [case for case in _ALL.values() if case.get("computed") == computed]
+    assert any(case["expect"] == "pass" for case in cases), computed
+    assert any(case["expect"] == "value_not_found" for case in cases), computed
+    assert {case["computed"] for case in _ALL.values() if "computed" in case} == set(_COMPUTED)

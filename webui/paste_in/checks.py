@@ -159,13 +159,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "values": (
         (
             "Drawn values come from your data",
-            "each value is in your CSV file, one summary per group of it, or a number in your"
-            " request; each category once",
+            "each value is in your CSV file, one summary per group, a number in your request, or"
+            " one admitted computation of these; each category once",
         ),
         (
             "描画した値があなたのデータにある",
-            "各値が CSV ファイルの値、そのグループごとの集計、または依頼文の数値。"
-            "カテゴリの重複なし",
+            "各値が CSV ファイルの値、そのグループごとの集計、依頼文の数値、"
+            "またはそれらの認められた計算。カテゴリの重複なし",
         ),
     ),
     "columns": (
@@ -258,10 +258,12 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     "values": (
         "Each drawn value must come from your data. It is a value in your CSV file or a number in"
         " your request. It can also be one total, mean, minimum, maximum or row count per group"
-        " of the file. Category labels come from the same rows or from your request.",
+        " of the file. It can also be one admitted computation of these, such as a running total"
+        " or a ratio of two columns. Category labels come from the same rows or from your request.",
         "描画した各値は、あなたのデータにある必要があります。"
         "CSV ファイルの値、そのグループごとの合計、平均、最小値、最大値、行数、"
-        "または依頼文の数値です。"
+        "または依頼文の数値です。累計や 2 つの列の比率のような、それらの認められた計算でも"
+        "かまいません。"
         "カテゴリのラベルは、同じ行または依頼文にある必要があります。",
     ),
     "columns": (

@@ -2,7 +2,7 @@
 # M19.4 request numbers + ranges (`.agent/archive/contracts/m19u4.md` V3). Renamed `request.toml`
 # once `pysrc/request.py` and its catalogue retire.
 module = "src/verifier/figure/request.py"
-tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py", "tests/test_figure_computed.py"]
 
 [[mutant]]
 id = "m19-hyphen-range"
@@ -43,22 +43,22 @@ mutant = '''~〜]\\s*$'''
 id = "m19-made-unneeded"
 predicate = "`aからb` without まで is no range"
 kills = "tests/test_figure_values.py::test_request_ranges_need_their_words"
-anchor = '''            ranged = folded.startswith(_UNTIL, right.end())'''
-mutant = '''            ranged = True'''
+anchor = '''        ranged = folded.startswith(_UNTIL, right.end())'''
+mutant = '''        ranged = True'''
 
 [[mutant]]
 id = "m19-range-unbounded"
 predicate = "a range past MAX_RANGE adds its ends alone"
 kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
-anchor = '''        if high - low < MAX_RANGE:'''
-mutant = '''        if True:'''
+anchor = '''    if not ranged or start is None or end is None or abs(end - start) >= MAX_RANGE:'''
+mutant = '''    if not ranged or start is None or end is None:'''
 
 [[mutant]]
 id = "m19-range-one-way"
 predicate = "a descending range expands"
 kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
-anchor = '''        low, high = min(start, end), max(start, end)'''
-mutant = '''        low, high = start, end'''
+anchor = '''    step = 1 if end >= start else -1'''
+mutant = '''    step = 1'''
 
 [[mutant]]
 id = "m19-label-unfolded"
@@ -66,3 +66,17 @@ predicate = "typed labels compare after NFKC"
 kills = "tests/test_figure_corpus.py::test_corpus_case[labels-typed-ja]"
 anchor = '''    return unicodedata.normalize("NFKC", text).replace("\N{MINUS SIGN}", "-").casefold()'''
 mutant = '''    return text.replace("\N{MINUS SIGN}", "-").casefold()'''
+
+[[mutant]]
+id = "q45-sequence-whole"
+predicate = "the sequence takes each number's whole reading"
+kills = "tests/test_figure_computed.py::test_the_sequence_is_the_typed_order[1,200 units-sequence3]"
+anchor = '''            sequence.append(_readings(match)[0])'''
+mutant = '''            sequence.append(_readings(match)[-1])'''
+
+[[mutant]]
+id = "q45-sequence-in-place"
+predicate = "a range expands in place, its first end once"
+kills = "tests/test_figure_computed.py::test_the_sequence_is_the_typed_order[from 5 to 2, then 9-sequence1]"
+anchor = '''            sequence += expanded[1:]'''
+mutant = '''            sequence += expanded'''

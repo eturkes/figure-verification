@@ -1119,3 +1119,22 @@ def test_m20_2_a_raising_program_lists_the_raising_statement() -> None:
     listed = _listed(embed(browser.events))
     assert listed["run"] == ((3, 4, 5), (3,))
     assert listed["figure"] == ((), ())
+
+
+def test_q45_the_outlet_judges_off_the_event_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Q45: two passes over a large CSV take seconds; the outlet keeps Open WebUI's loop free."""
+    import threading  # noqa: PLC0415
+
+    from verifier.figure import judge as judging  # noqa: PLC0415
+
+    threads: list[int] = []
+    original = judging.judge
+
+    def spy(*args: object) -> object:
+        threads.append(threading.get_ident())
+        return original(*args)  # type: ignore[arg-type]
+
+    with patched_filter(monkeypatch, (("verifier.figure.judge", "judge", spy),)):
+        Browser(SIMPLE).exercise()
+    assert len(threads) == 1
+    assert threads[0] != threading.get_ident()

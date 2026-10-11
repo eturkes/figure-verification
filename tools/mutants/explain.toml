@@ -2,7 +2,7 @@
 # M19.4 values: each explanation family, the R6 filter, injective matching, per-value EITHER,
 # R7 ties and reference marks earn one mutant naming one red (`.agent/archive/contracts/m19u4.md`).
 module = "src/verifier/figure/explain.py"
-tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py"]
+tests = ["tests/test_figure_values.py", "tests/test_figure_corpus.py", "tests/test_figure_computed.py"]
 
 [[mutant]]
 id = "m19-stack-base-ignored"
@@ -31,10 +31,10 @@ mutant = '''    if True:
 id = "m19-label-column-drawn"
 predicate = "the R6 label column draws nothing"
 kills = "tests/test_figure_corpus.py::test_corpus_case[series-label-filters]"
-anchor = '''        return frozenset(name for name in (self.key, self.value) if name is not None)'''
+anchor = '''        return frozenset(name for name in (self.key, self.value, self.other) if name is not None)'''
 mutant = '''        return frozenset(
             name
-            for name in (self.key, self.value, self.where and self.where[0])
+            for name in (self.key, self.value, self.other, self.where and self.where[0])
             if name is not None
         )'''
 
@@ -143,8 +143,8 @@ mutant = '''        named = []'''
 id = "m19-preference-reversed"
 predicate = "same columns publish the raw reading first"
 kills = "tests/test_figure_values.py::test_same_columns_prefer_the_raw_reading"
-anchor = '''    return min(members, key=lambda e: _PREFERENCE.index(e.family))'''
-mutant = '''    return max(members, key=lambda e: _PREFERENCE.index(e.family))'''
+anchor = '''        return -1, 0, _PREFERENCE.index(explanation.family)'''
+mutant = '''        return -1, 0, -_PREFERENCE.index(explanation.family)'''
 
 [[mutant]]
 id = "m19-pivot-order-dropped"
@@ -196,17 +196,15 @@ mutant = '''        partners is None or point.partner is not None'''
 id = "m19-channel-groups-unbound"
 predicate = "a grouped channel is a reduction over its point's group"
 kills = "tests/test_figure_values.py::test_r8_grouped_channels_bind_to_their_group"
-anchor = '''        for grouped in _group(table, cast("Column", key), column, rows, budget):'''
+anchor = '''        for grouped in _group(table, key, column, rows, budget):'''
 mutant = '''        for grouped in ():'''
 
 [[mutant]]
 id = "m19-channel-request-only"
 predicate = "a typed scatter's channels must be typed too"
 kills = "tests/test_figure_values.py::test_r8_grouped_channels_bind_to_their_group"
-anchor = '''    if explanation is None:
-        return _explain_series(series, iter(()), context)'''
-mutant = '''    if explanation is None:
-        return Choice(series, None, 0, len(series.points))'''
+anchor = '''        outcome = _explain_series(series, iter(()), context)'''
+mutant = '''        outcome = Choice(series, None, 0, len(series.points))'''
 
 [[mutant]]
 id = "m19-slots-not-first"
@@ -263,3 +261,180 @@ predicate = "a scatter may repeat a category (both points show)"
 kills = "tests/test_figure_values.py::test_a_scatter_may_repeat_a_category"
 anchor = '''    if series.shape != "keyed" or series.mark.family == "scatter":'''
 mutant = '''    if series.shape != "keyed":'''
+
+[[mutant]]
+id = "q45-orders"
+predicate = "a computation binds slots in pandas' pair order alone"
+kills = "tests/test_figure_computed.py::test_a_computation_keeps_pandas_pair_order"
+anchor = '''    if explanation.family != "raw" or explanation.transform is not None:'''
+mutant = '''    if explanation.family != "raw":'''
+
+[[mutant]]
+id = "q45-vocabulary-first"
+predicate = "same columns publish the vocabulary before a computation"
+kills = "tests/test_figure_computed.py::test_the_vocabulary_beats_a_computation_of_the_same_columns"
+anchor = '''        return -1, 0, _PREFERENCE.index(explanation.family)'''
+mutant = '''        return 99, 0, _PREFERENCE.index(explanation.family)'''
+
+[[mutant]]
+id = "q45-order-rank"
+predicate = "same columns publish the first computation in `ORDER`"
+kills = "tests/test_figure_computed.py::test_same_columns_publish_the_first_computation_in_order"
+anchor = '''    return ORDER.index(transform), part, _PREFERENCE.index(explanation.family)'''
+mutant = '''    return -ORDER.index(transform), part, _PREFERENCE.index(explanation.family)'''
+
+[[mutant]]
+id = "q45-whole-first"
+predicate = "a computation drawn whole beats one drawn in part"
+kills = "tests/test_figure_computed.py::test_a_whole_computation_beats_one_drawn_in_part"
+anchor = '''    part = int(len(explanation.pairs) != points)'''
+mutant = '''    part = 0'''
+
+[[mutant]]
+id = "q45-unary-counts"
+predicate = "a dropped pair drops its group count"
+kills = "tests/test_figure_corpus.py::test_corpus_case[diff-honest]"
+anchor = '''            counts=None if base.counts is None else tuple(base.counts[at] for at in kept),'''
+mutant = '''            counts=base.counts,'''
+
+[[mutant]]
+id = "q45-unary-rows"
+predicate = "a row-keyed computation carries its source rows"
+kills = "tests/test_figure_computed.py::test_a_channel_binds_to_its_row_when_the_main_drops_one"
+anchor = '''            rows=None if rows is None else tuple(rows[at] for at in kept),'''
+mutant = '''            rows=None,'''
+
+[[mutant]]
+id = "q45-ops-ordered"
+predicate = "ratio takes both column orders"
+kills = "tests/test_figure_corpus.py::test_corpus_case[ratio-honest]"
+anchor = '''            if op in ("ratio", "difference") or numeric.index(left) < numeric.index(right):'''
+mutant = '''            if numeric.index(left) < numeric.index(right):'''
+
+[[mutant]]
+id = "q45-rows-index"
+predicate = "a per-row computation keys by row position too"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''        yield indexed
+        for key in table.columns:'''
+mutant = '''        for key in table.columns:'''
+
+[[mutant]]
+id = "q45-group-own-operand"
+predicate = "a group computation never groups by its own operand"
+kills = "tests/test_figure_computed.py::test_a_group_computation_never_groups_by_its_own_operand"
+anchor = '''        if key is left or key is right:
+            continue
+        for column in (left, right):'''
+mutant = '''        for column in (left, right):'''
+
+[[mutant]]
+id = "q45-group-ops"
+predicate = "a group computation runs over the group sums"
+kills = "tests/test_figure_corpus.py::test_corpus_case[total-group-honest]"
+anchor = '''        yield op, left, right, groups, computed.binary(op, values, right_sums[1]), counts'''
+mutant = '''        yield op, left, right, groups, computed.binary(op, values, values), counts'''
+
+[[mutant]]
+id = "q45-unary-of-bases"
+predicate = "every vocabulary explanation takes its one-series computations"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cumsum-honest]"
+anchor = '''        yield from _unary_of(base, rows if row_keyed else None, budget, memo, wanted)'''
+mutant = '''        yield from ()'''
+
+[[mutant]]
+id = "q45-summary-ratio"
+predicate = "a ratio of group sums is read as a mean"
+kills = "tests/test_figure_computed.py::test_the_summary_a_label_may_name[sum-ratio-mean]"
+anchor = '''        return "mean" if explanation.transform == "ratio" else "sum"'''
+mutant = '''        return "sum"'''
+
+[[mutant]]
+id = "q45-summary-per-row"
+predicate = "a per-row computation names no reduction"
+kills = "tests/test_figure_computed.py::test_the_summary_a_label_may_name[raw-ratio-None]"
+anchor = '''        if explanation.family != "sum":
+            return None'''
+mutant = '''        if False:
+            return None'''
+
+[[mutant]]
+id = "q45-typed-keys"
+predicate = "a typed computation needs typed keys"
+kills = "tests/test_figure_computed.py::test_a_typed_computation_needs_typed_keys"
+anchor = '''    if not all(_request_key(point.key, request, positional=positional) for point in points):
+        return None'''
+mutant = '''    if False:
+        return None'''
+
+[[mutant]]
+id = "q45-typed-base"
+predicate = "a stacked band's typed value sits on its base"
+kills = "tests/test_figure_computed.py::test_a_stacked_typed_computation_reads_its_base"
+anchor = '''            else any(point.base + value == point.value for value in values)'''
+mutant = '''            else point.value in values'''
+
+[[mutant]]
+id = "q45-tie-not-typed"
+predicate = "a column tie is never resolved by a typed computation"
+kills = "tests/test_figure_computed.py::test_a_column_tie_is_never_resolved_by_a_typed_computation"
+anchor = '''    if isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":'''
+mutant = '''    if isinstance(outcome, Unexplained):'''
+
+[[mutant]]
+id = "q45-pass2-computations"
+predicate = "the second pass adds the computations"
+kills = "tests/test_figure_corpus.py::test_corpus_case[square-honest]"
+anchor = '''    candidates = itertools.chain(
+        _candidates(series, context, budget), _computed_candidates(series, context, budget)
+    )'''
+mutant = '''    candidates = _candidates(series, context, budget)'''
+
+[[mutant]]
+id = "q45-channel-computations"
+predicate = "a channel takes the computations in the second pass"
+kills = "tests/test_figure_corpus.py::test_corpus_case[channel-percent]"
+anchor = '''        for transform, found in computed.unary(tuple(numbers[row] for row in every)):'''
+mutant = '''        for transform, found in ():'''
+
+[[mutant]]
+id = "q45-group-channel-partner"
+predicate = "a grouped channel binds only groups its main kept"
+kills = "tests/test_figure_computed.py::test_a_channel_binds_to_its_group_when_the_main_drops_one"
+anchor = '''            kept = [at for at, (group, _value) in enumerate(pairs) if group in partner]'''
+mutant = '''            kept = list(range(len(pairs)))'''
+
+[[mutant]]
+id = "q45-other-drawn"
+predicate = "a computation's second column counts as drawn"
+kills = "tests/test_figure_computed.py::test_the_second_column_of_a_computation_is_drawn"
+anchor = '''        return frozenset(name for name in (self.key, self.value, self.other) if name is not None)'''
+mutant = '''        return frozenset(name for name in (self.key, self.value) if name is not None)'''
+
+[[mutant]]
+id = "q45-channel-whole-column"
+predicate = "a channel computation runs over every row, then keeps its points' rows"
+kills = "tests/test_figure_computed.py::test_a_channel_computation_runs_over_the_whole_column"
+anchor = '''        for transform, found in computed.unary(tuple(numbers[row] for row in every)):
+            budget.charge(len(rows))
+            picked = [at for at, row in enumerate(rows) if found[at_row[row]] is not None]'''
+mutant = '''        for transform, found in computed.unary(tuple(numbers[row] for row in rows)):
+            budget.charge(len(rows))
+            at_row = {row: at for at, row in enumerate(rows)}
+            picked = [at for at, row in enumerate(rows) if found[at_row[row]] is not None]'''
+
+[[mutant]]
+id = "q45-typed-channel"
+predicate = "a typed scatter's channel takes a typed computation in the second pass"
+kills = "tests/test_figure_computed.py::test_a_typed_scatter_s_channel_takes_a_typed_computation"
+anchor = '''        if admitted and isinstance(outcome, Unexplained):
+            return _typed(series, context.request, budget) or outcome'''
+mutant = '''        if False:
+            return _typed(series, context.request, budget) or outcome'''
+
+[[mutant]]
+id = "q45-typed-charge"
+predicate = "a typed computation charges the work meter"
+kills = "tests/test_figure_computed.py::test_a_typed_computation_charges_the_work_meter"
+anchor = '''        budget.charge(len(request.sequence) + len(points))'''
+mutant = '''        budget.charge(0)'''

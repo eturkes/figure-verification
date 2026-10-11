@@ -18,7 +18,8 @@ The verifier gives three kinds of assurance:
    checks. Every part obeys a closed set of rules: for example, bars start at zero and every axis
    runs in its normal direction.
 2. **Provenance.** When you attach a CSV file or type numbers in your request, every drawn value
-   comes from that data. A value that the verifier cannot find in your data stops the chart.
+   comes from that data. It can also come from one admitted computation of that data. A value that
+   the verifier cannot find stops the chart.
 3. **Interpretation.** A passed reply states in plain words where each drawn value comes from. It
    names the file, the columns, the summary per group and the row counts.
 
@@ -41,6 +42,8 @@ The verifier compares the drawn values with the data that you supplied:
   10`, `1 to 10`, `1–10`, `1〜10` and `1から10まで` each give the numbers 1 to 10. A plain hyphen, as in
   `1-10`, never makes a range, because dates and negative numbers use it. A category label must also
   occur in your request.
+- **A computation of that data.** A drawn value can also be one computation of a CSV series, of
+  two columns or of your request's numbers. The next section lists them.
 - **No data.** When you attach no file and type no number, the verifier checks the chart for
   integrity alone. The reply says so.
 
@@ -49,6 +52,45 @@ file's totals with a target line at a number that you typed.
 
 The verifier reads the CSV file with the same profile as `pandas.read_csv`. The verifier compares
 values exactly, with no numerical tolerance. Each row of the file backs one drawn value at most.
+
+### Computed values
+
+A drawn value can also be one computation of your data. The verifier admits only the computations
+in this table. Each one applies to one series from a CSV file, to two numeric columns, or to the
+numbers in your request.
+
+| Computation | Example | Chance, CSV file | Chance, request numbers |
+|---|---|---|---|
+| Square | `df["x"] ** 2` | 0 / 0 / 0 | 1,055 / 239 / 25 |
+| Running total | `s.cumsum()` | 52 / 0 / 0 | 971 / 321 / 91 |
+| Change from the previous point | `s.diff()` | 99 / 1 / 0 | 296 / 8 / 0 |
+| Share of the total | `s / s.sum()` | 416 / 284 / 262 | 495 / 29 / 0 |
+| Percent of the total | `100 * s / s.sum()` | 65 / 0 / 0 | 253 / 19 / 1 |
+| Ratio of two columns | `df["a"] / df["b"]` | 13 / 0 / 0 | none |
+| Difference of two columns | `df["a"] - df["b"]` | 54 / 0 / 0 | none |
+| Product of two columns | `df["a"] * df["b"]` | 2 / 0 / 0 | none |
+| Sum of two columns | `df["a"] + df["b"]` | 31 / 0 / 0 | none |
+
+The chance columns come from measurement X1. Each shows how many of 10,000 made-up series pass
+through that computation alone, for series of 1, 2 and 3 or more points. The CSV figures use the
+demo files, whose key columns hold at most 4 categories. The share row is high for whole numbers
+from 0 to 2. For values with two decimals, it is 43 / 1 / 0.
+
+These rules apply to computed values:
+
+- A series is one column, one summary per group, or one row count per group, as listed above.
+- A two-column computation works on each row, or on the column totals of each group.
+- The verifier reproduces each computation exactly, in the ways that numpy, pandas and Python
+  compute it. For example, a total can come from `s.sum()`, `sum()` or `groupby().sum()`.
+- A value that the program rounds, scales or computes in another way stops the chart. This does not
+  apply when the same number is also in your data.
+- The verifier uses computations only when the chart fails without them. A chart that passes on its
+  plain values keeps that reading.
+- The search for computed values has its own work limit, the same size as `MAX_WORK`. Past that
+  limit, the chart keeps the result of the first search.
+- Reference lines and bands take no computations.
+- The verifier uses the numbers in your request in the order that you typed them. Every number
+  counts, a year too. To compute over a list, type that list or one range alone.
 
 Some special cases:
 
@@ -346,8 +388,7 @@ The verifier stops work beyond these limits.
 - **Your intent.** The verifier checks that the values come from your data. It does not check that
   the chart shows the quantity that you meant. Column names in your request are the one link to your
   intent.
-- **Computed values.** The verifier looks for each drawn value in your data. It does not check how
-  the program computed it. A value that the program computes in another way stops the chart,
-  unless the same number is also in your data. Examples are a running total, a ratio of two columns
-  and a scaled marker size.
+- **Other computations.** The verifier admits only the computations in the table above. It does not
+  check how the program computed a value. A rounded value, a running mean, a logarithm or a scaled
+  marker size stops the chart, unless the same number is also in your data.
 - **The image itself.** The verifier trusts the browser, matplotlib and the image pixels.

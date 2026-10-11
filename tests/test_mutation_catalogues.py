@@ -21,6 +21,7 @@ _CATALOGUES = (
     "anchoring",
     "checks",
     "columns",
+    "computed",
     "csvread",
     "description",
     "excerpts",

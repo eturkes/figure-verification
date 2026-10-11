@@ -377,7 +377,8 @@ class Filter:
             self._ANCHORING,
             receipt.aliases,
         )
-        verdict = judge(description, sources)
+        # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
+        verdict = await asyncio.to_thread(judge, description, sources)
         if not isinstance(verdict, Passed):
             return await fail(verdict.reason, verdict.site)
         uri = _png_uri(cast("str", stdout))

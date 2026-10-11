@@ -318,3 +318,10 @@ predicate = "the cut parses the font off the event loop (Q44 F2)"
 kills = "tests/test_paste_in_font.py::test_q44_outlet_sends_the_cut_made_off_the_event_loop"
 anchor = '''    return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])'''
 mutant = '''    return cut_for(font, program, [file.content for file in files])'''
+
+[[mutant]]
+id = "q45-judge-off-loop"
+predicate = "the outlet judges off the event loop (Q45: two passes take seconds)"
+kills = "tests/test_paste_in_outlet.py::test_q45_the_outlet_judges_off_the_event_loop"
+anchor = '''        verdict = await asyncio.to_thread(judge, description, sources)'''
+mutant = '''        verdict = judge(description, sources)'''

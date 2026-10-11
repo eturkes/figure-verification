@@ -18,12 +18,10 @@ from verifier.figure.anchoring import (
     summaries,
 )
 from verifier.figure.description import Figure, Legend, Text
-from verifier.figure.explain import Choice, Context
+from verifier.figure.explain import Choice, Context, summary
 from verifier.figure.parts import Panel
 from verifier.figure.reasons import block
 from verifier.figure.sources import Table
-
-_REDUCTIONS: frozenset[str] = frozenset({"sum", "mean", "min", "max"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,11 +109,11 @@ def check_labels(
     every: set[str] = set()
     for position, panel in enumerate(panels):
         reductions: set[str] = {
-            choice.explanation.family
+            reduction
             for choice in choices
-            if choice.series.panel == position
-            and choice.explanation is not None
-            and choice.explanation.family in _REDUCTIONS
+            if choice.series.panel == position and choice.explanation is not None
+            for reduction in (summary(choice.explanation),)
+            if reduction is not None
         }
         every |= reductions
         _check(_panel_labels(figure, panel), reductions, context, columns)
