@@ -79,6 +79,9 @@ main() {
     stage audit audit_locks
     stage secrets secret_scan
     stage workflows uv run --locked zizmor .github/
+    # Shape of the attached state. A byte copy of upstream `claude/spec-lint` (template
+    # `Session flow`): a refresh re-copies it, so a fix lands upstream, never here.
+    stage spec sh .agent/spec-lint .agent/spec.md
 
     if command -v shellcheck >/dev/null 2>&1; then
         stage shell shell_lint

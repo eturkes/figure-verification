@@ -11,7 +11,7 @@
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
 # whose output names the expected cause: attribution rides the message, since eight tests carry
-# more than one probe -- G6, G7, G10, S3 and S9 two each, S4 three, S6 four, S8 five -- one per conjunct of
+# more than one probe -- G6, G7, G10, S3 and S9 two each, S4 three, S6 five, S8 five -- one per conjunct of
 # a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -33,11 +33,12 @@ OPS=.claude/rules/ops.md
 OWUI=.claude/rules/owui.md
 TEST_GATE=tests/test_gate.py
 SPEC=.agent/spec.md
+PHASE_RECORD=.agent/archive/phase.md
 DEFERRED=.agent/deferred.md
 REVIEW=.agent/review.md
 ARTIFACT=paste-in/figure_verification_tool.py
 SPDX_PROBE=tools/mutate.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -152,13 +153,18 @@ plant_untracked_module_pytestmark() {
 }
 
 plant_unarchived_closed_unit() {
-    # `Phase` is the last section, so an appended line lands inside it. The letter suffix is the
-    # firing input for the id shape (`M12.6b` -> `m12u6b.md`) that a suffix-blind pattern skips.
-    printf ' M%s.%sz CLOSED (probe).\n' 99 9 >>"$SPEC"
+    # A unit's close appends its entry to the record, so the plant does too. The letter suffix is
+    # the firing input for the id shape (`M12.6b` -> `m12u6b.md`) that a suffix-blind pattern skips.
+    printf ' M%s.%sz CLOSED (probe).\n' 99 9 >>"$PHASE_RECORD"
 }
 
 plant_open_unit_in_phase() {
+    # `Phase` is the last section, so an appended line lands inside it.
     printf ' M%s.%s OPEN (probe).\n' 99 8 >>"$SPEC"
+}
+
+plant_open_unit_in_record() {
+    printf ' M%s.%s OPEN (probe).\n' 99 8 >>"$PHASE_RECORD"
 }
 
 plant_dangling_rules_pointer() {
@@ -323,8 +329,12 @@ probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_i
     plant_unarchived_closed_unit
 
 probe s6-open-unit-in-phase tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
-    'Phase names units that are not CLOSED' \
+    'Phase names units (state alone' \
     plant_open_unit_in_phase
+
+probe s6-open-unit-in-record tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
+    'the closed-unit record names units not CLOSED' \
+    plant_open_unit_in_record
 
 probe s6-closed-unit-in-tasks tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units \
     'Tasks names closed units' \
@@ -369,11 +379,11 @@ probe s8-untracked-module-pytestmark tests/test_spec.py::test_s8_every_disabled_
 
 probe s9-phase-without-name tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
     'Phase opens with no phase name' \
-    sed -i '/^## Phase$/,$ s|^[A-Z]\+; scope = |PHASE; scope = |' "$SPEC"
+    sed -i '/^## Phase$/,$ s|^[A-Z]\+ — |PHASE — |' "$SPEC"
 
 probe s9-phase-without-scope tests/test_spec.py::test_s9_phase_names_the_phase_and_its_scope \
     'Phase names no scope' \
-    sed -i '/^## Phase$/,$ s|; scope = |; |' "$SPEC"
+    sed -i '/^## Phase$/,$ s| — | |' "$SPEC"
 
 probe b1-artifact-freshness tests/test_paste_in_bundle.py::test_b1_committed_artifact_equals_a_fresh_generation \
     'committed artifact(s) differ from their sources' \

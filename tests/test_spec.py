@@ -7,7 +7,8 @@ decidable is whether the file still points at things that exist, and a dead row 
 likely to point at something that does not: a retired corpus, an unwritten archive record, a
 deferral whose acceptance check was never stated. Also decidable is which section a row sits in,
 which is what keeps the spine in one place (S6), and whether `Phase` opens with the phase and
-its scope (S9).
+its scope (S9). `Phase` holds that state alone, so S5 and S6 read its history from the one archive
+file a check binds: the closed-unit record `.agent/archive/phase.md`.
 
 The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
 those paths stay absent by design until the row closes.
@@ -58,14 +59,17 @@ _POINTER_SURFACE = (
 )
 _CONTRACTS = _REPO_ROOT / ".agent" / "contracts"
 _ARCHIVE_CONTRACTS = _REPO_ROOT / ".agent" / "archive" / "contracts"
+# `Phase` holds the phase + its scope alone; its history -- the closed-unit record S5 and S6 read
+# -- lives in this one archive file.
+_PHASE_RECORD = _REPO_ROOT / ".agent" / "archive" / "phase.md"
 
 _GIT = shutil.which("git")
 
 _EXPECTED_SECTIONS = ("Intent", "Artifacts", "Decisions", "Tasks", "Phase")
 
-# S9's opening: one of the four phase names, then its scope clause.
+# S9's opening: one of the four phase names, then its scope -- `<PHASE> — <scope>`.
 _PHASES = frozenset({"PROTOTYPE", "ITERATE", "IMPLEMENT", "MAINTAIN"})
-_SCOPE = re.compile(r"; scope = \S")
+_SCOPE = re.compile(r" — \S")
 
 # Roots whose contents are tracked, so a pointer at one either resolves or is dead. Other roots
 # stay out: rows legitimately name run outputs that no commit carries.
@@ -98,7 +102,7 @@ _CONTRACT_CITATION = re.compile(
 # counts; anything off-spine cites the queue. Spine ids are read in the `**M13.6**` form on an OPEN
 # `- [ ]` row of `Tasks` alone: a unit named in passing prose -- `Carried forward from M13.4` --
 # never counts, and a unit stops counting once its row is ticked `- [x] <sha>`, a row the layout
-# keeps legal until phase close.
+# keeps legal until its phase or MAINTAIN request closes.
 _SPINE_UNIT = re.compile(r"\*\*(M\d+(?:\.\d+)?[a-z]?)\*\*")
 _OPEN_ROW = re.compile(r"^- \[ \] (.*)$", re.MULTILINE)
 # A top-level Tasks row is open (`- [ ] `) or ticked with its commit (`- [x] <sha> `).
@@ -206,12 +210,13 @@ def test_s4_every_rules_docs_and_archive_pointer_resolves() -> None:
 
 
 def test_s5_every_closed_unit_has_its_contract_archived() -> None:
-    """S5: a unit marked CLOSED in `Phase` finished its close. Acceptance: a contract still in
-    `.agent/contracts/`, or missing from `.agent/archive/contracts/`, fails -- CLOSED in the
-    attached state and an unmoved contract are the same green until this fires."""
-    phase = _section("Phase")
-    units = [match.groups() for match in _UNIT.finditer(phase) if _closed(phase, match)]
-    assert units, "no closed units found in Phase"
+    """S5: a unit marked CLOSED in the closed-unit record (`.agent/archive/phase.md`, `Phase`'s
+    history) finished its close. Acceptance: a contract still in `.agent/contracts/`, or missing
+    from `.agent/archive/contracts/`, fails -- CLOSED in the record and an unmoved contract are the
+    same green until this fires."""
+    record = _PHASE_RECORD.read_text(encoding="utf-8")
+    units = [match.groups() for match in _UNIT.finditer(record) if _closed(record, match)]
+    assert units, "no closed units found in the closed-unit record"
     unfinished: list[str] = []
     for milestone, unit, suffix in units:
         name = f"m{milestone}u{unit}{suffix}.md"
@@ -224,15 +229,22 @@ def test_s5_every_closed_unit_has_its_contract_archived() -> None:
 
 def test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units() -> None:
     """S6: `Tasks` owns the unfinished units -- the spine, one `- [ ]` row each, a ticked
-    `- [x] <sha>` row legal until phase close -- and `Phase` records the phase plus the units
-    already closed. Acceptance: a unit written into `Phase` without CLOSED fails, and so does a unit
-    marked CLOSED inside `Tasks`; either one splits what is left to do across two sections, and a
-    reader navigating to one of them reads a spine that is missing a unit. A top-level `Tasks` row
-    of any other shape -- `- [x]` without its sha, or a bare `- ` row -- fails too: S8 reads only
-    `- [ ]` rows as trackers, so a malformed one is a unit no check can see."""
+    `- [x] <sha>` row legal until its phase or MAINTAIN request closes -- `Phase` holds the phase
+    + its scope alone, and the closed-unit record (`Phase`'s history) names only units already
+    closed. Acceptance: a unit written into `Phase`, a unit in the record without CLOSED and a unit
+    marked CLOSED inside `Tasks` each fail; any one splits what is left to do across two places,
+    and a reader navigating to one of them reads a spine that is missing a unit. `Phase` lines
+    quoting the user's routed request (`>`) stay unread: they carry the request verbatim, unit ids
+    included. A top-level `Tasks` row of any other shape -- `- [x]` without its sha, or a bare
+    `- ` row -- fails too: S8 reads only `- [ ]` rows as trackers, so a malformed one is a unit no
+    check can see."""
     phase, tasks = _section("Phase"), _section("Tasks")
-    open_in_phase = [m.group(0) for m in _UNIT.finditer(phase) if not _closed(phase, m)]
-    assert not open_in_phase, f"Phase names units that are not CLOSED: {open_in_phase}"
+    stated = "\n".join(line for line in phase.splitlines() if not line.startswith(">"))
+    in_phase = [m.group(0) for m in _UNIT.finditer(stated)]
+    assert not in_phase, f"Phase names units (state alone; history -> the record): {in_phase}"
+    record = _PHASE_RECORD.read_text(encoding="utf-8")
+    open_in_record = [m.group(0) for m in _UNIT.finditer(record) if not _closed(record, m)]
+    assert not open_in_record, f"the closed-unit record names units not CLOSED: {open_in_record}"
     closed_in_tasks = [m.group(0) for m in _UNIT.finditer(tasks) if _closed(tasks, m)]
     assert not closed_in_tasks, f"Tasks names closed units: {closed_in_tasks}"
     malformed = [
@@ -387,8 +399,8 @@ def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
     Outside the claim, deliberately: a skip a REAL condition guards, and anything disabled at
     runtime, which no AST states -- the gate announces a run's skips by name, and that is where
     those surface."""
-    # No non-empty guard: every row ticked `- [x] <sha>` is a legal layout until phase close,
-    # and an empty open set only narrows what counts as a tracker.
+    # No non-empty guard: every row ticked `- [x] <sha>` is a legal layout until its phase or
+    # MAINTAIN request closes, and an empty open set only narrows what counts as a tracker.
     spine = frozenset(
         unit for row in _OPEN_ROW.findall(_section("Tasks")) for unit in _SPINE_UNIT.findall(row)
     )
@@ -407,7 +419,7 @@ def test_s8_every_disabled_case_names_what_re_enables_it() -> None:
 
 
 def test_s9_phase_names_the_phase_and_its_scope() -> None:
-    """S9: `Phase` opens with the phase, then its scope -- `MAINTAIN; scope = the whole product.`
+    """S9: `Phase` opens with the phase, then its scope -- `MAINTAIN — the whole product`
     (`CLAUDE.md` `Session flow`: the whole product, or one surface beside shipped parts).
     Acceptance: a `Phase` opening with no phase name fails, and so does one naming no scope after
     it; a scope opened on one surface is otherwise invisible to a reader orienting from spec.md."""

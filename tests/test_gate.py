@@ -44,6 +44,7 @@ _EXPECTED_STAGES = (
     "audit",
     "secrets",
     "workflows",
+    "spec",
     "shell",
 )
 
