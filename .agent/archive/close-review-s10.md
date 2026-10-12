@@ -107,3 +107,12 @@ Verdict tables copied from each reviewer's deliverable; findings → `.agent/rev
 |---|---|---|---|
 | H1 | Q45 tests + corpus: no test reads a production constant to build its expectation; corpus expectations owned by the contract; each red discriminates | finding | F1 (minor): transform-list + range-boundary expectations read production constants. Corpus ownership + changed mutant discrimination: pass. |
 | H2 | `expected/X1.json` + `expected/I2.json` + `expected/C1.json` changes: each restated value explained; mutants in `tools/mutants/{computed,explain,figure_judge,figure_request,columns,interpret,filter}.toml` neuter real predicates | pass | I2/X1 replay exactly; C1 = 201 + 36 cases; 70/70 new/re-anchored mutants killed at their named tests. |
+
+## Re-review of R200-R203 (reviewer-7 at `2565834`)
+
+| id | finding | acceptance check | verdict | evidence |
+|---|---|---|---|---|
+| RC1 | R200 (reviewer-7 F1, reviewer-9 F2) | Original dual-channel reds + reviewer-9 witness pass: sizes bind to the scatter's rows; shuffled sizes block. | pass | E1 rc 0, 5 passed (includes wrong-row block, honest twin, isolated-channel control); E2 rc 0, reviewer-9's 2 channel witnesses passed. |
+| RC2 | R201 (reviewer-7 F2, F3) | Original typed-channel + count-channel reds pass. | pass | E1 rc 0: CSV-main typed-colour square + count-based colour square both pass; their published explanation assertions pass. |
+| RC3 | R202 (reviewer-8) | EN/JA reference, admin guides, spec Decision state that a scaled/otherwise computed value passes only when it equals the data or an admitted computation. | pass | E3: diff + full relevant reference sections read; exact anchors matched by `/usr/bin/rg -Fn`, rc 0, on all 5 surfaces. Both reference occurrences corrected in each language. |
+| RC4 | R203 (reviewer-9 F1) | No union/combined chance claim remains in X1 docstring, measurements README, contract C5 or reference. | pass | E4: original claims 0 matches, rc 1; positive controls 5/5 files, rc 0. Remaining combination wording explicitly denies aggregation; historical variant-union records do not assert a cross-computation rate. |
