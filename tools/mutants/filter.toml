@@ -343,3 +343,12 @@ predicate = "the inlet parses the CSV header off the event loop (M21.1 F4)"
 kills = "tests/test_paste_in_inlet.py::test_m21_the_inlet_reads_the_header_off_the_event_loop"
 anchor = '''            rendered = await asyncio.to_thread(self._render, task, attachments)'''
 mutant = '''            rendered = self._render(task, attachments)'''
+
+[[mutant]]
+id = "m21-isolation-unchecked"
+predicate = "a sandbox with the site's origin refuses before files and the RPC (M21.1 F5)"
+kills = "tests/test_paste_in_outlet.py::test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc"
+anchor = '''        if not sandbox_isolated():
+            return await fail("sandbox_not_isolated")'''
+mutant = '''        if False:
+            return await fail("sandbox_not_isolated")'''

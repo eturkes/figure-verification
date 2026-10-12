@@ -238,6 +238,7 @@ def fake_open_webui(stored: Sequence[StoredFile], root: Path) -> Iterator[list[t
             "open_webui.models.files",
             "open_webui.storage",
             "open_webui.storage.provider",
+            "open_webui.env",
         )
     }
     for name, module in injected.items():
@@ -249,6 +250,8 @@ def fake_open_webui(stored: Sequence[StoredFile], root: Path) -> Iterator[list[t
         get_file_by_id_and_user_id=get_file_by_id_and_user_id
     )
     injected["open_webui.storage.provider"].__dict__["Storage"] = SimpleNamespace(get_file=get_file)
+    # Open WebUI's default (`env.py`): Pyodide runs in its `origin null` sandbox iframe.
+    injected["open_webui.env"].__dict__["ENABLE_PYODIDE_FILE_PERSISTENCE"] = False
     original = {name: sys.modules.get(name) for name in injected}
     sys.modules.update(injected)
     try:

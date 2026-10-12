@@ -317,6 +317,25 @@ def test_o1_a_fault_while_decoding_or_judging_fails_closed(
     assert "PRIVATE_FAULT" not in repr(browser.events)
 
 
+@pytest.mark.parametrize("persistence", [True, "false", 0, None, "absent"])
+def test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc(
+    monkeypatch: pytest.MonkeyPatch, persistence: object
+) -> None:
+    """M21.1 F5: with Pyodide file persistence on, Open WebUI runs the program in a worker of its
+    own origin, whose requests carry the user's session cookie, and the outlet sent it anyway. An
+    exact `False` alone counts as the `origin null` sandbox."""
+    environment = ModuleType("open_webui.env")
+    if persistence != "absent":
+        environment.__dict__["ENABLE_PYODIDE_FILE_PERSISTENCE"] = persistence
+    monkeypatch.setitem(sys.modules, "open_webui.env", environment)
+    files = Bomb()
+    browser = Browser()
+    with patched_filter(monkeypatch, (("webui.paste_in.owui_files", "owned_files", files),)):
+        result = browser.exercise()
+    assert files.calls == 0 and browser.calls == []
+    assert_failure(result, browser.events, "sandbox_not_isolated")
+
+
 @pytest.mark.parametrize("stderr", [None, ""])
 def test_o1_clean_browser_reply_runs_real_judge_before_publication(stderr: str | None) -> None:
     browser = Browser()
@@ -508,6 +527,7 @@ def test_o2_font_fault_falls_back_to_no_font(
     calls = 0
     environment = ModuleType("open_webui.env")
     environment.__dict__["FONTS_DIR"] = tmp_path
+    environment.__dict__["ENABLE_PYODIDE_FILE_PERSISTENCE"] = False
     monkeypatch.setitem(sys.modules, "open_webui.env", environment)
     original = cast(Callable[[], Awaitable[bytes | None]], load("owui_files").cjk_font)
 

@@ -16,7 +16,7 @@ def test_o8_reason_union_is_closed_and_disjoint() -> None:
     figures = set(get_args(getattr(FigureReason, "__value__", FigureReason)))
     assert causes == CAUSES
     assert figures == FIGURE_REASONS
-    assert len(causes) == 13 and len(figures) == 39
+    assert len(causes) == 14 and len(figures) == 39
     assert causes.isdisjoint(figures)
     assert set(texts()) == set(REASON_CHECK)
 

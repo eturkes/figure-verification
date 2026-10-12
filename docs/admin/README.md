@@ -82,6 +82,7 @@ Set these Open WebUI settings. You can set each one as an environment variable.
 |---|---|---|
 | `ENABLE_CODE_EXECUTION` | `false` | The filter runs the chart program itself. Users do not need code execution. |
 | `ENABLE_CODE_INTERPRETER` | `false` | The model must not run code outside the verifier. |
+| `ENABLE_PYODIDE_FILE_PERSISTENCE` | `false` (the default) | With it on, Open WebUI runs each chart program with the access of the signed-in user. The filter then blocks every chart. |
 | `ENABLE_API_OUTLET_FILTERS` | `true` | The filter must run on every chat completion. |
 | `BYPASS_EMBEDDING_AND_RETRIEVAL` | `true` | An offline instance otherwise calls a remote embedding service when a user uploads a CSV file. |
 | `IFRAME_CSP` | empty (the default) | The check list of each chart reply sets its own height with an inline script. Keep the setting empty, or allow inline scripts. |

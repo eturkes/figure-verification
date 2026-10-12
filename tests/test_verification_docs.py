@@ -62,9 +62,9 @@ def test_d3_each_check_has_its_anchor_and_title(language: str) -> None:
 
 @pytest.mark.parametrize("language", ["en", "ja"])
 def test_d4_each_reason_sits_in_its_check_section(language: str) -> None:
-    """D4: all 52 reasons (39 figure + 13 outlet), each inside its CHECK_OF section only."""
+    """D4: all 53 reasons (39 figure + 14 outlet), each inside its CHECK_OF section only."""
     reasons = set(get_args(FigureReason)) | set(get_args(OutletCause))
-    assert len(reasons) == 52
+    assert len(reasons) == 53
     sections = _sections(_text(language))
     for reason in sorted(reasons):
         owners = [check for check, body in sections.items() if f"`{reason}`" in body]

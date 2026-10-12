@@ -178,11 +178,14 @@ adds only an outer step: it records the finished figure and saves one PNG image.
 matplotlib and the Python standard library; the verifier loads these three packages before the
 program runs. When the program or an attached file holds Japanese
 text, the verifier also sends part of Open WebUI's Japanese font with the program. The chat tab must stay
-open while the program runs.
+open while the program runs. The verifier sends the program only to Open WebUI's isolated sandbox.
+With Pyodide file persistence on, Open WebUI runs the program with the access of the signed-in
+user. The run then fails with `sandbox_not_isolated`.
 
 | Reason | Meaning |
 |---|---|
 | `no_browser` | No browser session is available to run the program. |
+| `sandbox_not_isolated` | Open WebUI runs chart programs with the access of this site. An administrator must turn off Pyodide file persistence. |
 | `browser_timeout` | The browser did not answer within 60 seconds. |
 | `browser_error` | The call to the browser failed. |
 | `browser_no_answer` | The chat tab did not answer. Keep the tab open and try again. |

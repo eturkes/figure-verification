@@ -20,6 +20,7 @@ OutletCause = Literal[
     "browser_timeout",
     "browser_error",
     "browser_no_answer",
+    "sandbox_not_isolated",
     "reply_malformed",
     "sandbox_unavailable",
     "sandbox_error",
@@ -56,6 +57,12 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     "browser_no_answer": (
         "The chat tab did not answer. Keep the tab open and try again.",
         "チャットのタブが応答しませんでした。タブを開いたままにしてください。",
+    ),
+    "sandbox_not_isolated": (
+        "Open WebUI runs chart programs with the access of this site."
+        " An administrator must turn off Pyodide file persistence.",
+        "Open WebUI がグラフのプログラムをこのサイトの権限で実行します。"
+        "管理者が Pyodide のファイル保存をオフにする必要があります。",
     ),
     "reply_malformed": (
         "The browser sent a reply in an unknown format.",

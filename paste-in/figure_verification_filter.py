@@ -3248,6 +3248,18 @@ async def uploaded_files(
     return await owned_files(attachment_ids(metadata), user_id)
 
 
+def sandbox_isolated() -> bool:
+    """Whether Open WebUI runs Pyodide in its `origin null` sandbox iframe, where a program cannot
+    act as the user. File persistence moves it into a worker of the instance's own origin
+    (`createPyodideWorker.ts`), whose requests carry the session cookie the API accepts
+    (`utils/auth.py` reads `token`). A setting that cannot be read counts as not isolated."""
+    try:
+        from open_webui.env import ENABLE_PYODIDE_FILE_PERSISTENCE  # noqa: PLC0415
+    except Exception:
+        return False
+    return ENABLE_PYODIDE_FILE_PERSISTENCE is False
+
+
 async def cjk_font() -> bytes | None:
     """Open WebUI's bundled Japanese font from its configured fonts directory, else `None`.
 
@@ -3285,6 +3297,7 @@ OutletCause = Literal[
     "browser_timeout",
     "browser_error",
     "browser_no_answer",
+    "sandbox_not_isolated",
     "reply_malformed",
     "sandbox_unavailable",
     "sandbox_error",
@@ -3321,6 +3334,12 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     "browser_no_answer": (
         "The chat tab did not answer. Keep the tab open and try again.",
         "チャットのタブが応答しませんでした。タブを開いたままにしてください。",
+    ),
+    "sandbox_not_isolated": (
+        "Open WebUI runs chart programs with the access of this site."
+        " An administrator must turn off Pyodide file persistence.",
+        "Open WebUI がグラフのプログラムをこのサイトの権限で実行します。"
+        "管理者が Pyodide のファイル保存をオフにする必要があります。",
     ),
     "reply_malformed": (
         "The browser sent a reply in an unknown format.",
@@ -4413,6 +4432,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "browser_timeout",
         "browser_error",
         "browser_no_answer",
+        "sandbox_not_isolated",
         "reply_malformed",
         "sandbox_unavailable",
         "sandbox_error",
@@ -7919,6 +7939,7 @@ from webui.paste_in.owui_files import (
     UploadedFile,
     cjk_font,
     owned_files,
+    sandbox_isolated,
     uploaded_files,
 )
 from webui.paste_in.reasons import REASONS, Reason
@@ -8229,6 +8250,8 @@ class Filter:
             session = None
         if __event_call__ is None or __event_emitter__ is None or not session:
             return await fail("no_browser")
+        if not sandbox_isolated():
+            return await fail("sandbox_not_isolated")
         files = await owned_files(receipt.file_ids, user_id)
         font = await _font(receipt.program, files)
         payload: dict[str, object] = {

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop;
-# owned files read to one byte past max_csv_bytes (M21.1 F4).
+# owned files read to one byte past max_csv_bytes (M21.1 F4); the persistence setting read
+# fail-closed (M21.1 F5).
 module = "webui/paste_in/owui_files.py"
 tests = ["tests/test_paste_in_owui_files.py"]
 
@@ -59,3 +60,21 @@ predicate = "the read keeps the one byte that lets the judge refuse an oversize 
 kills = "tests/test_paste_in_owui_files.py::test_m21_owned_files_read_at_most_one_byte_past_the_csv_limit"
 anchor = '''_READ_BYTES = DEFAULT_LIMITS.max_csv_bytes + 1'''
 mutant = '''_READ_BYTES = DEFAULT_LIMITS.max_csv_bytes'''
+
+[[mutant]]
+id = "m21-persistence-truthy"
+predicate = "an exact False alone counts as the origin-null sandbox (M21.1 F5)"
+kills = "tests/test_paste_in_outlet.py::test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc"
+anchor = '''    return ENABLE_PYODIDE_FILE_PERSISTENCE is False'''
+mutant = '''    return not ENABLE_PYODIDE_FILE_PERSISTENCE'''
+
+[[mutant]]
+id = "m21-persistence-unread-isolated"
+predicate = "a persistence setting that cannot be read counts as not isolated (M21.1 F5)"
+kills = "tests/test_paste_in_outlet.py::test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc"
+anchor = '''    except Exception:
+        return False
+    return ENABLE_PYODIDE_FILE_PERSISTENCE is False'''
+mutant = '''    except Exception:
+        return True
+    return ENABLE_PYODIDE_FILE_PERSISTENCE is False'''

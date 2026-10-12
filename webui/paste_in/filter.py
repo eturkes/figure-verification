@@ -34,6 +34,7 @@ from webui.paste_in.owui_files import (
     UploadedFile,
     cjk_font,
     owned_files,
+    sandbox_isolated,
     uploaded_files,
 )
 from webui.paste_in.reasons import REASONS, Reason
@@ -344,6 +345,8 @@ class Filter:
             session = None
         if __event_call__ is None or __event_emitter__ is None or not session:
             return await fail("no_browser")
+        if not sandbox_isolated():
+            return await fail("sandbox_not_isolated")
         files = await owned_files(receipt.file_ids, user_id)
         font = await _font(receipt.program, files)
         payload: dict[str, object] = {

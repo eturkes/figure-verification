@@ -621,6 +621,18 @@ async def uploaded_files(
     return await owned_files(attachment_ids(metadata), user_id)
 
 
+def sandbox_isolated() -> bool:
+    """Whether Open WebUI runs Pyodide in its `origin null` sandbox iframe, where a program cannot
+    act as the user. File persistence moves it into a worker of the instance's own origin
+    (`createPyodideWorker.ts`), whose requests carry the session cookie the API accepts
+    (`utils/auth.py` reads `token`). A setting that cannot be read counts as not isolated."""
+    try:
+        from open_webui.env import ENABLE_PYODIDE_FILE_PERSISTENCE  # noqa: PLC0415
+    except Exception:
+        return False
+    return ENABLE_PYODIDE_FILE_PERSISTENCE is False
+
+
 async def cjk_font() -> bytes | None:
     """Open WebUI's bundled Japanese font from its configured fonts directory, else `None`.
 

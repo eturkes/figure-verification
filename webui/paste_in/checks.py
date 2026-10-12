@@ -46,6 +46,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "browser_timeout",
         "browser_error",
         "browser_no_answer",
+        "sandbox_not_isolated",
         "reply_malformed",
         "sandbox_unavailable",
         "sandbox_error",
