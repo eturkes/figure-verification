@@ -427,10 +427,12 @@ mutant = '''        for transform, found in computed.unary(tuple(numbers[row] fo
 id = "q45-typed-channel"
 predicate = "a typed scatter's channel takes a typed computation in the second pass"
 kills = "tests/test_figure_computed.py::test_a_typed_scatter_s_channel_takes_a_typed_computation"
-anchor = '''        if admitted and isinstance(outcome, Unexplained):
-            return _typed(series, context.request, budget) or outcome'''
-mutant = '''        if False:
-            return _typed(series, context.request, budget) or outcome'''
+anchor = '''    if admitted and isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":
+        return _typed(series, context.request, budget) or outcome
+    return outcome'''
+mutant = '''    if False:
+        return _typed(series, context.request, budget) or outcome
+    return outcome'''
 
 [[mutant]]
 id = "q45-typed-charge"
@@ -438,3 +440,28 @@ predicate = "a typed computation charges the work meter"
 kills = "tests/test_figure_computed.py::test_a_typed_computation_charges_the_work_meter"
 anchor = '''        budget.charge(len(request.sequence) + len(points))'''
 mutant = '''        budget.charge(0)'''
+
+[[mutant]]
+id = "q45-channel-main-is-the-scatter"
+predicate = "a channel binds to its scatter's own choice, never another channel's"
+kills = "tests/test_figure_computed.py::test_each_channel_binds_to_the_scatter_not_the_other_channel"
+anchor = '''                    if c.series.mark is series.mark and c.series.channel == "value"'''
+mutant = '''                    if c.series.mark is series.mark'''
+
+[[mutant]]
+id = "q45-csv-channel-typed"
+predicate = "a CSV scatter's channel takes a typed computation in the second pass"
+kills = "tests/test_figure_computed.py::test_a_csv_scatter_s_channel_takes_a_typed_computation"
+anchor = '''    if admitted and isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":
+        return _typed(series, context.request, budget) or outcome
+    return outcome'''
+mutant = '''    if admitted and main.explanation is None and isinstance(outcome, Unexplained):
+        return _typed(series, context.request, budget) or outcome
+    return outcome'''
+
+[[mutant]]
+id = "q45-count-channel"
+predicate = "a grouped scatter's channel takes each group's row count and its computations"
+kills = "tests/test_figure_computed.py::test_a_grouped_scatter_s_channel_takes_a_computed_row_count"
+anchor = '''    variants += computed.unary(numbers)'''
+mutant = '''    variants += ()'''

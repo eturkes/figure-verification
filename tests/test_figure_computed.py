@@ -20,7 +20,7 @@ from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.keys import Key
 from verifier.figure.parts import Mark
 from verifier.figure.reasons import Blocked
-from verifier.figure.request import MAX_RANGE, read_request
+from verifier.figure.request import read_request
 from verifier.figure.series import Point, Series
 from verifier.figure.sources import Table, read_table
 from verifier.pysrc.aggregate import kahan_sum
@@ -156,7 +156,8 @@ def test_each_percent_order_is_a_variant(form: str) -> None:
 
 
 def test_an_integer_series_yields_one_variant_per_transform() -> None:
-    assert [t for t, _values in computed.unary([3.0, 5.0, 2.0])] == list(computed.UNARY)
+    found = [t for t, _values in computed.unary([3.0, 5.0, 2.0])]
+    assert found == ["square", "cumsum", "diff", "share", "percent"]
 
 
 def test_undefined_values_are_no_candidates() -> None:
@@ -190,7 +191,8 @@ def test_typed_sets() -> None:
         ("1, 200 units", (1.0, 200.0)),
         ("7, 7, 7", (7.0, 7.0, 7.0)),
         ("For 2026, shares of 1, 2, 3", (2026.0, 1.0, 2.0, 3.0)),
-        (f"1 to {MAX_RANGE + 1}", (1.0, float(MAX_RANGE + 1))),
+        ("1 to 10001", (1.0, 10001.0)),
+        ("1 to 10000", tuple(float(n) for n in range(1, 10001))),
         ("1-3", (1.0,)),
     ],
 )
@@ -469,3 +471,50 @@ def test_a_typed_computation_charges_the_work_meter() -> None:
     budget = WorkBudget(10)
     with pytest.raises(WorkBudgetExceededError):
         explain._typed(series, read_request(" ".join(str(n) for n in range(2, 40))), budget)
+
+
+# --- closing review #2 (reviewers 7 + 9): channels ---------------------------------------------
+
+_DUAL = b"key,value,c,size\n1,2,3,11\n1,3,-1,17\n"
+_DUAL_PROGRAM = (
+    _PD + "from io import StringIO\n"
+    "df = pd.read_csv(StringIO('key,value,c,size\\n1,2,3,11\\n1,3,-1,17\\n'))\n"
+    "p = plt.scatter(df['key'], df['value'], c=df['c'].cumsum(), s=SIZES)\n"
+    "plt.colorbar(p)\nplt.legend(*p.legend_elements(prop='sizes'), title='size')\n"
+)
+_DUAL_REQUEST = "value by key, with size and the running total of c for colour"
+
+
+def _data(program: str, content: bytes, request: str) -> Passed | Blocked:
+    return _judge(program, Sources((("data.csv", content),), request))
+
+
+def test_each_channel_binds_to_the_scatter_not_the_other_channel() -> None:
+    """Colour + size shown together: size binds to the scatter's rows, never to the colour's
+    choice (a shuffled size passed through the colour's computed pairs)."""
+    honest = _DUAL_PROGRAM.replace("SIZES", "df['size']")
+    assert isinstance(_data(honest, _DUAL, _DUAL_REQUEST), Passed)
+    shuffled = _DUAL_PROGRAM.replace("SIZES", "df['size'].iloc[::-1]")
+    verdict = _data(shuffled, _DUAL, _DUAL_REQUEST)
+    assert isinstance(verdict, Blocked)
+    assert verdict.reason == "value_not_found"
+
+
+def test_a_csv_scatter_s_channel_takes_a_typed_computation() -> None:
+    program = _PLT + "p = plt.scatter([0, 1, 2], [11, 17, 23], c=[4, 9, 25])\nplt.colorbar(p)\n"
+    verdict = _data(program, b"value\n11\n17\n23\n", "value coloured by the squares of 2, 3 and 5")
+    assert isinstance(verdict, Passed)
+    assert verdict.choices[1].typed == "square"
+
+
+def test_a_grouped_scatter_s_channel_takes_a_computed_row_count() -> None:
+    program = _PD + "from io import StringIO\n"
+    program += "df = pd.read_csv(StringIO('group\\na\\na\\nb\\nb\\nb\\n'))\n"
+    program += "counts = df.groupby('group').size()\n"
+    program += "p = plt.scatter(counts.index, counts, c=counts ** 2)\nplt.colorbar(p)\n"
+    content = b"group\na\na\nb\nb\nb\n"
+    verdict = _data(program, content, "Rows per group, coloured by their square")
+    assert isinstance(verdict, Passed)
+    colours = verdict.choices[1].explanation
+    assert colours is not None
+    assert (colours.family, colours.transform) == ("count", "square")

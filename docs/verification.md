@@ -83,7 +83,7 @@ These rules apply to computed values:
 - The verifier reproduces each computation exactly, in the ways that numpy, pandas and Python
   compute it. For example, a total can come from `s.sum()`, `sum()` or `groupby().sum()`.
 - A value that the program rounds, scales or computes in another way stops the chart. This does not
-  apply when the same number is also in your data.
+  apply when the same number is also in your data or in one admitted computation of it.
 - The verifier uses computations only when the chart fails without them. A chart that passes on its
   plain values keeps that reading.
 - The search for computed values has its own work limit, the same size as `MAX_WORK`. Past that
@@ -390,5 +390,6 @@ The verifier stops work beyond these limits.
   intent.
 - **Other computations.** The verifier admits only the computations in the table above. It does not
   check how the program computed a value. A rounded value, a running mean, a logarithm or a scaled
-  marker size stops the chart, unless the same number is also in your data.
+  marker size stops the chart. This does not apply when the same number is also in your data or in
+  one admitted computation of it.
 - **The image itself.** The verifier trusts the browser, matplotlib and the image pixels.

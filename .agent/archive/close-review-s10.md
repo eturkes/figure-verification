@@ -70,3 +70,40 @@ Verdict tables copied from each reviewer's deliverable; findings → `.agent/rev
 | RB2 | R187 (F2) | Collector fault returns the whole font; cancellation propagates | pass | C_HOST rc 0: same injected `MemoryError` → exact whole-font bytes through `_font`; off-thread collection's cancelled await → `CancelledError`, worker released/joined. Fault seam rebased to `fonts.characters`, where lookup moved. |
 | RB3 | R188 (F3 + reviewer-5 L5-R1) | Stale parameter-id + helper witnesses rejected; live parameter node and every shipped node accepted | pass | C_HOST rc 0: original stale `[missing-case]` witness passes; `_load_yaml` helper rejected; live `[fontTools]` node accepted; shipped G15 passes. Helper witness's body copied from reviewer-5 onto this target. |
 | RB4 | R189 text | Spec inventory lists `fonts`; P15 docstring says seven | pass | C_TEXT: both `/usr/bin/rg -Fn` commands rc 0, one match each: `.agent/spec.md:11` holds `` `filter` · `fonts` · `interpret` ``; `tests/test_model_backend_runtime.py:668` holds `seven direct packages`. |
+
+# Closing lens review #2 — `64a1187..00e545e` (Q49 + Q45)
+
+## reviewer-7 (L-CORR)
+
+| id | check | verdict | findings |
+|---|---|---|---|
+| C1 | `computed.py` + `explain.py` computations, typed path, channels, `judge.py` two passes do what contract D1-D9 say on every admitted input | finding | F1 blocker: sizes bind to the preceding colour channel, permitting wrong-row PASS; F2 major: a CSV main disables typed-computation channel fallback; F3 major: grouped channels omit computations over `count(K)`. |
+| C2 | `request.py::Request.sequence` + Q49 `i2_ambiguity.py` do what their docstrings say | pass | D4 sequence order/ranges preserved; Q49 samples exactly k distinct keys and returns null for unsupported sizes; E3. |
+
+## reviewer-8 (L-CLAIM)
+
+| id | check | verdict | findings |
+|---|---|---|---|
+| L1 | Reference EN + JA § Computed values + admin guides + README + "Show checks" values row: every changed sentence true at its strength; EN register; JA same facts | finding | F1 major: unsupported arithmetic can pass through a coincident admitted computation; categorical block claims omit this. |
+| L2 | `.agent/spec.md` Intent (= U3 approved bytes) + Decisions ruling, `.claude/rules/{claims,figure,owui}.md`, contract, measurements README X1/I2 rows, interpretation sentences (EN + JA): each states what the code does, no more | finding | F1 major: new Decision claims scaled sizes still block; F2 minor: C5 describes a combined X1 measurement that the script does not emit. |
+
+## reviewer-9 (L-GAP)
+
+| id | check | verdict | findings |
+|---|---|---|---|
+| G1 | "a value no listed transform explains still blocks": no reachable input where a value outside the closed list passes (beyond coincidence with an admitted computation, which the contract states) | finding | F2 blocker: with both displayed scatter channels, computed size values bind to the colour channel's rows instead of their own points; wrong-row square passes, honest twin blocks. |
+| G2 | published chance rates: do X1's numbers back the reference's table as worded (measured sizes, grids, union bound); the cost/budget statements | finding | F1 major: rates from different grids do not bound their combined chance; exact counterexample 19.208722% sum < 23.076923% union. X1/I2 replays + reference triples match; budget/worker checks pass. |
+
+## reviewer-10 (L-LAW)
+
+| id | check | verdict | findings |
+|---|---|---|---|
+| W1 | Q49 + Q45 commits: one scoped commit per row; subject form; body = Accept met + measurements + red witness (revision + command) + original firing of every changed check + teammates | finding | LAW-1 (minor): Q49 I2, Q45 X1 + catalogue-set changes lack their original-firing records; scope, subjects, Accept, measurements + teammates otherwise conform. |
+| W2 | Q45 kernel process: contract before code, consultant + kernel review + re-review adjudicated, mutation credit per new predicate, attached state (spec Tasks/Phase, deferred, ledger R192-R199) current, contract archived with citations moved | pass | Committed draft precedes code; consultant Q1–Q5 + K1–K10/RB1–RB9 rulings retained; predicate catalogues + kill logs present; state/citations current; 541 targeted checks pass. Uncommitted pre-code chronology not independently confirmed. |
+
+## reviewer-11 (L-HARD)
+
+| id | check | verdict | findings |
+|---|---|---|---|
+| H1 | Q45 tests + corpus: no test reads a production constant to build its expectation; corpus expectations owned by the contract; each red discriminates | finding | F1 (minor): transform-list + range-boundary expectations read production constants. Corpus ownership + changed mutant discrimination: pass. |
+| H2 | `expected/X1.json` + `expected/I2.json` + `expected/C1.json` changes: each restated value explained; mutants in `tools/mutants/{computed,explain,figure_judge,figure_request,columns,interpret,filter}.toml` neuter real predicates | pass | I2/X1 replay exactly; C1 = 201 + 36 cases; 70/70 new/re-anchored mutants killed at their named tests. |

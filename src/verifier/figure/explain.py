@@ -848,6 +848,27 @@ def _group_channels(
                 )
     if not admitted:
         return
+    # Each group's row count (`groupby().size()`) and its computations, bound to the same groups.
+    counted = _count(table, key, rows)
+    sizes = cast("tuple[int, ...]", counted.counts)
+    numbers = tuple(value for _group, value in counted.pairs)
+    variants: list[tuple[Transform | None, Values]] = [(None, numbers)]
+    variants += computed.unary(numbers)
+    kept = [at for at, (group, _value) in enumerate(counted.pairs) if group in partner]
+    for counting, values in variants:
+        budget.charge(len(values))
+        picked = [at for at in kept if values[at] is not None]
+        yield Explanation(
+            table.name,
+            "count",
+            main.key,
+            None,
+            main.where,
+            tuple((counted.pairs[at][0], cast("float", values[at])) for at in picked),
+            tuple(sizes[at] for at in picked),
+            tuple(partner[counted.pairs[at][0]] for at in picked),
+            transform=counting,
+        )
     for op, left, right, groups, found, counts in _group_ops(table, key, rows, budget):
         kept = [at for at in _kept(found) if groups[at] in partner]
         yield Explanation(
@@ -884,12 +905,13 @@ def _explain_channel(
     explanation = main.explanation
     if explanation is None:
         outcome = _explain_series(series, iter(()), context)
-        if admitted and isinstance(outcome, Unexplained):
-            return _typed(series, context.request, budget) or outcome
-        return outcome
-    table = next(table for table in context.tables if table.name == explanation.table)
-    candidates = _channel_explanations(table, explanation, budget, admitted=admitted)
-    return _explain_series(series, candidates, context)
+    else:
+        table = next(table for table in context.tables if table.name == explanation.table)
+        candidates = _channel_explanations(table, explanation, budget, admitted=admitted)
+        outcome = _explain_series(series, candidates, context)
+    if admitted and isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":
+        return _typed(series, context.request, budget) or outcome
+    return outcome
 
 
 # --- reference marks -----------------------------------------------------------------------------
@@ -962,7 +984,11 @@ def explain(
             if series.shape == "reference":
                 outcome = _explain_reference(series, context, budget)
             elif series.channel != "value":
-                main = next(c for c in reversed(choices) if c.series.mark is series.mark)
+                main = next(
+                    c
+                    for c in reversed(choices)
+                    if c.series.mark is series.mark and c.series.channel == "value"
+                )
                 outcome = _explain_channel(series, main, context, budget, admitted=admitted)
             elif admitted:
                 outcome = _explain_admitted(series, context, budget)

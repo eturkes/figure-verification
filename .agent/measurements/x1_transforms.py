@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """X1: chance matches of the admitted computations (Q45, `.agent/archive/contracts/q45.md` C5).
 
-Measures the SHIPPED candidates + matcher (`verifier.figure.explain`, `verifier.figure.computed`):
-a made-up series counts as ADDED for a computation when one of that computation's candidates
-explains every point while no vocabulary candidate does (the judge's first pass); each computation
-on its own value scale, so the sum over computations bounds their union. Per `data/*.csv` with
-numeric columns: keyed bar series of n distinct keys from one non-numeric column holding at least
-n keys (`null` where none does: these CSVs hold 2-4), values on a grid, matched by `_coverage`
-(exact, injective). Request leg: values alone keyed by
-position (`plt.plot(values)`), over `1 to m` (m = 3, 5, 10) and m random integers in [1, 100]; a
-typed computation explains a series when every value is in its set (membership, as `_typed`
-matches) while the typed numbers themselves do not. Grids: `int` = integers in [0, 2M], `dec2` =
-two-decimal numbers in [0, 2M], M = the largest |value| the computation yields there. TRIALS per
-size per grid. Host only: `uv run --locked python .agent/measurements/x1_transforms.py`.
+Measures the SHIPPED candidates + matcher (`verifier.figure.explain`, `verifier.figure.computed`): a
+made-up series counts as ADDED for a computation when one of that computation's candidates explains
+every point while no vocabulary candidate does (the judge's first pass); each computation on its own
+value scale, so the rates of different computations do not add up to a combined rate. Per
+`data/*.csv` with numeric columns: keyed bar series of n distinct keys from one non-numeric column
+holding at least n keys (`null` where none does: these CSVs hold 2-4), values on a grid, matched by
+`_coverage` (exact, injective). Request leg: values alone keyed by position (`plt.plot(values)`),
+over `1 to m` (m = 3, 5, 10) and m random integers in [1, 100]; a typed computation explains a
+series when every value is in its set (membership, as `_typed` matches) while the typed numbers
+themselves do not. Grids: `int` = integers in [0, 2M], `dec2` = two-decimal numbers in [0, 2M], M =
+the largest |value| the computation yields there. TRIALS per size per grid. Host only: `uv run
+--locked python .agent/measurements/x1_transforms.py`.
 """
 
 import json

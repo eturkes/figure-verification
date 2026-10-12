@@ -143,7 +143,7 @@ The drawn values must come from the user's data:
   previous point, or a share or percent of the total of one series. Two numeric columns can also
   give their ratio, difference, product or sum, per row or per group.
 
-A value from none of these fails with the code `value_not_found`. A value that the program computes in another way also fails, unless the same number is in the data. Examples are a rounded value and a running mean. Text that the
+A value from none of these fails with the code `value_not_found`. A value that the program computes in another way also fails, unless the same number is in the data or in one admitted computation of it. Examples are a rounded value and a running mean. Text that the
 program adds on the chart, such as value labels, appears below the chart as unchecked text. The
 verification reference, [docs/verification.md](../verification.md), lists every rule.
 
