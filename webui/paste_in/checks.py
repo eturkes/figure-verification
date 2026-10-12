@@ -17,11 +17,11 @@ raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
 
 import html
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Final, Literal
 
 from verifier.figure.anchoring import Anchoring
+from verifier.figure.inert import visible
 from webui.paste_in.reasons import REASONS, Reason
 
 Check = Literal["program", "run", "figure", "parts", "axes", "marks", "values", "columns", "attach"]
@@ -378,7 +378,6 @@ _MAX_CHARACTERS = 3_000
 _LINE_CHARACTERS = 400
 _CONTEXT = 2
 _BREAK = re.compile(r"\r\n|\r|\n")
-_HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 # Open WebUI injects Alpine.js or Chart.js into an embed whose raw text holds `x-<directive>`,
 # `new Chart(` or `Chart.` (same-origin frames). Character references keep the program from
 # spelling one, or a resource reference (`src=`, `url(`, `@import`, `https:`) a static check could
@@ -388,18 +387,8 @@ _TRIGGER_SAFE = str.maketrans(
 )
 
 
-def _visible(character: str) -> str:
-    """A character that would draw nothing, or reorder the text around it, as a visible symbol."""
-    if character == "\t" or unicodedata.category(character) not in _HIDDEN:
-        return character
-    code = ord(character)
-    if code < 0x20:  # noqa: PLR2004 - the C0 controls map onto U+2400-U+241F
-        return chr(0x2400 + code)
-    return "\N{SYMBOL FOR DELETE}" if code == 0x7F else "\N{REPLACEMENT CHARACTER}"  # noqa: PLR2004
-
-
 def _code(value: str) -> str:
-    return _text("".join(map(_visible, value))).translate(_TRIGGER_SAFE)
+    return _text("".join(map(visible, value))).translate(_TRIGGER_SAFE)
 
 
 def _line(number: int, line: str, *, marked: bool) -> str:

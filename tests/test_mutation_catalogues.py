@@ -30,6 +30,7 @@ _CATALOGUES = (
     "figure_request",
     "filter",
     "fonts",
+    "inert",
     "interpret",
     "judge",
     "keys",

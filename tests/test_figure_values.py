@@ -91,7 +91,7 @@ def test_v6_integrity_alone_is_disclosed() -> None:
     verdict = _judge(_PLT + "plt.plot([3, 1, 2])\nplt.text(0, 1, 'note')\n")
     assert isinstance(verdict, Passed) and verdict.integrity_only
     assert verdict.interpretation.startswith("No data was attached")
-    assert '"note"' in verdict.interpretation
+    assert "`note`" in verdict.interpretation
 
 
 def test_v6_an_unreadable_file_names_its_fault() -> None:
@@ -256,10 +256,10 @@ def test_a_tie_with_no_request_is_unbroken() -> None:
 
 _DF = f"df = pd.read_csv({str(_DATA / 'sales.csv')!r})\n"
 _BY_REGION = "t = df.groupby('region')['revenue'].sum()\n"
-_GROUPS_EN = "rows per group: EU 3, US 3"
-_GROUPS_JA = "各グループの行数: EU 3 行、US 3 行"
-_SUM_EN = "the sum of revenue per region from sales.csv"
-_SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
+_GROUPS_EN = "rows per group: `EU` 3, `US` 3"
+_GROUPS_JA = "各グループの行数: `EU` 3 行、`US` 3 行"
+_SUM_EN = "the sum of `revenue` per `region` from `sales.csv`"
+_SUM_JA = "`sales.csv` の `region` 列ごとの `revenue` 列の合計"
 
 
 @pytest.mark.parametrize(
@@ -268,8 +268,8 @@ _SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
         pytest.param(
             _DF + "plt.scatter(df['orders'], df['revenue'])\n",
             _sales("Revenue against orders"),
-            "Points: revenue by orders from sales.csv.",
-            "散布点: sales.csv の revenue 列 (orders 列ごと)。",
+            "Points: `revenue` by `orders` from `sales.csv`.",
+            "散布点: `sales.csv` の `revenue` 列 (`orders` 列ごと)。",
             id="raw",
         ),
         pytest.param(
@@ -282,8 +282,8 @@ _SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
         pytest.param(
             _DF + "df['region'].value_counts().plot(kind='bar')\n",
             _sales("Rows per region"),
-            "Bars: the number of rows per region from sales.csv.",
-            "棒: sales.csv の region 列ごとの行数。",
+            "Bars: the number of rows per `region` from `sales.csv`.",
+            "棒: `sales.csv` の `region` 列ごとの行数。",
             id="count",
         ),
         pytest.param(
@@ -298,15 +298,16 @@ _SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
             "london = df[df['city'] == 'London']\n"
             "plt.plot(london['date'], london['temp_c'], label='London')\nplt.legend()\n",
             Sources((("weather.csv", _WEATHER),), "London temp_c by date"),
-            'Line "London": temp_c by date from weather.csv, rows where city is London.',
-            '折れ線 "London": weather.csv の temp_c 列 (date 列ごと) (city 列が London の行)。',
+            "Line `London`: `temp_c` by `date` from `weather.csv`, rows where `city` is `London`.",
+            "折れ線 `London`: `weather.csv` の `temp_c` 列 (`date` 列ごと)"
+            " (`city` 列が `London` の行)。",
             id="filter",
         ),
         pytest.param(
             "plt.plot([3, 1, 4], label='typed')\nplt.legend()\n",
             Sources(request="Plot 3, 1, 4"),
-            'Line "typed": numbers typed in the request.',
-            '折れ線 "typed": 依頼文に入力された数値。',
+            "Line `typed`: numbers typed in the request.",
+            "折れ線 `typed`: 依頼文に入力された数値。",
             id="request",
         ),
         pytest.param(
@@ -320,11 +321,12 @@ _SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
             _DF + "t = df.groupby('month')['revenue'].sum()\nplt.plot(t.index, t.values)\n"
             "plt.axhline(df['revenue'].mean())\nplt.axhline(25000)\n",
             _sales("revenue by month, target 25000"),
-            "Line: the sum of revenue per month from sales.csv; rows per group: 2026-01 2, "
-            "2026-02 2, 2026-03 2.\nReference mark: a value of revenue from sales.csv.\n"
+            "Line: the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, "
+            "`2026-02` 2, `2026-03` 2.\nReference mark: a value of `revenue` from `sales.csv`.\n"
             "Reference mark: zero or a number typed in the request.",
-            "折れ線: sales.csv の month 列ごとの revenue 列の合計。各グループの行数: 2026-01 2 行、"
-            "2026-02 2 行、2026-03 2 行。\n基準線: sales.csv の revenue 列の値。\n"
+            "折れ線: `sales.csv` の `month` 列ごとの `revenue` 列の合計。各グループの行数: "
+            "`2026-01` 2 行、`2026-02` 2 行、`2026-03` 2 行。\n"
+            "基準線: `sales.csv` の `revenue` 列の値。\n"
             "基準線: ゼロまたは依頼文の数値。",
             id="reference",
         ),
@@ -333,10 +335,10 @@ _SUM_JA = "sales.csv の region 列ごとの revenue 列の合計"
             Sources(),
             "No data was attached or typed in the request, so the values were not compared with "
             "data. The chart passed the integrity checks alone.\n"
-            'Text on the chart was not checked: "note".',
+            "Text on the chart was not checked: `note`.",
             "データが添付されておらず、依頼文にも数値がないため、値はデータと照合していません。"
             "グラフは完全性のチェックだけに合格しました。\n"
-            'グラフ上の文字は確認していません: "note"。',
+            "グラフ上の文字は確認していません: `note`。",
             id="integrity-only-listed-text",
         ),
     ],
@@ -489,10 +491,11 @@ def test_channels_publish_their_own_sentence() -> None:
     verdict = _judge(program, _sales("Revenue against orders, coloured by orders"))
     assert isinstance(verdict, Passed)
     assert verdict.interpretation == (
-        "Points: revenue by orders from sales.csv.\nPoint colours: orders from sales.csv."
+        "Points: `revenue` by `orders` from `sales.csv`.\nPoint colours: `orders` from `sales.csv`."
     )
     assert verdict.interpretation_ja == (
-        "散布点: sales.csv の revenue 列 (orders 列ごと)。\n点の色: sales.csv の orders 列。"
+        "散布点: `sales.csv` の `revenue` 列 (`orders` 列ごと)。\n"
+        "点の色: `sales.csv` の `orders` 列。"
     )
 
 
@@ -557,7 +560,9 @@ def test_span_edges_from_two_columns_draw_both() -> None:
     verdict = _judge(program, Sources((("t.csv", content),), "lower by name, band to upper"))
     assert isinstance(verdict, Passed)
     assert verdict.choices[1].reference == (("t.csv", "lower"), ("t.csv", "upper"))
-    assert verdict.interpretation.endswith("Reference mark: a value of lower and upper from t.csv.")
+    assert verdict.interpretation.endswith(
+        "Reference mark: a value of `lower` and `upper` from `t.csv`."
+    )
 
 
 def test_a_shared_reference_value_says_so() -> None:
@@ -592,7 +597,7 @@ def test_pie_keys_are_the_drawn_labels() -> None:
         assert isinstance(_judge(base + hidden, Sources(request="2 3")), Passed)
     listed = _judge(base, Sources())
     assert isinstance(listed, Passed)
-    assert listed.interpretation.endswith('Text on the chart was not checked: "a", "b".')
+    assert listed.interpretation.endswith("Text on the chart was not checked: `a`, `b`.")
 
 
 @pytest.mark.parametrize(
@@ -646,7 +651,7 @@ def test_v1_a_column_against_itself() -> None:
     program = _PD + _DF + "plt.scatter(df['orders'], df['orders'])\n"
     verdict = _judge(program, _sales("orders against orders"))
     assert isinstance(verdict, Passed)
-    assert verdict.interpretation == "Points: orders from sales.csv."
+    assert verdict.interpretation == "Points: `orders` from `sales.csv`."
 
 
 def test_slots_take_their_rows_before_keyed_points() -> None:
@@ -657,3 +662,34 @@ def test_slots_take_their_rows_before_keyed_points() -> None:
     assert isinstance(verdict, Passed)
     assert verdict.choices[0].explanation is not None
     assert verdict.choices[0].explanation.family == "raw"
+
+
+def test_m21_hostile_names_and_chart_text_stay_inert_markdown() -> None:
+    """M21.1 F1: a legend name or chart text reached the pass reply as live markdown: a line break
+    opened an HTML block (`<iframe>` renders in Open WebUI), and `[a](url)` rendered a link under
+    the verdict."""
+    from markdown_it import MarkdownIt  # noqa: PLC0415
+
+    label = 'x\n\n<iframe src="https://e.example/"></iframe>'
+    text = "[a](https://e.example) **b** $c$"
+    program = _PLT + f"plt.plot([3, 1, 2], label={label!r})\nplt.legend()\n"
+    program += f"plt.text(0, 1, {text!r})\n"
+    verdict = _judge(program, Sources(request="Plot 3, 1, 2"))
+    assert isinstance(verdict, Passed)
+    for reply in (verdict.interpretation, verdict.interpretation_ja):
+        tokens = MarkdownIt("commonmark", {"html": True}).parse(
+            "Figure verification passed\n\n" + reply
+        )
+        assert [token.type for token in tokens] == [
+            "paragraph_open",
+            "inline",
+            "paragraph_close",
+        ] * 2
+        inline = [
+            child for token in tokens if token.type == "inline" for child in token.children or []
+        ]
+        assert {child.type for child in inline} <= {"text", "softbreak", "code_inline"}
+        assert [child.content for child in inline if child.type == "code_inline"] == [
+            'x␊␊<iframe src="https://e.example/"></iframe>',
+            "[a](https://e.example) **b** $c$",
+        ]

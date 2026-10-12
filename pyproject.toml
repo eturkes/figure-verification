@@ -55,6 +55,9 @@ dev = [
     # (through `fpdf2`); pinned EXACTLY to that version, so the tests cut as the admin's instance
     # cuts. matplotlib needs `fonttools>=4.22`.
     "fonttools==4.63.0",
+    # test-only (M21.1 F1): an independent CommonMark parser grades the interpretation's code spans,
+    # since Open WebUI renders the reply as markdown with raw HTML.
+    "markdown-it-py>=4",
 ]
 
 [build-system]

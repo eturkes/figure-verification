@@ -15,7 +15,7 @@
       "before": "pass",
       "error": null,
       "file_pngs": 1,
-      "interpretation_head": "折れ線: clinic_ja.csv の 年月 列ごとの 平均待ち時間 列の平均。",
+      "interpretation_head": "折れ線: `clinic_ja.csv` の `年月` 列ごとの `平均待ち時間` 列の平均。",
       "status_code": null,
       "status_kana": false,
       "verdict_line": "Figure verification passed"
@@ -35,7 +35,7 @@
       "before": "pass",
       "error": null,
       "file_pngs": 1,
-      "interpretation_head": "棒: sales.csv の region 列ごとの revenue 列の合計。",
+      "interpretation_head": "棒: `sales.csv` の `region` 列ごとの `revenue` 列の合計。",
       "status_code": null,
       "status_kana": false,
       "verdict_line": "Figure verification passed"

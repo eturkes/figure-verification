@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M21.1 F1 inert text: each fence, pad and visibility rule of a markdown code span names one red.
+module = "src/verifier/figure/inert.py"
+tests = ["tests/test_figure_inert.py"]
+
+[[mutant]]
+id = "m21-visible-identity"
+predicate = "a hidden character shows as a visible symbol"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    if character == "\t" or unicodedata.category(character) not in _HIDDEN:'''
+mutant = '''    if True:'''
+
+[[mutant]]
+id = "m21-unmapped-text"
+predicate = "the span holds the visible characters, never the raw text"
+kills = "tests/test_figure_inert.py::test_every_text_parses_as_one_code_span_beside_its_neighbours"
+anchor = '''    shown = "".join(map(visible, text)) or " "'''
+mutant = '''    shown = text or " "'''
+
+[[mutant]]
+id = "m21-empty-bare-fence"
+predicate = "an empty text shows as one space, never a bare fence"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    shown = "".join(map(visible, text)) or " "'''
+mutant = '''    shown = "".join(map(visible, text)) or "x"'''
+
+[[mutant]]
+id = "m21-fence-not-longer"
+predicate = "the fence is one backtick longer than any run inside"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    fence = "`" * (1 + max(map(len, _TICKS.findall(shown)), default=0))'''
+mutant = '''    fence = "`" * max(1, max(map(len, _TICKS.findall(shown)), default=0))'''
+
+[[mutant]]
+id = "m21-no-backtick-pad"
+predicate = "a backtick beside the fence gets a pad space"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    pad = " " if spaced or "`" in (shown[0], shown[-1]) else ""'''
+mutant = '''    pad = " " if spaced else ""'''
+
+[[mutant]]
+id = "m21-no-space-pad"
+predicate = "a span spaced at both ends gets a pad space"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    pad = " " if spaced or "`" in (shown[0], shown[-1]) else ""'''
+mutant = '''    pad = " " if "`" in (shown[0], shown[-1]) else ""'''
+
+[[mutant]]
+id = "m21-all-space-padded"
+predicate = "an all-space span keeps its spaces unpadded"
+kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
+anchor = '''    spaced = shown[0] == shown[-1] == " " and shown.strip(" ") != ""'''
+mutant = '''    spaced = shown[0] == shown[-1] == " "'''

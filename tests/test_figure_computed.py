@@ -360,12 +360,12 @@ def test_a_channel_binds_to_its_group_when_the_main_drops_one() -> None:
 def test_each_computation_is_named_in_both_languages() -> None:
     cases = {
         _PD + _READ + "plt.plot(df['orders'] ** 2)\n": (
-            "Line: the square of orders in row order from sales.csv.",
-            "折れ線: sales.csv の orders 列 (行の順)の2乗。",
+            "Line: the square of `orders` in row order from `sales.csv`.",
+            "折れ線: `sales.csv` の `orders` 列 (行の順)の2乗。",
         ),
         _PD + _READ + "plt.plot(df['revenue'] - df['orders'])\n": (
-            "Line: revenue minus orders in row order from sales.csv.",
-            "折れ線: sales.csv の revenue 列から orders 列を引いた値 (行の順)。",
+            "Line: `revenue` minus `orders` in row order from `sales.csv`.",
+            "折れ線: `sales.csv` の `revenue` 列から `orders` 列を引いた値 (行の順)。",
         ),
     }
     for program, (english, japanese) in cases.items():
@@ -474,8 +474,8 @@ def test_a_computed_row_count_publishes_its_counts() -> None:
     verdict = _judge(program, _sales("square of the rows per region"))
     assert isinstance(verdict, Passed)
     assert verdict.interpretation == (
-        "Bars: the square of the number of rows per region from sales.csv;"
-        " rows per group: EU 3, US 3."
+        "Bars: the square of the number of rows per `region` from `sales.csv`;"
+        " rows per group: `EU` 3, `US` 3."
     )
 
 

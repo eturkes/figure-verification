@@ -825,7 +825,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified ten times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified eleven times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -843,9 +843,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     image cuts it; no other package moved) and Q46 (the retired JSON-spec service's
     vl-convert-python, z3-solver + cryptography and dev jsonschema + duckdb removed, with attrs,
     cffi, jsonschema-specifications, pycparser, referencing + rpds-py: 73 -> 62 packages, removals
-    alone, no version moved)."""
+    alone, no version moved) and M21.1 (markdown-it-py dev-only, the CommonMark oracle of the
+    interpretation's code spans, already locked at 4.2.0 through rich: 2 lines, no package added or
+    moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "332c4f39d82ba15748b30098a8a261f44ff020b30efc354a14618a6cb5d72d93"
+    assert digest == "8a2adcda3ca49e0cacf30f490a89debddcc5c4d1ca29c2e8f8351344cf61e875"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

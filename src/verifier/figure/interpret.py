@@ -6,11 +6,14 @@ group with each group's row count (G11), a filter by its legend name (R6), the r
 numbers, one admitted computation of any of these (Q45: its operands in order), or none. A
 drawn subset says N of M (R2). A figure with no data source says it was
 checked for integrity alone (ruling 4). Text on the chart is listed, never judged (ruling 6).
+Open WebUI renders the reply as markdown, so every name, cell, file name and chart text is one
+inline code span (`inert.py`, M21.1 F1); only this module's own words stay prose.
 """
 
 from typing import Final, cast
 
 from verifier.figure.explain import Choice, Explanation
+from verifier.figure.inert import code
 
 _MARKS: Final = {
     "line": ("Line", "折れ線"),
@@ -82,14 +85,14 @@ _INTEGRITY_ONLY: Final = (
 )
 
 
-def _quote(text: str) -> str:
-    return f'"{text}"'
+def _named(name: str | None) -> str:
+    return "" if name is None else code(name)
 
 
 def _groups(explanation: Explanation, *, japanese: bool) -> str:
     counts = explanation.counts or ()
     shown = [
-        f"{key} {count}" if not japanese else f"{key} {count} 行"
+        f"{code(str(key))} {count}" if not japanese else f"{code(str(key))} {count} 行"
         for (key, _value), count in zip(explanation.pairs, counts, strict=True)
     ][:_GROUPS_SHOWN]
     more = len(counts) > _GROUPS_SHOWN
@@ -114,9 +117,11 @@ def _operands(numbers: tuple[float, ...], *, japanese: bool) -> str:
 def _binary(explanation: Explanation, *, japanese: bool) -> str:
     language = 1 if japanese else 0
     transform = cast("str", explanation.transform)
-    op = _BINARY[transform][language].format(a=explanation.value, b=explanation.other)
+    op = _BINARY[transform][language].format(
+        a=_named(explanation.value), b=_named(explanation.other)
+    )
     return _BINARY_SOURCES[explanation.family][language].format(
-        op=op, key=explanation.key, file=explanation.table
+        op=op, key=_named(explanation.key), file=code(explanation.table)
     )
 
 
@@ -130,7 +135,7 @@ def _source(explanation: Explanation, *, japanese: bool) -> str:
             text = _UNARY[transform][1 if japanese else 0].format(base=text)
     if explanation.where is not None:
         column, cell = explanation.where
-        text += _WHERE[1 if japanese else 0].format(column=column, cell=cell)
+        text += _WHERE[1 if japanese else 0].format(column=code(column), cell=code(cell))
     return text
 
 
@@ -143,9 +148,9 @@ def _base(explanation: Explanation, *, japanese: bool) -> str:
     else:
         form = family
     return _SOURCES[form][language].format(
-        file=explanation.table,
-        key=explanation.key,
-        value=explanation.value,
+        file=code(explanation.table),
+        key=_named(explanation.key),
+        value=_named(explanation.value),
         reduction=_REDUCTIONS[family][language] if form == "reduced" else "",
     )
 
@@ -155,7 +160,7 @@ def _reference(named: str, choice: Choice, *, japanese: bool) -> str:
     and values that are zero or typed in the request."""
     language = 1 if japanese else 0
     parts = [
-        _HELD[language].format(columns=_AND[language].join(columns), file=file)
+        _HELD[language].format(columns=_AND[language].join(map(code, columns)), file=code(file))
         for file, columns in ((file, sorted(c)) for file, c in choice.columns)
     ]
     if choice.shared:
@@ -171,7 +176,7 @@ def _sentence(choice: Choice, *, japanese: bool) -> str:
     mark = _MARKS[series.mark.family if series.channel == "value" else series.channel][
         1 if japanese else 0
     ]
-    named = f"{mark} {_quote(series.name)}" if series.name is not None else mark
+    named = f"{mark} {code(series.name)}" if series.name is not None else mark
     explanation = choice.explanation
     if explanation is None:
         if series.shape == "reference":
@@ -212,7 +217,7 @@ def interpretation(
     sentences = [_INTEGRITY_ONLY[1 if japanese else 0]] if integrity_only else []
     sentences += [_sentence(choice, japanese=japanese) for choice in choices]
     if texts:
-        shown = ", ".join(_quote(text) for text in texts[:_TEXTS_SHOWN])
+        shown = ", ".join(code(text) for text in texts[:_TEXTS_SHOWN])
         more = len(texts) > _TEXTS_SHOWN
         if japanese:
             sentences.append(f"グラフ上の文字は確認していません: {shown}{'、…' if more else ''}。")

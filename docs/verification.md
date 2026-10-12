@@ -21,7 +21,9 @@ The verifier gives three kinds of assurance:
    comes from that data. It can also come from one admitted computation of that data. A value that
    the verifier cannot find stops the chart.
 3. **Interpretation.** A passed reply states in plain words where each drawn value comes from. It
-   names the file, the columns, the summary per group and the row counts.
+   names the file, the columns, the summary per group and the row counts. Each name, cell value,
+   file name and chart text shows as code, exactly as written. Thus, such text cannot add links,
+   images or formatting to the reply.
 
 The verifier never claims that the chart answers your question. A chart can show correct values of a
 different quantity than you meant, for example a sum where you wanted a mean. Read the

@@ -1149,6 +1149,49 @@ def parse_description(stdout: str) -> Description | None:
         return None
 '''
 
+_SOURCES["verifier.figure.inert"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Untrusted text made inert for display: program, chart and CSV text (M21.1 F1).
+
+Open WebUI renders a reply as markdown, so a raw name could open an HTML block, a link, emphasis or
+KaTeX math under the verdict. A code span is the one construct its renderer never parses inside:
+marked lexes the span whole before any extension sees it. So a quoted name is one code span, and
+its characters show as they are, an invisible one as a visible symbol.
+"""
+
+import re
+import unicodedata
+
+_HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+_TICKS = re.compile("`+")
+
+
+def visible(character: str) -> str:
+    """A character that would draw nothing, or reorder the text around it, as a visible symbol."""
+    if character == "\t" or unicodedata.category(character) not in _HIDDEN:
+        return character
+    code = ord(character)
+    if code < 0x20:  # noqa: PLR2004 - the C0 controls map onto U+2400-U+241F
+        return chr(0x2400 + code)
+    return "\N{SYMBOL FOR DELETE}" if code == 0x7F else "\N{REPLACEMENT CHARACTER}"  # noqa: PLR2004
+
+
+def code(text: str) -> str:
+    """`text` as one markdown code span that shows exactly its characters.
+
+    A line break would end the paragraph and free the rest, so it shows as a symbol. The fence is
+    one backtick longer than any run inside. CommonMark drops one space at each end of a span that
+    has one at both, and a backtick beside the fence would lengthen it, so either case gets a pad
+    space on each side. An empty span would leave a bare fence that pairs with a later one: it
+    shows as one space instead.
+    """
+    shown = "".join(map(visible, text)) or " "
+    fence = "`" * (1 + max(map(len, _TICKS.findall(shown)), default=0))
+    spaced = shown[0] == shown[-1] == " " and shown.strip(" ") != ""
+    pad = " " if spaced or "`" in (shown[0], shown[-1]) else ""
+    return f"{fence}{pad}{shown}{pad}{fence}"
+'''
+
 _SOURCES["verifier.figure.reader"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Run a chart program and report what its finished matplotlib figures hold (M19 reader).
@@ -4341,11 +4384,11 @@ raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
 
 import html
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Final, Literal
 
 from verifier.figure.anchoring import Anchoring
+from verifier.figure.inert import visible
 from webui.paste_in.reasons import REASONS, Reason
 
 Check = Literal["program", "run", "figure", "parts", "axes", "marks", "values", "columns", "attach"]
@@ -4702,7 +4745,6 @@ _MAX_CHARACTERS = 3_000
 _LINE_CHARACTERS = 400
 _CONTEXT = 2
 _BREAK = re.compile(r"\r\n|\r|\n")
-_HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 # Open WebUI injects Alpine.js or Chart.js into an embed whose raw text holds `x-<directive>`,
 # `new Chart(` or `Chart.` (same-origin frames). Character references keep the program from
 # spelling one, or a resource reference (`src=`, `url(`, `@import`, `https:`) a static check could
@@ -4712,18 +4754,8 @@ _TRIGGER_SAFE = str.maketrans(
 )
 
 
-def _visible(character: str) -> str:
-    """A character that would draw nothing, or reorder the text around it, as a visible symbol."""
-    if character == "\t" or unicodedata.category(character) not in _HIDDEN:
-        return character
-    code = ord(character)
-    if code < 0x20:  # noqa: PLR2004 - the C0 controls map onto U+2400-U+241F
-        return chr(0x2400 + code)
-    return "\N{SYMBOL FOR DELETE}" if code == 0x7F else "\N{REPLACEMENT CHARACTER}"  # noqa: PLR2004
-
-
 def _code(value: str) -> str:
-    return _text("".join(map(_visible, value))).translate(_TRIGGER_SAFE)
+    return _text("".join(map(visible, value))).translate(_TRIGGER_SAFE)
 
 
 def _line(number: int, line: str, *, marked: bool) -> str:
@@ -7458,11 +7490,14 @@ group with each group's row count (G11), a filter by its legend name (R6), the r
 numbers, one admitted computation of any of these (Q45: its operands in order), or none. A
 drawn subset says N of M (R2). A figure with no data source says it was
 checked for integrity alone (ruling 4). Text on the chart is listed, never judged (ruling 6).
+Open WebUI renders the reply as markdown, so every name, cell, file name and chart text is one
+inline code span (`inert.py`, M21.1 F1); only this module's own words stay prose.
 """
 
 from typing import Final, cast
 
 from verifier.figure.explain import Choice, Explanation
+from verifier.figure.inert import code
 
 _MARKS: Final = {
     "line": ("Line", "折れ線"),
@@ -7534,14 +7569,14 @@ _INTEGRITY_ONLY: Final = (
 )
 
 
-def _quote(text: str) -> str:
-    return f'"{text}"'
+def _named(name: str | None) -> str:
+    return "" if name is None else code(name)
 
 
 def _groups(explanation: Explanation, *, japanese: bool) -> str:
     counts = explanation.counts or ()
     shown = [
-        f"{key} {count}" if not japanese else f"{key} {count} 行"
+        f"{code(str(key))} {count}" if not japanese else f"{code(str(key))} {count} 行"
         for (key, _value), count in zip(explanation.pairs, counts, strict=True)
     ][:_GROUPS_SHOWN]
     more = len(counts) > _GROUPS_SHOWN
@@ -7566,9 +7601,11 @@ def _operands(numbers: tuple[float, ...], *, japanese: bool) -> str:
 def _binary(explanation: Explanation, *, japanese: bool) -> str:
     language = 1 if japanese else 0
     transform = cast("str", explanation.transform)
-    op = _BINARY[transform][language].format(a=explanation.value, b=explanation.other)
+    op = _BINARY[transform][language].format(
+        a=_named(explanation.value), b=_named(explanation.other)
+    )
     return _BINARY_SOURCES[explanation.family][language].format(
-        op=op, key=explanation.key, file=explanation.table
+        op=op, key=_named(explanation.key), file=code(explanation.table)
     )
 
 
@@ -7582,7 +7619,7 @@ def _source(explanation: Explanation, *, japanese: bool) -> str:
             text = _UNARY[transform][1 if japanese else 0].format(base=text)
     if explanation.where is not None:
         column, cell = explanation.where
-        text += _WHERE[1 if japanese else 0].format(column=column, cell=cell)
+        text += _WHERE[1 if japanese else 0].format(column=code(column), cell=code(cell))
     return text
 
 
@@ -7595,9 +7632,9 @@ def _base(explanation: Explanation, *, japanese: bool) -> str:
     else:
         form = family
     return _SOURCES[form][language].format(
-        file=explanation.table,
-        key=explanation.key,
-        value=explanation.value,
+        file=code(explanation.table),
+        key=_named(explanation.key),
+        value=_named(explanation.value),
         reduction=_REDUCTIONS[family][language] if form == "reduced" else "",
     )
 
@@ -7607,7 +7644,7 @@ def _reference(named: str, choice: Choice, *, japanese: bool) -> str:
     and values that are zero or typed in the request."""
     language = 1 if japanese else 0
     parts = [
-        _HELD[language].format(columns=_AND[language].join(columns), file=file)
+        _HELD[language].format(columns=_AND[language].join(map(code, columns)), file=code(file))
         for file, columns in ((file, sorted(c)) for file, c in choice.columns)
     ]
     if choice.shared:
@@ -7623,7 +7660,7 @@ def _sentence(choice: Choice, *, japanese: bool) -> str:
     mark = _MARKS[series.mark.family if series.channel == "value" else series.channel][
         1 if japanese else 0
     ]
-    named = f"{mark} {_quote(series.name)}" if series.name is not None else mark
+    named = f"{mark} {code(series.name)}" if series.name is not None else mark
     explanation = choice.explanation
     if explanation is None:
         if series.shape == "reference":
@@ -7664,7 +7701,7 @@ def interpretation(
     sentences = [_INTEGRITY_ONLY[1 if japanese else 0]] if integrity_only else []
     sentences += [_sentence(choice, japanese=japanese) for choice in choices]
     if texts:
-        shown = ", ".join(_quote(text) for text in texts[:_TEXTS_SHOWN])
+        shown = ", ".join(code(text) for text in texts[:_TEXTS_SHOWN])
         more = len(texts) > _TEXTS_SHOWN
         if japanese:
             sentences.append(f"グラフ上の文字は確認していません: {shown}{'、…' if more else ''}。")

@@ -89,3 +89,59 @@ predicate = "a computation over row counts publishes the counts"
 kills = "tests/test_figure_computed.py::test_a_computed_row_count_publishes_its_counts"
 anchor = '''        explanation.family != "count" or explanation.transform is not None'''
 mutant = '''        explanation.family != "count"'''
+
+[[mutant]]
+id = "m21-name-raw"
+predicate = "a series name reaches the reply as inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_m21_hostile_names_and_chart_text_stay_inert_markdown"
+anchor = '''    named = f"{mark} {code(series.name)}" if series.name is not None else mark'''
+mutant = '''    named = f"{mark} {series.name}" if series.name is not None else mark'''
+
+[[mutant]]
+id = "m21-text-raw"
+predicate = "listed chart text reaches the reply as inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_m21_hostile_names_and_chart_text_stay_inert_markdown"
+anchor = '''        shown = ", ".join(code(text) for text in texts[:_TEXTS_SHOWN])'''
+mutant = '''        shown = ", ".join(text for text in texts[:_TEXTS_SHOWN])'''
+
+[[mutant]]
+id = "m21-where-raw"
+predicate = "a filter's column and cell are inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[filter]"
+anchor = '''        text += _WHERE[1 if japanese else 0].format(column=code(column), cell=code(cell))'''
+mutant = '''        text += _WHERE[1 if japanese else 0].format(column=column, cell=cell)'''
+
+[[mutant]]
+id = "m21-group-key-raw"
+predicate = "a group key in the row counts is inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[group]"
+anchor = '''        f"{code(str(key))} {count}" if not japanese else f"{code(str(key))} {count} 行"'''
+mutant = '''        f"{key} {count}" if not japanese else f"{key} {count} 行"'''
+
+[[mutant]]
+id = "m21-file-raw"
+predicate = "a file name is inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[raw]"
+anchor = '''        file=code(explanation.table),'''
+mutant = '''        file=explanation.table,'''
+
+[[mutant]]
+id = "m21-column-raw"
+predicate = "a column name is inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_v9_interpretation_sentences[raw]"
+anchor = '''    return "" if name is None else code(name)'''
+mutant = '''    return "" if name is None else name'''
+
+[[mutant]]
+id = "m21-reference-raw"
+predicate = "a reference mark's columns + file are inert code (M21.1 F1)"
+kills = "tests/test_figure_values.py::test_span_edges_from_two_columns_draw_both"
+anchor = '''        _HELD[language].format(columns=_AND[language].join(map(code, columns)), file=code(file))'''
+mutant = '''        _HELD[language].format(columns=_AND[language].join(columns), file=file)'''
+
+[[mutant]]
+id = "m21-binary-raw"
+predicate = "a two-column computation's file is inert code (M21.1 F1)"
+kills = "tests/test_figure_computed.py::test_each_computation_is_named_in_both_languages"
+anchor = '''        op=op, key=_named(explanation.key), file=code(explanation.table)'''
+mutant = '''        op=op, key=explanation.key, file=explanation.table'''
