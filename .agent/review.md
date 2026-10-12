@@ -23,6 +23,7 @@ rows.
 | L-GAP | guarantee vs. claim | does a shipped guarantee outrun the mechanism that backs it? |
 | L-LAW | `CLAUDE.md` conformance | tiers, contracts, gate identity, claim discipline, authoring register |
 | L-HARD | verification integrity | does an admitted path return a fixture's expected value, or grade against an expected-output table its contract does not own? |
+| L-SEC | security | can a remote actor (chat user, CSV author, the model, another user) read, forge, exhaust or run beyond the stated trust boundary? |
 
 ## Rows
 
@@ -101,3 +102,13 @@ rows.
 | R202 | Q45 close | L-CLAIM | reviewer-8 F1: docs + spec said a scaled value blocks unless the number is in the data; a scaled value equal to an admitted computation passes. | closed | EN + JA reference, admin guides, spec Decision: "… in your data or in one admitted computation of it". |
 | R203 | Q45 close | L-GAP | reviewer-9 F1: X1's per-transform grids differ, so summing rates bounds no union (typed `1 to 3`: 19.2% sum < 23.1% on one grid). | closed | union/combined claims removed (X1 docstring, measurements README, contract C5). |
 | R204 | Q45 + Q49 close | L-LAW · L-HARD | reviewer-10 F1: original firings of the I2 + X1 expectation changes and the catalogue-set test were unrecorded; reviewer-11 F1: tests read `computed.UNARY` + `MAX_RANGE`. | closed | firings recorded in the review-fix commit body; literals hand-stated. |
+| R205 | M21.1 | L-SEC | F1 (medium): the pass reply interpolated legend names, chart text, columns, cells + file names into Open WebUI markdown; a line break opened an HTML block (`<iframe>`), `[a](url)` a link, `#`/`**` forged text under the verdict. | closed | `600cacb`: one inline code span each (`src/verifier/figure/inert.py::code`); markdown-it-py oracle tests red → green. |
+| R206 | M21.1 | L-SEC | F2 (medium): an exception escaping the outlet failed open (Open WebUI swallows it and keeps the model's reply); `100^{300}` tick labels raised `OverflowError` in the judge. | closed | `129c80f`: tick parse bounded; decode + judge fail closed as `verifier_error`. |
+| R207 | M21.1 | L-SEC | F3 (medium): ranges expanded 10,000 terms each with no cap on their count (15 KB request → 478 MB in the Open WebUI process). | closed | `351170a`: 10,000 terms per request in total. |
+| R208 | M21.1 | L-SEC | F4 (low): inlet CSV parse on the event loop (1.02 s at 7.9 MB per request); owned files read whole at any size. | closed | `351170a`: parse in a worker thread; reads cut at `max_csv_bytes + 1`. |
+| R209 | M21.1 | L-SEC | F5 (medium): with Pyodide file persistence on, the program runs in a same-origin worker carrying the session cookie; the outlet sent it anyway, the admin guide never required the setting off. | closed | `9215e7f`: `sandbox_not_isolated` before files + RPC; admin guide row. |
+| R210 | M21.1 | L-SEC | F6 (medium): launcher bound any host with the published secret key + admin password (forged admin token ⇒ Functions ⇒ host code); backend bound any host without authentication. | closed | `8fb0acf`: fresh credentials off loopback; backend loopback alone. |
+| R211 | M21.1 | L-SEC | F7 (high): the demo installs open-webui 0.10.2 (34 published advisories, fixed by 0.11.1), unlocked + unaudited; the admin guide names it as the measured version. | accepted | M21.2: 0.11.3 locked under the audit stage, sandbox re-validated, measurements replayed. |
+| R212 | M21.1 | L-SEC | F8 (informational): the Node harness has no committed audit or update stream. | register | Q50. |
+| R213 | M21.1 | L-SEC | F9 (informational): CodeQL `py/bad-tag-filter` on a case-sensitive test oracle. | register | Q51. |
+| R214 | M21.1 | L-SEC | F10 (informational): Dependabot alerts disabled on the remote. | register | Q52 (user-owned). |
