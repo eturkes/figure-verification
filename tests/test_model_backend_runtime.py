@@ -247,7 +247,7 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
             "MODEL_BACKEND_DEVICE": "custom-device",
             "MODEL_BACKEND_MAX_PROMPT_LEN": "101",
             "MODEL_BACKEND_MAX_BODY_BYTES": "102",
-            "MODEL_BACKEND_HOST": "192.0.2.10",
+            "MODEL_BACKEND_HOST": "127.0.0.2",
             "MODEL_BACKEND_PORT": "8103",
             "MODEL_BACKEND_MAX_TOKENS": "104",
             "MODEL_BACKEND_MAX_RESPONSE_BYTES": "105",
@@ -262,7 +262,7 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         device="custom-device",
         max_prompt_len=101,
         max_body_bytes=102,
-        host="192.0.2.10",
+        host="127.0.0.2",
         port=8103,
         max_tokens=104,
         max_response_bytes=105,
@@ -278,6 +278,19 @@ def test_p03_env_name_set_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
         "MODEL_BACKEND_MAX_TOKENS",
         "MODEL_BACKEND_MAX_RESPONSE_BYTES",
     }
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.0.2.10", "::", "backend.example"])  # noqa: S104
+def test_m21_the_backend_binds_loopback_alone(host: str) -> None:
+    """M21.1 F6: the model backend authenticates no caller, and `MODEL_BACKEND_HOST` bound any
+    host."""
+    with pytest.raises(ValueError, match="host"):
+        Settings(host=host)
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "::1", "localhost"])
+def test_m21_the_backend_accepts_loopback(host: str) -> None:
+    assert Settings(host=host).host == host
 
 
 def test_p05_bound_guards_still_refuse_zero() -> None:

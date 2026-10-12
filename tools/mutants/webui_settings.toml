@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M21.1 F6 launcher bind: a host off loopback needs both published credentials replaced.
+module = "webui/settings.py"
+tests = ["tests/test_webui_settings.py"]
+
+[[mutant]]
+id = "m21-any-host-default-credentials"
+predicate = "a host off loopback refuses the published credentials"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
+anchor = '''        if not _loopback(self.host) and ('''
+mutant = '''        if False and ('''
+
+[[mutant]]
+id = "m21-default-password-kept"
+predicate = "a host off loopback refuses the published admin password"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
+anchor = '''self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
+mutant = '''self.secret_key == _DEFAULT_SECRET_KEY'''
+
+[[mutant]]
+id = "m21-default-secret-kept"
+predicate = "a host off loopback refuses the published secret key"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
+anchor = '''self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
+mutant = '''self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
+
+[[mutant]]
+id = "m21-every-name-loopback"
+predicate = "a host name other than localhost is no loopback"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
+anchor = '''        return host.lower() == "localhost"'''
+mutant = '''        return True'''

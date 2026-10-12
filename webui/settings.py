@@ -30,6 +30,7 @@ out-of-tree harness like model_backend: coverage-excluded, unshipped, importing 
 gate-venv deps.
 """
 
+import ipaddress
 import math
 import os
 import re
@@ -186,6 +187,13 @@ def _require_http_url(name: str, value: str, *, path: str) -> None:
         raise ValueError(msg)
 
 
+def _loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
+
+
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
     """Immutable provisioner configuration. See the module docstring for the trust note.
 
@@ -245,6 +253,16 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             msg = (
                 "host must be a bare ASCII hostname without scheme, path, or port, "
                 f"got {self.host!r}"
+            )
+            raise ValueError(msg)
+        # The defaults are published: off loopback, the secret lets anyone sign an admin token,
+        # and an Open WebUI admin runs Python on this host through Functions.
+        if not _loopback(self.host) and (
+            self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD
+        ):
+            msg = (
+                f"host {self.host!r} is not loopback: set a fresh WEBUI_PROVISION_SECRET_KEY and "
+                "WEBUI_PROVISION_ADMIN_PASSWORD"
             )
             raise ValueError(msg)
 

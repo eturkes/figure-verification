@@ -114,10 +114,17 @@ def test_model_identity_agrees_across_the_three_tiers() -> None:
     assert Settings().model_id == _SERVED_MODEL_NAME
 
 
+# A host off loopback needs both credentials fresh (M21.1 F6).
+_FRESH_SECRET = "fresh-deployment-secret-of-32-bytes"  # noqa: S105 - a test value
+_FRESH_PASSWORD = "fresh-deployment-password"  # noqa: S105 - a test value
+
+
 def test_accepts_clean_endpoint_authorities() -> None:
     settings = Settings(
         model_backend_url="https://[2001:db8::1]:8443/v1",
         host="webui.local",
+        secret_key=_FRESH_SECRET,
+        admin_password=_FRESH_PASSWORD,
     )
     assert settings.model_backend_url == "https://[2001:db8::1]:8443/v1"
     assert settings.base_url == "http://webui.local:8080"
@@ -262,3 +269,28 @@ def test_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.secret_key == override_secret
     assert settings.data_dir == Path("custom-data")
     assert settings.ready_timeout == 5.5
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["0.0.0.0", "192.168.1.5", "operator-box", "127.0.0.1.example"],  # noqa: S104 - refused binds
+)
+def test_m21_a_host_beyond_loopback_needs_fresh_credentials(host: str) -> None:
+    """M21.1 F6: the published secret key lets anyone on the network sign an admin token, and an
+    Open WebUI admin runs Python on the host through Functions; any host bound with both
+    defaults."""
+    builds: tuple[Callable[[], Settings], ...] = (
+        lambda: Settings(host=host),
+        lambda: Settings(host=host, secret_key=_FRESH_SECRET),
+        lambda: Settings(host=host, admin_password=_FRESH_PASSWORD),
+    )
+    for build in builds:
+        with pytest.raises(ValueError, match="host"):
+            build()
+    fresh = Settings(host=host, secret_key=_FRESH_SECRET, admin_password=_FRESH_PASSWORD)
+    assert fresh.host == host
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "localhost", "LOCALHOST"])
+def test_m21_loopback_keeps_the_demo_defaults(host: str) -> None:
+    assert Settings(host=host).host == host

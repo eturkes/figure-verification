@@ -222,3 +222,6 @@ Variable | Default | Purpose
 The default credentials are constant, throwaway PoC values. Both services bind to loopback.
 For the verified recipe, keep that boundary. For any network-exposed deployment, use fresh
 credentials. Generate a secret for that deployment. Obtain a separate production security review.
+The launcher refuses a host other than loopback while the secret key or the admin password keeps
+its default. The model backend authenticates no caller, so it refuses any host other than
+loopback.

@@ -19,6 +19,7 @@ _CATALOGUES = (
     "aggregate",
     "aliases",
     "anchoring",
+    "backend_settings",
     "checks",
     "columns",
     "computed",
@@ -44,6 +45,7 @@ _CATALOGUES = (
     "shapes",
     "ticks",
     "tool",
+    "webui_settings",
 )
 
 

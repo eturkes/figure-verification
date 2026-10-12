@@ -6,13 +6,14 @@ one set of constants (no drift), and __post_init__ rejects non-positive bounds s
 misconfigured deploy fails closed.
 This server is the UNTRUSTED proposer, not the trusted verifier, so these bounds guard request
 allocation, the single compiled pipeline / lock, and response size, never a verification claim.
-Defaults bind loopback on port 8001 and target device
+It binds loopback alone (no caller is authenticated), on port 8001 by default, and targets device
 "cuda" running an fp16 Qwen2.5-Coder-0.5B-Instruct snapshot, pinned by content in
 model_backend/runtime/snapshot.json (verifier: model_backend/snapshot.py). That tuple is a fresh
 (device, config) baseline — the model family AND the quant class both changed with the runtime
 port, so no earlier proposer measurement transfers to it.
 """
 
+import ipaddress
 import os
 from pathlib import Path
 from typing import Self
@@ -37,6 +38,13 @@ _DEFAULT_MAX_TOKENS = 512
 # The response-byte ceiling: a belt over the token cap, guarding the single accelerator/lock against
 # a generation that outgrows the configured bound (over-cap -> upstream fault at the client).
 _DEFAULT_MAX_RESPONSE_BYTES = 65536
+
+
+def _loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
 
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
@@ -69,6 +77,10 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         # A non-positive prompt cap would refuse every prompt before generation.
         if self.max_prompt_len < 1:
             msg = f"max_prompt_len must be >= 1, got {self.max_prompt_len}"
+            raise ValueError(msg)
+        # No route authenticates its caller, so the GPU serves this machine alone.
+        if not _loopback(self.host):
+            msg = f"host must be loopback: the backend authenticates no caller, got {self.host!r}"
             raise ValueError(msg)
 
     @classmethod

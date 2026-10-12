@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# M21.1 F6 model backend bind: no caller is authenticated, so loopback alone.
+module = "model_backend/settings.py"
+tests = ["tests/test_model_backend_runtime.py"]
+
+[[mutant]]
+id = "m21-backend-any-host"
+predicate = "the backend refuses a host off loopback"
+kills = "tests/test_model_backend_runtime.py::test_m21_the_backend_binds_loopback_alone"
+anchor = '''        if not _loopback(self.host):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "m21-backend-every-name-loopback"
+predicate = "a host name other than localhost is no loopback"
+kills = "tests/test_model_backend_runtime.py::test_m21_the_backend_binds_loopback_alone"
+anchor = '''        return host.lower() == "localhost"'''
+mutant = '''        return True'''
