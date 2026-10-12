@@ -40,8 +40,9 @@ The verifier compares the drawn values with the data that you supplied:
 - **Numbers in your request.** Each drawn value must be a number that your request contains. The
   verifier expands a typed range into every whole number between its ends. For example, `1 through
   10`, `1 to 10`, `1–10`, `1〜10` and `1から10まで` each give the numbers 1 to 10. A plain hyphen, as in
-  `1-10`, never makes a range, because dates and negative numbers use it. A category label must also
-  occur in your request.
+  `1-10`, never makes a range, because dates and negative numbers use it. The ranges of one request
+  give at most 10,000 numbers in total, and a range past that limit gives only its two ends. A
+  category label must also occur in your request.
 - **A computation of that data.** A drawn value can also be one computation of a CSV series, of
   two columns or of your request's numbers. The next section lists them.
 - **No data.** When you attach no file and type no number, the verifier checks the chart for
@@ -376,7 +377,7 @@ The verifier stops work beyond these limits.
 | `max_csv_cell_bytes` | 512 | bytes in one CSV cell |
 | `MAX_GROUPS` | 1,000 | groups in one summary per group |
 | `MAX_WORK` | 5,000,000 | units of value-matching work |
-| `MAX_RANGE` | 10,000 | numbers in one typed range |
+| `MAX_RANGE` | 10,000 | numbers that the typed ranges of one request give in total |
 | `RPC_TIMEOUT_SECONDS` | 60 | seconds for the browser run |
 
 ## What the verifier does not check

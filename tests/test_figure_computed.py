@@ -204,6 +204,19 @@ def test_no_request_has_no_sequence() -> None:
     assert read_request(None).sequence == ()
 
 
+def test_ranges_expand_10000_terms_per_request_in_total() -> None:
+    """M21.1 F3: each range expanded up to 10,000 terms with no cap on how many ranges, so a 15 KB
+    request (`plot 1 to 9999` x 1,000) built 9,999,000 terms (478 MB) in the Open WebUI process."""
+    flood = read_request("plot 1 to 9999 " * 1000)
+    assert len(flood.sequence) == 9999 + 2 * 999
+    assert flood.numbers == frozenset(float(n) for n in range(1, 10000))
+    split = read_request("1 to 6000 and 7001 to 13000")
+    assert split.sequence == (*(float(n) for n in range(1, 6001)), 7001.0, 13000.0)
+    assert split.numbers == frozenset((*(float(n) for n in range(1, 6001)), 7001.0, 13000.0))
+    both = read_request("1 to 3 and 10 to 12")
+    assert both.sequence == (1.0, 2.0, 3.0, 10.0, 11.0, 12.0)
+
+
 # --- two passes -----------------------------------------------------------------------------------
 
 

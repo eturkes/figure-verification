@@ -21,11 +21,16 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from verifier.pysrc.limits import DEFAULT_LIMITS
+
 # Where Open WebUI's Pyodide worker writes each attached file before it runs the program. An
 # admitted `read_csv` literal must name exactly this, and the core compares byte-for-byte.
 UPLOAD_DIR = "/mnt/uploads/"
 # Open WebUI ships this font for its own chat-PDF export; the sandbox's matplotlib has no CJK glyph.
 CJK_FONT_NAME = "NotoSansJP-Regular.ttf"
+# The judge refuses a file past `max_csv_bytes` from its length alone, so one byte more decides it,
+# and an upload of any size never enters the server's memory whole.
+_READ_BYTES = DEFAULT_LIMITS.max_csv_bytes + 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +59,11 @@ def attachment_ids(metadata: Mapping[str, object] | None) -> list[str]:
     return ids
 
 
+def _head(path: str) -> bytes:
+    with Path(path).open("rb") as handle:
+        return handle.read(_READ_BYTES)
+
+
 async def owned_files(file_ids: Sequence[str], user_id: str) -> tuple[UploadedFile, ...]:
     """Fetch only owned, readable ids through Open WebUI's store, preserving chat order."""
     from open_webui.models.files import Files  # noqa: PLC0415 - see the module docstring
@@ -66,7 +76,7 @@ async def owned_files(file_ids: Sequence[str], user_id: str) -> tuple[UploadedFi
             continue
         try:
             local_path = await asyncio.to_thread(Storage.get_file, record.path)
-            content = await asyncio.to_thread(Path(local_path).read_bytes)
+            content = await asyncio.to_thread(_head, local_path)
         except Exception:
             logging.getLogger(__name__).debug("Unreadable owned file omitted")
             continue

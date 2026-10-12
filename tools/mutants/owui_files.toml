@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop.
+# Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop;
+# owned files read to one byte past max_csv_bytes (M21.1 F4).
 module = "webui/paste_in/owui_files.py"
 tests = ["tests/test_paste_in_owui_files.py"]
 
@@ -44,3 +45,17 @@ anchor = '''    except Exception:
 mutant = '''    except Exception:
         logging.getLogger(__name__).debug("Bundled CJK font unavailable")
         return None'''
+
+[[mutant]]
+id = "m21-read-whole"
+predicate = "an owned file is read to one byte past max_csv_bytes, never whole (M21.1 F4)"
+kills = "tests/test_paste_in_owui_files.py::test_m21_owned_files_read_at_most_one_byte_past_the_csv_limit"
+anchor = '''        return handle.read(_READ_BYTES)'''
+mutant = '''        return handle.read()'''
+
+[[mutant]]
+id = "m21-read-to-the-limit"
+predicate = "the read keeps the one byte that lets the judge refuse an oversize file (M21.1 F4)"
+kills = "tests/test_paste_in_owui_files.py::test_m21_owned_files_read_at_most_one_byte_past_the_csv_limit"
+anchor = '''_READ_BYTES = DEFAULT_LIMITS.max_csv_bytes + 1'''
+mutant = '''_READ_BYTES = DEFAULT_LIMITS.max_csv_bytes'''

@@ -127,6 +127,29 @@ def test_o7_last_owned_file_and_last_user_win_without_mutation(
     assert lookups == [(name, "outlet-owner") for name in ("first", "last", "foreign", "missing")]
 
 
+def test_m21_the_inlet_reads_the_header_off_the_event_loop(tmp_path: Path) -> None:
+    """M21.1 F4: the inlet parsed the last CSV on Open WebUI's event loop, 1.02 s for a 7.9 MB file
+    on every request of a chat that holds it."""
+    import threading  # noqa: PLC0415
+
+    module = load("filter")
+    threads: list[int] = []
+    original = module._read_csv
+
+    def spy(*args: object) -> object:
+        threads.append(threading.get_ident())
+        return original(*args)
+
+    body: dict[str, object] = {"messages": [{"role": "user", "content": "chart"}]}
+    stored = (StoredFile("last", "outlet-owner", "last.csv", b"new,amount\n1,2\n"),)
+    with pytest.MonkeyPatch.context() as patch, fake_open_webui(stored, tmp_path):
+        patch.setattr(module, "_read_csv", spy)
+        result = _inlet(body, {"files": [{"id": "last"}]})
+    assert _last(result)["content"] == "FILE /mnt/uploads/last.csv\nCOLUMNS new, amount\nTASK chart"
+    assert len(threads) == 1
+    assert threads[0] != threading.get_ident()
+
+
 @pytest.mark.parametrize("ids", [(), ("foreign",), ("bad",), ("good", "bad")])
 def test_o7_missing_owned_or_refused_last_header_uses_no_file_template(
     tmp_path: Path, ids: tuple[str, ...]

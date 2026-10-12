@@ -7,8 +7,9 @@ of a word (`Q1`, `x2`). `1,200` reads both ways (1200, and 1 and 200), since a l
 group look alike. An integer range expands to every integer between its ends: `a through b`,
 `a to b`, `a thru b`, a U+2013/U+2014 dash, `a~b`, `a〜b`, `aからbまで`; an ASCII hyphen is
 never a range,
-because dates and negative numbers use it. A range longer than `MAX_RANGE` terms adds its ends
-alone.
+because dates and negative numbers use it. Ranges expand to `MAX_RANGE` terms per request in total,
+since the request is any length (`plot 1 to 9999` x 1,000 built 9,999,000 terms, 478 MB); a range
+past what is left adds its ends alone.
 
 `sequence` keeps the numbers in typed order for the computations on typed numbers (Q45): each
 number's whole reading, a range expanded in place in its typed direction.
@@ -75,25 +76,30 @@ def read_request(text: str | None) -> Request:
     matches = list(_NUMBER.finditer(folded))
     numbers: set[float] = set()
     sequence: list[float] = []
+    left = MAX_RANGE
     for index, match in enumerate(matches):
         numbers.update(_readings(match))
-        expanded = _expanded(folded, matches[index - 1], match) if index else None
+        expanded = _expanded(folded, matches[index - 1], match, left) if index else None
         if expanded is None:
             sequence.append(_readings(match)[0])
         else:
+            left -= len(expanded)
             numbers.update(expanded)
             sequence += expanded[1:]
     return Request(frozenset(numbers), folded, tuple(sequence))
 
 
-def _expanded(folded: str, left: re.Match[str], right: re.Match[str]) -> list[float] | None:
-    """The integers from `left` to `right` in typed order when the two spell a range."""
+def _expanded(
+    folded: str, left: re.Match[str], right: re.Match[str], terms: int
+) -> list[float] | None:
+    """The integers from `left` to `right` in typed order when the two spell a range of at most
+    `terms` integers."""
     start, end = _integer(left), _integer(right)
     between = folded[left.end() : right.start()]
     ranged = _RANGE.match(between) is not None
     if ranged and between.strip() == "から":
         ranged = folded.startswith(_UNTIL, right.end())
-    if not ranged or start is None or end is None or abs(end - start) >= MAX_RANGE:
+    if not ranged or start is None or end is None or abs(end - start) >= terms:
         return None
     step = 1 if end >= start else -1
     return [float(value) for value in range(start, end + step, step)]

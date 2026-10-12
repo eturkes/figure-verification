@@ -336,3 +336,10 @@ anchor = '''        except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''
 mutant = '''        except OSError:
             # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''
+
+[[mutant]]
+id = "m21-inlet-off-loop"
+predicate = "the inlet parses the CSV header off the event loop (M21.1 F4)"
+kills = "tests/test_paste_in_inlet.py::test_m21_the_inlet_reads_the_header_off_the_event_loop"
+anchor = '''            rendered = await asyncio.to_thread(self._render, task, attachments)'''
+mutant = '''            rendered = self._render(task, attachments)'''

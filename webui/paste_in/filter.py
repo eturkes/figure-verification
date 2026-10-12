@@ -286,7 +286,9 @@ class Filter:
             task = message.get("content")
             if not isinstance(task, str):
                 return body
-            rendered = self._render(task, await uploaded_files(__metadata__, user_id))
+            attachments = await uploaded_files(__metadata__, user_id)
+            # The header parse reads up to 8 MB: keep Open WebUI's event loop free.
+            rendered = await asyncio.to_thread(self._render, task, attachments)
             updated = list(messages)
             updated[index] = {**message, "content": rendered}
             return {**body, "messages": updated}

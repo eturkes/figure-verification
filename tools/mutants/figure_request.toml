@@ -48,9 +48,9 @@ mutant = '''        ranged = True'''
 
 [[mutant]]
 id = "m19-range-unbounded"
-predicate = "a range past MAX_RANGE adds its ends alone"
+predicate = "a range past the request's MAX_RANGE terms adds its ends alone"
 kills = "tests/test_figure_values.py::test_v3_ranges_and_numbers"
-anchor = '''    if not ranged or start is None or end is None or abs(end - start) >= MAX_RANGE:'''
+anchor = '''    if not ranged or start is None or end is None or abs(end - start) >= terms:'''
 mutant = '''    if not ranged or start is None or end is None:'''
 
 [[mutant]]
@@ -80,3 +80,10 @@ predicate = "a range expands in place, its first end once"
 kills = "tests/test_figure_computed.py::test_the_sequence_is_the_typed_order[from 5 to 2, then 9-sequence1]"
 anchor = '''            sequence += expanded[1:]'''
 mutant = '''            sequence += expanded'''
+
+[[mutant]]
+id = "m21-range-budget-per-range"
+predicate = "ranges expand MAX_RANGE terms per request in total, not per range (M21.1 F3)"
+kills = "tests/test_figure_computed.py::test_ranges_expand_10000_terms_per_request_in_total"
+anchor = '''            left -= len(expanded)'''
+mutant = '''            left -= 0'''

@@ -138,3 +138,24 @@ def test_f4_font_source_survives_a_raising_log_sink(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(logger, "handlers", [BrokenSink()])
     module = importlib.import_module("webui.paste_in.owui_files")
     assert asyncio.run(module.cjk_font()) is None
+
+
+def test_m21_owned_files_read_at_most_one_byte_past_the_csv_limit(tmp_path: Path) -> None:
+    """M21.1 F4: every owned file was read whole, at any size, on every inlet and outlet call. The
+    judge refuses a file past `max_csv_bytes` from its length alone, so one more byte decides it."""
+    from paste_in_support import StoredFile, fake_open_webui  # noqa: PLC0415
+    from verifier.figure.sources import Unreadable, read_table  # noqa: PLC0415
+
+    limit = 8_000_000
+    big = b"a,b\n" + b"1,2\n" * (limit // 4)
+    small = b"a,b\n1,2\n"
+    stored = (
+        StoredFile("big", "owner", "big.csv", big),
+        StoredFile("small", "owner", "small.csv", small),
+    )
+    module = importlib.import_module("webui.paste_in.owui_files")
+    with fake_open_webui(stored, tmp_path):
+        files = asyncio.run(module.owned_files(["big", "small"], "owner"))
+    assert [file.content for file in files] == [big[: limit + 1], small]
+    refused = Unreadable("big.csv", "csv_too_large")
+    assert read_table("big.csv", files[0].content) == read_table("big.csv", big) == refused
