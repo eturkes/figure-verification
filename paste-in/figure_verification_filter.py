@@ -2930,10 +2930,13 @@ def _reading(text: str) -> list[tuple[float, float]] | None:
 
 def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
     """`axis` = the major formatter's offset + order; None = a label under no formatter's trust."""
-    readings = _reading(_plain(text))
+    try:
+        readings = _reading(_plain(text))
+        scale = 10.0 ** (axis.order if axis is not None else 0)
+    except (OverflowError, ValueError):  # past binary64, or past `int()`'s 4,300-digit limit
+        return False
     if readings is None:
         return False
-    scale = 10.0 ** (axis.order if axis is not None else 0)
     for value, half in readings:
         shown = value * scale + (axis.offset if axis is not None else 0.0)
         tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))
@@ -3214,7 +3217,8 @@ from typing import Final, Literal
 
 from verifier.figure.reasons import FigureReason
 
-# Faults the outlet finds around the judge: the model's call, the browser round trip, the image.
+# Faults the outlet finds around the judge: the model's call, the browser round trip, the image, and
+# a fault while decoding or judging (Open WebUI keeps the model's reply when an outlet raises).
 OutletCause = Literal[
     "no_tool_call",
     "no_user",
@@ -3228,6 +3232,7 @@ OutletCause = Literal[
     "no_description",
     "no_image",
     "publish_failed",
+    "verifier_error",
 ]
 
 type Reason = FigureReason | OutletCause
@@ -3301,6 +3306,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     "glyph_missing": (
         "The figure has characters that the available fonts cannot draw.",
         "図に、使用できるフォントで描けない文字があります。",
+    ),
+    "verifier_error": (
+        "The verifier stopped with an internal error before it finished its checks.",
+        "検証器が内部エラーで停止したため、チェックを完了できませんでした。",
     ),
     "raster_image": (
         "The figure contains an image, which the verifier cannot check.",
@@ -4354,7 +4363,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "module_not_available",
         "figure_too_large",
     ),
-    "figure": ("no_figure", "multiple_figures", "glyph_missing"),
+    "figure": ("no_figure", "multiple_figures", "glyph_missing", "verifier_error"),
     "parts": (
         "raster_image",
         "axes_not_judged",
@@ -8130,7 +8139,7 @@ class Filter:
             columns=", ".join(header),
         )
 
-    async def outlet(  # noqa: PLR0911, PLR0913, PLR0917 - fixed OWUI hook signature
+    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 - OWUI hook; a guard per refusal
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,
@@ -8191,17 +8200,25 @@ class Filter:
         if fault is not None:
             return await fail(fault)
         stdout = response.get("stdout")
-        description = parse_description(stdout) if isinstance(stdout, str) else None
-        if description is None:
+        try:
+            description = parse_description(stdout) if isinstance(stdout, str) else None
+            sources = Sources(
+                tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
+                receipt.request_text,
+                self._ANCHORING,
+                receipt.aliases,
+            )
+            # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
+            verdict = (
+                None
+                if description is None
+                else await asyncio.to_thread(judge, description, sources)
+            )
+        except Exception:
+            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.
+            return await fail("verifier_error")
+        if verdict is None:
             return await fail("no_description")
-        sources = Sources(
-            tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
-            receipt.request_text,
-            self._ANCHORING,
-            receipt.aliases,
-        )
-        # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
-        verdict = await asyncio.to_thread(judge, description, sources)
         if not isinstance(verdict, Passed):
             return await fail(verdict.reason, verdict.site)
         uri = _png_uri(cast("str", stdout))

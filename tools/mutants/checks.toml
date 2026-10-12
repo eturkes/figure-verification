@@ -175,3 +175,10 @@ predicate = "the failing row shows its cause"
 kills = "tests/test_paste_in_checks.py::test_o9_all_reasons_have_exact_completed_prefix_and_one_cause"
 anchor = '''            detail += f'<div class="cause">{_text(cause)}</div>''''
 mutant = '''            pass'''
+
+[[mutant]]
+id = "m21-verifier-error-row"
+predicate = "verifier_error fails the figure row (M21.1 F2)"
+kills = "tests/test_paste_in_checks.py::test_o8_check_order_reason_map_and_text_tables_are_total"
+anchor = '''    "figure": ("no_figure", "multiple_figures", "glyph_missing", "verifier_error"),'''
+mutant = '''    "figure": ("no_figure", "multiple_figures", "glyph_missing"),'''

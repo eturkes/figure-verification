@@ -90,10 +90,12 @@ mutant = '''    if stderr is None:'''
 id = "m19-description-unguarded"
 predicate = "an absent description blocks as no_description"
 kills = "tests/test_paste_in_outlet.py::test_o1_no_description_never_judges_or_publishes"
-anchor = '''        if description is None:
-            return await fail("no_description")'''
-mutant = '''        if False:
-            return await fail("no_description")'''
+anchor = '''            verdict = (
+                None
+                if description is None
+                else await asyncio.to_thread(judge, description, sources)
+            )'''
+mutant = '''            verdict = await asyncio.to_thread(judge, description, sources)'''
 
 [[mutant]]
 id = "m19-files-unthreaded"
@@ -106,28 +108,28 @@ mutant = '''            (),'''
 id = "m19-request-unthreaded"
 predicate = "the receipt's request reaches the judge"
 kills = "tests/test_paste_in_outlet.py::test_o3_receipt_request_not_mutated_metadata_decides_values"
-anchor = '''            receipt.request_text,
-            self._ANCHORING,'''
-mutant = '''            None,
-            self._ANCHORING,'''
+anchor = '''                receipt.request_text,
+                self._ANCHORING,'''
+mutant = '''                None,
+                self._ANCHORING,'''
 
 [[mutant]]
 id = "m19-anchoring-unthreaded"
 predicate = "the artifact's anchoring reaches the judge"
 kills = "tests/test_paste_in_outlet.py::test_o3_artifact_anchoring_changes_the_real_judge_verdict"
-anchor = '''            receipt.request_text,
-            self._ANCHORING,'''
-mutant = '''            receipt.request_text,
-            "strict",'''
+anchor = '''                receipt.request_text,
+                self._ANCHORING,'''
+mutant = '''                receipt.request_text,
+                "strict",'''
 
 [[mutant]]
 id = "m19-aliases-unthreaded"
 predicate = "the receipt's aliases reach the judge"
 kills = "tests/test_paste_in_outlet.py::test_o3_receipt_aliases_change_the_real_judge_verdict"
-anchor = '''            receipt.aliases,
-        )'''
-mutant = '''            (),
-        )'''
+anchor = '''                receipt.aliases,
+            )'''
+mutant = '''                (),
+            )'''
 
 [[mutant]]
 id = "m19-blocked-published"
@@ -323,5 +325,14 @@ mutant = '''    return cut_for(font, program, [file.content for file in files])'
 id = "q45-judge-off-loop"
 predicate = "the outlet judges off the event loop (Q45: two passes take seconds)"
 kills = "tests/test_paste_in_outlet.py::test_q45_the_outlet_judges_off_the_event_loop"
-anchor = '''        verdict = await asyncio.to_thread(judge, description, sources)'''
-mutant = '''        verdict = judge(description, sources)'''
+anchor = '''                else await asyncio.to_thread(judge, description, sources)'''
+mutant = '''                else judge(description, sources)'''
+
+[[mutant]]
+id = "m21-fail-closed"
+predicate = "a fault while decoding or judging rewrites the reply as verifier_error (M21.1 F2)"
+kills = "tests/test_paste_in_outlet.py::test_o1_a_fault_while_decoding_or_judging_fails_closed"
+anchor = '''        except Exception:
+            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''
+mutant = '''        except OSError:
+            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''

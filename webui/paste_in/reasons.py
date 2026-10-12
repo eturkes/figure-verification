@@ -11,7 +11,8 @@ from typing import Final, Literal
 
 from verifier.figure.reasons import FigureReason
 
-# Faults the outlet finds around the judge: the model's call, the browser round trip, the image.
+# Faults the outlet finds around the judge: the model's call, the browser round trip, the image, and
+# a fault while decoding or judging (Open WebUI keeps the model's reply when an outlet raises).
 OutletCause = Literal[
     "no_tool_call",
     "no_user",
@@ -25,6 +26,7 @@ OutletCause = Literal[
     "no_description",
     "no_image",
     "publish_failed",
+    "verifier_error",
 ]
 
 type Reason = FigureReason | OutletCause
@@ -98,6 +100,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     "glyph_missing": (
         "The figure has characters that the available fonts cannot draw.",
         "図に、使用できるフォントで描けない文字があります。",
+    ),
+    "verifier_error": (
+        "The verifier stopped with an internal error before it finished its checks.",
+        "検証器が内部エラーで停止したため、チェックを完了できませんでした。",
     ),
     "raster_image": (
         "The figure contains an image, which the verifier cannot check.",

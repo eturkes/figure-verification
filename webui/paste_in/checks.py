@@ -55,7 +55,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "module_not_available",
         "figure_too_large",
     ),
-    "figure": ("no_figure", "multiple_figures", "glyph_missing"),
+    "figure": ("no_figure", "multiple_figures", "glyph_missing", "verifier_error"),
     "parts": (
         "raster_image",
         "axes_not_judged",

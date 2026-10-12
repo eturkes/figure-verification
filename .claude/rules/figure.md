@@ -25,7 +25,7 @@ Binding sources: `.agent/spec.md` `Intent` + Decisions "Integrity-redesign rulin
 |---|---|
 | `program` | `no_tool_call` `no_user` |
 | `run` | `no_browser` `browser_timeout` `browser_error` `browser_no_answer` `reply_malformed` `sandbox_unavailable` `sandbox_error` `no_description` `program_syntax_error` `program_error` `module_not_available` `figure_too_large` |
-| `figure` | `no_figure` `multiple_figures` `glyph_missing` |
+| `figure` | `no_figure` `multiple_figures` `glyph_missing` `verifier_error` |
 | `parts` | `raster_image` `axes_not_judged` `axes_twin` `axes_overlap` `artist_not_judged` `no_data` |
 | `axes` | `mark_not_in_data` `scale_not_linear` `axis_inverted` `tick_label_mismatch` `point_clipped` `zero_not_in_limits` |
 | `marks` | `mark_hidden` `value_not_finite` `bar_not_from_zero` `bars_overlap` `x_not_ordered` `hist_counts` `pie_not_whole` `area_not_from_zero` `marker_size_varies` `marker_color_varies` `legend_mismatch` |

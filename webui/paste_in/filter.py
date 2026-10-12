@@ -307,7 +307,7 @@ class Filter:
             columns=", ".join(header),
         )
 
-    async def outlet(  # noqa: PLR0911, PLR0913, PLR0917 - fixed OWUI hook signature
+    async def outlet(  # noqa: PLR0911, PLR0912, PLR0913, PLR0917 - OWUI hook; a guard per refusal
         self,
         body: dict[str, object],
         __user__: dict[str, object] | None = None,
@@ -368,17 +368,25 @@ class Filter:
         if fault is not None:
             return await fail(fault)
         stdout = response.get("stdout")
-        description = parse_description(stdout) if isinstance(stdout, str) else None
-        if description is None:
+        try:
+            description = parse_description(stdout) if isinstance(stdout, str) else None
+            sources = Sources(
+                tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
+                receipt.request_text,
+                self._ANCHORING,
+                receipt.aliases,
+            )
+            # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
+            verdict = (
+                None
+                if description is None
+                else await asyncio.to_thread(judge, description, sources)
+            )
+        except Exception:
+            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.
+            return await fail("verifier_error")
+        if verdict is None:
             return await fail("no_description")
-        sources = Sources(
-            tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
-            receipt.request_text,
-            self._ANCHORING,
-            receipt.aliases,
-        )
-        # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
-        verdict = await asyncio.to_thread(judge, description, sources)
         if not isinstance(verdict, Passed):
             return await fail(verdict.reason, verdict.site)
         uri = _png_uri(cast("str", stdout))

@@ -202,13 +202,15 @@ fonts must draw every character of the figure's text. The verifier sends only pa
 font. This part holds ASCII, the minus sign and the characters of the program text and the attached
 files. A figure fails with `glyph_missing` when it draws a character that no available font holds.
 An example is a Japanese character that the program makes with `chr(0x6708)`, when the program
-text and the attached files do not contain it.
+text and the attached files do not contain it. If the verifier itself stops with an error while it
+reads the run's report or checks the figure, the figure fails with `verifier_error`.
 
 | Reason | Meaning |
 |---|---|
 | `no_figure` | The program did not draw a matplotlib figure. |
 | `multiple_figures` | The program drew more than one figure. |
 | `glyph_missing` | The figure has characters that the available fonts cannot draw. |
+| `verifier_error` | The verifier stopped with an internal error before it finished its checks. |
 
 <a id="check-parts"></a>
 

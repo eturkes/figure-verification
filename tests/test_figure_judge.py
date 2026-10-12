@@ -344,6 +344,35 @@ def test_j3_a_number_label_must_show_its_position_to_its_last_digit() -> None:
     assert isinstance(_judge(source.replace("'5.1'", "'5.0'")), Judged)
 
 
+@pytest.mark.parametrize("label", ["100^{300}", "1.5\\times999^{300}"])
+def test_j3_a_label_past_binary64_names_no_position(label: str) -> None:
+    """M21.1 F2: a program's formatter wrote a power past binary64, and `base**exponent` raised
+    `OverflowError` out of the judge."""
+    source = _PLT + (
+        f"plt.plot([5, 6, 7])\nplt.gca().yaxis.set_major_formatter(lambda x, p: {label!r})\n"
+    )
+    assert _judge(source) == Blocked("tick_label_mismatch", 3)
+
+
+@pytest.mark.parametrize("field", ["exponent", "order"])
+def test_j3_a_reported_number_past_parsing_names_no_position(field: str) -> None:
+    """M21.1 F2: a reply's 4,400-digit exponent passed `int()`'s digit limit (`ValueError`), and an
+    order of 400 overflowed `10.0 ** order`; each raised out of the judge."""
+    source = _PLT + (
+        "plt.plot([5, 6, 7])\nplt.gca().yaxis.set_major_formatter(lambda x, p: f'{x:g}')\n"
+    )
+
+    def change(raw: dict[str, Any]) -> None:
+        axis = _axes(raw)["y"]
+        if field == "exponent":
+            axis["ticks"] = [[position, "1e" + "9" * 4400] for position, _ in axis["ticks"]]
+        else:
+            axis["order"] = 400
+
+    assert isinstance(_judge(source), Judged)
+    assert _edited(source, change) == Blocked("tick_label_mismatch", 3)
+
+
 def test_j4_a_bar_continuing_another_runs_the_same_way() -> None:
     source = _PLT + "plt.bar(['a'], [1])\nplt.bar(['a'], [-0.5], bottom=[1])\n"
     assert _judge(source) == Blocked("bar_not_from_zero", 3)

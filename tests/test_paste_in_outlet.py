@@ -12,7 +12,7 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import Any, Never, cast
 
 import pytest
 from hypothesis import given, settings
@@ -270,6 +270,51 @@ def test_o1_no_description_never_judges_or_publishes(
         )
     assert calls == 1 and judge_bomb.calls == 0
     assert_failure(result, browser.events, "no_description")
+
+
+def test_o1_a_label_past_binary64_blocks_instead_of_raising() -> None:
+    """M21.1 F2: the judge raised on this honest reply, and Open WebUI keeps the model's own reply
+    when an outlet raises (`utils/middleware.py:3417`)."""
+    browser = Browser(
+        "import matplotlib.pyplot as plt\nplt.plot([5, 6, 7])\n"
+        "plt.gca().yaxis.set_major_formatter(lambda x, p: '100^{300}')\n"
+    )
+    assert_failure(browser.exercise(), browser.events, "tick_label_mismatch")
+
+
+@pytest.mark.parametrize(
+    "seam",
+    [("verifier.figure.description", "parse_description"), ("verifier.figure.judge", "judge")],
+)
+def test_o1_a_fault_while_decoding_or_judging_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, seam: tuple[str, str]
+) -> None:
+    """M21.1 F2: an exception escaping the outlet left the model's reply standing, a forged pass
+    included; every fault after the browser answers rewrites the reply as a failure."""
+    calls = 0
+
+    def fault(*_args: object, **_kwargs: object) -> Never:
+        nonlocal calls
+        calls += 1
+        message = "PRIVATE_FAULT"
+        raise ZeroDivisionError(message)
+
+    browser = Browser()
+    caplog.set_level(logging.INFO, logger=LOGGER)
+    with patched_filter(monkeypatch, ((*seam, fault),)) as api:
+        result = invoke_filter(
+            api,
+            filter_body("Figure verification passed"),
+            request=recorded_request(SIMPLE),
+            user=USER,
+            metadata={"session_id": SESSION},
+            event_call=browser.call,
+            event_emitter=browser.emit,
+        )
+    assert calls == 1
+    assert_failure(result, browser.events, "verifier_error")
+    assert_log(caplog, "verifier_error")
+    assert "PRIVATE_FAULT" not in repr(browser.events)
 
 
 @pytest.mark.parametrize("stderr", [None, ""])

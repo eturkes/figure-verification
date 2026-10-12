@@ -105,10 +105,13 @@ def _reading(text: str) -> list[tuple[float, float]] | None:
 
 def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
     """`axis` = the major formatter's offset + order; None = a label under no formatter's trust."""
-    readings = _reading(_plain(text))
+    try:
+        readings = _reading(_plain(text))
+        scale = 10.0 ** (axis.order if axis is not None else 0)
+    except (OverflowError, ValueError):  # past binary64, or past `int()`'s 4,300-digit limit
+        return False
     if readings is None:
         return False
-    scale = 10.0 ** (axis.order if axis is not None else 0)
     for value, half in readings:
         shown = value * scale + (axis.offset if axis is not None else 0.0)
         tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))

@@ -50,3 +50,17 @@ kills = "tests/test_figure_corpus.py::test_corpus_case[honest-months-pandas]"
 anchor = '''            ok = axis.minor_formatter_module.startswith(_DATE_FORMATTERS) or _date_ok('''
 mutant = '''            ok = False or _date_ok('''
 
+
+[[mutant]]
+id = "m21-label-overflow"
+predicate = "a number past binary64 names no position instead of raising (M21.1 F2)"
+kills = "tests/test_figure_judge.py::test_j3_a_label_past_binary64_names_no_position"
+anchor = '''    except (OverflowError, ValueError):  # past binary64, or past `int()`'s 4,300-digit limit'''
+mutant = '''    except ValueError:  # past binary64, or past `int()`'s 4,300-digit limit'''
+
+[[mutant]]
+id = "m21-label-digit-limit"
+predicate = "an exponent past int()'s digit limit names no position instead of raising (M21.1 F2)"
+kills = "tests/test_figure_judge.py::test_j3_a_reported_number_past_parsing_names_no_position"
+anchor = '''    except (OverflowError, ValueError):  # past binary64, or past `int()`'s 4,300-digit limit'''
+mutant = '''    except OverflowError:  # past binary64, or past `int()`'s 4,300-digit limit'''
