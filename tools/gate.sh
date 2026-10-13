@@ -54,7 +54,7 @@ WEBUI_RESIDUALS=(
 )
 
 audit_locks() {
-    local root_rc=0 runtime_rc=0 webui_rc=0 harness_rc=0 ignores=() id
+    local root_rc=0 runtime_rc=0 webui_rc=0 suite_rc=0 harness_rc=0 ignores=() id
     for id in "${WEBUI_RESIDUALS[@]}"; do
         ignores+=(--ignore-until-fixed "$id")
     done
@@ -64,11 +64,14 @@ audit_locks() {
     printf 'model_backend/runtime audit rc=%d\n' "$runtime_rc"
     uv audit --preview-features audit-command --locked --project webui/runtime "${ignores[@]}" || webui_rc=$?
     printf 'webui/runtime audit rc=%d\n' "$webui_rc"
+    uv audit --preview-features audit-command --locked --project tools/py311 || suite_rc=$?
+    printf 'tools/py311 audit rc=%d\n' "$suite_rc"
     # The Node measurement harness: pnpm comes from the harness's own `packageManager` pin, exits 1
     # on any advisory and fails on a registry error. A host without pnpm fails the stage.
     pnpm audit --dir .agent/measurements || harness_rc=$?
     printf '.agent/measurements audit rc=%d\n' "$harness_rc"
-    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ] || [ "$webui_rc" -ne 0 ] || [ "$harness_rc" -ne 0 ]; then
+    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ] || [ "$webui_rc" -ne 0 ] || [ "$suite_rc" -ne 0 ] ||
+        [ "$harness_rc" -ne 0 ]; then
         return 1
     fi
     return 0
@@ -106,11 +109,21 @@ run_tests() {
     uv run --locked pytest
 }
 
+# The same suite on CPython 3.11, the official image's line (M21.2 F16): `tests` runs 3.13, whose
+# stdlib differs in behaviour as well as names (builtin `sum` is Neumaier from 3.12). Its own lock,
+# since some root pins need 3.12; `verifier` from `src`. The interpreter runs directly, so a test's
+# own `uv` call keeps the root `.venv`.
+run_tests_py311() {
+    UV_PROJECT_ENVIRONMENT="$REPO_ROOT/.venv-py311" uv sync --locked --quiet --project tools/py311 || return $?
+    PYTHONPATH=src .venv-py311/bin/python -m pytest -q -p no:cacheprovider --no-cov -o 'pythonpath=src tests .'
+}
+
 main() {
     stage format uv run --locked ruff format --check .
     stage lint uv run --locked ruff check .
     stage types type_check
     stage tests run_tests
+    stage tests311 run_tests_py311
     stage audit audit_locks
     stage secrets secret_scan
     stage workflows uv run --locked zizmor .github/

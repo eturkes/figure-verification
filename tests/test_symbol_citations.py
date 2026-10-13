@@ -14,6 +14,7 @@ import ast
 import functools
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -55,7 +56,8 @@ def _names(body: list[ast.stmt]) -> set[str]:
     for node in body:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             names.add(node.name)
-        elif isinstance(node, ast.TypeAlias):
+        # `ast.TypeAlias` (a `type` statement) exists from 3.12; the suite runs on 3.11 too.
+        elif sys.version_info >= (3, 12) and isinstance(node, ast.TypeAlias):
             names.add(node.name.id)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)

@@ -989,7 +989,9 @@ def test_o5_slow_emit_cancellation_cleanup_does_not_delay_verdict(
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
 
-    result = asyncio.run(scenario(), loop_factory=_JumpLoop)
+    # `asyncio.Runner` (3.11), not `asyncio.run(loop_factory=)` (3.12): the suite runs on both.
+    with asyncio.Runner(loop_factory=_JumpLoop) as runner:
+        result = runner.run(scenario())
     assert cleanup == [True]
     if passed:
         expected = verdict(SIMPLE)

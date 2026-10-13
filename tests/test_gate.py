@@ -48,6 +48,7 @@ _EXPECTED_STAGES = (
     "lint",
     "types",
     "tests",
+    "tests311",
     "audit",
     "secrets",
     "workflows",
@@ -119,7 +120,7 @@ def test_g6_gate_script_runs_every_expected_stage() -> None:
 
 
 def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
-    """G7: update automation spans the three uv projects, the Node measurement harness and the
+    """G7: update automation spans the four uv projects, the Node measurement harness and the
     actions themselves, each behind a cooldown. Acceptance: a removed ecosystem or a dropped
     cooldown fails."""
     config = _load_yaml(_DEPENDABOT)
@@ -130,6 +131,7 @@ def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
         ("uv", "/"),
         ("uv", "/model_backend/runtime"),
         ("uv", "/webui/runtime"),
+        ("uv", "/tools/py311"),
         ("npm", "/.agent/measurements"),
         ("github-actions", "/"),
     }

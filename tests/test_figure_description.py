@@ -7,7 +7,7 @@ level, so every closed key set and exact type check is reached through `parse_de
 
 import json
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 import pytest
 
@@ -125,7 +125,7 @@ def test_p6_version_must_match() -> None:
     assert _parse(raw) is None
 
 
-type _Path = tuple[str | int, ...]
+_Path: TypeAlias = tuple[str | int, ...]
 
 
 def _at(value: Any, path: _Path) -> Any:

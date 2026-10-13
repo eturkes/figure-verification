@@ -33,6 +33,14 @@ updates:
     cooldown:
       default-days: 7
 
+  # The suite's CPython 3.11 environment (the image's line) has its own lock, read by the audit stage.
+  - package-ecosystem: "uv"
+    directory: "/tools/py311"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
   # The Node measurement harness (puppeteer-core; dev-only, never served) has its own pnpm lock,
   # which the audit stage reads.
   - package-ecosystem: "npm"

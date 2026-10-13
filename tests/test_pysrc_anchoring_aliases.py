@@ -8,6 +8,8 @@ an alias two columns share, or equal to another column's name, is a tie; a colum
 anchoring-length alias becomes nameable under strict.
 """
 
+from typing import TypeAlias
+
 import pytest
 
 from anchoring_support import verdict
@@ -17,7 +19,7 @@ from verifier.figure.judge import Sources
 _PRELUDE = "import pandas as pd\nimport matplotlib.pyplot as plt\n"
 _WEATHER = b"date,city,temp_c,precip_mm\n2024-01-01,Sapporo,1.5,0.5\n2024-01-02,Naha,2.5,1.5\n"
 # `spec.Aliases`, spelled locally so each case reports its own red on a verifier without it.
-type _Pairs = tuple[tuple[str, str], ...]
+_Pairs: TypeAlias = tuple[tuple[str, str], ...]
 _ALIASES: _Pairs = (("temp_c", "temperature"), ("precip_mm", "rainfall"))
 
 

@@ -13,7 +13,7 @@ from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from types import ModuleType
-from typing import Never, cast
+from typing import Never, TypeAlias, cast
 from uuid import UUID
 
 import pytest
@@ -383,4 +383,4 @@ def patched_filter(
             importlib.reload(module)
 
 
-type EventCall = Callable[[dict[str, object]], Awaitable[object]]
+EventCall: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]

@@ -6,6 +6,7 @@ sequence, the judge's two passes, the canonical reading, G10 and publication. Th
 import dataclasses
 import math
 import random
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -65,7 +66,10 @@ def test_pairwise_sum_is_numpy_and_pandas_sum() -> None:
 
 def test_the_other_totals_are_their_spellings() -> None:
     for values in _vectors():
-        assert computed.neumaier_sum(values) == sum(values)  # CPython >= 3.12 over floats
+        # Builtin `sum` over floats is Neumaier from CPython 3.12 (the sandbox runs 3.14); 3.11's is
+        # naive, so there it is no oracle for the sandbox's spelling.
+        if sys.version_info >= (3, 12):
+            assert computed.neumaier_sum(values) == sum(values)
         assert computed.sequential_sum(values) == sum(np.asarray(values, dtype=np.float64))
         frame = pd.DataFrame({"k": [0] * len(values), "v": values})
         assert kahan_sum(values) == float(frame.groupby("k")["v"].sum().iloc[0])

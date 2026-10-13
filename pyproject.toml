@@ -79,6 +79,9 @@ src = ["src", "tests"]
 "webui/paste_in/**" = "py311"
 "paste-in/**" = "py311"
 "webui/demo-paste-in/**" = "py311"
+# The suite also runs on 3.11 (gate stage `tests311`, the image's line): tests and their support
+# modules spell 3.11 forms too.
+"tests/**" = "py311"
 
 [tool.ruff.lint]
 # Explicit select (never "ALL"): new rule categories never auto-enable on upgrade.

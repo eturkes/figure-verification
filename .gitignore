@@ -27,6 +27,8 @@ models/
 
 # Open WebUI: app venv + runtime state (sqlite/uploads/cache; regenerable, recipe in webui/)
 .venv-webui/
+# The suite on CPython 3.11 (tools/py311; rebuilt by the gate's tests311 stage)
+.venv-py311/
 .webui-data/
 
 # Proposer-eval harness output (host+model-coupled; headline numbers live in .agent/archive/)
