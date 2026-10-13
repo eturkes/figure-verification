@@ -49,7 +49,6 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - [ ] Q51 CodeQL bad-tag-filter: oracle fixed; owed: `main` CodeQL closing alert 1 (user push)
 - [ ] Q52 Dependabot alerts: a repository setting the user owns
 - [ ] Q53 stack mutation tool
-- [ ] Q54 queue count in `Tasks`
 - [ ] Q55 S4 reads `Accept:` in queue rows alone
 - [ ] Q56 passive-ban coverage
 - [ ] Q57 status-line kana
@@ -57,7 +56,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 - [ ] Q59 Kahan reset parity
 - [ ] Q60 suite on CPython 3.11
 
-Queue = `.agent/deferred.md`, 0 rows, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
+Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
 
