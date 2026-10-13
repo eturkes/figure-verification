@@ -2,25 +2,17 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { selectBundle } from "./o8_bundle.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const packageName = process.argv[2] ?? "pyodide";
+const packageName = process.argv[2] ?? "owui";
 const outputName = process.argv[3] ?? `${packageName}.json`;
 const mode = process.argv[4] ?? "probe";
-if (!["pyodide", "pyodide0281"].includes(packageName)) {
-  throw new Error(`Unknown Pyodide package: ${packageName}`);
-}
 if (!["probe", "supplement"].includes(mode)) {
   throw new Error(`Unknown reduction leg: ${mode}`);
 }
-const { loadPyodide } = await import(packageName);
-const version = JSON.parse(
-  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
-).version;
-const py = await loadPyodide({
-  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${version}/full/`,
-  packageCacheDir: join(root, "node_modules", packageName),
-});
+const { loadPyodide, packageVersion, options } = await selectBundle(root, packageName);
+const py = await loadPyodide(options);
 await py.loadPackage(mode === "probe" ? ["numpy", "pandas"] : ["numpy", "pandas", "matplotlib"]);
 py.FS.mkdir("/r");
 py.FS.mkdir("/r/r-data");

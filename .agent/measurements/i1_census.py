@@ -2,7 +2,7 @@
 """I1: matplotlib artist census over the M19 chart scope, keyed (class, origin, transform).
 
 Run on the host (`uv run --locked python .agent/measurements/i1_census.py`) and inside the
-installed Open WebUI Pyodide bundle (`node i1_pyodide.mjs owui i1-0283.json`); the I1 projection
+installed Open WebUI Pyodide bundle (`node i1_pyodide.mjs owui i1-31403.json`); the I1 projection
 compares the two. Origin = qualname of the OUTERMOST frame in the matplotlib Axes modules between
 the artist's constructor and the program (`.claude/rules/figure.md`).
 """

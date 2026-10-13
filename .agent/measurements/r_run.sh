@@ -20,17 +20,15 @@ run() {
     fi
 }
 python=(uv run --locked --project "$project" python)
-pandas=(uv run --locked --project "$project" --with pandas==2.3.1 python)
-optional=(uv run --locked --project "$project" --with pandas==2.3.1 --with bottleneck==1.6.0 --with numexpr==2.14.2 python)
+pandas=(uv run --locked --project "$project" --with pandas==3.0.2 python)
+optional=(uv run --locked --project "$project" --with pandas==3.0.2 --with bottleneck==1.6.0 --with numexpr==2.14.2 python)
 run corpus "${python[@]}" "$root/make_r_inputs.py"
 run host "${pandas[@]}" "$root/r_probe.py" "$root/r-data/host.json"
 run host-optional "${optional[@]}" "$root/r_probe.py" "$root/r-data/host-optional.json"
-run pyodide node "$root/r_pyodide.mjs" pyodide pyodide.json
-run pyodide0281 node "$root/r_pyodide.mjs" pyodide0281 pyodide0281.json
+run owui node "$root/r_pyodide.mjs" owui owui.json
 run comparison "${python[@]}" "$root/r_compare.py"
 run locales "${pandas[@]}" "$root/r_supplement.py"
-run supplement-pyodide node "$root/r_pyodide.mjs" pyodide supplement-pyodide.json supplement
-run supplement-pyodide0281 node "$root/r_pyodide.mjs" pyodide0281 supplement-pyodide0281.json supplement
+run supplement-owui node "$root/r_pyodide.mjs" owui supplement-owui.json supplement
 run results "${pandas[@]}" "$root/r_results.py"
 run checks "${python[@]}" "$root/check.py" R1 R2 R3 R4 R5 R7 R8 R-ACCEL R-PORT R-BAR
 cat "$root/r-data/checks.log"

@@ -1,6 +1,6 @@
 {
   "host": {
-    "dtype": "object",
+    "dtype": "str",
     "keys": [
       "10",
       "2",
@@ -8,23 +8,15 @@
     ]
   },
   "host-optional": {
-    "dtype": "object",
+    "dtype": "str",
     "keys": [
       "10",
       "2",
       "a"
     ]
   },
-  "pyodide": {
-    "dtype": "object",
-    "keys": [
-      "10",
-      "2",
-      "a"
-    ]
-  },
-  "pyodide0281": {
-    "dtype": "object",
+  "owui": {
+    "dtype": "str",
     "keys": [
       "10",
       "2",

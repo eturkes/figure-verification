@@ -9,7 +9,7 @@ from r_probe import bits, ulp
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "r-data"
-RUNTIMES = ("host", "host-optional", "pyodide", "pyodide0281")
+RUNTIMES = ("host", "host-optional", "owui")
 
 
 def load(name):

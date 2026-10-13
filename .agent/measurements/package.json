@@ -19,8 +19,6 @@
   "packageManager": "pnpm@12.3.4",
   "type": "module",
   "dependencies": {
-    "puppeteer-core": "25.11.0",
-    "pyodide": "0.28.0",
-    "pyodide0281": "npm:pyodide@0.28.1"
+    "puppeteer-core": "25.11.0"
   }
 }

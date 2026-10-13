@@ -58,12 +58,13 @@ HOST_ONLY = {
     "I2": "i2_ambiguity.py",
     "X1": "x1_transforms.py",
 }
-BUILD_PAIRS = (("pyodide", "0280"), ("pyodide0281", "0281"))
-# M19: a host leg, then its Node leg in the installed Open WebUI bundle (0.28.3).
+# Every Node leg runs in the installed Open WebUI bundle (Pyodide 314.0.3), the sandbox production
+# ships; M19 ids pair it with a host leg.
+BUILD_PAIRS = (("owui", "31403"),)
 BUNDLE_PAIRS = {
-    "I1": ("i1_census.py", "i1_pyodide.mjs", "i1-0283.json"),
-    "I3": ("i3_export.py", "i3_pyodide.mjs", "i3-0283.json"),
-    "C1": ("c1_export.py", "c1_pyodide.mjs", "c1-0283.json"),
+    "I1": ("i1_census.py", "i1_pyodide.mjs", "i1-31403.json"),
+    "I3": ("i3_export.py", "i3_pyodide.mjs", "i3-31403.json"),
+    "C1": ("c1_export.py", "c1_pyodide.mjs", "c1-31403.json"),
 }
 M17_ARMS = {
     "ja-simple": "sales.csv",
@@ -141,10 +142,10 @@ class Replay:
             text=True,
         ).strip()
         self.webui_env = Path(common).parent / ".venv-webui"
-        self.bundle = self.webui_env / "lib/python3.12/site-packages/open_webui/frontend/pyodide"
+        self.bundle = self.webui_env / "lib/python3.11/site-packages/open_webui/frontend/pyodide"
 
     def python(self, script, *args, pandas=False):
-        options = ["--with", "pandas==2.3.1"] if pandas else []
+        options = ["--with", "pandas==3.0.2"] if pandas else []
         return [
             "uv",
             "run",
@@ -310,8 +311,7 @@ class Replay:
             self.run(script, self.python(script, pandas=pandas))
         if name in NODE_SCRIPTS:
             script = NODE_SCRIPTS[name]
-            builds = (*BUILD_PAIRS, ("owui", "0283")) if name == "T8" else BUILD_PAIRS
-            for package, build in builds:
+            for package, build in BUILD_PAIRS:
                 self.run(
                     f"{name}-{build}",
                     ["node", str(ROOT / script), package, f"{name.lower()}-{build}.json"],
@@ -328,7 +328,7 @@ class Replay:
                     "node",
                     str(ROOT / "f7_wrapper.mjs"),
                     str(self.bundle),
-                    str(ROOT / "f7-0283.json"),
+                    str(ROOT / "f7-31403.json"),
                 ],
             )
         elif name in BUNDLE_PAIRS:

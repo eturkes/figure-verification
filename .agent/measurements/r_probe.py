@@ -55,16 +55,23 @@ def sum_left(values):
     return acc
 
 
-def kahan(values, *, reset_nan=True):
+def kahan(values, *, reset_nan=True, reset_inf=True):
+    # pandas 3.0 `group_sum` zeroes a NON-FINITE compensation (GH#53606 + GH#60303), so an overflow
+    # then cancel (`[1e308, 1e308, -1e308]`) sums to inf (2.x: nan); `group_mean` still zeroes NaN
+    # alone (GH#50367) and divides that sum, which stays nan.
     acc = comp = 0.0
     for value in values:
         corrected = value - comp
         total = acc + corrected
         comp = (total - acc) - corrected
-        if reset_nan and math.isnan(comp):
+        if reset_nan and (math.isnan(comp) or (reset_inf and math.isinf(comp))):
             comp = 0.0
         acc = total
     return acc
+
+
+def kahan_mean(values):
+    return kahan(values, reset_inf=False)
 
 
 def neumaier(values):
@@ -183,8 +190,9 @@ def cohort(frame, names):
         n = len(values)
         mean = float(reductions["mean"].loc[key])
         mean_values = {"pandas_sum_div_count": actual / n if n else math.nan}
+        candidate_means = {**candidate, "kahan_reset": safe_call(kahan_mean, values)}
         for label in ["kahan_reset", "naive", "fsum"]:
-            value = candidate[label]
+            value = candidate_means[label]
             mean_values[("kahan" if label == "kahan_reset" else label) + "_div_count"] = (
                 value if isinstance(value, str) else value / n if n else math.nan
             )

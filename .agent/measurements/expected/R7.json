@@ -14,11 +14,7 @@
       "numeric_keys_in_numeric_order": true,
       "string_keys_in_codepoint_order": true
     },
-    "pyodide": {
-      "numeric_keys_in_numeric_order": true,
-      "string_keys_in_codepoint_order": true
-    },
-    "pyodide0281": {
+    "owui": {
       "numeric_keys_in_numeric_order": true,
       "string_keys_in_codepoint_order": true
     }

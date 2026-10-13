@@ -112,12 +112,6 @@ importers:
       puppeteer-core:
         specifier: 25.11.0
         version: 25.11.0
-      pyodide:
-        specifier: 0.28.0
-        version: 0.28.0
-      pyodide0281:
-        specifier: npm:pyodide@0.28.1
-        version: pyodide@0.28.1
 
 packages:
 
@@ -180,14 +174,6 @@ packages:
   puppeteer-core@25.11.0:
     resolution: {integrity: sha512-Ujym7JbxoAqanaxGcHgmTomfhC01HfDCSuGZ8Hs9boHrDjzbNVMnFRJo2KtbDT9LCRgeJoFnkn9JQZ41eEUrLw==}
     engines: {node: '>=22.12.0'}
-
-  pyodide@0.28.0:
-    resolution: {integrity: sha512-QML/Gh8eu50q5zZKLNpW6rgS0XUdK+94OSL54AUSKV8eJAxgwZrMebqj+CyM0EbF3EUX8JFJU3ryaxBViHammQ==}
-    engines: {node: '>=18.0.0'}
-
-  pyodide@0.28.1:
-    resolution: {integrity: sha512-7O1jZdfUc4/9PAKzEIyLOh3yhxknTWA8xQaCfZ4R56pOnchS909x2sqt2Wh+qHf+b7MzyB8igE5ZzYdP1pZN5w==}
-    engines: {node: '>=18.0.0'}
 
   string-width@7.2.0:
     resolution: {integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==}
@@ -288,20 +274,6 @@ snapshots:
       - proxy-agent
       - utf-8-validate
       - yauzl
-
-  pyodide@0.28.0:
-    dependencies:
-      ws: 8.21.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  pyodide@0.28.1:
-    dependencies:
-      ws: 8.21.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
 
   string-width@7.2.0:
     dependencies:

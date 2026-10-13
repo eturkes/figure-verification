@@ -2,22 +2,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { selectBundle } from "./o8_bundle.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const packageName = process.argv[2] ?? "pyodide";
+const packageName = process.argv[2] ?? "owui";
 const outputName = process.argv[3] ?? "t6.json";
 const source = join(root, "s6-data", "floats.csv");
-if (!["pyodide", "pyodide0281"].includes(packageName)) {
-  throw new Error(`Unknown Pyodide package: ${packageName}`);
-}
-const { loadPyodide } = await import(packageName);
-const packageVersion = JSON.parse(
-  readFileSync(join(root, "node_modules", packageName, "package.json"), "utf8"),
-).version;
-const pyodide = await loadPyodide({
-  packageBaseUrl: `https://cdn.jsdelivr.net/pyodide/v${packageVersion}/full/`,
-  packageCacheDir: join(root, "node_modules", packageName),
-});
+const { loadPyodide, packageVersion, options } = await selectBundle(root, packageName);
+const pyodide = await loadPyodide(options);
 await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
 pyodide.FS.writeFile("/floats.csv", readFileSync(source));
 const result = await pyodide.runPythonAsync(`

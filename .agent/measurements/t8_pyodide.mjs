@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { selectBundle } from "./o8_bundle.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const packageName = process.argv[2] ?? "pyodide0281";
+const packageName = process.argv[2] ?? "owui";
 const output = resolve(root, process.argv[3] ?? "t8-pyodide.json");
 const dataRoot = join(root, "t8-data");
 const manifestBytes = readFileSync(join(dataRoot, "manifest.json"));
@@ -18,11 +18,6 @@ if (host.manifest_sha256 !== sha256(manifestBytes)) {
   throw new Error("T8 host references belong to a different corpus");
 }
 const { loadPyodide, packageVersion, options } = await selectBundle(root, packageName);
-if (packageName === "owui") {
-  // The installed bundle is read-only; any wheel-cache writes stay in this worktree.
-  options.packageCacheDir = join(root, "node_modules", "t8-owui-cache");
-  mkdirSync(options.packageCacheDir, { recursive: true });
-}
 const pyodide = await loadPyodide(options);
 await pyodide.loadPackage(["numpy", "pandas", "matplotlib"]);
 pyodide.FS.mkdir("/t8-data");

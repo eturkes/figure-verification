@@ -4,7 +4,7 @@
 `uv run --locked python .agent/measurements/c1_export.py` writes `c1-wrappers.json` (the
 production `wrapper_code` per case, CSV paths under `/mnt/uploads`, no font: the corpus harness
 runs without one, so `glyph_missing` stays reachable) and `c1-host.json` (each case's Sources + the
-host verdict, matplotlib 3.9.4). `node c1_pyodide.mjs owui c1-0283.json` runs the wrappers in the
+host verdict, matplotlib 3.10.8). `node c1_pyodide.mjs owui c1-31403.json` runs the wrappers in the
 installed bundle; the C1 projector judges each bundle description with the same Sources.
 """
 

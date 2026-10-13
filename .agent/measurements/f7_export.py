@@ -67,7 +67,7 @@ second = (
 font_path = Path(sys.argv[1]).resolve()
 font = font_path.read_bytes()
 clinic = (root / "data/clinic_ja.csv").read_bytes()
-# <venv>/lib/python3.12/site-packages/open_webui/static/fonts/<font>
+# <venv>/lib/python3.11/site-packages/open_webui/static/fonts/<font>
 owui_python = font_path.parents[6] / "bin" / "python"
 _CUT = (
     "import json, sys\n"

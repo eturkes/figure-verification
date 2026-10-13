@@ -48,9 +48,10 @@ uv sync --locked
 ```
 
 Run each host script in the table with `uv run --locked python .agent/measurements/<script>.py`.
-For `make_s6_csv.py`, `t3.py`, `t4.py`, `t5.py`, `t7_profile.py`, `t7_quoted.py`, and
-`t8_profile.py`, use `uv run --locked --with pandas==2.3.1 python .agent/measurements/<script>.py`: pandas is not in
-the root development environment. Run a generator before its dependent host or sandbox leg.
+pandas 3.0.2 is in the root development environment; the driver still passes
+`--with pandas==3.0.2` to the host legs that measure pandas itself (`make_s6_csv.py`, `t3.py`,
+`t4.py`, `t5.py`, `t7_profile.py`, `t7_quoted.py`, `t8_profile.py`), so the pin stays explicit.
+Run a generator before its dependent host or sandbox leg.
 `I1` (M19) runs 52 chart programs over the M19 scope and its out-of-scope census, and records each
 axes child as (class, origin, data transform) — origin = the outermost Axes-module frame
 (`.claude/rules/figure.md`). The projection compares the host leg with the installed bundle and
@@ -60,70 +61,68 @@ keyed series of k distinct keys from one key column holding at least k (seed 19,
 size, k = 1-5; `null` where no key column holds k: these CSVs hold 2-4 keys per key column). `I3` (M19.2) runs the same 52 programs through the
 reader on the host and through the production `wrapper_code` in the installed bundle, one runtime
 in order (the reader's holder reused across replies), and publishes, per program, the description
-fields that differ: `boxplot` labels, `reference` span shape (`Rectangle` vs `Polygon`), `subplots`
-positions after `tight_layout`. `C1` (M19.6) runs every rule-corpus case (`tests/figure_corpus/`)
-through the production `wrapper_code` in the installed bundle (matplotlib 3.8.4, one runtime, no
-font, the CSVs under `/mnt/uploads`), judges each bundle description on the host with the case's
-own Sources, and publishes the cases whose bundle verdict misses the case's expectation or differs
-from the host verdict (its first run found the 3.8 glyph-warning wording the reader missed).
+fields that differ (on 0.11.3: `subplots` positions after `tight_layout` alone). `C1` (M19.6) runs
+every rule-corpus case (`tests/figure_corpus/`) through the production `wrapper_code` in the
+installed bundle (matplotlib 3.10.8, one runtime, no font, the CSVs under `/mnt/uploads`), judges
+each bundle description on the host with the case's own Sources, and publishes the cases whose
+bundle verdict misses the case's expectation or differs from the host verdict.
 
-Run each Node command from `.agent/measurements/`. Replace `<P>` with `pyodide` (0.28.0) or
-`pyodide0281` (0.28.1), and `<v>` with `0280` or `0281`, respectively. Every `.mjs` takes `<P>` as
-its first argument and an optional result filename as its second. `s6_pyodide.mjs` alone also
-accepts a compatible local `indexURL` as its third argument. `f7_wrapper.mjs` is the exception: it takes `<B>`, the installed Open WebUI Pyodide directory
-(`../../.venv-webui/lib/python3.12/site-packages/open_webui/frontend/pyodide`, 0.28.3), and a
-required result filename. It calls `f7_export.py` through `uv run --no-sync --locked`; set
-`UV_PROJECT_ENVIRONMENT` to the ready root environment. From the repo root, run:
+Every Node leg runs in ONE sandbox: the Pyodide 314.0.3 bundle the installed Open WebUI 0.11.3
+serves (`../../.venv-webui/lib/python3.11/site-packages/open_webui/frontend/pyodide`, runtime
+CPython 3.14.2). `o8_bundle.mjs` loads it and reads every wheel from that directory, never from
+the CDN Node Pyodide defaults to; a bundle of another version fails loudly. Run each Node command
+from `.agent/measurements/`. Every `.mjs` takes `owui` as its first argument and an optional result
+filename as its second. `f7_wrapper.mjs` is the exception: it takes `<B>`, the installed bundle
+directory above, and a required result filename. It calls `f7_export.py` through
+`uv run --no-sync --locked`; set `UV_PROJECT_ENVIRONMENT` to the ready root environment. From the
+repo root, run:
 
 ```
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv" UV_LINK_MODE=copy UV_NO_SYNC=1 PYTHONPATH="$PWD/src"
-node .agent/measurements/f7_wrapper.mjs "$PWD/.venv-webui/lib/python3.12/site-packages/open_webui/frontend/pyodide" f7-0283.json
+node .agent/measurements/f7_wrapper.mjs "$PWD/.venv-webui/lib/python3.11/site-packages/open_webui/frontend/pyodide" f7-31403.json
 ```
 
-F7 reads the installed frontend's `execute:python` package regexes, iframe prelude and reply
-shaping at runtime. It loads only source-detected packages, runs the literal-trigger prelude, then
-executes the wrapper. Missing or changed anchors fail loudly. Every wrapper must emit one tagged
-description line before one PNG line with a valid signature; the shaped reply must have
-`stderr: null` and `result: null`. The description's glyph count is nonzero exactly for the five
-glyph legs. A literal plotting import must trigger the installed prelude's `SyntaxError`. The
-font cuts run in the install's own interpreter (`<venv>/bin/python`, its fontTools); the Japanese
-PNGs land beside the result as `f7-0283.<leg>.png` for inspection.
+F7 finds the installed frontend's `execute:python` handler and sandbox chunk by content (build
+hashes rename the files, the minifier renames the variables), then reads the package regexes, the
+iframe prelude and the reply shaping at runtime. It loads only source-detected packages, runs the
+literal-trigger prelude, then executes the wrapper. Missing or changed anchors fail loudly. Every
+wrapper must emit one tagged description line before one PNG line with a valid signature; the
+shaped reply must have `stderr: null` and `result: null`. The description's glyph count is nonzero
+exactly for the five glyph legs. A literal plotting import must trigger the installed prelude,
+whose patched `show` prints one PNG line (0.10.2's prelude raised `SyntaxError` instead). The font
+cuts run in the install's own interpreter (`<venv>/bin/python`, its fontTools); the Japanese PNGs
+land beside the result as `f7-31403.<leg>.png` for inspection.
 
 The other Node commands:
 
 ```
 cd .agent/measurements
-node t6_pyodide.mjs pyodide t6-0280.json
-node t6_pyodide.mjs pyodide0281 t6-0281.json
-node versions.mjs pyodide0281 versions-0281.json
+node t6_pyodide.mjs owui t6-31403.json
+node versions.mjs owui versions-31403.json
 ```
 
-The `pyodide0281` npm package omits its wheels. Each sandbox script reads the installed package
-version and fetches missing wheels from that version's jsDelivr Pyodide build. Pyodide caches the
-wheels in the ignored `node_modules/`; the first run requires network access. The Node scripts
-write their result JSON beside themselves. `versions.mjs` prints Python, platform, Pyodide, NumPy,
-and pandas versions for the selected build.
+`versions.mjs` prints Python, platform, Pyodide, NumPy, and pandas versions for the bundle.
 
 | id | host script(s), in run order | Node command | build behind the published number |
 |---|---|---|---|
-| S6 | `make_s6_csv.py` | `node s6_pyodide.mjs <P> s6-<v>.json` | 0.28.1; 0.28.0 rerun |
-| T3 | `t3.py` | none | host only |
-| T4 | `t4.py` | none | host only |
-| T5 | `t5.py` | none | host only |
-| T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs <P> t6-<v>.json` | 0.28.1; 0.28.0 rerun |
-| T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs <P> t7-<v>.json` | 0.28.1; 0.28.0 rerun |
-| T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs <P> t8-<v>.json`; `node t8_pyodide.mjs owui t8-0283.json` | 0.28.0, 0.28.1; installed OWUI 0.28.3 |
-| I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-0283.json` | host matplotlib 3.9.4 vs installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
+| S6 | `make_s6_csv.py` | `node s6_pyodide.mjs owui s6-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| T3 | `t3.py` | none | host only (pandas 3.0.2) |
+| T4 | `t4.py` | none | host only (pandas 3.0.2) |
+| T5 | `t5.py` | none | host only (pandas 3.0.2) |
+| T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs owui t6-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs owui t7-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs owui t8-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-31403.json` | host matplotlib 3.10.8 vs the installed Open WebUI 0.11.3 bundle (matplotlib 3.10.8) |
 | I2 | `i2_ambiguity.py` | none | host only |
-| I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-0283.json` | host reader (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 |
-| C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-0283.json` | rule corpus: host judge (matplotlib 3.9.4) vs production wrapper in the installed Open WebUI bundle, 0.28.3 (matplotlib 3.8.4) |
+| I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-31403.json` | host reader (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.11.3 bundle |
+| C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-31403.json` | rule corpus: host judge (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.11.3 bundle (matplotlib 3.10.8) |
 | X1 | `x1_transforms.py` | none | host only |
 | Image | `image_import.py` (its image leg `image_leg.py` runs inside the image through `podman`, network off) | none | `ghcr.io/open-webui/open-webui:v0.11.3` (CPython 3.11.16) |
-| F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-0283.json` | installed Open WebUI bundle, 0.28.3 |
-| Versions | none | `node versions.mjs <P> versions-<v>.json` | selected build |
-| M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
-| M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
-| M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.10.2, `webui/launch.sh --stub` |
+| F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-31403.json` | installed Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| Versions | none | `node versions.mjs owui versions-31403.json` | installed Open WebUI 0.11.3 bundle |
+| M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
+| M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
+| M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
 
 ## Live MX150 record — Q46
 
@@ -182,18 +181,18 @@ Rerun all reduction IDs from the repository root after the pinned environment + 
 nice -n 19 ionice -c3 bash .agent/measurements/r_run.sh
 ```
 
-`r_run.sh` runs 11 stages: corpus · host · host-optional · Pyodide 0.28.0 · Pyodide 0.28.1 ·
-comparison · locales · both sandbox renderer supplements · result projection · checks.
+`r_run.sh` runs 9 stages: corpus · host · host-optional · bundle (Pyodide 314.0.3) ·
+comparison · locales · bundle renderer supplement · result projection · checks.
 Logs + raw results → `r-data/`; normalized per-id results → `results/<id>.json`.
 `check.py <id>…` reads those results; it does not rerun the experiment. It compares exact types,
 keys, list order/length + values against `expected/<id>.json`; a missing file or mismatch returns
 nonzero with the id + cause. Expected files state the cited claims, never a fresh run's output.
 The all-id driver runs this reduction replay once alongside the other table IDs.
 
-Host pins = root NumPy 2.2.5 + pandas 2.3.1; optional leg adds bottleneck 1.6.0 + numexpr 2.14.2.
-Sandbox pandas = 2.3.0 on Pyodide 0.28.0; 2.3.1 on Pyodide 0.28.1; both carry NumPy 2.2.5.
-Each host leg uses `uv run --locked --with pandas==2.3.1`; the optional leg adds the two pinned
-`--with` arguments. Node legs reuse the existing frozen lock, loading the selected build's wheels.
+Host pins = root NumPy 2.4.3 + pandas 3.0.2; optional leg adds bottleneck 1.6.0 + numexpr 2.14.2.
+Sandbox = the installed Open WebUI 0.11.3 bundle: pandas 3.0.2 + NumPy 2.4.3 on Pyodide 314.0.3.
+Each host leg uses `uv run --locked --with pandas==3.0.2`; the optional leg adds the two pinned
+`--with` arguments. The bundle leg loads the bundle's own wheels (`o8_bundle.mjs`).
 Locales `C`, `C.utf8`, `en_US.utf8` must exist. Only the sandbox supplement loads matplotlib.
 `make_r_inputs.py` retains the fixed seed, exact-float cases + interleaved CSVs.
 `r_probe.py` runs unchanged inputs in every environment; `r_compare.py` compares encoded
@@ -277,7 +276,7 @@ are `99999999999999.9` for decimal tokens and `999999999999999` for integer toke
 T8 measures these environment pairs and samples, not exhaustive parser correctness or pixels.
 Replay with `uv run --locked python .agent/measurements/rerun_all.py T8`; recheck with
 `uv run --locked python .agent/measurements/rerun_all.py --check-only T8`.
-T8's one-count control plants `expected/T8.json`'s `0280.corpora.decimals.plain.host_bit_mismatches`
+T8's one-count control plants `expected/T8.json`'s `31403.corpora.decimals.plain.host_bit_mismatches`
 0→1; require nonzero + `T8: FAIL`, then restore SHA-256-identical expected bytes.
 
 Each result JSON carries environment details and a per-region breakdown when regions apply. A

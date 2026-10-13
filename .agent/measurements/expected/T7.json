@@ -1,27 +1,5 @@
 {
-  "0280": {
-    "decimals_plain": {
-      "bit_mismatches_vs_host_stdlib_float": 0,
-      "rows": 1000000,
-      "source_dtype": "float64"
-    },
-    "decimals_quoted": {
-      "bit_mismatches_vs_host_stdlib_float": 0,
-      "rows": 1000000,
-      "source_dtype": "float64"
-    },
-    "integers_plain": {
-      "bit_mismatches_vs_host_stdlib_float": 0,
-      "rows": 1000000,
-      "source_dtype": "int64"
-    },
-    "integers_quoted": {
-      "bit_mismatches_vs_host_stdlib_float": 0,
-      "rows": 1000000,
-      "source_dtype": "int64"
-    }
-  },
-  "0281": {
+  "31403": {
     "decimals_plain": {
       "bit_mismatches_vs_host_stdlib_float": 0,
       "rows": 1000000,

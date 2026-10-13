@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-BUILDS = ("0280", "0281")
+# The installed Open WebUI bundle (Pyodide 314.0.3), the one sandbox every Node leg measures.
+BUILDS = ("31403",)
 FUNCTIONS = ("sin", "cos", "tan", "exp", "log", "sqrt")
 
 
@@ -89,7 +90,7 @@ def t7():
 
 def t8():
     results = {}
-    for build in (*BUILDS, "0283"):
+    for build in BUILDS:
         data = load(f"t8-{build}.json")
         renderer = data["renderer"]
         probes = renderer["integer_controls"]
@@ -148,7 +149,7 @@ def t8():
 
 
 def f7():
-    data = load("f7-0283.json")
+    data = load("f7-31403.json")
     return {
         "build": data["pyodide"],
         "cases": {
@@ -182,8 +183,10 @@ def f7():
                 for name, rows in data["earlier"].items()
             },
         },
-        "literal_control_syntax_error": "SyntaxError"
-        in (data["results"]["literal-control"]["stderr"] or ""),
+        # 0.11.3: a literal plotting name runs OWUI's prelude, whose patched `show` prints a PNG.
+        "literal_control_prelude_png": fields(
+            data["results"]["literal-control"], "png_lines", "description_lines", "stderr"
+        ),
     }
 
 
@@ -246,7 +249,7 @@ def m17():
 
 
 def i1():
-    host, sandbox = load("i1-host.json"), load("i1-0283.json")
+    host, sandbox = load("i1-host.json"), load("i1-31403.json")
     families = sorted(
         {
             f"{child[0]}|{child[1]}|{child[2]}"
@@ -315,7 +318,7 @@ def _difference(a, b, path, out):
 
 def i3():
     tag = "FIGURE_VERIFICATION_DESCRIPTION:"
-    host, sandbox = load("i3-host.json"), load("i3-0283.json")["results"]
+    host, sandbox = load("i3-host.json"), load("i3-31403.json")["results"]
     differing = {}
     for name in sorted(host):
         run = sandbox[name]
@@ -348,7 +351,7 @@ def c1():
     from verifier.figure.description import parse_description  # noqa: PLC0415
     from verifier.figure.judge import Passed, Sources, judge  # noqa: PLC0415
 
-    host, sandbox = load("c1-host.json"), load("c1-0283.json")["results"]
+    host, sandbox = load("c1-host.json"), load("c1-31403.json")["results"]
     corpus = ROOT.parents[1] / "tests" / "figure_corpus"
     data = ROOT.parents[1] / "data"
     faults, verdicts = [], {}

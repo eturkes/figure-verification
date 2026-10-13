@@ -1,5 +1,5 @@
 {
-  "build": "0.28.3",
+  "build": "314.0.3",
   "cases": {
     "banner-simple": {
       "description_lines": 1,
@@ -143,7 +143,7 @@
         false
       ]
     },
-    "fonttools": "4.63.0",
+    "fonttools": "4.64.0",
     "ja_font_source_bytes": {
       "$le": 99999
     }
@@ -162,5 +162,9 @@
     "no-show": false,
     "scatter": false
   },
-  "literal_control_syntax_error": true
+  "literal_control_prelude_png": {
+    "description_lines": 0,
+    "png_lines": 1,
+    "stderr": null
+  }
 }

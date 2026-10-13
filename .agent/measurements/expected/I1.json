@@ -1,11 +1,9 @@
 {
   "cases": 52,
-  "differing_cases": [
-    "reference"
-  ],
+  "differing_cases": [],
   "matplotlib": {
-    "host": "3.9.4",
-    "sandbox": "3.8.4"
+    "host": "3.10.8",
+    "sandbox": "3.10.8"
   },
   "same_case_names": true,
   "sandbox_families": [
@@ -15,6 +13,10 @@
     "Axes|Axes.inset_axes|other",
     "Circle|None|data",
     "EventCollection|Axes.eventplot|data",
+    "FillBetweenPolyCollection|Axes.fill_betweenx|data",
+    "FillBetweenPolyCollection|Axes.fill_between|data",
+    "FillBetweenPolyCollection|Axes.violinplot|data",
+    "FillBetweenPolyCollection|stackplot|data",
     "Line2D|Axes.axhline|yaxis",
     "Line2D|Axes.axvline|xaxis",
     "Line2D|Axes.boxplot|data",
@@ -29,18 +31,14 @@
     "LineCollection|None|data",
     "PathCollection|Axes.scatter|data",
     "PolyCollection|Axes.broken_barh|data",
-    "PolyCollection|Axes.fill_betweenx|data",
-    "PolyCollection|Axes.fill_between|data",
     "PolyCollection|Axes.hexbin|data",
-    "PolyCollection|Axes.violinplot|data",
-    "PolyCollection|stackplot|data",
-    "Polygon|Axes.axhspan|yaxis",
-    "Polygon|Axes.axvspan|xaxis",
     "Polygon|Axes.fill|data",
     "Polygon|Axes.hist|data",
     "QuadContourSet|Axes.contour|data",
     "QuadMesh|Axes.pcolormesh|data",
     "Quiver|Axes.quiver|other",
+    "Rectangle|Axes.axhspan|yaxis",
+    "Rectangle|Axes.axvspan|xaxis",
     "Rectangle|Axes.barh|data",
     "Rectangle|Axes.bar|data",
     "Rectangle|Axes.hist|data",

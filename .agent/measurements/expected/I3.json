@@ -1,18 +1,5 @@
 {
   "differing_fields": {
-    "boxplot": [
-      "label"
-    ],
-    "reference": [
-      "angle",
-      "cls",
-      "height",
-      "kind",
-      "width",
-      "x",
-      "xy",
-      "y"
-    ],
     "subplots": [
       "position"
     ]

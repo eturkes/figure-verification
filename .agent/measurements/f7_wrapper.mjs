@@ -2,7 +2,7 @@
 // Replay the installed OWUI package detector and iframe execute path against its Pyodide bundle.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -15,8 +15,19 @@ if (!process.argv[2] || !output) {
   throw new Error("usage: node f7_wrapper.mjs <OWUI-pyodide-dir> <output.json>");
 }
 const frontend = resolve(bundle, "../_app/immutable");
-const handler = readFileSync(resolve(frontend, "nodes/0.VsCm_E_x.js"), "utf8");
-const iframe = readFileSync(resolve(frontend, "chunks/BTl0LwHk.js"), "utf8");
+// Build hashes name the files and the minifier names the variables, both per release: find each
+// part by what it does, then read the variable names off the detector itself.
+function single(directory, needles, label) {
+  const names = readdirSync(resolve(frontend, directory)).filter((name) => name.endsWith(".js"));
+  const found = names.filter((name) => {
+    const text = readFileSync(resolve(frontend, directory, name), "utf8");
+    return needles.every((needle) => text.includes(needle));
+  });
+  if (found.length !== 1) throw new Error(`installed OWUI ${label}: ${found.length} candidates`);
+  return readFileSync(resolve(frontend, directory, found[0]), "utf8");
+}
+const handler = single("nodes", ['"execute:python"', 'postMessage({type:"execute",'], "handler");
+const iframe = single("chunks", ["async function patchMatplotlib()", "String.raw`"], "iframe");
 
 function anchored(source, start, end, label) {
   const first = source.indexOf(start);
@@ -27,34 +38,41 @@ function anchored(source, start, end, label) {
   return source.slice(first + start.length, last);
 }
 
-const detector = anchored(
-  handler,
-  "Ue=async(e,n,P,g=[])=>{",
-  ";const S=ue()",
-  "execute:python package detector",
-);
-const entries = anchored(detector, "j=[", "].filter(Boolean)", "package regex list").split(",");
+const detected = [
+  ...handler.matchAll(
+    /([\w$]+)=async\(([\w$]+),([\w$]+),([\w$]+),([\w$]+)=\[\]\)=>\{let ([\w$]+)=null,([\w$]+)=null,([\w$]+)=null,([\w$]+)=!0,([\w$]+)=\[(.*?)\]\.filter\(Boolean\);/g,
+  ),
+];
+if (detected.length !== 1) {
+  throw new Error(`installed OWUI execute:python package detector: ${detected.length} matches`);
+}
+const [, , idName, codeName, , , resultName, stdoutName, stderrName, , listName, detector] =
+  detected[0];
+// A minified name may hold `$`, a regex anchor: escape it wherever a name enters a pattern.
+const literal = (name) => name.replaceAll("$", "\\$");
+const entries = detector.split(",");
 const rules = entries.map((entry) => {
-  const parsed = /^\/((?:\\.|[^/])+)\/\.test\(n\)\?"([^"]+)":null$/.exec(entry);
+  const parsed = new RegExp(`^/((?:\\\\.|[^/])+)/\\.test\\(${literal(codeName)}\\)\\?"([^"]+)":null$`).exec(entry);
   if (!parsed) throw new Error(`installed OWUI package regex changed: ${entry}`);
   return { pattern: new RegExp(parsed[1]), package: parsed[2] };
 });
 if (
   !["numpy", "pandas", "matplotlib"].every((name) => rules.some((rule) => rule.package === name)) ||
-  !handler.includes('S.postMessage({type:"execute",id:e,code:n,packages:j,files:')
+  !handler.includes(`postMessage({type:"execute",id:${idName},code:${codeName},packages:${listName},files:`)
 ) {
   throw new Error("installed OWUI package routing changed");
 }
-for (const anchor of [
-  "let w=null,i=null,R=null,Z=!0",
-  "c.stdout&&(i=c.stdout)",
-  "c.stderr&&(R=c.stderr)",
-  "c.result&&(w=c.result)",
-  "P&&P(JSON.parse(JSON.stringify({stdout:i,stderr:R,result:w}",
-]) {
-  if (!handler.includes(anchor)) throw new Error(`installed OWUI reply anchor missing: ${anchor}`);
+// The reply starts every field at null and overwrites one only with a truthy worker value.
+const shaping = new RegExp(
+  `([\\w$]+)\\.stdout&&\\(${literal(stdoutName)}=\\1\\.stdout\\),\\1\\.stderr&&\\(${literal(stderrName)}=\\1\\.stderr\\),\\1\\.result&&\\(${literal(resultName)}=\\1\\.result\\)`,
+);
+if (
+  !shaping.test(handler) ||
+  !handler.includes(`JSON.stringify({stdout:${stdoutName},stderr:${stderrName},result:${resultName}}`)
+) {
+  throw new Error("installed OWUI reply shaping changed");
 }
-const sandbox = anchored(iframe, "const u=String.raw`", "`;var o;", "iframe source");
+const sandbox = anchored(iframe, "=String.raw`", "`;var ", "iframe source");
 for (const anchor of [
   "let stdout = null;\n\tlet stderr = null;",
   "stdout = stdout ? stdout + text + '\\n' : text + '\\n';",
@@ -106,7 +124,8 @@ const exported = JSON.parse(
   ),
 );
 async function runtime() {
-  const fresh = await loadPyodide({ indexURL: `${bundle}/` });
+  // The bundle's own wheel bytes, never the CDN copies Node Pyodide fetches by default.
+  const fresh = await loadPyodide({ indexURL: `${bundle}/`, packageBaseUrl: `${bundle}/` });
   fresh.FS.mkdirTree("/mnt/uploads");
   fresh.FS.writeFile("/mnt/uploads/sales.csv", Uint8Array.fromHex(exported.dataset));
   fresh.FS.writeFile("/mnt/uploads/clinic_ja.csv", Uint8Array.fromHex(exported.clinic));
@@ -229,7 +248,11 @@ if (
       result !== null || !png_signature || error ||
       (controls.includes(name) ? !(glyphs > 0) : glyphs !== 0),
   ) ||
-  !results["literal-control"].stderr.includes("SyntaxError")
+  // 0.11.3's prelude runs on the literal substring and replaces `show` with a PNG printer: a source
+  // spelling the name would print OWUI's own PNG beside the reader's.
+  results["literal-control"].png_lines !== 1 ||
+  results["literal-control"].description_lines !== 0 ||
+  results["literal-control"].stderr !== null
 ) {
   process.exitCode = 1;
 }

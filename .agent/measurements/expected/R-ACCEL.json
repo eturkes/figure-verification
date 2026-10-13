@@ -19,12 +19,7 @@
       "changed_results": 0,
       "combinations": 4
     },
-    "pyodide": {
-      "all_four": true,
-      "changed_results": 0,
-      "combinations": 4
-    },
-    "pyodide0281": {
+    "owui": {
       "all_four": true,
       "changed_results": 0,
       "combinations": 4

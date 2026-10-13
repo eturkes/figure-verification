@@ -2,8 +2,8 @@
 """I3 host leg: the reader's description of every I1 census program, plus each program's wrapper.
 
 `uv run --locked python .agent/measurements/i3_export.py` writes `i3-host.json` (host descriptions,
-matplotlib 3.9.4) and `i3-wrappers.json` (the production `wrapper_code` per program, its CSV paths
-under `/mnt/uploads`), which `node i3_pyodide.mjs owui i3-0283.json` runs in the installed bundle.
+matplotlib 3.10.8) and `i3-wrappers.json` (the production `wrapper_code` per program, its CSV paths
+under `/mnt/uploads`), which `node i3_pyodide.mjs owui i3-31403.json` runs in the installed bundle.
 """
 
 import json

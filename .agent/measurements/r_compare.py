@@ -77,7 +77,7 @@ def main():
             "detail": positive["details"],
         }
     }
-    for name in ("pyodide", "pyodide0281"):
+    for name in ("owui",):
         sandbox = json.loads((ROOT / (name + ".json")).read_text())
         answer[name] = {"environment": sandbox["environment"], **compare(host, sandbox)}
     (ROOT / "comparison.json").write_text(json.dumps(answer, indent=2, sort_keys=True) + "\n")
