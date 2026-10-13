@@ -13,12 +13,12 @@ argument's caller, a value a call changes) or stop at its work budget, and decid
 import ast
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, TypeAlias
 
 from verifier.figure.description import Axes, Description, Text, TextGeometry
 from webui.paste_in.checks import Check
 
-type Lines = tuple[tuple[Check, frozenset[int]], ...]
+Lines: TypeAlias = tuple[tuple[Check, frozenset[int]], ...]
 
 # The listing's own scan bound: a longer program keeps its recorded lines as they are.
 _PARSE = 65_536

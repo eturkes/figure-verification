@@ -10,7 +10,7 @@ carries its base edge, since its value = the far edge the stack computed as base
 """
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypeAlias, cast
 
 from verifier.figure.axes_rules import value_on_x
 from verifier.figure.description import (
@@ -26,8 +26,8 @@ from verifier.figure.legends import Names
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.shapes import band_edges, bars
 
-type Shape = Literal["keyed", "values", "reference"]
-type Channel = Literal["value", "colors", "sizes"]
+Shape: TypeAlias = Literal["keyed", "values", "reference"]
+Channel: TypeAlias = Literal["value", "colors", "sizes"]
 
 
 @dataclass(frozen=True, slots=True)

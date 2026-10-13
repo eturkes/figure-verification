@@ -11,9 +11,8 @@ from verifier.figure.reasons import FigureReason
 
 
 def test_o8_reason_union_is_closed_and_disjoint() -> None:
-    alias = load("reasons").OutletCause
-    causes = set(get_args(getattr(alias, "__value__", alias)))
-    figures = set(get_args(getattr(FigureReason, "__value__", FigureReason)))
+    causes = set(get_args(load("reasons").OutletCause))
+    figures = set(get_args(FigureReason))
     assert causes == CAUSES
     assert figures == FIGURE_REASONS
     assert len(causes) == 14 and len(figures) == 39

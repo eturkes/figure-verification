@@ -70,6 +70,14 @@ target-version = "py313"
 line-length = 100
 src = ["src", "tests"]
 
+# The shipped pair runs inside Open WebUI's own interpreter: the official image is CPython 3.11
+# (`open-webui` admits >=3.11,<3.13), and a 3.12 construct there fails the import (M21.2 F11).
+[tool.ruff.per-file-target-version]
+"src/verifier/**" = "py311"
+"webui/paste_in/**" = "py311"
+"paste-in/**" = "py311"
+"webui/demo-paste-in/**" = "py311"
+
 [tool.ruff.lint]
 # Explicit select (never "ALL"): new rule categories never auto-enable on upgrade.
 # The exact rule set is still pinned by uv.lock, so run the gate with `uv run --locked`.

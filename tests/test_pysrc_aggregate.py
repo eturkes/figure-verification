@@ -50,10 +50,10 @@ def _one(*values: str) -> tuple[tuple[str, str], ...]:
 
 
 def test_a1_the_reduction_vocabulary_is_closed() -> None:
-    """A1: `get_args(Reduction.__value__)` = the hand-stated `("sum", "mean", "min", "max")`."""
+    """A1: `get_args(Reduction)` = the hand-stated `("sum", "mean", "min", "max")`."""
     from typing import get_args  # noqa: PLC0415
 
-    assert get_args(Reduction.__value__) == ("sum", "mean", "min", "max")
+    assert get_args(Reduction) == ("sum", "mean", "min", "max")
 
 
 def test_r1_float_sum_is_kahan_not_naive_or_fsum() -> None:

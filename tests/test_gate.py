@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G15: static-config invariants of the one gate command.
+"""G6-G16: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
-`.agent/archive/contracts/m10u7.md` (G14); G15 = queue row Q47 (its row text is the contract).
+`.agent/archive/contracts/m10u7.md` (G14), `.agent/contracts/m21u2.md` P1 (G16); G15 = queue row
+Q47 (its row text is the contract).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -19,6 +20,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
@@ -33,6 +35,10 @@ _PROBED_SUITES = (Path(__file__).resolve(), _REPO_ROOT / "tests" / "test_spec.py
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _DEPENDABOT = _REPO_ROOT / ".github" / "dependabot.yml"
 _OPS_RULES = _REPO_ROOT / ".claude" / "rules" / "ops.md"
+_PYPROJECT = _REPO_ROOT / "pyproject.toml"
+
+# The shipped pair runs inside Open WebUI's interpreter: CPython 3.11 in the official image.
+_SHIPPED_GLOBS = ("src/verifier/**", "webui/paste_in/**", "paste-in/**", "webui/demo-paste-in/**")
 
 # Hand-stated, in the order tools/gate.sh runs them. Dropping a stage from the script must fail
 # here rather than silently shrink the gate.
@@ -304,3 +310,29 @@ def test_g14_tracked_sources_carry_spdx_header() -> None:
             if header not in first_three:
                 missing.append(name)
     assert not missing, "tracked source files missing SPDX header:\n" + "\n".join(missing)
+
+
+def test_g16_shipped_sources_are_checked_at_the_image_python() -> None:
+    """G16: ruff reads every shipped glob as py311 and the `types` stage keeps the bare mypy run
+    plus one 3.11 pass over the shipped packages. Acceptance: a dropped glob, a dropped 3.11 pass
+    or a narrowed bare run each fails, naming which."""
+    config = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
+    targets = cast(dict[str, str], config["tool"]["ruff"].get("per-file-target-version", {}))
+    floors = {glob: targets.get(glob) for glob in _SHIPPED_GLOBS}
+    assert floors == dict.fromkeys(_SHIPPED_GLOBS, "py311"), f"ruff floor drifted: {floors}"
+
+    script = _GATE.read_text(encoding="utf-8")
+    assert "stage types type_check" in script
+    function = re.search(r"^type_check\(\) \{\n(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
+    assert function is not None, "type_check is missing"
+    runs = [
+        line.split("||")[0].split()
+        for line in function.group("body").splitlines()
+        if line.strip().startswith("uv run --locked mypy")
+    ]
+    assert ["uv", "run", "--locked", "mypy"] in runs, f"bare mypy run missing: {runs}"
+    shipped = [words for words in runs if "--python-version" in words]
+    assert len(shipped) == 1, f"3.11 mypy pass missing: {runs}"
+    words = shipped[0]
+    assert words[words.index("--python-version") + 1] == "3.11"
+    assert {"src/verifier", "webui/paste_in"} <= set(words), f"3.11 pass narrowed: {words}"

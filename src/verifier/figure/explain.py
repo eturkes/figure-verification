@@ -24,7 +24,7 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Final, Literal, cast
+from typing import Final, Literal, TypeAlias, cast
 
 from verifier.figure import computed
 from verifier.figure.anchoring import Aliases, AmbiguousTermError, anchors
@@ -39,8 +39,8 @@ from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.table import CellValue
 
-type Family = Literal["raw", "index", "sum", "mean", "min", "max", "count"]
-type Canon = tuple[str, object]
+Family: TypeAlias = Literal["raw", "index", "sum", "mean", "min", "max", "count"]
+Canon: TypeAlias = tuple[str, object]
 
 _PREFERENCE: Final[tuple[Family, ...]] = ("raw", "index", "sum", "mean", "min", "max", "count")
 _REDUCTIONS: Final[tuple[Reduction, ...]] = ("sum", "mean", "min", "max")
@@ -477,7 +477,7 @@ def _kept(values: Sequence[float | None]) -> list[int]:
     return [at for at, value in enumerate(values) if value is not None]
 
 
-type _Memo = dict[tuple[float, ...], list[tuple[Transform, Values]]]
+_Memo: TypeAlias = dict[tuple[float, ...], list[tuple[Transform, Values]]]
 
 
 def _unary_of(

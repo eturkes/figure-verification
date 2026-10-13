@@ -8,7 +8,7 @@ Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_fin
 
 import itertools
 import math
-from typing import Final, cast
+from typing import Final, TypeVar, cast
 
 from verifier.figure.description import (
     Axes,
@@ -25,6 +25,8 @@ from verifier.figure.description import (
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import Bar, band_edges, bars, coordinates
+
+_T = TypeVar("_T")
 
 _TOLERANCE: Final = 1e-9
 # matplotlib computes wedge angles in float32 (`np.asarray(x, np.float32)` in `Axes.pie`).
@@ -54,7 +56,7 @@ def _clear(rgba: tuple[float, ...] | None) -> bool:
     return rgba is None or rgba[3] == 0.0
 
 
-def _cycled[T](values: tuple[T, ...], index: int) -> T | None:
+def _cycled(values: tuple[_T, ...], index: int) -> _T | None:
     """matplotlib cycles a collection's per-point properties over its points."""
     return values[index % len(values)] if values else None
 

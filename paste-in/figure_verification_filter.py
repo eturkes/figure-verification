@@ -45,12 +45,12 @@ the drawn values, and G10 reads labels, with this one matcher. Stdlib only.
 
 import re
 import unicodedata
-from typing import Literal
+from typing import Literal, TypeAlias
 
 # The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
-type Aliases = tuple[tuple[str, str], ...]
-type Anchoring = Literal["strict", "substitution"]  # production | demo (Q37)
-type Reduction = Literal["sum", "mean", "min", "max"]
+Aliases: TypeAlias = tuple[tuple[str, str], ...]
+Anchoring: TypeAlias = Literal["strict", "substitution"]  # production | demo (Q37)
+Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
 
 __all__ = [
     "SUMMARY_WORDS",
@@ -405,7 +405,9 @@ import json
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, TypeAlias, TypeVar
+
+_T = TypeVar("_T")
 
 TAG: Final = "FIGURE_VERIFICATION_DESCRIPTION:"
 VERSION: Final = "figure-description/1"
@@ -417,8 +419,8 @@ _TRANSFORMS: Final = frozenset({"data", "axes", "xaxis", "yaxis", "figure", "oth
 _ORIENTATIONS: Final = frozenset({"vertical", "horizontal"})
 _ELEMENT_PROPS: Final = frozenset({"sizes", "colors"})
 
-type Color = tuple[float, float, float, float]
-type Pair = tuple[float, float]
+Color: TypeAlias = tuple[float, float, float, float]
+Pair: TypeAlias = tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,7 +523,7 @@ class NoGeometry:
     """An artist class the reader does not measure; the judge refuses it by class."""
 
 
-type Geometry = (
+Geometry: TypeAlias = (
     LineGeometry
     | RectGeometry
     | WedgeGeometry
@@ -702,11 +704,11 @@ def _choice(value: object, allowed: frozenset[str]) -> str:
     return value
 
 
-def _optional[T](value: object, read: Callable[[object], T]) -> T | None:
+def _optional(value: object, read: Callable[[object], _T]) -> _T | None:
     return None if value is None else read(value)
 
 
-def _tuple[T](value: object, read: Callable[[object], T]) -> tuple[T, ...]:
+def _tuple(value: object, read: Callable[[object], _T]) -> tuple[_T, ...]:
     return tuple(read(item) for item in _list(value))
 
 
@@ -2610,11 +2612,13 @@ _SOURCES["verifier.pysrc.table"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """One cell as the judge reads it from the user's CSV."""
 
+from typing import TypeAlias
+
 __all__ = ["CellValue"]
 
 # A text key is a string; every other cell is float64. There is no null and no NaN: the CSV
 # profile refuses every NA spelling before a cell reaches here.
-type CellValue = float | str
+CellValue: TypeAlias = float | str
 '''
 
 _SOURCES["webui"] = r'''
@@ -2968,11 +2972,13 @@ an environment gap.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, NoReturn, assert_never
+from typing import Literal, NoReturn, TypeAlias, TypeVar, assert_never
 
 from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.table import CellValue
+
+_Number = TypeVar("_Number", float, int)
 
 __all__ = [
     "Aggregated",
@@ -2986,12 +2992,12 @@ __all__ = [
 # Grouped reductions, closed. Each one is a total function from a group's cells to one number,
 # which is what lets the judge reproduce it exactly; a reduction needing a parameter (quantile,
 # std's delta degrees of freedom) is not a member.
-type Reduction = Literal["sum", "mean", "min", "max"]
+Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
 
 # The dtype `pd.read_csv` infers for a column inside the admitted cell profile. There is no third
 # member: the profile refuses every NA spelling, every boolean text and every non-fixed-point token
 # before a cell reaches here, so a selected value column is one of these two.
-type ColumnDtype = Literal["int64", "float64"]
+ColumnDtype: TypeAlias = Literal["int64", "float64"]
 
 # `mean` is the one reduction that does not retain an integer dtype: pandas produces float64 for it,
 # which is also why the renderer's integer bound never binds an integer mean.
@@ -3044,7 +3050,7 @@ def kahan_sum(values: Sequence[float]) -> float:
     return total
 
 
-def _extremum[T: (float, int)](values: tuple[T, ...], *, greater: bool) -> T:
+def _extremum(values: tuple[_Number, ...], *, greater: bool) -> _Number:
     """Strict `<`/`>`, so a tie keeps the FIRST value's bits -- `[-0.0, +0.0]` reduces to `-0.0`."""
     best = values[0]
     for value in values[1:]:
@@ -3284,7 +3290,7 @@ Each text is a short cause, plus a fix where one is known, because Open WebUI cl
 to one line.
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.figure.reasons import FigureReason
 
@@ -3307,7 +3313,7 @@ OutletCause = Literal[
     "verifier_error",
 ]
 
-type Reason = FigureReason | OutletCause
+Reason: TypeAlias = FigureReason | OutletCause
 
 # reason -> (English, Japanese).
 REASONS: Final[dict[Reason, tuple[str, str]]] = {
@@ -3685,14 +3691,14 @@ the share of a zero total, is no candidate (None).
 import itertools
 import math
 from collections.abc import Callable, Iterator, Sequence
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.pysrc.aggregate import kahan_sum
 
-type Transform = Literal[
+Transform: TypeAlias = Literal[
     "square", "cumsum", "diff", "share", "percent", "ratio", "difference", "product", "total"
 ]
-type Values = tuple[float | None, ...]
+Values: TypeAlias = tuple[float | None, ...]
 
 # Canonical order: the published reading when several computations explain the same columns.
 ORDER: Final[tuple[Transform, ...]] = (
@@ -3930,7 +3936,7 @@ does not name blocks, marking the line that created it. Each judged axes becomes
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final, Literal, cast
+from typing import Final, Literal, TypeAlias, cast
 
 from verifier.figure.description import (
     Artist,
@@ -3947,8 +3953,8 @@ from verifier.figure.description import (
 from verifier.figure.reasons import block
 from verifier.figure.ticks import mismatched_tick
 
-type Family = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
-type _Kind = Family | Literal["text"] | None
+Family: TypeAlias = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
+_Kind: TypeAlias = Family | Literal["text"] | None
 
 _RASTER: Final = frozenset({"AxesImage", "QuadMesh", "FigureImage", "PcolorImage"})
 _LINES: Final = frozenset({"Axes.plot", "Axes.step"})
@@ -4197,7 +4203,7 @@ import csv
 import io
 import math
 import re
-from typing import Literal, NoReturn
+from typing import Literal, NoReturn, TypeAlias
 
 from verifier.pysrc.aggregate import column_dtype
 from verifier.pysrc.budget import WorkBudget
@@ -4243,8 +4249,8 @@ _INT32_MAX = 2**31 - 1
 _MAX_SIGNIFICANT_DIGITS = 15
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _BOOLEAN_TEXT = frozenset({"true", "false"})
-type _ColumnClass = Literal["numeric", "categorical", "mixed"]
-type _RawTable = tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]
+_ColumnClass: TypeAlias = Literal["numeric", "categorical", "mixed"]
+_RawTable: TypeAlias = tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]
 
 
 def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:
@@ -4404,14 +4410,14 @@ raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
 import html
 import re
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.inert import visible
 from webui.paste_in.reasons import REASONS, Reason
 
 Check = Literal["program", "run", "figure", "parts", "axes", "marks", "values", "columns", "attach"]
-type _State = Literal["pass", "fail", "skip"]
+_State: TypeAlias = Literal["pass", "fail", "skip"]
 
 CHECKS: Final[tuple[Check, ...]] = (
     "program",
@@ -4929,7 +4935,7 @@ Shared by the axes, mark, legend and value stages, so every stage reads one mark
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from verifier.figure.description import (
     Axes,
@@ -4943,8 +4949,10 @@ from verifier.figure.description import (
 )
 from verifier.figure.parts import Mark, Panel
 
-type Coordinate = tuple[int, float, int | None]  # (dimension 0 = x / 1 = y, value, artist line)
-type RGB = tuple[float, float, float]
+Coordinate: TypeAlias = tuple[
+    int, float, int | None
+]  # (dimension 0 = x / 1 = y, value, artist line)
+RGB: TypeAlias = tuple[float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -5043,7 +5051,7 @@ def coordinates(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
             yield 1, y, artist.site
 
 
-type Edges = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
+Edges: TypeAlias = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
 
 
 def band_edges(axes: Axes, panel: Panel) -> dict[int, Edges]:
@@ -5198,12 +5206,12 @@ argument's caller, a value a call changes) or stop at its work budget, and decid
 import ast
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, TypeAlias
 
 from verifier.figure.description import Axes, Description, Text, TextGeometry
 from webui.paste_in.checks import Check
 
-type Lines = tuple[tuple[Check, frozenset[int]], ...]
+Lines: TypeAlias = tuple[tuple[Check, frozenset[int]], ...]
 
 # The listing's own scan bound: a longer program keeps its recorded lines as they are.
 _PARSE = 65_536
@@ -5800,13 +5808,14 @@ pies and reference marks may stay unnamed.
 """
 
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from verifier.figure.description import Legend, LegendEntry
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import RGB, color, label, series_marks
 
-type Names = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
+Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
 
 
 @dataclass(frozen=True, slots=True)
@@ -5818,7 +5827,9 @@ class Legends:
     encodings: frozenset[tuple[int, int, str]] = frozenset()
 
 
-type _Candidate = tuple[int, Mark, str, RGB | None]  # (panel position, mark, own label, colour)
+_Candidate: TypeAlias = tuple[
+    int, Mark, str, RGB | None
+]  # (panel position, mark, own label, colour)
 
 
 def _candidates(panels: tuple[Panel, ...], positions: list[int]) -> list[_Candidate]:
@@ -5927,7 +5938,7 @@ Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_fin
 
 import itertools
 import math
-from typing import Final, cast
+from typing import Final, TypeVar, cast
 
 from verifier.figure.description import (
     Axes,
@@ -5944,6 +5955,8 @@ from verifier.figure.description import (
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import Bar, band_edges, bars, coordinates
+
+_T = TypeVar("_T")
 
 _TOLERANCE: Final = 1e-9
 # matplotlib computes wedge angles in float32 (`np.asarray(x, np.float32)` in `Axes.pie`).
@@ -5973,7 +5986,7 @@ def _clear(rgba: tuple[float, ...] | None) -> bool:
     return rgba is None or rgba[3] == 0.0
 
 
-def _cycled[T](values: tuple[T, ...], index: int) -> T | None:
+def _cycled(values: tuple[_T, ...], index: int) -> _T | None:
     """matplotlib cycles a collection's per-point properties over its points."""
     return values[index % len(values)] if values else None
 
@@ -6209,7 +6222,7 @@ carries its base edge, since its value = the far edge the stack computed as base
 """
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypeAlias, cast
 
 from verifier.figure.axes_rules import value_on_x
 from verifier.figure.description import (
@@ -6225,8 +6238,8 @@ from verifier.figure.legends import Names
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.shapes import band_edges, bars
 
-type Shape = Literal["keyed", "values", "reference"]
-type Channel = Literal["value", "colors", "sizes"]
+Shape: TypeAlias = Literal["keyed", "values", "reference"]
+Channel: TypeAlias = Literal["value", "colors", "sizes"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -6397,7 +6410,7 @@ from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Final, Literal, cast
+from typing import Final, Literal, TypeAlias, cast
 
 from verifier.figure import computed
 from verifier.figure.anchoring import Aliases, AmbiguousTermError, anchors
@@ -6412,8 +6425,8 @@ from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError
 from verifier.pysrc.table import CellValue
 
-type Family = Literal["raw", "index", "sum", "mean", "min", "max", "count"]
-type Canon = tuple[str, object]
+Family: TypeAlias = Literal["raw", "index", "sum", "mean", "min", "max", "count"]
+Canon: TypeAlias = tuple[str, object]
 
 _PREFERENCE: Final[tuple[Family, ...]] = ("raw", "index", "sum", "mean", "min", "max", "count")
 _REDUCTIONS: Final[tuple[Reduction, ...]] = ("sum", "mean", "min", "max")
@@ -6850,7 +6863,7 @@ def _kept(values: Sequence[float | None]) -> list[int]:
     return [at for at, value in enumerate(values) if value is not None]
 
 
-type _Memo = dict[tuple[float, ...], list[tuple[Transform, Values]]]
+_Memo: TypeAlias = dict[tuple[float, ...], list[tuple[Transform, Values]]]
 
 
 def _unary_of(
@@ -7922,7 +7935,7 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import TAG, Description, parse_description
@@ -7947,7 +7960,7 @@ from webui.paste_in.receipt import read_receipt
 from webui.paste_in.sandbox import wrapper_code
 from webui.paste_in.templates import PRODUCTION_TEMPLATES, Templates
 
-type _Emit = Callable[[dict[str, object]], Awaitable[object]]
+_Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"

@@ -7,7 +7,7 @@ Shared by the axes, mark, legend and value stages, so every stage reads one mark
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from verifier.figure.description import (
     Axes,
@@ -21,8 +21,10 @@ from verifier.figure.description import (
 )
 from verifier.figure.parts import Mark, Panel
 
-type Coordinate = tuple[int, float, int | None]  # (dimension 0 = x / 1 = y, value, artist line)
-type RGB = tuple[float, float, float]
+Coordinate: TypeAlias = tuple[
+    int, float, int | None
+]  # (dimension 0 = x / 1 = y, value, artist line)
+RGB: TypeAlias = tuple[float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +123,7 @@ def coordinates(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
             yield 1, y, artist.site
 
 
-type Edges = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
+Edges: TypeAlias = tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]  # x, base, far
 
 
 def band_edges(axes: Axes, panel: Panel) -> dict[int, Edges]:

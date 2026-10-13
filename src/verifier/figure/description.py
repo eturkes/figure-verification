@@ -11,7 +11,9 @@ import json
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, TypeAlias, TypeVar
+
+_T = TypeVar("_T")
 
 TAG: Final = "FIGURE_VERIFICATION_DESCRIPTION:"
 VERSION: Final = "figure-description/1"
@@ -23,8 +25,8 @@ _TRANSFORMS: Final = frozenset({"data", "axes", "xaxis", "yaxis", "figure", "oth
 _ORIENTATIONS: Final = frozenset({"vertical", "horizontal"})
 _ELEMENT_PROPS: Final = frozenset({"sizes", "colors"})
 
-type Color = tuple[float, float, float, float]
-type Pair = tuple[float, float]
+Color: TypeAlias = tuple[float, float, float, float]
+Pair: TypeAlias = tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +129,7 @@ class NoGeometry:
     """An artist class the reader does not measure; the judge refuses it by class."""
 
 
-type Geometry = (
+Geometry: TypeAlias = (
     LineGeometry
     | RectGeometry
     | WedgeGeometry
@@ -308,11 +310,11 @@ def _choice(value: object, allowed: frozenset[str]) -> str:
     return value
 
 
-def _optional[T](value: object, read: Callable[[object], T]) -> T | None:
+def _optional(value: object, read: Callable[[object], _T]) -> _T | None:
     return None if value is None else read(value)
 
 
-def _tuple[T](value: object, read: Callable[[object], T]) -> tuple[T, ...]:
+def _tuple(value: object, read: Callable[[object], _T]) -> tuple[_T, ...]:
     return tuple(read(item) for item in _list(value))
 
 

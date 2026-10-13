@@ -18,7 +18,7 @@ import csv
 import io
 import math
 import re
-from typing import Literal, NoReturn
+from typing import Literal, NoReturn, TypeAlias
 
 from verifier.pysrc.aggregate import column_dtype
 from verifier.pysrc.budget import WorkBudget
@@ -64,8 +64,8 @@ _INT32_MAX = 2**31 - 1
 _MAX_SIGNIFICANT_DIGITS = 15
 _NUMBER = re.compile(r"-?(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?")
 _BOOLEAN_TEXT = frozenset({"true", "false"})
-type _ColumnClass = Literal["numeric", "categorical", "mixed"]
-type _RawTable = tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]
+_ColumnClass: TypeAlias = Literal["numeric", "categorical", "mixed"]
+_RawTable: TypeAlias = tuple[tuple[str, ...], tuple[tuple[str, ...], ...]]
 
 
 def _refuse(code: RefusalCode, cause: BaseException | None = None) -> NoReturn:

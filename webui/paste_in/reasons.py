@@ -7,7 +7,7 @@ Each text is a short cause, plus a fix where one is known, because Open WebUI cl
 to one line.
 """
 
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.figure.reasons import FigureReason
 
@@ -30,7 +30,7 @@ OutletCause = Literal[
     "verifier_error",
 ]
 
-type Reason = FigureReason | OutletCause
+Reason: TypeAlias = FigureReason | OutletCause
 
 # reason -> (English, Japanese).
 REASONS: Final[dict[Reason, tuple[str, str]]] = {

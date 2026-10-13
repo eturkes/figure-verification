@@ -53,6 +53,20 @@ audit_locks() {
     return 0
 }
 
+# The shipped pair runs in Open WebUI's own interpreter, CPython 3.11 in the official image
+# (M21.2 F11). The bare run holds the repository at the project's 3.13; the second pass re-reads
+# the shipped sources against 3.11 syntax + stdlib, in its own cache so the two never evict.
+type_check() {
+    local bare_rc=0 shipped_rc=0
+    uv run --locked mypy || bare_rc=$?
+    uv run --locked mypy --python-version 3.11 --cache-dir .mypy_cache/py311 src/verifier webui/paste_in || shipped_rc=$?
+    printf 'shipped-sources py3.11 types rc=%d\n' "$shipped_rc"
+    if [ "$bare_rc" -ne 0 ] || [ "$shipped_rc" -ne 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
 shell_lint() {
     local files=()
     mapfile -t files < <(git ls-files '*.sh')
@@ -74,7 +88,7 @@ run_tests() {
 main() {
     stage format uv run --locked ruff format --check .
     stage lint uv run --locked ruff check .
-    stage types uv run --locked mypy
+    stage types type_check
     stage tests run_tests
     stage audit audit_locks
     stage secrets secret_scan

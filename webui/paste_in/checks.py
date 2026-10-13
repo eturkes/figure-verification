@@ -18,14 +18,14 @@ raises it, in the judge's stage order (`.claude/rules/figure.md` § Checks).
 import html
 import re
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.inert import visible
 from webui.paste_in.reasons import REASONS, Reason
 
 Check = Literal["program", "run", "figure", "parts", "axes", "marks", "values", "columns", "attach"]
-type _State = Literal["pass", "fail", "skip"]
+_State: TypeAlias = Literal["pass", "fail", "skip"]
 
 CHECKS: Final[tuple[Check, ...]] = (
     "program",

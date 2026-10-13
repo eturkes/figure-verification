@@ -7,12 +7,12 @@ the drawn values, and G10 reads labels, with this one matcher. Stdlib only.
 
 import re
 import unicodedata
-from typing import Literal
+from typing import Literal, TypeAlias
 
 # The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
-type Aliases = tuple[tuple[str, str], ...]
-type Anchoring = Literal["strict", "substitution"]  # production | demo (Q37)
-type Reduction = Literal["sum", "mean", "min", "max"]
+Aliases: TypeAlias = tuple[tuple[str, str], ...]
+Anchoring: TypeAlias = Literal["strict", "substitution"]  # production | demo (Q37)
+Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
 
 __all__ = [
     "SUMMARY_WORDS",

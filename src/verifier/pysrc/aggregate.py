@@ -25,11 +25,13 @@ an environment gap.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, NoReturn, assert_never
+from typing import Literal, NoReturn, TypeAlias, TypeVar, assert_never
 
 from verifier.pysrc.budget import WorkBudget
 from verifier.pysrc.errors import PysrcRefusalError, RefusalCode
 from verifier.pysrc.table import CellValue
+
+_Number = TypeVar("_Number", float, int)
 
 __all__ = [
     "Aggregated",
@@ -43,12 +45,12 @@ __all__ = [
 # Grouped reductions, closed. Each one is a total function from a group's cells to one number,
 # which is what lets the judge reproduce it exactly; a reduction needing a parameter (quantile,
 # std's delta degrees of freedom) is not a member.
-type Reduction = Literal["sum", "mean", "min", "max"]
+Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
 
 # The dtype `pd.read_csv` infers for a column inside the admitted cell profile. There is no third
 # member: the profile refuses every NA spelling, every boolean text and every non-fixed-point token
 # before a cell reaches here, so a selected value column is one of these two.
-type ColumnDtype = Literal["int64", "float64"]
+ColumnDtype: TypeAlias = Literal["int64", "float64"]
 
 # `mean` is the one reduction that does not retain an integer dtype: pandas produces float64 for it,
 # which is also why the renderer's integer bound never binds an integer mean.
@@ -101,7 +103,7 @@ def kahan_sum(values: Sequence[float]) -> float:
     return total
 
 
-def _extremum[T: (float, int)](values: tuple[T, ...], *, greater: bool) -> T:
+def _extremum(values: tuple[_Number, ...], *, greater: bool) -> _Number:
     """Strict `<`/`>`, so a tie keeps the FIRST value's bits -- `[-0.0, +0.0]` reduces to `-0.0`."""
     best = values[0]
     for value in values[1:]:

@@ -8,7 +8,7 @@ does not name blocks, marking the line that created it. Each judged axes becomes
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final, Literal, cast
+from typing import Final, Literal, TypeAlias, cast
 
 from verifier.figure.description import (
     Artist,
@@ -25,8 +25,8 @@ from verifier.figure.description import (
 from verifier.figure.reasons import block
 from verifier.figure.ticks import mismatched_tick
 
-type Family = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
-type _Kind = Family | Literal["text"] | None
+Family: TypeAlias = Literal["line", "scatter", "bar", "hist", "pie", "band", "reference"]
+_Kind: TypeAlias = Family | Literal["text"] | None
 
 _RASTER: Final = frozenset({"AxesImage", "QuadMesh", "FigureImage", "PcolorImage"})
 _LINES: Final = frozenset({"Axes.plot", "Axes.step"})

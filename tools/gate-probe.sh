@@ -6,12 +6,12 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G15, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G16, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
-# whose output names the expected cause: attribution rides the message, since eight tests carry
-# more than one probe -- G6, G7, G10 and S9 two each, S3 three, S4 five, S6 five, S8 five -- one
+# whose output names the expected cause: attribution rides the message, since nine tests carry
+# more than one probe -- G6, G7, G10 and S9 two each, S3 + G16 three, S4 five, S6 five, S8 five -- one
 # per conjunct of a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -38,7 +38,8 @@ DEFERRED=.agent/deferred.md
 REVIEW=.agent/review.md
 ARTIFACT=paste-in/figure_verification_tool.py
 SPDX_PROBE=tools/mutate.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE")
+PYPROJECT=pyproject.toml
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -269,6 +270,18 @@ probe g14-spdx-header tests/test_gate.py::test_g14_tracked_sources_carry_spdx_he
 probe g15-probe-node tests/test_gate.py::test_g15_every_probe_node_names_a_test \
     'test_gate.py::test_g11_ops_rules_record_the_gate_invocation' \
     plant_stale_probe_node
+
+probe g16-ruff-floor tests/test_gate.py::test_g16_shipped_sources_are_checked_at_the_image_python \
+    'ruff floor drifted' \
+    sed -i '/^"webui\/paste_in\/\*\*" = "py311"$/d' "$PYPROJECT"
+
+probe g16-mypy-floor tests/test_gate.py::test_g16_shipped_sources_are_checked_at_the_image_python \
+    '3.11 mypy pass missing' \
+    sed -i '/--python-version 3.11/d' "$GATE"
+
+probe g16-bare-mypy tests/test_gate.py::test_g16_shipped_sources_are_checked_at_the_image_python \
+    'bare mypy run missing' \
+    sed -i 's/^    uv run --locked mypy || bare_rc/    uv run --locked mypy src || bare_rc/' "$GATE"
 
 probe g7-ecosystem tests/test_gate.py::test_g7_dependabot_covers_every_lock_and_cools_down \
     'assert covered == {' \

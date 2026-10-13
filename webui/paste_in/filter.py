@@ -17,7 +17,7 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import TAG, Description, parse_description
@@ -42,7 +42,7 @@ from webui.paste_in.receipt import read_receipt
 from webui.paste_in.sandbox import wrapper_code
 from webui.paste_in.templates import PRODUCTION_TEMPLATES, Templates
 
-type _Emit = Callable[[dict[str, object]], Awaitable[object]]
+_Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"

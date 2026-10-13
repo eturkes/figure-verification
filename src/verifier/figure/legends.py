@@ -9,13 +9,14 @@ pies and reference marks may stay unnamed.
 """
 
 from dataclasses import dataclass, field
+from typing import TypeAlias
 
 from verifier.figure.description import Legend, LegendEntry
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import RGB, color, label, series_marks
 
-type Names = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
+Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +28,9 @@ class Legends:
     encodings: frozenset[tuple[int, int, str]] = frozenset()
 
 
-type _Candidate = tuple[int, Mark, str, RGB | None]  # (panel position, mark, own label, colour)
+_Candidate: TypeAlias = tuple[
+    int, Mark, str, RGB | None
+]  # (panel position, mark, own label, colour)
 
 
 def _candidates(panels: tuple[Panel, ...], positions: list[int]) -> list[_Candidate]:

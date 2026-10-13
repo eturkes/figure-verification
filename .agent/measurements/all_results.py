@@ -380,6 +380,10 @@ def c1():
     }
 
 
+def image():
+    return fields(load("image-0113.json"), "image", "python", "imports", "verdicts")
+
+
 PROJECTORS = {
     "S6": s6,
     "T3": t3,
@@ -398,6 +402,7 @@ PROJECTORS = {
     "I3": i3,
     "C1": c1,
     "X1": x1,
+    "Image": image,
 }
 
 if __name__ == "__main__":

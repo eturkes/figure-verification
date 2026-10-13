@@ -1,0 +1,28 @@
+{
+  "image": "ghcr.io/open-webui/open-webui:v0.11.3",
+  "imports": {
+    "demo/filter": "ok",
+    "demo/tool": "ok",
+    "production/filter": "ok",
+    "production/tool": "ok"
+  },
+  "python": "3.11.16",
+  "verdicts": {
+    "demo": {
+      "ja-clinic-misleading": "axis_inverted",
+      "ja-clinic-simple": "pass",
+      "ja-misleading": "zero_not_in_limits",
+      "ja-simple": "pass",
+      "misleading": "zero_not_in_limits",
+      "simple": "pass"
+    },
+    "production": {
+      "ja-clinic-misleading": "axis_inverted",
+      "ja-clinic-simple": "pass",
+      "ja-misleading": "zero_not_in_limits",
+      "ja-simple": "pass",
+      "misleading": "zero_not_in_limits",
+      "simple": "pass"
+    }
+  }
+}

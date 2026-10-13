@@ -14,14 +14,14 @@ the share of a zero total, is no candidate (None).
 import itertools
 import math
 from collections.abc import Callable, Iterator, Sequence
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 
 from verifier.pysrc.aggregate import kahan_sum
 
-type Transform = Literal[
+Transform: TypeAlias = Literal[
     "square", "cumsum", "diff", "share", "percent", "ratio", "difference", "product", "total"
 ]
-type Values = tuple[float | None, ...]
+Values: TypeAlias = tuple[float | None, ...]
 
 # Canonical order: the published reading when several computations explain the same columns.
 ORDER: Final[tuple[Transform, ...]] = (

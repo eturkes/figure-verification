@@ -49,7 +49,10 @@ IDS = (
     "I3",
     "C1",
     "X1",
+    "Image",
 )
+# M21.2 F11: the official image the shipped pair targets (podman, network off).
+IMAGE = "ghcr.io/open-webui/open-webui:v0.11.3"
 # Host-only ids whose script name is not `<id lower>.py` and takes no pandas pin.
 HOST_ONLY = {
     "I2": "i2_ambiguity.py",
@@ -332,6 +335,8 @@ class Replay:
             host, node, result = BUNDLE_PAIRS[name]
             self.run(f"{name}-host", self.python(host))
             self.run(name, ["node", str(ROOT / node), "owui", result])
+        elif name == "Image":
+            self.run(name, self.python("image_import.py", IMAGE, ROOT / "image-0113.json"))
         elif name in HOST_ONLY:
             self.run(name, self.python(HOST_ONLY[name]))
         else:
