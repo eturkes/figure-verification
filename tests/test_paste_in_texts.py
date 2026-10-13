@@ -54,7 +54,7 @@ def test_explanations_obey_the_law(check: str) -> None:
 
 def test_ui_words_obey_the_law() -> None:
     names = ("SHOW", "HIDE", "WHAT", "CODE", "RELATED", "RAN", "NO_LINES", "WHY", "NOT_RUN")
-    for name in (*names, "DREW", "SPEC", "BEYOND"):
+    for name in (*names, "DREW", "SPEC", "BEYOND", "ELIDED"):
         for language, text in enumerate(getattr(checks, name)):
             _law(text, japanese=bool(language), kana=name != "CODE")
     for _glyph, labels in checks.MARKS.values():
