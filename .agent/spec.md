@@ -46,7 +46,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-- [ ] Q51 CodeQL bad-tag-filter: script-tag oracle case-insensitive
+- [ ] Q51 CodeQL bad-tag-filter: oracle fixed; owed: `main` CodeQL closing alert 1 (user push)
 - [ ] Q52 Dependabot alerts: a repository setting the user owns
 - [ ] Q53 stack mutation tool
 - [ ] Q54 queue count in `Tasks`

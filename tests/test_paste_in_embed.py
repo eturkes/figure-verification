@@ -41,9 +41,14 @@ def test_every_document_carries_the_reporter_alone_and_no_trigger(
             _PROGRAM, 3, tuple((check, frozenset({1, 2, 3})) for check in checks.CHECKS)
         ),
     )
-    scripts = re.findall(r"<script>(.*?)</script>", source, flags=re.DOTALL)
+    # HTML tag names are case-insensitive and an end tag may carry text before its `>`, so an
+    # exact `<script>` match would let `<SCRIPT>` past the one-reporter pin (CodeQL
+    # py/bad-tag-filter).
+    scripts = re.findall(
+        r"<script\b[^>]*>(.*?)</script\b[^>]*>", source, flags=re.DOTALL | re.IGNORECASE
+    )
     assert scripts == [_HEIGHT_REPORTER]
-    assert source.count("<script") == 1
+    assert len(re.findall("<script", source, flags=re.IGNORECASE)) == 1
     outside_link = re.sub(r'<a class="spec" href="[^"]*"', "", source)
     assert not re.search(r"\bsrc\s*=|url\s*\(|@import|https?:", outside_link, flags=re.IGNORECASE)
     assert not any(trigger in source for trigger in _TRIGGERS)
