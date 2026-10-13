@@ -41,13 +41,30 @@ secret_scan() {
     uv run --locked detect-secrets-hook --baseline .secrets.baseline "${files[@]}"
 }
 
+# Demo Open WebUI residuals, ignored only while no fix exists (a release with a fix turns the stage
+# red). Chroma: the four cover its HTTP server's endpoints + RBAC provider; with CHROMA_HTTP_HOST
+# unset Open WebUI runs the embedded PersistentClient and no Chroma server listens. NLTK: the
+# model-artifact APIs open caller-supplied paths; no Open WebUI source imports nltk.
+WEBUI_RESIDUALS=(
+    GHSA-f4j7-r4q5-qw2c # chromadb: pre-auth code injection, collections endpoint
+    GHSA-36p7-vc44-83pf # chromadb: code injection, collection update endpoint
+    GHSA-xph7-9rjv-w5fr # chromadb: SimpleRBACAuthorizationProvider ignores the scope
+    GHSA-2wm9-hf6c-p5cr # chromadb: server authorization missing per tenant
+    GHSA-8mgp-746c-j5xp # nltk: model-artifact APIs open caller paths
+)
+
 audit_locks() {
-    local root_rc=0 runtime_rc=0
+    local root_rc=0 runtime_rc=0 webui_rc=0 ignores=() id
+    for id in "${WEBUI_RESIDUALS[@]}"; do
+        ignores+=(--ignore-until-fixed "$id")
+    done
     uv audit --preview-features audit-command || root_rc=$?
     printf 'root-lock audit rc=%d\n' "$root_rc"
     uv audit --preview-features audit-command --locked --project model_backend/runtime || runtime_rc=$?
     printf 'model_backend/runtime audit rc=%d\n' "$runtime_rc"
-    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ]; then
+    uv audit --preview-features audit-command --locked --project webui/runtime "${ignores[@]}" || webui_rc=$?
+    printf 'webui/runtime audit rc=%d\n' "$webui_rc"
+    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ] || [ "$webui_rc" -ne 0 ]; then
         return 1
     fi
     return 0

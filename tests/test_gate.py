@@ -36,6 +36,7 @@ _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _DEPENDABOT = _REPO_ROOT / ".github" / "dependabot.yml"
 _OPS_RULES = _REPO_ROOT / ".claude" / "rules" / "ops.md"
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
+_WEBUI_RUNTIME = _REPO_ROOT / "webui" / "runtime" / "pyproject.toml"
 
 # The shipped pair runs inside Open WebUI's interpreter: CPython 3.11 in the official image.
 _SHIPPED_GLOBS = ("src/verifier/**", "webui/paste_in/**", "paste-in/**", "webui/demo-paste-in/**")
@@ -117,8 +118,8 @@ def test_g6_gate_script_runs_every_expected_stage() -> None:
 
 
 def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
-    """G7: update automation spans both uv projects plus the actions themselves, each behind a
-    cooldown. Acceptance: a removed ecosystem or a dropped cooldown fails."""
+    """G7: update automation spans the three uv projects plus the actions themselves, each behind
+    a cooldown. Acceptance: a removed ecosystem or a dropped cooldown fails."""
     config = _load_yaml(_DEPENDABOT)
     assert config["version"] == 2
     updates = cast(list[dict[str, Any]], config["updates"])
@@ -126,6 +127,7 @@ def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
     assert covered == {
         ("uv", "/"),
         ("uv", "/model_backend/runtime"),
+        ("uv", "/webui/runtime"),
         ("github-actions", "/"),
     }
     for update in updates:
@@ -313,9 +315,12 @@ def test_g14_tracked_sources_carry_spdx_header() -> None:
 
 
 def test_g16_shipped_sources_are_checked_at_the_image_python() -> None:
-    """G16: ruff reads every shipped glob as py311 and the `types` stage keeps the bare mypy run
-    plus one 3.11 pass over the shipped packages. Acceptance: a dropped glob, a dropped 3.11 pass
-    or a narrowed bare run each fails, naming which."""
+    """G16: ruff reads every shipped glob as py311, the `types` stage keeps the bare mypy run plus
+    one 3.11 pass over the shipped packages, and the demo's Open WebUI runs on 3.11 too.
+    Acceptance: a dropped glob, a dropped 3.11 pass, a narrowed bare run or another demo
+    interpreter line each fails, naming which."""
+    demo = tomllib.loads(_WEBUI_RUNTIME.read_text(encoding="utf-8"))["project"]["requires-python"]
+    assert demo == "==3.11.*", f"demo interpreter drifted: {demo}"
     config = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
     targets = cast(dict[str, str], config["tool"]["ruff"].get("per-file-target-version", {}))
     floors = {glob: targets.get(glob) for glob in _SHIPPED_GLOBS}

@@ -91,6 +91,8 @@ def owui_driver_output(driver: str, tmp_path: Path, marker: str) -> str:
     (tmp_path / artifact.name).write_bytes(artifact.read_bytes())
     driver_path = tmp_path / "owui_driver.py"
     driver_path.write_text(textwrap.dedent(driver), encoding="utf-8")
+    # Open WebUI 0.11 opens its SQLite file at import without creating the directory first.
+    (tmp_path / "data").mkdir()
     env = os.environ.copy()
     env.update(
         {

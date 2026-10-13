@@ -24,6 +24,15 @@ updates:
     cooldown:
       default-days: 7
 
+  # The demo's Open WebUI is a third py3.11 project with its own lock (M21.2); its overrides pin
+  # the fixing release of every advisory the upstream pins carry.
+  - package-ecosystem: "uv"
+    directory: "/webui/runtime"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

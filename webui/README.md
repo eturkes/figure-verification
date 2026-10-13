@@ -39,13 +39,16 @@ From the repository root, run:
 
 ```sh
 uv sync --locked
-uv venv --python 3.12 .venv-webui
-uv pip install --python .venv-webui/bin/python 'open-webui==0.10.2'
+UV_PROJECT_ENVIRONMENT="$PWD/.venv-webui" uv sync --locked --project webui/runtime
 ```
 
-Open WebUI 0.10.2 refuses the project's Python 3.13 line. For this reason, the ignored
-`.venv-webui/` is a separate Python 3.12 environment. The harness executes the Open WebUI binary.
-It never imports Open WebUI into the verifier environment.
+The second command installs Open WebUI 0.11.3 from the committed lock `webui/runtime/uv.lock`. Open
+WebUI refuses the project's Python 3.13 line. For this reason, the ignored `.venv-webui/` is a
+separate Python 3.11 environment. Python 3.11 is the interpreter of the official Open WebUI image,
+so the demo runs the paste-in files under the same interpreter as production. The lock raises each
+dependency that has a published advisory to its first fixed release. The gate audits this lock, and
+Dependabot updates it. The harness executes the Open WebUI binary. It never imports Open WebUI into
+the verifier environment.
 
 ## One-command interactive instance
 
