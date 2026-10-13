@@ -14,9 +14,12 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
+# Every English doc `.claude/rules/human-facing.md` binds to ASD-STE100.
 _READMES = (
     "README.md",
     "webui/README.md",
+    "model_backend/runtime/README.md",
+    "docs/admin/README.md",
     "docs/verification.md",
 )
 _FENCE = re.compile(r"^\s*```")
