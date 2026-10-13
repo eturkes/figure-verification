@@ -11,8 +11,8 @@
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
 # whose output names the expected cause: attribution rides the message, since eight tests carry
-# more than one probe -- G6, G7, G10, S3 and S9 two each, S4 three, S6 five, S8 five -- one per conjunct of
-# a compound guard, per detection path, or per widened surface. Targets are
+# more than one probe -- G6, G7, G10 and S9 two each, S3 three, S4 five, S6 five, S8 five -- one
+# per conjunct of a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
 #
@@ -182,6 +182,25 @@ plant_dangling_live_law_pointer() {
     printf '\n- Probe: %s.claude/rules/absent.md%s\n' "$bt" "$bt" >>"$REVIEW"
 }
 
+plant_row_closed_past_its_entry() {
+    printf '%s\n' '- Planted row with no closing check.' '' 'Accept: a paragraph after the row.' \
+        >>"$DEFERRED"
+}
+
+plant_dangling_queue_pointer() {
+    local bt
+    bt="$(printf '\140')"
+    printf '%s\n' '- Probe row. Accept: none.' \
+        "- Probe row naming ${bt}.agent/archive/absent.md${bt}. Accept: none." >>"$DEFERRED"
+}
+
+plant_pointer_after_stray_backtick() {
+    local bt
+    bt="$(printf '\140')"
+    printf '%s\n' "- Probe row with a stray ${bt} opener," \
+        "  then ${bt}.agent/archive/absent.md${bt}. Accept: none." >>"$DEFERRED"
+}
+
 plant_stranded_contract_citation() {
     # Path assembled at run time: S7 scans every tracked file, this script included, so a literal
     # would strand permanently and fail the check it exists to fire. Planted unquoted -- a
@@ -308,6 +327,12 @@ probe s3-row-shape tests/test_spec.py::test_s3_every_deferral_carries_an_accepta
     'deferral list items that are not' \
     sed -i "\$a * Planted row. Accept: a bullet S3 never reads." "$DEFERRED"
 
+# A row = one entry, so its `Accept:` may wrap onto the lines under it; a blank line ends the
+# entry, else any later paragraph would close the row above it.
+probe s3-blank-line-ends-row tests/test_spec.py::test_s3_every_deferral_carries_an_acceptance_check \
+    'deferral rows with no acceptance check' \
+    plant_row_closed_past_its_entry
+
 probe s4-dangling-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
     'spec.md: .claude/rules/absent.md' \
     sed -i 's|\.claude/rules/ops\.md|.claude/rules/absent.md|' "$SPEC"
@@ -323,6 +348,18 @@ probe s4-live-law-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archi
 probe s4-rules-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
     'owui.md: .agent/archive/absent.md' \
     plant_dangling_rules_pointer
+
+# The queue half, read one row = one entry: a row's `Accept:` clause runs to that entry's end,
+# never into the next row.
+probe s4-queue-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'deferred.md: .agent/archive/absent.md' \
+    plant_dangling_queue_pointer
+
+# Each line of a row pairs its own backticks: joined, a stray one on the row's first line would
+# pair with the next line's pointer and hide it.
+probe s4-queue-line-scan tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'deferred.md: .agent/archive/absent.md' \
+    plant_pointer_after_stray_backtick
 
 probe s5-unarchived-contract tests/test_spec.py::test_s5_every_closed_unit_has_its_contract_archived \
     'm99u9z.md absent from .agent/archive/contracts/' \

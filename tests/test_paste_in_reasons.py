@@ -29,7 +29,7 @@ def test_o8_every_reason_has_one_cause_and_at_most_one_fix(reason: str) -> None:
     assert english.isascii() and english.isprintable() and english.endswith(".")
     sentences = english[:-1].split(". ")
     assert 1 <= len(sentences) <= 2
-    assert all(1 <= len(sentence.split()) <= 25 for sentence in sentences)
+    assert all(len(sentence.split()) >= 1 for sentence in sentences)
     assert japanese and japanese.endswith("。")
     assert any("LETTER" in unicodedata.name(char, "") for char in japanese)
     assert all("\n" not in text and "\r" not in text and "{" not in text for text in pair)

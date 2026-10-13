@@ -11,7 +11,8 @@ its scope (S9). `Phase` holds that state alone, so S5 and S6 read its history fr
 file a check binds: the closed-unit record `.agent/archive/phase.md`.
 
 The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
-those paths stay absent by design until the row closes.
+those paths stay absent by design until the row closes. A queue row is one entry, so its clause
+runs to the end of that entry.
 
 S4 and S7 sweep past `spec.md` itself, each as far as its question stays decidable. S4 adds the
 queue, the ledger and every `.claude/rules/*.md`, which carry pointers that strand
@@ -161,6 +162,26 @@ def _section(name: str) -> str:
     return body.group(1)
 
 
+def _queue_units(lines: list[str]) -> Iterator[str]:
+    """The queue's text, in order: each row = ONE entry (`CLAUDE.md` `Session flow`: one entry +
+    acceptance check each) -- its `- ` line + the lines under it up to a blank line or the next
+    list item, joined so its `Accept:` may wrap -- and every other line alone. A nested list item
+    ends the entry instead of joining it: folded in, a planted row would borrow its parent's
+    `Accept:`."""
+    entry: list[str] = []
+    for line in lines:
+        if entry and line.strip() and not _LIST_ITEM.match(line):
+            entry.append(line)
+            continue
+        if entry:
+            yield "\n".join(entry)
+        entry = [line] if line[:2] == "- " else []
+        if not entry:
+            yield line
+    if entry:
+        yield "\n".join(entry)
+
+
 def test_s1_spec_carries_the_five_sections_in_order() -> None:
     """S1: the attached state keeps its five sections, in order. Acceptance: a renamed, dropped
     or reordered `## ` heading fails -- a reader orienting from spec.md navigates by them."""
@@ -180,11 +201,13 @@ def test_s2_every_artifacts_path_is_tracked() -> None:
 
 def test_s3_every_deferral_carries_an_acceptance_check() -> None:
     """S3: each queue row states what would close it. Acceptance: a row with no `Accept:` fails
-    -- an acceptance check written later is written without the evidence that motivated it. An
-    empty queue passes (a queue request's close can fund every row); every list item must then be a
-    `- ` row, since a row in another bullet shape would be read as no row at all."""
+    -- an acceptance check written later is written without the evidence that motivated it. A row
+    = one entry (`_queue_units`): a clause on a wrapped line counts, one past a blank line or in
+    another row does not. An empty queue passes (a queue request's close can fund every row); every
+    list item, a nested one included, must then be a top-level `- ` row, since an item in another
+    shape would be read as no row at all."""
     lines = _DEFERRED.read_text(encoding="utf-8").splitlines()
-    rows = [line for line in lines if line[:2] == "- "]
+    rows = [unit for unit in _queue_units(lines) if unit[:2] == "- "]
     stray = [line[:60] for line in lines if _LIST_ITEM.match(line) and line[:2] != "- "]
     assert not stray, f"deferral list items that are not `- ` rows: {stray}"
     missing = [row[:60] for row in rows if "Accept:" not in row]
@@ -199,11 +222,15 @@ def test_s4_every_rules_docs_and_archive_pointer_resolves() -> None:
     tracked = _tracked()
     dangling: list[str] = []
     for path in _POINTER_SURFACE:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            live, _, _ = line.partition("Accept:")
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for unit in _queue_units(lines) if path == _DEFERRED else lines:
+            # A row's `Accept:` runs to its entry's end, yet each line pairs its own backticks:
+            # joined, a stray one on a wrapped line would hide the next line's pointer.
+            live, _, _ = unit.partition("Accept:")
             dangling += [
                 f"{path.name}: {token}"
-                for token in _path_tokens(live)
+                for line in live.splitlines()
+                for token in _path_tokens(line)
                 if token.startswith(_POINTER_ROOTS) and not _resolves(token, tracked)
             ]
     assert not dangling, f"dangling pointers: {dangling}"

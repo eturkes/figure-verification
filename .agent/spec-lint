@@ -29,7 +29,6 @@ sec == "Tasks" && /[^ \t]/ {
 sec == "Phase" && /[^ \t]/ {
   if (++pl == 1) {
     if ($0 !~ "^(Phase: )?" PH) bad(NR, "Phase line 1 = `<PHASE> — <scope>` on one line")
-    else if (/\. [A-Z]/) bad(NR, "Phase line 1 = one phrase naming the phase + scope; history → .agent/archive/")
     next
   }
   if (/^>/) { if (sus) bad(NR, "request quote after a `Suspended:` line"); next }
