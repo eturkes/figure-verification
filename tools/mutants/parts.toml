@@ -38,3 +38,17 @@ predicate = "a pie's drawn labels are keys, apart from the listed on-chart text"
 kills = "tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels"
 anchor = '''                (labels if number in keys else texts).append(text)'''
 mutant = '''                texts.append(text)'''
+
+[[mutant]]
+id = "m21-band-fill-between-class"
+predicate = "matplotlib 3.10's `FillBetweenPolyCollection` (the bundle's `fill_between`) is a judged band"
+kills = "tests/test_figure_judge.py::test_j3_bands_in_either_class"
+anchor = '''    "FillBetweenPolyCollection": _band,'''
+mutant = '''    "FillBetweenPolyCollections": _band,'''
+
+[[mutant]]
+id = "m21-band-poly-class"
+predicate = "a band drawn as a `PolyCollection` (matplotlib 3.8 + 3.9) stays a judged band"
+kills = "tests/test_figure_judge.py::test_j3_bands_in_either_class"
+anchor = '''    "PolyCollection": _band,'''
+mutant = '''    "PolyCollections": _band,'''

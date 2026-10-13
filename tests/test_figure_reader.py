@@ -65,7 +65,12 @@ def test_p1_the_outermost_axes_method_names_the_family() -> None:
     hist = _origins(_PLT + "plt.hist([1, 2, 2], bins=2)\n")
     stack = _origins(_PLT + "plt.stackplot([1, 2], [1, 2], [3, 4])\n")
     assert hist == [[("Rectangle", "Axes.hist", 2), ("Rectangle", "Axes.hist", 2)]]
-    assert stack == [[("PolyCollection", "stackplot", 2), ("PolyCollection", "stackplot", 2)]]
+    assert stack == [
+        [
+            ("FillBetweenPolyCollection", "stackplot", 2),
+            ("FillBetweenPolyCollection", "stackplot", 2),
+        ]
+    ]
 
 
 def test_p1_an_artist_the_program_builds_itself_has_no_origin() -> None:

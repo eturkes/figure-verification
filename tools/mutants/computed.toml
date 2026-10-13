@@ -187,8 +187,12 @@ anchor = '''        yield transform, frozenset(value for value in values if valu
 mutant = '''        yield transform, frozenset(values)  # type: ignore[arg-type]'''
 
 [[mutant]]
-id = "q45-pairwise-buffer"
-predicate = "a reduction sums numpy's 8192-value buffers left to right"
+id = "m21-pairwise-whole"
+predicate = "numpy 2.4 runs pairwise over the whole contiguous array, never per 8192-value buffer"
 kills = "tests/test_figure_computed.py::test_pairwise_sum_is_numpy_and_pandas_sum"
-anchor = '''_BUFFER: Final = 8192'''
-mutant = '''_BUFFER: Final = 1 << 30'''
+anchor = '''    """`np.add.reduce` over float64 (`Series.sum`, `np.sum`), bit for bit."""
+    count = len(values)'''
+mutant = '''    """`np.add.reduce` over float64 (`Series.sum`, `np.sum`), bit for bit."""
+    if len(values) > 8192:
+        return pairwise_sum(values[:8192]) + pairwise_sum(values[8192:])
+    count = len(values)'''

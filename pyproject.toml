@@ -28,10 +28,10 @@ dev = [
     "hypothesis>=6.110",
     # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
     # sandbox executes numpy. A numeric test that cannot compare against numpy pins nothing.
-    # Pinned EXACTLY to the version Pyodide 0.28.0 bundles, because the measured 1-ulp band is a
-    # statement about that pair. A bump that changes a libm result must turn the numeric tests red
-    # rather than pass quietly under a band measured on different code.
-    "numpy==2.2.5",
+    # Pinned EXACTLY to the version the Open WebUI 0.11.3 bundle (Pyodide 314.0.3) carries, because
+    # the measured 1-ulp band is a statement about that pair. A bump that changes a libm result must
+    # turn the numeric tests red rather than pass quietly under a band measured on different code.
+    "numpy==2.4.3",
     # Gate scanners, resolved from this lock so the local gate and CI cannot drift apart.
     # detect-secrets runs against a SLIM baseline (no line numbers) -- a full baseline
     # demands a rewrite on any line drift, which breaks gate idempotence on a clean tree.
@@ -42,19 +42,18 @@ dev = [
     "pyyaml>=6",
     "types-pyyaml>=6",
     # test-only (Q43): the tool's admin `Valves` is a pydantic model, which Open WebUI builds on
-    # save and on load. Pinned EXACTLY to the version Open WebUI 0.10.2 ships, so the tests run the
+    # save and on load. Pinned EXACTLY to the version Open WebUI 0.11.3 ships, so the tests run the
     # validation the admin's instance runs; the paste-in imports it from the OWUI image.
     "pydantic==2.13.4",
-    # test-only (M19): the figure reader runs inside Open WebUI's Pyodide sandbox, whose bundle
-    # ships matplotlib 3.8.4 + pandas 2.3.1. matplotlib 3.8.4 has no cp313 wheel, so the host runs
-    # the nearest cp313 build; the measured artist-tree divergence is `.claude/rules/figure.md`'s,
-    # and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
-    "matplotlib==3.9.4",
-    "pandas==2.3.1",
-    # test-only (Q44): the filter cuts the Japanese font with the fontTools Open WebUI 0.10.2 ships
-    # (through `fpdf2`); pinned EXACTLY to that version, so the tests cut as the admin's instance
-    # cuts. matplotlib needs `fonttools>=4.22`.
-    "fonttools==4.63.0",
+    # test-only (M19): the figure reader runs inside Open WebUI's Pyodide sandbox, whose 0.11.3
+    # bundle (Pyodide 314.0.3) ships matplotlib 3.10.8 + pandas 3.0.2: the host runs the same
+    # releases, and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
+    "matplotlib==3.10.8",
+    "pandas==3.0.2",
+    # test-only (Q44): the filter cuts the Japanese font with the fontTools the Open WebUI 0.11.3
+    # image ships (through `fpdf2`); pinned EXACTLY to that version, so the tests cut as the admin's
+    # instance cuts. matplotlib needs `fonttools>=4.22`.
+    "fonttools==4.64.0",
     # test-only (M21.1 F1): an independent CommonMark parser grades the interpretation's code spans,
     # since Open WebUI renders the reply as markdown with raw HTML.
     "markdown-it-py>=4",

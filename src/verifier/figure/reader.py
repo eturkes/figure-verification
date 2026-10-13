@@ -708,6 +708,7 @@ _GEOMETRY: dict[str, Callable[[Any, _Run], dict[str, Any]]] = {
     "Polygon": _polygon,
     "PathCollection": _scatter,
     "PolyCollection": _band,
+    "FillBetweenPolyCollection": _band,
     "Text": _text_geometry,
     "Annotation": _text_geometry,
 }

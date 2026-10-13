@@ -37,23 +37,15 @@ ORDER: Final[tuple[Transform, ...]] = (
 )
 UNARY: Final[tuple[Transform, ...]] = ORDER[:5]
 BINARY: Final[tuple[Transform, ...]] = ORDER[5:]
-# numpy's pairwise summation: blocks below 8 sum left to right, up to 128 through 8 accumulators;
-# a reduction reaches it one 8192-value buffer at a time, the buffers summed left to right.
+# numpy's pairwise summation: blocks below 8 sum left to right, up to 128 through 8 accumulators.
+# numpy 2.4 (the bundle's, wasm32 and host alike) runs it over the whole contiguous array; 2.2 cut
+# a reduction into 8192-value buffers summed left to right, which moves the bits past 8192 values.
 _UNROLL: Final = 8
 _BLOCK: Final = 128
-_BUFFER: Final = 8192
 
 
 def pairwise_sum(values: Sequence[float]) -> float:
     """`np.add.reduce` over float64 (`Series.sum`, `np.sum`), bit for bit."""
-    total = 0.0
-    for start in range(0, len(values), _BUFFER):
-        total += _pairwise(values[start : start + _BUFFER])
-    return total
-
-
-def _pairwise(values: Sequence[float]) -> float:
-    """numpy's `pairwise_sum` over one buffer."""
     count = len(values)
     if count < _UNROLL:
         total = 0.0
@@ -74,7 +66,7 @@ def _pairwise(values: Sequence[float]) -> float:
         return total
     half = count // 2
     half -= half % _UNROLL
-    return _pairwise(values[:half]) + _pairwise(values[half:])
+    return pairwise_sum(values[:half]) + pairwise_sum(values[half:])
 
 
 def sequential_sum(values: Sequence[float]) -> float:

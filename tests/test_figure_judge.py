@@ -144,6 +144,26 @@ def test_j3_reference_spans_in_either_shape() -> None:
     assert _judge(source + "plt.ylim(0, 2.5)\n") == Blocked("point_clipped", 4)
 
 
+def test_j3_bands_in_either_class() -> None:
+    """3.10 draws `fill_between` as `FillBetweenPolyCollection` (host + bundle), 3.8 + 3.9 as
+    `PolyCollection`: both judged; any other collection class is outside the set."""
+    source = _PLT + "plt.fill_between([1, 2, 3], [1, 4, 2])\n"
+    assert isinstance(_judge(source), Judged)
+    assert (
+        _axes(json.loads(reader.run(source).splitlines()[0][len(TAG) :]))["artists"][0]["cls"]
+        == "FillBetweenPolyCollection"
+    )
+
+    def renamed(cls: str) -> Callable[[dict[str, Any]], None]:
+        def change(raw: dict[str, Any]) -> None:
+            _axes(raw)["artists"][0]["cls"] = cls
+
+        return change
+
+    assert isinstance(_edited(source, renamed("PolyCollection")), Judged)
+    assert _edited(source, renamed("FillBetweenPolyCollections")) == Blocked("artist_not_judged", 2)
+
+
 @pytest.mark.parametrize(
     ("formatter", "values", "expected"),
     [

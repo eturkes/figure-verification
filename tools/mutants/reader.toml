@@ -475,3 +475,10 @@ predicate = "a path-text glyph laid out as `.notdef` (index 0) counts as missing
 kills = "tests/test_paste_in_font.py::test_q44_r_a_path_text_glyph_outside_the_cut_fails"
 anchor = '''                if holder.run is not None and item.glyph_idx == 0:'''
 mutant = '''                if holder.run is not None and item.glyph_idx < 0:'''
+
+[[mutant]]
+id = "m21-reader-fill-between-class"
+predicate = "the reader measures a `FillBetweenPolyCollection` band (matplotlib 3.10, the bundle)"
+kills = "tests/test_figure_judge.py::test_j3_bands_in_either_class"
+anchor = '''    "FillBetweenPolyCollection": _band,'''
+mutant = '''    "FillBetweenPolyCollections": _band,'''

@@ -122,6 +122,7 @@ _FAMILIES: Final[dict[str, Callable[[Artist, Axes, int], _Kind]]] = {
     "Polygon": _polygon,
     "Wedge": _wedge,
     "PolyCollection": _band,
+    "FillBetweenPolyCollection": _band,
     "Text": _text,
     "Annotation": _text,
 }
