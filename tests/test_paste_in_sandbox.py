@@ -22,7 +22,8 @@ from verifier.figure.description import Text, parse_description
 from webui.paste_in import fonts, sandbox
 
 _PLT = "import matplotlib.pyplot as plt\n"
-# OWUI 0.10.2's package detector, one entry per bundled module it routes (`.claude/rules/owui.md`).
+# OWUI 0.11.3's package detector (as 0.10.2's), one entry per bundled module it routes
+# (`.claude/rules/owui.md`).
 _DETECTOR = re.compile(r"\bimport\s+matplotlib\b|\bfrom\s+matplotlib\b")
 
 

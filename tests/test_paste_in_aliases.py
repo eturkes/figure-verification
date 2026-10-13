@@ -6,7 +6,7 @@ production tool's `Valves.column_aliases` (one line per column, `<column> = <ali
 blank lines ignored); Open WebUI builds `Valves(**form)` on save, so a malformed line, an empty
 alias or an alias repeated in one line fails the save; default empty; the demo tool inherits it.
 V2: the tool records the parsed aliases in its receipt (`/2`), and the outlet's verdict reads them
-from that receipt alone. `pydantic` is the version Open WebUI 0.10.2 pins.
+from that receipt alone. `pydantic` is the version Open WebUI 0.11.3 pins.
 """
 
 import asyncio

@@ -3,9 +3,9 @@
 
 webui/ is a coverage-excluded harness, so these are a bench-style regression net (like
 test_webui_settings.py) rather than a 100%-branch gate. The OWUI request shapes are the reviewed
-0.10.2 contracts summarized in .agent/archive/m4.md, not re-probed; here they are pinned against an
-httpx.MockTransport (no socket binds, every branch deterministic), plus a structural fake for the
-bootstrap orchestration. Locked:
+0.10.2 contracts summarized in .agent/archive/m4.md, run live on 0.11.3 by M21.2; here they are
+pinned against an httpx.MockTransport (no socket binds, every branch deterministic), plus a
+structural fake for the bootstrap orchestration. Locked:
 
 - wait_ready: returns on the first 200, retries through transport errors, raises on timeout;
 - authenticate: signup-200 stores the JWT; a non-200 signup falls back to signin; both non-200 or an

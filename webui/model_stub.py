@@ -59,7 +59,7 @@ _FINAL_REPLY = "Chart request completed."
 
 
 def _selector_query(user: str, prompt: str) -> bool:
-    # OWUI 0.10.2 middleware.py wraps the prompt in `Query:`, after `History:` on later turns.
+    # OWUI 0.11.3 middleware.py wraps the prompt in `Query:`, after `History:` on later turns.
     query = f"Query: {prompt}"
     return user == query or user.endswith(f"\n{query}")
 

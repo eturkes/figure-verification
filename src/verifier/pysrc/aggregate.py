@@ -90,8 +90,10 @@ def column_dtype(texts: tuple[str, ...]) -> ColumnDtype:
 def kahan_sum(values: Sequence[float]) -> float:
     """Ordered binary64 Kahan compensation. Not naive, not `fsum`, not Neumaier.
 
-    The compensation reset pandas performs for NaN is absent because NaN cannot arrive: the cell
-    profile refuses every NA spelling ahead of this call, so the arm would be an unreachable branch.
+    pandas 3 zeroes a non-finite compensation (GH#60303; 2.x: NaN alone). The reset is absent here
+    because neither can arrive from a CSV group: the cell profile refuses every NA spelling, and no
+    profile sum overflows. A typed total that overflows is non-finite under either rule, and a
+    non-finite total explains nothing (`computed.py`).
     """
     total = 0.0
     compensation = 0.0

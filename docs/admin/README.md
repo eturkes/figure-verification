@@ -27,14 +27,18 @@ from its source code.
 
 ## Requirements
 
-- Open WebUI 0.10.2. The project measured this version. Other versions are not measured.
-- The Pyodide code runtime that Open WebUI 0.10.2 contains (Pyodide 0.28.3 with matplotlib, pandas
-  and numpy). The chart program runs in this runtime inside the user's browser.
+- Open WebUI 0.11.3. The project measured this version. Other versions are not measured. Open
+  WebUI 0.11.4 and later do not contain the Japanese font below, so a chart with Japanese text fails
+  there. Open WebUI 0.10.2 has published security advisories that 0.11.3 fixes.
+- The Python interpreter that runs Open WebUI. The official image uses Python 3.11, and the project
+  measured the two files there.
+- The Pyodide code runtime that Open WebUI 0.11.3 contains (Pyodide 314.0.3 with matplotlib 3.10.8,
+  pandas 3.0.2 and numpy 2.4.3). The chart program runs in this runtime inside the user's browser.
 - A browser connection with WebSocket support. The filter runs the program through this connection.
-- The Japanese font that Open WebUI 0.10.2 contains (`NotoSansJP-Regular.ttf` in its `FONTS_DIR`).
+- The Japanese font that Open WebUI 0.11.3 contains (`NotoSansJP-Regular.ttf` in its `FONTS_DIR`).
   The filter sends part of this font to the browser when the program or an attached file contains
   non-ASCII text. The part holds ASCII and the characters of the program and the attached files. The
-  filter cuts the font with `fontTools`, which Open WebUI 0.10.2 also contains. Without `fontTools`,
+  filter cuts the font with `fontTools`, which Open WebUI 0.11.3 also contains. Without `fontTools`,
   the filter sends the whole font. Without the font, a chart with Japanese text fails with the code
   `glyph_missing`.
 - A chat model that can call tools.
@@ -257,5 +261,5 @@ There are two types of reason code:
 | The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
 | Every chart fails with the code `sandbox_unavailable` | The browser could not load the Pyodide runtime. A content blocker is a common cause. For example, the "Block Outsider Intrusion into LAN" list of uBlock Origin Lite blocks it. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
 | The reply fails with the code `glyph_missing` | The chart has characters that the fonts cannot draw. Japanese text inside `$` signs (math text) is a known cause, because the math font has no Japanese characters. Another cause is a Japanese character that the program makes while it runs, such as `chr(0x6708)`. This applies when the program text and the attached files do not contain it. The filter sends only the characters that the program and the attached files contain. | Ask for chart text without `$` signs, written out in the program. Make sure that `NotoSansJP-Regular.ttf` is in the `FONTS_DIR` of Open WebUI. |
-| The reply fails with the code `module_not_available` | The program imports a package that the Pyodide runtime does not have. | Ask for a chart with matplotlib or pandas. The Pyodide runtime of Open WebUI 0.10.2 has no seaborn. |
+| The reply fails with the code `module_not_available` | The program imports a package that the Pyodide runtime does not have. | Ask for a chart with matplotlib or pandas. The Pyodide runtime of Open WebUI 0.11.3 has no seaborn. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |

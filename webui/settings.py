@@ -25,8 +25,8 @@ Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fi
 origin and /v1 joins; the bind/client host is a separate bare ASCII hostname. Defaults bind
 loopback only -- OWUI on 8080, the model backend's OpenAI /v1 on 8001 -- and
 the secret_key / admin_password are loopback dev defaults an operator overrides. All names and
-defaults were verified against open-webui 0.10.2 source (config.py / env.py). This package is an
-out-of-tree harness like model_backend: coverage-excluded, unshipped, importing only
+defaults were verified against open-webui 0.10.2 and 0.11.3 source (config.py / env.py). This
+package is an out-of-tree harness like model_backend: coverage-excluded, unshipped, importing only
 gate-venv deps.
 """
 
@@ -108,7 +108,7 @@ _FIXED_ENV: dict[str, str] = {
     "TASK_MODEL": "",
     "TASK_MODEL_EXTERNAL": "",
     # Determinism: every post-chat background LLM call off, or the backend request count is
-    # nondeterministic. All five generation toggles default to True in OWUI 0.10.2, so each is
+    # nondeterministic. All five generation toggles default to True in OWUI 0.11.3, so each is
     # pinned (autocomplete already defaults off and never fires on the headless path).
     "ENABLE_TITLE_GENERATION": "false",
     "ENABLE_TAGS_GENERATION": "false",
@@ -116,7 +116,7 @@ _FIXED_ENV: dict[str, str] = {
     "ENABLE_RETRIEVAL_QUERY_GENERATION": "false",
     "ENABLE_SEARCH_QUERY_GENERATION": "false",
     # Attack surface off: no code execution / interpreter, evaluation arena, community sharing, or
-    # message rating (all default on in 0.10.2).
+    # message rating (all default on in 0.11.3).
     "ENABLE_CODE_EXECUTION": "false",
     "ENABLE_CODE_INTERPRETER": "false",
     "ENABLE_EVALUATION_ARENA_MODELS": "false",

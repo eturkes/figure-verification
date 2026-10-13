@@ -14,7 +14,8 @@ reference](docs/verification.md).
 
 - **Two files to paste into Open WebUI.** `paste-in/figure_verification_tool.py` and
   `paste-in/figure_verification_filter.py` contain the complete verifier. They need only the Python
-  standard library and what Open WebUI 0.10.2 already contains. They make no network calls.
+  standard library and what Open WebUI 0.11.3 already contains. They run on the Python 3.11 of the
+  official Open WebUI image. They make no network calls.
 - **An administrator guide in English and Japanese.** Read
   [docs/admin/README.md](docs/admin/README.md) or [docs/admin/README.ja.md](docs/admin/README.ja.md)
   to install the two files.
@@ -47,13 +48,15 @@ what the verifier does not check.
 ## Measured results
 
 - **Rule corpus.** For every rule, at least one misleading program blocks with that rule's reason
-  and at least one honest twin passes. The corpus runs in the test suite on matplotlib 3.9.4. The
-  same 201 cases also ran through the production wrapper in the Pyodide bundle of Open WebUI
-  0.10.2, with matplotlib 3.8.4. All 201 verdicts matched the expected verdict and the host verdict.
+  and at least one honest twin passes. The corpus runs in the test suite on matplotlib 3.10.8. The
+  same 237 cases also ran through the production wrapper in the Pyodide 314.0.3 bundle of Open WebUI
+  0.11.3, with matplotlib 3.10.8. All 237 verdicts matched the expected verdict and the host
+  verdict.
 - **Stub model.** With `--stub`, the launcher's three honest prompts showed a chart and the pass
   message. The three misleading prompts showed the failure message with the expected reason and no
-  image. One recorded run of each, in headless Chromium 151; the records are in
-  `.agent/measurements/m19u5/`.
+  image. One recorded run of each on Open WebUI 0.10.2, in headless Chromium 151; the records are in
+  `.agent/measurements/m19u5/`. On Open WebUI 0.11.3, the M15, M16 and M17 replays repeat these
+  outcomes.
 - **Real model.** The demo model ran each launcher prompt 5 times. The host was an NVIDIA MX150
   with fp16 Qwen2.5-Coder-0.5B-Instruct, greedy decoding, Open WebUI 0.10.2 and headless Chromium
   151. All 15 honest runs showed a chart and the pass message. All 15 misleading runs drew the

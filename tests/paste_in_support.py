@@ -121,7 +121,7 @@ def owui_driver_output(driver: str, tmp_path: Path, marker: str) -> str:
 
 
 def owui_tool_descriptions(tmp_path: Path) -> list[str]:
-    """Open WebUI 0.10.2's own model-facing descriptions for the committed artifact."""
+    """Open WebUI's own model-facing descriptions for the committed artifact (`.venv-webui`)."""
     payload = owui_driver_output(
         """
         import asyncio
