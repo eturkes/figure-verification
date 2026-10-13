@@ -10,8 +10,8 @@
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
-# whose output names the expected cause: attribution rides the message, since nine tests carry
-# more than one probe -- G6, G7, G10 and S9 two each, S3 three, G16 four, S4 five, S6 five, S8 five -- one
+# whose output names the expected cause: attribution rides the message, since ten tests carry
+# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 four, S4 five, S6 five, S8 five -- one
 # per conjunct of a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -263,6 +263,12 @@ probe g6-stage-list tests/test_gate.py::test_g6_gate_script_runs_every_expected_
 probe g13-nested-lock-audit tests/test_gate.py::test_g13_audit_stage_covers_every_lock \
     'model_backend/runtime' \
     sed -i '/^    uv audit --preview-features audit-command --locked --project model_backend\/runtime /d' "$GATE"
+
+# The pnpm half of the widening: the Node harness's lock joined G13's set, so it carries its own
+# control.
+probe g13-pnpm-lock-audit tests/test_gate.py::test_g13_audit_stage_covers_every_lock \
+    "('pnpm', '.agent/measurements')" \
+    sed -i '/^    pnpm audit --dir \.agent\/measurements /d' "$GATE"
 
 probe g14-spdx-header tests/test_gate.py::test_g14_tracked_sources_carry_spdx_header \
     "$SPDX_PROBE" \

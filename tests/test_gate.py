@@ -62,6 +62,7 @@ _TOOLS_CI_MUST_NOT_CALL_DIRECTLY = (
     "mypy",
     "pytest",
     "uv audit",
+    "pnpm audit",
     "detect-secrets",
     "zizmor",
     "shellcheck",
@@ -118,8 +119,9 @@ def test_g6_gate_script_runs_every_expected_stage() -> None:
 
 
 def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
-    """G7: update automation spans the three uv projects plus the actions themselves, each behind
-    a cooldown. Acceptance: a removed ecosystem or a dropped cooldown fails."""
+    """G7: update automation spans the three uv projects, the Node measurement harness and the
+    actions themselves, each behind a cooldown. Acceptance: a removed ecosystem or a dropped
+    cooldown fails."""
     config = _load_yaml(_DEPENDABOT)
     assert config["version"] == 2
     updates = cast(list[dict[str, Any]], config["updates"])
@@ -128,6 +130,7 @@ def test_g7_dependabot_covers_every_lock_and_cools_down() -> None:
         ("uv", "/"),
         ("uv", "/model_backend/runtime"),
         ("uv", "/webui/runtime"),
+        ("npm", "/.agent/measurements"),
         ("github-actions", "/"),
     }
     for update in updates:
@@ -256,32 +259,44 @@ def test_g15_every_probe_node_names_a_test() -> None:
 
 
 def test_g13_audit_stage_covers_every_lock() -> None:
-    """G13: audit projects equal tracked lock directories; dropping one fails."""
+    """G13: the audited (tool, project) pairs equal the tracked locks -- each `uv.lock` directory
+    through `uv audit`, each `pnpm-lock.yaml` directory through `pnpm audit`. Acceptance: dropping
+    one audit line fails, naming its lock directory."""
     script = _GATE.read_text(encoding="utf-8")
     function = re.search(r"^audit_locks\(\) \{\n(?P<body>.*?)^\}", script, re.MULTILINE | re.DOTALL)
-    assert function is not None, "audit_locks must cover model_backend/runtime"
+    assert function is not None, "audit_locks is missing"
     assert "stage audit audit_locks" in script
 
     audited = set()
     for line in function.group("body").splitlines():
         words = line.strip().split()
-        if words[:2] != ["uv", "audit"]:
-            continue
-        assert words[2:4] == ["--preview-features", "audit-command"]
-        project = words[words.index("--project") + 1] if "--project" in words else "."
-        audited.add(project)
+        if words[:2] == ["uv", "audit"]:
+            assert words[2:4] == ["--preview-features", "audit-command"]
+            project = words[words.index("--project") + 1] if "--project" in words else "."
+            audited.add(("uv", project))
+        elif words[:2] == ["pnpm", "audit"]:
+            audited.add(("pnpm", words[words.index("--dir") + 1]))
 
     tracked = subprocess.run(
-        ["/usr/bin/git", "ls-files", "--", "uv.lock", "**/uv.lock"],
+        [
+            "/usr/bin/git",
+            "ls-files",
+            "--",
+            "uv.lock",
+            "**/uv.lock",
+            "pnpm-lock.yaml",
+            "**/pnpm-lock.yaml",
+        ],
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
     )
-    lock_dirs = {Path(path).parent.as_posix() for path in tracked.stdout.splitlines()}
-    assert audited == lock_dirs, (
-        f"audit projects {sorted(audited)} != lock dirs {sorted(lock_dirs)}"
-    )
+    locks = {
+        ("uv" if Path(path).name == "uv.lock" else "pnpm", Path(path).parent.as_posix())
+        for path in tracked.stdout.splitlines()
+    }
+    assert audited == locks, f"audited {sorted(audited)} != tracked locks {sorted(locks)}"
 
 
 def test_g14_tracked_sources_carry_spdx_header() -> None:

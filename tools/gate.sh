@@ -54,7 +54,7 @@ WEBUI_RESIDUALS=(
 )
 
 audit_locks() {
-    local root_rc=0 runtime_rc=0 webui_rc=0 ignores=() id
+    local root_rc=0 runtime_rc=0 webui_rc=0 harness_rc=0 ignores=() id
     for id in "${WEBUI_RESIDUALS[@]}"; do
         ignores+=(--ignore-until-fixed "$id")
     done
@@ -64,7 +64,11 @@ audit_locks() {
     printf 'model_backend/runtime audit rc=%d\n' "$runtime_rc"
     uv audit --preview-features audit-command --locked --project webui/runtime "${ignores[@]}" || webui_rc=$?
     printf 'webui/runtime audit rc=%d\n' "$webui_rc"
-    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ] || [ "$webui_rc" -ne 0 ]; then
+    # The Node measurement harness: pnpm comes from the harness's own `packageManager` pin, exits 1
+    # on any advisory and fails on a registry error. A host without pnpm fails the stage.
+    pnpm audit --dir .agent/measurements || harness_rc=$?
+    printf '.agent/measurements audit rc=%d\n' "$harness_rc"
+    if [ "$root_rc" -ne 0 ] || [ "$runtime_rc" -ne 0 ] || [ "$webui_rc" -ne 0 ] || [ "$harness_rc" -ne 0 ]; then
         return 1
     fi
     return 0
