@@ -57,6 +57,9 @@ dev = [
     # test-only (M21.1 F1): an independent CommonMark parser grades the interpretation's code spans,
     # since Open WebUI renders the reply as markdown with raw HTML.
     "markdown-it-py>=4",
+    # Mutation credit (global `Engineering`): the stack's mutation tool, default operators, driven by
+    # tools/mutation_credit.py over the files one test executes (research pass, queue row Q53).
+    "poodle>=1.3.4",
 ]
 
 [build-system]

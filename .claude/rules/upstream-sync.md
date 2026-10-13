@@ -20,7 +20,7 @@ Old forms (retired, renamed or changed terms, paths + values), swept over live l
 Rulings on template + global clauses (index; the owner file carries the text):
 - global `Engineering` verification integrity (a skipped case → a deferral row) ADAPTED: a blocker inside an unfinished unit cites that unit's open `Tasks` row, user ruling, S8 decides — `ops.md`.
 - global `Engineering` verification integrity, project bindings: skeleton = within-unit device cleared at the unit's close; hardcoding priced by mutation credit + differential oracles; gate-law changes ADAPTED = no per-unit approval (user ruling), original check's firing + new red witness still recorded — `assurance.md`.
-- global `Engineering` verification integrity, mutation-credit clause FOLLOWED (user ruling): an already-passing test counts only through the stack's mutation tool; none runs yet (queue `Q53`) ⇒ uncredited; `tools/mutate.py` catalogue kills = named-red pins + the hardcoding price, never that credit — `assurance.md`.
+- global `Engineering` verification integrity, mutation-credit clause FOLLOWED (user ruling): an already-passing test counts only through the stack's mutation tool; the tool = poodle through `tools/mutation_credit.py`; `tools/mutate.py` catalogue kills = named-red pins + the hardcoding price, never that credit — `assurance.md`.
 - global `Engineering` durable-claim clause: measurement harnesses = committed + rerun by hand, outside the gate + `mypy` `files` — `ops.md`.
 - global `Delivery` Git ADAPTED: subject `<scope> (<unit>): <cause> → <fix>`, body carries the red witness — `ops.md`.
 - global `Authoring` `Human-facing`, surfaces classified: human-facing set + JA register — `human-facing.md`.
