@@ -111,7 +111,7 @@ rows.
 | R211 | M21.1 | L-SEC | F7 (high): the demo installs open-webui 0.10.2 (34 published advisories, fixed by 0.11.1), unlocked + unaudited; the admin guide names it as the measured version. | closed | M21.2 `070855d` … `f650868`: 0.11.3 locked under the audit stage, sandbox re-validated, 28/28 measurements replayed; T18 pass (`.agent/archive/contracts/m21u2.md`). |
 | R212 | M21.1 | L-SEC | F8 (informational): the Node harness has no committed audit or update stream. | register | Q50. |
 | R213 | M21.1 | L-SEC | F9 (informational): CodeQL `py/bad-tag-filter` on a case-sensitive test oracle. | register | Q51. |
-| R214 | M21.1 | L-SEC | F10 (informational): Dependabot alerts disabled on the remote. | register | Q52 (user-owned). |
+| R214 | M21.1 | L-SEC | F10 (informational): Dependabot alerts disabled on the remote. | closed | Q52: enabled by user ruling (`gh api -X PUT …/vulnerability-alerts` → 204); `GET …/dependabot/alerts` → 200. |
 | R215 | M21.2 | L-CORR | F11 (high): the shipped pair execs PEP 695 syntax, and the official Open WebUI image runs CPython 3.11 (0.10.2 and 0.11.3): the product never loaded on its target. | closed | `163eabd`: 3.11 forms, ruff py311 globs + 3.11 mypy pass (G16), measurement `Image`. |
 | R216 | M21.2 | L-CORR | F12 (high): matplotlib 3.10 (the 0.11.3 bundle) draws `fill_between` + `stackplot` as `FillBetweenPolyCollection`; every area chart blocked `artist_not_judged`. | closed | `7b180cc`: both classes judged bands; red test + 3 mutants. |
 | R217 | M21.2 | L-CORR | F13 (medium): numpy 2.4 sums a whole contiguous array pairwise (2.2: per 8192 values); the share/percent total replica split past 8192 values. | closed | `7b180cc`: whole-array replica; mutant `m21-pairwise-whole`; bundle = host on 621 vectors. |
