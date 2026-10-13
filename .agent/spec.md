@@ -49,7 +49,6 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 - [ ] Q51 CodeQL bad-tag-filter: oracle fixed; owed: `main` CodeQL closing alert 1 (user push)
 - [ ] Q52 Dependabot alerts: a repository setting the user owns
-- [ ] Q59 Kahan reset parity
 - [ ] Q60 suite on CPython 3.11
 
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.

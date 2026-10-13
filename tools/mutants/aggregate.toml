@@ -43,6 +43,8 @@ anchor = '''
         adjusted = value - compensation
         running = total + adjusted
         compensation = (running - total) - adjusted
+        if math.isnan(compensation) or not (mean or math.isfinite(compensation)):
+            compensation = 0.0
         total = running
     return total'''
 mutant = '''
@@ -62,6 +64,8 @@ anchor = '''
         adjusted = value - compensation
         running = total + adjusted
         compensation = (running - total) - adjusted
+        if math.isnan(compensation) or not (mean or math.isfinite(compensation)):
+            compensation = 0.0
         total = running
     return total'''
 mutant = '''
@@ -74,7 +78,7 @@ id = "r2-running-mean"
 predicate = "a float64 mean is the Kahan sum THEN the divide, never a running mean"
 kills = "tests/test_pysrc_aggregate.py::test_r2_float_mean_is_kahan_sum_over_count"
 anchor = '''
-            return kahan_sum(values) / len(values)'''
+            return kahan_sum(values, mean=True) / len(values)'''
 mutant = '''
             mean = 0.0
             for count, value in enumerate(values, start=1):
@@ -86,7 +90,7 @@ id = "r3-exact-int-mean"
 predicate = "an int64 mean casts each value to float64 BEFORE summing -- it is not the exact one"
 kills = "tests/test_pysrc_aggregate.py::test_r3_int_mean_casts_before_summing"
 anchor = '''
-            return kahan_sum(tuple(float(value) for value in values)) / len(values)'''
+            return kahan_sum(tuple(float(value) for value in values), mean=True) / len(values)'''
 mutant = '''
             return sum(values) / len(values)'''
 
@@ -189,3 +193,34 @@ anchor = '''
     return "float64" if any("." in text for text in texts) else "int64"'''
 mutant = '''
     return "float64" if any(float(text) != int(float(text)) for text in texts) else "int64"'''
+
+# R11 (queue Q59): pandas 3.0.2 resets the compensation per reduction. The int mean's routing is
+# UNMUTATED: an int32 cell sum never overflows, so its compensation stays finite and both resets
+# agree there.
+[[mutant]]
+id = "r11-no-compensation-reset"
+predicate = "a non-finite compensation is zeroed, so an overflow then a cancel sums to inf, not nan"
+kills = "tests/test_pysrc_aggregate.py::test_r11_non_finite_compensation_resets_as_pandas_3"
+anchor = '''
+        if math.isnan(compensation) or not (mean or math.isfinite(compensation)):
+            compensation = 0.0'''
+mutant = '''
+        pass'''
+
+[[mutant]]
+id = "r11-sum-resets-nan-alone"
+predicate = "the SUM zeroes an infinite compensation too (group_sum, GH#60303), not NaN alone"
+kills = "tests/test_pysrc_aggregate.py::test_r11_non_finite_compensation_resets_as_pandas_3"
+anchor = '''
+        if math.isnan(compensation) or not (mean or math.isfinite(compensation)):'''
+mutant = '''
+        if math.isnan(compensation):'''
+
+[[mutant]]
+id = "r11-mean-takes-the-sum-reset"
+predicate = "a float mean keeps group_mean's NaN-only reset, so an overflow then a cancel means nan"
+kills = "tests/test_pysrc_aggregate.py::test_r11_non_finite_compensation_resets_as_pandas_3"
+anchor = '''
+            return kahan_sum(values, mean=True) / len(values)'''
+mutant = '''
+            return kahan_sum(values) / len(values)'''

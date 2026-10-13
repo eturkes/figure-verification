@@ -18,7 +18,7 @@ import pytest
 
 from verifier.figure.sources import Table, read_table
 from verifier.pysrc import csvread as csvread_module
-from verifier.pysrc.aggregate import Aggregated, Reduction, aggregate_series
+from verifier.pysrc.aggregate import Aggregated, Reduction, aggregate_series, kahan_sum
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import key_values
 from verifier.pysrc.errors import PysrcRefusalError
@@ -77,6 +77,47 @@ def test_r2_float_mean_is_kahan_sum_over_count() -> None:
     for count, value in enumerate((1_000_000_000.0, 0.000001, 0.000001, -1_000_000_000.0), 1):
         running += (value - running) / count
     assert running.hex() == "0x1.0000000000000p-21"
+
+
+# pandas 3.0.2 `groupby().sum()` / `.mean()` on each vector, hand-stated: `group_sum` zeroes a
+# non-finite compensation (GH#60303), `group_mean` a NaN one alone (GH#50367).
+_NON_FINITE = (
+    ((1e308, 1e308, -1e308), math.inf, math.nan),
+    ((math.inf, 1.0), math.inf, math.inf),
+    ((1.0, math.inf), math.inf, math.inf),
+    ((math.inf, -math.inf), math.nan, math.nan),
+    ((1e308, 1e308, -1e308, -1e308), math.inf, math.nan),
+    ((-1e308, -1e308, 1e308, 5.0), -math.inf, math.nan),
+    ((math.inf, 1.0, 2.0), math.inf, math.inf),
+)
+
+
+@pytest.mark.parametrize(("values", "total", "mean"), _NON_FINITE)
+def test_r11_non_finite_compensation_resets_as_pandas_3(
+    values: tuple[float, ...], total: float, mean: float
+) -> None:
+    """R11 (queue Q59): an overflow, then a cancel, sums to `inf` as pandas 3 does, and its mean
+    stays `nan`; an infinite cell keeps the sum and the mean infinite, never `nan`."""
+    observed = kahan_sum(values)
+    averaged = kahan_sum(values, mean=True) / len(values)
+    assert struct.pack(">d", observed) == struct.pack(">d", total) or (
+        math.isnan(observed) and math.isnan(total)
+    )
+    assert struct.pack(">d", averaged) == struct.pack(">d", mean) or (
+        math.isnan(averaged) and math.isnan(mean)
+    )
+    # The engine's float path (a decimal point types the column float64), mean routed to its reset.
+    texts = ("0.0",) * len(values)
+    for reduction, expected in (("sum", total), ("mean", mean)):
+        reduced = aggregate_series(
+            key_values(("one",) * len(values)),
+            texts,
+            values,
+            reduction,  # type: ignore[arg-type]
+            budget=WorkBudget(DEFAULT_LIMITS.max_work),
+            max_groups=DEFAULT_LIMITS.max_groups,
+        ).values[0]
+        assert reduced == expected or (math.isnan(reduced) and math.isnan(expected)), reduction
 
 
 def test_r3_int_mean_casts_before_summing() -> None:
