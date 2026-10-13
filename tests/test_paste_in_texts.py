@@ -3,9 +3,8 @@
 M19.5, less their word caps; `.claude/rules/human-facing.md`).
 
 English printable ASCII with no character the embed or a same-origin frame would read as markup;
-each Japanese title, cover, explanation + UI word named below holds a kana letter (`CODE` + the mark
-labels exempt), a status line's Japanese only its closing `。`. Length is a review judgment, never
-a count.
+each Japanese title, cover, explanation, status line + UI word named below holds a kana letter
+(`CODE` + the mark labels exempt). Length is a review judgment, never a count.
 """
 
 import unicodedata
@@ -67,6 +66,7 @@ def test_ui_words_obey_the_law() -> None:
 def test_status_lines_are_one_cause_and_at_most_one_fix(reason: str) -> None:
     english, japanese = REASONS[reason]  # type: ignore[index]
     _law(english, japanese=False)
+    _law(japanese, japanese=True)
     assert english.endswith(".") and japanese.endswith("。")
     sentences = _sentences(english)
     assert 1 <= len(sentences) <= 2  # a cause, then at most one fix
