@@ -46,9 +46,6 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-- [ ] RESUME: finish line in force = the security-review body's `Met when` (every check-set row carries a verdict, every fix has a green acceptance check, `bash tools/gate.sh` passes on a clean tree) + this row gone; every row holds except T18 (F7 → **M21.2**). MAIN alone (security body), no teammates. Contract `.agent/contracts/m21u2.md` (P1-P7; target facts read from `ghcr.io/open-webui/open-webui:v0.11.3` via podman). Order: P1 py3.11 fix (F11: the shipped pair cannot import on the image's Python 3.11) → P2 lock `webui/runtime/` (drafted, untracked: overrides + 5 `--ignore-until-fixed` GHSA ids, audit rc 0) + P3 `.venv-webui` on 3.11 → CSV-profile legs on pandas 3.0.2 + Pyodide 314.0.3, then P5 root pins → P4 facts → P6 replays → P7 claims → close. Scratch: `.scratch/m21/u2/` (lock/audit logs), `.scratch/m21/owui113/` (unpinned lock + audit).
-- [ ] **M21.2** Open WebUI 0.10.2 → 0.11.3 (F7; user: upgrade now, 0.11.3 = the last release keeping `NotoSansJP` + `fpdf2`): locked + audited demo env, integration facts re-derived, verifier re-validated on Pyodide 314.0.3 (CPython 3.14, pandas 3.0.2, matplotlib 3.10.8, numpy 2.4.3), every measurement replayed, every version claim moved.
-
 Queue = `.agent/deferred.md`, 0 rows, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase

@@ -2,8 +2,8 @@
 """G6-G16: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
-`.agent/archive/contracts/m10u7.md` (G14), `.agent/contracts/m21u2.md` P1 (G16); G15 = queue row
-Q47 (its row text is the contract).
+`.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
+row Q47 (its row text is the contract).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
