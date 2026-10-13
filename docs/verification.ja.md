@@ -176,7 +176,7 @@ matplotlib と Python の標準ライブラリです。検証器は、プログ�
 | 理由 | 意味 |
 |---|---|
 | `no_browser` | プログラムを実行できるブラウザのセッションがありません。 |
-| `sandbox_not_isolated` | Open WebUI がグラフのプログラムをこのサイトの権限で実行します。管理者が Pyodide のファイル保存をオフにする必要があります。 |
+| `sandbox_not_isolated` | あなたの権限で動きます。管理者が Pyodide のファイル保存をオフにする必要があります。 |
 | `browser_timeout` | ブラウザが 60 秒以内に応答しませんでした。 |
 | `browser_error` | ブラウザの呼び出しに失敗しました。 |
 | `browser_no_answer` | チャットのタブが応答しませんでした。タブを開いたままにして、もう一度試してください。 |
@@ -193,7 +193,7 @@ matplotlib と Python の標準ライブラリです。検証器は、プログ�
 
 ### 3. 図を 1 つ描画
 
-プログラムは matplotlib の図をちょうど 1 つ描く必要があります。pandas のグラフも matplotlib の図です。Open WebUI 0.10.2 の Pyodide には seaborn がないため、seaborn を使うプログラムは読み込みの時点で止まります。1 つの図には、`plt.subplots` で作った複数のパネルを入れられます。使用できる
+プログラムは matplotlib の図をちょうど 1 つ描く必要があります。pandas のグラフも matplotlib の図です。Open WebUI 0.11.3 の Pyodide には seaborn がないため、seaborn を使うプログラムは読み込みの時点で止まります。1 つの図には、`plt.subplots` で作った複数のパネルを入れられます。使用できる
 フォントで、図のすべての文字を描ける必要があります。検証器が送るのは日本語フォントの一部だけです。
 この一部には、ASCII、マイナス記号、プログラムのテキストと添付ファイルの文字が含まれます。
 使用できるどのフォントにもない文字を描くと、図は `glyph_missing` で失敗します。たとえば、
@@ -331,7 +331,7 @@ matplotlib と Python の標準ライブラリです。検証器は、プログ�
 
 | 理由 | 意味 |
 |---|---|
-| `column_not_requested` | グラフが依頼の列を別の列に置き換えたか、値が 2 つの列に当てはまります。 |
+| `column_not_requested` | グラフが依頼の列を置き換えたか、値が 2 つの列に当てはまります。 |
 | `column_not_named` | 描いた列の名前が依頼にありません。 |
 | `label_not_consistent` | ラベルが、グラフにない列または集計を挙げています。 |
 

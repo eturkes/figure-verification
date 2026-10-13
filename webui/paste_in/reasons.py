@@ -59,10 +59,9 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "チャットのタブが応答しませんでした。タブを開いたままにしてください。",
     ),
     "sandbox_not_isolated": (
-        "Open WebUI runs chart programs with the access of this site."
+        "The chart program would run as you."
         " An administrator must turn off Pyodide file persistence.",
-        "Open WebUI がグラフのプログラムをこのサイトの権限で実行します。"
-        "管理者が Pyodide のファイル保存をオフにする必要があります。",
+        "あなたの権限で動きます。管理者が Pyodide のファイル保存をオフにする必要があります。",
     ),
     "reply_malformed": (
         "The browser sent a reply in an unknown format.",
@@ -230,8 +229,7 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     ),
     "column_not_requested": (
         "The chart replaces a requested column, or its values fit two columns. Name the column.",
-        "グラフが依頼の列を別の列に置き換えたか、値が 2 つの列に当てはまります。"
-        "列名を書いてください。",
+        "グラフが依頼の列を置き換えたか、値が 2 つの列に当てはまります。列名を書いてください。",
     ),
     "column_not_named": (
         "Your request does not name a drawn column. Use the file's column names.",

@@ -185,7 +185,7 @@ user. The run then fails with `sandbox_not_isolated`.
 | Reason | Meaning |
 |---|---|
 | `no_browser` | No browser session is available to run the program. |
-| `sandbox_not_isolated` | Open WebUI runs chart programs with the access of this site. An administrator must turn off Pyodide file persistence. |
+| `sandbox_not_isolated` | The chart program would run as you. An administrator must turn off Pyodide file persistence. |
 | `browser_timeout` | The browser did not answer within 60 seconds. |
 | `browser_error` | The call to the browser failed. |
 | `browser_no_answer` | The chat tab did not answer. Keep the tab open and try again. |
@@ -203,7 +203,7 @@ user. The run then fails with `sandbox_not_isolated`.
 ### 3. One figure drawn
 
 The program must draw exactly one matplotlib figure. Charts from pandas are matplotlib figures too.
-The Pyodide runtime of Open WebUI 0.10.2 has no seaborn, so a seaborn program stops at its import. A figure can hold several panels, made with `plt.subplots`. The available
+The Pyodide runtime of Open WebUI 0.11.3 has no seaborn, so a seaborn program stops at its import. A figure can hold several panels, made with `plt.subplots`. The available
 fonts must draw every character of the figure's text. The verifier sends only part of the Japanese
 font. This part holds ASCII, the minus sign and the characters of the program text and the attached
 files. A figure fails with `glyph_missing` when it draws a character that no available font holds.
