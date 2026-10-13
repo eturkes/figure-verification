@@ -11,7 +11,7 @@
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
 # whose output names the expected cause: attribution rides the message, since ten tests carry
-# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 four, S4 five, S6 five, S8 five -- one
+# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 four, S4 six, S6 five, S8 five -- one
 # per conjunct of a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -187,6 +187,12 @@ plant_dangling_live_law_pointer() {
 plant_row_closed_past_its_entry() {
     printf '%s\n' '- Planted row with no closing check.' '' 'Accept: a paragraph after the row.' \
         >>"$DEFERRED"
+}
+
+plant_rules_pointer_after_accept() {
+    local bt
+    bt="$(printf '\140')"
+    printf '\n- Probe: %sAccept:%s then %s.agent/archive/absent.md%s\n' "$bt" "$bt" "$bt" "$bt" >>"$OWUI"
 }
 
 plant_dangling_queue_pointer() {
@@ -372,6 +378,11 @@ probe s4-live-law-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archi
 probe s4-rules-pointer tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
     'owui.md: .agent/archive/absent.md' \
     plant_dangling_rules_pointer
+
+# Outside a queue row `Accept:` is prose: a rules line naming it keeps every later pointer swept.
+probe s4-rules-accept-tail tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves \
+    'owui.md: .agent/archive/absent.md' \
+    plant_rules_pointer_after_accept
 
 # The queue half, read one row = one entry: a row's `Accept:` clause runs to that entry's end,
 # never into the next row.

@@ -10,9 +10,10 @@ which is what keeps the spine in one place (S6), and whether `Phase` opens with 
 its scope (S9). `Phase` holds that state alone, so S5 and S6 read its history from the one archive
 file a check binds: the closed-unit record `.agent/archive/phase.md`.
 
-The pointer sweep skips `Accept:` clauses -- a deferral names the artifact it will CREATE, so
-those paths stay absent by design until the row closes. A queue row is one entry, so its clause
-runs to the end of that entry.
+The pointer sweep skips the `Accept:` clause of each queue row -- a deferral names the artifact
+it will CREATE, so those paths stay absent by design until the row closes. A queue row is one
+entry, so its clause runs to the end of that entry; anywhere else `Accept:` is prose and cuts
+nothing.
 
 S4 and S7 sweep past `spec.md` itself, each as far as its question stays decidable. S4 adds the
 queue, the ledger and every `.claude/rules/*.md`, which carry pointers that strand
@@ -224,9 +225,12 @@ def test_s4_every_rules_docs_and_archive_pointer_resolves() -> None:
     for path in _POINTER_SURFACE:
         lines = path.read_text(encoding="utf-8").splitlines()
         for unit in _queue_units(lines) if path == _DEFERRED else lines:
-            # A row's `Accept:` runs to its entry's end, yet each line pairs its own backticks:
-            # joined, a stray one on a wrapped line would hide the next line's pointer.
-            live, _, _ = unit.partition("Accept:")
+            # Only a queue row's `Accept:` names what its close will CREATE; elsewhere the token is
+            # prose (a rules line naming it), and cutting there would leave the rest unswept. A
+            # row's clause runs to its entry's end, yet each line pairs its own backticks: joined, a
+            # stray one on a wrapped line would hide the next line's pointer.
+            row = path == _DEFERRED and unit[:2] == "- "
+            live = unit.partition("Accept:")[0] if row else unit
             dangling += [
                 f"{path.name}: {token}"
                 for line in live.splitlines()
