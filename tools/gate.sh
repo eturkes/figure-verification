@@ -119,8 +119,10 @@ shell_lint() {
 
 # pytest's own coverage report holds the verifier core at 100% branch (pyproject `[tool.coverage]`).
 # `--durations` names the slowest tests: a suite's wall-clock alone says nothing about where it goes.
+# `-n auto` = one pytest-xdist worker per CPU: the suite was 62% of the serial gate, and pytest-cov
+# combines the workers' coverage data before the floor is read.
 run_tests() {
-    uv run --locked pytest --durations=10
+    uv run --locked pytest -n auto --durations=10
 }
 
 # The same suite on CPython 3.11, the official image's line (M21.2 F16): `tests` runs 3.13, whose
@@ -129,7 +131,7 @@ run_tests() {
 # own `uv` call keeps the root `.venv`.
 run_tests_py311() {
     UV_PROJECT_ENVIRONMENT="$REPO_ROOT/.venv-py311" uv sync --locked --quiet --project tools/py311 || return $?
-    PYTHONPATH=src .venv-py311/bin/python -m pytest -q -p no:cacheprovider --no-cov --durations=10 \
+    PYTHONPATH=src .venv-py311/bin/python -m pytest -n auto -q -p no:cacheprovider --no-cov --durations=10 \
         -o 'pythonpath=src tests .'
 }
 
