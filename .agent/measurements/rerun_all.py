@@ -98,6 +98,19 @@ def executable(name):
     return path
 
 
+def setting(name):
+    """`name` from the environment, else from the repository's gitignored `.env` (`KEY=VALUE`)."""
+    if os.environ.get(name):
+        return os.environ[name]
+    dotenv = PROJECT / ".env"
+    if dotenv.is_file():
+        for line in dotenv.read_text(encoding="utf-8").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip().removeprefix("export ").strip() == name:
+                return value.strip().strip("'\"") or None
+    return None
+
+
 def free_ports():
     sockets = [socket.socket() for _ in range(4)]
     try:
@@ -198,9 +211,9 @@ class Replay:
         if self.live:
             return self.live
         try:
-            chrome = os.environ.get("CHROME")
+            chrome = setting("CHROME")
             if not chrome:
-                fail("CHROME unset: point it at a Chromium binary (path or PATH name)")
+                fail("CHROME unset: set it in the environment or .env to a Chromium binary")
             browser_path = executable(chrome)
             verifier, model, webui, browser_port = free_ports()
             self.state.mkdir(parents=True, exist_ok=True)
