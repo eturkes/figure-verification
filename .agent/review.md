@@ -1,6 +1,6 @@
 # Review ledger — integrity redesign (M19)
 
-A `finding` cell carries its evidence at the global `Subagents` bar: a red test for behavior, or
+A `finding` cell carries its evidence at the `CLAUDE.md` `Teammates` bar: a red test for behavior, or
 the disputed bytes as a greppable anchor plus `file:line` for an artifact's text; an absence claim
 carries its command, rc and positive control. A unit's FULL verdict table lands with its archived
 contract; this ledger carries only the rows that needed a ruling. Rows R1-R131 (IMPLEMENT close +
@@ -18,7 +18,9 @@ rows.
 
 | id | lens | what it asks |
 |---|---|---|
-| L-CORR | correctness / spec | does the code do what its contract's predicates say, on the inputs the contract admits? |
+| L-CORR | correctness / spec | does the code do what its contract's predicates say, on the inputs the contract admits? (+ the `CLAUDE.md` `Engineering` Correctness code diff lens) |
+| L-CLEAN | cleanup | the `CLAUDE.md` `Engineering` Cleanup code diff lens: helpers reused, derivable state computed, near-duplicates merged, dead code gone, independent steps parallel, hot paths lean |
+| L-ALT | altitude | does a special case on shared infrastructure signal a fix due in the mechanism? |
 | L-CLAIM | claim soundness | is every sentence the project ships true at the strength it is stated? |
 | L-GAP | guarantee vs. claim | does a shipped guarantee outrun the mechanism that backs it? |
 | L-LAW | `CLAUDE.md` conformance | tiers, contracts, gate identity, claim discipline, authoring register |

@@ -20,13 +20,26 @@ export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 failed=()
 skipped=()
 
+# Every run blocks the critical path, so each result line carries its wall-clock (`CLAUDE.md`
+# `Execution`). A stamp = EPOCHREALTIME in microseconds; stripping every non-digit drops the
+# locale's decimal separator, whichever it is.
+stamp() {
+    printf '%s' "${EPOCHREALTIME//[!0-9]/}"
+}
+
+elapsed() {
+    local us=$(($(stamp) - $1))
+    printf '%d.%d' $((us / 1000000)) $((us / 100000 % 10))
+}
+
 stage() {
-    local name="$1"
+    local name="$1" start
+    start="$(stamp)"
     shift
     printf '\n=== %s ===\n' "$name"
     "$@"
     local rc=$?
-    printf '%s rc=%d\n' "$name" "$rc"
+    printf '%s rc=%d %ss\n' "$name" "$rc" "$(elapsed "$start")"
     if [ "$rc" -ne 0 ]; then
         failed+=("$name")
     fi
@@ -105,8 +118,9 @@ shell_lint() {
 }
 
 # pytest's own coverage report holds the verifier core at 100% branch (pyproject `[tool.coverage]`).
+# `--durations` names the slowest tests: a suite's wall-clock alone says nothing about where it goes.
 run_tests() {
-    uv run --locked pytest
+    uv run --locked pytest --durations=10
 }
 
 # The same suite on CPython 3.11, the official image's line (M21.2 F16): `tests` runs 3.13, whose
@@ -115,21 +129,41 @@ run_tests() {
 # own `uv` call keeps the root `.venv`.
 run_tests_py311() {
     UV_PROJECT_ENVIRONMENT="$REPO_ROOT/.venv-py311" uv sync --locked --quiet --project tools/py311 || return $?
-    PYTHONPATH=src .venv-py311/bin/python -m pytest -q -p no:cacheprovider --no-cov -o 'pythonpath=src tests .'
+    PYTHONPATH=src .venv-py311/bin/python -m pytest -q -p no:cacheprovider --no-cov --durations=10 \
+        -o 'pythonpath=src tests .'
+}
+
+# Named so tools/fast-gate.sh runs the same commands.
+format_check() {
+    uv run --locked ruff format --check .
+}
+
+lint_check() {
+    uv run --locked ruff check .
+}
+
+workflow_check() {
+    uv run --locked zizmor .github/
+}
+
+# Shape of the attached state. A template file (`CLAUDE.md` `Session flow`): each refresh copies
+# it in whole, so a fix lands in the template, never here.
+spec_check() {
+    sh .agent/spec-lint .agent/spec.md
 }
 
 main() {
-    stage format uv run --locked ruff format --check .
-    stage lint uv run --locked ruff check .
+    local gate_start
+    gate_start="$(stamp)"
+    stage format format_check
+    stage lint lint_check
     stage types type_check
     stage tests run_tests
     stage tests311 run_tests_py311
     stage audit audit_locks
     stage secrets secret_scan
-    stage workflows uv run --locked zizmor .github/
-    # Shape of the attached state. A byte copy of upstream `claude/spec-lint` (template
-    # `Session flow`): a refresh re-copies it, so a fix lands upstream, never here.
-    stage spec sh .agent/spec-lint .agent/spec.md
+    stage workflows workflow_check
+    stage spec spec_check
 
     if command -v shellcheck >/dev/null 2>&1; then
         stage shell shell_lint
@@ -144,9 +178,10 @@ main() {
     fi
     if [ "${#failed[@]}" -ne 0 ]; then
         printf 'FAILED: %s\n' "${failed[*]}"
+        printf 'gate rc=1 %ss\n' "$(elapsed "$gate_start")"
         exit 1
     fi
-    printf 'gate rc=0\n'
+    printf 'gate rc=0 %ss\n' "$(elapsed "$gate_start")"
 }
 
 # Sourcing exposes the stage helpers without running the gate, which is how tools/gate-probe.sh

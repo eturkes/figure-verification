@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Mutation credit: poodle's default operators over the files ONE test imports or calls.
 
-Global `CLAUDE.md` `Engineering`: a test pinning behavior that already passes counts once the
+`CLAUDE.md` `Engineering`: a test pinning behavior that already passes counts once the
 stack's mutation tool kills the mutants of its scope (default operators; scope = the files the test
 imports or calls). poodle = that tool (research pass, queue row Q53): native AST, module-level
 literals mutated, one copied tree per mutant, per-mutant JSON. Unlike `tools/mutate.py`

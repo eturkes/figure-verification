@@ -198,6 +198,10 @@ class Replay:
         if self.live:
             return self.live
         try:
+            chrome = os.environ.get("CHROME")
+            if not chrome:
+                fail("CHROME unset: point it at a Chromium binary (path or PATH name)")
+            browser_path = executable(chrome)
             verifier, model, webui, browser_port = free_ports()
             self.state.mkdir(parents=True, exist_ok=True)
             readonly_bin = self.state / "open-webui"
@@ -225,9 +229,6 @@ class Replay:
                 if stack.poll() is not None or time.monotonic() >= deadline:
                     fail(f"stub stack not ready; rc={stack.poll()}; log={DATA / 'stack.log'}")
                 time.sleep(1)
-            browser_path = subprocess.check_output(  # noqa: S603 -- resolved chromiumfish, constant args
-                [executable("chromiumfish"), "path"], text=True
-            ).strip()
             browser = self.start(
                 "browser",
                 [

@@ -27,7 +27,8 @@ input generators within one invocation. Both npm builds run wherever the table n
 F7/T8/I1/I3/C1 read the installed Open WebUI bundle through the repository's common Git directory.
 
 M15/M16 start a private `webui/launch.sh --stub` stack with fresh loopback ports and a headless
-`chromiumfish` CDP browser. Open WebUI must already exist in `.venv-webui` of the primary checkout.
+Chromium from `$CHROME` (a path or `PATH` name; unset ⇒ the leg fails) over CDP. Open WebUI must
+already exist in `.venv-webui` of the primary checkout.
 Runtime data, verifier state, browser profile and service logs use `.scratch/measurements-live/`.
 The driver stops its processes and removes that private state; copied service logs stay in
 `all-data/stack-logs/`. It never attaches to the user's live stack/browser or uses ports 8000/8001/8080.
@@ -162,7 +163,7 @@ Rerun from the repository root with `.venv-model` + `.venv-webui` set up, one te
 
 ```
 webui/launch.sh --fresh
-"$(chromiumfish path)" --headless=new --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" about:blank &
+"$CHROME" --headless=new --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" about:blank &
 cd .agent/measurements
 export FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password
 node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv simple 0 /tmp/warmup
@@ -298,7 +299,7 @@ webui/launch.sh --stub
 In a second terminal, from the repository root, run:
 
 ```
-"$(chromiumfish path)" --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" \
+"$CHROME" --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" \
   --disable-features=IsolateSandboxedIframes --window-size=1280,800 about:blank &
 uv run --locked python -c 'import json; from webui.paste_in.reasons import REASONS; print(json.dumps(REASONS, ensure_ascii=False))' > /tmp/reasons.json
 cd .agent/measurements

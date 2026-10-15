@@ -5,7 +5,7 @@
 count decides, so this check reports the auxiliary + participle shapes the hand review rewrote: a
 new one fails here and is either rewritten or ruled active. Every sentence outside fenced code,
 indented code, block quotations, tables and headings is read, and each offender is named by
-`file:line`. Sentence length is a review judgment, never a count (global `CLAUDE.md` `Authoring`).
+`file:line`. Sentence length is a review judgment, never a count (`CLAUDE.md` `Authoring`).
 """
 
 import re

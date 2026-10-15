@@ -5,6 +5,7 @@ paths:
   - "**/tests/figure_corpus/**"
   - "**/webui/paste_in/**"
   - "**/.agent/contracts/m19*.md"
+  - "**/webui/banner.json"
 ---
 
 # Figure integrity — the verification model (M19 law)
@@ -14,6 +15,7 @@ Binding sources: `.agent/spec.md` `Intent` + Decisions "Integrity-redesign rulin
 ## Trust + flow
 
 - Program = model-authored bytes, run UNCHANGED in OWUI's Pyodide sandbox; non-adversarial (ruling 7): no pre-run gate, the program shares the reader's interpreter. Python itself rejects invalid Python.
+- `CLAUDE.md` `Execution` Charts + figures clause INAPPLICABLE to verification inputs (user ruling): the rule corpus `tests/figure_corpus/`, the banner arms + stub programs (`webui/banner.json`) + every test program = inputs whose form is the rule under test, misleading by design where the case says so. The clause binds a figure the repo publishes as its own deliverable (none today).
 - Wrapper (RPC code) = loader prelude → reader source (base64, `<figure-reader>`) installs hooks → program exec'd as `<verified-figure>` (its stdout → a sink, warnings recorded, any exception caught) → every figure the program shows, or leaves open at its end, is drawn once + described → stdout = ONE tagged description line + ONE PNG line (exactly one figure only).
 - Reader = trusted FACT reporter (`src/verifier/figure/reader.py`, matplotlib + pandas imported lazily; the one `verifier` module outside stdlib). Judge = stdlib core (`src/verifier/figure/`) = every DECISION. A fact the judge needs is reported; a decision never lives in the reader.
 - Hooks: `Text.set_text` → a text's `site` = the last program line that set it OUTSIDE a draw (`Text.draw` re-sets its own text, so `show`/`savefig` would become every text's site). `Artist.__init__` → `site` = innermost `<verified-figure>` frame line, `origin` = qualname of the OUTERMOST frame in `matplotlib.axes._axes` / `matplotlib.axes._base` / `matplotlib.stackplot` (pyplot + pandas frames skipped; `plt.bar` ≡ `ax.bar`; `hist` wins over its inner `bar`). Call recorder on axis-altering methods → `calls` (slot → its LAST call the program made, directly or through pyplot + the reader's own pyplot hooks, recorded once matplotlib accepts it: a refused call sets nothing; its clock is taken as it STARTS, and a slot keeps the accepted call that started last — a setter a callback runs inside the call started later and decided the property). Slot `style` (`plt.xticks`/`plt.yticks` given any argument but `minor`, on the axes pyplot looks up BEFORE the call; `Axes.tick_params` per axis its `axis` names; `Axis.set_tick_params`) = tick style: listed in the figure row (a tick font can drop a glyph) + the axes row, never a site. Input recorders on `hist` / `pie` / `fill_between` / `stackplot` attach the call's arrays to the artists they return. `site` + `calls` are DISPLAY ONLY (ruling 13); `origin` = family attribution, never proof of geometry — final artist properties decide every rule.
