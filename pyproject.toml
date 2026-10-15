@@ -21,11 +21,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.9",
-    "mypy>=1.13",
+    "ruff>=0.16.10",
+    "mypy>=2.4.0",
     "pytest>=8",
     "pytest-cov>=6",
-    "hypothesis>=6.110",
+    "hypothesis>=6.168.5",
     # test-only: `binary64-libm-v1` claims agreement with what the sandbox executes, and the
     # sandbox executes numpy. A numeric test that cannot compare against numpy pins nothing.
     # Pinned EXACTLY to the version the Open WebUI 0.11.3 bundle (Pyodide 314.0.3) carries, because
@@ -37,7 +37,7 @@ dev = [
     # demands a rewrite on any line drift, which breaks gate idempotence on a clean tree.
     "detect-secrets>=1.5",
     # zizmor audits the workflows themselves: SHA pinning, token scope, Dependabot cooldown.
-    "zizmor>=1.10",
+    "zizmor>=1.30.1",
     # test-only: tests/test_gate.py parses the committed workflow + Dependabot YAML.
     "pyyaml>=6",
     "types-pyyaml>=6",
