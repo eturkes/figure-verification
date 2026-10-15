@@ -4,6 +4,15 @@
     "pass": true,
     "refused": true
   },
+  "focus": {
+    "japanese-dark": true,
+    "japanese-light": true,
+    "pass-dark": true,
+    "pass-light": true,
+    "refused-dark": true,
+    "refused-light": true
+  },
+  "focus_screenshots": 6,
   "narrow_ok": true,
   "ok": true,
   "rows": {
@@ -11,5 +20,23 @@
     "pass": true,
     "refused": true
   },
-  "screenshots": 6
+  "schemes": {
+    "japanese-dark-dark": true,
+    "japanese-dark-light": true,
+    "japanese-light-dark": true,
+    "japanese-light-light": true,
+    "pass-dark-dark": true,
+    "pass-dark-light": true,
+    "pass-light-dark": true,
+    "pass-light-light": true,
+    "refused-dark-dark": true,
+    "refused-dark-light": true,
+    "refused-light-dark": true,
+    "refused-light-light": true
+  },
+  "screenshots": 12,
+  "surfaces": {
+    "dark": "#161616",
+    "light": "#ffffff"
+  }
 }

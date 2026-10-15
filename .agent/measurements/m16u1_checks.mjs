@@ -140,9 +140,36 @@ const readRows = (frame) =>
     wrapper: Math.ceil(document.getElementById("r").getBoundingClientRect().height),
   }));
 
+// Open WebUI's fixed header and message box cover the chat's top and bottom, where a target still
+// counts as in view: the chat scroller first brings the target to the viewport's middle.
+async function centre(frame, target) {
+  const box = await target.boundingBox();
+  await (await frame.frameElement()).evaluate((node, dy) => {
+    let scroller = node.parentElement;
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight &&
+      /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+    (scroller ?? document.scrollingElement).scrollBy(0, dy);
+  }, box.y + box.height / 2 - page.viewport().height / 2);
+}
+
+// Open WebUI re-sizes the frame after each toggle and may scroll the chat after it; a click aimed
+// while the target still moves lands beside it. Click once two reads 150 ms apart agree.
+async function clickSteady(frame, selector) {
+  const target = await frame.waitForSelector(selector);
+  let last = null;
+  for (let i = 0; i < 40; i += 1) {
+    await centre(frame, target);
+    const box = await target.boundingBox();
+    if (box && last && Math.abs(box.x - last.x) < 0.5 && Math.abs(box.y - last.y) < 0.5) break;
+    last = box;
+    await settle(150);
+  }
+  await target.click();
+}
+
 // One click toggles the disclosure either way.
 async function expand(frame) {
-  await frame.click("summary");
+  await clickSteady(frame, "summary");
   await settle(800);
 }
 const collapse = expand;
@@ -284,13 +311,13 @@ for (const item of CASES) {
       if (frame) {
         const opened_rows = [];
         for (const [index, want] of item.rows.entries()) {
-          await frame.click(rowSelector(want));
+          await clickSteady(frame, rowSelector(want));
           await settle(800);
           const read = await readRow(frame, want);
           const opened = (await frameFacts()).facts.height;
           const link = phase === "live" && index === 0 ? await followLink(frame, item) : null;
           if (phase === "live") await page.screenshot({ path: join(outDir, `${item.name}-${want.check}-row.png`) });
-          await frame.click(rowSelector(want));
+          await clickSteady(frame, rowSelector(want));
           await settle(800);
           const closed = (await frameFacts()).facts.height;
           const shut = await readRow(frame, want);
@@ -370,32 +397,130 @@ if (refused) {
 }
 console.log(JSON.stringify(narrow));
 
-// L4: each expanded reply under the light and the dark theme; a person inspects the PNGs.
+// L4: each expanded reply per (Open WebUI theme, OS colour scheme), the scheme emulated over CDP:
+// the two matching pairs, then the two mismatches (an explicit theme the OS does not share). The
+// frame follows the OS scheme (Open WebUI sets no `color-scheme`), so the embed paints its own
+// surface per scheme: a matching pass must show Open WebUI's own surface behind the frame, a
+// mismatch another one, and every pass the emulated scheme inside the frame (a browser that pins
+// the scheme fails here rather than capturing the wrong pass). A person inspects the PNGs.
+const PASSES = [
+  { theme: "light", scheme: "light" },
+  { theme: "dark", scheme: "dark" },
+  { theme: "dark", scheme: "light" },
+  { theme: "light", scheme: "dark" },
+];
+// sRGB hex of an element's own background through a 1×1 canvas, since Open WebUI's computed
+// colours are oklch; null = transparent. Defined inside each evaluate: page + frame each need it.
+// Q62: Tab from a blank spot of the expanded frame through its focusable elements (every summary,
+// the opened row's link); each must match `:focus-visible` with an outline at least 2 px wide.
+// The click lands beside the outer summary (`width: max-content`), so it focuses the frame and
+// toggles nothing; the summary is centred first, clear of Open WebUI's fixed header.
+async function focusWalk(frame, shot) {
+  const outer = await frame.waitForSelector("#r > details > summary");
+  await centre(frame, outer);
+  await settle(300);
+  const line = await outer.boundingBox();
+  const box = await (await frame.frameElement()).boundingBox();
+  await page.mouse.click(box.x + box.width - 8, line.y + line.height / 2);
+  const steps = [];
+  for (let i = 0; i < 40; i += 1) {
+    await page.keyboard.press("Tab");
+    const step = await frame.evaluate(() => {
+      const node = document.activeElement;
+      if (!node || node === document.body) return null;
+      const style = getComputedStyle(node);
+      return {
+        tag: node.tagName.toLowerCase(),
+        visible: node.matches(":focus-visible"),
+        outline: style.outlineStyle,
+        width: Number.parseFloat(style.outlineWidth),
+      };
+    });
+    if (!step) break;
+    steps.push(step);
+    if (steps.length === 2) await page.screenshot({ path: shot });
+  }
+  const summaries = steps.filter((step) => step.tag === "summary").length;
+  return {
+    steps: steps.length,
+    summaries,
+    ok: summaries === table.checks.length + 1 &&
+      steps.every((step) => step.visible && step.outline !== "none" && step.width >= 2),
+  };
+}
 const shots = [];
-for (const theme of ["light", "dark"]) {
-  await page.evaluate((t) => localStorage.setItem("theme", t), theme);
+const focusShots = [];
+const schemes = [];
+const surfaces = {};
+for (const pass of PASSES) {
+  await page.emulateMediaFeatures([{ name: "prefers-color-scheme", value: pass.scheme }]);
+  await page.evaluate((t) => localStorage.setItem("theme", t), pass.theme);
   for (const record of results.filter((r) => r.chat_id)) {
     await page.goto(`${webuiURL}/c/${record.chat_id}`, { waitUntil: "domcontentloaded", timeout: 90000 });
     await verdictShown();
     await settle(2500);
     const { frame } = await frameFacts();
+    const seen = { case: record.case, ...pass, ok: false };
+    const name = `${record.case}-${pass.theme}-${pass.scheme}`;
     if (frame) {
       await expand(frame);
       const item = CASES.find((c) => c.name === record.case);
-      await frame.click(rowSelector(item.rows[0]));
+      await clickSteady(frame, rowSelector(item.rows[0]));
       await settle(800);
+      seen.page = await page.evaluate(() => {
+        const read = (node) => {
+          const context = document.createElement("canvas").getContext("2d");
+          context.fillStyle = getComputedStyle(node).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+          return a === 0 ? null : `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+        };
+        let node = [...document.querySelectorAll(".chat-assistant")].at(-1)?.querySelector("iframe");
+        while (node && read(node) === null) node = node.parentElement;
+        return {
+          theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+          surface: node ? read(node) : null,
+        };
+      });
+      seen.frame = await frame.evaluate(() => {
+        const read = (node) => {
+          const context = document.createElement("canvas").getContext("2d");
+          context.fillStyle = getComputedStyle(node).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+          return a === 0 ? null : `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+        };
+        return { dark: matchMedia("(prefers-color-scheme: dark)").matches, surface: read(document.body) };
+      });
+      const same = seen.page.surface !== null && seen.page.surface === seen.frame.surface;
+      seen.ok = seen.frame.dark === (pass.scheme === "dark") && seen.page.theme === pass.theme &&
+        same === (pass.theme === pass.scheme);
+      if (pass.theme === pass.scheme) surfaces[pass.theme] = seen.page.surface;
     }
     await page.evaluate(() => [...document.querySelectorAll(".chat-assistant")].at(-1)?.querySelector("iframe")?.scrollIntoView({ block: "center" }));
     await settle(500);
-    const path = join(outDir, `${record.case}-${theme}.png`);
+    const path = join(outDir, `${name}.png`);
     await page.screenshot({ path });
     shots.push(path);
+    if (frame && pass.theme === pass.scheme) {
+      const shot = join(outDir, `${name}-focus.png`);
+      seen.focus = await focusWalk(frame, shot);
+      focusShots.push(shot);
+    }
+    schemes.push(seen);
+    console.log(JSON.stringify(seen));
   }
 }
+await page.emulateMediaFeatures([]);
 await page.evaluate(() => localStorage.setItem("theme", "system"));
+const schemesOk = schemes.length === PASSES.length * results.filter((r) => r.chat_id).length &&
+  schemes.every((seen) => seen.ok && (seen.theme !== seen.scheme || seen.focus?.ok === true));
 const ok = results.length > 0 && results.length === CASES.length && results.every((r) => r.ok) &&
-  (!refused || narrow.ok);
-console.log(JSON.stringify({ shots, ok }));
-writeFileSync(join(outDir, "m16u1_checks.json"), `${JSON.stringify({ ok, results, narrow, shots }, null, 2)}\n`);
+  (!refused || narrow.ok) && schemesOk;
+console.log(JSON.stringify({ shots, focusShots, surfaces, ok }));
+writeFileSync(
+  join(outDir, "m16u1_checks.json"),
+  `${JSON.stringify({ ok, results, narrow, shots, focus_shots: focusShots, schemes, surfaces }, null, 2)}\n`,
+);
 await browser.disconnect();
 process.exitCode = ok ? 0 : 1;

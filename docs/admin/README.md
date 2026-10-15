@@ -227,6 +227,10 @@ The checks after the failed check show `not checked`. If the chart passed, every
 The list uses the same language as the status line. It stays with the reply after a page reload, and
 Open WebUI does not send it to the model.
 
+The list uses the light or dark colors of the operating system setting, as the Open WebUI system
+theme does. If a user selects an Open WebUI theme that differs from the operating system setting, the
+list shows as a separate light or dark panel.
+
 Click a check in the list to open it. The opened check states what the check does, and a failed
 check states why it failed. The first check shows the model's program. Most other checks that ran
 show the program lines that relate to them, for example the `pd.read_csv` and `groupby` lines that

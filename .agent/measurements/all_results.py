@@ -222,6 +222,18 @@ def m16():
         },
         "narrow_ok": data["narrow"]["ok"],
         "screenshots": len(data["shots"]),
+        # Q62: each (theme, OS scheme) pass + the Tab focus walk of each matching pass.
+        "schemes": {
+            f"{seen['case']}-{seen['theme']}-{seen['scheme']}": seen["ok"]
+            for seen in data["schemes"]
+        },
+        "focus": {
+            f"{seen['case']}-{seen['theme']}": seen["focus"]["ok"]
+            for seen in data["schemes"]
+            if "focus" in seen
+        },
+        "focus_screenshots": len(data["focus_shots"]),
+        "surfaces": data["surfaces"],
         "ok": data["ok"],
     }
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.5 check list (`.agent/archive/contracts/m19u5.md` O8 CHECK_OF, O9 rows + listing) + M20.2 related
-# lines (`.agent/archive/contracts/m20u2.md` E4): each mutant names one red.
+# lines (`.agent/archive/contracts/m20u2.md` E4) + Q62 embed style: each mutant names one red.
 module = "webui/paste_in/checks.py"
 tests = ["tests/test_paste_in_checks.py"]
 
@@ -182,3 +182,53 @@ predicate = "verifier_error fails the figure row (M21.1 F2)"
 kills = "tests/test_paste_in_checks.py::test_o8_check_order_reason_map_and_text_tables_are_total"
 anchor = '''    "figure": ("no_figure", "multiple_figures", "glyph_missing", "verifier_error"),'''
 mutant = '''    "figure": ("no_figure", "multiple_figures", "glyph_missing"),'''
+
+# Q62: the embed's two palettes, each on Open WebUI's own surface, flat selectors, a focus ring.
+[[mutant]]
+id = "q62-dark-muted-dim"
+predicate = "dark not-checked text + line numbers reach 4.5:1"
+kills = "tests/test_paste_in_embed.py::test_every_colour_meets_its_contrast_floor_on_its_surface[dark]"
+anchor = '''    "--surface:#161616;--text:#b4b4b4;--muted:#9b9b9b;'''
+mutant = '''    "--surface:#161616;--text:#b4b4b4;--muted:#6b6b6b;'''
+
+[[mutant]]
+id = "q62-light-link-pale"
+predicate = "the light reference link reaches 4.5:1"
+kills = "tests/test_paste_in_embed.py::test_every_colour_meets_its_contrast_floor_on_its_surface[light]"
+anchor = '''    "--fail:#c0392b;--ok:#1e7e45;--link:#1f66c1"'''
+mutant = '''    "--fail:#c0392b;--ok:#1e7e45;--link:#3d8bd9"'''
+
+[[mutant]]
+id = "q62-dark-surface-unmeasured"
+predicate = "the dark surface is Open WebUI's gray-900"
+kills = "tests/test_paste_in_embed.py::test_each_scheme_paints_open_webuis_surface"
+anchor = '''    "--surface:#161616;'''
+mutant = '''    "--surface:#121212;'''
+
+[[mutant]]
+id = "q62-transparent-body"
+predicate = "the body paints the scheme's surface"
+kills = "tests/test_paste_in_embed.py::test_paint_declarations_are_the_closed_set"
+anchor = '''    "body{margin:0;color:var(--text);background:var(--surface);font:14px/1.45 ui-sans-serif,"'''
+mutant = '''    "body{margin:0;color:var(--text);font:14px/1.45 ui-sans-serif,"'''
+
+[[mutant]]
+id = "q62-skip-opacity"
+predicate = "not-checked rows take a muted colour, never an opacity blend"
+kills = "tests/test_paste_in_embed.py::test_paint_declarations_are_the_closed_set"
+anchor = '''    ".skip{color:var(--muted)}"'''
+mutant = '''    ".skip{opacity:.7}"'''
+
+[[mutant]]
+id = "q62-no-focus-ring"
+predicate = "a focused summary or link shows a 2 px ring"
+kills = "tests/test_paste_in_embed.py::test_paint_declarations_are_the_closed_set"
+anchor = '''    "summary:focus-visible,a:focus-visible{outline:2px solid var(--link);outline-offset:1px;"'''
+mutant = '''    "summary:focus-visible,a:focus-visible{outline-offset:1px;"'''
+
+[[mutant]]
+id = "q62-id-selector"
+predicate = "selectors carry no id"
+kills = "tests/test_paste_in_embed.py::test_selectors_stay_flat"
+anchor = '''    ".checks{padding:4px}"'''
+mutant = '''    "#r{padding:4px}"'''

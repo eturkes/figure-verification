@@ -324,38 +324,52 @@ class Evidence:
     lines: tuple[tuple[Check, frozenset[int]], ...] = ()
 
 
-# The frame cannot see Open WebUI's theme class, so every colour is a mid tone that reads on the
-# light and the dark theme alike; a `prefers-color-scheme` rule would pick the wrong extreme when
-# the theme and the OS disagree.
+# The frame cannot see Open WebUI's theme class, and no one text colour reaches 4.5:1 on both its
+# white and its gray-900 surface. Open WebUI sets no `color-scheme`, so `prefers-color-scheme` here
+# follows the OS, as its default `system` theme does. Each scheme paints Open WebUI's own surface
+# (measurement M16 `surfaces`) under its own Open WebUI grays, so every contrast pair holds also
+# where an explicit theme and the OS disagree: the embed then shows as a card.
+_LIGHT = (
+    "--surface:#ffffff;--text:#4d4d4d;--muted:#666666;--code:#f8f8f8;--at:#fdeeed;--hit:#f5c4c1;"
+    "--fail:#c0392b;--ok:#1e7e45;--link:#1f66c1"
+)
+_DARK = (
+    "--surface:#161616;--text:#b4b4b4;--muted:#9b9b9b;--code:#262626;--at:#3a2322;--hit:#6e2a26;"
+    "--fail:#f0716a;--ok:#4cc27a;--link:#6ba6f0"
+)
 _STYLE = (
-    "body{margin:0;color:#7d7d7d;font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"
-    '"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans",sans-serif}'
-    "#r{padding:2px 0}"
-    "#r>details>summary{cursor:pointer;width:max-content;user-select:none}"
-    "#r>details[open]>summary .show,#r>details:not([open])>summary .hide{display:none}"
+    f":root{{{_LIGHT}}}@media (prefers-color-scheme:dark){{:root{{{_DARK}}}}}"
+    "body{margin:0;color:var(--text);background:var(--surface);font:14px/1.45 ui-sans-serif,"
+    'system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans JP","Hiragino Sans",sans-serif}'
+    # The padding keeps each focus ring inside the frame, which clips anything past its edge.
+    ".checks{padding:4px}"
+    ".checks>details>summary{cursor:pointer;width:max-content;user-select:none}"
+    ".checks>details[open]>summary .show,.checks>details:not([open])>summary .hide{display:none}"
+    "summary:focus-visible,a:focus-visible{outline:2px solid var(--link);outline-offset:1px;"
+    "border-radius:3px}"
     "ol{list-style:none;margin:6px 0 0;padding:0}"
     "li{padding:3px 0}"
     ".row>summary{display:flex;gap:8px;cursor:pointer;list-style:none}"
     ".row>summary::before{content:'\\25B8';flex:none;width:.8em}"
     ".row[open]>summary::before{content:'\\25BE'}"
     ".mark{flex:none;width:1.1em;text-align:center;font-weight:700}"
-    ".pass .mark{color:#2a9354}"
-    ".fail .mark,.cause{color:#d64541}"
+    ".pass .mark{color:var(--ok)}"
+    ".fail .mark,.cause{color:var(--fail)}"
     ".title{font-weight:500}"
     ".covers,.unrun,.more{font-size:12.5px}"
-    ".skip{opacity:.7}"
+    ".skip{color:var(--muted)}"
     ".more{margin:2px 0 8px 2.6em}"
     ".more p{margin:2px 0}"
     ".label{display:block;font-weight:600;margin-top:6px}"
-    ".listing{margin:4px 0;padding:6px 8px;border-radius:6px;background:rgba(125,125,125,.12);"
+    ".listing{margin:4px 0;padding:6px 8px;border-radius:6px;background:var(--code);"
     'font:12px/1.5 ui-monospace,Menlo,Consolas,"Noto Sans Mono CJK JP",monospace;'
     "white-space:pre-wrap;overflow-wrap:anywhere}"
     ".line,.gap{display:block}"
-    ".ln{display:inline-block;min-width:2.4em;padding-right:8px;text-align:right;opacity:.7;"
-    "user-select:none}"
-    ".at{background:rgba(214,69,65,.14)}"
-    "mark{background:rgba(214,69,65,.38);color:inherit;border-radius:2px}"
-    "a.spec{color:#3d8bd9}"
+    ".ln{display:inline-block;min-width:2.4em;padding-right:8px;text-align:right;"
+    "color:var(--muted);user-select:none}"
+    ".at{background:var(--at)}"
+    "mark{background:var(--hit);color:inherit;border-radius:2px}"
+    "a.spec{color:var(--link)}"
 )
 # Open WebUI sizes an embed only from the frame's own `iframe:height` message, since the sandbox
 # denies it access to the frame's document.
@@ -526,7 +540,7 @@ def breakdown_html(
         )
     return (
         f'<!DOCTYPE html><html lang="{"ja" if japanese else "en"}"><head><meta charset="utf-8">'
-        f'<style>{_STYLE}</style></head><body><div id="r"><details><summary>'
+        f'<style>{_STYLE}</style></head><body><div id="r" class="checks"><details><summary>'
         f'<span class="show">{_text(SHOW[language])}</span>'
         f'<span class="hide">{_text(HIDE[language])}</span></summary>'
         f"<ol>{''.join(rows)}</ol></details></div><script>{_HEIGHT_SCRIPT}</script></body></html>"
