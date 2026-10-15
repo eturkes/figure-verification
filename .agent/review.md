@@ -3,16 +3,13 @@
 A `finding` cell carries its evidence at the `CLAUDE.md` `Teammates` bar: a red test for behavior, or
 the disputed bytes as a greppable anchor plus `file:line` for an artifact's text; an absence claim
 carries its command, rc and positive control. A unit's FULL verdict table lands with its archived
-contract; this ledger carries only the rows that needed a ruling. Rows R1-R131 (IMPLEMENT close +
-the queue requests, all adjudicated) = `.agent/archive/review-implement.md`.
+contract, since an all-`pass` row still counts as review delivered; this ledger carries only the
+rows that needed a ruling. Rows R1-R131 (IMPLEMENT close + the queue requests, all adjudicated) =
+`.agent/archive/review-implement.md`; among them R7-R14 adjudicate the 8 non-`pass` rows of M13.6's
+24 (`.agent/archive/contracts/m13u6.md` § Closing review).
 
 Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (with reason) ·
 `register` (outside contract, recorded not fixed) · `closed` (fix landed + re-reviewed).
-
-A unit's FULL verdict table lands with its archived contract, since an all-`pass` row still counts
-as review delivered; this ledger carries only the rows that needed a ruling. M13.6's 24 rows are
-`.agent/archive/contracts/m13u6.md` § Closing review, and R7-R14 below adjudicate its 8 non-`pass`
-rows.
 
 ## Lenses
 
