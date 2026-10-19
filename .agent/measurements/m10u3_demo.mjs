@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // M10.3 + M17.4, arms re-keyed by M19.5: drive the launcher's banner prompts through the signed-in
 // Open WebUI chat, one fresh chat per attempt, and record what the user saw before AND after a
-// reload.
+// reload, plus the program the "Show checks" embed lists (Q68).
 //
 //   node m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>
 //
@@ -71,7 +71,11 @@ async function readback(chatId) {
     const user = messages.filter((m) => m.role === "user").at(-1);
     const status = (assistant?.statusHistory ?? []).at(-1);
     const last = [...document.querySelectorAll(".chat-assistant")].at(-1);
+    // The "Show checks" embed's `program` row lists the whole program (its first listing).
+    const embed = new DOMParser().parseFromString(String(assistant?.embeds?.[0] ?? ""), "text/html");
+    const listing = embed.querySelector("li details.row .listing");
     return {
+      program: listing ? [...listing.querySelectorAll(".src")].map((s) => s.textContent).join("\n") : null,
       done: assistant?.done ?? false,
       content: assistant?.content ?? null,
       output: assistant?.output ?? null,
@@ -108,6 +112,7 @@ function summarize(state) {
     messages: state.messages,
     user_files: state.user_files,
     status: state.status,
+    program: state.program,
   };
 }
 

@@ -1,0 +1,32 @@
+{
+  "label": "single",
+  "attempt": 1,
+  "prompts": [
+    "Draw bars for A 3, B 5, C 9."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw bars for A 3, B 5, C 9.",
+      "program": "import matplotlib.pyplot as plt\n\n# Load data from CSV file\ndata = [\n    [3, 5, 9],\n    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],\n    [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]\n]\n\n# Create a figure and a set of subplots\nfig, axs = plt.subplots()\n\n# Plot each series\nfor i, series in enumerate(data):\n    axs[i].bar(series)\n\n# Set labels and title\naxs[0].set_xlabel('Series')\naxs[0].set_ylabel('Values')\naxs[0].set_title('A 3, B 5, C 9')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "fail",
+        "content": "Figure verification failed, no image produced",
+        "file_pngs": 0,
+        "png_sha256": [],
+        "status": "The program stopped with an error. (program_error)"
+      },
+      "after": {
+        "verdict": "fail",
+        "content": "Figure verification failed, no image produced",
+        "file_pngs": 0,
+        "png_sha256": [],
+        "status": "The program stopped with an error. (program_error)"
+      }
+    }
+  ],
+  "chat_id": "33898ef8-03e4-4a7f-adde-4a9123487b6a",
+  "error": null,
+  "seconds": 175
+}

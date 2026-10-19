@@ -1,0 +1,56 @@
+{
+  "label": "red",
+  "attempt": 1,
+  "prompts": [
+    "Draw a bar chart with categories A, B, C and values 3, 5, 9.",
+    "Make the bars red."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw a bar chart with categories A, B, C and values 3, 5, 9.",
+      "program": "import matplotlib.pyplot as plt\n\n# Data for the bar chart\ncategories = ['A', 'B', 'C']\nvalues = [3, 5, 9]\n\n# Create the bar chart\nplt.bar(categories, values)\n\n# Set labels and title\nplt.xlabel('Categories')\nplt.ylabel('Values')\nplt.title('Bar Chart with Values')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "c470a55db622bcce677daf52a4116a2acfb9420ec03539b9f468fff7dcb5b6bb"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "c470a55db622bcce677daf52a4116a2acfb9420ec03539b9f468fff7dcb5b6bb"
+        ],
+        "status": null
+      }
+    },
+    {
+      "prompt": "Make the bars red.",
+      "program": "import matplotlib.pyplot as plt\n\n# Load data from CSV file\ndata = [3, 5, 9]\n\n# Create a bar chart\nplt.bar(data)\n\n# Set labels and title\nplt.xlabel('Categories')\nplt.ylabel('Values')\nplt.title('Bar Chart with Red Bars')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "fail",
+        "content": "Figure verification failed, no image produced",
+        "file_pngs": 0,
+        "png_sha256": [],
+        "status": "The program stopped with an error. (program_error)"
+      },
+      "after": {
+        "verdict": "fail",
+        "content": "Figure verification failed, no image produced",
+        "file_pngs": 0,
+        "png_sha256": [],
+        "status": "The program stopped with an error. (program_error)"
+      }
+    }
+  ],
+  "chat_id": "2fe1d377-56ff-42d6-9d31-4a3684aad028",
+  "error": null,
+  "seconds": 193
+}

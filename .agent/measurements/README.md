@@ -177,6 +177,46 @@ for arm in ja-clinic-simple ja-clinic-misleading; do node m10u3_demo.mjs http://
 The zero-attempt first call signs in once: on a fresh instance the harness's first sign-in can
 race the page (`Node is detached from document`); rerun it until it exits 0.
 
+## Live MX150 record — Q68
+
+`q68/` = the Q68 typed-number prompts and the six banner arms on the real model, 5 runs each, against
+`webui/launch.sh --fresh` with the Q68 demo pair (`webui/demo-paste-in/`: tool sha256
+`f5ba9e175040d501…`, filter `70a5b691127b6da8…`). Host tuple: NVIDIA GeForce MX150, driver 580.178.04,
+torch 2.13.0+cu126, transformers 5.16.1, fp16 Qwen2.5-Coder-0.5B-Instruct, greedy (the demo adapter:
+temperature 0.0, 512 tokens), Open WebUI 0.11.3, headless Chromium 151. Per run: `<label>-<n>.json`
+(verdict before + after reload, PNG count + SHA-256, status line, the program the "Show checks"
+embed lists) + the figure PNG of each passing turn; screenshots are not kept.
+
+`chain_demo.mjs` drives a chain: one fresh chat per attempt, each prompt a follow-up in it.
+- `single` (`Draw bars for A 3, B 5, C 9.`): 5/5 pass with 1 PNG, before and after reload.
+- `red` (`Draw a bar chart with categories A, B, C and values 3, 5, 9.`, then `Make the bars red.`):
+  5/5 chains pass on both turns with 1 PNG each, before and after reload; turn 2 calls
+  `plt.bar(categories, values, color='red')` and its PNG shows red bars (one PNG SHA-256 across
+  the 5 runs).
+- Before Q68 (bf52d39 demo pair, same stack, 1 run each): `single` and turn 2 of `red` fail
+  `program_error`.
+
+Banner arms (`m10u3_demo.mjs`, the M19.9 protocol): each arm wrote the same program in all 5 runs, byte-identical
+to its M19.9 program (the file template's bytes are unchanged). Honest arms 15/15 pass with 1 PNG,
+before and after reload. `misleading` + `ja-misleading` 10/10 carry the requested call and block
+with 0 PNGs, `zero_not_in_limits`. `ja-clinic-misleading` carries the requested call but blocks
+`program_error` in 5/5: the program draws `grouped_df.plot(kind='bar')` over a `DatetimeIndex`, which
+pandas 3.0.2 (the Open WebUI 0.11.3 bundle) refuses with `ValueError: Must supply freq for datetime
+value` (host pandas 2.3.3 draws it), so its figure never exists and no run shows the inverted axis
+block (M19.9 on Open WebUI 0.10.2: `axis_inverted`). Queue row Q70.
+
+Rerun from the repository root with the M19.9 setup (stack, browser, sign-in variables), then:
+
+```
+cd .agent/measurements
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 single 5 q68 'Draw bars for A 3, B 5, C 9.'
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 red 5 q68 'Draw a bar chart with categories A, B, C and values 3, 5, 9.' 'Make the bars red.'
+for arm in simple misleading ja-simple ja-misleading; do node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/sales.csv "$arm" 5 q68; done
+for arm in ja-clinic-simple ja-clinic-misleading; do node m10u3_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 ../../data/clinic_ja.csv "$arm" 5 q68; done
+```
+
+`chain_demo.mjs` takes `--csv <path>` before the prompts to attach a file to the first turn.
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:

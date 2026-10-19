@@ -1,0 +1,36 @@
+{
+  "label": "single",
+  "attempt": 4,
+  "prompts": [
+    "Draw bars for A 3, B 5, C 9."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw bars for A 3, B 5, C 9.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the data\nlabels = ['A', 'B', 'C']\nvalues = [3, 5, 9]\n\n# Create the plot\nplt.bar(labels, values)\n\n# Add labels and title\nplt.xlabel('Labels')\nplt.ylabel('Values')\nplt.title('Bars and Filled Areas')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "738c8e105419ee48aa36a092b1f744e092fb7d8f64afcd00c1d292c0ea5fbd56"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "738c8e105419ee48aa36a092b1f744e092fb7d8f64afcd00c1d292c0ea5fbd56"
+        ],
+        "status": null
+      }
+    }
+  ],
+  "chat_id": "024e437d-1df0-4b3b-93b1-2d8600ae87fa",
+  "error": null,
+  "seconds": 176
+}

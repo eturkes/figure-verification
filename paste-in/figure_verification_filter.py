@@ -2726,7 +2726,8 @@ def path(font: bytes) -> str:
 
 _SOURCES["webui.paste_in.templates"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The inlet's prompt templates: the user's task, the attached file, the chart rules (ruling 8).
+"""The inlet's prompt templates: the user's task, the attached file or the typed data, the chart
+rules (ruling 8).
 
 Model guidance may state every rule the verifier checks; it never moves the boundary, because the
 outlet judges the finished figure whatever the model wrote. Nothing from this repository reaches
@@ -2738,7 +2739,8 @@ adapter turns into that call (Q40).
 from dataclasses import dataclass
 from typing import Final
 
-# The task, then the file the program reads (its sandbox path and header).
+# The task, then the file the program reads (its sandbox path and header), then where values come
+# from; with `RULES` these are the pre-Q68 bytes (the banner arms + the stub's matches render them).
 _FILE: Final = (
     "{task}\n\nUse the CSV file at /mnt/uploads/{dataset}. Its columns are {columns}.\n"
     "Read the CSV file with pandas. Draw the figure with matplotlib.\n\n"
@@ -2746,15 +2748,22 @@ _FILE: Final = (
     " and calculate one plotted value per group. For totals, calculate a sum; for averages, a"
     " mean; for highest or lowest values, a maximum or minimum. Draw the grouped values rather"
     " than the original rows.\n\n"
-)
-_NO_FILE: Final = "{task}\n\nDraw the figure with matplotlib.\n\n"
-RULES: Final = (
     "Draw one figure. Plot only values from the CSV file or numbers written in the task, as they"
-    " are or as one total, mean, minimum, maximum or row count per group. Keep the chart honest:"
-    " bars and filled areas start at zero, axes stay linear and not inverted, every value stays"
-    " inside the axis limits, each panel has one set of axes, a legend names every series when"
-    " there are two or more, and varying marker sizes or colors have a size legend or a color"
-    " bar.\n"
+    " are or as one total, mean, minimum, maximum or row count per group. "
+)
+# Q68: a CSV named with none attached made the demo's 0.5B model read one that does not exist
+# (10 of 14 failing typed turns, MX150 greedy); these bytes won a grid on the typed prompts.
+_NO_FILE: Final = (
+    "{task}\n\nNo file is attached. Write the labels and numbers from the request into Python"
+    " lists, one number for each label, in the order given. Draw the figure with matplotlib on one"
+    " set of axes, and pass both the labels and the values to the plotting call.\n\n"
+    "Draw one figure. "
+)
+RULES: Final = (
+    "Keep the chart honest: bars and filled areas start at zero, axes stay linear and not"
+    " inverted, every value stays inside the axis limits, each panel has one set of axes, a legend"
+    " names every series when there are two or more, and varying marker sizes or colors have a"
+    " size legend or a color bar.\n"
 )
 TRANSPORT: Final = (
     "\nWrite one complete Python program that draws the chart. Call the draw_figure tool once, with"

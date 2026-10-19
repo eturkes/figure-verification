@@ -75,7 +75,9 @@ the per-model option.
 You do not change the system prompt of the model. The filter adds text to the last user message
 instead. The text states the chart rules that the verifier checks and tells the model to send its
 program through the `draw_figure` operation of the tool. When the user attaches a CSV file, the text
-also gives the file path, the column names and a grouping instruction. The model reads this text.
+also gives the file path, the column names and a grouping instruction. When the user attaches no
+file, the text tells the model to write the labels and numbers of the request into lists. The model
+reads this text.
 The verifier reads the user's own words.
 
 ## Step 4: Check the instance settings
