@@ -58,10 +58,12 @@ def test_q37_s3_each_root_class_states_its_rule_and_inherits_the_rest() -> None:
     assert production_filter.Filter._TEMPLATES is templates.PRODUCTION_TEMPLATES
     assert demo_filter.Filter._ANCHORING == "substitution"
     assert demo_filter.Filter._TEMPLATES is templates.DEMO_TEMPLATES
-    for name in ("file", "no_file"):
-        production = getattr(templates.PRODUCTION_TEMPLATES, name)
-        demo = getattr(templates.DEMO_TEMPLATES, name)
-        assert production.removesuffix(templates.TRANSPORT) + templates.FORMAT == demo
+    plain, formatted = templates.PRODUCTION_TEMPLATES, templates.DEMO_TEMPLATES
+    assert plain.file.removesuffix(templates.TRANSPORT) + templates.FORMAT == formatted.file
+    # Q71 (user): the no-file bodies fork; the rules and each artifact's ending stay shared.
+    assert plain.no_file.endswith(templates.RULES + templates.TRANSPORT)
+    assert formatted.no_file.endswith(templates.RULES + templates.FORMAT)
+    assert plain.no_file != formatted.no_file.replace(templates.FORMAT, templates.TRANSPORT)
     # By name, not identity: filter suites reload the production module, re-creating its class.
     assert [base.__module__ for base in demo_tool.Tools.__bases__] == ["webui.paste_in.tool"]
     assert [base.__module__ for base in demo_filter.Filter.__bases__] == ["webui.paste_in.filter"]

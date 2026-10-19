@@ -23,7 +23,9 @@ excludes at least one column. A column with a short name, such as `id`, is exemp
 recognized length (three ASCII characters, or two of another script) in the tool's valves ends that
 exemption. Second, the inlet template differs. The demo filter asks the model for bare source text,
 which the demo adapter turns into a tool call. The production filter asks for the tool call
-directly. The harness registers no tool server.
+directly. When the user attaches no file, the demo template also tells the model to put the labels
+and numbers of the request into lists, and it puts the request after its instructions. These lines help
+the small demo model. The harness registers no tool server.
 
 Open WebUI is a trusted display and orchestration layer. The filter reads a backend-owned tool
 receipt. It runs the receipt's program unchanged in the user's browser, with the trusted figure

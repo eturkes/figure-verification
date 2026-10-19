@@ -2733,7 +2733,7 @@ Model guidance may state every rule the verifier checks; it never moves the boun
 outlet judges the finished figure whatever the model wrote. Nothing from this repository reaches
 the production system prompt (user: the deployer cannot change it), so production's templates end
 in the `draw_figure` transport paragraph; the demo's end in the bare-source format paragraph its
-adapter turns into that call (Q40).
+adapter turns into that call (Q40). The file body and the rules are shared; the no-file body forks.
 """
 
 from dataclasses import dataclass
@@ -2751,10 +2751,16 @@ _FILE: Final = (
     "Draw one figure. Plot only values from the CSV file or numbers written in the task, as they"
     " are or as one total, mean, minimum, maximum or row count per group. "
 )
-# Q68: a CSV named with none attached made the demo's 0.5B model read one that does not exist
-# (10 of 14 failing typed turns, MX150 greedy). Q69: with the task first, a follow-up colour
-# (`Make it green.`) was dropped; after the guidance it lands (grids on the typed prompts).
+# No file: name none (Q68: a CSV named with none attached made the demo's 0.5B model read one
+# that does not exist, 10 of 14 failing typed turns, MX150 greedy). Production adds nothing a
+# strong model lacks (user, Q71); the demo's body carries the 0.5B's crutches: lists, one number
+# per label, and the task after the guidance, since with the task first a follow-up colour
+# (`Make it green.`) was dropped (Q69); the demo's form won grids on the typed prompts.
 _NO_FILE: Final = (
+    "{task}\n\nNo file is attached. Draw the figure with matplotlib.\n\n"
+    "Draw one figure. Plot only numbers written in the task. "
+)
+_DEMO_NO_FILE: Final = (
     "No file is attached. Write the labels and numbers from the request into Python lists, one"
     " number for each label, in the order given. Draw the figure with matplotlib on one set of"
     " axes, and pass both the labels and the values to the plotting call. Apply every change the"
@@ -2784,7 +2790,7 @@ class Templates:
 
 
 PRODUCTION_TEMPLATES: Final = Templates(_FILE + RULES + TRANSPORT, _NO_FILE + RULES + TRANSPORT)
-DEMO_TEMPLATES: Final = Templates(_FILE + RULES + FORMAT, _NO_FILE + RULES + FORMAT)
+DEMO_TEMPLATES: Final = Templates(_FILE + RULES + FORMAT, _DEMO_NO_FILE + RULES + FORMAT)
 '''
 
 _SOURCES["verifier.figure.ticks"] = r'''

@@ -199,8 +199,12 @@ def test_o7_production_and_demo_templates_share_rules_but_not_bare_source_format
         formatted = getattr(demo, name)
         assert "{task}" in plain and templates.RULES in plain
         assert templates.FORMAT not in plain and templates.TRANSPORT not in formatted
-        assert plain.endswith(templates.TRANSPORT) and formatted.endswith(templates.FORMAT)
-        assert formatted.removesuffix(templates.FORMAT) == plain.removesuffix(templates.TRANSPORT)
+        assert plain.endswith(templates.RULES + templates.TRANSPORT)
+        assert formatted.endswith(templates.RULES + templates.FORMAT)
+    # Q71 (user): the file bodies stay shared; the no-file bodies fork (demo = the 0.5B's form).
+    assert demo.file.removesuffix(templates.FORMAT) == production.file.removesuffix(
+        templates.TRANSPORT
+    )
     assert "{dataset}" in production.file and "{columns}" in production.file
     assert "bare source" in templates.FORMAT and "Markdown fences" in templates.FORMAT
     assert "draw_figure" in templates.TRANSPORT and "program argument" in templates.TRANSPORT

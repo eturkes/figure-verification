@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Q68 (`.agent/archive/contracts/q68.md`): the no-file template names no CSV file and keeps its
-measured bytes; the file templates keep their pre-Q68 bytes. Imports `templates` alone, so
-mutation credit scopes to it."""
+"""Q68 (`.agent/archive/contracts/q68.md`): the no-file templates name no CSV file and keep their
+pinned bytes; the file templates keep their pre-Q68 bytes. Imports `templates` alone, so mutation
+credit scopes to it."""
 
 import hashlib
 
@@ -30,14 +30,14 @@ def test_q68_file_templates_keep_their_bytes() -> None:
 
 
 def test_q68_no_file_templates_keep_the_measured_bytes() -> None:
-    """T3: the no-file bytes the selection + the live record (`.agent/measurements/q69/`, Q69's
-    task-last form) measured; an edit here leaves that record describing other bytes until the
-    MX150 runs are retaken."""
+    """T3: the demo's no-file bytes = the ones the selection + the live record
+    (`.agent/measurements/q69/`) measured, so an edit there leaves that record describing other
+    bytes until the MX150 runs are retaken; production's = the user's Q71 text, unmeasured."""
     digests = {
         hashlib.sha256(artifact.no_file.encode()).hexdigest()
         for artifact in (templates.PRODUCTION_TEMPLATES, templates.DEMO_TEMPLATES)
     }
     assert digests == {
-        "09005128ebbc7a0a68d9846f3b67ce583bca1afdec5b3f092ae18ad1ccf51f52",
+        "2e652e520c712573e4742be72797a253ffadac80fa326a35cd61a637dc61a7c6",
         "de15937708a331e413b9e0debd0d4953f234b84239f4b05b11d9334bb6c345cc",
     }
