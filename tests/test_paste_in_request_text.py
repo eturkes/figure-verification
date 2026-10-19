@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Q66: the request = every user message on the chat branch, as Open WebUI stored it.
 
-Contract `.agent/contracts/q66.md` (R1-R6). The store is `paste_in_support.fake_chats`, strict to
-the 0.11.3 API; the effect cases run the real reader + judge over `data/sales.csv`.
+Contract `.agent/archive/contracts/q66.md` (R1-R6). The store is `paste_in_support.fake_chats`,
+strict to the 0.11.3 API; the effect cases run the real reader + judge over `data/sales.csv`.
 """
 
 from __future__ import annotations
