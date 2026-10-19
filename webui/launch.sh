@@ -245,7 +245,7 @@ misleading_prompt="Chart the total revenue of each region using bars, and call p
 ja_simple_prompt="地域ごとの総売上を棒グラフにしてください。"
 ja_misleading_prompt="地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、plt.ylim(30000, 45000) で y 軸を 30000 から始めてください。"
 ja_clinic_simple_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。"
-ja_clinic_misleading_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、plt.ylim(60, 0) で y 軸を反転してください。"
+ja_clinic_misleading_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、plt.plot で線を描き、plt.ylim(60, 0) で y 軸を反転してください。"
 printf -v prompts '%s\n' \
   "    Attach the CSV file shown before a prompt to a new chat. Then paste the prompt:" \
   "      1) [data/sales.csv] ${simple_prompt}" \
@@ -272,7 +272,8 @@ else
     "           checks the finished figure. A blocked figure shows:" \
     "           Figure verification failed, no image produced" \
     "           Expect prompts 1, 3 and 5 to pass and prompts 2, 4 and 6 to stop the chart." \
-    "           Recorded on an NVIDIA MX150: each prompt behaved so in 5 of 5 runs." \
+    "           Recorded on an NVIDIA MX150 with Open WebUI 0.11.3: each prompt" \
+    "           behaved so in 5 of 5 runs." \
     "           Use --stub to run the demo without a model."
 fi
 browser_url="http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}"

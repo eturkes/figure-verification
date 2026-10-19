@@ -60,10 +60,11 @@ what the verifier does not check.
   `.agent/measurements/m19u5/`. On Open WebUI 0.11.3, the M15, M16 and M17 replays repeat these
   outcomes.
 - **Real model.** The demo model ran each launcher prompt 5 times. The host was an NVIDIA MX150
-  with fp16 Qwen2.5-Coder-0.5B-Instruct, greedy decoding, Open WebUI 0.10.2 and headless Chromium
+  with fp16 Qwen2.5-Coder-0.5B-Instruct, greedy decoding, Open WebUI 0.11.3 and headless Chromium
   151. All 15 honest runs showed a chart and the pass message. All 15 misleading runs drew the
-  requested limits and showed the failure message with the expected code. The records are in
-  `.agent/measurements/m19u9/`.
+  requested limits or the inverted axis and showed the failure message with the expected code. The
+  records are in `.agent/measurements/q70/`. The record on Open WebUI 0.10.2, before prompt 6 named
+  `plt.plot`, is in `.agent/measurements/m19u9/`.
 
 The earlier verifier read the program text instead of the finished figure. Its measurements are in
 `.agent/archive/` and do not apply to this verifier.
