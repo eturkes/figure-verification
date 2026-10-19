@@ -1,0 +1,36 @@
+{
+  "label": "single",
+  "attempt": 3,
+  "prompts": [
+    "Draw bars for A 3, B 5, C 9."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw bars for A 3, B 5, C 9.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the labels and values\nlabels = ['A', 'B', 'C']\nvalues = [3, 5, 9]\n\n# Create a figure and axis\nfig, ax = plt.subplots()\n\n# Plot the bars\nax.bar(labels, values)\n\n# Set the title and labels\nax.set_title('Bars for A, B, C')\nax.set_xlabel('Series')\nax.set_ylabel('Values')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "e38ad45fbc309cd84d2bdc7fbde82f297ba6f12b8c2a71a2fadbcfe48cfb6499"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "e38ad45fbc309cd84d2bdc7fbde82f297ba6f12b8c2a71a2fadbcfe48cfb6499"
+        ],
+        "status": null
+      }
+    }
+  ],
+  "chat_id": "07556c16-9022-4941-80f9-30cd76153a49",
+  "error": null,
+  "seconds": 46
+}

@@ -1,0 +1,60 @@
+{
+  "label": "red",
+  "attempt": 5,
+  "prompts": [
+    "Draw a bar chart with categories A, B, C and values 3, 5, 9.",
+    "Make the bars red."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw a bar chart with categories A, B, C and values 3, 5, 9.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the labels and values\nlabels = ['A', 'B', 'C']\nvalues = [3, 5, 9]\n\n# Create a bar chart\nplt.bar(labels, values)\n\n# Add a title and labels\nplt.title('Bar Chart')\nplt.xlabel('Categories')\nplt.ylabel('Values')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "a43f405dcb73ee3c3d09ba50929679cdf323b97d267e0c0a3414b66a0e66fad0"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "a43f405dcb73ee3c3d09ba50929679cdf323b97d267e0c0a3414b66a0e66fad0"
+        ],
+        "status": null
+      }
+    },
+    {
+      "prompt": "Make the bars red.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the data\ncategories = ['A', 'B', 'C']\nvalues = [3, 5, 9]\n\n# Create the bar chart\nplt.bar(categories, values, color='red')\n\n# Add labels and title\nplt.xlabel('Categories')\nplt.ylabel('Values')\nplt.title('Bar Chart with Red Bars')\n\n# Display the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "1dc6e65b607ed47dc52aea3dc75ffd3fc3189d4c4ee82b79082e6a17321f8fda"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "1dc6e65b607ed47dc52aea3dc75ffd3fc3189d4c4ee82b79082e6a17321f8fda"
+        ],
+        "status": null
+      }
+    }
+  ],
+  "chat_id": "ede37626-5806-4d78-acb4-fa460852895d",
+  "error": null,
+  "seconds": 110
+}

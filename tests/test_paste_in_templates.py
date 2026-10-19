@@ -30,13 +30,14 @@ def test_q68_file_templates_keep_their_bytes() -> None:
 
 
 def test_q68_no_file_templates_keep_the_measured_bytes() -> None:
-    """T3: the no-file bytes the selection + the live record (`.agent/measurements/q68/`) measured;
-    an edit here leaves that record describing other bytes until the MX150 runs are retaken."""
+    """T3: the no-file bytes the selection + the live record (`.agent/measurements/q69/`, Q69's
+    task-last form) measured; an edit here leaves that record describing other bytes until the
+    MX150 runs are retaken."""
     digests = {
         hashlib.sha256(artifact.no_file.encode()).hexdigest()
         for artifact in (templates.PRODUCTION_TEMPLATES, templates.DEMO_TEMPLATES)
     }
     assert digests == {
-        "6a3f834613ceadb8aff2045e20542e63d07df988dfee53940f426295d6e461e0",
-        "1ceee87b3e59c7e14eb3d2e7c0bb41cd45f7bf9cd5e38b1bd55761a85ca16d89",
+        "09005128ebbc7a0a68d9846f3b67ce583bca1afdec5b3f092ae18ad1ccf51f52",
+        "de15937708a331e413b9e0debd0d4953f234b84239f4b05b11d9334bb6c345cc",
     }

@@ -217,6 +217,32 @@ for arm in ja-clinic-simple ja-clinic-misleading; do node m10u3_demo.mjs http://
 
 `chain_demo.mjs` takes `--csv <path>` before the prompts to attach a file to the first turn.
 
+## Live MX150 record — Q69
+
+`q69/` = Q68's two typed prompts and three colour follow-ups on the real model, 5 runs each, against
+`webui/launch.sh --fresh` with the Q69 demo pair (the no-file template puts the request after its
+guidance; `webui/demo-paste-in/`: tool sha256 `f5ba9e175040d501…`, filter `ea8b689279ffe846…`).
+Host tuple and record format: as Q68. Each label wrote the same programs in all 5 runs, and every
+turn passed with 1 PNG, before and after reload:
+- `single` (`Draw bars for A 3, B 5, C 9.`): `ax.bar(labels, values)`.
+- `red` (A/B/C chart, then `Make the bars red.`): `plt.bar(categories, values, color='red')`, the
+  Q68 red PNG byte for byte.
+- `green` (`Draw a bar chart of cats 4, dogs 6.`, then `Make it green.`): `color='green'`.
+- `orange` (`Draw bars for X 2, Y 7.`, then `Make the bars orange.`): `color='orange'`.
+- `same` (A/B/C chart, then `Draw the same chart with red bars.`): `plt.bar(categories, values)`,
+  default blue; the colour reaches the title alone (queue row Q69).
+
+Rerun as Q68, with these chains:
+
+```
+cd .agent/measurements
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 single 5 q69 'Draw bars for A 3, B 5, C 9.'
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 red 5 q69 'Draw a bar chart with categories A, B, C and values 3, 5, 9.' 'Make the bars red.'
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 green 5 q69 'Draw a bar chart of cats 4, dogs 6.' 'Make it green.'
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 orange 5 q69 'Draw bars for X 2, Y 7.' 'Make the bars orange.'
+node chain_demo.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 same 5 q69 'Draw a bar chart with categories A, B, C and values 3, 5, 9.' 'Draw the same chart with red bars.'
+```
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:

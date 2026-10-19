@@ -25,11 +25,14 @@ _FILE: Final = (
     " are or as one total, mean, minimum, maximum or row count per group. "
 )
 # Q68: a CSV named with none attached made the demo's 0.5B model read one that does not exist
-# (10 of 14 failing typed turns, MX150 greedy); these bytes won a grid on the typed prompts.
+# (10 of 14 failing typed turns, MX150 greedy). Q69: with the task first, a follow-up colour
+# (`Make it green.`) was dropped; after the guidance it lands (grids on the typed prompts).
 _NO_FILE: Final = (
-    "{task}\n\nNo file is attached. Write the labels and numbers from the request into Python"
-    " lists, one number for each label, in the order given. Draw the figure with matplotlib on one"
-    " set of axes, and pass both the labels and the values to the plotting call.\n\n"
+    "No file is attached. Write the labels and numbers from the request into Python lists, one"
+    " number for each label, in the order given. Draw the figure with matplotlib on one set of"
+    " axes, and pass both the labels and the values to the plotting call. Apply every change the"
+    " request asks for, such as a color or a title.\n\n"
+    "The request: {task}\n\n"
     "Draw one figure. "
 )
 RULES: Final = (

@@ -1,0 +1,60 @@
+{
+  "label": "orange",
+  "attempt": 3,
+  "prompts": [
+    "Draw bars for X 2, Y 7.",
+    "Make the bars orange."
+  ],
+  "csv": null,
+  "turns": [
+    {
+      "prompt": "Draw bars for X 2, Y 7.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the labels and values\nlabels = ['X 2', 'Y 7']\nvalues = [2, 7]\n\n# Create a figure and axis\nfig, ax = plt.subplots()\n\n# Plot the bars\nax.bar(labels, values)\n\n# Set the title and labels\nax.set_title('Bars for X 2, Y 7')\nax.set_xlabel('X Axis Label')\nax.set_ylabel('Y Axis Label')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "f74d0d2f15f1f62753c2c74634878665766af08afea76bf429965f1b987207f6"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "f74d0d2f15f1f62753c2c74634878665766af08afea76bf429965f1b987207f6"
+        ],
+        "status": null
+      }
+    },
+    {
+      "prompt": "Make the bars orange.",
+      "program": "import matplotlib.pyplot as plt\n\n# Define the data\nlabels = ['X', 'Y']\nvalues = [2, 7]\n\n# Create the figure\nfig, ax = plt.subplots()\n\n# Plot the bars\nax.bar(labels, values, color='orange')\n\n# Add labels and title\nax.set_xlabel('Labels')\nax.set_ylabel('Values')\nax.set_title('Bars with Orange Color')\n\n# Show the plot\nplt.show()\n",
+      "program_elided": false,
+      "before": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "a53478419b839ec911893d317decb9301336c8466541e8b8ce0c42a0bf66815b"
+        ],
+        "status": null
+      },
+      "after": {
+        "verdict": "pass",
+        "content": "Figure verification passed\n\nBars: numbers typed in the request.",
+        "file_pngs": 1,
+        "png_sha256": [
+          "a53478419b839ec911893d317decb9301336c8466541e8b8ce0c42a0bf66815b"
+        ],
+        "status": null
+      }
+    }
+  ],
+  "chat_id": "7241f8e3-ff69-40dc-a5f1-a1e0c3a947e6",
+  "error": null,
+  "seconds": 150
+}
