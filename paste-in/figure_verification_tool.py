@@ -526,7 +526,8 @@ def parse_aliases(text: str) -> Aliases:
 
 _SOURCES["webui.paste_in.owui_files"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The ONLY module that imports `open_webui`: uploaded bytes + the bundled CJK font, in-process.
+"""The ONLY module that imports `open_webui`: uploaded bytes, the user's stored messages + the
+bundled CJK font, in-process.
 
 The truth source for every recomputed number is the user's own upload (`.claude/rules/pysrc.md`,
 comparison class II), so the bytes come from Open WebUI's own store and not from the chat metadata,
@@ -534,7 +535,7 @@ which is client-supplied end to end -- the item's nested `path` included. Only t
 is trusted, and it is re-resolved against the requesting user:
 `Files.get_file_by_id_and_user_id` returns `None` for a file that is missing, foreign or
 unreadable, so a file the caller does not own is never read and no second path exists that could
-read it.
+read it. The request text comes from the same store, read only for a chat the requesting user owns.
 
 The `open_webui` imports are function-local, and that is load-bearing rather than stylistic: this
 module must import in the gate environment, which has no `open_webui` and cannot have one, while
@@ -619,6 +620,50 @@ async def uploaded_files(
 ) -> tuple[UploadedFile, ...]:
     """Resolve chat attachment ids through the same ownership path the filter uses."""
     return await owned_files(attachment_ids(metadata), user_id)
+
+
+def _latest(metadata: Mapping[str, object] | None) -> str | None:
+    """The text of the message that asked for this chart."""
+    message = (metadata or {}).get("user_message")
+    content = message.get("content") if isinstance(message, Mapping) else None
+    return content if isinstance(content, str) else None
+
+
+async def request_text(metadata: Mapping[str, object] | None, user_id: object) -> str | None:
+    """The request the verifier reads: every user message on this chat's branch, oldest first,
+    as Open WebUI stored it, joined by a blank line, so a follow-up such as
+    `make the bars red` keeps the columns and numbers that earlier messages named.
+
+    Stored rows only: the model-facing messages hold the inlet's rewrite of the latest message,
+    which names every CSV column, and after compaction a model-written summary. Anything short of
+    an owned chat whose branch ends in the current message reads as that message alone: Open
+    WebUI lets an admin continue a chat it does not own, and a temporary chat stores none. A range
+    or a negation cue can join across the blank line (`… 3` then `to 7 …`), as inside a message.
+    """
+    latest = _latest(metadata)
+    chat_id = (metadata or {}).get("chat_id")
+    message_id = (metadata or {}).get("user_message_id")
+    if latest is None or not all(
+        isinstance(key, str) and key for key in (user_id, chat_id, message_id)
+    ):
+        return latest
+    try:
+        from open_webui.models.chats import Chats  # noqa: PLC0415 - see the module docstring
+        from open_webui.utils.misc import get_message_list  # noqa: PLC0415 - as above
+
+        if not await Chats.is_chat_owner(chat_id, user_id):
+            return latest
+        branch = get_message_list(await Chats.get_messages_map_by_chat_id(chat_id), message_id)
+        if not branch or branch[-1].get("role") != "user" or branch[-1].get("content") != latest:
+            return latest
+        texts = [
+            message["content"]
+            for message in branch
+            if message.get("role") == "user" and isinstance(message.get("content"), str)
+        ]
+    except Exception:
+        return latest
+    return "\n\n".join(texts)
 
 
 def sandbox_isolated() -> bool:
@@ -716,8 +761,9 @@ _SOURCES["webui.paste_in.tool"] = r'''
 """The one model-visible operation: a program in, a fixed string out.
 
 Transport, never authority. The method records the model's exact program bytes, the chat's
-attachment ids (the outlet re-resolves each against the requesting user), the request text and the
-admin's aliases in backend request state, and returns one fixed string. It runs nothing and decides
+attachment ids (the outlet re-resolves each against the requesting user), the request text (the
+user's stored messages on the chat branch, `owui_files.request_text`) and the admin's aliases in
+backend request state, and returns one fixed string. It runs nothing and decides
 nothing: the outlet filter runs the recorded program in the user's browser and judges the finished
 figure, and only that outlet may publish (tool-call-only PASS transport).
 
@@ -737,17 +783,9 @@ records the parsed aliases in its receipt, so the outlet's verdict reads the sam
 from pydantic import BaseModel, Field, field_validator
 
 from webui.paste_in.aliases import parse_aliases
-from webui.paste_in.owui_files import attachment_ids
+from webui.paste_in.owui_files import attachment_ids, request_text
 from webui.paste_in.receipt import Receipt, write_receipt
 from webui.paste_in.verdicts import CHART_SENT
-
-
-def _request_text(metadata: dict[str, object] | None) -> str | None:
-    user_message = (metadata or {}).get("user_message")
-    if not isinstance(user_message, dict):
-        return None
-    content = user_message.get("content")
-    return content if isinstance(content, str) else None
 
 
 class Tools:
@@ -779,6 +817,7 @@ class Tools:
         program: str,
         __metadata__: dict[str, object] | None = None,
         __request__: object | None = None,
+        __user__: dict[str, object] | None = None,
     ) -> str:
         """Draw one chart with matplotlib from a complete Python program.
 
@@ -797,7 +836,7 @@ class Tools:
                 Receipt(
                     program,
                     tuple(attachment_ids(__metadata__)),
-                    _request_text(__metadata__),
+                    await request_text(__metadata__, (__user__ or {}).get("id")),
                     parse_aliases(self.valves.column_aliases),
                 ),
             )

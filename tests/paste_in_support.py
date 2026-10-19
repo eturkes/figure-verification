@@ -712,3 +712,101 @@ def valid_png_uri() -> str:
     image += chunk(b"IDAT", zlib.compress(b"\0\xff\0\0"))
     image += chunk(b"IEND", b"")
     return "data:image/png;base64," + base64.b64encode(image).decode("ascii")
+
+
+@dataclass(frozen=True, slots=True)
+class StoredChat:
+    """One chat row: its owner and its message map, keyed by message id (OWUI's map shape)."""
+
+    owner: str
+    messages: Mapping[str, Mapping[str, object]]
+
+
+@dataclass
+class ChatReads:
+    """What a `fake_chats` store was asked: ownership checks and message-map reads, in order."""
+
+    owner_checks: list[tuple[str, str]]
+    map_reads: list[str]
+
+
+def _message_list(messages_map: object, message_id: object) -> list[object]:
+    """Open WebUI 0.11.3 `utils/misc.py` `get_message_list`, replicated: root → `message_id` by
+    `parentId`, `[]` for an empty map or an unknown id, a cycle cut at its first repeat."""
+    if not messages_map:
+        return []
+    assert isinstance(messages_map, Mapping)
+    current = messages_map.get(message_id)
+    chain: list[object] = []
+    visited: set[object] = set()
+    while current and message_id not in visited:
+        visited.add(message_id)
+        chain.append(current)
+        message_id = current.get("parentId")
+        current = messages_map.get(message_id) if message_id else None
+    chain.reverse()
+    return chain
+
+
+@contextmanager
+def fake_chats(chats: Mapping[str, StoredChat]) -> Iterator[ChatReads]:
+    """Install a strict `open_webui` chat seam: `Chats.is_chat_owner(id, user_id, db=None)` and
+    `Chats.get_messages_map_by_chat_id(id)` are async as in 0.11.3, the first answers a bool and
+    never raises, the second answers a fresh copy of the map or `None` for a chat with no rows;
+    `get_message_list` is OWUI's own walk. Composes with `fake_open_webui` (same package objects).
+    """
+    reads = ChatReads([], [])
+
+    async def is_chat_owner(id: object, user_id: object, db: object = None) -> bool:  # noqa: A002
+        assert isinstance(id, str)
+        assert isinstance(user_id, str)
+        assert db is None
+        reads.owner_checks.append((id, user_id))
+        chat = chats.get(id)
+        return chat is not None and chat.owner == user_id
+
+    async def get_messages_map_by_chat_id(id: object) -> dict[str, dict[str, object]] | None:  # noqa: A002
+        assert isinstance(id, str)
+        reads.map_reads.append(id)
+        chat = chats.get(id)
+        if chat is None or not chat.messages:
+            return None
+        return {key: dict(value) for key, value in chat.messages.items()}
+
+    names = (
+        "open_webui",
+        "open_webui.models",
+        "open_webui.models.chats",
+        "open_webui.utils",
+        "open_webui.utils.misc",
+    )
+    leaves = {"open_webui.models.chats", "open_webui.utils.misc"}
+    original = {name: sys.modules.get(name) for name in names}
+    # The two leaves are always fresh, so a nested store never rebinds an outer one; a parent
+    # package `fake_open_webui` installed is reused, and every attribute set on it is restored.
+    for name in names:
+        if name in leaves or sys.modules.get(name) is None:
+            module = ModuleType(name)
+            module.__dict__["__path__"] = []
+            sys.modules[name] = module
+    bound = [name.rpartition(".") for name in names[1:]]
+    attributes = [vars(sys.modules[parent]).get(leaf) for parent, _, leaf in bound]
+    for parent, _, leaf in bound:
+        setattr(sys.modules[parent], leaf, sys.modules[f"{parent}.{leaf}"])
+    sys.modules["open_webui.models.chats"].__dict__["Chats"] = SimpleNamespace(
+        is_chat_owner=is_chat_owner, get_messages_map_by_chat_id=get_messages_map_by_chat_id
+    )
+    sys.modules["open_webui.utils.misc"].__dict__["get_message_list"] = _message_list
+    try:
+        yield reads
+    finally:
+        for (parent, _, leaf), previous_attribute in zip(bound, attributes, strict=True):
+            if previous_attribute is None:
+                vars(sys.modules[parent]).pop(leaf, None)
+            else:
+                setattr(sys.modules[parent], leaf, previous_attribute)
+        for name, previous in original.items():
+            if previous is None:
+                del sys.modules[name]
+            else:
+                sys.modules[name] = previous

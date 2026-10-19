@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.5 tool (`.agent/archive/contracts/m19u5.md` O6): transport alone; each mutant names one red.
 module = "webui/paste_in/tool.py"
-tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_aliases.py"]
+tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_request_text.py"]
 
 [[mutant]]
 id = "m19-receipt-skipped"
@@ -23,7 +23,7 @@ mutant = '''                    (),'''
 id = "m19-request-dropped"
 predicate = "the receipt carries the request text"
 kills = "tests/test_paste_in_tool.py::test_o6_last_call_wins_with_all_ids_request_and_parsed_aliases"
-anchor = '''                    _request_text(__metadata__),'''
+anchor = '''                    await request_text(__metadata__, (__user__ or {}).get("id")),'''
 mutant = '''                    None,'''
 
 [[mutant]]
@@ -39,3 +39,11 @@ predicate = "the tool returns its one fixed string"
 kills = "tests/test_paste_in_tool.py::test_o6_arbitrary_program_bytes_are_receipted_without_a_verdict"
 anchor = '''        return CHART_SENT'''
 mutant = '''        return ""'''
+
+[[mutant]]
+id = "q66-requester-ignored"
+predicate = "the receipt's request text is read under the requesting user"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r5_the_receipt_carries_the_thread_under_the_requesting_user[owner-production]"""
+anchor = '''                    await request_text(__metadata__, (__user__ or {}).get("id")),'''
+mutant = '''                    await request_text(__metadata__, None),'''

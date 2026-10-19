@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop;
 # owned files read to one byte past max_csv_bytes (M21.1 F4); the persistence setting read
-# fail-closed (M21.1 F5).
+# fail-closed (M21.1 F5); the request = the user's stored messages on the chat branch (Q66).
 module = "webui/paste_in/owui_files.py"
-tests = ["tests/test_paste_in_owui_files.py"]
+tests = ["tests/test_paste_in_owui_files.py", "tests/test_paste_in_request_text.py"]
 
 [[mutant]]
 id = "of-file-error-uncaught"
@@ -78,3 +78,113 @@ anchor = '''    except Exception:
 mutant = '''    except Exception:
         return True
     return ENABLE_PYODIDE_FILE_PERSISTENCE is False'''
+
+[[mutant]]
+id = "q66-latest-only"
+predicate = "an owned branch ending in the current message reads as its user texts, not the latest alone"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r1_r4_the_branch_user_texts_join_oldest_first"""
+anchor = '''    return "\n\n".join(texts)'''
+mutant = '''    return latest or "\n\n".join(texts)'''
+
+[[mutant]]
+id = "q66-separator"
+predicate = "the user texts join with a blank line"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r1_r4_the_branch_user_texts_join_oldest_first"""
+anchor = '''    return "\n\n".join(texts)'''
+mutant = '''    return " ".join(texts)'''
+
+[[mutant]]
+id = "q66-model-text"
+predicate = "assistant messages never enter the request"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r1_r4_the_branch_user_texts_join_oldest_first"""
+anchor = '''            if message.get("role") == "user" and isinstance(message.get("content"), str)'''
+mutant = '''            if isinstance(message.get("content"), str)'''
+
+[[mutant]]
+id = "q66-owner-unchecked"
+predicate = "a chat the requesting user does not own is never read"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_r3_a_chat_the_user_does_not_own_is_never_read[other]"""
+anchor = '''        if not await Chats.is_chat_owner(chat_id, user_id):'''
+mutant = '''        if not await Chats.is_chat_owner(chat_id, user_id) and False:'''
+
+[[mutant]]
+id = "q66-empty-key"
+predicate = "an empty user, chat or message id reads the latest message without a lookup"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_missing_keys_read_the_latest_message_without_a_lookup[empty-chat]"""
+anchor = '''        isinstance(key, str) and key for key in (user_id, chat_id, message_id)'''
+mutant = '''        isinstance(key, str) for key in (user_id, chat_id, message_id)'''
+
+[[mutant]]
+id = "q66-tail-role"
+predicate = "a branch ending in an assistant message reads the latest message alone"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_a_branch_not_ending_in_the_current_message_reads_it_alone[assistant-same-text]"""
+anchor = '''        if not branch or branch[-1].get("role") != "user" or branch[-1].get("content") != latest:'''
+mutant = '''        if not branch or branch[-1].get("content") != latest:'''
+
+[[mutant]]
+id = "q66-tail-text"
+predicate = "a branch whose last message differs from the current text reads that text alone"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_a_branch_not_ending_in_the_current_message_reads_it_alone[other-text]"""
+anchor = '''        if not branch or branch[-1].get("role") != "user" or branch[-1].get("content") != latest:'''
+mutant = '''        if not branch or branch[-1].get("role") != "user":'''
+
+[[mutant]]
+id = "q66-store-error-uncaught"
+predicate = "a raising store reads the latest message"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_a_raising_store_reads_the_latest_message[get_messages_map_by_chat_id]"""
+anchor = '''        ]
+    except Exception:'''
+mutant = '''        ]
+    except ImportError:'''
+
+[[mutant]]
+id = "q66-cancellation-swallowed"
+predicate = "a cancelled store read propagates"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_cancellation_propagates[is_chat_owner]"""
+anchor = '''        ]
+    except Exception:'''
+mutant = '''        ]
+    except BaseException:'''
+
+[[mutant]]
+id = "q66-row-fault-uncaught"
+predicate = "a stored row that is no mapping reads the latest message, never an exception"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_a_malformed_row_reads_the_latest_message[text]"""
+anchor = '''        if not branch or branch[-1].get("role") != "user" or branch[-1].get("content") != latest:
+            return latest
+        texts = [
+            message["content"]
+            for message in branch
+            if message.get("role") == "user" and isinstance(message.get("content"), str)
+        ]
+    except Exception:
+        return latest
+    return "\n\n".join(texts)'''
+mutant = '''    except Exception:
+        return latest
+    if not branch or branch[-1].get("role") != "user" or branch[-1].get("content") != latest:
+        return latest
+    texts = [
+        message["content"]
+        for message in branch
+        if message.get("role") == "user" and isinstance(message.get("content"), str)
+    ]
+    return "\n\n".join(texts)'''
+
+[[mutant]]
+id = "q66-no-text-thread"
+predicate = "a latest message without text reads None, never the earlier messages"
+kills = """tests/test_paste_in_request_text.py::\
+  test_q66_r2_no_text_reads_none_even_over_a_textless_stored_tail[null]"""
+anchor = '''    if latest is None or not all('''
+mutant = '''    if not all('''

@@ -118,7 +118,7 @@ def test_q43_v1_the_default_valve_is_empty_and_the_demo_inherits_it() -> None:
 def test_q43_v2_the_model_supplies_no_alias() -> None:
     """The one model-visible parameter stays `program`; reserved names never reach the model."""
     parameters = inspect.signature(tool.Tools.draw_figure).parameters
-    assert list(parameters) == ["self", "program", "__metadata__", "__request__"]
+    assert list(parameters) == ["self", "program", "__metadata__", "__request__", "__user__"]
 
 
 @pytest.mark.parametrize(

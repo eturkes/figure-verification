@@ -34,6 +34,13 @@ browser, the Pyodide sandbox, matplotlib and the image pixels, and it does not v
 
 ## Where the values come from
 
+Your request is every message that you wrote in this conversation, up to the message that asked for
+this chart. Thus a follow-up such as `Make the bars red` keeps the column names and the numbers of
+your earlier messages. When you edit a message, Open WebUI starts a new branch of the conversation,
+and the messages of the other branch do not count. When the verifier cannot read the stored
+conversation, your request is your last message alone. For example, Open WebUI stores no messages
+for a temporary chat.
+
 The verifier compares the drawn values with the data that you supplied:
 
 - **An attached CSV file.** Each drawn value must be a value of one column, or one summary per group
@@ -396,6 +403,8 @@ The verifier stops work beyond these limits.
 - **Your intent.** The verifier checks that the values come from your data. It does not check that
   the chart shows the quantity that you meant. Column names in your request are the one link to your
   intent.
+- **Earlier messages.** A column name in an earlier message still counts after a later message asks
+  for another column. Thus a chart that keeps the earlier column can pass the column check.
 - **Other computations.** The verifier admits only the computations in the table above. It does not
   check how the program computed a value. A rounded value, a running mean, a logarithm or a scaled
   marker size stops the chart. This does not apply when the same number is also in your data or in

@@ -120,7 +120,7 @@ line above it gives the code `zero_not_in_limits`.
 
 The pass message does not mean that the chart answers the question. The chart can show a different
 measure or a different grouping than the user wanted. Read the text below the chart. It states where
-the values come from. If the request contains Japanese kana, that text is in Japanese. The pass
+the values come from. If the user's last message contains Japanese kana, that text is in Japanese. The pass
 message itself stays in English.
 
 The verifier trusts the browser, Pyodide, matplotlib and the pixels on the screen. It does not check
@@ -136,6 +136,12 @@ matplotlib or pandas draws with these parts: lines, points, bars (also grouped a
 histograms, pies, filled areas, reference lines and bands, and text. A figure can have several
 panels. Each other part stops the chart, for example error bars, box plots, images, polar axes or a
 second y axis.
+
+The request is every message that the user wrote in the current branch of the chat, up to the
+message that asked for the chart. Thus a follow-up such as `Make the bars red` keeps the column names
+and the numbers of the earlier messages. A column name in an earlier message still counts after a
+later message asks for another column. When the filter cannot read the stored branch, the request is
+the last message alone. Examples are a temporary chat and a chat that another user owns.
 
 The drawn values must come from the user's data:
 
@@ -213,7 +219,8 @@ a change applies from the next reply.
 
 When the filter blocks a chart, the reply shows a status line above the failure message. The line
 states the reason and ends with a reason code in parentheses, for example `(bar_not_from_zero)`. If
-the request contains Japanese kana, the line is in Japanese. Otherwise, the line is in English.
+the user's last message contains Japanese kana, the line is in Japanese. Otherwise, the line is in
+English.
 
 The status line stays with the reply after a page reload. Open WebUI does not send it to the model.
 For each blocked reply, the filter also writes one record to the Open WebUI server log: `figure

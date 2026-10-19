@@ -2,8 +2,9 @@
 """The one model-visible operation: a program in, a fixed string out.
 
 Transport, never authority. The method records the model's exact program bytes, the chat's
-attachment ids (the outlet re-resolves each against the requesting user), the request text and the
-admin's aliases in backend request state, and returns one fixed string. It runs nothing and decides
+attachment ids (the outlet re-resolves each against the requesting user), the request text (the
+user's stored messages on the chat branch, `owui_files.request_text`) and the admin's aliases in
+backend request state, and returns one fixed string. It runs nothing and decides
 nothing: the outlet filter runs the recorded program in the user's browser and judges the finished
 figure, and only that outlet may publish (tool-call-only PASS transport).
 
@@ -23,17 +24,9 @@ records the parsed aliases in its receipt, so the outlet's verdict reads the sam
 from pydantic import BaseModel, Field, field_validator
 
 from webui.paste_in.aliases import parse_aliases
-from webui.paste_in.owui_files import attachment_ids
+from webui.paste_in.owui_files import attachment_ids, request_text
 from webui.paste_in.receipt import Receipt, write_receipt
 from webui.paste_in.verdicts import CHART_SENT
-
-
-def _request_text(metadata: dict[str, object] | None) -> str | None:
-    user_message = (metadata or {}).get("user_message")
-    if not isinstance(user_message, dict):
-        return None
-    content = user_message.get("content")
-    return content if isinstance(content, str) else None
 
 
 class Tools:
@@ -65,6 +58,7 @@ class Tools:
         program: str,
         __metadata__: dict[str, object] | None = None,
         __request__: object | None = None,
+        __user__: dict[str, object] | None = None,
     ) -> str:
         """Draw one chart with matplotlib from a complete Python program.
 
@@ -83,7 +77,7 @@ class Tools:
                 Receipt(
                     program,
                     tuple(attachment_ids(__metadata__)),
-                    _request_text(__metadata__),
+                    await request_text(__metadata__, (__user__ or {}).get("id")),
                     parse_aliases(self.valves.column_aliases),
                 ),
             )
