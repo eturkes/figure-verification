@@ -16,16 +16,17 @@ is consumed by a hardcoded client shape, not via a served document.
 
 import asyncio
 import json
+import re
 import time
 import uuid
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from litestar import Litestar, Request, Response, get, post
 from litestar.datastructures import State
 from litestar.status_codes import HTTP_200_OK
 
 from model_backend.adapter import ADAPTER_MAX_TOKENS, ADAPTER_TEMPERATURE, defence
-from model_backend.engine import BackendError, Engine
+from model_backend.engine import BackendError, Engine, GenResult
 from model_backend.models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -41,6 +42,11 @@ from model_backend.models import (
 from model_backend.settings import Settings
 
 _SELECTOR_MESSAGE_COUNT = 2
+# OWUI's selector history (`utils/middleware.py` `get_tools_function_calling_payload`): up to four
+# earlier messages, each `f'{role.upper()}: """{content}"""'`, joined by newlines. A content holding
+# `"""` + a newline + another entry's opening splits there; the model then reads a shifted turn.
+_HISTORY_ENTRY: Final = re.compile(r'([A-Z]+): """(.*?)"""(?:\n(?=[A-Z]+: """)|\Z)', re.DOTALL)
+_HISTORY_ROLES: Final = {"USER": "user", "ASSISTANT": "assistant"}
 
 
 @get("/health", sync_to_thread=False)
@@ -82,8 +88,27 @@ def _completion(
     )
 
 
-def _selector_prompt(messages: tuple[ChatMessage, ...]) -> str | None:
-    """Recognize OWUI's two-message legacy selector, never an ordinary chat turn."""
+def _history_turns(history: str) -> list[dict[str, str]]:
+    """The selector's `ROLE: \"\"\"content\"\"\"` lines as chat turns, oldest first.
+
+    USER + ASSISTANT entries become turns, any other role is dropped, and text that does not
+    decompose into entries yields none: the query alone, the pre-history reading.
+    """
+    turns: list[dict[str, str]] = []
+    position = 0
+    while position < len(history):
+        entry = _HISTORY_ENTRY.match(history, position)
+        if entry is None:
+            return []
+        if entry[1] in _HISTORY_ROLES:
+            turns.append({"role": _HISTORY_ROLES[entry[1]], "content": entry[2]})
+        position = entry.end()
+    return turns
+
+
+def _selector_prompt(messages: tuple[ChatMessage, ...]) -> tuple[list[dict[str, str]], str] | None:
+    """Recognize OWUI's two-message legacy selector, never an ordinary chat turn: its history
+    turns + the final query."""
     if (
         len(messages) != _SELECTOR_MESSAGE_COUNT
         or messages[0].role != "system"
@@ -93,19 +118,42 @@ def _selector_prompt(messages: tuple[ChatMessage, ...]) -> str | None:
         return None
     user = messages[1].content
     if user.startswith("Query: "):
-        return user.rsplit("Query: ", 1)[-1]
+        return [], user.rsplit("Query: ", 1)[-1]
     history, marker, _ = user.rpartition("\nQuery: ")
     if marker and history.startswith("History:\n") and history != "History:\n":
-        return user.rsplit("Query: ", 1)[-1]
+        return _history_turns(history.removeprefix("History:\n")), user.rsplit("Query: ", 1)[-1]
     return None
+
+
+async def _selector_generation(
+    engine: Engine, turns: list[dict[str, str]], query: str
+) -> GenResult:
+    """Generate the program from the conversation + the query at the capture parameters.
+
+    A follow-up ("make the bars red") names no chart, so the model needs the earlier turns; a
+    prompt past the token ceiling drops the oldest turn until it fits, down to the query alone.
+    """
+    while True:
+        try:
+            return await asyncio.to_thread(
+                engine.generate,
+                [*turns, {"role": "user", "content": query}],
+                temperature=ADAPTER_TEMPERATURE,
+                max_tokens=ADAPTER_MAX_TOKENS,
+            )
+        except BackendError as error:
+            if error.error_type != "prompt_too_long" or not turns:
+                raise
+            turns = turns[1:]
 
 
 @post("/v1/chat/completions", status_code=HTTP_200_OK)
 async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
     """Generate one non-streaming chat completion from the local model.
 
-    Open WebUI's legacy selector generates bare source from the demo inlet's request and wraps the
-    de-fenced bytes as one `draw_figure` tool call. All other turns run the model as asked.
+    Open WebUI's legacy selector generates bare source from its history + the demo inlet's request
+    and wraps the de-fenced bytes as one `draw_figure` tool call. All other turns run the model as
+    asked.
 
     Ordinary requested max_tokens is clamped into [1, settings.max_tokens]: the ceiling guards the
     single accelerator/lock against a caller inducing an unbounded generation, and the floor keeps a
@@ -113,25 +161,22 @@ async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCom
     """
     settings = cast("Settings", state["settings"])
     engine = cast("Engine", state["engine"])
-    requested = data.max_tokens if data.max_tokens is not None else settings.max_tokens
-    max_tokens = max(1, min(requested, settings.max_tokens))
-    messages = [{"role": m.role, "content": m.content} for m in data.messages]
     selector = _selector_prompt(data.messages)
     if selector is not None:
-        messages = [{"role": "user", "content": selector}]
-        max_tokens = ADAPTER_MAX_TOKENS
-    gen = await asyncio.to_thread(
-        engine.generate,
-        messages,
-        temperature=ADAPTER_TEMPERATURE if selector is not None else data.temperature,
-        max_tokens=max_tokens,
-    )
-    text = gen.text
-    if selector is not None:
-        _, program = defence(text)
+        gen = await _selector_generation(engine, *selector)
+        _, program = defence(gen.text)
         text = json.dumps(
             {"tool_calls": [{"name": "draw_figure", "parameters": {"program": program}}]}
         )
+    else:
+        requested = data.max_tokens if data.max_tokens is not None else settings.max_tokens
+        gen = await asyncio.to_thread(
+            engine.generate,
+            [{"role": m.role, "content": m.content} for m in data.messages],
+            temperature=data.temperature,
+            max_tokens=max(1, min(requested, settings.max_tokens)),
+        )
+        text = gen.text
     return _completion(
         settings,
         text=text,

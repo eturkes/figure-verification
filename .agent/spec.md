@@ -50,7 +50,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 - [ ] **Q65** demo adapter: a follow-up's selector `History:` reaches the 0.5B model as chat turns (it saw the query alone, so `make the bars red` drew an invented chart)
 - [ ] **Q66** request scope (user: whole chat thread): the receipt's request text = every user message on the chat branch, read from Open WebUI storage under the requesting user; latest message alone when the chat has no stored history
-- [ ] **Q67** audit blocker: GHSA-84m7-p3x7-pcfv in the demo lock's `mcp 1.28.1` → override `mcp>=1.30.0,<1.31`
+- [x] 564501b **Q67** audit blocker: GHSA-84m7-p3x7-pcfv in the demo lock's `mcp 1.28.1` → override `mcp>=1.30.0,<1.31`
 - [ ] live: drive the reported two-turn chat on the real MX150 arm (`webui/launch.sh`), PNG before + after reload
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 

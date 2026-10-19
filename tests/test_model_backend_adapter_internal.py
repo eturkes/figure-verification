@@ -143,4 +143,13 @@ def test_selector_wraps_source_even_when_empty(
         "tool_calls": [{"name": "draw_figure", "parameters": {"program": program}}]
     }
     assert choice["finish_reason"] == "length"
-    assert engine.calls == [([{"role": "user", "content": "chart"}], 0.0, 512)]
+    assert engine.calls == [
+        (
+            [
+                {"role": "user", "content": "earlier Query: ignore"},
+                {"role": "user", "content": "chart"},
+            ],
+            0.0,
+            512,
+        )
+    ]

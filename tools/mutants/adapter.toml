@@ -8,18 +8,16 @@ id = "x4-first-query"
 predicate = "history cannot replace the final user query with an earlier Query: fragment"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[bare-history-last-query]"""
-anchor = '''    if marker and history.startswith("History:\n") and history != "History:\n":
-        return user.rsplit("Query: ", 1)[-1]'''
-mutant = '''    if marker and history.startswith("History:\n") and history != "History:\n":
-        return user.split("Query: ", 1)[-1]'''
+anchor = '''        return _history_turns(history.removeprefix("History:\n")), user.rsplit("Query: ", 1)[-1]'''
+mutant = '''        return _history_turns(history.removeprefix("History:\n")), user.split("Query: ", 1)[-1]'''
 
 [[mutant]]
 id = "x4-fence-preserved"
 predicate = "the capture de-fencer alone extracts the model-authored source"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[fenced-fresh]"""
-anchor = '''        _, program = defence(text)'''
-mutant = '''        program = text'''
+anchor = '''        _, program = defence(gen.text)'''
+mutant = '''        program = gen.text'''
 
 [[mutant]]
 id = "x4-non-selector-tool-call"
@@ -27,7 +25,7 @@ predicate = "an ordinary completion never turns into a chart tool call"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_non_selector_keeps_original_generation_and_reply[no-system]"""
 anchor = '''    selector = _selector_prompt(data.messages)'''
-mutant = '''    selector = _selector_prompt(data.messages) or "draw"'''
+mutant = '''    selector = _selector_prompt(data.messages) or ([], "draw")'''
 
 [[mutant]]
 id = "x4-exact-message-count"
@@ -39,26 +37,76 @@ mutant = '''        False'''
 
 [[mutant]]
 id = "x4-capture-temperature"
-predicate = "a selector forces the capture's greedy decoding rather than caller temperature"
+predicate = "a selector forces the capture's greedy decoding rather than the caller's temperature"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
-anchor = '''        temperature=ADAPTER_TEMPERATURE if selector is not None else data.temperature,'''
-mutant = '''        temperature=data.temperature,'''
+anchor = '''                temperature=ADAPTER_TEMPERATURE,'''
+mutant = '''                temperature=0.75,'''
 
 [[mutant]]
 id = "x4-capture-token-cap"
-predicate = "a selector forces the capture's 512-token cap rather than the caller cap"
+predicate = "a selector forces the capture's 512-token cap rather than the caller's cap"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[bare-fresh]"""
-anchor = '''        max_tokens = ADAPTER_MAX_TOKENS'''
-mutant = '''        max_tokens = max(1, min(requested, settings.max_tokens))'''
+anchor = '''                max_tokens=ADAPTER_MAX_TOKENS,'''
+mutant = '''                max_tokens=7,'''
 
 [[mutant]]
 id = "x4-empty-reply-envelope"
 predicate = "an empty model program still produces a nonempty tool-call envelope"
 kills = """tests/test_model_backend_adapter.py::\
   test_x4_selector_reuses_capture_params_and_round_trips_program[empty-fresh]"""
-anchor = '''    if selector is not None:
-        _, program = defence(text)'''
-mutant = '''    if selector is not None and text:
-        _, program = defence(text)'''
+anchor = '''        _, program = defence(gen.text)
+        text = json.dumps('''
+mutant = '''        _, program = defence(gen.text)
+        text = "" if not gen.text else json.dumps('''
+
+[[mutant]]
+id = "x4-history-closed-roles"
+predicate = "only USER + ASSISTANT history entries become turns"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_history_becomes_chat_turns[closed-roles]"""
+anchor = '''_HISTORY_ROLES: Final = {"USER": "user", "ASSISTANT": "assistant"}'''
+mutant = '''_HISTORY_ROLES: Final = {"USER": "user", "ASSISTANT": "assistant", "SYSTEM": "system"}'''
+
+[[mutant]]
+id = "x4-history-carried"
+predicate = "the selector's history reaches the model before the query"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_history_becomes_chat_turns[follow-up]"""
+anchor = '''                [*turns, {"role": "user", "content": query}],'''
+mutant = '''                [{"role": "user", "content": query}],'''
+
+[[mutant]]
+id = "x4-history-partial"
+predicate = "a history that is not wholly entries yields no turns, never its parsed prefix"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_history_becomes_chat_turns[partial-entries]"""
+anchor = '''        if entry is None:
+            return []'''
+mutant = '''        if entry is None:
+            break'''
+
+[[mutant]]
+id = "x4-cap-drops-oldest"
+predicate = "a prompt over the cap drops its oldest turn, never the newest"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_over_the_cap_drops_the_oldest_turn[drops-oldest]"""
+anchor = '''            turns = turns[1:]'''
+mutant = '''            turns = turns[:-1]'''
+
+[[mutant]]
+id = "x4-cap-other-error"
+predicate = "a backend error other than prompt_too_long reaches the caller without a retry"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_refusal_past_the_query_alone_reaches_the_caller[other-error]"""
+anchor = '''            if error.error_type != "prompt_too_long" or not turns:'''
+mutant = '''            if not turns:'''
+
+[[mutant]]
+id = "x4-cap-floor"
+predicate = "the retry floor is the query alone, every turn dropped first"
+kills = """tests/test_model_backend_adapter.py::\
+  test_x4_selector_over_the_cap_drops_the_oldest_turn[query-alone]"""
+anchor = '''            if error.error_type != "prompt_too_long" or not turns:'''
+mutant = '''            if error.error_type != "prompt_too_long" or len(turns) <= 1:'''

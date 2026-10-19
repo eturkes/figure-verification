@@ -40,7 +40,7 @@ _ROOTS = ("src/verifier/", "webui/", "model_backend/")
 _CANARY = "_mutation_canary"
 _CANARY_SOURCE = '''"""Exit 3 when a scope module imports from outside this trial's copied tree."""
 
-import importlib
+import importlib.util
 import os
 from pathlib import Path
 
@@ -48,9 +48,12 @@ import pytest
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
+    # `find_spec` resolves without executing the module: `model_backend.engine` imports
+    # `transformers`, which exists only as the fake its tests install at collection.
     here = Path.cwd().resolve()
     for name in os.environ["MUTATION_SCOPE_MODULES"].split():
-        origin = Path(importlib.import_module(name).__file__ or "").resolve()
+        spec = importlib.util.find_spec(name)
+        origin = Path((spec and spec.origin) or "").resolve()
         if not origin.is_relative_to(here):
             pytest.exit(f"mutation canary: {name} from {origin}, outside {here}", returncode=3)
 '''
