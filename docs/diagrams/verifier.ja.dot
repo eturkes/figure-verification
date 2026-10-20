@@ -34,25 +34,28 @@ digraph verifier {
         <tr><td align="left" height="27"><b>7 値</b>: ファイルの値、入力した数値、または認められた計算 1 つ</td></tr>
         <tr><td align="left" height="27" cellpadding="4"><b>8 列</b>: 描いた列を依頼文が挙げる。ラベルも一致</td></tr></table>>];
 
+    data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなたのデータ</b></td></tr><tr><td height="24">ファイルのバイト + 依頼文</td></tr></table>>, fillcolor="#f6f8fa"];
     c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 9: 画像を添付</b> (フィルター)</td></tr>
         <tr><td align="left" width="360" height="27" cellpadding="4">PNG を 1 枚、返信と一緒に保存</td></tr></table>>];
   }
 
   subgraph cluster_browser {
-    label=<<b>ブラウザ: Pyodide サンドボックス</b>>; labeljust=l; style="rounded,filled";
+    label=<<b>ブラウザ: Pyodide サンドボックス</b>>; labeljust=l; labelloc=b; style="rounded,filled";
     fillcolor="#f6f1e7"; color="#cdbf9f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
   }
 
-  data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなたのデータ</b></td></tr><tr><td height="24">ファイルのバイト + 依頼文</td></tr></table>>, fillcolor="#f6f8fa"];
   pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + Figure verification passed</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
   fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。ステータス行にコード</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
   { rank=same; storage; tool; }
+  { rank=same; c1; hook; }
+  { rank=same; c2; describe; }
+  { rank=same; data; program; }
   { rank=same; judge; fail; }
 
   you -> model [label="依頼"];
@@ -65,7 +68,6 @@ digraph verifier {
   describe -> c2 [label="記述 + PNG"];
   c2 -> judge -> c9 -> pass;
   data -> judge;
-  describe -> data -> fail [style=invis, weight=8];
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
   c1 -> fail [label="チェック 1 が不合格"];
   c2 -> fail [label="チェック 2 が不合格"];

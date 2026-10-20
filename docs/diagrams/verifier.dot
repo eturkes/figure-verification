@@ -34,25 +34,28 @@ digraph verifier {
         <tr><td align="left" height="24"><b>7 Values</b>: each = your file, a typed number or one admitted computation</td></tr>
         <tr><td align="left" height="24" cellpadding="4"><b>8 Columns</b>: drawn columns named in your request; labels agree</td></tr></table>>];
 
+    data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Your data</b></td></tr><tr><td height="21">file bytes + your request</td></tr></table>>, fillcolor="#f6f8fa"];
     c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Check 9: image attached</b> (filter)</td></tr>
         <tr><td align="left" width="360" height="24" cellpadding="4">one PNG, stored with the reply</td></tr></table>>];
   }
 
   subgraph cluster_browser {
-    label=<<b>Your browser: Pyodide sandbox</b>>; labeljust=l; style="rounded,filled";
+    label=<<b>Your browser: Pyodide sandbox</b>>; labeljust=l; labelloc=b; style="rounded,filled";
     fillcolor="#f6f1e7"; color="#cdbf9f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">hooks matplotlib</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Model's program</b></td></tr><tr><td height="21">runs unchanged</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">describes every artist as JSON</td></tr><tr><td height="21">+ one PNG</td></tr></table>>];
   }
 
-  data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Your data</b></td></tr><tr><td height="21">file bytes + your request</td></tr></table>>, fillcolor="#f6f8fa"];
   pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✓ Pass</b></td></tr><tr><td height="21">chart + Figure verification passed</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
   fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✗ Fail</b></td></tr><tr><td height="21">no image; the status line names the code</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
   { rank=same; storage; tool; }
+  { rank=same; c1; hook; }
+  { rank=same; c2; describe; }
+  { rank=same; data; program; }
   { rank=same; judge; fail; }
 
   you -> model [label="asks"];
@@ -65,7 +68,6 @@ digraph verifier {
   describe -> c2 [label="description + PNG"];
   c2 -> judge -> c9 -> pass;
   data -> judge;
-  describe -> data -> fail [style=invis, weight=8];
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
   c1 -> fail [label="check 1 fails"];
   c2 -> fail [label="check 2 fails"];
