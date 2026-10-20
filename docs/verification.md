@@ -341,8 +341,8 @@ because one value would cover the other.
 
 The drawn columns are the columns that the drawn values come from. The verifier compares them with
 the column names in your request. It knows each column by its name and by any other names that your
-administrator declared. It also knows a short Japanese form, such as `月` for `年月`, also with a
-suffix such as `月別`.
+administrator declared. In production, it also knows a short Japanese form, such as `月` for `年月`,
+also with a suffix such as `月別`.
 
 - **Production.** When your request names a column, it must name every drawn column.
 - **Demo.** The chart must not replace a column that your request names with another column.
