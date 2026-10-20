@@ -678,25 +678,25 @@ def test_p13_four_fault_classes_are_disjoint_and_independent(tmp_path: Path) -> 
 
 
 def test_p15_runtime_pyproject_pins() -> None:
-    """P15 pins the isolated Python 3.12 runtime and its seven direct packages."""
+    """P15 pins the isolated Python 3.15 runtime and its seven direct packages."""
     runtime_project_path = Path("model_backend/runtime/pyproject.toml")
     assert runtime_project_path.is_file(), "P15 feature absent: runtime pyproject.toml"
     source = runtime_project_path.read_text(encoding="utf-8")
     assert source.startswith("# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n")
     document = cast("dict[str, object]", tomllib.loads(source))
     project = _string_table(document["project"])
-    assert project["requires-python"] == "==3.12.*"
+    assert project["requires-python"] == "==3.15.*"
     dependencies = project["dependencies"]
     assert isinstance(dependencies, list)
     assert all(isinstance(dependency, str) for dependency in dependencies)
     assert set(dependencies) == {
-        "msgspec==0.21.1",
-        "litestar==2.24.0",
-        "uvicorn==0.49.0",
-        "torch==2.13.0+cu126",
-        "transformers==5.16.1",
+        "msgspec==0.22.0",
+        "litestar==2.25.0",
+        "uvicorn==0.54.0",
+        "torch==2.14.1+cu126",
+        "transformers==5.20.2",
         "accelerate==1.15.0",
-        "tokenizers==0.23.1",
+        "tokenizers==0.23.3",
     }
 
     tool = _string_table(document["tool"])
@@ -743,14 +743,14 @@ def test_p16_runtime_lock_pins_torch_cu126() -> None:
         "dict[str, object]",
         tomllib.loads(runtime_lock_path.read_text(encoding="utf-8")),
     )
-    assert document["requires-python"] == "==3.12.*"
+    assert document["requires-python"] == "==3.15.*"
     packages = document["package"]
     assert isinstance(packages, list)
     package_tables = [_string_table(package) for package in packages]
     torch_packages = [package for package in package_tables if package.get("name") == "torch"]
     assert len(torch_packages) == 1
     torch_package = torch_packages[0]
-    assert torch_package["version"] == "2.13.0+cu126"
+    assert torch_package["version"] == "2.14.1+cu126"
     source = _string_table(torch_package["source"])
     assert source["registry"] == "https://download.pytorch.org/whl/cu126"
     accelerate_packages = [

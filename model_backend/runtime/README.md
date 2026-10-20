@@ -3,13 +3,14 @@
 This directory pins the environment and the model weights that `model_backend` runs on. It holds
 declarations only. The server code stays in the package above it.
 
-The runtime is a separate `uv` project. The repository gate runs on Python 3.14, but the CUDA
-wheels for `torch` stop at Python 3.12. A separate project keeps the two locks apart.
+The runtime is a separate `uv` project. The repository gate runs on Python 3.14, and the runtime
+runs on Python 3.15 with `torch` from the CUDA 12.6 wheel index. A separate project keeps the two
+locks apart.
 
 | File | Content |
 | --- | --- |
 | `pyproject.toml` | The seven direct pins and the CUDA 12.6 wheel index. |
-| `uv.lock` | The full transitive resolution. The file lists 68 entries, including this project. |
+| `uv.lock` | The full transitive resolution. The file lists 69 entries, including this project. |
 | `snapshot.json` | The model revision and one SHA-256 digest per file. |
 
 ## Build the environment
@@ -24,7 +25,8 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv-model" UV_LINK_MODE=copy \
 ```
 
 `--locked` installs the committed resolution. If `uv` reports that the lock is stale, then stop and
-report it. Do not relock to make the command pass.
+report it. Do not relock to make the command pass. The command builds `pyyaml` from its source
+archive, because `pyyaml` publishes no wheel for Python 3.15.
 
 Check the installed metadata:
 
@@ -77,7 +79,7 @@ The device and model values below come from this host.
 | Item | Value |
 | --- | --- |
 | Device | NVIDIA MX150, compute capability 6.1, 1994 MiB |
-| Runtime | `torch==2.13.0+cu126`, `accelerate==1.15.0` |
+| Runtime | Python 3.15, `torch==2.14.1+cu126`, `transformers==5.20.2`, `accelerate==1.15.0` |
 | Precision | fp16, the supported path on this device |
 | Model | `Qwen/Qwen2.5-Coder-0.5B-Instruct`, 494M parameters, Apache-2.0 |
 | Weights | 942.3 MiB resident |

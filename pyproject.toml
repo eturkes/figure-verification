@@ -152,7 +152,7 @@ enable_error_code = [
     "possibly-undefined",
 ]
 
-# The proposer runtime (torch + Transformers) resolves from the SEPARATE py3.12 project
+# The proposer runtime (torch + Transformers) resolves from the SEPARATE py3.15 project
 # at model_backend/runtime/, never into this py3.14 gate venv, and its stubs are absent or partial.
 # model_backend is their only importer; the engine isolates the resulting Any behind typed
 # boundaries. accelerate and tokenizers stay OUT: they are transitive runtime deps that no module

@@ -2,8 +2,9 @@
 #
 # Isolated proposer runtime. NOT a member of the root uv project: the root declares no
 # [tool.uv.workspace], so this project locks and syncs on its own into .venv-model. The split is
-# load-bearing — the root gate runs py3.14 while torch cu126 wheels stop at py3.12, and the root
-# lock must stay free of 14 nvidia-* wheels.
+# load-bearing: the root lock must stay free of the CUDA index and its nvidia-* wheels, and the two
+# interpreter lines differ (root 3.14, held by the Pyodide bundle's pins; this runtime 3.15, the
+# latest torch cu126 publishes wheels for). pyyaml publishes no cp315 wheel, so sync builds it.
 #
 # Nothing imports this project from the gate. model_backend/*.py runs against .venv-model in
 # production and against fake seams under the root .venv in tests.
@@ -12,18 +13,18 @@
 name = "model-backend-runtime"
 version = "0.1.0"
 description = "Pinned CUDA runtime for the untrusted model_backend proposer."
-requires-python = "==3.12.*"
+requires-python = "==3.15.*"
 # Exact pins, no floors: the lock, not a floor-satisfying newer release, defines the runtime.
 # The server stack repeats the root gate's own resolved versions: this project must SERVE the
 # same app the portable gate tests, so a version split here would ship untested request handling.
 dependencies = [
-    "msgspec==0.21.1",
-    "litestar==2.24.0",
-    "uvicorn==0.49.0",
-    "torch==2.13.0+cu126",
-    "transformers==5.16.1",
+    "msgspec==0.22.0",
+    "litestar==2.25.0",
+    "uvicorn==0.54.0",
+    "torch==2.14.1+cu126",
+    "transformers==5.20.2",
     "accelerate==1.15.0",
-    "tokenizers==0.23.1",
+    "tokenizers==0.23.3",
 ]
 
 # torch resolves from the CUDA 12.6 wheel index alone; explicit = true keeps every other package

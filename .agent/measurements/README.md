@@ -257,6 +257,24 @@ The stub replay M17 passes on the new prompt.
 
 Rerun: the M19.9 commands, with `q70` as the output directory.
 
+## Live MX150 record — S12.U3
+
+`s12u3/` = the six banner arms on the real model, 5 runs each (the M19.9 protocol), against
+`gpu-run webui/launch.sh --fresh` at `dbe434a` (demo pair `webui/demo-paste-in/`: tool sha256
+`60cc89fceb0f075b…`, filter `c60b979959ed93b8…`). Host tuple: NVIDIA GeForce MX150, driver
+580.178.04, CPython 3.15.0, torch 2.14.1+cu126, transformers 5.20.2, tokenizers 0.23.3, fp16
+Qwen2.5-Coder-0.5B-Instruct, greedy (temperature 0.0, 512 tokens), Open WebUI 0.12.3, headless
+Chromium 151; `gpu-run` keeps the backend in the normal CPU class. Honest arms 15/15 pass with 1 PNG,
+before and after reload. Misleading arms 15/15 carry the requested call and block with 0 PNGs:
+`misleading` + `ja-misleading` `zero_not_in_limits`, `ja-clinic-misleading` `axis_inverted`. Each
+arm wrote one program in all 5 runs, byte-identical to its Q70 program. Same tuple,
+`q46_mx150.sh` under `gpu-run`: the short reply 3/3 `bdee2c42f73aed06…`; the chart prompt 3/3
+`e577107d8e3c4a59…` (423 tokens; the transformers 5.16.1 stacks wrote `e440fe5711654d55…`),
+42.0-42.3 s each; smoke 20.5-20.7 tok/s at 66 °C / 1657 MHz.
+
+Rerun: the M19.9 commands with `gpu-run webui/launch.sh --fresh` and `s12u3` as the output
+directory.
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:
