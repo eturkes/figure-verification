@@ -54,6 +54,8 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
+- [ ] **M22.1** second security review: check set + verdicts `.agent/contracts/m22u1.md`; findings above informational fixed, the rest queued.
+
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
