@@ -31,7 +31,7 @@ dev = [
     # Pinned EXACTLY to the version the Open WebUI 0.12.3 bundle (Pyodide 314.0.3) carries, because
     # the measured 1-ulp band is a statement about that pair. A bump that changes a libm result must
     # turn the numeric tests red rather than pass quietly under a band measured on different code.
-    "numpy==2.4.3",
+    "numpy==2.5.4",
     # Gate scanners, resolved from this lock so the local gate and CI cannot drift apart.
     # detect-secrets runs against a SLIM baseline (no line numbers) -- a full baseline
     # demands a rewrite on any line drift, which breaks gate idempotence on a clean tree.
