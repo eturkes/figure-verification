@@ -34,7 +34,6 @@ digraph verifier {
         <tr><td align="left" height="24"><b>7 Values</b>: each = your file, a typed number or one admitted computation</td></tr>
         <tr><td align="left" height="24" cellpadding="4"><b>8 Columns</b>: drawn columns named in your request; labels agree</td></tr></table>>];
 
-    data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Your data</b></td></tr><tr><td height="21">file bytes + your request</td></tr></table>>, fillcolor="#f6f8fa"];
     c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Check 9: image attached</b> (filter)</td></tr>
         <tr><td align="left" width="360" height="24" cellpadding="4">one PNG, stored with the reply</td></tr></table>>];
@@ -54,9 +53,7 @@ digraph verifier {
   { rank=same; you; model; }
   { rank=same; storage; tool; }
   { rank=same; c1; hook; }
-  { rank=same; c2; describe; }
-  { rank=same; data; program; }
-  { rank=same; judge; fail; }
+  { rank=same; c9; fail; }
 
   you -> model [label="asks"];
   you -> storage [label="messages, attached file"];
@@ -65,9 +62,11 @@ digraph verifier {
   tool -> c1 [label="receipt"];
   c1 -> hook [label="execute:python"];
   hook -> program -> describe;
-  describe -> c2 [label="description + PNG"];
+  describe -> c2 [label="description + PNG", constraint=false];
+  c1 -> c2 [style=invis];
+  describe -> fail [style=invis, weight=8];
   c2 -> judge -> c9 -> pass;
-  data -> judge;
+  storage -> judge [label="file bytes + your request"];
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
   c1 -> fail [label="check 1 fails"];
   c2 -> fail [label="check 2 fails"];

@@ -34,7 +34,6 @@ digraph verifier {
         <tr><td align="left" height="27"><b>7 値</b>: ファイルの値、入力した数値、または認められた計算 1 つ</td></tr>
         <tr><td align="left" height="27" cellpadding="4"><b>8 列</b>: 描いた列を依頼文が挙げる。ラベルも一致</td></tr></table>>];
 
-    data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなたのデータ</b></td></tr><tr><td height="24">ファイルのバイト + 依頼文</td></tr></table>>, fillcolor="#f6f8fa"];
     c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 9: 画像を添付</b> (フィルター)</td></tr>
         <tr><td align="left" width="360" height="27" cellpadding="4">PNG を 1 枚、返信と一緒に保存</td></tr></table>>];
@@ -54,9 +53,7 @@ digraph verifier {
   { rank=same; you; model; }
   { rank=same; storage; tool; }
   { rank=same; c1; hook; }
-  { rank=same; c2; describe; }
-  { rank=same; data; program; }
-  { rank=same; judge; fail; }
+  { rank=same; c9; fail; }
 
   you -> model [label="依頼"];
   you -> storage [label="メッセージ、添付ファイル"];
@@ -65,9 +62,11 @@ digraph verifier {
   tool -> c1 [label="受領記録"];
   c1 -> hook [label="execute:python"];
   hook -> program -> describe;
-  describe -> c2 [label="記述 + PNG"];
+  describe -> c2 [label="記述 + PNG", constraint=false];
+  c1 -> c2 [style=invis];
+  describe -> fail [style=invis, weight=8];
   c2 -> judge -> c9 -> pass;
-  data -> judge;
+  storage -> judge [label="ファイルのバイト + 依頼文"];
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
   c1 -> fail [label="チェック 1 が不合格"];
   c2 -> fail [label="チェック 2 が不合格"];
