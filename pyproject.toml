@@ -75,6 +75,9 @@ build-backend = "uv_build"
 target-version = "py313"
 line-length = 100
 src = ["src", "tests"]
+# Generated (`tools/render_gallery.py`): each code block quotes a tested corpus program byte for byte,
+# so `ruff format`'s Markdown code-block pass must leave it as the case runs.
+extend-exclude = ["docs/gallery.md", "docs/gallery.ja.md"]
 
 # The shipped pair runs inside Open WebUI's own interpreter: the official image is CPython 3.11
 # (`open-webui` admits >=3.11,<3.13), and a 3.12 construct there fails the import (M21.2 F11).

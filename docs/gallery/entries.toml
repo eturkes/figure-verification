@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Gallery entries, one per figure-level reason: `blocked` = a rule-corpus case blocking with
+# `reason`, `twin` = a passing case drawing the honest chart, `en`/`ja` = what the blocked program
+# does and why it misleads. Render: tools/render_gallery.py. Excluded reasons = test_gallery.py.
+
+[[entry]]
+reason = "glyph_missing"
+blocked = "mathtext-missing-glyph"
+twin = "mathtext-honest"
+en = "The title puts a Japanese character inside mathtext (`$年$`). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. Open WebUI's Japanese font reaches ordinary text, not mathtext."
+ja = "タイトルが日本語の文字を mathtext の中に入れています (`$年$`)。mathtext は日本語の文字を持たない独自のフォントで描くため、空の四角が表示されます。Open WebUI の日本語フォントは通常のテキストには届きますが、mathtext には届きません。"
+
+[[entry]]
+reason = "raster_image"
+blocked = "imshow"
+twin = "vector-chart"
+en = "The program draws an image of an array. The verifier cannot read values back from pixels, so it blocks every image."
+ja = "プログラムが配列を画像として描いています。検証器はピクセルから値を読み戻せないため、画像はすべて不合格にします。"
+
+[[entry]]
+reason = "axes_not_judged"
+blocked = "polar"
+twin = "cartesian-axes"
+en = "The program draws the line on polar axes. The verifier has rules for plain x and y axes alone."
+ja = "プログラムが極座標の軸に折れ線を描いています。検証器の規則は、通常の x 軸と y 軸だけを対象にします。"
+
+[[entry]]
+reason = "axes_twin"
+blocked = "twin-axes"
+twin = "twin-axes-twin"
+en = "A second y axis gives orders a scale of their own, so the crossing and the relative height of the two lines carry no meaning. The chart that passes puts each measure in its own panel."
+ja = "2 つ目の y 軸が注文数に独自の目盛りを与えるため、2 本の線の交差や高さの比較に意味がありません。合格するグラフは、それぞれの量を別のパネルに描きます。"
+
+[[entry]]
+reason = "axes_overlap"
+blocked = "overlapping-axes"
+twin = "side-by-side-axes"
+en = "A second panel sits on top of the first and hides part of it."
+ja = "2 つ目のパネルが 1 つ目のパネルの上に重なり、その一部を隠しています。"
+
+[[entry]]
+reason = "artist_not_judged"
+blocked = "errorbar"
+twin = "judged-families"
+en = "Error bars fall outside the closed set of chart parts that the verifier checks, so it blocks them. The chart that passes uses checked parts alone: bars, a line, points, a reference line and value labels."
+ja = "エラーバーは検証器がチェックする部品の集合に含まれないため、不合格になります。合格するグラフは、チェックできる部品だけを使います。棒、折れ線、点、基準線、値のラベルです。"
+
+[[entry]]
+reason = "no_data"
+blocked = "empty-axes"
+twin = "axes-with-data"
+en = "The panel has a title but no data."
+ja = "パネルにタイトルはありますが、データがありません。"
+
+[[entry]]
+reason = "mark_not_in_data"
+blocked = "line-in-axes-coordinates"
+twin = "line-in-data"
+en = "The line uses axes coordinates (`transform=plt.gca().transAxes`), so it runs from corner to corner whatever the data holds. The two charts look alike; the line that passes sits at its data values."
+ja = "折れ線が軸の座標 (`transform=plt.gca().transAxes`) を使うため、データに関係なく隅から隅へ引かれます。2 つのグラフは同じに見えますが、合格する折れ線はデータの値の位置にあります。"
+
+[[entry]]
+reason = "scale_not_linear"
+blocked = "log-scale-unstated"
+twin = "log-scale-stated"
+en = "A log y axis that no label names makes 1, 10, 100 and 1000 look evenly spaced. The chart that passes says `log scale` in its axis label."
+ja = "ラベルで明記しない対数の y 軸のため、1、10、100、1000 が等間隔に見えます。合格するグラフは、軸ラベルに `log scale` と書いています。"
+
+[[entry]]
+reason = "axis_inverted"
+blocked = "inverted-value-axis"
+twin = "upright-axes"
+en = "The y axis runs downward, so a rise looks like a fall."
+ja = "y 軸が下向きのため、増加が減少に見えます。"
+
+[[entry]]
+reason = "zero_not_in_limits"
+blocked = "truncated-bars"
+twin = "truncated-bars-twin"
+en = "The y axis starts at 30,000, so US revenue (40,000) looks 2.5 times EU revenue (34,000)."
+ja = "y 軸が 30,000 から始まるため、US の売上 (40,000) が EU の売上 (34,000) の 2.5 倍に見えます。"
+
+[[entry]]
+reason = "tick_label_mismatch"
+blocked = "money-labels-scaled"
+twin = "money-labels"
+en = "The tick formatter divides each value by 10, so the axis reads 4,000 where the bar reaches 40,000."
+ja = "目盛りのフォーマッターが各値を 10 で割るため、棒が 40,000 に届く位置で軸は 4,000 と表示します。"
+
+[[entry]]
+reason = "point_clipped"
+blocked = "clipped-point"
+twin = "upright-axes"
+en = "The y limit stops at 5, so the point at 9 falls outside the chart and disappears."
+ja = "y 軸の範囲が 5 で止まるため、9 の点がグラフの外に出て消えます。"
+
+[[entry]]
+reason = "mark_hidden"
+blocked = "hidden-bars"
+twin = "vector-chart"
+en = "The program hides the bar for b, so the chart seems to hold a alone."
+ja = "プログラムが b の棒を非表示にしているため、グラフには a だけがあるように見えます。"
+
+[[entry]]
+reason = "value_not_finite"
+blocked = "gap-in-line"
+twin = "complete-line"
+en = "A missing value (NaN) leaves a silent gap in the line. The chart that passes draws only the points that exist."
+ja = "欠損値 (NaN) のため、折れ線に何の説明もない切れ目ができます。合格するグラフは、存在する点だけを描きます。"
+
+[[entry]]
+reason = "bar_not_from_zero"
+blocked = "floating-bars"
+twin = "vector-chart"
+en = "The bars float from 1, so their tops read 2 and 3 on the axis for the values 1 and 2."
+ja = "棒が 1 から浮いているため、値 1 と 2 の棒の上端が軸の 2 と 3 を指します。"
+
+[[entry]]
+reason = "bars_overlap"
+blocked = "overplotted-bars"
+twin = "overplotted-bars-side-by-side"
+en = "The second series sits exactly on the first and hides it: the chart shows two bars where the data holds four."
+ja = "2 つ目の系列が 1 つ目の系列にちょうど重なって隠しています。データには 4 本あるのに、グラフには 2 本しか見えません。"
+
+[[entry]]
+reason = "x_not_ordered"
+blocked = "unordered-line"
+twin = "unordered-line-sorted"
+en = "The points are not in x order, so the line runs forward, doubles back and suggests a loop that the data does not hold."
+ja = "点が x の順に並んでいないため、折れ線が前に進んでから戻り、データにないループがあるように見えます。"
+
+[[entry]]
+reason = "hist_counts"
+blocked = "hist-dropped-values"
+twin = "hist-all-values"
+en = "The bin range stops at 4, so the value 9 drops out of the histogram without a trace."
+ja = "ビンの範囲が 4 で止まるため、値 9 が何の跡もなくヒストグラムから消えます。"
+
+[[entry]]
+reason = "pie_not_whole"
+blocked = "partial-pie"
+twin = "whole-pie"
+en = "With `normalize=False`, the wedges for 0.1, 0.2 and 0.3 fill 60 % of the circle, and the gap reads as a missing slice."
+ja = "`normalize=False` のため、0.1、0.2、0.3 の扇形が円の 60 % だけを満たし、すき間が欠けた扇形のように見えます。"
+
+[[entry]]
+reason = "area_not_from_zero"
+blocked = "floating-area"
+twin = "area-from-zero"
+en = "The area starts at 5, so its filled heights show 1, 3 and 2 for the values 6, 8 and 7."
+ja = "面が 5 から始まるため、値 6、8、7 に対して塗った高さは 1、3、2 になります。"
+
+[[entry]]
+reason = "marker_size_varies"
+blocked = "sizes-unexplained"
+twin = "sizes-explained"
+en = "The points have different sizes, and nothing says what a size means."
+ja = "点の大きさが異なりますが、大きさが何を表すかを示すものがありません。"
+
+[[entry]]
+reason = "marker_color_varies"
+blocked = "colors-unexplained"
+twin = "colors-explained"
+en = "The points have different colors, and nothing says what a color means."
+ja = "点の色が異なりますが、色が何を表すかを示すものがありません。"
+
+[[entry]]
+reason = "legend_mismatch"
+blocked = "legend-misses-a-series"
+twin = "legend-names-both"
+en = "The legend names one of the two lines, so the reader cannot tell what the other line shows."
+ja = "凡例が 2 本の線のうち 1 本だけを示すため、もう 1 本が何を表すかがわかりません。"
+
+[[entry]]
+reason = "category_not_unique"
+blocked = "repeated-category"
+twin = "unique-categories"
+en = "Two bars carry the label a, so the reader cannot tell which value belongs to a."
+ja = "2 本の棒に同じラベル a があるため、どちらの値が a のものかがわかりません。"
+
+[[entry]]
+reason = "value_not_found"
+blocked = "made-up-values"
+twin = "truncated-bars-twin"
+en = "The bars show 50,000 and 60,000, but the file's revenue totals are 34,000 and 40,000."
+ja = "棒は 50,000 と 60,000 を示しますが、ファイルの売上の合計は 34,000 と 40,000 です。"
+
+[[entry]]
+reason = "label_not_in_request"
+blocked = "labels-not-typed"
+twin = "labels-typed"
+en = "The request types numbers alone, and the program invents the labels apples, pears and plums. The two charts look the same; the request makes the difference."
+ja = "依頼文には数値しかなく、プログラムが apples、pears、plums というラベルを作っています。2 つのグラフは同じに見えますが、違いは依頼文にあります。"
+
+[[entry]]
+reason = "column_not_requested"
+blocked = "substituted-column"
+twin = "truncated-bars-twin"
+en = "The request asks for revenue, and the chart draws orders, a column that the request does not name."
+ja = "依頼文は売上 (revenue) を求めていますが、グラフは依頼文にない列 orders を描いています。"
+
+[[entry]]
+reason = "column_not_named"
+blocked = "unnamed-column-strict"
+twin = "named-columns-strict"
+en = "Production rule: the request names revenue but not month, which the chart also draws. The two charts are the same; the request that also names month passes."
+ja = "本番環境の規則です。依頼文は revenue を挙げていますが、グラフが描く month は挙げていません。2 つのグラフは同じです。month も挙げた依頼文が合格します。"
+
+[[entry]]
+reason = "label_not_consistent"
+blocked = "title-names-another-column"
+twin = "title-consistent"
+en = "The bars show revenue, but the title names orders, another column of the file."
+ja = "棒は売上を示していますが、タイトルはファイルの別の列 orders を挙げています。"

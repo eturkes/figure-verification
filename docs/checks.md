@@ -2,7 +2,8 @@
 
 Every rule a chart must pass, in run order: what the verifier checks, how it checks it, and the code
 that a failure shows. Each row of **Show checks** links to its section here. Rules in full:
-[verification.md](verification.md). [日本語版](checks.ja.md)
+[verification.md](verification.md). Each blocked behavior beside an honest chart:
+[gallery.md](gallery.md). [日本語版](checks.ja.md)
 
 ## How the verifier works
 
@@ -78,7 +79,7 @@ your browser's network.
 | every character in an available font | the reader counts missing-glyph warnings, mathtext missing-glyph records and `.notdef` glyphs in path text; the filter sends the part of Open WebUI's Japanese font that holds the characters of the program and the files | `glyph_missing` |
 | verifier finishes without an internal error | any exception while the filter decodes the description or judges it fails the chart | `verifier_error` |
 
-[Full rules](verification.md#check-figure)
+[Full rules](verification.md#check-figure) [Examples](gallery.md#check-figure)
 
 <a id="check-parts"></a>
 
@@ -100,7 +101,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | no other part (error bars, box plots, contours, added shapes, step histograms) | every (class, call) pair is in the set above | `artist_not_judged` |
 | data in every panel | each axes holds a data artist | `no_data` |
 
-[Full rules](verification.md#check-parts)
+[Full rules](verification.md#check-parts) [Examples](gallery.md#check-parts)
 
 <a id="check-axes"></a>
 
@@ -115,7 +116,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | each visible tick label = the value at its position | each label in view, read as a category, a date or a number (with the formatter's order and offset), equals its tick position, within half a unit of its last digit | `tick_label_mismatch` |
 | every data point, bar end and reference mark inside the axis limits (pies exempt) | every drawn coordinate lies in `get_view_interval()` | `point_clipped` |
 
-[Full rules](verification.md#check-axes)
+[Full rules](verification.md#check-axes) [Examples](gallery.md#check-axes)
 
 <a id="check-marks"></a>
 
@@ -135,7 +136,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | varying scatter colors: a colorbar or a color legend | the face colors vary only with a colorbar or a `legend_elements()` legend of that collection | `marker_color_varies` |
 | legend entries name drawn series; 2 or more series in a panel with a legend: every series named | each legend handle is a judged artist, or a proxy with a mark's label and color | `legend_mismatch` |
 
-[Full rules](verification.md#check-marks)
+[Full rules](verification.md#check-marks) [Examples](gallery.md#check-marks)
 
 <a id="check-values"></a>
 
@@ -167,7 +168,7 @@ that it leaves must be a typed number.
 | every drawn value found in a source | the search above finds an explanation for every point | `value_not_found` |
 | every typed category label in the request | the label occurs in the request after NFKC and case folding | `label_not_in_request` |
 
-[Full rules](verification.md#check-values)
+[Full rules](verification.md#check-values) [Examples](gallery.md#check-values)
 
 <a id="check-columns"></a>
 
@@ -185,7 +186,7 @@ declares and, in production, Japanese short forms (`月` for `年月`, also `月
 | production: if the request names or excludes a column, it names every drawn column | each drawn column is among the named columns | `column_not_named` |
 | titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary | the same matcher reads each label against the header and the summary words | `label_not_consistent` |
 
-[Full rules](verification.md#check-columns)
+[Full rules](verification.md#check-columns) [Examples](gallery.md#check-columns)
 
 <a id="check-attach"></a>
 

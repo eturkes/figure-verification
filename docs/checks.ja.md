@@ -2,7 +2,8 @@
 
 グラフが合格する必要があるすべての規則を、実行順に示します。検証器がチェックする内容、その方法、
 不合格のときに表示されるコードです。**チェック項目を表示** の各行は、ここにある対応する節に
-リンクしています。規則の詳細: [verification.ja.md](verification.ja.md)。[English](checks.md)
+リンクしています。規則の詳細: [verification.ja.md](verification.ja.md)。不合格になるグラフと正しい
+グラフの例: [gallery.ja.md](gallery.ja.md)。[English](checks.md)
 
 ## 検証器のしくみ
 
@@ -78,7 +79,7 @@
 | すべての文字が使用できるフォントにある | 読み取り処理が、グリフ不足の警告、mathtext のグリフ不足の記録、パスのテキストの `.notdef` グリフを数える。フィルターは、プログラムとファイルの文字を含む Open WebUI の日本語フォントの一部を送る | `glyph_missing` |
 | 検証器が内部エラーなく終了 | フィルターが記述を読み取る途中や判定中の例外はすべて不合格 | `verifier_error` |
 
-[詳細](verification.ja.md#check-figure)
+[詳細](verification.ja.md#check-figure) [例](gallery.ja.md#check-figure)
 
 <a id="check-parts"></a>
 
@@ -100,7 +101,7 @@
 | ほかの部品なし (エラーバー、箱ひげ図、等高線、追加した図形、step のヒストグラム) | すべての (クラス、呼び出し) の組が上の集合にある | `artist_not_judged` |
 | すべてのパネルにデータ | 各軸にデータの描画要素がある | `no_data` |
 
-[詳細](verification.ja.md#check-parts)
+[詳細](verification.ja.md#check-parts) [例](gallery.ja.md#check-parts)
 
 <a id="check-axes"></a>
 
@@ -115,7 +116,7 @@
 | 表示される各目盛りのラベル = その位置の値 | 範囲内の各ラベルをカテゴリ、日付、数値 (フォーマッターの指数とオフセットを含む) として読み、目盛りの位置と、最後の桁の半単位以内で一致 | `tick_label_mismatch` |
 | すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外) | 描画したすべての座標が `get_view_interval()` の中にある | `point_clipped` |
 
-[詳細](verification.ja.md#check-axes)
+[詳細](verification.ja.md#check-axes) [例](gallery.ja.md#check-axes)
 
 <a id="check-marks"></a>
 
@@ -135,7 +136,7 @@
 | 散布図の色が異なる場合: カラーバーまたは色の凡例 | 塗りの色が異なるのは、そのコレクションのカラーバーか `legend_elements()` の凡例がある場合だけ | `marker_color_varies` |
 | 凡例の項目は描いた系列を示す。凡例のあるパネルに系列が 2 つ以上: すべての系列を示す | 凡例の各ハンドルが判定対象の描画要素、またはグラフ要素のラベルと色を持つ代理 | `legend_mismatch` |
 
-[詳細](verification.ja.md#check-marks)
+[詳細](verification.ja.md#check-marks) [例](gallery.ja.md#check-marks)
 
 <a id="check-values"></a>
 
@@ -167,7 +168,7 @@
 | 描画したすべての値が出所にある | 上の探索がすべての点の説明を見つける | `value_not_found` |
 | 入力したすべてのカテゴリのラベルが依頼文にある | NFKC と大文字小文字の統一の後、ラベルが依頼文にある | `label_not_in_request` |
 
-[詳細](verification.ja.md#check-values)
+[詳細](verification.ja.md#check-values) [例](gallery.ja.md#check-values)
 
 <a id="check-columns"></a>
 
@@ -185,7 +186,7 @@ NFKC と大文字小文字の統一の後、依頼文をファイルの見出し
 | 本番環境: 依頼文が列を挙げるか除外する場合、描いた列をすべて挙げる | 描いた各列が、挙げた列に含まれる | `column_not_named` |
 | タイトル、軸ラベル、凡例、カラーバーのラベル: 描いていない列なし。グループごとの合計または平均には、ほかの集計なし | 同じ照合で、各ラベルを見出しと集計の語に照らして読む | `label_not_consistent` |
 
-[詳細](verification.ja.md#check-columns)
+[詳細](verification.ja.md#check-columns) [例](gallery.ja.md#check-columns)
 
 <a id="check-attach"></a>
 

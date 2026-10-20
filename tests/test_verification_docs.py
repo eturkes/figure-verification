@@ -29,6 +29,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _DOCS = {
     "reference": {"en": _ROOT / "docs/verification.md", "ja": _ROOT / "docs/verification.ja.md"},
     "guide": {"en": _ROOT / "docs/checks.md", "ja": _ROOT / "docs/checks.ja.md"},
+    "gallery": {"en": _ROOT / "docs/gallery.md", "ja": _ROOT / "docs/gallery.ja.md"},
 }
 _MAIN = "https://github.com/eturkes/figure-verification/blob/main/"
 _ANCHOR = re.compile(r'<a id="check-([a-z]+)"></a>')
@@ -123,7 +124,7 @@ def test_d6_every_limit_is_named_with_its_value(language: str) -> None:
         assert _limit_row(text, name) == getattr(DEFAULT_LIMITS, name), name
 
 
-@pytest.mark.parametrize("doc", ["reference", "guide"])
+@pytest.mark.parametrize("doc", ["reference", "guide", "gallery"])
 @pytest.mark.parametrize("language", ["en", "ja"])
 def test_d7_links_resolve_and_each_doc_has_one_h1(language: str, doc: str) -> None:
     """D7 + Q72 G1: relative links -> tracked files; one H1."""
