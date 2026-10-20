@@ -184,8 +184,8 @@ tool more than once in a reply, the verifier checks the last program.
 
 Your browser runs the model's program, unchanged, in the Open WebUI sandbox (Pyodide). The verifier
 adds only an outer step: it records the finished figure and saves one PNG image. Python itself rejects a program that is not valid Python. The program can import numpy, pandas,
-matplotlib and the Python standard library; the verifier loads these three packages before the
-program runs. When the program or an attached file holds Japanese
+matplotlib, seaborn and the Python standard library. The verifier loads numpy, pandas and
+matplotlib before the program runs, and seaborn too when the program names it. When the program or an attached file holds Japanese
 text, the verifier also sends a Japanese font from the Open WebUI server with the program. The chat tab must stay
 open while the program runs. The verifier sends the program only to Open WebUI's isolated sandbox.
 With Pyodide file persistence on, Open WebUI runs the program with the access of the signed-in
@@ -211,8 +211,12 @@ user. The run then fails with `sandbox_not_isolated`.
 
 ### 3. One figure drawn
 
-The program must draw exactly one matplotlib figure. Charts from pandas are matplotlib figures too.
-The verifier loads only numpy, pandas and matplotlib into the Pyodide runtime, so a seaborn program stops at its import. A figure can hold several panels, made with `plt.subplots`. The available
+The program must draw exactly one matplotlib figure. Charts from pandas and seaborn are matplotlib
+figures too, and the same checks apply to their parts. By default, a seaborn bar or line chart also
+draws error bars or a confidence band. The verifier checks these as marks of their own, and the
+figure fails. Ask for the chart without them (`errorbar=None`). The verifier does not check the
+extra parts that seaborn adds for a `hue` legend, and it does not explain the counts of
+`sns.histplot`. These figures also fail. A figure can hold several panels, made with `plt.subplots`. The available
 fonts must draw every character of the figure's text. When the Open WebUI server has `fontTools`,
 the verifier sends only part of the Japanese font. This part holds ASCII, the minus sign and the
 characters of the program text and the attached files. Otherwise, the verifier sends the whole font.

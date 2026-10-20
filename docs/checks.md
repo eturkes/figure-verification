@@ -63,7 +63,7 @@ your browser's network.
 | run reports its figure | `stdout` holds one parsable, tagged description line | `no_description` |
 | valid Python | the reader compiles the program; no `SyntaxError` | `program_syntax_error` |
 | program runs to its end without an exception | the reader runs the program and catches any exception with its line | `program_error` |
-| imports only numpy, pandas, matplotlib and the standard library | the exception is no missing-module error | `module_not_available` |
+| imports only numpy, pandas, matplotlib, seaborn and the standard library | the exception is no missing-module error | `module_not_available` |
 | at most 24 axes, 2,000 parts, 20,000 coordinates and 1,000 characters per text; description at most 400,000 bytes, PNG at most 500,000 characters | the reader counts as it describes, and reports a figure past a cap as too large | `figure_too_large` |
 
 [Full rules](verification.md#check-run)

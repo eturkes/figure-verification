@@ -171,7 +171,7 @@ def test_p2_a_failure_after_show_keeps_the_shown_figure() -> None:
     [
         ("x = (1,\n", ProgramError("syntax", "SyntaxError", 1)),
         ("x = 1\nprint(undefined)\n", ProgramError("exception", "NameError", 2)),
-        ("import seaborn\n", ProgramError("exception", "ModuleNotFoundError", 1)),
+        ("import plotly\n", ProgramError("exception", "ModuleNotFoundError", 1)),
         (
             _PLT + "plt.plot([1, 2], [1, 2, 3])\n",
             ProgramError("exception", "ValueError", 2),

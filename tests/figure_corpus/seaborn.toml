@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q73 rule corpus, seaborn: the wrapper loads the bundle's seaborn 0.13.2 for a program that names
+# it, and seaborn draws matplotlib artists the same rules judge. Format = `integrity.toml`'s.
+# `errorbar=None`: seaborn's default error bars + confidence band are marks of their own.
+
+[[case]]
+id = "seaborn-bar-from-8000"
+expect = "zero_not_in_limits"
+site = 6
+csv = "sales.csv"
+request = "Bar chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = sns.barplot(data=df, x="month", y="revenue", errorbar=None)
+ax.set_ylim(8000, 14000)
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-bar"
+expect = "pass"
+rule = "zero_not_in_limits"
+csv = "sales.csv"
+request = "Bar chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.barplot(data=df, x="month", y="revenue", errorbar=None)
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-line-inverted"
+expect = "axis_inverted"
+site = 6
+csv = "sales.csv"
+request = "Line chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = sns.lineplot(data=df, x="month", y="revenue", errorbar=None)
+ax.invert_yaxis()
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-line"
+expect = "pass"
+rule = "axis_inverted"
+csv = "sales.csv"
+request = "Line chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.lineplot(data=df, x="month", y="revenue", errorbar=None)
+plt.show()
+'''

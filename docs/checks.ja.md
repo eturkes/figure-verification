@@ -63,7 +63,7 @@
 | 実行結果が図を報告 | `stdout` に、読み取れるタグ付きの記述の行が 1 つある | `no_description` |
 | 正しい Python | 読み取り処理がプログラムをコンパイルし、`SyntaxError` がない | `program_syntax_error` |
 | プログラムが例外なく最後まで実行 | 読み取り処理がプログラムを実行し、例外とその行をとらえる | `program_error` |
-| 読み込むのは numpy、pandas、matplotlib、標準ライブラリだけ | 例外がモジュール不足のエラーではない | `module_not_available` |
+| 読み込むのは numpy、pandas、matplotlib、seaborn、標準ライブラリだけ | 例外がモジュール不足のエラーではない | `module_not_available` |
 | 軸 24 個、部品 2,000 個、座標 20,000 個、1 つのテキスト 1,000 文字まで。図の記述 400,000 バイト、PNG 500,000 文字まで | 読み取り処理が記述しながら数え、上限を超えた図を大きすぎると報告する | `figure_too_large` |
 
 [詳細](verification.ja.md#check-run)

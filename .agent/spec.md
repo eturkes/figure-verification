@@ -54,6 +54,10 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
+- [ ] Q73 seaborn: the wrapper loads the bundle's seaborn for a program naming it; host pin; corpus `seaborn.toml` (bar + line, honest + misleading); C1 241/241; docs + law; three seaborn finds queued.
+- [ ] Q74 stdlib font cut: the filter cuts an sfnt font with no fontTools present; F7 `ja-font` ≤ 99,999 B with fontTools absent; every Q44 leg keeps its verdict.
+- [ ] Close: rows 1-5 checked against their triggers; one question for the user; full gate on a clean tree; ticked rows cleared.
+
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase

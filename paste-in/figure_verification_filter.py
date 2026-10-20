@@ -3736,11 +3736,12 @@ _SOURCES["webui.paste_in.sandbox"] = r'''
 
 OWUI picks the sandbox packages from literal imports in the RPC source and patches the plotting
 library when the source spells that library's name, which raises before the program runs (A5).
-So the plotting name is never literal here: the wrapper loads the three packages itself, quietly,
-and carries the reader and the program as base64, split wherever the encoding spells that name.
+So the plotting name is never literal here: the wrapper loads the packages itself, quietly, and
+carries the reader and the program as base64, split wherever the encoding spells that name.
 """
 
 import base64
+import re
 from pathlib import Path
 from typing import Final
 
@@ -3748,6 +3749,9 @@ from verifier.figure import reader
 from webui.paste_in import fonts
 
 _PLOTTING: Final = "mat" + "plotlib"
+# Seaborn sits in the bundle beside the stack and loads only for a program naming it: a word match
+# admits every import form, and a comment naming it costs one wheel from the instance.
+_SEABORN: Final = re.compile(r"\bseaborn\b")
 
 
 def reader_source() -> str:
@@ -3783,11 +3787,12 @@ def wrapper_code(program: str, font: bytes | None = None) -> str:
     )
     source = _payload(reader_source().encode("utf-8"))
     program_bytes = _payload(program.encode("utf-8", "surrogatepass"))
+    seaborn = ", 'seaborn'" if _SEABORN.search(program) else ""
     return (
         "\n".join(
             (
                 "import pyodide_js as _fv_pyodide",
-                "await _fv_pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'],",
+                f"await _fv_pyodide.loadPackage(['numpy', 'pandas', 'mat' + 'plotlib'{seaborn}],",
                 "                              messageCallback=lambda _message: None)",
                 "import base64 as _fv_b64",
                 "import os as _fv_os",

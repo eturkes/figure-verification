@@ -25,9 +25,10 @@ _PLT = "import matplotlib.pyplot as plt\n"
 # OWUI 0.12.3's package-detector entry for the plotting library, the form every release since 0.10.2
 # uses (`.claude/rules/owui.md`).
 _DETECTOR = re.compile(r"\bimport\s+matplotlib\b|\bfrom\s+matplotlib\b")
+_STACK = ["numpy", "pandas", "matplotlib"]
 
 
-def _execute(code: str) -> str:
+def _execute(code: str, packages: list[str] | None = None) -> str:
     loads: list[list[str]] = []
 
     async def load_package(packages: list[str], **_kwargs: object) -> None:
@@ -42,7 +43,7 @@ def _execute(code: str) -> str:
         result = eval(compiled, {"__name__": "__main__"})  # noqa: S307 - the RPC code under test
         if asyncio.iscoroutine(result):
             asyncio.run(result)
-    assert loads == [["numpy", "pandas", "matplotlib"]]
+    assert loads == [_STACK if packages is None else packages]
     return out.getvalue()
 
 
@@ -50,6 +51,26 @@ def test_u3_the_rpc_never_spells_the_plotting_name() -> None:
     code = sandbox.wrapper_code(_PLT + "import matplotlib\nplt.plot([1])\n", b"font matplotlib")
     assert "matplotlib" not in code
     assert _DETECTOR.search(code) is None
+
+
+@pytest.mark.parametrize(
+    ("program", "packages"),
+    [
+        ("import seaborn as sns\n", ["numpy", "pandas", "matplotlib", "seaborn"]),
+        ("from seaborn import barplot\n", ["numpy", "pandas", "matplotlib", "seaborn"]),
+        ("import numpy as np, seaborn as sns\n", ["numpy", "pandas", "matplotlib", "seaborn"]),
+        ("import seaborn_extra\n", ["numpy", "pandas", "matplotlib"]),
+        ("import seaborns\n", ["numpy", "pandas", "matplotlib"]),
+        (_PLT + "plt.plot([1])\n", ["numpy", "pandas", "matplotlib"]),
+    ],
+)
+def test_q73_s1_seaborn_loads_when_the_program_names_it(program: str, packages: list[str]) -> None:
+    """The bundle's seaborn loads beside the stack only for a program that names it; the RPC still
+    never spells the plotting name (`.agent/archive/contracts/q73.md` S1)."""
+    code = sandbox.wrapper_code(program)
+    assert "matplotlib" not in code
+    assert _DETECTOR.search(code) is None
+    _execute(code, packages)
 
 
 def test_u3_the_wrapper_prints_what_the_reader_returns() -> None:

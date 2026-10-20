@@ -50,6 +50,9 @@ dev = [
     # releases, and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
     "matplotlib==3.10.8",
     "pandas==3.0.2",
+    # test-only (Q73): the wrapper loads the bundle's seaborn 0.13.2 for a program that names it, so
+    # the corpus's seaborn cases run the same release here.
+    "seaborn==0.13.2",
     # test-only (Q44): the filter cuts the Japanese font with whatever fontTools the server holds,
     # else sends it whole; the Open WebUI 0.12.3 image holds none, so no image version binds it.
     # matplotlib needs `fonttools>=4.22`.
