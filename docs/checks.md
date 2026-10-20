@@ -6,6 +6,13 @@ that a failure shows. Each row of **Show checks** links to its section here. Rul
 
 ## How the verifier works
 
+![Diagram of the verifier: the tool records a receipt, the filter runs the model's program inside
+the trusted reader in your browser, the judge checks the description on the server, and each check
+can stop the chart](diagrams/verifier.svg)
+
+Dashed boxes: what the language model writes. Red dashed arrows: where each check can stop the
+chart.
+
 1. **Receipt.** The `draw_figure` tool records the model's program, the ids of your attached files
    and your request: every message that you wrote on this chat branch, read from Open WebUI storage.
    The tool decides nothing.

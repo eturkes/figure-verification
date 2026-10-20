@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// 図の検証器が判定するしくみ。tools/render_diagrams.py が verifier.ja.svg に描画します。
+digraph verifier {
+  graph [fontname="Noto Sans CJK JP", fontsize=15, fontcolor="#1f2328", bgcolor="white",
+         pad=0.3, nodesep=0.4, ranksep=0.5, newrank=true, compound=true];
+  node [fontname="Noto Sans CJK JP", fontsize=14, fontcolor="#1f2328", shape=box,
+        style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
+        margin="0.2,0.1"];
+  edge [fontname="Noto Sans CJK JP", fontsize=12, fontcolor="#424a53", color="#57606a",
+        arrowsize=0.7, penwidth=1.1];
+
+  you [label=<<b>あなた</b><br/>依頼文 + CSV ファイル>];
+  model [label=<<b>言語モデル</b><br/>Python のプログラムを書く>, style="rounded,dashed"];
+
+  subgraph cluster_server {
+    label=<<b>Open WebUI のサーバー</b>>; labeljust=l; style="rounded,filled";
+    fillcolor="#eef3f8"; color="#b6c3d1";
+    storage [label=<<b>Open WebUI の保存データ</b><br/>メッセージ + ファイル>, shape=cylinder,
+             style=filled, margin="0.2,0.05"];
+    tool [label=<<b>draw_figure ツール</b><br/>受領記録を残す: プログラム、<br/>ファイル ID、依頼文<br/>判定はしない>];
+    filter [label=<<b>フィルター</b><br/>受領記録だけを読む<br/><b>チェック 1</b>>];
+    judge [label=<<b>判定処理</b> (標準ライブラリの Python)<br/>規則を順に適用、最初の不合格で停止<br/><b>チェック 3〜8</b>>];
+    publish [label=<<b>公開</b><br/>PNG を 1 枚添付<br/><b>チェック 9</b>>];
+  }
+
+  subgraph cluster_browser {
+    label=<<b>ブラウザ: Pyodide サンドボックス</b>   チェック 2>; labeljust=l;
+    style="rounded,filled"; fillcolor="#f6f1e7"; color="#cdbf9f";
+    hook [label=<<b>信頼できる図の読み取り処理</b><br/>matplotlib にフックを入れる>];
+    program [label=<<b>モデルのプログラム</b><br/>変更せずに実行>, style="rounded,dashed,filled"];
+    describe [label=<<b>信頼できる図の読み取り処理</b><br/>各図を 1 回描画し、すべての描画要素を<br/>JSON で記述 + PNG を 1 枚>];
+  }
+
+  pass [label=<<b>✓ 合格</b><br/>グラフ + Figure verification passed<br/>+ チェック項目を表示>,
+        color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<b>✗ 不合格</b><br/>画像なし、ステータス行にコード<br/>+ チェック項目を表示>,
+        color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+
+  { rank=same; you; model; }
+
+  you -> model [label="依頼"];
+  you -> storage [label="メッセージ、添付ファイル"];
+  model -> tool [label="ツールの呼び出し"];
+  storage -> tool [label="あなたのメッセージ"];
+  tool -> filter [label="受領記録"];
+  storage -> filter [label="ファイルのバイト、\n所有者を確認"];
+  filter -> hook [label="execute:python:\n読み取り処理、プログラム、ファイル ID"];
+  hook -> program -> describe;
+  describe -> judge [label="記述 + PNG"];
+  filter -> judge [label="依頼文 + ファイル"];
+  judge -> publish [label="すべて合格"];
+  publish -> pass;
+  edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
+  filter -> fail [label="チェック 1 が不合格"];
+  describe -> fail [label="チェック 2 が不合格", ltail=cluster_browser];
+  judge -> fail [label="チェック 3〜8 で\n最初の不合格"];
+  publish -> fail [label="チェック 9 が不合格"];
+}

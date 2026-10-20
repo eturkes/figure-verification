@@ -201,3 +201,25 @@ def test_q72_each_guide_rule_states_how_it_is_checked(language: str) -> None:
             assert len(cells) == 3 and all(cells), (check, row)
             codes = re.findall(r"`([a-z_]+)`", cells[2])
             assert codes and set(codes) <= reasons, (check, row)
+
+
+_DIAGRAMS = _ROOT / "docs" / "diagrams"
+
+
+def test_q72_each_diagram_renders_its_current_source() -> None:
+    """Q72: each `docs/diagrams/*.dot` has a tracked sibling `.svg` whose embedded source copy
+    (`tools/render_diagrams.py`) equals the `.dot` text, so an edit without a re-render fails here
+    with no Graphviz on the gate host; each guide embeds its language's diagram."""
+    sources = sorted(_DIAGRAMS.glob("*.dot"))
+    assert [source.name for source in sources] == ["verifier.dot", "verifier.ja.dot"]
+    tracked = _tracked()
+    for source in sources:
+        svg = source.with_suffix(".svg")
+        assert svg.relative_to(_ROOT).as_posix() in tracked, svg
+        text = svg.read_text(encoding="utf-8")
+        assert text.startswith("<?xml") and "<svg " in text and text.rstrip().endswith("</svg>")
+        start = text.index(f"<!-- source: {source.relative_to(_ROOT).as_posix()} (")
+        copy = text[text.index("\n", start) + 1 : text.index("-->\n", start)]
+        assert copy == source.read_text(encoding="utf-8"), source.name
+    for language, name in (("en", "verifier.svg"), ("ja", "verifier.ja.svg")):
+        assert f"](diagrams/{name})" in _text(language, "guide")

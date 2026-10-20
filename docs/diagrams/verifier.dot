@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// How the figure verifier decides. Rendered to verifier.svg by tools/render_diagrams.py.
+digraph verifier {
+  graph [fontname="Noto Sans CJK JP", fontsize=15, fontcolor="#1f2328", bgcolor="white",
+         pad=0.3, nodesep=0.4, ranksep=0.5, newrank=true, compound=true];
+  node [fontname="Noto Sans CJK JP", fontsize=14, fontcolor="#1f2328", shape=box,
+        style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
+        margin="0.2,0.1"];
+  edge [fontname="Noto Sans CJK JP", fontsize=12, fontcolor="#424a53", color="#57606a",
+        arrowsize=0.7, penwidth=1.1];
+
+  you [label=<<b>You</b><br/>request + CSV file>];
+  model [label=<<b>Language model</b><br/>writes a Python program>, style="rounded,dashed"];
+
+  subgraph cluster_server {
+    label=<<b>Open WebUI server</b>>; labeljust=l; style="rounded,filled";
+    fillcolor="#eef3f8"; color="#b6c3d1";
+    storage [label=<<b>Open WebUI storage</b><br/>your messages + files>, shape=cylinder,
+             style=filled, margin="0.2,0.05"];
+    tool [label=<<b>draw_figure tool</b><br/>records a receipt: program,<br/>file ids, your request<br/>decides nothing>];
+    filter [label=<<b>Filter</b><br/>reads the receipt alone<br/><b>check 1</b>>];
+    judge [label=<<b>Judge</b> (standard-library Python)<br/>rules in order, first failure stops<br/><b>checks 3–8</b>>];
+    publish [label=<<b>Publish</b><br/>attaches the one PNG<br/><b>check 9</b>>];
+  }
+
+  subgraph cluster_browser {
+    label=<<b>Your browser: Pyodide sandbox</b>   check 2>; labeljust=l; style="rounded,filled";
+    fillcolor="#f6f1e7"; color="#cdbf9f";
+    hook [label=<<b>Trusted figure reader</b><br/>hooks matplotlib>];
+    program [label=<<b>Model's program</b><br/>runs unchanged>, style="rounded,dashed,filled"];
+    describe [label=<<b>Trusted figure reader</b><br/>draws each figure once, describes<br/>every artist as JSON + one PNG>];
+  }
+
+  pass [label=<<b>✓ Pass</b><br/>chart + Figure verification passed<br/>+ Show checks>,
+        color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<b>✗ Fail</b><br/>no image, status line with the code<br/>+ Show checks>,
+        color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+
+  { rank=same; you; model; }
+
+  you -> model [label="asks"];
+  you -> storage [label="messages, attached file"];
+  model -> tool [label="tool call"];
+  storage -> tool [label="your messages"];
+  tool -> filter [label="receipt"];
+  storage -> filter [label="file bytes,\nowner checked"];
+  filter -> hook [label="execute:python:\nreader, program, file ids"];
+  hook -> program -> describe;
+  describe -> judge [label="description + PNG"];
+  filter -> judge [label="your request + files"];
+  judge -> publish [label="all pass"];
+  publish -> pass;
+  edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
+  filter -> fail [label="check 1 fails"];
+  describe -> fail [label="check 2 fails", ltail=cluster_browser];
+  judge -> fail [label="first failure\nin checks 3–8"];
+  publish -> fail [label="check 9 fails"];
+}
