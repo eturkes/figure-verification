@@ -182,3 +182,22 @@ def test_q72_g2_the_guide_and_the_reference_link_each_other(language: str) -> No
     twin = _name("ja" if language == "en" else "en", "guide")
     assert f"]({twin})" in guide
     assert f"]({_name(language, 'guide')})" in _text(language)
+
+
+_ROW = re.compile(r"^\|(.+)\|$", re.MULTILINE)
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_q72_each_guide_rule_states_how_it_is_checked(language: str) -> None:
+    """Q72 amendment 3 (user: "HOW does this tool verify these things?"): every rule row of a
+    guide check table = rule | how | code, each cell filled, the code cell naming known reasons."""
+    reasons = set(get_args(FigureReason)) | set(get_args(OutletCause))
+    for check, body in _sections(_text(language, "guide")).items():
+        rows = [match.group(1) for match in _ROW.finditer(body)]
+        rules = [row for row in rows[2:] if not set(row) <= {"-", "|"}]
+        assert rules, check
+        for row in rules:
+            cells = [cell.strip() for cell in row.split("|")]
+            assert len(cells) == 3 and all(cells), (check, row)
+            codes = re.findall(r"`([a-z_]+)`", cells[2])
+            assert codes and set(codes) <= reasons, (check, row)

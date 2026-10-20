@@ -77,7 +77,7 @@ A reason maps to the stage that raises it: `category_not_unique` (G8) needs the 
 - `hist_counts`: hist rects contiguous on the recorded bin edges, heights = counts (or density) of the recorded inputs over those edges (numpy semantics, last bin closed); an input outside the edges, weights, `cumulative` or > 1 dataset blocks.
 - `pie_not_whole`: wedges share one radius + width (an exploded centre passes), spans contiguous, total 360°, each span = 360 · value / Σ values (recorded inputs; |Δ| ≤ 1e-4°: matplotlib computes angles in float32); a partial `normalize=False` pie misses 360°.
 - `area_not_from_zero`: each band GROUNDED: its base edge all zero, or exactly the far edge of a grounded band at the same x (bands resting only on each other block); arrays = the final polygon read back in the `fill_between` layout.
-- `marker_size_varies` / `marker_color_varies`: a scatter collection whose sizes / face colours vary passes only with a size legend from that collection's `legend_elements` / a colorbar of that collection.
+- `marker_size_varies` / `marker_color_varies`: a scatter collection whose sizes / face colours vary passes only with a size legend from that collection's `legend_elements("sizes")` / a colorbar or colour key (`legend_elements()`) of that collection (`mark_rules.py::_check_scatter`).
 - `legend_mismatch`: each legend entry names one judged mark (handle = that artist/container anywhere in the figure, or a proxy with a mark's label + colour), or is a `legend_elements` key of a judged scatter; with ≥ 2 series (line, points, bars, area) in a legended axes, every one named; pies + reference marks may stay unnamed.
 
 ## Values (ruling 4; R2, R4; user: series filter, ties)
