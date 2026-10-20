@@ -54,13 +54,6 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-- [x] d6bf8de Q73 seaborn: the wrapper loads the bundle's seaborn for a program naming it; host pin; corpus `seaborn.toml` (bar + line, honest + misleading); C1 241/241; docs + law; three seaborn finds queued.
-- [x] c3daecd Q74 stdlib font cut: the filter cuts an sfnt font with no fontTools present; F7 `ja-font` ≤ 99,999 B with fontTools absent; every Q44 leg keeps its verdict.
-- [x] 549c7b8 Q75 seaborn `hue` legends: ink-free legend proxies the axes' own legend targets are judged (no mark); each names the one unlabelled series of its colour; corpus + C1.
-- [x] e470620 Q77 Pillow advisories: the demo's Open WebUI lock overrides `pillow==12.3.0` to 13.0.0 (nine advisories; upgrade ruling 4).
-- [ ] Q76 seaborn guidance (user rulings): the chart rules + `draw_figure` description ask for `errorbar=None` with seaborn and `plt.hist` for histograms; corpus pins the defaults' blocks.
-- [ ] Close: rows 1-5 checked against their triggers; one question for the user; full gate on a clean tree; ticked rows cleared.
-
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase
