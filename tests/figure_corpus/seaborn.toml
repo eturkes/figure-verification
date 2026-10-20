@@ -144,3 +144,66 @@ ax.bar(["a", "b"], [1, 2])
 ax.add_artist(handle)
 ax.legend(handles=[handle])
 '''
+
+# Q76: seaborn's defaults the chart rules steer away from still block (the judge is unchanged):
+# error bars / a confidence band, and histplot's own counts; plt.hist draws the same histogram.
+
+[[case]]
+id = "seaborn-bar-default-error-bars"
+expect = "category_not_unique"
+site = 5
+csv = "sales.csv"
+request = "Bar chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.barplot(data=df, x="month", y="revenue")
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-line-default-band"
+expect = "zero_not_in_limits"
+site = 5
+csv = "sales.csv"
+request = "Line chart of the mean revenue by month"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.lineplot(data=df, x="month", y="revenue")
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-histplot"
+expect = "value_not_found"
+site = 5
+csv = "sales.csv"
+request = "Histogram of revenue"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.histplot(data=df, x="revenue")
+plt.show()
+'''
+
+[[case]]
+id = "plt-hist-for-histplot"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Histogram of revenue"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+plt.hist(df["revenue"])
+plt.xlabel("revenue")
+plt.show()
+'''

@@ -215,7 +215,8 @@ The program must draw exactly one matplotlib figure. Charts from pandas and seab
 figures too, and the same checks apply to their parts. By default, a seaborn bar or line chart also
 draws error bars or a confidence band. The verifier checks these as marks of their own, and the
 figure fails. Ask for the chart without them (`errorbar=None`). The verifier does not explain the
-counts of `sns.histplot`, so these figures also fail. A figure can hold several panels, made with `plt.subplots`. The available
+counts of `sns.histplot`, so these figures also fail; `plt.hist` draws the same histogram, and the
+verifier checks its counts. The chart rules that the model receives ask for both. A figure can hold several panels, made with `plt.subplots`. The available
 fonts must draw every character of the figure's text. The verifier sends
 only part of the Japanese font. This part holds ASCII, the minus sign and the characters of the
 program text and the attached files. If the verifier cannot cut the font file (for example, a

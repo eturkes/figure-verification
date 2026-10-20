@@ -891,7 +891,8 @@ class Tools:
         bars and filled areas start at zero, axes stay linear and not inverted, every value stays
         inside the axis limits, each panel has one set of axes, a legend names every series when
         there are two or more, and varying marker sizes or colors have a size legend or a color
-        bar. The reply shows the chart only when it follows these rules.
+        bar. With seaborn, pass errorbar=None to bar and line charts. Draw histograms with
+        plt.hist. The reply shows the chart only when it follows these rules.
 
         :param program: The complete Python program that draws the chart.
         """
