@@ -160,7 +160,7 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
     ],
 )
 def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, kind: str) -> None:
-    # OWUI 0.11.3 utils/middleware.py:1297-1320 sends one user message with these literal shapes.
+    # OWUI 0.12.3 utils/middleware.py:1022-1044 sends one user message with these literal shapes.
     with TestClient(app=create_app("stub-model")) as client:
         response = client.post(
             "/v1/chat/completions",

@@ -1,12 +1,12 @@
 {
-  "image": "ghcr.io/open-webui/open-webui:v0.11.3",
+  "image": "ghcr.io/open-webui/open-webui:v0.12.3",
   "imports": {
     "demo/filter": "ok",
     "demo/tool": "ok",
     "production/filter": "ok",
     "production/tool": "ok"
   },
-  "python": "3.11.16",
+  "python": "3.11.17",
   "verdicts": {
     "demo": {
       "ja-clinic-misleading": "axis_inverted",

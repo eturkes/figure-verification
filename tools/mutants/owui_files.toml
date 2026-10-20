@@ -1,51 +1,136 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Open WebUI's bundled CJK font (M17.1): an unavailable font degrades to None off the event loop;
+# The server's Japanese font (U2): the admin's file, else discovery; only a font file within the cap;
+# every fault degrades to None off the event loop;
 # owned files read to one byte past max_csv_bytes (M21.1 F4); the persistence setting read
 # fail-closed (M21.1 F5); the request = the user's stored messages on the chat branch (Q66).
 module = "webui/paste_in/owui_files.py"
 tests = ["tests/test_paste_in_owui_files.py", "tests/test_paste_in_request_text.py"]
 
 [[mutant]]
-id = "of-file-error-uncaught"
-predicate = "a missing or unreadable font file degrades to None"
-kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_swallows_each_exception_family[file]"
-anchor = '''    except Exception:
+id = "u2-configured-ignored"
+predicate = "the admin's Valve file is read before discovery (U2 D1)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d1_the_admins_font_file_wins_and_skips_the_walk"
+anchor = '''    if configured and (content := _font_bytes(Path(configured))) is not None:'''
+mutant = '''    if False and (content := _font_bytes(Path(configured))) is not None:'''
+
+[[mutant]]
+id = "u2-walk-always"
+predicate = "the walk runs only when the admin's file is unset or no font (U2 D1)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d1_the_admins_font_file_wins_and_skips_the_walk"
+anchor = '''    if configured and (content := _font_bytes(Path(configured))) is not None:'''
+mutant = '''    _discovered(_FONT_DIRS)
+    if configured and (content := _font_bytes(Path(configured))) is not None:'''
+
+[[mutant]]
+id = "u2-no-fallback"
+predicate = "an admin file that is no font falls back to discovery (U2 D1)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d1_an_unusable_admin_file_falls_back_to_discovery[not-a-font]"
+anchor = '''    if configured and (content := _font_bytes(Path(configured))) is not None:
+        return content'''
+mutant = '''    if configured:
+        return _font_bytes(Path(configured))'''
+
+[[mutant]]
+id = "u2-rank-ignored"
+predicate = "discovery returns the best-ranked file first, then by path (U2 D2)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d2_discovery_ranks_by_the_list_then_by_path"
+anchor = '''    return [Path(name) for _rank, name in sorted(found)]'''
+mutant = '''    return [Path(name) for _rank, name in found]'''
+
+[[mutant]]
+id = "u2-case-sensitive"
+predicate = "file names match casefolded (U2 D2)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d2_discovery_ranks_by_the_list_then_by_path"
+anchor = '''    ranks = {name.casefold(): rank for rank, name in enumerate(CJK_FONT_FILES)}'''
+mutant = '''    ranks = {name: rank for rank, name in enumerate(CJK_FONT_FILES)}'''
+
+[[mutant]]
+id = "u2-dir-links-followed"
+predicate = "a symlinked directory is never walked (U2 D2)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d2_a_symlinked_file_is_read_a_symlinked_dir_is_not_walked"
+anchor = '''itertools.chain.from_iterable(map(os.walk, roots))'''
+mutant = '''itertools.chain.from_iterable(os.walk(root, followlinks=True) for root in roots)'''
+
+[[mutant]]
+id = "u2-walk-limit-inclusive"
+predicate = "the walk stops only PAST its entry limit (U2 D2)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d2_the_walk_stops_past_its_entry_limit[5]"
+anchor = '''        if visited > _WALK_LIMIT:'''
+mutant = '''        if visited >= _WALK_LIMIT:'''
+
+[[mutant]]
+id = "u2-tag-unchecked"
+predicate = "only an sfnt or collection tag leaves the server (U2 D3)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d3_only_an_sfnt_or_collection_tag_is_admitted[pdf]"
+anchor = '''    return content if len(content) <= MAX_FONT_BYTES and content[:4] in _FONT_TAGS else None'''
+mutant = '''    return content if len(content) <= MAX_FONT_BYTES else None'''
+
+[[mutant]]
+id = "u2-read-cap-unchecked"
+predicate = "a file past the cap is refused from its read length (U2 D3)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d3_a_file_past_the_cap_is_refused[past-cap]"
+anchor = '''    return content if len(content) <= MAX_FONT_BYTES and content[:4] in _FONT_TAGS else None'''
+mutant = '''    return content if content[:4] in _FONT_TAGS else None'''
+
+[[mutant]]
+id = "u2-fifo-opened"
+predicate = "a non-regular file is never opened: a FIFO would block the read thread (U2 D3)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d3_a_fifo_is_never_opened"
+anchor = '''        if not stat.S_ISREG(path.stat().st_mode):'''
+mutant = '''        if not path.exists():'''
+
+[[mutant]]
+id = "u2-read-on-loop"
+predicate = "the walk + the read run off the event loop (U2 D4)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d4_the_walk_and_the_read_run_off_the_event_loop"
+anchor = '''        return await asyncio.to_thread(find_cjk_font, configured)'''
+mutant = '''        return find_cjk_font(configured)'''
+
+[[mutant]]
+id = "u2-fault-uncaught"
+predicate = "a read fault outside OSError degrades to the next candidate (U2 D4)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d4_each_fault_family_degrades_to_none[runtime]"
+anchor = '''            content = handle.read(MAX_FONT_BYTES + 1)
+    except Exception:'''
+mutant = '''            content = handle.read(MAX_FONT_BYTES + 1)
+    except OSError:'''
+
+[[mutant]]
+id = "u2-cancellation-swallowed"
+predicate = "a cancelled read propagates instead of degrading (U2 D4)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d4_cancellation_propagates"
+anchor = '''            content = handle.read(MAX_FONT_BYTES + 1)
+    except Exception:'''
+mutant = '''            content = handle.read(MAX_FONT_BYTES + 1)
+    except BaseException:'''
+
+[[mutant]]
+id = "u2-outer-fault-uncaught"
+predicate = "a walk fault degrades to None, never an exception (U2 D4)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d4_each_fault_family_degrades_to_none[walk]"
+anchor = '''        return await asyncio.to_thread(find_cjk_font, configured)
+    except Exception:'''
+mutant = '''        return await asyncio.to_thread(find_cjk_font, configured)
+    except ImportError:'''
+
+[[mutant]]
+id = "u2-fault-logged-unguarded"
+predicate = "the degrade path runs nothing that can raise, so a failing log sink never costs the verdict (U2 D4)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_d4_the_degrade_path_survives_a_raising_log_sink"
+anchor = '''        return await asyncio.to_thread(find_cjk_font, configured)
+    except Exception:
         return None'''
-mutant = '''    except ImportError:
+mutant = '''        return await asyncio.to_thread(find_cjk_font, configured)
+    except Exception:
+        logging.getLogger(__name__).debug("Japanese font unavailable")
         return None'''
 
 [[mutant]]
-id = "of-cancellation-swallowed"
-predicate = "a cancelled read propagates instead of degrading"
-kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_propagates_cancellation"
-anchor = '''    except Exception:
-        return None'''
-mutant = '''    except BaseException:
-        return None'''
-
-[[mutant]]
-id = "of-read-on-loop"
-predicate = "the 5.7 MB read runs in a worker thread, never on the event loop"
-kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
-anchor = '''        return await asyncio.to_thread(Path(FONTS_DIR, CJK_FONT_NAME).read_bytes)'''
-mutant = '''        return Path(FONTS_DIR, CJK_FONT_NAME).read_bytes()'''
-
-[[mutant]]
-id = "of-wrong-font-file"
-predicate = "the static Noto Sans JP file OWUI ships for its own PDF export"
-kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_reads_owui_fonts_dir_off_the_loop_and_never_raises"
-anchor = '''CJK_FONT_NAME = "NotoSansJP-Regular.ttf"'''
-mutant = '''CJK_FONT_NAME = "NotoSansJP-Variable.ttf"'''
-
-[[mutant]]
-id = "of-fault-logged-unguarded"
-predicate = "the degrade path runs nothing that can raise, so a failing log sink never costs the verdict"
-kills = "tests/test_paste_in_owui_files.py::test_f4_font_source_survives_a_raising_log_sink"
-anchor = '''    except Exception:
-        return None'''
-mutant = '''    except Exception:
-        logging.getLogger(__name__).debug("Bundled CJK font unavailable")
-        return None'''
+id = "u2-cap-literal"
+predicate = "the stated 32 MiB cap (U2 D3)"
+kills = "tests/test_paste_in_owui_files.py::test_u2_the_known_font_files_and_the_size_cap_are_stated"
+anchor = '''MAX_FONT_BYTES = 32 * 1024 * 1024'''
+mutant = '''MAX_FONT_BYTES = 64 * 1024 * 1024'''
 
 [[mutant]]
 id = "m21-read-whole"

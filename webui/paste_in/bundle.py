@@ -51,8 +51,8 @@ _PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
 _LINE_LIMIT = 100
 # The third-party imports an artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition;
-# its own dependency `pydantic` builds the tool's admin `Valves` (Q43), and `fontTools` (through
-# `fpdf2`) cuts the filter's Japanese font (Q44).
+# its own dependency `pydantic` builds the admin `Valves` (the tool's Q43 aliases, the filter's U2
+# font path), and `fontTools`, where the server holds it, cuts the filter's Japanese font (Q44).
 _ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic", "fontTools"})
 
 _ASSIGNMENT = "_SOURCES[\"{name}\"] = r'''\n{source}'''\n"

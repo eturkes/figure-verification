@@ -56,14 +56,12 @@ secret_scan() {
 
 # Demo Open WebUI residuals, ignored only while no fix exists (a release with a fix turns the stage
 # red). Chroma: the four cover its HTTP server's endpoints + RBAC provider; with CHROMA_HTTP_HOST
-# unset Open WebUI runs the embedded PersistentClient and no Chroma server listens. NLTK: the
-# model-artifact APIs open caller-supplied paths; no Open WebUI source imports nltk.
+# unset Open WebUI runs the embedded PersistentClient and no Chroma server listens.
 WEBUI_RESIDUALS=(
     GHSA-f4j7-r4q5-qw2c # chromadb: pre-auth code injection, collections endpoint
     GHSA-36p7-vc44-83pf # chromadb: code injection, collection update endpoint
     GHSA-xph7-9rjv-w5fr # chromadb: SimpleRBACAuthorizationProvider ignores the scope
     GHSA-2wm9-hf6c-p5cr # chromadb: server authorization missing per tenant
-    GHSA-8mgp-746c-j5xp # nltk: model-artifact APIs open caller paths
 )
 
 audit_locks() {

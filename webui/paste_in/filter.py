@@ -19,6 +19,8 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final, TypeAlias, cast
 
+from pydantic import BaseModel, Field
+
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import TAG, Description, parse_description
 from verifier.figure.judge import Passed, Sources, judge
@@ -70,12 +72,12 @@ def _needs_font(program: str, files: tuple[UploadedFile, ...]) -> bool:
     return not program.isascii() or any(not file.content.isascii() for file in files)
 
 
-async def _font(program: str, files: tuple[UploadedFile, ...]) -> bytes | None:
-    """Open WebUI's Japanese font cut to what the figure can draw, when it can draw text outside
-    ASCII. The cut parses a 5.7 MB font, so it runs off the event loop."""
+async def _font(program: str, files: tuple[UploadedFile, ...], configured: str) -> bytes | None:
+    """The server's Japanese font cut to what the figure can draw, when it can draw text outside
+    ASCII. The cut parses a font of several MB, so it runs off the event loop."""
     if not _needs_font(program, files):
         return None
-    font = await cjk_font()
+    font = await cjk_font(configured)
     if font is None:
         return None
     return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])
@@ -268,6 +270,22 @@ class Filter:
     # Production's inlet templates carry no format sentence: Kimi calls `draw_figure` (Q40).
     _TEMPLATES: Templates = PRODUCTION_TEMPLATES
 
+    class Valves(BaseModel):
+        """The admin's settings for this filter."""
+
+        cjk_font_path: str = Field(
+            default="",
+            title="Japanese Font Path",
+            description=(
+                "Path of a Japanese font file (.ttf, .otf or .ttc) on the Open WebUI server."
+                " When it is empty, the filter uses the first Japanese font it finds in the"
+                " server's font folders."
+            ),
+        )
+
+    def __init__(self) -> None:
+        self.valves = self.Valves()
+
     async def inlet(
         self,
         body: dict[str, object],
@@ -348,7 +366,7 @@ class Filter:
         if not sandbox_isolated():
             return await fail("sandbox_not_isolated")
         files = await owned_files(receipt.file_ids, user_id)
-        font = await _font(receipt.program, files)
+        font = await _font(receipt.program, files, self.valves.cjk_font_path)
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {

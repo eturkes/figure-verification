@@ -73,7 +73,12 @@ def test_each_guide_carries_both_verdicts_and_the_provisioned_ids(name: str) -> 
 
 @pytest.mark.parametrize("name", _GUIDES)
 def test_each_cited_repository_file_exists(name: str) -> None:
-    cited = {span for span in _identifiers(name) if "/" in span or span.endswith((".txt", ".md"))}
+    # An absolute path names a file on the admin's server (a font), never one in this repository.
+    cited = {
+        span
+        for span in _identifiers(name)
+        if ("/" in span or span.endswith((".txt", ".md"))) and not span.startswith("/")
+    }
     missing = sorted(
         span for span in cited if not ((_ROOT / span).exists() or (_ADMIN / span).is_file())
     )

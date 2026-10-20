@@ -27,19 +27,18 @@ from its source code.
 
 ## Requirements
 
-- Open WebUI 0.11.3. The project measured this version. Other versions are not measured. Open
-  WebUI 0.11.4 and later do not contain the Japanese font below, so a chart with Japanese text fails
-  there. Open WebUI 0.10.2 has published security advisories that 0.11.3 fixes.
+- Open WebUI 0.12.3. The project measured this version. Other versions are not measured.
 - The Python interpreter that runs Open WebUI. The official image uses Python 3.11, and the project
   measured the two files there.
-- The Pyodide code runtime that Open WebUI 0.11.3 contains (Pyodide 314.0.3 with matplotlib 3.10.8,
+- The Pyodide code runtime that Open WebUI 0.12.3 contains (Pyodide 314.0.3 with matplotlib 3.10.8,
   pandas 3.0.2 and numpy 2.4.3). The chart program runs in this runtime inside the user's browser.
 - A browser connection with WebSocket support. The filter runs the program through this connection.
-- The Japanese font that Open WebUI 0.11.3 contains (`NotoSansJP-Regular.ttf` in its `FONTS_DIR`).
-  The filter sends part of this font to the browser when the program or an attached file contains
-  non-ASCII text. The part holds ASCII and the characters of the program and the attached files. The
-  filter cuts the font with `fontTools`, which Open WebUI 0.11.3 also contains. Without `fontTools`,
-  the filter sends the whole font. Without the font, a chart with Japanese text fails with the code
+- A Japanese font file on the Open WebUI server, for charts with Japanese text. Open WebUI 0.12.3
+  contains no Japanese font. The section "Japanese font" tells how the filter finds the file. When
+  the program or an attached file contains non-ASCII text, the filter sends the font to the browser.
+  If the server has `fontTools`, the filter sends only ASCII and the characters of the program and
+  the attached files. The official Open WebUI 0.12.3 image has no `fontTools`, so there the filter
+  sends the whole font. Without a font, a chart with Japanese text fails with the code
   `glyph_missing`.
 - A chat model that can call tools.
 
@@ -217,6 +216,31 @@ draws that column, a request that names any column must also name it. Otherwise 
 the code `column_not_named`. The filter reads the aliases that the tool used for the same reply, so
 a change applies from the next reply.
 
+## Japanese font
+
+The filter uses the first font file that it can read, in this order:
+
+1. The file that an administrator sets in the valves of the filter.
+2. The first of these files in `/usr/share/fonts`, `/usr/local/share/fonts` or a folder below them:
+   `NotoSansJP-Regular.ttf`, `NotoSansJP-Regular.otf`, `NotoSansCJKjp-Regular.otf`,
+   `SourceHanSansJP-Regular.otf`, `fonts-japanese-gothic.ttf`, `ipaexg.ttf`, `ipag.ttf`,
+   `TakaoPGothic.ttf`, `VL-PGothic-Regular.ttf`, `NotoSansCJK-Regular.ttc`,
+   `SourceHanSans-Regular.ttc`.
+
+To set the file:
+
+1. Open **Admin Panel**, then **Functions**.
+2. On the function `figure_verification_filter`, click **Valves**.
+3. In **Japanese Font Path**, write the full path of a font file on the server, for example
+   `/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc`.
+4. Save the valves.
+
+The file must be a TrueType or OpenType font (`.ttf` or `.otf`) or a font collection (`.ttc`) of at
+most 32 MiB. For a collection, the chart uses the first font in it. The filter never sends a file
+that is not a font. If the file is missing or is not a font, the filter uses the list above. Only an
+administrator can change the valves of a function. The filter sends the whole font with each chart
+that has non-ASCII text, so a single font sends less data than a collection.
+
 ## Why a chart failed
 
 When the filter blocks a chart, the reply shows a status line above the failure message. The line
@@ -274,6 +298,6 @@ There are two types of reason code:
 | The reply fails with the code `value_not_found` | A drawn value is not in the attached file or in the request. | Attach the CSV file, or write the values in the request. |
 | The reply fails with the code `no_browser`, `browser_no_answer` or `browser_timeout` | The filter cannot reach the browser runtime. | Make sure that the browser keeps a WebSocket connection to Open WebUI. Keep the chat tab open until the reply is complete. |
 | Every chart fails with the code `sandbox_unavailable` | The browser could not load the Pyodide runtime. A content blocker is a common cause. For example, the "Block Outsider Intrusion into LAN" list of uBlock Origin Lite blocks it. | In the content blocker, set the filtering mode for the Open WebUI site to "No filtering". Alternatively, turn off that list. |
-| The reply fails with the code `glyph_missing` | The chart has characters that the fonts cannot draw. Japanese text inside `$` signs (math text) is a known cause, because the math font has no Japanese characters. Another cause is a Japanese character that the program makes while it runs, such as `chr(0x6708)`. This applies when the program text and the attached files do not contain it. The filter sends only the characters that the program and the attached files contain. | Ask for chart text without `$` signs, written out in the program. Make sure that `NotoSansJP-Regular.ttf` is in the `FONTS_DIR` of Open WebUI. |
-| The reply fails with the code `module_not_available` | The program imports a package that the Pyodide runtime does not have. | Ask for a chart with matplotlib or pandas. The Pyodide runtime of Open WebUI 0.11.3 has no seaborn. |
+| The reply fails with the code `glyph_missing` | The chart has characters that the fonts cannot draw. Japanese text inside `$` signs (math text) is a known cause, because the math font has no Japanese characters. Another cause is a Japanese character that the program makes while it runs, such as `chr(0x6708)`. This applies when the program text and the attached files do not contain it, and the server has `fontTools`: then the filter sends only the characters that the program and the attached files contain. The server can also have no Japanese font. | Ask for chart text without `$` signs, written out in the program. Make sure that the server has a Japanese font file (see "Japanese font"). |
+| The reply fails with the code `module_not_available` | The program imports a package that the filter does not load. The filter loads only matplotlib, pandas and numpy into the Pyodide runtime. | Ask for a chart with matplotlib or pandas. |
 | The upload stalls or fails | The instance calls an embedding service. | Set `BYPASS_EMBEDDING_AND_RETRIEVAL` to `true`. |

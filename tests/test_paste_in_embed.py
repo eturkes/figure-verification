@@ -109,7 +109,7 @@ def _contrast(first: str, second: str) -> float:
     return (high + 0.05) / (low + 0.05)
 
 
-# Hand-stated (Q62): Open WebUI 0.11.3's message surfaces behind the frame, light `bg-white` + dark
+# Hand-stated (Q62): Open WebUI 0.12.3's message surfaces behind the frame, light `bg-white` + dark
 # `bg-gray-900`, as measurement M16 `surfaces` reads them live.
 _SURFACES = {"light": "#ffffff", "dark": "#161616"}
 # Hand-stated: every text or mark colour on each background it sits on in the document, with its

@@ -176,14 +176,13 @@ def f7():
         },
         # Q44: the cut font's RPC source size + each one-runtime sequence's earlier replies.
         "cut": {
-            "fonttools": data["fonttools"],
             "ja_font_source_bytes": data["results"]["ja-font"]["source_bytes"],
             "earlier_glyphs_missing": {
                 name: [(row["glyphs"] or 0) > 0 for row in rows]
                 for name, rows in data["earlier"].items()
             },
         },
-        # 0.11.3: a literal plotting name runs OWUI's prelude, whose patched `show` prints a PNG.
+        # 0.12.3: a literal plotting name runs OWUI's prelude, whose patched `show` prints a PNG.
         "literal_control_prelude_png": fields(
             data["results"]["literal-control"], "png_lines", "description_lines", "stderr"
         ),
@@ -396,7 +395,7 @@ def c1():
 
 
 def image():
-    return fields(load("image-0113.json"), "image", "python", "imports", "verdicts")
+    return fields(load("image-0123.json"), "image", "python", "imports", "verdicts")
 
 
 PROJECTORS = {

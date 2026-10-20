@@ -838,7 +838,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified fifteen times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified sixteen times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -866,9 +866,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     (pytest-xdist 3.8.0 dev-only, the gate's parallel test runner: + execnet 2.1.2 -- 24 purely
     additive lines; no other package moved) and the session-12 upgrade (CPython 3.14 line, every
     pin outside the bundle-exact five at its latest release: msgspec 0.22.0, litestar 2.25.0,
-    uvicorn 0.54.0, ruff 0.17.1, mypy 2.4.0, hypothesis 6.170.5, zizmor 1.31.1 + transitive)."""
+    uvicorn 0.54.0, ruff 0.17.1, mypy 2.4.0, hypothesis 6.170.5, zizmor 1.31.1 + transitive) and U2
+    (fonttools 4.64.0 -> 4.67.0, dev-only: Open WebUI 0.12.3's image holds no fontTools, so no image
+    version binds it; no other package moved)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "5e10be6ad608015326135915c0fc644426519b338e97d813ad2e02e64110235d"
+    assert digest == "548a9ccd266cd0d4539945b8c8f5fa709bd68781710f1dfdc3a6507366db6cce"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

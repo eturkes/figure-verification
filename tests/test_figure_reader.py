@@ -791,7 +791,7 @@ def test_proxy_handles_drawn_elsewhere_carry_their_own_colour() -> None:
     [
         # matplotlib 3.8.4 (Open WebUI 0.10.2's sandbox), measured by the C1 bundle leg (M19.6).
         ("Glyph 22770 (\\N{CJK UNIFIED IDEOGRAPH-58F2}) missing from current font.", True),
-        # matplotlib 3.9.4 + 3.10.8 (Open WebUI 0.11.3's sandbox and the gate host).
+        # matplotlib 3.9.4 + 3.10.8 (Open WebUI 0.12.3's sandbox and the gate host).
         ("Glyph 22770 (\\N{CJK UNIFIED IDEOGRAPH-58F2}) missing from font(s) DejaVu Sans.", True),
         ("Glyph missing from current font.", False),
         ("Font family 'x' not found.", False),

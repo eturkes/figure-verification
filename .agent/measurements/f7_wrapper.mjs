@@ -79,7 +79,7 @@ for (const anchor of [
   "stderr = stderr ? stderr + text + '\\n' : text + '\\n';",
   "stdout = null;\n\t\tstderr = null;\n\t\tlet result = null;",
   "await ensureRuntime(data.packages || []);",
-  "if (code.includes('matplotlib')) await patchMatplotlib();",
+  "if (code.includes('matplotlib') && 'matplotlib' in pyodide.loadedPackages) await patchMatplotlib();",
   "result = clean(await pyodide.runPythonAsync(code));",
   "stderr = error && error.message ? error.message : String(error);",
   "post({ id: id, result: result, stdout: stdout, stderr: stderr });",
@@ -109,12 +109,10 @@ function shapeReply(worker) {
 
 const { version } = JSON.parse(readFileSync(resolve(bundle, "package.json"), "utf8"));
 const { loadPyodide } = await import(pathToFileURL(resolve(bundle, "pyodide.mjs")).href);
-// M17.1: the Japanese legs carry the font the installed Open WebUI ships beside this bundle.
-const font = resolve(bundle, "../../static/fonts/NotoSansJP-Regular.ttf");
 const exported = JSON.parse(
   execFileSync(
     "uv",
-    ["run", "--no-sync", "--locked", "python", ".agent/measurements/f7_export.py", font],
+    ["run", "--no-sync", "--locked", "python", ".agent/measurements/f7_export.py"],
     {
       cwd: root,
       encoding: "utf8",
@@ -147,7 +145,9 @@ async function execute(code, pyodide) {
     // OWUI clears loadRuntime/ensureRuntime output at the start of execute().
     stdout = null;
     stderr = null;
-    if (code.includes("matplotlib")) await pyodide.runPythonAsync(preludeLines.join("\n"));
+    if (code.includes("matplotlib") && "matplotlib" in pyodide.loadedPackages) {
+      await pyodide.runPythonAsync(preludeLines.join("\n"));
+    }
     result = await pyodide.runPythonAsync(code);
   } catch (exception) {
     error = exception?.message ?? String(exception);
@@ -248,8 +248,8 @@ if (
       result !== null || !png_signature || error ||
       (controls.includes(name) ? !(glyphs > 0) : glyphs !== 0),
   ) ||
-  // 0.11.3's prelude runs on the literal substring and replaces `show` with a PNG printer: a source
-  // spelling the name would print OWUI's own PNG beside the reader's.
+  // 0.12.3's prelude runs on the literal substring once the package is loaded, and replaces `show`
+  // with a PNG printer: a source spelling the name would print OWUI's own PNG beside the reader's.
   results["literal-control"].png_lines !== 1 ||
   results["literal-control"].description_lines !== 0 ||
   results["literal-control"].stderr !== null

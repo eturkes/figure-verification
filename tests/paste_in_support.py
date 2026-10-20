@@ -98,6 +98,9 @@ def owui_driver_output(driver: str, tmp_path: Path, marker: str) -> str:
         {
             "DATA_DIR": str(tmp_path / "data"),
             "ENABLE_PIP_INSTALL_FRONTMATTER_REQUIREMENTS": "false",
+            # `open-webui serve` sets it; without it Open WebUI 0.12 looks for its frontend beside
+            # the venv's `lib/` and refuses to import (`config.py` static asset check).
+            "FROM_INIT_PY": "true",
             "OFFLINE_MODE": "true",
             "PYTHONPATH": "",
             # open_webui refuses to import with this unset, so the driver would die before it
@@ -133,7 +136,7 @@ def owui_tool_descriptions(tmp_path: Path) -> list[str]:
 
         async def main():
             artifact = pathlib.Path(__file__).with_name("figure_verification_tool.py")
-            tool, _frontmatter = await load_tool_module_by_id(
+            tool, _frontmatter, _module = await load_tool_module_by_id(
                 "m10u0_description_test", content=artifact.read_text(encoding="utf-8")
             )
             specs = get_tool_specs(tool)
@@ -731,7 +734,7 @@ class ChatReads:
 
 
 def _message_list(messages_map: object, message_id: object) -> list[object]:
-    """Open WebUI 0.11.3 `utils/misc.py` `get_message_list`, replicated: root → `message_id` by
+    """Open WebUI 0.12.3 `utils/misc.py` `get_message_list`, replicated: root → `message_id` by
     `parentId`, `[]` for an empty map or an unknown id, a cycle cut at its first repeat."""
     if not messages_map:
         return []
@@ -751,7 +754,7 @@ def _message_list(messages_map: object, message_id: object) -> list[object]:
 @contextmanager
 def fake_chats(chats: Mapping[str, StoredChat]) -> Iterator[ChatReads]:
     """Install a strict `open_webui` chat seam: `Chats.is_chat_owner(id, user_id, db=None)` and
-    `Chats.get_messages_map_by_chat_id(id)` are async as in 0.11.3, the first answers a bool and
+    `Chats.get_messages_map_by_chat_id(id)` are async as in 0.12.3, the first answers a bool and
     never raises, the second answers a fresh copy of the map or `None` for a chat with no rows;
     `get_message_list` is OWUI's own walk. Composes with `fake_open_webui` (same package objects).
     """

@@ -2656,17 +2656,18 @@ rather than over intent, so a dependency added here fails generation instead of 
 
 _SOURCES["webui.paste_in.fonts"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Open WebUI's Japanese font, cut to the characters one figure can draw (Q44).
+"""The server's Japanese font, cut to the characters one figure can draw (Q44).
 
-The whole font is 5.7 MB and rides inside the RPC. The cut keeps printable ASCII and the minus sign
-that matplotlib's tick formatters write, so a program that names the font family alone still draws
-numbers, plus every character of the program text and of each attached file. A character in
+A whole font is several MB and rides inside the RPC. The cut keeps printable ASCII and the minus
+sign that matplotlib's tick formatters write, so a program that names the font family alone still
+draws numbers, plus every character of the program text and of each attached file. A character in
 neither (one the program builds with `chr`) is outside the cut: drawn with no other font holding
 it, the reader counts its missing glyph (matplotlib's warning, mathtext's log record, or a
 `.notdef` glyph path text lays out) and the figure fails, so a miss can only block.
 
-fontTools ships in the Open WebUI image (`fpdf2`). Its import is function-local: without it, or on
-any fault while cutting, the whole font goes, as before.
+fontTools is optional: Open WebUI 0.11 shipped it (through `fpdf2`), 0.12.3 does not. Its import is
+function-local: without it, on a collection it cannot load, or on any fault while cutting, the whole
+font goes.
 """
 
 import hashlib
@@ -3182,8 +3183,8 @@ def aggregate_series(  # noqa: PLR0913 - six independent inputs, none derivable 
 
 _SOURCES["webui.paste_in.owui_files"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""The ONLY module that imports `open_webui`: uploaded bytes, the user's stored messages + the
-bundled CJK font, in-process.
+"""The ONLY module that imports `open_webui`: uploaded bytes + the user's stored messages,
+in-process; plus the server's Japanese font (Open WebUI ships none since 0.12).
 
 The truth source for every recomputed number is the user's own upload (`.claude/rules/pysrc.md`,
 comparison class II), so the bytes come from Open WebUI's own store and not from the chat metadata,
@@ -3200,7 +3201,10 @@ call chain.
 """
 
 import asyncio
+import itertools
 import logging
+import os
+import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -3210,8 +3214,30 @@ from verifier.pysrc.limits import DEFAULT_LIMITS
 # Where Open WebUI's Pyodide worker writes each attached file before it runs the program. An
 # admitted `read_csv` literal must name exactly this, and the core compares byte-for-byte.
 UPLOAD_DIR = "/mnt/uploads/"
-# Open WebUI ships this font for its own chat-PDF export; the sandbox's matplotlib has no CJK glyph.
-CJK_FONT_NAME = "NotoSansJP-Regular.ttf"
+# Japanese-capable fonts that container font packages install, best first: Japanese-only faces,
+# then pan-CJK collections whose first face is Japanese (matplotlib draws a collection's face 0).
+# Debian links `fonts-japanese-gothic.ttf` to whichever Japanese gothic is installed.
+CJK_FONT_FILES = (
+    "NotoSansJP-Regular.ttf",
+    "NotoSansJP-Regular.otf",
+    "NotoSansCJKjp-Regular.otf",
+    "SourceHanSansJP-Regular.otf",
+    "fonts-japanese-gothic.ttf",
+    "ipaexg.ttf",
+    "ipag.ttf",
+    "TakaoPGothic.ttf",
+    "VL-PGothic-Regular.ttf",
+    "NotoSansCJK-Regular.ttc",
+    "SourceHanSans-Regular.ttc",
+)
+_FONT_DIRS = ("/usr/share/fonts", "/usr/local/share/fonts")
+# Bounds the walk on a host with many font packages; a container image holds a few hundred files.
+_WALK_LIMIT = 20_000
+# Noto Sans CJK's collection is 19.5 MB; the bytes ride inside one RPC to the user's browser. The
+# read stops one byte past it, so the length alone refuses a larger file.
+MAX_FONT_BYTES = 32 * 1024 * 1024
+# sfnt (TrueType, CFF, Apple) + collection tags: no other file's bytes may leave the server.
+_FONT_TAGS = frozenset({b"\x00\x01\x00\x00", b"OTTO", b"true", b"ttcf"})
 # The judge refuses a file past `max_csv_bytes` from its length alone, so one byte more decides it,
 # and an upload of any size never enters the server's memory whole.
 _READ_BYTES = DEFAULT_LIMITS.max_csv_bytes + 1
@@ -3334,16 +3360,55 @@ def sandbox_isolated() -> bool:
     return ENABLE_PYODIDE_FILE_PERSISTENCE is False
 
 
-async def cjk_font() -> bytes | None:
-    """Open WebUI's bundled Japanese font from its configured fonts directory, else `None`.
+def _font_bytes(path: Path) -> bytes | None:
+    """`path`'s bytes when it is a regular font file within `MAX_FONT_BYTES`, else `None`, on any
+    fault too. The stat precedes the open: opening a FIFO would block this thread."""
+    try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            return None
+        with path.open("rb") as handle:
+            content = handle.read(MAX_FONT_BYTES + 1)
+    except Exception:
+        return None
+    return content if len(content) <= MAX_FONT_BYTES and content[:4] in _FONT_TAGS else None
+
+
+def _discovered(roots: Sequence[str]) -> list[Path]:
+    """Every `CJK_FONT_FILES` file under `roots`, best rank first, then by path."""
+    ranks = {name.casefold(): rank for rank, name in enumerate(CJK_FONT_FILES)}
+    found: list[tuple[int, str]] = []
+    visited = 0
+    for directory, subdirectories, names in itertools.chain.from_iterable(map(os.walk, roots)):
+        visited += len(subdirectories) + len(names)
+        if visited > _WALK_LIMIT:
+            break
+        found.extend(
+            (ranks[name.casefold()], str(Path(directory, name)))
+            for name in names
+            if name.casefold() in ranks
+        )
+    return [Path(name) for _rank, name in sorted(found)]
+
+
+def find_cjk_font(configured: str) -> bytes | None:
+    """The admin's font file when it is one, else the best Japanese font on this server. The walk
+    runs only when the admin's file is unset or no font."""
+    if configured and (content := _font_bytes(Path(configured))) is not None:
+        return content
+    return next(
+        (content for path in _discovered(_FONT_DIRS) if (content := _font_bytes(path)) is not None),
+        None,
+    )
+
+
+async def cjk_font(configured: str = "") -> bytes | None:
+    """The Japanese font the figure may draw with, read off the event loop, else `None`.
 
     A missing font only withholds Japanese text from the figure, which then fails as before, so
     every fault here degrades to `None` instead of costing the verdict.
     """
     try:
-        from open_webui.env import FONTS_DIR  # noqa: PLC0415 - see the module docstring
-
-        return await asyncio.to_thread(Path(FONTS_DIR, CJK_FONT_NAME).read_bytes)
+        return await asyncio.to_thread(find_cjk_font, configured)
     except Exception:
         return None
 '''
@@ -8011,6 +8076,8 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final, TypeAlias, cast
 
+from pydantic import BaseModel, Field
+
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import TAG, Description, parse_description
 from verifier.figure.judge import Passed, Sources, judge
@@ -8062,12 +8129,12 @@ def _needs_font(program: str, files: tuple[UploadedFile, ...]) -> bool:
     return not program.isascii() or any(not file.content.isascii() for file in files)
 
 
-async def _font(program: str, files: tuple[UploadedFile, ...]) -> bytes | None:
-    """Open WebUI's Japanese font cut to what the figure can draw, when it can draw text outside
-    ASCII. The cut parses a 5.7 MB font, so it runs off the event loop."""
+async def _font(program: str, files: tuple[UploadedFile, ...], configured: str) -> bytes | None:
+    """The server's Japanese font cut to what the figure can draw, when it can draw text outside
+    ASCII. The cut parses a font of several MB, so it runs off the event loop."""
     if not _needs_font(program, files):
         return None
-    font = await cjk_font()
+    font = await cjk_font(configured)
     if font is None:
         return None
     return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])
@@ -8260,6 +8327,22 @@ class Filter:
     # Production's inlet templates carry no format sentence: Kimi calls `draw_figure` (Q40).
     _TEMPLATES: Templates = PRODUCTION_TEMPLATES
 
+    class Valves(BaseModel):
+        """The admin's settings for this filter."""
+
+        cjk_font_path: str = Field(
+            default="",
+            title="Japanese Font Path",
+            description=(
+                "Path of a Japanese font file (.ttf, .otf or .ttc) on the Open WebUI server."
+                " When it is empty, the filter uses the first Japanese font it finds in the"
+                " server's font folders."
+            ),
+        )
+
+    def __init__(self) -> None:
+        self.valves = self.Valves()
+
     async def inlet(
         self,
         body: dict[str, object],
@@ -8340,7 +8423,7 @@ class Filter:
         if not sandbox_isolated():
             return await fail("sandbox_not_isolated")
         files = await owned_files(receipt.file_ids, user_id)
-        font = await _font(receipt.program, files)
+        font = await _font(receipt.program, files, self.valves.cjk_font_path)
         payload: dict[str, object] = {
             "type": "execute:python",
             "data": {

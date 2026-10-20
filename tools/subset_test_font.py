@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Write the test font: Noto Sans JP cut to the characters the tracked tests and data draw.
 
-The sandbox draws Japanese text with Open WebUI's bundled `NotoSansJP-Regular.ttf`; the gate host
-has no Japanese font, so a figure test with Japanese text needs one. The full font is 5.7 MB; this
-subset keeps ASCII, the kana blocks and every other character in the tracked test inputs.
-Run with Open WebUI's font after test text gains a character (a test then reports
+The sandbox draws Japanese text with the font the filter finds on the Open WebUI server
+(`webui/paste_in/owui_files.py::cjk_font`); the gate host has no Japanese font, so a figure test
+with Japanese text needs one. The full Noto Sans JP is 5.7 MB; this subset keeps ASCII, the kana
+blocks and every other character in the tracked test inputs. Run with `NotoSansJP-Regular.ttf`
+(Noto Sans JP 2.004, OFL; Google Fonts) after test text gains a character (a test then reports
 `glyph_missing`):
 
     uv run --locked python tools/subset_test_font.py <path to NotoSansJP-Regular.ttf>

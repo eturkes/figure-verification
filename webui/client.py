@@ -3,9 +3,9 @@
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
 settled against 0.10.2 (.agent/archive/m4.md provisioning + filter contracts) -- TRANSCRIBED
-here, then run live on 0.11.3 (M21.2: bootstrap smoke + one `python -m webui chat`). Every step
-fails closed via WebUIProvisionError so a misconfigured deploy raises loud rather than leaving a
-half-provisioned, silently-unauthenticated client.
+here, then run live on 0.11.3 (M21.2) + 0.12.3 (session 12): bootstrap smoke + one
+`python -m webui chat`. Every step fails closed via WebUIProvisionError so a misconfigured deploy
+raises loud rather than leaving a half-provisioned, silently-unauthenticated client.
 
 The client is injected an httpx.Client (base_url + request_timeout wired by the launcher; a test
 injects a MockTransport-backed one), and holds the admin JWT after authenticate(). Responses decode
@@ -436,7 +436,7 @@ class WebUIClient:
         assistant_id: str,
         user_id: str,
     ) -> None:
-        """Start the persisted background completion with OWUI's wire shape (0.10.2, 0.11.3)."""
+        """Start the persisted background completion with OWUI's wire shape (0.10.2 to 0.12.3)."""
         path = "/api/chat/completions"
         response = self._authed_request(
             "POST",

@@ -1,17 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Export the banner's simple program, three plotting programs and the Japanese legs (M17.1, Q44).
+"""Export the banner's simple program, three plotting programs + the Japanese legs (M17.1, Q44, U2).
 
-The Japanese legs carry the installed Open WebUI's own font, read from the path given as argv[1],
-cut as the filter cuts it: `fonts.cut` runs in that install's interpreter, so its fontTools does.
+The Japanese legs carry the font the filter reads on this host (`owui_files.find_cjk_font`;
+`FV_CJK_FONT` stands in for the admin's Valve path). Open WebUI 0.12.3's interpreter holds no
+fontTools, so production sends that font whole (`ja-whole`); the cut legs cut it with this
+interpreter's fontTools, as `fonts.cut` does on a server that holds one. The font must be one face
+(a collection does not cut: the run exits naming it).
 """
 
 import json
-import subprocess
+import os
 import sys
 from pathlib import Path
 
+import fontTools  # type: ignore[import-untyped]
+
 from webui.banner import load
-from webui.paste_in.fonts import characters
+from webui.paste_in.fonts import characters, cut
+from webui.paste_in.owui_files import find_cjk_font
 from webui.paste_in.sandbox import wrapper_code
 
 root = Path(__file__).resolve().parents[2]
@@ -64,20 +70,10 @@ second = (
     "plt.title('診療科別の平均待ち時間 (分)')\n"
     "plt.show()\n"
 )
-font_path = Path(sys.argv[1]).resolve()
-font = font_path.read_bytes()
+font = find_cjk_font(os.environ.get("FV_CJK_FONT", ""))
+if font is None:
+    sys.exit("f7_export: no Japanese font on this host; set FV_CJK_FONT to a font file")
 clinic = (root / "data/clinic_ja.csv").read_bytes()
-# <venv>/lib/python3.11/site-packages/open_webui/static/fonts/<font>
-owui_python = font_path.parents[6] / "bin" / "python"
-_CUT = (
-    "import json, sys\n"
-    "import fontTools\n"
-    "from webui.paste_in.fonts import cut\n"
-    "job = json.load(sys.stdin)\n"
-    "font = open(job['font'], 'rb').read()\n"
-    "cuts = [cut(font, frozenset(keep)).hex() for keep in job['keeps']]\n"
-    "print(json.dumps({'fonttools': fontTools.version, 'cuts': cuts}))\n"
-)
 marker = japanese.replace("plt.show()", "plt.plot([0, 1], [100, 200], marker='$週$')\nplt.show()")
 # Closing review G1: a TextPath marker lays its glyphs out without a warning; the reader counts each
 # `.notdef` it lays out.
@@ -94,29 +90,15 @@ legs = {
     "ja-second": second,
     "ja-marker": marker,
 }
-keeps = {name: sorted(characters(source, [clinic])) for name, source in legs.items()}
-done = json.loads(
-    subprocess.run(  # noqa: S603 - fixed argv: the install's own interpreter
-        [
-            str(owui_python),
-            "-I",
-            "-c",
-            "import sys; sys.path.insert(0, sys.argv[1]); " + _CUT,
-            str(root),
-        ],
-        input=json.dumps({"font": str(font_path), "keeps": list(keeps.values())}),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-)
-cuts = dict(zip(keeps, (bytes.fromhex(cut) for cut in done["cuts"]), strict=True))
+cuts = {name: cut(font, characters(source, [clinic])) for name, source in legs.items()}
+if any(len(piece) >= len(font) for piece in cuts.values()):
+    sys.exit("f7_export: the font did not cut (a collection?); set FV_CJK_FONT to a one-face font")
 print(
     json.dumps(
         {
             "dataset": (root / "data/sales.csv").read_bytes().hex(),
             "clinic": clinic.hex(),
-            "fonttools": done["fonttools"],
+            "fonttools": fontTools.version,
             "wrappers": {name: wrapper_code(source) for name, source in programs.items()},
             # Each runs in its own fresh runtime: a font or a warning cache must not leak across.
             "japanese": {

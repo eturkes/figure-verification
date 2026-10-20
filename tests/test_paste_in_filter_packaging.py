@@ -82,7 +82,7 @@ def test_f8_filter_artifact_has_exact_import_closure_and_only_allowed_roots() ->
     sources = bundle.embedded_sources(text)
     assert_exact_closure("webui.paste_in.filter", sources)
     assert_embedded_identity(sources)
-    assert offending_import_roots(bundle, text) == {"fontTools"}
+    assert offending_import_roots(bundle, text) == {"fontTools", "pydantic"}
     assert "webui.paste_in.fonts" in sources
     assert "webui.paste_in.receipt" in sources
     assert "webui.paste_in.sandbox" in sources

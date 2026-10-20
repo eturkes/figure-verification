@@ -498,12 +498,11 @@ def test_o2_font_trigger_reads_program_and_all_owned_bytes_only(
     content = b"name,value\na,100\n" + ("年,200\n".encode() if trigger == "file" else b"")
     name = "表.csv" if trigger == "filename-only" else "extra.csv"
     needed = trigger in {"program", "file"}
-    font = b"exact OWUI font payload"
-    calls = 0
+    font = b"exact server font payload"
+    configured: list[str] = []
 
-    async def read_font() -> bytes:
-        nonlocal calls
-        calls += 1
+    async def read_font(path: str) -> bytes:
+        configured.append(path)
         return font
 
     browser = Browser(
@@ -512,10 +511,15 @@ def test_o2_font_trigger_reads_program_and_all_owned_bytes_only(
     request = "グラフ 3 5 9" if trigger == "request-only" else "3 5 9"
     with (
         fake_open_webui((StoredFile("owned", "outlet-owner", name, content),), tmp_path),
-        patched_filter(monkeypatch, (("webui.paste_in.owui_files", "cjk_font", read_font),)),
+        patched_filter(monkeypatch, (("webui.paste_in.owui_files", "cjk_font", read_font),)) as api,
     ):
+        # U2 D1: the admin's Valve reaches the font read, never the default.
+        class AdminValves(api.Filter.Valves):  # type: ignore[name-defined, misc]
+            cjk_font_path: str = "/srv/fonts/admin-jp.otf"
+
+        monkeypatch.setattr(api.Filter, "Valves", AdminValves)
         result = browser.exercise(file_ids=("owned",), request_text=request)
-    assert calls == int(needed)
+    assert configured == (["/srv/fonts/admin-jp.otf"] if needed else [])
     assert len(browser.calls) == 1
     assert cast(list[dict[str, object]], result["messages"])[-1]["content"] != FAIL
     assert_states(embed(browser.events), None)
@@ -526,15 +530,16 @@ def test_o2_font_fault_falls_back_to_no_font(
 ) -> None:
     calls = 0
     environment = ModuleType("open_webui.env")
-    environment.__dict__["FONTS_DIR"] = tmp_path
     environment.__dict__["ENABLE_PYODIDE_FILE_PERSISTENCE"] = False
     monkeypatch.setitem(sys.modules, "open_webui.env", environment)
-    original = cast(Callable[[], Awaitable[bytes | None]], load("owui_files").cjk_font)
+    files = load("owui_files")
+    monkeypatch.setattr(files, "_FONT_DIRS", (str(tmp_path / "no-fonts"),))
+    original = cast(Callable[[str], Awaitable[bytes | None]], files.cjk_font)
 
-    async def missing_font() -> bytes | None:
+    async def missing_font(configured: str) -> bytes | None:
         nonlocal calls
         calls += 1
-        font = await original()
+        font = await original(configured)
         assert font is None
         return font
 

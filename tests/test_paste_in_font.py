@@ -172,7 +172,7 @@ def test_q44_outlet_sends_the_cut_made_off_the_event_loop(
     real = _fonts().cut
     seen: list[tuple[bytes, frozenset[str], int]] = []
 
-    async def read_font() -> bytes:
+    async def read_font(_configured: str) -> bytes:
         return SOURCE
 
     def spy(font: bytes, kept: frozenset[str]) -> bytes:

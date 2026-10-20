@@ -64,13 +64,13 @@ keyed series of k distinct keys from one key column holding at least k (seed 19,
 size, k = 1-5; `null` where no key column holds k: these CSVs hold 2-4 keys per key column). `I3` (M19.2) runs the same 52 programs through the
 reader on the host and through the production `wrapper_code` in the installed bundle, one runtime
 in order (the reader's holder reused across replies), and publishes, per program, the description
-fields that differ (on 0.11.3: `subplots` positions after `tight_layout` alone). `C1` (M19.6) runs
+fields that differ (on 0.11.3 + 0.12.3: `subplots` positions after `tight_layout` alone). `C1` (M19.6) runs
 every rule-corpus case (`tests/figure_corpus/`) through the production `wrapper_code` in the
 installed bundle (matplotlib 3.10.8, one runtime, no font, the CSVs under `/mnt/uploads`), judges
 each bundle description on the host with the case's own Sources, and publishes the cases whose
 bundle verdict misses the case's expectation or differs from the host verdict.
 
-Every Node leg runs in ONE sandbox: the Pyodide 314.0.3 bundle the installed Open WebUI 0.11.3
+Every Node leg runs in ONE sandbox: the Pyodide 314.0.3 bundle the installed Open WebUI 0.12.3
 serves (`../../.venv-webui/lib/python3.11/site-packages/open_webui/frontend/pyodide`, runtime
 CPython 3.14.2). `o8_bundle.mjs` loads it and reads every wheel from that directory, never from
 the CDN Node Pyodide defaults to; a bundle of another version fails loudly. Run each Node command
@@ -108,24 +108,24 @@ node versions.mjs owui versions-31403.json
 
 | id | host script(s), in run order | Node command | build behind the published number |
 |---|---|---|---|
-| S6 | `make_s6_csv.py` | `node s6_pyodide.mjs owui s6-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
+| S6 | `make_s6_csv.py` | `node s6_pyodide.mjs owui s6-31403.json` | Open WebUI 0.12.3 bundle, Pyodide 314.0.3 |
 | T3 | `t3.py` | none | host only (pandas 3.0.2) |
 | T4 | `t4.py` | none | host only (pandas 3.0.2) |
 | T5 | `t5.py` | none | host only (pandas 3.0.2) |
-| T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs owui t6-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
-| T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs owui t7-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
-| T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs owui t8-31403.json` | Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
-| I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-31403.json` | host matplotlib 3.10.8 vs the installed Open WebUI 0.11.3 bundle (matplotlib 3.10.8) |
+| T6 | `make_s6_csv.py` (same S6 corpus) | `node t6_pyodide.mjs owui t6-31403.json` | Open WebUI 0.12.3 bundle, Pyodide 314.0.3 |
+| T7 | `t7_profile.py`, then `t7_quoted.py` | `node t7_pyodide.mjs owui t7-31403.json` | Open WebUI 0.12.3 bundle, Pyodide 314.0.3 |
+| T8 | `make_t8_inputs.py`, then `t8_profile.py` | `node t8_pyodide.mjs owui t8-31403.json` | Open WebUI 0.12.3 bundle, Pyodide 314.0.3 |
+| I1 | `i1_census.py` | `node i1_pyodide.mjs owui i1-31403.json` | host matplotlib 3.10.8 vs the installed Open WebUI 0.12.3 bundle (matplotlib 3.10.8) |
 | I2 | `i2_ambiguity.py` | none | host only |
-| I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-31403.json` | host reader (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.11.3 bundle |
-| C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-31403.json` | rule corpus: host judge (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.11.3 bundle (matplotlib 3.10.8) |
+| I3 | `i3_export.py` | `node i3_pyodide.mjs owui i3-31403.json` | host reader (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.12.3 bundle |
+| C1 | `c1_export.py` | `node c1_pyodide.mjs owui c1-31403.json` | rule corpus: host judge (matplotlib 3.10.8) vs production wrapper in the installed Open WebUI 0.12.3 bundle (matplotlib 3.10.8) |
 | X1 | `x1_transforms.py` | none | host only |
-| Image | `image_import.py` (its image leg `image_leg.py` runs inside the image through `podman`, network off) | none | `ghcr.io/open-webui/open-webui:v0.11.3` (CPython 3.11.16) |
-| F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-31403.json` | installed Open WebUI 0.11.3 bundle, Pyodide 314.0.3 |
-| Versions | none | `node versions.mjs owui versions-31403.json` | installed Open WebUI 0.11.3 bundle |
-| M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
-| M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
-| M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.11.3, `webui/launch.sh --stub` |
+| Image | `image_import.py` (its image leg `image_leg.py` runs inside the image through `podman`, network off) | none | `ghcr.io/open-webui/open-webui:v0.12.3` (CPython 3.11.17) |
+| F7 | `f7_export.py` (called by the Node leg) | `node f7_wrapper.mjs <B> f7-31403.json` | installed Open WebUI 0.12.3 bundle, Pyodide 314.0.3 |
+| Versions | none | `node versions.mjs owui versions-31403.json` | installed Open WebUI 0.12.3 bundle |
+| M15 | none (dump `REASONS` first, below) | `node m15u1_status.mjs <browser-url> <webui-url> ../../data/sales.csv <reasons.json> <webui.log> <out-dir>` | installed Open WebUI 0.12.3, `webui/launch.sh --stub` |
+| M16 | `m16u1_dump.py <checks.json>` (texts + the stub's expected PASS reply) | `node m16u1_checks.mjs <browser-url> <webui-url> ../../data/sales.csv <checks.json> <out-dir>` | installed Open WebUI 0.12.3, `webui/launch.sh --stub` |
+| M17 | none | `node m10u3_demo.mjs <browser-url> <webui-url> ../../data/<csv> <arm> 1 <out-dir>` per Japanese arm (`ja-simple`, `ja-misleading` over `sales.csv`; `ja-clinic-simple`, `ja-clinic-misleading` over `clinic_ja.csv`) | installed Open WebUI 0.12.3, `webui/launch.sh --stub` |
 
 ## Live MX150 record — Q46
 
@@ -201,7 +201,7 @@ to its M19.9 program (the file template's bytes are unchanged). Honest arms 15/1
 before and after reload. `misleading` + `ja-misleading` 10/10 carry the requested call and block
 with 0 PNGs, `zero_not_in_limits`. `ja-clinic-misleading` carries the requested call but blocks
 `program_error` in 5/5: the program draws `grouped_df.plot(kind='bar')` over a `DatetimeIndex`, which
-pandas 3.0.2 (the Open WebUI 0.11.3 bundle) refuses with `ValueError: Must supply freq for datetime
+pandas 3.0.2 (the Open WebUI 0.12.3 bundle) refuses with `ValueError: Must supply freq for datetime
 value` (host pandas 2.3.3 draws it), so its figure never exists and no run shows the inverted axis
 block (M19.9 on Open WebUI 0.10.2: `axis_inverted`). Q70 below: the arm now also names `plt.plot`.
 
@@ -274,7 +274,7 @@ nonzero with the id + cause. Expected files state the cited claims, never a fres
 The all-id driver runs this reduction replay once alongside the other table IDs.
 
 Host pins = root NumPy 2.4.3 + pandas 3.0.2; optional leg adds bottleneck 1.6.0 + numexpr 2.14.2.
-Sandbox = the installed Open WebUI 0.11.3 bundle: pandas 3.0.2 + NumPy 2.4.3 on Pyodide 314.0.3.
+Sandbox = the installed Open WebUI 0.12.3 bundle: pandas 3.0.2 + NumPy 2.4.3 on Pyodide 314.0.3.
 Each host leg uses `uv run --locked --with pandas==3.0.2`; the optional leg adds the two pinned
 `--with` arguments. The bundle leg loads the bundle's own wheels (`o8_bundle.mjs`).
 Locales `C`, `C.utf8`, `en_US.utf8` must exist. Only the sandbox supplement loads matplotlib.
@@ -339,7 +339,7 @@ emitting an independent `results/<id>.json` from its measurement. Register its r
 | T6 | whether the RENDERER alters plotted values | C10 clause 6: matplotlib bar's `-0.0` and Pyodide bar's int32 raise |
 | T7 | candidate admitted region, plain and quoted, against target Pyodide | C10's 0/4,000,000 |
 | T8 | beyond-int32 fixed-point parsing vs host pandas AND stdlib `float`; float64-column bar heights; mixed integer/decimal tokens | Q12 production range changed: integer columns keep int32; float64 cells retain the 15-digit cap; float64 bar reductions stay within ±2**53. Evidence: 0/1,345,852 host↔Pyodide decimal disagreements/form/build through ±2**53; ≤15-digit subset 0/623,350 vs stdlib, unrestricted 215,269 disagreements; mixed column 0/1,000,049 vs both; 0/2,364 boundary + 0/2,097 mixed artist-height changes/build |
-| F7 | the production `wrapper_code` in the installed bundle: the banner's simple program, a line, a scatter, a program that never calls `show`, and six Japanese legs (M17.1, Q44: Japanese title + category ticks with the installed Open WebUI's `NotoSansJP-Regular.ttf` cut as the filter cuts it (`ja-font`) and whole (`ja-whole`); the same without the font; a `$…$` Japanese title; a y label built by `chr` outside the cut (`ja-miss`); each in a fresh runtime; `ja-second` = `ja-font` then a second figure whose cut holds two glyphs the first lacks, in ONE runtime; `ja-marker-repeat` = one `$週$` text-marker figure twice in ONE runtime; `ja-textpath` = a `TextPath` marker built by `chr` outside the cut) | M19.5 wiring: all twelve replies have one tagged parseable description line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers the installed prelude (0.11.3: its patched `show` prints a PNG); the reader counts missing glyphs for `ja-no-font` (control), `ja-mathtext` (declared limit) + `ja-miss` (a miss blocks) + both replies of `ja-marker-repeat` (the parse cache hides no repeat) + `ja-textpath` (path text counts its `.notdef` glyphs) and none for the rest, `ja-second`'s earlier reply included; Q44: cut by fontTools 4.64.0 (Open WebUI 0.11.3), `ja-font` RPC source ≤ 99,999 B (measured 78,277) |
+| F7 | the production `wrapper_code` in the installed bundle: the banner's simple program, a line, a scatter, a program that never calls `show`, and six Japanese legs (M17.1, Q44: Japanese title + category ticks with the font the filter finds on this host (`owui_files.find_cjk_font`, `FV_CJK_FONT` = the admin's Valve; one face, not a collection) cut as `fonts.cut` cuts it where the server holds fontTools (`ja-font`) and whole, as the 0.12.3 image sends it (`ja-whole`); the same without the font; a `$…$` Japanese title; a y label built by `chr` outside the cut (`ja-miss`); each in a fresh runtime; `ja-second` = `ja-font` then a second figure whose cut holds two glyphs the first lacks, in ONE runtime; `ja-marker-repeat` = one `$週$` text-marker figure twice in ONE runtime; `ja-textpath` = a `TextPath` marker built by `chr` outside the cut) | M19.5 wiring: all twelve replies have one tagged parseable description line before one PNG line, `stderr: null`, `result: null` and a valid PNG signature; a literal plotting import still triggers the installed prelude (0.12.3: once the import loaded the package, its patched `show` prints a PNG); the reader counts missing glyphs for `ja-no-font` (control), `ja-mathtext` (declared limit) + `ja-miss` (a miss blocks) + both replies of `ja-marker-repeat` (the parse cache hides no repeat) + `ja-textpath` (path text counts its `.notdef` glyphs) and none for the rest, `ja-second`'s earlier reply included; Q44: cut by the host's fontTools (4.67.0; the 0.12.3 image holds none), `ja-font` RPC source ≤ 99,999 B (measured 77,545 with `SourceHanSansJP-Regular.otf`; `ja-whole` 6,141,697) |
 | M15 | the failure status line in a live `--stub` chat: the misleading banner prompt, a kana prompt, a blocked `pyodide.js`, the simple prompt; DOM before + after reload + REST `statusHistory`/`content`/`output`/`files`; every `REASONS` text set into the live `line-clamp-1` element at 1280×800, sidebar open | M15.1 L1-L5: exit code 0 = 4/4 cases + their log records + 0/102 texts clamped (M19.5 reasons) |
 | M16 | the "Show checks" embed in a live `--stub` chat: the misleading banner prompt, a kana prompt, the simple prompt; one frame after the status line + before the verdict, collapsed < 60 px, expanded = its content (no inner scroll), collapsed again, rows + marks + texts + cause per state, before + after reload; REST `content`/`output`/`embeds`; the expanded FAIL at 760 px; Q62: per (Open WebUI theme, OS scheme) pass — light/light, dark/dark, dark/light, light/dark, the scheme CDP-emulated — the frame reads the emulated scheme, its surface = Open WebUI's behind it in a matching pass + another in a mismatch (published `surfaces`: light `#ffffff`, dark `#161616`), and in each matching pass Tab from the frame reaches every summary + the opened row's link, each `:focus-visible` with an outline ≥ 2 px; M18.4 + M20.2 + M20.4 (M19.5 rows): per case each listed row opened (misleading: `axes` = related lines 12-16 with `plt.ylim(30000, 45000)` marked, `run` = its note, not-checked `values` = nothing; kana: `program`; pass: `program` = all 18 lines, `axes` = 12-16 (`plt.xticks(rotation=45)` at 16, M20.4), `values` = 5 · 8 · 12, `columns` = 5 · 8 · 12-15, `attach` = its note) = hand-stated listing label + lines + marked line + mark text or note + `#check-<id>` link, frame grows to the row and fits, the first row's link opens one new tab at that URL (live), the row closes again, live + reload | M16.1 L1-L5 + M18.4 L1-L3 + M20.2: exit code 0 = 3/3 cases with all their rows + the narrow re-size; screenshots inspected by hand; needs a Chromium that honours CDP `prefers-color-scheme` emulation (chromiumfish 151 pins the scheme light ⇒ its scheme passes fail; BrowserOS Neo 151.0.8162 honours it); (`chromiumfish` draws every font family, generic `monospace` included, in one serif face, so its PNGs show the listing proportional; BrowserOS Neo measured the shipped stack monospace) |
 | M17 | the Japanese banner prompts in a live `--stub` chat, one attempt per arm over its own CSV: verdict before + after reload, the verdict line, the interpretation's first sentence, the PNG attachment count, the status line's code + language | M17.4 L2 (M19.5 arms): `ja-simple` + `ja-clinic-simple` pass with 1 PNG and a Japanese interpretation (`棒: sales.csv の region 列ごとの revenue 列の合計。`, `折れ線: clinic_ja.csv の 年月 列ごとの 平均待ち時間 列の平均。`); `ja-misleading` + `ja-clinic-misleading` fail with 0 PNGs and a Japanese status line ending `(zero_not_in_limits)`, `(axis_inverted)` |
