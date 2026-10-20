@@ -75,7 +75,7 @@ The earlier verifier read the program text instead of the finished figure. Its m
 You need Linux, [uv](https://docs.astral.sh/uv/) and git. The real model needs an NVIDIA GPU with
 CUDA 12.6 support. The browser demo needs Chromium or Chrome.
 
-1. Install the locked Python 3.13 environment.
+1. Install the locked Python 3.14 environment.
 
    ```sh
    uv sync --locked

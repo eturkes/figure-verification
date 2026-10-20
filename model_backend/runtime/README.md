@@ -3,7 +3,7 @@
 This directory pins the environment and the model weights that `model_backend` runs on. It holds
 declarations only. The server code stays in the package above it.
 
-The runtime is a separate `uv` project. The repository gate runs on Python 3.13, but the CUDA
+The runtime is a separate `uv` project. The repository gate runs on Python 3.14, but the CUDA
 wheels for `torch` stop at Python 3.12. A separate project keeps the two locks apart.
 
 | File | Content |
@@ -33,7 +33,7 @@ uv pip check --python "$PWD/.venv-model/bin/python"
 ```
 
 The `--python` option is necessary. A bare `uv pip check` reads the root `.venv`, which holds the
-Python 3.13 gate environment.
+Python 3.14 gate environment.
 
 ## Fetch the model snapshot
 

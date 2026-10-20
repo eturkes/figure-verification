@@ -838,7 +838,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified fourteen times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
+    Re-ratified fifteen times: M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
     -> 4.15.1 for GHSA-5p39-cfhj-2xmp, GHSA-82r6-8w77-94w6 and GHSA-3w57-8xmc-8v26, pulling
@@ -864,9 +864,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     (poodle 1.3.4 dev-only, the stack's mutation tool: + bracex, jinja2, markupsafe, mergedeep,
     wcmatch, click already locked -- 87 purely additive lines; no other package moved) and Q61
     (pytest-xdist 3.8.0 dev-only, the gate's parallel test runner: + execnet 2.1.2 -- 24 purely
-    additive lines; no other package moved)."""
+    additive lines; no other package moved) and the session-12 upgrade (CPython 3.14 line, every
+    pin outside the bundle-exact five at its latest release: msgspec 0.22.0, litestar 2.25.0,
+    uvicorn 0.54.0, ruff 0.17.1, mypy 2.4.0, hypothesis 6.170.5, zizmor 1.31.1 + transitive)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "0dd6fd2716af003ac285cb2e7f072cafd188bbb5d5b4da648eb71005054b85dc"
+    assert digest == "5e10be6ad608015326135915c0fc644426519b338e97d813ad2e02e64110235d"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:

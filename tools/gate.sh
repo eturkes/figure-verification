@@ -91,7 +91,7 @@ audit_locks() {
 }
 
 # The shipped pair runs in Open WebUI's own interpreter, CPython 3.11 in the official image
-# (M21.2 F11). The bare run holds the repository at the project's 3.13; the second pass re-reads
+# (M21.2 F11). The bare run holds the repository at the project's 3.14; the second pass re-reads
 # the shipped sources against 3.11 syntax + stdlib, in its own cache so the two never evict.
 type_check() {
     local bare_rc=0 shipped_rc=0
@@ -125,7 +125,7 @@ run_tests() {
     uv run --locked pytest -n auto --durations=10
 }
 
-# The same suite on CPython 3.11, the official image's line (M21.2 F16): `tests` runs 3.13, whose
+# The same suite on CPython 3.11, the official image's line (M21.2 F16): `tests` runs 3.14, whose
 # stdlib differs in behaviour as well as names (builtin `sum` is Neumaier from 3.12). Its own lock,
 # since some root pins need 3.12; `verifier` from `src`. The interpreter runs directly, so a test's
 # own `uv` call keeps the root `.venv`.

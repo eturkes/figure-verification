@@ -23,6 +23,7 @@ from typing import Any, Final, cast
 
 from litestar import Litestar, Request, Response, get, post
 from litestar.datastructures import State
+from litestar.params import JSONBody
 from litestar.status_codes import HTTP_200_OK
 
 from model_backend.adapter import ADAPTER_MAX_TOKENS, ADAPTER_TEMPERATURE, defence
@@ -148,7 +149,9 @@ async def _selector_generation(
 
 
 @post("/v1/chat/completions", status_code=HTTP_200_OK)
-async def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
+async def chat_completions(
+    data: JSONBody[ChatCompletionRequest], state: State
+) -> ChatCompletionResponse:
     """Generate one non-streaming chat completion from the local model.
 
     Open WebUI's legacy selector generates bare source from its history + the demo inlet's request

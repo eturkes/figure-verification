@@ -2,7 +2,7 @@
 """Outlet helper edges the contract suite reaches only through whole replies (M10.1 F4/F5, kept by
 M19.5): the PNG line reader, the reply rewrite and the inlet's header refusals."""
 
-import asyncio
+import inspect
 
 import pytest
 
@@ -75,4 +75,4 @@ def test_a_header_the_reader_refuses_renders_the_no_file_template(
     attachment = UploadedFile("f", "/mnt/uploads/a.csv", b"a\n1\n")
     rendered = outlet.Filter()._render("task", (attachment,))
     assert rendered == outlet.Filter._TEMPLATES.no_file.format(task="task")
-    assert asyncio.iscoroutinefunction(outlet.Filter.inlet)
+    assert inspect.iscoroutinefunction(outlet.Filter.inlet)

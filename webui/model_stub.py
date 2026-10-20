@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 import uvicorn
 from litestar import Litestar, get, post
 from litestar.datastructures import State
+from litestar.params import JSONBody
 from litestar.status_codes import HTTP_200_OK
 
 from model_backend.models import (
@@ -83,7 +84,7 @@ def list_models(state: State) -> ModelList:
 
 
 @post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)
-def chat_completions(data: ChatCompletionRequest, state: State) -> ChatCompletionResponse:
+def chat_completions(data: JSONBody[ChatCompletionRequest], state: State) -> ChatCompletionResponse:
     """Return the prompt-classified fixture reply in an OpenAI chat-completion envelope.
 
     Builds the same ChatCompletionResponse SHAPE as model_backend/app.py (Choice wraps a

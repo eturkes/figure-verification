@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # The suite on the official Open WebUI image's interpreter line (CPython 3.11; the root project is
-# 3.13-only). Not a package: the suite imports `verifier` from `src` through PYTHONPATH. Pins follow
+# 3.14-only). Not a package: the suite imports `verifier` from `src` through PYTHONPATH. Pins follow
 # the root dev group where it pins exactly (the bundle's + the image's releases); the rest resolve
 # for 3.11 here, since some of the root lock's (contourpy 1.4.0) need 3.12.
 [project]
@@ -8,9 +8,9 @@ name = "suite-py311"
 version = "0"
 requires-python = "==3.11.*"
 dependencies = [
-    "msgspec>=0.21,<1",
-    "litestar>=2.24,<3",
-    "uvicorn>=0.49,<1",
+    "msgspec>=0.22,<1",
+    "litestar>=2.25,<3",
+    "uvicorn>=0.54,<1",
     "httpx>=0.28,<1",
     "pytest>=8",
     "pytest-cov>=6",

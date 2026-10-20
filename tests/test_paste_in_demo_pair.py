@@ -68,8 +68,10 @@ def test_q37_s3_each_root_class_states_its_rule_and_inherits_the_rest() -> None:
     assert [base.__module__ for base in demo_tool.Tools.__bases__] == ["webui.paste_in.tool"]
     assert [base.__module__ for base in demo_filter.Filter.__bases__] == ["webui.paste_in.filter"]
     assert "_ANCHORING" not in vars(tool.Tools)
+    # PEP 649 (3.14): an annotated class body stores its lazy annotation function in the class.
     for demo in (demo_tool.Tools, demo_filter.Filter):
-        assert [name for name, value in vars(demo).items() if callable(value)] == []
+        defined = [name for name, value in vars(demo).items() if callable(value)]
+        assert [name for name in defined if name != "__annotate_func__"] == []
 
 
 @pytest.mark.parametrize("relative", sorted(_PAIRS))

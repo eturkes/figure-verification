@@ -263,7 +263,7 @@ class Replay:
                 try:
                     with urllib.request.urlopen(f"{browser_url}/json/version", timeout=2):  # noqa: S310 -- loopback CDP only
                         break
-                except (OSError, urllib.error.URLError):
+                except OSError, urllib.error.URLError:
                     time.sleep(1)
             self.env.update(
                 FV_WEBUI_EMAIL="operator@localhost",

@@ -47,7 +47,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv-webui" uv sync --locked --project webui/runti
 ```
 
 The second command installs Open WebUI 0.11.3 from the committed lock `webui/runtime/uv.lock`. Open
-WebUI refuses the project's Python 3.13 line. For this reason, the ignored `.venv-webui/` is a
+WebUI refuses the project's Python 3.14 line. For this reason, the ignored `.venv-webui/` is a
 separate Python 3.11 environment. Python 3.11 is the interpreter of the official Open WebUI image,
 so the demo runs the paste-in files under the same interpreter as production. The lock raises each
 dependency that has a published advisory to its first fixed release. The gate audits this lock, and

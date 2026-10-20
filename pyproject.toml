@@ -3,19 +3,19 @@
 name = "verifier"
 version = "0.2.0"
 description = "Figure verifier for Open WebUI: a trusted reader + judge decide whether a model-drawn matplotlib figure may appear."
-# Pinned to the 3.13.x line for reproducibility: msgspec ships per-interpreter compiled
+# Pinned to the 3.14.x line for reproducibility: msgspec ships per-interpreter compiled
 # wheels and stdlib behavior can drift across minors, so a wider floor would admit an
 # untested interpreter.
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 license = "Apache-2.0 WITH LLVM-exception"
 license-files = ["LICENSE"]
 authors = [{ name = "Emir Turkes", email = "eturkes@bu.edu" }]
 # The verifier core (src/verifier) is stdlib-only. msgspec + litestar + uvicorn + httpx serve the
 # demo harness (model stub, model backend wire types, Open WebUI provisioning client).
 dependencies = [
-    "msgspec>=0.21,<1",
-    "litestar>=2.24,<3",
-    "uvicorn>=0.49,<1",
+    "msgspec>=0.22,<1",
+    "litestar>=2.25,<3",
+    "uvicorn>=0.54,<1",
     "httpx>=0.28,<1",
 ]
 
@@ -67,12 +67,12 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11,<0.13"]
+requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
 
 # --- lint / format -----------------------------------------------------------
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 100
 src = ["src", "tests"]
 # Generated (`tools/render_gallery.py`): each code block quotes a tested corpus program byte for byte,
@@ -86,9 +86,15 @@ extend-exclude = ["docs/gallery.md", "docs/gallery.ja.md"]
 "webui/paste_in/**" = "py311"
 "paste-in/**" = "py311"
 "webui/demo-paste-in/**" = "py311"
-# The suite also runs on 3.11 (gate stage `tests311`, the image's line): tests and their support
-# modules spell 3.11 forms too.
+# The suite also runs on 3.11 (gate stage `tests311`, the image's line): tests, every repo module
+# they import and every script they run through `sys.executable` (tools/generate_paste_in.py) spell
+# 3.11 forms too; image_leg.py runs inside the image. ruff's py314 formatter writes PEP 758
+# `except A, B:`, a SyntaxError before 3.14.
 "tests/**" = "py311"
+"model_backend/**" = "py311"
+"webui/**" = "py311"
+"tools/**" = "py311"
+".agent/measurements/image_leg.py" = "py311"
 
 [tool.ruff.lint]
 # Explicit select (never "ALL"): new rule categories never auto-enable on upgrade.
@@ -131,7 +137,7 @@ ban-relative-imports = "all"
 
 # --- types -------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
@@ -147,7 +153,7 @@ enable_error_code = [
 ]
 
 # The proposer runtime (torch + Transformers) resolves from the SEPARATE py3.12 project
-# at model_backend/runtime/, never into this py3.13 gate venv, and its stubs are absent or partial.
+# at model_backend/runtime/, never into this py3.14 gate venv, and its stubs are absent or partial.
 # model_backend is their only importer; the engine isolates the resulting Any behind typed
 # boundaries. accelerate and tokenizers stay OUT: they are transitive runtime deps that no module
 # imports, and an override for an unimported module states a dependency the code does not have.
@@ -159,8 +165,8 @@ ignore_missing_imports = true
 module = ["transformers", "transformers.*"]
 ignore_missing_imports = true
 
-# open_webui resolves inside the target image and in the SEPARATE py3.12 .venv-webui, never into
-# this py3.13 gate venv, and it ships no stubs. webui/paste_in/owui_files.py is its only importer
+# open_webui resolves inside the target image and in the SEPARATE py3.11 .venv-webui, never into
+# this py3.14 gate venv, and it ships no stubs. webui/paste_in/owui_files.py is its only importer
 # and is the single module allowed to reach it (the paste-in's whole non-stdlib surface); it
 # projects the dynamic file/storage API into one frozen UploadedFile per attachment.
 [[tool.mypy.overrides]]
@@ -176,6 +182,9 @@ testpaths = ["tests"]
 # `model_backend` packages resolve.
 pythonpath = ["tests", "."]
 xfail_strict = true
+# A Litestar deprecation names what its next major removes; the suite builds both apps, so it
+# fails here rather than at that upgrade.
+filterwarnings = ["error::litestar.exceptions.LitestarDeprecationWarning"]
 
 [tool.coverage.run]
 branch = true

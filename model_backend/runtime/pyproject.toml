@@ -2,7 +2,7 @@
 #
 # Isolated proposer runtime. NOT a member of the root uv project: the root declares no
 # [tool.uv.workspace], so this project locks and syncs on its own into .venv-model. The split is
-# load-bearing — the root gate runs py3.13 while torch cu126 wheels stop at py3.12, and the root
+# load-bearing — the root gate runs py3.14 while torch cu126 wheels stop at py3.12, and the root
 # lock must stay free of 14 nvidia-* wheels.
 #
 # Nothing imports this project from the gate. model_backend/*.py runs against .venv-model in
