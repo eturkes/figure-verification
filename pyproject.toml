@@ -49,7 +49,7 @@ dev = [
     # bundle (Pyodide 314.0.3) ships matplotlib 3.10.8 + pandas 3.0.2: the host runs the same
     # releases, and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
     "matplotlib==3.10.8",
-    "pandas==3.0.2",
+    "pandas==3.0.6",
     # test-only (Q73): the wrapper loads the bundle's seaborn 0.13.2 for a program that names it, so
     # the corpus's seaborn cases run the same release here.
     "seaborn==0.13.2",
