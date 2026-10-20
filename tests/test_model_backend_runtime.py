@@ -864,7 +864,7 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     (poodle 1.3.4 dev-only, the stack's mutation tool: + bracex, jinja2, markupsafe, mergedeep,
     wcmatch, click already locked -- 87 purely additive lines; no other package moved) and Q61
     (pytest-xdist 3.8.0 dev-only, the gate's parallel test runner: + execnet 2.1.2 -- 24 purely
-    additive lines; no other package moved) and the session-12 upgrade (CPython 3.14 line, every
+    additive lines; no other package moved) and the dependency upgrade (U1: CPython 3.14 line, every
     pin outside the bundle-exact five at its latest release: msgspec 0.22.0, litestar 2.25.0,
     uvicorn 0.54.0, ruff 0.17.1, mypy 2.4.0, hypothesis 6.170.5, zizmor 1.31.1 + transitive) and U2
     (fonttools 4.64.0 -> 4.67.0, dev-only: Open WebUI 0.12.3's image holds no fontTools, so no image

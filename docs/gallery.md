@@ -17,7 +17,7 @@ Each pair shows a chart that the verifier blocks, beside an honest chart that pa
 
 ### `glyph_missing`: every character in an available font
 
-The title puts a Japanese character inside mathtext (`$年$`). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. Open WebUI's Japanese font reaches ordinary text, not mathtext.
+The title puts a Japanese character inside mathtext (`$年$`). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. The Japanese font from the Open WebUI server reaches ordinary text, not mathtext.
 
 | Blocked | Passes |
 |---|---|

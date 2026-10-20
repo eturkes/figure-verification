@@ -236,10 +236,11 @@ To set the file:
 4. Save the valves.
 
 The file must be a TrueType or OpenType font (`.ttf` or `.otf`) or a font collection (`.ttc`) of at
-most 32 MiB. For a collection, the chart uses the first font in it. The filter never sends a file
-that is not a font. If the file is missing or is not a font, the filter uses the list above. Only an
-administrator can change the valves of a function. The filter sends the whole font with each chart
-that has non-ASCII text, so a single font sends less data than a collection.
+most 32 MiB. For a collection, the chart uses the first font in it. The filter sends a file only
+when it starts with a TrueType, OpenType or collection header. If the file is missing or does not
+start with such a header, the filter uses the list above. Only an administrator can change the
+valves of a function. Without `fontTools` on the server, the filter sends the whole font with each
+chart that has non-ASCII text, so a single font sends less data than a collection.
 
 ## Why a chart failed
 

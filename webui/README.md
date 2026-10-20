@@ -50,7 +50,9 @@ The second command installs Open WebUI 0.12.3 from the committed lock `webui/run
 WebUI refuses the project's Python 3.14 line. For this reason, the ignored `.venv-webui/` is a
 separate Python 3.11 environment. Python 3.11 is the interpreter of the official Open WebUI image,
 so the demo runs the paste-in files under the same interpreter as production. The lock raises each
-dependency that has a published advisory to its first fixed release. The gate audits this lock, and
+dependency that has a published advisory to its latest release. The exception is `mcp`, which stays
+on its latest 1.x release, because Open WebUI 0.12.3 does not start with `mcp` 2. The gate audits
+this lock, and
 Dependabot updates it. The harness executes the Open WebUI binary. It never imports Open WebUI into
 the verifier environment.
 

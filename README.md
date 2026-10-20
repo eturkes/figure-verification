@@ -43,8 +43,8 @@ A chart passes when all of these statements are true:
 Every decision follows a fixed rule. The verifier uses no model. A pass does not mean that the chart
 answers the question. The chart can show a different measure or grouping than the user wanted.
 
-The verifier trusts the browser, the Pyodide runtime, matplotlib, the Japanese font that Open WebUI
-contains and the pixels. It does not check them. It also trusts the chart program to be honest: the
+The verifier trusts the browser, the Pyodide runtime, matplotlib, the Japanese font that the filter
+finds on the Open WebUI server and the pixels. It does not check them. It also trusts the chart program to be honest: the
 program runs before any check, in the same runtime as the verifier's reader. The reference lists
 what the verifier does not check.
 
@@ -64,7 +64,7 @@ what the verifier does not check.
   with fp16 Qwen2.5-Coder-0.5B-Instruct, greedy decoding, torch 2.14.1, transformers 5.20.2, Open
   WebUI 0.12.3 and headless Chromium 151. All 15 honest runs showed a chart and the pass message.
   All 15 misleading runs drew the requested limits or the inverted axis and showed the failure
-  message with the expected code. The records are in `.agent/measurements/s12u3/`. Each prompt's
+  message with the expected code. The records are in `.agent/measurements/deps-u3/`. Each prompt's
   program equals the program in the Open WebUI 0.11.3 record `.agent/measurements/q70/`. The
   record on Open WebUI 0.10.2, before prompt 6 named `plt.plot`, is in
   `.agent/measurements/m19u9/`.

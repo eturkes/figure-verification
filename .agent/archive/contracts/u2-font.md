@@ -4,7 +4,7 @@ Tier **kernel** for the read surface: which server bytes leave for the user's br
 
 ## Row
 
-Open WebUI 0.12.3 dropped `static/fonts` + `open_webui.env.FONTS_DIR` (verified at the v0.12.3 tag + wheel) ⇒ `owui_files.py::cjk_font` returns `None` and every figure drawing Japanese text blocks. Red witness (0.12.3, `webui/launch.sh --stub`, `m10u3_demo.mjs … data/clinic_ja.csv ja-clinic-simple 1`): `fail`, status `… (glyph_missing)`. User ruling (session 12, `.agent/spec.md` Upgrade rulings 2): server-side discovery — an admin Valve path, then known CJK font files in the container's system font dirs; sent whole when the server lacks fontTools; none ⇒ Japanese text blocks.
+Open WebUI 0.12.3 dropped `static/fonts` + `open_webui.env.FONTS_DIR` (verified at the v0.12.3 tag + wheel) ⇒ `owui_files.py::cjk_font` returns `None` and every figure drawing Japanese text blocks. Red witness (0.12.3, `webui/launch.sh --stub`, `m10u3_demo.mjs … data/clinic_ja.csv ja-clinic-simple 1`): `fail`, status `… (glyph_missing)`. User ruling (upgrade request, `.agent/spec.md` Upgrade rulings 2): server-side discovery — an admin Valve path, then known CJK font files in the container's system font dirs; sent whole when the server lacks fontTools; none ⇒ Japanese text blocks.
 
 ## Predicates
 

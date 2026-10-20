@@ -3,7 +3,7 @@
 
 A thin sync httpx wrapper over the OWUI provisioning endpoints, with request shapes + fallbacks
 settled against 0.10.2 (.agent/archive/m4.md provisioning + filter contracts) -- TRANSCRIBED
-here, then run live on 0.11.3 (M21.2) + 0.12.3 (session 12): bootstrap smoke + one
+here, then run live on 0.11.3 (M21.2) + 0.12.3 (upgrade request): bootstrap smoke + one
 `python -m webui chat`. Every step fails closed via WebUIProvisionError so a misconfigured deploy
 raises loud rather than leaving a half-provisioned, silently-unauthenticated client.
 
