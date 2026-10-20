@@ -248,7 +248,8 @@ check that did not run shows no lines. In the failed check, the verifier
 marks the program line that drew the failed part or made the failed call, for example a `plt.ylim`
 call that cut off the bars. The verifier finds the related lines for display only, so they never
 change the verdict. Each opened check links to its section of
-the verification reference, [docs/verification.md](../verification.md). The link opens GitHub in a
+the short guide to the checks, [docs/checks.md](../checks.md). That guide links to the full
+verification reference, [docs/verification.md](../verification.md). The link opens GitHub in a
 new browser tab, so the user's browser needs network access, also when the Open WebUI instance has
 none. The program shown is the model's own program, as the tool received it. It can contain any text
 that the program holds, for example a file name or words copied from the request.

@@ -35,9 +35,9 @@ const states = (failing) => table.checks.map((_, i) => (i < failing ? "pass" : i
 // values row nothing. `simple`: the program row all 18 lines; the axes row the axes line 12, title +
 // labels 13-15 and `plt.xticks(rotation=45)` at 16 (M20.4); the values row `read_csv` 5, `groupby`
 // 8 and the drawing line 12; the columns row those + title + labels 13-15; attach its note.
-const REFERENCE = [
-  "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
-  "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
+const GUIDE = [
+  "https://github.com/eturkes/figure-verification/blob/main/docs/checks.md",
+  "https://github.com/eturkes/figure-verification/blob/main/docs/checks.ja.md",
 ];
 const span = (n) => Array.from({ length: n }, (_, i) => i + 1);
 // `label` / `note` name a checks.json text: the listing's label (`code` | `related`), the note.
@@ -210,16 +210,16 @@ function rowHolds(item, want, read) {
     read.sections.includes("code") === (want.lines !== null) &&
     read.sections.includes("why") === (item.states[position(want) - 1] === "fail") &&
     read.sections.includes("link") &&
-    read.href === `${REFERENCE[item.lang]}#check-${want.check}` &&
+    read.href === `${GUIDE[item.lang]}#check-${want.check}` &&
     read.target === "_blank"
   );
 }
 
-// L2: the opened row's link opens one NEW tab at the reference section (URL read over CDP).
+// L2: the opened row's link opens one NEW tab at the guide section (URL read over CDP).
 // `waitForTarget` also matches targets that already exist, so only a target absent before the
 // click counts, and exactly one such page must appear (reviewer-3 K5-F1).
 async function followLink(frame, item) {
-  const want = `${REFERENCE[item.lang]}#check-${item.rows[0].check}`;
+  const want = `${GUIDE[item.lang]}#check-${item.rows[0].check}`;
   const before = new Set(browser.targets());
   const fresh = () => browser.targets().filter((target) => !before.has(target) && target.type() === "page");
   await frame.click(`ol > li:nth-child(${position(item.rows[0])}) a.spec`);

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""M18.3 D3-D7 + D9, re-keyed by M19.5: the python-mode reference names every check, reason +
-limit.
+"""M18.3 D3-D7 + D9, re-keyed by M19.5; Q72 G1-G3: the python-mode reference names every check,
+reason + limit, and the short guide each "Show checks" row opens names every check.
 
-Contracts: `.agent/archive/contracts/m18u3.md`, `.agent/archive/contracts/m19u5.md` (W6). The
-reference is what each "Show checks" row links to, so it must move with the code: a check, a reason
-or a limit added without its sentence here fails this module. Presence is all a token scan decides;
-whether a sentence is TRUE stays the closing review's (D8). D5 (every admitted Python name) retired
-with the static admission path.
+Contracts: `.agent/archive/contracts/m18u3.md`, `.agent/archive/contracts/m19u5.md` (W6),
+`.agent/archive/contracts/q72.md`. Each row links its guide section, which links its reference
+section, so both move with the code: a check, a reason or a limit added without its sentence here
+fails this module. Presence is all a token scan decides; whether a sentence is TRUE stays the
+closing review's (D8). D5 (every admitted Python name) retired with the static admission path.
 """
 
 import os
@@ -17,6 +17,7 @@ from typing import get_args
 
 import pytest
 
+from outlet_support import GUIDE
 from verifier.figure import explain, reader, request
 from verifier.figure.reasons import FigureReason
 from verifier.pysrc.limits import DEFAULT_LIMITS
@@ -25,14 +26,29 @@ from webui.paste_in import filter as filter_module
 from webui.paste_in.reasons import OutletCause
 
 _ROOT = Path(__file__).resolve().parents[1]
-_DOCS = {"en": _ROOT / "docs/verification.md", "ja": _ROOT / "docs/verification.ja.md"}
+_DOCS = {
+    "reference": {"en": _ROOT / "docs/verification.md", "ja": _ROOT / "docs/verification.ja.md"},
+    "guide": {"en": _ROOT / "docs/checks.md", "ja": _ROOT / "docs/checks.ja.md"},
+}
+_MAIN = "https://github.com/eturkes/figure-verification/blob/main/"
 _ANCHOR = re.compile(r'<a id="check-([a-z]+)"></a>')
 _HEADING = re.compile(r"^#{1,6} (.+)$", re.MULTILINE)
 _LINK = re.compile(r"\]\(([^)#\s]+)(?:#[^)\s]*)?\)")
 
 
-def _text(language: str) -> str:
-    return _DOCS[language].read_text(encoding="utf-8")
+def _text(language: str, doc: str = "reference") -> str:
+    return _DOCS[doc][language].read_text(encoding="utf-8")
+
+
+def _name(language: str, doc: str) -> str:
+    return _DOCS[doc][language].name
+
+
+def _tracked() -> set[str]:
+    listed = subprocess.run(  # noqa: S603
+        ["/usr/bin/git", "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
+    ).stdout
+    return {os.fsdecode(raw) for raw in listed.split(b"\0") if raw}
 
 
 def _sections(text: str) -> dict[str, str]:
@@ -47,10 +63,11 @@ def _sections(text: str) -> dict[str, str]:
     return sections
 
 
+@pytest.mark.parametrize("doc", ["reference", "guide"])
 @pytest.mark.parametrize("language", ["en", "ja"])
-def test_d3_each_check_has_its_anchor_and_title(language: str) -> None:
-    """D3: 9 `check-<id>` anchors in CHECKS order, each before its TEXTS title heading."""
-    text = _text(language)
+def test_d3_each_check_has_its_anchor_and_title(language: str, doc: str) -> None:
+    """D3 + Q72 G1: 9 `check-<id>` anchors in CHECKS order, each before its TEXTS title heading."""
+    text = _text(language, doc)
     assert [mark.group(1) for mark in _ANCHOR.finditer(text)] == list(checks.CHECKS)
     column = 0 if language == "en" else 1
     sections = _sections(text)
@@ -104,19 +121,17 @@ def test_d6_every_limit_is_named_with_its_value(language: str) -> None:
         assert _limit_row(text, name) == getattr(DEFAULT_LIMITS, name), name
 
 
+@pytest.mark.parametrize("doc", ["reference", "guide"])
 @pytest.mark.parametrize("language", ["en", "ja"])
-def test_d7_links_resolve_and_each_doc_has_one_h1(language: str) -> None:
-    """D7: relative links -> tracked files; one H1."""
-    text = _text(language)
+def test_d7_links_resolve_and_each_doc_has_one_h1(language: str, doc: str) -> None:
+    """D7 + Q72 G1: relative links -> tracked files; one H1."""
+    text = _text(language, doc)
     outside_code = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     assert len(re.findall(r"^# ", outside_code, re.MULTILINE)) == 1
-    listed = subprocess.run(  # noqa: S603
-        ["/usr/bin/git", "-C", str(_ROOT), "ls-files", "-z"], capture_output=True, check=True
-    ).stdout
-    tracked = {os.fsdecode(raw) for raw in listed.split(b"\0") if raw}
+    tracked = _tracked()
     for target in _LINK.findall(outside_code):
         if not target.startswith(("http://", "https://")):
-            resolved = (_DOCS[language].parent / target).resolve()
+            resolved = (_DOCS[doc][language].parent / target).resolve()
             assert resolved.is_file(), target
             # On disk is not enough: a gitignored target vanishes for a reader of the committed
             # reference (reviewer-3 K7-F2).
@@ -127,10 +142,41 @@ def test_d7_links_resolve_and_each_doc_has_one_h1(language: str) -> None:
     ("guide", "reference"),
     [
         ("README.md", "docs/verification.md"),
+        ("README.md", "docs/checks.md"),
         ("docs/admin/README.md", "../verification.md"),
+        ("docs/admin/README.md", "../checks.md"),
         ("docs/admin/README.ja.md", "../verification.ja.md"),
+        ("docs/admin/README.ja.md", "../checks.ja.md"),
     ],
 )
 def test_d9_readmes_and_admin_guides_link_the_reference(guide: str, reference: str) -> None:
-    """D9: README.md + both admin guides link the reference."""
+    """D9 + Q72 G6: README.md + both admin guides link the reference and the guide."""
     assert f"]({reference})" in (_ROOT / guide).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_q72_g3_each_row_link_opens_a_tracked_guide_section(language: str) -> None:
+    """G3: the hand-stated row URL (`outlet_support.GUIDE`, which O9 matches against every rendered
+    href) = GitHub `main` + this language's tracked guide, which holds every check's anchor."""
+    url = GUIDE[0 if language == "en" else 1]
+    assert url.startswith(_MAIN), url
+    path = url.removeprefix(_MAIN)
+    assert path == _DOCS["guide"][language].relative_to(_ROOT).as_posix()
+    assert path in _tracked()
+    anchors = [mark.group(1) for mark in _ANCHOR.finditer(_text(language, "guide"))]
+    assert anchors == list(checks.CHECKS)
+
+
+@pytest.mark.parametrize("language", ["en", "ja"])
+def test_q72_g2_the_guide_and_the_reference_link_each_other(language: str) -> None:
+    """G2: the guide's intro + every check section link the same language's reference (the section
+    at its own anchor); the guide links its language twin; the reference links its guide."""
+    guide = _text(language, "guide")
+    reference = _name(language, "reference")
+    intro = guide[: guide.find('<a id="check-')]
+    assert f"]({reference})" in intro
+    for check, body in _sections(guide).items():
+        assert f"]({reference}#check-{check})" in body, check
+    twin = _name("ja" if language == "en" else "en", "guide")
+    assert f"]({twin})" in guide
+    assert f"]({_name(language, 'guide')})" in _text(language)

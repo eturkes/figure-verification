@@ -21,6 +21,7 @@ _READMES = (
     "model_backend/runtime/README.md",
     "docs/admin/README.md",
     "docs/verification.md",
+    "docs/checks.md",
 )
 _FENCE = re.compile(r"^\s*```")
 # A fence closes only on a bare backtick run: ```"""` inside a fenced heredoc is content.

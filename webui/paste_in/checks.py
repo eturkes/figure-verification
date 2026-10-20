@@ -4,9 +4,9 @@
 Data plus one pure renderer; `filter.py` sends the document as an Open WebUI message embed, which
 the chat renders in a sandboxed iframe and never sends to a model. Each row opens to what its check
 does, the program lines related to it or a note (`excerpts.py`; the `program` row quotes the whole
-program),
-why it failed and a link to its section of the reference; the failing row marks the line that drew
-the offending part or made the offending call (ruling 13: display only, never a verdict input).
+program), why it failed and a link to its section of the short guide, which links the full
+reference (Q72); the failing row marks the line that drew the offending part or made the offending
+call (ruling 13: display only, never a verdict input).
 Every text slot comes from the tables here or from `REASONS`; the one exception is the program
 itself, quoted escaped inside a code listing with whatever it spells. Request text, file contents
 and sandbox output are never added from any other source.
@@ -300,17 +300,18 @@ DREW: Final = (
     "The marked line drew the part, or made the call, that failed this check.",
     "印の付いた行が、このチェックで不合格になった部分を描いたか、その呼び出しを行いました。",
 )
-SPEC: Final = ("Read the full specification of this check", "このチェックの詳しい仕様を読む")
+GUIDE_LINK: Final = ("Read about this check", "このチェックの説明を読む")
 ELIDED: Final = ("Lines not shown: {n}.", "表示していない行: {n} 行。")
 BEYOND: Final = (
     "The program is too long to show in full.",
     "プログラムが長すぎるため、すべては表示できません。",
 )
-# The python-mode reference on GitHub, one section per check (`#check-<id>`). A fixed link: the
-# instance may have no network, but the browser a user reads it in does (user ruling, M18).
-SPECIFICATION: Final = (
-    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
-    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
+# The short guide on GitHub, one section per check (`#check-<id>`), each linking its section of the
+# full reference (user, Q72). A fixed link: the instance may have no network, but the browser a user
+# reads it in does (user ruling, M18).
+GUIDE: Final = (
+    "https://github.com/eturkes/figure-verification/blob/main/docs/checks.md",
+    "https://github.com/eturkes/figure-verification/blob/main/docs/checks.ja.md",
 )
 
 
@@ -498,10 +499,10 @@ def _more(
         if drew:
             why += f'<p class="drew">{_text(DREW[language])}</p>'
         sections.append(_section("why", WHY[language], why))
-    href = _code(f"{SPECIFICATION[language]}#check-{check}")
+    href = _code(f"{GUIDE[language]}#check-{check}")
     sections.append(
         f'<p class="link"><a class="spec" href="{href}" target="_blank"'
-        f' rel="noopener noreferrer">{_text(SPEC[language])}</a></p>'
+        f' rel="noopener noreferrer">{_text(GUIDE_LINK[language])}</a></p>'
     )
     return f'<div class="more">{"".join(sections)}</div>'
 

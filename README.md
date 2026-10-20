@@ -7,7 +7,8 @@ matplotlib drew. The chart appears only when every check passes. Otherwise the c
 verification failed, no image produced`, and a status line above that message states the reason.
 Each chart reply also has a `Show checks` list of every check and its result. Click a check to open
 it. It shows what the check does, its related program lines or a note, and why it failed. The failed
-check also marks the program line that drew the failed part, and each check links to its section of the [verification
+check also marks the program line that drew the failed part. Each check links to its section of the
+[short guide to the checks](docs/checks.md), and the guide links to the full [verification
 reference](docs/verification.md).
 
 ## What this repository delivers

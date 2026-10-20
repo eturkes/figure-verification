@@ -12,9 +12,9 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from outlet_support import (
+    GUIDE,
     ORDER,
     REASON_CHECK,
-    SPECIFICATION,
     Document,
     Node,
     assert_states,
@@ -89,7 +89,7 @@ def test_o9_all_reasons_have_exact_completed_prefix_and_one_cause(
         assert one(row.nodes(cls="covers")).text().strip()
         links = row.nodes(tag="a")
         assert len(links) == 1
-        assert links[0].attrs["href"] == SPECIFICATION[int(japanese)] + "#check-" + check
+        assert links[0].attrs["href"] == GUIDE[int(japanese)] + "#check-" + check
         assert links[0].attrs["target"] == "_blank"
         assert links[0].text().strip()
         causes = row.nodes(cls="cause")

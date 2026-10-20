@@ -1,8 +1,10 @@
 # Figure verification: what the verifier checks
 
-This reference describes the checks that the figure verifier runs in Open WebUI. It applies to the
-current release on the `main` branch. Each row of the **Show checks** list under a chart reply links
-to its section here. For the Japanese version, read [verification.ja.md](verification.ja.md).
+This reference describes in full the checks that the figure verifier runs in Open WebUI. It applies
+to the current release on the `main` branch. For a short overview, read the guide
+[checks.md](checks.md). Each row of the **Show checks** list under a chart reply links to its section
+of that guide, and each section of the guide links to its section here. For the Japanese version,
+read [verification.ja.md](verification.ja.md).
 
 ## What a verified figure means
 
@@ -123,7 +125,7 @@ Some special cases:
 - – **not checked**: an earlier check failed, so this check did not run.
 
 Click a row to open it. The opened row shows what the check does, the reason for a failure, and a
-link to this reference. It also shows the program lines that relate to the check:
+link to the short guide. It also shows the program lines that relate to the check:
 
 - **Chart program received from the model**: the whole program.
 - **Program run in your browser**: a note that the program ran to its end. If the run failed, the

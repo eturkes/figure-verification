@@ -125,9 +125,9 @@ ANCHORS = {
         "Pyodide を読み込めません。このサイトの広告ブロッカーをオフにしてください。",
     ),
 }
-SPECIFICATION = (
-    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.md",
-    "https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md",
+GUIDE = (
+    "https://github.com/eturkes/figure-verification/blob/main/docs/checks.md",
+    "https://github.com/eturkes/figure-verification/blob/main/docs/checks.ja.md",
 )
 SIMPLE = "import matplotlib.pyplot as plt\nplt.bar([0, 1, 2], [3, 5, 9])\nplt.show()\n"
 SALES = "import matplotlib.pyplot as plt\nplt.bar(['EU', 'US'], [34000, 40000])\nplt.show()\n"

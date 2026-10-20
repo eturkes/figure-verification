@@ -32,7 +32,9 @@ receipt. It runs the receipt's program unchanged in the user's browser, with the
 reader around it. It then judges the finished figure against the user's own files and request. It
 only publishes a PNG after the figure passes. Each reply also has a `Show checks` list. Click a
 check to open it. It shows what the check does, its related program lines or a note, and why it
-failed. The failed check marks the program line that drew the failed part. It also links to the [verification reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
+failed. The failed check marks the program line that drew the failed part. Each check also links
+to the [short guide to the checks](../docs/checks.md), which links to the full [verification
+reference](../docs/verification.md). Bootstrap proves provisioning only. It sends no
 chat request and makes no model-reliability claim.
 
 ## One-time setup
