@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Runs INSIDE the Open WebUI image: import each generated file, construct it, judge each arm."""
+"""Runs INSIDE the Open WebUI image: import each generated file, construct it, judge each arm, and
+cut each test font with the filter's own stdlib cut (Q74), which needs no fontTools."""
 
+import hashlib
 import importlib.util
 import json
 import platform
@@ -9,7 +11,13 @@ from pathlib import Path
 
 work = Path(sys.argv[1])
 arms = json.loads((work / "arms.json").read_text())
-result = {"python": platform.python_version(), "imports": {}, "verdicts": {}}
+result = {
+    "python": platform.python_version(),
+    "fonttools": importlib.util.find_spec("fontTools") is not None,
+    "imports": {},
+    "verdicts": {},
+    "cuts": {},
+}
 for pair in ("production", "demo"):
     filters = None
     for kind, cls in (("tool", "Tools"), ("filter", "Filter")):
@@ -37,4 +45,10 @@ for pair in ("production", "demo"):
         verdict = names["judge"](names["parse_description"](arm["description"]), sources)
         verdicts[arm["id"]] = "pass" if isinstance(verdict, names["Passed"]) else verdict.reason
     result["verdicts"][pair] = verdicts
+    cut_input = json.loads((work / "cut.json").read_text())
+    contents = [(work / name).read_bytes() for name in cut_input["files"]]
+    for font in cut_input["fonts"]:
+        whole = (work / font).read_bytes()
+        cut = names["cut_for"](whole, cut_input["program"], contents)
+        result["cuts"].setdefault(font, {})[pair] = [hashlib.sha256(cut).hexdigest(), len(cut)]
 print(json.dumps(result, sort_keys=True))

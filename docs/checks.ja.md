@@ -76,7 +76,7 @@
 |---|---|---|
 | matplotlib の図がある (pandas のグラフも該当) | 読み取り処理が、プログラムが表示した図と開いたままの図をすべて集める | `no_figure` |
 | 図は 1 つだけ (`plt.subplots` のパネルは可) | その数が 1 | `multiple_figures` |
-| すべての文字が使用できるフォントにある | 読み取り処理が、グリフ不足の警告、mathtext のグリフ不足の記録、パスのテキストの `.notdef` グリフを数える。フィルターは Open WebUI サーバーの日本語フォントを送る。サーバーに fontTools がある場合は、プログラムとファイルの文字に切り出す | `glyph_missing` |
+| すべての文字が使用できるフォントにある | 読み取り処理が、グリフ不足の警告、mathtext のグリフ不足の記録、パスのテキストの `.notdef` グリフを数える。フィルターは Open WebUI サーバーの日本語フォントを、ASCII とプログラムおよびファイルの文字に切り出して送る（切り出せないフォントファイルは全体を送る） | `glyph_missing` |
 | 検証器が内部エラーなく終了 | フィルターが記述を読み取る途中や判定中の例外はすべて不合格 | `verifier_error` |
 
 [詳細](verification.ja.md#check-figure) [例](gallery.ja.md#check-figure)

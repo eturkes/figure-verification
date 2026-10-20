@@ -8,14 +8,15 @@ neither (one the program builds with `chr`) is outside the cut: drawn with no ot
 it, the reader counts its missing glyph (matplotlib's warning, mathtext's log record, or a
 `.notdef` glyph path text lays out) and the figure fails, so a miss can only block.
 
-fontTools is optional: Open WebUI 0.11 shipped it (through `fpdf2`), 0.12.3 does not. Its import is
-function-local: without it, on a collection it cannot load, or on any fault while cutting, the whole
-font goes.
+The cut is the standard library's (`sfnt.py`, Q74): Open WebUI 0.12.3's image holds no fontTools, so
+every server cuts the same way. A font the cut refuses, or any fault while cutting, sends the whole
+font.
 """
 
 import hashlib
-import io
 from collections.abc import Iterable
+
+from webui.paste_in import sfnt
 
 # U+2212 = the minus sign in matplotlib's tick labels.
 _ALWAYS = frozenset(chr(code) for code in range(0x20, 0x7F)) | {"\u2212"}
@@ -34,20 +35,7 @@ def characters(program: str, contents: Iterable[bytes]) -> frozenset[str]:
 def cut(font: bytes, keep: frozenset[str]) -> bytes:
     """`font` holding the glyphs of `keep` alone, else the whole `font`."""
     try:
-        from fontTools import subset  # type: ignore[import-untyped]  # noqa: PLC0415
-        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
-
-        options = subset.Options()
-        # matplotlib applies no OpenType layout, so its tables would only add bytes.
-        options.layout_features = []
-        options.recalc_timestamp = False
-        loaded = TTFont(io.BytesIO(font), recalcTimestamp=False)
-        subsetter = subset.Subsetter(options)
-        subsetter.populate(unicodes=sorted(map(ord, keep)))
-        subsetter.subset(loaded)
-        out = io.BytesIO()
-        loaded.save(out)
-        return out.getvalue()
+        return sfnt.cut(font, keep)
     except Exception:
         return font
 

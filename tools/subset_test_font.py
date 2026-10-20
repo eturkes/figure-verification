@@ -10,7 +10,14 @@ blocks and every other character in the tracked test inputs. Run with `NotoSansJ
 
     uv run --locked python tools/subset_test_font.py <path to NotoSansJP-Regular.ttf>
 
-Deterministic: the same font and the same tracked text write the same bytes.
+`--cff` writes the CFF test font instead (Q74): Noto Sans CJK JP (face 0 of
+`NotoSansCJK-Regular.ttc`, OFL, Adobe) cut to `CFF_TEXT` with its subroutines + hints kept, so the
+stdlib cut's CID-keyed path (global + local subroutines, hint masks, several Font DICTs) has a
+real witness in the gate:
+
+    uv run --locked python tools/subset_test_font.py --cff <path to NotoSansCJK-Regular.ttc>
+
+Deterministic: the same font, fontTools release and tracked text write the same bytes.
 """
 
 import subprocess
@@ -22,6 +29,13 @@ from fontTools.ttLib import TTFont  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "tests" / "fonts" / "NotoSansJP-subset.ttf"
+CFF_OUTPUT = ROOT / "tests" / "fonts" / "NotoSansCJKjp-subset.otf"
+# Latin, kana + kanji glyphs sit in different Font DICTs of Noto Sans CJK JP.
+CFF_TEXT = (
+    "".join(map(chr, range(0x20, 0x7F)))
+    + "\u2212あいうえおかがきぎくぐアイウエオカガキギ、。「」\uff08\uff09\uff05\uff1a"
+    + "患者数診療科ごとの平均待ち時間分週年月日売上地域内外小児整形"
+)
 _SCANNED = ("data", "tests", "webui/banner.json")
 _KANA = (*range(0x3000, 0x3100), *range(0xFF00, 0xFFF0))  # CJK punctuation, kana, full width
 
@@ -47,21 +61,29 @@ def _characters() -> set[int]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 1:
-        sys.stderr.write("usage: subset_test_font.py <NotoSansJP-Regular.ttf>\n")
+    cff = argv[:1] == ["--cff"]
+    if len(argv) != 1 + cff:
+        sys.stderr.write(
+            "usage: subset_test_font.py <NotoSansJP-Regular.ttf>\n"
+            "       subset_test_font.py --cff <NotoSansCJK-Regular.ttc>\n"
+        )
         return 2
     options = subset.Options()
     options.recalc_timestamp = False
     options.name_IDs = ["*"]
     options.name_legacy = True
     options.notdef_outline = True
-    font = TTFont(argv[0], recalcTimestamp=False)
+    font = TTFont(argv[-1], fontNumber=0, recalcTimestamp=False)
     subsetter = subset.Subsetter(options)
-    subsetter.populate(unicodes=sorted(_characters()))
+    if cff:
+        subsetter.populate(text=CFF_TEXT)
+    else:
+        subsetter.populate(unicodes=sorted(_characters()))
     subsetter.subset(font)
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    font.save(OUTPUT)
-    sys.stdout.write(f"wrote {OUTPUT.relative_to(ROOT)} ({OUTPUT.stat().st_size} bytes)\n")
+    output = CFF_OUTPUT if cff else OUTPUT
+    output.parent.mkdir(parents=True, exist_ok=True)
+    font.save(output)
+    sys.stdout.write(f"wrote {output.relative_to(ROOT)} ({output.stat().st_size} bytes)\n")
     return 0
 
 

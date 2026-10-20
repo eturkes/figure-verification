@@ -217,9 +217,10 @@ draws error bars or a confidence band. The verifier checks these as marks of the
 figure fails. Ask for the chart without them (`errorbar=None`). The verifier does not check the
 extra parts that seaborn adds for a `hue` legend, and it does not explain the counts of
 `sns.histplot`. These figures also fail. A figure can hold several panels, made with `plt.subplots`. The available
-fonts must draw every character of the figure's text. When the Open WebUI server has `fontTools`,
-the verifier sends only part of the Japanese font. This part holds ASCII, the minus sign and the
-characters of the program text and the attached files. Otherwise, the verifier sends the whole font.
+fonts must draw every character of the figure's text. The verifier sends
+only part of the Japanese font. This part holds ASCII, the minus sign and the characters of the
+program text and the attached files. If the verifier cannot cut the font file (for example, a
+variable font or a font with embedded bitmaps), it sends the whole font.
 A figure fails with `glyph_missing` when it draws a character that no available font holds. An
 example is a Japanese character that the program makes with `chr(0x6708)`, when the verifier sent
 part of the font and the program text and the attached files do not contain the character. If the verifier itself stops with an error while it

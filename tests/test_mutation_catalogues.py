@@ -42,6 +42,7 @@ _CATALOGUES = (
     "reader",
     "receipt",
     "series",
+    "sfnt",
     "shapes",
     "ticks",
     "tool",

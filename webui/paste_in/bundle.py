@@ -52,8 +52,8 @@ _LINE_LIMIT = 100
 # The third-party imports an artifact may carry: Open WebUI imports itself into the process
 # that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition;
 # its own dependency `pydantic` builds the admin `Valves` (the tool's Q43 aliases, the filter's U2
-# font path), and `fontTools`, where the server holds it, cuts the filter's Japanese font (Q44).
-_ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic", "fontTools"})
+# font path). The filter's Japanese font cut is the standard library's (Q74).
+_ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic"})
 
 _ASSIGNMENT = "_SOURCES[\"{name}\"] = r'''\n{source}'''\n"
 
@@ -286,8 +286,8 @@ _PREAMBLE = '''\
 """Figure verification for Open WebUI. GENERATED FILE -- do not edit.
 
 Paste the whole file into Open WebUI. It imports the standard library and packages the image
-already carries -- `open_webui`, `pydantic` in the tool, `fontTools` in the filter -- and nothing
-else. There is no `requirements:` frontmatter and no network call.
+already carries -- `open_webui` and `pydantic` -- and nothing else. There is no `requirements:`
+frontmatter and no network call.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py`. The same command with
 `--check` fails when this file and its sources disagree, so an edit made here is lost at the next

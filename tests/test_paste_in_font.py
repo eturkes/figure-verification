@@ -14,11 +14,10 @@ import hashlib
 import importlib
 import io
 import logging
-import sys
 import threading
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from typing import cast
 
 import pytest
@@ -30,7 +29,7 @@ from paste_in_support import REPO_ROOT, StoredFile, fake_open_webui
 from verifier.figure import reader
 from verifier.figure.description import parse_description
 from verifier.figure.judge import Passed, Sources, judge
-from webui.paste_in import sandbox
+from webui.paste_in import sandbox, sfnt
 
 SOURCE = (REPO_ROOT / "tests" / "fonts" / "NotoSansJP-subset.ttf").read_bytes()
 ASCII = frozenset(chr(code) for code in range(0x20, 0x7F))
@@ -92,15 +91,8 @@ def test_q44_f1_the_cut_keeps_the_kept_characters_and_the_family_name() -> None:
     assert len(cut) * 10 < len(SOURCE)
 
 
-@pytest.mark.parametrize("module", ["fontTools", "fontTools.ttLib"])
-def test_q44_f2_without_fonttools_the_whole_font_is_sent(
-    monkeypatch: pytest.MonkeyPatch, module: str
-) -> None:
-    monkeypatch.setitem(sys.modules, module, None)
-    assert _cut(SOURCE, {"患"}) == SOURCE
-
-
 def test_q44_f2_a_fault_while_cutting_sends_the_whole_font(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Q74: the stdlib cut's own faults, a refusal or any other, send the whole font."""
     garbage = b"\x00\x01\x00\x00not a font"
     assert _cut(garbage, {"患"}) == garbage
 
@@ -108,7 +100,7 @@ def test_q44_f2_a_fault_while_cutting_sends_the_whole_font(monkeypatch: pytest.M
         message = "planted fault"
         raise RuntimeError(message)
 
-    monkeypatch.setattr(subset.Subsetter, "subset", explode)
+    monkeypatch.setattr(sfnt, "cut", explode)
     assert _cut(SOURCE, {"患"}) == SOURCE
 
 
@@ -243,15 +235,13 @@ def test_q44_r_a_quieted_logger_still_counts_a_mathtext_miss(quiet: str) -> None
 def test_q44_r_a_fault_reading_the_cut_back_sends_the_whole_font(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class Unreadable(io.BytesIO):
-        def getvalue(self) -> bytes:
-            message = "planted allocation failure"
-            raise MemoryError(message)
+    """Q74: the last step, writing the cut's tables out as one font, sits inside the fallback."""
 
-    def buffer(*initial: bytes) -> io.BytesIO:
-        return io.BytesIO(*initial) if initial else Unreadable()
+    def unwritable(*_args: object) -> bytes:
+        message = "planted allocation failure"
+        raise MemoryError(message)
 
-    monkeypatch.setattr(_fonts(), "io", SimpleNamespace(BytesIO=buffer))
+    monkeypatch.setattr(sfnt, "_sfnt", unwritable)
     assert _cut(SOURCE, {"患"}) == SOURCE
 
 

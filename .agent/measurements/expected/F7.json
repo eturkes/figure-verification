@@ -143,6 +143,17 @@
         false
       ]
     },
+    "identity": {
+      "differ": {
+        "native-100": 0,
+        "native-12": 0,
+        "unhinted": 0
+      },
+      "freetype": "2.13.3",
+      "kept": {
+        "$ge": 100
+      }
+    },
     "ja_font_source_bytes": {
       "$le": 99999
     }

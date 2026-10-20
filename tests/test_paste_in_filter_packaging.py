@@ -75,15 +75,17 @@ def test_f8_check_names_either_paste_target_when_its_committed_bytes_drift(
 
 
 def test_f8_filter_artifact_has_exact_import_closure_and_only_allowed_roots() -> None:
-    """F8/B6: the second artifact embeds every first-party dependency; its one external root is
-    `fontTools`, which the Open WebUI image carries (Q44: the Japanese font cut)."""
+    """F8/B6: the second artifact embeds every first-party dependency, the stdlib font cut
+    `webui.paste_in.sfnt` among them (Q74); its one external root beside `open_webui` is `pydantic`
+    (the font path's `Valves`)."""
     bundle = load_bundle()
     text = _filter_source()
     sources = bundle.embedded_sources(text)
     assert_exact_closure("webui.paste_in.filter", sources)
     assert_embedded_identity(sources)
-    assert offending_import_roots(bundle, text) == {"fontTools", "pydantic"}
+    assert offending_import_roots(bundle, text) == {"pydantic"}
     assert "webui.paste_in.fonts" in sources
+    assert "webui.paste_in.sfnt" in sources
     assert "webui.paste_in.receipt" in sources
     assert "webui.paste_in.sandbox" in sources
     assert "verifier.figure.judge" in sources

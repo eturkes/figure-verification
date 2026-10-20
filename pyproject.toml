@@ -53,9 +53,9 @@ dev = [
     # test-only (Q73): the wrapper loads the bundle's seaborn 0.13.2 for a program that names it, so
     # the corpus's seaborn cases run the same release here.
     "seaborn==0.13.2",
-    # test-only (Q44): the filter cuts the Japanese font with whatever fontTools the server holds,
-    # else sends it whole; the Open WebUI 0.12.3 image holds none, so no image version binds it.
-    # matplotlib needs `fonttools>=4.22`.
+    # test-only: the oracle of the filter's stdlib font cut (Q74) + the test fonts' generator
+    # (tools/subset_test_font.py); the Open WebUI 0.12.3 image holds none, so no image version binds
+    # it. matplotlib needs `fonttools>=4.22`.
     "fonttools>=4.67",
     # test-only (M21.1 F1): an independent CommonMark parser grades the interpretation's code spans,
     # since Open WebUI renders the reply as markdown with raw HTML.
@@ -124,6 +124,9 @@ ignore = [
 # files sit outside mypy's `files` list on purpose -- typing frozen numpy record scripts under
 # --strict would buy a strictness hole or a pandas-stubs dependency for no gate value.
 ".agent/measurements/**" = ["S101", "PLR2004", "T201", "TID251"]
+# The stdlib font cut (Q74) reads + writes binary tables whose byte values ARE the OpenType + CFF
+# specs' (format numbers, operator codes, record sizes); naming each would only restate the spec.
+"webui/paste_in/sfnt.py" = ["PLR2004"]
 
 [tool.ruff.lint.isort]
 # model_backend (hardware-gated local model server) and webui (Open WebUI integration harness)

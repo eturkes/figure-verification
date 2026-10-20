@@ -174,9 +174,19 @@ def f7():
             for name, row in data["results"].items()
             if name != "literal-control"
         },
-        # Q44: the cut font's RPC source size + each one-runtime sequence's earlier replies.
+        # Q44: the cut font's RPC source size + each one-runtime sequence's earlier replies; Q74:
+        # the bundle's FreeType draws each kept character of the stdlib cut as the whole font
+        # (autohinted outlines follow the glyph repertoire and stay unprojected).
         "cut": {
             "ja_font_source_bytes": data["results"]["ja-font"]["source_bytes"],
+            "identity": {
+                "freetype": data["identity"]["freetype"],
+                "kept": data["identity"]["kept"],
+                "differ": {
+                    mode: data["identity"]["differ"][mode]
+                    for mode in ("unhinted", "native-12", "native-100")
+                },
+            },
             "earlier_glyphs_missing": {
                 name: [(row["glyphs"] or 0) > 0 for row in rows]
                 for name, rows in data["earlier"].items()
@@ -395,7 +405,15 @@ def c1():
 
 
 def image():
-    return fields(load("image-0123.json"), "image", "python", "imports", "verdicts")
+    return fields(
+        load("image-0123.json"),
+        "image",
+        "python",
+        "imports",
+        "verdicts",
+        "fonttools",
+        "cut_equals_host",
+    )
 
 
 PROJECTORS = {

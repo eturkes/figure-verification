@@ -211,6 +211,12 @@ for (const [name, codes] of Object.entries(exported.sequences)) {
   for (const code of codes.slice(0, -1)) earlier[name].push(await execute(code, shared));
   results[name] = await execute(codes.at(-1), shared);
 }
+// Q74: the bundle's FreeType compares every kept character of the ja-font cut with the whole font.
+const identityReply = await execute(exported.identity, await runtime());
+const identity =
+  identityReply.stdout_other.length === 1
+    ? JSON.parse(identityReply.stdout_other[0])
+    : { error: identityReply.error, stderr: identityReply.stderr };
 // Q44: the Japanese PNGs beside the result, for inspection.
 for (const [name, { png }] of Object.entries(results)) {
   if (name.startsWith("ja-") && png.length) writeFileSync(`${output.replace(/\.json$/, "")}.${name}.png`, png);
@@ -218,7 +224,8 @@ for (const [name, { png }] of Object.entries(results)) {
 for (const row of [...Object.values(results), ...Object.values(earlier).flat()]) delete row.png;
 const report = {
   pyodide: version,
-  fonttools: exported.fonttools,
+  cut: exported.cut,
+  identity,
   python: pyodide.runPython("import sys; sys.version.split()[0]"),
   detector_entries: rules.length,
   results,
@@ -251,6 +258,8 @@ if (
   // 0.12.3's prelude runs on the literal substring once the package is loaded, and replaces `show`
   // with a PNG printer: a source spelling the name would print OWUI's own PNG beside the reader's.
   results["literal-control"].png_lines !== 1 ||
+  // Q74: unhinted + natively hinted outlines and advances equal the whole font's.
+  ["unhinted", "native-12", "native-100"].some((mode) => identity.differ?.[mode] !== 0) ||
   results["literal-control"].description_lines !== 0 ||
   results["literal-control"].stderr !== null
 ) {

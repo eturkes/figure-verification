@@ -1,0 +1,805 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The stdlib font cut (`.agent/archive/contracts/q74.md` C1-C4): each refusal, each rewrite, each
+# Type 2 + sfnt boundary. Each mutant names one red in the Q74 suite.
+module = "webui/paste_in/sfnt.py"
+tests = ["tests/test_paste_in_sfnt.py"]
+
+[[mutant]]
+id = "sfnt-unknown-table"
+predicate = "a table outside the closed set refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''    if tables.keys() - _VERBATIM - _REBUILT - _DROPPED:
+'''
+mutant = '''    if False:
+'''
+
+[[mutant]]
+id = "sfnt-glyph-past-font"
+predicate = "a cmap glyph past numGlyphs stays unmapped, as FreeType leaves it (C2)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c2_a_glyph_past_the_font_stays_unmapped"
+anchor = '''        if 0 < glyph < count:
+'''
+mutant = '''        if 0 < glyph:
+'''
+
+[[mutant]]
+id = "sfnt-notdef-dropped"
+predicate = ".notdef stays glyph 0 (C2)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_cut_draws_each_kept_character_as_the_whole_font"
+anchor = '''    mapping: dict[int, int] = {0: 0}
+'''
+mutant = '''    mapping: dict[int, int] = {}
+'''
+
+[[mutant]]
+id = "sfnt-loca-format-kept"
+predicate = "the long loca the cut writes is declared in head (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        head[_HEAD_LOCA_FORMAT : _HEAD_LOCA_FORMAT + 2] = struct.pack(">h", 1)
+'''
+mutant = '''        pass
+'''
+
+[[mutant]]
+id = "sfnt-outline-mismatch"
+predicate = "a TrueType cut needs a TrueType version (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''    truetype = version in _TRUETYPE and b"CFF " not in tables
+'''
+mutant = '''    truetype = True
+'''
+
+[[mutant]]
+id = "sfnt-adjustment-unzeroed"
+predicate = "head's checksum is taken with its adjustment zeroed (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_checksums_hold"
+anchor = '''    head[_HEAD_ADJUSTMENT : _HEAD_ADJUSTMENT + 4] = bytes(4)
+'''
+mutant = '''    pass
+'''
+
+[[mutant]]
+id = "sfnt-cmap-last-not-ucs4"
+predicate = "FreeType's UCS-4 preference picks the subtable (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_the_cut_reads_the_cmap_freetype_selects"
+anchor = '''    offset = (wide or unicode)[-1][2]
+'''
+mutant = '''    offset = unicode[-1][2]
+'''
+
+[[mutant]]
+id = "sfnt-cmap-format14-skipped"
+predicate = "a format 14 subtable FreeType selects refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_variation_subtable_freetype_selects_refuses"
+anchor = '''        record for record in records if record[0] in {0, 2} or record[:2] in {(3, 1), (3, 10)}
+'''
+mutant = '''        record
+        for record in records
+        if (record[0] in {0, 2} or record[:2] in {(3, 1), (3, 10)})
+        and _u16(table, record[2]) != 14
+'''
+
+[[mutant]]
+id = "sfnt-format4-odd"
+predicate = "an odd format 4 segment count refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        _u16(table, at + 6) % 2
+'''
+mutant = '''        False
+'''
+
+[[mutant]]
+id = "sfnt-format4-past-table"
+predicate = "a format 4 subtable past the table refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or limit > len(table)
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-short"
+predicate = "format 4 arrays past its length refuse (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or ranges_at + 2 * segments > limit
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-empty"
+predicate = "a format 4 subtable without segments refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or not ends
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-no-end"
+predicate = "format 4's last segment ends at U+FFFF (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or ends[-1] != _FORMAT_4_END
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-start-past-end"
+predicate = "a format 4 segment starting past its end refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or any(start > end for start, end in zip(starts, ends, strict=True))
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-unsorted"
+predicate = "format 4 segments sorted + disjoint (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        or any(start <= end for start, end in zip(starts[1:], ends, strict=False))
+'''
+mutant = '''        or False
+'''
+
+[[mutant]]
+id = "sfnt-format4-array-bounds"
+predicate = "a format 4 glyph array inside its subtable (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_glyph_array_past_its_subtable_refuses"
+anchor = '''            and ranges_at + 2 * index + offset + 2 * (ends[index] - starts[index] + 1) > limit
+'''
+mutant = '''            and False
+'''
+
+[[mutant]]
+id = "sfnt-format12-past-table"
+predicate = "a format 12 subtable past the table refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''    if at + _u32(table, at + 4) > len(table) or 16 + 12 * count > _u32(table, at + 4):
+'''
+mutant = '''    if 16 + 12 * count > _u32(table, at + 4):
+'''
+
+[[mutant]]
+id = "sfnt-format12-groups-past-length"
+predicate = "format 12 groups inside its length (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''    if at + _u32(table, at + 4) > len(table) or 16 + 12 * count > _u32(table, at + 4):
+'''
+mutant = '''    if at + _u32(table, at + 4) > len(table):
+'''
+
+[[mutant]]
+id = "sfnt-format12-start-past-end"
+predicate = "a format 12 group starting past its end refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''    if any(start > end for start, end, _glyph in groups) or any(
+'''
+mutant = '''    if False or any(
+'''
+
+[[mutant]]
+id = "sfnt-format12-unsorted"
+predicate = "format 12 groups sorted + disjoint (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cmap_freetype_may_read_otherwise_refuses"
+anchor = '''        later[0] <= earlier[1] for earlier, later in itertools.pairwise(groups)
+'''
+mutant = '''        False for earlier, later in itertools.pairwise(groups)
+'''
+
+[[mutant]]
+id = "sfnt-cmap-no-format12"
+predicate = "a supplementary character maps through format 12 (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_a_supplementary_character_maps_through_format_12"
+anchor = '''    if basic != runs:
+'''
+mutant = '''    if False:
+'''
+
+[[mutant]]
+id = "sfnt-cmap-delta"
+predicate = "format 4 deltas map each kept code to its glyph (C3b)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_cut_draws_each_kept_character_as_the_whole_font"
+anchor = '''                f">{count}H", *((glyph - start) & _MAX_U16 for start, _end, glyph in segments)
+'''
+mutant = '''                f">{count}H", *(0 for start, _end, glyph in segments)
+'''
+
+[[mutant]]
+id = "sfnt-cmap-run-glyphs"
+predicate = "a run merges consecutive glyphs alone (C3b)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c2_two_characters_of_one_glyph_share_it"
+anchor = '''            if code == end + 1 and glyph == first + code - start and end != _FORMAT_4_END - 1:
+'''
+mutant = '''            if code == end + 1 and end != _FORMAT_4_END - 1:
+'''
+
+[[mutant]]
+id = "sfnt-no-long-metrics"
+predicate = "an hhea declaring no long metric refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''    if long == 0:
+        raise RefusedError
+'''
+mutant = '''    if False:
+        raise RefusedError
+'''
+
+[[mutant]]
+id = "sfnt-short-metric-bearing"
+predicate = "a glyph past numberOfHMetrics reads its own bearing (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_cut_draws_each_kept_character_as_the_whole_font"
+anchor = '''        bearing = _i16(hmtx, 4 * glyph + 2 if glyph < long else 4 * long + 2 * (glyph - long))
+'''
+mutant = '''        bearing = _i16(hmtx, 4 * min(glyph, long - 1) + 2)
+'''
+
+[[mutant]]
+id = "sfnt-vertical-pair"
+predicate = "vhea + vmtx come as a pair, else refuse (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_per_glyph_table_the_cut_cannot_subset_refuses"
+anchor = '''    if (b"vhea" in tables) != (b"vmtx" in tables):
+        raise RefusedError
+'''
+mutant = '''    if False:
+        raise RefusedError
+'''
+
+[[mutant]]
+id = "sfnt-vertical-dropped"
+predicate = "vmtx feeds natively hinted phantom points (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_native_hinting_reads_the_kept_vertical_metrics_and_device_widths"
+anchor = '''    if b"vhea" in tables:
+        out[b"vhea"], out[b"vmtx"]'''
+mutant = '''    if False:
+        out[b"vhea"], out[b"vmtx"]'''
+
+[[mutant]]
+id = "sfnt-short-post"
+predicate = "a post shorter than its header refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''        if len(tables[b"post"]) < _POST_HEADER:
+'''
+mutant = '''        if False:
+'''
+
+[[mutant]]
+id = "sfnt-hdmx-dropped"
+predicate = "hdmx gives natively hinted advances (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_native_hinting_reads_the_kept_vertical_metrics_and_device_widths"
+anchor = '''    if b"hdmx" in tables:
+'''
+mutant = '''    if False:
+'''
+
+[[mutant]]
+id = "sfnt-hdmx-short"
+predicate = "an hdmx record shorter than its glyphs refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_per_glyph_table_the_cut_cannot_subset_refuses"
+anchor = '''    if records < 0 or size < 2 + count or len(table) < 8 + records * size:
+'''
+mutant = '''    if records < 0 or len(table) < 8 + records * size:
+'''
+
+[[mutant]]
+id = "sfnt-hdmx-unpadded"
+predicate = "hdmx records stay 4-byte multiples (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_native_hinting_reads_the_kept_vertical_metrics_and_device_widths"
+anchor = '''    width = 2 + len(order) + (-(2 + len(order)) % 4)
+'''
+mutant = '''    width = 2 + len(order)
+'''
+
+[[mutant]]
+id = "sfnt-ltsh-count"
+predicate = "an LTSH whose count is not the font's refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_per_glyph_table_the_cut_cannot_subset_refuses"
+anchor = '''        if glyphs != count or len(tables[b"LTSH"]) < 4 + count:
+'''
+mutant = '''        if False:
+'''
+
+[[mutant]]
+id = "sfnt-ltsh-dropped"
+predicate = "LTSH thresholds follow the kept glyphs (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_native_hinting_reads_the_kept_vertical_metrics_and_device_widths"
+anchor = '''    if b"LTSH" in tables:
+'''
+mutant = '''    if False:
+'''
+
+[[mutant]]
+id = "sfnt-kern-apple"
+predicate = "a kern table other than version 0 refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''    if version != 0:
+        raise RefusedError
+    at = 4
+'''
+mutant = '''    at = 4
+'''
+
+[[mutant]]
+id = "sfnt-kern-format"
+predicate = "a kern subtable other than format 0 refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''        if coverage >> 8 != 0 or length != 14 + 6 * pairs:
+'''
+mutant = '''        if length != 14 + 6 * pairs:
+'''
+
+[[mutant]]
+id = "sfnt-kern-length"
+predicate = "a kern subtable whose length is not its pairs' refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''        if coverage >> 8 != 0 or length != 14 + 6 * pairs:
+'''
+mutant = '''        if coverage >> 8 != 0:
+'''
+
+[[mutant]]
+id = "sfnt-kern-duplicate"
+predicate = "a repeated kept kern pair refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''        if len({pair[:2] for pair in kept}) != len(kept):
+'''
+mutant = '''        if False:
+'''
+
+[[mutant]]
+id = "sfnt-kern-order"
+predicate = "kern pairs sort for FreeType's binary search (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_kern_pairs_stay_sorted_after_renumbering"
+anchor = '''        kept = sorted(
+            (mapping[left], mapping[right], value)'''
+mutant = '''        kept = list(
+            (mapping[left], mapping[right], value)'''
+
+[[mutant]]
+id = "sfnt-loca-short-read"
+predicate = "a short loca reads doubled offsets (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''    if _i16(tables[b"head"], _HEAD_LOCA_FORMAT) == 1:
+'''
+mutant = '''    if True:
+'''
+
+[[mutant]]
+id = "sfnt-component-unrenumbered"
+predicate = "a composite names its components' new indices (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''            program[at : at + 2] = struct.pack(">H", mapping.setdefault(component, len(mapping)))
+'''
+mutant = '''            mapping.setdefault(component, len(mapping))
+'''
+
+[[mutant]]
+id = "sfnt-component-word-args"
+predicate = "word arguments take 4 bytes, byte arguments 2 (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        at += 8 if flags & _ARGS_ARE_WORDS else 6
+'''
+mutant = '''        at += 6 if flags & _ARGS_ARE_WORDS else 8
+'''
+
+[[mutant]]
+id = "sfnt-component-two-by-two"
+predicate = "a two-by-two transform takes 8 bytes (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        if flags & _HAVE_TWO_BY_TWO:
+            at += 8
+'''
+mutant = '''        if flags & _HAVE_TWO_BY_TWO:
+            at += 4
+'''
+
+[[mutant]]
+id = "sfnt-component-xy-scale"
+predicate = "an x/y scale takes 4 bytes (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        elif flags & _HAVE_XY_SCALE:
+            at += 4
+'''
+mutant = '''        elif flags & _HAVE_XY_SCALE:
+            at += 2
+'''
+
+[[mutant]]
+id = "sfnt-component-scale"
+predicate = "a scale takes 2 bytes (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        elif flags & _HAVE_SCALE:
+            at += 2
+'''
+mutant = '''        elif flags & _HAVE_SCALE:
+            at += 0
+'''
+
+[[mutant]]
+id = "sfnt-component-first-only"
+predicate = "every component of a composite is renumbered (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_composites_close_over_their_components"
+anchor = '''        if not flags & _MORE_COMPONENTS:
+            return found
+'''
+mutant = '''        return found
+'''
+
+[[mutant]]
+id = "sfnt-synthetic-base"
+predicate = "a SyntheticBase font refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_cff_refusals"
+anchor = '''        if _SYNTHETIC_BASE in operators or _offsets(top, _CHARSTRING_TYPE, [2]) != [2]:
+'''
+mutant = '''        if _offsets(top, _CHARSTRING_TYPE, [2]) != [2]:
+'''
+
+[[mutant]]
+id = "sfnt-charstring-type"
+predicate = "a charstring type other than 2 refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_cff_refusals"
+anchor = '''        if _SYNTHETIC_BASE in operators or _offsets(top, _CHARSTRING_TYPE, [2]) != [2]:
+'''
+mutant = '''        if _SYNTHETIC_BASE in operators:
+'''
+
+[[mutant]]
+id = "sfnt-charset-predefined"
+predicate = "a predefined charset refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_cff_refusals"
+anchor = '''    if at < _PREDEFINED_CHARSETS:
+        raise RefusedError
+'''
+mutant = '''    if False:
+        raise RefusedError
+'''
+
+[[mutant]]
+id = "sfnt-private-subrs-kept"
+predicate = "no Private DICT names Subrs once calls are inlined (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_the_cut_keeps_names_metrics_and_drops_layout"
+anchor = '''        self.entries = [entry for entry in entries if entry[0] != _SUBRS]
+'''
+mutant = '''        self.entries = entries
+'''
+
+[[mutant]]
+id = "sfnt-fd-unrenumbered"
+predicate = "FDSelect names the kept Font DICTs' new indices (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_a_cut_keeping_some_font_dicts_renumbers_them"
+anchor = '''        select = _fd_select_format3([renumbered[self.select[glyph]] for glyph in order])
+'''
+mutant = '''        select = _fd_select_format3([self.select[glyph] for glyph in order])
+'''
+
+[[mutant]]
+id = "sfnt-charset-gids"
+predicate = "the charset keeps each glyph's CID / SID (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_cut_draws_each_kept_character_as_the_whole_font"
+anchor = '''        charset = b"\x00" + b"".join(struct.pack(">H", self.names_of[glyph]) for glyph in order[1:])
+'''
+mutant = '''        charset = b"\x00" + b"".join(struct.pack(">H", glyph) for glyph in order[1:])
+'''
+
+[[mutant]]
+id = "sfnt-global-subrs-written"
+predicate = "no global subroutine survives the inlining (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_the_cut_keeps_names_metrics_and_drops_layout"
+anchor = '''                b"\x00\x00",  # no global subroutines: every call is inlined
+'''
+mutant = '''                _index([b"\x0b"]),
+'''
+
+[[mutant]]
+id = "sfnt-fd-select-format0"
+predicate = "an FDSelect format 0 reads one Font DICT per glyph (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_format_0_font_select_cuts"
+anchor = '''        select = list(table[at + 1 : at + 1 + count])
+'''
+mutant = '''        select = [0] * count
+'''
+
+[[mutant]]
+id = "sfnt-bias-1239"
+predicate = "107 below 1,240 subroutines (C3 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_index_carries_its_index_s_bias"
+anchor = '''    return 107 if count < 1240 else 1131 if count < 33900 else 32768
+'''
+mutant = '''    return 107 if count < 1239 else 1131 if count < 33900 else 32768
+'''
+
+[[mutant]]
+id = "sfnt-bias-1240"
+predicate = "1,131 from 1,240 subroutines (C3 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_index_carries_its_index_s_bias"
+anchor = '''    return 107 if count < 1240 else 1131 if count < 33900 else 32768
+'''
+mutant = '''    return 107 if count <= 1240 else 1131 if count < 33900 else 32768
+'''
+
+[[mutant]]
+id = "sfnt-bias-33899"
+predicate = "1,131 below 33,900 subroutines (C3 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_index_carries_its_index_s_bias"
+anchor = '''    return 107 if count < 1240 else 1131 if count < 33900 else 32768
+'''
+mutant = '''    return 107 if count < 1240 else 1131 if count < 33899 else 32768
+'''
+
+[[mutant]]
+id = "sfnt-bias-33900"
+predicate = "32,768 from 33,900 subroutines (C3 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_index_carries_its_index_s_bias"
+anchor = '''    return 107 if count < 1240 else 1131 if count < 33900 else 32768
+'''
+mutant = '''    return 107 if count < 1240 else 1131 if count <= 33900 else 32768
+'''
+
+[[mutant]]
+id = "sfnt-call-unpushed"
+predicate = "a call's index is the operand just pushed (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''        if self.last is None or subrs is None or depth >= _MAX_NESTING:
+'''
+mutant = '''        if subrs is None or depth >= _MAX_NESTING:
+'''
+
+[[mutant]]
+id = "sfnt-call-no-local"
+predicate = "a call into absent subroutines refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''        if self.last is None or subrs is None or depth >= _MAX_NESTING:
+'''
+mutant = '''        if self.last is None or depth >= _MAX_NESTING:
+'''
+
+[[mutant]]
+id = "sfnt-nesting-eleven"
+predicate = "an eleventh nested call refuses (C1 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_subroutine_deeper_than_ten_calls_refuses"
+anchor = '''        if self.last is None or subrs is None or depth >= _MAX_NESTING:
+'''
+mutant = '''        if self.last is None or subrs is None or depth > _MAX_NESTING:
+'''
+
+[[mutant]]
+id = "sfnt-nesting-ten"
+predicate = "ten nested calls inline (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_subroutine_deeper_than_ten_calls_refuses"
+anchor = '''_MAX_NESTING: Final = 10
+'''
+mutant = '''_MAX_NESTING: Final = 9
+'''
+
+[[mutant]]
+id = "sfnt-index-kept"
+predicate = "the call's index operand leaves the program (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_name_keyed_subroutines_inline_in_place"
+anchor = '''        del self.out[place:]
+'''
+mutant = '''        pass
+'''
+
+[[mutant]]
+id = "sfnt-mask-bytes"
+predicate = "a mask takes ceil(stems / 8) bytes (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_after_a_mask_inlines"
+anchor = '''            mask = (self.stems + 7) // 8
+'''
+mutant = '''            mask = self.stems // 8
+'''
+
+[[mutant]]
+id = "sfnt-implicit-vstem"
+predicate = "operands pending at a mask declare an implicit vstem (C3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_call_after_a_mask_inlines"
+anchor = '''        if operator in _STEMS or operator in _MASKS:
+'''
+mutant = '''        if operator in _STEMS:
+'''
+
+[[mutant]]
+id = "sfnt-top-return"
+predicate = "a return outside a subroutine refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''                if depth == 0 or at + size != len(data):
+'''
+mutant = '''                if at + size != len(data):
+'''
+
+[[mutant]]
+id = "sfnt-return-interior"
+predicate = "bytes after a subroutine's return refuse (C1, reviewer-1 F3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_subroutine_ends_in_return_or_endchar"
+anchor = '''                if depth == 0 or at + size != len(data):
+'''
+mutant = '''                if depth == 0:
+'''
+
+[[mutant]]
+id = "sfnt-seac"
+predicate = "a seac endchar refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''                if self.pending >= _SEAC_OPERANDS:
+'''
+mutant = '''                if False:
+'''
+
+[[mutant]]
+id = "sfnt-seac-four"
+predicate = "four seac operands without a width refuse (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''_SEAC_OPERANDS: Final = 4
+'''
+mutant = '''_SEAC_OPERANDS: Final = 5
+'''
+
+[[mutant]]
+id = "sfnt-no-endchar"
+predicate = "a glyph without endchar refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''        raise RefusedError  # a glyph without `endchar`, a subroutine without `return`
+'''
+mutant = '''        return False
+'''
+
+[[mutant]]
+id = "sfnt-subroutine-falls-off"
+predicate = "a subroutine without return or endchar refuses (C1, reviewer-1 F3)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c3_a_subroutine_ends_in_return_or_endchar"
+anchor = '''        raise RefusedError  # a glyph without `endchar`, a subroutine without `return`
+'''
+mutant = '''        if depth == 0:
+            raise RefusedError
+        return False
+'''
+
+[[mutant]]
+id = "sfnt-read-budget"
+predicate = "inlining reads at most the font's length (C4, reviewer-1 F2)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_inlining_reads_at_most_the_font_s_length"
+anchor = '''        if self.left < 0:
+'''
+mutant = '''        if False:
+'''
+
+[[mutant]]
+id = "sfnt-mask-budget"
+predicate = "mask bytes count against the read budget (C4, reviewer-1 RF2)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_mask_bytes_count_against_the_read_budget"
+anchor = '''            self.budget.spend(mask)
+'''
+mutant = '''            pass
+'''
+
+[[mutant]]
+id = "sfnt-charstring-length"
+predicate = "an inlined glyph holds at most 65,535 bytes (C4 TN5177)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_an_inlined_glyph_past_65535_bytes_refuses"
+anchor = '''    if len(flattening.out) > _MAX_CHARSTRING:
+'''
+mutant = '''    if False:
+'''
+
+[[mutant]]
+id = "sfnt-dict-repeat"
+predicate = "a repeated CFF DICT operator refuses (C1, reviewer-1 F1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_repeated_dict_operator_refuses"
+anchor = '''    if operands or len({entry[0] for entry in entries}) != len(entries):
+'''
+mutant = '''    if operands:
+'''
+
+[[mutant]]
+id = "sfnt-cff-version"
+predicate = "a CFF other than version 1 refuses (C1, reviewer-1 F5)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cff_version_or_font_select_outside_the_reading_refuses"
+anchor = '''        if table[0] != 1:
+'''
+mutant = '''        if False:
+'''
+
+[[mutant]]
+id = "sfnt-fd-select-format"
+predicate = "an FDSelect other than format 0 or 3 refuses (C1, reviewer-1 F5)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_cff_version_or_font_select_outside_the_reading_refuses"
+anchor = '''    else:
+        raise RefusedError
+    if len(select) != count or any(font >= fonts for font in select):
+'''
+mutant = '''    else:
+        select = [0] * count
+    if len(select) != count or any(font >= fonts for font in select):
+'''
+
+[[mutant]]
+id = "sfnt-hdmx-reindex"
+predicate = "each kept glyph keeps its own hdmx width (C4, reviewer-1 F4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_per_glyph_tables_follow_the_kept_glyph_order"
+anchor = '''        kept = bytes(table[record + 2 + glyph] for glyph in order)
+'''
+mutant = '''        kept = bytes(table[record + 2 + glyph] for glyph in range(len(order)))
+'''
+
+[[mutant]]
+id = "sfnt-ltsh-reindex"
+predicate = "each kept glyph keeps its own LTSH threshold (C4, reviewer-1 F4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_per_glyph_tables_follow_the_kept_glyph_order"
+anchor = '''            tables[b"LTSH"][4 + glyph] for glyph in order
+'''
+mutant = '''            tables[b"LTSH"][4 + glyph] for glyph in range(len(order))
+'''
+
+[[mutant]]
+id = "sfnt-undefined-operator"
+predicate = "an operator outside the closed set refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_charstring_outside_the_cut_s_reading_refuses"
+anchor = '''        elif operator not in _STEMS and operator not in _DRAWING:
+            raise RefusedError
+'''
+mutant = '''        elif False:
+            raise RefusedError
+'''
+
+[[mutant]]
+id = "sfnt-tables-unaligned"
+predicate = "tables begin on 4-byte boundaries (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_tables_align_on_four_bytes"
+anchor = '''        offset += len(data) + (-len(data) % 4)
+'''
+mutant = '''        offset += len(data)
+'''
+
+[[mutant]]
+id = "sfnt-tables-unsorted"
+predicate = "table records sort by tag (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_tables_align_on_four_bytes"
+anchor = '''    tags = sorted(tables)
+'''
+mutant = '''    tags = list(tables)
+'''
+
+[[mutant]]
+id = "sfnt-font-checksum"
+predicate = "the font sums to 0xB1B0AFBA (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_checksums_hold"
+anchor = '''    adjustment = (_CHECKSUM_MAGIC - _checksum(bytes(out))) & 0xFFFFFFFF
+'''
+mutant = '''    adjustment = 0
+'''
+
+[[mutant]]
+id = "sfnt-table-checksum"
+predicate = "each record carries its table's checksum (C4)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c4_checksums_hold"
+anchor = '''        out += tag + struct.pack(">III", _checksum(data), offset, len(data))
+'''
+mutant = '''        out += tag + struct.pack(">III", 0, offset, len(data))
+'''
+
+[[mutant]]
+id = "sfnt-collection-face"
+predicate = "a collection cuts its first face (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_collection_cuts_its_first_face"
+anchor = '''    start = _u32(font, 12) if font[:4] == _COLLECTION else 0
+'''
+mutant = '''    start = 0
+'''
+
+[[mutant]]
+id = "sfnt-duplicate-tag"
+predicate = "a repeated table tag refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_repeated_table_tag_refuses"
+anchor = '''        if tag in tables or offset + length > len(font):
+'''
+mutant = '''        if offset + length > len(font):
+'''
+
+[[mutant]]
+id = "sfnt-table-past-end"
+predicate = "a table past the font refuses (C1)"
+kills = "tests/test_paste_in_sfnt.py::test_q74_c1_a_table_outside_the_cut_s_reading_refuses"
+anchor = '''        if tag in tables or offset + length > len(font):
+'''
+mutant = '''        if tag in tables:
+'''

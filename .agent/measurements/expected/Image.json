@@ -1,4 +1,15 @@
 {
+  "cut_equals_host": {
+    "NotoSansCJKjp-subset.otf": {
+      "demo": true,
+      "production": true
+    },
+    "NotoSansJP-subset.ttf": {
+      "demo": true,
+      "production": true
+    }
+  },
+  "fonttools": false,
   "image": "ghcr.io/open-webui/open-webui:v0.12.3",
   "imports": {
     "demo/filter": "ok",

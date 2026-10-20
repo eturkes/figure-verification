@@ -164,19 +164,19 @@ def test_b5_loading_restores_embedded_module_slots() -> None:
                 sys.modules.update(before)
 
 
-def test_b6_import_surface_is_stdlib_open_webui_pydantic_filter_fonttools() -> None:
+def test_b6_import_surface_is_stdlib_open_webui_pydantic() -> None:
     """B6: AST scan over the wrapper AND every embedded source admits only stdlib + `open_webui`,
     plus `pydantic` in every artifact (the admin `Valves`: the tool's Q43 aliases, the filter's U2
-    font path) and `fontTools` in the two filter artifacts alone (Q44: the Japanese font cut).
+    font path); the Japanese font cut is the standard library's (Q74), so no `fontTools`.
 
     The failure names every offending root. A planted `import numpy` inside a blob fails.
     """
     bundle = load_bundle()
     beyond = {
         "paste-in/figure_verification_tool.py": {"pydantic"},
-        "paste-in/figure_verification_filter.py": {"fontTools", "pydantic"},
+        "paste-in/figure_verification_filter.py": {"pydantic"},
         "webui/demo-paste-in/figure_verification_tool.py": {"pydantic"},
-        "webui/demo-paste-in/figure_verification_filter.py": {"fontTools", "pydantic"},
+        "webui/demo-paste-in/figure_verification_filter.py": {"pydantic"},
     }
     seen = set()
     for path, _root in artifact_items(bundle):

@@ -1,24 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Export the banner's simple program, three plotting programs + the Japanese legs (M17.1, Q44, U2).
+"""Export the banner's simple program, three plotting programs + the Japanese legs (M17.1, Q44, U2,
+Q74).
 
 The Japanese legs carry the font the filter reads on this host (`owui_files.find_cjk_font`;
-`FV_CJK_FONT` stands in for the admin's Valve path). Open WebUI 0.12.3's interpreter holds no
-fontTools, so production sends that font whole (`ja-whole`); the cut legs cut it with this
-interpreter's fontTools, as `fonts.cut` does on a server that holds one. The font must be one face
-(a collection does not cut: the run exits naming it).
+`FV_CJK_FONT` stands in for the admin's Valve path; a collection draws face 0). The cut legs cut it
+with the filter's own stdlib cut (`fonts.cut`, Q74) while every fontTools import is blocked, as on
+Open WebUI 0.12.3's image; `ja-whole` sends it whole, the path a refused cut takes. `identity`
+compares, in the bundle's own FreeType, every character the `ja-font` cut keeps with the whole font.
 """
 
+import base64
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
-import fontTools  # type: ignore[import-untyped]
+# Open WebUI 0.12.3's image holds no fontTools: blocked, so the cut measured is the shipped one.
+sys.modules["fontTools"] = None  # type: ignore[assignment]
 
-from webui.banner import load
-from webui.paste_in.fonts import characters, cut
-from webui.paste_in.owui_files import find_cjk_font
-from webui.paste_in.sandbox import wrapper_code
+from webui.banner import load  # noqa: E402
+from webui.paste_in.fonts import characters, cut  # noqa: E402
+from webui.paste_in.owui_files import find_cjk_font  # noqa: E402
+from webui.paste_in.sandbox import wrapper_code  # noqa: E402
 
 root = Path(__file__).resolve().parents[2]
 program = next(arm.program for arm in load().arms if arm.id == "simple")
@@ -90,15 +94,47 @@ legs = {
     "ja-second": second,
     "ja-marker": marker,
 }
-cuts = {name: cut(font, characters(source, [clinic])) for name, source in legs.items()}
+started = time.perf_counter()
+cuts = {"ja-font": cut(font, characters(japanese, [clinic]))}
+cut_ms = round(1000 * (time.perf_counter() - started))
+cuts |= {name: cut(font, characters(source, [clinic])) for name, source in legs.items()}
 if any(len(piece) >= len(font) for piece in cuts.values()):
-    sys.exit("f7_export: the font did not cut (a collection?); set FV_CJK_FONT to a one-face font")
+    sys.exit("f7_export: the cut refused this font; set FV_CJK_FONT to another Japanese font")
+# Q74: the bundle's FreeType draws each kept character of the cut as it draws the whole font --
+# unhinted, natively hinted at two sizes; autohinted outlines follow the glyph repertoire (Q44).
+identity = f"""
+import base64, json
+import matplotlib.ft2font as ft
+whole, part = "/tmp/fv-identity-whole", "/tmp/fv-identity-part"
+for path, data in ((whole, {base64.b64encode(font).decode()!r}),
+                   (part, {base64.b64encode(cuts["ja-font"]).decode()!r})):
+    with open(path, "wb") as handle:
+        handle.write(base64.b64decode(data))
+def drawn(path, code, flags, size, factor):
+    face = ft.FT2Font(path, hinting_factor=factor)
+    face.set_size(size, 72)
+    glyph = face.load_char(code, flags=flags)
+    vertices, kinds = face.get_path()
+    return glyph.horiAdvance, glyph.linearHoriAdvance, vertices.tobytes(), kinds.tobytes()
+codes = [code for code in {sorted(map(ord, characters(japanese, [clinic])))!r}
+         if ft.FT2Font(whole).get_char_index(code)]
+modes = {{
+    "unhinted": (ft.LoadFlags.NO_HINTING, 12, 8),
+    "native-12": (ft.LoadFlags.DEFAULT, 12, 1),
+    "native-100": (ft.LoadFlags.DEFAULT, 100, 1),
+    "autohint": (ft.LoadFlags.FORCE_AUTOHINT, 12, 8),
+}}
+differ = {{name: sum(drawn(whole, c, *mode) != drawn(part, c, *mode) for c in codes)
+          for name, mode in modes.items()}}
+print(json.dumps({{"freetype": ft.__freetype_version__, "kept": len(codes), "differ": differ}}))
+"""
 print(
     json.dumps(
         {
             "dataset": (root / "data/sales.csv").read_bytes().hex(),
             "clinic": clinic.hex(),
-            "fonttools": fontTools.version,
+            "cut": {"ms": cut_ms, "font_bytes": len(font), "cut_bytes": len(cuts["ja-font"])},
+            "identity": identity,
             "wrappers": {name: wrapper_code(source) for name, source in programs.items()},
             # Each runs in its own fresh runtime: a font or a warning cache must not leak across.
             "japanese": {

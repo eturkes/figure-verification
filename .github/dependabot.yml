@@ -15,7 +15,7 @@ updates:
       dev-tooling:
         patterns: ["ruff", "mypy", "pytest*", "hypothesis", "detect-secrets", "zizmor"]
 
-  # The proposer runtime is a SEPARATE py3.12 CUDA project with its own lock; the gate
+  # The proposer runtime is a SEPARATE py3.15 CUDA project with its own lock; the gate
   # venv never resolves it, so it needs its own update stream.
   - package-ecosystem: "uv"
     directory: "/model_backend/runtime"

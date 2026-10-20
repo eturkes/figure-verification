@@ -76,7 +76,7 @@ your browser's network.
 |---|---|---|
 | a matplotlib figure (pandas plots count) | the reader collects every figure that the program shows or leaves open | `no_figure` |
 | only one figure (panels from `plt.subplots` allowed) | the same count is 1 | `multiple_figures` |
-| every character in an available font | the reader counts missing-glyph warnings, mathtext missing-glyph records and `.notdef` glyphs in path text; the filter sends the Japanese font from the Open WebUI server, cut to the characters of the program and the files where the server has fontTools | `glyph_missing` |
+| every character in an available font | the reader counts missing-glyph warnings, mathtext missing-glyph records and `.notdef` glyphs in path text; the filter sends the Japanese font from the Open WebUI server, cut to ASCII and the characters of the program and the files (whole when it cannot cut the font file) | `glyph_missing` |
 | verifier finishes without an internal error | any exception while the filter decodes the description or judges it fails the chart | `verifier_error` |
 
 [Full rules](verification.md#check-figure) [Examples](gallery.md#check-figure)

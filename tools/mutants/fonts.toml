@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# The Japanese font cut (`.agent/archive/contracts/q44.md` F1-F4): what it keeps, how it degrades, where the
-# sandbox writes it. Each mutant names one red in the Q44 suite.
+# The Japanese font cut (`.agent/archive/contracts/q44.md` F1-F4; the cut itself = `sfnt.toml`, Q74): what
+# it keeps, how it degrades, where the sandbox writes it. Each mutant names one red in the Q44 suite.
 module = "webui/paste_in/fonts.py"
 tests = ["tests/test_paste_in_font.py"]
 
@@ -43,29 +43,18 @@ mutant = '''        found.update(content.decode("utf-8"))'''
 id = "q44-keep-ignored"
 predicate = "the cut holds the glyphs of the kept characters alone (F1)"
 kills = "tests/test_paste_in_font.py::test_q44_f1_the_cut_keeps_the_kept_characters_and_the_family_name"
-anchor = '''        subsetter.populate(unicodes=sorted(map(ord, keep)))'''
-mutant = '''        subsetter.populate(unicodes=[0x20])'''
+anchor = '''        return sfnt.cut(font, keep)'''
+mutant = '''        return sfnt.cut(font, frozenset(" "))'''
 
 [[mutant]]
 id = "q44-fault-raises"
-predicate = "any fault while cutting sends the whole font (F2)"
+predicate = "any fault while cutting, a refusal or not, sends the whole font (F2, Q74)"
 kills = "tests/test_paste_in_font.py::test_q44_f2_a_fault_while_cutting_sends_the_whole_font"
-anchor = '''        return out.getvalue()
+anchor = '''        return sfnt.cut(font, keep)
     except Exception:
         return font'''
-mutant = '''        return out.getvalue()
-    except ImportError:
-        return font'''
-
-[[mutant]]
-id = "q44-absent-fonttools-raises"
-predicate = "an image without fontTools sends the whole font (F2)"
-kills = "tests/test_paste_in_font.py::test_q44_f2_without_fonttools_the_whole_font_is_sent[fontTools]"
-anchor = '''        return out.getvalue()
-    except Exception:
-        return font'''
-mutant = '''        return out.getvalue()
-    except (RuntimeError, ValueError, TypeError, AttributeError, KeyError):
+mutant = '''        return sfnt.cut(font, keep)
+    except sfnt.RefusedError:
         return font'''
 
 [[mutant]]
@@ -74,19 +63,6 @@ predicate = "each distinct font gets its own sandbox path (F4)"
 kills = "tests/test_paste_in_font.py::test_q44_f4_each_font_has_its_own_sandbox_path"
 anchor = '''    return f"/tmp/figure-verification-cjk-{hashlib.sha256(font).hexdigest()[:16]}.ttf"  # noqa: S108'''
 mutant = '''    return "/tmp/figure-verification-cjk.ttf"  # noqa: S108'''
-
-[[mutant]]
-id = "q44-readback-outside-fallback"
-predicate = "a fault reading the cut back sends the whole font (F2, Q44 review)"
-kills = "tests/test_paste_in_font.py::test_q44_r_a_fault_reading_the_cut_back_sends_the_whole_font"
-anchor = '''        loaded.save(out)
-        return out.getvalue()
-    except Exception:
-        return font'''
-mutant = '''        loaded.save(out)
-    except Exception:
-        return font
-    return out.getvalue()'''
 
 [[mutant]]
 id = "q44-collect-outside-fallback"
