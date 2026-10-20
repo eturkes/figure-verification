@@ -8,10 +8,10 @@ that a failure shows. Each row of **Show checks** links to its section here. Rul
 ## How the verifier works
 
 ![Diagram of the verifier: the tool records a receipt, the filter runs the model's program inside
-the trusted reader in your browser, and one card per check lists what that check compares, in run
-order; each check can stop the chart](diagrams/verifier.svg)
+the trusted reader in your browser, and the nine checks follow in run order, each summarised in one
+line; each check can stop the chart](diagrams/verifier.svg)
 
-Each card lists what its check compares; the cards run top to bottom. Dashed boxes: what the
+Each check shows a one-line summary; the tables below list every rule. Dashed boxes: what the
 language model writes. Red dashed arrows: where a failed check stops the chart.
 
 1. **Receipt.** The `draw_figure` tool records the model's program, the ids of your attached files

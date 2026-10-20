@@ -236,11 +236,16 @@ def _structure(source: Path) -> tuple[set[str], set[str]]:
 
 
 def test_q72_both_diagrams_draw_the_same_structure() -> None:
-    """Q72: the EN + JA diagram sources declare the same nodes and draw the same edges, so a check
-    card or an arrow added in one language cannot go missing from the other; labels may differ."""
+    """Q72: the EN + JA diagram sources declare the same nodes and draw the same edges, so a box or
+    an arrow added in one language cannot go missing from the other; labels may differ. Each names
+    all nine checks: checks 1, 2 and 9 as their own boxes, checks 3-8 as rows of the judge box."""
     english, japanese = (
         _structure(_DIAGRAMS / name) for name in ("verifier.dot", "verifier.ja.dot")
     )
     assert english == japanese
     nodes, _edges = english
-    assert {f"c{index}" for index in range(1, 10)} <= nodes
+    assert {"c1", "c2", "judge", "c9"} <= nodes
+    for name, word in (("verifier.dot", "Check"), ("verifier.ja.dot", "チェック")):
+        text = (_DIAGRAMS / name).read_text(encoding="utf-8")
+        assert all(f"<b>{word} {number}:" in text for number in (1, 2, 9)), name
+        assert all(f"<b>{number} " in text for number in range(3, 9)), name

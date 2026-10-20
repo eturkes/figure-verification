@@ -1,145 +1,74 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 図の検証器がチェックごとに判定するしくみ。tools/render_diagrams.py が verifier.ja.svg に
-// 描画します。各カード = 1 つのチェック: 何を比べるか、実行順。
+// 図の検証器が判定するしくみ: 処理の流れと、チェックごとの要約カード。tools/render_diagrams.py が
+// verifier.ja.svg に描画します。すべての規則は docs/checks.ja.md の表にあります。
 digraph verifier {
   graph [fontname="Noto Sans CJK JP", fontsize=15, fontcolor="#1f2328", bgcolor="white",
-         pad=0.3, nodesep=0.35, ranksep=0.32, newrank=true, compound=true];
+         pad=0.3, nodesep=0.35, ranksep=0.28, newrank=true, compound=true];
   node [fontname="Noto Sans CJK JP", fontsize=14, fontcolor="#1f2328", shape=box,
         style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
-        margin="0.2,0.1"];
+        margin="0.15,0.06"];
   edge [fontname="Noto Sans CJK JP", fontsize=12, fontcolor="#424a53", color="#57606a",
         arrowsize=0.7, penwidth=1.1];
 
-  you [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>あなた</b></td></tr><tr><td align="center" height="21">依頼文 + CSV ファイル</td></tr></table>>];
-  model [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>言語モデル</b></td></tr><tr><td align="center" height="21">Python のプログラムを書く</td></tr></table>>, style="rounded,dashed"];
+  you [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなた</b></td></tr><tr><td height="24">依頼文 + CSV ファイル</td></tr></table>>];
+  model [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>言語モデル</b></td></tr><tr><td height="24">Python のプログラムを書く</td></tr></table>>, style="rounded,dashed"];
 
   subgraph cluster_server {
     label=<<b>Open WebUI のサーバー</b>>; labeljust=l; style="rounded,filled";
     fillcolor="#eef3f8"; color="#b6c3d1";
-    storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>Open WebUI の保存データ</b></td></tr><tr><td align="center" height="21">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled, margin="0.2,0.05"];
-    tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>draw_figure ツール</b></td></tr><tr><td align="center" height="21">受領記録を残す: プログラム、</td></tr><tr><td align="center" height="21">ファイル ID、依頼文</td></tr><tr><td align="center" height="21">判定はしない</td></tr></table>>];
+    storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>Open WebUI の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
+    tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">受領記録を残す。判定はしない</td></tr></table>>];
     c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 1: グラフのプログラムを受信</b> (フィルター)</td></tr>
-        <tr><td align="left" width="420" height="30">• 要求の状態に <font color="#0a3069">draw_figure</font> の受領記録がある</td></tr>
-        <tr><td align="left" width="420" height="30">• 返信の最後のツールの呼び出しが対象</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• 呼び出しにサインイン済みのユーザー ID がある</td></tr></table>>];
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 1: プログラムを受信</b> (フィルター)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4"><font color="#0a3069">draw_figure</font> の受領記録、サインイン済みのユーザー</td></tr></table>>];
     c2 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 2: ブラウザでプログラムを実行</b> (フィルター)</td></tr>
-        <tr><td align="left" width="420" height="30">• ブラウザのセッションがあり、Pyodide の</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ファイル保存がオフ</td></tr>
-        <tr><td align="left" width="420" height="30">• 60 秒以内の応答: <font color="#0a3069">{stdout, stderr, result}</font></td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">stderr</font> が空</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;(<font color="#0a3069">loadPyodide</font> なら広告ブロッカー)</td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">stdout</font> にタグ付きの記述の行が 1 つ</td></tr>
-        <tr><td align="left" width="420" height="30">• プログラムがコンパイルでき、例外なく実行</td></tr>
-        <tr><td align="left" width="420" height="30">• 読み込むのは numpy、pandas、matplotlib、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;標準ライブラリだけ</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• 記述が読み取り処理のサイズ上限内</td></tr></table>>];
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 2: ブラウザで実行</b> (フィルター)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4">60 秒以内の応答、<font color="#0a3069">stderr</font> が空、プログラムが最後まで実行</td></tr></table>>];
 
-    subgraph cluster_judge {
-      label=<<b>判定処理</b>: 標準ライブラリの Python が記述を読む>; labeljust=l;
-      style="rounded,filled"; fillcolor="#e3eaf2"; color="#a9b8c8";
-      c3 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 3: 図を 1 つ描画</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 表示した図と開いたままの図: ちょうど 1 つ</td></tr>
-        <tr><td align="left" width="420" height="30">• グリフ不足の警告も <font color="#0a3069">.notdef</font> グリフもない</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• 記述の読み取りと判定で例外がない</td></tr></table>>];
-      c4 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 4: チェックできる部品だけを使用</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 各 (描画要素のクラス、描画の呼び出し) の組が</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;決まった集合にある: 折れ線、散布図、棒、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ヒストグラム、円、面、基準線と帯、テキスト</td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">AxesImage</font>、<font color="#0a3069">QuadMesh</font>、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;<font color="#0a3069">FigureImage</font> がない</td></tr>
-        <tr><td align="left" width="420" height="30">• 軸のクラスがちょうど <font color="#0a3069">Axes</font>: 極座標、3D、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;挿入図なし</td></tr>
-        <tr><td align="left" width="420" height="30">• 2 軸なし、重なるパネルなし</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• すべてのパネルにデータの描画要素</td></tr></table>>];
-      c5 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 5: 正しい軸</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 各データの描画要素の変換 = <font color="#0a3069">ax.transData</font></td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">get_scale()</font> が線形。対数は</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ラベルに明記した場合だけ</td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">get_inverted()</font> が x と y で false</td></tr>
-        <tr><td align="left" width="420" height="30">• 棒、ヒストグラム、面: 0 が</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;<font color="#0a3069">get_view_interval()</font> の中</td></tr>
-        <tr><td align="left" width="420" height="30">• 各目盛りのラベルを読み戻した値</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;= 目盛りの位置</td></tr>
-        <tr><td align="left" width="420" height="30">• すべてのデータ座標が</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">&#160;&#160;&#160;<font color="#0a3069">get_view_interval()</font> の中</td></tr></table>>];
-      c6 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 6: 正しいグラフ要素</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 表示され、インクがあり、アルファが 0 より大きい。</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;値は有限</td></tr>
-        <tr><td align="left" width="420" height="30">• 棒と面の基点: 0 または積み上げの上端</td></tr>
-        <tr><td align="left" width="420" height="30">• 棒の長方形どうしが交わらない</td></tr>
-        <tr><td align="left" width="420" height="30">• 各折れ線の x の位置が単調</td></tr>
-        <tr><td align="left" width="420" height="30">• ヒストグラムの高さ = 記録した入力を描画した</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ビンの境界で数え直した値</td></tr>
-        <tr><td align="left" width="420" height="30">• 円の角度 = 360° × 値 / 合計 (±0.0001°)</td></tr>
-        <tr><td align="left" width="420" height="30">• 異なる大きさ: 大きさの凡例。異なる色: カラー</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;バーまたは色の凡例</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• 凡例の項目 = 描いた系列、すべてを示す</td></tr></table>>];
-      c7 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 7: 描画した値があなたのデータにある</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 系列ごとに CSV の説明を 1 つ: 列、グループ</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ごとの合計、平均、最小値、最大値、行数、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;またはそれらの認められた計算 1 つ</td></tr>
-        <tr><td align="left" width="420" height="30">• 64 ビットの浮動小数点数として一致。</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;1 行が裏付けるのは 1 点</td></tr>
-        <tr><td align="left" width="420" height="30">• 残った点: 入力した数値 (範囲は展開)</td></tr>
-        <tr><td align="left" width="420" height="30">• 入力したカテゴリのラベルが依頼文にある</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• 1 つの系列で各カテゴリは 1 回</td></tr></table>>];
-      c8 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 8: 描いた列が依頼と一致</b></td></tr>
-        <tr><td align="left" width="420" height="30">• 描いた列 = チェック 7 で一致した説明の列</td></tr>
-        <tr><td align="left" width="420" height="30">• 依頼文の語と見出し: NFKC、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;大文字小文字の統一、</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;1 文字の誤り、管理者の別名</td></tr>
-        <tr><td align="left" width="420" height="30">• 依頼文にある列を別の列に置き換えない</td></tr>
-        <tr><td align="left" width="420" height="30">• 本番環境: 描いた列をすべて</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;依頼文が挙げる</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• ラベルは描いた列と集計だけを挙げる</td></tr></table>>];
-    }
+    judge [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>判定処理</b>: 標準ライブラリの Python、チェック 3〜8 を順に</td></tr>
+        <tr><td align="left" height="27"><b>3 図</b>: 図がちょうど 1 つ、すべての文字を描画</td></tr>
+        <tr><td align="left" height="27"><b>4 部品</b>: 各 (クラス、描画の呼び出し) の組が決まった集合にある</td></tr>
+        <tr><td align="left" height="27"><b>5 軸</b>: <font color="#0a3069">transData</font>、線形、反転なし、棒の軸にゼロ、正しい目盛り、範囲外なし</td></tr>
+        <tr><td align="left" height="27"><b>6 グラフ要素</b>: 基点が 0、重なりなし、ヒストグラムを数え直す、円が全体、正しい凡例</td></tr>
+        <tr><td align="left" height="27"><b>7 値</b>: ファイルの値、入力した数値、または認められた計算 1 つ</td></tr>
+        <tr><td align="left" height="27" cellpadding="4"><b>8 列</b>: 描いた列を依頼文が挙げる。ラベルも一致</td></tr></table>>];
 
     c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
-        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>チェック 9: 返信に画像を添付</b> (フィルター)</td></tr>
-        <tr><td align="left" width="420" height="30">• <font color="#0a3069">stdout</font> に PNG のデータ URI の行が</td></tr>
-        <tr><td align="left" width="420" height="30">&#160;&#160;&#160;ちょうど 1 つ</td></tr>
-        <tr><td align="left" width="420" height="30" cellpadding="5">• Open WebUI への <font color="#0a3069">files</font> イベントが成功</td></tr></table>>];
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 9: 画像を添付</b> (フィルター)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4">PNG を 1 枚、返信と一緒に保存</td></tr></table>>];
   }
 
   subgraph cluster_browser {
     label=<<b>ブラウザ: Pyodide サンドボックス</b>>; labeljust=l; style="rounded,filled";
     fillcolor="#f6f1e7"; color="#cdbf9f";
-    hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="left" height="21"><b>信頼できる図の読み取り処理</b></td></tr><tr><td align="left" height="21">matplotlib にフックを入れ、各描画要素を</td></tr><tr><td align="left" height="21">作った描画の呼び出し、各軸の呼び出し、</td></tr><tr><td align="left" height="21"><font color="#0a3069">hist</font>、<font color="#0a3069">pie</font>、<font color="#0a3069">fill_between</font>、</td></tr><tr><td align="left" height="21"><font color="#0a3069">stackplot</font> の入力を記録</td></tr></table>>];
-    program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>モデルのプログラム</b></td></tr><tr><td align="center" height="21">変更せずに実行。例外は</td></tr><tr><td align="center" height="21">その行とともにとらえる</td></tr></table>>, style="rounded,dashed,filled"];
-    describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="left" height="21"><b>信頼できる図の読み取り処理</b></td></tr><tr><td align="left" height="21">各図を 1 回描画し、すべての描画要素を</td></tr><tr><td align="left" height="21">JSON で報告: クラス、描画の呼び出し、</td></tr><tr><td align="left" height="21">変換、データ座標、軸の範囲、目盛りの種類、</td></tr><tr><td align="left" height="21">反転、目盛りのラベル、色、大きさ、表示状態、</td></tr><tr><td align="left" height="21">呼び出しの入力、グリフ不足。PNG を 1 枚</td></tr></table>>];
+    hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
+    program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
+    describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
   }
 
-  data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>あなたのデータ</b></td></tr><tr><td align="center" height="21">ファイルのバイト (所有者を確認)</td></tr><tr><td align="center" height="21">+ 依頼文 (受領記録)</td></tr></table>>, fillcolor="#f6f8fa"];
-  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>✓ 合格</b></td></tr><tr><td align="center" height="21">グラフ + Figure verification passed</td></tr><tr><td align="center" height="21">+ チェック項目を表示</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
-  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>✗ 不合格</b></td></tr><tr><td align="center" height="21">画像なし、ステータス行にコード</td></tr><tr><td align="center" height="21">+ チェック項目を表示</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+  data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなたのデータ</b></td></tr><tr><td height="24">ファイルのバイト + 依頼文</td></tr></table>>, fillcolor="#f6f8fa"];
+  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + Figure verification passed</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。ステータス行にコード</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
-  { rank=same; c7; data; }
-  { rank=same; c5; fail; }
+  { rank=same; storage; tool; }
+  { rank=same; judge; fail; }
 
   you -> model [label="依頼"];
   you -> storage [label="メッセージ、添付ファイル"];
   model -> tool [label="ツールの呼び出し"];
   storage -> tool [label="あなたのメッセージ"];
   tool -> c1 [label="受領記録"];
-  c1 -> hook [label="execute:python:\n読み取り処理、プログラム、ファイル ID"];
+  c1 -> hook [label="execute:python"];
   hook -> program -> describe;
-  describe -> c2 [label="応答: 記述 + PNG"];
-  c2 -> c3 -> c4 -> c5 -> c6 -> c7 -> c8 -> c9 -> pass;
-  data -> c7;
-  describe -> fail -> data [style=invis, weight=8];
-  data -> c8;
+  describe -> c2 [label="記述 + PNG"];
+  c2 -> judge -> c9 -> pass;
+  data -> judge;
+  describe -> data -> fail [style=invis, weight=8];
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
   c1 -> fail [label="チェック 1 が不合格"];
   c2 -> fail [label="チェック 2 が不合格"];
-  c5 -> fail [label="チェック 3〜8 で\n最初の不合格", ltail=cluster_judge];
+  judge -> fail [label="チェック 3〜8 で\n最初の不合格"];
   c9 -> fail [label="チェック 9 が不合格"];
 }
