@@ -223,3 +223,23 @@ def test_q72_each_diagram_renders_its_current_source() -> None:
         assert copy == source.read_text(encoding="utf-8"), source.name
     for language, name in (("en", "verifier.svg"), ("ja", "verifier.ja.svg")):
         assert f"](diagrams/{name})" in _text(language, "guide")
+
+
+_NODE = re.compile(r"^\s*(\w+) \[", re.MULTILINE)
+_EDGE = re.compile(r"^\s*(\w+(?: -> \w+)+)", re.MULTILINE)
+
+
+def _structure(source: Path) -> tuple[set[str], set[str]]:
+    text = source.read_text(encoding="utf-8")
+    return set(_NODE.findall(text)) - {"graph", "node", "edge"}, set(_EDGE.findall(text))
+
+
+def test_q72_both_diagrams_draw_the_same_structure() -> None:
+    """Q72: the EN + JA diagram sources declare the same nodes and draw the same edges, so a check
+    card or an arrow added in one language cannot go missing from the other; labels may differ."""
+    english, japanese = (
+        _structure(_DIAGRAMS / name) for name in ("verifier.dot", "verifier.ja.dot")
+    )
+    assert english == japanese
+    nodes, _edges = english
+    assert {f"c{index}" for index in range(1, 10)} <= nodes

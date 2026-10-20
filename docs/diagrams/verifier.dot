@@ -1,58 +1,131 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// How the figure verifier decides. Rendered to verifier.svg by tools/render_diagrams.py.
+// How the figure verifier decides, check by check. Rendered to verifier.svg by
+// tools/render_diagrams.py. Each card = one check: what it compares, in run order.
 digraph verifier {
-  graph [fontname="Noto Sans CJK JP", fontsize=15, fontcolor="#1f2328", bgcolor="white",
-         pad=0.3, nodesep=0.4, ranksep=0.5, newrank=true, compound=true];
-  node [fontname="Noto Sans CJK JP", fontsize=14, fontcolor="#1f2328", shape=box,
+  graph [fontname="Noto Sans", fontsize=15, fontcolor="#1f2328", bgcolor="white",
+         pad=0.3, nodesep=0.35, ranksep=0.32, newrank=true, compound=true];
+  node [fontname="Noto Sans", fontsize=14, fontcolor="#1f2328", shape=box,
         style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
         margin="0.2,0.1"];
-  edge [fontname="Noto Sans CJK JP", fontsize=12, fontcolor="#424a53", color="#57606a",
+  edge [fontname="Noto Sans", fontsize=12, fontcolor="#424a53", color="#57606a",
         arrowsize=0.7, penwidth=1.1];
 
-  you [label=<<b>You</b><br/>request + CSV file>];
-  model [label=<<b>Language model</b><br/>writes a Python program>, style="rounded,dashed"];
+  you [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>You</b></td></tr><tr><td align="center" height="21">request + CSV file</td></tr></table>>];
+  model [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>Language model</b></td></tr><tr><td align="center" height="21">writes a Python program</td></tr></table>>, style="rounded,dashed"];
 
   subgraph cluster_server {
     label=<<b>Open WebUI server</b>>; labeljust=l; style="rounded,filled";
     fillcolor="#eef3f8"; color="#b6c3d1";
-    storage [label=<<b>Open WebUI storage</b><br/>your messages + files>, shape=cylinder,
-             style=filled, margin="0.2,0.05"];
-    tool [label=<<b>draw_figure tool</b><br/>records a receipt: program,<br/>file ids, your request<br/>decides nothing>];
-    filter [label=<<b>Filter</b><br/>reads the receipt alone<br/><b>check 1</b>>];
-    judge [label=<<b>Judge</b> (standard-library Python)<br/>rules in order, first failure stops<br/><b>checks 3–8</b>>];
-    publish [label=<<b>Publish</b><br/>attaches the one PNG<br/><b>check 9</b>>];
+    storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>Open WebUI storage</b></td></tr><tr><td align="center" height="21">your messages + files</td></tr></table>>, shape=cylinder, style=filled, margin="0.2,0.05"];
+    tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>draw_figure tool</b></td></tr><tr><td align="center" height="21">records a receipt: program,</td></tr><tr><td align="center" height="21">file ids, your request</td></tr><tr><td align="center" height="21">decides nothing</td></tr></table>>];
+    c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 1: chart program received</b> (filter)</td></tr>
+        <tr><td align="left" width="420" height="27">• a <font color="#0a3069">draw_figure</font> receipt is in the request state</td></tr>
+        <tr><td align="left" width="420" height="27">• the last tool call of the reply counts</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• the call carries a signed-in user id</td></tr></table>>];
+    c2 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 2: program run in your browser</b> (filter)</td></tr>
+        <tr><td align="left" width="420" height="27">• a browser session; Pyodide file persistence off</td></tr>
+        <tr><td align="left" width="420" height="27">• a reply within 60 s: <font color="#0a3069">{stdout, stderr, result}</font></td></tr>
+        <tr><td align="left" width="420" height="27">• <font color="#0a3069">stderr</font> empty (<font color="#0a3069">loadPyodide</font> named: ad blocker)</td></tr>
+        <tr><td align="left" width="420" height="27">• <font color="#0a3069">stdout</font> holds one tagged description line</td></tr>
+        <tr><td align="left" width="420" height="27">• the program compiled and ran, no exception</td></tr>
+        <tr><td align="left" width="420" height="27">• imports only numpy, pandas, matplotlib, stdlib</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• the description fits the reader's size caps</td></tr></table>>];
+
+    subgraph cluster_judge {
+      label=<<b>Judge</b>: standard-library Python reads the description>; labeljust=l;
+      style="rounded,filled"; fillcolor="#e3eaf2"; color="#a9b8c8";
+      c3 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 3: one figure drawn</b></td></tr>
+        <tr><td align="left" width="420" height="27">• figures shown or left open: exactly 1</td></tr>
+        <tr><td align="left" width="420" height="27">• no missing-glyph warning, no <font color="#0a3069">.notdef</font> glyph</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• decoding and judging raise no exception</td></tr></table>>];
+      c4 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 4: only chart parts it checks</b></td></tr>
+        <tr><td align="left" width="420" height="27">• each (artist class, plotting call) pair is in</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;the closed set: line, scatter, bar, hist, pie,</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;area, reference line or band, text</td></tr>
+        <tr><td align="left" width="420" height="27">• no <font color="#0a3069">AxesImage</font>, <font color="#0a3069">QuadMesh</font>, <font color="#0a3069">FigureImage</font></td></tr>
+        <tr><td align="left" width="420" height="27">• axes class exactly <font color="#0a3069">Axes</font>: no polar, 3D, inset</td></tr>
+        <tr><td align="left" width="420" height="27">• no twin axes, no overlapping panels</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• a data artist in every panel</td></tr></table>>];
+      c5 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 5: honest axes</b></td></tr>
+        <tr><td align="left" width="420" height="27">• each data artist's transform = <font color="#0a3069">ax.transData</font></td></tr>
+        <tr><td align="left" width="420" height="27">• <font color="#0a3069">get_scale()</font> linear; log only if the label says so</td></tr>
+        <tr><td align="left" width="420" height="27">• <font color="#0a3069">get_inverted()</font> false on x and y</td></tr>
+        <tr><td align="left" width="420" height="27">• bars, hist, areas: 0 in <font color="#0a3069">get_view_interval()</font></td></tr>
+        <tr><td align="left" width="420" height="27">• each tick label read back = its tick position</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• every data coordinate in <font color="#0a3069">get_view_interval()</font></td></tr></table>>];
+      c6 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 6: honest marks</b></td></tr>
+        <tr><td align="left" width="420" height="27">• visible with ink, alpha above 0; values finite</td></tr>
+        <tr><td align="left" width="420" height="27">• bar and area bases: 0 or the top of a stack</td></tr>
+        <tr><td align="left" width="420" height="27">• no two bar rectangles intersect</td></tr>
+        <tr><td align="left" width="420" height="27">• each line's x positions monotonic</td></tr>
+        <tr><td align="left" width="420" height="27">• hist heights = a recount of its recorded input</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;over the drawn bin edges</td></tr>
+        <tr><td align="left" width="420" height="27">• pie span = 360° × value / sum (±0.0001°)</td></tr>
+        <tr><td align="left" width="420" height="27">• varying sizes: a size legend; colors: a colorbar</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;or a color legend</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• legend entries = drawn series, all named</td></tr></table>>];
+      c7 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 7: drawn values come from your data</b></td></tr>
+        <tr><td align="left" width="420" height="27">• per series, one CSV explanation: a column, a</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;per-group sum, mean, min, max or count, or</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;one admitted computation of these</td></tr>
+        <tr><td align="left" width="420" height="27">• equal as 64-bit floats, each row backing 1 point</td></tr>
+        <tr><td align="left" width="420" height="27">• points left over: typed numbers, ranges expanded</td></tr>
+        <tr><td align="left" width="420" height="27">• typed category labels occur in your request</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• each category once per series</td></tr></table>>];
+      c8 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 8: drawn columns match your request</b></td></tr>
+        <tr><td align="left" width="420" height="27">• drawn columns = the columns of check 7's matches</td></tr>
+        <tr><td align="left" width="420" height="27">• request words vs the header: NFKC, case folded,</td></tr>
+        <tr><td align="left" width="420" height="27">&#160;&#160;&#160;one typo, admin aliases</td></tr>
+        <tr><td align="left" width="420" height="27">• no column that you named replaced by another</td></tr>
+        <tr><td align="left" width="420" height="27">• production: every drawn column named</td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• labels name only drawn columns and summaries</td></tr></table>>];
+    }
+
+    c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="5"><b>Check 9: image attached to the reply</b> (filter)</td></tr>
+        <tr><td align="left" width="420" height="27">• exactly one PNG data-URI line in <font color="#0a3069">stdout</font></td></tr>
+        <tr><td align="left" width="420" height="27" cellpadding="5">• the <font color="#0a3069">files</font> event to Open WebUI succeeds</td></tr></table>>];
   }
 
   subgraph cluster_browser {
-    label=<<b>Your browser: Pyodide sandbox</b>   check 2>; labeljust=l; style="rounded,filled";
+    label=<<b>Your browser: Pyodide sandbox</b>>; labeljust=l; style="rounded,filled";
     fillcolor="#f6f1e7"; color="#cdbf9f";
-    hook [label=<<b>Trusted figure reader</b><br/>hooks matplotlib>];
-    program [label=<<b>Model's program</b><br/>runs unchanged>, style="rounded,dashed,filled"];
-    describe [label=<<b>Trusted figure reader</b><br/>draws each figure once, describes<br/>every artist as JSON + one PNG>];
+    hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="left" height="21"><b>Trusted figure reader</b></td></tr><tr><td align="left" height="21">hooks matplotlib: records the plotting</td></tr><tr><td align="left" height="21">call behind each artist, each axis call,</td></tr><tr><td align="left" height="21">and the inputs of <font color="#0a3069">hist</font>, <font color="#0a3069">pie</font>,</td></tr><tr><td align="left" height="21"><font color="#0a3069">fill_between</font>, <font color="#0a3069">stackplot</font></td></tr></table>>];
+    program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>Model's program</b></td></tr><tr><td align="center" height="21">runs unchanged; any</td></tr><tr><td align="center" height="21">exception caught with its line</td></tr></table>>, style="rounded,dashed,filled"];
+    describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="left" height="21"><b>Trusted figure reader</b></td></tr><tr><td align="left" height="21">draws each figure once, then reports</td></tr><tr><td align="left" height="21">every artist as JSON: class, plotting</td></tr><tr><td align="left" height="21">call, transform, data coordinates, axis</td></tr><tr><td align="left" height="21">limits, scale, inversion, tick labels,</td></tr><tr><td align="left" height="21">colors, sizes, visibility, call inputs,</td></tr><tr><td align="left" height="21">missing glyphs; and one PNG</td></tr></table>>];
   }
 
-  pass [label=<<b>✓ Pass</b><br/>chart + Figure verification passed<br/>+ Show checks>,
-        color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
-  fail [label=<<b>✗ Fail</b><br/>no image, status line with the code<br/>+ Show checks>,
-        color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+  data [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>Your data</b></td></tr><tr><td align="center" height="21">file bytes, owner checked</td></tr><tr><td align="center" height="21">+ your request (receipt)</td></tr></table>>, fillcolor="#f6f8fa"];
+  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>✓ Pass</b></td></tr><tr><td align="center" height="21">chart + Figure verification passed</td></tr><tr><td align="center" height="21">+ Show checks</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td align="center" height="21"><b>✗ Fail</b></td></tr><tr><td align="center" height="21">no image, status line with the code</td></tr><tr><td align="center" height="21">+ Show checks</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
+  { rank=same; c7; data; }
+  { rank=same; c5; fail; }
 
   you -> model [label="asks"];
   you -> storage [label="messages, attached file"];
   model -> tool [label="tool call"];
   storage -> tool [label="your messages"];
-  tool -> filter [label="receipt"];
-  storage -> filter [label="file bytes,\nowner checked"];
-  filter -> hook [label="execute:python:\nreader, program, file ids"];
+  tool -> c1 [label="receipt"];
+  c1 -> hook [label="execute:python:\nreader, program, file ids"];
   hook -> program -> describe;
-  describe -> judge [label="description + PNG"];
-  filter -> judge [label="your request + files"];
-  judge -> publish [label="all pass"];
-  publish -> pass;
+  describe -> c2 [label="reply: description + PNG"];
+  c2 -> c3 -> c4 -> c5 -> c6 -> c7 -> c8 -> c9 -> pass;
+  data -> c7;
+  describe -> fail -> data [style=invis, weight=8];
+  data -> c8;
   edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
-  filter -> fail [label="check 1 fails"];
-  describe -> fail [label="check 2 fails", ltail=cluster_browser];
-  judge -> fail [label="first failure\nin checks 3–8"];
-  publish -> fail [label="check 9 fails"];
+  c1 -> fail [label="check 1 fails"];
+  c2 -> fail [label="check 2 fails"];
+  c5 -> fail [label="first failure\nin checks 3–8", ltail=cluster_judge];
+  c9 -> fail [label="check 9 fails"];
 }
