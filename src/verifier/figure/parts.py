@@ -68,6 +68,7 @@ class Panel:
     marks: tuple[Mark, ...]
     texts: tuple[str, ...]
     pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
+    proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -126,6 +127,23 @@ _FAMILIES: Final[dict[str, Callable[[Artist, Axes, int], _Kind]]] = {
     "Text": _text,
     "Annotation": _text,
 }
+
+
+def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
+    """An ink-free legend handle the program added to the axes (seaborn's `hue` keys): no
+    plotting origin, a zero-size rectangle or a line holding no point, the handle of an entry of
+    this axes' own legend. It draws nothing, so it is no mark; the legend names a mark through it.
+    """
+    geometry = artist.geometry
+    inkless = (isinstance(geometry, RectGeometry) and geometry.width == geometry.height == 0) or (
+        isinstance(geometry, LineGeometry) and not geometry.x and not geometry.y
+    )
+    entries = axes.legend.entries if axes.legend is not None else ()
+    return (
+        artist.origin is None
+        and inkless
+        and any(entry.axes == index and entry.target == number for entry in entries)
+    )
 
 
 def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
@@ -218,11 +236,15 @@ def _panel(index: int, axes: Axes) -> Panel:
     families: dict[int, Family] = {}
     texts: list[str] = []
     labels: list[str] = []
+    proxies: list[int] = []
     keys = {text for pie in axes.pies for text in pie.texts if text is not None}
     for number, artist in enumerate(axes.artists):
         if artist.cls in _RASTER:
             block("raster_image", artist.site)
         kind = _family(artist, axes, number)
+        if kind is None and _proxy(artist, axes, index, number):
+            proxies.append(number)
+            continue
         if kind is None:
             block("artist_not_judged", artist.site)
         if kind == "text":
@@ -238,7 +260,7 @@ def _panel(index: int, axes: Axes) -> Panel:
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
-    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels))
+    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies))
 
 
 def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:

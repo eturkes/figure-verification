@@ -64,3 +64,83 @@ df = pd.read_csv("{data}/sales.csv")
 sns.lineplot(data=df, x="month", y="revenue", errorbar=None)
 plt.show()
 '''
+
+# Q75: seaborn adds each `hue` legend handle to the axes as an ink-free proxy (a zero-size
+# Rectangle, a Line2D holding no point); the legend names a mark through it by colour.
+
+[[case]]
+id = "seaborn-bar-hue"
+expect = "pass"
+rule = "artist_not_judged"
+csv = "sales.csv"
+request = "Bar chart of revenue by month and region"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.barplot(data=df, x="month", y="revenue", hue="region", errorbar=None)
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-bar-hue-from-8000"
+expect = "zero_not_in_limits"
+site = 6
+csv = "sales.csv"
+request = "Bar chart of revenue by month and region"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = sns.barplot(data=df, x="month", y="revenue", hue="region", errorbar=None)
+ax.set_ylim(8000, 16000)
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-line-hue"
+expect = "pass"
+rule = "value_not_found"
+csv = "sales.csv"
+request = "Line chart of revenue by month and region"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+sns.lineplot(data=df, x="month", y="revenue", hue="region", errorbar=None)
+plt.show()
+'''
+
+[[case]]
+id = "seaborn-line-hue-swapped"
+expect = "value_not_found"
+csv = "sales.csv"
+request = "Line chart of revenue by month and region"
+program = '''
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = sns.lineplot(data=df, x="month", y="revenue", hue="region", errorbar=None)
+handles, labels = ax.get_legend_handles_labels()
+ax.legend(handles, labels[::-1])
+plt.show()
+'''
+
+[[case]]
+id = "inked-legend-proxy"
+expect = "artist_not_judged"
+site = 4
+request = "Plot a 1, b 2"
+program = '''
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+ax = plt.gca()
+handle = Rectangle((0, 0), 1, 1, color="C0", label="Bars")
+ax.bar(["a", "b"], [1, 2])
+ax.add_artist(handle)
+ax.legend(handles=[handle])
+'''

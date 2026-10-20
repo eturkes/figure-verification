@@ -16,3 +16,45 @@ predicate = "a proxy names a series by label and colour together"
 kills = "tests/test_figure_judge.py::test_legend_a_proxy_in_a_series_colour_must_carry_its_label"
 anchor = '''        if rgb is not None and own_label == entry.text and own == rgb'''
 mutant = '''        if rgb is not None and own == rgb'''
+
+[[mutant]]
+id = "q75-proxied-branch"
+predicate = "a legend proxy's entry names a mark through it (Q75 P2)"
+kills = "tests/test_figure_judge.py::test_q75_p1_an_ink_free_proxy_the_legend_targets_is_no_mark"
+anchor = '''    if entry.target is not None and entry.target in panel.proxies:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q75-proxied-colour"
+predicate = "a proxy names a mark of its own colour (Q75 P2)"
+kills = "tests/test_figure_judge.py::test_q75_p2_a_proxy_names_the_one_unlabelled_mark_of_its_colour"
+anchor = '''        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))'''
+mutant = '''        if _hidden(label(panel.axes, mark))'''
+
+[[mutant]]
+id = "q75-proxied-unlabelled"
+predicate = "a proxy names a mark showing no label of its own (Q75 P2)"
+kills = "tests/test_figure_judge.py::test_q75_p2_a_proxy_names_the_one_unlabelled_mark_of_its_colour"
+anchor = '''        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))'''
+mutant = '''        if color(panel.axes, mark) == rgb'''
+
+[[mutant]]
+id = "q75-hidden-underscore"
+predicate = "a label opening with `_` shows no entry (seaborn's bar containers) (Q75 P2)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[seaborn-bar-hue]"
+anchor = '''    return not text or text.startswith("_")'''
+mutant = '''    return not text'''
+
+[[mutant]]
+id = "q75-proxied-unique"
+predicate = "a proxy names the ONE mark of its colour (Q75 P2)"
+kills = "tests/test_figure_judge.py::test_q75_p2_a_proxy_shared_with_a_direct_handle_still_needs_one_match"
+anchor = '''    return (position, matches[0]) if len(matches) == 1 else None'''
+mutant = '''    return (position, matches[0]) if matches else None'''
+
+[[mutant]]
+id = "q75-member-named-once"
+predicate = "two bars of one container are one legend name (Q75 P2, reviewer-2 F3)"
+kills = "tests/test_figure_judge.py::test_q75_p2_one_bar_series_takes_one_legend_name"
+anchor = '''            return position, entry.target if mark.family == "pie" else mark.artists[0]'''
+mutant = '''            return position, entry.target'''

@@ -98,7 +98,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | plain axes only: no polar, 3D, inset or secondary axes | each axes class is exactly `Axes`, owned by the figure, inside no other axes | `axes_not_judged` |
 | no twin axes (`twinx`, `twiny`) | no two axes share an x or y axis at the same position | `axes_twin` |
 | no overlapping panels | the axes positions do not overlap | `axes_overlap` |
-| no other part (error bars, box plots, contours, added shapes, step histograms) | every (class, call) pair is in the set above | `artist_not_judged` |
+| no other part (error bars, box plots, contours, added shapes, step histograms) | every (class, call) pair is in the set above, or is a key the program added with no plotting call (a `Rectangle` of zero width and height, or a `Line2D` with no point) that the panel's own legend uses (seaborn `hue`) | `artist_not_judged` |
 | data in every panel | each axes holds a data artist | `no_data` |
 
 [Full rules](verification.md#check-parts) [Examples](gallery.md#check-parts)
@@ -134,7 +134,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | areas from 0, or from the top of a stacked area | each band's base edge is 0, or exactly the top edge of a grounded band at the same x | `area_not_from_zero` |
 | varying scatter sizes: a size legend | the sizes vary only with a legend from that collection's `legend_elements("sizes")` | `marker_size_varies` |
 | varying scatter colors: a colorbar or a color legend | the face colors vary only with a colorbar or a `legend_elements()` legend of that collection | `marker_color_varies` |
-| legend entries name drawn series; 2 or more series in a panel with a legend: every series named | each legend handle is a judged artist, or a proxy with a mark's label and color | `legend_mismatch` |
+| legend entries name drawn series; 2 or more series in a panel with a legend: every series named | each legend handle is a judged artist, or a proxy with a mark's label and color, or such a zero-size key in the panel (seaborn `hue`) with the color of exactly one unlabeled series; each series takes one name | `legend_mismatch` |
 
 [Full rules](verification.md#check-marks) [Examples](gallery.md#check-marks)
 

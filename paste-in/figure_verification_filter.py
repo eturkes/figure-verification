@@ -4939,6 +4939,7 @@ class Panel:
     marks: tuple[Mark, ...]
     texts: tuple[str, ...]
     pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
+    proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -4997,6 +4998,23 @@ _FAMILIES: Final[dict[str, Callable[[Artist, Axes, int], _Kind]]] = {
     "Text": _text,
     "Annotation": _text,
 }
+
+
+def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
+    """An ink-free legend handle the program added to the axes (seaborn's `hue` keys): no
+    plotting origin, a zero-size rectangle or a line holding no point, the handle of an entry of
+    this axes' own legend. It draws nothing, so it is no mark; the legend names a mark through it.
+    """
+    geometry = artist.geometry
+    inkless = (isinstance(geometry, RectGeometry) and geometry.width == geometry.height == 0) or (
+        isinstance(geometry, LineGeometry) and not geometry.x and not geometry.y
+    )
+    entries = axes.legend.entries if axes.legend is not None else ()
+    return (
+        artist.origin is None
+        and inkless
+        and any(entry.axes == index and entry.target == number for entry in entries)
+    )
 
 
 def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
@@ -5089,11 +5107,15 @@ def _panel(index: int, axes: Axes) -> Panel:
     families: dict[int, Family] = {}
     texts: list[str] = []
     labels: list[str] = []
+    proxies: list[int] = []
     keys = {text for pie in axes.pies for text in pie.texts if text is not None}
     for number, artist in enumerate(axes.artists):
         if artist.cls in _RASTER:
             block("raster_image", artist.site)
         kind = _family(artist, axes, number)
+        if kind is None and _proxy(artist, axes, index, number):
+            proxies.append(number)
+            continue
         if kind is None:
             block("artist_not_judged", artist.site)
         if kind == "text":
@@ -5109,7 +5131,7 @@ def _panel(index: int, axes: Axes) -> Panel:
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
-    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels))
+    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies))
 
 
 def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:
@@ -6841,15 +6863,16 @@ _SOURCES["verifier.figure.legends"] = r'''
 
 An entry names a judged mark by handle (the artist or container itself, in any axes of the
 figure), or as a proxy by a mark's own label + colour (an axes legend: in its axes; a figure
-legend: anywhere). A `legend_elements` key names no series: it explains its collection's sizes or
-colours. With ≥ 2 series (lines, points, bars, areas) in a legended axes, every one is named;
-pies and reference marks may stay unnamed.
+legend: anywhere), or through an ink-free proxy its axes holds (seaborn's `hue` keys) by colour
+alone, naming the one unlabelled series mark of that colour. A `legend_elements` key names no
+series: it explains its collection's sizes or colours. With ≥ 2 series (lines, points, bars,
+areas) in a legended axes, every one is named; pies and reference marks may stay unnamed.
 """
 
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
-from verifier.figure.description import Legend, LegendEntry
+from verifier.figure.description import Legend, LegendEntry, LineGeometry, RectGeometry
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import RGB, color, label, series_marks
@@ -6887,12 +6910,33 @@ def _handle(
     position = by_axes.get(entry.axes) if entry.axes is not None else None
     if position is None:
         return None
-    for mark in panels[position].marks:
+    panel = panels[position]
+    for mark in panel.marks:
         if entry.target is not None and entry.target in mark.artists:
-            return position, entry.target
+            # A series is named once, by its first artist: two bars of one container are one
+            # name (reviewer-2 F3). A pie names each wedge.
+            return position, entry.target if mark.family == "pie" else mark.artists[0]
         if entry.container is not None and mark.container == entry.container:
             return position, mark.artists[0]
+    if entry.target is not None and entry.target in panel.proxies:
+        return _proxied(position, panel, entry.target)
     return None
+
+
+def _hidden(text: str) -> bool:
+    """matplotlib shows no legend entry for an empty label or one opening with `_`."""
+    return not text or text.startswith("_")
+
+
+def _proxied(position: int, panel: Panel, proxy: int) -> tuple[int, int] | None:
+    """The one series mark of the panel with no shown label of its own and the proxy's colour."""
+    rgb = cast("LineGeometry | RectGeometry", panel.axes.artists[proxy].geometry).color[:3]
+    matches = [
+        mark.artists[0]
+        for mark in series_marks(panel)
+        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))
+    ]
+    return (position, matches[0]) if len(matches) == 1 else None
 
 
 def _proxy(entry: LegendEntry, candidates: list[_Candidate]) -> tuple[int, int] | None:

@@ -52,3 +52,40 @@ predicate = "a band drawn as a `PolyCollection` (matplotlib 3.8 + 3.9) stays a j
 kills = "tests/test_figure_judge.py::test_j3_bands_in_either_class"
 anchor = '''    "PolyCollection": _band,'''
 mutant = '''    "PolyCollections": _band,'''
+
+[[mutant]]
+id = "q75-proxy-origin"
+predicate = "a legend proxy has no plotting origin (Q75 P1)"
+kills = "tests/test_figure_judge.py::test_q75_p1_an_ink_free_handle_with_a_plotting_origin_still_blocks"
+anchor = '''        artist.origin is None
+        and inkless'''
+mutant = '''        True
+        and inkless'''
+
+[[mutant]]
+id = "q75-proxy-zero-width"
+predicate = "a rectangle proxy has zero width (Q75 P1)"
+kills = "tests/test_figure_judge.py::test_q75_p1_a_proxy_with_ink_or_no_entry_still_blocks"
+anchor = '''geometry.width == geometry.height == 0'''
+mutant = '''geometry.height == 0'''
+
+[[mutant]]
+id = "q75-proxy-zero-height"
+predicate = "a rectangle proxy has zero height (Q75 P1)"
+kills = "tests/test_figure_judge.py::test_q75_p1_a_proxy_with_ink_or_no_entry_still_blocks"
+anchor = '''geometry.width == geometry.height == 0'''
+mutant = '''geometry.width == 0'''
+
+[[mutant]]
+id = "q75-proxy-line-empty"
+predicate = "a line proxy holds no point (Q75 P1)"
+kills = "tests/test_figure_judge.py::test_q75_p1_a_point_holding_line_proxy_still_blocks"
+anchor = '''        isinstance(geometry, LineGeometry) and not geometry.x and not geometry.y'''
+mutant = '''        isinstance(geometry, LineGeometry)'''
+
+[[mutant]]
+id = "q75-proxy-targeted"
+predicate = "a proxy is the handle of an entry of its axes' legend (Q75 P1)"
+kills = "tests/test_figure_judge.py::test_q75_p1_a_proxy_with_ink_or_no_entry_still_blocks"
+anchor = '''        and any(entry.axes == index and entry.target == number for entry in entries)'''
+mutant = '''        and True'''

@@ -445,3 +445,131 @@ def test_legend_entries_must_name_judged_marks() -> None:
     assert _edited(source, no_mark) == Blocked("legend_mismatch", 3)
     assert _edited(source, keyed_line) == Blocked("legend_mismatch", 3)
     assert _edited(source, keyed_nothing) == Blocked("legend_mismatch", 3)
+
+
+# --- Q75: ink-free legend proxies (seaborn's `hue` keys) --------------------------------------
+
+_PROXY = (
+    _PLT
+    + "from matplotlib.patches import Rectangle\n"
+    + "from matplotlib.lines import Line2D\n"
+    + "ax = plt.gca()\n"
+    + "ax.bar(['a', 'b'], [1, 2], color='C0')\n"
+    + "handle = Rectangle((0, 0), 0, 0, color='C0', label='Bars')\n"
+    + "ax.add_artist(handle)\n"
+    + "ax.legend(handles=[handle])\n"
+)
+
+
+def test_q75_p1_an_ink_free_proxy_the_legend_targets_is_no_mark() -> None:
+    """`.agent/archive/contracts/q75.md` P1 + P2: the zero-size rectangle names the bars by
+    colour; a point-free line does the same for a line."""
+    judged = _judge(_PROXY)
+    assert isinstance(judged, Judged)
+    assert len(judged.panels[0].marks) == 1
+    line = (
+        _PLT
+        + "from matplotlib.lines import Line2D\n"
+        + "ax = plt.gca()\n"
+        + "ax.plot([1, 4, 9], color='C1')\n"
+        + "handle = Line2D([], [], color='C1', label='Squares')\n"
+        + "ax.add_artist(handle)\n"
+        + "ax.legend(handles=[handle])\n"
+    )
+    assert isinstance(_judge(line), Judged)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("Rectangle((0, 0), 0, 0,", "Rectangle((0, 0), 1, 0,"),
+        ("Rectangle((0, 0), 0, 0,", "Rectangle((0, 0), 0, 1,"),
+        ("ax.legend(handles=[handle])", "ax.legend(handles=[])"),
+        ("ax.legend(handles=[handle])", "ax.figure.legend(handles=[handle])"),
+    ],
+    ids=["inked-width", "inked-height", "not-a-handle", "another-legend-s-handle"],
+)
+def test_q75_p1_a_proxy_with_ink_or_no_entry_still_blocks(change: tuple[str, str]) -> None:
+    assert _judge(_PROXY.replace(*change)) == Blocked("artist_not_judged", 6)
+
+
+def test_q75_p1_a_point_holding_line_proxy_still_blocks() -> None:
+    source = (
+        _PLT
+        + "from matplotlib.lines import Line2D\n"
+        + "ax = plt.gca()\n"
+        + "ax.plot([1, 4, 9], color='C1')\n"
+        + "handle = Line2D([0], [0], color='C1', label='Squares')\n"
+        + "ax.add_artist(handle)\n"
+        + "ax.legend(handles=[handle])\n"
+    )
+    assert _judge(source) == Blocked("artist_not_judged", 5)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("ax.bar(['a', 'b'], [1, 2], color='C0')", "ax.bar(['a', 'b'], [1, 2], color='C2')"),
+        (
+            "ax.bar(['a', 'b'], [1, 2], color='C0')",
+            "ax.bar(['a', 'b'], [1, 2], color='C0')\nax.plot([0, 1], [1, 2], color='C0')",
+        ),
+        (
+            "ax.bar(['a', 'b'], [1, 2], color='C0')",
+            "ax.bar(['a', 'b'], [1, 2], color='C0', label='Shown')",
+        ),
+    ],
+    ids=["no-mark-of-its-colour", "two-marks-of-its-colour", "the-mark-shows-a-label"],
+)
+def test_q75_p2_a_proxy_names_the_one_unlabelled_mark_of_its_colour(
+    change: tuple[str, str],
+) -> None:
+    assert isinstance(_judge(_PROXY.replace(*change)), Blocked)
+    assert _judge(_PROXY.replace(*change)).reason == "legend_mismatch"  # type: ignore[union-attr]
+
+
+def test_q75_p1_an_ink_free_handle_with_a_plotting_origin_still_blocks() -> None:
+    """An empty `errorbar` line is ink-free and the legend's handle, but `Axes.errorbar` drew it:
+    only an origin-less handle (one the program added itself) is a proxy."""
+    source = (
+        _PLT
+        + "ax = plt.gca()\n"
+        + "ax.bar(['a', 'b'], [1, 2], color='C0')\n"
+        + "drawn = ax.errorbar([], [], color='C0')\n"
+        + "ax.legend([drawn.lines[0]], ['Bars'])\n"
+    )
+    assert _judge(source) == Blocked("artist_not_judged", 4)
+
+
+def test_q75_p2_a_proxy_shared_with_a_direct_handle_still_needs_one_match() -> None:
+    """Two unlabelled lines of one colour, the second named by its own handle: the proxy could
+    still mean either, so the entry names nothing (reviewer-2 F1)."""
+    source = (
+        _PLT
+        + "from matplotlib.lines import Line2D\n"
+        + "ax = plt.gca()\n"
+        + "ax.plot([1, 2], [1, 2], color='C0')\n"
+        + "second, = ax.plot([1, 2], [2, 3], color='C0')\n"
+        + "handle = Line2D([], [], color='C0', label='First')\n"
+        + "ax.add_artist(handle)\n"
+        + "ax.legend([handle, second], ['First', 'Second'])\n"
+    )
+    assert _judge(source) == Blocked("legend_mismatch", 8)
+
+
+@pytest.mark.parametrize("first", ["proxy", "bars[0]"])
+def test_q75_p2_one_bar_series_takes_one_legend_name(first: str) -> None:
+    """A proxy (or a bar) and a second bar of the SAME container would name one series twice;
+    only the first name reached the values check (reviewer-2 F3)."""
+    proxy = (
+        "from matplotlib.patches import Rectangle\n"
+        "proxy = Rectangle((0, 0), 0, 0, color='C0', label='US')\n"
+        "plt.gca().add_artist(proxy)\n"
+    )
+    source = (
+        _PLT
+        + "bars = plt.bar(['a', 'b', 'c'], [1, 2, 3], color='C0')\n"
+        + (proxy if first == "proxy" else "")
+        + f"plt.legend([{first}, bars[1]], ['US', 'EU'])\n"
+    )
+    assert _judge(source) == Blocked("legend_mismatch", 6 if first == "proxy" else 3)

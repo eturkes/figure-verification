@@ -3,15 +3,16 @@
 
 An entry names a judged mark by handle (the artist or container itself, in any axes of the
 figure), or as a proxy by a mark's own label + colour (an axes legend: in its axes; a figure
-legend: anywhere). A `legend_elements` key names no series: it explains its collection's sizes or
-colours. With ≥ 2 series (lines, points, bars, areas) in a legended axes, every one is named;
-pies and reference marks may stay unnamed.
+legend: anywhere), or through an ink-free proxy its axes holds (seaborn's `hue` keys) by colour
+alone, naming the one unlabelled series mark of that colour. A `legend_elements` key names no
+series: it explains its collection's sizes or colours. With ≥ 2 series (lines, points, bars,
+areas) in a legended axes, every one is named; pies and reference marks may stay unnamed.
 """
 
 from dataclasses import dataclass, field
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
-from verifier.figure.description import Legend, LegendEntry
+from verifier.figure.description import Legend, LegendEntry, LineGeometry, RectGeometry
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
 from verifier.figure.shapes import RGB, color, label, series_marks
@@ -49,12 +50,33 @@ def _handle(
     position = by_axes.get(entry.axes) if entry.axes is not None else None
     if position is None:
         return None
-    for mark in panels[position].marks:
+    panel = panels[position]
+    for mark in panel.marks:
         if entry.target is not None and entry.target in mark.artists:
-            return position, entry.target
+            # A series is named once, by its first artist: two bars of one container are one
+            # name (reviewer-2 F3). A pie names each wedge.
+            return position, entry.target if mark.family == "pie" else mark.artists[0]
         if entry.container is not None and mark.container == entry.container:
             return position, mark.artists[0]
+    if entry.target is not None and entry.target in panel.proxies:
+        return _proxied(position, panel, entry.target)
     return None
+
+
+def _hidden(text: str) -> bool:
+    """matplotlib shows no legend entry for an empty label or one opening with `_`."""
+    return not text or text.startswith("_")
+
+
+def _proxied(position: int, panel: Panel, proxy: int) -> tuple[int, int] | None:
+    """The one series mark of the panel with no shown label of its own and the proxy's colour."""
+    rgb = cast("LineGeometry | RectGeometry", panel.axes.artists[proxy].geometry).color[:3]
+    matches = [
+        mark.artists[0]
+        for mark in series_marks(panel)
+        if color(panel.axes, mark) == rgb and _hidden(label(panel.axes, mark))
+    ]
+    return (position, matches[0]) if len(matches) == 1 else None
 
 
 def _proxy(entry: LegendEntry, candidates: list[_Candidate]) -> tuple[int, int] | None:
