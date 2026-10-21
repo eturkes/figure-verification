@@ -25,13 +25,15 @@ def _empty_store(tmp_path: Path) -> Iterator[None]:
         yield
 
 
-def test_o6_one_model_operation_has_only_the_program_parameter() -> None:
+def test_o6_one_model_operation_takes_a_program_and_an_optional_note() -> None:
+    """Q78 added the optional `note` (`.agent/archive/contracts/q78.md` N1)."""
     for module in (load("tool"), load("demo_tool")):
         name, operation = public_tool_operation(module)
         assert name == "draw_figure"
-        assert [
-            name for name in inspect.signature(operation).parameters if not name.startswith("__")
-        ] == ["program"]
+        parameters = inspect.signature(operation).parameters
+        assert [name for name in parameters if not name.startswith("__")] == ["program", "note"]
+        assert parameters["program"].default is inspect.Parameter.empty
+        assert parameters["note"].default == ""
         assert inspect.iscoroutinefunction(operation)
         assert getattr(load("verdicts"), "CHART_SENT", None) is not None
 

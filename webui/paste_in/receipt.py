@@ -11,20 +11,23 @@ from typing import Final
 from verifier.figure.anchoring import Aliases
 
 RECEIPT_ATTR: Final = "figure_verification_receipt"
-# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
-RECEIPT_TAG: Final = "figure-verification-receipt/2"
-_RECEIPT_LENGTH = 5
+# `/2` carries the admin's column aliases (Q43), `/3` the model's note (Q78); an older value decodes
+# to no receipt.
+RECEIPT_TAG: Final = "figure-verification-receipt/3"
+_RECEIPT_LENGTH = 6
 _PAIR = 2
 
 
 @dataclass(frozen=True, slots=True)
 class Receipt:
-    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
+    """Program, user-owned candidate ids, admin aliases and the model's note, never a verdict or
+    uploaded bytes. The note is shown under the verdict alone: no check reads it (Q78)."""
 
     program: str
     file_ids: tuple[str, ...]
     request_text: str | None
     aliases: Aliases
+    note: str = ""
 
 
 def write_receipt(request: object, receipt: Receipt) -> None:
@@ -35,7 +38,14 @@ def write_receipt(request: object, receipt: Receipt) -> None:
     setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
+        (
+            RECEIPT_TAG,
+            receipt.program,
+            receipt.file_ids,
+            receipt.request_text,
+            receipt.aliases,
+            receipt.note,
+        ),
     )
 
 
@@ -45,7 +55,7 @@ def read_receipt(request: object) -> Receipt | None:
     value = getattr(state, RECEIPT_ATTR, None)
     if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
         return None
-    _, program, file_ids, request_text, aliases = value
+    _, program, file_ids, request_text, aliases, note = value
     if (
         type(program) is not str
         or type(file_ids) is not tuple
@@ -56,6 +66,7 @@ def read_receipt(request: object) -> Receipt | None:
             type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
             for pair in aliases
         )
+        or type(note) is not str
     ):
         return None
-    return Receipt(program, file_ids, request_text, aliases)
+    return Receipt(program, file_ids, request_text, aliases, note)

@@ -1,0 +1,55 @@
+{
+  "arm": "ja-clinic-simple",
+  "attempt": 2,
+  "prompt": "年月ごとの平均待ち時間を折れ線グラフで示してください。",
+  "dataset": "clinic_ja.csv",
+  "csv_sha256": "c05b21f8ec2ce099235d6f5b7b407e24d26f873f77ae4fea04cda6fa774adc25",
+  "composed_identical": true,
+  "chat_id": "994d1ec6-516b-4eab-8fb4-f3749f148041",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\n折れ線: `clinic_ja.csv` の `年月` 列ごとの `平均待ち時間` 列の平均。各グループの行数: `2026-01` 3 行、`2026-02` 3 行、`2026-03` 3 行。",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 800,
+        "height": 500
+      }
+    ],
+    "png_sha256": [
+      "b046deb7e069f7deb9c7686d408031654422f125939e3576d31c6d7a07cd56b8"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": null,
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\npath = '/mnt/uploads/clinic_ja.csv'\ndf = pd.read_csv(path)\ngrouped = df.groupby('年月', as_index=False)['平均待ち時間'].mean()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(grouped['年月'], grouped['平均待ち時間'], marker='o', linewidth=2)\nax.set_title('年月ごとの平均待ち時間')\nax.set_xlabel('年月')\nax.set_ylabel('平均待ち時間')\nax.set_ylim(0, grouped['平均待ち時間'].max() * 1.1)\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "content": "Figure verification passed\n\n折れ線: `clinic_ja.csv` の `年月` 列ごとの `平均待ち時間` 列の平均。各グループの行数: `2026-01` 3 行、`2026-02` 3 行、`2026-03` 3 行。",
+    "output_items": 1,
+    "file_pngs": 1,
+    "dom_pngs": [
+      {
+        "width": 800,
+        "height": 500
+      }
+    ],
+    "png_sha256": [
+      "b046deb7e069f7deb9c7686d408031654422f125939e3576d31c6d7a07cd56b8"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "status": null,
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\npath = '/mnt/uploads/clinic_ja.csv'\ndf = pd.read_csv(path)\ngrouped = df.groupby('年月', as_index=False)['平均待ち時間'].mean()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(grouped['年月'], grouped['平均待ち時間'], marker='o', linewidth=2)\nax.set_title('年月ごとの平均待ち時間')\nax.set_xlabel('年月')\nax.set_ylabel('平均待ち時間')\nax.set_ylim(0, grouped['平均待ち時間'].max() * 1.1)\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 34
+}

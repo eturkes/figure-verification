@@ -29,6 +29,8 @@ def _inlet(
     module = load("demo_filter" if demo else "filter")
     instance = module.Filter()
     instance._TEMPLATES = load("templates").Templates(_FILE, _NO_FILE)
+    # The note sentence the Valve appends is Q78's (`tests/test_paste_in_note.py` N3).
+    instance.valves = module.Filter.Valves(model_note=False)
     return cast(
         dict[str, object],
         asyncio.run(

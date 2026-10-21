@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
+from verifier.figure.inert import code
 from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
@@ -43,12 +44,24 @@ from webui.paste_in.owui_files import (
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.sandbox import wrapper_code
-from webui.paste_in.templates import PRODUCTION_TEMPLATES, Templates
+from webui.paste_in.templates import (
+    NOTE_LANGUAGES,
+    NOTE_REQUEST,
+    PRODUCTION_TEMPLATES,
+    Templates,
+)
 
 _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
+# Q78 (user): the speaker of the line under the verdict, EN + JA; no check reads the note.
+NOTE_LABELS: Final = ("Model note:", "モデルの注記:")
+MODEL_NOTE_TITLE: Final = "Model Note"
+MODEL_NOTE_DESCRIPTION: Final = (
+    "Ask the model to say when the request asks for something that the chart rules do not allow,"
+    " and show that statement under the verdict. The verifier does not check the statement."
+)
 RPC_TIMEOUT_SECONDS: Final = 60
 STATUS_TIMEOUT_SECONDS: Final = 5
 _PNG_PREFIX = "data:image/png;base64,"
@@ -183,6 +196,20 @@ def _japanese(metadata: object) -> bool:
     return isinstance(content, str) and _KANA_LETTER.search(content) is not None
 
 
+def _note_line(note: str, metadata: object) -> str:
+    """The model's own statement of what the chart rules overrode, as one inert code span under
+    the verdict (M21.1 F1: Open WebUI renders the reply as markdown), or nothing for a blank note.
+
+    Display alone: it is built after the verdict and read by no check. Total, because a failed
+    reply builds it, and a raise there would fail open.
+    """
+    try:
+        shown = note.strip()
+        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown else ""
+    except Exception:
+        return ""
+
+
 async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) -> None:
     """Deliver one diagnostic event unless `deadline` (event-loop time) passes first.
 
@@ -261,7 +288,7 @@ def _evidence(
     return Evidence(program, site, lines)
 
 
-async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
+async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs + the note
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
@@ -269,6 +296,7 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     anchoring: Anchoring,
     *,
     evidence: Evidence,
+    note: str = "",
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
@@ -279,7 +307,11 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
     await _diagnose(emit, reason, metadata, anchoring, evidence)
-    return _rewrite(body, FAIL_TEXT)
+    try:
+        line = await asyncio.to_thread(_note_line, note, metadata) if note else ""
+    except Exception:
+        line = ""
+    return _rewrite(body, FAIL_TEXT + line)
 
 
 class Filter:
@@ -301,6 +333,9 @@ class Filter:
                 " When it is empty, the filter uses the first Japanese font it finds in the"
                 " server's font folders."
             ),
+        )
+        model_note: bool = Field(
+            default=True, title=MODEL_NOTE_TITLE, description=MODEL_NOTE_DESCRIPTION
         )
 
     def __init__(self) -> None:
@@ -328,6 +363,9 @@ class Filter:
             attachment = await last_owned_file(__metadata__, user_id)
             # The header parse reads up to 8 MB: keep Open WebUI's event loop free.
             rendered = await asyncio.to_thread(self._render, task, attachment)
+            if self.valves.model_note:
+                japanese = _KANA_LETTER.search(task) is not None
+                rendered += NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])
             updated = list(messages)
             updated[index] = {**message, "content": rendered}
             return {**body, "messages": updated}
@@ -360,13 +398,20 @@ class Filter:
         """Run the recorded program in the browser, judge the figure, publish only a pass."""
         program: str | None = None
         description: Description | None = None
+        note = ""
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
             # The listing walks the program's syntax tree: 0.26 s near its work budget (CPython
             # 3.11, M22.1 F5).
             evidence = await asyncio.to_thread(_evidence, program, description, reason, site)
             return await _fail(
-                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+                body,
+                reason,
+                __metadata__,
+                __event_emitter__,
+                self._ANCHORING,
+                evidence=evidence,
+                note=note,
             )
 
         try:
@@ -374,6 +419,7 @@ class Filter:
             if receipt is None:
                 return await fail("no_tool_call")
             program = receipt.program
+            note = receipt.note if self.valves.model_note else ""
             user_id = (__user__ or {}).get("id")
             if not isinstance(user_id, str) or not user_id:
                 return await fail("no_user")
@@ -443,7 +489,9 @@ class Filter:
             await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
             japanese = _japanese(__metadata__)
             interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
-            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")
+            # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
+            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
+            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}{note_line}")
         except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass
             # included (`utils/filter.py`, `utils/middleware.py`): any fault fails closed.

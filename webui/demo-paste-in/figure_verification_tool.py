@@ -777,20 +777,23 @@ from typing import Final
 from verifier.figure.anchoring import Aliases
 
 RECEIPT_ATTR: Final = "figure_verification_receipt"
-# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
-RECEIPT_TAG: Final = "figure-verification-receipt/2"
-_RECEIPT_LENGTH = 5
+# `/2` carries the admin's column aliases (Q43), `/3` the model's note (Q78); an older value decodes
+# to no receipt.
+RECEIPT_TAG: Final = "figure-verification-receipt/3"
+_RECEIPT_LENGTH = 6
 _PAIR = 2
 
 
 @dataclass(frozen=True, slots=True)
 class Receipt:
-    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
+    """Program, user-owned candidate ids, admin aliases and the model's note, never a verdict or
+    uploaded bytes. The note is shown under the verdict alone: no check reads it (Q78)."""
 
     program: str
     file_ids: tuple[str, ...]
     request_text: str | None
     aliases: Aliases
+    note: str = ""
 
 
 def write_receipt(request: object, receipt: Receipt) -> None:
@@ -801,7 +804,14 @@ def write_receipt(request: object, receipt: Receipt) -> None:
     setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
+        (
+            RECEIPT_TAG,
+            receipt.program,
+            receipt.file_ids,
+            receipt.request_text,
+            receipt.aliases,
+            receipt.note,
+        ),
     )
 
 
@@ -811,7 +821,7 @@ def read_receipt(request: object) -> Receipt | None:
     value = getattr(state, RECEIPT_ATTR, None)
     if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
         return None
-    _, program, file_ids, request_text, aliases = value
+    _, program, file_ids, request_text, aliases, note = value
     if (
         type(program) is not str
         or type(file_ids) is not tuple
@@ -822,9 +832,10 @@ def read_receipt(request: object) -> Receipt | None:
             type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
             for pair in aliases
         )
+        or type(note) is not str
     ):
         return None
-    return Receipt(program, file_ids, request_text, aliases)
+    return Receipt(program, file_ids, request_text, aliases, note)
 '''
 
 _SOURCES["webui.paste_in.tool"] = r'''
@@ -834,9 +845,10 @@ _SOURCES["webui.paste_in.tool"] = r'''
 Transport, never authority. The method records the model's exact program bytes, the chat's
 attachment ids (the outlet re-resolves each against the requesting user), the request text (the
 user's stored messages on the chat branch, `owui_files.request_text`) and the admin's aliases in
-backend request state, and returns one fixed string. It runs nothing and decides
-nothing: the outlet filter runs the recorded program in the user's browser and judges the finished
-figure, and only that outlet may publish (tool-call-only PASS transport).
+backend request state, with the model's note (Q78: shown under the verdict, read by no check), and
+returns one fixed string. It runs nothing and decides nothing: the outlet filter runs the recorded
+program in the user's browser and judges the finished figure, and only that outlet may publish
+(tool-call-only PASS transport).
 
 `Tools` is Open WebUI's fixed entry name; it instantiates the class once and exposes every public
 method to the model (`utils/plugin.py`, `utils/tools.py`), so a helper here must stay private or it
@@ -857,6 +869,12 @@ from webui.paste_in.aliases import parse_aliases
 from webui.paste_in.owui_files import attachment_ids, request_text
 from webui.paste_in.receipt import Receipt, write_receipt
 from webui.paste_in.verdicts import CHART_SENT
+
+
+def _text(value: object) -> str:
+    """The model's note, or none: Open WebUI passes the model's JSON value unchecked, and a `null`
+    note must not cost the receipt (Q78)."""
+    return value if isinstance(value, str) else ""
 
 
 class Tools:
@@ -886,6 +904,7 @@ class Tools:
     async def draw_figure(
         self,
         program: str,
+        note: str = "",
         __metadata__: dict[str, object] | None = None,
         __request__: object | None = None,
         __user__: dict[str, object] | None = None,
@@ -901,6 +920,8 @@ class Tools:
         plt.hist. The reply shows the chart only when it follows these rules.
 
         :param program: The complete Python program that draws the chart.
+        :param note: Empty unless the request, taken as written, asks for something these rules do
+            not allow: then what the request asked for and what the chart shows instead.
         """
         if __request__ is not None:
             write_receipt(
@@ -910,6 +931,7 @@ class Tools:
                     tuple(attachment_ids(__metadata__)),
                     await request_text(__metadata__, (__user__ or {}).get("id")),
                     parse_aliases(self.valves.column_aliases),
+                    _text(note),
                 ),
             )
         return CHART_SENT

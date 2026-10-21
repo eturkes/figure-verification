@@ -53,6 +53,18 @@ TRANSPORT: Final = (
     " the whole program as the program argument. Do not put the program in your reply text.\n"
 )
 FORMAT: Final = "\nReturn one complete Python program as bare source text, no Markdown fences.\n"
+# Q78 (user): the rules keep overriding a request that breaks them, and the model says so in the
+# `draw_figure` note, which the outlet shows under the verdict. The filter appends it while its
+# `model_note` Valve is on, so every template above keeps its measured bytes, and names the
+# language by the reply's kana rule: "in the language of the request" made gpt-6-luna write the
+# note of an English request in Spanish or French (6 of 6 runs).
+NOTE_REQUEST: Final = (
+    "\nIf the request, taken as written, asks for anything that the chart rules above do not"
+    " allow, follow the rules. Then use the note argument of draw_figure to say what the request"
+    " asked for and what the chart shows instead. Write the note in {language}. When the chart"
+    " follows the request, leave the note empty.\n"
+)
+NOTE_LANGUAGES: Final = ("English", "Japanese")
 
 
 @dataclass(frozen=True, slots=True)

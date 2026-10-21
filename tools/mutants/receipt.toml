@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # Builtin carrier across separately generated artifact classes; no verdict or bytes in state.
+# Q78: the carrier holds the model's note as text.
 module = "webui/paste_in/receipt.py"
-tests = ["tests/test_paste_in_receipt.py", "tests/test_paste_in_aliases.py"]
+tests = ["tests/test_paste_in_receipt.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_note.py"]
 
 [[mutant]]
 id = "f1-first-call-persists"
@@ -10,29 +11,29 @@ kills = "tests/test_paste_in_receipt.py::test_f1_the_last_call_replaces_the_rece
 anchor = '''    setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
-    )'''
+        (
+            RECEIPT_TAG,'''
 mutant = '''    if hasattr(state, RECEIPT_ATTR):
         return
     setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
-    )'''
+        (
+            RECEIPT_TAG,'''
 
 [[mutant]]
 id = "f1-file-ids-erased"
 predicate = "the request receipt carries owned file ids in chat order"
 kills = "tests/test_paste_in_receipt.py::test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes"
-anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases)'''
-mutant = '''(RECEIPT_TAG, receipt.program, (), receipt.request_text, receipt.aliases)'''
+anchor = '''            receipt.file_ids,'''
+mutant = '''            (),'''
 
 [[mutant]]
 id = "f1-request-text-erased"
 predicate = "the request receipt carries user request text for formula binding"
 kills = "tests/test_paste_in_receipt.py::test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes"
-anchor = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases)'''
-mutant = '''(RECEIPT_TAG, receipt.program, receipt.file_ids, None, receipt.aliases)'''
+anchor = '''            receipt.request_text,'''
+mutant = '''            None,'''
 
 [[mutant]]
 id = "f1-read-other-state"
@@ -96,8 +97,8 @@ mutant = '''@dataclass(frozen=True, slots=False)'''
 id = "q43-aliases-erased"
 predicate = "V2: the receipt carries the aliases the tool used"
 kills = "tests/test_paste_in_aliases.py::test_q43_v2_the_receipt_carries_aliases_as_builtin_tuples"
-anchor = '''receipt.file_ids, receipt.request_text, receipt.aliases)'''
-mutant = '''receipt.file_ids, receipt.request_text, ())'''
+anchor = '''            receipt.aliases,'''
+mutant = '''            (),'''
 
 [[mutant]]
 id = "q43-alias-container-unchecked"
@@ -112,3 +113,10 @@ predicate = "V2: every alias is a builtin (column, alias) pair of str"
 kills = "tests/test_paste_in_receipt.py::test_f1_read_receipt_rejects_bad_carriers"
 anchor = '''type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)'''
 mutant = '''False'''
+
+[[mutant]]
+id = "q78-note-any-type"
+predicate = "a carrier whose note is not text is no receipt"
+kills = "tests/test_paste_in_receipt.py::test_f1_read_receipt_rejects_bad_carriers"
+anchor = '''        or type(note) is not str'''
+mutant = '''        or False'''

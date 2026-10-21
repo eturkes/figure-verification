@@ -4,9 +4,10 @@
 Transport, never authority. The method records the model's exact program bytes, the chat's
 attachment ids (the outlet re-resolves each against the requesting user), the request text (the
 user's stored messages on the chat branch, `owui_files.request_text`) and the admin's aliases in
-backend request state, and returns one fixed string. It runs nothing and decides
-nothing: the outlet filter runs the recorded program in the user's browser and judges the finished
-figure, and only that outlet may publish (tool-call-only PASS transport).
+backend request state, with the model's note (Q78: shown under the verdict, read by no check), and
+returns one fixed string. It runs nothing and decides nothing: the outlet filter runs the recorded
+program in the user's browser and judges the finished figure, and only that outlet may publish
+(tool-call-only PASS transport).
 
 `Tools` is Open WebUI's fixed entry name; it instantiates the class once and exposes every public
 method to the model (`utils/plugin.py`, `utils/tools.py`), so a helper here must stay private or it
@@ -27,6 +28,12 @@ from webui.paste_in.aliases import parse_aliases
 from webui.paste_in.owui_files import attachment_ids, request_text
 from webui.paste_in.receipt import Receipt, write_receipt
 from webui.paste_in.verdicts import CHART_SENT
+
+
+def _text(value: object) -> str:
+    """The model's note, or none: Open WebUI passes the model's JSON value unchecked, and a `null`
+    note must not cost the receipt (Q78)."""
+    return value if isinstance(value, str) else ""
 
 
 class Tools:
@@ -56,6 +63,7 @@ class Tools:
     async def draw_figure(
         self,
         program: str,
+        note: str = "",
         __metadata__: dict[str, object] | None = None,
         __request__: object | None = None,
         __user__: dict[str, object] | None = None,
@@ -71,6 +79,8 @@ class Tools:
         plt.hist. The reply shows the chart only when it follows these rules.
 
         :param program: The complete Python program that draws the chart.
+        :param note: Empty unless the request, taken as written, asks for something these rules do
+            not allow: then what the request asked for and what the chart shows instead.
         """
         if __request__ is not None:
             write_receipt(
@@ -80,6 +90,7 @@ class Tools:
                     tuple(attachment_ids(__metadata__)),
                     await request_text(__metadata__, (__user__ or {}).get("id")),
                     parse_aliases(self.valves.column_aliases),
+                    _text(note),
                 ),
             )
         return CHART_SENT

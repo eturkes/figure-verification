@@ -2,8 +2,9 @@
 # M19.5 outlet (`.agent/archive/contracts/m19u5.md` O1-O7): order, payload, Sources threading, replies,
 # bounded diagnostics, inlet templates. Each mutant names one red in the M19.5 suite; M22.1 adds
 # the kana class (F1), the reply bound + off-loop decode (F4) + listing (F5), the whole-outlet guard (F6).
+# Q78: the model's note, shown inert under the verdict while the Valve is on.
 module = "webui/paste_in/filter.py"
-tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py"]
+tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_note.py"]
 
 [[mutant]]
 id = "m19-receipt-unguarded"
@@ -175,8 +176,8 @@ mutant = '''            except Exception:
 id = "m19-pass-without-interpretation"
 predicate = "a pass publishes its interpretation"
 kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")'''
-mutant = '''        return _rewrite(body, PASS_TEXT)'''
+anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}{note_line}")'''
+mutant = '''        return _rewrite(body, f"{PASS_TEXT}{note_line}")'''
 
 [[mutant]]
 id = "m19-japanese-ignored"
@@ -418,3 +419,92 @@ anchor = '''        except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''
 mutant = '''        except OSError:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''
+
+[[mutant]]
+id = "q78-inlet-ignores-valve"
+predicate = "the inlet asks for the note only while the Valve is on"
+kills = "tests/test_paste_in_note.py::test_q78_n3_the_inlet_asks_for_the_note_only_while_the_valve_is_on"
+anchor = '''            if self.valves.model_note:
+                japanese'''
+mutant = '''            if True:
+                japanese'''
+
+[[mutant]]
+id = "q78-outlet-ignores-valve"
+predicate = "the outlet shows the note only while the Valve is on"
+kills = "tests/test_paste_in_note.py::test_q78_n6_the_valve_off_shows_today_s_reply"
+anchor = '''            note = receipt.note if self.valves.model_note else ""'''
+mutant = '''            note = receipt.note'''
+
+[[mutant]]
+id = "q78-blank-note-shown"
+predicate = "a blank note adds nothing"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_blank_note_adds_nothing"
+anchor = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown else ""'''
+mutant = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}"'''
+
+[[mutant]]
+id = "q78-label-not-localized"
+predicate = "a kana request reads the Japanese label"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[0]} {code(shown)}" if shown'''
+
+[[mutant]]
+id = "q78-note-not-inert"
+predicate = "the note shows as one code span"
+kills = "tests/test_paste_in_note.py::test_q78_n7_a_hostile_note_stays_one_code_span_on_one_line"
+anchor = '''{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[_japanese(metadata)]} {shown}" if shown'''
+
+[[mutant]]
+id = "q78-note-not-stripped"
+predicate = "the shown note is stripped"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''        shown = note.strip()'''
+mutant = '''        shown = note'''
+
+[[mutant]]
+id = "q78-fail-drops-note"
+predicate = "a failed reply shows the note"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
+anchor = '''    return _rewrite(body, FAIL_TEXT + line)'''
+mutant = '''    return _rewrite(body, FAIL_TEXT)'''
+
+[[mutant]]
+id = "q78-fail-path-drops-note"
+predicate = "every failure after the receipt carries the note"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_before_the_browser_shows_the_note_too"
+anchor = '''                evidence=evidence,
+                note=note,'''
+mutant = '''                evidence=evidence,'''
+
+[[mutant]]
+id = "q78-pass-drops-note"
+predicate = "a passed reply shows the note"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''{interpretation}{note_line}")'''
+mutant = '''{interpretation}")'''
+
+[[mutant]]
+id = "q78-fail-note-unguarded"
+predicate = "a fault rendering a failed reply's note still blocks"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_fault_rendering_the_note_never_fails_open"
+anchor = '''    except Exception:
+        line = ""'''
+mutant = '''    except ZeroDivisionError:
+        line = ""'''
+
+[[mutant]]
+id = "q78-pass-note-on-loop"
+predicate = "a passed reply renders the note off the event loop"
+kills = "tests/test_paste_in_note.py::test_q78_n4_the_note_renders_off_the_event_loop"
+anchor = '''            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""'''
+mutant = '''            note_line = _note_line(note, __metadata__) if note else ""'''
+
+[[mutant]]
+id = "q78-note-language-fixed"
+predicate = "the inlet names the note's language by the kana rule"
+kills = "tests/test_paste_in_note.py::test_q78_n3_the_inlet_asks_for_the_note_only_while_the_valve_is_on"
+anchor = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])'''
+mutant = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[0])'''

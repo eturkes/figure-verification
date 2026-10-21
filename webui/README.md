@@ -111,7 +111,10 @@ and `.launch-logs/model.log` records it.
 
 This arm installs the production pair from `paste-in/`, not the demo pair. It also selects native
 function calling, which is the Open WebUI default. The model calls `draw_figure` itself, so the arm
-needs no adapter. Because of native function calling, `python -m webui chat` cannot drive this arm.
+needs no adapter. When a request asks for something that the chart rules do not allow, the
+production filter asks the model to follow the rules and to state the conflict. The reply shows that
+statement below the verdict, after `Model note:`. Because of native function calling,
+`python -m webui chat` cannot drive this arm.
 Use a browser. The record of the live runs is `.agent/measurements/luna/README.md`.
 
 Variable | Default | Purpose

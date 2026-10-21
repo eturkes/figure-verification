@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""F1/A3 (M10.1, Q43): the backend-owned receipt carrier, unchanged by M19.5.
+"""F1/A3 (M10.1, Q43, Q78): the backend-owned receipt carrier, unchanged by M19.5; Q78 adds the
+model's note.
 
 Moved from the retired static-outlet suite: `webui/paste_in/receipt.py` still carries the tool's
 last call to the outlet, so its strict decoding keeps its own witnesses.
@@ -18,16 +19,16 @@ _REQUEST = "Chart a 1"
 def test_f1_read_receipt_decodes_builtin_carrier_across_artifact_classes() -> None:
     """F1/A3: a strictly tagged tuple crosses two isolated embedded Receipt classes."""
     module = load_receipt_module()
-    assert module.RECEIPT_TAG == "figure-verification-receipt/2"
+    assert module.RECEIPT_TAG == "figure-verification-receipt/3"
     assert module.read_receipt(None) is None
     assert module.read_receipt(object()) is None
     request = filter_request()
     assert module.read_receipt(request) is None
-    genuine = module.Receipt(_PROGRAM, ("one",), _REQUEST, ())
+    genuine = module.Receipt(_PROGRAM, ("one",), _REQUEST, (), "a note")
     module.write_receipt(request, genuine)
     raw = getattr(request.state, module.RECEIPT_ATTR)
     assert type(raw) is tuple
-    assert raw == ("figure-verification-receipt/2", _PROGRAM, ("one",), _REQUEST, ())
+    assert raw == ("figure-verification-receipt/3", _PROGRAM, ("one",), _REQUEST, (), "a note")
     assert module.read_receipt(request) == genuine
     assert module.read_receipt(request) is not genuine
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -49,21 +50,35 @@ def test_f1_the_last_call_replaces_the_receipt() -> None:
     "invalid",
     [
         {"program": "print(1)"},
-        ("wrong-tag", "source", (), None, ()),
-        ("figure-verification-receipt/2", "source", (), None),
-        ("figure-verification-receipt/2", b"source", (), None, ()),
-        ("figure-verification-receipt/2", "source", ["one"], None, ()),
-        ("figure-verification-receipt/2", "source", ("one", 2), None, ()),
-        ("figure-verification-receipt/2", "source", (), 2, ()),
-        # Q43: a `/1` carrier holds no aliases, so it is no receipt; nor is a loose alias shape.
+        ("wrong-tag", "source", (), None, (), ""),
+        ("figure-verification-receipt/3", "source", (), None, ()),
+        ("figure-verification-receipt/3", b"source", (), None, (), ""),
+        ("figure-verification-receipt/3", "source", ["one"], None, (), ""),
+        ("figure-verification-receipt/3", "source", ("one", 2), None, (), ""),
+        ("figure-verification-receipt/3", "source", (), 2, (), ""),
+        # Q43: a `/1` carrier holds no aliases, Q78: a `/2` one no note, so neither is a receipt.
         ("figure-verification-receipt/1", "source", (), None),
         ("figure-verification-receipt/1", "source", (), None, ()),
-        ("figure-verification-receipt/2", "source", (), None, [("temp_c", "temperature")]),
-        ("figure-verification-receipt/2", "source", (), None, (["temp_c", "temperature"],)),
-        ("figure-verification-receipt/2", "source", (), None, (("temp_c",),)),
-        ("figure-verification-receipt/2", "source", (), None, (("temp_c", "temperature", "t"),)),
-        ("figure-verification-receipt/2", "source", (), None, (("temp_c", b"temperature"),)),
-        ("figure-verification-receipt/2", "source", (), None, ((1, "temperature"),)),
+        ("figure-verification-receipt/2", "source", (), None, ()),
+        ("figure-verification-receipt/2", "source", (), None, (), ""),
+        ("figure-verification-receipt/3", "source", (), None, [("temp_c", "temperature")], ""),
+        ("figure-verification-receipt/3", "source", (), None, (["temp_c", "temperature"],), ""),
+        ("figure-verification-receipt/3", "source", (), None, (("temp_c",),), ""),
+        (
+            "figure-verification-receipt/3",
+            "source",
+            (),
+            None,
+            (("temp_c", "temperature", "t"),),
+            "",
+        ),
+        ("figure-verification-receipt/3", "source", (), None, (("temp_c", b"temperature"),), ""),
+        ("figure-verification-receipt/3", "source", (), None, ((1, "temperature"),), ""),
+        # Q78: the note is text or the carrier is no receipt.
+        ("figure-verification-receipt/3", "source", (), None, (), None),
+        ("figure-verification-receipt/3", "source", (), None, (), b"note"),
+        ("figure-verification-receipt/3", "source", (), None, (), 3),
+        ("figure-verification-receipt/3", "source", (), None, (), "", "extra"),
     ],
 )
 def test_f1_read_receipt_rejects_bad_carriers(invalid: object) -> None:

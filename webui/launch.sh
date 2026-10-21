@@ -295,11 +295,12 @@ elif (( USE_CODEX )); then
     "" \
     "           The model writes a Python program and calls the figure tool with it." \
     "           Your browser runs the program, and the verifier checks the finished figure." \
-    "           Recorded with gpt-6-luna at reasoning effort medium and Open WebUI 0.12.3," \
+    "           Recorded with gpt-6-luna at reasoning effort low and Open WebUI 0.12.3," \
     "           3 runs for each prompt: prompts 1, 3 and 5 passed. For prompts 2, 4 and 6," \
-    "           the model drew an honest chart instead, and that chart passed. Prompt 7" \
-    "           stopped the chart in 3 of 3 runs, because the chart has a second y axis." \
-    "           This arm uses reasoning effort low. Set CODEX_BRIDGE_EFFORT to change it." \
+    "           the model drew an honest chart instead, and that chart passed. Below the" \
+    "           verdict, a model note stated what the model changed, in 9 of 9 runs." \
+    "           Prompt 7 stopped the chart in 2 of 3 runs, because the chart has a second" \
+    "           y axis. Set CODEX_BRIDGE_EFFORT to change the reasoning effort." \
     "           This arm installs the production tool and filter. They ask the request" \
     "           to name each column that the chart draws."
 else

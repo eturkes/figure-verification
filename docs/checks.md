@@ -31,7 +31,7 @@ language model writes. Red dashed arrows: where a failed check stops the chart.
    the status line shows the code.
 
 Not checked: whether the chart answers your question; text on the chart (`text`, `annotate`,
-`bar_label`), which the reply lists; the program itself. The verifier trusts the program: it runs
+`bar_label`), which the reply lists; the model's note below the verdict; the program itself. The verifier trusts the program: it runs
 before the checks, in the same interpreter as the reader, and can read your attached files and reach
 your browser's network.
 

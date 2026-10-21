@@ -3617,6 +3617,18 @@ TRANSPORT: Final = (
     " the whole program as the program argument. Do not put the program in your reply text.\n"
 )
 FORMAT: Final = "\nReturn one complete Python program as bare source text, no Markdown fences.\n"
+# Q78 (user): the rules keep overriding a request that breaks them, and the model says so in the
+# `draw_figure` note, which the outlet shows under the verdict. The filter appends it while its
+# `model_note` Valve is on, so every template above keeps its measured bytes, and names the
+# language by the reply's kana rule: "in the language of the request" made gpt-6-luna write the
+# note of an English request in Spanish or French (6 of 6 runs).
+NOTE_REQUEST: Final = (
+    "\nIf the request, taken as written, asks for anything that the chart rules above do not"
+    " allow, follow the rules. Then use the note argument of draw_figure to say what the request"
+    " asked for and what the chart shows instead. Write the note in {language}. When the chart"
+    " follows the request, leave the note empty.\n"
+)
+NOTE_LANGUAGES: Final = ("English", "Japanese")
 
 
 @dataclass(frozen=True, slots=True)
@@ -4582,20 +4594,23 @@ from typing import Final
 from verifier.figure.anchoring import Aliases
 
 RECEIPT_ATTR: Final = "figure_verification_receipt"
-# `/2` carries the admin's column aliases (Q43); a `/1` value decodes to no receipt.
-RECEIPT_TAG: Final = "figure-verification-receipt/2"
-_RECEIPT_LENGTH = 5
+# `/2` carries the admin's column aliases (Q43), `/3` the model's note (Q78); an older value decodes
+# to no receipt.
+RECEIPT_TAG: Final = "figure-verification-receipt/3"
+_RECEIPT_LENGTH = 6
 _PAIR = 2
 
 
 @dataclass(frozen=True, slots=True)
 class Receipt:
-    """Program, user-owned candidate ids and admin aliases, never a verdict or uploaded bytes."""
+    """Program, user-owned candidate ids, admin aliases and the model's note, never a verdict or
+    uploaded bytes. The note is shown under the verdict alone: no check reads it (Q78)."""
 
     program: str
     file_ids: tuple[str, ...]
     request_text: str | None
     aliases: Aliases
+    note: str = ""
 
 
 def write_receipt(request: object, receipt: Receipt) -> None:
@@ -4606,7 +4621,14 @@ def write_receipt(request: object, receipt: Receipt) -> None:
     setattr(
         state,
         RECEIPT_ATTR,
-        (RECEIPT_TAG, receipt.program, receipt.file_ids, receipt.request_text, receipt.aliases),
+        (
+            RECEIPT_TAG,
+            receipt.program,
+            receipt.file_ids,
+            receipt.request_text,
+            receipt.aliases,
+            receipt.note,
+        ),
     )
 
 
@@ -4616,7 +4638,7 @@ def read_receipt(request: object) -> Receipt | None:
     value = getattr(state, RECEIPT_ATTR, None)
     if type(value) is not tuple or len(value) != _RECEIPT_LENGTH or value[0] != RECEIPT_TAG:
         return None
-    _, program, file_ids, request_text, aliases = value
+    _, program, file_ids, request_text, aliases, note = value
     if (
         type(program) is not str
         or type(file_ids) is not tuple
@@ -4627,9 +4649,10 @@ def read_receipt(request: object) -> Receipt | None:
             type(pair) is not tuple or len(pair) != _PAIR or any(type(n) is not str for n in pair)
             for pair in aliases
         )
+        or type(note) is not str
     ):
         return None
-    return Receipt(program, file_ids, request_text, aliases)
+    return Receipt(program, file_ids, request_text, aliases, note)
 '''
 
 _SOURCES["verifier.figure.computed"] = r'''
@@ -9044,6 +9067,7 @@ from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
+from verifier.figure.inert import code
 from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
@@ -9064,12 +9088,24 @@ from webui.paste_in.owui_files import (
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
 from webui.paste_in.sandbox import wrapper_code
-from webui.paste_in.templates import PRODUCTION_TEMPLATES, Templates
+from webui.paste_in.templates import (
+    NOTE_LANGUAGES,
+    NOTE_REQUEST,
+    PRODUCTION_TEMPLATES,
+    Templates,
+)
 
 _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
+# Q78 (user): the speaker of the line under the verdict, EN + JA; no check reads the note.
+NOTE_LABELS: Final = ("Model note:", "モデルの注記:")
+MODEL_NOTE_TITLE: Final = "Model Note"
+MODEL_NOTE_DESCRIPTION: Final = (
+    "Ask the model to say when the request asks for something that the chart rules do not allow,"
+    " and show that statement under the verdict. The verifier does not check the statement."
+)
 RPC_TIMEOUT_SECONDS: Final = 60
 STATUS_TIMEOUT_SECONDS: Final = 5
 _PNG_PREFIX = "data:image/png;base64,"
@@ -9204,6 +9240,20 @@ def _japanese(metadata: object) -> bool:
     return isinstance(content, str) and _KANA_LETTER.search(content) is not None
 
 
+def _note_line(note: str, metadata: object) -> str:
+    """The model's own statement of what the chart rules overrode, as one inert code span under
+    the verdict (M21.1 F1: Open WebUI renders the reply as markdown), or nothing for a blank note.
+
+    Display alone: it is built after the verdict and read by no check. Total, because a failed
+    reply builds it, and a raise there would fail open.
+    """
+    try:
+        shown = note.strip()
+        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown else ""
+    except Exception:
+        return ""
+
+
 async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) -> None:
     """Deliver one diagnostic event unless `deadline` (event-loop time) passes first.
 
@@ -9282,7 +9332,7 @@ def _evidence(
     return Evidence(program, site, lines)
 
 
-async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
+async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs + the note
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
@@ -9290,6 +9340,7 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     anchoring: Anchoring,
     *,
     evidence: Evidence,
+    note: str = "",
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
@@ -9300,7 +9351,11 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
     await _diagnose(emit, reason, metadata, anchoring, evidence)
-    return _rewrite(body, FAIL_TEXT)
+    try:
+        line = await asyncio.to_thread(_note_line, note, metadata) if note else ""
+    except Exception:
+        line = ""
+    return _rewrite(body, FAIL_TEXT + line)
 
 
 class Filter:
@@ -9322,6 +9377,9 @@ class Filter:
                 " When it is empty, the filter uses the first Japanese font it finds in the"
                 " server's font folders."
             ),
+        )
+        model_note: bool = Field(
+            default=True, title=MODEL_NOTE_TITLE, description=MODEL_NOTE_DESCRIPTION
         )
 
     def __init__(self) -> None:
@@ -9349,6 +9407,9 @@ class Filter:
             attachment = await last_owned_file(__metadata__, user_id)
             # The header parse reads up to 8 MB: keep Open WebUI's event loop free.
             rendered = await asyncio.to_thread(self._render, task, attachment)
+            if self.valves.model_note:
+                japanese = _KANA_LETTER.search(task) is not None
+                rendered += NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])
             updated = list(messages)
             updated[index] = {**message, "content": rendered}
             return {**body, "messages": updated}
@@ -9381,13 +9442,20 @@ class Filter:
         """Run the recorded program in the browser, judge the figure, publish only a pass."""
         program: str | None = None
         description: Description | None = None
+        note = ""
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
             # The listing walks the program's syntax tree: 0.26 s near its work budget (CPython
             # 3.11, M22.1 F5).
             evidence = await asyncio.to_thread(_evidence, program, description, reason, site)
             return await _fail(
-                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
+                body,
+                reason,
+                __metadata__,
+                __event_emitter__,
+                self._ANCHORING,
+                evidence=evidence,
+                note=note,
             )
 
         try:
@@ -9395,6 +9463,7 @@ class Filter:
             if receipt is None:
                 return await fail("no_tool_call")
             program = receipt.program
+            note = receipt.note if self.valves.model_note else ""
             user_id = (__user__ or {}).get("id")
             if not isinstance(user_id, str) or not user_id:
                 return await fail("no_user")
@@ -9464,7 +9533,9 @@ class Filter:
             await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
             japanese = _japanese(__metadata__)
             interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
-            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")
+            # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
+            note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
+            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}{note_line}")
         except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass
             # included (`utils/filter.py`, `utils/middleware.py`): any fault fails closed.
@@ -9479,7 +9550,10 @@ The demo keeps Q8's substitution rule, the rule its OWUI ran before Q37, while p
 (`paste-in/`) runs strict anchoring. Everything else is the production filter, inherited.
 """
 
+from pydantic import Field
+
 from verifier.figure.anchoring import Anchoring
+from webui.paste_in.filter import MODEL_NOTE_DESCRIPTION, MODEL_NOTE_TITLE
 from webui.paste_in.filter import Filter as ProductionFilter
 from webui.paste_in.templates import DEMO_TEMPLATES, Templates
 
@@ -9490,6 +9564,15 @@ class Filter(ProductionFilter):
     _ANCHORING: Anchoring = "substitution"
     # The demo adapter wraps a bare-source reply as the tool call, so its templates ask for one.
     _TEMPLATES: Templates = DEMO_TEMPLATES
+
+    class Valves(ProductionFilter.Valves):
+        """The admin's settings for this filter."""
+
+        # Q78 (user): off in the demo. Its adapter sends the bare program as the call, so the
+        # 0.5B model has no note to write.
+        model_note: bool = Field(
+            default=False, title=MODEL_NOTE_TITLE, description=MODEL_NOTE_DESCRIPTION
+        )
 '''
 
 _ROOT = "webui.paste_in.demo_filter"

@@ -116,9 +116,17 @@ def test_q43_v1_the_default_valve_is_empty_and_the_demo_inherits_it() -> None:
 
 
 def test_q43_v2_the_model_supplies_no_alias() -> None:
-    """The one model-visible parameter stays `program`; reserved names never reach the model."""
+    """The model-visible parameters stay `program` + Q78's optional `note`; reserved names never
+    reach the model, and none carries an alias."""
     parameters = inspect.signature(tool.Tools.draw_figure).parameters
-    assert list(parameters) == ["self", "program", "__metadata__", "__request__", "__user__"]
+    assert list(parameters) == [
+        "self",
+        "program",
+        "note",
+        "__metadata__",
+        "__request__",
+        "__user__",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -164,7 +172,7 @@ def test_q43_v2_the_receipt_carries_aliases_as_builtin_tuples() -> None:
     request = filter_request()
     write_receipt(request, Receipt("source", ("one",), "text", _PARSED))
     raw = getattr(request.state, RECEIPT_ATTR)
-    assert raw == ("figure-verification-receipt/2", "source", ("one",), "text", _PARSED)
+    assert raw == ("figure-verification-receipt/3", "source", ("one",), "text", _PARSED, "")
     assert read_receipt(request) == Receipt("source", ("one",), "text", _PARSED)
 
 

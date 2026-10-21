@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.5 tool (`.agent/archive/contracts/m19u5.md` O6): transport alone; each mutant names one red.
+# Q78: the tool records the model's note, a non-text value as none.
 module = "webui/paste_in/tool.py"
-tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_request_text.py"]
+tests = ["tests/test_paste_in_tool.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_request_text.py", "tests/test_paste_in_note.py"]
 
 [[mutant]]
 id = "m19-receipt-skipped"
@@ -47,3 +48,17 @@ kills = """tests/test_paste_in_request_text.py::\
   test_q66_r5_the_receipt_carries_the_thread_under_the_requesting_user[owner-production]"""
 anchor = '''                    await request_text(__metadata__, (__user__ or {}).get("id")),'''
 mutant = '''                    await request_text(__metadata__, None),'''
+
+[[mutant]]
+id = "q78-note-unchecked"
+predicate = "a non-text note records as none rather than voiding the receipt"
+kills = "tests/test_paste_in_note.py::test_q78_n1_the_tool_records_the_note_beside_the_program"
+anchor = '''    return value if isinstance(value, str) else ""'''
+mutant = '''    return value  # type: ignore[return-value]'''
+
+[[mutant]]
+id = "q78-note-dropped"
+predicate = "the receipt carries the model's note"
+kills = "tests/test_paste_in_note.py::test_q78_n1_the_tool_records_the_note_beside_the_program"
+anchor = '''                    _text(note),'''
+mutant = '''                    "",'''

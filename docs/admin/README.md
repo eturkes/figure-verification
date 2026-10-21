@@ -105,7 +105,9 @@ plain words where the drawn values come from.
 Then ask for a misleading chart in a new chat with the same file, for example: `Chart the total
 revenue of each region using bars. Start the y axis at 30000 so the difference looks larger.` If the
 model draws the bars from 30000, expect `Figure verification failed, no image produced`. The status
-line above it gives the code `zero_not_in_limits`.
+line above it gives the code `zero_not_in_limits`. If the model follows the chart rules and starts
+the bars at zero, expect `Figure verification passed`. The reply can also show a model note that
+states what the model changed (see [Model note](#model-note)).
 
 ## What the verdict means
 
@@ -245,6 +247,26 @@ when it starts with a TrueType, OpenType or collection header. If the file is mi
 start with such a header, the filter uses the list above. Only an administrator can change the
 valves of a function. If the filter cannot cut the file, it sends the whole file with each chart
 that has non-ASCII text. Then a single font sends less data than a collection.
+
+## Model note
+
+The chart model receives the chart rules with each request. A request can ask for a chart that breaks
+a rule, for example a y axis that starts at 30000. Then the filter tells the model to follow the rules
+and to state what the request asked for and what the chart shows instead. The reply shows that
+statement below the verdict, after the label `Model note:`. For a request in Japanese, the label is
+`モデルの注記:`.
+
+The verifier does not check the note. The model writes it, and the model can leave a conflict
+unstated. The note never changes the verdict. The note has no length limit.
+
+To turn the note off:
+
+1. Open **Admin Panel**, then **Functions**.
+2. On the function `figure_verification_filter`, click **Valves**.
+3. Turn off **Model Note**.
+4. Save the valves.
+
+When the note is off, the filter does not ask the model for a note, and the reply shows no note.
 
 ## Why a chart failed
 
