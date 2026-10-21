@@ -6,7 +6,7 @@ judges it in the browser. 55 cases (`cases.json`) × 3 fresh chats = 165 runs, 2
 
 Tuple: codex-cli 0.163.0 app-server (bridge `webui/codex_bridge.py` at the commit landing this
 record; the batch ran its pre-commit tree, which differs from it on error paths alone: reader
-hardening + the loopback bind guard), `gpt-6-luna` at its default reasoning effort `medium`,
+hardening + the loopback bind guard), `gpt-6-luna` at reasoning effort `medium` (the model default; the bridge's own default became `low` after this record),
 verbosity `low` (`_CATALOG`), Open WebUI 0.12.3, production pair `paste-in/` (tool sha256
 `685d280463b2ec4c…`, filter `acc8e43092c3478c…`: strict anchoring, transport template), native
 function calling, Pyodide 314.0.3, headless Chromium 151 (BrowserOS neo 151.0.8162.137), the

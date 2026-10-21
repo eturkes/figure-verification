@@ -254,7 +254,8 @@ def test_a_tool_call_ends_the_completion_and_interrupts_the_turn(
             "content": [{"type": "input_text", "text": "Chart A as 1."}],
         }
     ]
-    assert calls["turn/start"] == {"threadId": "thread-1", "input": []}
+    # No request effort: the bridge's default, `low` (user: this repo's setting).
+    assert calls["turn/start"] == {"threadId": "thread-1", "input": [], "effort": "low"}
     # ORDER: the interrupt goes out before the tool call's answer, so the model never samples on.
     received = _received(home)
     interrupt = next(i for i, m in enumerate(received) if m.get("method") == "turn/interrupt")
@@ -395,6 +396,18 @@ def test_the_bridge_refuses_a_model_its_catalog_lacks(tmp_path: Path) -> None:
 @pytest.mark.parametrize("effort", ["", "low", "max"])
 def test_settings_admit_the_model_efforts(effort: str) -> None:
     assert BridgeSettings(effort=effort).effort == effort
+
+
+def test_the_default_effort_is_low_and_empty_means_the_model_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """User: `low` for this repo; an empty CODEX_BRIDGE_EFFORT sends none (the model's `medium`)."""
+    monkeypatch.delenv("CODEX_BRIDGE_EFFORT", raising=False)
+    assert BridgeSettings.from_env().effort == "low"
+    monkeypatch.setenv("CODEX_BRIDGE_EFFORT", "")
+    assert BridgeSettings.from_env().effort == ""
+    monkeypatch.setenv("CODEX_BRIDGE_EFFORT", "high")
+    assert BridgeSettings.from_env().effort == "high"
 
 
 @pytest.mark.parametrize("effort", ["none", "MAX", "minimal"])

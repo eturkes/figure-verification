@@ -116,7 +116,7 @@ Variable | Default | Purpose
 `CODEX_BRIDGE_BIN` | `codex` | Sets the Codex executable.
 `CODEX_BRIDGE_AUTH_FILE` | `~/.codex/auth.json` | Sets the file that holds your Codex sign-in.
 `CODEX_BRIDGE_HOME` | `.codex-bridge` | Sets the home directory of the app server.
-`CODEX_BRIDGE_EFFORT` | empty: the model default, `medium` | Sets the reasoning effort: `low`, `medium`, `high`, `xhigh` or `max`.
+`CODEX_BRIDGE_EFFORT` | `low` | Sets the reasoning effort: `low`, `medium`, `high`, `xhigh` or `max`. An empty value selects the model default, `medium`.
 `CODEX_BRIDGE_DUMP_DIR` | empty: off | Writes each request and its result to this directory as JSON.
 
 ## Clean hardware-free smoke

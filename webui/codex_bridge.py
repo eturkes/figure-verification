@@ -134,7 +134,8 @@ class BridgeSettings(msgspec.Struct, frozen=True, kw_only=True):
     codex_bin: str = "codex"
     auth_file: Path = Path.home() / ".codex" / "auth.json"
     home: Path = Path(".codex-bridge")
-    effort: str = ""
+    # User: `low` in this repo. Empty = no effort sent = the model's own default (`medium`).
+    effort: str = "low"
     # Measurement aid: each request body + its outcome, one JSON file per completion (what the
     # model saw: the inlet's rewrite, file context, tool spec). Empty = off.
     dump_dir: Path | None = None

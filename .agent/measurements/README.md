@@ -289,7 +289,7 @@ Rerun from the repository root with `.venv-webui` set up, an idle CPU (`heavy --
 holder) and Codex signed in with ChatGPT:
 
 ```
-WEBUI_PROVISION_DATA_DIR=.scratch/luna/webui-data CODEX_BRIDGE_DUMP_DIR=.scratch/luna/requests webui/launch.sh --codex
+WEBUI_PROVISION_DATA_DIR=.scratch/luna/webui-data CODEX_BRIDGE_DUMP_DIR=.scratch/luna/requests CODEX_BRIDGE_EFFORT=medium webui/launch.sh --codex
 set -a; . ./.env; set +a
 "$CHROME" --headless=new --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" about:blank &
 cd .agent/measurements
