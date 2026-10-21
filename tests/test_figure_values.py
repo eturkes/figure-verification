@@ -693,3 +693,28 @@ def test_m21_hostile_names_and_chart_text_stay_inert_markdown() -> None:
             'x␊␊<iframe src="https://e.example/"></iframe>',
             "[a](https://e.example) **b** $c$",
         ]
+
+
+def test_m22_each_source_is_read_once_per_judgment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M22.1 F3: each values pass parsed every attached file and the request again (1.6 s per pass
+    for a 99,000-row file, 4.7 s per MB of typed numbers), and a value that blocks runs a second
+    pass."""
+    from verifier.figure import judge as judging  # noqa: PLC0415
+    from verifier.figure.sources import read_table  # noqa: PLC0415
+
+    read: list[str] = []
+
+    def table(name: str, content: bytes) -> object:
+        read.append(name)
+        return read_table(name, content)
+
+    def request(text: str | None) -> object:
+        read.append(f"request {text}")
+        return read_request(text)
+
+    monkeypatch.setattr(judging, "read_table", table)
+    monkeypatch.setattr(judging, "read_request", request)
+    files = (("a.csv", b"k,v\nx,1\n"), ("b.csv", b"k,v\ny,2\n"))
+    verdict = _judge(_PLT + "plt.bar(['x'], [7])\n", Sources(files, "chart v by k"))
+    assert isinstance(verdict, Blocked) and verdict.reason == "value_not_found"
+    assert read == ["a.csv", "b.csv", "request chart v by k"]

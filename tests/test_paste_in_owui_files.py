@@ -351,3 +351,11 @@ def test_m21_owned_files_read_at_most_one_byte_past_the_csv_limit(tmp_path: Path
     assert [file.content for file in files] == [big[: limit + 1], small]
     refused = Unreadable("big.csv", "csv_too_large")
     assert read_table("big.csv", files[0].content) == read_table("big.csv", big) == refused
+
+
+def test_m22_attachment_ids_drop_a_repeated_id() -> None:
+    """M22.1 F3: the chat's `files` list comes from the request body, which Open WebUI does not
+    check, and one 8 MB upload listed 50 times made the inlet hold 493 MB. A repeat names the same
+    bytes, so its first place counts, as in Open WebUI's own frontend."""
+    files = [{"id": "a"}, {"id": "b"}, {"id": "a"}, {"id": "b"}, {"id": "c"}]
+    assert _module().attachment_ids({"files": files}) == ["a", "b", "c"]

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M19.5 outlet (`.agent/archive/contracts/m19u5.md` O1-O7): order, payload, Sources threading, replies,
-# bounded diagnostics, inlet templates. Each mutant names one red in the M19.5 suite.
+# bounded diagnostics, inlet templates. Each mutant names one red in the M19.5 suite; M22.1 adds
+# the kana class (F1), the reply bound + off-loop decode (F4) + listing (F5), the whole-outlet guard (F6).
 module = "webui/paste_in/filter.py"
 tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py"]
 
@@ -8,10 +9,10 @@ tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests
 id = "m19-receipt-unguarded"
 predicate = "no receipt blocks before any other work"
 kills = "tests/test_paste_in_outlet.py::test_o1_receipt_precedes_user_files_font_and_rpc"
-anchor = '''        if receipt is None:
-            return await fail("no_tool_call")'''
-mutant = '''        if False:
-            return await fail("no_tool_call")'''
+anchor = '''            if receipt is None:
+                return await fail("no_tool_call")'''
+mutant = '''            if False:
+                return await fail("no_tool_call")'''
 
 [[mutant]]
 id = "m19-empty-user-accepted"
@@ -24,10 +25,10 @@ mutant = '''        if not isinstance(user_id, str):'''
 id = "m19-session-type-unchecked"
 predicate = "a non-string session id is no browser"
 kills = "tests/test_paste_in_outlet.py::test_o1_no_browser_precedes_file_fetch_and_font[wrong-type]"
-anchor = '''        if not isinstance(session, str):
-            session = None'''
-mutant = '''        if False:
-            session = None'''
+anchor = '''            if not isinstance(session, str):
+                session = None'''
+mutant = '''            if False:
+                session = None'''
 
 [[mutant]]
 id = "m19-emitter-unchecked"
@@ -47,37 +48,37 @@ mutant = '''    return not program.isascii()'''
 id = "m19-one-file-sent"
 predicate = "every owned file reaches the RPC"
 kills = "tests/test_paste_in_outlet.py::test_o2_every_owned_file_reaches_rpc_in_receipt_order"
-anchor = '''                    for file in files
-                ],'''
-mutant = '''                    for file in files[:1]
-                ],'''
+anchor = '''                        for file in files
+                    ],'''
+mutant = '''                        for file in files[:1]
+                    ],'''
 
 [[mutant]]
 id = "m19-timeout-misnamed"
 predicate = "an RPC timeout is browser_timeout"
 kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
-anchor = '''        except TimeoutError:
-            return await fail("browser_timeout")'''
-mutant = '''        except TimeoutError:
-            return await fail("browser_error")'''
+anchor = '''            except TimeoutError:
+                return await fail("browser_timeout")'''
+mutant = '''            except TimeoutError:
+                return await fail("browser_error")'''
 
 [[mutant]]
 id = "m19-non-dict-reply"
 predicate = "a non-dict reply is malformed"
 kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
-anchor = '''        if not isinstance(response, dict):
-            return await fail("reply_malformed")'''
-mutant = '''        if False:
-            return await fail("reply_malformed")'''
+anchor = '''            if not isinstance(response, dict):
+                return await fail("reply_malformed")'''
+mutant = '''            if False:
+                return await fail("reply_malformed")'''
 
 [[mutant]]
 id = "m19-fault-ignored"
 predicate = "a reply fault blocks before the description"
 kills = "tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge"
-anchor = '''        if fault is not None:
-            return await fail(fault)'''
-mutant = '''        if False:
-            return await fail(fault)'''
+anchor = '''            if fault is not None:
+                return await fail(fault)'''
+mutant = '''            if False:
+                return await fail(fault)'''
 
 [[mutant]]
 id = "m19-empty-stderr-fault"
@@ -90,12 +91,10 @@ mutant = '''    if stderr is None:'''
 id = "m19-description-unguarded"
 predicate = "an absent description blocks as no_description"
 kills = "tests/test_paste_in_outlet.py::test_o1_no_description_never_judges_or_publishes"
-anchor = '''            verdict = (
-                None
-                if description is None
-                else await asyncio.to_thread(judge, description, sources)
-            )'''
-mutant = '''            verdict = await asyncio.to_thread(judge, description, sources)'''
+anchor = '''            if description is None:
+                return await fail("no_description")'''
+mutant = '''            if False:
+                return await fail("no_description")'''
 
 [[mutant]]
 id = "m19-files-unthreaded"
@@ -135,10 +134,10 @@ mutant = '''                (),
 id = "m19-blocked-published"
 predicate = "a blocked figure never publishes"
 kills = "tests/test_paste_in_outlet.py::test_o1_blocked_judge_precedes_missing_png_and_threads_site"
-anchor = '''        if not isinstance(verdict, Passed):
-            return await fail(verdict.reason, verdict.site)'''
-mutant = '''        if False:
-            return await fail(verdict.reason, verdict.site)'''
+anchor = '''            if not isinstance(verdict, Passed):
+                return await fail(verdict.reason, verdict.site)'''
+mutant = '''            if False:
+                return await fail(verdict.reason, verdict.site)'''
 
 [[mutant]]
 id = "m19-site-dropped"
@@ -151,10 +150,10 @@ mutant = '''            return await fail(verdict.reason)'''
 id = "m19-png-unguarded"
 predicate = "a pass without one PNG line blocks"
 kills = "tests/test_paste_in_outlet.py::test_o1_pass_without_exactly_one_standalone_png_line_blocks"
-anchor = '''        if uri is None:
-            return await fail("no_image")'''
-mutant = '''        if False:
-            return await fail("no_image")'''
+anchor = '''            if uri is None:
+                return await fail("no_image")'''
+mutant = '''            if False:
+                return await fail("no_image")'''
 
 [[mutant]]
 id = "m19-png-in-description"
@@ -167,10 +166,10 @@ mutant = '''        if _DATA_PREFIX.search(line)'''
 id = "m19-publish-unguarded"
 predicate = "a failed files event blocks"
 kills = "tests/test_paste_in_outlet.py::test_o1_files_emit_failure_blocks_instead_of_publishing_pass"
-anchor = '''        except Exception:
-            return await fail("publish_failed")'''
-mutant = '''        except Exception:
-            pass'''
+anchor = '''            except Exception:
+                return await fail("publish_failed")'''
+mutant = '''            except Exception:
+                pass'''
 
 [[mutant]]
 id = "m19-pass-without-interpretation"
@@ -247,9 +246,9 @@ mutant = '''            for message in messages'''
 id = "m19-inlet-no-file-ignored"
 predicate = "no attachment renders the no-file template"
 kills = "tests/test_paste_in_inlet.py::test_o7_missing_owned_or_refused_last_header_uses_no_file_template"
-anchor = '''        if not attachments:
+anchor = '''        if attachment is None:
             return self._TEMPLATES.no_file.format(task=task)'''
-mutant = '''        if not attachments:
+mutant = '''        if attachment is None:
             return self._TEMPLATES.file.format(task=task, dataset='', columns='')'''
 
 [[mutant]]
@@ -260,13 +259,6 @@ anchor = '''        except (PysrcRefusalError, WorkBudgetExceededError):
             return self._TEMPLATES.no_file.format(task=task)'''
 mutant = '''        except (PysrcRefusalError, WorkBudgetExceededError):
             return task'''
-
-[[mutant]]
-id = "m19-inlet-first-file"
-predicate = "the last owned attachment binds the template"
-kills = "tests/test_paste_in_inlet.py::test_o7_last_owned_file_and_last_user_win_without_mutation"
-anchor = '''                attachments[-1].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)'''
-mutant = '''                attachments[0].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)'''
 
 [[mutant]]
 id = "m19-inlet-non-text"
@@ -304,8 +296,8 @@ mutant = '''    except ZeroDivisionError:
 id = "m20-evidence-description"
 predicate = "the parsed description reaches the line finder (M20.2 E5)"
 kills = "tests/test_paste_in_outlet.py::test_m20_2_a_passed_reply_lists_each_row_s_related_lines"
-anchor = '''        evidence = _evidence(program, description, None, None)'''
-mutant = '''        evidence = _evidence(program, None, None, None)'''
+anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, None, None)'''
+mutant = '''            evidence = await asyncio.to_thread(_evidence, program, None, None, None)'''
 
 [[mutant]]
 id = "q44-whole-font-sent"
@@ -325,30 +317,104 @@ mutant = '''    return cut_for(font, program, [file.content for file in files])'
 id = "q45-judge-off-loop"
 predicate = "the outlet judges off the event loop (Q45: two passes take seconds)"
 kills = "tests/test_paste_in_outlet.py::test_q45_the_outlet_judges_off_the_event_loop"
-anchor = '''                else await asyncio.to_thread(judge, description, sources)'''
-mutant = '''                else judge(description, sources)'''
+anchor = '''            verdict = await asyncio.to_thread(judge, description, sources)'''
+mutant = '''            verdict = judge(description, sources)'''
 
 [[mutant]]
 id = "m21-fail-closed"
 predicate = "a fault while decoding or judging rewrites the reply as verifier_error (M21.1 F2)"
 kills = "tests/test_paste_in_outlet.py::test_o1_a_fault_while_decoding_or_judging_fails_closed"
 anchor = '''        except Exception:
-            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''
+            # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''
 mutant = '''        except OSError:
-            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.'''
+            # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''
 
 [[mutant]]
 id = "m21-inlet-off-loop"
 predicate = "the inlet parses the CSV header off the event loop (M21.1 F4)"
 kills = "tests/test_paste_in_inlet.py::test_m21_the_inlet_reads_the_header_off_the_event_loop"
-anchor = '''            rendered = await asyncio.to_thread(self._render, task, attachments)'''
-mutant = '''            rendered = self._render(task, attachments)'''
+anchor = '''            rendered = await asyncio.to_thread(self._render, task, attachment)'''
+mutant = '''            rendered = self._render(task, attachment)'''
 
 [[mutant]]
 id = "m21-isolation-unchecked"
 predicate = "a sandbox with the site's origin refuses before files and the RPC (M21.1 F5)"
 kills = "tests/test_paste_in_outlet.py::test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc"
-anchor = '''        if not sandbox_isolated():
-            return await fail("sandbox_not_isolated")'''
-mutant = '''        if False:
-            return await fail("sandbox_not_isolated")'''
+anchor = '''            if not sandbox_isolated():
+                return await fail("sandbox_not_isolated")'''
+mutant = '''            if False:
+                return await fail("sandbox_not_isolated")'''
+
+[[mutant]]
+id = "m22-kana-name-scan"
+predicate = "the language choice runs in the regex engine and names no character (M22.1 F1)"
+kills = "tests/test_paste_in_reasons.py::test_m22_the_language_choice_names_no_character"
+anchor = '''    return isinstance(content, str) and _KANA_LETTER.search(content) is not None'''
+mutant = '''    return isinstance(content, str) and any(
+        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
+    )'''
+
+[[mutant]]
+id = "m22-kana-block-dropped"
+predicate = "the kana class holds every kana letter (M22.1 F1)"
+kills = "tests/test_paste_in_reasons.py::test_m22_the_kana_class_holds_exactly_the_kana_letters"
+anchor = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))'''
+mutant = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0))'''
+
+[[mutant]]
+id = "m22-reply-unbounded"
+predicate = "a reply longer than the reader writes refuses before decoding (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding"
+anchor = '''            if len(stdout) > _MAX_REPLY:'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "m22-reply-bound-short"
+predicate = "the longest reply the reader writes still decodes (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding"
+anchor = '''_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1'''
+mutant = '''_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS'''
+
+[[mutant]]
+id = "m22-png-uncapped"
+predicate = "a PNG line past the reader's cap is no image (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_png_line_past_the_reader_s_cap_is_no_image"
+anchor = '''        or len(lines[0]) > MAX_PNG_CHARACTERS'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "m22-decode-on-loop"
+predicate = "the reply decodes off the event loop (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[pass]"
+anchor = '''            description = await asyncio.to_thread(parse_description, stdout)'''
+mutant = '''            description = parse_description(stdout)'''
+
+[[mutant]]
+id = "m22-png-on-loop"
+predicate = "the PNG check runs off the event loop (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[pass]"
+anchor = '''            uri = await asyncio.to_thread(_png_uri, stdout)'''
+mutant = '''            uri = _png_uri(stdout)'''
+
+[[mutant]]
+id = "m22-failure-listing-on-loop"
+predicate = "a failure's program listing runs off the event loop (M22.1 F5)"
+kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[block]"
+anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, reason, site)'''
+mutant = '''            evidence = _evidence(program, description, reason, site)'''
+
+[[mutant]]
+id = "m22-pass-listing-on-loop"
+predicate = "a pass's program listing runs off the event loop (M22.1 F5)"
+kills = "tests/test_paste_in_outlet.py::test_m22_decoding_judging_and_listing_run_off_the_event_loop[pass]"
+anchor = '''            evidence = await asyncio.to_thread(_evidence, program, description, None, None)'''
+mutant = '''            evidence = _evidence(program, description, None, None)'''
+
+[[mutant]]
+id = "m22-outlet-unguarded"
+predicate = "a fault before the browser answers fails closed too (M22.1 F6)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_fault_anywhere_in_the_outlet_fails_closed[files]"
+anchor = '''        except Exception:
+            # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''
+mutant = '''        except OSError:
+            # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass'''

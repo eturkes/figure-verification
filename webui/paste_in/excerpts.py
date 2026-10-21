@@ -22,8 +22,9 @@ Lines: TypeAlias = tuple[tuple[Check, frozenset[int]], ...]
 
 # The listing's own scan bound: a longer program keeps its recorded lines as they are.
 _PARSE = 65_536
-# Statements the preparation trace may visit per program: the outlet runs it on Open WebUI's event
-# loop, and one walk per drawing statement over 13,000 statements took 72 s (reviewer-3, M20.3).
+# Statements the preparation trace may visit per program: one walk per drawing statement over
+# 13,000 statements took 72 s (reviewer-3, M20.3); at this budget the outlet's worker thread
+# spends 0.9 s (CPython 3.11, M22.1 F5).
 _WORK = 100_000
 # Calls that change their receiver in place; with `inplace=True`, any call does. `add` stays out:
 # pandas' `add` returns a copy.

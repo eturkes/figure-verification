@@ -2,7 +2,8 @@
 # The server's Japanese font (U2): the admin's file, else discovery; only a font file within the cap;
 # every fault degrades to None off the event loop;
 # owned files read to one byte past max_csv_bytes (M21.1 F4); the persistence setting read
-# fail-closed (M21.1 F5); the request = the user's stored messages on the chat branch (Q66).
+# fail-closed (M21.1 F5); the request = the user's stored messages on the chat branch (Q66);
+# attachment ids each once + the inlet's last owned, readable file alone (M22.1 F3).
 module = "webui/paste_in/owui_files.py"
 tests = ["tests/test_paste_in_owui_files.py", "tests/test_paste_in_request_text.py"]
 
@@ -273,3 +274,28 @@ kills = """tests/test_paste_in_request_text.py::\
   test_q66_r2_no_text_reads_none_even_over_a_textless_stored_tail[null]"""
 anchor = '''    if latest is None or not all('''
 mutant = '''    if not all('''
+
+[[mutant]]
+id = "m19-inlet-first-file"
+predicate = "the last owned attachment binds the template (moved here with the file choice, M22.1 F3)"
+kills = "tests/test_paste_in_inlet.py::test_o7_last_owned_file_and_last_user_win_without_mutation"
+anchor = '''    for file_id in reversed(attachment_ids(metadata)):'''
+mutant = '''    for file_id in attachment_ids(metadata):'''
+
+[[mutant]]
+id = "m22-ids-repeat"
+predicate = "a repeated attachment id counts once, at its first place (M22.1 F3)"
+kills = "tests/test_paste_in_owui_files.py::test_m22_attachment_ids_drop_a_repeated_id"
+anchor = '''    return list(dict.fromkeys(ids))'''
+mutant = '''    return ids'''
+
+[[mutant]]
+id = "m22-inlet-reads-every-file"
+predicate = "the inlet stops at the last owned, readable file (M22.1 F3)"
+kills = "tests/test_paste_in_inlet.py::test_m22_the_inlet_reads_back_from_the_last_attachment_to_its_file[last-owned]"
+anchor = '''    for file_id in reversed(attachment_ids(metadata)):
+        if found := await owned_files((file_id,), user_id):
+            return found[0]
+    return None'''
+mutant = '''    found = await owned_files(attachment_ids(metadata), user_id)
+    return found[-1] if found else None'''

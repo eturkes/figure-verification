@@ -116,25 +116,37 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
     judged = integrity(description)
     if isinstance(judged, Blocked):
         return judged
-    first, _explained = _values(judged, sources, admitted=False)
+    # Both passes read the same sources: each file and the request are parsed once (a 99,000-row
+    # file takes 1.6 s, M22.1 F3).
+    read = [read_table(name, content) for name, content in sources.files]
+    tables = tuple(table for table in read if isinstance(table, Table))
+    unreadable = tuple(table for table in read if isinstance(table, Unreadable))
+    context = Context(
+        tables,
+        read_request(sources.request),
+        sources.request,
+        sources.aliases,
+        sources.anchoring == "strict",
+    )
+    first, _explained = _values(judged, sources, context, unreadable, admitted=False)
     if isinstance(first, Blocked) and first.reason in _VALUE_REASONS | _COLUMN_REASONS:
-        second, explained = _values(judged, sources, admitted=True)
+        second, explained = _values(judged, sources, context, unreadable, admitted=True)
         if isinstance(second, Passed) or (explained and first.reason in _VALUE_REASONS):
             return second
     return first
 
 
-def _values(judged: Judged, sources: Sources, *, admitted: bool) -> tuple[Passed | Blocked, bool]:
+def _values(
+    judged: Judged,
+    sources: Sources,
+    context: Context,
+    unreadable: tuple[Unreadable, ...],
+    *,
+    admitted: bool,
+) -> tuple[Passed | Blocked, bool]:
     """The values + columns stages, and whether every series was explained before any block
     (so a block after it is a column's)."""
-    read = [read_table(name, content) for name, content in sources.files]
-    tables = tuple(table for table in read if isinstance(table, Table))
-    unreadable = tuple(table for table in read if isinstance(table, Unreadable))
-    request = read_request(sources.request)
-    integrity_only = not sources.files and not request.numbers
-    context = Context(
-        tables, request, sources.request, sources.aliases, sources.anchoring == "strict"
-    )
+    integrity_only = not sources.files and not context.request.numbers
     colorbars = {
         (*axes.colorbar_of, "colors") for axes in judged.figure.axes if axes.colorbar_of is not None
     }

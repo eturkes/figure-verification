@@ -124,7 +124,8 @@ def test_o7_last_owned_file_and_last_user_win_without_mutation(
         "other": 1,
     }
     assert result_messages[2] is not messages[2]
-    assert lookups == [(name, "outlet-owner") for name in ("first", "last", "foreign", "missing")]
+    # M22.1 F3: back from the last id to the first owned, readable file; `first` is never read.
+    assert lookups == [(name, "outlet-owner") for name in ("missing", "foreign", "last")]
 
 
 def test_m21_the_inlet_reads_the_header_off_the_event_loop(tmp_path: Path) -> None:
@@ -148,6 +149,34 @@ def test_m21_the_inlet_reads_the_header_off_the_event_loop(tmp_path: Path) -> No
     assert _last(result)["content"] == "FILE /mnt/uploads/last.csv\nCOLUMNS new, amount\nTASK chart"
     assert len(threads) == 1
     assert threads[0] != threading.get_ident()
+
+
+@pytest.mark.parametrize(
+    ("ids", "looked_up", "used"),
+    [
+        (("one", "two", "three"), ["three"], "three"),
+        (("one", "foreign"), ["foreign", "one"], "one"),
+        (("one", "gone"), ["gone", "one"], "one"),
+    ],
+    ids=["last-owned", "last-foreign", "last-unreadable"],
+)
+def test_m22_the_inlet_reads_back_from_the_last_attachment_to_its_file(
+    tmp_path: Path, ids: tuple[str, ...], looked_up: list[str], used: str
+) -> None:
+    """M22.1 F3: the inlet read every attached file, up to 8 MB each, to render the last one; it
+    now reads back from the last id to the first owned, readable file."""
+    stored = tuple(
+        StoredFile(
+            name, "other" if name == "foreign" else "outlet-owner", f"{name}.csv", b"a,b\n1,2\n"
+        )
+        for name in ("one", "two", "three", "foreign", "gone")
+    )
+    body: dict[str, object] = {"messages": [{"role": "user", "content": "chart"}]}
+    with fake_open_webui(stored, tmp_path) as lookups:
+        (tmp_path / "gone").unlink()
+        result = _inlet(body, {"files": [{"id": name} for name in ids]})
+    assert lookups == [(name, "outlet-owner") for name in looked_up]
+    assert _last(result)["content"] == f"FILE /mnt/uploads/{used}.csv\nCOLUMNS a, b\nTASK chart"
 
 
 @pytest.mark.parametrize("ids", [(), ("foreign",), ("bad",), ("good", "bad")])

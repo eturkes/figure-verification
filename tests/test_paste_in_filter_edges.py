@@ -73,6 +73,6 @@ def test_a_header_the_reader_refuses_renders_the_no_file_template(
 
     monkeypatch.setattr(outlet, "_read_csv", refuse)
     attachment = UploadedFile("f", "/mnt/uploads/a.csv", b"a\n1\n")
-    rendered = outlet.Filter()._render("task", (attachment,))
+    rendered = outlet.Filter()._render("task", attachment)
     assert rendered == outlet.Filter._TEMPLATES.no_file.format(task="task")
     assert inspect.iscoroutinefunction(outlet.Filter.inlet)

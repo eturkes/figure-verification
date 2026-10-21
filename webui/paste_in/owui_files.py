@@ -69,7 +69,10 @@ class UploadedFile:
 
 
 def attachment_ids(metadata: Mapping[str, object] | None) -> list[str]:
-    """Top-level ids from `__metadata__["files"]`, in chat order. Every other key is untrusted."""
+    """Top-level ids from `__metadata__["files"]`, in chat order, each once. Every other key is
+    untrusted, and so is the list itself: it comes from the request body, where one upload listed
+    50 times made the inlet hold 493 MB (M22.1 F3). A repeat keeps its first place, as Open
+    WebUI's own frontend does."""
     if metadata is None:
         return []
     items = metadata.get("files")
@@ -82,7 +85,7 @@ def attachment_ids(metadata: Mapping[str, object] | None) -> list[str]:
         file_id = item.get("id")
         if isinstance(file_id, str) and file_id:
             ids.append(file_id)
-    return ids
+    return list(dict.fromkeys(ids))
 
 
 def _head(path: str) -> bytes:
@@ -112,12 +115,15 @@ async def owned_files(file_ids: Sequence[str], user_id: str) -> tuple[UploadedFi
     return tuple(found)
 
 
-async def uploaded_files(
-    metadata: Mapping[str, object] | None,
-    user_id: str,
-) -> tuple[UploadedFile, ...]:
-    """Resolve chat attachment ids through the same ownership path the filter uses."""
-    return await owned_files(attachment_ids(metadata), user_id)
+async def last_owned_file(
+    metadata: Mapping[str, object] | None, user_id: str
+) -> UploadedFile | None:
+    """The last attachment the user owns and the store can read, through the filter's ownership
+    path: the inlet renders that one alone, so it reads back from the last id and stops there."""
+    for file_id in reversed(attachment_ids(metadata)):
+        if found := await owned_files((file_id,), user_id):
+            return found[0]
+    return None
 
 
 def _latest(metadata: Mapping[str, object] | None) -> str | None:

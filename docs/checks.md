@@ -57,7 +57,7 @@ your browser's network.
 | browser answers within 60 s | the `execute:python` call waits 60 s at most | `browser_timeout` |
 | browser call succeeds | the call raises no error | `browser_error` |
 | chat tab answers | an `error` reply without `stderr` fails | `browser_no_answer` |
-| reply in the expected format | the reply is a `{stdout, stderr, result}` object | `reply_malformed` |
+| reply in the expected format | the reply is a `{stdout, stderr, result}` object, its `stdout` no longer than the reader writes | `reply_malformed` |
 | Pyodide loads (ad blocker off for this site) | a `stderr` that names `loadPyodide`, without a traceback, fails | `sandbox_unavailable` |
 | no error from the browser runtime | any other `stderr` text fails | `sandbox_error` |
 | run reports its figure | `stdout` holds one parsable, tagged description line | `no_description` |
@@ -194,7 +194,7 @@ declares and, in production, Japanese short forms (`月` for `年月`, also `月
 
 | Rule | How | Code |
 |---|---|---|
-| exactly one PNG from the run | `stdout` holds exactly one PNG data-URI line | `no_image` |
+| exactly one PNG from the run | `stdout` holds exactly one PNG data-URI line of at most 500,000 characters | `no_image` |
 | Open WebUI attaches the image | the filter's `files` event succeeds | `publish_failed` |
 
 [Full rules](verification.md#check-attach)

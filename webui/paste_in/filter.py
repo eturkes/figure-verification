@@ -17,13 +17,14 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Final, TypeAlias, cast
+from typing import Final, TypeAlias
 
 from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
-from verifier.figure.description import TAG, Description, parse_description
+from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
 from verifier.figure.judge import Passed, Sources, judge
+from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
@@ -35,9 +36,9 @@ from webui.paste_in.owui_files import (
     UPLOAD_DIR,
     UploadedFile,
     cjk_font,
+    last_owned_file,
     owned_files,
     sandbox_isolated,
-    uploaded_files,
 )
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
@@ -55,9 +56,26 @@ _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
 _DATA_PREFIX = re.compile(r"(?<!\w)data:")
 _TRACEBACK = "Traceback (most recent call last):"
+# The longest stdout the reader writes (`reader.py::run`): the tagged description within the
+# decoder's cap, then one PNG line within the reader's, each ending in a line break. Open WebUI
+# 0.12.3 takes a 16 MiB browser frame, and 16 MiB of line breaks took 6.0 s to decode (M22.1 F4).
+_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1
 # A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
-# marks such as `・` or `ー` occur beside kanji alone.
+# marks such as `・` or `ー` occur beside kanji alone. The letters form one character class, since
+# the test runs on Open WebUI's event loop over a message of any length, and a name lookup per
+# character took 0.62 s per MB (CPython 3.11, M22.1 F1); kana letters lie in these blocks alone.
 _KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
+_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))
+_KANA_LETTER = re.compile(
+    "["
+    + "".join(
+        chr(code)
+        for start, end in _KANA_BLOCKS
+        for code in range(start, end)
+        if unicodedata.name(chr(code), "").startswith(_KANA_LETTERS)
+    )
+    + "]"
+)
 _LOGGER = logging.getLogger(__name__)
 
 # Admin-facing identity; the function source itself comes from the generated paste-in artifact.
@@ -91,7 +109,11 @@ def _png_uri(stdout: str) -> str | None:
         for line in stdout.splitlines()
         if not line.startswith(TAG) and _DATA_PREFIX.search(line)
     ]
-    if len(lines) != 1 or _PNG_URI.fullmatch(lines[0]) is None:
+    if (
+        len(lines) != 1
+        or len(lines[0]) > MAX_PNG_CHARACTERS
+        or _PNG_URI.fullmatch(lines[0]) is None
+    ):
         return None
     try:
         image = base64.b64decode(lines[0][len(_PNG_PREFIX) :], validate=True)
@@ -158,9 +180,7 @@ def _japanese(metadata: object) -> bool:
     """
     message = metadata.get("user_message") if isinstance(metadata, dict) else None
     content = message.get("content") if isinstance(message, dict) else None
-    return isinstance(content, str) and any(
-        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
-    )
+    return isinstance(content, str) and _KANA_LETTER.search(content) is not None
 
 
 async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) -> None:
@@ -305,26 +325,26 @@ class Filter:
             task = message.get("content")
             if not isinstance(task, str):
                 return body
-            attachments = await uploaded_files(__metadata__, user_id)
+            attachment = await last_owned_file(__metadata__, user_id)
             # The header parse reads up to 8 MB: keep Open WebUI's event loop free.
-            rendered = await asyncio.to_thread(self._render, task, attachments)
+            rendered = await asyncio.to_thread(self._render, task, attachment)
             updated = list(messages)
             updated[index] = {**message, "content": rendered}
             return {**body, "messages": updated}
         return body
 
-    def _render(self, task: str, attachments: tuple[UploadedFile, ...]) -> str:
-        if not attachments:
+    def _render(self, task: str, attachment: UploadedFile | None) -> str:
+        if attachment is None:
             return self._TEMPLATES.no_file.format(task=task)
         try:
             header, _rows = _read_csv(
-                attachments[-1].content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)
+                attachment.content, DEFAULT_LIMITS, WorkBudget(DEFAULT_LIMITS.max_work)
             )
         except (PysrcRefusalError, WorkBudgetExceededError):
             return self._TEMPLATES.no_file.format(task=task)
         return self._TEMPLATES.file.format(
             task=task,
-            dataset=attachments[-1].path.removeprefix(UPLOAD_DIR),
+            dataset=attachment.path.removeprefix(UPLOAD_DIR),
             columns=", ".join(header),
         )
 
@@ -342,87 +362,89 @@ class Filter:
         description: Description | None = None
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
+            # The listing walks the program's syntax tree: about 0.9 s at its work budget (CPython
+            # 3.11, M22.1 F5).
+            evidence = await asyncio.to_thread(_evidence, program, description, reason, site)
             return await _fail(
-                body,
-                reason,
-                __metadata__,
-                __event_emitter__,
-                self._ANCHORING,
-                evidence=_evidence(program, description, reason, site),
+                body, reason, __metadata__, __event_emitter__, self._ANCHORING, evidence=evidence
             )
 
-        receipt = read_receipt(__request__)
-        if receipt is None:
-            return await fail("no_tool_call")
-        program = receipt.program
-        user_id = (__user__ or {}).get("id")
-        if not isinstance(user_id, str) or not user_id:
-            return await fail("no_user")
-        session = __metadata__.get("session_id") if isinstance(__metadata__, dict) else None
-        if not isinstance(session, str):
-            session = None
-        if __event_call__ is None or __event_emitter__ is None or not session:
-            return await fail("no_browser")
-        if not sandbox_isolated():
-            return await fail("sandbox_not_isolated")
-        files = await owned_files(receipt.file_ids, user_id)
-        font = await _font(receipt.program, files, self.valves.cjk_font_path)
-        payload: dict[str, object] = {
-            "type": "execute:python",
-            "data": {
-                "id": str(uuid.uuid4()),
-                "code": wrapper_code(receipt.program, font),
-                "session_id": session,
-                "files": [
-                    {"id": file.file_id, "filename": file.path.removeprefix(UPLOAD_DIR)}
-                    for file in files
-                ],
-            },
-        }
         try:
-            response = await asyncio.wait_for(__event_call__(payload), timeout=RPC_TIMEOUT_SECONDS)
-        except TimeoutError:
-            return await fail("browser_timeout")
-        except Exception:
-            return await fail("browser_error")
-        if not isinstance(response, dict):
-            return await fail("reply_malformed")
-        fault = _reply_fault(response)
-        if fault is not None:
-            return await fail(fault)
-        stdout = response.get("stdout")
-        try:
-            description = parse_description(stdout) if isinstance(stdout, str) else None
+            receipt = read_receipt(__request__)
+            if receipt is None:
+                return await fail("no_tool_call")
+            program = receipt.program
+            user_id = (__user__ or {}).get("id")
+            if not isinstance(user_id, str) or not user_id:
+                return await fail("no_user")
+            session = __metadata__.get("session_id") if isinstance(__metadata__, dict) else None
+            if not isinstance(session, str):
+                session = None
+            if __event_call__ is None or __event_emitter__ is None or not session:
+                return await fail("no_browser")
+            if not sandbox_isolated():
+                return await fail("sandbox_not_isolated")
+            files = await owned_files(receipt.file_ids, user_id)
+            font = await _font(receipt.program, files, self.valves.cjk_font_path)
+            payload: dict[str, object] = {
+                "type": "execute:python",
+                "data": {
+                    "id": str(uuid.uuid4()),
+                    "code": wrapper_code(receipt.program, font),
+                    "session_id": session,
+                    "files": [
+                        {"id": file.file_id, "filename": file.path.removeprefix(UPLOAD_DIR)}
+                        for file in files
+                    ],
+                },
+            }
+            try:
+                response = await asyncio.wait_for(
+                    __event_call__(payload), timeout=RPC_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                return await fail("browser_timeout")
+            except Exception:
+                return await fail("browser_error")
+            if not isinstance(response, dict):
+                return await fail("reply_malformed")
+            fault = _reply_fault(response)
+            if fault is not None:
+                return await fail(fault)
+            stdout = response.get("stdout")
+            if not isinstance(stdout, str):
+                return await fail("no_description")
+            if len(stdout) > _MAX_REPLY:
+                return await fail("reply_malformed")
+            # Decoding reads up to `_MAX_REPLY` characters, and the judge is pure CPU (seconds on a
+            # large CSV, two passes): both run off Open WebUI's event loop.
+            description = await asyncio.to_thread(parse_description, stdout)
+            if description is None:
+                return await fail("no_description")
             sources = Sources(
                 tuple((file.path.removeprefix(UPLOAD_DIR), file.content) for file in files),
                 receipt.request_text,
                 self._ANCHORING,
                 receipt.aliases,
             )
-            # The judge is pure CPU (seconds on a large CSV, two passes): keep the event loop free.
-            verdict = (
-                None
-                if description is None
-                else await asyncio.to_thread(judge, description, sources)
-            )
+            verdict = await asyncio.to_thread(judge, description, sources)
+            if not isinstance(verdict, Passed):
+                return await fail(verdict.reason, verdict.site)
+            uri = await asyncio.to_thread(_png_uri, stdout)
+            if uri is None:
+                return await fail("no_image")
+            try:
+                await __event_emitter__(
+                    {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
+                )
+            except Exception:
+                return await fail("publish_failed")
+            evidence = await asyncio.to_thread(_evidence, program, description, None, None)
+            await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
+            japanese = _japanese(__metadata__)
+            interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
+            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")
         except Exception:
-            # Open WebUI swallows an outlet exception and keeps the model's reply: fail closed.
+            # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass
+            # included (`utils/filter.py`, `utils/middleware.py`): any fault fails closed.
             return await fail("verifier_error")
-        if verdict is None:
-            return await fail("no_description")
-        if not isinstance(verdict, Passed):
-            return await fail(verdict.reason, verdict.site)
-        uri = _png_uri(cast("str", stdout))
-        if uri is None:
-            return await fail("no_image")
-        try:
-            await __event_emitter__(
-                {"type": "files", "data": {"files": [{"type": "image", "url": uri}]}}
-            )
-        except Exception:
-            return await fail("publish_failed")
-        evidence = _evidence(program, description, None, None)
-        await _diagnose(__event_emitter__, None, __metadata__, self._ANCHORING, evidence)
-        japanese = _japanese(__metadata__)
-        interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
-        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}")

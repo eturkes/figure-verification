@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
 import importlib
 import logging
 import sys
+import threading
 import time
 from collections.abc import Awaitable, Callable, Coroutine, Iterator
 from pathlib import Path
@@ -334,6 +336,135 @@ def test_m21_a_sandbox_with_the_site_s_origin_refuses_before_files_and_rpc(
         result = browser.exercise()
     assert files.calls == 0 and browser.calls == []
     assert_failure(result, browser.events, "sandbox_not_isolated")
+
+
+# The reader's longest stdout: its tag, a 400,000-byte description, a 500,000-character PNG line and
+# two line breaks (`reader.py::run`).
+_LONGEST_REPLY = 32 + 400_000 + 1 + 500_000 + 1
+
+
+def test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M22.1 F4: Open WebUI 0.12.3 accepts a 16 MiB browser frame, and decoding 16 MiB of line
+    breaks took 6.0 s on its event loop (CPython 3.11): a reply the reader cannot have written is
+    refused unread, while the longest one it can write is still decoded."""
+    decoded: list[int] = []
+
+    def decode(stdout: str) -> None:
+        decoded.append(len(stdout))
+
+    for extra, reason in ((0, "no_description"), (1, "reply_malformed")):
+
+        async def rpc(_payload: dict[str, object], extra: int = extra) -> object:
+            return {"stdout": "\n" * (_LONGEST_REPLY + extra), "stderr": None}
+
+        browser = Browser()
+        seam = ("verifier.figure.description", "parse_description", decode)
+        with patched_filter(monkeypatch, (seam,)) as api:
+            result = invoke_filter(
+                api,
+                filter_body("MODEL_PROSE"),
+                request=recorded_request(SIMPLE),
+                user=USER,
+                metadata={"session_id": SESSION},
+                event_call=rpc,
+                event_emitter=browser.emit,
+            )
+        assert_failure(result, browser.events, reason)
+    assert decoded == [_LONGEST_REPLY]
+
+
+def test_m22_a_png_line_past_the_reader_s_cap_is_no_image() -> None:
+    """M22.1 F4: the outlet published a PNG line of any length the frame carried, while the reader
+    and the reference cap it at 500,000 characters (here 499,998 and 500,002)."""
+    lines = [
+        "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n".ljust(size, b"0")).decode()
+        for size in (374_982, 374_985)
+    ]
+    assert [len(line) for line in lines] == [499_998, 500_002]
+    assert [load("filter")._png_uri(f"{line}\n") for line in lines] == [lines[0], None]
+
+
+@pytest.mark.parametrize("program", [SIMPLE, TRUNCATED], ids=["pass", "block"])
+def test_m22_decoding_judging_and_listing_run_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch, program: str
+) -> None:
+    """M22.1 F4 + F5: the reply decode, the PNG check and the program listing ran on Open WebUI's
+    event loop; the listing alone took 0.84 s over a 59,454-character program (CPython 3.11)."""
+    loop = threading.get_ident()
+    threads: dict[str, list[int]] = {}
+
+    def spy(name: str, original: Callable[..., object]) -> Callable[..., object]:
+        def recorded(*args: object, **kwargs: object) -> object:
+            threads.setdefault(name, []).append(threading.get_ident())
+            return original(*args, **kwargs)
+
+        return recorded
+
+    seams = (
+        ("verifier.figure.description", "parse_description"),
+        ("verifier.figure.judge", "judge"),
+        ("webui.paste_in.excerpts", "excerpts"),
+    )
+    patches = tuple(
+        (module, name, spy(name, getattr(importlib.import_module(module), name)))
+        for module, name in seams
+    )
+    browser = Browser(program)
+    with patched_filter(monkeypatch, patches) as api:
+        monkeypatch.setattr(api, "_png_uri", spy("_png_uri", api._png_uri))
+        browser.exercise()
+    expected = {"parse_description", "judge", "excerpts"} | (
+        {"_png_uri"} if program == SIMPLE else set()
+    )
+    assert set(threads) == expected
+    assert all(loop not in idents for idents in threads.values()), threads
+
+
+def _raise(*_args: object, **_kwargs: object) -> Never:
+    message = "PRIVATE_FAULT"
+    raise ZeroDivisionError(message)
+
+
+async def _raise_async(*_args: object, **_kwargs: object) -> Never:
+    _raise()
+
+
+@pytest.mark.parametrize(
+    ("seam", "program"),
+    [
+        (("webui.paste_in.owui_files", "sandbox_isolated", _raise), SIMPLE),
+        (("webui.paste_in.owui_files", "owned_files", _raise_async), SIMPLE),
+        (("webui.paste_in.owui_files", "cjk_font", _raise_async), "print('売上')\n"),
+        (("webui.paste_in.sandbox", "wrapper_code", _raise), SIMPLE),
+    ],
+    ids=["isolation", "files", "font", "wrapper"],
+)
+def test_m22_a_fault_anywhere_in_the_outlet_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    seam: tuple[str, str, Callable[..., object]],
+    program: str,
+) -> None:
+    """M22.1 F6: a fault outside the decode-and-judge guard escaped the outlet, and Open WebUI
+    keeps the model's own reply when an outlet raises (`utils/middleware.py:3888`)."""
+    browser = Browser(program)
+    caplog.set_level(logging.INFO, logger=LOGGER)
+    with patched_filter(monkeypatch, (seam,)) as api:
+        result = invoke_filter(
+            api,
+            filter_body("Figure verification passed"),
+            request=recorded_request(program),
+            user=USER,
+            metadata={"session_id": SESSION},
+            event_call=browser.call,
+            event_emitter=browser.emit,
+        )
+    assert browser.calls == []
+    assert_failure(result, browser.events, "verifier_error")
+    assert_log(caplog, "verifier_error")
+    assert "PRIVATE_FAULT" not in repr(browser.events)
 
 
 @pytest.mark.parametrize("stderr", [None, ""])

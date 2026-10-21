@@ -57,7 +57,7 @@
 | ブラウザが 60 秒以内に応答 | `execute:python` の呼び出しは最大 60 秒待つ | `browser_timeout` |
 | ブラウザの呼び出しが成功 | 呼び出しがエラーを起こさない | `browser_error` |
 | チャットのタブが応答 | `stderr` のない `error` の応答は不合格 | `browser_no_answer` |
-| 応答が想定の形式 | 応答が `{stdout, stderr, result}` のオブジェクト | `reply_malformed` |
+| 応答が想定の形式 | 応答が `{stdout, stderr, result}` のオブジェクトで、`stdout` が読み取り処理の出力より長くない | `reply_malformed` |
 | Pyodide を読み込める (このサイトの広告ブロッカーはオフ) | トレースバックなしで `loadPyodide` を挙げる `stderr` は不合格 | `sandbox_unavailable` |
 | ブラウザの実行環境にエラーがない | それ以外の `stderr` の文字列は不合格 | `sandbox_error` |
 | 実行結果が図を報告 | `stdout` に、読み取れるタグ付きの記述の行が 1 つある | `no_description` |
@@ -194,7 +194,7 @@ NFKC と大文字小文字の統一の後、依頼文をファイルの見出し
 
 | 規則 | 方法 | コード |
 |---|---|---|
-| 実行結果の PNG がちょうど 1 枚 | `stdout` に PNG のデータ URI の行がちょうど 1 つある | `no_image` |
+| 実行結果の PNG がちょうど 1 枚 | `stdout` に 500,000 文字以下の PNG のデータ URI の行がちょうど 1 つある | `no_image` |
 | Open WebUI が画像を添付 | フィルターの `files` イベントが成功 | `publish_failed` |
 
 [詳細](verification.ja.md#check-attach)
