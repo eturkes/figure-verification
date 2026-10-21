@@ -37,6 +37,11 @@ _PARAM = (
 )
 
 
+# Open WebUI's chat CSS draws `strong` at weight 500, which a Japanese font without a medium face
+# draws regular; KaTeX's `\textbf` is 700, which the browser draws bold (live, Q80).
+_JA_LABEL = "$\\footnotesize\\textbf{モデルの注記:}$"
+
+
 @pytest.fixture(autouse=True)
 def _empty_store(tmp_path: Path) -> Iterator[None]:
     with fake_open_webui((), tmp_path):
@@ -184,7 +189,7 @@ def test_q78_n8_the_valve_is_on_in_production_and_off_in_the_demo() -> None:
 
 @pytest.mark.parametrize(
     ("request_text", "label"),
-    [("Chart it", "**Model note:**"), ("グラフにして", "**モデルの注記:**")],
+    [("Chart it", "**Model note:**"), ("グラフにして", _JA_LABEL)],
 )
 def test_q78_n4_a_pass_shows_the_note_under_the_interpretation(
     request_text: str, label: str

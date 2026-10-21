@@ -55,22 +55,39 @@ for (const [index, item] of cases.entries()) {
     () => [...document.querySelectorAll(".chat-assistant")].at(-1)?.textContent?.includes("Figure verification passed"),
     { timeout: 60000 },
   );
+  // KaTeX loads after the reply text: wait for the label before reading (none ⇒ the case fails).
+  await page
+    .waitForFunction(() => [...document.querySelectorAll(".chat-assistant")].at(-1)?.querySelector("strong, .katex"), { timeout: 20000 })
+    .catch(() => {});
   const observed = await page.evaluate((markup) => {
     const reply = [...document.querySelectorAll(".chat-assistant")].at(-1);
-    const strong = [...reply.querySelectorAll("strong")];
-    const paragraph = strong[0]?.closest("p");
+    // The label: a `strong` (English) or KaTeX bold (Japanese, Q80); every other element counts.
+    const label = reply.querySelector("strong, .katex");
+    const paragraph = label?.closest("p");
+    const drawn = label?.querySelector(".textbf") ?? label;
+    const clone = paragraph?.cloneNode(true);
+    clone?.querySelectorAll(".katex-mathml").forEach((node) => node.remove());
     return {
-      strong: strong.map((node) => node.textContent.trim()),
-      markup: [...reply.querySelectorAll(markup)].map((node) => node.tagName.toLowerCase() + (node.className ? `.${String(node.className).split(" ")[0]}` : "")),
+      label_kind: label ? (label.matches(".katex") ? "katex" : "strong") : null,
+      label_text: label ? (label.querySelector(".katex-html") ?? label).textContent.trim() : null,
+      label_weight: drawn ? Number(getComputedStyle(drawn).fontWeight) : null,
+      strong: reply.querySelectorAll("strong").length,
+      markup: [...reply.querySelectorAll(markup)]
+        .filter((node) => !label?.contains(node))
+        .map((node) => node.tagName.toLowerCase() + (node.className ? `.${String(node.className).split(" ")[0]}` : "")),
       // Svelte keeps template whitespace around tokens; the word joiner after an escaped
       // backslash (`inert.py::_JOINER`) draws nothing.
-      text: paragraph ? paragraph.textContent.trim().replaceAll("\u2060", "") : null,
+      text: clone ? clone.textContent.trim().replaceAll("\u2060", "") : null,
     };
   }, MARKUP);
-  const label = item.label;
-  const ok = observed.text === item.expected && observed.markup.length === 0 && observed.strong.length === 1 && observed.strong[0] === label;
+  const ok =
+    observed.text === item.expected &&
+    observed.markup.length === 0 &&
+    observed.label_kind === item.label_kind &&
+    observed.label_text === item.label &&
+    observed.strong === (item.label_kind === "strong" ? 1 : 0);
   results.push({ index, ok, note: item.note, expected: item.expected, ...observed });
-  console.log(JSON.stringify({ index, ok, markup: observed.markup, strong: observed.strong.length }));
+  console.log(JSON.stringify({ index, ok, markup: observed.markup, label: observed.label_kind, weight: observed.label_weight }));
 }
 writeFileSync(resultPath, `${JSON.stringify(results, null, 1)}\n`);
 await page.close();

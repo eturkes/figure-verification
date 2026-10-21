@@ -344,7 +344,7 @@ the production `filter.py::_note_line` (links, images, bare URLs, raw HTML, `<de
 every delimiter, emphasis, headings, citations, `{{…}}` replacements, mentions, entities, literal
 backslashes, line breaks, bidi, NUL); `q79_render.mjs` stores each as an assistant reply in a new
 chat of a scratch `--stub` instance, opens it in headless BrowserOS neo 151.0.8162.137 and reads the
-reply DOM. `result.json`: 24/24 plain text — exactly one `strong` (the label), no `a`, `img`,
+reply DOM. `result.json`: 24/24 plain text — the label alone styled (English `strong` at weight 500, Japanese KaTeX `\textbf` at 700, Q80), no `a`, `img`,
 `iframe`, `video`, `details`, `u`, `code`, `em`, `del`, `sup` or KaTeX element, the paragraph text
 equal to the label + the note as written. Positive control `control-result.json` (the same notes
 unescaped): 18/24 render markup — links, autolinks, `<u>`, emphasis + code spans, a footnote, an

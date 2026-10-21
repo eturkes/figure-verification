@@ -440,29 +440,29 @@ mutant = '''            note = receipt.note'''
 id = "q78-blank-note-shown"
 predicate = "a blank note adds nothing"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_blank_note_adds_nothing"
-anchor = '''        return f"\n\n**{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown else ""'''
-mutant = '''        return f"\n\n**{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}"'''
+anchor = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown else ""'''
+mutant = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}"'''
 
 [[mutant]]
 id = "q78-label-not-localized"
 predicate = "a kana request reads the Japanese label"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
-anchor = '''{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown'''
-mutant = '''{NOTE_LABELS[0]}** {prose(shown)}" if shown'''
+anchor = '''{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[0]} {prose(shown)}" if shown'''
 
 [[mutant]]
 id = "q79-note-not-escaped"
 predicate = "the note shows as escaped plain text"
 kills = "tests/test_paste_in_note.py::test_q79_a_hostile_note_stays_escaped_text_on_one_line"
-anchor = '''{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown'''
-mutant = '''{NOTE_LABELS[_japanese(metadata)]}** {shown}" if shown'''
+anchor = '''{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[_japanese(metadata)]} {shown}" if shown'''
 
 [[mutant]]
 id = "q79-label-not-bold"
 predicate = "the label shows in bold"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
-anchor = '''        return f"\n\n**{NOTE_LABELS'''
-mutant = '''        return f"\n\n{NOTE_LABELS'''
+anchor = '''NOTE_LABELS: Final = ("**Model note:**",'''
+mutant = '''NOTE_LABELS: Final = ("Model note:",'''
 
 [[mutant]]
 id = "q78-note-not-stripped"
@@ -515,3 +515,10 @@ predicate = "the inlet names the note's language by the kana rule"
 kills = "tests/test_paste_in_note.py::test_q78_n3_the_inlet_asks_for_the_note_only_while_the_valve_is_on"
 anchor = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])'''
 mutant = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[0])'''
+
+[[mutant]]
+id = "q80-ja-label-strong"
+predicate = "the Japanese label is KaTeX bold, since Open WebUI's `strong` draws regular in Japanese"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''"$\\footnotesize\\textbf{モデルの注記:}$")'''
+mutant = '''"**モデルの注記:**")'''

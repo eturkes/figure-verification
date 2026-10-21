@@ -56,8 +56,10 @@ _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
 # Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
-# the note.
-NOTE_LABELS: Final = ("Model note:", "モデルの注記:")
+# the note. Open WebUI's chat CSS draws `strong` at weight 500, which a Japanese font without a
+# medium face (Yu Gothic UI, Meiryo) draws regular, and browsers synthesize bold from 600 alone;
+# KaTeX's `\textbf` is 700, at `\footnotesize` = the body size (Q80, measured live).
+NOTE_LABELS: Final = ("**Model note:**", "$\\footnotesize\\textbf{モデルの注記:}$")
 MODEL_NOTE_TITLE: Final = "Model Note"
 MODEL_NOTE_DESCRIPTION: Final = (
     "Ask the model to say when the request asks for something that the chart rules do not allow,"
@@ -206,7 +208,7 @@ def _note_line(note: str, metadata: object) -> str:
     """
     try:
         shown = note.strip()
-        return f"\n\n**{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown else ""
+        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown else ""
     except Exception:
         return ""
 

@@ -4,9 +4,10 @@
   "ok": true,
   "note": "The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
   "expected": "Model note: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [],
   "text": "Model note: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead."
  },
@@ -15,9 +16,10 @@
   "ok": false,
   "note": "![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
   "expected": "Model note: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [
    "a",
    "a"
@@ -29,9 +31,10 @@
   "ok": false,
   "note": "https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
   "expected": "Model note: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [
    "a",
    "a",
@@ -45,9 +48,10 @@
   "ok": true,
   "note": "<img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
   "expected": "Model note: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [],
   "text": "Model note: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>"
  },
@@ -56,9 +60,10 @@
   "ok": false,
   "note": "<details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
   "expected": "Model note: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [
    "u"
   ],
@@ -69,21 +74,31 @@
   "ok": false,
   "note": "$x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
   "expected": "Model note: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
-  "strong": [
-   "Model note:"
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
+  "markup": [
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex"
   ],
-  "markup": [],
-  "text": "Model note:     a  c"
+  "text": "Model note: x2y zw 1m H2Oe a b c"
  },
  {
   "index": 6,
   "ok": false,
   "note": "**bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
   "expected": "Model note: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
-  "strong": [
-   "Model note:",
-   "bold"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 2,
   "markup": [
    "em",
    "em",
@@ -98,9 +113,10 @@
   "ok": true,
   "note": "# heading > quote - item 1. item | a | b | :::note x ::: ---",
   "expected": "Model note: # heading > quote - item 1. item | a | b | :::note x ::: ---",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [],
   "text": "Model note: # heading > quote - item 1. item | a | b | :::note x ::: ---"
  },
@@ -109,9 +125,10 @@
   "ok": false,
   "note": "[1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
   "expected": "Model note: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [
    "sup.footnote-ref",
    "iframe.w-full"
@@ -123,9 +140,10 @@
   "ok": false,
   "note": "&amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
   "expected": "Model note: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [],
   "text": "Model note: &amp; &lt; &#x41; &#65; &nbsp; & * \\ trailing backslash \\"
  },
@@ -134,21 +152,25 @@
   "ok": false,
   "note": "ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
   "expected": "Model note: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
-  "strong": [
-   "Model note:",
-   "強調"
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 2,
+  "markup": [
+   "span.katex",
+   "span.katex"
   ],
-  "markup": [],
-  "text": "Model note: ご指定の plt.ylim(60, 0) は（注） 強調【例】「軸」を反転します。 と"
+  "text": "Model note: ご指定の plt.ylim(60, 0) は（注） 強調【例】「軸」を反転します。x と y"
  },
  {
   "index": 11,
   "ok": false,
   "note": "line one\nline two\r\nthree four ‮evil​ \u0000  end",
   "expected": "Model note: line one␊line two␍␊three�four �evil� ␀ ␡ end",
-  "strong": [
-   "Model note:"
-  ],
+  "label_kind": "strong",
+  "label_text": "Model note:",
+  "label_weight": 500,
+  "strong": 1,
   "markup": [],
   "text": "Model note: line oneline twothree four ‮evil​   end"
  },
@@ -157,9 +179,10 @@
   "ok": true,
   "note": "The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
   "expected": "モデルの注記: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [],
   "text": "モデルの注記: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead."
  },
@@ -168,9 +191,10 @@
   "ok": false,
   "note": "![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
   "expected": "モデルの注記: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [
    "a",
    "a"
@@ -182,9 +206,10 @@
   "ok": false,
   "note": "https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
   "expected": "モデルの注記: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [
    "a",
    "a",
@@ -198,9 +223,10 @@
   "ok": true,
   "note": "<img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
   "expected": "モデルの注記: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [],
   "text": "モデルの注記: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>"
  },
@@ -209,9 +235,10 @@
   "ok": false,
   "note": "<details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
   "expected": "モデルの注記: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [
    "u"
   ],
@@ -222,21 +249,31 @@
   "ok": false,
   "note": "$x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
   "expected": "モデルの注記: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
-  "strong": [
-   "モデルの注記:"
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
+  "markup": [
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex",
+   "span.katex"
   ],
-  "markup": [],
-  "text": "モデルの注記:     a  c"
+  "text": "モデルの注記: x2y zw 1m H2Oe a b c"
  },
  {
   "index": 18,
   "ok": false,
   "note": "**bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
   "expected": "モデルの注記: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
-  "strong": [
-   "モデルの注記:",
-   "bold"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 1,
   "markup": [
    "em",
    "em",
@@ -251,9 +288,10 @@
   "ok": true,
   "note": "# heading > quote - item 1. item | a | b | :::note x ::: ---",
   "expected": "モデルの注記: # heading > quote - item 1. item | a | b | :::note x ::: ---",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [],
   "text": "モデルの注記: # heading > quote - item 1. item | a | b | :::note x ::: ---"
  },
@@ -262,9 +300,10 @@
   "ok": false,
   "note": "[1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
   "expected": "モデルの注記: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [
    "sup.footnote-ref",
    "iframe.w-full"
@@ -276,9 +315,10 @@
   "ok": false,
   "note": "&amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
   "expected": "モデルの注記: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [],
   "text": "モデルの注記: &amp; &lt; &#x41; &#65; &nbsp; & * \\ trailing backslash \\"
  },
@@ -287,21 +327,25 @@
   "ok": false,
   "note": "ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
   "expected": "モデルの注記: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
-  "strong": [
-   "モデルの注記:",
-   "強調"
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 1,
+  "markup": [
+   "span.katex",
+   "span.katex"
   ],
-  "markup": [],
-  "text": "モデルの注記: ご指定の plt.ylim(60, 0) は（注） 強調【例】「軸」を反転します。 と"
+  "text": "モデルの注記: ご指定の plt.ylim(60, 0) は（注） 強調【例】「軸」を反転します。x と y"
  },
  {
   "index": 23,
   "ok": false,
   "note": "line one\nline two\r\nthree four ‮evil​ \u0000  end",
   "expected": "モデルの注記: line one␊line two␍␊three�four �evil� ␀ ␡ end",
-  "strong": [
-   "モデルの注記:"
-  ],
+  "label_kind": "katex",
+  "label_text": "モデルの注記:",
+  "label_weight": 700,
+  "strong": 0,
   "markup": [],
   "text": "モデルの注記: line oneline twothree four ‮evil​   end"
  }

@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 
 from verifier.figure.inert import visible
-from webui.paste_in.filter import NOTE_LABELS, PASS_TEXT, _note_line
+from webui.paste_in.filter import PASS_TEXT, _note_line
+
+# What each language's label shows, and the element that draws it (Q80: KaTeX bold in Japanese).
+LABELS = (("Model note:", "strong"), ("モデルの注記:", "katex"))
 
 NOTES = (
     "The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
@@ -34,13 +37,14 @@ def main() -> int:
     cases = []
     for japanese in (False, True):
         metadata = {"user_message": {"content": "グラフ" if japanese else "Chart"}}
-        label = NOTE_LABELS[japanese]
+        label, kind = LABELS[japanese]
         for note in NOTES:
             shown = note.strip()
             cases.append(
                 {
                     "note": note,
                     "label": label,
+                    "label_kind": kind,
                     "content": PASS_TEXT + _note_line(note, metadata),
                     "expected": f"{label} " + "".join(map(visible, shown)),
                 }
