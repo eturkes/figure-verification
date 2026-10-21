@@ -12,22 +12,24 @@ Two env namespaces meet here, kept strictly apart:
     wiring, and the auth / bootstrap login model. It reads no os.environ (DATA_DIR resolves against
     the process cwd, not the environment), so it is a pure function of this Settings and the cwd --
     fully assertable (a test recomputes the same resolve). Every axis the harness has intent about
-    is pinned here (in _FIXED_ENV or a derived key), so the config is complete on its own.
-  - child_env() is what the launcher actually execs: launch_env() overlaid on a CURATED minimal base
-    (only the process vars the child needs -- PATH / HOME / locale), everything else in os.environ
-    DROPPED. This is the hermetic boundary -- a bare {**os.environ, **launch_env()} would leak any
-    axis launch_env does not pin (aiohttp reads HTTP_PROXY via trust_env; transport / SSL knobs are
-    unbounded). The launcher (webui/__main__.py) execs os.execve(bin, argv, child_env()).
+    is pinned here (in _FIXED_ENV or a derived key), so the config is complete on its own -- the
+    signing key aside, which signing_key() reads or creates in the data dir.
+  - child_env() is what the launcher actually execs: launch_env() + signing_key() overlaid on a
+    CURATED minimal base (only the process vars the child needs -- PATH / HOME / locale),
+    everything else in os.environ DROPPED. This is the hermetic boundary -- a bare
+    {**os.environ, **launch_env()} would leak any axis launch_env does not pin (aiohttp reads
+    HTTP_PROXY via trust_env; transport / SSL knobs are unbounded). The launcher
+    (webui/__main__.py) execs os.execve(bin, argv, child_env()).
 
 Persistent-config is OFF (env-over-DB every boot), so runtime config lives in env, never the OWUI
 DB. The admin user + repo-owned global filter are DB-persisted provisioning state (bootstrap).
 Endpoint settings accept only canonical, ambiguity-free URLs for this stack's fixed
 origin and /v1 joins; the bind/client host is a separate bare ASCII hostname. Defaults bind
-loopback only -- OWUI on 8080, the model backend's OpenAI /v1 on 8001 -- and
-the secret_key / admin_password are loopback dev defaults an operator overrides. All names and
-defaults were verified against open-webui 0.10.2, 0.11.3 + 0.12.3 source (config.py / env.py). This
-package is an out-of-tree harness like model_backend: coverage-excluded, unshipped, importing only
-gate-venv deps.
+loopback only -- OWUI on 8080, the model backend's OpenAI /v1 on 8001 -- the admin_password is a
+loopback dev default an operator overrides, and the signing key is random per data dir. All names
+and defaults were verified against open-webui 0.10.2, 0.11.3 + 0.12.3 source (config.py / env.py).
+This package is an out-of-tree harness like model_backend: coverage-excluded, unshipped, importing
+only gate-venv deps.
 """
 
 import ipaddress
@@ -35,6 +37,7 @@ import json
 import math
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Literal, Self, TypeAlias, cast, get_args
 from urllib.parse import urlparse
@@ -45,10 +48,7 @@ _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8080
 _DEFAULT_DATA_DIR = ".webui-data"
 # Loopback dev defaults, overridable via WEBUI_PROVISION_*: the whole stack binds loopback, so a
-# fixed secret / password is acceptable for the PoC harness (S105 flags the literal, not a leak).
-# Keep the secret >= 32 UTF-8 bytes: RFC 7518 requires an HS256 key at least as wide as its
-# 256-bit hash, and PyJWT warns on every encode/decode when given a shorter value.
-_DEFAULT_SECRET_KEY = "loopback-dev-secret-key-for-local-poc"  # noqa: S105
+# fixed password is acceptable for the PoC harness (S105 flags the literal, not a leak).
 _DEFAULT_ADMIN_NAME = "operator"
 _DEFAULT_ADMIN_EMAIL = "operator@localhost"
 _DEFAULT_ADMIN_PASSWORD = "loopback-dev-password"  # noqa: S105
@@ -61,7 +61,11 @@ _DEFAULT_REQUEST_TIMEOUT = 30.0
 _DEFAULT_READY_TIMEOUT = 60.0
 # Named to dodge PLR2004 (magic-value comparison) in the port bound.
 _MAX_PORT = 65535
+# RFC 7518 requires an HS256 key at least as wide as its 256-bit hash, and PyJWT warns on every
+# encode/decode when given a shorter value.
 _MIN_SECRET_KEY_BYTES = 32
+# The instance's own signing key, beside its DB (OWUI's own `serve` keeps one in its cwd instead).
+_SECRET_KEY_FILE = ".webui_secret_key"  # noqa: S105
 
 # URL values are concatenated with fixed consumer paths by Open WebUI. Require one canonical,
 # browser/client-unambiguous form: an ASCII host[:port] authority (IPv6 brackets allowed), no
@@ -214,7 +218,8 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     host: str = _DEFAULT_HOST
     port: int = _DEFAULT_PORT
     data_dir: Path = Path(_DEFAULT_DATA_DIR)
-    secret_key: str = _DEFAULT_SECRET_KEY
+    # None = the data dir's own random key (signing_key()).
+    secret_key: str | None = None
     admin_name: str = _DEFAULT_ADMIN_NAME
     admin_email: str = _DEFAULT_ADMIN_EMAIL
     admin_password: str = _DEFAULT_ADMIN_PASSWORD
@@ -235,7 +240,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             raise ValueError(msg)
         # PyJWT warns below the RFC 7518 HS256 key minimum; enforce it at the operator boundary
         # rather than admitting a boot that only reports the defect in logs.
-        if len(self.secret_key.encode()) < _MIN_SECRET_KEY_BYTES:
+        if self.secret_key is not None and len(self.secret_key.encode()) < _MIN_SECRET_KEY_BYTES:
             msg = f"secret_key must be at least {_MIN_SECRET_KEY_BYTES} UTF-8 bytes"
             raise ValueError(msg)
         # Each hard-breaks bootstrap when empty: admin email / password feed signup and signin.
@@ -277,15 +282,10 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
                 f"got {self.host!r}"
             )
             raise ValueError(msg)
-        # The defaults are published: off loopback, the secret lets anyone sign an admin token,
-        # and an Open WebUI admin runs Python on this host through Functions.
-        if not _loopback(self.host) and (
-            self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD
-        ):
-            msg = (
-                f"host {self.host!r} is not loopback: set a fresh WEBUI_PROVISION_SECRET_KEY and "
-                "WEBUI_PROVISION_ADMIN_PASSWORD"
-            )
+        # The default password is published: off loopback, anyone signs in as the admin, and an
+        # Open WebUI admin runs Python on this host through Functions.
+        if not _loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:
+            msg = f"host {self.host!r} is not loopback: set a fresh WEBUI_PROVISION_ADMIN_PASSWORD"
             raise ValueError(msg)
 
     @property
@@ -317,31 +317,56 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         """The Open WebUI config env to exec open-webui with (layered over the launcher base env).
 
         Reads no os.environ; DATA_DIR resolves against the process cwd, so the dict is a function of
-        this Settings and the cwd (a test recomputes the same resolve). The five derived keys
+        this Settings and the cwd (a test recomputes the same resolve). The four derived keys
         complete _FIXED_ENV per-instance -- an absolute DATA_DIR (OWUI resolves a relative one
-        against its own cwd, so absolute keeps state in .webui-data regardless of exec cwd), the
-        secret, both OpenAI base-url forms, and the function-calling mode.
+        against its own cwd, so absolute keeps state in .webui-data regardless of exec cwd), both
+        OpenAI base-url forms, and the function-calling mode. WEBUI_SECRET_KEY joins in child_env().
         """
         return {
             **_FIXED_ENV,
             "DATA_DIR": str(self.data_dir.resolve()),
-            "WEBUI_SECRET_KEY": self.secret_key,
             "OPENAI_API_BASE_URL": self.model_backend_url,
             "OPENAI_API_BASE_URLS": self.model_backend_url,
             "DEFAULT_MODEL_PARAMS": json.dumps({"function_calling": self.function_calling}),
         }
+
+    def signing_key(self) -> str:
+        """The key OWUI signs session tokens with: the operator's, else the data dir's own.
+
+        The data dir's key is created with it (random, mode 0600) and wiped with it, so a cookie
+        never outlives its instance: OWUI 0.12.3 answers `/api/config` 401 for a token that
+        decodes but names a user its DB no longer holds (main.py get_app_config -> utils/mfa.py
+        get_auth), and its frontend then shows "Open WebUI Backend Required" until the browser
+        drops the cookie. Under a new key the old token fails to decode, which OWUI reads as
+        signed out.
+        """
+        if self.secret_key is not None:
+            return self.secret_key
+        path = self.data_dir / _SECRET_KEY_FILE
+        if not path.exists():
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            # A crash before the write leaves a short key, which the check below refuses.
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="ascii") as file:
+                file.write(secrets.token_urlsafe(_MIN_SECRET_KEY_BYTES))
+        key = path.read_text(encoding="utf-8")
+        if len(key.encode()) < _MIN_SECRET_KEY_BYTES:
+            msg = f"{path} must hold at least {_MIN_SECRET_KEY_BYTES} UTF-8 bytes; delete it"
+            raise ValueError(msg)
+        return key
 
     def child_env(self) -> dict[str, str]:
         """The full hermetic environment to exec open-webui with: a curated base + launch_env().
 
         Unlike launch_env() (pure OWUI config), this reads os.environ -- but ONLY the process vars
         the child needs (_BASE_ENV_PASSTHROUGH: PATH / HOME / locale / TMPDIR / TZ) -- then overlays
-        launch_env(). Every ambient var outside that allowlist is DROPPED, so nothing the harness
-        did not choose (a stray HTTP_PROXY, a WEBUI_* / OPENAI_* leftover) reaches OWUI. The
-        launcher execs os.execve(bin, argv, settings.child_env()).
+        launch_env() + the signing key (which may create the data dir's key file). Every ambient var
+        outside that allowlist is DROPPED, so nothing the harness did not choose (a stray
+        HTTP_PROXY, a WEBUI_* / OPENAI_* leftover) reaches OWUI. The launcher execs
+        os.execve(bin, argv, settings.child_env()).
         """
         base = {k: os.environ[k] for k in _BASE_ENV_PASSTHROUGH if k in os.environ}
-        return {**base, **self.launch_env()}
+        return {**base, **self.launch_env(), "WEBUI_SECRET_KEY": self.signing_key()}
 
     @classmethod
     def from_env(cls) -> Self:
@@ -351,7 +376,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             host=env.get("WEBUI_PROVISION_HOST", _DEFAULT_HOST),
             port=int(env.get("WEBUI_PROVISION_PORT", str(_DEFAULT_PORT))),
             data_dir=Path(env.get("WEBUI_PROVISION_DATA_DIR", _DEFAULT_DATA_DIR)),
-            secret_key=env.get("WEBUI_PROVISION_SECRET_KEY", _DEFAULT_SECRET_KEY),
+            secret_key=env.get("WEBUI_PROVISION_SECRET_KEY"),
             admin_name=env.get("WEBUI_PROVISION_ADMIN_NAME", _DEFAULT_ADMIN_NAME),
             admin_email=env.get("WEBUI_PROVISION_ADMIN_EMAIL", _DEFAULT_ADMIN_EMAIL),
             admin_password=env.get("WEBUI_PROVISION_ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD),

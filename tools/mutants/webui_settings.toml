@@ -1,32 +1,49 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# M21.1 F6 launcher bind: a host off loopback needs both published credentials replaced.
+# M21.1 F6 launcher bind: a host off loopback needs the published admin password replaced.
+# Instance signing key: the operator's, else one random key per data dir, kept until the dir goes.
 module = "webui/settings.py"
 tests = ["tests/test_webui_settings.py"]
 
 [[mutant]]
-id = "m21-any-host-default-credentials"
-predicate = "a host off loopback refuses the published credentials"
-kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
-anchor = '''        if not _loopback(self.host) and ('''
-mutant = '''        if False and ('''
-
-[[mutant]]
-id = "m21-default-password-kept"
+id = "m21-any-host-default-password"
 predicate = "a host off loopback refuses the published admin password"
-kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
-anchor = '''self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
-mutant = '''self.secret_key == _DEFAULT_SECRET_KEY'''
-
-[[mutant]]
-id = "m21-default-secret-kept"
-predicate = "a host off loopback refuses the published secret key"
-kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
-anchor = '''self.secret_key == _DEFAULT_SECRET_KEY or self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
-mutant = '''self.admin_password == _DEFAULT_ADMIN_PASSWORD'''
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_a_fresh_password"
+anchor = '''        if not _loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:'''
+mutant = '''        if False:'''
 
 [[mutant]]
 id = "m21-every-name-loopback"
 predicate = "a host name other than localhost is no loopback"
-kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_fresh_credentials"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_a_fresh_password"
 anchor = '''        return host.lower() == "localhost"'''
 mutant = '''        return True'''
+
+[[mutant]]
+id = "key-operator-ignored"
+predicate = "an operator key signs instead of the data dir's own"
+kills = "tests/test_webui_settings.py::test_the_operator_key_wins_and_writes_no_file"
+anchor = '''        if self.secret_key is not None:
+            return self.secret_key'''
+mutant = '''        if False:
+            return self.secret_key'''
+
+[[mutant]]
+id = "key-short-admitted"
+predicate = "a key file under 32 bytes is refused"
+kills = "tests/test_webui_settings.py::test_a_short_instance_key_is_refused"
+anchor = '''        if len(key.encode()) < _MIN_SECRET_KEY_BYTES:'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "key-outside-data-dir"
+predicate = "the key lives in the data dir, so a new data dir gets a new key"
+kills = "tests/test_webui_settings.py::test_the_instance_key_lives_and_dies_with_its_data_dir"
+anchor = '''        path = self.data_dir / _SECRET_KEY_FILE'''
+mutant = '''        path = self.data_dir.parent / _SECRET_KEY_FILE'''
+
+[[mutant]]
+id = "key-not-in-child-env"
+predicate = "the exec env carries the signing key"
+kills = "tests/test_webui_settings.py::test_child_env_drops_ambient_keeps_base"
+anchor = '''        return {**base, **self.launch_env(), "WEBUI_SECRET_KEY": self.signing_key()}'''
+mutant = '''        return {**base, **self.launch_env()}'''

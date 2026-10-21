@@ -4,12 +4,12 @@
 webui/ is a coverage-excluded harness, not part of the verifier claim, so these are a bench-style
 regression net rather than a 100%-branch gate. Locked here:
 
-- every fail-closed bound (__post_init__): port range, >=32-byte secret, non-empty admin email /
-  password, finite-positive request and ready timeouts, an http(s) model-backend URL,
+- every fail-closed bound (__post_init__): port range, >=32-byte operator secret, non-empty admin
+  email / password, finite-positive request and ready timeouts, an http(s) model-backend URL,
   bare host;
-- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the five
+- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the four
   per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
-  only the curated process base;
+  only the curated process base + the signing key (the operator's, else the data dir's own);
 - the function-calling mode: legacy by default, byte-equal to the pre-`--codex` pin, native on
   request; the provisioned pair + mode refuse any value outside their closed sets;
 - the load-bearing _FIXED_ENV values (persistent-config off, empty task model, every
@@ -23,6 +23,7 @@ regression net rather than a 100%-branch gate. Locked here:
 
 import json
 import math
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -56,7 +57,6 @@ _PROVISION_ENV_VARS = (
 _DERIVED_ENV_KEYS = frozenset(
     {
         "DATA_DIR",
-        "WEBUI_SECRET_KEY",
         "OPENAI_API_BASE_URL",
         "OPENAI_API_BASE_URLS",
         "DEFAULT_MODEL_PARAMS",
@@ -124,7 +124,7 @@ def test_model_identity_agrees_across_the_three_tiers() -> None:
     assert Settings().model_id == _SERVED_MODEL_NAME
 
 
-# A host off loopback needs both credentials fresh (M21.1 F6).
+# A host off loopback needs a fresh admin password (M21.1 F6); an operator key is the operator's.
 _FRESH_SECRET = "fresh-deployment-secret-of-32-bytes"  # noqa: S105 - a test value
 _FRESH_PASSWORD = "fresh-deployment-password"  # noqa: S105 - a test value
 
@@ -142,6 +142,7 @@ def test_accepts_clean_endpoint_authorities() -> None:
 
 def test_secret_key_bound_counts_utf8_bytes() -> None:
     settings = Settings(secret_key="é" * 16)
+    assert settings.secret_key is not None
     assert len(settings.secret_key.encode()) == 32
 
 
@@ -158,16 +159,17 @@ def test_launch_env_is_fixed_plus_derived() -> None:
     # Every fixed toggle is emitted verbatim (a derived key must not shadow one).
     for key, value in _FIXED_ENV.items():
         assert env[key] == value
-    # The five per-instance derived keys.
+    # The four per-instance derived keys; the signing key joins at child_env() alone, since the
+    # instance's own key is a file launch_env() never reads.
     assert env["DATA_DIR"] == str(settings.data_dir.resolve())
-    assert env["WEBUI_SECRET_KEY"] == settings.secret_key
+    assert "WEBUI_SECRET_KEY" not in env
     assert env["OPENAI_API_BASE_URL"] == settings.model_backend_url
     assert env["OPENAI_API_BASE_URLS"] == settings.model_backend_url
     # Byte-equal to the legacy pin _FIXED_ENV carried before the mode became a setting.
     assert env["DEFAULT_MODEL_PARAMS"] == '{"function_calling": "legacy"}'
     native = Settings(function_calling="native").launch_env()["DEFAULT_MODEL_PARAMS"]
     assert json.loads(native) == {"function_calling": "native"}
-    # launch_env is exactly _FIXED_ENV plus those five keys, no more, no less.
+    # launch_env is exactly _FIXED_ENV plus those four keys, no more, no less.
     # TOOL_SERVER_CONNECTIONS is absent by ruling: a registered tool server is what published the
     # JSON-spec operation, and python mode is the demo's ONE operation, so the registration is
     # removed rather than filtered.
@@ -226,13 +228,16 @@ def test_launch_env_ignores_ambient(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env["ENABLE_API_OUTLET_FILTERS"] == "true"
 
 
-def test_child_env_drops_ambient_keeps_base(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_child_env_drops_ambient_keeps_base(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     # child_env() is the hermetic exec env: launch_env() over a curated base. A passthrough var is
     # carried through; an unpinned / hostile ambient var is dropped, never reaching OWUI.
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     monkeypatch.setenv("HTTP_PROXY", "http://attacker.example:3128")
     monkeypatch.setenv("WEBUI_AUTH", "false")
-    settings = Settings()
+    monkeypatch.setenv("WEBUI_SECRET_KEY", "ambient-secret-key-of-at-least-32-bytes")
+    settings = Settings(data_dir=tmp_path / "data")
     env = settings.child_env()
     # launch_env() is fully present and its pins win over ambient.
     for key, value in settings.launch_env().items():
@@ -240,6 +245,51 @@ def test_child_env_drops_ambient_keeps_base(monkeypatch: pytest.MonkeyPatch) -> 
     assert env["PATH"] == "/usr/bin:/bin"  # base passthrough carried
     assert "HTTP_PROXY" not in env  # unpinned ambient dropped (no aiohttp trust_env proxy leak)
     assert env["WEBUI_AUTH"] == "true"  # launch_env pin, not the ambient "false"
+    assert env["WEBUI_SECRET_KEY"] == (tmp_path / "data" / ".webui_secret_key").read_text()
+
+
+def test_the_instance_key_lives_and_dies_with_its_data_dir(tmp_path: Path) -> None:
+    """A browser cookie must not outlive its instance: Open WebUI 0.12.3 answers `/api/config` 401
+    for a token that still decodes but names a user the DB no longer holds, and its frontend then
+    shows "Open WebUI Backend Required" until the cookie is cleared. A key created with the data
+    dir, private to its owner, stable across serves and replaced with the data dir, makes every
+    cookie of a wiped instance undecodable, so the browser lands on the sign-in page."""
+    data_dir = tmp_path / "data"
+    settings = Settings(data_dir=data_dir)
+    key = settings.child_env()["WEBUI_SECRET_KEY"]
+    key_file = data_dir / ".webui_secret_key"
+    assert key == key_file.read_text()
+    assert len(key.encode()) >= 32
+    assert key_file.stat().st_mode & 0o777 == 0o600
+    assert settings.child_env()["WEBUI_SECRET_KEY"] == key
+    assert sorted(path.name for path in data_dir.iterdir()) == [".webui_secret_key"]
+    shutil.rmtree(data_dir)
+    assert settings.child_env()["WEBUI_SECRET_KEY"] != key
+    other = Settings(data_dir=tmp_path / "other").child_env()["WEBUI_SECRET_KEY"]
+    assert other not in {key, settings.child_env()["WEBUI_SECRET_KEY"]}
+
+
+def test_an_existing_instance_key_is_kept(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    kept = "kept-instance-key-written-by-an-earlier-serve"
+    (data_dir / ".webui_secret_key").write_text(kept)
+    assert Settings(data_dir=data_dir).child_env()["WEBUI_SECRET_KEY"] == kept
+
+
+def test_a_short_instance_key_is_refused(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / ".webui_secret_key").write_text("x" * 31)
+    with pytest.raises(ValueError, match=r"\.webui_secret_key"):
+        Settings(data_dir=data_dir).child_env()
+
+
+def test_the_operator_key_wins_and_writes_no_file(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    settings = Settings(data_dir=data_dir, secret_key=_FRESH_SECRET)
+    assert settings.child_env()["WEBUI_SECRET_KEY"] == _FRESH_SECRET
+    assert not data_dir.exists()
 
 
 def test_tool_identity_is_the_paste_in_python_operation() -> None:
@@ -292,18 +342,18 @@ def test_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     "host",
     ["0.0.0.0", "192.168.1.5", "operator-box", "127.0.0.1.example"],  # noqa: S104 - refused binds
 )
-def test_m21_a_host_beyond_loopback_needs_fresh_credentials(host: str) -> None:
-    """M21.1 F6: the published secret key lets anyone on the network sign an admin token, and an
-    Open WebUI admin runs Python on the host through Functions; any host bound with both
-    defaults."""
+def test_m21_a_host_beyond_loopback_needs_a_fresh_password(host: str) -> None:
+    """M21.1 F6: the published admin password lets anyone on the network sign in as the admin,
+    and an Open WebUI admin runs Python on the host through Functions. The signing key is no
+    published default: the operator's own, else a random key per data dir."""
     builds: tuple[Callable[[], Settings], ...] = (
         lambda: Settings(host=host),
         lambda: Settings(host=host, secret_key=_FRESH_SECRET),
-        lambda: Settings(host=host, admin_password=_FRESH_PASSWORD),
     )
     for build in builds:
         with pytest.raises(ValueError, match="host"):
             build()
+    assert Settings(host=host, admin_password=_FRESH_PASSWORD).host == host
     fresh = Settings(host=host, secret_key=_FRESH_SECRET, admin_password=_FRESH_PASSWORD)
     assert fresh.host == host
 

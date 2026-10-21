@@ -72,6 +72,9 @@ webui/launch.sh --codex  # gpt-6-luna through codex app-server (ChatGPT subscrip
 webui/launch.sh --fresh  # wipe the persisted .webui-data instance before starting
 ```
 
+Each data directory keeps its own key that signs browser sessions. When you wipe the directory, the
+key goes with it. Thus, a browser that signed in to the earlier instance shows the sign-in page.
+
 The model tier is the CUDA `model_backend` on the dGPU by default. Alternatively, use the
 hardware-free stub with `--stub`, or `gpt-6-luna` with `--codex`. The three tiers are mutually
 exclusive on port `8001`. You can
@@ -256,7 +259,7 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_HOST` | `127.0.0.1` | Sets the bare ASCII Open WebUI bind host and bootstrap host.
 `WEBUI_PROVISION_PORT` | `8080` | Sets the Open WebUI bind port.
 `WEBUI_PROVISION_DATA_DIR` | `.webui-data` | Sets the SQLite, uploads, and cache root. The launcher resolves it from the launch working directory.
-`WEBUI_PROVISION_SECRET_KEY` | fixed loopback dev value | Sets the JWT key. It must contain at least 32 UTF-8 bytes.
+`WEBUI_PROVISION_SECRET_KEY` | a random key for each data directory | Sets the JWT key that signs browser sessions. It must contain at least 32 UTF-8 bytes. If you do not set it, `serve` creates the file `.webui_secret_key` in the data directory once and then reads it.
 `WEBUI_PROVISION_ADMIN_NAME` | `operator` | Sets the first administrator's display name.
 `WEBUI_PROVISION_ADMIN_EMAIL` | `operator@localhost` | Sets the signup and signin identity.
 `WEBUI_PROVISION_ADMIN_PASSWORD` | fixed loopback dev value | Sets the signup and signin password.
@@ -268,9 +271,8 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_PASTE_IN` | `demo` | Selects the pair that bootstrap installs: `demo` or `production`. `--codex` sets `production`.
 `WEBUI_PROVISION_FUNCTION_CALLING` | `legacy` | Selects the Open WebUI function calling: `legacy` or `native`. `--codex` sets `native`.
 
-The default credentials are constant, throwaway PoC values. Both services bind to loopback.
-For the verified recipe, keep that boundary. For any network-exposed deployment, use fresh
-credentials. Generate a secret for that deployment. Obtain a separate production security review.
-The launcher refuses a host other than loopback while the secret key or the admin password keeps
-its default. The model backend authenticates no caller, so it refuses any host other than
+The default administrator password is a constant, throwaway PoC value. Both services bind to
+loopback. For the verified recipe, keep that boundary. For any network-exposed deployment, use a
+fresh password. Obtain a separate production security review. The launcher refuses a host other
+than loopback while the admin password keeps its default. The model backend authenticates no caller, so it refuses any host other than
 loopback.

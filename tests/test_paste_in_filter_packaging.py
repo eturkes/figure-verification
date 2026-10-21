@@ -276,10 +276,10 @@ def test_f8_bootstrap_provisions_exact_generated_filter_source() -> None:
 
 
 def test_f9_embedding_bypass_is_pinned_against_ambient_config(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """F9: uploaded CSVs remain offline even when ambient OWUI config says otherwise."""
     monkeypatch.setenv("BYPASS_EMBEDDING_AND_RETRIEVAL", "false")
-    settings = Settings()
+    settings = Settings(data_dir=tmp_path)
     assert settings.launch_env()["BYPASS_EMBEDDING_AND_RETRIEVAL"] == "true"
     assert settings.child_env()["BYPASS_EMBEDDING_AND_RETRIEVAL"] == "true"

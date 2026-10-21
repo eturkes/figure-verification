@@ -148,7 +148,7 @@ def test_serve_execs_open_webui_with_hermetic_env(
 ) -> None:
     binary = tmp_path / "open-webui"
     binary.touch()
-    settings = Settings(webui_bin=binary)
+    settings = Settings(webui_bin=binary, data_dir=tmp_path / "data")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("WEBUI_PROVISION_LEAK", "x")
 
@@ -165,6 +165,7 @@ def test_serve_execs_open_webui_with_hermetic_env(
         assert env["OFFLINE_MODE"] == "true"
         assert env["PATH"] == "/usr/bin"
         assert "WEBUI_PROVISION_LEAK" not in env
+        assert env["WEBUI_SECRET_KEY"] == (tmp_path / "data" / ".webui_secret_key").read_text()
         raise _ExecedError
 
     monkeypatch.setattr(os, "execve", fake_execve)

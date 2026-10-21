@@ -11,6 +11,7 @@ import importlib.util
 import inspect
 import json
 import os
+import secrets
 import shutil
 import struct
 import subprocess
@@ -25,8 +26,6 @@ from types import ModuleType, SimpleNamespace
 from typing import Protocol, cast
 
 import pytest
-
-from webui.settings import Settings
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -104,8 +103,8 @@ def owui_driver_output(driver: str, tmp_path: Path, marker: str) -> str:
             "OFFLINE_MODE": "true",
             "PYTHONPATH": "",
             # open_webui refuses to import with this unset, so the driver would die before it
-            # reached the artifact. The launcher's own key is what the demo runs under.
-            "WEBUI_SECRET_KEY": Settings().secret_key,
+            # reached the artifact; any key serves an import.
+            "WEBUI_SECRET_KEY": secrets.token_urlsafe(32),
         }
     )
     result = subprocess.run(  # noqa: S603
