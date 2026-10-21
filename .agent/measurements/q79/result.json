@@ -1,0 +1,266 @@
+[
+ {
+  "index": 0,
+  "ok": true,
+  "note": "The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
+  "expected": "Model note: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead."
+ },
+ {
+  "index": 1,
+  "ok": true,
+  "note": "![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
+  "expected": "Model note: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>"
+ },
+ {
+  "index": 2,
+  "ok": true,
+  "note": "https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
+  "expected": "Model note: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid"
+ },
+ {
+  "index": 3,
+  "ok": true,
+  "note": "<img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
+  "expected": "Model note: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>"
+ },
+ {
+  "index": 4,
+  "ok": true,
+  "note": "<details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
+  "expected": "Model note: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>"
+ },
+ {
+  "index": 5,
+  "ok": true,
+  "note": "$x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
+  "expected": "Model note: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c"
+ },
+ {
+  "index": 6,
+  "ok": true,
+  "note": "**bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
+  "expected": "Model note: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark=="
+ },
+ {
+  "index": 7,
+  "ok": true,
+  "note": "# heading > quote - item 1. item | a | b | :::note x ::: ---",
+  "expected": "Model note: # heading > quote - item 1. item | a | b | :::note x ::: ---",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: # heading > quote - item 1. item | a | b | :::note x ::: ---"
+ },
+ {
+  "index": 8,
+  "ok": true,
+  "note": "[1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
+  "expected": "Model note: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>"
+ },
+ {
+  "index": 9,
+  "ok": true,
+  "note": "&amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
+  "expected": "Model note: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\"
+ },
+ {
+  "index": 10,
+  "ok": true,
+  "note": "ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
+  "expected": "Model note: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)"
+ },
+ {
+  "index": 11,
+  "ok": true,
+  "note": "line one\nline two\r\nthree four ‮evil​ \u0000  end",
+  "expected": "Model note: line one␊line two␍␊three�four �evil� ␀ ␡ end",
+  "strong": [
+   "Model note:"
+  ],
+  "markup": [],
+  "text": "Model note: line one␊line two␍␊three�four �evil� ␀ ␡ end"
+ },
+ {
+  "index": 12,
+  "ok": true,
+  "note": "The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
+  "expected": "モデルの注記: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead.",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: The request asks for plt.ylim(30000, 45000); the chart starts the y axis at 0 instead."
+ },
+ {
+  "index": 13,
+  "ok": true,
+  "note": "![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
+  "expected": "モデルの注記: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid>"
+ },
+ {
+  "index": 14,
+  "ok": true,
+  "note": "https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
+  "expected": "モデルの注記: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: https://example.invalid/path www.example.invalid user@example.invalid ftp://example.invalid"
+ },
+ {
+  "index": 15,
+  "ok": true,
+  "note": "<img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
+  "expected": "モデルの注記: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: <img src=x onerror=alert(1)> <iframe src='https://example.invalid'></iframe> <video src=x>"
+ },
+ {
+  "index": 16,
+  "ok": true,
+  "note": "<details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
+  "expected": "モデルの注記: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: <details><summary>s</summary>x</details> <u>u</u> <b>b</b> <script>alert(1)</script>"
+ },
+ {
+  "index": 17,
+  "ok": true,
+  "note": "$x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
+  "expected": "モデルの注記: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: $x^2$ $$y$$ \\(z\\) \\[w\\] \\pu{1 m} \\ce{H2O} \\begin{equation}e\\end{equation} a $b$ c"
+ },
+ {
+  "index": 18,
+  "ok": true,
+  "note": "**bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
+  "expected": "モデルの注記: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark==",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: **bold** *em* _em_ ~~del~~ ~one~ `code` ``` x ``` ==mark=="
+ },
+ {
+  "index": 19,
+  "ok": true,
+  "note": "# heading > quote - item 1. item | a | b | :::note x ::: ---",
+  "expected": "モデルの注記: # heading > quote - item 1. item | a | b | :::note x ::: ---",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: # heading > quote - item 1. item | a | b | :::note x ::: ---"
+ },
+ {
+  "index": 20,
+  "ok": true,
+  "note": "[1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
+  "expected": "モデルの注記: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: [1] [1,2] [1#x] [^1] {{user}} {{CHAR}} {{VIDEO_FILE_ID_0123abcd}} {{HTML_FILE_ID_0a}} <@user>"
+ },
+ {
+  "index": 21,
+  "ok": true,
+  "note": "&amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
+  "expected": "モデルの注記: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: &amp; &lt; &#x41; &#65; &nbsp; \\& \\* \\\\ trailing backslash \\"
+ },
+ {
+  "index": 22,
+  "ok": true,
+  "note": "ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
+  "expected": "モデルの注記: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: ご指定の plt.ylim(60, 0) は（注）**強調**【例】「軸」を反転します。$x$ と \\(y\\)"
+ },
+ {
+  "index": 23,
+  "ok": true,
+  "note": "line one\nline two\r\nthree four ‮evil​ \u0000  end",
+  "expected": "モデルの注記: line one␊line two␍␊three�four �evil� ␀ ␡ end",
+  "strong": [
+   "モデルの注記:"
+  ],
+  "markup": [],
+  "text": "モデルの注記: line one␊line two␍␊three�four �evil� ␀ ␡ end"
+ }
+]

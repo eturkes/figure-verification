@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # M21.1 F1 inert text: each fence, pad and visibility rule of a markdown code span names one red.
+# Q79: the note's plain text: each escape, the KaTeX exceptions and the backslash joiner.
 module = "src/verifier/figure/inert.py"
 tests = ["tests/test_figure_inert.py"]
 
@@ -51,3 +52,38 @@ predicate = "an all-space span keeps its spaces unpadded"
 kills = "tests/test_figure_inert.py::test_code_spans_are_hand_stated"
 anchor = '''    spaced = shown[0] == shown[-1] == " " and shown.strip(" ") != ""'''
 mutant = '''    spaced = shown[0] == shown[-1] == " "'''
+
+[[mutant]]
+id = "q79-paren-escaped"
+predicate = "`(` stays bare, since `\\(` opens KaTeX math"
+kills = "tests/test_figure_inert.py::test_q79_prose_is_hand_stated"
+anchor = '''_ESCAPED = frozenset(string.punctuation) - {"(", "["}'''
+mutant = '''_ESCAPED = frozenset(string.punctuation) - {"["}'''
+
+[[mutant]]
+id = "q79-bracket-escaped"
+predicate = "`[` stays bare, since `\\[` opens KaTeX display math"
+kills = "tests/test_figure_inert.py::test_q79_prose_is_hand_stated"
+anchor = '''_ESCAPED = frozenset(string.punctuation) - {"(", "["}'''
+mutant = '''_ESCAPED = frozenset(string.punctuation) - {"("}'''
+
+[[mutant]]
+id = "q79-nothing-escaped"
+predicate = "every other ASCII punctuation character is escaped"
+kills = "tests/test_figure_inert.py::test_q79_the_note_parses_as_plain_text_after_the_bold_label"
+anchor = '''    return "\\" + character if character in _ESCAPED else visible(character)'''
+mutant = '''    return visible(character)'''
+
+[[mutant]]
+id = "q79-no-joiner"
+predicate = "an escaped backslash keeps a word joiner after it"
+kills = "tests/test_figure_inert.py::test_q79_prose_is_hand_stated"
+anchor = '''        return "\\\\" + _JOINER'''
+mutant = '''        return "\\\\"'''
+
+[[mutant]]
+id = "q79-hidden-shown-raw"
+predicate = "an invisible character in the note shows as a symbol"
+kills = "tests/test_figure_inert.py::test_q79_prose_is_hand_stated"
+anchor = '''    return "\\" + character if character in _ESCAPED else visible(character)'''
+mutant = '''    return "\\" + character if character in _ESCAPED else character'''

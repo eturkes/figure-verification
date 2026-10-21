@@ -12,7 +12,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from markdown_it import MarkdownIt
 
-from verifier.figure.inert import code
+from verifier.figure.inert import code, prose, visible
 
 _MARKDOWN = MarkdownIt("commonmark", {"html": True})
 # Draws nothing or reorders the text around it: controls, format (bidi) and unassigned characters.
@@ -96,3 +96,71 @@ def test_the_span_shows_the_text_verbatim_with_hidden_characters_as_symbols(text
             assert shown == original
         else:
             assert shown != original and unicodedata.category(shown) not in _HIDDEN
+
+
+# Q79 (`.agent/archive/contracts/q79.md`): every ASCII punctuation character marked can escape,
+# except the two whose escape opens Open WebUI's KaTeX math (`\(`, `\[`).
+_ESCAPED = frozenset("!\"#$%&'*+,-./:;<=>?@\\]^_`{|}~)")
+
+
+@pytest.mark.parametrize(
+    ("text", "shown"),
+    [
+        ("plt.ylim(30000, 45000)", "plt\\.ylim(30000\\, 45000\\)"),
+        ("[a](https://e.example)", "[a\\](https\\:\\/\\/e\\.example\\)"),
+        ("\\(x\\)", "\\\\\u2060(x\\\\\u2060\\)"),
+        ("\\[w\\] \\begin", "\\\\\u2060[w\\\\\u2060\\] \\\\\u2060begin"),
+        ("$x$ {{user}}", "\\$x\\$ \\{\\{user\\}\\}"),
+        ("<img src=x>", "\\<img src\\=x\\>"),
+        ("a\nb\u202e", "a\u240ab\ufffd"),
+        ("ご指定の y 軸を 0 から", "ご指定の y 軸を 0 から"),
+        ("", ""),
+    ],
+)
+def test_q79_prose_is_hand_stated(text: str, shown: str) -> None:
+    assert prose(text) == shown
+
+
+@given(text=_HOSTILE)
+@settings(max_examples=600, deadline=None)
+def test_q79_every_backslash_opens_an_escape_and_no_math_opener_forms(text: str) -> None:
+    """Read back pair by pair: each backslash escapes one escapable character, every escapable
+    character is escaped, and the pairs decode to the visible text; so no `(` or `[` follows an
+    unpaired backslash, and no `$`, `{`, `<`, `:`, `@` or `.` stays bare."""
+    shown = prose(text)
+    decoded, index = [], 0
+    while index < len(shown):
+        if shown[index] == "\\":
+            assert shown[index + 1] in _ESCAPED | {"\\"}
+            decoded.append(shown[index + 1])
+            index += 2
+            # Open WebUI's KaTeX start() scans raw source, escape pairs included: an escaped
+            # backslash keeps a word joiner after it, so no `\[`, `\(`, `\b`, `\c`, `\p` forms.
+            if decoded[-1] == "\\":
+                assert shown[index] == "\u2060"
+                index += 1
+        else:
+            assert shown[index] not in _ESCAPED
+            decoded.append(shown[index])
+            index += 1
+    assert "".join(decoded) == "".join(map(visible, text))
+    assert "$$" not in shown
+
+
+@given(text=_HOSTILE)
+@settings(max_examples=600, deadline=None)
+def test_q79_the_note_parses_as_plain_text_after_the_bold_label(text: str) -> None:
+    """CommonMark with raw HTML on: one paragraph, the label the one emphasis, then text alone,
+    reading exactly the visible characters of the note, stripped as the filter strips it."""
+    text = text.strip()
+    if not text:
+        return
+    tokens = _MARKDOWN.parse(f"**Model note:** {prose(text)}")
+    assert [token.type for token in tokens] == ["paragraph_open", "inline", "paragraph_close"]
+    # markdown-it opens the inline run with an empty text token before the emphasis.
+    children = [c for c in tokens[1].children or [] if c.type != "text" or c.content]
+    assert [child.type for child in children[:3]] == ["strong_open", "text", "strong_close"]
+    assert children[1].content == "Model note:"
+    assert {child.type for child in children[3:]} <= {"text"}
+    shown = "".join(child.content for child in children[3:]).replace("\u2060", "")
+    assert shown == " " + "".join(map(visible, text))

@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
-from verifier.figure.inert import code
+from verifier.figure.inert import prose
 from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
@@ -55,7 +55,8 @@ _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
-# Q78 (user): the speaker of the line under the verdict, EN + JA; no check reads the note.
+# Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
+# the note.
 NOTE_LABELS: Final = ("Model note:", "モデルの注記:")
 MODEL_NOTE_TITLE: Final = "Model Note"
 MODEL_NOTE_DESCRIPTION: Final = (
@@ -197,15 +198,15 @@ def _japanese(metadata: object) -> bool:
 
 
 def _note_line(note: str, metadata: object) -> str:
-    """The model's own statement of what the chart rules overrode, as one inert code span under
-    the verdict (M21.1 F1: Open WebUI renders the reply as markdown), or nothing for a blank note.
+    """The model's own statement of what the chart rules overrode, after its bold label as escaped
+    plain text (Q79: Open WebUI renders the reply as markdown), or nothing for a blank note.
 
     Display alone: it is built after the verdict and read by no check. Total, because a failed
     reply builds it, and a raise there would fail open.
     """
     try:
         shown = note.strip()
-        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown else ""
+        return f"\n\n**{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown else ""
     except Exception:
         return ""
 

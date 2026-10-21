@@ -15,7 +15,7 @@ import pytest
 
 from outlet_support import FAIL, PASS, SESSION, SIMPLE, TRUNCATED, USER, Browser, load, verdict
 from paste_in_support import fake_open_webui, filter_body, filter_request, owui_driver_output
-from verifier.figure.inert import code
+from verifier.figure.inert import prose
 from verifier.figure.judge import Passed, Sources
 
 _NOTE = "The request asked for plt.ylim(30000, 45000). The chart starts the y axis at 0 instead."
@@ -183,7 +183,8 @@ def test_q78_n8_the_valve_is_on_in_production_and_off_in_the_demo() -> None:
 
 
 @pytest.mark.parametrize(
-    ("request_text", "label"), [("Chart it", "Model note:"), ("グラフにして", "モデルの注記:")]
+    ("request_text", "label"),
+    [("Chart it", "**Model note:**"), ("グラフにして", "**モデルの注記:**")],
 )
 def test_q78_n4_a_pass_shows_the_note_under_the_interpretation(
     request_text: str, label: str
@@ -191,20 +192,20 @@ def test_q78_n4_a_pass_shows_the_note_under_the_interpretation(
     result, _browser = _outlet(SIMPLE, f"  {_NOTE}\n", request_text=request_text)
     expected = verdict(SIMPLE, Sources(request=request_text))
     assert isinstance(expected, Passed)
-    japanese = label != "Model note:"
+    japanese = label != "**Model note:**"
     interpretation = expected.interpretation_ja if japanese else expected.interpretation
-    assert _reply(result) == f"{PASS}\n\n{interpretation}\n\n{label} {code(_NOTE)}"
+    assert _reply(result) == f"{PASS}\n\n{interpretation}\n\n{label} {prose(_NOTE)}"
 
 
 def test_q78_n4_a_failure_shows_the_note_under_the_verdict() -> None:
     result, browser = _outlet(TRUNCATED, _NOTE)
-    assert _reply(result) == f"{FAIL}\n\nModel note: {code(_NOTE)}"
+    assert _reply(result) == f"{FAIL}\n\n**Model note:** {prose(_NOTE)}"
     assert [event["type"] for event in browser.events] == ["status", "embeds"]
 
 
 def test_q78_n4_a_failure_before_the_browser_shows_the_note_too() -> None:
     result, browser = _outlet(SIMPLE, _NOTE, metadata={"user_message": {"content": "x"}})
-    assert _reply(result) == f"{FAIL}\n\nModel note: {code(_NOTE)}"
+    assert _reply(result) == f"{FAIL}\n\n**Model note:** {prose(_NOTE)}"
     assert browser.calls == []
 
 
@@ -233,7 +234,7 @@ def test_q78_n5_the_note_never_moves_the_verdict_or_the_diagnostics(
     noted, noted_browser = _outlet(program, note)
     assert _unidentified(noted_browser.calls) == _unidentified(base_browser.calls)
     assert noted_browser.events == base_browser.events
-    assert _reply(noted) == f"{_reply(base)}\n\nModel note: {code(note.strip())}"
+    assert _reply(noted) == f"{_reply(base)}\n\n**Model note:** {prose(note.strip())}"
 
 
 @pytest.mark.parametrize("program", [SIMPLE, TRUNCATED])
@@ -251,14 +252,14 @@ def test_q78_n6_the_valve_off_shows_today_s_reply(program: str) -> None:
     )
 
 
-def test_q78_n7_a_hostile_note_stays_one_code_span_on_one_line() -> None:
+def test_q79_a_hostile_note_stays_escaped_text_on_one_line() -> None:
+    """Q79 (`.agent/archive/contracts/q79.md`): the note shows as plain text after the bold label,
+    every markup character escaped (`inert.prose`), on the label's line."""
     result, _browser = _outlet(SIMPLE, _HOSTILE)
     line = _reply(result).rsplit("\n\n", 1)[1]
-    assert line == f"Model note: {code(_HOSTILE.strip())}"
-    span = line.removeprefix("Model note: ")
-    fence = span[: len(span) - len(span.lstrip("`"))]
-    assert len(fence) > 3 and span.endswith(fence) and "\n" not in line and "\r" not in line
-    assert fence not in span[len(fence) : -len(fence)]
+    assert line == f"**Model note:** {prose(_HOSTILE.strip())}"
+    assert "\n" not in line and "\r" not in line
+    assert "<" not in line.replace("\\<", "") and "](" not in line.replace("\\](", "")
 
 
 @pytest.mark.parametrize("program", [SIMPLE, TRUNCATED])
@@ -278,7 +279,7 @@ def test_q78_n4_the_note_renders_off_the_event_loop(
 
     monkeypatch.setattr(api, "_note_line", recorded)
     result, _browser = _outlet(program, _NOTE)
-    assert _reply(result).endswith(f"\n\nModel note: {code(_NOTE)}")
+    assert _reply(result).endswith(f"\n\n**Model note:** {prose(_NOTE)}")
     assert threads and loop not in threads
 
 

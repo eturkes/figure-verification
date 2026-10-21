@@ -1162,10 +1162,20 @@ its characters show as they are, an invisible one as a visible symbol.
 """
 
 import re
+import string
 import unicodedata
 
 _HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
 _TICKS = re.compile("`+")
+# Every ASCII punctuation character marked can escape, except `(` and `[`: Open WebUI's KaTeX
+# extension reads `\(` and `\[` as math openers, ahead of marked's escapes (Q79). Bare, neither
+# is markup: a link needs `](` and every `]` is escaped, and every backslash is doubled.
+_ESCAPED = frozenset(string.punctuation) - {"(", "["}
+# The KaTeX extension's start() also scans raw source, escape pairs included: an escaped backslash
+# before `[` or `b` reads as a display opener, marked cuts the paragraph there and rejoins it with
+# a line break, and `\[…\]` became math (Q79, measured live). A word joiner after each escaped
+# backslash leaves no backslash beside an opener; it draws nothing.
+_JOINER = "\N{WORD JOINER}"
 
 
 def visible(character: str) -> str:
@@ -1192,6 +1202,23 @@ def code(text: str) -> str:
     spaced = shown[0] == shown[-1] == " " and shown.strip(" ") != ""
     pad = " " if spaced or "`" in (shown[0], shown[-1]) else ""
     return f"{fence}{pad}{shown}{pad}{fence}"
+
+
+def prose(text: str) -> str:
+    """`text` as markdown plain text that shows exactly its characters (Q79: the model's note).
+
+    Open WebUI renders a text token as its raw source and an escape as its bare character, so an
+    escaped character shows as itself. Each escapable character is escaped and each invisible one
+    shows as a symbol, so no link, image, emphasis, HTML, math, mention, citation or `{{…}}`
+    token can form; a line break shows as a symbol, so the text stays on its line.
+    """
+    return "".join(_escaped(character) for character in text)
+
+
+def _escaped(character: str) -> str:
+    if character == "\\":
+        return "\\\\" + _JOINER
+    return "\\" + character if character in _ESCAPED else visible(character)
 '''
 
 _SOURCES["verifier.figure.reader"] = r'''
@@ -9067,7 +9094,7 @@ from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
 from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
-from verifier.figure.inert import code
+from verifier.figure.inert import prose
 from verifier.figure.judge import Passed, Sources, judge
 from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
@@ -9099,7 +9126,8 @@ _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
 PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
 FAIL_TEXT: Final = "Figure verification failed, no image produced"
-# Q78 (user): the speaker of the line under the verdict, EN + JA; no check reads the note.
+# Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
+# the note.
 NOTE_LABELS: Final = ("Model note:", "モデルの注記:")
 MODEL_NOTE_TITLE: Final = "Model Note"
 MODEL_NOTE_DESCRIPTION: Final = (
@@ -9241,15 +9269,15 @@ def _japanese(metadata: object) -> bool:
 
 
 def _note_line(note: str, metadata: object) -> str:
-    """The model's own statement of what the chart rules overrode, as one inert code span under
-    the verdict (M21.1 F1: Open WebUI renders the reply as markdown), or nothing for a blank note.
+    """The model's own statement of what the chart rules overrode, after its bold label as escaped
+    plain text (Q79: Open WebUI renders the reply as markdown), or nothing for a blank note.
 
     Display alone: it is built after the verdict and read by no check. Total, because a failed
     reply builds it, and a raise there would fail open.
     """
     try:
         shown = note.strip()
-        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {code(shown)}" if shown else ""
+        return f"\n\n**{NOTE_LABELS[_japanese(metadata)]}** {prose(shown)}" if shown else ""
     except Exception:
         return ""
 
