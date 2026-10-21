@@ -68,11 +68,13 @@ Thus, browser chats offer it without a manual tool toggle.
 ```sh
 webui/launch.sh          # real local model on the dGPU (needs .venv-model)
 webui/launch.sh --stub   # deterministic stub, no accelerator required
+webui/launch.sh --codex  # gpt-6-luna through codex app-server (ChatGPT subscription)
 webui/launch.sh --fresh  # wipe the persisted .webui-data instance before starting
 ```
 
 The model tier is the CUDA `model_backend` on the dGPU by default. Alternatively, use the
-hardware-free stub with `--stub`. The alternatives are mutually exclusive on port `8001`. You can
+hardware-free stub with `--stub`, or `gpt-6-luna` with `--codex`. The three tiers are mutually
+exclusive on port `8001`. You can
 override every host path, device, credential, port, and timeout with an environment variable. The
 script header documents each default. For an interactive instance, press `Ctrl-C` to stop it. A
 scripted, backgrounded launcher does not receive `SIGINT`. To stop that launcher, send `SIGTERM` or
@@ -80,6 +82,42 @@ use `.launch-logs/launch.pid`.
 
 Use the per-terminal recipe below to run each service separately. Use it to debug one service or
 create a custom topology. The recipe documents exactly what the launcher automates.
+
+## gpt-6-luna through Codex
+
+Use `--codex` to test the verifier with a stronger model than the demo model. Before you start,
+install Codex and sign in to it with your ChatGPT account (`codex login`). The arm uses your
+ChatGPT subscription and makes no API-key call.
+
+```sh
+webui/launch.sh --codex
+```
+
+The arm replaces the model tier with `python -m webui codex`. This bridge gives Open WebUI an
+OpenAI `/v1` endpoint and sends each chat completion to `codex app-server` as a new, temporary
+thread. The model receives the system text, the tools and the messages of the Open WebUI request,
+and nothing else. The bridge runs the app server with its own home directory, `.codex-bridge/`.
+Thus, your `~/.codex` settings, `AGENTS.md`, MCP servers, plugins and skills never reach the model.
+The bridge also turns off every Codex tool and context block: the shell, the JavaScript tool
+wrapper, sub-agents, web search, image generation, and the environment and sandbox text.
+
+The bridge reads the access token from `~/.codex/auth.json` and keeps it in memory. It never writes
+that file and never sends the refresh token. If the token expires, the bridge reads the file again.
+Your own Codex sessions keep the file current. When a model call fails, Open WebUI shows the cause,
+and `.launch-logs/model.log` records it.
+
+This arm installs the production pair from `paste-in/`, not the demo pair. It also selects native
+function calling, which is the Open WebUI default. The model calls `draw_figure` itself, so the arm
+needs no adapter. Because of native function calling, `python -m webui chat` cannot drive this arm.
+Use a browser. The record of the live runs is `.agent/measurements/luna/README.md`.
+
+Variable | Default | Purpose
+---|---|---
+`CODEX_BRIDGE_BIN` | `codex` | Sets the Codex executable.
+`CODEX_BRIDGE_AUTH_FILE` | `~/.codex/auth.json` | Sets the file that holds your Codex sign-in.
+`CODEX_BRIDGE_HOME` | `.codex-bridge` | Sets the home directory of the app server.
+`CODEX_BRIDGE_EFFORT` | empty: the model default, `medium` | Sets the reasoning effort: `low`, `medium`, `high`, `xhigh` or `max`.
+`CODEX_BRIDGE_DUMP_DIR` | empty: off | Writes each request and its result to this directory as JSON.
 
 ## Clean hardware-free smoke
 
@@ -135,7 +173,7 @@ the tool, and creates the model configuration. Expect 403 → signin on the seco
 source and the existing tool source. It does not invert flags that are already true. When the tool
 is already attached, it makes no model write.
 The launcher disables persistent configuration for its settings. The launch environment supplies the
-tool, model, and legacy-function-calling configuration. The administrator user, owned function, and
+tool, model, and function-calling configuration. The administrator user, owned function, and
 workspace model configuration persist in `.webui-data/`.
 
 ## Persisted-chat CLI
@@ -227,6 +265,8 @@ Variable | Default | Purpose
 `WEBUI_PROVISION_WEBUI_BIN` | `.venv-webui/bin/open-webui` | Sets the binary execution target.
 `WEBUI_PROVISION_REQUEST_TIMEOUT` | `30` | Sets the timeout in seconds for each provisioning request.
 `WEBUI_PROVISION_READY_TIMEOUT` | `60` | Sets the seconds allowed for `/ready`.
+`WEBUI_PROVISION_PASTE_IN` | `demo` | Selects the pair that bootstrap installs: `demo` or `production`. `--codex` sets `production`.
+`WEBUI_PROVISION_FUNCTION_CALLING` | `legacy` | Selects the Open WebUI function calling: `legacy` or `native`. `--codex` sets `native`.
 
 The default credentials are constant, throwaway PoC values. Both services bind to loopback.
 For the verified recipe, keep that boundary. For any network-exposed deployment, use fresh

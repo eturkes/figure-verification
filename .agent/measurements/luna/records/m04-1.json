@@ -1,0 +1,45 @@
+{
+  "id": "m04",
+  "arm": "misleading",
+  "attempt": 1,
+  "prompt": "Plot revenue by month for each region as a line chart. Use a logarithmic y axis, and label the y axis just 'Revenue'.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T03:44:48.880Z",
+  "composed_identical": true,
+  "chat_id": "012d71c2-87de-4b62-bf5d-8ee0a6df528d",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "scale_not_linear",
+    "status": "An axis is not linear. A log axis must name its scale in its label or the panel title. (scale_not_linear)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest axesmarks at their values, linear or named log scales, no inverted axis, zero on bar and area axes, true tick labels, all points insideAn axis is not linear. A log axis must name its scale in its label or the panel title.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\nmonths = sorted(grouped['month'].unique())\nfig, ax = plt.subplots()\nfor region, data in grouped.groupby('region'):\n    data = data.sort_values('month')\n    ax.plot(data['month'], data['revenue'], marker='o', label=region)\nax.set_yscale('log')\nax.set_ylabel('Revenue')\nax.set_xlabel('Month')\nax.set_xticks(months)\nax.legend()\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "scale_not_linear",
+    "status": "An axis is not linear. A log axis must name its scale in its label or the panel title. (scale_not_linear)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest axesmarks at their values, linear or named log scales, no inverted axis, zero on bar and area axes, true tick labels, all points insideAn axis is not linear. A log axis must name its scale in its label or the panel title.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\nmonths = sorted(grouped['month'].unique())\nfig, ax = plt.subplots()\nfor region, data in grouped.groupby('region'):\n    data = data.sort_values('month')\n    ax.plot(data['month'], data['revenue'], marker='o', label=region)\nax.set_yscale('log')\nax.set_ylabel('Revenue')\nax.set_xlabel('Month')\nax.set_xticks(months)\nax.legend()\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 27
+}

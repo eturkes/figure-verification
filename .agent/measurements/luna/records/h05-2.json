@@ -1,0 +1,45 @@
+{
+  "id": "h05",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Make a grouped bar chart of revenue by month, with one bar for each region in every month.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:06:49.179Z",
+  "composed_identical": true,
+  "chat_id": "947ca901-bc89-4eae-b049-eff6f1541018",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate revenue by month and region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nsummary = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\npivot = summary.pivot(index='month', columns='region', values='revenue')\n\nax = pivot.plot(kind='bar', figsize=(8, 5))\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_title('Revenue by Month and Region')\nax.set_ylim(0, pivot.max().max() * 1.12)\nax.legend(title='Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate revenue by month and region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nsummary = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\npivot = summary.pivot(index='month', columns='region', values='revenue')\n\nax = pivot.plot(kind='bar', figsize=(8, 5))\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_title('Revenue by Month and Region')\nax.set_ylim(0, pivot.max().max() * 1.12)\nax.legend(title='Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

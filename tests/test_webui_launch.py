@@ -141,6 +141,7 @@ with Path(os.environ["FAKE_UV_LOG"]).open("a", encoding="utf-8") as stream:
     print(json.dumps(args), file=stream)
 routes = {
     ("run", "--locked", "python", "-m", "webui", "stub"): ("MODEL_BACKEND_PORT", "model"),
+    ("run", "--locked", "python", "-m", "webui", "codex"): ("MODEL_BACKEND_PORT", "model"),
     ("run", "--locked", "python", "-m", "webui", "serve"): ("WEBUI_PROVISION_PORT", "webui"),
 }
 route = routes.get(tuple(args))
@@ -151,6 +152,16 @@ if route is not None:
         [sys.executable, os.environ["FAKE_HTTP_HELPER"], os.environ[port_name], service_name],
     )
 if tuple(args) == ("run", "--locked", "python", "-m", "webui", "bootstrap"):
+    provisioned = {
+        name: os.environ.get(name)
+        for name in (
+            "WEBUI_PROVISION_MODEL_ID",
+            "WEBUI_PROVISION_PASTE_IN",
+            "WEBUI_PROVISION_FUNCTION_CALLING",
+        )
+    }
+    with Path(os.environ["FAKE_BOOTSTRAP_ENV_LOG"]).open("a", encoding="utf-8") as stream:
+        print(json.dumps(provisioned), file=stream)
     raise SystemExit(int(os.environ.get("FAKE_BOOTSTRAP_RC", "0")))
 print(f"fake uv refused argv: {args!r}", file=sys.stderr)
 raise SystemExit(64)
@@ -217,6 +228,9 @@ raise SystemExit(64)
     for inherited in (
         "MODEL_BACKEND_DEVICE",
         "WEBUI_PROVISION_MODEL_BACKEND_URL",
+        "WEBUI_PROVISION_MODEL_ID",
+        "WEBUI_PROVISION_PASTE_IN",
+        "WEBUI_PROVISION_FUNCTION_CALLING",
     ):
         env.pop(inherited, None)
     env.update(
@@ -239,6 +253,7 @@ raise SystemExit(64)
             "FAKE_FUSER_LOG": str(fuser_log),
             "FAKE_MODEL_LOG": str(model_log),
             "FAKE_UV_LOG": str(uv_log),
+            "FAKE_BOOTSTRAP_ENV_LOG": str(tmp_path / "bootstrap-env.log"),
             "FAKE_MODEL_PROBE_RC": "0",
             "FAKE_BOOTSTRAP_RC": "0",
         }
@@ -581,6 +596,45 @@ def test_l10_a_crashed_service_is_named_by_its_tracked_leader_pid(tmp_path: Path
         _force_stop(process, harness)
 
 
+def test_l11_codex_runs_the_bridge_with_the_production_pair_and_native_calls(
+    tmp_path: Path,
+) -> None:
+    """L11: `--codex` starts `python -m webui codex` as the model tier, skips every CUDA stage
+    (interpreter absent + probe armed to fail, as in L5), and hands bootstrap the bridge's model,
+    production's pair and native function calling; `--stub --codex` dies before any service.
+    Acceptance: READY with the bridge child in the uv log, an empty fake-interpreter log, and the
+    bootstrap environment recorded by the fake."""
+    harness = _make_harness(tmp_path / "codex")
+    harness.env["MODEL_BACKEND_PYTHON"] = str(tmp_path / "absent-python")
+    harness.env["FAKE_MODEL_PROBE_RC"] = "91"
+    process, stderr_path = _start_launcher(harness, "--codex")
+    try:
+        stderr = _wait_for_text(stderr_path, "READY --", process)
+        assert "gpt-6-luna through codex app-server" in stderr
+        argvs = [json.loads(line) for line in _log_lines(harness.uv_log)]
+        assert ["run", "--locked", "python", "-m", "webui", "codex"] in argvs
+        assert ["run", "--locked", "python", "-m", "webui", "stub"] not in argvs
+        assert _model_calls(harness.model_log) == []
+        recorded = _log_lines(Path(harness.env["FAKE_BOOTSTRAP_ENV_LOG"]))
+        assert [json.loads(line) for line in recorded] == [
+            {
+                "WEBUI_PROVISION_MODEL_ID": "gpt-6-luna",
+                "WEBUI_PROVISION_PASTE_IN": "production",
+                "WEBUI_PROVISION_FUNCTION_CALLING": "native",
+            }
+        ]
+        os.kill(process.pid, signal.SIGINT)
+        assert process.wait(timeout=_SUBPROCESS_TIMEOUT_S) == 130
+    finally:
+        _force_stop(process, harness)
+
+    both = _make_harness(tmp_path / "both")
+    result = _run_launcher(both, "--stub", "--codex")
+    assert result.returncode != 0
+    assert "--stub and --codex" in result.stderr
+    assert _log_lines(both.uv_log) == []
+
+
 def test_l8_help_exits_clean_and_an_unknown_argument_dies(tmp_path: Path) -> None:
     """L8: `--help` exits 0 before any preflight and its text names no ORIGIN accelerator term;
     an unknown argument `die`s non-zero. Acceptance: `--help` succeeds with the whole environment
@@ -599,6 +653,7 @@ def test_l8_help_exits_clean_and_an_unknown_argument_dies(tmp_path: Path) -> Non
     assert help_result.returncode == 0
     assert "Usage:" in help_result.stdout
     assert "--stub" in help_result.stdout
+    assert "--codex" in help_result.stdout
     assert "--fresh" in help_result.stdout
     for origin_term in ("INTEL_ACCEL_ENV", "OPENVINO_GENAI_PYTHON"):
         assert origin_term not in help_result.stdout + help_result.stderr

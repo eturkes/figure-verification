@@ -1,0 +1,49 @@
+{
+  "id": "h14",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Show the running total of revenue across the months as a line chart, summing both regions.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:14:03.286Z",
+  "composed_identical": true,
+  "chat_id": "39982677-b20c-4728-abb2-c67e9f354398",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the running total of the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "4f3dba23b2f9ac8f1511e1722d7605703d3c421152527f3f9c4b4581913e107e"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load data and sum revenue across regions for each month\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum().sort_values('month')\nmonthly['running_revenue'] = monthly['revenue'].cumsum()\n\nfig, ax = plt.subplots()\nax.plot(monthly['month'], monthly['running_revenue'], marker='o')\nax.set_title('Running Total of Revenue Across Months')\nax.set_xlabel('Month')\nax.set_ylabel('Running revenue')\nax.set_ylim(0, monthly['running_revenue'].max() * 1.05)\nax.grid(True, alpha=0.3)\nfig.tight_layout()\n"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the running total of the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "4f3dba23b2f9ac8f1511e1722d7605703d3c421152527f3f9c4b4581913e107e"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load data and sum revenue across regions for each month\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum().sort_values('month')\nmonthly['running_revenue'] = monthly['revenue'].cumsum()\n\nfig, ax = plt.subplots()\nax.plot(monthly['month'], monthly['running_revenue'], marker='o')\nax.set_title('Running Total of Revenue Across Months')\nax.set_xlabel('Month')\nax.set_ylabel('Running revenue')\nax.set_ylim(0, monthly['running_revenue'].max() * 1.05)\nax.grid(True, alpha=0.3)\nfig.tight_layout()\n"
+  },
+  "error": null,
+  "seconds": 24
+}

@@ -1,0 +1,49 @@
+{
+  "id": "h01",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "Chart the total revenue of each region using bars.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T03:33:29.453Z",
+  "composed_identical": true,
+  "chat_id": "94966507-f93b-4739-8cd3-302f43b6b877",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "10fd746149fdcac09db9e45c9ebbcf3627450190039a490d55af0f4673323e16"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV and total revenue by region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(revenue_by_region['region'], revenue_by_region['revenue'])\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue by Region')\nax.set_ylim(0, revenue_by_region['revenue'].max() * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "10fd746149fdcac09db9e45c9ebbcf3627450190039a490d55af0f4673323e16"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the CSV and total revenue by region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(revenue_by_region['region'], revenue_by_region['revenue'])\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue by Region')\nax.set_ylim(0, revenue_by_region['revenue'].max() * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 29
+}

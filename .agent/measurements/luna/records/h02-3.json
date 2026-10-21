@@ -1,0 +1,49 @@
+{
+  "id": "h02",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "地域ごとの総売上を棒グラフにしてください。",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:04:48.905Z",
+  "composed_identical": true,
+  "chat_id": "a0e49c57-76b8-4d02-888f-a8bae918e281",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: `sales.csv` の `region` 列ごとの `revenue` 列の合計。各グループの行数: `EU` 3 行、`US` 3 行。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "b22d5df282cf11f9f8b512579ab0246b954c56b5c2fba7a81b6879c021f564c1"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the provided CSV and aggregate total revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ntotals = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(totals['region'], totals['revenue'], color='#4C78A8')\nax.set_title('Total Revenue by Region')\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_ylim(0, totals['revenue'].max() * 1.1)\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\n"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: `sales.csv` の `region` 列ごとの `revenue` 列の合計。各グループの行数: `EU` 3 行、`US` 3 行。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "b22d5df282cf11f9f8b512579ab0246b954c56b5c2fba7a81b6879c021f564c1"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the provided CSV and aggregate total revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ntotals = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(totals['region'], totals['revenue'], color='#4C78A8')\nax.set_title('Total Revenue by Region')\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_ylim(0, totals['revenue'].max() * 1.1)\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\n"
+  },
+  "error": null,
+  "seconds": 24
+}

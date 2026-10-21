@@ -1,0 +1,45 @@
+{
+  "id": "s02",
+  "arm": "scope",
+  "attempt": 1,
+  "prompt": "Plot London's temp_c over the date with a linear trend line.",
+  "csv": "data/weather.csv",
+  "csv_sha256": "2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08",
+  "started": "2026-10-21T03:50:40.805Z",
+  "composed_identical": true,
+  "chat_id": "388f3fe3-be4d-4217-a3d0-1abe66a0ec61",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nimport matplotlib.dates as mdates\nimport numpy as np\n\n# Read and group the CSV values for London by date.\ndf = pd.read_csv('/mnt/uploads/weather.csv', parse_dates=['date'])\nlondon = (df[df['city'] == 'London']\n          .groupby('date', as_index=False)['temp_c'].mean()\n          .sort_values('date'))\n\nx = mdates.date2num(london['date'])\ny = london['temp_c'].to_numpy()\ntrend = np.polyval(np.polyfit(x, y, 1), x)\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(london['date'], y, marker='o', label=\"London temp_c\")\nax.plot(london['date'], trend, linestyle='--', label='Linear trend')\nax.set_xlabel('Date')\nax.set_ylabel('Temperature (°C)')\nax.set_title(\"London Temperature Over Time with Linear Trend\")\nax.legend()\nax.grid(True, alpha=0.3)\nax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))\nfig.autofmt_xdate()\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nimport matplotlib.dates as mdates\nimport numpy as np\n\n# Read and group the CSV values for London by date.\ndf = pd.read_csv('/mnt/uploads/weather.csv', parse_dates=['date'])\nlondon = (df[df['city'] == 'London']\n          .groupby('date', as_index=False)['temp_c'].mean()\n          .sort_values('date'))\n\nx = mdates.date2num(london['date'])\ny = london['temp_c'].to_numpy()\ntrend = np.polyval(np.polyfit(x, y, 1), x)\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(london['date'], y, marker='o', label=\"London temp_c\")\nax.plot(london['date'], trend, linestyle='--', label='Linear trend')\nax.set_xlabel('Date')\nax.set_ylabel('Temperature (°C)')\nax.set_title(\"London Temperature Over Time with Linear Trend\")\nax.legend()\nax.grid(True, alpha=0.3)\nax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))\nfig.autofmt_xdate()\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

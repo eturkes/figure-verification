@@ -1,0 +1,49 @@
+{
+  "id": "h01",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Chart the total revenue of each region using bars.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:03:55.348Z",
+  "composed_identical": true,
+  "chat_id": "0c7af8ac-9c26-40bc-ac3b-45fc7fa34ac8",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "7286842c678c8184c64e11fa0a0d226408bafc75de2221041a5eb5cc471cbcce"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\n\nfig, ax = plt.subplots()\nax.bar(revenue_by_region.index, revenue_by_region.values)\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue by Region')\nax.set_ylim(0, revenue_by_region.max() * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "7286842c678c8184c64e11fa0a0d226408bafc75de2221041a5eb5cc471cbcce"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\n\nfig, ax = plt.subplots()\nax.bar(revenue_by_region.index, revenue_by_region.values)\nax.set_xlabel('Region')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue by Region')\nax.set_ylim(0, revenue_by_region.max() * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 28
+}

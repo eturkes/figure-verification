@@ -7,10 +7,12 @@ regression net rather than a 100%-branch gate. Locked here:
 - every fail-closed bound (__post_init__): port range, >=32-byte secret, non-empty admin email /
   password, finite-positive request and ready timeouts, an http(s) model-backend URL,
   bare host;
-- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the four
+- launch_env() as the canonical hermetic OWUI env -- it is exactly _FIXED_ENV plus the five
   per-instance derived keys and stays independent of ambient os.environ; child_env() layers it over
   only the curated process base;
-- the load-bearing _FIXED_ENV values (persistent-config off, empty task model, legacy FC, every
+- the function-calling mode: legacy by default, byte-equal to the pre-`--codex` pin, native on
+  request; the provisioned pair + mode refuse any value outside their closed sets;
+- the load-bearing _FIXED_ENV values (persistent-config off, empty task model, every
   background-generation toggle off, API outlet filters on, plus the auth / bootstrap login model
   -- auth on, password login, public signup off, no boot auto-admin, no trusted-header) pinned
   directly, so a flip fails;
@@ -23,11 +25,12 @@ import json
 import math
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from model_backend.settings import _DEFAULT_MODEL_NAME as _BACKEND_MODEL_NAME
-from webui.settings import _FIXED_ENV, Settings
+from webui.settings import _FIXED_ENV, FunctionCalling, PasteIn, Settings
 
 # The two-tier model identity: model_backend SERVES this name on /v1/models and webui SELECTS it as
 # OWUI's completion model, so the two are held equal and stated here as a literal.
@@ -46,6 +49,8 @@ _PROVISION_ENV_VARS = (
     "WEBUI_PROVISION_WEBUI_BIN",
     "WEBUI_PROVISION_REQUEST_TIMEOUT",
     "WEBUI_PROVISION_READY_TIMEOUT",
+    "WEBUI_PROVISION_PASTE_IN",
+    "WEBUI_PROVISION_FUNCTION_CALLING",
 )
 
 _DERIVED_ENV_KEYS = frozenset(
@@ -54,6 +59,7 @@ _DERIVED_ENV_KEYS = frozenset(
         "WEBUI_SECRET_KEY",
         "OPENAI_API_BASE_URL",
         "OPENAI_API_BASE_URLS",
+        "DEFAULT_MODEL_PARAMS",
     }
 )
 
@@ -89,6 +95,10 @@ _BAD_CONFIGS: list[tuple[Callable[[], Settings], str]] = [
     (lambda: Settings(host="127.0.0.1:9000"), "host"),
     (lambda: Settings(host="bad host"), "host"),
     (lambda: Settings(host="host\\name"), "host"),
+    (lambda: Settings(paste_in=cast("PasteIn", "Production")), "paste_in"),
+    (lambda: Settings(paste_in=cast("PasteIn", "")), "paste_in"),
+    (lambda: Settings(function_calling=cast("FunctionCalling", "native ")), "function_calling"),
+    (lambda: Settings(function_calling=cast("FunctionCalling", "default")), "function_calling"),
 ]
 
 
@@ -148,12 +158,16 @@ def test_launch_env_is_fixed_plus_derived() -> None:
     # Every fixed toggle is emitted verbatim (a derived key must not shadow one).
     for key, value in _FIXED_ENV.items():
         assert env[key] == value
-    # The four per-instance derived keys.
+    # The five per-instance derived keys.
     assert env["DATA_DIR"] == str(settings.data_dir.resolve())
     assert env["WEBUI_SECRET_KEY"] == settings.secret_key
     assert env["OPENAI_API_BASE_URL"] == settings.model_backend_url
     assert env["OPENAI_API_BASE_URLS"] == settings.model_backend_url
-    # launch_env is exactly _FIXED_ENV plus those four keys, no more, no less.
+    # Byte-equal to the legacy pin _FIXED_ENV carried before the mode became a setting.
+    assert env["DEFAULT_MODEL_PARAMS"] == '{"function_calling": "legacy"}'
+    native = Settings(function_calling="native").launch_env()["DEFAULT_MODEL_PARAMS"]
+    assert json.loads(native) == {"function_calling": "native"}
+    # launch_env is exactly _FIXED_ENV plus those five keys, no more, no less.
     # TOOL_SERVER_CONNECTIONS is absent by ruling: a registered tool server is what published the
     # JSON-spec operation, and python mode is the demo's ONE operation, so the registration is
     # removed rather than filtered.
@@ -167,7 +181,6 @@ def test_fixed_env_pins_load_bearing_toggles() -> None:
     assert _FIXED_ENV["TASK_MODEL_EXTERNAL"] == ""
     assert _FIXED_ENV["ENABLE_OPENAI_API"] == "true"
     assert _FIXED_ENV["ENABLE_OLLAMA_API"] == "false"
-    assert json.loads(_FIXED_ENV["DEFAULT_MODEL_PARAMS"]) == {"function_calling": "legacy"}
     assert json.loads(_FIXED_ENV["OPENAI_API_CONFIGS"]) == {}
     # Every background-generation toggle is pinned off for a deterministic backend request count.
     for key in (
@@ -264,11 +277,15 @@ def test_from_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEBUI_PROVISION_SECRET_KEY", override_secret)
     monkeypatch.setenv("WEBUI_PROVISION_DATA_DIR", "custom-data")
     monkeypatch.setenv("WEBUI_PROVISION_READY_TIMEOUT", "5.5")
+    monkeypatch.setenv("WEBUI_PROVISION_PASTE_IN", "production")
+    monkeypatch.setenv("WEBUI_PROVISION_FUNCTION_CALLING", "native")
     settings = Settings.from_env()
     assert settings.port == 9999
     assert settings.secret_key == override_secret
     assert settings.data_dir == Path("custom-data")
     assert settings.ready_timeout == 5.5
+    assert settings.paste_in == "production"
+    assert settings.function_calling == "native"
 
 
 @pytest.mark.parametrize(

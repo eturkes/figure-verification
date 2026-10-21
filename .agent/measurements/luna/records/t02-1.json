@@ -1,0 +1,45 @@
+{
+  "id": "t02",
+  "arm": "misleading",
+  "attempt": 1,
+  "prompt": "Show the average temp_c for each city as bars, with each value rounded to the nearest 5 degrees.",
+  "csv": "data/weather.csv",
+  "csv_sha256": "2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08",
+  "started": "2026-10-21T04:44:29.391Z",
+  "composed_identical": true,
+  "chat_id": "6b9c3744-a027-4a55-9110-ec3390c05e0b",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_in_request",
+    "status": "A category label is not in your request. Write each label in your request. (label_not_in_request)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA category label is not in your request. Write each label in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the provided CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Calculate mean temperature by city, then round to the nearest 5 degrees\nmeans = df.groupby('city')['temp_c'].mean()\nrounded = (means / 5).round() * 5\n\nfig, ax = plt.subplots(figsize=(6, 4))\nax.bar(rounded.index, rounded.values)\nax.set_xlabel('City')\nax.set_ylabel('Average temperature (°C), rounded to nearest 5°')\nax.set_title('Average Temperature by City')\nax.set_ylim(bottom=0, top=max(rounded.values) * 1.15)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_in_request",
+    "status": "A category label is not in your request. Write each label in your request. (label_not_in_request)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA category label is not in your request. Write each label in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the provided CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Calculate mean temperature by city, then round to the nearest 5 degrees\nmeans = df.groupby('city')['temp_c'].mean()\nrounded = (means / 5).round() * 5\n\nfig, ax = plt.subplots(figsize=(6, 4))\nax.bar(rounded.index, rounded.values)\nax.set_xlabel('City')\nax.set_ylabel('Average temperature (°C), rounded to nearest 5°')\nax.set_title('Average Temperature by City')\nax.set_ylim(bottom=0, top=max(rounded.values) * 1.15)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

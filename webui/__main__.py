@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Open WebUI harness entry point: serve, provision, chat, or run the model stub."""
+"""Open WebUI harness entry point: serve, provision, chat, or run the model stub or codex bridge."""
 
 import argparse
 import logging
@@ -10,6 +10,7 @@ from typing import NoReturn, cast
 
 import httpx
 
+from webui import codex_bridge
 from webui.bootstrap import run_bootstrap
 from webui.client import WebUIClient, WebUIProvisionError
 from webui.model_stub import serve as serve_stub
@@ -98,11 +99,11 @@ def _non_empty_prompt(value: str) -> str:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="python -m webui",
-        description="Run one Open WebUI harness command: serve, bootstrap, stub, or chat.",
+        description="Run one Open WebUI harness command: serve, bootstrap, stub, codex, or chat.",
     )
     parser.add_argument(
         "command",
-        choices=("serve", "bootstrap", "stub", "chat"),
+        choices=("serve", "bootstrap", "stub", "codex", "chat"),
         help="harness command to run",
     )
     parser.add_argument(
@@ -124,6 +125,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _serve(settings)
     elif command == "stub":
         serve_stub(settings)
+        return 0
+    elif command == "codex":
+        codex_bridge.serve(settings)
         return 0
     elif command == "chat":
         return _chat(settings, cast("str", args.prompt))

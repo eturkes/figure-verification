@@ -1,0 +1,44 @@
+{
+  "id": "h16",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "Plot y = x squared for x from 1 to 10 as a line chart.",
+  "csv": null,
+  "started": "2026-10-21T03:40:34.741Z",
+  "composed_identical": true,
+  "chat_id": "007fb4ff-6f03-4ac1-8dcd-79f3ccb4c6fa",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the square of the numbers typed in the request (1, 2, 3, 4, 5, 6, 7, 8, …).",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "52973fe9e541b1c845fbe4136f2682e8caec22a046af6e9ca54386a06decf812"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nx = list(range(1, 11))\ny = [value ** 2 for value in x]\n\nplt.figure()\nplt.plot(x, y)\nplt.xlim(1, 10)\nplt.ylim(0, 100)\nplt.xlabel('x')\nplt.ylabel('y')\nplt.title('y = x squared')\nplt.grid(True)\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the square of the numbers typed in the request (1, 2, 3, 4, 5, 6, 7, 8, …).",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "52973fe9e541b1c845fbe4136f2682e8caec22a046af6e9ca54386a06decf812"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nx = list(range(1, 11))\ny = [value ** 2 for value in x]\n\nplt.figure()\nplt.plot(x, y)\nplt.xlim(1, 10)\nplt.ylim(0, 100)\nplt.xlabel('x')\nplt.ylabel('y')\nplt.title('y = x squared')\nplt.grid(True)\nplt.show()"
+  },
+  "error": null,
+  "seconds": 20
+}

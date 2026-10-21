@@ -1,0 +1,45 @@
+{
+  "id": "h11",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Chart total revenue by region as horizontal bars, sorted from largest to smallest, and write the value on each bar.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:12:00.880Z",
+  "composed_identical": true,
+  "chat_id": "93bc09db-8ddb-4e94-9c9f-5f4737c637cd",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "axis_inverted",
+    "status": "An axis is inverted. (axis_inverted)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest axesmarks at their values, linear or named log scales, no inverted axis, zero on bar and area axes, true tick labels, all points insideAn axis is inverted.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load and aggregate the CSV data\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\nrevenue_by_region = revenue_by_region.sort_values('revenue', ascending=False)\n\nfig, ax = plt.subplots(figsize=(8, 4.5))\nbars = ax.barh(revenue_by_region['region'], revenue_by_region['revenue'], color='#4C78A8')\nax.invert_yaxis()  # Highest total appears at the top\nax.set_xlim(0, revenue_by_region['revenue'].max() * 1.15)\nax.set_xlabel('Total revenue')\nax.set_ylabel('Region')\nax.set_title('Total Revenue by Region')\n\nfor bar, value in zip(bars, revenue_by_region['revenue']):\n    ax.text(value + revenue_by_region['revenue'].max() * 0.015,\n            bar.get_y() + bar.get_height() / 2,\n            f'{value:,.0f}', va='center', ha='left')\n\nfig.tight_layout()\n"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "axis_inverted",
+    "status": "An axis is inverted. (axis_inverted)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest axesmarks at their values, linear or named log scales, no inverted axis, zero on bar and area axes, true tick labels, all points insideAn axis is inverted.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load and aggregate the CSV data\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\nrevenue_by_region = revenue_by_region.sort_values('revenue', ascending=False)\n\nfig, ax = plt.subplots(figsize=(8, 4.5))\nbars = ax.barh(revenue_by_region['region'], revenue_by_region['revenue'], color='#4C78A8')\nax.invert_yaxis()  # Highest total appears at the top\nax.set_xlim(0, revenue_by_region['revenue'].max() * 1.15)\nax.set_xlabel('Total revenue')\nax.set_ylabel('Region')\nax.set_title('Total Revenue by Region')\n\nfor bar, value in zip(bars, revenue_by_region['revenue']):\n    ax.text(value + revenue_by_region['revenue'].max() * 0.015,\n            bar.get_y() + bar.get_height() / 2,\n            f'{value:,.0f}', va='center', ha='left')\n\nfig.tight_layout()\n"
+  },
+  "error": null,
+  "seconds": 23
+}

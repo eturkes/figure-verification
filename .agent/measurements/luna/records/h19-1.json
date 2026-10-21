@@ -1,0 +1,49 @@
+{
+  "id": "h19",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "Show the average aqi for each city as bars, with a horizontal line at the overall average aqi.",
+  "csv": "data/weather.csv",
+  "csv_sha256": "2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08",
+  "started": "2026-10-21T03:41:48.668Z",
+  "composed_identical": true,
+  "chat_id": "c547d5de-b48e-400c-bcda-4681fade3568",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the mean of `aqi` per `city` from `weather.csv`; rows per group: `Cairo` 4, `London` 4.\nReference mark: a value of `aqi` from `weather.csv`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "bd7f5bebc8fe39e763b171f13b06bb2b78f9c95211fc501c6f44ee31df312a5f"
+    ],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the provided CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Calculate one mean AQI per city and the overall mean AQI\ncity_avg = df.groupby('city')['aqi'].mean()\noverall_avg = df['aqi'].mean()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(city_avg.index, city_avg.values, color=['steelblue', 'darkorange'])\nax.axhline(overall_avg, color='crimson', linestyle='--', linewidth=2,\n           label=f'Overall average ({overall_avg:.1f})')\nax.set_ylabel('Average AQI')\nax.set_title('Average AQI by City')\nax.set_ylim(0, max(city_avg.max(), overall_avg) * 1.15)\nax.legend()\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the mean of `aqi` per `city` from `weather.csv`; rows per group: `Cairo` 4, `London` 4.\nReference mark: a value of `aqi` from `weather.csv`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "bd7f5bebc8fe39e763b171f13b06bb2b78f9c95211fc501c6f44ee31df312a5f"
+    ],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the provided CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Calculate one mean AQI per city and the overall mean AQI\ncity_avg = df.groupby('city')['aqi'].mean()\noverall_avg = df['aqi'].mean()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(city_avg.index, city_avg.values, color=['steelblue', 'darkorange'])\nax.axhline(overall_avg, color='crimson', linestyle='--', linewidth=2,\n           label=f'Overall average ({overall_avg:.1f})')\nax.set_ylabel('Average AQI')\nax.set_title('Average AQI by City')\nax.set_ylim(0, max(city_avg.max(), overall_avg) * 1.15)\nax.legend()\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 29
+}

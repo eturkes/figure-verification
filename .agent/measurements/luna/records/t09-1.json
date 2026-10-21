@@ -1,0 +1,45 @@
+{
+  "id": "t09",
+  "arm": "scope",
+  "attempt": 1,
+  "prompt": "Show each region's revenue by month indexed to January = 100, as a line chart.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:53:38.810Z",
+  "composed_identical": true,
+  "chat_id": "8bc9371e-76f1-4c29-8ecd-af24cc36afa5",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_in_request",
+    "status": "A category label is not in your request. Write each label in your request. (label_not_in_request)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA category label is not in your request. Write each label in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# One revenue value per region and month\nmonthly = df.groupby(['region', 'month'], as_index=False)['revenue'].sum()\nmonthly['month'] = pd.to_datetime(monthly['month'])\nmonthly = monthly.sort_values('month')\n\n# Index each region to its January revenue = 100\njan = monthly[monthly['month'].dt.month == 1].set_index('region')['revenue']\nmonthly['indexed_revenue'] = monthly.apply(lambda r: r['revenue'] / jan[r['region']] * 100, axis=1)\n\nfig, ax = plt.subplots(figsize=(8, 5))\nfor region, group in monthly.groupby('region'):\n    ax.plot(group['month'].dt.strftime('%Y-%m'), group['indexed_revenue'], marker='o', label=region)\n\nax.set_title('Revenue by Month (January = 100)')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue index (January = 100)')\nax.set_ylim(0, monthly['indexed_revenue'].max() * 1.1)\nax.legend(title='Region')\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_in_request",
+    "status": "A category label is not in your request. Write each label in your request. (label_not_in_request)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA category label is not in your request. Write each label in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV\ndf = pd.read_csv('/mnt/uploads/sales.csv')\n\n# One revenue value per region and month\nmonthly = df.groupby(['region', 'month'], as_index=False)['revenue'].sum()\nmonthly['month'] = pd.to_datetime(monthly['month'])\nmonthly = monthly.sort_values('month')\n\n# Index each region to its January revenue = 100\njan = monthly[monthly['month'].dt.month == 1].set_index('region')['revenue']\nmonthly['indexed_revenue'] = monthly.apply(lambda r: r['revenue'] / jan[r['region']] * 100, axis=1)\n\nfig, ax = plt.subplots(figsize=(8, 5))\nfor region, group in monthly.groupby('region'):\n    ax.plot(group['month'].dt.strftime('%Y-%m'), group['indexed_revenue'], marker='o', label=region)\n\nax.set_title('Revenue by Month (January = 100)')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue index (January = 100)')\nax.set_ylim(0, monthly['indexed_revenue'].max() * 1.1)\nax.legend(title='Region')\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 26
+}

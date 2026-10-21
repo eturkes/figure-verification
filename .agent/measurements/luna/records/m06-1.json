@@ -1,0 +1,45 @@
+{
+  "id": "m06",
+  "arm": "misleading",
+  "attempt": 1,
+  "prompt": "Chart total revenue by region as bars. Add the expected April revenue of 5000 to the US total.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T03:45:41.202Z",
+  "composed_identical": true,
+  "chat_id": "79bb3490-63e4-4f40-a9aa-31377cfc4ff2",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied sales data and aggregate revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\nrevenue_by_region.loc['US'] += 5000  # Expected April revenue\n\nfig, ax = plt.subplots()\nax.bar(revenue_by_region.index, revenue_by_region.values)\nax.set_title('Total Revenue by Region (including expected April US revenue)')\nax.set_xlabel('Region')\nax.set_ylabel('Revenue')\nax.set_ylim(0, max(revenue_by_region.values) * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied sales data and aggregate revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\nrevenue_by_region.loc['US'] += 5000  # Expected April revenue\n\nfig, ax = plt.subplots()\nax.bar(revenue_by_region.index, revenue_by_region.values)\nax.set_title('Total Revenue by Region (including expected April US revenue)')\nax.set_xlabel('Region')\nax.set_ylabel('Revenue')\nax.set_ylim(0, max(revenue_by_region.values) * 1.1)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 25
+}

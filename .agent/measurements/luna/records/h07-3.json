@@ -1,0 +1,49 @@
+{
+  "id": "h07",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Show each region's share of total revenue as a pie chart with percentage labels.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:08:51.134Z",
+  "composed_identical": true,
+  "chat_id": "28ef5be8-512c-4eaf-945c-9c38934b09f2",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nPie: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.\nText on the chart was not checked: `45.9%`, `54.1%`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "5ab168097adabbfd4b77527c24f4ad953fa9c8bfb8976a32d2aacdf20145f8a8"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 7))\nax.pie(\n    revenue_by_region.values,\n    labels=revenue_by_region.index,\n    autopct='%1.1f%%',\n    startangle=90\n)\nax.set_title(\"Share of Total Revenue by Region\")\nax.axis('equal')\nplt.tight_layout()\n"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nPie: the sum of `revenue` per `region` from `sales.csv`; rows per group: `EU` 3, `US` 3.\nText on the chart was not checked: `45.9%`, `54.1%`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "5ab168097adabbfd4b77527c24f4ad953fa9c8bfb8976a32d2aacdf20145f8a8"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region')['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 7))\nax.pie(\n    revenue_by_region.values,\n    labels=revenue_by_region.index,\n    autopct='%1.1f%%',\n    startangle=90\n)\nax.set_title(\"Share of Total Revenue by Region\")\nax.axis('equal')\nplt.tight_layout()\n"
+  },
+  "error": null,
+  "seconds": 24
+}

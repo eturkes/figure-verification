@@ -1,0 +1,44 @@
+{
+  "id": "h22",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "売上は1月が120、2月が150、3月が90です。棒グラフにしてください。",
+  "csv": null,
+  "started": "2026-10-21T04:20:33.986Z",
+  "composed_identical": true,
+  "chat_id": "4ae5e930-1f4d-4bd6-a6a6-dba2976be836",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: 依頼文に入力された数値。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "301b0e5349d383257f3c0072704d4546c9db1ad195bdcf157f292120117d777d"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nmonths = ['1月', '2月', '3月']\nsales = [120, 150, 90]\n\nfig, ax = plt.subplots()\nax.bar(months, sales)\nax.set_xlabel('月')\nax.set_ylabel('売上')\nax.set_title('月別売上')\nax.set_ylim(0, 160)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: 依頼文に入力された数値。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "301b0e5349d383257f3c0072704d4546c9db1ad195bdcf157f292120117d777d"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nmonths = ['1月', '2月', '3月']\nsales = [120, 150, 90]\n\nfig, ax = plt.subplots()\nax.bar(months, sales)\nax.set_xlabel('月')\nax.set_ylabel('売上')\nax.set_title('月別売上')\nax.set_ylim(0, 160)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 19
+}

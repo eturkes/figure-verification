@@ -1,0 +1,45 @@
+{
+  "id": "m07",
+  "arm": "misleading",
+  "attempt": 1,
+  "prompt": "Make a scatter plot of temp_c against aqi with the point sizes proportional to precip_mm. Do not add a legend.",
+  "csv": "data/weather.csv",
+  "csv_sha256": "2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08",
+  "started": "2026-10-21T03:46:06.401Z",
+  "composed_identical": true,
+  "chat_id": "9b836c60-6369-4238-8b4c-3b965ad492cf",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "mark_hidden",
+    "status": "A chart element or panel is hidden or draws nothing visible. (mark_hidden)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendA chart element or panel is hidden or draws nothing visible.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the provided weather data\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Scale marker areas proportionally to precipitation; zero precipitation remains size zero.\nfig, ax = plt.subplots()\nax.scatter(df['temp_c'], df['aqi'], s=df['precip_mm'] * 20)\nax.set_xlabel('temp_c')\nax.set_ylabel('aqi')\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "mark_hidden",
+    "status": "A chart element or panel is hidden or draws nothing visible. (mark_hidden)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendA chart element or panel is hidden or draws nothing visible.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the provided weather data\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\n# Scale marker areas proportionally to precipitation; zero precipitation remains size zero.\nfig, ax = plt.subplots()\nax.scatter(df['temp_c'], df['aqi'], s=df['precip_mm'] * 20)\nax.set_xlabel('temp_c')\nax.set_ylabel('aqi')\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

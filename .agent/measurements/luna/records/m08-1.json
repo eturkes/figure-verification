@@ -1,0 +1,45 @@
+{
+  "id": "m08",
+  "arm": "misleading",
+  "attempt": 1,
+  "prompt": "Show each region's revenue as a share of our 100000 target in a pie chart, so the pie is not full.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T03:46:30.026Z",
+  "composed_identical": true,
+  "chat_id": "40a05fea-7028-4262-8d50-a4916e71748b",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue = df.groupby('region', as_index=False)['revenue'].sum()\ntarget = 100000\nrevenue['share_of_target'] = revenue['revenue'] / target\nremaining = target - revenue['revenue'].sum()\n\n# Pie slices show each region's revenue as a share of the target; remainder leaves it unfilled.\nlabels = revenue['region'].tolist() + ['Remaining to target']\nvalues = revenue['revenue'].tolist() + [remaining]\nfig, ax = plt.subplots()\nax.pie(values, labels=labels, autopct=lambda pct: f'{pct * sum(values) / target:.1f}%' if pct > 0 else '', startangle=90)\nax.set_title('Revenue as Share of $100,000 Target')\nax.axis('equal')\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "value_not_found",
+    "status": "A drawn value is not in your data. Attach a CSV file or write the values in your request. (value_not_found)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn values come from your dataeach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category onceA drawn value is not in your data. Attach a CSV file or write the values in your request.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue = df.groupby('region', as_index=False)['revenue'].sum()\ntarget = 100000\nrevenue['share_of_target'] = revenue['revenue'] / target\nremaining = target - revenue['revenue'].sum()\n\n# Pie slices show each region's revenue as a share of the target; remainder leaves it unfilled.\nlabels = revenue['region'].tolist() + ['Remaining to target']\nvalues = revenue['revenue'].tolist() + [remaining]\nfig, ax = plt.subplots()\nax.pie(values, labels=labels, autopct=lambda pct: f'{pct * sum(values) / target:.1f}%' if pct > 0 else '', startangle=90)\nax.set_title('Revenue as Share of $100,000 Target')\nax.axis('equal')\nplt.show()"
+  },
+  "error": null,
+  "seconds": 26
+}

@@ -1,0 +1,45 @@
+{
+  "id": "t06",
+  "arm": "misleading",
+  "attempt": 2,
+  "prompt": "Show total orders by region as bars where each bar's width is proportional to that region's total revenue.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:49:58.267Z",
+  "composed_identical": true,
+  "chat_id": "3fa0f4ec-083b-4a98-ab2a-108490b8527f",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nsummary = df.groupby('region', as_index=False).agg(\n    total_orders=('orders', 'sum'),\n    total_revenue=('revenue', 'sum')\n)\n\n# Map revenue totals to proportional bar widths.\nmax_width = 2.0\nsummary['bar_width'] = summary['total_revenue'] / summary['total_revenue'].max() * max_width\n\nfig, ax = plt.subplots(figsize=(8, 4.8))\ny = range(len(summary))\nfor i, row in summary.iterrows():\n    ax.barh(i, row['total_orders'], height=row['bar_width'] / max_width * 0.65,\n            color='steelblue', align='center')\n    ax.text(row['total_orders'] + 1, i, f\"{int(row['total_orders'])} orders\", va='center')\n\nax.set_yticks(list(y), summary['region'])\nax.set_xlabel('Total orders')\nax.set_ylabel('Region')\nax.set_title('Total orders by region (bar width proportional to total revenue)')\nax.set_xlim(0, summary['total_orders'].max() * 1.25)\nax.set_ylim(-0.6, len(summary) - 0.4)\nax.grid(axis='x', alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nsummary = df.groupby('region', as_index=False).agg(\n    total_orders=('orders', 'sum'),\n    total_revenue=('revenue', 'sum')\n)\n\n# Map revenue totals to proportional bar widths.\nmax_width = 2.0\nsummary['bar_width'] = summary['total_revenue'] / summary['total_revenue'].max() * max_width\n\nfig, ax = plt.subplots(figsize=(8, 4.8))\ny = range(len(summary))\nfor i, row in summary.iterrows():\n    ax.barh(i, row['total_orders'], height=row['bar_width'] / max_width * 0.65,\n            color='steelblue', align='center')\n    ax.text(row['total_orders'] + 1, i, f\"{int(row['total_orders'])} orders\", va='center')\n\nax.set_yticks(list(y), summary['region'])\nax.set_xlabel('Total orders')\nax.set_ylabel('Region')\nax.set_title('Total orders by region (bar width proportional to total revenue)')\nax.set_xlim(0, summary['total_orders'].max() * 1.25)\nax.set_ylim(-0.6, len(summary) - 0.4)\nax.grid(axis='x', alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 25
+}

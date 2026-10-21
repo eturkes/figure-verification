@@ -32,9 +32,21 @@ from typing import Protocol
 import msgspec
 
 from webui.client import _TOOL_SERVER_ID_PREFIX, FunctionReadback
-from webui.paste_in.bundle import DEMO_FILTER_ARTIFACT, DEMO_TOOL_ARTIFACT, artifact_text
+from webui.paste_in.bundle import (
+    DEMO_FILTER_ARTIFACT,
+    DEMO_TOOL_ARTIFACT,
+    FILTER_ARTIFACT,
+    TOOL_ARTIFACT,
+    artifact_text,
+)
 from webui.paste_in.filter import FILTER_DESCRIPTION, FILTER_ID, FILTER_NAME
-from webui.settings import Settings
+from webui.settings import PasteIn, Settings
+
+# Settings.paste_in -> (tool, filter) artifact the instance runs.
+_PAIRS: dict[PasteIn, tuple[str, str]] = {
+    "demo": (DEMO_TOOL_ARTIFACT, DEMO_FILTER_ARTIFACT),
+    "production": (TOOL_ARTIFACT, FILTER_ARTIFACT),
+}
 
 
 class _Provisioner(Protocol):
@@ -114,7 +126,7 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
         model_tool_attached=settings.tool_id in model_tool_ids,
         model_tool_exclusive=model_tool_ids == [settings.tool_id],
         filter_current=installed is not None
-        and installed.content == artifact_text(DEMO_FILTER_ARTIFACT),
+        and installed.content == artifact_text(_PAIRS[settings.paste_in][1]),
         filter_global_active=(
             installed is not None and installed.is_active and installed.is_global
         ),
@@ -125,22 +137,23 @@ def smoke(client: _Provisioner, settings: Settings) -> SmokeResult:
 def run_bootstrap(client: _Provisioner, settings: Settings) -> SmokeResult:
     """Wait, authenticate, converge the filter, tool + model attachment, then smoke every readback.
 
-    The tool is provisioned from the COMMITTED demo artifact, generated from the sources of the
-    production pair, which differs in its anchoring constant + filter inlet template alone -- the
-    demo is a live test of the shared code rather than a second wiring.
+    The pair is the COMMITTED generated artifact `settings.paste_in` names: the demo's differs from
+    production's in its anchoring constant + filter inlet template alone, so either is a live test
+    of the shared code rather than a second wiring.
     """
+    tool, filter_ = _PAIRS[settings.paste_in]
     client.wait_ready()
     client.authenticate()
     client.ensure_global_filter(
         function_id=FILTER_ID,
         name=FILTER_NAME,
-        content=artifact_text(DEMO_FILTER_ARTIFACT),
+        content=artifact_text(filter_),
         description=FILTER_DESCRIPTION,
     )
     client.ensure_tool(
         tool_id=settings.tool_id,
         name=settings.tool_name,
-        content=artifact_text(DEMO_TOOL_ARTIFACT),
+        content=artifact_text(tool),
         description=settings.tool_description,
     )
     client.ensure_model_tool(model_id=settings.model_id, tool_id=settings.tool_id)

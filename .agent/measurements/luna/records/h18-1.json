@@ -1,0 +1,49 @@
+{
+  "id": "h18",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "診療科ごとの患者数の合計を横棒グラフで示し、各棒に数値を表示してください。",
+  "csv": "data/clinic_ja.csv",
+  "csv_sha256": "c05b21f8ec2ce099235d6f5b7b407e24d26f873f77ae4fea04cda6fa774adc25",
+  "started": "2026-10-21T03:41:21.750Z",
+  "composed_identical": true,
+  "chat_id": "e326042f-78d6-4ba4-baa0-86f99f2e1ac4",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: `clinic_ja.csv` の `診療科` 列ごとの `患者数` 列の合計。各グループの行数: `内科` 3 行、`外科` 3 行、`小児科` 3 行。\nグラフ上の文字は確認していません: `399`, `255`, `194`。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "fccc7dd5c2d0b0b27eeae870547df75674263d7276c17f898c1e15e4a9ad1009"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the clinic data and total patient counts by department.\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\ntotals = df.groupby('診療科', as_index=False)['患者数'].sum()\n\nfig, ax = plt.subplots(figsize=(8, 4.5))\nbars = ax.barh(totals['診療科'], totals['患者数'], color='#4C78A8')\nax.set_xlabel('患者数（合計）')\nax.set_ylabel('診療科')\nax.set_title('診療科ごとの患者数の合計')\nax.set_xlim(0, totals['患者数'].max() * 1.15)\nfor bar, value in zip(bars, totals['患者数']):\n    ax.text(value + totals['患者数'].max() * 0.015, bar.get_y() + bar.get_height()/2,\n            f'{value}', va='center', ha='left')\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\n棒: `clinic_ja.csv` の `診療科` 列ごとの `患者数` 列の合計。各グループの行数: `内科` 3 行、`外科` 3 行、`小児科` 3 行。\nグラフ上の文字は確認していません: `399`, `255`, `194`。",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "fccc7dd5c2d0b0b27eeae870547df75674263d7276c17f898c1e15e4a9ad1009"
+    ],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the clinic data and total patient counts by department.\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\ntotals = df.groupby('診療科', as_index=False)['患者数'].sum()\n\nfig, ax = plt.subplots(figsize=(8, 4.5))\nbars = ax.barh(totals['診療科'], totals['患者数'], color='#4C78A8')\nax.set_xlabel('患者数（合計）')\nax.set_ylabel('診療科')\nax.set_title('診療科ごとの患者数の合計')\nax.set_xlim(0, totals['患者数'].max() * 1.15)\nfor bar, value in zip(bars, totals['患者数']):\n    ax.text(value + totals['患者数'].max() * 0.015, bar.get_y() + bar.get_height()/2,\n            f'{value}', va='center', ha='left')\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 27
+}

@@ -37,7 +37,13 @@ import pytest
 
 from webui.bootstrap import SmokeResult, run_bootstrap, smoke
 from webui.client import FunctionReadback, PersistedChatResult, WebUIClient, WebUIProvisionError
-from webui.paste_in.bundle import DEMO_FILTER_ARTIFACT, DEMO_TOOL_ARTIFACT, artifact_text
+from webui.paste_in.bundle import (
+    DEMO_FILTER_ARTIFACT,
+    DEMO_TOOL_ARTIFACT,
+    FILTER_ARTIFACT,
+    TOOL_ARTIFACT,
+    artifact_text,
+)
 from webui.paste_in.filter import FILTER_DESCRIPTION, FILTER_ID, FILTER_NAME
 from webui.settings import Settings
 
@@ -1914,6 +1920,33 @@ def test_run_bootstrap_ok_in_order() -> None:
         )
     ]
     assert fake.model_tool_calls == [(settings.model_id, settings.tool_id)]
+
+
+def test_run_bootstrap_provisions_the_production_pair_when_named() -> None:
+    """`--codex`: a model that calls tools itself runs production's generated pair, byte for byte,
+    and smoke holds the stored filter to THAT pair: the demo filter left behind by an earlier demo
+    launch on the same data dir reads as drift."""
+    settings = Settings(paste_in="production")
+    production = FunctionReadback(
+        id=FILTER_ID,
+        type="filter",
+        is_active=True,
+        is_global=True,
+        content=artifact_text(FILTER_ARTIFACT),
+    )
+    fake = _FakeClient(
+        model_ids=[settings.model_id], tool_ids=[settings.tool_id], functions=(production,)
+    )
+    assert run_bootstrap(fake, settings).ok
+    assert fake.filter_calls == [
+        (FILTER_ID, FILTER_NAME, artifact_text(FILTER_ARTIFACT), FILTER_DESCRIPTION)
+    ]
+    assert [call[2] for call in fake.tool_calls] == [artifact_text(TOOL_ARTIFACT)]
+    assert artifact_text(FILTER_ARTIFACT) != artifact_text(DEMO_FILTER_ARTIFACT)
+    stale = _FakeClient(model_ids=[settings.model_id], tool_ids=[settings.tool_id])
+    result = smoke(stale, settings)
+    assert not result.filter_current
+    assert not result.ok
 
 
 def test_run_bootstrap_fake_rerun_reconverges_before_each_smoke() -> None:

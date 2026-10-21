@@ -1,0 +1,49 @@
+{
+  "id": "h12",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Show total revenue per month as bars, and format the y axis in thousands of dollars, for example $10k.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:12:49.063Z",
+  "composed_identical": true,
+  "chat_id": "93a3b93c-1735-4b97-84e6-ce75eae979c0",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "6310449574676f3ebb60b18e85d717cf755df6737309e6d499085156b19ef478"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nfrom matplotlib.ticker import FuncFormatter\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.bar(monthly['month'], monthly['revenue'], color='#4C78A8')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_title('Total Revenue per Month')\nax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f'${value/1000:g}k'))\nax.set_ylim(0, monthly['revenue'].max() * 1.1)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "6310449574676f3ebb60b18e85d717cf755df6737309e6d499085156b19ef478"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nfrom matplotlib.ticker import FuncFormatter\n\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.bar(monthly['month'], monthly['revenue'], color='#4C78A8')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_title('Total Revenue per Month')\nax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f'${value/1000:g}k'))\nax.set_ylim(0, monthly['revenue'].max() * 1.1)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

@@ -31,11 +31,12 @@ gate-venv deps.
 """
 
 import ipaddress
+import json
 import math
 import os
 import re
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self, TypeAlias, cast, get_args
 from urllib.parse import urlparse
 
 import msgspec
@@ -80,6 +81,18 @@ _TOOL_NAME = "Figure Verification"
 _TOOL_DESCRIPTION = "Draws a chart from a Python program and an attached CSV file."
 # The one model-visible callable the artifact exposes: `Tools.draw_figure` (webui/paste_in/tool.py).
 _TOOL_OPERATION_ID = "draw_figure"
+
+# Which generated pair bootstrap provisions: the demo's (substitution anchoring, the bare-source
+# template its adapter wraps) or production's (strict anchoring, the `draw_figure` transport
+# paragraph), for a proposer that calls tools itself (the launcher's `--codex` arm).
+PasteIn: TypeAlias = Literal["demo", "production"]
+# Open WebUI's DEFAULT_MODEL_PARAMS `function_calling`. Legacy (prompt-template): the weak model's
+# tool selection runs inline in the chat request, and native FC is gated on the UI event emitter so
+# it does not execute headless (.agent/archive/m4.md); the one-shot headless flow needs legacy.
+# Native = Open WebUI's own default + production's: the model returns OpenAI `tool_calls`.
+FunctionCalling: TypeAlias = Literal["legacy", "native"]
+_PASTE_INS: tuple[PasteIn, ...] = get_args(PasteIn)
+_FUNCTION_CALLINGS: tuple[FunctionCalling, ...] = get_args(FunctionCalling)
 
 # The Open WebUI environment launch_env() emits verbatim, independent of any Settings field. OWUI
 # compares booleans as os.getenv(...).lower() == "true" (config.py / env.py), so "false" disables
@@ -141,10 +154,6 @@ _FIXED_ENV: dict[str, str] = {
     # true upstream, but it is load-bearing behavior, so the canonical env pins it instead of
     # silently inheriting a version-sensitive default.
     "ENABLE_API_OUTLET_FILTERS": "true",
-    # Legacy (prompt-template) function calling: the weak model's tool selection runs inline in the
-    # chat request. Native FC is gated on the UI event emitter and does not execute headless
-    # (.agent/archive/m4.md), so the one-shot headless flow needs legacy.
-    "DEFAULT_MODEL_PARAMS": '{"function_calling": "legacy"}',
 }
 
 
@@ -214,6 +223,8 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
     webui_bin: Path = Path(_DEFAULT_WEBUI_BIN)
     request_timeout: float = _DEFAULT_REQUEST_TIMEOUT
     ready_timeout: float = _DEFAULT_READY_TIMEOUT
+    paste_in: PasteIn = "demo"
+    function_calling: FunctionCalling = "legacy"
 
     def __post_init__(self) -> None:
         # A port outside 1..65535 cannot bind. The two validation loops below MUST use distinct item
@@ -245,6 +256,17 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             if not math.isfinite(seconds) or seconds <= 0:
                 msg = f"{name} must be a finite value > 0, got {seconds}"
                 raise ValueError(msg)
+        # Closed sets: from_env passes the raw env text through, and an unknown pair or mode would
+        # otherwise provision the demo pair silently or hand Open WebUI a mode it reads as native.
+        if self.paste_in not in _PASTE_INS:
+            msg = f"paste_in must be one of {_PASTE_INS}, got {self.paste_in!r}"
+            raise ValueError(msg)
+        if self.function_calling not in _FUNCTION_CALLINGS:
+            msg = (
+                f"function_calling must be one of {_FUNCTION_CALLINGS}, "
+                f"got {self.function_calling!r}"
+            )
+            raise ValueError(msg)
         # model_backend_url reaches fixed OWUI joins; host backs both its bind argv and the
         # bootstrap base_url. Validate their complete syntax so malformed values fail here, not as
         # a misdirected request or invalid client URL downstream (see the helper).
@@ -295,10 +317,10 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
         """The Open WebUI config env to exec open-webui with (layered over the launcher base env).
 
         Reads no os.environ; DATA_DIR resolves against the process cwd, so the dict is a function of
-        this Settings and the cwd (a test recomputes the same resolve). The four derived keys
+        this Settings and the cwd (a test recomputes the same resolve). The five derived keys
         complete _FIXED_ENV per-instance -- an absolute DATA_DIR (OWUI resolves a relative one
         against its own cwd, so absolute keeps state in .webui-data regardless of exec cwd), the
-        secret, and both OpenAI base-url forms.
+        secret, both OpenAI base-url forms, and the function-calling mode.
         """
         return {
             **_FIXED_ENV,
@@ -306,6 +328,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             "WEBUI_SECRET_KEY": self.secret_key,
             "OPENAI_API_BASE_URL": self.model_backend_url,
             "OPENAI_API_BASE_URLS": self.model_backend_url,
+            "DEFAULT_MODEL_PARAMS": json.dumps({"function_calling": self.function_calling}),
         }
 
     def child_env(self) -> dict[str, str]:
@@ -342,5 +365,9 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             ),
             ready_timeout=float(
                 env.get("WEBUI_PROVISION_READY_TIMEOUT", str(_DEFAULT_READY_TIMEOUT))
+            ),
+            paste_in=cast("PasteIn", env.get("WEBUI_PROVISION_PASTE_IN", "demo")),
+            function_calling=cast(
+                "FunctionCalling", env.get("WEBUI_PROVISION_FUNCTION_CALLING", "legacy")
             ),
         )

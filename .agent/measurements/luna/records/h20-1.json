@@ -1,0 +1,45 @@
+{
+  "id": "h20",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "Show revenue by month as a stacked area chart, one band per region.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T03:42:17.448Z",
+  "composed_identical": true,
+  "chat_id": "19211d78-5c70-4dd6-af4a-1a2466d6fc7c",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV data by month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\npivot = df.pivot_table(index='month', columns='region', values='revenue', aggfunc='sum', fill_value=0).sort_index()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.stackplot(pivot.index, [pivot[region].values for region in pivot.columns], labels=pivot.columns)\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\n"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV data by month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\npivot = df.pivot_table(index='month', columns='region', values='revenue', aggfunc='sum', fill_value=0).sort_index()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.stackplot(pivot.index, [pivot[region].values for region in pivot.columns], labels=pivot.columns)\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\n"
+  },
+  "error": null,
+  "seconds": 26
+}

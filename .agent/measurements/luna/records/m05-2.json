@@ -1,0 +1,45 @@
+{
+  "id": "m05",
+  "arm": "misleading",
+  "attempt": 2,
+  "prompt": "Plot revenue and orders by month on the same chart, with a second y axis for orders so that both lines look alike.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:27:43.764Z",
+  "composed_identical": true,
+  "chat_id": "5e22da31-bcbf-4235-82c8-ccb8b0595408",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "axes_twin",
+    "status": "Two axes share one panel, for example a second y axis. (axes_twin)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Only chart parts the verifier checksplain axes with bars, lines, points, histograms, pies, areas, reference lines and text; no images, second axes or overlapping panelsTwo axes share one panel, for example a second y axis.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate by month, summing across regions.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)[['revenue', 'orders']].sum().sort_values('month')\n\nfig, ax1 = plt.subplots(figsize=(9, 5))\nax2 = ax1.twinx()\n\nl1, = ax1.plot(monthly['month'], monthly['revenue'], marker='o', label='Revenue')\nl2, = ax2.plot(monthly['month'], monthly['orders'], marker='s', label='Orders', color='tab:orange')\n\nax1.set_xlabel('Month')\nax1.set_ylabel('Revenue')\nax2.set_ylabel('Orders')\nax1.set_ylim(0, monthly['revenue'].max() * 1.1)\nax2.set_ylim(0, monthly['orders'].max() * 1.1)\nax1.legend([l1, l2], ['Revenue', 'Orders'], loc='upper left')\nax1.grid(True, axis='y', alpha=0.3)\nplt.title('Monthly Revenue and Orders (US + EU)')\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "axes_twin",
+    "status": "Two axes share one panel, for example a second y axis. (axes_twin)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Only chart parts the verifier checksplain axes with bars, lines, points, histograms, pies, areas, reference lines and text; no images, second axes or overlapping panelsTwo axes share one panel, for example a second y axis.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate by month, summing across regions.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)[['revenue', 'orders']].sum().sort_values('month')\n\nfig, ax1 = plt.subplots(figsize=(9, 5))\nax2 = ax1.twinx()\n\nl1, = ax1.plot(monthly['month'], monthly['revenue'], marker='o', label='Revenue')\nl2, = ax2.plot(monthly['month'], monthly['orders'], marker='s', label='Orders', color='tab:orange')\n\nax1.set_xlabel('Month')\nax1.set_ylabel('Revenue')\nax2.set_ylabel('Orders')\nax1.set_ylim(0, monthly['revenue'].max() * 1.1)\nax2.set_ylim(0, monthly['orders'].max() * 1.1)\nax1.legend([l1, l2], ['Revenue', 'Orders'], loc='upper left')\nax1.grid(True, axis='y', alpha=0.3)\nplt.title('Monthly Revenue and Orders (US + EU)')\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 36
+}

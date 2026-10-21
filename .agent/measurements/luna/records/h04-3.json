@@ -1,0 +1,45 @@
+{
+  "id": "h04",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Plot revenue by month for each region as a line chart, one line per region, with a legend.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:06:25.094Z",
+  "composed_identical": true,
+  "chat_id": "b1c436b7-4f7a-457c-af2f-b9b73a5b9c3d",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load and group revenue by month and region, ensuring one value per group.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = (df.groupby(['month', 'region'], as_index=False)['revenue']\n             .sum())\n\nfig, ax = plt.subplots(figsize=(8, 5))\nfor region, data in grouped.groupby('region'):\n    data = data.sort_values('month')\n    ax.plot(data['month'], data['revenue'], marker='o', label=region)\n\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.legend(title='Region')\nax.set_ylim(bottom=0)\nax.grid(True, axis='y', alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load and group revenue by month and region, ensuring one value per group.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = (df.groupby(['month', 'region'], as_index=False)['revenue']\n             .sum())\n\nfig, ax = plt.subplots(figsize=(8, 5))\nfor region, data in grouped.groupby('region'):\n    data = data.sort_values('month')\n    ax.plot(data['month'], data['revenue'], marker='o', label=region)\n\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.legend(title='Region')\nax.set_ylim(bottom=0)\nax.grid(True, axis='y', alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

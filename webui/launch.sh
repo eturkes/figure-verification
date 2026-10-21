@@ -8,14 +8,17 @@
 #
 #     model tier (:8001)  ->  Open WebUI (:8080)
 #
-# The model tier is EITHER the real local model_backend (default; hardware-gated; CUDA dGPU per
-# model_backend/runtime/README.md) XOR a deterministic hardware-free stub (--stub). The verifier
+# The model tier is ONE of the real local model_backend (default; hardware-gated; CUDA dGPU per
+# model_backend/runtime/README.md), a deterministic hardware-free stub (--stub), or gpt-6-luna on
+# the operator's ChatGPT subscription through `codex app-server` (--codex, webui/codex_bridge.py:
+# production paste-in pair, native function calling). The verifier
 # runs inside the provisioned Open WebUI filter; the browser, its Pyodide sandbox and the pixels
 # stay trusted (`.claude/rules/figure.md`). This launcher is orchestration only.
 #
 # Run from the repository root:
 #     webui/launch.sh            # real local model on the dGPU
 #     webui/launch.sh --stub     # deterministic, hardware-free
+#     webui/launch.sh --codex    # gpt-6-luna through codex app-server (ChatGPT subscription)
 #     webui/launch.sh --fresh    # wipe the persisted Open WebUI instance first
 #
 # Ctrl-C (SIGINT) tears every child down and frees :8001 / :8080.
@@ -26,11 +29,14 @@ usage() {
 webui/launch.sh -- one-command standup of the figure-verification browser instance.
 
 Usage:
-  webui/launch.sh [--stub] [--fresh]
+  webui/launch.sh [--stub | --codex] [--fresh]
 
 Options:
   --stub      Use the deterministic hardware-free model stub. The stub replaces the real
               local model_backend. The stub needs no GPU and no model weights.
+  --codex     Use gpt-6-luna on your ChatGPT subscription through codex app-server.
+              First, install Codex and sign in to it with your ChatGPT account. This arm
+              installs the production tool and filter and uses native function calling.
   --fresh     Wipe the persisted Open WebUI instance (.webui-data) first.
   -h, --help  Show this help and exit.
 
@@ -73,6 +79,7 @@ export WEBUI_PROVISION_DATA_DIR MODEL_BACKEND_DEVICE MODEL_BACKEND_PORT
 export WEBUI_PROVISION_WEBUI_BIN WEBUI_PROVISION_MODEL_BACKEND_URL
 
 USE_STUB=0
+USE_CODEX=0
 FRESH=0
 
 log() { printf '[launch] %s\n' "$*" >&2; }
@@ -170,15 +177,26 @@ wait_http() {
 for arg in "$@"; do
   case "$arg" in
     --stub) USE_STUB=1 ;;
+    --codex) USE_CODEX=1 ;;
     --fresh) FRESH=1 ;;
     -h|--help) usage; exit 0 ;;
-    *) die "unknown argument: ${arg} (use --stub, --fresh, or --help)" ;;
+    *) die "unknown argument: ${arg} (use --stub, --codex, --fresh, or --help)" ;;
   esac
 done
+if (( USE_STUB && USE_CODEX )); then
+  die "--stub and --codex select different model tiers; use one"
+fi
+if (( USE_CODEX )); then
+  # A model that calls tools itself runs production's pair under Open WebUI's native function
+  # calling; the bridge serves the one model its catalog holds.
+  export WEBUI_PROVISION_MODEL_ID="${WEBUI_PROVISION_MODEL_ID:-gpt-6-luna}"
+  export WEBUI_PROVISION_PASTE_IN="${WEBUI_PROVISION_PASTE_IN:-production}"
+  export WEBUI_PROVISION_FUNCTION_CALLING="${WEBUI_PROVISION_FUNCTION_CALLING:-native}"
+fi
 
 [[ -d "$UV_PROJECT_ENVIRONMENT" ]] || die "project venv ${UV_PROJECT_ENVIRONMENT} missing -- run: uv sync --locked"
 [[ -x "$WEBUI_PROVISION_WEBUI_BIN" ]] || die "${WEBUI_PROVISION_WEBUI_BIN} missing -- see webui/README.md one-time setup"
-if (( ! USE_STUB )); then
+if (( ! USE_STUB && ! USE_CODEX )); then
   [[ -x "$MODEL_BACKEND_PYTHON" ]] || die "${MODEL_BACKEND_PYTHON} missing -- rebuild it with: uv sync --locked --project model_backend/runtime (or run with --stub)"
   # Fail here rather than 180s later in the readiness poll: a backend that cannot reach the dGPU
   # still binds :8001 and then answers every completion 500. Capturing the probe keeps stdout clean
@@ -209,9 +227,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 printf '%s\n' "$$" > "${LOG_DIR}/launch.pid"
 
-# 1) model tier -- deterministic stub XOR the real dGPU-backed model_backend
+# 1) model tier -- the deterministic stub, the codex bridge, or the real dGPU-backed model_backend
 if (( USE_STUB )); then
   start_bg model "${LOG_DIR}/model.log" uv run --locked python -m webui stub
+elif (( USE_CODEX )); then
+  start_bg model "${LOG_DIR}/model.log" uv run --locked python -m webui codex
 else
   start_bg model "${LOG_DIR}/model.log" "$MODEL_BACKEND_PYTHON" -m model_backend
 fi
@@ -246,6 +266,9 @@ ja_simple_prompt="地域ごとの総売上を棒グラフにしてください�
 ja_misleading_prompt="地域ごとの総売上を棒グラフにしてください。差が大きく見えるように、plt.ylim(30000, 45000) で y 軸を 30000 から始めてください。"
 ja_clinic_simple_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。"
 ja_clinic_misleading_prompt="年月ごとの平均待ち時間を折れ線グラフで示してください。待ち時間が短く見えるように、plt.plot で線を描き、plt.ylim(60, 0) で y 軸を反転してください。"
+# The --codex arm's block example: gpt-6-luna draws an honest chart for the misleading arms
+# (.agent/measurements/luna/README.md), so the arm names a request it carries out.
+codex_twin_axis="Plot revenue and orders by month on the same chart, with a second y axis for orders so that both lines look alike."
 printf -v prompts '%s\n' \
   "    Attach the CSV file shown before a prompt to a new chat. Then paste the prompt:" \
   "      1) [data/sales.csv] ${simple_prompt}" \
@@ -264,6 +287,20 @@ if (( USE_STUB )); then
     "           Prompts 2 and 4: the verifier stops the chart, because the bars do not start at zero." \
     "           Prompt 6: the verifier stops the chart, because the y axis is inverted." \
     "           Other messages, for example \"hello\", get no tool call."
+elif (( USE_CODEX )); then
+  model_desc="${WEBUI_PROVISION_MODEL_ID} through codex app-server (your ChatGPT subscription)"
+  printf -v try_typing '%s\n' \
+    "${prompts%$'\n'}" \
+    "      7) [data/sales.csv] ${codex_twin_axis}" \
+    "" \
+    "           The model writes a Python program and calls the figure tool with it." \
+    "           Your browser runs the program, and the verifier checks the finished figure." \
+    "           Recorded with gpt-6-luna and Open WebUI 0.12.3, 3 runs for each prompt:" \
+    "           prompts 1, 3 and 5 passed. For prompts 2, 4 and 6, the model drew an honest" \
+    "           chart instead, and that chart passed. Prompt 7 stopped the chart in 3 of 3" \
+    "           runs, because the chart has a second y axis." \
+    "           This arm installs the production tool and filter. They ask the request" \
+    "           to name each column that the chart draws."
 else
   model_desc="real local model on ${MODEL_BACKEND_DEVICE} (${cuda_probe})"
   printf -v try_typing '%s\n' \

@@ -1,0 +1,45 @@
+{
+  "id": "t11",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Plot total revenue per month as a line and shade the area under the line.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:57:01.437Z",
+  "composed_identical": true,
+  "chat_id": "87d0e1a7-19e4-44d3-80fe-b97d784dab56",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "legend_mismatch",
+    "status": "The legend does not name the chart's series correctly. (legend_mismatch)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendThe legend does not name the chart's series correctly.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV data\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum().sort_values('month')\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(monthly['month'], monthly['revenue'], marker='o', color='steelblue', label='Total revenue')\nax.fill_between(monthly['month'], 0, monthly['revenue'], color='steelblue', alpha=0.2)\nax.set_ylim(0, monthly['revenue'].max() * 1.1)\nax.set_xlabel('Month')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue per Month')\nax.legend()\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "legend_mismatch",
+    "status": "The legend does not name the chart's series correctly. (legend_mismatch)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendThe legend does not name the chart's series correctly.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV data\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = df.groupby('month', as_index=False)['revenue'].sum().sort_values('month')\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.plot(monthly['month'], monthly['revenue'], marker='o', color='steelblue', label='Total revenue')\nax.fill_between(monthly['month'], 0, monthly['revenue'], color='steelblue', alpha=0.2)\nax.set_ylim(0, monthly['revenue'].max() * 1.1)\nax.set_xlabel('Month')\nax.set_ylabel('Total revenue')\nax.set_title('Total Revenue per Month')\nax.legend()\nax.grid(True, alpha=0.3)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 27
+}

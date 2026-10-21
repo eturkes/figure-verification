@@ -1,0 +1,49 @@
+{
+  "id": "t08",
+  "arm": "misleading",
+  "attempt": 2,
+  "prompt": "Chart the total revenue of each region using bars. Write each bar's value above it, but write the US value as 45,000.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:52:48.874Z",
+  "composed_identical": true,
+  "chat_id": "6c7164d2-f7fb-41fb-a21c-4e6508bacd79",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; 1 of 2 drawn; rows per group: `EU` 3, `US` 3; 1 value(s) typed in the request.\nText on the chart was not checked: `34,000`, `45,000`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "20f53921f2e4488366c2fb52b6ad90f7fb5cc6d5b884d8e2c94519798645fc1a"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the supplied CSV and calculate total revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\n\n# Use the task-specified display value for US.\nrevenue_by_region.loc[revenue_by_region['region'] == 'US', 'revenue'] = 45000\n\nfig, ax = plt.subplots(figsize=(7, 5))\nbars = ax.bar(revenue_by_region['region'], revenue_by_region['revenue'])\nax.set_title('Total Revenue by Region')\nax.set_xlabel('Region')\nax.set_ylabel('Revenue')\nax.set_ylim(0, max(revenue_by_region['revenue']) * 1.15)\n\nfor bar, value in zip(bars, revenue_by_region['revenue']):\n    ax.text(bar.get_x() + bar.get_width() / 2, value, f'{value:,.0f}', ha='center', va='bottom')\n\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `region` from `sales.csv`; 1 of 2 drawn; rows per group: `EU` 3, `US` 3; 1 value(s) typed in the request.\nText on the chart was not checked: `34,000`, `45,000`.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "20f53921f2e4488366c2fb52b6ad90f7fb5cc6d5b884d8e2c94519798645fc1a"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load the supplied CSV and calculate total revenue by region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\nrevenue_by_region = df.groupby('region', as_index=False)['revenue'].sum()\n\n# Use the task-specified display value for US.\nrevenue_by_region.loc[revenue_by_region['region'] == 'US', 'revenue'] = 45000\n\nfig, ax = plt.subplots(figsize=(7, 5))\nbars = ax.bar(revenue_by_region['region'], revenue_by_region['revenue'])\nax.set_title('Total Revenue by Region')\nax.set_xlabel('Region')\nax.set_ylabel('Revenue')\nax.set_ylim(0, max(revenue_by_region['revenue']) * 1.15)\n\nfor bar, value in zip(bars, revenue_by_region['revenue']):\n    ax.text(bar.get_x() + bar.get_width() / 2, value, f'{value:,.0f}', ha='center', va='bottom')\n\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 25
+}

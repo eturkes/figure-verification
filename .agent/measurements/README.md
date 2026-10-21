@@ -278,6 +278,28 @@ arm wrote one program in all 5 runs, byte-identical to its Q70 program. Same tup
 Rerun: the M19.9 commands with `gpu-run webui/launch.sh --fresh` and `deps-u3` as the output
 directory.
 
+## Live gpt-6-luna record — luna
+
+`luna/` = 55 live cases (`luna/cases.json`: honest, misleading and out-of-scope requests over
+`data/*.csv` + typed data, EN + JA), 3 fresh chats each, through `webui/launch.sh --codex`
+(`gpt-6-luna` on the user's ChatGPT subscription via `codex app-server`, the production pair, native
+function calling). Protocol, config tuple, per-case table and findings: `luna/README.md`.
+
+Rerun from the repository root with `.venv-webui` set up, an idle CPU (`heavy --status` shows no
+holder) and Codex signed in with ChatGPT:
+
+```
+WEBUI_PROVISION_DATA_DIR=.scratch/luna/webui-data CODEX_BRIDGE_DUMP_DIR=.scratch/luna/requests webui/launch.sh --codex
+set -a; . ./.env; set +a
+"$CHROME" --headless=new --remote-debugging-port=9333 --user-data-dir="$(mktemp -d)" about:blank &
+cd .agent/measurements
+export FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password
+node luna_live.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 luna/cases.json 3 luna/records
+cd ../.. && uv run --locked python .agent/measurements/luna_classify.py .scratch/luna/requests
+```
+
+`luna_live.mjs` keeps an existing record, so a rerun resumes; a new output directory starts over.
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:

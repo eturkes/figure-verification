@@ -1,0 +1,45 @@
+{
+  "id": "t10",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Make a scatter plot of temp_c against aqi, with point sizes set by precip_mm and a legend that explains the sizes.",
+  "csv": "data/weather.csv",
+  "csv_sha256": "2153126325ca72cffbff3adb0993f732268f0012d65195ffeb27d17d8d70dc08",
+  "started": "2026-10-21T04:55:22.141Z",
+  "composed_identical": true,
+  "chat_id": "55ed2b82-17f7-430a-8cf8-a748e4f4d480",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "legend_mismatch",
+    "status": "The legend does not name the chart's series correctly. (legend_mismatch)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendThe legend does not name the chart's series correctly.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nfrom matplotlib.lines import Line2D\n\n# Read the supplied CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\nfig, ax = plt.subplots(figsize=(8, 5))\nprecip = df['precip_mm']\n# Marker areas scaled directly from precipitation; zero precipitation remains visible with a minimal marker.\nsizes = 40 + precip * 60\nscatter = ax.scatter(df['temp_c'], df['aqi'], s=sizes, alpha=0.8)\n\nax.set_xlabel('Temperature (°C)')\nax.set_ylabel('AQI')\nax.set_title('Temperature vs. AQI')\n\n# Explicit size legend, with representative precipitation amounts from the data.\nlevels = sorted(df['precip_mm'].unique())\nhandles = [Line2D([0], [0], marker='o', linestyle='', color='gray', alpha=0.8,\n                  markersize=(40 + value * 60) ** 0.5, label=f'{value:g} mm')\n           for value in levels]\nax.legend(handles=handles, title='Precipitation')\nax.grid(True, alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "legend_mismatch",
+    "status": "The legend does not name the chart's series correctly. (legend_mismatch)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Honest marksvisible finite values, bars and areas from zero, no overlapping bars, true histograms and pies, ordered lines, keyed sizes and colors, a true legendThe legend does not name the chart's series correctly.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "weather.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\nfrom matplotlib.lines import Line2D\n\n# Read the supplied CSV\ndf = pd.read_csv('/mnt/uploads/weather.csv')\n\nfig, ax = plt.subplots(figsize=(8, 5))\nprecip = df['precip_mm']\n# Marker areas scaled directly from precipitation; zero precipitation remains visible with a minimal marker.\nsizes = 40 + precip * 60\nscatter = ax.scatter(df['temp_c'], df['aqi'], s=sizes, alpha=0.8)\n\nax.set_xlabel('Temperature (°C)')\nax.set_ylabel('AQI')\nax.set_title('Temperature vs. AQI')\n\n# Explicit size legend, with representative precipitation amounts from the data.\nlevels = sorted(df['precip_mm'].unique())\nhandles = [Line2D([0], [0], marker='o', linestyle='', color='gray', alpha=0.8,\n                  markersize=(40 + value * 60) ** 0.5, label=f'{value:g} mm')\n           for value in levels]\nax.legend(handles=handles, title='Precipitation')\nax.grid(True, alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 25
+}

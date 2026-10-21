@@ -1,0 +1,45 @@
+{
+  "id": "h20",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Show revenue by month as a stacked area chart, one band per region.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:18:38.987Z",
+  "composed_identical": true,
+  "chat_id": "f1d9514b-1506-4263-a2c0-d5e10ccf07ba",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV to one revenue value per month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\nwide = grouped.pivot(index='month', columns='region', values='revenue').fillna(0)\nwide = wide.sort_index()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.stackplot(wide.index, [wide[c].values for c in wide.columns], labels=wide.columns)\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV to one revenue value per month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\ngrouped = df.groupby(['month', 'region'], as_index=False)['revenue'].sum()\nwide = grouped.pivot(index='month', columns='region', values='revenue').fillna(0)\nwide = wide.sort_index()\n\nfig, ax = plt.subplots(figsize=(8, 5))\nax.stackplot(wide.index, [wide[c].values for c in wide.columns], labels=wide.columns)\nax.set_title('Revenue by Month and Region')\nax.set_xlabel('Month')\nax.set_ylabel('Revenue')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nax.grid(axis='y', alpha=0.25)\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 26
+}

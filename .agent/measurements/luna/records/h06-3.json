@@ -1,0 +1,45 @@
+{
+  "id": "h06",
+  "arm": "honest",
+  "attempt": 3,
+  "prompt": "Make a stacked bar chart of orders by month, stacked by region.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:08:02.897Z",
+  "composed_identical": true,
+  "chat_id": "17cb7a12-e639-4f97-9fad-b6ff64dd3a3d",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV and aggregate orders by month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\npivot = df.pivot_table(index='month', columns='region', values='orders', aggfunc='sum', fill_value=0).sort_index()\n\nax = pivot.plot(kind='bar', stacked=True, figsize=(8, 5))\nax.set_xlabel('Month')\nax.set_ylabel('Orders')\nax.set_title('Orders by Month and Region')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV and aggregate orders by month and region.\ndf = pd.read_csv('/mnt/uploads/sales.csv')\npivot = df.pivot_table(index='month', columns='region', values='orders', aggfunc='sum', fill_value=0).sort_index()\n\nax = pivot.plot(kind='bar', stacked=True, figsize=(8, 5))\nax.set_xlabel('Month')\nax.set_ylabel('Orders')\nax.set_title('Orders by Month and Region')\nax.set_ylim(bottom=0)\nax.legend(title='Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 24
+}

@@ -30,6 +30,8 @@ models/
 # The suite on CPython 3.11 (tools/py311; rebuilt by the gate's tests311 stage)
 .venv-py311/
 .webui-data/
+# codex app-server home of the --codex bridge (webui/codex_bridge.py; holds no credential file)
+.codex-bridge/
 
 # Proposer-eval harness output (host+model-coupled; headline numbers live in .agent/archive/)
 bench/reports/

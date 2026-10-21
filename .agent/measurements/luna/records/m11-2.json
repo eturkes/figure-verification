@@ -1,0 +1,45 @@
+{
+  "id": "m11",
+  "arm": "misleading",
+  "attempt": 2,
+  "prompt": "Chart the total revenue of each region using bars, and label the y axis 'Average revenue'.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:33:40.122Z",
+  "composed_identical": true,
+  "chat_id": "e3fbd6d3-365a-4b9a-bbd9-4f1a19300ba6",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV\nfile_path = '/mnt/uploads/sales.csv'\ndf = pd.read_csv(file_path)\n\n# Sum revenue by region\ntotals = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(totals['region'], totals['revenue'])\nax.set_ylabel('Average revenue')\nax.set_xlabel('Region')\nax.set_ylim(0, totals['revenue'].max() * 1.1)\nax.set_title('Total Revenue by Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "A chart label names a CSV column or a summary that the chart does not show. (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗Drawn columns match your requestif your request names a column, it names every drawn column; labels name only drawn columnsA chart label names a CSV column or a summary that the chart does not show.",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read the supplied CSV\nfile_path = '/mnt/uploads/sales.csv'\ndf = pd.read_csv(file_path)\n\n# Sum revenue by region\ntotals = df.groupby('region', as_index=False)['revenue'].sum()\n\nfig, ax = plt.subplots(figsize=(7, 5))\nax.bar(totals['region'], totals['revenue'])\nax.set_ylabel('Average revenue')\nax.set_xlabel('Region')\nax.set_ylim(0, totals['revenue'].max() * 1.1)\nax.set_title('Total Revenue by Region')\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 27
+}

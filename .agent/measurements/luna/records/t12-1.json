@@ -1,0 +1,45 @@
+{
+  "id": "t12",
+  "arm": "honest",
+  "attempt": 1,
+  "prompt": "年月ごとの患者数の合計を、診療科別の積み上げ棒グラフで示してください。",
+  "csv": "data/clinic_ja.csv",
+  "csv_sha256": "c05b21f8ec2ce099235d6f5b7b407e24d26f873f77ae4fea04cda6fa774adc25",
+  "started": "2026-10-21T04:57:28.919Z",
+  "composed_identical": true,
+  "chat_id": "afe90941-38b2-4843-956d-65a89459de0b",
+  "before": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "グラフのラベルが、グラフにない CSV の列または集計を挙げています。 (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗描いた列が依頼と一致依頼が列名を含む場合は、描いた列をすべて含む。ラベルは描いた列だけを挙げるグラフのラベルが、グラフにない CSV の列または集計を挙げています。",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the clinic CSV by month and department.\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\nmonthly = df.pivot_table(index='年月', columns='診療科', values='患者数', aggfunc='sum', fill_value=0)\nmonthly = monthly.sort_index()\n\nax = monthly.plot(kind='bar', stacked=True, figsize=(9, 5))\nax.set_title('年月ごとの診療科別患者数')\nax.set_xlabel('年月')\nax.set_ylabel('患者数（人）')\nax.set_ylim(bottom=0)\nax.legend(title='診療科')\nplt.xticks(rotation=0)\nplt.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "fail",
+    "reason": "label_not_consistent",
+    "status": "グラフのラベルが、グラフにない CSV の列または集計を挙げています。 (label_not_consistent)",
+    "content": "Figure verification failed, no image produced",
+    "failing_row": "✗描いた列が依頼と一致依頼が列名を含む場合は、描いた列をすべて含む。ラベルは描いた列だけを挙げるグラフのラベルが、グラフにない CSV の列または集計を挙げています。",
+    "tool_calls": 0,
+    "file_pngs": 0,
+    "png_sha256": [],
+    "messages": 2,
+    "user_files": [
+      "clinic_ja.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the clinic CSV by month and department.\ndf = pd.read_csv('/mnt/uploads/clinic_ja.csv')\nmonthly = df.pivot_table(index='年月', columns='診療科', values='患者数', aggfunc='sum', fill_value=0)\nmonthly = monthly.sort_index()\n\nax = monthly.plot(kind='bar', stacked=True, figsize=(9, 5))\nax.set_title('年月ごとの診療科別患者数')\nax.set_xlabel('年月')\nax.set_ylabel('患者数（人）')\nax.set_ylim(bottom=0)\nax.legend(title='診療科')\nplt.xticks(rotation=0)\nplt.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 25
+}

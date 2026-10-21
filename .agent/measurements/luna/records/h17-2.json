@@ -1,0 +1,49 @@
+{
+  "id": "h17",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Show total revenue and total orders per month in two side-by-side panels.",
+  "csv": "data/sales.csv",
+  "csv_sha256": "b97410105bddf8e972101ac704efa1d6f319550708240a15b63cb476b656adf4",
+  "started": "2026-10-21T04:16:05.324Z",
+  "composed_identical": true,
+  "chat_id": "8fc8655c-5c71-41a9-8257-4e6027d4b636",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.\nBars: the sum of `orders` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "a5ad837304b615351b1496ff5163b018dce3822932d2a86a90b8b651c68815bb"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by month\nsales = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = sales.groupby('month', as_index=False)[['revenue', 'orders']].sum()\n\nfig, axes = plt.subplots(1, 2, figsize=(11, 4.5))\naxes[0].bar(monthly['month'], monthly['revenue'])\naxes[0].set_title('Total Revenue per Month')\naxes[0].set_ylabel('Revenue')\naxes[0].set_xlabel('Month')\naxes[0].tick_params(axis='x', rotation=30)\n\naxes[1].bar(monthly['month'], monthly['orders'])\naxes[1].set_title('Total Orders per Month')\naxes[1].set_ylabel('Orders')\naxes[1].set_xlabel('Month')\naxes[1].tick_params(axis='x', rotation=30)\n\nfig.tight_layout()\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nBars: the sum of `revenue` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.\nBars: the sum of `orders` per `month` from `sales.csv`; rows per group: `2026-01` 2, `2026-02` 2, `2026-03` 2.",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "a5ad837304b615351b1496ff5163b018dce3822932d2a86a90b8b651c68815bb"
+    ],
+    "messages": 2,
+    "user_files": [
+      "sales.csv"
+    ],
+    "program": "import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Read and aggregate the CSV by month\nsales = pd.read_csv('/mnt/uploads/sales.csv')\nmonthly = sales.groupby('month', as_index=False)[['revenue', 'orders']].sum()\n\nfig, axes = plt.subplots(1, 2, figsize=(11, 4.5))\naxes[0].bar(monthly['month'], monthly['revenue'])\naxes[0].set_title('Total Revenue per Month')\naxes[0].set_ylabel('Revenue')\naxes[0].set_xlabel('Month')\naxes[0].tick_params(axis='x', rotation=30)\n\naxes[1].bar(monthly['month'], monthly['orders'])\naxes[1].set_title('Total Orders per Month')\naxes[1].set_ylabel('Orders')\naxes[1].set_xlabel('Month')\naxes[1].tick_params(axis='x', rotation=30)\n\nfig.tight_layout()\nplt.show()"
+  },
+  "error": null,
+  "seconds": 26
+}

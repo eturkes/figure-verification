@@ -1,0 +1,44 @@
+{
+  "id": "h16",
+  "arm": "honest",
+  "attempt": 2,
+  "prompt": "Plot y = x squared for x from 1 to 10 as a line chart.",
+  "csv": null,
+  "started": "2026-10-21T04:15:28.868Z",
+  "composed_identical": true,
+  "chat_id": "ac7b93ad-3ba6-42dc-a0ad-ed6580835ca1",
+  "before": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the square of the numbers typed in the request (1, 2, 3, 4, 5, 6, 7, 8, …).",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "813c75793deaa7588d46cee1c1a7f25724504cd0a948d8ca6cdd566406d4e1f8"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nx = list(range(1, 11))\ny = [value ** 2 for value in x]\n\nfig, ax = plt.subplots()\nax.plot(x, y)\nax.set_xlabel('x')\nax.set_ylabel('y = x²')\nax.set_title('y = x² for x from 1 to 10')\nax.set_xlim(1, 10)\nax.set_ylim(0, 100)\nax.grid(True, alpha=0.3)\nplt.show()"
+  },
+  "after": {
+    "done": true,
+    "verdict": "pass",
+    "reason": null,
+    "status": null,
+    "content": "Figure verification passed\n\nLine: the square of the numbers typed in the request (1, 2, 3, 4, 5, 6, 7, 8, …).",
+    "failing_row": null,
+    "tool_calls": 0,
+    "file_pngs": 1,
+    "png_sha256": [
+      "813c75793deaa7588d46cee1c1a7f25724504cd0a948d8ca6cdd566406d4e1f8"
+    ],
+    "messages": 2,
+    "user_files": [],
+    "program": "import matplotlib.pyplot as plt\n\nx = list(range(1, 11))\ny = [value ** 2 for value in x]\n\nfig, ax = plt.subplots()\nax.plot(x, y)\nax.set_xlabel('x')\nax.set_ylabel('y = x²')\nax.set_title('y = x² for x from 1 to 10')\nax.set_xlim(1, 10)\nax.set_ylim(0, 100)\nax.grid(True, alpha=0.3)\nplt.show()"
+  },
+  "error": null,
+  "seconds": 18
+}
