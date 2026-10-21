@@ -58,12 +58,12 @@ _DATA_PREFIX = re.compile(r"(?<!\w)data:")
 _TRACEBACK = "Traceback (most recent call last):"
 # The longest stdout the reader writes (`reader.py::run`): the tagged description within the
 # decoder's cap, then one PNG line within the reader's, each ending in a line break. Open WebUI
-# 0.12.3 takes a 16 MiB browser frame, and 16 MiB of line breaks took 6.0 s to decode (M22.1 F4).
+# 0.12.3 takes a 16 MiB browser frame, and 16 MiB of line breaks took 1.5 s to decode (M22.1 F4).
 _MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1
 # A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
 # marks such as `・` or `ー` occur beside kanji alone. The letters form one character class, since
 # the test runs on Open WebUI's event loop over a message of any length, and a name lookup per
-# character took 0.62 s per MB (CPython 3.11, M22.1 F1); kana letters lie in these blocks alone.
+# character took 0.17 s per MB (CPython 3.11, M22.1 F1); kana letters lie in these blocks alone.
 _KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
 _KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))
 _KANA_LETTER = re.compile(
@@ -362,7 +362,7 @@ class Filter:
         description: Description | None = None
 
         async def fail(reason: Reason, site: int | None = None) -> dict[str, object]:
-            # The listing walks the program's syntax tree: about 0.9 s at its work budget (CPython
+            # The listing walks the program's syntax tree: 0.26 s near its work budget (CPython
             # 3.11, M22.1 F5).
             evidence = await asyncio.to_thread(_evidence, program, description, reason, site)
             return await _fail(

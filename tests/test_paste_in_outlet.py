@@ -347,7 +347,7 @@ def test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """M22.1 F4: Open WebUI 0.12.3 accepts a 16 MiB browser frame, and decoding 16 MiB of line
-    breaks took 6.0 s on its event loop (CPython 3.11): a reply the reader cannot have written is
+    breaks took 1.5 s on its event loop (CPython 3.11): a reply the reader cannot have written is
     refused unread, while the longest one it can write is still decoded."""
     decoded: list[int] = []
 
@@ -391,7 +391,7 @@ def test_m22_decoding_judging_and_listing_run_off_the_event_loop(
     monkeypatch: pytest.MonkeyPatch, program: str
 ) -> None:
     """M22.1 F4 + F5: the reply decode, the PNG check and the program listing ran on Open WebUI's
-    event loop; the listing alone took 0.84 s over a 59,454-character program (CPython 3.11)."""
+    event loop; the listing alone took 0.26 s over a 59,454-character program (CPython 3.11)."""
     loop = threading.get_ident()
     threads: dict[str, list[int]] = {}
 

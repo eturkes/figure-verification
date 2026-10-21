@@ -696,8 +696,8 @@ def test_m21_hostile_names_and_chart_text_stay_inert_markdown() -> None:
 
 
 def test_m22_each_source_is_read_once_per_judgment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """M22.1 F3: each values pass parsed every attached file and the request again (1.6 s per pass
-    for a 99,000-row file, 4.7 s per MB of typed numbers), and a value that blocks runs a second
+    """M22.1 F3: each values pass parsed every attached file and the request again (0.45 s per pass
+    for a 99,000-row file, 1.4 s per MB of typed numbers), and a value that blocks runs a second
     pass."""
     from verifier.figure import judge as judging  # noqa: PLC0415
     from verifier.figure.sources import read_table  # noqa: PLC0415

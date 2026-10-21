@@ -45,7 +45,7 @@ def test_o8_reason_anchors_are_exact(reason: str) -> None:
 
 def test_m22_the_language_choice_names_no_character(monkeypatch: pytest.MonkeyPatch) -> None:
     """M22.1 F1: the outlet looked up the Unicode name of every character of the request on Open
-    WebUI's event loop, 0.62 s per MB on CPython 3.11, and Open WebUI caps no message length."""
+    WebUI's event loop, 0.17 s per MB on CPython 3.11, and Open WebUI caps no message length."""
     module = load("filter")
     calls = 0
     name = unicodedata.name

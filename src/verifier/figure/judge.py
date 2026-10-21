@@ -117,7 +117,7 @@ def judge(description: Description, sources: Sources) -> Passed | Blocked:
     if isinstance(judged, Blocked):
         return judged
     # Both passes read the same sources: each file and the request are parsed once (a 99,000-row
-    # file takes 1.6 s, M22.1 F3).
+    # file takes 0.45 s, a MB of typed numbers 1.4 s, M22.1 F3).
     read = [read_table(name, content) for name, content in sources.files]
     tables = tuple(table for table in read if isinstance(table, Table))
     unreadable = tuple(table for table in read if isinstance(table, Unreadable))
