@@ -184,7 +184,7 @@ declares and, in production, Japanese short forms (`月` for `年月`, also `月
 | no column that the request names replaced by another | no named column undrawn while a drawn column is unnamed | `column_not_requested` |
 | values that fit two columns: the request names one of them | two explanations with different columns: the request names the columns of exactly one | `column_not_requested` |
 | production: if the request names or excludes a column, it names every drawn column | each drawn column is among the named columns | `column_not_named` |
-| titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary | the same matcher reads each label against the header and the summary words | `label_not_consistent` |
+| titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary | the same matcher reads each label against the header and the summary words; the column whose cell values name the legend's series counts as drawn | `label_not_consistent` |
 
 [Full rules](verification.md#check-columns) [Examples](gallery.md#check-columns)
 

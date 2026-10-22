@@ -117,7 +117,10 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
 - F1 G10 reads the series-split column as undrawn: a title naming the column whose values split
   the series (`Revenue by Month and Region`, `年月ごとの診療科別患者数`) blocks
   `label_not_consistent`; the legend title alone does not. 18/75 honest runs (h04 h05 h06 h13 h20
-  t12). Host probe: dropping `and Region` from h04's title passes.
+  t12). Host probe: dropping `and Region` from h04's title passes. Fixed: a label may name a drawn
+  series' R6 filter column (`columns.py::_labelled`); `luna_classify.py /nonexistent` (listings)
+  then re-judges those 18 runs `pass` and every other run unchanged (`summary.json` keeps the
+  batch-time verdicts).
 - F2 `axis_inverted` on a category axis: `ax.invert_yaxis()` after `barh` (matplotlib's own
   largest-on-top idiom) reorders categories and moves no value; ruling 3 binds both axes. 3/75
   (h11; the template's `not inverted` rule did not stop the model).

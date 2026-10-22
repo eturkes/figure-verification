@@ -46,10 +46,11 @@ _PROGRAM = (
 )
 _REQUEST = "Chart total revenue"
 _STRICT_COVERS = (
-    "if your request names a column, it names every drawn column; labels name only drawn columns"
+    "if your request names a column, it names every drawn column; labels name only columns the"
+    " chart shows"
 )
 _SUBSTITUTION_COVERS = (
-    "no drawn column replaces a column your request names; labels name only drawn columns"
+    "no drawn column replaces a column your request names; labels name only columns the chart shows"
 )
 
 

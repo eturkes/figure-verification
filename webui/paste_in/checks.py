@@ -172,11 +172,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "columns": (
         (
             "Drawn columns match your request",
-            "no drawn column replaces a column your request names; labels name only drawn columns",
+            "no drawn column replaces a column your request names; labels name only columns the"
+            " chart shows",
         ),
         (
             "描いた列が依頼と一致",
-            "依頼にある列を別の列に置き換えない。ラベルは描いた列だけを挙げる",
+            "依頼にある列を別の列に置き換えない。ラベルはグラフが示す列だけを挙げる",
         ),
     ),
     "attach": (
@@ -188,12 +189,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
 STRICT_COLUMNS: Final[tuple[tuple[str, str], tuple[str, str]]] = (
     (
         "Drawn columns match your request",
-        "if your request names a column, it names every drawn column; labels name only drawn"
-        " columns",
+        "if your request names a column, it names every drawn column; labels name only columns"
+        " the chart shows",
     ),
     (
         "描いた列が依頼と一致",
-        "依頼が列名を含む場合は、描いた列をすべて含む。ラベルは描いた列だけを挙げる",
+        "依頼が列名を含む場合は、描いた列をすべて含む。ラベルはグラフが示す列だけを挙げる",
     ),
 )
 
@@ -269,9 +270,11 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "columns": (
         "When your request names columns, the chart must draw those columns. A title, axis label"
-        " or legend must not name a column or summary that the chart does not draw.",
+        " or legend must not name a column or summary that the chart does not draw. It can name"
+        " the column whose values the legend shows as series names.",
         "依頼文に列名がある場合、グラフはその列を描く必要があります。"
-        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。",
+        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。"
+        "凡例が系列名として示す値の列は挙げてもかまいません。",
     ),
     "attach": (
         "The run returns one PNG image, and Open WebUI stores it with this reply. If either"

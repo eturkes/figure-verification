@@ -540,6 +540,43 @@ plt.xlabel("region")
 plt.ylabel("revenue")
 '''
 
+# A label may name the column whose cell values the legend shows as series names (R6 filter
+# column): it draws nothing, yet the chart shows it (luna F1).
+
+[[case]]
+id = "title-names-series-column"
+expect = "pass"
+rule = "label_not_consistent"
+csv = "sales.csv"
+request = "Revenue by month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+for region, rows in df.groupby("region"):
+    plt.plot(rows["month"], rows["revenue"], label=region)
+plt.title("Revenue by month and region")
+plt.xlabel("month")
+plt.legend(title="region")
+'''
+
+[[case]]
+id = "title-names-series-column-and-another"
+expect = "label_not_consistent"
+site = 6
+csv = "sales.csv"
+request = "Revenue by month for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+for region, rows in df.groupby("region"):
+    plt.plot(rows["month"], rows["revenue"], label=region)
+plt.title("Orders by month and region")
+plt.xlabel("month")
+plt.legend(title="region")
+'''
+
 # Encoded channels (user, M19.4): colour values a colorbar or colour key shows and sizes a size
 # key shows are drawn values, keyed like their points; that column counts as drawn.
 

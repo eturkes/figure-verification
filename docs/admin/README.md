@@ -192,8 +192,9 @@ one character of another script. A chart can draw a short column that the reques
 the request names no recognized column, the chart passes this check.
 
 The labels of a chart over a CSV file obey a similar rule. A title, axis label, legend label or
-color bar label cannot name a recognized CSV column that the chart does not show. A column alias
-names its column in a label too. If the chart shows a total or a mean per group, a label cannot
+color bar label cannot name a recognized CSV column that the chart does not show. A label can name
+the column whose values the legend shows as series names, such as `region` in `Revenue by month
+and region` when each line shows one region. A column alias names its column in a label too. If the chart shows a total or a mean per group, a label cannot
 name a different summary. A minimum or maximum per group draws values of the column itself, so the
 verifier does not read summary words over it. If a column name contains a summary word, such as `total` in
 `total_revenue`, the verifier reads that word as part of the name. For example, if no column name

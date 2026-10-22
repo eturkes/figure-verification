@@ -4712,11 +4712,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "columns": (
         (
             "Drawn columns match your request",
-            "no drawn column replaces a column your request names; labels name only drawn columns",
+            "no drawn column replaces a column your request names; labels name only columns the"
+            " chart shows",
         ),
         (
             "描いた列が依頼と一致",
-            "依頼にある列を別の列に置き換えない。ラベルは描いた列だけを挙げる",
+            "依頼にある列を別の列に置き換えない。ラベルはグラフが示す列だけを挙げる",
         ),
     ),
     "attach": (
@@ -4728,12 +4729,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
 STRICT_COLUMNS: Final[tuple[tuple[str, str], tuple[str, str]]] = (
     (
         "Drawn columns match your request",
-        "if your request names a column, it names every drawn column; labels name only drawn"
-        " columns",
+        "if your request names a column, it names every drawn column; labels name only columns"
+        " the chart shows",
     ),
     (
         "描いた列が依頼と一致",
-        "依頼が列名を含む場合は、描いた列をすべて含む。ラベルは描いた列だけを挙げる",
+        "依頼が列名を含む場合は、描いた列をすべて含む。ラベルはグラフが示す列だけを挙げる",
     ),
 )
 
@@ -4809,9 +4810,11 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "columns": (
         "When your request names columns, the chart must draw those columns. A title, axis label"
-        " or legend must not name a column or summary that the chart does not draw.",
+        " or legend must not name a column or summary that the chart does not draw. It can name"
+        " the column whose values the legend shows as series names.",
         "依頼文に列名がある場合、グラフはその列を描く必要があります。"
-        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。",
+        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。"
+        "凡例が系列名として示す値の列は挙げてもかまいません。",
     ),
     "attach": (
         "The run returns one PNG image, and Open WebUI stores it with this reply. If either"
@@ -8026,7 +8029,8 @@ Drawn columns = per attached file, the columns that explain the drawn values (`r
 V, `index` V, `count` K, a reference mark's one column); a label column R6 filters by draws
 nothing. Anchoring = the shipped matcher (`anchoring.py`): the demo's substitution rule, or
 production's strict rule. G10: a title, axis label, suptitle or legend entry naming a header
-column the chart does not draw blocks; over reductions, so does another reduction's summary word.
+column the chart neither draws nor filters a series by (R6) blocks; over reductions, so does
+another reduction's summary word.
 """
 
 from dataclasses import dataclass
@@ -8117,6 +8121,18 @@ def _check(
                 block("label_not_consistent", text.site)
 
 
+def _labelled(choices: tuple[Choice, ...], columns: Drawn) -> Drawn:
+    """The columns a label may name: the drawn ones + each series' R6 filter column, which draws
+    nothing yet splits the series the legend names (`Revenue by month and region`, luna F1)."""
+    found = dict(columns.columns)
+    for choice in choices:
+        explanation = choice.explanation
+        if explanation is not None and explanation.where is not None:
+            table = explanation.table
+            found[table] = found.get(table, frozenset()) | {explanation.where[0]}
+    return Drawn(found)
+
+
 def check_labels(
     figure: Figure,
     panels: tuple[Panel, ...],
@@ -8127,6 +8143,7 @@ def check_labels(
     """G10 over every judged label, against every attached file's header: a panel's labels
     against that panel's reductions, the figure's own (suptitle, supxlabel, supylabel, figure
     legends) against every panel's."""
+    columns = _labelled(choices, columns)
     every: set[str] = set()
     for position, panel in enumerate(panels):
         reductions: set[str] = {

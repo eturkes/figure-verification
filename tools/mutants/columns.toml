@@ -75,3 +75,17 @@ predicate = "G10 reads a computation's summary, not its base family"
 kills = "tests/test_figure_corpus.py::test_corpus_case[ratio-beside-sum]"
 anchor = '''            for reduction in (summary(choice.explanation),)'''
 mutant = '''            for reduction in (choice.explanation.family,)'''
+
+[[mutant]]
+id = "luna-f1-filter-unread"
+predicate = "a label may name a drawn series' R6 filter column (luna F1)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[title-names-series-column]"
+anchor = '''            found[table] = found.get(table, frozenset()) | {explanation.where[0]}'''
+mutant = '''            found[table] = found.get(table, frozenset())'''
+
+[[mutant]]
+id = "luna-f1-labels-any-column"
+predicate = "beside the filter column, a label naming an undrawn column still blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[title-names-series-column-and-another]"
+anchor = '''    columns = _labelled(choices, columns)'''
+mutant = '''    columns = Drawn({table.name: frozenset(table.header) for table in context.tables})'''

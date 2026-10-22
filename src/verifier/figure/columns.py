@@ -5,7 +5,8 @@ Drawn columns = per attached file, the columns that explain the drawn values (`r
 V, `index` V, `count` K, a reference mark's one column); a label column R6 filters by draws
 nothing. Anchoring = the shipped matcher (`anchoring.py`): the demo's substitution rule, or
 production's strict rule. G10: a title, axis label, suptitle or legend entry naming a header
-column the chart does not draw blocks; over reductions, so does another reduction's summary word.
+column the chart neither draws nor filters a series by (R6) blocks; over reductions, so does
+another reduction's summary word.
 """
 
 from dataclasses import dataclass
@@ -96,6 +97,18 @@ def _check(
                 block("label_not_consistent", text.site)
 
 
+def _labelled(choices: tuple[Choice, ...], columns: Drawn) -> Drawn:
+    """The columns a label may name: the drawn ones + each series' R6 filter column, which draws
+    nothing yet splits the series the legend names (`Revenue by month and region`, luna F1)."""
+    found = dict(columns.columns)
+    for choice in choices:
+        explanation = choice.explanation
+        if explanation is not None and explanation.where is not None:
+            table = explanation.table
+            found[table] = found.get(table, frozenset()) | {explanation.where[0]}
+    return Drawn(found)
+
+
 def check_labels(
     figure: Figure,
     panels: tuple[Panel, ...],
@@ -106,6 +119,7 @@ def check_labels(
     """G10 over every judged label, against every attached file's header: a panel's labels
     against that panel's reductions, the figure's own (suptitle, supxlabel, supylabel, figure
     legends) against every panel's."""
+    columns = _labelled(choices, columns)
     every: set[str] = set()
     for position, panel in enumerate(panels):
         reductions: set[str] = {
