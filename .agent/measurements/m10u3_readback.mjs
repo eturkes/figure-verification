@@ -10,8 +10,9 @@ import { basename, join } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const [browserURL, webuiURL, outDir, ...records] = process.argv.slice(2);
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const browser = await puppeteer.connect({ browserURL, protocolTimeout: 0 });
 const page = (await browser.pages()).find((p) => p.url().startsWith(webuiURL)) ?? (await browser.newPage());
@@ -19,10 +20,9 @@ for (const path of records) {
   const record = JSON.parse(readFileSync(path, "utf8"));
   await page.goto(`${webuiURL}/c/${record.chat_id}`, { waitUntil: "domcontentloaded", timeout: 90000 });
   await page.waitForFunction(
-    (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+    (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
     { timeout: 120000 },
-    PASS,
-    FAIL,
+    [...PASS_TEXTS, ...FAIL_TEXTS],
   );
   await new Promise((r) => setTimeout(r, 2000));
   const state = await page.evaluate(async (id) => {
@@ -45,7 +45,12 @@ for (const path of records) {
   const pngs = state.files
     .filter((u) => u.startsWith("data:image/png;base64,"))
     .map((u) => sha256(Buffer.from(u.slice(22), "base64")));
-  const verdict = String(state.content).startsWith(PASS) ? "pass" : state.content === FAIL ? "fail" : "other";
+  const content = String(state.content);
+  const verdict = PASS_TEXTS.some((text) => content.startsWith(text))
+    ? "pass"
+    : FAIL_TEXTS.includes(content)
+      ? "fail"
+      : "other";
   const out = { chat_id: record.chat_id, done: state.done, verdict, content: state.content,
     file_pngs: pngs.length, dom_pngs: state.dom_pngs, png_sha256: pngs };
   const name = basename(path, ".json");

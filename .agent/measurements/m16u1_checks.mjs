@@ -22,8 +22,9 @@ import puppeteer from "puppeteer-core";
 
 const [browserURL, webuiURL, csvPath, checksPath, outDir] = process.argv.slice(2);
 if (!outDir) throw new Error("usage: m16u1_checks.mjs <browser-url> <webui-url> <csv> <checks.json> <out-dir>");
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese; each case expects its own language's.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 const launcher = readFileSync(new URL("../../webui/launch.sh", import.meta.url), "utf8");
 const pinned = (name) => new RegExp(`${name}="([^"]+)"`).exec(launcher)[1];
 const table = JSON.parse(readFileSync(checksPath, "utf8"));
@@ -88,20 +89,19 @@ if (await entry.evaluate((node) => node.id === "email")) {
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 const verdictShown = () =>
   page.waitForFunction(
-    (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+    (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
     { timeout: 300000 },
-    PASS,
-    FAIL,
+    [...PASS_TEXTS, ...FAIL_TEXTS],
   );
 
 // The embed frame of the last reply, its page-side box, and its order against status + verdict.
 async function frameFacts() {
-  const facts = await page.evaluate((pass, fail) => {
+  const facts = await page.evaluate((verdicts) => {
     const reply = [...document.querySelectorAll(".chat-assistant")].at(-1);
     const frames = [...(reply?.querySelectorAll("iframe") ?? [])];
     const status = reply?.querySelector(".status-description");
     const verdict = [...(reply?.querySelectorAll("p, div") ?? [])].find(
-      (node) => node.children.length === 0 && [pass, fail].some((text) => node.textContent?.trim().startsWith(text)),
+      (node) => node.children.length === 0 && verdicts.some((text) => node.textContent?.trim().startsWith(text)),
     );
     const after = (a, b) => Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const box = frames[0]?.getBoundingClientRect();
@@ -114,7 +114,7 @@ async function frameFacts() {
       status_before_frame: status ? after(status, frames[0]) : null,
       frame_before_verdict: after(frames[0], verdict),
     };
-  }, PASS, FAIL);
+  }, [...PASS_TEXTS, ...FAIL_TEXTS]);
   const handle = await page.evaluateHandle(() =>
     [...document.querySelectorAll(".chat-assistant")].at(-1)?.querySelector("iframe"),
   );
@@ -365,7 +365,8 @@ for (const item of CASES) {
       (item.reason === null
         ? record.rest.content === table.pass_text && record.rest.output_text === table.pass_text &&
           record.rest.pngs === 1
-        : record.rest.content === FAIL && record.rest.output_text === FAIL && record.rest.pngs === 0 &&
+        : record.rest.content === FAIL_TEXTS[item.lang] && record.rest.output_text === FAIL_TEXTS[item.lang] &&
+          record.rest.pngs === 0 &&
           record.rest.status.at(-1) === want);
   } catch (error) {
     record.error = String(error).slice(0, 400);

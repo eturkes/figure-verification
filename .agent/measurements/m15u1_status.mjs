@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// M15.1 L1-L5: the failure reason a user reads above `Figure verification failed, no image produced`.
+// M15.1 L1-L5: the failure reason a user reads above the fail verdict (Q81: in the request's language).
 //
 //   node m15u1_status.mjs <browser-url> <webui-url> <csv> <reasons.json> <webui.log> <out-dir>
 //
@@ -28,8 +28,9 @@ const logRecords = (from) =>
     .split("\n")
     .filter((line) => line.includes("figure verification failed reason="))
     .map((line) => line.slice(line.indexOf("figure verification failed reason=")).trim());
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese; each case expects its own language's.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 const launcher = readFileSync(new URL("../../webui/launch.sh", import.meta.url), "utf8");
 const pinned = (name) => new RegExp(`${name}="([^"]+)"`).exec(launcher)[1];
 const reasons = JSON.parse(readFileSync(reasonsPath, "utf8"));
@@ -124,10 +125,9 @@ for (const item of CASES) {
     await page.waitForFunction(() => location.pathname.startsWith("/c/"), { timeout: 120000 });
     record.chat_id = new URL(page.url()).pathname.split("/")[2];
     await page.waitForFunction(
-      (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+      (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
       { timeout: 300000 },
-      PASS,
-      FAIL,
+      [...PASS_TEXTS, ...FAIL_TEXTS],
     );
     await new Promise((r) => setTimeout(r, 2000));
     record.dom_before = await statusText();
@@ -136,10 +136,9 @@ for (const item of CASES) {
     blocking = false;
     await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForFunction(
-      (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+      (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
       { timeout: 120000 },
-      PASS,
-      FAIL,
+      [...PASS_TEXTS, ...FAIL_TEXTS],
     );
     await new Promise((r) => setTimeout(r, 2000));
     record.dom_after = await statusText();
@@ -150,10 +149,11 @@ for (const item of CASES) {
     record.want = want;
     record.ok =
       (item.expect === null
-        ? record.rest.content.startsWith(PASS) && mine.length === 0 && record.rest.files === 1 &&
+        ? record.rest.content.startsWith(PASS_TEXTS[item.lang]) && mine.length === 0 && record.rest.files === 1 &&
           record.rest.pngs === 1 && record.rest.dom_pngs >= 1 && record.log.length === 0 &&
           !ours.has(record.dom_before) && !ours.has(record.dom_after)
-        : record.rest.content === FAIL && record.rest.output_text === FAIL && record.rest.files === 0 &&
+        : record.rest.content === FAIL_TEXTS[item.lang] && record.rest.output_text === FAIL_TEXTS[item.lang] &&
+          record.rest.files === 0 &&
           mine.length === 1 && record.rest.status.at(-1) === want &&
           record.dom_before === want && record.dom_after === want &&
           record.log.length === 1 && record.log[0] === `figure verification failed reason=${item.expect}`) &&

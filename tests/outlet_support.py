@@ -27,6 +27,9 @@ from webui.paste_in.sandbox import wrapper_code
 
 PASS = "Figure verification passed"  # noqa: S105 - public verdict, not a credential
 FAIL = "Figure verification failed, no image produced"
+# Q81: a kana request reads the verdict in Japanese.
+PASS_JA = "図の検証に合格しました。"  # noqa: S105 - public verdict, not a credential
+FAIL_JA = "図の検証に合格しませんでした。画像は表示されません。"
 USER: dict[str, object] = {"id": "outlet-owner"}
 SESSION = "browser-session"
 LOGGER = "webui.paste_in.filter"
@@ -279,7 +282,7 @@ def assert_rewrite(body: dict[str, object], expected: str) -> None:
 def assert_failure(
     body: dict[str, object], events: list[dict[str, object]], reason: str, *, japanese: bool = False
 ) -> None:
-    assert_rewrite(body, FAIL)
+    assert_rewrite(body, FAIL_JA if japanese else FAIL)
     assert events[0] == {
         "type": "status",
         "data": {"description": f"{texts()[reason][int(japanese)]} ({reason})", "done": True},

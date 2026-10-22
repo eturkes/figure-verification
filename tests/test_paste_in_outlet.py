@@ -24,6 +24,7 @@ from outlet_support import (
     FAIL,
     LOGGER,
     PASS,
+    PASS_JA,
     SALES,
     SALES_BYTES,
     SESSION,
@@ -834,7 +835,7 @@ def test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation
         expected = verdict(program, Sources(request=request_text))
         assert isinstance(expected, Passed)
         interpretation = expected.interpretation_ja if japanese else expected.interpretation
-        assert_rewrite(result, PASS + "\n\n" + interpretation)
+        assert_rewrite(result, (PASS_JA if japanese else PASS) + "\n\n" + interpretation)
         assert_states(embed(browser.events), None)
 
 
@@ -911,6 +912,60 @@ def test_o5_language_property_is_kana_letter_not_other_japanese_text(plain: str,
     )
     assert_failure(result, browser.events, "no_tool_call", japanese=bool(kana))
     assert one_language(embed(browser.events)) == ("ja" if kana else "en")
+
+
+@pytest.mark.parametrize("japanese", [False, True])
+@pytest.mark.parametrize(
+    "path", ["no_tool_call", "no_browser", "zero_not_in_limits", "verifier_error", "pass"]
+)
+def test_q81_the_verdict_reads_the_status_line_s_language_on_every_path(
+    monkeypatch: pytest.MonkeyPatch, path: str, *, japanese: bool
+) -> None:
+    """Q81 V2 (`.agent/archive/contracts/q81.md`): a kana request reads the verdict in Japanese,
+    from the same message as the status line + check list, on the pass and every kind of failure."""
+    request_text = "グラフにして" if japanese else "Chart it"
+    browser = Browser(TRUNCATED if path == "zero_not_in_limits" else SIMPLE)
+    seams = (("verifier.figure.judge", "judge", _raise),) if path == "verifier_error" else ()
+    with patched_filter(monkeypatch, seams) as api:
+        result = invoke_filter(
+            api,
+            filter_body("Figure verification passed"),
+            request=None if path == "no_tool_call" else recorded_request(browser.program),
+            user=USER,
+            metadata={"session_id": SESSION, "user_message": {"content": request_text}},
+            event_call=None if path == "no_browser" else browser.call,
+            event_emitter=browser.emit,
+        )
+    if path != "pass":
+        assert_failure(result, browser.events, path, japanese=japanese)
+        return
+    expected = verdict(SIMPLE)
+    assert isinstance(expected, Passed)
+    interpretation = expected.interpretation_ja if japanese else expected.interpretation
+    assert_rewrite(result, (PASS_JA if japanese else PASS) + "\n\n" + interpretation)
+    assert one_language(embed(browser.events)) == ("ja" if japanese else "en")
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"user_message": "グラフにして"},
+        {"user_message": {"content": ["グラフにして"]}},
+        {"user_message": {"text": "グラフにして"}},
+        {"content": "グラフにして"},
+        None,
+    ],
+    ids=["message-str", "content-list", "no-content", "no-message", "none"],
+)
+def test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict(
+    metadata: dict[str, object] | None,
+) -> None:
+    """Q81 V3: the language choice never raises; a message it cannot read is not a kana one."""
+    browser = Browser()
+    result = invoke_filter(
+        load("filter"), filter_body("MODEL_PROSE"), metadata=metadata, event_emitter=browser.emit
+    )
+    assert_failure(result, browser.events, "no_tool_call")
 
 
 def one_language(html: str) -> str | None:

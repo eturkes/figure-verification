@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from verifier.figure.inert import visible
-from webui.paste_in.filter import PASS_TEXT, _note_line
+from webui.paste_in.filter import PASS_TEXTS, _note_line
 
 # What each language's label shows, and the element that draws it (Q80: KaTeX bold in Japanese).
 LABELS = (("Model note:", "strong"), ("モデルの注記:", "katex"))
@@ -45,7 +45,7 @@ def main() -> int:
                     "note": note,
                     "label": label,
                     "label_kind": kind,
-                    "content": PASS_TEXT + _note_line(note, metadata),
+                    "content": PASS_TEXTS[japanese] + _note_line(note, metadata),
                     "expected": f"{label} " + "".join(map(visible, shown)),
                 }
             )

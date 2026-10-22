@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from webui.paste_in.filter import FAIL_TEXT, FILTER_ID, PASS_TEXT
+from webui.paste_in.filter import FAIL_TEXTS, FILTER_ID, PASS_TEXTS
 from webui.settings import Settings
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -65,8 +65,8 @@ def test_both_guides_keep_the_same_shape() -> None:
 @pytest.mark.parametrize("name", _GUIDES)
 def test_each_guide_carries_both_verdicts_and_the_provisioned_ids(name: str) -> None:
     text = _text(name)
-    assert f"`{PASS_TEXT}`" in text
-    assert f"`{FAIL_TEXT}`" in text
+    for verdict in (*PASS_TEXTS, *FAIL_TEXTS):  # Q81: each guide names both languages
+        assert f"`{verdict}`" in text
     assert f"`{FILTER_ID}`" in text
     assert f"`{Settings.from_env().tool_id}`" in text
 

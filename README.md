@@ -38,7 +38,7 @@ A chart passes when all of these statements are true:
    request is every message that the user wrote in the current branch of the chat, so a follow-up
    such as `Make the bars red` keeps the columns and numbers of the earlier messages.
 3. **Interpretation.** The reply states in plain words where each drawn value comes from. If the
-   user's last message contains Japanese kana, that text is in Japanese.
+   user's last message contains Japanese kana, that text and the verdict are in Japanese.
 
 Every decision follows a fixed rule. The verifier uses no model. A pass does not mean that the chart
 answers the question. The chart can show a different measure or grouping than the user wanted.

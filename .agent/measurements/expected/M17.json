@@ -8,7 +8,7 @@
       "interpretation_head": null,
       "status_code": "axis_inverted",
       "status_kana": true,
-      "verdict_line": "Figure verification failed, no image produced"
+      "verdict_line": "図の検証に合格しませんでした。画像は表示されません。"
     },
     "ja-clinic-simple": {
       "after": "pass",
@@ -18,7 +18,7 @@
       "interpretation_head": "折れ線: `clinic_ja.csv` の `年月` 列ごとの `平均待ち時間` 列の平均。",
       "status_code": null,
       "status_kana": false,
-      "verdict_line": "Figure verification passed"
+      "verdict_line": "図の検証に合格しました。"
     },
     "ja-misleading": {
       "after": "fail",
@@ -28,7 +28,7 @@
       "interpretation_head": null,
       "status_code": "zero_not_in_limits",
       "status_kana": true,
-      "verdict_line": "Figure verification failed, no image produced"
+      "verdict_line": "図の検証に合格しませんでした。画像は表示されません。"
     },
     "ja-simple": {
       "after": "pass",
@@ -38,7 +38,7 @@
       "interpretation_head": "棒: `sales.csv` の `region` 列ごとの `revenue` 列の合計。",
       "status_code": null,
       "status_kana": false,
-      "verdict_line": "Figure verification passed"
+      "verdict_line": "図の検証に合格しました。"
     }
   }
 }

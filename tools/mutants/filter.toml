@@ -3,6 +3,7 @@
 # bounded diagnostics, inlet templates. Each mutant names one red in the M19.5 suite; M22.1 adds
 # the kana class (F1), the reply bound + off-loop decode (F4) + listing (F5), the whole-outlet guard (F6).
 # Q78: the model's note, shown inert under the verdict while the Valve is on.
+# Q81: the verdict in the request's language, by the kana rule.
 module = "webui/paste_in/filter.py"
 tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_inlet.py", "tests/test_paste_in_demo_pair.py", "tests/test_paste_in_aliases.py", "tests/test_paste_in_note.py"]
 
@@ -176,8 +177,8 @@ mutant = '''            except Exception:
 id = "m19-pass-without-interpretation"
 predicate = "a pass publishes its interpretation"
 kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
-anchor = '''        return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}{note_line}")'''
-mutant = '''        return _rewrite(body, f"{PASS_TEXT}{note_line}")'''
+anchor = '''        return _rewrite(body, f"{PASS_TEXTS[japanese]}\n\n{interpretation}{note_line}")'''
+mutant = '''        return _rewrite(body, f"{PASS_TEXTS[japanese]}{note_line}")'''
 
 [[mutant]]
 id = "m19-japanese-ignored"
@@ -475,8 +476,8 @@ mutant = '''        shown = note'''
 id = "q78-fail-drops-note"
 predicate = "a failed reply shows the note"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
-anchor = '''    return _rewrite(body, FAIL_TEXT + line)'''
-mutant = '''    return _rewrite(body, FAIL_TEXT)'''
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])'''
 
 [[mutant]]
 id = "q78-fail-path-drops-note"
@@ -522,3 +523,45 @@ predicate = "the Japanese label is KaTeX bold, since Open WebUI's `strong` draws
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
 anchor = '''"$\\footnotesize\\textbf{モデルの注記:}$")'''
 mutant = '''"**モデルの注記:**")'''
+
+[[mutant]]
+id = "q81-pass-always-english"
+predicate = "a kana request reads the Japanese pass verdict"
+kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[pass-True]"
+anchor = '''            return _rewrite(body, f"{PASS_TEXTS[japanese]}\n\n{interpretation}{note_line}")'''
+mutant = '''            return _rewrite(body, f"{PASS_TEXTS[0]}\n\n{interpretation}{note_line}")'''
+
+[[mutant]]
+id = "q81-pass-always-japanese"
+predicate = "a request without kana reads the English pass verdict"
+kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[pass-False]"
+anchor = '''            return _rewrite(body, f"{PASS_TEXTS[japanese]}\n\n{interpretation}{note_line}")'''
+mutant = '''            return _rewrite(body, f"{PASS_TEXTS[1]}\n\n{interpretation}{note_line}")'''
+
+[[mutant]]
+id = "q81-fail-always-english"
+predicate = "a kana request reads the Japanese fail verdict, a fault included"
+kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[verifier_error-True]"
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[0] + line)'''
+
+[[mutant]]
+id = "q81-fail-always-japanese"
+predicate = "a request without kana reads the English fail verdict"
+kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[no_browser-False]"
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[1] + line)'''
+
+[[mutant]]
+id = "q81-unread-message-raises"
+predicate = "a user message that is no dict reads as English, never a raise"
+kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[message-str]"
+anchor = '''    content = message.get("content") if isinstance(message, dict) else None'''
+mutant = '''    content = message.get("content") if message is not None else None'''
+
+[[mutant]]
+id = "q81-unread-content-raises"
+predicate = "content that is no string reads as English, never a raise"
+kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[content-list]"
+anchor = '''    return isinstance(content, str) and _KANA_LETTER.search(content) is not None'''
+mutant = '''    return content is not None and _KANA_LETTER.search(content) is not None'''

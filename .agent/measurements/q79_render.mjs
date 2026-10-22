@@ -52,7 +52,11 @@ for (const [index, item] of cases.entries()) {
   }, item.content);
   await page.goto(`${webuiURL}/c/${chatId}`, { waitUntil: "domcontentloaded", timeout: 90000 });
   await page.waitForFunction(
-    () => [...document.querySelectorAll(".chat-assistant")].at(-1)?.textContent?.includes("Figure verification passed"),
+    // Q81: the Japanese cases carry the Japanese verdict.
+    () =>
+      ["Figure verification passed", "図の検証に合格しました。"].some((verdict) =>
+        [...document.querySelectorAll(".chat-assistant")].at(-1)?.textContent?.includes(verdict),
+      ),
     { timeout: 60000 },
   );
   // KaTeX loads after the reply text: wait for the label before reading (none ⇒ the case fails).

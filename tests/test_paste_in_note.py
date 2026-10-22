@@ -13,7 +13,19 @@ from typing import Any, cast
 
 import pytest
 
-from outlet_support import FAIL, PASS, SESSION, SIMPLE, TRUNCATED, USER, Browser, load, verdict
+from outlet_support import (
+    FAIL,
+    FAIL_JA,
+    PASS,
+    PASS_JA,
+    SESSION,
+    SIMPLE,
+    TRUNCATED,
+    USER,
+    Browser,
+    load,
+    verdict,
+)
 from paste_in_support import fake_open_webui, filter_body, filter_request, owui_driver_output
 from verifier.figure.inert import prose
 from verifier.figure.judge import Passed, Sources
@@ -199,13 +211,19 @@ def test_q78_n4_a_pass_shows_the_note_under_the_interpretation(
     assert isinstance(expected, Passed)
     japanese = label != "**Model note:**"
     interpretation = expected.interpretation_ja if japanese else expected.interpretation
-    assert _reply(result) == f"{PASS}\n\n{interpretation}\n\n{label} {prose(_NOTE)}"
+    passed = PASS_JA if japanese else PASS
+    assert _reply(result) == f"{passed}\n\n{interpretation}\n\n{label} {prose(_NOTE)}"
 
 
 def test_q78_n4_a_failure_shows_the_note_under_the_verdict() -> None:
     result, browser = _outlet(TRUNCATED, _NOTE)
     assert _reply(result) == f"{FAIL}\n\n**Model note:** {prose(_NOTE)}"
     assert [event["type"] for event in browser.events] == ["status", "embeds"]
+
+
+def test_q81_a_japanese_failure_shows_the_japanese_verdict_over_the_japanese_label() -> None:
+    result, _browser = _outlet(TRUNCATED, _NOTE, request_text="グラフにして")
+    assert _reply(result) == f"{FAIL_JA}\n\n{_JA_LABEL} {prose(_NOTE)}"
 
 
 def test_q78_n4_a_failure_before_the_browser_shows_the_note_too() -> None:

@@ -53,8 +53,12 @@ from webui.paste_in.templates import (
 
 _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
-PASS_TEXT: Final = "Figure verification passed"  # noqa: S105 - a verdict, not a credential
-FAIL_TEXT: Final = "Figure verification failed, no image produced"
+# (EN, JA) by the kana rule, like every line of the reply (Q81, user).
+PASS_TEXTS: Final = ("Figure verification passed", "図の検証に合格しました。")
+FAIL_TEXTS: Final = (
+    "Figure verification failed, no image produced",
+    "図の検証に合格しませんでした。画像は表示されません。",
+)
 # Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
 # the note. Open WebUI's chat CSS draws `strong` at weight 500, which a Japanese font without a
 # medium face (Yu Gothic UI, Meiryo) draws regular, and browsers synthesize bold from 600 alone;
@@ -314,7 +318,7 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
         line = await asyncio.to_thread(_note_line, note, metadata) if note else ""
     except Exception:
         line = ""
-    return _rewrite(body, FAIL_TEXT + line)
+    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)
 
 
 class Filter:
@@ -494,7 +498,7 @@ class Filter:
             interpretation = verdict.interpretation_ja if japanese else verdict.interpretation
             # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
             note_line = await asyncio.to_thread(_note_line, note, __metadata__) if note else ""
-            return _rewrite(body, f"{PASS_TEXT}\n\n{interpretation}{note_line}")
+            return _rewrite(body, f"{PASS_TEXTS[japanese]}\n\n{interpretation}{note_line}")
         except Exception:
             # Open WebUI swallows an outlet exception and keeps the model's reply, a forged pass
             # included (`utils/filter.py`, `utils/middleware.py`): any fault fails closed.

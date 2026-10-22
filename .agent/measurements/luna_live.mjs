@@ -18,8 +18,9 @@ const [browserURL, webuiURL, casesPath, attemptsText, outDir, only] = process.ar
 if (!outDir) {
   throw new Error("usage: luna_live.mjs <browser-url> <webui-url> <cases.json> <attempts> <out-dir> [<id-regex>]");
 }
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 const cases = JSON.parse(readFileSync(casesPath, "utf8")).cases.filter(
   (c) => !only || new RegExp(only).test(c.id),
@@ -86,7 +87,11 @@ function summarize(state) {
     .filter((url) => url.startsWith("data:image/png;base64,"))
     .map((url) => sha256(Buffer.from(url.slice("data:image/png;base64,".length), "base64")));
   const content = String(state.content ?? "");
-  const verdict = content.startsWith(PASS) ? "pass" : content === FAIL ? "fail" : "other";
+  const verdict = PASS_TEXTS.some((text) => content.startsWith(text))
+    ? "pass"
+    : FAIL_TEXTS.includes(content)
+      ? "fail"
+      : "other";
   return {
     done: state.done,
     verdict,
@@ -103,7 +108,7 @@ function summarize(state) {
   };
 }
 
-const settled = (text) => text.includes(PASS) || text.includes(FAIL);
+const settled = (text) => [...PASS_TEXTS, ...FAIL_TEXTS].some((verdict) => text.includes(verdict));
 for (const item of cases) {
   for (let n = 1; n <= attempts; n += 1) {
     const recordPath = join(outDir, `${item.id}-${n}.json`);
@@ -142,15 +147,14 @@ for (const item of cases) {
       await page.waitForFunction(() => location.pathname.startsWith("/c/"), { timeout: 120000 });
       record.chat_id = new URL(page.url()).pathname.split("/")[2];
       await page.waitForFunction(
-        (pass, fail) => {
+        (verdicts) => {
           const text = document.body.innerText;
-          return text.includes(pass) || text.includes(fail) || /Error|error/.test(
+          return verdicts.some((verdict) => text.includes(verdict)) || /Error|error/.test(
             [...document.querySelectorAll(".chat-assistant")].at(-1)?.innerText ?? "",
           );
         },
         { timeout: 600000 },
-        PASS,
-        FAIL,
+        [...PASS_TEXTS, ...FAIL_TEXTS],
       );
       let before;
       for (let i = 0; i < 90; i += 1) {

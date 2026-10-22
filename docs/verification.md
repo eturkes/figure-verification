@@ -12,7 +12,9 @@ A language model writes a Python program that draws a chart with matplotlib. You
 program, unchanged, in the Python sandbox of Open WebUI (Pyodide). The verifier then reads the
 finished figure and decides whether the chart may appear. The reply shows the chart and `Figure
 verification passed` only when every check passes. Otherwise the reply shows `Figure verification
-failed, no image produced` and the reason.
+failed, no image produced` and the reason. When your last message contains Japanese kana, the reply
+shows these messages in Japanese: `図の検証に合格しました。` and
+`図の検証に合格しませんでした。画像は表示されません。`
 
 The verifier gives three kinds of assurance:
 

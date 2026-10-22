@@ -310,6 +310,8 @@ else
     "           The model writes a Python program. Your browser runs it, and the verifier" \
     "           checks the finished figure. A blocked figure shows:" \
     "           Figure verification failed, no image produced" \
+    "           For a Japanese prompt, it shows:" \
+    "           図の検証に合格しませんでした。画像は表示されません。" \
     "           Expect prompts 1, 3 and 5 to pass and prompts 2, 4 and 6 to stop the chart." \
     "           Recorded on an NVIDIA MX150 with Open WebUI 0.12.3: each prompt" \
     "           behaved so in 5 of 5 runs." \

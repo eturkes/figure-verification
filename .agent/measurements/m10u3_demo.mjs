@@ -24,8 +24,9 @@ const ARMS = {
   "ja-clinic-simple": ["ja_clinic_simple_prompt", "clinic_ja.csv"],
   "ja-clinic-misleading": ["ja_clinic_misleading_prompt", "clinic_ja.csv"],
 };
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese; the record keeps the verdict line itself.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 if (!Object.hasOwn(ARMS, arm) || !outDir) {
   throw new Error("usage: m10u3_demo.mjs <browser-url> <webui-url> <csv> <arm> <attempts> <out-dir>");
 }
@@ -96,9 +97,10 @@ function summarize(state) {
   const pngs = [...state.files.map((f) => f.url), ...state.dom_images.map((i) => i.src)]
     .filter((url) => url.startsWith("data:image/png;base64,"))
     .map((url) => sha256(Buffer.from(url.slice("data:image/png;base64,".length), "base64")));
-  const verdict = String(state.content ?? "").startsWith(PASS)
+  const content = String(state.content ?? "");
+  const verdict = PASS_TEXTS.some((text) => content.startsWith(text))
     ? "pass"
-    : state.content === FAIL
+    : FAIL_TEXTS.includes(content)
       ? "fail"
       : "other";
   return {
@@ -116,7 +118,7 @@ function summarize(state) {
   };
 }
 
-const settled = (text) => text.includes(PASS) || text.includes(FAIL);
+const settled = (text) => [...PASS_TEXTS, ...FAIL_TEXTS].some((verdict) => text.includes(verdict));
 for (let n = 1; n <= attempts; n += 1) {
   const record = { arm, attempt: n, prompt: PROMPT, dataset, csv_sha256: sha256(readFileSync(csvPath)) };
   const started = Date.now();
@@ -148,10 +150,9 @@ for (let n = 1; n <= attempts; n += 1) {
     await page.waitForFunction(() => location.pathname.startsWith("/c/"), { timeout: 120000 });
     record.chat_id = new URL(page.url()).pathname.split("/")[2];
     await page.waitForFunction(
-      (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+      (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
       { timeout: 600000 },
-      PASS,
-      FAIL,
+      [...PASS_TEXTS, ...FAIL_TEXTS],
     );
     let before;
     for (let i = 0; i < 60; i += 1) {
@@ -163,10 +164,9 @@ for (let n = 1; n <= attempts; n += 1) {
     record.before = summarize(before);
     await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForFunction(
-      (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+      (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
       { timeout: 120000 },
-      PASS,
-      FAIL,
+      [...PASS_TEXTS, ...FAIL_TEXTS],
     );
     await new Promise((r) => setTimeout(r, 2000));
     const after = await readback(record.chat_id);

@@ -12,7 +12,9 @@
 変更せずに Open WebUI の Python サンドボックス (Pyodide) で実行します。その後、検証器が完成した
 図を読み取り、グラフを表示してよいかを判断します。すべてのチェックに合格した場合に限り、返信に
 グラフと `Figure verification passed` が表示されます。それ以外の場合、返信には
-`Figure verification failed, no image produced` とその理由が表示されます。
+`Figure verification failed, no image produced` とその理由が表示されます。最後のメッセージに
+ひらがなまたはカタカナが含まれる場合、これらのメッセージは日本語の `図の検証に合格しました。` と
+`図の検証に合格しませんでした。画像は表示されません。` になります。
 
 検証器は、次の 3 種類の保証を提供します。
 

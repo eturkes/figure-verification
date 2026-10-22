@@ -17,7 +17,7 @@ from verifier.figure.description import parse_description
 from verifier.figure.judge import Passed, Sources, judge
 from webui.banner import load
 from webui.paste_in import checks
-from webui.paste_in.filter import PASS_TEXT
+from webui.paste_in.filter import PASS_TEXTS
 from webui.paste_in.reasons import REASONS
 
 root = Path(__file__).resolve().parents[2]
@@ -46,6 +46,6 @@ table = {
     "ran": checks.RAN,
     "no_lines": checks.NO_LINES,
     "reasons": REASONS,
-    "pass_text": f"{PASS_TEXT}\n\n{verdict.interpretation}",
+    "pass_text": f"{PASS_TEXTS[0]}\n\n{verdict.interpretation}",
 }
 Path(sys.argv[1]).write_text(json.dumps(table, ensure_ascii=False), encoding="utf-8")

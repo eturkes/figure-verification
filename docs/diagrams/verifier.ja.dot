@@ -47,7 +47,7 @@ digraph verifier {
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
   }
 
-  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + Figure verification passed</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + 図の検証に合格しました。</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
   fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。ステータス行にコード</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }

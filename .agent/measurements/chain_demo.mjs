@@ -19,8 +19,9 @@ const prompts = csvAt ? rest.slice(2) : rest;
 const USAGE = "usage: chain_demo.mjs <browser-url> <webui-url> <label> <attempts> <out-dir> [--csv <path>] <prompt>...";
 const attempts = Number.parseInt(attemptsText ?? "", 10);
 if (!outDir || !(attempts >= 1) || prompts.length === 0) throw new Error(USAGE);
-const PASS = "Figure verification passed";
-const FAIL = "Figure verification failed, no image produced";
+// Q81: a kana request reads the verdict in Japanese.
+const PASS_TEXTS = ["Figure verification passed", "図の検証に合格しました。"];
+const FAIL_TEXTS = ["Figure verification failed, no image produced", "図の検証に合格しませんでした。画像は表示されません。"];
 const PNG = "data:image/png;base64,";
 mkdirSync(outDir, { recursive: true });
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -78,10 +79,12 @@ async function replies(chatId) {
   );
 }
 
-const settled = (m) => m?.done && (String(m.content).startsWith(PASS) || m.content === FAIL);
+const verdictOf = (content) =>
+  PASS_TEXTS.some((text) => content.startsWith(text)) ? "pass" : FAIL_TEXTS.includes(content) ? "fail" : "other";
+const settled = (m) => m?.done && verdictOf(String(m.content)) !== "other";
 function summarize(m) {
   return {
-    verdict: String(m.content ?? "").startsWith(PASS) ? "pass" : m.content === FAIL ? "fail" : "other",
+    verdict: verdictOf(String(m.content ?? "")),
     content: m.content,
     file_pngs: m.pngs.length,
     png_sha256: m.pngs.map((u) => sha256(Buffer.from(u.slice(PNG.length), "base64"))),
@@ -142,10 +145,9 @@ for (let n = 1; n <= attempts; n += 1) {
     }
     await page.reload({ waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForFunction(
-      (pass, fail) => document.body.innerText.includes(pass) || document.body.innerText.includes(fail),
+      (verdicts) => verdicts.some((verdict) => document.body.innerText.includes(verdict)),
       { timeout: 120000 },
-      PASS,
-      FAIL,
+      [...PASS_TEXTS, ...FAIL_TEXTS],
     );
     await new Promise((r) => setTimeout(r, 2000));
     await page.screenshot({ path: join(outDir, `${label}-${n}-after.png`) });

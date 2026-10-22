@@ -205,7 +205,7 @@ server-side outlet. Use this direct probe instead of model generation:
 uv run --locked python - <<'PY'
 import httpx
 
-from webui.paste_in.filter import FAIL_TEXT
+from webui.paste_in.filter import FAIL_TEXTS
 from webui.settings import Settings
 
 settings = Settings.from_env()
@@ -240,16 +240,17 @@ with httpx.Client(base_url=settings.base_url, timeout=settings.request_timeout) 
         assert isinstance(result, str)
         return result
 
-    assert outlet("outlet-chart", chart) == FAIL_TEXT
-    assert outlet("outlet-prose", prose) == FAIL_TEXT
+    assert outlet("outlet-chart", chart) == FAIL_TEXTS[0]
+    assert outlet("outlet-prose", prose) == FAIL_TEXTS[0]
 
 print("outlet no-receipt chart/prose: PASS")
 PY
 ```
 
 This direct endpoint sends no backend tool receipt. It checks that both a fenced chart and plain
-prose receive the exact failure text. It does not test tool selection, the pass path, browser
-rendering, model generation, or persisted-chat behavior.
+prose receive the exact English failure text, because the probe sends no message with Japanese kana.
+It does not test tool selection, the pass path, browser rendering, model generation, or
+persisted-chat behavior.
 
 ## Operator inputs
 

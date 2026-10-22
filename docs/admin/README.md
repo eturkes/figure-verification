@@ -8,6 +8,8 @@ chat.
 - If the figure passes every check, the chat shows the chart and `Figure verification passed`.
 - If a check fails, the chat shows `Figure verification failed, no image produced`. A status line
   above that message states the reason.
+- If the user's last message contains Japanese kana, the chat shows these messages in Japanese:
+  `図の検証に合格しました。` and `図の検証に合格しませんでした。画像は表示されません。`
 
 ## What you install
 
@@ -111,7 +113,8 @@ states what the model changed (see [Model note](#model-note)).
 
 ## What the verdict means
 
-`Figure verification passed` means all of these statements are true:
+`Figure verification passed` (in Japanese, `図の検証に合格しました。`) means all of these statements
+are true:
 
 - The program drew one matplotlib figure, and every part of it belongs to a closed set of chart
   parts that the verifier checks.
@@ -122,8 +125,8 @@ states what the model changed (see [Model note](#model-note)).
 
 The pass message does not mean that the chart answers the question. The chart can show a different
 measure or a different grouping than the user wanted. Read the text below the chart. It states where
-the values come from. If the user's last message contains Japanese kana, that text is in Japanese. The pass
-message itself stays in English.
+the values come from. If the user's last message contains Japanese kana, that text and the pass
+message are in Japanese.
 
 The verifier trusts the browser, Pyodide, matplotlib and the pixels on the screen. It does not check
 them. It also trusts the chart program to be honest: the program runs before any check, in the same

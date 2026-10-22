@@ -3,8 +3,8 @@
 M19.5, less their word caps; `.claude/rules/human-facing.md`).
 
 English printable ASCII with no character the embed or a same-origin frame would read as markup;
-each Japanese title, cover, explanation, status line + UI word named below holds a kana letter
-(`CODE` + the mark labels exempt). Length is a review judgment, never a count.
+each Japanese title, cover, explanation, status line, verdict (Q81) + UI word named below holds a
+kana letter (`CODE` + the mark labels exempt). Length is a review judgment, never a count.
 """
 
 import unicodedata
@@ -12,6 +12,7 @@ import unicodedata
 import pytest
 
 from webui.paste_in import checks
+from webui.paste_in.filter import FAIL_TEXTS, PASS_TEXTS
 from webui.paste_in.reasons import REASONS
 
 _KANA = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
@@ -60,6 +61,13 @@ def test_ui_words_obey_the_law() -> None:
     for _glyph, labels in checks.MARKS.values():
         for language, text in enumerate(labels):
             _law(text, japanese=bool(language), kana=False)
+
+
+def test_q81_both_verdicts_obey_the_law_in_both_languages() -> None:
+    for pair in (PASS_TEXTS, FAIL_TEXTS):
+        assert len(pair) == 2
+        for language, text in enumerate(pair):
+            _law(text, japanese=bool(language))
 
 
 @pytest.mark.parametrize("reason", sorted(REASONS))
