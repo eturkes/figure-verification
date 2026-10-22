@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q82.1 nucllei sandbox reply (`.agent/contracts/q82.md` T9): exact reply types, a cut stdout.
+module = "nucllei_skill/run.py"
+tests = ["tests/test_nucllei_tool.py"]
+
+[[mutant]]
+id = "q82-timeout-unread"
+predicate = "a run past its limit names the timeout"
+kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[timed-out]"
+anchor = '''    if reply.get("timed_out") is True:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q82-cut-stdout-read"
+predicate = "a stdout the sandbox cut is not read"
+kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[cut]"
+anchor = '''    if reply.get("stdout_truncated") is not False or len(stdout) > MAX_REPLY:'''
+mutant = '''    if len(stdout) > MAX_REPLY:'''
+
+[[mutant]]
+id = "q82-unknown-cut-read"
+predicate = "a reply that does not say whether it was cut is not read"
+kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[cut-unknown]"
+anchor = '''    if reply.get("stdout_truncated") is not False or len(stdout) > MAX_REPLY:'''
+mutant = '''    if reply.get("stdout_truncated") is True or len(stdout) > MAX_REPLY:'''

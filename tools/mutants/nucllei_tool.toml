@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q82.1 nucllei tool (`.agent/contracts/q82.md` T5-T16): caller refusals, the stored human branch
+# as the source of request + files, last-name-wins, publish after prepare, the result bound, the note.
+module = "nucllei_skill/tool.py"
+tests = ["tests/test_nucllei_tool.py"]
+
+[[mutant]]
+id = "q82-delegated-unchecked"
+predicate = "a delegated session runs nothing"
+kills = "tests/test_nucllei_tool.py::test_q82_t6_a_refused_caller_runs_nothing[delegated]"
+anchor = '''            if isinstance(metadata, Mapping) and metadata.get("agent_session"):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "q82-user-unchecked"
+predicate = "no user id runs nothing"
+kills = "tests/test_nucllei_tool.py::test_q82_t6_a_refused_caller_runs_nothing[empty-user]"
+anchor = '''            if user_id is None:'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "q82-branch-ignored"
+predicate = "a stored branch, never the request body, names the files (T7)"
+kills = "tests/test_nucllei_tool.py::test_q82_t7_a_csv_an_inlet_stripped_from_the_body_still_binds_the_values"
+anchor = '''        stored = host.branch(chat_id, message_id, user_id)'''
+mutant = '''        stored = None'''
+
+[[mutant]]
+id = "q82-first-name-wins"
+predicate = "a later file of the same name replaces the earlier"
+kills = "tests/test_nucllei_tool.py::test_q82_t7_a_later_file_of_the_same_name_replaces_the_earlier"
+anchor = '''            found[attachment.name] = attachment'''
+mutant = '''            found.setdefault(attachment.name, attachment)'''
+
+[[mutant]]
+id = "q82-show-before-prepare"
+predicate = "everything a pass returns is built before its one display push (T10)"
+kills = "tests/test_nucllei_tool.py::test_q82_t10_a_fault_after_the_store_never_shows_a_pass"
+anchor = '''        result = _result(_bounded(None, evidence, PASSED, japanese=self.japanese))
+        _show(
+            self.display,
+            f"{PASS_TEXTS[language]}\n\n![{IMAGE_ALT[language]}](/api/v1/files/{file_id}/content)"
+            f"\n\n{interpretation}{note}",
+        )
+        return result'''
+mutant = '''        _show(
+            self.display,
+            f"{PASS_TEXTS[language]}\n\n![{IMAGE_ALT[language]}](/api/v1/files/{file_id}/content)"
+            f"\n\n{interpretation}{note}",
+        )
+        return _result(_bounded(None, evidence, PASSED, japanese=self.japanese))'''
+
+[[mutant]]
+id = "q82-result-unbounded"
+predicate = "the result fits the server's cap, listings dropped first (T12)"
+kills = "tests/test_nucllei_tool.py::test_q82_t12_the_result_fits_the_server_s_cap"
+anchor = '''        if len(text) <= room:'''
+mutant = '''        if True:'''
+
+[[mutant]]
+id = "q82-note-switch-ignored"
+predicate = "the admin's switch hides the note"
+kills = "tests/test_nucllei_tool.py::test_q82_t15_the_switch_off_hides_the_note"
+anchor = '''        self.note = note if isinstance(note, str) and valves.model_note else ""'''
+mutant = '''        self.note = note if isinstance(note, str) else ""'''
+
+[[mutant]]
+id = "q82-note-param-kept"
+predicate = "the switch off empties the note parameter in the spec (T5)"
+kills = "tests/test_nucllei_tool.py::test_q82_t5_no_file_and_the_note_switch"
+anchor = '''            if not self.valves.model_note:'''
+mutant = '''            if False:'''

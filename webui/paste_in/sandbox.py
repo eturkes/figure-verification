@@ -9,25 +9,15 @@ carries the reader and the program as base64, split wherever the encoding spells
 
 import base64
 import re
-from pathlib import Path
 from typing import Final
 
-from verifier.figure import reader
 from webui.paste_in import fonts
+from webui.paste_in.reader_text import reader_source
 
 _PLOTTING: Final = "mat" + "plotlib"
 # Seaborn sits in the bundle beside the stack and loads only for a program naming it: a word match
 # admits every import form, and a comment naming it costs one wheel from the instance.
 _SEABORN: Final = re.compile(r"\bseaborn\b")
-
-
-def reader_source() -> str:
-    """The reader's exact text: the paste-in keeps each embedded module's text, a checkout reads
-    the tracked file."""
-    embedded = getattr(reader, "__paste_in_source__", None)
-    if isinstance(embedded, str):
-        return embedded
-    return Path(reader.__file__).read_text(encoding="utf-8")
 
 
 def _payload(data: bytes) -> str:

@@ -12,7 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from webui.paste_in.filter import FAIL_TEXTS, FILTER_ID, PASS_TEXTS
+from webui.paste_in.filter import FILTER_ID
+from webui.paste_in.reply import FAIL_TEXTS, PASS_TEXTS
 from webui.settings import Settings
 
 _ROOT = Path(__file__).resolve().parents[1]

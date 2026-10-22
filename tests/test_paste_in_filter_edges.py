@@ -11,27 +11,28 @@ from verifier.figure.description import TAG
 from verifier.pysrc.budget import WorkBudgetExceededError
 from verifier.pysrc.errors import PysrcRefusalError
 from webui.paste_in import filter as outlet
+from webui.paste_in import reply
 from webui.paste_in.owui_files import UploadedFile
 
 _PNG = valid_png_uri()
 
 
 def test_a_second_png_anywhere_in_stdout_withholds() -> None:
-    assert outlet._png_uri(_PNG + "\nother output " + _PNG) is None
+    assert reply.png_uri(_PNG + "\nother output " + _PNG) is None
 
 
 def test_unrelated_data_words_leave_one_png() -> None:
-    assert outlet._png_uri("患者data: rendering started\n" + _PNG) == _PNG
-    assert outlet._png_uri("metadata: rendering started\n" + _PNG) == _PNG
+    assert reply.png_uri("患者data: rendering started\n" + _PNG) == _PNG
+    assert reply.png_uri("metadata: rendering started\n" + _PNG) == _PNG
 
 
 def test_a_png_inside_the_description_line_is_no_image() -> None:
-    assert outlet._png_uri(TAG + '{"x": "' + _PNG + '"}') is None
+    assert reply.png_uri(TAG + '{"x": "' + _PNG + '"}') is None
 
 
 def test_a_broken_png_is_no_image() -> None:
-    assert outlet._png_uri("data:image/png;base64,AAAA") is None
-    assert outlet._png_uri("data:image/png;base64,!!!!") is None
+    assert reply.png_uri("data:image/png;base64,AAAA") is None
+    assert reply.png_uri("data:image/png;base64,!!!!") is None
 
 
 def test_rewrite_creates_the_reply_when_none_exists() -> None:

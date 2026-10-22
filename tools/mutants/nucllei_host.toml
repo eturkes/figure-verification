@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q82.1 nucllei host door (`.agent/contracts/q82.md` T7, T8, T10): the owner check, the server
+# notice filter, a file record nucllei did not store.
+module = "nucllei_skill/host.py"
+tests = ["tests/test_nucllei_tool.py"]
+
+[[mutant]]
+id = "q82-foreign-file-read"
+predicate = "another user's file is no user data"
+kills = "tests/test_nucllei_tool.py::test_q82_t7_foreign_and_notice_files_are_no_user_data"
+anchor = '''    if record is None or not record.path or getattr(record, "user_id", None) != user_id:'''
+mutant = '''    if record is None or not record.path:'''
+
+[[mutant]]
+id = "q82-notice-is-human"
+predicate = "a server notice is not the user's request (T8)"
+kills = "tests/test_nucllei_tool.py::test_q82_t8_a_server_notice_is_not_the_user_s_request"
+anchor = '''    return not (isinstance(meta, Mapping) and meta.get("system_notice"))'''
+mutant = '''    return True'''
+
+[[mutant]]
+id = "q82-unstored-record-accepted"
+predicate = "a file record nucllei did not store publishes nothing (T10)"
+kills = "tests/test_nucllei_tool.py::test_q82_t10_an_unstored_file_record_publishes_nothing"
+anchor = '''    if record is None:'''
+mutant = '''    if False:'''

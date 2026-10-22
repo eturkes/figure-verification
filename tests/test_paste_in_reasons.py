@@ -69,4 +69,4 @@ def test_m22_the_kana_class_holds_exactly_the_kana_letters() -> None:
         character for character in every if unicodedata.name(character, "").startswith(_KANA)
     }
     assert len(letters) > 200
-    assert set(load("filter")._KANA_LETTER.findall(every)) == letters
+    assert set(load("reply").KANA_LETTER.findall(every)) == letters

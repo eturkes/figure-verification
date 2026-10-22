@@ -205,7 +205,7 @@ server-side outlet. Use this direct probe instead of model generation:
 uv run --locked python - <<'PY'
 import httpx
 
-from webui.paste_in.filter import FAIL_TEXTS
+from webui.paste_in.reply import FAIL_TEXTS
 from webui.settings import Settings
 
 settings = Settings.from_env()

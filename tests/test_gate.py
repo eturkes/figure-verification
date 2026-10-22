@@ -39,7 +39,14 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 _WEBUI_RUNTIME = _REPO_ROOT / "webui" / "runtime" / "pyproject.toml"
 
 # The shipped pair runs inside Open WebUI's interpreter: CPython 3.11 in the official image.
-_SHIPPED_GLOBS = ("src/verifier/**", "webui/paste_in/**", "paste-in/**", "webui/demo-paste-in/**")
+_SHIPPED_GLOBS = (
+    "src/verifier/**",
+    "webui/paste_in/**",
+    "paste-in/**",
+    "webui/demo-paste-in/**",
+    "nucllei_skill/**",
+    "llens/**",
+)
 
 # Hand-stated, in the order tools/gate.sh runs them. Dropping a stage from the script must fail
 # here rather than silently shrink the gate.
@@ -357,4 +364,6 @@ def test_g16_shipped_sources_are_checked_at_the_image_python() -> None:
     assert len(shipped) == 1, f"3.11 mypy pass missing: {runs}"
     words = shipped[0]
     assert words[words.index("--python-version") + 1] == "3.11"
-    assert {"src/verifier", "webui/paste_in"} <= set(words), f"3.11 pass narrowed: {words}"
+    assert {"src/verifier", "webui/paste_in", "nucllei_skill"} <= set(words), (
+        f"3.11 pass narrowed: {words}"
+    )

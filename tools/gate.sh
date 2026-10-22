@@ -89,12 +89,12 @@ audit_locks() {
 }
 
 # The shipped pair runs in Open WebUI's own interpreter, CPython 3.11 in the official image
-# (M21.2 F11). The bare run holds the repository at the project's 3.14; the second pass re-reads
+# (M21.2 F11), and so does the nucllei tool (its image: python:3.11-slim-bookworm, Q82). The bare run holds the repository at the project's 3.14; the second pass re-reads
 # the shipped sources against 3.11 syntax + stdlib, in its own cache so the two never evict.
 type_check() {
     local bare_rc=0 shipped_rc=0
     uv run --locked mypy || bare_rc=$?
-    uv run --locked mypy --python-version 3.11 --cache-dir .mypy_cache/py311 src/verifier webui/paste_in || shipped_rc=$?
+    uv run --locked mypy --python-version 3.11 --cache-dir .mypy_cache/py311 src/verifier webui/paste_in nucllei_skill || shipped_rc=$?
     printf 'shipped-sources py3.11 types rc=%d\n' "$shipped_rc"
     if [ "$bare_rc" -ne 0 ] || [ "$shipped_rc" -ne 0 ]; then
         return 1

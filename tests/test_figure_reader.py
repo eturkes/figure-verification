@@ -10,6 +10,7 @@ import io
 from pathlib import Path
 from typing import cast
 
+import matplotlib as mpl
 import pytest
 
 from verifier.figure import reader
@@ -327,10 +328,14 @@ def test_p4_hist_pie_and_band_records() -> None:
         1,
     )
     pie = _describe(_PLT + "plt.pie([1, 3], labels=['a', 'b'])\n").figures[0].axes[0]
+    # matplotlib 3.11 adds every wedge before the labels, 3.10 interleaves them (Q82: the nucllei
+    # sandbox draws with 3.11, the Open WebUI bundle with 3.10).
+    major_minor = tuple(int(part) for part in mpl.__version__.split(".")[:2])
+    wedges, texts = ((0, 1), (2, 3)) if major_minor >= (3, 11) else ((0, 2), (1, 3))
     assert [(p.values, p.normalize, p.wedges, p.texts) for p in pie.pies] == [
-        ((1.0, 3.0), True, (0, 2), (1, 3))
+        ((1.0, 3.0), True, wedges, texts)
     ]
-    assert [pie.artists[i].geometry for i in (1, 3)] == [TextGeometry("a"), TextGeometry("b")]
+    assert [pie.artists[i].geometry for i in texts] == [TextGeometry("a"), TextGeometry("b")]
     wedge = pie.artists[0].geometry
     assert isinstance(wedge, WedgeGeometry)
     assert (wedge.theta1, wedge.theta2, wedge.r) == (0.0, 90.0, 1.0)

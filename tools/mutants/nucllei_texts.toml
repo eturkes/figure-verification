@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Q82.1 nucllei result flags (`.agent/contracts/q82.md` T11): who can fix a block, what to try next.
+module = "nucllei_skill/texts.py"
+tests = ["tests/test_nucllei_tool.py"]
+
+[[mutant]]
+id = "q82-fatal-as-failure"
+predicate = "a protocol or store fault is fatal"
+kills = "tests/test_nucllei_tool.py::test_q82_t11_the_error_kind_and_next_step_tables"
+anchor = '''    if reason in _FATAL:'''
+mutant = '''    if False:'''
+
+[[mutant]]
+id = "q82-no-retry"
+predicate = "a sandbox fault earns one retry"
+kills = "tests/test_nucllei_tool.py::test_q82_t11_the_error_kind_and_next_step_tables"
+anchor = '''    if reason in _RETRIED:'''
+mutant = '''    if False:'''

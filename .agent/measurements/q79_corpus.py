@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 
 from verifier.figure.inert import visible
-from webui.paste_in.filter import PASS_TEXTS, _note_line
+from webui.paste_in.filter import _note_line
+from webui.paste_in.reply import PASS_TEXTS
 
 # What each language's label shows, and the element that draws it (Q80: KaTeX bold in Japanese).
 LABELS = (("Model note:", "strong"), ("モデルの注記:", "katex"))

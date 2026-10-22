@@ -19,7 +19,7 @@ import pytest
 
 from verifier.figure import reader
 from verifier.figure.description import Text, parse_description
-from webui.paste_in import fonts, sandbox
+from webui.paste_in import fonts, reader_text, sandbox
 
 _PLT = "import matplotlib.pyplot as plt\n"
 # OWUI 0.12.3's package-detector entry for the plotting library, the form every release since 0.10.2
@@ -105,9 +105,9 @@ def test_u3_the_font_is_written_then_registered(
 def test_u3_the_shipped_reader_is_the_tracked_reader(monkeypatch: pytest.MonkeyPatch) -> None:
     """A checkout ships the tracked file; a paste-in ships the text its loader kept."""
     tracked = Path(reader.__file__).read_text(encoding="utf-8")
-    assert sandbox.reader_source() == tracked
+    assert reader_text.reader_source() == tracked
     monkeypatch.setattr(reader, "__paste_in_source__", "embedded text", raising=False)
-    assert sandbox.reader_source() == "embedded text"
+    assert reader_text.reader_source() == "embedded text"
     code = sandbox.wrapper_code("x = 1\n")
     encoded = base64.b64encode(b"embedded text").decode("ascii")
     assert repr(encoded) in code

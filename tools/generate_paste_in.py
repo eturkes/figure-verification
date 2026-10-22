@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Write the production paste-in artifacts, or check the committed ones against their sources.
+"""Write the generated artifacts, or check the committed ones against their sources.
 
-A bare run rewrites every artifact `webui.paste_in.bundle.ARTIFACTS` names. `--check` writes
-nothing and exits 1 naming each path whose committed bytes differ from a fresh render.
+A bare run rewrites every artifact `webui.paste_in.bundle.ARTIFACTS` + `TEXT_ARTIFACTS` name: the
+Open WebUI paste-in pairs and the nucllei skill (Q82). `--check` writes nothing and exits 1 naming
+each path whose committed bytes differ from a fresh render.
 
 `--check` is what makes the hand-fork ban enforceable rather than aspirational: the pasted artifact
 and the tracked sources are the same code by construction, and an edit made in the artifact is
@@ -20,13 +21,20 @@ from pathlib import Path
 # same entry through `pythonpath = ["tests", "."]`; a command-line run has to state it.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from webui.paste_in.bundle import ARTIFACTS, BundleError, render, repo_root
+from webui.paste_in.bundle import (
+    ARTIFACTS,
+    TEXT_ARTIFACTS,
+    BundleError,
+    render,
+    render_text,
+    repo_root,
+)
 
 
-def _artifact_text(module: str) -> str:
+def _artifact_text(module: str, *, text: bool = False) -> str:
     """Render one artifact, turning an unembeddable source into a loud non-zero exit."""
     try:
-        return render(module)
+        return render_text(module) if text else render(module)
     except BundleError as exc:
         sys.stderr.write(f"cannot generate {module}: {exc}\n")
         raise SystemExit(1) from exc
@@ -41,6 +49,10 @@ def main(argv: list[str]) -> int:
     root = repo_root()
     drifted: list[str] = []
     outputs = [(relative, _artifact_text(module)) for relative, module in sorted(ARTIFACTS.items())]
+    outputs += [
+        (relative, _artifact_text(module, text=True))
+        for relative, module in sorted(TEXT_ARTIFACTS.items())
+    ]
     for relative, text in outputs:
         target = root / relative
         if check:
@@ -59,7 +71,7 @@ def main(argv: list[str]) -> int:
         )
         return 1
     if check:
-        sys.stdout.write(f"{len(ARTIFACTS)} artifact(s) current\n")
+        sys.stdout.write(f"{len(outputs)} artifact(s) current\n")
     return 0
 
 

@@ -17,8 +17,8 @@ from verifier.figure.description import parse_description
 from verifier.figure.judge import Passed, Sources, judge
 from webui.banner import load
 from webui.paste_in import checks
-from webui.paste_in.filter import PASS_TEXTS
 from webui.paste_in.reasons import REASONS
+from webui.paste_in.reply import PASS_TEXTS
 
 root = Path(__file__).resolve().parents[2]
 arm = next(arm for arm in load().arms if arm.id == "simple")

@@ -108,8 +108,8 @@ mutant = '''    marked = site'''
 id = "m20-elided-program-lines"
 predicate = "the elided count is the listed set's lines the caps drop"
 kills = "tests/test_paste_in_checks.py::test_m20_2_elided_counts_related_lines_the_caps_drop"
-anchor = '''    if len(pool) > len(taken):
-        elided = ELIDED[language].format(n=len(pool) - len(taken))'''
+anchor = '''    if selection.pool > len(taken):
+        elided = ELIDED[language].format(n=selection.pool - len(taken))'''
 mutant = '''    if len(lines) > len(taken):
         elided = ELIDED[language].format(n=len(lines) - len(taken))'''
 

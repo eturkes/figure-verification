@@ -20,6 +20,7 @@ rewriting the quotes and breaking `--check` on the next gate run.
 """
 
 import ast
+import importlib
 import sys
 from pathlib import Path
 
@@ -28,6 +29,9 @@ FILTER_ARTIFACT = "paste-in/figure_verification_filter.py"
 # The demo's own pair (Q37): production + demo ship separate files; the launcher provisions these.
 DEMO_TOOL_ARTIFACT = "webui/demo-paste-in/figure_verification_tool.py"
 DEMO_FILTER_ARTIFACT = "webui/demo-paste-in/figure_verification_filter.py"
+# The nucllei skill (Q82): llens' own layout, so an admin copies `llens/` over a llens checkout.
+NUCLLEI_TOOL_ARTIFACT = "llens/nucllei/tools/figure_verification.py"
+NUCLLEI_SKILL_ARTIFACT = "llens/nucllei/skills/figure-verification.md"
 
 # Each root names the one class Open WebUI discovers after its source closure loads.
 ARTIFACTS: dict[str, str] = {
@@ -35,25 +39,37 @@ ARTIFACTS: dict[str, str] = {
     FILTER_ARTIFACT: "webui.paste_in.filter",
     DEMO_TOOL_ARTIFACT: "webui.paste_in.demo_tool",
     DEMO_FILTER_ARTIFACT: "webui.paste_in.demo_filter",
+    NUCLLEI_TOOL_ARTIFACT: "nucllei_skill.tool",
 }
+# Each text artifact names the module whose `artifact_text()` returns the file's bytes.
+TEXT_ARTIFACTS: dict[str, str] = {NUCLLEI_SKILL_ARTIFACT: "nucllei_skill.skill"}
 _EXPORTS = {
     "webui.paste_in.tool": "Tools",
     "webui.paste_in.filter": "Filter",
     "webui.paste_in.demo_tool": "Tools",
     "webui.paste_in.demo_filter": "Filter",
+    "nucllei_skill.tool": "Tools",
 }
 
 # First-party root package -> the repo-relative directory holding it.
-_PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": ""}
+_PACKAGE_ROOTS: dict[str, str] = {"verifier": "src", "webui": "", "nucllei_skill": ""}
 
 # `pyproject.toml` [tool.ruff] line-length. The artifact is linted like any other tracked source,
 # so a source line that would overflow here must abort generation rather than fail the gate.
 _LINE_LIMIT = 100
-# The third-party imports an artifact may carry: Open WebUI imports itself into the process
-# that runs the pasted file (CSV ruling), so it is inside the dependency envelope by definition;
+# The third-party imports an artifact may carry, per host: the host imports itself into the
+# process that runs the file (CSV ruling), so it is inside the dependency envelope by definition;
 # its own dependency `pydantic` builds the admin `Valves` (the tool's Q43 aliases, the filter's U2
-# font path). The filter's Japanese font cut is the standard library's (Q74).
-_ADMITTED_IMPORT_ROOTS = frozenset({"open_webui", "pydantic"})
+# font path). The filter's Japanese font cut is the standard library's (Q74). A file reaching the
+# other host's package fails generation.
+_OPEN_WEBUI_ROOTS = frozenset({"open_webui", "pydantic"})
+_NUCLLEI_ROOTS = frozenset({"nucllei", "pydantic"})
+
+
+def admitted_import_roots(root: str) -> frozenset[str]:
+    """The third-party roots the artifact rooted at `root` may import."""
+    return _NUCLLEI_ROOTS if root.startswith("nucllei_skill.") else _OPEN_WEBUI_ROOTS
+
 
 _ASSIGNMENT = "_SOURCES[\"{name}\"] = r'''\n{source}'''\n"
 
@@ -250,14 +266,14 @@ def embedded_sources(text: str) -> dict[str, str]:
     return found
 
 
-def offending_import_roots(text: str) -> list[str]:
-    """Root packages a rendered artifact imports outside stdlib and the admitted image packages.
+def offending_import_roots(text: str, root: str = "webui.paste_in.tool") -> list[str]:
+    """Root packages a rendered artifact imports outside stdlib and its host's image packages.
 
     Scans the wrapper AND every embedded source, because an import inside a blob is invisible to a
     scan of the artifact's own AST. First-party roots are admitted: those modules are embedded, so
     the import resolves inside the artifact and reaches nothing outside it.
     """
-    admitted = sys.stdlib_module_names | _ADMITTED_IMPORT_ROOTS | _PACKAGE_ROOTS.keys()
+    admitted = sys.stdlib_module_names | admitted_import_roots(root) | _PACKAGE_ROOTS.keys()
     roots = import_roots(ast.parse(text))
     for source in embedded_sources(text).values():
         roots |= import_roots(ast.parse(source))
@@ -273,12 +289,34 @@ def render(root: str) -> str:
     except KeyError as exc:
         msg = f"{root!r} is not a paste-in root"
         raise BundleError(msg) from exc
-    text = _PREAMBLE + "\n".join(blobs) + _EPILOGUE.format(root=root, exported=exported)
-    offending = offending_import_roots(text)
+    text = _preamble(root) + "\n".join(blobs) + _EPILOGUE.format(root=root, exported=exported)
+    offending = offending_import_roots(text, root)
     if offending:
         msg = f"{root!r} reaches outside the dependency envelope: {', '.join(offending)}"
         raise BundleError(msg)
     return text
+
+
+def render_text(root: str) -> str:
+    """A text artifact's bytes: the named first-party module's `artifact_text()`."""
+    if root not in TEXT_ARTIFACTS.values():
+        msg = f"{root!r} is not a text artifact root"
+        raise BundleError(msg)
+    module_path(root)  # a tracked source, never an installed one
+    text = importlib.import_module(root).artifact_text()
+    if not isinstance(text, str):
+        msg = f"{root!r} artifact_text() returned {type(text).__name__}"
+        raise BundleError(msg)
+    return text
+
+
+def _preamble(root: str) -> str:
+    """The artifact's header: the nucllei tool carries llens `sync.py`'s frontmatter lines."""
+    if not root.startswith("nucllei_skill."):
+        return _PREAMBLE
+    from nucllei_skill.texts import TOOL_DESCRIPTION, TOOL_TITLE  # noqa: PLC0415 - generator only
+
+    return _NUCLLEI_PREAMBLE.format(title=TOOL_TITLE, description=TOOL_DESCRIPTION)
 
 
 _PREAMBLE = '''\
@@ -298,6 +336,32 @@ import sys
 import types
 
 _SOURCES: dict[str, str] = {}
+
+'''
+
+# llens `scripts/nucllei/sync.py` takes the tool row's name + description from the first docstring's
+# `key: value` lines, so no other line of it may open with a word and a colon.
+_NUCLLEI_PREAMBLE = '''\
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""Figure verification for nucllei (llens). GENERATED FILE -- do not edit.
+
+title: {title}
+description: {description}
+
+Copy this file to `nucllei/tools/figure_verification.py` of a llens checkout, beside the skill
+`nucllei/skills/figure-verification.md`, and push both with `make nuc-sync`. It imports the
+standard library and packages the nucllei image already carries -- `nucllei` and `pydantic` --
+and nothing else. Its one network call is nucllei's own sandbox request.
+
+Regenerate with `uv run --locked python tools/generate_paste_in.py` in the figure-verification
+repository; `--check` fails when this file and its sources disagree, so an edit made here is lost
+at the next gate run.
+"""
+
+import sys
+import types
+
+_SOURCES: dict[str, str] = {{}}
 
 '''
 

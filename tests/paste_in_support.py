@@ -41,6 +41,10 @@ class BundleAPI(Protocol):
 
     def embedded_sources(self, text: str) -> dict[str, str]: ...
 
+    def render_text(self, root: str) -> str: ...
+
+    def offending_import_roots(self, text: str, root: str = ...) -> list[str]: ...
+
 
 @dataclass(frozen=True, slots=True)
 class StoredFile:

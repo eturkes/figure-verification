@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The skill nucllei loads before `draw_figure` exists: when to draw, how, and the chart rules.
+
+Model-facing, in Japanese (Q82 ruling 7). The guidance may state every rule the verifier checks
+(ruling 8); it never moves the boundary, because the tool judges the finished figure whatever the
+model wrote. The text is the generated file `llens/nucllei/skills/figure-verification.md`;
+llens `scripts/nucllei/sync.py` reads its one-line frontmatter (`parse_md_frontmatter`) and
+sends the body after it as the skill content. `tool_ids` mounts the tool on `load_skill`, so the
+tool never sits in a preset's `toolIds` (ruling 1); `auto_load_content_types` loads the skill
+for an attached CSV (ruling 8) — Chromium on Windows with Excel names a `.csv` upload
+`application/vnd.ms-excel`, which also matches `.xls`, and an unreadable file blocks nothing.
+"""
+
+from typing import Final
+
+SKILL_ID: Final = "figure-verification"
+TOOL_ID: Final = "figure_verification"
+SKILL_TITLE: Final = "Figure Verification"
+SKILL_DESCRIPTION: Final = (
+    "データをグラフ・図にするときにロードする (CSV の添付でも自動でロードされる)。"
+    "『グラフにして』『図にして』『棒グラフ』『折れ線』『円グラフ』『散布図』『ヒストグラム』"
+    "『可視化』『plot』『chart』のように図を求められたら、run_python ではなく draw_figure で描く。"
+    "draw_figure は描いた図を検証器でチェックし、合格した図だけをユーザーに表示する。"
+)
+CONTENT_TYPES: Final = ("text/csv", "application/vnd.ms-excel")
+
+BODY: Final = """\
+# 検証付きのグラフ (draw_figure)
+
+グラフ・図は draw_figure で描く。draw_figure は完全な Python プログラムを 1 つ受け取り、\
+ユーザーのサンドボックスで変更せずに実行して、できた matplotlib の図を検証器がチェックする。\
+チェックに合格した図だけが、判定と一緒にユーザーの画面に表示される。\
+グラフを run_python で描いたり、fetch_from_workspace で見せたりしない。
+
+## プログラムの書き方
+
+- 添付の CSV ファイルは /workspace/imports/<ファイル名> にある。pandas の read_csv で読む。\
+このターンのパスと列名は draw_figure の説明に出る。
+- 図は matplotlib で 1 つだけ描く。パネルを並べるときは plt.subplots を使う。pandas の plot と \
+seaborn も使える。
+- 描く値は、添付の CSV の値か、依頼文に書かれた数値だけにする。そのままの値か、グループごとの\
+合計・平均・最小・最大・行数のどれか 1 つにする。累計、合計に対する割合や百分率、前の点からの差、\
+2 乗、2 つの列の比・差・積・和 (行ごと、またはグループごと) も使える。
+- 時期やカテゴリごとに 1 つの値を描く依頼では、その列で pandas の groupby を使い、\
+グループごとに 1 つの値を計算する。合計なら sum、平均なら mean、最大・最小なら max・min を使う。\
+元の行ではなく、集計した値を描く。
+- 依頼文が列名を書いていれば、その列を描く。タイトル、軸ラベル、凡例には、描いた列と集計だけを書く。
+- 添付ファイルが無いときは、依頼文に書かれた数値とラベルだけを描く。
+
+## 図の規則
+
+- 棒と塗りつぶした面はゼロから始める (積み上げは下の棒や面の上から)。値の軸にゼロを含める。
+- 軸は線形にし、反転しない。対数軸にするときは、軸ラベルかタイトルに「対数」または log と書く。
+- すべての点、棒、基準線を軸の範囲の中に収める。
+- 1 つのパネルに軸は 1 つにする (twinx などで 2 つ目の軸を作らない)。パネルを重ねない。
+- 系列が 2 つ以上あるときは、凡例ですべての系列に名前を付ける。
+- マーカーの大きさや色を変えるときは、大きさの凡例 (legend_elements("sizes")) やカラーバーを付ける。
+- seaborn の棒グラフと折れ線グラフには errorbar=None を渡す。ヒストグラムは plt.hist で描く。
+- 画像 (imshow など)、極座標や 3D の軸、エラーバー、箱ひげ図は使わない。\
+検証器がチェックできないので、表示されない。
+- 目盛りのラベルは matplotlib に任せる。位置と合わないラベルを付けない。
+
+## 依頼が規則に反するとき
+
+依頼がそのままでは規則に反するもの (例: 縦軸を 30000 から始める) を求めたら、\
+規則に沿った図を描き、draw_figure の note に、依頼が求めたことと、図が代わりに示すものを書く。\
+note は日本語の依頼なら日本語で、それ以外の依頼なら英語で書く。\
+依頼どおりに描けるときは note を空にする。
+
+## 結果の扱い
+
+- 合格した図、判定、解釈は、draw_figure がユーザーの画面に表示する。\
+画像を本文に貼り直したり、合否を言い直したりしない。
+- 不合格のときは画像が表示されない。draw_figure の結果に理由とチェック項目がある。\
+依頼が規則に反していなければ、理由に沿ってプログラムを直して呼び直してよい (2 回まで)。\
+直せないときは、図が表示されなかったことと理由をユーザーに伝える。
+- 検証器が確かめるのは、図が規則を守っていることと、描いた値がユーザーのデータであることだけ。\
+図が質問に答えているかは確かめない。
+"""
+
+
+def skill_markdown() -> str:
+    """The skill file: llens frontmatter (one-line values), then the body sync sends as content."""
+    return (
+        "---\n"
+        f"title: {SKILL_TITLE}\n"
+        f'description: "{SKILL_DESCRIPTION}"\n'
+        f"tool_ids: {TOOL_ID}\n"
+        f"auto_load_content_types: {', '.join(CONTENT_TYPES)}\n"
+        "---\n\n"
+        f"{BODY}"
+    )
+
+
+def artifact_text() -> str:
+    """The generated skill file's bytes (`tools/generate_paste_in.py`)."""
+    return skill_markdown()

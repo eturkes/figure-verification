@@ -35,6 +35,8 @@ _EXPECTED_ARTIFACTS = {
     _FILTER_ARTIFACT: "webui.paste_in.filter",
     _DEMO_TOOL_ARTIFACT: "webui.paste_in.demo_tool",
     _DEMO_FILTER_ARTIFACT: "webui.paste_in.demo_filter",
+    # Q82: the nucllei skill's tool, in llens' own layout (its skill text is a TEXT_ARTIFACTS file).
+    "llens/nucllei/tools/figure_verification.py": "nucllei_skill.tool",
 }
 
 
@@ -48,7 +50,8 @@ def _demo_filter_source() -> str:
 
 
 def test_f8_bundle_declares_exactly_the_two_generated_paste_pairs() -> None:
-    """F8: one tool and one outlet filter per pair, production + demo, and no fifth target."""
+    """F8: one tool and one outlet filter per pair, production + demo, the nucllei tool (Q82),
+    and no sixth target."""
     bundle = load_bundle()
     assert bundle.ARTIFACTS == _EXPECTED_ARTIFACTS
     for relative, root in _EXPECTED_ARTIFACTS.items():

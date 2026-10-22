@@ -10,8 +10,9 @@ literals mutated, one copied tree per mutant, per-mutant JSON. Unlike `tools/mut
 Steps, every one fail-closed:
 1. Stage = a copy of the tracked + untracked-unignored files: the run reads the working tree, never
    `.git`, venvs or model weights.
-2. Scope = every file of the repo's packages (`verifier`, `webui`, `model_backend`) holding a line
-   the test executes, from one coverage run in the stage; a file measured outside it aborts.
+2. Scope = every file of the repo's packages (`verifier`, `webui`, `model_backend`,
+   `nucllei_skill`) holding a line the test executes, from one coverage run in the stage; a
+   file measured outside it aborts.
 3. poodle mutates the scope inside the stage. Each trial runs the one node from its own copied tree
    behind a canary plugin that exits 3 when a scope module imports from anywhere else: the editable
    `.pth` points at the primary `src`, and a trial over those bytes would credit unmutated code.
@@ -35,8 +36,8 @@ from pathlib import Path
 from typing import Any
 
 _ROOT = Path(__file__).resolve().parent.parent
-_PACKAGES = ("verifier", "webui", "model_backend")
-_ROOTS = ("src/verifier/", "webui/", "model_backend/")
+_PACKAGES = ("verifier", "webui", "model_backend", "nucllei_skill")
+_ROOTS = ("src/verifier/", "webui/", "model_backend/", "nucllei_skill/")
 _CANARY = "_mutation_canary"
 _CANARY_SOURCE = '''"""Exit 3 when a scope module imports from outside this trial's copied tree."""
 

@@ -832,6 +832,8 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
         frozenset({"torch", "torch.*"}),
         frozenset({"transformers", "transformers.*"}),
         frozenset({"open_webui", "open_webui.*"}),
+        # Q82: nucllei resolves inside its own image alone; `nucllei_skill/host.py` imports it.
+        frozenset({"nucllei", "nucllei.*"}),
     }
 
 

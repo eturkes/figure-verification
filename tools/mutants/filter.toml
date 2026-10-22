@@ -158,13 +158,6 @@ mutant = '''            if False:
                 return await fail("no_image")'''
 
 [[mutant]]
-id = "m19-png-in-description"
-predicate = "the description line is never the PNG line"
-kills = "tests/test_paste_in_outlet.py::test_o1_a_description_naming_data_keeps_its_png"
-anchor = '''        if not line.startswith(TAG) and _DATA_PREFIX.search(line)'''
-mutant = '''        if _DATA_PREFIX.search(line)'''
-
-[[mutant]]
 id = "m19-publish-unguarded"
 predicate = "a failed files event blocks"
 kills = "tests/test_paste_in_outlet.py::test_o1_files_emit_failure_blocks_instead_of_publishing_pass"
@@ -186,13 +179,6 @@ predicate = "a kana request reads the Japanese interpretation"
 kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
 anchor = '''        interpretation = verdict.interpretation_ja if japanese else verdict.interpretation'''
 mutant = '''        interpretation = verdict.interpretation'''
-
-[[mutant]]
-id = "m19-halfwidth-kana"
-predicate = "half-width katakana marks a Japanese request"
-kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
-anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
-mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
 
 [[mutant]]
 id = "m19-status-on-pass"
@@ -348,41 +334,11 @@ mutant = '''            if False:
                 return await fail("sandbox_not_isolated")'''
 
 [[mutant]]
-id = "m22-kana-name-scan"
-predicate = "the language choice runs in the regex engine and names no character (M22.1 F1)"
-kills = "tests/test_paste_in_reasons.py::test_m22_the_language_choice_names_no_character"
-anchor = '''    return isinstance(content, str) and _KANA_LETTER.search(content) is not None'''
-mutant = '''    return isinstance(content, str) and any(
-        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in content
-    )'''
-
-[[mutant]]
-id = "m22-kana-block-dropped"
-predicate = "the kana class holds every kana letter (M22.1 F1)"
-kills = "tests/test_paste_in_reasons.py::test_m22_the_kana_class_holds_exactly_the_kana_letters"
-anchor = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))'''
-mutant = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0))'''
-
-[[mutant]]
 id = "m22-reply-unbounded"
 predicate = "a reply longer than the reader writes refuses before decoding (M22.1 F4)"
 kills = "tests/test_paste_in_outlet.py::test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding"
 anchor = '''            if len(stdout) > _MAX_REPLY:'''
 mutant = '''            if False:'''
-
-[[mutant]]
-id = "m22-reply-bound-short"
-predicate = "the longest reply the reader writes still decodes (M22.1 F4)"
-kills = "tests/test_paste_in_outlet.py::test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding"
-anchor = '''_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1'''
-mutant = '''_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS'''
-
-[[mutant]]
-id = "m22-png-uncapped"
-predicate = "a PNG line past the reader's cap is no image (M22.1 F4)"
-kills = "tests/test_paste_in_outlet.py::test_m22_a_png_line_past_the_reader_s_cap_is_no_image"
-anchor = '''        or len(lines[0]) > MAX_PNG_CHARACTERS'''
-mutant = '''        or False'''
 
 [[mutant]]
 id = "m22-decode-on-loop"
@@ -438,41 +394,6 @@ anchor = '''            note = receipt.note if self.valves.model_note else ""'''
 mutant = '''            note = receipt.note'''
 
 [[mutant]]
-id = "q78-blank-note-shown"
-predicate = "a blank note adds nothing"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_blank_note_adds_nothing"
-anchor = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown else ""'''
-mutant = '''        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}"'''
-
-[[mutant]]
-id = "q78-label-not-localized"
-predicate = "a kana request reads the Japanese label"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
-anchor = '''{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown'''
-mutant = '''{NOTE_LABELS[0]} {prose(shown)}" if shown'''
-
-[[mutant]]
-id = "q79-note-not-escaped"
-predicate = "the note shows as escaped plain text"
-kills = "tests/test_paste_in_note.py::test_q79_a_hostile_note_stays_escaped_text_on_one_line"
-anchor = '''{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown'''
-mutant = '''{NOTE_LABELS[_japanese(metadata)]} {shown}" if shown'''
-
-[[mutant]]
-id = "q79-label-not-bold"
-predicate = "the label shows in bold"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
-anchor = '''NOTE_LABELS: Final = ("**Model note:**",'''
-mutant = '''NOTE_LABELS: Final = ("Model note:",'''
-
-[[mutant]]
-id = "q78-note-not-stripped"
-predicate = "the shown note is stripped"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
-anchor = '''        shown = note.strip()'''
-mutant = '''        shown = note'''
-
-[[mutant]]
 id = "q78-fail-drops-note"
 predicate = "a failed reply shows the note"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
@@ -518,13 +439,6 @@ anchor = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])'''
 mutant = '''NOTE_REQUEST.format(language=NOTE_LANGUAGES[0])'''
 
 [[mutant]]
-id = "q80-ja-label-strong"
-predicate = "the Japanese label is KaTeX bold, since Open WebUI's `strong` draws regular in Japanese"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
-anchor = '''"$\\footnotesize\\textbf{モデルの注記:}$")'''
-mutant = '''"**モデルの注記:**")'''
-
-[[mutant]]
 id = "q81-pass-always-english"
 predicate = "a kana request reads the Japanese pass verdict"
 kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[pass-True]"
@@ -556,12 +470,5 @@ mutant = '''    return _rewrite(body, FAIL_TEXTS[1] + line)'''
 id = "q81-unread-message-raises"
 predicate = "a user message that is no dict reads as English, never a raise"
 kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[message-str]"
-anchor = '''    content = message.get("content") if isinstance(message, dict) else None'''
-mutant = '''    content = message.get("content") if message is not None else None'''
-
-[[mutant]]
-id = "q81-unread-content-raises"
-predicate = "content that is no string reads as English, never a raise"
-kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[content-list]"
-anchor = '''    return isinstance(content, str) and _KANA_LETTER.search(content) is not None'''
-mutant = '''    return content is not None and _KANA_LETTER.search(content) is not None'''
+anchor = '''    return is_japanese(message.get("content") if isinstance(message, dict) else None)'''
+mutant = '''    return is_japanese(message.get("content") if message is not None else None)'''

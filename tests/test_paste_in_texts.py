@@ -12,8 +12,8 @@ import unicodedata
 import pytest
 
 from webui.paste_in import checks
-from webui.paste_in.filter import FAIL_TEXTS, PASS_TEXTS
 from webui.paste_in.reasons import REASONS
+from webui.paste_in.reply import FAIL_TEXTS, PASS_TEXTS
 
 _KANA = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
 

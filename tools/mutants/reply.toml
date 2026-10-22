@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# The reply parts both targets share (moved from `filter.py`, Q82): the description line is never the
+# PNG line, the reader's reply bound + PNG cap (M22.1 F4), the kana class (M22.1 F1; Q81 totality),
+# the model's note line (Q78-Q80). Each mutant names one red reached through the Open WebUI outlet.
+module = "webui/paste_in/reply.py"
+tests = ["tests/test_paste_in_outlet.py", "tests/test_paste_in_reasons.py", "tests/test_paste_in_note.py"]
+
+[[mutant]]
+id = "m19-png-in-description"
+predicate = "the description line is never the PNG line"
+kills = "tests/test_paste_in_outlet.py::test_o1_a_description_naming_data_keeps_its_png"
+anchor = '''        if not line.startswith(TAG) and _DATA_PREFIX.search(line)'''
+mutant = '''        if _DATA_PREFIX.search(line)'''
+
+[[mutant]]
+id = "m19-halfwidth-kana"
+predicate = "half-width katakana marks a Japanese request"
+kills = "tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation"
+anchor = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")'''
+mutant = '''_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER")'''
+
+[[mutant]]
+id = "m22-kana-name-scan"
+predicate = "the language choice runs in the regex engine and names no character (M22.1 F1)"
+kills = "tests/test_paste_in_reasons.py::test_m22_the_language_choice_names_no_character"
+anchor = '''    return isinstance(text, str) and KANA_LETTER.search(text) is not None'''
+mutant = '''    return isinstance(text, str) and any(
+        unicodedata.name(character, "").startswith(_KANA_LETTERS) for character in text
+    )'''
+
+[[mutant]]
+id = "m22-kana-block-dropped"
+predicate = "the kana class holds every kana letter (M22.1 F1)"
+kills = "tests/test_paste_in_reasons.py::test_m22_the_kana_class_holds_exactly_the_kana_letters"
+anchor = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))'''
+mutant = '''_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0))'''
+
+[[mutant]]
+id = "m22-reply-bound-short"
+predicate = "the longest reply the reader writes still decodes (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_reply_longer_than_the_reader_writes_refuses_before_decoding"
+anchor = '''MAX_REPLY: Final = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1'''
+mutant = '''MAX_REPLY: Final = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS'''
+
+[[mutant]]
+id = "m22-png-uncapped"
+predicate = "a PNG line past the reader's cap is no image (M22.1 F4)"
+kills = "tests/test_paste_in_outlet.py::test_m22_a_png_line_past_the_reader_s_cap_is_no_image"
+anchor = '''        or len(lines[0]) > MAX_PNG_CHARACTERS'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "q78-blank-note-shown"
+predicate = "a blank note adds nothing"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_blank_note_adds_nothing"
+anchor = '''        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""'''
+mutant = '''        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}"'''
+
+[[mutant]]
+id = "q78-label-not-localized"
+predicate = "a kana request reads the Japanese label"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''{NOTE_LABELS[japanese]} {prose(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[0]} {prose(shown)}" if shown'''
+
+[[mutant]]
+id = "q79-note-not-escaped"
+predicate = "the note shows as escaped plain text"
+kills = "tests/test_paste_in_note.py::test_q79_a_hostile_note_stays_escaped_text_on_one_line"
+anchor = '''{NOTE_LABELS[japanese]} {prose(shown)}" if shown'''
+mutant = '''{NOTE_LABELS[japanese]} {shown}" if shown'''
+
+[[mutant]]
+id = "q79-label-not-bold"
+predicate = "the label shows in bold"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
+anchor = '''NOTE_LABELS: Final = ("**Model note:**",'''
+mutant = '''NOTE_LABELS: Final = ("Model note:",'''
+
+[[mutant]]
+id = "q78-note-not-stripped"
+predicate = "the shown note is stripped"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''        shown = note.strip()'''
+mutant = '''        shown = note'''
+
+[[mutant]]
+id = "q80-ja-label-strong"
+predicate = "the Japanese label is KaTeX bold, since Open WebUI's `strong` draws regular in Japanese"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
+anchor = '''"$\\footnotesize\\textbf{モデルの注記:}$")'''
+mutant = '''"**モデルの注記:**")'''
+
+[[mutant]]
+id = "q81-unread-content-raises"
+predicate = "content that is no string reads as English, never a raise"
+kills = "tests/test_paste_in_outlet.py::test_q81_a_request_the_outlet_cannot_read_gets_the_english_verdict[content-list]"
+anchor = '''    return isinstance(text, str) and KANA_LETTER.search(text) is not None'''
+mutant = '''    return text is not None and KANA_LETTER.search(text) is not None'''

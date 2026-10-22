@@ -4354,6 +4354,24 @@ async def cjk_font(configured: str = "") -> bytes | None:
         return None
 '''
 
+_SOURCES["webui.paste_in.reader_text"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The figure reader's exact text, which every target ships into its sandbox unchanged."""
+
+from pathlib import Path
+
+from verifier.figure import reader
+
+
+def reader_source() -> str:
+    """The reader's exact text: the paste-in keeps each embedded module's text, a checkout reads
+    the tracked file."""
+    embedded = getattr(reader, "__paste_in_source__", None)
+    if isinstance(embedded, str):
+        return embedded
+    return Path(reader.__file__).read_text(encoding="utf-8")
+'''
+
 _SOURCES["webui.paste_in.reasons"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Why a figure failed, in the words the chat user reads above the fixed failure verdict.
@@ -4680,6 +4698,103 @@ def read_receipt(request: object) -> Receipt | None:
     ):
         return None
     return Receipt(program, file_ids, request_text, aliases, note)
+'''
+
+_SOURCES["webui.paste_in.reply"] = r'''
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+"""The reply parts every target shares: the verdicts, the note line, the kana rule, the PNG line.
+
+Data plus pure functions. The Open WebUI outlet (`filter.py`) and the nucllei tool
+(`nucllei_skill/tool.py`) both write the fixed verdict of the request's language, the model's note
+under it, and publish only the one PNG line the reader writes; the rules here are theirs alike.
+"""
+
+import base64
+import binascii
+import re
+import unicodedata
+from typing import Final
+
+from verifier.figure.description import MAX_BYTES, TAG
+from verifier.figure.inert import prose
+from verifier.figure.reader import MAX_PNG_CHARACTERS
+
+# (EN, JA) by the kana rule, like every line of the reply (Q81, user).
+PASS_TEXTS: Final = ("Figure verification passed", "図の検証に合格しました。")
+FAIL_TEXTS: Final = (
+    "Figure verification failed, no image produced",
+    "図の検証に合格しませんでした。画像は表示されません。",
+)
+# Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
+# the note. Open WebUI's chat CSS draws `strong` at weight 500, which a Japanese font without a
+# medium face (Yu Gothic UI, Meiryo) draws regular, and browsers synthesize bold from 600 alone;
+# KaTeX's `\textbf` is 700, at `\footnotesize` = the body size (Q80, measured live).
+NOTE_LABELS: Final = ("**Model note:**", "$\\footnotesize\\textbf{モデルの注記:}$")
+_PNG_PREFIX = "data:image/png;base64,"
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+_PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
+_DATA_PREFIX = re.compile(r"(?<!\w)data:")
+# The longest stdout the reader writes (`reader.py::run`): the tagged description within the
+# decoder's cap, then one PNG line within the reader's, each ending in a line break. Open WebUI
+# 0.12.3 takes a 16 MiB browser frame, and 16 MiB of line breaks took 1.5 s to decode (M22.1 F4).
+MAX_REPLY: Final = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1
+# A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
+# marks such as `・` or `ー` occur beside kanji alone. The letters form one character class, since
+# the test runs on the host's event loop over a message of any length, and a name lookup per
+# character took 0.17 s per MB (CPython 3.11, M22.1 F1); kana letters lie in these blocks alone.
+_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
+_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))
+KANA_LETTER: Final = re.compile(
+    "["
+    + "".join(
+        chr(code)
+        for start, end in _KANA_BLOCKS
+        for code in range(start, end)
+        if unicodedata.name(chr(code), "").startswith(_KANA_LETTERS)
+    )
+    + "]"
+)
+
+
+def is_japanese(text: object) -> bool:
+    """Whether a request reads in Japanese: it holds a kana letter. Total: anything but a `str`
+    reads as English, since the diagnostic paths that ask must never cost the verdict."""
+    return isinstance(text, str) and KANA_LETTER.search(text) is not None
+
+
+def png_uri(stdout: str) -> str | None:
+    """Accept exactly one complete PNG data-URI line, outside the description line, carrying a
+    valid base64 PNG signature."""
+    lines = [
+        line.strip()
+        for line in stdout.splitlines()
+        if not line.startswith(TAG) and _DATA_PREFIX.search(line)
+    ]
+    if (
+        len(lines) != 1
+        or len(lines[0]) > MAX_PNG_CHARACTERS
+        or _PNG_URI.fullmatch(lines[0]) is None
+    ):
+        return None
+    try:
+        image = base64.b64decode(lines[0][len(_PNG_PREFIX) :], validate=True)
+    except (binascii.Error, ValueError):
+        return None
+    return lines[0] if image.startswith(_PNG_SIGNATURE) else None
+
+
+def note_line(note: str, *, japanese: bool) -> str:
+    """The model's own statement of what the chart rules overrode, after its bold label as escaped
+    plain text (Q79: both hosts render the reply as markdown), or nothing for a blank note.
+
+    Display alone: it is built after the verdict and read by no check. Total, because a failed
+    reply builds it, and a raise there would fail open.
+    """
+    try:
+        shown = note.strip()
+        return f"\n\n{NOTE_LABELS[japanese]} {prose(shown)}" if shown else ""
+    except Exception:
+        return ""
 '''
 
 _SOURCES["verifier.figure.computed"] = r'''
@@ -5835,11 +5950,19 @@ def _line(number: int, line: str, *, marked: bool) -> str:
     )
 
 
-def _listing(
-    program: str, lines: list[str], related: frozenset[int] | None, site: int | None, language: int
-) -> tuple[str, bool]:
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """The listed line numbers in order, the marked one (the site, when listed) and how many lines
+    the listing could have shown before its caps."""
+
+    numbers: tuple[int, ...]
+    marked: int | None
+    pool: int
+
+
+def select_lines(lines: list[str], related: frozenset[int] | None, site: int | None) -> Selection:
     """The `related` lines of the scanned program (`None` = every line) within the caps, the
-    `site` line first and marked, then its neighbours among them; and whether a mark is shown."""
+    `site` line first and marked, then its neighbours among them (M20 law, every target)."""
     pool = [n for n in range(1, len(lines) + 1) if related is None or n in related]
     members = set(pool)
     marked = site if site in members else None
@@ -5854,18 +5977,28 @@ def _listing(
             continue
         taken.add(number)
         cost += weight
+    return Selection(tuple(sorted(taken)), marked if marked in taken else None, len(pool))
+
+
+def _listing(
+    program: str, lines: list[str], related: frozenset[int] | None, site: int | None, language: int
+) -> tuple[str, bool]:
+    """The selected lines (`select_lines`) as one listing, the site's marked; and whether a mark
+    is shown."""
+    selection = select_lines(lines, related, site)
+    taken = set(selection.numbers)
     rows: list[str] = []
-    for number in sorted(taken):
+    for number in selection.numbers:
         if rows and number - 1 not in taken:
             rows.append('<span class="gap">\N{VERTICAL ELLIPSIS}</span>')
-        rows.append(_line(number, lines[number - 1], marked=number == marked))
+        rows.append(_line(number, lines[number - 1], marked=number == selection.marked))
     listing = f'<pre class="listing">{"".join(rows)}</pre>'
-    if len(pool) > len(taken):
-        elided = ELIDED[language].format(n=len(pool) - len(taken))
+    if selection.pool > len(taken):
+        elided = ELIDED[language].format(n=selection.pool - len(taken))
         listing += f'<p class="elided">{_text(elided)}</p>'
     if len(program) > _SCAN:
         listing += f'<p class="beyond">{_text(BEYOND[language])}</p>'
-    return listing, marked in taken
+    return listing, selection.marked is not None
 
 
 def _section(kind: str, label: str, body: str) -> str:
@@ -5975,25 +6108,15 @@ carries the reader and the program as base64, split wherever the encoding spells
 
 import base64
 import re
-from pathlib import Path
 from typing import Final
 
-from verifier.figure import reader
 from webui.paste_in import fonts
+from webui.paste_in.reader_text import reader_source
 
 _PLOTTING: Final = "mat" + "plotlib"
 # Seaborn sits in the bundle beside the stack and loads only for a program naming it: a word match
 # admits every import form, and a comment naming it costs one wheel from the instance.
 _SEABORN: Final = re.compile(r"\bseaborn\b")
-
-
-def reader_source() -> str:
-    """The reader's exact text: the paste-in keeps each embedded module's text, a checkout reads
-    the tracked file."""
-    embedded = getattr(reader, "__paste_in_source__", None)
-    if isinstance(embedded, str):
-        return embedded
-    return Path(reader.__file__).read_text(encoding="utf-8")
 
 
 def _payload(data: bytes) -> str:
@@ -9080,12 +9203,8 @@ report; every decision is the judge's.
 """
 
 import asyncio
-import base64
-import binascii
 import contextlib
 import logging
-import re
-import unicodedata
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Final, TypeAlias
@@ -9093,10 +9212,8 @@ from typing import Final, TypeAlias
 from pydantic import BaseModel, Field
 
 from verifier.figure.anchoring import Anchoring
-from verifier.figure.description import MAX_BYTES, TAG, Description, parse_description
-from verifier.figure.inert import prose
+from verifier.figure.description import Description, parse_description
 from verifier.figure.judge import Passed, Sources, judge
-from verifier.figure.reader import MAX_PNG_CHARACTERS
 from verifier.pysrc.budget import WorkBudget, WorkBudgetExceededError
 from verifier.pysrc.csvread import _read_csv
 from verifier.pysrc.errors import PysrcRefusalError
@@ -9114,6 +9231,9 @@ from webui.paste_in.owui_files import (
 )
 from webui.paste_in.reasons import REASONS, Reason
 from webui.paste_in.receipt import read_receipt
+from webui.paste_in.reply import FAIL_TEXTS, PASS_TEXTS, is_japanese, note_line
+from webui.paste_in.reply import MAX_REPLY as _MAX_REPLY
+from webui.paste_in.reply import png_uri as _png_uri
 from webui.paste_in.sandbox import wrapper_code
 from webui.paste_in.templates import (
     NOTE_LANGUAGES,
@@ -9124,17 +9244,6 @@ from webui.paste_in.templates import (
 
 _Emit: TypeAlias = Callable[[dict[str, object]], Awaitable[object]]
 
-# (EN, JA) by the kana rule, like every line of the reply (Q81, user).
-PASS_TEXTS: Final = ("Figure verification passed", "図の検証に合格しました。")
-FAIL_TEXTS: Final = (
-    "Figure verification failed, no image produced",
-    "図の検証に合格しませんでした。画像は表示されません。",
-)
-# Q78 (user): the speaker of the line under the verdict, EN + JA, in bold (Q79); no check reads
-# the note. Open WebUI's chat CSS draws `strong` at weight 500, which a Japanese font without a
-# medium face (Yu Gothic UI, Meiryo) draws regular, and browsers synthesize bold from 600 alone;
-# KaTeX's `\textbf` is 700, at `\footnotesize` = the body size (Q80, measured live).
-NOTE_LABELS: Final = ("**Model note:**", "$\\footnotesize\\textbf{モデルの注記:}$")
 MODEL_NOTE_TITLE: Final = "Model Note"
 MODEL_NOTE_DESCRIPTION: Final = (
     "Ask the model to say when the request asks for something that the chart rules do not allow,"
@@ -9142,31 +9251,7 @@ MODEL_NOTE_DESCRIPTION: Final = (
 )
 RPC_TIMEOUT_SECONDS: Final = 60
 STATUS_TIMEOUT_SECONDS: Final = 5
-_PNG_PREFIX = "data:image/png;base64,"
-_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-_PNG_URI = re.compile(r"data:image/png;base64,[A-Za-z0-9+/]+={0,2}")
-_DATA_PREFIX = re.compile(r"(?<!\w)data:")
 _TRACEBACK = "Traceback (most recent call last):"
-# The longest stdout the reader writes (`reader.py::run`): the tagged description within the
-# decoder's cap, then one PNG line within the reader's, each ending in a line break. Open WebUI
-# 0.12.3 takes a 16 MiB browser frame, and 16 MiB of line breaks took 1.5 s to decode (M22.1 F4).
-_MAX_REPLY = len(TAG) + MAX_BYTES + 1 + MAX_PNG_CHARACTERS + 1
-# A kana LETTER alone marks a Japanese request (user ruling): kanji are shared with Chinese, and
-# marks such as `・` or `ー` occur beside kanji alone. The letters form one character class, since
-# the test runs on Open WebUI's event loop over a message of any length, and a name lookup per
-# character took 0.17 s per MB (CPython 3.11, M22.1 F1); kana letters lie in these blocks alone.
-_KANA_LETTERS = ("HIRAGANA LETTER", "KATAKANA LETTER", "HALFWIDTH KATAKANA LETTER")
-_KANA_BLOCKS = ((0x3040, 0x3100), (0x31F0, 0x3200), (0xFF65, 0xFFA0), (0x1AFF0, 0x1B170))
-_KANA_LETTER = re.compile(
-    "["
-    + "".join(
-        chr(code)
-        for start, end in _KANA_BLOCKS
-        for code in range(start, end)
-        if unicodedata.name(chr(code), "").startswith(_KANA_LETTERS)
-    )
-    + "]"
-)
 _LOGGER = logging.getLogger(__name__)
 
 # Admin-facing identity; the function source itself comes from the generated paste-in artifact.
@@ -9190,27 +9275,6 @@ async def _font(program: str, files: tuple[UploadedFile, ...], configured: str) 
     if font is None:
         return None
     return await asyncio.to_thread(cut_for, font, program, [file.content for file in files])
-
-
-def _png_uri(stdout: str) -> str | None:
-    """Accept exactly one complete PNG data-URI line, outside the description line, carrying a
-    valid base64 PNG signature."""
-    lines = [
-        line.strip()
-        for line in stdout.splitlines()
-        if not line.startswith(TAG) and _DATA_PREFIX.search(line)
-    ]
-    if (
-        len(lines) != 1
-        or len(lines[0]) > MAX_PNG_CHARACTERS
-        or _PNG_URI.fullmatch(lines[0]) is None
-    ):
-        return None
-    try:
-        image = base64.b64decode(lines[0][len(_PNG_PREFIX) :], validate=True)
-    except (binascii.Error, ValueError):
-        return None
-    return lines[0] if image.startswith(_PNG_SIGNATURE) else None
 
 
 def _rewrite(body: dict[str, object], text: str) -> dict[str, object]:
@@ -9270,22 +9334,12 @@ def _japanese(metadata: object) -> bool:
     Total, because it runs on diagnostic paths that must never cost the verdict.
     """
     message = metadata.get("user_message") if isinstance(metadata, dict) else None
-    content = message.get("content") if isinstance(message, dict) else None
-    return isinstance(content, str) and _KANA_LETTER.search(content) is not None
+    return is_japanese(message.get("content") if isinstance(message, dict) else None)
 
 
 def _note_line(note: str, metadata: object) -> str:
-    """The model's own statement of what the chart rules overrode, after its bold label as escaped
-    plain text (Q79: Open WebUI renders the reply as markdown), or nothing for a blank note.
-
-    Display alone: it is built after the verdict and read by no check. Total, because a failed
-    reply builds it, and a raise there would fail open.
-    """
-    try:
-        shown = note.strip()
-        return f"\n\n{NOTE_LABELS[_japanese(metadata)]} {prose(shown)}" if shown else ""
-    except Exception:
-        return ""
+    """The note line (`reply.py::note_line`) in the request's language."""
+    return note_line(note, japanese=_japanese(metadata))
 
 
 async def _emit_bounded(emit: _Emit, event: dict[str, object], deadline: float) -> None:
@@ -9442,7 +9496,7 @@ class Filter:
             # The header parse reads up to 8 MB: keep Open WebUI's event loop free.
             rendered = await asyncio.to_thread(self._render, task, attachment)
             if self.valves.model_note:
-                japanese = _KANA_LETTER.search(task) is not None
+                japanese = is_japanese(task)
                 rendered += NOTE_REQUEST.format(language=NOTE_LANGUAGES[japanese])
             updated = list(messages)
             updated[index] = {**message, "content": rendered}

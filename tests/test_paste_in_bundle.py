@@ -177,6 +177,8 @@ def test_b6_import_surface_is_stdlib_open_webui_pydantic() -> None:
         "paste-in/figure_verification_filter.py": {"pydantic"},
         "webui/demo-paste-in/figure_verification_tool.py": {"pydantic"},
         "webui/demo-paste-in/figure_verification_filter.py": {"pydantic"},
+        # Q82: the nucllei tool's host is nucllei, which this Open WebUI scan does not admit.
+        "llens/nucllei/tools/figure_verification.py": {"nucllei", "pydantic"},
     }
     seen = set()
     for path, _root in artifact_items(bundle):

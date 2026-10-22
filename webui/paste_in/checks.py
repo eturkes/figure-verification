@@ -420,11 +420,19 @@ def _line(number: int, line: str, *, marked: bool) -> str:
     )
 
 
-def _listing(
-    program: str, lines: list[str], related: frozenset[int] | None, site: int | None, language: int
-) -> tuple[str, bool]:
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """The listed line numbers in order, the marked one (the site, when listed) and how many lines
+    the listing could have shown before its caps."""
+
+    numbers: tuple[int, ...]
+    marked: int | None
+    pool: int
+
+
+def select_lines(lines: list[str], related: frozenset[int] | None, site: int | None) -> Selection:
     """The `related` lines of the scanned program (`None` = every line) within the caps, the
-    `site` line first and marked, then its neighbours among them; and whether a mark is shown."""
+    `site` line first and marked, then its neighbours among them (M20 law, every target)."""
     pool = [n for n in range(1, len(lines) + 1) if related is None or n in related]
     members = set(pool)
     marked = site if site in members else None
@@ -439,18 +447,28 @@ def _listing(
             continue
         taken.add(number)
         cost += weight
+    return Selection(tuple(sorted(taken)), marked if marked in taken else None, len(pool))
+
+
+def _listing(
+    program: str, lines: list[str], related: frozenset[int] | None, site: int | None, language: int
+) -> tuple[str, bool]:
+    """The selected lines (`select_lines`) as one listing, the site's marked; and whether a mark
+    is shown."""
+    selection = select_lines(lines, related, site)
+    taken = set(selection.numbers)
     rows: list[str] = []
-    for number in sorted(taken):
+    for number in selection.numbers:
         if rows and number - 1 not in taken:
             rows.append('<span class="gap">\N{VERTICAL ELLIPSIS}</span>')
-        rows.append(_line(number, lines[number - 1], marked=number == marked))
+        rows.append(_line(number, lines[number - 1], marked=number == selection.marked))
     listing = f'<pre class="listing">{"".join(rows)}</pre>'
-    if len(pool) > len(taken):
-        elided = ELIDED[language].format(n=len(pool) - len(taken))
+    if selection.pool > len(taken):
+        elided = ELIDED[language].format(n=selection.pool - len(taken))
         listing += f'<p class="elided">{_text(elided)}</p>'
     if len(program) > _SCAN:
         listing += f'<p class="beyond">{_text(BEYOND[language])}</p>'
-    return listing, marked in taken
+    return listing, selection.marked is not None
 
 
 def _section(kind: str, label: str, body: str) -> str:

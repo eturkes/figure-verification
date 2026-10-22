@@ -89,6 +89,8 @@ extend-exclude = ["docs/gallery.md", "docs/gallery.ja.md"]
 "webui/paste_in/**" = "py311"
 "paste-in/**" = "py311"
 "webui/demo-paste-in/**" = "py311"
+"nucllei_skill/**" = "py311"
+"llens/**" = "py311"
 # The suite also runs on 3.11 (gate stage `tests311`, the image's line): tests, every repo module
 # they import and every script they run through `sys.executable` (tools/generate_paste_in.py) spell
 # 3.11 forms too; image_leg.py runs inside the image. ruff's py314 formatter writes PEP 758
@@ -132,7 +134,7 @@ ignore = [
 # model_backend (hardware-gated local model server) and webui (Open WebUI integration harness)
 # are repo-root packages, not under src/ — declare them first-party so their imports sort with
 # verifier's.
-known-first-party = ["verifier", "model_backend", "webui"]
+known-first-party = ["verifier", "model_backend", "webui", "nucllei_skill"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -147,7 +149,7 @@ python_version = "3.14"
 strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
-files = ["src", "tests", "tools", "model_backend", "webui"]
+files = ["src", "tests", "tools", "model_backend", "webui", "nucllei_skill"]
 # tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
@@ -177,6 +179,12 @@ ignore_missing_imports = true
 # projects the dynamic file/storage API into one frozen UploadedFile per attachment.
 [[tool.mypy.overrides]]
 module = ["open_webui", "open_webui.*"]
+ignore_missing_imports = true
+
+# nucllei (the llens server, Q82) resolves inside its own image alone and ships no stubs.
+# nucllei_skill/host.py is its only importer and the single module allowed to reach it.
+[[tool.mypy.overrides]]
+module = ["nucllei", "nucllei.*"]
 ignore_missing_imports = true
 
 # --- tests / coverage --------------------------------------------------------
