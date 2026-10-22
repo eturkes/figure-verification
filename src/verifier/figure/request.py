@@ -73,19 +73,21 @@ def read_request(text: str | None) -> Request:
     if text is None:
         return Request(frozenset(), "")
     folded = fold(text)
-    matches = list(_NUMBER.finditer(folded))
     numbers: set[float] = set()
     sequence: list[float] = []
     left = MAX_RANGE
-    for index, match in enumerate(matches):
+    previous: re.Match[str] | None = None
+    # Streamed: the request has no length cap, and a list of every match held 117 B per character.
+    for match in _NUMBER.finditer(folded):
         numbers.update(_readings(match))
-        expanded = _expanded(folded, matches[index - 1], match, left) if index else None
+        expanded = _expanded(folded, previous, match, left) if previous is not None else None
         if expanded is None:
             sequence.append(_readings(match)[0])
         else:
             left -= len(expanded)
             numbers.update(expanded)
             sequence += expanded[1:]
+        previous = match
     return Request(frozenset(numbers), folded, tuple(sequence))
 
 

@@ -2,6 +2,7 @@
 """M19.4 values, columns + interpretation: branch witnesses beside the corpus (`m19u4.md`)."""
 
 import json
+import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,19 @@ def test_v3_ranges_and_numbers() -> None:
     assert read_request("0 to 20000").numbers == {0.0, 20000.0}
     assert read_request("1,200").numbers == {1.0, 200.0, 1200.0}
     assert read_request(None).numbers == frozenset()
+
+
+def test_the_request_parse_streams_its_matches() -> None:
+    # The request has no length cap (user); holding every match cost 117 B per character of `1 `.
+    text = "1 " * 200_000
+    tracemalloc.start()
+    try:
+        request = read_request(text)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert len(request.sequence) == 200_000
+    assert peak <= 40 * len(text)
 
 
 def test_v6_integrity_alone_is_disclosed() -> None:

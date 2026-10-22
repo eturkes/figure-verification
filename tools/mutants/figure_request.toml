@@ -87,3 +87,10 @@ predicate = "ranges expand MAX_RANGE terms per request in total, not per range (
 kills = "tests/test_figure_computed.py::test_ranges_expand_10000_terms_per_request_in_total"
 anchor = '''            left -= len(expanded)'''
 mutant = '''            left -= 0'''
+
+[[mutant]]
+id = "q-request-matches-held"
+predicate = "the parse streams its matches (the request has no length cap)"
+kills = "tests/test_figure_values.py::test_the_request_parse_streams_its_matches"
+anchor = '''    for match in _NUMBER.finditer(folded):'''
+mutant = '''    for match in list(_NUMBER.finditer(folded)):'''
