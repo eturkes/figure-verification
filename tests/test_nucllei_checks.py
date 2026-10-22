@@ -28,7 +28,7 @@ CAUSES = {
     "publish_failed": "attach",
 }
 _MARKDOWN = re.compile(r"[*`\[\]<>\\|#]")
-_ROW = re.compile(r"^- (\S) \*\*(.+?)\*\*", re.MULTILINE)
+_ROW = re.compile(r"^\*\*(\S) (.+?)\*\*", re.MULTILINE)
 
 
 def test_q82_t14_the_reason_set_is_closed() -> None:
@@ -93,14 +93,14 @@ def test_q82_t12_program_text_cannot_close_its_fence() -> None:
         evidence=Evidence(program, 4, (("axes", frozenset({2, 3, 4})),)),
     )
     fence = "`````"
-    assert f"  {fence}\n" in listed
-    assert "  ▶ 4 | plot()" in listed
+    assert f"\n{fence}\n" in listed
+    assert "\n▶ 4 | plot()\n" in listed
     assert "▶ The marked line drew the part, or made the call, that failed this check." in listed
 
 
 def test_q82_t12_the_program_row_points_at_the_call_and_never_lists_it() -> None:
     listed = checklist(None, japanese=False, evidence=Evidence("x = 1\nshow()\n", None))
-    program_row = listed.split("- ✓ **Program run in the code sandbox**")[0]
+    program_row = listed.split("**✓ Program run in the code sandbox**")[0]
     assert "x = 1" not in program_row
     assert "which the tool block shows above" in program_row
 
@@ -108,4 +108,4 @@ def test_q82_t12_the_program_row_points_at_the_call_and_never_lists_it() -> None
 def test_q82_t12_a_failing_row_without_related_lines_lists_the_program() -> None:
     listed = checklist("program_error", japanese=False, evidence=Evidence("x = 1\nboom()\n", 2))
     assert "Program:" in listed
-    assert "  ▶ 2 | boom()" in listed
+    assert "\n▶ 2 | boom()\n" in listed

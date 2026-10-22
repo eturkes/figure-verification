@@ -7,7 +7,7 @@ tests = ["tests/test_nucllei_tool.py"]
 id = "q82-timeout-unread"
 predicate = "a run past its limit names the timeout"
 kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[timed-out]"
-anchor = '''    if reply.get("timed_out") is True:'''
+anchor = '''    if timed_out is True:'''
 mutant = '''    if False:'''
 
 [[mutant]]
@@ -23,3 +23,10 @@ predicate = "a reply that does not say whether it was cut is not read"
 kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[cut-unknown]"
 anchor = '''    if reply.get("stdout_truncated") is not False or len(stdout) > MAX_REPLY:'''
 mutant = '''    if reply.get("stdout_truncated") is True or len(stdout) > MAX_REPLY:'''
+
+[[mutant]]
+id = "q82-timeout-state-unchecked"
+predicate = "a reply that does not say it finished in time is not read (reviewer-1 F1)"
+kills = "tests/test_nucllei_tool.py::test_q82_t9_a_reply_without_a_clean_run_names_its_cause[timeout-unknown]"
+anchor = '''    if timed_out is not False or type(exit_code) is not int or not isinstance(stdout, str):'''
+mutant = '''    if type(exit_code) is not int or not isinstance(stdout, str):'''

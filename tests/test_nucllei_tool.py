@@ -4,10 +4,13 @@ the real reader + judge. Expected texts are hand-stated literals, never read fro
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import base64
 import logging
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import cast
@@ -28,6 +31,7 @@ from nucllei_support import (
     ref,
     text_of,
 )
+from verifier.figure.description import parse_description
 
 SALES = b"month,revenue\nJan,100\nFeb,120\nMar,90\n"
 HONEST = (
@@ -50,7 +54,7 @@ OK_TAIL = (
     "次の手: 画像を本文に貼り直さない。合否を言い直さず、上のチェック項目も本文に写さない。"
     "図が示す内容を本文で短く説明する。"
 )
-_ROW = re.compile("^- (\N{CHECK MARK}|\N{BALLOT X}|\N{EN DASH}) \\*\\*", re.MULTILINE)
+_ROW = re.compile("^\\*\\*(\N{CHECK MARK}|\N{BALLOT X}|\N{EN DASH}) ", re.MULTILINE)
 
 
 @pytest.fixture
@@ -223,6 +227,36 @@ def test_q82_t6_a_refused_caller_runs_nothing(
     assert f"({reason})。" in result
 
 
+def test_q82_t6_the_wrapper_runs_the_exact_program_through_the_reader() -> None:
+    """The code the jail receives, executed: the reader describes the program's figure, and the
+    program literal decodes to the program's exact text, a lone surrogate included (reviewer-1
+    R3: the sandbox fake checks the wrapper but runs the reader directly)."""
+    program = "import matplotlib.pyplot as plt\nlabel = '\udcff'\nplt.bar([0, 1], [3, 5])\n"
+    code = jail.wrapper_code(program)
+    literals = [
+        node.args[0].value
+        for node in ast.walk(ast.parse(code))
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "attr", "") == "b64decode"
+        and isinstance(node.args[0], ast.Constant)
+    ]
+    assert base64.b64decode(cast("str", literals[-1])).decode("utf-8", "surrogatepass") == program
+    plain = jail.wrapper_code(program.replace("\udcff", "ok"))
+    ran = subprocess.run(  # noqa: S603 - this interpreter, the generated code
+        [sys.executable, "-c", plain],
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",
+        env={**os.environ, "MPLBACKEND": "Agg"},
+        timeout=120,
+        check=True,
+    )
+    described = parse_description(ran.stdout)
+    assert described is not None
+    assert described.error is None
+    assert len(described.figures) == 1
+
+
 # --- T7 sources ---------------------------------------------------------------------------------
 
 
@@ -336,6 +370,25 @@ def test_q82_t8_the_latest_human_message_sets_the_language(world: World) -> None
     assert _shown(world).startswith(PASS_JA)
 
 
+@pytest.mark.parametrize(
+    "content",
+    ["", [{"type": "image_url", "image_url": {"url": "/api/v1/files/i/content"}}]],
+    ids=["empty", "image-only"],
+)
+def test_q82_t8_a_textless_latest_message_reads_english(world: World, content: object) -> None:
+    """The language follows the latest human message even when it holds no text (an attachment
+    alone), never an earlier one (reviewer-1 F2)."""
+    world.program = HONEST
+    world.attach("f1", "sales.csv", SALES)
+    world.chats[(CHAT_ID, USER_ID)] = history(
+        {"role": "user", "content": REQUEST_JA},
+        {"role": "assistant", "content": "…"},
+        {"role": "user", "content": content, "files": [ref("f1", "sales.csv")]},
+    )
+    invoke(world, messages=[{"role": "user", "content": content}])
+    assert _shown(world).startswith(PASS_EN)
+
+
 # --- T9 reply -----------------------------------------------------------------------------------
 
 
@@ -352,6 +405,8 @@ _GOOD = {"exit_code": 0, "timed_out": False, "stdout": "", "stdout_truncated": F
         ({**_GOOD, "stdout": None}, "reply_malformed"),
         ({**_GOOD, "stdout_truncated": True}, "reply_malformed"),
         ({k: v for k, v in _GOOD.items() if k != "stdout_truncated"}, "reply_malformed"),
+        ({k: v for k, v in _GOOD.items() if k != "timed_out"}, "reply_malformed"),
+        ({**_GOOD, "timed_out": "false"}, "reply_malformed"),
         ({**_GOOD, "stdout": "x" * 900_100}, "reply_malformed"),
         (_GOOD, "no_description"),
     ],
@@ -363,6 +418,8 @@ _GOOD = {"exit_code": 0, "timed_out": False, "stdout": "", "stdout_truncated": F
         "no-stdout",
         "cut",
         "cut-unknown",
+        "timeout-unknown",
+        "timeout-not-bool",
         "too-long",
         "empty",
     ],
@@ -427,18 +484,46 @@ def test_q82_t10_an_unstored_file_record_publishes_nothing(world: World) -> None
 def test_q82_t10_a_fault_after_the_store_never_shows_a_pass(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A fault while building the pass is a failed publication, and the failure path never runs
+    the renderer that failed again (reviewer-1 F3)."""
     world.program = HONEST
     _sales_chat(world)
+    calls: list[object] = []
 
     def broken(reason: object, **_: object) -> str:
-        if reason is None:
-            raise RuntimeError
-        return "rows\n"
+        calls.append(reason)
+        raise RuntimeError
 
     monkeypatch.setattr("nucllei_skill.tool.checklist", broken)
-    invoke(world)
+    result = text_of(invoke(world))
     assert _shown(world).startswith(FAIL_EN)
-    assert "(verifier_error)" in _shown(world)
+    assert "(publish_failed)" in _shown(world)
+    assert calls == [None]
+    assert world.marks == ["fatal"]
+    assert result.endswith("次の手: 呼び直さない。図を表示できなかったことをユーザーに伝える。")
+
+
+@pytest.mark.parametrize("display", ["raises", "missing"])
+def test_q82_t10_a_pass_nobody_saw_is_no_pass(world: World, display: str) -> None:
+    """A display that refuses the push, or none at all (a headless call), never yields the
+    'shown to the user' result, and no second push follows a refused one (reviewer-1 F4)."""
+    world.program = HONEST
+    _sales_chat(world)
+    pushes: list[str] = []
+
+    def refuse(content: str, kind: str = "markdown") -> None:  # noqa: ARG001
+        pushes.append(content)
+        raise RuntimeError
+
+    if display == "raises":
+        world.display = refuse  # type: ignore[method-assign]
+    else:
+        world.display = None  # type: ignore[assignment,method-assign]
+    result = text_of(invoke(world))
+    assert "画像と判定と解釈をユーザーの画面に表示した" not in result
+    assert "(publish_failed)。" in result
+    assert world.marks == ["fatal"]
+    assert len(pushes) == (1 if display == "raises" else 0)
 
 
 # --- T11 fail -----------------------------------------------------------------------------------
@@ -608,7 +693,7 @@ def test_q82_t16_a_japanese_request_reads_one_language_and_the_tail_stays_japane
     result = text_of(invoke(world))
     assert _shown(world).startswith(FAIL_JA)
     assert "**チェック項目**" in result
-    assert "- ✗ **正しい軸**" in result
+    assert "**✗ 正しい軸**  " in result
     world.displays.clear()
     world.program = HONEST
     world.chats[(CHAT_ID, USER_ID)] = history(

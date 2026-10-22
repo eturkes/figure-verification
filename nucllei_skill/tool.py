@@ -108,10 +108,7 @@ def _request(  # noqa: PLR0913, PLR0917 - nucllei's reserved arguments, passed t
     if stored is None:
         latest = _latest(messages)
         return _Request(latest, latest, tuple(host.request_refs(files, metadata)))
-    texts = stored.texts
-    return _Request(
-        "\n\n".join(texts) if texts else None, texts[-1] if texts else None, stored.refs
-    )
+    return _Request("\n\n".join(stored.texts) or None, stored.latest, stored.refs)
 
 
 def _owned(refs: Sequence[tuple[str, str | None]], user_id: str) -> tuple[host.Attachment, ...]:
@@ -146,11 +143,16 @@ def _evidence(
         return Evidence(program, site)
 
 
-def _show(display: object, text: str) -> None:
-    """Push the verdict outside the collapsed block; no display (a headless call) shows nothing."""
-    if callable(display):
-        with contextlib.suppress(Exception):
-            display(text)
+def _show(display: object, text: str) -> bool:
+    """Push the verdict outside the collapsed block; whether the push went through (a headless call
+    has no display)."""
+    if not callable(display):
+        return False
+    try:
+        display(text)
+    except Exception:
+        return False
+    return True
 
 
 def _result(text: str) -> object:
@@ -164,7 +166,7 @@ def _result(text: str) -> object:
 def _bounded(reason: Reason | None, evidence: Evidence, tail: str, *, japanese: bool) -> str:
     """The check list + the model's tail within the server's result cap (nucllei cuts a longer
     result and drops its markdown render; an admin can lower the cap): rows drop their program
-    listings first, then the list goes, and the cause + the tail always stay."""
+    listings first, then the list goes; the cause + the tail stay while the cap can hold them."""
     room = host.result_cap() - _CAP_MARGIN
     for shown in (evidence, Evidence(None, evidence.site)):
         text = f"{checklist(reason, japanese=japanese, evidence=shown)}\n{tail}"
@@ -274,6 +276,7 @@ class _Draw:
         self.display = display
         self.japanese = False
         self.description: Description | None = None
+        self.listing_failed = False
 
     async def run(  # noqa: PLR0911, PLR0913, PLR0917 - reserved arguments; a guard per refusal
         self,
@@ -339,23 +342,32 @@ class _Draw:
     async def publish(self, file_id: str, verdict: Passed) -> object:
         """Show the image, the verdict, the interpretation and the note; return the check list.
 
-        Everything is built before the one display push: nucllei appends each push, so a fault
-        after a shown pass would set a failure beside the image (consultant-1 T10).
+        Everything is built before the one display push, and a fault in building it is a failed
+        publication (T10): nucllei appends each push, so a fault after a shown pass would set a
+        failure beside the image (consultant-1 T10). A push that does not go through returns the
+        failure without a second push, since the sink may hold the pass already (reviewer-1 F4).
         """
         language = int(self.japanese)
-        interpretation = verdict.interpretation_ja if self.japanese else verdict.interpretation
-        # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
-        note = await asyncio.to_thread(note_line, self.note, japanese=self.japanese)
-        evidence = await asyncio.to_thread(_evidence, self.program, self.description, None, None)
-        result = _result(_bounded(None, evidence, PASSED, japanese=self.japanese))
-        _show(
-            self.display,
+        try:
+            interpretation = verdict.interpretation_ja if self.japanese else verdict.interpretation
+            # No length limit (user): an 8 MB note took 2.7 s to render (CPython 3.14).
+            note = await asyncio.to_thread(note_line, self.note, japanese=self.japanese)
+            evidence = await asyncio.to_thread(
+                _evidence, self.program, self.description, None, None
+            )
+            result = _result(_bounded(None, evidence, PASSED, japanese=self.japanese))
+        except Exception:
+            self.listing_failed = True
+            return await self.fail("publish_failed")
+        shown = (
             f"{PASS_TEXTS[language]}\n\n![{IMAGE_ALT[language]}](/api/v1/files/{file_id}/content)"
-            f"\n\n{interpretation}{note}",
+            f"\n\n{interpretation}{note}"
         )
+        if not _show(self.display, shown):
+            return await self.fail("publish_failed", show=False)
         return result
 
-    async def fail(self, reason: Reason, site: int | None = None) -> object:
+    async def fail(self, reason: Reason, site: int | None = None, *, show: bool = True) -> object:
         """Block the figure: one log record for the admin, the cause for the user, the check list
         and the next step for the model.
 
@@ -370,12 +382,16 @@ class _Draw:
             note = await asyncio.to_thread(note_line, self.note, japanese=self.japanese)
         except Exception:
             note = ""
-        _show(
-            self.display, f"{FAIL_TEXTS[language]}\n\n{REASONS[reason][language]} ({reason}){note}"
-        )
+        if show:
+            _show(
+                self.display,
+                f"{FAIL_TEXTS[language]}\n\n{REASONS[reason][language]} ({reason}){note}",
+            )
         with contextlib.suppress(Exception):
             host.mark_error_kind(error_kind(reason))
         tail = FAILED.format(cause=REASONS[reason][1], reason=reason) + NEXT[next_step(reason)]
+        if self.listing_failed:  # never re-enter a renderer that failed (consultant-1 T13)
+            return _result(tail)
         try:
             evidence = await asyncio.to_thread(
                 _evidence, self.program, self.description, reason, site

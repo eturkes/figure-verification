@@ -104,9 +104,10 @@ def reply_stdout(reply: object) -> str:
         raise ReplyFaultError(reason="reply_malformed")
     stdout = reply.get("stdout")
     exit_code = reply.get("exit_code")
-    if reply.get("timed_out") is True:
+    timed_out = reply.get("timed_out")
+    if timed_out is True:
         raise ReplyFaultError(reason="sandbox_timeout")
-    if type(exit_code) is not int or not isinstance(stdout, str):
+    if timed_out is not False or type(exit_code) is not int or not isinstance(stdout, str):
         raise ReplyFaultError(reason="reply_malformed")
     if exit_code != 0:
         raise ReplyFaultError(reason="sandbox_error")

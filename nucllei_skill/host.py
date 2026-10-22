@@ -120,6 +120,7 @@ class Branch:
 
     texts: tuple[str, ...]
     refs: tuple[tuple[str, str | None], ...]
+    latest: str | None  # the last human message's text: `""` or `None` for one with no text
 
 
 def _human(message: object) -> bool:
@@ -146,9 +147,10 @@ def branch(chat_id: object, message_id: object, user_id: str) -> Branch | None:
     if not chain:
         return None
     human = [message for message in chain if _human(message)]
-    texts = [text for message in human if (text := message_text(message.get("content")))]
+    said = [message_text(message.get("content")) for message in human]
     files = [item for message in human for item in message.get("files") or ()]
-    return Branch(tuple(texts), tuple(_refs(files)))
+    texts = tuple(text for text in said if text is not None)
+    return Branch(texts, tuple(_refs(files)), said[-1] if said else None)
 
 
 def owned_attachment(

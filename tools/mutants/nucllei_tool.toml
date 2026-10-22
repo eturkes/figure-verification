@@ -36,19 +36,13 @@ mutant = '''            found.setdefault(attachment.name, attachment)'''
 id = "q82-show-before-prepare"
 predicate = "everything a pass returns is built before its one display push (T10)"
 kills = "tests/test_nucllei_tool.py::test_q82_t10_a_fault_after_the_store_never_shows_a_pass"
-anchor = '''        result = _result(_bounded(None, evidence, PASSED, japanese=self.japanese))
-        _show(
-            self.display,
-            f"{PASS_TEXTS[language]}\n\n![{IMAGE_ALT[language]}](/api/v1/files/{file_id}/content)"
-            f"\n\n{interpretation}{note}",
-        )
-        return result'''
-mutant = '''        _show(
-            self.display,
-            f"{PASS_TEXTS[language]}\n\n![{IMAGE_ALT[language]}](/api/v1/files/{file_id}/content)"
-            f"\n\n{interpretation}{note}",
-        )
-        return _result(_bounded(None, evidence, PASSED, japanese=self.japanese))'''
+anchor = '''        language = int(self.japanese)
+        try:
+            interpretation = verdict.interpretation_ja if self.japanese else verdict.interpretation'''
+mutant = '''        language = int(self.japanese)
+        _show(self.display, PASS_TEXTS[language])
+        try:
+            interpretation = verdict.interpretation_ja if self.japanese else verdict.interpretation'''
 
 [[mutant]]
 id = "q82-result-unbounded"
@@ -70,3 +64,17 @@ predicate = "the switch off empties the note parameter in the spec (T5)"
 kills = "tests/test_nucllei_tool.py::test_q82_t5_no_file_and_the_note_switch"
 anchor = '''            if not self.valves.model_note:'''
 mutant = '''            if False:'''
+
+[[mutant]]
+id = "q82-refused-push-ignored"
+predicate = "a pass nobody saw is no pass (reviewer-1 F4)"
+kills = "tests/test_nucllei_tool.py::test_q82_t10_a_pass_nobody_saw_is_no_pass[raises]"
+anchor = '''        if not _show(self.display, shown):'''
+mutant = '''        if not _show(self.display, shown) and False:'''
+
+[[mutant]]
+id = "q82-renderer-reentered"
+predicate = "the failure path never reruns a renderer that failed (reviewer-1 F3)"
+kills = "tests/test_nucllei_tool.py::test_q82_t10_a_fault_after_the_store_never_shows_a_pass"
+anchor = '''        if self.listing_failed:  # never re-enter a renderer that failed (consultant-1 T13)'''
+mutant = '''        if False:'''

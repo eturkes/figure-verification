@@ -63,8 +63,8 @@ _OWN: Final[dict[Reason, tuple[str, str]]] = {
         "サンドボックスでの実行で PNG 画像が 1 枚だけ作られませんでした。",
     ),
     "publish_failed": (
-        "The server could not save the image.",
-        "サーバーが画像を保存できませんでした。",
+        "The server could not save or show the image.",
+        "サーバーが画像を保存または表示できませんでした。",
     ),
 }
 

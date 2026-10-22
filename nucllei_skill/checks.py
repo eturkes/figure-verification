@@ -183,7 +183,12 @@ def _row(
     glyph, _labels = MARKS[state]
     title, covers = TEXTS[check][language]
     unrun = f" ({UNRUN[language]})" if state == "skip" else ""
-    parts: list[list[str]] = [[covers], [f"{WHAT[language]}: {EXPLAIN[check][language]}"]]
+    # nucllei's list renderer joins the paragraphs of one item: each row is top-level paragraphs,
+    # the title and its covers line one paragraph split by a hard break (two trailing spaces).
+    parts: list[list[str]] = [
+        [f"**{glyph} {title}**{unrun}  ", covers],
+        [f"{WHAT[language]}: {EXPLAIN[check][language]}"],
+    ]
     drew = False
     if state == "skip":
         parts.append([NOT_RUN[language]])
@@ -196,9 +201,9 @@ def _row(
         if drew:
             parts.append([f"{_MARKED} {DREW[language]}"])
     parts.append([f"[{GUIDE_LINK[language]}]({GUIDE[language]}#check-{check})"])
-    body = [f"- {glyph} **{title}**{unrun}"]
+    body: list[str] = []
     for part in parts:
-        body += ["", *(f"  {line}" if line else "" for line in part)]
+        body += [*part, ""]
     return body
 
 
@@ -212,5 +217,5 @@ def checklist(reason: Reason | None, *, japanese: bool, evidence: Evidence) -> s
     lines = [f"**{HEADING[language]}**", ""]
     for index, check in enumerate(CHECKS):
         state: _State = "pass" if index < failing else "fail" if index == failing else "skip"
-        lines += [*_row(check, state, reason, language, evidence), ""]
+        lines += _row(check, state, reason, language, evidence)
     return "\n".join(lines).rstrip("\n") + "\n"

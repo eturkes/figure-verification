@@ -24,3 +24,10 @@ predicate = "a file record nucllei did not store publishes nothing (T10)"
 kills = "tests/test_nucllei_tool.py::test_q82_t10_an_unstored_file_record_publishes_nothing"
 anchor = '''    if record is None:'''
 mutant = '''    if False:'''
+
+[[mutant]]
+id = "q82-latest-skips-textless"
+predicate = "the latest human message sets the language even with no text (reviewer-1 F2)"
+kills = "tests/test_nucllei_tool.py::test_q82_t8_a_textless_latest_message_reads_english[image-only]"
+anchor = '''    return Branch(texts, tuple(_refs(files)), said[-1] if said else None)'''
+mutant = '''    return Branch(texts, tuple(_refs(files)), texts[-1] if texts else None)'''
