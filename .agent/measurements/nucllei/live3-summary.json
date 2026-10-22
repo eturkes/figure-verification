@@ -1,0 +1,62 @@
+{
+ "twin-axis-1": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 14.2
+ },
+ "twin-axis-2": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 16.0
+ },
+ "twin-axis-3": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 16.9
+ },
+ "oversize-1": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 16.7
+ },
+ "oversize-2": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 27.9
+ },
+ "oversize-3": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 17.0
+ }
+}

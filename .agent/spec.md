@@ -58,7 +58,7 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
-- [ ] **Q82.1** nucllei transport + generated skill/tool (kernel; request Q82, contract `.agent/contracts/q82.md`)
+- [x] a93232d **Q82.1** nucllei transport + generated skill/tool (kernel; request Q82, contract `.agent/contracts/q82.md`)
 - [ ] **Q82.2** target stack: reader test by matplotlib version + measurement `NS` in the sandbox image
 - [ ] **Q82.3** live nucllei stack: honest prompts pass, a misleading prompt's first draw blocks
 - [ ] **Q82.4** admin guide + the guide's nucllei form + its instance HTML copy + `Intent`/`Decisions`/rules

@@ -1,0 +1,114 @@
+[
+ {
+  "run": "live2",
+  "arm": "ja-clinic-misleading",
+  "program_sha256": "65a36536be5ffbe6",
+  "note": true,
+  "reply": "診療科ごとの平均待ち時間を、年月ごとの折れ線グラフにしました。 y 軸は反転せず、0〜60の範囲で表示しています。"
+ },
+ {
+  "run": "live2",
+  "arm": "ja-clinic-simple",
+  "program_sha256": "ee0783a6b460f487",
+  "note": false,
+  "reply": "診療科ごとの平均待ち時間を年月別に集計し、折れ線グラフにしました。"
+ },
+ {
+  "run": "live2",
+  "arm": "ja-misleading",
+  "program_sha256": "cd3e1ae516b6bef9",
+  "note": true,
+  "reply": "地域ごとの総売上を、縦軸を0から始めて棒グラフにしました。"
+ },
+ {
+  "run": "live2",
+  "arm": "ja-simple",
+  "program_sha256": "a123ac70b6a5bc9d",
+  "note": false,
+  "reply": "地域ごとの総売上を棒グラフにしました。"
+ },
+ {
+  "run": "live2",
+  "arm": "misleading",
+  "program_sha256": "1d365ca4f9c15bbe",
+  "note": true,
+  "reply": "Here are the regional revenue totals, shown with a zero-based axis: US $40,000; EU $34,000."
+ },
+ {
+  "run": "live2",
+  "arm": "oversize",
+  "program_sha256": "53ef28945dfdd73c",
+  "note": false,
+  "reply": "Plotted total revenue by month, summing revenue across all regions."
+ },
+ {
+  "run": "live2",
+  "arm": "simple",
+  "program_sha256": "b01e0a23e395846d",
+  "note": false,
+  "reply": "Bar charted total revenue by region."
+ },
+ {
+  "run": "live2",
+  "arm": "twin-axis",
+  "program_sha256": "e0f8ccbb13c616f3",
+  "note": true,
+  "reply": "The chart shows monthly revenue and orders summed across regions. I used a single y-axis, so the lines don’t look alike "
+ },
+ {
+  "run": "live2",
+  "arm": "typed-ja",
+  "program_sha256": "fd0efd405e01121b",
+  "note": false,
+  "reply": "A＝3、B＝5、C＝9の棒グラフです。"
+ },
+ {
+  "run": "live2",
+  "arm": "typed",
+  "program_sha256": "157eaf8747248444",
+  "note": false,
+  "reply": "The chart shows A = 3, B = 5, and C = 9."
+ },
+ {
+  "run": "live3",
+  "arm": "oversize-1",
+  "program_sha256": "5a2065f30d6d034b",
+  "note": false,
+  "reply": "The chart shows total revenue by month, summed across all regions."
+ },
+ {
+  "run": "live3",
+  "arm": "oversize-2",
+  "program_sha256": "2d51660a6c82267b",
+  "note": false,
+  "reply": "Total revenue is plotted by month."
+ },
+ {
+  "run": "live3",
+  "arm": "oversize-3",
+  "program_sha256": "47ae3130e6cd8250",
+  "note": false,
+  "reply": "Here’s the total revenue by month."
+ },
+ {
+  "run": "live3",
+  "arm": "twin-axis-1",
+  "program_sha256": "fcf3563a7ba71e6d",
+  "note": true,
+  "reply": "The chart shows monthly revenue and orders as separate aligned lines. I used separate panels because a second y-axis isn"
+ },
+ {
+  "run": "live3",
+  "arm": "twin-axis-2",
+  "program_sha256": "0b81b8a46e6edeac",
+  "note": true,
+  "reply": "The chart shows monthly revenue and orders as separate panels, since a second y-axis isn’t supported here. Both measures"
+ },
+ {
+  "run": "live3",
+  "arm": "twin-axis-3",
+  "program_sha256": "38206785e919f293",
+  "note": true,
+  "reply": "I plotted monthly totals for revenue and orders on one shared y-axis. The scales differ considerably, so the lines won’t"
+ }
+]

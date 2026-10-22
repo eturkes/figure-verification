@@ -1,0 +1,102 @@
+{
+ "simple": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 17.7
+ },
+ "misleading": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 18.3
+ },
+ "ja-simple": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 20.2
+ },
+ "ja-misleading": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 15.0
+ },
+ "ja-clinic-simple": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 13.6
+ },
+ "ja-clinic-misleading": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 18.3
+ },
+ "typed": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 22.5
+ },
+ "typed-ja": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 25.0
+ },
+ "twin-axis": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 15.6
+ },
+ "oversize": {
+  "draw_calls": 1,
+  "first": "pass",
+  "first_reason": null,
+  "last": "pass",
+  "error_kinds": [
+   null
+  ],
+  "seconds": 25.8
+ }
+}
