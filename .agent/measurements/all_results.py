@@ -404,6 +404,48 @@ def c1():
     }
 
 
+def ns():
+    """Judge each nucllei-jail description with its case's Sources (Q82.2); report the jail's
+    releases and every verdict that differs from the case's expectation or from the host."""
+    sys.path[:0] = [str(ROOT.parents[1] / "src"), str(ROOT.parents[1])]
+    from verifier.figure.description import parse_description  # noqa: PLC0415
+    from verifier.figure.judge import Passed, Sources, judge  # noqa: PLC0415
+
+    host, run = load("ns-host.json"), load("ns-sandbox.json")
+    jail = run["results"]
+    corpus = ROOT.parents[1] / "tests" / "figure_corpus"
+    data = ROOT.parents[1] / "data"
+    faults, verdicts = [], {}
+    for name in sorted(host):
+        case, item = host[name], jail[name]
+        described = parse_description(item["description"] or "")
+        if item["fault"] or described is None:
+            faults.append(name)
+            continue
+        files = ()
+        if case["csv"] is not None:
+            path = data / case["csv"]
+            files = (
+                (case["csv"], (path if path.is_file() else corpus / case["csv"]).read_bytes()),
+            )
+        outcome = judge(described, Sources(files, case["request"], case["anchoring"]))
+        verdicts[name] = "pass" if isinstance(outcome, Passed) else outcome.reason
+    return {
+        "image": run["image"],
+        "versions": run["versions"],
+        "cases": len(host),
+        "same_cases": sorted(host) == sorted(jail),
+        "sandbox_faults": faults,
+        "host_misses": {
+            n: [c["expect"], c["verdict"]] for n, c in host.items() if c["verdict"] != c["expect"]
+        },
+        "sandbox_misses": {
+            n: [host[n]["expect"], v] for n, v in verdicts.items() if v != host[n]["expect"]
+        },
+        "host_sandbox_differ": sorted(n for n, v in verdicts.items() if v != host[n]["verdict"]),
+    }
+
+
 def image():
     return fields(
         load("image-0123.json"),
@@ -433,6 +475,7 @@ PROJECTORS = {
     "I2": i2,
     "I3": i3,
     "C1": c1,
+    "NS": ns,
     "X1": x1,
     "Image": image,
 }

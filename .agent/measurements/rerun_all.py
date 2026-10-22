@@ -48,6 +48,7 @@ IDS = (
     "I2",
     "I3",
     "C1",
+    "NS",
     "X1",
     "Image",
 )
@@ -57,6 +58,8 @@ IMAGE = "ghcr.io/open-webui/open-webui:v0.12.3"
 HOST_ONLY = {
     "I2": "i2_ambiguity.py",
     "X1": "x1_transforms.py",
+    # Q82.2: the nucllei sandbox image, started by the script itself (sudo podman, privileged).
+    "NS": "ns_sandbox.py",
 }
 # Every Node leg runs in the installed Open WebUI bundle (Pyodide 314.0.3), the sandbox production
 # ships; M19 ids pair it with a host leg.
