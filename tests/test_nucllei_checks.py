@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Q82.1 T12 + T14 (`.agent/contracts/q82.md`): the nucllei reasons and the markdown check list."""
+"""Q82.1 T12 + T14 (`.agent/archive/contracts/q82.md`): the nucllei reasons and the markdown
+check list."""
 
 from __future__ import annotations
 

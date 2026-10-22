@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// How the figure verifier decides: the pipeline, one summary card per check. Rendered to
+// verifier-nucllei.svg by tools/render_diagrams.py; every rule = the tables of docs/nucllei/checks.md.
+digraph verifier_nucllei {
+  graph [fontname="Noto Sans", fontsize=15, fontcolor="#1f2328", bgcolor="white",
+         pad=0.3, nodesep=0.35, ranksep=0.28, newrank=true, compound=true];
+  node [fontname="Noto Sans", fontsize=14, fontcolor="#1f2328", shape=box,
+        style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
+        margin="0.15,0.06"];
+  edge [fontname="Noto Sans", fontsize=12, fontcolor="#424a53", color="#57606a",
+        arrowsize=0.7, penwidth=1.1];
+
+  you [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>You</b></td></tr><tr><td height="21">request + CSV file</td></tr></table>>];
+  model [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Language model</b></td></tr><tr><td height="21">writes a Python program</td></tr></table>>, style="rounded,dashed"];
+
+  subgraph cluster_server {
+    label=<<b>nucllei server</b>>; labeljust=l; style="rounded,filled";
+    fillcolor="#eef3f8"; color="#b6c3d1";
+    storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>nucllei storage</b></td></tr><tr><td height="21">your messages + files</td></tr></table>>, shape=cylinder, style=filled];
+    skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>figure-verification skill</b></td></tr><tr><td height="21">load_skill or CSV auto-load</td></tr></table>>];
+    tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>draw_figure tool</b></td></tr><tr><td height="21">reads your request + owned files</td></tr></table>>];
+    c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Check 1: program received</b> (tool)</td></tr>
+        <tr><td align="left" width="360" height="24" cellpadding="4">a signed-in user; not a delegated session</td></tr></table>>];
+    c2 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Check 2: program run in your sandbox</b> (tool)</td></tr>
+        <tr><td align="left" width="360" height="24" cellpadding="4">run budget 120 s; complete reply; program ends</td></tr></table>>];
+
+    judge [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Judge</b>: standard-library Python, checks 3–8 in order</td></tr>
+        <tr><td align="left" height="24"><b>3 One figure</b>: exactly 1 figure; every character drawn</td></tr>
+        <tr><td align="left" height="24"><b>4 Chart parts</b>: each (artist class, plotting call) pair in the closed set</td></tr>
+        <tr><td align="left" height="24"><b>5 Axes</b>: <font color="#0a3069">transData</font>, linear, upright, zero on bar axes, true ticks, no clipping</td></tr>
+        <tr><td align="left" height="24"><b>6 Marks</b>: bases at 0, no overlap, recounted histogram, whole pie, true legend</td></tr>
+        <tr><td align="left" height="24"><b>7 Values</b>: with data, each = your file, a typed number or one admitted computation</td></tr>
+        <tr><td align="left" height="24" cellpadding="4"><b>8 Columns</b>: drawn columns named in your request; labels agree</td></tr></table>>];
+
+    c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Check 9: image saved and shown</b> (tool)</td></tr>
+        <tr><td align="left" width="360" height="24" cellpadding="4">one PNG, saved as your file; display accepted</td></tr></table>>];
+  }
+
+  subgraph cluster_sandbox {
+    label=<<b>Your code sandbox: no network</b>>; labeljust=l; labelloc=b; style="rounded,filled";
+    fillcolor="#f6f1e7"; color="#cdbf9f";
+    hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">hooks matplotlib</td></tr></table>>];
+    program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Model's program</b></td></tr><tr><td height="21">runs unchanged</td></tr></table>>, style="rounded,dashed,filled"];
+    describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">describes every artist as JSON</td></tr><tr><td height="21">+ one PNG</td></tr></table>>];
+  }
+
+  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✓ Pass</b></td></tr><tr><td height="21">chart + verdict + interpretation + any note</td></tr><tr><td height="21">check list inside the tool block</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✗ Fail</b></td></tr><tr><td height="21">no image; verdict + cause + any note</td></tr><tr><td height="21">check list inside the tool block</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+
+  { rank=same; you; model; }
+  { rank=same; storage; tool; }
+  { rank=same; c1; hook; }
+  { rank=same; c9; fail; }
+
+  you -> model [label="asks"];
+  you -> storage [label="messages, attached file"];
+  model -> skill [label="loads"];
+  skill -> tool;
+  model -> tool [label="tool call"];
+  storage -> tool [label="your messages"];
+  tool -> c1 [label="caller"];
+  c1 -> hook [label="POST /exec"];
+  hook -> program -> describe;
+  describe -> c2 [label="description + PNG", constraint=false];
+  c1 -> c2 [style=invis];
+  describe -> fail [style=invis, weight=8];
+  c2 -> judge -> c9 -> pass;
+  storage -> judge [label="file bytes + your request"];
+  edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
+  c1 -> fail [label="check 1 fails"];
+  c2 -> fail [label="check 2 fails"];
+  judge -> fail [label="first failure\nin checks 3–8"];
+  c9 -> fail [label="check 9 fails"];
+}

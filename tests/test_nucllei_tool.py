@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Q82.1 (`.agent/contracts/q82.md` T3-T16): the nucllei tool, against strict fakes of nucllei and
-the real reader + judge. Expected texts are hand-stated literals, never read from the module."""
+"""Q82.1 (`.agent/archive/contracts/q82.md` T3-T16): the nucllei tool, against strict fakes of
+nucllei and the real reader + judge. Expected texts are hand-stated literals, never read from the
+module."""
 
 from __future__ import annotations
 

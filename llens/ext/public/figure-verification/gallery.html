@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blocked chart gallery</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #ffffff; --ink: #202b33; --secondary: #55626b;
+  --rule: #667984; --link: #07577a; --band: #e8f2f5;
+  font-family: "Noto Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+  font-size: 100%; line-height: 1.6;
+  color: var(--ink); background: var(--paper);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #182127; --ink: #e7edf1; --secondary: #adbcc6;
+    --rule: #7d909b; --link: #79cdea; --band: #263640;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76ch; padding: 1.25rem; }
+nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-bottom: 2rem; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
+  outline: 3px solid var(--link); outline-offset: 4px;
+}
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1.25rem; }
+h2 { font-size: 1.5rem; line-height: 1.3; margin-top: 2.5rem; }
+h3 { font-size: 1.125rem; line-height: 1.4; margin-top: 2rem; }
+p, ul, ol { margin-block: 1rem; }
+li { margin-block: .35rem; }
+code { font-family: ui-monospace, monospace; font-size: .9em; overflow-wrap: anywhere; }
+pre { padding: 1rem; overflow: auto; background: var(--band); line-height: 1.5; }
+pre code { overflow-wrap: normal; }
+img { display: block; max-width: 100%; height: auto; background: white; }
+.diagram {
+  width: min(70rem, calc(100vw - 2rem)); margin: 1.5rem 0 1.5rem 50%;
+  transform: translateX(-50%);
+}
+.diagram img { margin-inline: auto; }
+figcaption { text-align: center; font-size: .9375rem; margin-top: .5rem; }
+.table-scroll { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th { background: var(--band); text-align: left; }
+th, td { border: 1px solid var(--rule); padding: .6rem; vertical-align: top; }
+td { overflow-wrap: anywhere; }
+td:first-child { min-width: 9rem; }
+td:nth-child(2) { min-width: 12rem; }
+td:last-child { min-width: 9rem; }
+.gallery td { width: 50%; min-width: 15rem; }
+summary { color: var(--link); cursor: pointer; padding: .4rem 0; }
+.skip { position: absolute; top: -10rem; }
+.skip:focus { position: static; display: block; margin-bottom: 1rem; }
+@media (max-width: 36rem) {
+  body { padding: 1rem; }
+  h1 { font-size: 1.75rem; }
+  .table-scroll::before {
+    content: attr(data-scroll-note); display: block; margin-bottom: .5rem;
+    color: var(--secondary); font-size: .875rem;
+  }
+}
+</style>
+</head>
+<body class="gallery">
+<a class="skip" href="#content">Skip to content</a>
+<nav aria-label="Guide pages"><a href="checks.html">Checks</a><a href="gallery.html">Gallery</a><a href="gallery.ja.html">日本語</a></nav>
+<main id="content">
+<h1>Blocked chart gallery</h1>
+<p>Each pair shows a chart that the verifier blocks, beside an honest chart that passes. Every chart is a test case: the generator, <code>tools/render_gallery.py</code>, runs each program through the figure reader and the judge, and it stops unless each verdict matches. The rules: <a href="checks.html">Checks</a>. <a href="gallery.ja.html">日本語版</a></p>
+<ul>
+<li>Check 3: <a href="#glyph_missing"><code>glyph_missing</code></a></li>
+<li>Check 4: <a href="#raster_image"><code>raster_image</code></a>, <a href="#axes_not_judged"><code>axes_not_judged</code></a>, <a href="#axes_twin"><code>axes_twin</code></a>, <a href="#axes_overlap"><code>axes_overlap</code></a>, <a href="#artist_not_judged"><code>artist_not_judged</code></a>, <a href="#no_data"><code>no_data</code></a></li>
+<li>Check 5: <a href="#mark_not_in_data"><code>mark_not_in_data</code></a>, <a href="#scale_not_linear"><code>scale_not_linear</code></a>, <a href="#axis_inverted"><code>axis_inverted</code></a>, <a href="#zero_not_in_limits"><code>zero_not_in_limits</code></a>, <a href="#tick_label_mismatch"><code>tick_label_mismatch</code></a>, <a href="#point_clipped"><code>point_clipped</code></a></li>
+<li>Check 6: <a href="#mark_hidden"><code>mark_hidden</code></a>, <a href="#value_not_finite"><code>value_not_finite</code></a>, <a href="#bar_not_from_zero"><code>bar_not_from_zero</code></a>, <a href="#bars_overlap"><code>bars_overlap</code></a>, <a href="#x_not_ordered"><code>x_not_ordered</code></a>, <a href="#hist_counts"><code>hist_counts</code></a>, <a href="#pie_not_whole"><code>pie_not_whole</code></a>, <a href="#area_not_from_zero"><code>area_not_from_zero</code></a>, <a href="#marker_size_varies"><code>marker_size_varies</code></a>, <a href="#marker_color_varies"><code>marker_color_varies</code></a>, <a href="#legend_mismatch"><code>legend_mismatch</code></a></li>
+<li>Check 7: <a href="#category_not_unique"><code>category_not_unique</code></a>, <a href="#value_not_found"><code>value_not_found</code></a>, <a href="#label_not_in_request"><code>label_not_in_request</code></a></li>
+<li>Check 8: <a href="#column_not_requested"><code>column_not_requested</code></a>, <a href="#column_not_named"><code>column_not_named</code></a>, <a href="#label_not_consistent"><code>label_not_consistent</code></a></li>
+</ul>
+<p><a id="check-figure"></a></p>
+<h2>Check 3: One figure drawn</h2>
+<p><a id="glyph_missing"></a></p>
+<h3><code>glyph_missing</code>: every character in an available font</h3>
+<p>The title puts a Japanese character inside mathtext (<code>$年$</code>). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. The Japanese font that the reader registers reaches ordinary text, not mathtext.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/mathtext-missing-glyph.png"><img src="gallery/mathtext-missing-glyph.png" alt="Blocked: every character in an available font" /></a></td>
+<td><a href="gallery/mathtext-honest.png"><img src="gallery/mathtext-honest.png" alt="Passes: every character in an available font" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1, 4, 9</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title(&quot;$年$&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title(&quot;$x^2$ growth&quot;)
+</code></pre>
+</details>
+<p><a id="check-parts"></a></p>
+<h2>Check 4: Only chart parts the verifier checks</h2>
+<p><a id="raster_image"></a></p>
+<h3><code>raster_image</code>: no image (<code>imshow</code>, <code>pcolormesh</code>, <code>matshow</code>)</h3>
+<p>The program draws an image of an array. The verifier cannot read values back from pixels, so it blocks every image.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/imshow.png"><img src="gallery/imshow.png" alt="Blocked: no image (, , )" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="Passes: no image (, , )" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Image of 1, 2, 3, 4</code>. Passing chart's request: <code>Bars a 1 and b 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.imshow([[1, 2], [3, 4]])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="axes_not_judged"></a></p>
+<h3><code>axes_not_judged</code>: plain axes only: no polar, 3D, inset or secondary axes</h3>
+<p>The program draws the line on polar axes. The verifier has rules for plain x and y axes alone.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/polar.png"><img src="gallery/polar.png" alt="Blocked: plain axes only: no polar, 3D, inset or secondary axes" /></a></td>
+<td><a href="gallery/cartesian-axes.png"><img src="gallery/cartesian-axes.png" alt="Passes: plain axes only: no polar, 3D, inset or secondary axes" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Plot 1 and 2</code>. Passing chart's request: <code>Plot 0 and 1, then 1 and 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+ax = plt.subplot(projection=&quot;polar&quot;)
+ax.plot([0, 1], [1, 2])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+ax = plt.subplot()
+ax.plot([0, 1], [1, 2])
+</code></pre>
+</details>
+<p><a id="axes_twin"></a></p>
+<h3><code>axes_twin</code>: no twin axes (<code>twinx</code>, <code>twiny</code>)</h3>
+<p>A second y axis gives orders a scale of their own, so the crossing and the relative height of the two lines carry no meaning. The chart that passes puts each measure in its own panel.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/twin-axes.png"><img src="gallery/twin-axes.png" alt="Blocked: no twin axes (, )" /></a></td>
+<td><a href="gallery/twin-axes-twin.png"><img src="gallery/twin-axes-twin.png" alt="Passes: no twin axes (, )" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Revenue and orders by month</code>. File: <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;).sum(numeric_only=True)
+ax = plt.gca()
+ax.plot(df.index, df[&quot;revenue&quot;])
+ax.twinx().plot(df.index, df[&quot;orders&quot;], color=&quot;red&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;).sum(numeric_only=True)
+fig, (top, bottom) = plt.subplots(2, 1, sharex=True)
+top.plot(df.index, df[&quot;revenue&quot;])
+top.set_ylabel(&quot;revenue&quot;)
+bottom.plot(df.index, df[&quot;orders&quot;])
+bottom.set_ylabel(&quot;orders&quot;)
+</code></pre>
+</details>
+<p><a id="axes_overlap"></a></p>
+<h3><code>axes_overlap</code>: no overlapping panels</h3>
+<p>A second panel sits on top of the first and hides part of it.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/overlapping-axes.png"><img src="gallery/overlapping-axes.png" alt="Blocked: no overlapping panels" /></a></td>
+<td><a href="gallery/side-by-side-axes.png"><img src="gallery/side-by-side-axes.png" alt="Passes: no overlapping panels" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Plot 1 and 2</code>. Passing chart's request: <code>Plot 1 and 2, then 2 and 1</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.8, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.5, 0.5, 0.4, 0.4]).plot([1, 2], [2, 1])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.35, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.55, 0.1, 0.35, 0.8]).plot([1, 2], [2, 1])
+</code></pre>
+</details>
+<p><a id="artist_not_judged"></a></p>
+<h3><code>artist_not_judged</code>: no other part (error bars, box plots, contours, added shapes, step histograms)</h3>
+<p>Error bars fall outside the closed set of chart parts that the verifier checks, so it blocks them. The chart that passes uses checked parts alone: bars, a line, points, a reference line and value labels.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/errorbar.png"><img src="gallery/errorbar.png" alt="Blocked: no other part (error bars, box plots, contours, added shapes, step histograms)" /></a></td>
+<td><a href="gallery/judged-families.png"><img src="gallery/judged-families.png" alt="Passes: no other part (error bars, box plots, contours, added shapes, step histograms)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Plot 3 and 4</code>. Passing chart's request: <code>Revenue by region: bars, a line, points, a reference line at 30000 and value labels</code> with <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.errorbar([1, 2], [3, 4], yerr=[1, 1])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+bars = plt.bar(totals.index, totals.values, label=&quot;revenue&quot;)
+plt.plot(totals.index, totals.values, color=&quot;black&quot;, label=&quot;line&quot;)
+plt.scatter(totals.index, totals.values, color=&quot;red&quot;, label=&quot;points&quot;)
+plt.axhline(30000, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+plt.bar_label(bars)
+plt.text(0, 1000, &quot;note&quot;)
+plt.legend()
+</code></pre>
+</details>
+<p><a id="no_data"></a></p>
+<h3><code>no_data</code>: data in every panel</h3>
+<p>The panel has a title but no data.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/empty-axes.png"><img src="gallery/empty-axes.png" alt="Blocked: data in every panel" /></a></td>
+<td><a href="gallery/axes-with-data.png"><img src="gallery/axes-with-data.png" alt="Passes: data in every panel" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1 and 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title(&quot;Nothing&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title(&quot;Something&quot;)
+ax.plot([1, 2], [1, 2])
+</code></pre>
+</details>
+<p><a id="check-axes"></a></p>
+<h2>Check 5: Honest axes</h2>
+<p><a id="mark_not_in_data"></a></p>
+<h3><code>mark_not_in_data</code>: each mark at its data values</h3>
+<p>The line uses axes coordinates (<code>transform=plt.gca().transAxes</code>), so it runs from corner to corner whatever the data holds. The two charts look alike; the line that passes sits at its data values.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/line-in-axes-coordinates.png"><img src="gallery/line-in-axes-coordinates.png" alt="Blocked: each mark at its data values" /></a></td>
+<td><a href="gallery/line-in-data.png"><img src="gallery/line-in-data.png" alt="Passes: each mark at its data values" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 0 and 1</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1], transform=plt.gca().transAxes)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1])
+</code></pre>
+</details>
+<p><a id="scale_not_linear"></a></p>
+<h3><code>scale_not_linear</code>: linear scales; log only when the axis label or panel title says <code>log</code>, <code>logarithmic</code> or <code>対数</code></h3>
+<p>A log y axis that no label names makes 1, 10, 100 and 1000 look evenly spaced. The chart that passes says <code>log scale</code> in its axis label.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/log-scale-unstated.png"><img src="gallery/log-scale-unstated.png" alt="Blocked: linear scales; log only when the axis label or panel title says ,  or " /></a></td>
+<td><a href="gallery/log-scale-stated.png"><img src="gallery/log-scale-stated.png" alt="Passes: linear scales; log only when the axis label or panel title says ,  or " /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1, 10, 100, 1000</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale(&quot;log&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale(&quot;log&quot;)
+plt.ylabel(&quot;Value (log scale)&quot;)
+</code></pre>
+</details>
+<p><a id="axis_inverted"></a></p>
+<h3><code>axis_inverted</code>: no inverted x or y axis</h3>
+<p>The y axis runs downward, so a rise looks like a fall.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/inverted-value-axis.png"><img src="gallery/inverted-value-axis.png" alt="Blocked: no inverted x or y axis" /></a></td>
+<td><a href="gallery/upright-axes.png"><img src="gallery/upright-axes.png" alt="Passes: no inverted x or y axis" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1, 4, 9</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.gca().invert_yaxis()
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="zero_not_in_limits"></a></p>
+<h3><code>zero_not_in_limits</code>: zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom)</h3>
+<p>The y axis starts at 30,000, so US revenue (40,000) looks 2.5 times EU revenue (34,000).</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/truncated-bars.png"><img src="gallery/truncated-bars.png" alt="Blocked: zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom)" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="Passes: zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Total revenue by region</code>. File: <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylim(30000, 41000)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="tick_label_mismatch"></a></p>
+<h3><code>tick_label_mismatch</code>: each visible tick label = the value at its position</h3>
+<p>The tick formatter divides each value by 10, so the axis reads 4,000 where the bar reaches 40,000.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/money-labels-scaled.png"><img src="gallery/money-labels-scaled.png" alt="Blocked: each visible tick label = the value at its position" /></a></td>
+<td><a href="gallery/money-labels.png"><img src="gallery/money-labels.png" alt="Passes: each visible tick label = the value at its position" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Total revenue by region</code>. File: <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f&quot;{v / 10:,.0f}&quot;))
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.StrMethodFormatter(&quot;${x:,.0f}&quot;))
+</code></pre>
+</details>
+<p><a id="point_clipped"></a></p>
+<h3><code>point_clipped</code>: every data point, bar end and reference mark inside the axis limits (pies exempt)</h3>
+<p>The y limit stops at 5, so the point at 9 falls outside the chart and disappears.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/clipped-point.png"><img src="gallery/clipped-point.png" alt="Blocked: every data point, bar end and reference mark inside the axis limits (pies exempt)" /></a></td>
+<td><a href="gallery/upright-axes.png"><img src="gallery/upright-axes.png" alt="Passes: every data point, bar end and reference mark inside the axis limits (pies exempt)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1, 4, 9</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], marker=&quot;o&quot;)
+plt.ylim(0, 5)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="check-marks"></a></p>
+<h2>Check 6: Honest marks</h2>
+<p><a id="mark_hidden"></a></p>
+<h3><code>mark_hidden</code>: every mark and panel visible, with ink</h3>
+<p>The program hides the bar for b, so the chart seems to hold a alone.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/hidden-bars.png"><img src="gallery/hidden-bars.png" alt="Blocked: every mark and panel visible, with ink" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="Passes: every mark and panel visible, with ink" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Bars a 1 and b 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+bars = plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+bars[1].set_visible(False)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="value_not_finite"></a></p>
+<h3><code>value_not_finite</code>: every value finite; no point dropped</h3>
+<p>A missing value (NaN) leaves a silent gap in the line. The chart that passes draws only the points that exist.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/gap-in-line.png"><img src="gallery/gap-in-line.png" alt="Blocked: every value finite; no point dropped" /></a></td>
+<td><a href="gallery/complete-line.png"><img src="gallery/complete-line.png" alt="Passes: every value finite; no point dropped" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Plot 1, 4, 9</code>. Passing chart's request: <code>Plot 1, 4, 9 at 0, 1 and 3</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1, 2, 3], [1, 4, float(&quot;nan&quot;), 9])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1, 3], [1, 4, 9])
+</code></pre>
+</details>
+<p><a id="bar_not_from_zero"></a></p>
+<h3><code>bar_not_from_zero</code>: bars from 0, or from the top of a stacked bar</h3>
+<p>The bars float from 1, so their tops read 2 and 3 on the axis for the values 1 and 2.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/floating-bars.png"><img src="gallery/floating-bars.png" alt="Blocked: bars from 0, or from the top of a stacked bar" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="Passes: bars from 0, or from the top of a stacked bar" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Bars a 1 and b 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2], bottom=1)
+plt.ylim(0, 4)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="bars_overlap"></a></p>
+<h3><code>bars_overlap</code>: no overlapping bars</h3>
+<p>The second series sits exactly on the first and hides it: the chart shows two bars where the data holds four.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/overplotted-bars.png"><img src="gallery/overplotted-bars.png" alt="Blocked: no overlapping bars" /></a></td>
+<td><a href="gallery/overplotted-bars-side-by-side.png"><img src="gallery/overplotted-bars-side-by-side.png" alt="Passes: no overlapping bars" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Bars a 1 and b 2, then a 3 and b 4</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+plt.bar([&quot;a&quot;, &quot;b&quot;], [3, 4])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([-0.2, 0.8], [1, 2], width=0.4, label=&quot;first&quot;)
+plt.bar([0.2, 1.2], [3, 4], width=0.4, label=&quot;second&quot;)
+plt.xticks([0, 1], [&quot;a&quot;, &quot;b&quot;])
+plt.legend()
+</code></pre>
+</details>
+<p><a id="x_not_ordered"></a></p>
+<h3><code>x_not_ordered</code>: line x values in one direction</h3>
+<p>The points are not in x order, so the line runs forward, doubles back and suggests a loop that the data does not hold.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/unordered-line.png"><img src="gallery/unordered-line.png" alt="Blocked: line x values in one direction" /></a></td>
+<td><a href="gallery/unordered-line-sorted.png"><img src="gallery/unordered-line-sorted.png" alt="Passes: line x values in one direction" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Points 1 1, 3 9, 2 4</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 3, 2], [1, 9, 4])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [1, 4, 9])
+</code></pre>
+</details>
+<p><a id="hist_counts"></a></p>
+<h3><code>hist_counts</code>: histogram heights = counts or density of its data over its bins</h3>
+<p>The bin range stops at 4, so the value 9 drops out of the histogram without a trace.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/hist-dropped-values.png"><img src="gallery/hist-dropped-values.png" alt="Blocked: histogram heights = counts or density of its data over its bins" /></a></td>
+<td><a href="gallery/hist-all-values.png"><img src="gallery/hist-all-values.png" alt="Passes: histogram heights = counts or density of its data over its bins" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Histogram of 1, 2, 2, 3, 9</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 9], bins=3, range=(0, 4))
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 9], bins=3)
+</code></pre>
+</details>
+<p><a id="pie_not_whole"></a></p>
+<h3><code>pie_not_whole</code>: pie wedges fill 360°; each span = its share of the total</h3>
+<p>With <code>normalize=False</code>, the wedges for 0.1, 0.2 and 0.3 fill 60 % of the circle, and the gap reads as a missing slice.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/partial-pie.png"><img src="gallery/partial-pie.png" alt="Blocked: pie wedges fill 360°; each span = its share of the total" /></a></td>
+<td><a href="gallery/whole-pie.png"><img src="gallery/whole-pie.png" alt="Passes: pie wedges fill 360°; each span = its share of the total" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Pie of 0.1, 0.2 and 0.3</code>. Passing chart's request: <code>Pie of a 0.1, b 0.2 and c 0.3</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.pie([0.1, 0.2, 0.3], labels=[&quot;a&quot;, &quot;b&quot;, &quot;c&quot;], normalize=False)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.pie([0.1, 0.2, 0.3], labels=[&quot;a&quot;, &quot;b&quot;, &quot;c&quot;])
+</code></pre>
+</details>
+<p><a id="area_not_from_zero"></a></p>
+<h3><code>area_not_from_zero</code>: areas from 0, or from the top of a stacked area</h3>
+<p>The area starts at 5, so its filled heights show 1, 3 and 2 for the values 6, 8 and 7.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/floating-area.png"><img src="gallery/floating-area.png" alt="Blocked: areas from 0, or from the top of a stacked area" /></a></td>
+<td><a href="gallery/area-from-zero.png"><img src="gallery/area-from-zero.png" alt="Passes: areas from 0, or from the top of a stacked area" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Fill between 5 and 6, 8, 7</code>. Passing chart's request: <code>Fill 6, 8, 7 at 1, 2, 3</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], [5, 5, 5], [6, 8, 7])
+plt.ylim(0, 10)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], [6, 8, 7])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="marker_size_varies"></a></p>
+<h3><code>marker_size_varies</code>: varying scatter sizes: a size legend</h3>
+<p>The points have different sizes, and nothing says what a size means.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/sizes-unexplained.png"><img src="gallery/sizes-unexplained.png" alt="Blocked: varying scatter sizes: a size legend" /></a></td>
+<td><a href="gallery/sizes-explained.png"><img src="gallery/sizes-explained.png" alt="Passes: varying scatter sizes: a size legend" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Points 1 3 and 2 4</code>. Passing chart's request: <code>Points 1 3 and 2 4, sized 10 and 400</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], s=[10, 400])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 400])
+plt.legend(*dots.legend_elements(&quot;sizes&quot;))
+</code></pre>
+</details>
+<p><a id="marker_color_varies"></a></p>
+<h3><code>marker_color_varies</code>: varying scatter colors: a colorbar or a color legend</h3>
+<p>The points have different colors, and nothing says what a color means.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/colors-unexplained.png"><img src="gallery/colors-unexplained.png" alt="Blocked: varying scatter colors: a colorbar or a color legend" /></a></td>
+<td><a href="gallery/colors-explained.png"><img src="gallery/colors-explained.png" alt="Passes: varying scatter colors: a colorbar or a color legend" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Points 1 3 and 2 4</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], c=[1, 2])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], c=[1, 2])
+plt.colorbar(dots)
+</code></pre>
+</details>
+<p><a id="legend_mismatch"></a></p>
+<h3><code>legend_mismatch</code>: legend entries name drawn series; 2 or more series in a panel with a legend: every series named</h3>
+<p>The legend names one of the two lines, so the reader cannot tell what the other line shows.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/legend-misses-a-series.png"><img src="gallery/legend-misses-a-series.png" alt="Blocked: legend entries name drawn series; 2 or more series in a panel with a legend: every series named" /></a></td>
+<td><a href="gallery/legend-names-both.png"><img src="gallery/legend-names-both.png" alt="Passes: legend entries name drawn series; 2 or more series in a panel with a legend: every series named" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Plot 1, 4, 9 and 2, 3, 5</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+first, = plt.plot([1, 4, 9], label=&quot;first&quot;)
+plt.plot([2, 3, 5], label=&quot;second&quot;)
+plt.legend(handles=[first])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], label=&quot;first&quot;)
+plt.plot([2, 3, 5], label=&quot;second&quot;)
+plt.legend()
+</code></pre>
+</details>
+<p><a id="check-values"></a></p>
+<h2>Check 7: Drawn values come from your data</h2>
+<p><a id="category_not_unique"></a></p>
+<h3><code>category_not_unique</code>: each category once per series</h3>
+<p>Two bars carry the label a, so the reader cannot tell which value belongs to a.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/repeated-category.png"><img src="gallery/repeated-category.png" alt="Blocked: each category once per series" /></a></td>
+<td><a href="gallery/unique-categories.png"><img src="gallery/unique-categories.png" alt="Passes: each category once per series" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Bars a 1 and a 2</code>. Passing chart's request: <code>Bars a 1 and b 2</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=[&quot;a&quot;, &quot;a&quot;]).plot(kind=&quot;bar&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=[&quot;a&quot;, &quot;b&quot;]).plot(kind=&quot;bar&quot;)
+</code></pre>
+</details>
+<p><a id="value_not_found"></a></p>
+<h3><code>value_not_found</code>: every drawn value found in a source</h3>
+<p>The bars show 50,000 and 60,000, but the file's revenue totals are 34,000 and 40,000.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/made-up-values.png"><img src="gallery/made-up-values.png" alt="Blocked: every drawn value found in a source" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="Passes: every drawn value found in a source" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Total revenue by region</code>. File: <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;EU&quot;, &quot;US&quot;], [50000, 60000])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="label_not_in_request"></a></p>
+<h3><code>label_not_in_request</code>: every typed category label in the request</h3>
+<p>The request types numbers alone, and the program invents the labels apples, pears and plums. The two charts look the same; the request makes the difference.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/labels-not-typed.png"><img src="gallery/labels-not-typed.png" alt="Blocked: every typed category label in the request" /></a></td>
+<td><a href="gallery/labels-typed.png"><img src="gallery/labels-typed.png" alt="Passes: every typed category label in the request" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Plot 3, 5, 9</code>. Passing chart's request: <code>Plot apples 3, pears 5, plums 9</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;apples&quot;, &quot;pears&quot;, &quot;plums&quot;], [3, 5, 9])
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;apples&quot;, &quot;pears&quot;, &quot;plums&quot;], [3, 5, 9])
+</code></pre>
+</details>
+<p><a id="check-columns"></a></p>
+<h2>Check 8: Drawn columns match your request</h2>
+<p><a id="column_not_requested"></a></p>
+<h3><code>column_not_requested</code>: no column that the request names replaced by another</h3>
+<p>The request asks for revenue, and the chart draws orders, a column that the request does not name.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/substituted-column.png"><img src="gallery/substituted-column.png" alt="Blocked: no column that the request names replaced by another" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="Passes: no column that the request names replaced by another" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Chart revenue by region</code> with <code>sales.csv</code>. Passing chart's request: <code>Total revenue by region</code> with <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;orders&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="column_not_named"></a></p>
+<h3><code>column_not_named</code>: production: if the request names or excludes a column, it names every drawn column</h3>
+<p>Production rule: the request names revenue but not month, which the chart also draws. The two charts are the same; the request that also names month passes.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/unnamed-column-strict.png"><img src="gallery/unnamed-column-strict.png" alt="Blocked: production: if the request names or excludes a column, it names every drawn column" /></a></td>
+<td><a href="gallery/named-columns-strict.png"><img src="gallery/named-columns-strict.png" alt="Passes: production: if the request names or excludes a column, it names every drawn column" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Blocked chart's request: <code>Total revenue</code> with <code>sales.csv</code>. Passing chart's request: <code>Total revenue by month</code> with <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+</details>
+<p><a id="label_not_consistent"></a></p>
+<h3><code>label_not_consistent</code>: titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary</h3>
+<p>The bars show revenue, but the title names orders, another column of the file.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Blocked</th>
+<th>Passes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/title-names-another-column.png"><img src="gallery/title-names-another-column.png" alt="Blocked: titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary" /></a></td>
+<td><a href="gallery/title-consistent.png"><img src="gallery/title-consistent.png" alt="Passes: titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Request: <code>Total revenue by region</code>. File: <code>sales.csv</code>.</p>
+<details><summary>Programs</summary>
+<p>Blocked:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.title(&quot;Orders by region&quot;)
+</code></pre>
+<p>Passes:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.title(&quot;Total revenue by region&quot;)
+plt.xlabel(&quot;region&quot;)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+</main>
+</body>
+</html>

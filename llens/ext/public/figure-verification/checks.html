@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Figure checks for nucllei</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #ffffff; --ink: #202b33; --secondary: #55626b;
+  --rule: #667984; --link: #07577a; --band: #e8f2f5;
+  font-family: "Noto Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+  font-size: 100%; line-height: 1.6;
+  color: var(--ink); background: var(--paper);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #182127; --ink: #e7edf1; --secondary: #adbcc6;
+    --rule: #7d909b; --link: #79cdea; --band: #263640;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76ch; padding: 1.25rem; }
+nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-bottom: 2rem; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
+  outline: 3px solid var(--link); outline-offset: 4px;
+}
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1.25rem; }
+h2 { font-size: 1.5rem; line-height: 1.3; margin-top: 2.5rem; }
+h3 { font-size: 1.125rem; line-height: 1.4; margin-top: 2rem; }
+p, ul, ol { margin-block: 1rem; }
+li { margin-block: .35rem; }
+code { font-family: ui-monospace, monospace; font-size: .9em; overflow-wrap: anywhere; }
+pre { padding: 1rem; overflow: auto; background: var(--band); line-height: 1.5; }
+pre code { overflow-wrap: normal; }
+img { display: block; max-width: 100%; height: auto; background: white; }
+.diagram {
+  width: min(70rem, calc(100vw - 2rem)); margin: 1.5rem 0 1.5rem 50%;
+  transform: translateX(-50%);
+}
+.diagram img { margin-inline: auto; }
+figcaption { text-align: center; font-size: .9375rem; margin-top: .5rem; }
+.table-scroll { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th { background: var(--band); text-align: left; }
+th, td { border: 1px solid var(--rule); padding: .6rem; vertical-align: top; }
+td { overflow-wrap: anywhere; }
+td:first-child { min-width: 9rem; }
+td:nth-child(2) { min-width: 12rem; }
+td:last-child { min-width: 9rem; }
+.gallery td { width: 50%; min-width: 15rem; }
+summary { color: var(--link); cursor: pointer; padding: .4rem 0; }
+.skip { position: absolute; top: -10rem; }
+.skip:focus { position: static; display: block; margin-bottom: 1rem; }
+@media (max-width: 36rem) {
+  body { padding: 1rem; }
+  h1 { font-size: 1.75rem; }
+  .table-scroll::before {
+    content: attr(data-scroll-note); display: block; margin-bottom: .5rem;
+    color: var(--secondary); font-size: .875rem;
+  }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<nav aria-label="Guide pages"><a href="checks.html">Checks</a><a href="gallery.html">Gallery</a><a href="checks.ja.html">日本語</a></nav>
+<main id="content">
+<h1>Figure checks for nucllei</h1>
+<p>Every rule a chart must pass through <code>draw_figure</code>, in run order: what the verifier checks,
+how it checks it, and the code that a failure shows. Open the collapsed tool block to read the
+check list. Each row links to its section here. <a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md">Full rules (online)</a> describes the
+shared figure rules and the Open WebUI transport. Examples: <a href="gallery.html">Gallery</a>.
+<a href="checks.ja.html">日本語版</a></p>
+<h2>How the verifier works</h2>
+<figure class="diagram"><img src="verifier.svg" alt="The nucllei skill loads draw_figure; one sandbox run reports the figure; the server judges it
+and shows only a passing image" /><figcaption><a href="verifier.svg">Open the full-size diagram</a></figcaption></figure>
+<p>Each check shows a one-line summary; the tables below list every rule. Dashed boxes: what the
+language model writes. Red dashed arrows: where a failed check stops the chart.</p>
+<ol>
+<li><strong>Load.</strong> nucllei loads the <code>figure-verification</code> skill through <code>load_skill</code>, or automatically
+for a CSV attachment. The skill makes <code>draw_figure</code> available to the model.</li>
+<li><strong>Call.</strong> The model sends one complete Python program to <code>draw_figure</code>. The tool reads your
+own messages and files from the stored chat branch. It checks the caller before any run.</li>
+<li><strong>Run and read.</strong> The tool sends one <code>/exec</code> request to your code sandbox, with the trusted
+figure reader and the program, unchanged. Your attached files enter <code>/workspace/imports/</code>.
+The reader hooks matplotlib, runs the program and draws each figure once. It reports every
+artist as JSON: class, plotting call, transform, coordinates, axes, ticks, colors, sizes,
+visibility and the recorded inputs of <code>hist</code>, <code>pie</code>, <code>fill_between</code> and <code>stackplot</code>. It also
+returns one PNG. There is no separate receipt or browser code runtime.</li>
+<li><strong>Judge.</strong> On the nucllei server, standard-library Python applies the rules below to that
+description, in order. The first failure stops the chart. The judge compares drawn values
+with your files and request. No model and no guesswork take part.</li>
+<li><strong>Display.</strong> On a pass, the tool saves the PNG as your file and shows it with the verdict,
+interpretation and any model note. On a failure, it shows the verdict, cause and any note,
+without an image. These appear outside the collapsed tool block. The check list appears
+inside that block and also reaches the model. If the display fails, read the cause in the
+tool result.</li>
+</ol>
+<p>Not checked: whether the chart answers your question; text on the chart (<code>text</code>, <code>annotate</code>,
+<code>bar_label</code>), which the reply lists; the model's note or its reply text; the program itself.
+The program must be non-adversarial: it runs before the checks, in the reader's interpreter,
+and can read your attached files. The verifier trusts the sandbox, interpreter, matplotlib,
+fonts, browser and pixels. The sandbox has no network. Other tools, such as <code>run_python</code> and
+<code>fetch_from_workspace</code>, can show a chart outside this skill and its checks.</p>
+<p><a id="check-program"></a></p>
+<h3>1. Chart program received from the model</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>request from a signed-in user</td>
+<td><code>draw_figure</code> receives the caller's user id</td>
+<td><code>no_user</code></td>
+</tr>
+<tr>
+<td>call in the user's chat, not a delegated session</td>
+<td>the tool refuses a call whose metadata names <code>agent_session</code>, before reading files or running code</td>
+<td><code>delegated_session</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-program">Full rules (online)</a></p>
+<p><a id="check-run"></a></p>
+<h3>2. Program run in the code sandbox</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the code sandbox answers</td>
+<td>one <code>POST /exec</code> through nucllei's sandbox client; a connection failure blocks</td>
+<td><code>sandbox_unreachable</code></td>
+</tr>
+<tr>
+<td>program within the sandbox's time limit</td>
+<td>requests 120 s for the run and waits at most 150 s for HTTP; the sandbox can apply a shorter limit</td>
+<td><code>sandbox_timeout</code></td>
+</tr>
+<tr>
+<td>the sandbox run succeeds</td>
+<td>an HTTP refusal or a nonzero <code>exit_code</code> blocks</td>
+<td><code>sandbox_error</code></td>
+</tr>
+<tr>
+<td>complete reply in the expected format</td>
+<td><code>exit_code</code> is an integer, <code>stdout</code> is text within the reader's output bound, and <code>stdout_truncated</code> is false</td>
+<td><code>reply_malformed</code></td>
+</tr>
+<tr>
+<td>run reports its figure</td>
+<td><code>stdout</code> holds one parsable, tagged description line</td>
+<td><code>no_description</code></td>
+</tr>
+<tr>
+<td>valid Python</td>
+<td>the reader compiles the program; no <code>SyntaxError</code></td>
+<td><code>program_syntax_error</code></td>
+</tr>
+<tr>
+<td>program runs to its end without an exception</td>
+<td>the reader runs the program and catches any exception with its line</td>
+<td><code>program_error</code></td>
+</tr>
+<tr>
+<td>imports available in the code sandbox</td>
+<td>the exception is no missing-module error; the sandbox's installed packages decide availability</td>
+<td><code>module_not_available</code></td>
+</tr>
+<tr>
+<td>at most 24 axes, 2,000 parts, 20,000 coordinates and 1,000 characters per text; description at most 400,000 bytes, PNG at most 500,000 characters</td>
+<td>the reader counts as it describes, and reports a figure past a cap as too large</td>
+<td><code>figure_too_large</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-run">Full rules (online)</a></p>
+<p><a id="check-figure"></a></p>
+<h3>3. One figure drawn</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a matplotlib figure (pandas plots count)</td>
+<td>the reader collects every figure that the program shows or leaves open</td>
+<td><code>no_figure</code></td>
+</tr>
+<tr>
+<td>only one figure (panels from <code>plt.subplots</code> allowed)</td>
+<td>the same count is 1</td>
+<td><code>multiple_figures</code></td>
+</tr>
+<tr>
+<td>every character in an available font</td>
+<td>the reader counts missing-glyph warnings, mathtext missing-glyph records and <code>.notdef</code> glyphs in path text; the wrapper registers the jail's Noto Sans CJK JP for ordinary text, not mathtext</td>
+<td><code>glyph_missing</code></td>
+</tr>
+<tr>
+<td>verifier finishes without an internal error</td>
+<td>an unexpected exception in the tool fails the chart</td>
+<td><code>verifier_error</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-figure">Full rules (online)</a> <a href="gallery.html#check-figure">Examples</a></p>
+<p><a id="check-parts"></a></p>
+<h3>4. Only chart parts the verifier checks</h3>
+<p>The reader records each artist's class and the plotting call that made it (the outermost
+<code>matplotlib.axes</code> frame on the stack at the artist's creation). Each pair must be in this closed set: lines
+(<code>plot</code>, <code>step</code>), points (<code>scatter</code>), bars (<code>bar</code>, <code>barh</code>, grouped, stacked), histograms (<code>hist</code>,
+filled, one data set), pies (<code>pie</code>), areas (<code>fill_between</code>, <code>stackplot</code>), reference lines and bands
+(<code>axhline</code>, <code>axvline</code>, <code>axhspan</code>, <code>axvspan</code>), text (titles, axis labels, legends, tick labels, <code>text</code>,
+<code>annotate</code>, <code>bar_label</code>), a colorbar for scatter colors.</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no image (<code>imshow</code>, <code>pcolormesh</code>, <code>matshow</code>)</td>
+<td>no <code>AxesImage</code>, <code>QuadMesh</code> or <code>FigureImage</code> in the artist tree</td>
+<td><code>raster_image</code></td>
+</tr>
+<tr>
+<td>plain axes only: no polar, 3D, inset or secondary axes</td>
+<td>each axes class is exactly <code>Axes</code>, owned by the figure, inside no other axes</td>
+<td><code>axes_not_judged</code></td>
+</tr>
+<tr>
+<td>no twin axes (<code>twinx</code>, <code>twiny</code>)</td>
+<td>no two axes share an x or y axis at the same position</td>
+<td><code>axes_twin</code></td>
+</tr>
+<tr>
+<td>no overlapping panels</td>
+<td>the axes positions do not overlap</td>
+<td><code>axes_overlap</code></td>
+</tr>
+<tr>
+<td>no other part (error bars, box plots, contours, added shapes, step histograms)</td>
+<td>every (class, call) pair is in the set above, or is a key the program added with no plotting call (a <code>Rectangle</code> of zero width and height, or a <code>Line2D</code> with no point) that the panel's own legend uses (seaborn <code>hue</code>)</td>
+<td><code>artist_not_judged</code></td>
+</tr>
+<tr>
+<td>data in every panel</td>
+<td>each axes holds a data artist</td>
+<td><code>no_data</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-parts">Full rules (online)</a> <a href="gallery.html#check-parts">Examples</a></p>
+<p><a id="check-axes"></a></p>
+<h3>5. Honest axes</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>each mark at its data values</td>
+<td>each data artist's transform is the axes' <code>transData</code> (bars: the data transform; scatter: the offset transform)</td>
+<td><code>mark_not_in_data</code></td>
+</tr>
+<tr>
+<td>linear scales; log only when the axis label or panel title says <code>log</code>, <code>logarithmic</code> or <code>対数</code></td>
+<td><code>axis.get_scale()</code>; for <code>log</code>, the label and title text after NFKC and case folding</td>
+<td><code>scale_not_linear</code></td>
+</tr>
+<tr>
+<td>no inverted x or y axis</td>
+<td><code>axis.get_inverted()</code></td>
+<td><code>axis_inverted</code></td>
+</tr>
+<tr>
+<td>zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom)</td>
+<td><code>0</code> lies in the value axis's <code>get_view_interval()</code></td>
+<td><code>zero_not_in_limits</code></td>
+</tr>
+<tr>
+<td>each visible tick label = the value at its position</td>
+<td>each label in view, read as a category, a date or a number (with the formatter's order and offset), equals its tick position, within half a unit of its last digit</td>
+<td><code>tick_label_mismatch</code></td>
+</tr>
+<tr>
+<td>every data point, bar end and reference mark inside the axis limits (pies exempt)</td>
+<td>every drawn coordinate lies in <code>get_view_interval()</code></td>
+<td><code>point_clipped</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-axes">Full rules (online)</a> <a href="gallery.html#check-axes">Examples</a></p>
+<p><a id="check-marks"></a></p>
+<h3>6. Honest marks</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>every mark and panel visible, with ink</td>
+<td>visibility, alpha, face and edge colors, line style and marker size of each artist</td>
+<td><code>mark_hidden</code></td>
+</tr>
+<tr>
+<td>every value finite; no point dropped</td>
+<td>no NaN or infinity in the drawn data or the recorded call inputs; each band draws every point that its call received</td>
+<td><code>value_not_finite</code></td>
+</tr>
+<tr>
+<td>bars from 0, or from the top of a stacked bar</td>
+<td>each bar's base is 0, or exactly the far end of a bar at the same position and width</td>
+<td><code>bar_not_from_zero</code></td>
+</tr>
+<tr>
+<td>no overlapping bars</td>
+<td>no two bar rectangles intersect with an area above 0</td>
+<td><code>bars_overlap</code></td>
+</tr>
+<tr>
+<td>line x values in one direction</td>
+<td>each line's x positions are monotonic</td>
+<td><code>x_not_ordered</code></td>
+</tr>
+<tr>
+<td>histogram heights = counts or density of its data over its bins</td>
+<td>the judge recounts the recorded <code>hist</code> input over the drawn bin edges (numpy rules, last bin closed); all data inside the bins; no weights, no <code>cumulative</code></td>
+<td><code>hist_counts</code></td>
+</tr>
+<tr>
+<td>pie wedges fill 360°; each span = its share of the total</td>
+<td>each wedge span = 360° × value / sum of the recorded <code>pie</code> input, within 0.0001°; one radius, no gaps</td>
+<td><code>pie_not_whole</code></td>
+</tr>
+<tr>
+<td>areas from 0, or from the top of a stacked area</td>
+<td>each band's base edge is 0, or exactly the top edge of a grounded band at the same x</td>
+<td><code>area_not_from_zero</code></td>
+</tr>
+<tr>
+<td>varying scatter sizes: a size legend</td>
+<td>the sizes vary only with a legend from that collection's <code>legend_elements(&quot;sizes&quot;)</code></td>
+<td><code>marker_size_varies</code></td>
+</tr>
+<tr>
+<td>varying scatter colors: a colorbar or a color legend</td>
+<td>the face colors vary only with a colorbar or a <code>legend_elements()</code> legend of that collection</td>
+<td><code>marker_color_varies</code></td>
+</tr>
+<tr>
+<td>legend entries name drawn series; 2 or more series in a panel with a legend: every series named</td>
+<td>each legend handle is a judged artist, or a proxy with a mark's label and color, or such a zero-size key in the panel (seaborn <code>hue</code>) with the color of exactly one unlabeled series; each series takes one name</td>
+<td><code>legend_mismatch</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-marks">Full rules (online)</a> <a href="gallery.html#check-marks">Examples</a></p>
+<p><a id="check-values"></a></p>
+<h3>7. Drawn values come from your data</h3>
+<p>A series = one line, scatter collection, bar container, pie, area band, reference mark or histogram
+input. For each series, the judge searches this closed list for one CSV explanation whose values
+equal the points exactly (the same 64-bit float), each CSV row backing one point at most. Each point
+that it leaves must be a typed number.</p>
+<ul>
+<li><strong>CSV file</strong>: a column's values, or one <code>sum</code>, <code>mean</code>, <code>min</code>, <code>max</code> or <code>count</code> per group, computed
+as pandas computes it, bit for bit. A subset of rows passes, and the reply states it, for example
+<code>2 of 6 drawn</code>.</li>
+<li><strong>Request</strong>: typed numbers after NFKC, ranges expanded (<code>1 to 10</code>, <code>1 through 10</code>, <code>1–10</code>,
+<code>1〜10</code>, <code>1から10まで</code>; never <code>1-10</code>; at most 10,000 numbers), and typed category labels.</li>
+<li><strong>One computation of these</strong>: square, running total, change, share or percent of one series;
+ratio, difference, product or sum of two CSV columns, per row or per group.</li>
+<li><strong>Reference lines and bands</strong>: also 0, or one summary of a whole column.</li>
+<li><strong>A legend label equal to a cell value</strong>: the series comes from the rows that hold that value.</li>
+<li><strong>Scatter colors and sizes that a key shows</strong>: drawn values, from their point's row or group.</li>
+<li><strong>No file and no numbers</strong>: integrity alone; the reply says so.</li>
+</ul>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CSV at most 8 MB, 100,000 rows, 128 columns, 512 bytes per cell</td>
+<td>the tool reads the user's own files from the stored chat branch and checks each file's owner before reading its bytes; the judge checks the caps</td>
+<td><code>csv_too_large</code></td>
+</tr>
+<tr>
+<td>CSV readable</td>
+<td>a reader restricted to what <code>pandas.read_csv</code> reads the same way</td>
+<td><code>csv_not_parsable</code></td>
+</tr>
+<tr>
+<td>matching within the work limit</td>
+<td>the judge counts work units, 5,000,000 at most (<code>MAX_WORK</code>)</td>
+<td><code>work_budget_exceeded</code></td>
+</tr>
+<tr>
+<td>each category once per series</td>
+<td>no two points of one series share a key</td>
+<td><code>category_not_unique</code></td>
+</tr>
+<tr>
+<td>every drawn value found in a source</td>
+<td>the search above finds an explanation for every point</td>
+<td><code>value_not_found</code></td>
+</tr>
+<tr>
+<td>every typed category label in the request</td>
+<td>the label occurs in the request after NFKC and case folding</td>
+<td><code>label_not_in_request</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-values">Full rules (online)</a> <a href="gallery.html#check-values">Examples</a></p>
+<p><a id="check-columns"></a></p>
+<h3>8. Drawn columns match your request</h3>
+<p>CSV figures only. The drawn columns are the columns of the explanations that check 7 found. The
+judge matches the request against the file's header after NFKC and case folding: whole words
+(Japanese names: containment), one typing error in a one-word name of 5 or more characters, the aliases that your administrator
+declares and, in production, Japanese short forms (<code>月</code> for <code>年月</code>, also <code>月別</code>).</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no column that the request names replaced by another</td>
+<td>no named column undrawn while a drawn column is unnamed</td>
+<td><code>column_not_requested</code></td>
+</tr>
+<tr>
+<td>values that fit two columns: the request names one of them</td>
+<td>two explanations with different columns: the request names the columns of exactly one</td>
+<td><code>column_not_requested</code></td>
+</tr>
+<tr>
+<td>production: if the request names or excludes a column, it names every drawn column</td>
+<td>each drawn column is among the named columns</td>
+<td><code>column_not_named</code></td>
+</tr>
+<tr>
+<td>titles, axis labels, legends and colorbar labels: no undrawn column; over a total or mean per group, no other summary</td>
+<td>the same matcher reads each label against the header and the summary words</td>
+<td><code>label_not_consistent</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-columns">Full rules (online)</a> <a href="gallery.html#check-columns">Examples</a></p>
+<p><a id="check-attach"></a></p>
+<h3>9. Image shown with the reply</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Rule table" data-scroll-note="Scroll the table sideways to see all columns."><table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>How</th>
+<th>Code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>exactly one PNG from the run</td>
+<td><code>stdout</code> holds exactly one valid PNG data-URI line of at most 500,000 characters</td>
+<td><code>no_image</code></td>
+</tr>
+<tr>
+<td>the server saves and shows the image</td>
+<td>stores the PNG through <code>Storage.upload_file</code> and <code>Files.insert_new_file</code>, with the caller as owner; the display accepts the reply</td>
+<td><code>publish_failed</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-attach">Full rules (online)</a></p>
+</main>
+</body>
+</html>

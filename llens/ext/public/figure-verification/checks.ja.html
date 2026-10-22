@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nucllei の図のチェック</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #ffffff; --ink: #202b33; --secondary: #55626b;
+  --rule: #667984; --link: #07577a; --band: #e8f2f5;
+  font-family: "Noto Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+  font-size: 100%; line-height: 1.6;
+  color: var(--ink); background: var(--paper);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #182127; --ink: #e7edf1; --secondary: #adbcc6;
+    --rule: #7d909b; --link: #79cdea; --band: #263640;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76ch; padding: 1.25rem; }
+nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-bottom: 2rem; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
+  outline: 3px solid var(--link); outline-offset: 4px;
+}
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1.25rem; }
+h2 { font-size: 1.5rem; line-height: 1.3; margin-top: 2.5rem; }
+h3 { font-size: 1.125rem; line-height: 1.4; margin-top: 2rem; }
+p, ul, ol { margin-block: 1rem; }
+li { margin-block: .35rem; }
+code { font-family: ui-monospace, monospace; font-size: .9em; overflow-wrap: anywhere; }
+pre { padding: 1rem; overflow: auto; background: var(--band); line-height: 1.5; }
+pre code { overflow-wrap: normal; }
+img { display: block; max-width: 100%; height: auto; background: white; }
+.diagram {
+  width: min(70rem, calc(100vw - 2rem)); margin: 1.5rem 0 1.5rem 50%;
+  transform: translateX(-50%);
+}
+.diagram img { margin-inline: auto; }
+figcaption { text-align: center; font-size: .9375rem; margin-top: .5rem; }
+.table-scroll { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th { background: var(--band); text-align: left; }
+th, td { border: 1px solid var(--rule); padding: .6rem; vertical-align: top; }
+td { overflow-wrap: anywhere; }
+td:first-child { min-width: 9rem; }
+td:nth-child(2) { min-width: 12rem; }
+td:last-child { min-width: 9rem; }
+.gallery td { width: 50%; min-width: 15rem; }
+summary { color: var(--link); cursor: pointer; padding: .4rem 0; }
+.skip { position: absolute; top: -10rem; }
+.skip:focus { position: static; display: block; margin-bottom: 1rem; }
+@media (max-width: 36rem) {
+  body { padding: 1rem; }
+  h1 { font-size: 1.75rem; }
+  .table-scroll::before {
+    content: attr(data-scroll-note); display: block; margin-bottom: .5rem;
+    color: var(--secondary); font-size: .875rem;
+  }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">本文へ移動</a>
+<nav aria-label="ガイドのページ"><a href="checks.ja.html">チェック</a><a href="gallery.ja.html">グラフの例</a><a href="checks.html">English</a></nav>
+<main id="content">
+<h1>nucllei の図のチェック</h1>
+<p><code>draw_figure</code> でグラフを表示するためのすべての規則を、実行順に示します。チェックする内容、その方法、
+不合格のときのコードです。折りたたまれたツール欄を開くと、チェック項目を読めます。
+各行は、ここにある対応する節にリンクします。<a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md">詳細 (オンライン)</a> は、共通の図の規則と
+Open WebUI の実行経路を説明します。例: <a href="gallery.ja.html">グラフの例</a>。<a href="checks.html">English</a></p>
+<h2>検証器のしくみ</h2>
+<figure class="diagram"><img src="verifier.ja.svg" alt="nucllei のスキルが draw_figure を読み込み、サンドボックスでの 1 回の実行が図を報告します。
+サーバーが判定し、合格した画像だけを表示します" /><figcaption><a href="verifier.ja.svg">図を原寸で開く</a></figcaption></figure>
+<p>各チェックは 1 行の要約です。すべての規則は下の表にあります。破線の枠: 言語モデルが書くもの。
+赤い破線の矢印: 不合格のチェックでグラフが止まる場所。</p>
+<ol>
+<li><strong>読み込み。</strong> nucllei は <code>load_skill</code> で <code>figure-verification</code> スキルを読み込みます。
+CSV の添付時には自動で読み込みます。このスキルで、モデルが <code>draw_figure</code> を使えるようになります。</li>
+<li><strong>呼び出し。</strong> モデルは完全な Python プログラムを <code>draw_figure</code> に送ります。ツールは、保存した
+チャットの分岐から、あなた自身のメッセージとファイルを読みます。実行の前に呼び出し元を確認します。</li>
+<li><strong>実行と読み取り。</strong> ツールは、あなたのコード実行用サンドボックスに <code>/exec</code> の呼び出しを 1 回
+送ります。中身は、信頼できる図の読み取り処理と、変更しないプログラムです。添付ファイルは
+<code>/workspace/imports/</code> に入ります。読み取り処理は matplotlib にフックを入れ、プログラムを実行し、
+各図を 1 回描画します。すべての描画要素を JSON で報告します。クラス、描画の呼び出し、変換、座標、
+軸、目盛り、色、大きさ、表示状態、各 <code>hist</code>、<code>pie</code>、<code>fill_between</code>、<code>stackplot</code> の入力です。
+PNG も 1 枚返します。別の受領記録やブラウザ内のコード実行環境は使いません。</li>
+<li><strong>判定。</strong> nucllei のサーバーで、標準ライブラリの Python が記述に次の規則を順に適用します。
+最初の不合格でグラフが止まります。描画した値をファイルと依頼文に照らして比べます。
+モデルも推測も使いません。</li>
+<li><strong>表示。</strong> 合格した場合、ツールは PNG をあなたのファイルとして保存し、判定、解釈、モデルの注記
+があればその注記と一緒に表示します。不合格の場合、画像なしで判定、理由、注記を表示します。
+これらは折りたたまれたツール欄の外に表示します。チェック項目はその欄の中に表示し、モデルにも送ります。
+表示処理に失敗した場合は、ツールの結果で理由を確認してください。</li>
+</ol>
+<p>チェックしない内容: グラフが質問に答えているかどうか。グラフ上の文字 (<code>text</code>、<code>annotate</code>、
+<code>bar_label</code>)。返信はこれを一覧にします。モデルの注記や返信文。プログラムそのもの。
+プログラムは検証器を欺かないことが前提です。チェックの前に、読み取り処理と同じインタープリターで
+実行し、添付ファイルを読めます。検証器は、サンドボックス、インタープリター、matplotlib、フォント、
+ブラウザ、画面上のピクセルを信頼しています。サンドボックスにはネットワークがありません。
+<code>run_python</code> や <code>fetch_from_workspace</code> などの別のツールは、このスキルのチェックを通さずに
+グラフを表示できます。</p>
+<p><a id="check-program"></a></p>
+<h3>1. モデルからグラフのプログラムを受信</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>サインインしているユーザーからの依頼</td>
+<td><code>draw_figure</code> が呼び出し元のユーザー ID を受け取る</td>
+<td><code>no_user</code></td>
+</tr>
+<tr>
+<td>委任先ではなく、ユーザーのチャットでの呼び出し</td>
+<td>メタデータに <code>agent_session</code> がある場合、ファイルの読み取りやコードの実行の前に拒否する</td>
+<td><code>delegated_session</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-program">詳細 (オンライン)</a></p>
+<p><a id="check-run"></a></p>
+<h3>2. サンドボックスでプログラムを実行</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>コード実行のサンドボックスが応答</td>
+<td>nucllei のサンドボックス用クライアントで <code>POST /exec</code> を 1 回送り、接続に失敗したら不合格</td>
+<td><code>sandbox_unreachable</code></td>
+</tr>
+<tr>
+<td>プログラムがサンドボックスの制限時間内</td>
+<td>実行には 120 秒を指定し、HTTP の応答は最大 150 秒待つ。サンドボックスが短い上限を適用する場合もある</td>
+<td><code>sandbox_timeout</code></td>
+</tr>
+<tr>
+<td>サンドボックスの実行が成功</td>
+<td>HTTP の拒否、またはゼロ以外の <code>exit_code</code> は不合格</td>
+<td><code>sandbox_error</code></td>
+</tr>
+<tr>
+<td>応答が想定の形式で、途中で切れていない</td>
+<td><code>exit_code</code> が整数、<code>stdout</code> が読み取り処理の出力上限内のテキスト、<code>stdout_truncated</code> が false</td>
+<td><code>reply_malformed</code></td>
+</tr>
+<tr>
+<td>実行結果が図を報告</td>
+<td><code>stdout</code> に、読み取れるタグ付きの記述の行が 1 つある</td>
+<td><code>no_description</code></td>
+</tr>
+<tr>
+<td>正しい Python</td>
+<td>読み取り処理がプログラムをコンパイルし、<code>SyntaxError</code> がない</td>
+<td><code>program_syntax_error</code></td>
+</tr>
+<tr>
+<td>プログラムが例外なく最後まで実行</td>
+<td>読み取り処理がプログラムを実行し、例外とその行をとらえる</td>
+<td><code>program_error</code></td>
+</tr>
+<tr>
+<td>コード実行のサンドボックスにあるモジュールを読み込む</td>
+<td>例外がモジュール不足のエラーではない。使用できるものはサンドボックスのインストール済みパッケージで決まる</td>
+<td><code>module_not_available</code></td>
+</tr>
+<tr>
+<td>軸 24 個、部品 2,000 個、座標 20,000 個、1 つのテキスト 1,000 文字まで。図の記述 400,000 バイト、PNG 500,000 文字まで</td>
+<td>読み取り処理が記述しながら数え、上限を超えた図を大きすぎると報告する</td>
+<td><code>figure_too_large</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-run">詳細 (オンライン)</a></p>
+<p><a id="check-figure"></a></p>
+<h3>3. 図を 1 つ描画</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>matplotlib の図がある (pandas のグラフも該当)</td>
+<td>読み取り処理が、プログラムが表示した図と開いたままの図をすべて集める</td>
+<td><code>no_figure</code></td>
+</tr>
+<tr>
+<td>図は 1 つだけ (<code>plt.subplots</code> のパネルは可)</td>
+<td>その数が 1</td>
+<td><code>multiple_figures</code></td>
+</tr>
+<tr>
+<td>すべての文字が使用できるフォントにある</td>
+<td>読み取り処理が、グリフ不足の警告、mathtext のグリフ不足の記録、パスのテキストの <code>.notdef</code> グリフを数える。ラッパーが jail の Noto Sans CJK JP を通常のテキストに登録する。mathtext は対象外</td>
+<td><code>glyph_missing</code></td>
+</tr>
+<tr>
+<td>検証器が内部エラーなく終了</td>
+<td>ツールで想定外の例外が起きた場合は不合格</td>
+<td><code>verifier_error</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-figure">詳細 (オンライン)</a> <a href="gallery.ja.html#check-figure">例</a></p>
+<p><a id="check-parts"></a></p>
+<h3>4. 検証器がチェックできる部品だけを使用</h3>
+<p>読み取り処理は、各描画要素のクラスと、それを作った描画の呼び出し (作成時のスタックで最も外側の
+<code>matplotlib.axes</code> のフレーム) を記録します。その組み合わせは、次の決まった集合に含まれる必要が
+あります。折れ線 (<code>plot</code>、<code>step</code>)、点 (<code>scatter</code>)、棒 (<code>bar</code>、<code>barh</code>、グループ化、積み上げ)、
+ヒストグラム (<code>hist</code>、塗りつぶし、データセット 1 つ)、円 (<code>pie</code>)、面 (<code>fill_between</code>、
+<code>stackplot</code>)、基準線と帯 (<code>axhline</code>、<code>axvline</code>、<code>axhspan</code>、<code>axvspan</code>)、テキスト (タイトル、
+軸ラベル、凡例、目盛りのラベル、<code>text</code>、<code>annotate</code>、<code>bar_label</code>)、散布図の色を示すカラーバー。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>画像なし (<code>imshow</code>、<code>pcolormesh</code>、<code>matshow</code>)</td>
+<td>描画要素の木に <code>AxesImage</code>、<code>QuadMesh</code>、<code>FigureImage</code> がない</td>
+<td><code>raster_image</code></td>
+</tr>
+<tr>
+<td>通常の軸だけ。極座標、3D、挿入図、副軸なし</td>
+<td>各軸のクラスがちょうど <code>Axes</code> で、図に属し、ほかの軸の中にない</td>
+<td><code>axes_not_judged</code></td>
+</tr>
+<tr>
+<td>2 軸なし (<code>twinx</code>、<code>twiny</code>)</td>
+<td>同じ位置で x 軸または y 軸を共有する 2 つの軸がない</td>
+<td><code>axes_twin</code></td>
+</tr>
+<tr>
+<td>重なるパネルなし</td>
+<td>軸の位置が重ならない</td>
+<td><code>axes_overlap</code></td>
+</tr>
+<tr>
+<td>ほかの部品なし (エラーバー、箱ひげ図、等高線、追加した図形、step のヒストグラム)</td>
+<td>すべての (クラス、呼び出し) の組が上の集合にある。または描画の呼び出しなしにプログラムが加えたキー（幅と高さが 0 の <code>Rectangle</code>、または点のない <code>Line2D</code>）で、パネル自身の凡例が使うもの（seaborn の <code>hue</code>）</td>
+<td><code>artist_not_judged</code></td>
+</tr>
+<tr>
+<td>すべてのパネルにデータ</td>
+<td>各軸にデータの描画要素がある</td>
+<td><code>no_data</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-parts">詳細 (オンライン)</a> <a href="gallery.ja.html#check-parts">例</a></p>
+<p><a id="check-axes"></a></p>
+<h3>5. 正しい軸</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>各部品がデータの値の位置にある</td>
+<td>各データの描画要素の変換が軸の <code>transData</code> (棒: データの変換、散布図: オフセットの変換)</td>
+<td><code>mark_not_in_data</code></td>
+</tr>
+<tr>
+<td>線形の目盛り。対数は、軸ラベルかパネルのタイトルに <code>log</code>、<code>logarithmic</code>、<code>対数</code> がある場合だけ</td>
+<td><code>axis.get_scale()</code>。<code>log</code> の場合は、NFKC と大文字小文字の統一の後のラベルとタイトル</td>
+<td><code>scale_not_linear</code></td>
+</tr>
+<tr>
+<td>x 軸も y 軸も反転なし</td>
+<td><code>axis.get_inverted()</code></td>
+<td><code>axis_inverted</code></td>
+</tr>
+<tr>
+<td>棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可)</td>
+<td><code>0</code> が値の軸の <code>get_view_interval()</code> の中にある</td>
+<td><code>zero_not_in_limits</code></td>
+</tr>
+<tr>
+<td>表示される各目盛りのラベル = その位置の値</td>
+<td>範囲内の各ラベルをカテゴリ、日付、数値 (フォーマッターの指数とオフセットを含む) として読み、目盛りの位置と、最後の桁の半単位以内で一致</td>
+<td><code>tick_label_mismatch</code></td>
+</tr>
+<tr>
+<td>すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外)</td>
+<td>描画したすべての座標が <code>get_view_interval()</code> の中にある</td>
+<td><code>point_clipped</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-axes">詳細 (オンライン)</a> <a href="gallery.ja.html#check-axes">例</a></p>
+<p><a id="check-marks"></a></p>
+<h3>6. 正しいグラフ要素</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>すべての部品とパネルが表示され、見える</td>
+<td>各描画要素の表示状態、アルファ、塗りと線の色、線の種類、マーカーの大きさ</td>
+<td><code>mark_hidden</code></td>
+</tr>
+<tr>
+<td>すべての値が有限。欠落した点なし</td>
+<td>描画したデータと記録した呼び出しの入力に NaN も無限大もない。各帯は呼び出しが受け取ったすべての点を描く</td>
+<td><code>value_not_finite</code></td>
+</tr>
+<tr>
+<td>棒はゼロ、または積み上げた棒の上端から</td>
+<td>各棒の基点が 0、または同じ位置と幅の棒の先端とちょうど一致</td>
+<td><code>bar_not_from_zero</code></td>
+</tr>
+<tr>
+<td>重なる棒なし</td>
+<td>面積が 0 を超えて交わる棒の長方形がない</td>
+<td><code>bars_overlap</code></td>
+</tr>
+<tr>
+<td>折れ線の x の値は一方向</td>
+<td>各折れ線の x の位置が単調</td>
+<td><code>x_not_ordered</code></td>
+</tr>
+<tr>
+<td>ヒストグラムの高さ = ビンごとのデータの度数または密度</td>
+<td>判定処理が、記録した <code>hist</code> の入力を描画したビンの境界で数え直す (numpy の規則、最後のビンは閉区間)。すべてのデータがビンの中。重みと <code>cumulative</code> なし</td>
+<td><code>hist_counts</code></td>
+</tr>
+<tr>
+<td>円の扇形が 360° を満たし、各扇形 = 合計に対する割合</td>
+<td>各扇形の角度 = 360° × 値 / 記録した <code>pie</code> の入力の合計 (誤差 0.0001° 以内)。半径は 1 つ、すき間なし</td>
+<td><code>pie_not_whole</code></td>
+</tr>
+<tr>
+<td>面はゼロ、または積み上げた面の上端から</td>
+<td>各帯の下端が 0、または同じ x でゼロから積み上げた帯の上端とちょうど一致</td>
+<td><code>area_not_from_zero</code></td>
+</tr>
+<tr>
+<td>散布図の大きさが異なる場合: 大きさの凡例</td>
+<td>大きさが異なるのは、そのコレクションの <code>legend_elements(&quot;sizes&quot;)</code> の凡例がある場合だけ</td>
+<td><code>marker_size_varies</code></td>
+</tr>
+<tr>
+<td>散布図の色が異なる場合: カラーバーまたは色の凡例</td>
+<td>塗りの色が異なるのは、そのコレクションのカラーバーか <code>legend_elements()</code> の凡例がある場合だけ</td>
+<td><code>marker_color_varies</code></td>
+</tr>
+<tr>
+<td>凡例の項目は描いた系列を示す。凡例のあるパネルに系列が 2 つ以上: すべての系列を示す</td>
+<td>凡例の各ハンドルが判定対象の描画要素、グラフ要素のラベルと色を持つ代理、またはパネル内のそのような大きさ 0 のキー（seaborn の <code>hue</code>）で、ラベルのない系列 1 つだけと同じ色。1 つの系列の名前は 1 つ</td>
+<td><code>legend_mismatch</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-marks">詳細 (オンライン)</a> <a href="gallery.ja.html#check-marks">例</a></p>
+<p><a id="check-values"></a></p>
+<h3>7. 描画した値があなたのデータにある</h3>
+<p>系列とは、1 本の折れ線、散布図のコレクション、棒のコンテナー、円、面の帯、基準線、ヒストグラムの
+入力のいずれかです。判定処理は各系列について、次の決まった一覧から、値が点と完全に一致する
+(同じ 64 ビットの浮動小数点数) CSV の説明を 1 つ探します。CSV の 1 行が裏付けるのは 1 点だけです。
+その説明で残った点は、入力した数値である必要があります。</p>
+<ul>
+<li><strong>CSV ファイル</strong>: 列の値、またはグループごとの <code>sum</code>、<code>mean</code>、<code>min</code>、<code>max</code>、<code>count</code> のいずれか
+1 つ。pandas と同じ方法で、ビット単位まで同じに計算します。一部の行だけでも合格し、返信は
+それを示します (たとえば <code>6 件中 2 件を描画</code>)。</li>
+<li><strong>依頼文</strong>: NFKC の後の入力した数値、展開した範囲 (<code>1 to 10</code>、<code>1 through 10</code>、<code>1–10</code>、<code>1〜10</code>、
+<code>1から10まで</code>。<code>1-10</code> は範囲になりません。最大 10,000 個)、入力したカテゴリのラベル。</li>
+<li><strong>それらの 1 つの計算</strong>: 1 つの系列の 2 乗、累計、変化、割合、百分率。CSV の 2 つの列の比率、差、
+積、和 (各行またはグループごと)。</li>
+<li><strong>基準線と帯</strong>: ゼロ、または列全体の集計 1 つも可。</li>
+<li><strong>セルの値と同じ凡例のラベル</strong>: その系列は、その値を持つ行から作られている必要があります。</li>
+<li><strong>キーが示す散布図の色と大きさ</strong>: 描画した値として扱い、その点と同じ行またはグループから。</li>
+<li><strong>ファイルも数値もない場合</strong>: 完全性だけをチェックし、返信にそのことを示します。</li>
+</ul>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CSV は 8 MB、100,000 行、128 列、1 セル 512 バイトまで</td>
+<td>ツールが保存したチャットの分岐からユーザー自身のファイルを取得し、バイトの読み取り前に所有者を確認する。判定処理が上限を確認</td>
+<td><code>csv_too_large</code></td>
+</tr>
+<tr>
+<td>CSV を読み取れる</td>
+<td><code>pandas.read_csv</code> が同じように読む範囲に限った読み取り</td>
+<td><code>csv_not_parsable</code></td>
+</tr>
+<tr>
+<td>照合が作業上限内</td>
+<td>判定処理が作業量を数える。最大 5,000,000 (<code>MAX_WORK</code>)</td>
+<td><code>work_budget_exceeded</code></td>
+</tr>
+<tr>
+<td>1 つの系列で各カテゴリは 1 回</td>
+<td>1 つの系列で同じキーを持つ 2 点がない</td>
+<td><code>category_not_unique</code></td>
+</tr>
+<tr>
+<td>描画したすべての値が出所にある</td>
+<td>上の探索がすべての点の説明を見つける</td>
+<td><code>value_not_found</code></td>
+</tr>
+<tr>
+<td>入力したすべてのカテゴリのラベルが依頼文にある</td>
+<td>NFKC と大文字小文字の統一の後、ラベルが依頼文にある</td>
+<td><code>label_not_in_request</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-values">詳細 (オンライン)</a> <a href="gallery.ja.html#check-values">例</a></p>
+<p><a id="check-columns"></a></p>
+<h3>8. 描いた列が依頼と一致</h3>
+<p>CSV のグラフだけが対象です。描いた列とは、チェック 7 で見つかった説明の列です。判定処理は、
+NFKC と大文字小文字の統一の後、依頼文をファイルの見出しと照合します。対象は、単語単位の一致
+(日本語の名前は包含)、5 文字以上の 1 語の名前の 1 文字の誤り、管理者が登録した別名、本番環境では
+日本語の短い形 (<code>年月</code> に対する <code>月</code>、<code>月別</code>) です。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>依頼文にある列を別の列に置き換えない</td>
+<td>挙げた列を描かず、挙げていない列を描くことがない</td>
+<td><code>column_not_requested</code></td>
+</tr>
+<tr>
+<td>値が 2 つの列に当てはまる場合: 依頼文がどちらかを挙げる</td>
+<td>列の異なる 2 つの説明がある場合、依頼文がちょうど一方の列を挙げる</td>
+<td><code>column_not_requested</code></td>
+</tr>
+<tr>
+<td>本番環境: 依頼文が列を挙げるか除外する場合、描いた列をすべて挙げる</td>
+<td>描いた各列が、挙げた列に含まれる</td>
+<td><code>column_not_named</code></td>
+</tr>
+<tr>
+<td>タイトル、軸ラベル、凡例、カラーバーのラベル: 描いていない列なし。グループごとの合計または平均には、ほかの集計なし</td>
+<td>同じ照合で、各ラベルを見出しと集計の語に照らして読む</td>
+<td><code>label_not_consistent</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-columns">詳細 (オンライン)</a> <a href="gallery.ja.html#check-columns">例</a></p>
+<p><a id="check-attach"></a></p>
+<h3>9. 返信に画像を表示</h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>規則</th>
+<th>方法</th>
+<th>コード</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>実行結果の PNG がちょうど 1 枚</td>
+<td><code>stdout</code> に 500,000 文字以下の有効な PNG のデータ URI の行がちょうど 1 つある</td>
+<td><code>no_image</code></td>
+</tr>
+<tr>
+<td>サーバーが画像を保存して表示</td>
+<td><code>Storage.upload_file</code> と <code>Files.insert_new_file</code> で PNG を保存し、呼び出し元を所有者にする。表示処理が返信を受け入れる</td>
+<td><code>publish_failed</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-attach">詳細 (オンライン)</a></p>
+</main>
+</body>
+</html>

@@ -11,7 +11,7 @@ paths:
 
 # nucllei (llens) — the skill target's integration facts (Q82)
 
-Source of truth for nucllei behaviour = its tag `v20261020-01` (`34eb9973c`) `README_API.md` §5–§7 + code; llens = `e6a1b6f`. Contract + rulings = `.agent/contracts/q82.md` (archived at the request's close).
+Source of truth for nucllei behaviour = its tag `v20261020-01` (`34eb9973c`) `README_API.md` §5–§7 + code; llens = `e6a1b6f`. Contract + rulings + verdicts = `.agent/archive/contracts/q82.md`.
 
 - Shape (rulings 1, 10): skill `figure-verification` (`llens/nucllei/skills/figure-verification.md`, from `nucllei_skill/skill.py`) mounts tool `figure_verification` (`llens/nucllei/tools/figure_verification.py`, root `nucllei_skill.tool`) through frontmatter `tool_ids`; the tool never sits in a preset's `meta.toolIds`. Skill-loaded tools load with `enforce_access_control=False` ⇒ the SKILL's visibility is the authorization unit. Activation = preset `meta.skillIds` ∧ `features.skills` ∧ the caller reads the skill; `load_skill` runs first in a batch, so a same-response `draw_figure` works. Auto-load prefixes `text/csv` + `application/vnd.ms-excel` (Chromium on Windows with Excel names a `.csv` upload that; the stored content type = the browser's multipart header).
 - llens `scripts/nucllei/sync.py` = the deployment path: tool id = file stem, name/description = the first docstring's `title:`/`description:` lines (`parse_frontmatter`: ANY docstring line opening `word:` becomes a key ⇒ the nucllei preamble holds no other such line); skill = one-line frontmatter (`parse_md_frontmatter`), body stripped. nucllei rewrites `from utils|apps|main|config` in stored tool content on every load (nucllei `utils/plugin.py` `replace_imports`) ⇒ the bundle's refusal applies here too.

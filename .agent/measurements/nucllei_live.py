@@ -142,6 +142,18 @@ class Stack:
         self.data = Path(tempfile.mkdtemp(prefix="nucllei-live-"))
         self.bridge = None
 
+    def ext_args(self):
+        """`NL_EXT=<dir>` serves that directory as the server's `/ext/public` (the guide copy)."""
+        ext = os.environ.get("NL_EXT")
+        if not ext:
+            return []
+        return [
+            "-v",
+            f"{Path(ext).resolve()}:/ext/public:ro",
+            "-e",
+            "EXT_MOUNTS=public=/ext/public",
+        ]
+
     def podman_run(self, *argv):
         command = [self.sudo, self.podman, *argv]
         return subprocess.run(command, check=True, capture_output=True, text=True).stdout  # noqa: S603
@@ -171,7 +183,7 @@ class Stack:
             "-e", f"OPENAI_API_BASE_URLS=http://127.0.0.1:{self.bridge_port}/v1",
             "-e", "OPENAI_API_KEYS=EMPTY", "-e", "ENABLE_OLLAMA_API=false",
             "-e", "ENABLE_TITLE_GENERATION=false",
-            "-v", f"{self.data}:/app/data", NUCLLEI,
+            *self.ext_args(), "-v", f"{self.data}:/app/data", NUCLLEI,
         )  # fmt: skip
         wait(f"{self.base}/health")
         self.podman_run(

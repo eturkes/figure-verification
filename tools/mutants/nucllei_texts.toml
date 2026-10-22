@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Q82.1 nucllei result flags (`.agent/contracts/q82.md` T11): who can fix a block, what to try next.
+# Q82.1 nucllei result flags (`.agent/archive/contracts/q82.md` T11): who can fix a block, what to try next.
 module = "nucllei_skill/texts.py"
 tests = ["tests/test_nucllei_tool.py"]
 

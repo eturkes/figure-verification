@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Q82.1 T1 + T2 (`.agent/contracts/q82.md`): the generated nucllei tool + skill files.
+"""Q82.1 T1 + T2 (`.agent/archive/contracts/q82.md`): the generated nucllei tool + skill files.
 
 The llens deployment reads both with `scripts/nucllei/sync.py`: the tool's first docstring
 `key: value` lines name its row, the skill's one-line frontmatter carries its description,

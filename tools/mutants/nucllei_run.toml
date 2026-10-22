@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Q82.1 nucllei sandbox reply (`.agent/contracts/q82.md` T9): exact reply types, a cut stdout.
+# Q82.1 nucllei sandbox reply (`.agent/archive/contracts/q82.md` T9): exact reply types, a cut stdout.
 module = "nucllei_skill/run.py"
 tests = ["tests/test_nucllei_tool.py"]
 

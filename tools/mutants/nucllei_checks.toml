@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Q82.1 nucllei check list (`.agent/contracts/q82.md` T12): program text cannot close its fence.
+# Q82.1 nucllei check list (`.agent/archive/contracts/q82.md` T12): program text cannot close its fence.
 module = "nucllei_skill/checks.py"
 tests = ["tests/test_nucllei_checks.py"]
 

@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// 図の検証器が判定するしくみ: 処理の流れと、チェックごとの要約カード。tools/render_diagrams.py が
+// verifier-nucllei.ja.svg に描画します。すべての規則は docs/nucllei/checks.ja.md の表にあります。
+digraph verifier_nucllei {
+  graph [fontname="Noto Sans CJK JP", fontsize=15, fontcolor="#1f2328", bgcolor="white",
+         pad=0.3, nodesep=0.35, ranksep=0.28, newrank=true, compound=true];
+  node [fontname="Noto Sans CJK JP", fontsize=14, fontcolor="#1f2328", shape=box,
+        style="rounded,filled", fillcolor="white", color="#57606a", penwidth=1.2,
+        margin="0.15,0.06"];
+  edge [fontname="Noto Sans CJK JP", fontsize=12, fontcolor="#424a53", color="#57606a",
+        arrowsize=0.7, penwidth=1.1];
+
+  you [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>あなた</b></td></tr><tr><td height="24">依頼文 + CSV ファイル</td></tr></table>>];
+  model [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>言語モデル</b></td></tr><tr><td height="24">Python のプログラムを書く</td></tr></table>>, style="rounded,dashed"];
+
+  subgraph cluster_server {
+    label=<<b>nucllei のサーバー</b>>; labeljust=l; style="rounded,filled";
+    fillcolor="#eef3f8"; color="#b6c3d1";
+    storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>nucllei の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
+    skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>figure-verification スキル</b></td></tr><tr><td height="24">load_skill または CSV で自動読み込み</td></tr></table>>];
+    tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">依頼文 + 所有するファイルを読む</td></tr></table>>];
+    c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 1: プログラムを受信</b> (ツール)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4">サインイン済みのユーザー、委任先ではない</td></tr></table>>];
+    c2 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 2: サンドボックスで実行</b> (ツール)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4">実行は最大 120 秒、完全な応答、プログラムが終了</td></tr></table>>];
+
+    judge [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>判定処理</b>: 標準ライブラリの Python、チェック 3〜8 を順に</td></tr>
+        <tr><td align="left" height="27"><b>3 図</b>: 図がちょうど 1 つ、すべての文字を描画</td></tr>
+        <tr><td align="left" height="27"><b>4 部品</b>: 各 (クラス、描画の呼び出し) の組が決まった集合にある</td></tr>
+        <tr><td align="left" height="27"><b>5 軸</b>: <font color="#0a3069">transData</font>、線形、反転なし、棒の軸にゼロ、正しい目盛り、範囲外なし</td></tr>
+        <tr><td align="left" height="27"><b>6 グラフ要素</b>: 基点が 0、重なりなし、ヒストグラムを数え直す、円が全体、正しい凡例</td></tr>
+        <tr><td align="left" height="27"><b>7 値</b>: データがあれば、ファイルの値、入力した数値、または認められた計算 1 つ</td></tr>
+        <tr><td align="left" height="27" cellpadding="4"><b>8 列</b>: 描いた列を依頼文が挙げる。ラベルも一致</td></tr></table>>];
+
+    c9 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
+        <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>チェック 9: 画像を保存して表示</b> (ツール)</td></tr>
+        <tr><td align="left" width="360" height="27" cellpadding="4">PNG をあなたのファイルとして保存、表示処理が受け入れる</td></tr></table>>];
+  }
+
+  subgraph cluster_sandbox {
+    label=<<b>コード実行のサンドボックス: ネットワークなし</b>>; labeljust=l; labelloc=b; style="rounded,filled";
+    fillcolor="#f6f1e7"; color="#cdbf9f";
+    hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
+    program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
+    describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
+  }
+
+  pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + 判定 + 解釈 + あれば注記</td></tr><tr><td height="24">チェック項目はツール欄の中</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。判定 + 理由 + あれば注記</td></tr><tr><td height="24">チェック項目はツール欄の中</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+
+  { rank=same; you; model; }
+  { rank=same; storage; tool; }
+  { rank=same; c1; hook; }
+  { rank=same; c9; fail; }
+
+  you -> model [label="依頼"];
+  you -> storage [label="メッセージ、添付ファイル"];
+  model -> skill [label="読み込み"];
+  skill -> tool;
+  model -> tool [label="ツールの呼び出し"];
+  storage -> tool [label="あなたのメッセージ"];
+  tool -> c1 [label="呼び出し元"];
+  c1 -> hook [label="POST /exec"];
+  hook -> program -> describe;
+  describe -> c2 [label="記述 + PNG", constraint=false];
+  c1 -> c2 [style=invis];
+  describe -> fail [style=invis, weight=8];
+  c2 -> judge -> c9 -> pass;
+  storage -> judge [label="ファイルのバイト + 依頼文"];
+  edge [color="#cf222e", fontcolor="#a40e26", style=dashed];
+  c1 -> fail [label="チェック 1 が不合格"];
+  c2 -> fail [label="チェック 2 が不合格"];
+  judge -> fail [label="チェック 3〜8 で\n最初の不合格"];
+  c9 -> fail [label="チェック 9 が不合格"];
+}

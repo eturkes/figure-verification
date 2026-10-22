@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# Q82.1 nucllei tool (`.agent/contracts/q82.md` T5-T16): caller refusals, the stored human branch
+# Q82.1 nucllei tool (`.agent/archive/contracts/q82.md` T5-T16): caller refusals, the stored human branch
 # as the source of request + files, last-name-wins, publish after prepare, the result bound, the note.
 module = "nucllei_skill/tool.py"
 tests = ["tests/test_nucllei_tool.py"]

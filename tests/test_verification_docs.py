@@ -212,7 +212,12 @@ def test_q72_each_diagram_renders_its_current_source() -> None:
     (`tools/render_diagrams.py`) equals the `.dot` text, so an edit without a re-render fails here
     with no Graphviz on the gate host; each guide embeds its language's diagram."""
     sources = sorted(_DIAGRAMS.glob("*.dot"))
-    assert [source.name for source in sources] == ["verifier.dot", "verifier.ja.dot"]
+    assert [source.name for source in sources] == [
+        "verifier-nucllei.dot",
+        "verifier-nucllei.ja.dot",
+        "verifier.dot",
+        "verifier.ja.dot",
+    ]
     tracked = _tracked()
     for source in sources:
         svg = source.with_suffix(".svg")

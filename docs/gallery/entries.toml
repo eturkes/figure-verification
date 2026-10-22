@@ -7,8 +7,8 @@
 reason = "glyph_missing"
 blocked = "mathtext-missing-glyph"
 twin = "mathtext-honest"
-en = "The title puts a Japanese character inside mathtext (`$年$`). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. The Japanese font from the Open WebUI server reaches ordinary text, not mathtext."
-ja = "タイトルが日本語の文字を mathtext の中に入れています (`$年$`)。mathtext は日本語の文字を持たない独自のフォントで描くため、空の四角が表示されます。Open WebUI サーバーの日本語フォントは通常のテキストには届きますが、mathtext には届きません。"
+en = "The title puts a Japanese character inside mathtext (`$年$`). Mathtext draws with its own fonts, which hold no Japanese characters, so the reader would see an empty box. The Japanese font that the reader registers reaches ordinary text, not mathtext."
+ja = "タイトルが日本語の文字を mathtext の中に入れています (`$年$`)。mathtext は日本語の文字を持たない独自のフォントで描くため、空の四角が表示されます。読み取り処理が登録する日本語フォントは通常のテキストには届きますが、mathtext には届きません。"
 
 [[entry]]
 reason = "raster_image"

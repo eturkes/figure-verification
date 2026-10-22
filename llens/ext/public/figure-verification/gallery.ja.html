@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>不合格になるグラフの例</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --paper: #ffffff; --ink: #202b33; --secondary: #55626b;
+  --rule: #667984; --link: #07577a; --band: #e8f2f5;
+  font-family: "Noto Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+  font-size: 100%; line-height: 1.6;
+  color: var(--ink); background: var(--paper);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #182127; --ink: #e7edf1; --secondary: #adbcc6;
+    --rule: #7d909b; --link: #79cdea; --band: #263640;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0 auto; max-width: 76ch; padding: 1.25rem; }
+nav { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-bottom: 2rem; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:focus-visible, summary:focus-visible, .table-scroll:focus-visible {
+  outline: 3px solid var(--link); outline-offset: 4px;
+}
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1.25rem; }
+h2 { font-size: 1.5rem; line-height: 1.3; margin-top: 2.5rem; }
+h3 { font-size: 1.125rem; line-height: 1.4; margin-top: 2rem; }
+p, ul, ol { margin-block: 1rem; }
+li { margin-block: .35rem; }
+code { font-family: ui-monospace, monospace; font-size: .9em; overflow-wrap: anywhere; }
+pre { padding: 1rem; overflow: auto; background: var(--band); line-height: 1.5; }
+pre code { overflow-wrap: normal; }
+img { display: block; max-width: 100%; height: auto; background: white; }
+.diagram {
+  width: min(70rem, calc(100vw - 2rem)); margin: 1.5rem 0 1.5rem 50%;
+  transform: translateX(-50%);
+}
+.diagram img { margin-inline: auto; }
+figcaption { text-align: center; font-size: .9375rem; margin-top: .5rem; }
+.table-scroll { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: .9375rem; }
+th { background: var(--band); text-align: left; }
+th, td { border: 1px solid var(--rule); padding: .6rem; vertical-align: top; }
+td { overflow-wrap: anywhere; }
+td:first-child { min-width: 9rem; }
+td:nth-child(2) { min-width: 12rem; }
+td:last-child { min-width: 9rem; }
+.gallery td { width: 50%; min-width: 15rem; }
+summary { color: var(--link); cursor: pointer; padding: .4rem 0; }
+.skip { position: absolute; top: -10rem; }
+.skip:focus { position: static; display: block; margin-bottom: 1rem; }
+@media (max-width: 36rem) {
+  body { padding: 1rem; }
+  h1 { font-size: 1.75rem; }
+  .table-scroll::before {
+    content: attr(data-scroll-note); display: block; margin-bottom: .5rem;
+    color: var(--secondary); font-size: .875rem;
+  }
+}
+</style>
+</head>
+<body class="gallery">
+<a class="skip" href="#content">本文へ移動</a>
+<nav aria-label="ガイドのページ"><a href="checks.ja.html">チェック</a><a href="gallery.ja.html">グラフの例</a><a href="gallery.html">English</a></nav>
+<main id="content">
+<h1>不合格になるグラフの例</h1>
+<p>各組は、検証器が不合格にするグラフと、合格する正しいグラフを並べて示します。どのグラフもテストケースです。生成スクリプト <code>tools/render_gallery.py</code> が、各プログラムを図の読み取り処理と判定処理で実行し、判定が一致しない場合は停止します。規則: <a href="checks.ja.html">チェック</a>。<a href="gallery.html">English</a></p>
+<ul>
+<li>チェック 3: <a href="#glyph_missing"><code>glyph_missing</code></a></li>
+<li>チェック 4: <a href="#raster_image"><code>raster_image</code></a>、<a href="#axes_not_judged"><code>axes_not_judged</code></a>、<a href="#axes_twin"><code>axes_twin</code></a>、<a href="#axes_overlap"><code>axes_overlap</code></a>、<a href="#artist_not_judged"><code>artist_not_judged</code></a>、<a href="#no_data"><code>no_data</code></a></li>
+<li>チェック 5: <a href="#mark_not_in_data"><code>mark_not_in_data</code></a>、<a href="#scale_not_linear"><code>scale_not_linear</code></a>、<a href="#axis_inverted"><code>axis_inverted</code></a>、<a href="#zero_not_in_limits"><code>zero_not_in_limits</code></a>、<a href="#tick_label_mismatch"><code>tick_label_mismatch</code></a>、<a href="#point_clipped"><code>point_clipped</code></a></li>
+<li>チェック 6: <a href="#mark_hidden"><code>mark_hidden</code></a>、<a href="#value_not_finite"><code>value_not_finite</code></a>、<a href="#bar_not_from_zero"><code>bar_not_from_zero</code></a>、<a href="#bars_overlap"><code>bars_overlap</code></a>、<a href="#x_not_ordered"><code>x_not_ordered</code></a>、<a href="#hist_counts"><code>hist_counts</code></a>、<a href="#pie_not_whole"><code>pie_not_whole</code></a>、<a href="#area_not_from_zero"><code>area_not_from_zero</code></a>、<a href="#marker_size_varies"><code>marker_size_varies</code></a>、<a href="#marker_color_varies"><code>marker_color_varies</code></a>、<a href="#legend_mismatch"><code>legend_mismatch</code></a></li>
+<li>チェック 7: <a href="#category_not_unique"><code>category_not_unique</code></a>、<a href="#value_not_found"><code>value_not_found</code></a>、<a href="#label_not_in_request"><code>label_not_in_request</code></a></li>
+<li>チェック 8: <a href="#column_not_requested"><code>column_not_requested</code></a>、<a href="#column_not_named"><code>column_not_named</code></a>、<a href="#label_not_consistent"><code>label_not_consistent</code></a></li>
+</ul>
+<p><a id="check-figure"></a></p>
+<h2>チェック 3: 図を 1 つ描画</h2>
+<p><a id="glyph_missing"></a></p>
+<h3><code>glyph_missing</code>: すべての文字が使用できるフォントにある</h3>
+<p>タイトルが日本語の文字を mathtext の中に入れています (<code>$年$</code>)。mathtext は日本語の文字を持たない独自のフォントで描くため、空の四角が表示されます。読み取り処理が登録する日本語フォントは通常のテキストには届きますが、mathtext には届きません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/mathtext-missing-glyph.png"><img src="gallery/mathtext-missing-glyph.png" alt="不合格: すべての文字が使用できるフォントにある" /></a></td>
+<td><a href="gallery/mathtext-honest.png"><img src="gallery/mathtext-honest.png" alt="合格: すべての文字が使用できるフォントにある" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1, 4, 9</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title(&quot;$年$&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.title(&quot;$x^2$ growth&quot;)
+</code></pre>
+</details>
+<p><a id="check-parts"></a></p>
+<h2>チェック 4: 検証器がチェックできる部品だけを使用</h2>
+<p><a id="raster_image"></a></p>
+<h3><code>raster_image</code>: 画像なし (<code>imshow</code>、<code>pcolormesh</code>、<code>matshow</code>)</h3>
+<p>プログラムが配列を画像として描いています。検証器はピクセルから値を読み戻せないため、画像はすべて不合格にします。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/imshow.png"><img src="gallery/imshow.png" alt="不合格: 画像なし (、、)" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="合格: 画像なし (、、)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Image of 1, 2, 3, 4</code>。合格するグラフの依頼文: <code>Bars a 1 and b 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.imshow([[1, 2], [3, 4]])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="axes_not_judged"></a></p>
+<h3><code>axes_not_judged</code>: 通常の軸だけ。極座標、3D、挿入図、副軸なし</h3>
+<p>プログラムが極座標の軸に折れ線を描いています。検証器の規則は、通常の x 軸と y 軸だけを対象にします。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/polar.png"><img src="gallery/polar.png" alt="不合格: 通常の軸だけ。極座標、3D、挿入図、副軸なし" /></a></td>
+<td><a href="gallery/cartesian-axes.png"><img src="gallery/cartesian-axes.png" alt="合格: 通常の軸だけ。極座標、3D、挿入図、副軸なし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Plot 1 and 2</code>。合格するグラフの依頼文: <code>Plot 0 and 1, then 1 and 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+ax = plt.subplot(projection=&quot;polar&quot;)
+ax.plot([0, 1], [1, 2])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+ax = plt.subplot()
+ax.plot([0, 1], [1, 2])
+</code></pre>
+</details>
+<p><a id="axes_twin"></a></p>
+<h3><code>axes_twin</code>: 2 軸なし (<code>twinx</code>、<code>twiny</code>)</h3>
+<p>2 つ目の y 軸が注文数に独自の目盛りを与えるため、2 本の線の交差や高さの比較に意味がありません。合格するグラフは、それぞれの量を別のパネルに描きます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/twin-axes.png"><img src="gallery/twin-axes.png" alt="不合格: 2 軸なし (、)" /></a></td>
+<td><a href="gallery/twin-axes-twin.png"><img src="gallery/twin-axes-twin.png" alt="合格: 2 軸なし (、)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Revenue and orders by month</code>。ファイル: <code>sales.csv</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;).sum(numeric_only=True)
+ax = plt.gca()
+ax.plot(df.index, df[&quot;revenue&quot;])
+ax.twinx().plot(df.index, df[&quot;orders&quot;], color=&quot;red&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;).sum(numeric_only=True)
+fig, (top, bottom) = plt.subplots(2, 1, sharex=True)
+top.plot(df.index, df[&quot;revenue&quot;])
+top.set_ylabel(&quot;revenue&quot;)
+bottom.plot(df.index, df[&quot;orders&quot;])
+bottom.set_ylabel(&quot;orders&quot;)
+</code></pre>
+</details>
+<p><a id="axes_overlap"></a></p>
+<h3><code>axes_overlap</code>: 重なるパネルなし</h3>
+<p>2 つ目のパネルが 1 つ目のパネルの上に重なり、その一部を隠しています。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/overlapping-axes.png"><img src="gallery/overlapping-axes.png" alt="不合格: 重なるパネルなし" /></a></td>
+<td><a href="gallery/side-by-side-axes.png"><img src="gallery/side-by-side-axes.png" alt="合格: 重なるパネルなし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Plot 1 and 2</code>。合格するグラフの依頼文: <code>Plot 1 and 2, then 2 and 1</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.8, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.5, 0.5, 0.4, 0.4]).plot([1, 2], [2, 1])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig = plt.figure()
+fig.add_axes([0.1, 0.1, 0.35, 0.8]).plot([1, 2], [1, 2])
+fig.add_axes([0.55, 0.1, 0.35, 0.8]).plot([1, 2], [2, 1])
+</code></pre>
+</details>
+<p><a id="artist_not_judged"></a></p>
+<h3><code>artist_not_judged</code>: ほかの部品なし (エラーバー、箱ひげ図、等高線、追加した図形、step のヒストグラム)</h3>
+<p>エラーバーは検証器がチェックする部品の集合に含まれないため、不合格になります。合格するグラフは、チェックできる部品だけを使います。棒、折れ線、点、基準線、値のラベルです。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/errorbar.png"><img src="gallery/errorbar.png" alt="不合格: ほかの部品なし (エラーバー、箱ひげ図、等高線、追加した図形、step のヒストグラム)" /></a></td>
+<td><a href="gallery/judged-families.png"><img src="gallery/judged-families.png" alt="合格: ほかの部品なし (エラーバー、箱ひげ図、等高線、追加した図形、step のヒストグラム)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Plot 3 and 4</code>。合格するグラフの依頼文: <code>Revenue by region: bars, a line, points, a reference line at 30000 and value labels</code> (ファイル <code>sales.csv</code>)。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.errorbar([1, 2], [3, 4], yerr=[1, 1])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+bars = plt.bar(totals.index, totals.values, label=&quot;revenue&quot;)
+plt.plot(totals.index, totals.values, color=&quot;black&quot;, label=&quot;line&quot;)
+plt.scatter(totals.index, totals.values, color=&quot;red&quot;, label=&quot;points&quot;)
+plt.axhline(30000, color=&quot;gray&quot;, linestyle=&quot;--&quot;)
+plt.bar_label(bars)
+plt.text(0, 1000, &quot;note&quot;)
+plt.legend()
+</code></pre>
+</details>
+<p><a id="no_data"></a></p>
+<h3><code>no_data</code>: すべてのパネルにデータ</h3>
+<p>パネルにタイトルはありますが、データがありません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/empty-axes.png"><img src="gallery/empty-axes.png" alt="不合格: すべてのパネルにデータ" /></a></td>
+<td><a href="gallery/axes-with-data.png"><img src="gallery/axes-with-data.png" alt="合格: すべてのパネルにデータ" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1 and 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title(&quot;Nothing&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.set_title(&quot;Something&quot;)
+ax.plot([1, 2], [1, 2])
+</code></pre>
+</details>
+<p><a id="check-axes"></a></p>
+<h2>チェック 5: 正しい軸</h2>
+<p><a id="mark_not_in_data"></a></p>
+<h3><code>mark_not_in_data</code>: 各部品がデータの値の位置にある</h3>
+<p>折れ線が軸の座標 (<code>transform=plt.gca().transAxes</code>) を使うため、データに関係なく隅から隅へ引かれます。2 つのグラフは同じに見えますが、合格する折れ線はデータの値の位置にあります。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/line-in-axes-coordinates.png"><img src="gallery/line-in-axes-coordinates.png" alt="不合格: 各部品がデータの値の位置にある" /></a></td>
+<td><a href="gallery/line-in-data.png"><img src="gallery/line-in-data.png" alt="合格: 各部品がデータの値の位置にある" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 0 and 1</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1], transform=plt.gca().transAxes)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1], [0, 1])
+</code></pre>
+</details>
+<p><a id="scale_not_linear"></a></p>
+<h3><code>scale_not_linear</code>: 線形の目盛り。対数は、軸ラベルかパネルのタイトルに <code>log</code>、<code>logarithmic</code>、<code>対数</code> がある場合だけ</h3>
+<p>ラベルで明記しない対数の y 軸のため、1、10、100、1000 が等間隔に見えます。合格するグラフは、軸ラベルに <code>log scale</code> と書いています。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/log-scale-unstated.png"><img src="gallery/log-scale-unstated.png" alt="不合格: 線形の目盛り。対数は、軸ラベルかパネルのタイトルに 、、 がある場合だけ" /></a></td>
+<td><a href="gallery/log-scale-stated.png"><img src="gallery/log-scale-stated.png" alt="合格: 線形の目盛り。対数は、軸ラベルかパネルのタイトルに 、、 がある場合だけ" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1, 10, 100, 1000</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale(&quot;log&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 10, 100, 1000])
+plt.yscale(&quot;log&quot;)
+plt.ylabel(&quot;Value (log scale)&quot;)
+</code></pre>
+</details>
+<p><a id="axis_inverted"></a></p>
+<h3><code>axis_inverted</code>: x 軸も y 軸も反転なし</h3>
+<p>y 軸が下向きのため、増加が減少に見えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/inverted-value-axis.png"><img src="gallery/inverted-value-axis.png" alt="不合格: x 軸も y 軸も反転なし" /></a></td>
+<td><a href="gallery/upright-axes.png"><img src="gallery/upright-axes.png" alt="合格: x 軸も y 軸も反転なし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1, 4, 9</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.gca().invert_yaxis()
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="zero_not_in_limits"></a></p>
+<h3><code>zero_not_in_limits</code>: 棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可)</h3>
+<p>y 軸が 30,000 から始まるため、US の売上 (40,000) が EU の売上 (34,000) の 2.5 倍に見えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/truncated-bars.png"><img src="gallery/truncated-bars.png" alt="不合格: 棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可)" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="合格: 棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Total revenue by region</code>。ファイル: <code>sales.csv</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylim(30000, 41000)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="tick_label_mismatch"></a></p>
+<h3><code>tick_label_mismatch</code>: 表示される各目盛りのラベル = その位置の値</h3>
+<p>目盛りのフォーマッターが各値を 10 で割るため、棒が 40,000 に届く位置で軸は 4,000 と表示します。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/money-labels-scaled.png"><img src="gallery/money-labels-scaled.png" alt="不合格: 表示される各目盛りのラベル = その位置の値" /></a></td>
+<td><a href="gallery/money-labels.png"><img src="gallery/money-labels.png" alt="合格: 表示される各目盛りのラベル = その位置の値" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Total revenue by region</code>。ファイル: <code>sales.csv</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f&quot;{v / 10:,.0f}&quot;))
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.gca().yaxis.set_major_formatter(ticker.StrMethodFormatter(&quot;${x:,.0f}&quot;))
+</code></pre>
+</details>
+<p><a id="point_clipped"></a></p>
+<h3><code>point_clipped</code>: すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外)</h3>
+<p>y 軸の範囲が 5 で止まるため、9 の点がグラフの外に出て消えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/clipped-point.png"><img src="gallery/clipped-point.png" alt="不合格: すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外)" /></a></td>
+<td><a href="gallery/upright-axes.png"><img src="gallery/upright-axes.png" alt="合格: すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外)" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1, 4, 9</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], marker=&quot;o&quot;)
+plt.ylim(0, 5)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="check-marks"></a></p>
+<h2>チェック 6: 正しいグラフ要素</h2>
+<p><a id="mark_hidden"></a></p>
+<h3><code>mark_hidden</code>: すべての部品とパネルが表示され、見える</h3>
+<p>プログラムが b の棒を非表示にしているため、グラフには a だけがあるように見えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/hidden-bars.png"><img src="gallery/hidden-bars.png" alt="不合格: すべての部品とパネルが表示され、見える" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="合格: すべての部品とパネルが表示され、見える" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Bars a 1 and b 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+bars = plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+bars[1].set_visible(False)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="value_not_finite"></a></p>
+<h3><code>value_not_finite</code>: すべての値が有限。欠落した点なし</h3>
+<p>欠損値 (NaN) のため、折れ線に何の説明もない切れ目ができます。合格するグラフは、存在する点だけを描きます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/gap-in-line.png"><img src="gallery/gap-in-line.png" alt="不合格: すべての値が有限。欠落した点なし" /></a></td>
+<td><a href="gallery/complete-line.png"><img src="gallery/complete-line.png" alt="合格: すべての値が有限。欠落した点なし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Plot 1, 4, 9</code>。合格するグラフの依頼文: <code>Plot 1, 4, 9 at 0, 1 and 3</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1, 2, 3], [1, 4, float(&quot;nan&quot;), 9])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([0, 1, 3], [1, 4, 9])
+</code></pre>
+</details>
+<p><a id="bar_not_from_zero"></a></p>
+<h3><code>bar_not_from_zero</code>: 棒はゼロ、または積み上げた棒の上端から</h3>
+<p>棒が 1 から浮いているため、値 1 と 2 の棒の上端が軸の 2 と 3 を指します。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/floating-bars.png"><img src="gallery/floating-bars.png" alt="不合格: 棒はゼロ、または積み上げた棒の上端から" /></a></td>
+<td><a href="gallery/vector-chart.png"><img src="gallery/vector-chart.png" alt="合格: 棒はゼロ、または積み上げた棒の上端から" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Bars a 1 and b 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2], bottom=1)
+plt.ylim(0, 4)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+</code></pre>
+</details>
+<p><a id="bars_overlap"></a></p>
+<h3><code>bars_overlap</code>: 重なる棒なし</h3>
+<p>2 つ目の系列が 1 つ目の系列にちょうど重なって隠しています。データには 4 本あるのに、グラフには 2 本しか見えません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/overplotted-bars.png"><img src="gallery/overplotted-bars.png" alt="不合格: 重なる棒なし" /></a></td>
+<td><a href="gallery/overplotted-bars-side-by-side.png"><img src="gallery/overplotted-bars-side-by-side.png" alt="合格: 重なる棒なし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Bars a 1 and b 2, then a 3 and b 4</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;], [1, 2])
+plt.bar([&quot;a&quot;, &quot;b&quot;], [3, 4])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([-0.2, 0.8], [1, 2], width=0.4, label=&quot;first&quot;)
+plt.bar([0.2, 1.2], [3, 4], width=0.4, label=&quot;second&quot;)
+plt.xticks([0, 1], [&quot;a&quot;, &quot;b&quot;])
+plt.legend()
+</code></pre>
+</details>
+<p><a id="x_not_ordered"></a></p>
+<h3><code>x_not_ordered</code>: 折れ線の x の値は一方向</h3>
+<p>点が x の順に並んでいないため、折れ線が前に進んでから戻り、データにないループがあるように見えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/unordered-line.png"><img src="gallery/unordered-line.png" alt="不合格: 折れ線の x の値は一方向" /></a></td>
+<td><a href="gallery/unordered-line-sorted.png"><img src="gallery/unordered-line-sorted.png" alt="合格: 折れ線の x の値は一方向" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Points 1 1, 3 9, 2 4</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 3, 2], [1, 9, 4])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [1, 4, 9])
+</code></pre>
+</details>
+<p><a id="hist_counts"></a></p>
+<h3><code>hist_counts</code>: ヒストグラムの高さ = ビンごとのデータの度数または密度</h3>
+<p>ビンの範囲が 4 で止まるため、値 9 が何の跡もなくヒストグラムから消えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/hist-dropped-values.png"><img src="gallery/hist-dropped-values.png" alt="不合格: ヒストグラムの高さ = ビンごとのデータの度数または密度" /></a></td>
+<td><a href="gallery/hist-all-values.png"><img src="gallery/hist-all-values.png" alt="合格: ヒストグラムの高さ = ビンごとのデータの度数または密度" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Histogram of 1, 2, 2, 3, 9</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 9], bins=3, range=(0, 4))
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 9], bins=3)
+</code></pre>
+</details>
+<p><a id="pie_not_whole"></a></p>
+<h3><code>pie_not_whole</code>: 円の扇形が 360° を満たし、各扇形 = 合計に対する割合</h3>
+<p><code>normalize=False</code> のため、0.1、0.2、0.3 の扇形が円の 60 % だけを満たし、すき間が欠けた扇形のように見えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/partial-pie.png"><img src="gallery/partial-pie.png" alt="不合格: 円の扇形が 360° を満たし、各扇形 = 合計に対する割合" /></a></td>
+<td><a href="gallery/whole-pie.png"><img src="gallery/whole-pie.png" alt="合格: 円の扇形が 360° を満たし、各扇形 = 合計に対する割合" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Pie of 0.1, 0.2 and 0.3</code>。合格するグラフの依頼文: <code>Pie of a 0.1, b 0.2 and c 0.3</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.pie([0.1, 0.2, 0.3], labels=[&quot;a&quot;, &quot;b&quot;, &quot;c&quot;], normalize=False)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.pie([0.1, 0.2, 0.3], labels=[&quot;a&quot;, &quot;b&quot;, &quot;c&quot;])
+</code></pre>
+</details>
+<p><a id="area_not_from_zero"></a></p>
+<h3><code>area_not_from_zero</code>: 面はゼロ、または積み上げた面の上端から</h3>
+<p>面が 5 から始まるため、値 6、8、7 に対して塗った高さは 1、3、2 になります。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/floating-area.png"><img src="gallery/floating-area.png" alt="不合格: 面はゼロ、または積み上げた面の上端から" /></a></td>
+<td><a href="gallery/area-from-zero.png"><img src="gallery/area-from-zero.png" alt="合格: 面はゼロ、または積み上げた面の上端から" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Fill between 5 and 6, 8, 7</code>。合格するグラフの依頼文: <code>Fill 6, 8, 7 at 1, 2, 3</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], [5, 5, 5], [6, 8, 7])
+plt.ylim(0, 10)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], [6, 8, 7])
+plt.ylim(0, 10)
+</code></pre>
+</details>
+<p><a id="marker_size_varies"></a></p>
+<h3><code>marker_size_varies</code>: 散布図の大きさが異なる場合: 大きさの凡例</h3>
+<p>点の大きさが異なりますが、大きさが何を表すかを示すものがありません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/sizes-unexplained.png"><img src="gallery/sizes-unexplained.png" alt="不合格: 散布図の大きさが異なる場合: 大きさの凡例" /></a></td>
+<td><a href="gallery/sizes-explained.png"><img src="gallery/sizes-explained.png" alt="合格: 散布図の大きさが異なる場合: 大きさの凡例" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Points 1 3 and 2 4</code>。合格するグラフの依頼文: <code>Points 1 3 and 2 4, sized 10 and 400</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], s=[10, 400])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 400])
+plt.legend(*dots.legend_elements(&quot;sizes&quot;))
+</code></pre>
+</details>
+<p><a id="marker_color_varies"></a></p>
+<h3><code>marker_color_varies</code>: 散布図の色が異なる場合: カラーバーまたは色の凡例</h3>
+<p>点の色が異なりますが、色が何を表すかを示すものがありません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/colors-unexplained.png"><img src="gallery/colors-unexplained.png" alt="不合格: 散布図の色が異なる場合: カラーバーまたは色の凡例" /></a></td>
+<td><a href="gallery/colors-explained.png"><img src="gallery/colors-explained.png" alt="合格: 散布図の色が異なる場合: カラーバーまたは色の凡例" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Points 1 3 and 2 4</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], c=[1, 2])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], c=[1, 2])
+plt.colorbar(dots)
+</code></pre>
+</details>
+<p><a id="legend_mismatch"></a></p>
+<h3><code>legend_mismatch</code>: 凡例の項目は描いた系列を示す。凡例のあるパネルに系列が 2 つ以上: すべての系列を示す</h3>
+<p>凡例が 2 本の線のうち 1 本だけを示すため、もう 1 本が何を表すかがわかりません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/legend-misses-a-series.png"><img src="gallery/legend-misses-a-series.png" alt="不合格: 凡例の項目は描いた系列を示す。凡例のあるパネルに系列が 2 つ以上: すべての系列を示す" /></a></td>
+<td><a href="gallery/legend-names-both.png"><img src="gallery/legend-names-both.png" alt="合格: 凡例の項目は描いた系列を示す。凡例のあるパネルに系列が 2 つ以上: すべての系列を示す" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 1, 4, 9 and 2, 3, 5</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+first, = plt.plot([1, 4, 9], label=&quot;first&quot;)
+plt.plot([2, 3, 5], label=&quot;second&quot;)
+plt.legend(handles=[first])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot([1, 4, 9], label=&quot;first&quot;)
+plt.plot([2, 3, 5], label=&quot;second&quot;)
+plt.legend()
+</code></pre>
+</details>
+<p><a id="check-values"></a></p>
+<h2>チェック 7: 描画した値があなたのデータにある</h2>
+<p><a id="category_not_unique"></a></p>
+<h3><code>category_not_unique</code>: 1 つの系列で各カテゴリは 1 回</h3>
+<p>2 本の棒に同じラベル a があるため、どちらの値が a のものかがわかりません。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/repeated-category.png"><img src="gallery/repeated-category.png" alt="不合格: 1 つの系列で各カテゴリは 1 回" /></a></td>
+<td><a href="gallery/unique-categories.png"><img src="gallery/unique-categories.png" alt="合格: 1 つの系列で各カテゴリは 1 回" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Bars a 1 and a 2</code>。合格するグラフの依頼文: <code>Bars a 1 and b 2</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=[&quot;a&quot;, &quot;a&quot;]).plot(kind=&quot;bar&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([1, 2], index=[&quot;a&quot;, &quot;b&quot;]).plot(kind=&quot;bar&quot;)
+</code></pre>
+</details>
+<p><a id="value_not_found"></a></p>
+<h3><code>value_not_found</code>: 描画したすべての値が出所にある</h3>
+<p>棒は 50,000 と 60,000 を示しますが、ファイルの売上の合計は 34,000 と 40,000 です。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/made-up-values.png"><img src="gallery/made-up-values.png" alt="不合格: 描画したすべての値が出所にある" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="合格: 描画したすべての値が出所にある" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Total revenue by region</code>。ファイル: <code>sales.csv</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;EU&quot;, &quot;US&quot;], [50000, 60000])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="label_not_in_request"></a></p>
+<h3><code>label_not_in_request</code>: 入力したすべてのカテゴリのラベルが依頼文にある</h3>
+<p>依頼文には数値しかなく、プログラムが apples、pears、plums というラベルを作っています。2 つのグラフは同じに見えますが、違いは依頼文にあります。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/labels-not-typed.png"><img src="gallery/labels-not-typed.png" alt="不合格: 入力したすべてのカテゴリのラベルが依頼文にある" /></a></td>
+<td><a href="gallery/labels-typed.png"><img src="gallery/labels-typed.png" alt="合格: 入力したすべてのカテゴリのラベルが依頼文にある" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Plot 3, 5, 9</code>。合格するグラフの依頼文: <code>Plot apples 3, pears 5, plums 9</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;apples&quot;, &quot;pears&quot;, &quot;plums&quot;], [3, 5, 9])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;apples&quot;, &quot;pears&quot;, &quot;plums&quot;], [3, 5, 9])
+</code></pre>
+</details>
+<p><a id="check-columns"></a></p>
+<h2>チェック 8: 描いた列が依頼と一致</h2>
+<p><a id="column_not_requested"></a></p>
+<h3><code>column_not_requested</code>: 依頼文にある列を別の列に置き換えない</h3>
+<p>依頼文は売上 (revenue) を求めていますが、グラフは依頼文にない列 orders を描いています。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/substituted-column.png"><img src="gallery/substituted-column.png" alt="不合格: 依頼文にある列を別の列に置き換えない" /></a></td>
+<td><a href="gallery/truncated-bars-twin.png"><img src="gallery/truncated-bars-twin.png" alt="合格: 依頼文にある列を別の列に置き換えない" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Chart revenue by region</code> (ファイル <code>sales.csv</code>)。合格するグラフの依頼文: <code>Total revenue by region</code> (ファイル <code>sales.csv</code>)。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;orders&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+<p><a id="column_not_named"></a></p>
+<h3><code>column_not_named</code>: 本番環境: 依頼文が列を挙げるか除外する場合、描いた列をすべて挙げる</h3>
+<p>本番環境の規則です。依頼文は revenue を挙げていますが、グラフが描く month は挙げていません。2 つのグラフは同じです。month も挙げた依頼文が合格します。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/unnamed-column-strict.png"><img src="gallery/unnamed-column-strict.png" alt="不合格: 本番環境: 依頼文が列を挙げるか除外する場合、描いた列をすべて挙げる" /></a></td>
+<td><a href="gallery/named-columns-strict.png"><img src="gallery/named-columns-strict.png" alt="合格: 本番環境: 依頼文が列を挙げるか除外する場合、描いた列をすべて挙げる" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>不合格のグラフの依頼文: <code>Total revenue</code> (ファイル <code>sales.csv</code>)。合格するグラフの依頼文: <code>Total revenue by month</code> (ファイル <code>sales.csv</code>)。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;month&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+</code></pre>
+</details>
+<p><a id="label_not_consistent"></a></p>
+<h3><code>label_not_consistent</code>: タイトル、軸ラベル、凡例、カラーバーのラベル: 描いていない列なし。グループごとの合計または平均には、ほかの集計なし</h3>
+<p>棒は売上を示していますが、タイトルはファイルの別の列 orders を挙げています。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/title-names-another-column.png"><img src="gallery/title-names-another-column.png" alt="不合格: タイトル、軸ラベル、凡例、カラーバーのラベル: 描いていない列なし。グループごとの合計または平均には、ほかの集計なし" /></a></td>
+<td><a href="gallery/title-consistent.png"><img src="gallery/title-consistent.png" alt="合格: タイトル、軸ラベル、凡例、カラーバーのラベル: 描いていない列なし。グループごとの合計または平均には、ほかの集計なし" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Total revenue by region</code>。ファイル: <code>sales.csv</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.title(&quot;Orders by region&quot;)
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv(&quot;/mnt/uploads/sales.csv&quot;).groupby(&quot;region&quot;)[&quot;revenue&quot;].sum()
+plt.bar(totals.index, totals.values)
+plt.title(&quot;Total revenue by region&quot;)
+plt.xlabel(&quot;region&quot;)
+plt.ylabel(&quot;revenue&quot;)
+</code></pre>
+</details>
+</main>
+</body>
+</html>
