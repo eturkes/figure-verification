@@ -134,6 +134,10 @@ Pyodide runtime as the verifier's reader, so a program written to deceive the re
 any code that Open WebUI runs in the browser, the program can read the attached files and reach the
 network of the user's browser.
 
+A shared chat shows the reply that Open WebUI stored. Thus the verdict in a shared chat states what
+the browser of the user who sent the request reported. When other users open the shared chat, the
+verifier does not check the chart again.
+
 The verifier sets no limit on the length of the request or on the number of attached files. Thus a
 long request full of numbers, or many large CSV files in one chat, can make one check use minutes of
 server CPU time and much memory. A reverse proxy in front of Open WebUI can limit the size of each
