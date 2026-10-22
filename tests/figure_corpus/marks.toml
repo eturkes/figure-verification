@@ -329,6 +329,43 @@ import matplotlib.pyplot as plt
 plt.plot([0, 1, 2, 3], [1, 4, float("nan"), 9])
 '''
 
+# Autoscale skips a NaN point, so its finite key sits past the limits: the NaN is the cause shown,
+# never a clip (luna F3: `rolling(2)` leaves the first month NaN).
+
+[[case]]
+id = "nan-first-point"
+expect = "value_not_finite"
+site = 4
+csv = "sales.csv"
+request = "Revenue by month, as a rolling mean of 2 rows"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month")["revenue"].sum()
+plt.plot(monthly.index, monthly.rolling(2).mean())
+'''
+
+[[case]]
+id = "nan-first-bar"
+expect = "value_not_finite"
+site = 2
+request = "Bars a and b of 2"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b"], [float("nan"), 2])
+'''
+
+[[case]]
+id = "finite-point-past-limits"
+expect = "point_clipped"
+site = 3
+request = "Plot 1, 4, 9"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([0, 1, 2], [1, 4, 9])
+plt.xlim(0.5, 2)
+'''
+
 [[case]]
 id = "floating-bars"
 expect = "bar_not_from_zero"

@@ -309,7 +309,7 @@ filled, one data set), pies (<code>pie</code>), areas (<code>fill_between</code>
 </tr>
 <tr>
 <td>every data point, bar end and reference mark inside the axis limits (pies exempt)</td>
-<td>every drawn coordinate lies in <code>get_view_interval()</code></td>
+<td>every drawn coordinate lies in <code>get_view_interval()</code>; a panel with a NaN or infinite coordinate goes to the next check</td>
 <td><code>point_clipped</code></td>
 </tr>
 </tbody>

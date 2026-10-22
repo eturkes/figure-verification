@@ -54,15 +54,16 @@ mutant = '''        if mismatched_tick(axis, key_labels=labelled(axis)) is not N
 id = "m19-clip-inclusive"
 predicate = "a coordinate on the view's edge is inside it"
 kills = "tests/test_figure_corpus.py::test_corpus_case[truncated-bars-twin]"
-anchor = '''            if math.isfinite(value) and not low <= value <= high:'''
-mutant = '''            if math.isfinite(value) and not low < value < high:'''
+anchor = '''        if not low <= value <= high:'''
+mutant = '''        if not low < value < high:'''
 
 [[mutant]]
 id = "m19-pie-unclipped"
 predicate = "a pie's wedges are never clipped by the limits"
 kills = "tests/test_figure_corpus.py::test_corpus_case[wide-exploded-pie]"
-anchor = '''        if mark.family == "pie":  # matplotlib draws wedges unclipped: no limit hides a share'''
-mutant = '''        if False:'''
+anchor = '''        if mark.family != "pie"
+        for coordinate in coordinates(axes, mark)'''
+mutant = '''        for coordinate in coordinates(axes, mark)'''
 
 [[mutant]]
 id = "m19-site-slot-priority"
@@ -77,3 +78,21 @@ predicate = "the latest call is ordered by the reader's clock, never by its sour
 kills = "tests/test_figure_corpus.py::test_corpus_case[helper-inversion-site]"
 anchor = '''    return max(calls)[1] if calls else None'''
 mutant = '''    return max(line for _, line in calls) if calls else None'''
+
+[[mutant]]
+id = "luna-f3-clip-reads-non-finite-panel"
+predicate = "a panel drawing a non-finite coordinate leaves its clipping to `value_not_finite` (luna F3)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[nan-first-bar]"
+anchor = '''    if not all(math.isfinite(value) for _, value, _ in found):
+        return'''
+mutant = '''    if False:
+        return'''
+
+[[mutant]]
+id = "luna-f3-clip-never-read"
+predicate = "a finite point past the limits still blocks `point_clipped`"
+kills = "tests/test_figure_corpus.py::test_corpus_case[finite-point-past-limits]"
+anchor = '''    if not all(math.isfinite(value) for _, value, _ in found):
+        return'''
+mutant = '''    if True:
+        return'''

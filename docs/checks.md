@@ -114,7 +114,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | no inverted x or y axis | `axis.get_inverted()` | `axis_inverted` |
 | zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom) | `0` lies in the value axis's `get_view_interval()` | `zero_not_in_limits` |
 | each visible tick label = the value at its position | each label in view, read as a category, a date or a number (with the formatter's order and offset), equals its tick position, within half a unit of its last digit | `tick_label_mismatch` |
-| every data point, bar end and reference mark inside the axis limits (pies exempt) | every drawn coordinate lies in `get_view_interval()` | `point_clipped` |
+| every data point, bar end and reference mark inside the axis limits (pies exempt) | every drawn coordinate lies in `get_view_interval()`; a panel with a NaN or infinite coordinate goes to the next check | `point_clipped` |
 
 [Full rules](verification.md#check-axes) [Examples](gallery.md#check-axes)
 

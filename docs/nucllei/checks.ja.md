@@ -114,7 +114,7 @@ Open WebUI の実行経路を説明します。例: [gallery.ja.md](../gallery.j
 | x 軸も y 軸も反転なし | `axis.get_inverted()` | `axis_inverted` |
 | 棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可) | `0` が値の軸の `get_view_interval()` の中にある | `zero_not_in_limits` |
 | 表示される各目盛りのラベル = その位置の値 | 範囲内の各ラベルをカテゴリ、日付、数値 (フォーマッターの指数とオフセットを含む) として読み、目盛りの位置と、最後の桁の半単位以内で一致 | `tick_label_mismatch` |
-| すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外) | 描画したすべての座標が `get_view_interval()` の中にある | `point_clipped` |
+| すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外) | 描画したすべての座標が `get_view_interval()` の中にある。NaN または無限大の座標があるパネルは次のチェックに回す | `point_clipped` |
 
 [詳細 (オンライン)](https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-axes) [例](../gallery.ja.md#check-axes)
 

@@ -308,7 +308,7 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 </tr>
 <tr>
 <td>すべてのデータ点、棒の端、基準線が軸の範囲内 (円は対象外)</td>
-<td>描画したすべての座標が <code>get_view_interval()</code> の中にある</td>
+<td>描画したすべての座標が <code>get_view_interval()</code> の中にある。NaN または無限大の座標があるパネルは次のチェックに回す</td>
 <td><code>point_clipped</code></td>
 </tr>
 </tbody>

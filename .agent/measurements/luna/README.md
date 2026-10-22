@@ -126,7 +126,10 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
   (h11; the template's `not inverted` rule did not stop the model).
 - F3 a NaN point reports `point_clipped` (axes stage) ahead of `value_not_finite` (marks stage):
   the user reads "outside the axis limits" for a missing value. s03 2/3 (`rolling(2)` leaves
-  January NaN); host probe: a NaN point under autoscale, no limits set ⇒ `point_clipped`.
+  January NaN); host probe: a NaN point under autoscale, no limits set ⇒ `point_clipped`. Fixed: a
+  panel drawing a non-finite coordinate leaves clipping to the marks stage
+  (`axes_rules.py::_check_clipping`); the listing re-judge then reads s03-2 + s03-3
+  `value_not_finite`, every other run as after the F1 fix.
 - F4 a size legend built from empty `ax.scatter([], [], s=…, label=…)` proxies blocks
   `legend_mismatch` (only `legend_elements("sizes")` explains sizes): t10 3/3; host variant with
   no zero sizes still blocks. (t10's own program also draws its 0 mm points at size 0, which

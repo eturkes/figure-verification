@@ -282,7 +282,8 @@ Each axis must show the data honestly:
 - **True tick labels.** Each visible tick label shows the value at its position. A category axis
   shows its categories. A date axis shows its dates.
 - **No data point outside the limits.** Every drawn point, bar end and reference line lies inside
-  the axis limits.
+  the axis limits. A panel with a missing value, such as the first point of a rolling mean, fails
+  the next check instead, because matplotlib sets the limits without that point.
 
 | Reason | Meaning |
 |---|---|

@@ -3,8 +3,10 @@
 
 Order (`.agent/archive/contracts/m19u3.md` U2): `mark_not_in_data` → `scale_not_linear` →
 `axis_inverted` → `zero_not_in_limits` → `tick_label_mismatch` → `point_clipped`. A truncated bar
-axis reports the zero rule, not the clip it implies. Each block marks the program call that set the
-offending property when the reader recorded one, else the line that drew the offending mark.
+axis reports the zero rule, not the clip it implies; a panel drawing a non-finite coordinate
+reports the marks stage's `value_not_finite`, not the clip autoscale implies. Each block marks the
+program call that set the offending property when the reader recorded one, else the line that drew
+the offending mark.
 """
 
 import math
@@ -117,15 +119,23 @@ def _check_ticks(axes: Axes, panel: Panel) -> None:
 
 
 def _check_clipping(axes: Axes, panel: Panel) -> None:
+    # matplotlib draws wedges unclipped: no limit hides a share.
+    found = [
+        coordinate
+        for mark in panel.marks
+        if mark.family != "pie"
+        for coordinate in coordinates(axes, mark)
+    ]
+    # Autoscale skips a non-finite point, so its finite key can sit past the limits: the marks
+    # stage blocks that panel `value_not_finite`, the cause the user can fix (luna F3).
+    if not all(math.isfinite(value) for _, value, _ in found):
+        return
     views = (view(axes.x), view(axes.y))
-    for mark in panel.marks:
-        if mark.family == "pie":  # matplotlib draws wedges unclipped: no limit hides a share
-            continue
-        for dimension, value, site in coordinates(axes, mark):
-            low, high = views[dimension]
-            if math.isfinite(value) and not low <= value <= high:
-                name, axis = ("x", axes.x) if dimension == 0 else ("y", axes.y)
-                block("point_clipped", call(axes, axis, f"{name}lim") or site)
+    for dimension, value, site in found:
+        low, high = views[dimension]
+        if not low <= value <= high:
+            name, axis = ("x", axes.x) if dimension == 0 else ("y", axes.y)
+            block("point_clipped", call(axes, axis, f"{name}lim") or site)
 
 
 def check_axes(panel: Panel) -> None:
