@@ -33,7 +33,7 @@ mutant = '''_LOG_WORDS: Final = re.compile(r"log")'''
 id = "m19-inverted"
 predicate = "an inverted axis blocks"
 kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-value-axis]"
-anchor = '''        if axis.inverted:'''
+anchor = '''        if axis.inverted and not _reordered(axis, keys=keys):'''
 mutant = '''        if False:'''
 
 [[mutant]]
@@ -96,3 +96,45 @@ anchor = '''    if not all(math.isfinite(value) for _, value, _ in found):
         return'''
 mutant = '''    if True:
         return'''
+
+[[mutant]]
+id = "luna-f2-exception-unread"
+predicate = "an inverted category axis passes (user ruling, luna F2)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-category-axis]"
+anchor = '''        if axis.inverted and not _reordered(axis, keys=keys):'''
+mutant = '''        if axis.inverted:'''
+
+[[mutant]]
+id = "luna-f2-category-axis"
+predicate = "matplotlib's category axis inverted = categories in reverse"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-category-line]"
+anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
+mutant = '''    return keys and axis.kind == "numeric" and labelled(axis)'''
+
+[[mutant]]
+id = "luna-f2-labelled-slots"
+predicate = "pandas' labelled numeric slots inverted = categories in reverse"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-pandas-barh]"
+anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
+mutant = '''    return axis.kind == "category"'''
+
+[[mutant]]
+id = "luna-f2-key-axis-only"
+predicate = "labelled numeric slots count as categories only on a key axis"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-labelled-value-axis]"
+anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
+mutant = '''    return axis.kind == "category" or (axis.kind == "numeric" and labelled(axis))'''
+
+[[mutant]]
+id = "luna-f2-numeric-only"
+predicate = "a labelled date axis inverted still reverses time"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-labelled-date-axis]"
+anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
+mutant = '''    return axis.kind == "category" or (keys and labelled(axis))'''
+
+[[mutant]]
+id = "luna-f2-labelled-only"
+predicate = "an unlabelled numeric key axis inverted reverses its scale"
+kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-numeric-key-axis]"
+anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
+mutant = '''    return axis.kind == "category" or (keys and axis.kind == "numeric")'''

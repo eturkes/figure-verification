@@ -72,8 +72,26 @@ plt.plot([1, 4, 9])
 plt.gca().invert_yaxis()
 '''
 
+# An inverted axis of text categories lists them in reverse, which no rule judges, and moves no
+# value (user ruling, luna F2): matplotlib's largest-on-top `barh` idiom passes. A numeric or date
+# axis inverted reverses a scale, and a labelled numeric axis counts as categories only as a key.
+
 [[case]]
 id = "inverted-category-axis"
+expect = "pass"
+rule = "axis_inverted"
+csv = "sales.csv"
+request = "Total revenue by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
+plt.barh(totals.index, totals.values)
+plt.gca().invert_yaxis()
+'''
+
+[[case]]
+id = "inverted-bar-value-axis"
 expect = "axis_inverted"
 site = 5
 csv = "sales.csv"
@@ -83,7 +101,80 @@ import pandas as pd
 import matplotlib.pyplot as plt
 totals = pd.read_csv("{data}/sales.csv").groupby("region")["revenue"].sum()
 plt.barh(totals.index, totals.values)
+plt.gca().invert_xaxis()
+'''
+
+[[case]]
+id = "inverted-category-line"
+expect = "pass"
+rule = "axis_inverted"
+request = "Plot 3, 5, 4 for Jan, Feb, Mar"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot(["Jan", "Feb", "Mar"], [3, 5, 4])
+plt.gca().invert_xaxis()
+'''
+
+[[case]]
+id = "inverted-pandas-barh"
+expect = "pass"
+rule = "axis_inverted"
+request = "Revenue 5, 9, 3 for North, South, East"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+pd.Series([5, 9, 3], index=["North", "South", "East"]).plot.barh()
 plt.gca().invert_yaxis()
+'''
+
+[[case]]
+id = "inverted-numeric-key-axis"
+expect = "axis_inverted"
+site = 3
+request = "Plot 4, 6, 5 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [4, 6, 5])
+plt.gca().invert_xaxis()
+'''
+
+[[case]]
+id = "inverted-labelled-value-axis"
+expect = "axis_inverted"
+site = 4
+request = "Plot 3, 5, 4 for a, b, c on a scale of 0, 2, 4, 6"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b", "c"], [3, 5, 4])
+plt.yticks([0, 2, 4, 6], ["0", "2", "4", "6"])
+plt.gca().invert_yaxis()
+'''
+
+[[case]]
+id = "inverted-date-axis"
+expect = "axis_inverted"
+site = 5
+request = "Plot 4, 6, 5 on 2024-01-01, 2024-02-01 and 2024-03-01"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+days = pd.to_datetime(["2024-01-01", "2024-02-01", "2024-03-01"])
+plt.plot(days, [4, 6, 5])
+plt.gca().invert_xaxis()
+'''
+
+[[case]]
+id = "inverted-labelled-date-axis"
+expect = "axis_inverted"
+site = 6
+request = "Plot 4, 6, 5 for Jan, Feb, Mar of 2024"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+days = pd.to_datetime(["2024-01-01", "2024-02-01", "2024-03-01"])
+plt.plot(days, [4, 6, 5])
+plt.xticks(days, ["Jan", "Feb", "Mar"])
+plt.gca().invert_xaxis()
 '''
 
 [[case]]

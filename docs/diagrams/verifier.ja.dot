@@ -29,7 +29,7 @@ digraph verifier {
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>判定処理</b>: 標準ライブラリの Python、チェック 3〜8 を順に</td></tr>
         <tr><td align="left" height="27"><b>3 図</b>: 図がちょうど 1 つ、すべての文字を描画</td></tr>
         <tr><td align="left" height="27"><b>4 部品</b>: 各 (クラス、描画の呼び出し) の組が決まった集合にある</td></tr>
-        <tr><td align="left" height="27"><b>5 軸</b>: <font color="#0a3069">transData</font>、線形、反転なし、棒の軸にゼロ、正しい目盛り、範囲外なし</td></tr>
+        <tr><td align="left" height="27"><b>5 軸</b>: <font color="#0a3069">transData</font>、線形、数値軸の反転なし、棒の軸にゼロ、正しい目盛り、範囲外なし</td></tr>
         <tr><td align="left" height="27"><b>6 グラフ要素</b>: 基点が 0、重なりなし、ヒストグラムを数え直す、円が全体、正しい凡例</td></tr>
         <tr><td align="left" height="27"><b>7 値</b>: ファイルの値、入力した数値、または認められた計算 1 つ</td></tr>
         <tr><td align="left" height="27" cellpadding="4"><b>8 列</b>: 描いた列を依頼文が挙げる。ラベルも一致</td></tr></table>>];

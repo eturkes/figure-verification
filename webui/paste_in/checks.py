@@ -136,12 +136,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "axes": (
         (
             "Honest axes",
-            "marks at their values, linear or named log scales, no inverted axis, zero on bar"
-            " and area axes, true tick labels, all points inside",
+            "marks at their values, linear or named log scales, no inverted numeric or date axis,"
+            " zero on bar and area axes, true tick labels, all points inside",
         ),
         (
             "正しい軸",
-            "データの値の位置に描画、線形または明記した対数、反転なし、棒と面の軸にゼロ、"
+            "データの値の位置に描画、線形または明記した対数、数値と日付の軸の反転なし、棒と面の軸にゼロ、"
             "正しい目盛りラベル、範囲外の点なし",
         ),
     ),
@@ -239,12 +239,12 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "axes": (
         "Each axis must show the data honestly. Marks sit at their data values, scales are"
-        " linear unless an axis label or title names a log scale, and no axis is inverted. Bar,"
-        " histogram and area axes include zero, each tick label shows the value at its position,"
-        " and no data point is outside the axis limits.",
+        " linear unless an axis label or title names a log scale, and no numeric or date axis is"
+        " inverted. Bar, histogram and area axes include zero, each tick label shows the value at"
+        " its position, and no data point is outside the axis limits.",
         "各軸はデータを正しく示す必要があります。"
         "グラフ要素はデータの値の位置にあり、軸ラベルかタイトルが対数と明記しない限り目盛りは線形で、"
-        "反転した軸はありません。"
+        "数値と日付の軸は反転していません。"
         "棒グラフ、ヒストグラム、面グラフの軸はゼロを含み、各目盛りのラベルはその位置の値を示し、"
         "軸の範囲の外にデータ点はありません。",
     ),

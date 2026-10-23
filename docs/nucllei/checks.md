@@ -112,7 +112,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 |---|---|---|
 | each mark at its data values | each data artist's transform is the axes' `transData` (bars: the data transform; scatter: the offset transform) | `mark_not_in_data` |
 | linear scales; log only when the axis label or panel title says `log`, `logarithmic` or `対数` | `axis.get_scale()`; for `log`, the label and title text after NFKC and case folding | `scale_not_linear` |
-| no inverted x or y axis | `axis.get_inverted()` | `axis_inverted` |
+| no inverted numeric or date axis | `axis.get_inverted()` + the axis kind; a key axis of text categories (a category axis, or slots that pandas or the program labelled) may be inverted: it lists them in reverse | `axis_inverted` |
 | zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom) | `0` lies in the value axis's `get_view_interval()` | `zero_not_in_limits` |
 | each visible tick label = the value at its position | each label in view, read as a category, a date or a number (with the formatter's order and offset), equals its tick position, within half a unit of its last digit | `tick_label_mismatch` |
 | every data point, bar end and reference mark inside the axis limits (pies exempt) | every drawn coordinate lies in `get_view_interval()`; a panel with a NaN or infinite coordinate goes to the next check | `point_clipped` |

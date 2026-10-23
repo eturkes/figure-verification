@@ -325,13 +325,13 @@ plt.ylabel("Value (log scale)")
 
 <a id="axis_inverted"></a>
 
-### `axis_inverted`: no inverted x or y axis
+### `axis_inverted`: no inverted numeric or date axis
 
 The y axis runs downward, so a rise looks like a fall.
 
 | Blocked | Passes |
 |---|---|
-| ![Blocked: no inverted x or y axis](gallery/inverted-value-axis.png) | ![Passes: no inverted x or y axis](gallery/upright-axes.png) |
+| ![Blocked: no inverted numeric or date axis](gallery/inverted-value-axis.png) | ![Passes: no inverted numeric or date axis](gallery/upright-axes.png) |
 
 Request: `Plot 1, 4, 9`.
 

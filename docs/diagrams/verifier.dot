@@ -29,7 +29,7 @@ digraph verifier {
         <tr><td align="left" bgcolor="#dde5ee" cellpadding="4"><b>Judge</b>: standard-library Python, checks 3–8 in order</td></tr>
         <tr><td align="left" height="24"><b>3 One figure</b>: exactly 1 figure; every character drawn</td></tr>
         <tr><td align="left" height="24"><b>4 Chart parts</b>: each (artist class, plotting call) pair in the closed set</td></tr>
-        <tr><td align="left" height="24"><b>5 Axes</b>: <font color="#0a3069">transData</font>, linear, upright, zero on bar axes, true ticks, no clipping</td></tr>
+        <tr><td align="left" height="24"><b>5 Axes</b>: <font color="#0a3069">transData</font>, linear, upright scales, zero on bar axes, true ticks, no clipping</td></tr>
         <tr><td align="left" height="24"><b>6 Marks</b>: bases at 0, no overlap, recounted histogram, whole pie, true legend</td></tr>
         <tr><td align="left" height="24"><b>7 Values</b>: each = your file, a typed number or one admitted computation</td></tr>
         <tr><td align="left" height="24" cellpadding="4"><b>8 Columns</b>: drawn columns named in your request; labels agree</td></tr></table>>];

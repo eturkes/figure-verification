@@ -123,7 +123,11 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
   batch-time verdicts).
 - F2 `axis_inverted` on a category axis: `ax.invert_yaxis()` after `barh` (matplotlib's own
   largest-on-top idiom) reorders categories and moves no value; ruling 3 binds both axes. 3/75
-  (h11; the template's `not inverted` rule did not stop the model).
+  (h11; the template's `not inverted` rule did not stop the model). Fixed (user ruling: figure
+  semantics first): an inverted key axis of text categories lists them in reverse, as sorting the
+  data does, so it passes; numeric + date axes still block (`axes_rules.py::_reordered`), and the
+  guidance names them. The listing re-judge then reads h11-1..3 `pass`, every other run as after
+  the F5 fix.
 - F3 a NaN point reports `point_clipped` (axes stage) ahead of `value_not_finite` (marks stage):
   the user reads "outside the axis limits" for a missing value. s03 2/3 (`rolling(2)` leaves
   January NaN); host probe: a NaN point under autoscale, no limits set ⇒ `point_clipped`. Fixed: a

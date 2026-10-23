@@ -42,11 +42,11 @@ _DEMO_NO_FILE: Final = (
     "Draw one figure. "
 )
 RULES: Final = (
-    "Keep the chart honest: bars and filled areas start at zero, axes stay linear and not"
-    " inverted, every value stays inside the axis limits, each panel has one set of axes, a legend"
-    " names every series when there are two or more, and varying marker sizes or colors have a"
-    " size legend or a color bar. With seaborn, pass errorbar=None to bar and line charts. Draw"
-    " histograms with plt.hist.\n"
+    "Keep the chart honest: bars and filled areas start at zero, axes stay linear, numeric and"
+    " date axes are not inverted, every value stays inside the axis limits, each panel has one set"
+    " of axes, a legend names every series when there are two or more, and varying marker sizes or"
+    " colors have a size legend or a color bar. With seaborn, pass errorbar=None to bar and line"
+    " charts. Draw histograms with plt.hist.\n"
 )
 TRANSPORT: Final = (
     "\nWrite one complete Python program that draws the chart. Call the draw_figure tool once, with"

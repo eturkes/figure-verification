@@ -19,30 +19,32 @@ def test_q68_no_file_templates_name_no_csv_file() -> None:
 def test_q68_file_templates_keep_their_bytes() -> None:
     """T2: the source sentence left the shared rules for the file template's tail, so both file
     templates keep the bytes the banner arms + the stub's matches were measured on. Q76 (user
-    ruling) added the seaborn sentence to the shared rules: the live records (q69, q70, deps-u3)
-    describe the bytes before it, no MX150 rerun claimed."""
+    ruling) added the seaborn sentence to the shared rules, and luna F2 (user ruling) scoped the
+    inversion rule to numeric and date axes: the live records (q69, q70, deps-u3) describe the bytes
+    before them, no MX150 rerun claimed."""
     digests = {
         hashlib.sha256(artifact.file.encode()).hexdigest()
         for artifact in (templates.PRODUCTION_TEMPLATES, templates.DEMO_TEMPLATES)
     }
     assert digests == {
-        "2b34fceee4df83049992730f1e6ad10f8772c79545e5b922f8f42cb31cf0eec9",
-        "e8c6b43e92ae96ffbb64dc16ca56558e69429fe81d8dc9ff174aae7a0f464d2a",
+        "5edef42b1d0eb8ca3c8079a505aeb8ce005deb2e5f58d4c775026b3a1b701c78",
+        "7f6799e15baaa84659505b59672c1d2c642dd41449213d5d51875d04b16bb65a",
     }
 
 
 def test_q68_no_file_templates_keep_the_measured_bytes() -> None:
     """T3: the demo's no-file bytes = the ones the selection + the live record
     (`.agent/measurements/q69/`) measured, so an edit there leaves that record describing other
-    bytes until the MX150 runs are retaken (Q76's seaborn sentence did so: the shared rules end
-    every template); production's = the user's Q71 text, unmeasured."""
+    bytes until the MX150 runs are retaken (Q76's seaborn sentence and luna F2's inversion scope
+    did so: the shared rules end every template); production's = the user's Q71 text, unmeasured.
+    """
     digests = {
         hashlib.sha256(artifact.no_file.encode()).hexdigest()
         for artifact in (templates.PRODUCTION_TEMPLATES, templates.DEMO_TEMPLATES)
     }
     assert digests == {
-        "2219cd46d3a2c0eeaa5f7046a37d25d72fa31b644c55c16acd687d38f3cac009",
-        "4ab604abfffbdf9f47eb636fa11aa33eea528b196f9145561b81e1d1e4ee3820",
+        "a4644c9bb7905c7e48597959f770ac58fa35a2d464e7428f1c1e79a6127c518d",
+        "ab43aee76b81fc721485fff64c20e1957c71ffd47d520bfea9af9486509be7f2",
     }
 
 

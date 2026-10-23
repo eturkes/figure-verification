@@ -325,13 +325,13 @@ plt.ylabel("Value (log scale)")
 
 <a id="axis_inverted"></a>
 
-### `axis_inverted`: x 軸も y 軸も反転なし
+### `axis_inverted`: 数値と日付の軸は反転なし
 
 y 軸が下向きのため、増加が減少に見えます。
 
 | 不合格 | 合格 |
 |---|---|
-| ![不合格: x 軸も y 軸も反転なし](gallery/inverted-value-axis.png) | ![合格: x 軸も y 軸も反転なし](gallery/upright-axes.png) |
+| ![不合格: 数値と日付の軸は反転なし](gallery/inverted-value-axis.png) | ![合格: 数値と日付の軸は反転なし](gallery/upright-axes.png) |
 
 依頼文: `Plot 1, 4, 9`。
 

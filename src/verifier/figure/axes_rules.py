@@ -73,13 +73,22 @@ def _names_log(texts: list[Text | None]) -> bool:
     return False
 
 
-def _check_scales(axes: Axes) -> None:
+def _reordered(axis: Axis, *, keys: bool) -> bool:
+    """Inverting the axis lists text categories in reverse: matplotlib's category axis, or a key
+    axis of numeric slots the program or pandas labelled (pandas' bar charts)."""
+    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))
+
+
+def _check_scales(axes: Axes, panel: Panel) -> None:
     for name, axis in (("x", axes.x), ("y", axes.y)):
         stated = axis.scale == "log" and _names_log([axis.label, *axes.titles])
         if axis.scale != "linear" and not stated:
             block("scale_not_linear", call(axes, axis, f"{name}scale"))
-    for name, axis in (("x", axes.x), ("y", axes.y)):
-        if axis.inverted:
+    # Inverting a key axis of text categories lists them in reverse, which no rule judges, and
+    # moves no value (user ruling, luna F2: `barh` + `invert_yaxis()`); any other inverted axis
+    # reverses a scale.
+    for (name, axis), keys in zip((("x", axes.x), ("y", axes.y)), key_axes(panel), strict=True):
+        if axis.inverted and not _reordered(axis, keys=keys):
             block("axis_inverted", call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim"))
 
 
@@ -141,7 +150,7 @@ def _check_clipping(axes: Axes, panel: Panel) -> None:
 def check_axes(panel: Panel) -> None:
     axes = panel.axes
     _check_transforms(axes, panel)
-    _check_scales(axes)
+    _check_scales(axes, panel)
     _check_zero(axes, panel)
     _check_ticks(axes, panel)
     _check_clipping(axes, panel)

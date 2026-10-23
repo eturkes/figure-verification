@@ -118,8 +118,8 @@ are true:
 
 - The program drew one matplotlib figure, and every part of it belongs to a closed set of chart
   parts that the verifier checks.
-- Every part obeys a closed set of rules. For example, bars start at zero, every axis runs in its
-  usual direction and no value lies outside the axis limits.
+- Every part obeys a closed set of rules. For example, bars start at zero, every numeric or date
+  axis runs in its usual direction and no value lies outside the axis limits.
 - When the user attached a CSV file or typed numbers in the request, every drawn value comes from
   that data. When the user supplied no data, the text below the chart says so.
 

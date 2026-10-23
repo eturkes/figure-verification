@@ -4717,12 +4717,12 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "axes": (
         (
             "Honest axes",
-            "marks at their values, linear or named log scales, no inverted axis, zero on bar"
-            " and area axes, true tick labels, all points inside",
+            "marks at their values, linear or named log scales, no inverted numeric or date axis,"
+            " zero on bar and area axes, true tick labels, all points inside",
         ),
         (
             "正しい軸",
-            "データの値の位置に描画、線形または明記した対数、反転なし、棒と面の軸にゼロ、"
+            "データの値の位置に描画、線形または明記した対数、数値と日付の軸の反転なし、棒と面の軸にゼロ、"
             "正しい目盛りラベル、範囲外の点なし",
         ),
     ),
@@ -4820,12 +4820,12 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "axes": (
         "Each axis must show the data honestly. Marks sit at their data values, scales are"
-        " linear unless an axis label or title names a log scale, and no axis is inverted. Bar,"
-        " histogram and area axes include zero, each tick label shows the value at its position,"
-        " and no data point is outside the axis limits.",
+        " linear unless an axis label or title names a log scale, and no numeric or date axis is"
+        " inverted. Bar, histogram and area axes include zero, each tick label shows the value at"
+        " its position, and no data point is outside the axis limits.",
         "各軸はデータを正しく示す必要があります。"
         "グラフ要素はデータの値の位置にあり、軸ラベルかタイトルが対数と明記しない限り目盛りは線形で、"
-        "反転した軸はありません。"
+        "数値と日付の軸は反転していません。"
         "棒グラフ、ヒストグラム、面グラフの軸はゼロを含み、各目盛りのラベルはその位置の値を示し、"
         "軸の範囲の外にデータ点はありません。",
     ),
@@ -6382,13 +6382,22 @@ def _names_log(texts: list[Text | None]) -> bool:
     return False
 
 
-def _check_scales(axes: Axes) -> None:
+def _reordered(axis: Axis, *, keys: bool) -> bool:
+    """Inverting the axis lists text categories in reverse: matplotlib's category axis, or a key
+    axis of numeric slots the program or pandas labelled (pandas' bar charts)."""
+    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))
+
+
+def _check_scales(axes: Axes, panel: Panel) -> None:
     for name, axis in (("x", axes.x), ("y", axes.y)):
         stated = axis.scale == "log" and _names_log([axis.label, *axes.titles])
         if axis.scale != "linear" and not stated:
             block("scale_not_linear", call(axes, axis, f"{name}scale"))
-    for name, axis in (("x", axes.x), ("y", axes.y)):
-        if axis.inverted:
+    # Inverting a key axis of text categories lists them in reverse, which no rule judges, and
+    # moves no value (user ruling, luna F2: `barh` + `invert_yaxis()`); any other inverted axis
+    # reverses a scale.
+    for (name, axis), keys in zip((("x", axes.x), ("y", axes.y)), key_axes(panel), strict=True):
+        if axis.inverted and not _reordered(axis, keys=keys):
             block("axis_inverted", call(axes, axis, f"{name}invert", "axis-invert", f"{name}lim"))
 
 
@@ -6450,7 +6459,7 @@ def _check_clipping(axes: Axes, panel: Panel) -> None:
 def check_axes(panel: Panel) -> None:
     axes = panel.axes
     _check_transforms(axes, panel)
-    _check_scales(axes)
+    _check_scales(axes, panel)
     _check_zero(axes, panel)
     _check_ticks(axes, panel)
     _check_clipping(axes, panel)

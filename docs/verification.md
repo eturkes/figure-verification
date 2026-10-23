@@ -19,8 +19,8 @@ shows these messages in Japanese: `図の検証に合格しました。` and
 The verifier gives three kinds of assurance:
 
 1. **Integrity.** Every part of the figure belongs to a closed set of chart parts that the verifier
-   checks. Every part obeys a closed set of rules: for example, bars start at zero and every axis
-   runs in its normal direction.
+   checks. Every part obeys a closed set of rules: for example, bars start at zero and every
+   numeric or date axis runs in its normal direction.
 2. **Provenance.** When you attach a CSV file or type numbers in your request, every drawn value
    comes from that data. It can also come from one admitted computation of that data. A value that
    the verifier cannot find stops the chart.
@@ -276,7 +276,10 @@ Each axis must show the data honestly:
 - **Data coordinates.** Each chart part sits at its data values on the axes.
 - **Linear scales.** An axis is linear. The verifier accepts a log axis only when its axis label or
   the panel title says `log`, `logarithmic` or `対数`. Any other scale stops the figure.
-- **No inverted axis.** Values increase upward on the y axis and to the right on the x axis.
+- **No inverted scale.** Values increase upward on the y axis and to the right on the x axis.
+  A program can invert an axis of text categories, for example to show the largest bar at the
+  top: this lists the categories in reverse, as sorting the data does, and moves no value. An
+  inverted numeric or date axis stops the figure.
 - **Zero on value axes of bars, histograms and areas.** The value axis of these charts includes
   zero, so a bar's length shows its value. Line and scatter charts can zoom to their data.
 - **True tick labels.** Each visible tick label shows the value at its position. A category axis

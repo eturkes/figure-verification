@@ -29,8 +29,8 @@ A chart passes when all of these statements are true:
 
 1. **Integrity.** Every part of the figure belongs to a closed set of chart parts that the verifier
    checks. These are lines, points, bars, histograms, pies, filled areas, reference lines and text.
-   Every part obeys a closed set of rules. For example, bars start at zero, every axis runs in its
-   normal direction and no value lies outside the axis limits.
+   Every part obeys a closed set of rules. For example, bars start at zero, every numeric or date
+   axis runs in its normal direction and no value lies outside the axis limits.
 2. **Provenance.** The user can attach a CSV file or type numbers in the request. Every drawn value
    then comes from that data: a value of one column, one summary per group of one column, or a typed
    number. It can also be one admitted computation of that data, such as a running total or a ratio
