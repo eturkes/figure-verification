@@ -17,7 +17,7 @@ pinned file belongs is `mismatched` however its target reads, and a symlink that
 below the snapshot root that is not part of the revision.
 
 Interpreter = the ROOT `.venv` (py3.14): stdlib + msgspec only. Importing `torch`, `transformers`
-or `huggingface_hub` here would bind the gate to the py3.12 runtime venv, so those stay
+or `huggingface_hub` here would bind the gate to the py3.15 runtime venv, so those stay
 out. Fetching the snapshot is a documented operator step (`model_backend/runtime/README.md`), never
 a gate step.
 """

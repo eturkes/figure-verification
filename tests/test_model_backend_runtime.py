@@ -840,7 +840,7 @@ def test_p18_mypy_overrides_cover_the_runtime_imports_alone() -> None:
 def test_p19_root_lock_matches_ratified_digest() -> None:
     """P19 compares the root lock with the ratified content digest.
 
-    Re-ratified seventeen times:
+    Re-ratified eighteen times:
     M13.0 (cryptography 50 for PYSEC-2026-3552, plus the gate scanners),
     M13.5 (numpy 2.2.5, dev-only, TID251-banned outside tests -- 30 purely additive lock lines,
     no transitive package and no version change elsewhere), the M10 audit repair (anyio 4.14.1
@@ -872,9 +872,11 @@ def test_p19_root_lock_matches_ratified_digest() -> None:
     uvicorn 0.54.0, ruff 0.17.1, mypy 2.4.0, hypothesis 6.170.5, zizmor 1.31.1 + transitive) and U2
     (fonttools 4.64.0 -> 4.67.0, dev-only: Open WebUI 0.12.3's image holds no fontTools, so no image
     version binds it; no other package moved) and Q73 (seaborn 0.13.2 dev-only, the Open WebUI
-    0.12.3 bundle's: 15 purely additive lines; no other package moved)."""
+    0.12.3 bundle's: 15 purely additive lines; no other package moved) and the second dependency
+    upgrade (every pin outside the bundle-exact five at its latest release: ruff 0.17.2, hypothesis
+    6.170.8 + transitive bracex, certifi, coverage, polyfactory, python-dateutil 3.0.0, wcmatch)."""
     digest = hashlib.sha256(Path("uv.lock").read_bytes()).hexdigest()
-    assert digest == "fdd26272ad263a6bdad102b365ab085b6090ad4662a153b9683bd67d318ca959"
+    assert digest == "9bc9dd41f49914464aaf7ccd35929eb9bc912170ab31d041945f46921b391a1b"
 
 
 def test_p20_snapshot_identity_is_bound_across_surfaces() -> None:
