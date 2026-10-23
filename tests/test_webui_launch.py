@@ -36,6 +36,7 @@ import sys
 import time
 from contextlib import suppress
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -43,8 +44,9 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent
 _LAUNCHER = _ROOT / "webui" / "launch.sh"
-_SUBPROCESS_TIMEOUT_S = 10.0
-_READY_TIMEOUT_S = 10.0
+# Waits, not grading thresholds: a loaded host (load 23 on 4 cores) took past 10 s to READY.
+_SUBPROCESS_TIMEOUT_S = 30.0
+_READY_TIMEOUT_S = 60.0
 _CONNECT_TIMEOUT_S = 0.25
 
 
@@ -65,19 +67,28 @@ class _ModelCall(TypedDict):
     pythonpath: str | None
 
 
-def _free_port() -> int:
+# Ports below the kernel's ephemeral range, one slice of 1,000 per xdist worker: a `bind(0)`
+# anywhere in the suite never hands one out, so no parallel test can take a launcher test's port
+# between the launcher's preflight and its own helper's bind -- a listener there makes READY rest
+# on it (the webui pid file absent at READY, seen on a contended host).
+_EPHEMERAL_LOW = int(Path("/proc/sys/net/ipv4/ip_local_port_range").read_text().split()[0])
+_SLICE = 1000
+
+
+def _bindable(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
 
 
 def _free_ports() -> tuple[int, int]:
-    ports: list[int] = []
-    while len(ports) < 2:
-        port = _free_port()
-        if port not in ports:
-            ports.append(port)
-    return ports[0], ports[1]
+    worker = int(os.environ.get("PYTEST_XDIST_WORKER", "gw0").removeprefix("gw"))
+    top = _EPHEMERAL_LOW - _SLICE * (worker % ((_EPHEMERAL_LOW - 1024) // _SLICE))
+    first, second = islice((port for port in range(top - _SLICE, top) if _bindable(port)), 2)
+    return first, second
 
 
 def _write_executable(path: Path, source: str) -> None:
@@ -245,8 +256,8 @@ raise SystemExit(64)
             "MODEL_BACKEND_PYTHON": str(model_python),
             "WEBUI_PROVISION_DATA_DIR": str(tmp_path / "webui-data"),
             "LAUNCH_LOG_DIR": str(log_dir),
-            "LAUNCH_MODEL_READY_S": "5",
-            "LAUNCH_WEBUI_READY_S": "5",
+            "LAUNCH_MODEL_READY_S": "30",
+            "LAUNCH_WEBUI_READY_S": "30",
             "WEBUI_PROVISION_MODEL_BACKEND_URL": f"http://127.0.0.1:{ports[0]}/v1",
             "FAKE_HTTP_HELPER": str(helper),
             "FAKE_PID_DIR": str(pid_dir),
