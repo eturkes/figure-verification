@@ -40,7 +40,8 @@ ARTIFACT=paste-in/figure_verification_tool.py
 SPDX_PROBE=tools/mutate.py
 PYPROJECT=pyproject.toml
 WEBUI_RUNTIME=webui/runtime/pyproject.toml
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME")
+CONFTEST=tests/conftest.py
+TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -340,6 +341,14 @@ probe g17-fail-fast tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_b
 probe g17-stage-argument tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches \
     'gate step does not pass its matrix stage' \
     sed -i 's|tools/gate.sh "[^"]*"|tools/gate.sh tests|' "$WORKFLOW"
+
+probe g18-ci-skipped-stage tests/test_gate.py::test_g18_a_stage_skipped_under_ci_fails_the_gate \
+    'a stage skipped under CI passed the gate' \
+    sed -i '/failed+=(".{skipped\[@\]}")/d' "$GATE"
+
+probe g18-ci-untracked-skip tests/test_gate.py::test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite \
+    'an untracked skip under CI passed the suite' \
+    sed -i 's/session.exitstatus = pytest.ExitCode.TESTS_FAILED/pass/' "$CONFTEST"
 
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \

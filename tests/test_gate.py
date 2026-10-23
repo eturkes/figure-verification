@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G17: static-config invariants of the one gate command.
+"""G6-G18: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
-row Q47 (its row text is the contract); G17 = `CLAUDE.md` `CI gate` (the CI fan-out).
+row Q47 (its row text is the contract); G17 = `CLAUDE.md` `CI gate` (the CI fan-out); G18 = queue
+row "CI skips pass silently" (its row text is the contract).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -15,6 +16,7 @@ This file imports no `verifier` symbol: coverage measures the verifier core, so 
 would add gate-tooling lines to a suite that never runs them.
 """
 
+import os
 import re
 import shutil
 import stat
@@ -397,3 +399,70 @@ def test_g17_ci_fans_out_every_stage_on_ci_branches() -> None:
         step["run"]
     ).endswith('tools/gate.sh "$STAGE"')
     assert passes_stage, f"gate step does not pass its matrix stage: {step}"
+
+
+def _ci_env(*, ci: bool, **extra: str) -> dict[str, str]:
+    env = {key: value for key, value in os.environ.items() if key != "CI"} | extra
+    return env | {"CI": "true"} if ci else env
+
+
+def test_g18_a_stage_skipped_under_ci_fails_the_gate(tmp_path: Path) -> None:
+    """G18: under `CI=true` a stage the gate skips fails the run; elsewhere it is announced and
+    passes. Acceptance: the `shell` stage with shellcheck off `PATH` (only `dirname`, which the
+    script's own root lookup runs) -> rc 1 naming `skipped under CI: shell`; the same run outside CI
+    -> rc 0 with `skipped: shell`."""
+    bash, dirname = shutil.which("bash"), shutil.which("dirname")
+    assert bash is not None and dirname is not None
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "dirname").symlink_to(dirname)
+    runs = {
+        ci: subprocess.run(  # noqa: S603 - fixed argv
+            [bash, str(_GATE), "shell"],
+            env=_ci_env(ci=ci, PATH=str(bin_dir)),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        for ci in (True, False)
+    }
+    assert runs[True].returncode == 1 and "skipped under CI: shell" in runs[True].stdout, (
+        f"a stage skipped under CI passed the gate: {runs[True].stdout}"
+    )
+    assert runs[False].returncode == 0 and "skipped: shell" in runs[False].stdout, runs[
+        False
+    ].stdout
+    assert "skipped under CI" not in runs[False].stdout
+
+
+def test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite(tmp_path: Path) -> None:
+    """G18: under `CI=true` a pytest skip whose reason names no S8 tracker fails the session, also
+    through xdist (both suites run `-n auto`); a tracked skip and any skip outside CI pass.
+    Acceptance: the suite's own `tests/conftest.py` beside one skipping test -> rc 1 naming
+    `untracked skip under CI` serial and under `-n 2`; a `**M1.1**` reason under CI -> rc 0; the
+    untracked skip outside CI -> rc 0."""
+    shutil.copy(_REPO_ROOT / "tests" / "conftest.py", tmp_path / "conftest.py")
+
+    def run(reason: str, *options: str, ci: bool) -> subprocess.CompletedProcess[str]:
+        (tmp_path / "test_planted.py").write_text(
+            f"import pytest\n\n\ndef test_planted() -> None:\n    pytest.skip({reason!r})\n",
+            encoding="utf-8",
+        )
+        return subprocess.run(  # noqa: S603 - fixed argv
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *options],
+            cwd=tmp_path,
+            env=_ci_env(ci=ci),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    for options in ((), ("-n", "2")):
+        failed = run("dependency absent", *options, ci=True)
+        assert failed.returncode == 1 and "untracked skip under CI" in failed.stdout, (
+            f"an untracked skip under CI passed the suite {options}: {failed.stdout}"
+        )
+    tracked = run("skeleton of **M1.1**", ci=True)
+    assert tracked.returncode == 0, tracked.stdout
+    outside = run("dependency absent", ci=False)
+    assert outside.returncode == 0, outside.stdout

@@ -212,6 +212,12 @@ main() {
     fi
     if [ "${#skipped[@]}" -ne 0 ]; then
         printf 'skipped: %s\n' "${skipped[*]}"
+        # CI exists to run every check: a skip there is a runner-image or workflow change that
+        # turned a check off, which only a log read would catch.
+        if [ "${CI:-}" = true ]; then
+            printf 'skipped under CI: %s\n' "${skipped[*]}"
+            failed+=("${skipped[@]}")
+        fi
     fi
     if [ "${#failed[@]}" -ne 0 ]; then
         printf 'FAILED: %s\n' "${failed[*]}"
