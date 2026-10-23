@@ -698,6 +698,72 @@ table = pd.read_csv("{data}/sales.csv").pivot(index="month", columns="region", v
 table.plot()
 '''
 
+[[case]]
+id = "line-over-its-band"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Total revenue per month"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+monthly = pd.read_csv("{data}/sales.csv").groupby("month", as_index=False)["revenue"].sum()
+fig, ax = plt.subplots()
+ax.plot(monthly["month"], monthly["revenue"], marker="o", label="Total revenue")
+ax.fill_between(monthly["month"], 0, monthly["revenue"], alpha=0.2)
+ax.set_ylim(0, monthly["revenue"].max() * 1.1)
+ax.legend()
+'''
+
+[[case]]
+id = "line-beside-another-band"
+expect = "legend_mismatch"
+site = 4
+request = "Plot 4, 6, 5 and 3, 5, 4 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [4, 6, 5], label="actual")
+plt.fill_between([1, 2, 3], 0, [3, 5, 4])
+plt.legend()
+'''
+
+[[case]]
+id = "line-and-its-band-both-named"
+expect = "legend_mismatch"
+site = 4
+request = "Plot 4, 6, 5 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2, 3], [4, 6, 5], label="actual")
+plt.fill_between([1, 2, 3], 0, [4, 6, 5], label="area")
+plt.legend()
+'''
+
+[[case]]
+id = "line-on-two-band-edges"
+expect = "legend_mismatch"
+site = 5
+request = "Stack 3, 4, 2 on 2, 2, 2 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], 0, [2, 2, 2])
+plt.fill_between([1, 2, 3], [2, 2, 2], [5, 6, 4], label="upper")
+plt.plot([1, 2, 3], [2, 2, 2], label="lower")
+plt.legend()
+'''
+
+[[case]]
+id = "zero-line-under-band"
+expect = "legend_mismatch"
+site = 4
+request = "Plot 4, 6, 5 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.fill_between([1, 2, 3], 0, [4, 6, 5])
+plt.plot([1, 2, 3], [0, 0, 0], label="zero")
+plt.legend()
+'''
+
 # --- honest twins of the remaining rules ----------------------------------------------------------
 
 [[case]]

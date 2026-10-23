@@ -5116,6 +5116,7 @@ class Panel:
     pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
     proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
     size_keys: tuple[int, ...] = ()  # point-free scatters: size keys a legend may show (luna F4)
+    outlines: tuple[tuple[int, int], ...] = ()  # (line, band): a legend names the band by it (F5)
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -5208,17 +5209,19 @@ def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
     return None if read is None else read(artist, axes, index)
 
 
-def _outline(artist: Artist, bands: list[Artist]) -> bool:
-    """A pandas area outline: a plotted line equal to a band's edge (stack geometry, not data).
+def _outlined(artist: Artist, bands: dict[int, Artist]) -> list[int]:
+    """The bands a plotted line outlines: it equals one of their edges (pandas area outlines:
+    stack geometry, not data).
 
-    `artist` is a judged line and every `bands` member a judged band, so their geometry is known.
+    `artist` is a judged line and every `bands` value a judged band, so their geometry is known.
     """
     line = cast("LineGeometry", artist.geometry)
-    for band in bands:
+    outlined: list[int] = []
+    for number, band in bands.items():
         arrays = cast("BandArrays", cast("BandGeometry", band.geometry).band)
         if line.x == arrays.x and line.y in (arrays.y1, arrays.y2):
-            return True
-    return False
+            outlined.append(number)
+    return outlined
 
 
 def _marks(axes: Axes, families: dict[int, Family]) -> list[Mark]:
@@ -5313,15 +5316,28 @@ def _panel(index: int, axes: Axes) -> Panel:
                 (labels if number in keys else texts).append(text)
         else:
             families[number] = kind
-    bands = [axes.artists[i] for i, family in families.items() if family == "band"]
+    bands = {i: axes.artists[i] for i, family in families.items() if family == "band"}
+    outlines: list[tuple[int, int]] = []
     for number in [i for i, family in families.items() if family == "line"]:
-        if _outline(axes.artists[number], bands):
+        outlined = _outlined(axes.artists[number], bands)
+        if outlined:
             del families[number]
+        # A legend entry naming the line names its band (luna F5): the one band whose edge it is,
+        # away from a zero base. A stack's shared edge outlines two bands and names neither.
+        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):
+            outlines.append((number, outlined[0]))
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
     return Panel(
-        index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies), tuple(size_keys)
+        index,
+        axes,
+        tuple(marks),
+        tuple(texts),
+        tuple(labels),
+        tuple(proxies),
+        tuple(size_keys),
+        tuple(outlines),
     )
 
 
@@ -7140,7 +7156,8 @@ def _handle(
             return position, mark.artists[0]
     if entry.target is not None and entry.target in panel.proxies:
         return _proxied(position, panel, entry.target)
-    return None
+    bands = [band for line, band in panel.outlines if line == entry.target]
+    return (position, bands[0]) if bands else None
 
 
 def _hidden(text: str) -> bool:

@@ -79,3 +79,17 @@ predicate = "a size key two collections draw names neither"
 kills = "tests/test_figure_corpus.py::test_corpus_case[size-key-two-collections]"
 anchor = '''    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):'''
 mutant = '''    if not drawing or read_request(entry.text).sequence != (size,):'''
+
+[[mutant]]
+id = "luna-f5-outline-handle-unread"
+predicate = "a legend entry whose handle is a band's outline names that band (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[line-over-its-band]"
+anchor = '''    return (position, bands[0]) if bands else None'''
+mutant = '''    return None'''
+
+[[mutant]]
+id = "luna-f5-one-name-per-series"
+predicate = "a series takes one legend name: its outline and the band itself are two (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[line-and-its-band-both-named]"
+anchor = '''        if named is None or named in names:'''
+mutant = '''        if named is None:'''

@@ -67,7 +67,8 @@ def _handle(
             return position, mark.artists[0]
     if entry.target is not None and entry.target in panel.proxies:
         return _proxied(position, panel, entry.target)
-    return None
+    bands = [band for line, band in panel.outlines if line == entry.target]
+    return (position, bands[0]) if bands else None
 
 
 def _hidden(text: str) -> bool:

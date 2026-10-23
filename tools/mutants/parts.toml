@@ -110,3 +110,31 @@ predicate = "a scatter drawing points is never a size key"
 kills = "tests/test_figure_corpus.py::test_corpus_case[scatter-series-legend]"
 anchor = '''    return not geometry.offsets and len(geometry.sizes) == 1'''
 mutant = '''    return len(geometry.sizes) == 1'''
+
+[[mutant]]
+id = "luna-f5-outline-unrecorded"
+predicate = "a line on its band's edge records that band for the legend (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[line-over-its-band]"
+anchor = '''        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "luna-f5-shared-edge"
+predicate = "a line on the edge two bands share names neither (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[line-on-two-band-edges]"
+anchor = '''        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):'''
+mutant = '''        if outlined and any(cast("LineGeometry", axes.artists[number].geometry).y):'''
+
+[[mutant]]
+id = "luna-f5-zero-edge"
+predicate = "a line on a band's zero base names no band (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[zero-line-under-band]"
+anchor = '''        if len(outlined) == 1 and any(cast("LineGeometry", axes.artists[number].geometry).y):'''
+mutant = '''        if len(outlined) == 1:'''
+
+[[mutant]]
+id = "luna-f5-outline-any-line"
+predicate = "an outline equals a band edge, x and y alike (luna F5)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[line-beside-another-band]"
+anchor = '''        if line.x == arrays.x and line.y in (arrays.y1, arrays.y2):'''
+mutant = '''        if line.x == arrays.x:'''

@@ -137,7 +137,10 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
   collection draws, labelled with that size, is a size key (`legends.py::_sized`); t10 still blocks
   `legend_mismatch`, by design: it scales the sizes ×100 and labels the unscaled value.
 - F5 a line + `fill_between` under it + `ax.legend()` blocks `legend_mismatch`, also with the band
-  labelled: t11 1/3; host variant without the legend passes.
+  labelled: t11 1/3; host variant without the legend passes. Fixed: a line equal to a non-zero
+  edge of exactly one band names that band in a legend (`parts.py::_panel` `outlines`,
+  `legends.py::_handle`); the line and its band both in the legend still block (two names for one
+  series). The listing re-judge then reads t11-3 `pass`, every other run as after the F4 fix.
 - F6 bar width is an unjudged channel: t06's bars encode revenue in width (area ∝ width × height);
   it blocked only because its x label names `revenue` — the same program with a silent label
   passes.

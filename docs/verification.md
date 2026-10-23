@@ -316,7 +316,9 @@ Each chart part must show its values honestly:
 - **True legends.** Each legend entry names a series of the chart. With two or more series in a
   panel that has a legend, the legend names every series. A legend key without ink that the
   program adds to the panel (seaborn adds one for each `hue` value) names the one series of its
-  color that shows no label of its own.
+  color that shows no label of its own. A line that the program draws on the edge of one filled
+  area, away from zero, belongs to that area, so a legend entry for that line names the area. A
+  line on an edge that two areas share names neither area.
 
 | Reason | Meaning |
 |---|---|
