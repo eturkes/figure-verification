@@ -363,6 +363,34 @@ cd .agent/measurements
 FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password node q79_render.mjs http://127.0.0.1:9333 http://127.0.0.1:8080 /tmp/q79-corpus.json q79/result.json
 ```
 
+## Render record — NR (M23.1)
+
+`nr/result.json` = the nucllei tool's markdown under hostile text, read by nucllei's own pipeline
+at tag `v20261020-01` (`34eb997`), the security review's N7 + N8 evidence
+(`.agent/contracts/m23u1.md`). `nucllei_render_corpus.py` writes 38 cases: the pass display
+`nucllei_skill/tool.py::_Draw.publish` pushes (verdict, image, an interpretation of 13 hostile
+names as `inert.code` spans, the note line) for Q79's 12 notes + 4 nucllei constructs (`/ext/` and
+file-id bracket references, `{download=…}` attributes, `{{…_FILE_ID_…}}` tokens, block math on its
+own lines) × EN + JA, a fail display and a hostile program's check list per language, and one
+unescaped control per language. `nucllei_render.mjs` runs each through the chain `Markdown.svelte`
+applies (`replaceTokens(processResponseContent(…))` → `segmentMarkdown` → `lex`: markdown-it-attrs
+5.0.0, nucllei's KaTeX + bracket-reference rules), copied from the checkout and run as written.
+markdown-it = 14.3.3, the fixed release on nucllei's line: nucllei's lock pins 14.3.0, whose
+quadratic-parse advisories (GHSA-r7fv-28h4-cvq7, GHSA-gfr2-rv44-r23c, GHSA-253c-mchw-3w2r + one
+low) fail the `audit` stage, and a 14.3.0 run wrote a byte-identical `result.json`. nucllei draws
+text tokens as Svelte text, so the token tree decides. Result: 38/38 — a
+display holds paragraphs of text and code spans, the label (`strong` / the KaTeX label) and its own
+image alone, each code span equal to its name, the note text equal to the note as written; the
+check lists hold fenced program lines, constants and the guide links alone. The controls formed an
+external `image`, `link`s, `/ext/` + file-id citation links, `strong` and `inlineKatex`.
+
+Rerun from the repository root with a nucllei checkout at that tag and the Node packages installed:
+
+```
+PYTHONPATH="$PWD" uv run --locked python .agent/measurements/nucllei_render_corpus.py /tmp/nr-corpus.json
+node .agent/measurements/nucllei_render.mjs <nucllei checkout> /tmp/nr-corpus.json .agent/measurements/nr/result.json
+```
+
 ## Reduction claims — M13.6
 
 Rerun all reduction IDs from the repository root after the pinned environment + Node install:

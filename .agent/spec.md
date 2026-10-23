@@ -62,6 +62,8 @@ Env + gate = `.claude/rules/ops.md`; commands run as `uv run --locked python -m 
 
 ## Tasks
 
+- [ ] **M23.1** third security review (`.agent/contracts/m23u1.md`): check set + verdicts → F3 NL harness on loopback → F2 bridge request origin → F1 nucllei attachments through `/files/write` → close
+
 Queue = `.agent/deferred.md`, one entry + acceptance check each; MAINTAIN requests adopt rows from it.
 
 ## Phase

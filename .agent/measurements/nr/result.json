@@ -1,0 +1,522 @@
+[
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** The request asks for plt\\.ylim(30000\\, 45000\\)\\; the chart starts the y axis at 0 instead\\."
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\![x\\](http\\:\\/\\/example\\.invalid\\/a\\.png\\) [link\\](https\\:\\/\\/example\\.invalid\\) \\<https\\:\\/\\/example\\.invalid\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** https\\:\\/\\/example\\.invalid\\/path www\\.example\\.invalid user\\@example\\.invalid ftp\\:\\/\\/example\\.invalid"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\<img src\\=x onerror\\=alert(1\\)\\> \\<iframe src\\=\\'https\\:\\/\\/example\\.invalid\\'\\>\\<\\/iframe\\> \\<video src\\=x\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\<details\\>\\<summary\\>s\\<\\/summary\\>x\\<\\/details\\> \\<u\\>u\\<\\/u\\> \\<b\\>b\\<\\/b\\> \\<script\\>alert(1\\)\\<\\/script\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\$x\\^2\\$ \\$\\$y\\$\\$ \\\\⁠(z\\\\⁠\\) \\\\⁠[w\\\\⁠\\] \\\\⁠pu\\{1 m\\} \\\\⁠ce\\{H2O\\} \\\\⁠begin\\{equation\\}e\\\\⁠end\\{equation\\} a \\$b\\$ c"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\*\\*bold\\*\\* \\*em\\* \\_em\\_ \\~\\~del\\~\\~ \\~one\\~ \\`code\\` \\`\\`\\` x \\`\\`\\` \\=\\=mark\\=\\="
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\# heading \\> quote \\- item 1\\. item \\| a \\| b \\| \\:\\:\\:note x \\:\\:\\: \\-\\-\\-"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** [1\\] [1\\,2\\] [1\\#x\\] [\\^1\\] \\{\\{user\\}\\} \\{\\{CHAR\\}\\} \\{\\{VIDEO\\_FILE\\_ID\\_0123abcd\\}\\} \\{\\{HTML\\_FILE\\_ID\\_0a\\}\\} \\<\\@user\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\&amp\\; \\&lt\\; \\&\\#x41\\; \\&\\#65\\; \\&nbsp\\; \\\\⁠\\& \\\\⁠\\* \\\\⁠\\\\⁠ trailing backslash \\\\⁠"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** ご指定の plt\\.ylim(60\\, 0\\) は（注）\\*\\*強調\\*\\*【例】「軸」を反転します。\\$x\\$ と \\\\⁠(y\\\\⁠\\)"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** line one␊line two␍␊three�four �evil� ␀ ␡ end"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** [\\/ext\\/public\\/figure\\-verification\\/checks\\.html\\] [0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\] [\\/ext\\/a\\.md\\#x\\]"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** [x\\](\\/ext\\/a\\.md\\)\\{download\\=evil\\.html\\} [y\\](https\\:\\/\\/example\\.invalid\\)\\{target\\=\\_self\\} z\\{\\.cls\\}"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\{\\{VIDEO\\_FILE\\_ID\\_0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\}\\} \\{\\{HTML\\_FILE\\_ID\\_0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\}\\} \\{\\{user\\}\\} \\{\\{char\\}\\}"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "Figure verification passed\n\n![Verified chart](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n**Model note:** \\$\\$␊x␊\\$\\$ \\\\⁠[␊y␊\\\\⁠\\] \\\\⁠begin\\{equation\\}␊z␊\\\\⁠end\\{equation\\}"
+ },
+ {
+  "kind": "fail",
+  "faults": [],
+  "content": "Figure verification failed, no image produced\n\nThe value axis of a bar, histogram or area chart does not include zero. (zero_not_in_limits)"
+ },
+ {
+  "kind": "result",
+  "faults": [],
+  "content": "**Checks**\n\n**✓ Chart program received from the model**  \none program, sent through draw_figure\n\nWhat this check does: The model sends its chart program through the draw_figure tool. The verifier checks the program of this call, which the tool block shows above.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-program)\n\n**✓ Program run in the code sandbox**  \nthe program runs unchanged in your sandbox and finishes without an error\n\nWhat this check does: The code sandbox runs the model's program, unchanged, with your attached files. The program must finish without an error, and the run reports the figure that it drew.\n\nThe program ran to its end without an error.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-run)\n\n**✓ One figure drawn**  \none matplotlib figure, every character drawable\n\nWhat this check does: The program must draw exactly one matplotlib figure. Charts from pandas are matplotlib figures too. The available fonts must draw every character of its text.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-figure)\n\n**✓ Only chart parts the verifier checks**  \nplain axes with bars, lines, points, histograms, pies, areas, reference lines and text; no images, second axes or overlapping panels\n\nWhat this check does: Each part of the figure must be a kind that the verifier checks. These are plain axes, bars, lines, points, histograms, pies, filled areas, reference lines and text. Images, polar or 3D axes, a second y axis and overlapping panels stop the figure.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-parts)\n\n**✗ Honest axes**  \nmarks at their values, linear or named log scales, no inverted numeric or date axis, zero on bar and area axes, true tick labels, all points inside\n\nWhat this check does: Each axis must show the data honestly. Marks sit at their data values, scales are linear unless an axis label or title names a log scale, and no numeric or date axis is inverted. Bar, histogram and area axes include zero, each tick label shows the value at its position, and no data point is outside the axis limits.\n\nRelated program lines:\n\n```\n  4 | plt.bar(['a'], [1], label=label)\n▶ 5 | plt.ylim(1, 2)\n```\n\nWhy it failed: The value axis of a bar, histogram or area chart does not include zero. (zero_not_in_limits)\n\n▶ The marked line drew the part, or made the call, that failed this check.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-axes)\n\n**– Honest marks** (not checked)  \nvisible finite values, bars and areas from zero, no overlapping bars, one bar width per series, true histograms and pies, ordered lines, keyed sizes and colors, a true legend\n\nWhat this check does: Each mark must show its values honestly. Bars and filled areas start at zero or on another bar or area, bars do not overlap, the bars of one series share one width, and histograms and pies match their data. Lines run in one direction, varying sizes and colors have a legend or color bar, and the legend names the series.\n\nThis check did not run, because an earlier check failed.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-marks)\n\n**– Drawn values come from your data** (not checked)  \neach value is in your CSV file, one summary per group, a number in your request, or one admitted computation of these; each category once\n\nWhat this check does: Each drawn value must come from your data. It is a value in your CSV file or a number in your request. It can also be one total, mean, minimum, maximum or row count per group of the file. It can also be one admitted computation of these, such as a running total or a ratio of two columns. Category labels come from the same rows or from your request.\n\nThis check did not run, because an earlier check failed.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-values)\n\n**– Drawn columns match your request** (not checked)  \nif your request names a column, it names every drawn column; labels name only columns the chart shows\n\nWhat this check does: When your request names columns, the chart must draw those columns. A title, axis label or legend must not name a column or summary that the chart does not draw. It can name the column whose values the legend shows as series names.\n\nThis check did not run, because an earlier check failed.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-columns)\n\n**– Image shown with the reply** (not checked)  \none PNG image, saved on the server\n\nWhat this check does: The run returns one PNG image, and the server saves it and shows it with this reply. If either step fails, the verifier shows no image.\n\nThis check did not run, because an earlier check failed.\n\n[Read about this check](/ext/public/figure-verification/checks.html#check-attach)\n"
+ },
+ {
+  "kind": "control",
+  "faults": [],
+  "content": "Figure verification passed\n\n**Model note:** ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid> [/ext/public/figure-verification/checks.html] [0a1b2c3d-0000-4000-8000-000000000000] [/ext/a.md#x]",
+  "blocks": [
+   {
+    "type": "paragraph",
+    "tokens": [
+     {
+      "type": "text",
+      "raw": "Figure verification passed",
+      "text": "Figure verification passed"
+     }
+    ]
+   },
+   {
+    "type": "paragraph",
+    "tokens": [
+     {
+      "type": "text",
+      "raw": "",
+      "text": ""
+     },
+     {
+      "type": "strong",
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "Model note:",
+        "text": "Model note:"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "image",
+      "href": "http://example.invalid/a.png",
+      "text": "x",
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "x",
+        "text": "x"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "https://example.invalid",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "link",
+        "text": "link"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "https://example.invalid",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "https://example.invalid",
+        "text": "https://example.invalid"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/ext/public/figure-verification/checks.html",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "ext",
+       "href": "/ext/public/figure-verification/checks.html",
+       "pageHref": "/ext/public/figure-verification/checks.html",
+       "key": "/ext/public/figure-verification/checks.html",
+       "title": "checks.html",
+       "section": null
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "checks.html",
+        "text": "checks.html"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "file",
+       "href": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+       "pageHref": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+       "key": "file:0a1b2c3d-0000-4000-8000-000000000000",
+       "title": "sales.csv",
+       "section": null
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "sales.csv",
+        "text": "sales.csv"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/ext/a.md#x",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "ext",
+       "href": "/ext/a.md#x",
+       "pageHref": "/ext/a.md",
+       "key": "/ext/a.md",
+       "title": "a",
+       "section": "x"
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a › x",
+        "text": "a › x"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ The request asks for plt\\.ylim(30000\\, 45000\\)\\; the chart starts the y axis at 0 instead\\."
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\![x\\](http\\:\\/\\/example\\.invalid\\/a\\.png\\) [link\\](https\\:\\/\\/example\\.invalid\\) \\<https\\:\\/\\/example\\.invalid\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ https\\:\\/\\/example\\.invalid\\/path www\\.example\\.invalid user\\@example\\.invalid ftp\\:\\/\\/example\\.invalid"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\<img src\\=x onerror\\=alert(1\\)\\> \\<iframe src\\=\\'https\\:\\/\\/example\\.invalid\\'\\>\\<\\/iframe\\> \\<video src\\=x\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\<details\\>\\<summary\\>s\\<\\/summary\\>x\\<\\/details\\> \\<u\\>u\\<\\/u\\> \\<b\\>b\\<\\/b\\> \\<script\\>alert(1\\)\\<\\/script\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\$x\\^2\\$ \\$\\$y\\$\\$ \\\\⁠(z\\\\⁠\\) \\\\⁠[w\\\\⁠\\] \\\\⁠pu\\{1 m\\} \\\\⁠ce\\{H2O\\} \\\\⁠begin\\{equation\\}e\\\\⁠end\\{equation\\} a \\$b\\$ c"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\*\\*bold\\*\\* \\*em\\* \\_em\\_ \\~\\~del\\~\\~ \\~one\\~ \\`code\\` \\`\\`\\` x \\`\\`\\` \\=\\=mark\\=\\="
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\# heading \\> quote \\- item 1\\. item \\| a \\| b \\| \\:\\:\\:note x \\:\\:\\: \\-\\-\\-"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ [1\\] [1\\,2\\] [1\\#x\\] [\\^1\\] \\{\\{user\\}\\} \\{\\{CHAR\\}\\} \\{\\{VIDEO\\_FILE\\_ID\\_0123abcd\\}\\} \\{\\{HTML\\_FILE\\_ID\\_0a\\}\\} \\<\\@user\\>"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\&amp\\; \\&lt\\; \\&\\#x41\\; \\&\\#65\\; \\&nbsp\\; \\\\⁠\\& \\\\⁠\\* \\\\⁠\\\\⁠ trailing backslash \\\\⁠"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ ご指定の plt\\.ylim(60\\, 0\\) は（注）\\*\\*強調\\*\\*【例】「軸」を反転します。\\$x\\$ と \\\\⁠(y\\\\⁠\\)"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ line one␊line two␍␊three�four �evil� ␀ ␡ end"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ [\\/ext\\/public\\/figure\\-verification\\/checks\\.html\\] [0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\] [\\/ext\\/a\\.md\\#x\\]"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ [x\\](\\/ext\\/a\\.md\\)\\{download\\=evil\\.html\\} [y\\](https\\:\\/\\/example\\.invalid\\)\\{target\\=\\_self\\} z\\{\\.cls\\}"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\{\\{VIDEO\\_FILE\\_ID\\_0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\}\\} \\{\\{HTML\\_FILE\\_ID\\_0a1b2c3d\\-0000\\-4000\\-8000\\-000000000000\\}\\} \\{\\{user\\}\\} \\{\\{char\\}\\}"
+ },
+ {
+  "kind": "display",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n![検証済みのグラフ](/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content)\n\nDrawn columns: `[/ext/a.md]`, `[0a1b2c3d-0000-4000-8000-000000000000]`, `$x$`, `\\(y\\)`, ``a`b``, ``` `` ```, `` {{HTML_FILE_ID_0a1b2c3d-0000-4000-8000-000000000000}}` ``, `{download=x}`, `<img src=x onerror=1>`, `line␊break`, `  spaced  `, ` `, `` ` ``.\n\n$\\footnotesize\\textbf{モデルの注記:}$ \\$\\$␊x␊\\$\\$ \\\\⁠[␊y␊\\\\⁠\\] \\\\⁠begin\\{equation\\}␊z␊\\\\⁠end\\{equation\\}"
+ },
+ {
+  "kind": "fail",
+  "faults": [],
+  "content": "図の検証に合格しませんでした。画像は表示されません。\n\n棒グラフ、ヒストグラム、面グラフの値の軸にゼロが含まれていません。 (zero_not_in_limits)"
+ },
+ {
+  "kind": "result",
+  "faults": [],
+  "content": "**チェック項目**\n\n**✓ モデルからグラフのプログラムを受信**  \ndraw_figure で送られた 1 つのプログラム\n\nこのチェックの内容: モデルはグラフのプログラムを draw_figure ツールで送ります。検証器はこの呼び出しのプログラムをチェックします。プログラムはこの欄の上に表示されています。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-program)\n\n**✓ サンドボックスでプログラムを実行**  \nプログラムを変更せずにあなたのサンドボックスで実行し、エラーなく終了\n\nこのチェックの内容: コード実行のサンドボックスが、モデルのプログラムを変更せずに、添付ファイルと一緒に実行します。プログラムはエラーなく終了し、実行結果として描いた図を報告する必要があります。\n\nプログラムはエラーなく最後まで実行されました。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-run)\n\n**✓ 図を 1 つ描画**  \nmatplotlib の図が 1 つ、すべての文字を描画可能\n\nこのチェックの内容: プログラムは matplotlib の図をちょうど 1 つ描く必要があります。pandas のグラフも matplotlib の図です。使用できるフォントで、図のすべての文字を描ける必要があります。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-figure)\n\n**✓ 検証器がチェックできる部品だけを使用**  \n通常の軸と、棒、折れ線、点、ヒストグラム、円、面、基準線、テキスト。画像、2 つ目の軸、重なるパネルはなし\n\nこのチェックの内容: 図の各部品は、検証器がチェックできる種類である必要があります。通常の軸、棒、折れ線、点、ヒストグラム、円、面、基準線、テキストです。画像、極座標や 3D の軸、2 つ目の y 軸、重なるパネルがあると、図は表示されません。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-parts)\n\n**✗ 正しい軸**  \nデータの値の位置に描画、線形または明記した対数、数値と日付の軸の反転なし、棒と面の軸にゼロ、正しい目盛りラベル、範囲外の点なし\n\nこのチェックの内容: 各軸はデータを正しく示す必要があります。グラフ要素はデータの値の位置にあり、軸ラベルかタイトルが対数と明記しない限り目盛りは線形で、数値と日付の軸は反転していません。棒グラフ、ヒストグラム、面グラフの軸はゼロを含み、各目盛りのラベルはその位置の値を示し、軸の範囲の外にデータ点はありません。\n\n関連するプログラムの行:\n\n```\n  4 | plt.bar(['a'], [1], label=label)\n▶ 5 | plt.ylim(1, 2)\n```\n\n不合格の理由: 棒グラフ、ヒストグラム、面グラフの値の軸にゼロが含まれていません。 (zero_not_in_limits)\n\n▶ 印の付いた行が、このチェックで不合格になった部分を描いたか、その呼び出しを行いました。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-axes)\n\n**– 正しいグラフ要素** (未実施)  \n見える有限の値、ゼロから始まる棒と面、重ならない棒、系列ごとに同じ棒の幅、正しいヒストグラムと円、順序どおりの折れ線、凡例のある大きさと色、正しい凡例\n\nこのチェックの内容: 各グラフ要素は値を正しく示す必要があります。棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、1 つの系列の棒は同じ幅で、ヒストグラムと円はデータと一致します。折れ線は一方向に進み、異なる大きさや色には凡例かカラーバーがあり、凡例は系列を正しく示します。\n\n前のチェックが不合格だったため、このチェックは実施していません。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-marks)\n\n**– 描画した値があなたのデータにある** (未実施)  \n各値が CSV ファイルの値、そのグループごとの集計、依頼文の数値、またはそれらの認められた計算。カテゴリの重複なし\n\nこのチェックの内容: 描画した各値は、あなたのデータにある必要があります。CSV ファイルの値、そのグループごとの合計、平均、最小値、最大値、行数、または依頼文の数値です。累計や 2 つの列の比率のような、それらの認められた計算でもかまいません。カテゴリのラベルは、同じ行または依頼文にある必要があります。\n\n前のチェックが不合格だったため、このチェックは実施していません。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-values)\n\n**– 描いた列が依頼と一致** (未実施)  \n依頼が列名を含む場合は、描いた列をすべて含む。ラベルはグラフが示す列だけを挙げる\n\nこのチェックの内容: 依頼文に列名がある場合、グラフはその列を描く必要があります。タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。凡例が系列名として示す値の列は挙げてもかまいません。\n\n前のチェックが不合格だったため、このチェックは実施していません。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-columns)\n\n**– 返信に画像を表示** (未実施)  \nPNG 画像 1 枚をサーバーに保存\n\nこのチェックの内容: 実行結果として PNG 画像が 1 枚返り、サーバーがそれを保存してこの返信に表示します。どちらかに失敗した場合、検証器は画像を表示しません。\n\n前のチェックが不合格だったため、このチェックは実施していません。\n\n[このチェックの説明を読む](/ext/public/figure-verification/checks.ja.html#check-attach)\n"
+ },
+ {
+  "kind": "control",
+  "faults": [],
+  "content": "図の検証に合格しました。\n\n$\\footnotesize\\textbf{モデルの注記:}$ ![x](http://example.invalid/a.png) [link](https://example.invalid) <https://example.invalid> [/ext/public/figure-verification/checks.html] [0a1b2c3d-0000-4000-8000-000000000000] [/ext/a.md#x]",
+  "blocks": [
+   {
+    "type": "paragraph",
+    "tokens": [
+     {
+      "type": "text",
+      "raw": "図の検証に合格しました。",
+      "text": "図の検証に合格しました。"
+     }
+    ]
+   },
+   {
+    "type": "paragraph",
+    "tokens": [
+     {
+      "type": "inlineKatex",
+      "text": "\\footnotesize\\textbf{モデルの注記:}",
+      "displayMode": false
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "image",
+      "href": "http://example.invalid/a.png",
+      "text": "x",
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "x",
+        "text": "x"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "https://example.invalid",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "link",
+        "text": "link"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "https://example.invalid",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": null,
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "https://example.invalid",
+        "text": "https://example.invalid"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/ext/public/figure-verification/checks.html",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "ext",
+       "href": "/ext/public/figure-verification/checks.html",
+       "pageHref": "/ext/public/figure-verification/checks.html",
+       "key": "/ext/public/figure-verification/checks.html",
+       "title": "checks.html",
+       "section": null
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "checks.html",
+        "text": "checks.html"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "file",
+       "href": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+       "pageHref": "/api/v1/files/0a1b2c3d-0000-4000-8000-000000000000/content",
+       "key": "file:0a1b2c3d-0000-4000-8000-000000000000",
+       "title": "sales.csv",
+       "section": null
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "sales.csv",
+        "text": "sales.csv"
+       }
+      ]
+     },
+     {
+      "type": "text",
+      "raw": " ",
+      "text": " "
+     },
+     {
+      "type": "link",
+      "href": "/ext/a.md#x",
+      "title": null,
+      "target": null,
+      "download": null,
+      "cite": {
+       "kind": "ext",
+       "href": "/ext/a.md#x",
+       "pageHref": "/ext/a.md",
+       "key": "/ext/a.md",
+       "title": "a",
+       "section": "x"
+      },
+      "tokens": [
+       {
+        "type": "text",
+        "raw": "a › x",
+        "text": "a › x"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]
