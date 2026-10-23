@@ -668,6 +668,13 @@ async def chat_completions(
     request: Request[object, object, State], state: State
 ) -> Response[object]:
     """Run one completion through the app-server; reply whole (SSE when `stream`)."""
+    # A page in the operator's browser can post `text/plain` to loopback without a CORS preflight;
+    # Open WebUI + nucllei send JSON (M23.1 F2).
+    if request.content_type[0] != "application/json":
+        return cast(
+            "Response[object]",
+            _error(415, "the body must be application/json", "invalid_request_error"),
+        )
     raw = await request.body()
     try:
         body = msgspec.json.decode(raw, type=ChatRequest)
@@ -714,8 +721,19 @@ async def chat_completions(
     return Response(completion(outcome, model))
 
 
-def create_app(model: str, bridge: BridgeSettings, on_exit: Callable[[], None]) -> Litestar:
-    """The bridge app; the child starts with the app and stops with it."""
+def hosts(hostname: str, port: int) -> tuple[str, ...]:
+    """The `Host` headers the bridge answers: its bind name + the loopback spellings, at its port.
+    A DNS-rebound page names its own domain, so it reads no reply (M23.1 F2)."""
+    named = f"[{hostname}]" if ":" in hostname else hostname
+    spellings = dict.fromkeys((named, "127.0.0.1", "localhost", "[::1]"))
+    return tuple(f"{name}:{port}" for name in spellings)
+
+
+def create_app(
+    model: str, bridge: BridgeSettings, on_exit: Callable[[], None], *, allowed: tuple[str, ...]
+) -> Litestar:
+    """The bridge app, answering the `allowed` Host headers alone; the child starts with the app
+    and stops with it."""
     if model not in _MODELS:
         msg = f"the codex bridge serves {', '.join(sorted(_MODELS))}, not {model!r}"
         raise ValueError(msg)
@@ -736,6 +754,7 @@ def create_app(model: str, bridge: BridgeSettings, on_exit: Callable[[], None]) 
         on_startup=[startup],
         on_shutdown=[shutdown],
         openapi_config=None,
+        allowed_hosts=list(allowed),
     )
 
 
@@ -765,7 +784,8 @@ def serve(settings: Settings) -> None:
         for server in holder:
             server.should_exit = True
 
-    app = create_app(settings.model_id, BridgeSettings.from_env(), on_exit)
+    allowed = hosts(parsed.hostname, parsed.port)
+    app = create_app(settings.model_id, BridgeSettings.from_env(), on_exit, allowed=allowed)
     server = uvicorn.Server(uvicorn.Config(app, host=parsed.hostname, port=parsed.port, workers=1))
     holder.append(server)
     server.run()

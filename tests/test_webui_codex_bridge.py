@@ -24,12 +24,15 @@ from litestar import Litestar
 from litestar.testing import TestClient
 
 from webui import codex_bridge
-from webui.codex_bridge import BridgeSettings, ChatRequest, chunks, completion, create_app
+from webui.codex_bridge import BridgeSettings, ChatRequest, chunks, completion, create_app, hosts
 from webui.settings import Settings
 
 _TOKEN = "access-token-under-test"  # noqa: S105 - fixture value, never a credential
 _ACCOUNT = "account-under-test"
 _PROGRAM = "import matplotlib.pyplot as plt\nplt.bar(['A'], [1])\nplt.show()"
+# What Open WebUI addresses: the launcher's model_backend_url (M23.1 F2).
+_URL = "http://127.0.0.1:8001"
+_ALLOWED = hosts("127.0.0.1", 8001)
 _PARAMETERS = {
     "type": "object",
     "properties": {"program": {"type": "string"}},
@@ -136,10 +139,10 @@ def bridge(tmp_path: Path) -> Iterator[tuple[TestClient[Litestar], Path, list[st
     home = tmp_path / "home"
     exits: list[str] = []
     settings = BridgeSettings(codex_bin=str(fake), auth_file=auth, home=home)
-    app = create_app("gpt-6-luna", settings, lambda: exits.append("exit"))
+    app = create_app("gpt-6-luna", settings, lambda: exits.append("exit"), allowed=_ALLOWED)
     home.mkdir()
     (home / "scenario").write_text("tool", encoding="utf-8")
-    with TestClient(app=app) as client:
+    with TestClient(app=app, base_url=_URL) as client:
         yield client, home, exits
 
 
@@ -388,9 +391,42 @@ def test_models_lists_the_one_served_model(
     assert [model["id"] for model in client.get("/v1/models").json()["data"]] == ["gpt-6-luna"]
 
 
+def test_m23_f2_a_cross_site_or_rebound_request_reaches_no_thread(
+    bridge: tuple[TestClient[Litestar], Path, list[str]],
+) -> None:
+    """The bridge spends the operator's subscription and authenticates no caller. A page in the
+    operator's browser posts `text/plain` to loopback with no CORS preflight; a DNS-rebound page
+    names its own domain in `Host`, on any route. Neither starts a thread; Open WebUI's own request
+    (JSON, the bind name) still does."""
+    client, home, _ = bridge
+    body = json.dumps(_request())
+    plain = client.post(
+        "/v1/chat/completions", content=body, headers={"content-type": "text/plain"}
+    )
+    rebound = client.post(
+        "/v1/chat/completions", json=_request(), headers={"host": "rebound.example:8001"}
+    )
+    listed = client.get("/v1/models", headers={"host": "rebound.example:8001"})
+    assert (plain.status_code, rebound.status_code, listed.status_code) == (415, 400, 400)
+    assert "thread/start" not in _calls(home)
+    assert client.post("/v1/chat/completions", json=_request()).status_code == 200
+    assert "thread/start" in _calls(home)
+
+
+def test_m23_f2_the_bridge_answers_its_bind_name_and_the_loopback_spellings() -> None:
+    assert hosts("127.0.0.1", 8001) == ("127.0.0.1:8001", "localhost:8001", "[::1]:8001")
+    assert hosts("::1", 9) == ("[::1]:9", "127.0.0.1:9", "localhost:9")
+    assert hosts("localhost", 5) == ("localhost:5", "127.0.0.1:5", "[::1]:5")
+
+
 def test_the_bridge_refuses_a_model_its_catalog_lacks(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="gpt-6-luna"):
-        create_app("Qwen2.5-Coder-0.5B-Instruct", BridgeSettings(home=tmp_path), lambda: None)
+        create_app(
+            "Qwen2.5-Coder-0.5B-Instruct",
+            BridgeSettings(home=tmp_path),
+            lambda: None,
+            allowed=_ALLOWED,
+        )
 
 
 @pytest.mark.parametrize("effort", ["", "low", "max"])
@@ -470,7 +506,8 @@ def test_the_dump_dir_records_each_request_with_its_outcome(tmp_path: Path) -> N
     home.mkdir()
     (home / "scenario").write_text("tool", encoding="utf-8")
     settings = BridgeSettings(codex_bin=str(fake), auth_file=auth, home=home, dump_dir=dump)
-    with TestClient(app=create_app("gpt-6-luna", settings, lambda: None)) as client:
+    app = create_app("gpt-6-luna", settings, lambda: None, allowed=_ALLOWED)
+    with TestClient(app=app, base_url=_URL) as client:
         assert client.post("/v1/chat/completions", json=_request()).status_code == 200
     (record,) = [json.loads(path.read_text(encoding="utf-8")) for path in dump.iterdir()]
     assert record["request"] == _request()
