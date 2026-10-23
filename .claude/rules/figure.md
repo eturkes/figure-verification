@@ -51,7 +51,7 @@ A reason maps to the stage that raises it: `category_not_unique` (G8) needs the 
 | hist | `Rectangle` in a `BarContainer` | `Axes.hist` (histtype `bar`, one dataset) |
 | pie | `Wedge` (+ its label/autopct `Text`) | `Axes.pie` |
 | area | `FillBetweenPolyCollection` (3.10) / `PolyCollection` (3.8, 3.9) with recorded arrays | `Axes.fill_between` `stackplot` |
-| area outline | `Line2D` = an area band's edge (no mark); a legend entry with it as handle names the band when, drawn in data coordinates point to point (transform `data`, drawstyle `default`), it equals a non-zero edge of exactly one band (`parts.py::_outlined` + `_panel` `outlines`, `legends.py::_handle`; luna F5; equal arrays in another transform or as steps lie elsewhere and stay a mark, reviewer-1 F4) | `Axes.plot` |
+| area outline | `Line2D` = an area band's edge (no mark); a legend entry with it as handle names the band when, drawn in data coordinates point to point (transform `data`, drawstyle `default`), it equals a non-zero edge of exactly one band (`parts.py::_outlined` + `_panel` `outlines`, `legends.py::_handle`; luna F5; equal arrays in another transform or as steps lie elsewhere and stay a mark) | `Axes.plot` |
 | reference | `Line2D` / `Rectangle` / `Polygon` | `Axes.axhline` `Axes.axvline` `Axes.axhspan` `Axes.axvspan` |
 | text (listed, never judged) | `Text` `Annotation` | `Axes.text` `Axes.annotate` `Axes.bar_label` |
 | size key (no mark; luna F4) | a `PathCollection` holding no point + exactly one size | `Axes.scatter` (`ax.scatter([], [], s=…, label=…)`); a legend entry with it as handle = a key of that size (`legends.py::_sized`) |

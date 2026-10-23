@@ -912,7 +912,7 @@ plt.legend()
 '''
 
 # Equal arrays alone do not make a line its band's edge: drawn in axes coordinates or as steps,
-# it lies elsewhere (reviewer-1 F4), so it stays a mark of its own.
+# it lies elsewhere, so it stays a mark of its own.
 
 [[case]]
 id = "outline-in-axes-coordinates"
