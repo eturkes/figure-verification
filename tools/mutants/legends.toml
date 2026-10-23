@@ -58,3 +58,24 @@ predicate = "two bars of one container are one legend name (Q75 P2, reviewer-2 F
 kills = "tests/test_figure_judge.py::test_q75_p2_one_bar_series_takes_one_legend_name"
 anchor = '''            return position, entry.target if mark.family == "pie" else mark.artists[0]'''
 mutant = '''            return position, entry.target'''
+
+[[mutant]]
+id = "luna-f4-size-not-drawn"
+predicate = "a hand-built size key names a size its collection draws"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-key-not-drawn]"
+anchor = '''        and size in cast("ScatterGeometry", artists[mark.artists[0]].geometry).sizes'''
+mutant = '''        and True'''
+
+[[mutant]]
+id = "luna-f4-label-unread"
+predicate = "a hand-built size key's label types its size"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-key-mislabelled]"
+anchor = '''    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):'''
+mutant = '''    if len(drawing) != 1:'''
+
+[[mutant]]
+id = "luna-f4-first-collection"
+predicate = "a size key two collections draw names neither"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-key-two-collections]"
+anchor = '''    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):'''
+mutant = '''    if not drawing or read_request(entry.text).sequence != (size,):'''

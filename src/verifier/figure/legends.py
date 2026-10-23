@@ -12,9 +12,16 @@ areas) in a legended axes, every one is named; pies and reference marks may stay
 from dataclasses import dataclass, field
 from typing import TypeAlias, cast
 
-from verifier.figure.description import Legend, LegendEntry, LineGeometry, RectGeometry
+from verifier.figure.description import (
+    Legend,
+    LegendEntry,
+    LineGeometry,
+    RectGeometry,
+    ScatterGeometry,
+)
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
+from verifier.figure.request import read_request
 from verifier.figure.shapes import RGB, color, label, series_marks
 
 Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
@@ -101,6 +108,32 @@ def _encoding(
     return entry.axes, keyed[0], keyed[1]
 
 
+def _size_key_panel(
+    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
+) -> Panel | None:
+    """The panel whose hand-built size key is this entry's handle, if it is one."""
+    position = by_axes.get(entry.axes) if entry.axes is not None else None
+    if position is None or entry.target not in panels[position].size_keys:
+        return None
+    return panels[position]
+
+
+def _sized(entry: LegendEntry, panel: Panel) -> tuple[int, int, str] | None:
+    """A hand-built size key explains the sizes of the one scatter of its panel that draws its
+    size, when its label types one number, that size (sizes are drawn values, R8)."""
+    artists = panel.axes.artists
+    size = cast("ScatterGeometry", artists[cast("int", entry.target)].geometry).sizes[0]
+    drawing = [
+        mark.artists[0]
+        for mark in panel.marks
+        if mark.family == "scatter"
+        and size in cast("ScatterGeometry", artists[mark.artists[0]].geometry).sizes
+    ]
+    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):
+        return None
+    return panel.index, drawing[0], "sizes"
+
+
 def _read(
     legend: Legend,
     panels: tuple[Panel, ...],
@@ -110,8 +143,9 @@ def _read(
     names: Names = {}
     encodings: set[tuple[int, int, str]] = set()
     for entry in legend.entries:
-        if entry.elements_of is not None:
-            encoding = _encoding(entry, panels, by_axes)
+        keyed = _size_key_panel(entry, panels, by_axes)
+        if entry.elements_of is not None or keyed is not None:
+            encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
             if encoding is None:
                 block("legend_mismatch", legend.site)
             encodings.add(encoding)

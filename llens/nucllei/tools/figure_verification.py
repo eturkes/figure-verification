@@ -4072,6 +4072,7 @@ from verifier.figure.description import (
     Figure,
     LineGeometry,
     RectGeometry,
+    ScatterGeometry,
     TextGeometry,
     call_line,
 )
@@ -4122,6 +4123,7 @@ class Panel:
     texts: tuple[str, ...]
     pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
     proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
+    size_keys: tuple[int, ...] = ()  # point-free scatters: size keys a legend may show (luna F4)
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -4197,6 +4199,15 @@ def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
         and inkless
         and any(entry.axes == index and entry.target == number for entry in entries)
     )
+
+
+def _size_key(artist: Artist) -> bool:
+    """A size key built by hand (`ax.scatter([], [], s=…, label=…)`): no point, one size. It draws
+    nothing, so it is no mark; a legend reads it as a key of the sizes a scatter draws
+    (`legends.py::_sized`).
+    """
+    geometry = cast("ScatterGeometry", artist.geometry)
+    return not geometry.offsets and len(geometry.sizes) == 1
 
 
 def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
@@ -4290,6 +4301,7 @@ def _panel(index: int, axes: Axes) -> Panel:
     texts: list[str] = []
     labels: list[str] = []
     proxies: list[int] = []
+    size_keys: list[int] = []
     keys = {text for pie in axes.pies for text in pie.texts if text is not None}
     for number, artist in enumerate(axes.artists):
         if artist.cls in _RASTER:
@@ -4300,6 +4312,9 @@ def _panel(index: int, axes: Axes) -> Panel:
             continue
         if kind is None:
             block("artist_not_judged", artist.site)
+        if kind == "scatter" and _size_key(artist):
+            size_keys.append(number)
+            continue
         if kind == "text":
             text = cast("TextGeometry", artist.geometry).text
             if text.strip():
@@ -4313,7 +4328,9 @@ def _panel(index: int, axes: Axes) -> Panel:
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
-    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies))
+    return Panel(
+        index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies), tuple(size_keys)
+    )
 
 
 def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:
@@ -6430,9 +6447,16 @@ areas) in a legended axes, every one is named; pies and reference marks may stay
 from dataclasses import dataclass, field
 from typing import TypeAlias, cast
 
-from verifier.figure.description import Legend, LegendEntry, LineGeometry, RectGeometry
+from verifier.figure.description import (
+    Legend,
+    LegendEntry,
+    LineGeometry,
+    RectGeometry,
+    ScatterGeometry,
+)
 from verifier.figure.parts import Mark, Panel
 from verifier.figure.reasons import block
+from verifier.figure.request import read_request
 from verifier.figure.shapes import RGB, color, label, series_marks
 
 Names: TypeAlias = dict[tuple[int, int], str]  # (panel position, the named artist) -> its name
@@ -6519,6 +6543,32 @@ def _encoding(
     return entry.axes, keyed[0], keyed[1]
 
 
+def _size_key_panel(
+    entry: LegendEntry, panels: tuple[Panel, ...], by_axes: dict[int, int]
+) -> Panel | None:
+    """The panel whose hand-built size key is this entry's handle, if it is one."""
+    position = by_axes.get(entry.axes) if entry.axes is not None else None
+    if position is None or entry.target not in panels[position].size_keys:
+        return None
+    return panels[position]
+
+
+def _sized(entry: LegendEntry, panel: Panel) -> tuple[int, int, str] | None:
+    """A hand-built size key explains the sizes of the one scatter of its panel that draws its
+    size, when its label types one number, that size (sizes are drawn values, R8)."""
+    artists = panel.axes.artists
+    size = cast("ScatterGeometry", artists[cast("int", entry.target)].geometry).sizes[0]
+    drawing = [
+        mark.artists[0]
+        for mark in panel.marks
+        if mark.family == "scatter"
+        and size in cast("ScatterGeometry", artists[mark.artists[0]].geometry).sizes
+    ]
+    if len(drawing) != 1 or read_request(entry.text).sequence != (size,):
+        return None
+    return panel.index, drawing[0], "sizes"
+
+
 def _read(
     legend: Legend,
     panels: tuple[Panel, ...],
@@ -6528,8 +6578,9 @@ def _read(
     names: Names = {}
     encodings: set[tuple[int, int, str]] = set()
     for entry in legend.entries:
-        if entry.elements_of is not None:
-            encoding = _encoding(entry, panels, by_axes)
+        keyed = _size_key_panel(entry, panels, by_axes)
+        if entry.elements_of is not None or keyed is not None:
+            encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
             if encoding is None:
                 block("legend_mismatch", legend.site)
             encodings.add(encoding)

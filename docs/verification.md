@@ -310,7 +310,9 @@ Each chart part must show its values honestly:
 - **Areas from zero.** Each filled area starts at zero, or on another area in a stack.
 - **Ordered lines.** The x values of a line run in one direction.
 - **Explained sizes and colors.** Marker sizes or colors that vary need a size legend, a color
-  legend or a color bar.
+  legend or a color bar. A size legend can also use keys that the program draws as scatters with
+  no point, such as `ax.scatter([], [], s=80, label="80")`. Each key must have a size that the
+  chart draws, and its label must give that size as a number.
 - **True legends.** Each legend entry names a series of the chart. With two or more series in a
   panel that has a legend, the legend names every series. A legend key without ink that the
   program adds to the panel (seaborn adds one for each `hue` value) names the one series of its

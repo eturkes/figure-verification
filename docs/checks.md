@@ -132,7 +132,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | histogram heights = counts or density of its data over its bins | the judge recounts the recorded `hist` input over the drawn bin edges (numpy rules, last bin closed); all data inside the bins; no weights, no `cumulative` | `hist_counts` |
 | pie wedges fill 360°; each span = its share of the total | each wedge span = 360° × value / sum of the recorded `pie` input, within 0.0001°; one radius, no gaps | `pie_not_whole` |
 | areas from 0, or from the top of a stacked area | each band's base edge is 0, or exactly the top edge of a grounded band at the same x | `area_not_from_zero` |
-| varying scatter sizes: a size legend | the sizes vary only with a legend from that collection's `legend_elements("sizes")` | `marker_size_varies` |
+| varying scatter sizes: a size legend | the sizes vary only with a legend from that collection's `legend_elements("sizes")`, or a legend of point-free scatters (`scatter([], [], s=…)`), each holding one size that exactly one collection of the panel draws, its label typing that size | `marker_size_varies` |
 | varying scatter colors: a colorbar or a color legend | the face colors vary only with a colorbar or a `legend_elements()` legend of that collection | `marker_color_varies` |
 | legend entries name drawn series; 2 or more series in a panel with a legend: every series named | each legend handle is a judged artist, or a proxy with a mark's label and color, or such a zero-size key in the panel (seaborn `hue`) with the color of exactly one unlabeled series; each series takes one name | `legend_mismatch` |
 

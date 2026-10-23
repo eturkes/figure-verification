@@ -133,7 +133,9 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
 - F4 a size legend built from empty `ax.scatter([], [], s=…, label=…)` proxies blocks
   `legend_mismatch` (only `legend_elements("sizes")` explains sizes): t10 3/3; host variant with
   no zero sizes still blocks. (t10's own program also draws its 0 mm points at size 0, which
-  `mark_hidden` blocks.)
+  `mark_hidden` blocks.) Since the size-key fix a point-free scatter holding one size that one
+  collection draws, labelled with that size, is a size key (`legends.py::_sized`); t10 still blocks
+  `legend_mismatch`, by design: it scales the sizes ×100 and labels the unscaled value.
 - F5 a line + `fill_between` under it + `ax.legend()` blocks `legend_mismatch`, also with the band
   labelled: t11 1/3; host variant without the legend passes.
 - F6 bar width is an unjudged channel: t06's bars encode revenue in width (area ∝ width × height);

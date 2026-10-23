@@ -664,6 +664,109 @@ dots = plt.scatter(df["orders"], df["revenue"], s=df["orders"] * 3)
 plt.legend(*dots.legend_elements("sizes"))
 '''
 
+# A size key built by hand from point-free scatters (luna F4): each key's size is one the
+# collection draws, and its label types that size, the value behind it.
+
+[[case]]
+id = "size-keys-by-hand"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (61, 93)]
+ax.legend(handles=keys, title="orders")
+'''
+
+[[case]]
+id = "size-key-not-drawn"
+expect = "legend_mismatch"
+site = 7
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (50, 93)]
+ax.legend(handles=keys, title="orders")
+'''
+
+[[case]]
+id = "size-key-mislabelled"
+expect = "legend_mismatch"
+site = 7
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"] * 3)
+keys = [ax.scatter([], [], s=v * 3, color="C0", label=f"{v} orders") for v in (61, 93)]
+ax.legend(handles=keys, title="orders")
+'''
+
+# A scatter drawing points stays a series mark when its own legend names it.
+
+[[case]]
+id = "scatter-series-legend"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue against orders for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+for region, rows in df.groupby("region"):
+    plt.scatter(rows["orders"], rows["revenue"], label=region)
+plt.legend(title="region")
+'''
+
+# A point-free scatter holding no size is no size key.
+
+[[case]]
+id = "size-key-no-size"
+expect = "legend_mismatch"
+site = 7
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+keys = [ax.scatter([], [], s=[], color="C0", label="61 orders")]
+ax.legend(handles=keys, title="orders")
+'''
+
+[[case]]
+id = "size-key-two-collections"
+expect = "legend_mismatch"
+site = 8
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+ax.scatter(df["orders"], df["revenue"], s=df["orders"], marker="x")
+keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (61, 93)]
+ax.legend(handles=keys, title="orders")
+'''
+
 [[case]]
 id = "colour-column-unnamed"
 expect = "column_not_named"

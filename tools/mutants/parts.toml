@@ -89,3 +89,24 @@ predicate = "a proxy is the handle of an entry of its axes' legend (Q75 P1)"
 kills = "tests/test_figure_judge.py::test_q75_p1_a_proxy_with_ink_or_no_entry_still_blocks"
 anchor = '''        and any(entry.axes == index and entry.target == number for entry in entries)'''
 mutant = '''        and True'''
+
+[[mutant]]
+id = "luna-f4-size-key-unread"
+predicate = "a point-free scatter its own legend shows is a size key, never a mark (luna F4)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-keys-by-hand]"
+anchor = '''        if kind == "scatter" and _size_key(artist):'''
+mutant = '''        if False:'''
+
+[[mutant]]
+id = "luna-f4-size-key-without-size"
+predicate = "a size key holds exactly one size"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-key-no-size]"
+anchor = '''    return not geometry.offsets and len(geometry.sizes) == 1'''
+mutant = '''    return not geometry.offsets'''
+
+[[mutant]]
+id = "luna-f4-size-key-with-points"
+predicate = "a scatter drawing points is never a size key"
+kills = "tests/test_figure_corpus.py::test_corpus_case[scatter-series-legend]"
+anchor = '''    return not geometry.offsets and len(geometry.sizes) == 1'''
+mutant = '''    return len(geometry.sizes) == 1'''

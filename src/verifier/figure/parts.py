@@ -19,6 +19,7 @@ from verifier.figure.description import (
     Figure,
     LineGeometry,
     RectGeometry,
+    ScatterGeometry,
     TextGeometry,
     call_line,
 )
@@ -69,6 +70,7 @@ class Panel:
     texts: tuple[str, ...]
     pie_labels: tuple[str, ...] = ()  # drawn wedge labels: keys the values stage judges
     proxies: tuple[int, ...] = ()  # ink-free legend handles the axes holds (seaborn's `hue`)
+    size_keys: tuple[int, ...] = ()  # point-free scatters: size keys a legend may show (luna F4)
 
 
 def _line(artist: Artist, _axes: Axes, _index: int) -> _Kind:
@@ -144,6 +146,15 @@ def _proxy(artist: Artist, axes: Axes, index: int, number: int) -> bool:
         and inkless
         and any(entry.axes == index and entry.target == number for entry in entries)
     )
+
+
+def _size_key(artist: Artist) -> bool:
+    """A size key built by hand (`ax.scatter([], [], s=…, label=…)`): no point, one size. It draws
+    nothing, so it is no mark; a legend reads it as a key of the sizes a scatter draws
+    (`legends.py::_sized`).
+    """
+    geometry = cast("ScatterGeometry", artist.geometry)
+    return not geometry.offsets and len(geometry.sizes) == 1
 
 
 def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
@@ -237,6 +248,7 @@ def _panel(index: int, axes: Axes) -> Panel:
     texts: list[str] = []
     labels: list[str] = []
     proxies: list[int] = []
+    size_keys: list[int] = []
     keys = {text for pie in axes.pies for text in pie.texts if text is not None}
     for number, artist in enumerate(axes.artists):
         if artist.cls in _RASTER:
@@ -247,6 +259,9 @@ def _panel(index: int, axes: Axes) -> Panel:
             continue
         if kind is None:
             block("artist_not_judged", artist.site)
+        if kind == "scatter" and _size_key(artist):
+            size_keys.append(number)
+            continue
         if kind == "text":
             text = cast("TextGeometry", artist.geometry).text
             if text.strip():
@@ -260,7 +275,9 @@ def _panel(index: int, axes: Axes) -> Panel:
     marks = _marks(axes, families)
     if not marks:
         block("no_data", axes.site)
-    return Panel(index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies))
+    return Panel(
+        index, axes, tuple(marks), tuple(texts), tuple(labels), tuple(proxies), tuple(size_keys)
+    )
 
 
 def panels(description: Description) -> tuple[Figure, tuple[Panel, ...]]:
