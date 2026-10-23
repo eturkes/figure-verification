@@ -33,9 +33,11 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import islice
 from pathlib import Path
 from typing import TypedDict, cast
@@ -697,3 +699,47 @@ def test_l9_shellcheck_is_clean() -> None:
         if "shellcheck disable=" in line
     ]
     assert directives == []
+
+
+class _Answers(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature
+        pass
+
+
+def test_l11_a_listener_bound_after_the_preflight_never_reaches_ready(tmp_path: Path) -> None:
+    """L11 (queue: launcher readiness, user ruling): a process that binds the webui port after the
+    preflight and answers the readiness poll before the launcher's own service is refused -- no
+    READY, a non-zero exit naming the port -- and teardown leaves it alone. Constructed: the fake
+    webui helper starts slowly (as on a loaded host), and a foreign HTTP server takes its port once
+    the model helper is up, i.e. after the preflight."""
+    harness = _make_harness(tmp_path)
+    helper = tmp_path / "http_helper.py"
+    source = helper.read_text(encoding="utf-8")
+    slow = 'name = sys.argv[2]\nif name == "webui":\n    import time\n\n    time.sleep(4)\n'
+    helper.write_text(source.replace("name = sys.argv[2]\n", slow), encoding="utf-8")
+    process, stderr_path = _start_launcher(harness, "--stub")
+    foreign: ThreadingHTTPServer | None = None
+    try:
+        deadline = time.monotonic() + _READY_TIMEOUT_S
+        while not (harness.pid_dir / "model.pid").exists():
+            assert time.monotonic() < deadline, "the model helper never started"
+            time.sleep(0.02)
+        foreign = ThreadingHTTPServer(("127.0.0.1", harness.ports[1]), _Answers)
+        threading.Thread(target=foreign.serve_forever, daemon=True).start()
+        assert process.wait(timeout=_READY_TIMEOUT_S) != 0
+        stderr = stderr_path.read_text(encoding="utf-8")
+        assert "READY --" not in stderr
+        assert f"webui port {harness.ports[1]} answered from a process this launcher" in stderr
+        assert _can_connect(harness.ports[1])
+        assert _log_lines(harness.fuser_log) == []
+    finally:
+        if foreign is not None:
+            foreign.shutdown()
+            foreign.server_close()
+        _force_stop(process, harness)

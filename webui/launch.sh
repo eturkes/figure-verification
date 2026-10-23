@@ -88,6 +88,8 @@ die() { printf '[launch] ERROR: %s\n' "$*" >&2; exit 1; }
 SERVICE_PIDS=()
 SERVICE_NAMES=()
 LAST_SERVICE_PID=""
+# Ports a process outside this launcher answered on: teardown never signals them.
+FOREIGN_PORTS=()
 
 start_bg() {
   # start_bg <name> <logfile> <cmd...>: launch cmd in its OWN session/process group so only this
@@ -116,12 +118,68 @@ port_in_use() {
   (exec 3<>"/dev/tcp/${HEALTH_HOST}/$1") 2>/dev/null
 }
 
+listener_inodes() {
+  # listener_inodes <port>: the inode of each socket LISTENing (state 0A) on <port>, IPv4 + IPv6.
+  local port hex table _sl local_address _rem state _txrx _trtm _retr _uid _timeout inode _rest
+  port=$1
+  hex=$(printf ':%04X' "$port")
+  for table in /proc/net/tcp /proc/net/tcp6; do
+    [[ -r $table ]] || continue
+    {
+      read -r _sl || continue
+      while read -r _sl local_address _rem state _txrx _trtm _retr _uid _timeout inode _rest; do
+        if [[ $local_address == *"$hex" && $state == 0A ]]; then printf '%s\n' "$inode"; fi
+      done
+    } <"$table"
+  done
+}
+
+port_owned() {
+  # port_owned <port> <leader>: something listens on <port>, and every listening socket there is a
+  # file descriptor of a process in <leader>'s process group (start_bg's setsid makes the leader's
+  # pid that group's id). The preflight refuses a listener present at launch; this refuses one that
+  # bound the port after it, before the service did, and answered the readiness poll in its place.
+  local port=$1 leader=$2 inode pid stat rest pgid fd found
+  local -a group=()
+  for stat in /proc/[0-9]*/stat; do
+    read -r rest 2>/dev/null <"$stat" || continue
+    read -r _ _ pgid _ <<<"${rest##*) }"
+    if [[ $pgid == "$leader" ]]; then
+      pid=${stat#/proc/}
+      group+=("${pid%/stat}")
+    fi
+  done
+  found=0
+  while read -r inode; do
+    [[ -n $inode ]] || continue
+    found=0
+    for pid in "${group[@]}"; do
+      for fd in "/proc/${pid}/fd/"*; do
+        if [[ $(readlink "$fd" 2>/dev/null) == "socket:[${inode}]" ]]; then found=1; break 2; fi
+      done
+    done
+    (( found )) || return 1
+  done < <(listener_inodes "$port")
+  (( found ))
+}
+
+require_own_listener() {
+  # require_own_listener <name> <port> <leader>: READY must rest on this launcher's own service.
+  if ! port_owned "$2" "$3"; then
+    FOREIGN_PORTS+=("$2")
+    die "${1} port ${2} answered from a process this launcher did not start -- stop it (or override the port) and launch again"
+  fi
+}
+
 free_port() {
   # Best-effort orphan backstop: only touch a port STILL bound after precise process-group kills
   # above (fuser -k on a free port is already a no-op, but this means we never signal a port we never
-  # bound; the start-time preflight already refused launch atop a pre-existing listener). Log if the
-  # backstop actually kills something.
-  local port=$1
+  # bound; the start-time preflight refuses launch atop a pre-existing listener, and a port a foreign
+  # process took after it is recorded in FOREIGN_PORTS). Log if the backstop actually kills something.
+  local port=$1 foreign
+  for foreign in "${FOREIGN_PORTS[@]}"; do
+    [[ $foreign == "$port" ]] && return 0
+  done
   if port_in_use "$port" && command -v fuser >/dev/null 2>&1; then
     log "port ${port} still bound after group teardown; backstop fuser -k ${port}/tcp"
     fuser -k "${port}/tcp" >/dev/null 2>&1 || true
@@ -237,11 +295,13 @@ else
 fi
 wait_http model "http://${HEALTH_HOST}:${MODEL_BACKEND_PORT}/v1/models" "$MODEL_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/model.log" \
   || die "model tier did not become ready"
+require_own_listener model "$MODEL_BACKEND_PORT" "$LAST_SERVICE_PID"
 
 # 2) Open WebUI
 start_bg webui "${LOG_DIR}/webui.log" uv run --locked python -m webui serve
 wait_http webui "http://${HEALTH_HOST}:${WEBUI_PROVISION_PORT}/ready" "$WEBUI_READY_S" "$LAST_SERVICE_PID" "${LOG_DIR}/webui.log" \
   || die "Open WebUI did not become ready"
+require_own_listener webui "$WEBUI_PROVISION_PORT" "$LAST_SERVICE_PID"
 
 # 3) provision Open WebUI: admin, model, the demo's generated tool + filter.
 log "provisioning Open WebUI (admin + model + pasted figure tool)..."
