@@ -51,7 +51,8 @@ _LOGGER = logging.getLogger(__name__)
 # The catalog entry the child reads (`model_catalog_json`), the fields a real run needs. Codex's own
 # entry serves gpt-6-luna with `tool_mode: code_mode_only` (every tool nested inside a JavaScript
 # `exec` tool) + `multi_agent_version: v2` (spawn/send/wait tools + a role text); this one omits
-# both, so a request's tools reach the model as plain functions. `base_instructions: ""` = no
+# both, so a request's tools reach the model as plain functions, and `apply_patch_tool_type`, which
+# makes codex-cli 0.164.0 offer a freeform `apply_patch` tool. `base_instructions: ""` = no
 # developer message when a request carries no system text (an absent entry fails catalog parsing).
 _LEVELS: Final = ("low", "medium", "high", "xhigh", "max")
 _CATALOG: Final[dict[str, object]] = {
@@ -74,7 +75,6 @@ _CATALOG: Final[dict[str, object]] = {
             "support_verbosity": True,
             "default_verbosity": "low",
             "use_responses_lite": True,
-            "apply_patch_tool_type": "freeform",
             "web_search_tool_type": "text_and_image",
             "default_reasoning_summary": "none",
             "experimental_supported_tools": [],
@@ -89,8 +89,8 @@ _MODELS: Final = frozenset(
 # Every context layer + built-in tool Codex adds, off: environment (cwd, shell, date, timezone),
 # sandbox + app + collaboration text, the code-mode `exec` wrapper, multi-agent tools, the shell,
 # skills, plugins, apps, goals, image generation (the ChatGPT provider adds it; a mock provider
-# does not), request_user_input, web search, analytics. Each was seen in a captured request before
-# its line here removed it.
+# does not), image viewing (codex-cli 0.164.0), request_user_input, web search, analytics. Each was
+# seen in a captured request before its line here removed it.
 _CONFIG: Final = (
     "include_environment_context=false",
     "include_permissions_instructions=false",
@@ -106,6 +106,7 @@ _CONFIG: Final = (
     "features.apps=false",
     "features.goals=false",
     "features.image_generation=false",
+    "features.view_image=false",
     "tools.experimental_request_user_input={enabled=false}",
     'web_search="disabled"',
     "analytics.enabled=false",

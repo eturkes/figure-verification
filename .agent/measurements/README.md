@@ -301,6 +301,21 @@ cd ../.. && uv run --locked python .agent/measurements/luna_classify.py .scratch
 
 `luna_live.mjs` keeps an existing record, so a rerun resumes; a new output directory starts over.
 
+## Codex context probe
+
+`codex_context.py` runs one completion through the shipped bridge (`webui/codex_bridge.py`) and
+prints what the model received: the instructions field, every tool name and (mock) every input
+message. It exits 0 when the model sees the request's one tool, no instructions and the request's
+two messages alone. Run it after every codex-cli upgrade, with each binary to compare (law
+`.claude/rules/codex-bridge.md`):
+
+```
+uv run --locked python .agent/measurements/codex_context.py <codex-bin>            # mock provider
+uv run --locked python .agent/measurements/codex_context.py <codex-bin> --chatgpt  # ChatGPT backend
+```
+
+`--chatgpt` sends one completion on the ChatGPT subscription signed in at `~/.codex/auth.json`.
+
 
 ## Live gpt-6-luna record — Q78
 

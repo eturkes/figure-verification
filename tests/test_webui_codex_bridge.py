@@ -197,6 +197,7 @@ def test_the_child_runs_isolated_with_every_context_layer_off(
         "features.apps=false",
         "features.goals=false",
         "features.image_generation=false",
+        "features.view_image=false",
         "tools.experimental_request_user_input={enabled=false}",
         'web_search="disabled"',
         "analytics.enabled=false",
@@ -208,6 +209,7 @@ def test_the_child_runs_isolated_with_every_context_layer_off(
     assert entry["base_instructions"] == ""
     assert "tool_mode" not in entry
     assert "multi_agent_version" not in entry
+    assert "apply_patch_tool_type" not in entry
     assert start["home"] == str(home.resolve())
     assert start["cwd"] == str(home.resolve())
     assert "HOME" in cast("list[str]", start["env"])
