@@ -44,7 +44,7 @@ dev = [
     # test-only (Q43): the tool's admin `Valves` is a pydantic model, which Open WebUI builds on
     # save and on load. Pinned EXACTLY to the version Open WebUI 0.12.3 ships, so the tests run the
     # validation the admin's instance runs; the paste-in imports it from the OWUI image.
-    "pydantic==2.13.4",
+    "pydantic==2.14.1",
     # test-only (M19): the figure reader runs inside Open WebUI's Pyodide sandbox, whose 0.12.3
     # bundle (Pyodide 314.0.3) ships matplotlib 3.10.8 + pandas 3.0.2: the host runs the same
     # releases, and every corpus claim made on this host is re-run on the bundle by its Pyodide leg.
