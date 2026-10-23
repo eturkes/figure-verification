@@ -97,7 +97,7 @@ def wait(url, seconds=180):
         try:
             with urllib.request.urlopen(url, timeout=5):  # noqa: S310 -- loopback
                 return
-        except OSError, urllib.error.URLError:
+        except (OSError, urllib.error.URLError):
             if time.monotonic() > deadline:
                 raise
             time.sleep(1)
@@ -154,6 +154,22 @@ class Stack:
             "EXT_MOUNTS=public=/ext/public",
         ]
 
+    def nucllei_args(self):
+        """The nucllei container. Host network, since it reaches the loopback bridge; served on
+        loopback alone with signup off (M23.1 F3): the image's command binds every interface, and
+        nucllei makes the first signup an admin, which `create-admin` claims after `/health`."""
+        return [
+            "run", "-d", "--rm", "--name", f"fv-nl-nucllei-{self.suffix}", "--network=host",
+            "-e", f"PORT={self.port}", "-e", f"WEBUI_SECRET_KEY={self.secret}",
+            "-e", f"SANDBOX_URL=http://127.0.0.1:{self.sandbox_port}",
+            "-e", f"SANDBOX_TOKEN={self.token}",
+            "-e", f"OPENAI_API_BASE_URLS=http://127.0.0.1:{self.bridge_port}/v1",
+            "-e", "OPENAI_API_KEYS=EMPTY", "-e", "ENABLE_OLLAMA_API=false",
+            "-e", "ENABLE_TITLE_GENERATION=false", "-e", "ENABLE_SIGNUP=false",
+            *self.ext_args(), "-v", f"{self.data}:/app/data", NUCLLEI,
+            "nucllei", "serve", "--host", "127.0.0.1", "--port", str(self.port),
+        ]  # fmt: skip
+
     def podman_run(self, *argv):
         command = [self.sudo, self.podman, *argv]
         return subprocess.run(command, check=True, capture_output=True, text=True).stdout  # noqa: S603
@@ -175,16 +191,7 @@ class Stack:
             cwd=PROJECT, env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
         )  # fmt: skip
         wait(f"http://127.0.0.1:{self.bridge_port}/v1/models")
-        self.podman_run(
-            "run", "-d", "--rm", "--name", f"fv-nl-nucllei-{self.suffix}", "--network=host",
-            "-e", f"PORT={self.port}", "-e", f"WEBUI_SECRET_KEY={self.secret}",
-            "-e", f"SANDBOX_URL=http://127.0.0.1:{self.sandbox_port}",
-            "-e", f"SANDBOX_TOKEN={self.token}",
-            "-e", f"OPENAI_API_BASE_URLS=http://127.0.0.1:{self.bridge_port}/v1",
-            "-e", "OPENAI_API_KEYS=EMPTY", "-e", "ENABLE_OLLAMA_API=false",
-            "-e", "ENABLE_TITLE_GENERATION=false",
-            *self.ext_args(), "-v", f"{self.data}:/app/data", NUCLLEI,
-        )  # fmt: skip
+        self.podman_run(*self.nucllei_args())
         wait(f"{self.base}/health")
         self.podman_run(
             "exec", f"fv-nl-nucllei-{self.suffix}", "nucllei", "create-admin", "--email",
@@ -309,7 +316,11 @@ class Stack:
             stack = {"base": self.base, "email": ADMIN[0], "password": self.password,
                      "containers": [f"fv-nl-nucllei-{self.suffix}", f"fv-nl-sandbox-{self.suffix}"],
                      "bridge_pid": self.bridge.pid if self.bridge else None}  # fmt: skip
-            (self.out / "stack.json").write_text(json.dumps(stack, indent=1))
+            # The kept stack's admin login, for its operator alone (M23.1 F3).
+            path = self.out / "stack.json"
+            path.unlink(missing_ok=True)
+            with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as file:
+                file.write(json.dumps(stack, indent=1))
             return
         if self.bridge is not None and self.bridge.poll() is None:
             os.killpg(self.bridge.pid, signal.SIGTERM)
