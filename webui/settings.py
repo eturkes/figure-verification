@@ -32,7 +32,6 @@ This package is an out-of-tree harness like model_backend: coverage-excluded, un
 only gate-venv deps.
 """
 
-import ipaddress
 import json
 import math
 import os
@@ -43,6 +42,8 @@ from typing import Literal, Self, TypeAlias, cast, get_args
 from urllib.parse import urlparse
 
 import msgspec
+
+from model_backend.origin import loopback
 
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8080
@@ -200,13 +201,6 @@ def _require_http_url(name: str, value: str, *, path: str) -> None:
         raise ValueError(msg)
 
 
-def _loopback(host: str) -> bool:
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host.lower() == "localhost"
-
-
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
     """Immutable provisioner configuration. See the module docstring for the trust note.
 
@@ -284,7 +278,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             raise ValueError(msg)
         # The default password is published: off loopback, anyone signs in as the admin, and an
         # Open WebUI admin runs Python on this host through Functions.
-        if not _loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:
+        if not loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:
             msg = f"host {self.host!r} is not loopback: set a fresh WEBUI_PROVISION_ADMIN_PASSWORD"
             raise ValueError(msg)
 

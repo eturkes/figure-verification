@@ -42,6 +42,7 @@ _CATALOGUES = (
     "nucllei_run",
     "nucllei_texts",
     "nucllei_tool",
+    "origin",
     "owui_files",
     "parts",
     "reader",

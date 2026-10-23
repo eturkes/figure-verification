@@ -24,7 +24,6 @@ wrote. Unshipped + coverage-excluded like the rest of webui/.
 
 import asyncio
 import contextlib
-import ipaddress
 import json
 import logging
 import os
@@ -44,7 +43,7 @@ from litestar.datastructures import State
 from litestar.response import Stream
 from litestar.status_codes import HTTP_200_OK
 
-from model_backend.origin import hosts, json_only
+from model_backend.origin import hosts, json_only, loopback
 from webui.settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -746,13 +745,6 @@ def create_app(
     )
 
 
-def _loopback(host: str) -> bool:
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host.lower() == "localhost"
-
-
 def serve(settings: Settings) -> None:
     """Serve the bridge at settings.model_backend_url (http://<host>:<port>/v1, one worker)."""
     parsed = urlparse(settings.model_backend_url)
@@ -762,7 +754,7 @@ def serve(settings: Settings) -> None:
         )
         raise ValueError(msg)
     # The bridge authenticates no caller and spends the operator's subscription: loopback alone.
-    if not _loopback(parsed.hostname):
+    if not loopback(parsed.hostname):
         msg = f"the codex bridge binds loopback alone, got {parsed.hostname!r}"
         raise ValueError(msg)
     holder: list[uvicorn.Server] = []

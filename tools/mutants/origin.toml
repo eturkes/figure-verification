@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Request origin of the loopback model-tier servers (M21.1 F6, M23.1 F2 + F4): the loopback
+# predicate each bind guard + the launcher's password rule read, the Host set, the JSON-only hook.
+module = "model_backend/origin.py"
+tests = [
+    "tests/test_model_backend.py",
+    "tests/test_model_backend_runtime.py",
+    "tests/test_webui_settings.py",
+    "tests/test_webui_codex_bridge.py",
+    "tests/test_webui_model_stub.py",
+]
+
+[[mutant]]
+id = "every-name-loopback-backend"
+predicate = "a host name other than localhost is no loopback (backend bind)"
+kills = "tests/test_model_backend_runtime.py::test_m21_the_backend_binds_loopback_alone"
+anchor = '''        return host.lower() == "localhost"'''
+mutant = '''        return True'''
+
+[[mutant]]
+id = "every-name-loopback-launcher"
+predicate = "a host name other than localhost is no loopback (published password)"
+kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_a_fresh_password"
+anchor = '''        return host.lower() == "localhost"'''
+mutant = '''        return True'''
+
+[[mutant]]
+id = "every-name-loopback-bridge"
+predicate = "a host name other than localhost is no loopback (bridge bind)"
+kills = "tests/test_webui_codex_bridge.py::test_the_bridge_refuses_a_bind_beyond_loopback"
+anchor = '''        return host.lower() == "localhost"'''
+mutant = '''        return True'''
+
+[[mutant]]
+id = "hosts-without-bind-name"
+predicate = "the bind name is an answered Host"
+kills = "tests/test_model_backend.py::test_m23_f4_the_backend_answers_its_bind_name_and_the_loopback_spellings"
+anchor = '''    spellings = dict.fromkeys((named, "127.0.0.1", "localhost", "[::1]"))'''
+mutant = '''    spellings = dict.fromkeys(("127.0.0.1", "[::1]"))'''
+
+[[mutant]]
+id = "json-only-admits-any-type"
+predicate = "a body that is not application/json gets 415"
+kills = "tests/test_model_backend.py::test_m23_f4_a_cross_site_or_rebound_request_reaches_no_generation"
+anchor = '''    if request.content_type[0] == "application/json":'''
+mutant = '''    if True:'''

@@ -1,15 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Request origin for the loopback OpenAI servers: the model backend, the stub, the codex bridge.
 
-None authenticates its caller, so each answers only the `Host` headers `hosts` derives from its
-bind (a DNS-rebound page names its own domain, so it reads no reply) and only a JSON body
-(`json_only`: a page in the operator's browser can post `text/plain` to loopback with no CORS
-preflight; Open WebUI 0.12.3 + nucllei send JSON). M23.1 F2 (bridge) + F4 (backend, stub).
+None authenticates its caller, so each binds a `loopback` host alone, answers only the `Host`
+headers `hosts` derives from its bind (a DNS-rebound page names its own domain, so it reads no
+reply) and only a JSON body (`json_only`: a page in the operator's browser can post `text/plain` to
+loopback with no CORS preflight; Open WebUI 0.12.3 + nucllei send JSON). M23.1 F2 (bridge) + F4
+(backend, stub).
 """
 
+import ipaddress
 from typing import Any
 
 from litestar import Request, Response
+
+
+def loopback(host: str) -> bool:
+    """A loopback IP literal or `localhost`: the bind refusal of all three servers + the launcher's
+    published-password rule (`webui/settings.py`)."""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host.lower() == "localhost"
 
 
 def hosts(hostname: str, port: int) -> tuple[str, ...]:

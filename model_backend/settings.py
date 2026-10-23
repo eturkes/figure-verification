@@ -13,12 +13,13 @@ model_backend/runtime/snapshot.json (verifier: model_backend/snapshot.py). That 
 port, so no earlier proposer measurement transfers to it.
 """
 
-import ipaddress
 import os
 from pathlib import Path
 from typing import Self
 
 import msgspec
+
+from model_backend.origin import loopback
 
 _DEFAULT_MODEL_DIR = "models/Qwen2.5-Coder-0.5B-Instruct"
 _DEFAULT_MODEL_NAME = "Qwen2.5-Coder-0.5B-Instruct"
@@ -38,13 +39,6 @@ _DEFAULT_MAX_TOKENS = 512
 # The response-byte ceiling: a belt over the token cap, guarding the single accelerator/lock against
 # a generation that outgrows the configured bound (over-cap -> upstream fault at the client).
 _DEFAULT_MAX_RESPONSE_BYTES = 65536
-
-
-def _loopback(host: str) -> bool:
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return host.lower() == "localhost"
 
 
 class Settings(msgspec.Struct, frozen=True, kw_only=True):
@@ -79,7 +73,7 @@ class Settings(msgspec.Struct, frozen=True, kw_only=True):
             msg = f"max_prompt_len must be >= 1, got {self.max_prompt_len}"
             raise ValueError(msg)
         # No route authenticates its caller, so the GPU serves this machine alone.
-        if not _loopback(self.host):
+        if not loopback(self.host):
             msg = f"host must be loopback: the backend authenticates no caller, got {self.host!r}"
             raise ValueError(msg)
 

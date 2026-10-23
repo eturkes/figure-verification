@@ -7,12 +7,5 @@ tests = ["tests/test_model_backend_runtime.py"]
 id = "m21-backend-any-host"
 predicate = "the backend refuses a host off loopback"
 kills = "tests/test_model_backend_runtime.py::test_m21_the_backend_binds_loopback_alone"
-anchor = '''        if not _loopback(self.host):'''
+anchor = '''        if not loopback(self.host):'''
 mutant = '''        if False:'''
-
-[[mutant]]
-id = "m21-backend-every-name-loopback"
-predicate = "a host name other than localhost is no loopback"
-kills = "tests/test_model_backend_runtime.py::test_m21_the_backend_binds_loopback_alone"
-anchor = '''        return host.lower() == "localhost"'''
-mutant = '''        return True'''

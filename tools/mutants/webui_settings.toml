@@ -8,15 +8,8 @@ tests = ["tests/test_webui_settings.py"]
 id = "m21-any-host-default-password"
 predicate = "a host off loopback refuses the published admin password"
 kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_a_fresh_password"
-anchor = '''        if not _loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:'''
+anchor = '''        if not loopback(self.host) and self.admin_password == _DEFAULT_ADMIN_PASSWORD:'''
 mutant = '''        if False:'''
-
-[[mutant]]
-id = "m21-every-name-loopback"
-predicate = "a host name other than localhost is no loopback"
-kills = "tests/test_webui_settings.py::test_m21_a_host_beyond_loopback_needs_a_fresh_password"
-anchor = '''        return host.lower() == "localhost"'''
-mutant = '''        return True'''
 
 [[mutant]]
 id = "key-operator-ignored"
