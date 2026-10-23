@@ -132,6 +132,10 @@ ANCHORS = {
         " front.",
         "ブラウザが 60 秒以内に応答しませんでした。タブを前面に表示して、もう一度送ってください。",
     ),
+    "browser_no_answer": (
+        "The chat tab did not answer. Keep the tab open and try again.",
+        "チャットのタブが応答しませんでした。タブを開いたままにして、もう一度試してください。",
+    ),
 }
 GUIDE = (
     "https://github.com/eturkes/figure-verification/blob/main/docs/checks.md",

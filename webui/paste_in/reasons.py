@@ -57,7 +57,7 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
     ),
     "browser_no_answer": (
         "The chat tab did not answer. Keep the tab open and try again.",
-        "チャットのタブが応答しませんでした。タブを開いたままにしてください。",
+        "チャットのタブが応答しませんでした。タブを開いたままにして、もう一度試してください。",
     ),
     "sandbox_not_isolated": (
         "The chart program would run as you."
