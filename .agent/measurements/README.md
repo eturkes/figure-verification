@@ -367,7 +367,7 @@ FV_WEBUI_EMAIL=operator@localhost FV_WEBUI_PASSWORD=loopback-dev-password node q
 
 `nr/result.json` = the nucllei tool's markdown under hostile text, read by nucllei's own pipeline
 at tag `v20261020-01` (`34eb997`), the security review's N7 + N8 evidence
-(`.agent/contracts/m23u1.md`). `nucllei_render_corpus.py` writes 38 cases: the pass display
+(`.agent/archive/contracts/m23u1.md`). `nucllei_render_corpus.py` writes 38 cases: the pass display
 `nucllei_skill/tool.py::_Draw.publish` pushes (verdict, image, an interpretation of 13 hostile
 names as `inert.code` spans, the note line) for Q79's 12 notes + 4 nucllei constructs (`/ext/` and
 file-id bracket references, `{download=…}` attributes, `{{…_FILE_ID_…}}` tokens, block math on its
