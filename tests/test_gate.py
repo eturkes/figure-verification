@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G16: static-config invariants of the one gate command.
+"""G6-G17: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
-row Q47 (its row text is the contract).
+row Q47 (its row text is the contract); G17 = `CLAUDE.md` `CI gate` (the CI fan-out).
 
 Every gate run re-decides G1-G5 (the stages either pass or they do not), so those need no pin. The
 invariants here have NO downstream re-check: a dropped scanner stage, an unpinned `uses:`, a
@@ -33,6 +33,7 @@ _GATE_PROBE = _REPO_ROOT / "tools" / "gate-probe.sh"
 # Both purpose-built static suites: neither has a downstream re-check, so both owe firing inputs.
 _PROBED_SUITES = (Path(__file__).resolve(), _REPO_ROOT / "tests" / "test_spec.py")
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
+_GATE_WORKFLOW = _WORKFLOWS / "gate.yml"
 _DEPENDABOT = _REPO_ROOT / ".github" / "dependabot.yml"
 _OPS_RULES = _REPO_ROOT / ".claude" / "rules" / "ops.md"
 _PYPROJECT = _REPO_ROOT / "pyproject.toml"
@@ -367,3 +368,32 @@ def test_g16_shipped_sources_are_checked_at_the_image_python() -> None:
     assert {"src/verifier", "webui/paste_in", "nucllei_skill"} <= set(words), (
         f"3.11 pass narrowed: {words}"
     )
+
+
+def test_g17_ci_fans_out_every_stage_on_ci_branches() -> None:
+    """G17: the CI gate = one job per gate stage, each reporting, on every `ci/**` push.
+    Acceptance: a dropped `ci/**` trigger, a stage missing from or duplicated in the matrix, a
+    fail-fast matrix or a gate step that ignores its matrix stage each fails, naming which -- each
+    leaves CI green over a gate that ran fewer stages, or never ran on the branch an agent pushed.
+    """
+    # YAML 1.1 reads the bare key `on` as the boolean True.
+    workflow = cast(dict[Any, Any], _load_yaml(_GATE_WORKFLOW))
+    branches = workflow[True]["push"]["branches"]
+    assert "ci/**" in branches, f"no ci/** push trigger: {branches}"
+    jobs = cast(dict[str, Any], workflow["jobs"])
+    fan_out = [
+        job
+        for job in jobs.values()
+        if any("tools/gate.sh" in str(step.get("run", "")) for step in job["steps"])
+    ]
+    assert len(fan_out) == 1, f"expected one gate job, got {len(fan_out)}"
+    job = fan_out[0]
+    strategy = cast(dict[str, Any], job.get("strategy", {}))
+    stages = tuple(strategy.get("matrix", {}).get("stage", ()))
+    assert stages == _EXPECTED_STAGES, f"fan-out stages drifted: {stages}"
+    assert strategy.get("fail-fast") is False, "fail-fast matrix: a failure cancels its siblings"
+    step = next(step for step in job["steps"] if "tools/gate.sh" in str(step.get("run", "")))
+    passes_stage = step.get("env", {}).get("STAGE") == "${{ matrix.stage }}" and str(
+        step["run"]
+    ).endswith('tools/gate.sh "$STAGE"')
+    assert passes_stage, f"gate step does not pass its matrix stage: {step}"

@@ -6,12 +6,12 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G16, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G17, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
-# whose output names the expected cause: attribution rides the message, since ten tests carry
-# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 four, S4 six, S6 five, S8 five -- one
+# whose output names the expected cause: attribution rides the message, since eleven tests carry
+# more than one probe -- G6, G7, G10, G13 and S9 two each, S3 three, G16 and G17 four each, S4 six, S6 five, S8 five -- one
 # per conjunct of a compound guard, per detection path, or per widened surface. Targets are
 # restored from a byte backup after every probe and again in an EXIT trap, then re-verified by
 # sha256 and execute bit, so an interrupted or failing run still leaves the tree clean.
@@ -323,6 +323,23 @@ probe g9-persist-credentials tests/test_gate.py::test_g9_checkout_does_not_persi
 probe g6-fetch-depth tests/test_gate.py::test_g6_checkout_fetches_full_history \
     'assert step["with"]["fetch-depth"] == 0' \
     sed -i 's|fetch-depth: 0|fetch-depth: 1|' "$WORKFLOW"
+
+# The CI fan-out, one probe per conjunct: each mutation leaves a CI that still goes green.
+probe g17-ci-trigger tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches \
+    'no ci/** push trigger' \
+    sed -i 's|branches: \[main, "ci/\*\*"\]|branches: [main]|' "$WORKFLOW"
+
+probe g17-stage-matrix tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches \
+    'fan-out stages drifted' \
+    sed -i 's|, secrets, workflows,|, workflows,|' "$WORKFLOW"
+
+probe g17-fail-fast tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches \
+    'fail-fast matrix' \
+    sed -i 's|fail-fast: false|fail-fast: true|' "$WORKFLOW"
+
+probe g17-stage-argument tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches \
+    'gate step does not pass its matrix stage' \
+    sed -i 's|tools/gate.sh "[^"]*"|tools/gate.sh tests|' "$WORKFLOW"
 
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \

@@ -276,8 +276,8 @@ arm wrote one program in all 5 runs, byte-identical to its Q70 program. Same tup
 `e577107d8e3c4a59…` (423 tokens; the transformers 5.16.1 stacks wrote `e440fe5711654d55…`),
 42.0-42.3 s each; smoke 20.5-20.7 tok/s at 66 °C / 1657 MHz.
 
-Rerun: the M19.9 commands with `gpu-run webui/launch.sh --fresh` and `deps-u3` as the output
-directory.
+Rerun: the M19.9 commands with `webui/launch.sh --fresh` (backend on the dGPU at normal CPU class;
+the host's wrapper: `CLAUDE.local.md`) and `deps-u3` as the output directory.
 
 ## Live gpt-6-luna record — luna
 
@@ -286,8 +286,8 @@ directory.
 (`gpt-6-luna` on the user's ChatGPT subscription via `codex app-server`, the production pair, native
 function calling). Protocol, config tuple, per-case table and findings: `luna/README.md`.
 
-Rerun from the repository root with `.venv-webui` set up, an idle CPU (`heavy --status` shows no
-holder) and Codex signed in with ChatGPT:
+Rerun from the repository root with `.venv-webui` set up, an idle CPU (no CPU-heavy job
+running) and Codex signed in with ChatGPT:
 
 ```
 WEBUI_PROVISION_DATA_DIR=.scratch/luna/webui-data CODEX_BRIDGE_DUMP_DIR=.scratch/luna/requests CODEX_BRIDGE_EFFORT=medium webui/launch.sh --codex

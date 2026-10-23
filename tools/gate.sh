@@ -4,6 +4,9 @@
 # The one gate command. A human, an agent and CI all run exactly this, so the recorded
 # result is the same claim in all three places.
 #
+#     bash tools/gate.sh               # every stage
+#     bash tools/gate.sh <stage> ...   # the named stages alone: CI's fan-out runs one per job
+#
 # Stages run to completion even after one fails: a single run reports every problem
 # rather than only the first, which is what makes one invocation enough. `set -e` is
 # therefore deliberately absent.
@@ -19,6 +22,11 @@ export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 
 failed=()
 skipped=()
+# The stages a run names; empty = every stage. `seen` collects each stage the run reaches, so a
+# name matching none fails the run instead of passing with nothing checked.
+selected=()
+unselected=()
+seen=()
 
 # Every run blocks the critical path, so each result line carries its wall-clock (`CLAUDE.md`
 # `Execution`). A stamp = EPOCHREALTIME in microseconds; stripping every non-digit drops the
@@ -32,8 +40,27 @@ elapsed() {
     printf '%d.%d' $((us / 1000000)) $((us / 100000 % 10))
 }
 
+member() {
+    local needle="$1" item
+    shift
+    for item in "$@"; do
+        [ "$item" = "$needle" ] && return 0
+    done
+    return 1
+}
+
+is_selected() {
+    seen+=("$1")
+    if [ "${#selected[@]}" -eq 0 ] || member "$1" "${selected[@]}"; then
+        return 0
+    fi
+    unselected+=("$1")
+    return 1
+}
+
 stage() {
     local name="$1" start
+    is_selected "$name" || return 0
     start="$(stamp)"
     shift
     printf '\n=== %s ===\n' "$name"
@@ -153,8 +180,9 @@ spec_check() {
 }
 
 main() {
-    local gate_start
+    local gate_start name
     gate_start="$(stamp)"
+    selected=("$@")
     stage format format_check
     stage lint lint_check
     stage types type_check
@@ -167,12 +195,21 @@ main() {
 
     if command -v shellcheck >/dev/null 2>&1; then
         stage shell shell_lint
-    else
+    elif is_selected shell; then
         skipped+=(shell)
         printf '\n=== shell ===\nshell SKIPPED (shellcheck absent from PATH)\n'
     fi
 
     printf '\n=== gate ===\n'
+    for name in "${selected[@]}"; do
+        if ! member "$name" "${seen[@]}"; then
+            printf 'unknown stage: %s\n' "$name"
+            failed+=("$name")
+        fi
+    done
+    if [ "${#unselected[@]}" -ne 0 ]; then
+        printf 'not selected: %s\n' "${unselected[*]}"
+    fi
     if [ "${#skipped[@]}" -ne 0 ]; then
         printf 'skipped: %s\n' "${skipped[*]}"
     fi
@@ -187,5 +224,5 @@ main() {
 # Sourcing exposes the stage helpers without running the gate, which is how tools/gate-probe.sh
 # fires the shipped shell_lint itself.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    main
+    main "$@"
 fi

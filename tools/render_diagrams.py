@@ -8,7 +8,7 @@ without Noto Sans CJK JP (GitHub serves the SVG through `<img>`, which loads no 
 carries its source verbatim in a comment after the XML declaration;
 `tests/test_verification_docs.py` compares that copy with the `.dot` file, so the gate catches a
 source edited without a re-render and needs no Graphviz itself. Graphviz = a host binary
-(`pacman -S graphviz`); the comment records its version.
+from the system package manager; the comment records its version.
 """
 
 import subprocess
