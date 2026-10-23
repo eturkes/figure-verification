@@ -262,7 +262,8 @@ The chart model receives the chart rules with each request. A request can ask fo
 a rule, for example a y axis that starts at 30000. Then the filter tells the model to follow the rules
 and to state what the request asked for and what the chart shows instead. The reply shows that
 statement below the verdict, after the label `Model note:`. For a request in Japanese, the label is
-`モデルの注記:`.
+`モデルの注記:`. A blocked reply shows no note, because the note describes a chart that the user does
+not see.
 
 The verifier does not check the note. The model writes it, and the model can leave a conflict
 unstated. The note never changes the verdict. The note has no length limit.

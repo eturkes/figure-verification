@@ -427,8 +427,8 @@ The verifier stops work beyond these limits.
 - **Text on the chart.** The verifier lists free text, such as `text`, `annotate` and `bar_label`
   labels, under the chart. It does not judge that text.
 - **The model's note.** When a request asks for something that the chart rules do not allow, the
-  filter asks the model to follow the rules and to state the conflict in a note. The reply shows the
-  note below the verdict, after `Model note:`.
+  filter asks the model to follow the rules and to state the conflict in a note. A passing reply shows
+  the note below the verdict, after `Model note:`. A blocked reply shows no note.
   The verifier does not check the note, and the note never changes the verdict. The model can also
   leave a conflict unstated. An administrator can turn the note off.
 - **Your intent.** The verifier checks that the values come from your data. It does not check that

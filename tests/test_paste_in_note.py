@@ -215,20 +215,22 @@ def test_q78_n4_a_pass_shows_the_note_under_the_interpretation(
     assert _reply(result) == f"{passed}\n\n{interpretation}\n\n{label} {prose(_NOTE)}"
 
 
-def test_q78_n4_a_failure_shows_the_note_under_the_verdict() -> None:
+def test_queue_a_failure_shows_no_note() -> None:
+    """User ruling (queue session): a blocked reply shows no model note -- it describes a chart
+    the user never sees, and it can contradict the verdict (banner prompt 7, Q78 live record)."""
     result, browser = _outlet(TRUNCATED, _NOTE)
-    assert _reply(result) == f"{FAIL}\n\n**Model note:** {prose(_NOTE)}"
+    assert _reply(result) == FAIL
     assert [event["type"] for event in browser.events] == ["status", "embeds"]
 
 
-def test_q81_a_japanese_failure_shows_the_japanese_verdict_over_the_japanese_label() -> None:
+def test_queue_a_japanese_failure_shows_the_japanese_verdict_alone() -> None:
     result, _browser = _outlet(TRUNCATED, _NOTE, request_text="グラフにして")
-    assert _reply(result) == f"{FAIL_JA}\n\n{_JA_LABEL} {prose(_NOTE)}"
+    assert _reply(result) == FAIL_JA
 
 
-def test_q78_n4_a_failure_before_the_browser_shows_the_note_too() -> None:
+def test_queue_a_failure_before_the_browser_shows_no_note_either() -> None:
     result, browser = _outlet(SIMPLE, _NOTE, metadata={"user_message": {"content": "x"}})
-    assert _reply(result) == f"{FAIL}\n\n**Model note:** {prose(_NOTE)}"
+    assert _reply(result) == FAIL
     assert browser.calls == []
 
 
@@ -252,12 +254,14 @@ def test_q78_n5_the_note_never_moves_the_verdict_or_the_diagnostics(
     program: str, note: str
 ) -> None:
     """Differential: the same receipt with and without a note sends the same RPC, emits the same
-    files, status and check-list events, and replies the same text up to the note line."""
+    files, status and check-list events, and replies the same text up to the note line, which a
+    blocked reply never carries (user ruling, queue session)."""
     base, base_browser = _outlet(program, "")
     noted, noted_browser = _outlet(program, note)
     assert _unidentified(noted_browser.calls) == _unidentified(base_browser.calls)
     assert noted_browser.events == base_browser.events
-    assert _reply(noted) == f"{_reply(base)}\n\n**Model note:** {prose(note.strip())}"
+    line = "" if program == TRUNCATED else f"\n\n**Model note:** {prose(note.strip())}"
+    assert _reply(noted) == f"{_reply(base)}{line}"
 
 
 @pytest.mark.parametrize("program", [SIMPLE, TRUNCATED])
@@ -302,23 +306,31 @@ def test_q78_n4_the_note_renders_off_the_event_loop(
 
     monkeypatch.setattr(api, "_note_line", recorded)
     result, _browser = _outlet(program, _NOTE)
-    assert _reply(result).endswith(f"\n\n**Model note:** {prose(_NOTE)}")
-    assert threads and loop not in threads
+    if program == TRUNCATED:  # a blocked reply renders no note (user ruling, queue session)
+        assert _reply(result) == FAIL
+        assert threads == []
+    else:
+        assert _reply(result).endswith(f"\n\n**Model note:** {prose(_NOTE)}")
+        assert threads and loop not in threads
 
 
 def test_q78_n4_a_fault_rendering_the_note_never_fails_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed reply renders the note on its way out; a fault there must still block."""
+    """A blocked reply renders no note (user ruling, queue session), so a renderer fault cannot
+    reach it: the reply stays the block, and the renderer is never called."""
     api = load("filter")
+    calls: list[int] = []
 
     async def broken(*_args: object, **_kwargs: object) -> str:
+        calls.append(1)
         message = "PRIVATE_FAULT"
         raise RuntimeError(message)
 
     monkeypatch.setattr(api.asyncio, "to_thread", _only_note(api.asyncio.to_thread, broken))
     result, _browser = _outlet(TRUNCATED, _NOTE)
     assert _reply(result) == FAIL
+    assert calls == []
 
 
 def _only_note(original: Any, broken: Any) -> Any:

@@ -129,7 +129,7 @@ The verifier treats an alias as another name of the same column, in requests and
 The tool refuses malformed entries when you save the Valves. An alias for a column that the file
 lacks has no effect. An alias that names two columns names neither one.
 
-With `model_note` on, a note appears below the verdict after `Model note:` or `モデルの注記:`.
+With `model_note` on, a note appears below a passing verdict after `Model note:` or `モデルの注記:`.
 The model writes it, and the verifier does not check it. The note never changes the verdict, and
 the model can leave a conflict unstated. With `model_note` off, the tool asks for an empty note
 and shows none.
@@ -155,7 +155,7 @@ gets its own verdict.
 
 Outside the collapsed tool block, a pass shows `Figure verification passed`, the PNG and an
 interpretation of the values. A failure shows `Figure verification failed, no image produced`
-and its cause, without a chart. Either result also shows the model's note when it supplies one.
+and its cause, without a chart. A pass also shows the model's note when it supplies one; a failure shows no note.
 These display messages do not reach the model. If the display fails, read the failure cause in
 the tool result.
 

@@ -4,7 +4,7 @@
 `draw_figure` receives the model's program, runs it unchanged in the caller's sandbox with the
 trusted reader around it, judges the finished figure the reader describes, and alone shows the
 verdict: on a pass the image, the interpretation and the model's note through `__display__`
-(outside the collapsed tool block, never sent to the model); on a block the cause and the note.
+(outside the collapsed tool block, never sent to the model); on a block the cause alone.
 Its result is the check list (inside the collapsed block, also the model's text) plus a Japanese
 fact and `次の手:` for the model. The sandbox, matplotlib and the browser are trusted to draw and to
 report; every decision is the judge's.
@@ -378,15 +378,10 @@ class _Draw:
         with contextlib.suppress(Exception):
             _LOGGER.info("figure verification failed reason=%s", reason)
         language = int(self.japanese)
-        try:
-            note = await asyncio.to_thread(note_line, self.note, japanese=self.japanese)
-        except Exception:
-            note = ""
+        # A blocked reply shows no model note (user ruling): it describes a chart the user never
+        # sees, and it can contradict the verdict.
         if show:
-            _show(
-                self.display,
-                f"{FAIL_TEXTS[language]}\n\n{REASONS[reason][language]} ({reason}){note}",
-            )
+            _show(self.display, f"{FAIL_TEXTS[language]}\n\n{REASONS[reason][language]} ({reason})")
         with contextlib.suppress(Exception):
             host.mark_error_kind(error_kind(reason))
         tail = FAILED.format(cause=REASONS[reason][1], reason=reason) + NEXT[next_step(reason)]

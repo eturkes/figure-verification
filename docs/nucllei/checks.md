@@ -28,8 +28,8 @@ language model writes. Red dashed arrows: where a failed check stops the chart.
    description, in order. The first failure stops the chart. The judge compares drawn values
    with your files and request. No model and no guesswork take part.
 5. **Display.** On a pass, the tool saves the PNG as your file and shows it with the verdict,
-   interpretation and any model note. On a failure, it shows the verdict, cause and any note,
-   without an image. These appear outside the collapsed tool block. The check list appears
+   interpretation and any model note. On a failure, it shows the verdict and cause, without an
+   image or a note. These appear outside the collapsed tool block. The check list appears
    inside that block and also reaches the model. If the display fails, read the cause in the
    tool result.
 

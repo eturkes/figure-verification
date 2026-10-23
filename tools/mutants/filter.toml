@@ -394,19 +394,11 @@ anchor = '''            note = receipt.note if self.valves.model_note else ""'''
 mutant = '''            note = receipt.note'''
 
 [[mutant]]
-id = "q78-fail-drops-note"
-predicate = "a failed reply shows the note"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
-anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
-mutant = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])'''
-
-[[mutant]]
-id = "q78-fail-path-drops-note"
-predicate = "every failure after the receipt carries the note"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_before_the_browser_shows_the_note_too"
-anchor = '''                evidence=evidence,
-                note=note,'''
-mutant = '''                evidence=evidence,'''
+id = "queue-fail-shows-no-note"
+predicate = "a blocked reply shows no model note (user ruling, queue session)"
+kills = "tests/test_paste_in_note.py::test_queue_a_failure_shows_no_note"
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + "\\n\\n**Model note:** x")'''
 
 [[mutant]]
 id = "q78-pass-drops-note"
@@ -414,15 +406,6 @@ predicate = "a passed reply shows the note"
 kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation"
 anchor = '''{interpretation}{note_line}")'''
 mutant = '''{interpretation}")'''
-
-[[mutant]]
-id = "q78-fail-note-unguarded"
-predicate = "a fault rendering a failed reply's note still blocks"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_fault_rendering_the_note_never_fails_open"
-anchor = '''    except Exception:
-        line = ""'''
-mutant = '''    except ZeroDivisionError:
-        line = ""'''
 
 [[mutant]]
 id = "q78-pass-note-on-loop"
@@ -456,15 +439,15 @@ mutant = '''            return _rewrite(body, f"{PASS_TEXTS[1]}\n\n{interpretati
 id = "q81-fail-always-english"
 predicate = "a kana request reads the Japanese fail verdict, a fault included"
 kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[verifier_error-True]"
-anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
-mutant = '''    return _rewrite(body, FAIL_TEXTS[0] + line)'''
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[0])'''
 
 [[mutant]]
 id = "q81-fail-always-japanese"
 predicate = "a request without kana reads the English fail verdict"
 kills = "tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path[no_browser-False]"
-anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)'''
-mutant = '''    return _rewrite(body, FAIL_TEXTS[1] + line)'''
+anchor = '''    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])'''
+mutant = '''    return _rewrite(body, FAIL_TEXTS[1])'''
 
 [[mutant]]
 id = "q81-unread-message-raises"

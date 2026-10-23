@@ -659,10 +659,13 @@ def test_q82_t13_cancellation_propagates(world: World) -> None:
 # --- T15 note -----------------------------------------------------------------------------------
 
 
-def test_q82_t15_the_note_is_shown_and_read_by_nothing(
-    world: World, caplog: pytest.LogCaptureFixture
+@pytest.mark.parametrize("program", [HONEST, TRUNCATED])
+def test_q82_t15_the_note_is_shown_on_a_pass_alone_and_read_by_nothing(
+    world: World, caplog: pytest.LogCaptureFixture, program: str
 ) -> None:
-    world.program = TRUNCATED
+    """A blocked reply shows no model note (user ruling, queue session); the note reaches no
+    check, sandbox call, result text or log either way."""
+    world.program = program
     note = "You asked for an axis from 80; the chart starts at zero. [x](http://e)"
     _sales_chat(world)
     with caplog.at_level(logging.DEBUG):
@@ -670,10 +673,13 @@ def test_q82_t15_the_note_is_shown_and_read_by_nothing(
     assert "80; the chart" not in str(world.calls)
     assert "80; the chart" not in result
     assert all("80; the chart" not in record.getMessage() for record in caplog.records)
-    assert _shown(world).endswith(
-        "\n\n**Model note:** You asked for an axis from 80\\; the chart starts at zero\\."
-        " [x\\](http\\:\\/\\/e\\)"
-    )
+    if program == TRUNCATED:
+        assert "Model note" not in _shown(world)
+    else:
+        assert _shown(world).endswith(
+            "\n\n**Model note:** You asked for an axis from 80\\; the chart starts at zero\\."
+            " [x\\](http\\:\\/\\/e\\)"
+        )
 
 
 def test_q82_t15_the_switch_off_hides_the_note(world: World) -> None:

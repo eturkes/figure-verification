@@ -73,7 +73,7 @@ mutant = '''{NOTE_LABELS[japanese]} {shown}" if shown'''
 [[mutant]]
 id = "q79-label-not-bold"
 predicate = "the label shows in bold"
-kills = "tests/test_paste_in_note.py::test_q78_n4_a_failure_shows_the_note_under_the_verdict"
+kills = "tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation[Chart it-**Model note:**]"
 anchor = '''NOTE_LABELS: Final = ("**Model note:**",'''
 mutant = '''NOTE_LABELS: Final = ("Model note:",'''
 

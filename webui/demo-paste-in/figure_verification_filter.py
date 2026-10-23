@@ -9558,7 +9558,7 @@ def _evidence(
     return Evidence(program, site, lines)
 
 
-async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs + the note
+async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inputs
     body: dict[str, object],
     reason: Reason,
     metadata: dict[str, object] | None,
@@ -9566,22 +9566,18 @@ async def _fail(  # noqa: PLR0913 - the reply body plus the five diagnostic inpu
     anchoring: Anchoring,
     *,
     evidence: Evidence,
-    note: str = "",
 ) -> dict[str, object]:
     """Block the figure: one log record for the admin, the diagnostics for the user.
 
     Neither the log nor the status line carries sandbox output, program bytes or request text,
     because an error message can quote the user's clinical data; the check list quotes the
-    program alone, inside the user's own chat.
+    program alone, inside the user's own chat. A blocked reply shows no model note (user ruling):
+    the note describes a chart the user never sees, and it can contradict the verdict.
     """
     with contextlib.suppress(Exception):
         _LOGGER.info("figure verification failed reason=%s", reason)
     await _diagnose(emit, reason, metadata, anchoring, evidence)
-    try:
-        line = await asyncio.to_thread(_note_line, note, metadata) if note else ""
-    except Exception:
-        line = ""
-    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)] + line)
+    return _rewrite(body, FAIL_TEXTS[_japanese(metadata)])
 
 
 class Filter:
@@ -9681,7 +9677,6 @@ class Filter:
                 __event_emitter__,
                 self._ANCHORING,
                 evidence=evidence,
-                note=note,
             )
 
         try:

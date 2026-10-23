@@ -49,8 +49,8 @@ language model writes. Red dashed arrows: where a failed check stops the chart.
    description, in order. The first failure stops the chart. The judge compares drawn values
    with your files and request. No model and no guesswork take part.
 5. **Display.** On a pass, the tool saves the PNG as your file and shows it with the verdict,
-   interpretation and any model note. On a failure, it shows the verdict, cause and any note,
-   without an image. These appear outside the collapsed tool block. The check list appears
+   interpretation and any model note. On a failure, it shows the verdict and cause, without an
+   image or a note. These appear outside the collapsed tool block. The check list appears
    inside that block and also reaches the model. If the display fails, read the cause in the
    tool result.
 
@@ -91,7 +91,7 @@ Open WebUI の実行経路を説明します。例: [gallery.ja.md](../gallery.j
    最初の不合格でグラフが止まります。描画した値をファイルと依頼文に照らして比べます。
    モデルも推測も使いません。
 5. **表示。** 合格した場合、ツールは PNG をあなたのファイルとして保存し、判定、解釈、モデルの注記
-   があればその注記と一緒に表示します。不合格の場合、画像なしで判定、理由、注記を表示します。
+   があればその注記と一緒に表示します。不合格の場合、画像と注記なしで判定と理由を表示します。
    これらは折りたたまれたツール欄の外に表示します。チェック項目はその欄の中に表示し、モデルにも送ります。
    表示処理に失敗した場合は、ツールの結果で理由を確認してください。
 
