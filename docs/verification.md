@@ -197,7 +197,7 @@ user. The run then fails with `sandbox_not_isolated`.
 |---|---|
 | `no_browser` | No browser session is available to run the program. |
 | `sandbox_not_isolated` | The chart program would run as you. An administrator must turn off Pyodide file persistence. |
-| `browser_timeout` | The browser did not answer within 60 seconds. |
+| `browser_timeout` | The browser did not answer within 60 seconds. Send the request again with the chat tab in front. |
 | `browser_error` | The call to the browser failed. |
 | `browser_no_answer` | The chat tab did not answer. Keep the tab open and try again. |
 | `reply_malformed` | The browser sent a reply in an unknown format. |

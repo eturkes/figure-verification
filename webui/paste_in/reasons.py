@@ -47,8 +47,9 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "グラフを描くブラウザのセッションがありません。",
     ),
     "browser_timeout": (
-        "The browser did not answer within 60 seconds.",
-        "ブラウザが 60 秒以内に応答しませんでした。",
+        "The browser did not answer within 60 seconds. Send the request again with the chat tab in"
+        " front.",
+        "ブラウザが 60 秒以内に応答しませんでした。タブを前面に表示して、もう一度送ってください。",
     ),
     "browser_error": (
         "The call to the browser failed.",

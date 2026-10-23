@@ -127,6 +127,11 @@ ANCHORS = {
         "The browser could not load Pyodide. Turn off the ad blocker for this site.",
         "Pyodide を読み込めません。このサイトの広告ブロッカーをオフにしてください。",
     ),
+    "browser_timeout": (
+        "The browser did not answer within 60 seconds. Send the request again with the chat tab in"
+        " front.",
+        "ブラウザが 60 秒以内に応答しませんでした。タブを前面に表示して、もう一度送ってください。",
+    ),
 }
 GUIDE = (
     "https://github.com/eturkes/figure-verification/blob/main/docs/checks.md",
