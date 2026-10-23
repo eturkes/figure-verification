@@ -913,7 +913,11 @@ def _legend(legend: Any, figure: Any) -> dict[str, Any]:
                 else [None if keyed is None else keyed[1], elements[1]],
             }
         )
-    return {"site": getattr(legend, "_fv_site", None), "entries": entries}
+    return {
+        "site": getattr(legend, "_fv_site", None),
+        "entries": entries,
+        "markerscale": _number(legend.markerscale),
+    }
 
 
 def _member_indices(members: Iterable[object], children: list[Any]) -> list[int]:

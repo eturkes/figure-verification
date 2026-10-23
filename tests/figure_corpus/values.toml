@@ -767,6 +767,98 @@ keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (61, 9
 ax.legend(handles=keys, title="orders")
 '''
 
+# A legend's `markerscale` multiplies each key's marker (its area by the square), so a size key
+# drawn at another scale than the points shows sizes the chart does not draw.
+
+[[case]]
+id = "size-keys-markerscale"
+expect = "legend_mismatch"
+site = 7
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (61, 93)]
+ax.legend(handles=keys, title="orders", markerscale=3)
+'''
+
+[[case]]
+id = "size-elements-markerscale"
+expect = "legend_mismatch"
+site = 5
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], s=df["orders"])
+plt.legend(*dots.legend_elements("sizes"), markerscale=3)
+'''
+
+[[case]]
+id = "size-keys-markerscale-one"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+ax = plt.gca()
+ax.scatter(df["orders"], df["revenue"], s=df["orders"])
+keys = [ax.scatter([], [], s=v, color="C0", label=f"{v} orders") for v in (61, 93)]
+ax.legend(handles=keys, title="orders", markerscale=1)
+'''
+
+[[case]]
+id = "size-elements-markerscale-one"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue against orders, sized by orders"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+dots = plt.scatter(df["orders"], df["revenue"], s=df["orders"])
+plt.legend(*dots.legend_elements("sizes"), markerscale=1)
+'''
+
+[[case]]
+id = "color-elements-markerscale"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "weather.csv"
+request = "temp_c against precip_mm, colored by aqi"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/weather.csv")
+dots = plt.scatter(df["precip_mm"], df["temp_c"], c=df["aqi"])
+plt.legend(*dots.legend_elements(), markerscale=3)
+'''
+
+[[case]]
+id = "series-legend-markerscale"
+expect = "pass"
+rule = "legend_mismatch"
+csv = "sales.csv"
+request = "Revenue against orders for each region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("{data}/sales.csv")
+for region, rows in df.groupby("region"):
+    plt.scatter(rows["orders"], rows["revenue"], label=region)
+plt.legend(title="region", markerscale=2)
+'''
+
 [[case]]
 id = "colour-column-unnamed"
 expect = "column_not_named"

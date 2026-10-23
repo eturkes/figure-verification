@@ -589,6 +589,7 @@ class LegendEntry:
 class Legend:
     site: int | None
     entries: tuple[LegendEntry, ...]
+    markerscale: float  # every key marker drawn at this scale (a size key's area: by its square)
 
 
 @dataclass(frozen=True, slots=True)
@@ -974,8 +975,10 @@ def _entry(value: object) -> LegendEntry:
 
 
 def _legend(value: object) -> Legend:
-    item = _object(value, ("site", "entries"))
-    return Legend(_optional(item["site"], _int), _tuple(item["entries"], _entry))
+    item = _object(value, ("site", "entries", "markerscale"))
+    return Legend(
+        _optional(item["site"], _int), _tuple(item["entries"], _entry), _float(item["markerscale"])
+    )
 
 
 def _category(value: object) -> tuple[str, float]:
@@ -2137,7 +2140,11 @@ def _legend(legend: Any, figure: Any) -> dict[str, Any]:
                 else [None if keyed is None else keyed[1], elements[1]],
             }
         )
-    return {"site": getattr(legend, "_fv_site", None), "entries": entries}
+    return {
+        "site": getattr(legend, "_fv_site", None),
+        "entries": entries,
+        "markerscale": _number(legend.markerscale),
+    }
 
 
 def _member_indices(members: Iterable[object], children: list[Any]) -> list[int]:
@@ -7237,7 +7244,9 @@ def _read(
         keyed = _size_key_panel(entry, panels, by_axes)
         if entry.elements_of is not None or keyed is not None:
             encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
-            if encoding is None:
+            # A legend draws each key marker at its `markerscale`: a size key at another scale
+            # shows a size its points do not draw.
+            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):
                 block("legend_mismatch", legend.site)
             encodings.add(encoding)
             continue

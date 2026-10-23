@@ -93,3 +93,17 @@ predicate = "a series takes one legend name: its outline and the band itself are
 kills = "tests/test_figure_corpus.py::test_corpus_case[line-and-its-band-both-named]"
 anchor = '''        if named is None or named in names:'''
 mutant = '''        if named is None:'''
+
+[[mutant]]
+id = "markerscale-size-key"
+predicate = "a size key drawn at a markerscale other than 1 names no size (size-key scale)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-keys-markerscale]"
+anchor = '''            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):'''
+mutant = '''            if encoding is None:'''
+
+[[mutant]]
+id = "markerscale-sizes-alone"
+predicate = "markerscale binds size keys alone: a colour key keeps its colours (size-key scale)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[color-elements-markerscale]"
+anchor = '''            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):'''
+mutant = '''            if encoding is None or legend.markerscale != 1:'''

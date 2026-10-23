@@ -1,5 +1,5 @@
 {
-  "cases": 266,
+  "cases": 272,
   "host_misses": {},
   "host_sandbox_differ": [
     "missing-glyph"

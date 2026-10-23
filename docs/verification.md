@@ -312,7 +312,8 @@ Each chart part must show its values honestly:
 - **Explained sizes and colors.** Marker sizes or colors that vary need a size legend, a color
   legend or a color bar. A size legend can also use keys that the program draws as scatters with
   no point, such as `ax.scatter([], [], s=80, label="80")`. Each key must have a size that the
-  chart draws, and its label must give that size as a number.
+  chart draws, and its label must give that size as a number. The legend must draw its size keys
+  at the size of the points: a legend with a `markerscale` other than 1 stops the figure.
 - **True legends.** Each legend entry names a series of the chart. With two or more series in a
   panel that has a legend, the legend names every series. A legend key without ink that the
   program adds to the panel (seaborn adds one for each `hue` value) names the one series of its

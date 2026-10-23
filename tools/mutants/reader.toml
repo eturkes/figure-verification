@@ -482,3 +482,10 @@ predicate = "the reader measures a `FillBetweenPolyCollection` band (matplotlib 
 kills = "tests/test_figure_judge.py::test_j3_bands_in_either_class"
 anchor = '''    "FillBetweenPolyCollection": _band,'''
 mutant = '''    "FillBetweenPolyCollections": _band,'''
+
+[[mutant]]
+id = "markerscale-reported"
+predicate = "the reader reports each legend's markerscale (size-key scale)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-elements-markerscale]"
+anchor = '''        "markerscale": _number(legend.markerscale),'''
+mutant = '''        "markerscale": 1.0,'''

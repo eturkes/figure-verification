@@ -87,3 +87,10 @@ predicate = "the decoder's byte cap measures the JSON after the tag, as the read
 kills = "tests/test_figure_reader.py::test_f8_a_description_at_the_cap_decodes"
 anchor = '''    if len(lines) != 1 or len(lines[0][len(TAG) :].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
 mutant = '''    if len(lines) != 1 or len(lines[0].encode("utf-8", "surrogatepass")) > MAX_BYTES:'''
+
+[[mutant]]
+id = "markerscale-decoded"
+predicate = "the decoder carries each legend's markerscale to the judge (size-key scale)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[size-keys-markerscale]"
+anchor = '''        _optional(item["site"], _int), _tuple(item["entries"], _entry), _float(item["markerscale"])'''
+mutant = '''        _optional(item["site"], _int), _tuple(item["entries"], _entry), 1.0'''

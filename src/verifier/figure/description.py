@@ -195,6 +195,7 @@ class LegendEntry:
 class Legend:
     site: int | None
     entries: tuple[LegendEntry, ...]
+    markerscale: float  # every key marker drawn at this scale (a size key's area: by its square)
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,8 +581,10 @@ def _entry(value: object) -> LegendEntry:
 
 
 def _legend(value: object) -> Legend:
-    item = _object(value, ("site", "entries"))
-    return Legend(_optional(item["site"], _int), _tuple(item["entries"], _entry))
+    item = _object(value, ("site", "entries", "markerscale"))
+    return Legend(
+        _optional(item["site"], _int), _tuple(item["entries"], _entry), _float(item["markerscale"])
+    )
 
 
 def _category(value: object) -> tuple[str, float]:

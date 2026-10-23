@@ -147,7 +147,9 @@ def _read(
         keyed = _size_key_panel(entry, panels, by_axes)
         if entry.elements_of is not None or keyed is not None:
             encoding = _encoding(entry, panels, by_axes) if keyed is None else _sized(entry, keyed)
-            if encoding is None:
+            # A legend draws each key marker at its `markerscale`: a size key at another scale
+            # shows a size its points do not draw.
+            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):
                 block("legend_mismatch", legend.site)
             encodings.add(encoding)
             continue
