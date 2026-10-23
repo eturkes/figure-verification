@@ -74,6 +74,15 @@ def _sales_chat(world: World, request: str = REQUEST) -> None:
     _stored(world, {"role": "user", "content": request, "files": [ref("f1", "sales.csv")]})
 
 
+def _written(world: World) -> list[tuple[str, bytes]]:
+    """Each `/files/write` the tool sent: its workspace path and bytes, in order."""
+    return [
+        (cast("str", payload["path"]), base64.b64decode(cast("str", payload["b64"])))
+        for path, payload, _ in world.calls
+        if path == "/files/write"
+    ]
+
+
 def _shown(world: World) -> str:
     assert len(world.displays) == 1, world.displays
     content, kind = world.displays[0]
@@ -191,20 +200,59 @@ def test_q82_t5_a_fault_keeps_the_stored_spec() -> None:
 # --- T6 run -------------------------------------------------------------------------------------
 
 
-def test_q82_t6_one_exec_call_carries_the_exact_program_and_the_owned_csv(world: World) -> None:
+def test_q82_t6_each_owned_csv_is_written_then_one_exec_runs_the_exact_program(
+    world: World,
+) -> None:
+    """Each owned attachment goes through the sandbox's no-follow `/files/write` first, then one
+    `/exec` carries the exact program and no `imports` (M23.1 F1: the sandbox writes those with a
+    plain write that follows links; nucllei's own tools never send them)."""
     world.program = HONEST
     _sales_chat(world)
     invoke(world)
-    assert len(world.calls) == 1
-    path, payload, timeout = world.calls[0]
-    assert (path, timeout) == ("/exec", 150)
-    assert payload == {
-        "user_id": USER_ID,
-        "lang": "python",
-        "code": jail.wrapper_code(HONEST),
-        "timeout_s": 120,
-        "imports": [{"name": "sales.csv", "b64": base64.b64encode(SALES).decode("ascii")}],
-    }
+    assert world.calls == [
+        (
+            "/files/write",
+            {
+                "user_id": USER_ID,
+                "path": "imports/sales.csv",
+                "b64": base64.b64encode(SALES).decode("ascii"),
+                "nofollow": True,
+            },
+            120,
+        ),
+        (
+            "/exec",
+            {
+                "user_id": USER_ID,
+                "lang": "python",
+                "code": jail.wrapper_code(HONEST),
+                "timeout_s": 120,
+            },
+            150,
+        ),
+    ]
+    assert _shown(world).startswith(PASS_EN)
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (SandboxHTTPError(507, "quota"), "sandbox_error"),
+        (TimeoutError(), "sandbox_timeout"),
+        (OSError("refused"), "sandbox_unreachable"),
+    ],
+    ids=["http-status", "deadline", "transport"],
+)
+def test_m23_f1_a_failed_file_write_names_its_cause_and_runs_nothing(
+    world: World, error: BaseException, reason: str
+) -> None:
+    world.program = HONEST
+    world.write_reply = error
+    _sales_chat(world)
+    invoke(world)
+    assert [path for path, _, _ in world.calls] == ["/files/write"]
+    assert f"({reason})" in _shown(world)
+    assert world.inserted == []
 
 
 @pytest.mark.parametrize(
@@ -271,8 +319,7 @@ def test_q82_t7_a_csv_an_inlet_stripped_from_the_body_still_binds_the_values(
     invoke(world, files=[], metadata={"files": []})
     assert _shown(world).startswith(FAIL_EN)
     assert "(value_not_found)" in _shown(world)
-    imports = cast("list[dict[str, str]]", world.calls[0][1]["imports"])
-    assert [item["name"] for item in imports] == ["sales.csv"]
+    assert _written(world) == [("imports/sales.csv", SALES)]
 
 
 def test_q82_t7_the_body_s_files_count_only_for_an_unstored_chat(world: World) -> None:
@@ -298,7 +345,7 @@ def test_q82_t7_foreign_and_notice_files_are_no_user_data(world: World) -> None:
         },
     )
     invoke(world)
-    assert world.calls[0][1]["imports"] == []
+    assert [path for path, _, _ in world.calls] == ["/exec"]
     assert "integrity" in _shown(world).lower() or "完全性" in _shown(world)
 
 
@@ -313,13 +360,7 @@ def test_q82_t7_a_later_file_of_the_same_name_replaces_the_earlier(world: World)
         {"role": "user", "content": "use the new file", "files": [ref("f4", "sales.csv")]},
     )
     invoke(world)
-    imports = world.calls[0][1]["imports"]
-    assert imports == [
-        {
-            "name": "sales.csv",
-            "b64": base64.b64encode(b"month,revenue\nJan,1\nFeb,2\nMar,3\n").decode(),
-        }
-    ]
+    assert _written(world) == [("imports/sales.csv", b"month,revenue\nJan,1\nFeb,2\nMar,3\n")]
     assert _shown(world).startswith(PASS_EN)
 
 

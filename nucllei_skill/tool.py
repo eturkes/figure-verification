@@ -300,9 +300,12 @@ class _Draw:
             )
             self.japanese = is_japanese(request.latest)
             attachments = await asyncio.to_thread(_owned, request.refs, user_id)
-            payload = run.exec_payload(user_id, self.program, attachments)
+            writes = [run.write_payload(user_id, item) for item in attachments]
+            payload = run.exec_payload(user_id, self.program)
             try:
-                reply = await host.run_python(payload, run.HTTP_TIMEOUT_SECONDS)
+                for write in writes:
+                    await host.sandbox_call("/files/write", write, run.WRITE_TIMEOUT_SECONDS)
+                reply = await host.sandbox_call("/exec", payload, run.HTTP_TIMEOUT_SECONDS)
             except host.SandboxRefusedError:
                 return await self.fail("sandbox_error")
             except TimeoutError:

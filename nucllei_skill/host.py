@@ -7,7 +7,8 @@ nucllei object leaves this module. Signatures are those of nucllei `v20261020-01
 `Files.get_file_by_id(id)` + its `user_id` (the owner check nucllei's own sandbox tool makes),
 `Storage.get_file(path) -> local path`, `Storage.upload_file(file, filename) -> (bytes, path)`,
 `Files.insert_new_file(user_id, FileForm)`, `Chats.get_chat_by_id_and_user_id(id, user_id)`,
-`utils.misc.get_message_list(messages, message_id)`, `builtin_tools.sandbox.sandbox_post`.
+`utils.misc.get_message_list(messages, message_id)`, `builtin_tools.sandbox.sandbox_post(path,
+payload, timeout_s)`.
 """
 
 import io
@@ -53,12 +54,13 @@ def sandbox_configured() -> bool:
     return bool(sandbox.SANDBOX_URL)
 
 
-async def run_python(payload: dict[str, object], timeout_s: float) -> object:
-    """One `POST /exec` through nucllei's single sandbox exit, which carries `SANDBOX_TOKEN`."""
+async def sandbox_call(path: str, payload: dict[str, object], timeout_s: float) -> object:
+    """One POST (`/files/write`, `/exec`) through nucllei's single sandbox exit, which carries
+    `SANDBOX_TOKEN`."""
     from nucllei.builtin_tools import sandbox  # noqa: PLC0415 - see the module docstring
 
     try:
-        return await sandbox.sandbox_post("/exec", payload, timeout_s)
+        return await sandbox.sandbox_post(path, payload, timeout_s)
     except sandbox.SandboxHTTPError as error:
         raise SandboxRefusedError(str(error.status)) from error
 

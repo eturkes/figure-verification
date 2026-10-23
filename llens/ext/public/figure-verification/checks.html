@@ -83,8 +83,9 @@ language model writes. Red dashed arrows: where a failed check stops the chart.<
 for a CSV attachment. The skill makes <code>draw_figure</code> available to the model.</li>
 <li><strong>Call.</strong> The model sends one complete Python program to <code>draw_figure</code>. The tool reads your
 own messages and files from the stored chat branch. It checks the caller before any run.</li>
-<li><strong>Run and read.</strong> The tool sends one <code>/exec</code> request to your code sandbox, with the trusted
-figure reader and the program, unchanged. Your attached files enter <code>/workspace/imports/</code>.
+<li><strong>Run and read.</strong> The tool first writes each attached file to <code>/workspace/imports/</code> with the
+sandbox's file write, which follows no links. Then it sends one <code>/exec</code> request to your code
+sandbox, with the trusted figure reader and the program, unchanged.
 The reader hooks matplotlib, runs the program and draws each figure once. It reports every
 artist as JSON: class, plotting call, transform, coordinates, axes, ticks, colors, sizes,
 visibility and the recorded inputs of <code>hist</code>, <code>pie</code>, <code>fill_between</code> and <code>stackplot</code>. It also
@@ -141,17 +142,17 @@ fonts, browser and pixels. The sandbox has no network. Other tools, such as <cod
 <tbody>
 <tr>
 <td>the code sandbox answers</td>
-<td>one <code>POST /exec</code> through nucllei's sandbox client; a connection failure blocks</td>
+<td>one <code>POST /files/write</code> per attached file, then one <code>POST /exec</code>, through nucllei's sandbox client; a connection failure blocks</td>
 <td><code>sandbox_unreachable</code></td>
 </tr>
 <tr>
 <td>program within the sandbox's time limit</td>
-<td>requests 120 s for the run and waits at most 150 s for HTTP; the sandbox can apply a shorter limit</td>
+<td>waits at most 120 s for each file write, requests 120 s for the run and waits at most 150 s for its reply; the sandbox can apply a shorter limit</td>
 <td><code>sandbox_timeout</code></td>
 </tr>
 <tr>
 <td>the sandbox run succeeds</td>
-<td>an HTTP refusal or a nonzero <code>exit_code</code> blocks</td>
+<td>an HTTP refusal of a file write or the run, or a nonzero <code>exit_code</code>, blocks</td>
 <td><code>sandbox_error</code></td>
 </tr>
 <tr>

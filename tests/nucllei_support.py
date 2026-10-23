@@ -7,13 +7,16 @@ include_deleted=False)`, `Files.insert_new_file(user_id, form_data)` returning t
 filename)`, `Chats.get_chat_by_id_and_user_id(id, user_id)`, `get_message_list(messages,
 message_id)` (root first, cycle-safe), `sandbox_post(path, payload, timeout_s)` raising
 `SandboxHTTPError(status, detail)`, `mark_error_kind(kind)` refusing an unknown kind,
-`Rendered(text, kind, language=None, meta=None)`. The sandbox fake demands that the code it
-receives is the wrapper of the expected program, byte for byte, then runs the real reader on it.
+`Rendered(text, kind, language=None, meta=None)`. The sandbox fake serves `/files/write` (the
+no-follow write, exactly its fields) and `/exec` (exactly the four run fields: an `imports` field
+fails it, M23.1 F1), demands that the code it receives is the wrapper of the expected program, byte
+for byte, then runs the real reader on it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -87,6 +90,7 @@ class World:
     chats: dict[tuple[str, str], dict[str, object]] = field(default_factory=dict)
     sandbox_url: str = SANDBOX_URL
     reply: Reply | BaseException | None = None
+    write_reply: BaseException | None = None
     insert_none: bool = False
     result_cap: int = 65_536
     calls: list[tuple[str, dict[str, object], float]] = field(default_factory=list)
@@ -153,6 +157,18 @@ def install(monkeypatch: pytest.MonkeyPatch, world: World) -> None:
 
     async def sandbox_post(path: str, payload: dict[str, object], timeout_s: float) -> object:
         world.calls.append((path, payload, timeout_s))
+        if path == "/files/write":
+            assert set(payload) == {"user_id", "path", "b64", "nofollow"}, sorted(payload)
+            assert payload["nofollow"] is True
+            if world.write_reply is not None:
+                raise world.write_reply
+            name = str(payload["path"]).removeprefix("imports/")
+            assert payload["path"] == f"imports/{name}", payload["path"]
+            assert "/" not in name
+            size = len(base64.b64decode(str(payload["b64"]), validate=True))
+            return {"ok": True, "size": size, "cache_ttl_days": 30}
+        assert path == "/exec", path
+        assert set(payload) == {"user_id", "lang", "code", "timeout_s"}, sorted(payload)
         if isinstance(world.reply, BaseException):
             raise world.reply
         if world.reply is not None:

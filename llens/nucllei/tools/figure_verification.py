@@ -2720,7 +2720,8 @@ nucllei object leaves this module. Signatures are those of nucllei `v20261020-01
 `Files.get_file_by_id(id)` + its `user_id` (the owner check nucllei's own sandbox tool makes),
 `Storage.get_file(path) -> local path`, `Storage.upload_file(file, filename) -> (bytes, path)`,
 `Files.insert_new_file(user_id, FileForm)`, `Chats.get_chat_by_id_and_user_id(id, user_id)`,
-`utils.misc.get_message_list(messages, message_id)`, `builtin_tools.sandbox.sandbox_post`.
+`utils.misc.get_message_list(messages, message_id)`, `builtin_tools.sandbox.sandbox_post(path,
+payload, timeout_s)`.
 """
 
 import io
@@ -2766,12 +2767,13 @@ def sandbox_configured() -> bool:
     return bool(sandbox.SANDBOX_URL)
 
 
-async def run_python(payload: dict[str, object], timeout_s: float) -> object:
-    """One `POST /exec` through nucllei's single sandbox exit, which carries `SANDBOX_TOKEN`."""
+async def sandbox_call(path: str, payload: dict[str, object], timeout_s: float) -> object:
+    """One POST (`/files/write`, `/exec`) through nucllei's single sandbox exit, which carries
+    `SANDBOX_TOKEN`."""
     from nucllei.builtin_tools import sandbox  # noqa: PLC0415 - see the module docstring
 
     try:
-        return await sandbox.sandbox_post("/exec", payload, timeout_s)
+        return await sandbox.sandbox_post(path, payload, timeout_s)
     except sandbox.SandboxHTTPError as error:
         raise SandboxRefusedError(str(error.status)) from error
 
@@ -5390,16 +5392,16 @@ _SOURCES["nucllei_skill.run"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """The one sandbox run per chart: the reader, then the model's program, unchanged, in the jail.
 
-nucllei's sandbox writes `code` to a file under `/workspace/.exec/` and runs it with the jail's
-`/opt/venv/bin/python -u`, whose environment already sets `MPLBACKEND=Agg`, a writable
-`MPLCONFIGDIR` and a matplotlibrc whose sans-serif family is Noto Sans CJK JP; each `imports` entry
-lands at `/workspace/imports/<name>` first. The jail has no network. The reader and the program
-travel as base64, so no byte of either is re-encoded on the way, and stdout is the reader's alone:
-the description line, then at most one PNG line.
+Each attachment goes to `/workspace/imports/<name>` first, through the sandbox's no-follow file
+write; then nucllei's sandbox writes `code` to a file under `/workspace/.exec/` and runs it with the
+jail's `/opt/venv/bin/python -u`, whose environment already sets `MPLBACKEND=Agg`, a writable
+`MPLCONFIGDIR` and a matplotlibrc whose sans-serif family is Noto Sans CJK JP. The jail has no
+network. The reader and the program travel as base64, so no byte of either is re-encoded on the
+way, and stdout is the reader's alone: the description line, then at most one PNG line.
 """
 
 import base64
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Final
 
 from nucllei_skill.host import Attachment
@@ -5410,6 +5412,8 @@ from webui.paste_in.reply import MAX_REPLY
 # The sandbox clamps the run to its own maximum and waits 15 s past it; nucllei's own tool allows
 # its client the run plus 30 s, which also covers the time waiting for the user's run lock.
 HTTP_TIMEOUT_SECONDS: Final = RUN_TIMEOUT_SECONDS + 30
+# nucllei's own attachment import (`builtin_tools/sandbox.py::_import_file`) waits 120 s per file.
+WRITE_TIMEOUT_SECONDS: Final = 120
 # A lone surrogate (a JSON `\ud800` escape in the call) reaches the jail as written.
 _EXACT: Final = ("utf-8", "surrogatepass")
 
@@ -5457,19 +5461,30 @@ def wrapper_code(program: str) -> str:
     )
 
 
-def exec_payload(
-    user_id: str, program: str, attachments: Sequence[Attachment]
-) -> dict[str, object]:
-    """The `/exec` body: a stateless run (no chat kernel shares the reader's hooks)."""
+def write_payload(user_id: str, attachment: Attachment) -> dict[str, object]:
+    """One `/files/write` body: an attachment at `imports/<name>` in the caller's workspace.
+
+    `nofollow` takes the sandbox's descriptor-based write, which opens every path segment
+    `O_NOFOLLOW` and refuses a link at the leaf; the user's own jail runs can plant links in that
+    persistent workspace (M23.1 F1).
+    """
+    return {
+        "user_id": user_id,
+        "path": f"imports/{attachment.name}",
+        "b64": base64.b64encode(attachment.content).decode("ascii"),
+        "nofollow": True,
+    }
+
+
+def exec_payload(user_id: str, program: str) -> dict[str, object]:
+    """The `/exec` body: a stateless run (no chat kernel shares the reader's hooks). It carries no
+    `imports`: the sandbox writes those with a plain write that follows links (M23.1 F1), and
+    nucllei's own tools never send them."""
     return {
         "user_id": user_id,
         "lang": "python",
         "code": wrapper_code(program),
         "timeout_s": RUN_TIMEOUT_SECONDS,
-        "imports": [
-            {"name": item.name, "b64": base64.b64encode(item.content).decode("ascii")}
-            for item in attachments
-        ],
     }
 
 
@@ -8997,9 +9012,12 @@ class _Draw:
             )
             self.japanese = is_japanese(request.latest)
             attachments = await asyncio.to_thread(_owned, request.refs, user_id)
-            payload = run.exec_payload(user_id, self.program, attachments)
+            writes = [run.write_payload(user_id, item) for item in attachments]
+            payload = run.exec_payload(user_id, self.program)
             try:
-                reply = await host.run_python(payload, run.HTTP_TIMEOUT_SECONDS)
+                for write in writes:
+                    await host.sandbox_call("/files/write", write, run.WRITE_TIMEOUT_SECONDS)
+                reply = await host.sandbox_call("/exec", payload, run.HTTP_TIMEOUT_SECONDS)
             except host.SandboxRefusedError:
                 return await self.fail("sandbox_error")
             except TimeoutError:

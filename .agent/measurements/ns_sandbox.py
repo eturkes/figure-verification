@@ -5,11 +5,12 @@
 (default `localhost/nucllei-sandbox:v20261020-01`, built from nucllei's tag with
 `sudo podman build --network=host`; privileged, as nucllei deploys it: nsjail + quota loop
 devices) on a free loopback port with a fresh token, records the jail's interpreter + plotting
-releases, then posts each case to `/exec` exactly as `nucllei_skill.run.exec_payload` builds it:
-the production wrapper (the jail's Japanese font found as the tool finds it), the program with
-`{data}` + `{corpus}` at `/workspace/imports`, every file it names imported. Writes `ns-host.json`
-(each case's Sources + the host verdict) and `ns-sandbox.json` (each jail stdout's description
-line + faults); the NS projector judges every jail description with the same Sources.
+releases, then sends each case as the nucllei tool sends it: every file the case names through
+`/files/write` (`nucllei_skill.run.write_payload`, the no-follow write, M23.1 F1), then `/exec`
+(`nucllei_skill.run.exec_payload`: the production wrapper, the jail's Japanese font found as the
+tool finds it, the program with `{data}` + `{corpus}` at `/workspace/imports`). Writes
+`ns-host.json` (each case's Sources + the host verdict) and `ns-sandbox.json` (each jail stdout's
+description line + faults); the NS projector judges every jail description with the same Sources.
 """
 
 import json
@@ -71,9 +72,9 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def post(port, token, payload, timeout):
+def post(port, token, payload, timeout, path="/exec"):
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/exec",
+        f"http://127.0.0.1:{port}{path}",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
     )
@@ -116,8 +117,10 @@ def main(image):
             )
             program = case["program"].replace("{data}", "/workspace/imports")
             program = program.replace("{corpus}", "/workspace/imports")
-            attachments = [Attachment(n, file_bytes(n)) for n in names]
-            payload = jail.exec_payload("ns", program, attachments)
+            for n in names:
+                write = jail.write_payload("ns", Attachment(n, file_bytes(n)))
+                post(port, token, write, jail.WRITE_TIMEOUT_SECONDS, "/files/write")
+            payload = jail.exec_payload("ns", program)
             try:
                 stdout = jail.reply_stdout(post(port, token, payload, jail.HTTP_TIMEOUT_SECONDS))
                 line = next((l for l in stdout.splitlines() if l.startswith(TAG)), None)  # noqa: E741

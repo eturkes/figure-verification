@@ -82,10 +82,11 @@ Open WebUI の実行経路を説明します。例: <a href="gallery.ja.html">�
 CSV の添付時には自動で読み込みます。このスキルで、モデルが <code>draw_figure</code> を使えるようになります。</li>
 <li><strong>呼び出し。</strong> モデルは完全な Python プログラムを <code>draw_figure</code> に送ります。ツールは、保存した
 チャットの分岐から、あなた自身のメッセージとファイルを読みます。実行の前に呼び出し元を確認します。</li>
-<li><strong>実行と読み取り。</strong> ツールは、あなたのコード実行用サンドボックスに <code>/exec</code> の呼び出しを 1 回
-送ります。中身は、信頼できる図の読み取り処理と、変更しないプログラムです。添付ファイルは
-<code>/workspace/imports/</code> に入ります。読み取り処理は matplotlib にフックを入れ、プログラムを実行し、
-各図を 1 回描画します。すべての描画要素を JSON で報告します。クラス、描画の呼び出し、変換、座標、
+<li><strong>実行と読み取り。</strong> ツールは、まず添付ファイルを、リンクをたどらないサンドボックスのファイル
+書き込みで <code>/workspace/imports/</code> に置きます。次に、あなたのコード実行用サンドボックスに <code>/exec</code>
+の呼び出しを 1 回送ります。中身は、信頼できる図の読み取り処理と、変更しないプログラムです。
+読み取り処理は matplotlib にフックを入れ、プログラムを実行し、各図を 1 回描画します。
+すべての描画要素を JSON で報告します。クラス、描画の呼び出し、変換、座標、
 軸、目盛り、色、大きさ、表示状態、各 <code>hist</code>、<code>pie</code>、<code>fill_between</code>、<code>stackplot</code> の入力です。
 PNG も 1 枚返します。別の受領記録やブラウザ内のコード実行環境は使いません。</li>
 <li><strong>判定。</strong> nucllei のサーバーで、標準ライブラリの Python が記述に次の規則を順に適用します。
@@ -140,17 +141,17 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 <tbody>
 <tr>
 <td>コード実行のサンドボックスが応答</td>
-<td>nucllei のサンドボックス用クライアントで <code>POST /exec</code> を 1 回送り、接続に失敗したら不合格</td>
+<td>nucllei のサンドボックス用クライアントで、添付ファイルごとに <code>POST /files/write</code> を 1 回、次に <code>POST /exec</code> を 1 回送り、接続に失敗したら不合格</td>
 <td><code>sandbox_unreachable</code></td>
 </tr>
 <tr>
 <td>プログラムがサンドボックスの制限時間内</td>
-<td>実行には 120 秒を指定し、HTTP の応答は最大 150 秒待つ。サンドボックスが短い上限を適用する場合もある</td>
+<td>ファイルの書き込みはそれぞれ最大 120 秒待ち、実行には 120 秒を指定し、その応答は最大 150 秒待つ。サンドボックスが短い上限を適用する場合もある</td>
 <td><code>sandbox_timeout</code></td>
 </tr>
 <tr>
 <td>サンドボックスの実行が成功</td>
-<td>HTTP の拒否、またはゼロ以外の <code>exit_code</code> は不合格</td>
+<td>ファイルの書き込みか実行の HTTP の拒否、またはゼロ以外の <code>exit_code</code> は不合格</td>
 <td><code>sandbox_error</code></td>
 </tr>
 <tr>

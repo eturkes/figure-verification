@@ -39,8 +39,9 @@ language model writes. Red dashed arrows: where a failed check stops the chart.
    for a CSV attachment. The skill makes `draw_figure` available to the model.
 2. **Call.** The model sends one complete Python program to `draw_figure`. The tool reads your
    own messages and files from the stored chat branch. It checks the caller before any run.
-3. **Run and read.** The tool sends one `/exec` request to your code sandbox, with the trusted
-   figure reader and the program, unchanged. Your attached files enter `/workspace/imports/`.
+3. **Run and read.** The tool first writes each attached file to `/workspace/imports/` with the
+   sandbox's file write, which follows no links. Then it sends one `/exec` request to your code
+   sandbox, with the trusted figure reader and the program, unchanged.
    The reader hooks matplotlib, runs the program and draws each figure once. It reports every
    artist as JSON: class, plotting call, transform, coordinates, axes, ticks, colors, sizes,
    visibility and the recorded inputs of `hist`, `pie`, `fill_between` and `stackplot`. It also
@@ -81,10 +82,11 @@ Open WebUI の実行経路を説明します。例: [gallery.ja.md](../gallery.j
    CSV の添付時には自動で読み込みます。このスキルで、モデルが `draw_figure` を使えるようになります。
 2. **呼び出し。** モデルは完全な Python プログラムを `draw_figure` に送ります。ツールは、保存した
    チャットの分岐から、あなた自身のメッセージとファイルを読みます。実行の前に呼び出し元を確認します。
-3. **実行と読み取り。** ツールは、あなたのコード実行用サンドボックスに `/exec` の呼び出しを 1 回
-   送ります。中身は、信頼できる図の読み取り処理と、変更しないプログラムです。添付ファイルは
-   `/workspace/imports/` に入ります。読み取り処理は matplotlib にフックを入れ、プログラムを実行し、
-   各図を 1 回描画します。すべての描画要素を JSON で報告します。クラス、描画の呼び出し、変換、座標、
+3. **実行と読み取り。** ツールは、まず添付ファイルを、リンクをたどらないサンドボックスのファイル
+   書き込みで `/workspace/imports/` に置きます。次に、あなたのコード実行用サンドボックスに `/exec`
+   の呼び出しを 1 回送ります。中身は、信頼できる図の読み取り処理と、変更しないプログラムです。
+   読み取り処理は matplotlib にフックを入れ、プログラムを実行し、各図を 1 回描画します。
+   すべての描画要素を JSON で報告します。クラス、描画の呼び出し、変換、座標、
    軸、目盛り、色、大きさ、表示状態、各 `hist`、`pie`、`fill_between`、`stackplot` の入力です。
    PNG も 1 枚返します。別の受領記録やブラウザ内のコード実行環境は使いません。
 4. **判定。** nucllei のサーバーで、標準ライブラリの Python が記述に次の規則を順に適用します。
@@ -126,11 +128,13 @@ _PROGRAM = (
 _RUN = (
     (
         "### 2. Program run in the code sandbox\n\n| Rule | How | Code |\n|---|---|---|\n| "
-        "the code sandbox answers | one `POST /exec` through nucllei's sandbox client; a "
-        "connection failure blocks | `sandbox_unreachable` |\n| program within the "
-        "sandbox's time limit | requests 120 s for the run and waits at most 150 s for "
-        "HTTP; the sandbox can apply a shorter limit | `sandbox_timeout` |\n| the sandbox "
-        "run succeeds | an HTTP refusal or a nonzero `exit_code` blocks | "
+        "the code sandbox answers | one `POST /files/write` per attached file, then one "
+        "`POST /exec`, through nucllei's sandbox client; a connection failure blocks | "
+        "`sandbox_unreachable` |\n| program within the sandbox's time limit | waits at most "
+        "120 s for each file write, requests 120 s for the run and waits at most 150 s for "
+        "its reply; the sandbox can apply a shorter limit | `sandbox_timeout` |\n| the sandbox "
+        "run succeeds | an HTTP refusal of a file write or the run, or a nonzero `exit_code`, "
+        "blocks | "
         "`sandbox_error` |\n| complete reply in the expected format | `exit_code` is an "
         "integer, `stdout` is text within the reader's output bound, and "
         "`stdout_truncated` is false | `reply_malformed` |\n| run reports its figure | "
@@ -138,12 +142,13 @@ _RUN = (
     ),
     (
         "### 2. サンドボックスでプログラムを実行\n\n| 規則 | 方法 | コード |\n|---|---|---|\n"
-        "| コード実行のサンドボックスが応答 | nucllei のサンドボックス用クライアントで "
-        "`POST /exec` を 1 回送り、接続に失敗したら不合格 | `sandbox_unreachable` |\n| "
-        "プログラムがサンドボックスの制限時間内 | 実行には 120 秒を指定し、HTTP "
-        "の応答は最大 150 秒待つ。サンドボックスが短い上限を適用する場合もある | "
-        "`sandbox_timeout` |\n| サンドボックスの実行が成功 | HTTP "
-        "の拒否、またはゼロ以外の `exit_code` は不合格 | `sandbox_error` |\n| "
+        "| コード実行のサンドボックスが応答 | nucllei のサンドボックス用クライアントで、"
+        "添付ファイルごとに `POST /files/write` を 1 回、次に `POST /exec` を 1 回送り、"
+        "接続に失敗したら不合格 | `sandbox_unreachable` |\n| "
+        "プログラムがサンドボックスの制限時間内 | ファイルの書き込みはそれぞれ最大 120 秒待ち、"
+        "実行には 120 秒を指定し、その応答は最大 150 秒待つ。サンドボックスが短い上限を適用する"
+        "場合もある | `sandbox_timeout` |\n| サンドボックスの実行が成功 | ファイルの書き込みか"
+        "実行の HTTP の拒否、またはゼロ以外の `exit_code` は不合格 | `sandbox_error` |\n| "
         "応答が想定の形式で、途中で切れていない | `exit_code` が整数、`stdout` "
         "が読み取り処理の出力上限内のテキスト、`stdout_truncated` が false | "
         "`reply_malformed` |\n| 実行結果が図を報告 | `stdout` "

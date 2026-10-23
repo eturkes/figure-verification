@@ -18,8 +18,9 @@ language model writes. Red dashed arrows: where a failed check stops the chart.
    for a CSV attachment. The skill makes `draw_figure` available to the model.
 2. **Call.** The model sends one complete Python program to `draw_figure`. The tool reads your
    own messages and files from the stored chat branch. It checks the caller before any run.
-3. **Run and read.** The tool sends one `/exec` request to your code sandbox, with the trusted
-   figure reader and the program, unchanged. Your attached files enter `/workspace/imports/`.
+3. **Run and read.** The tool first writes each attached file to `/workspace/imports/` with the
+   sandbox's file write, which follows no links. Then it sends one `/exec` request to your code
+   sandbox, with the trusted figure reader and the program, unchanged.
    The reader hooks matplotlib, runs the program and draws each figure once. It reports every
    artist as JSON: class, plotting call, transform, coordinates, axes, ticks, colors, sizes,
    visibility and the recorded inputs of `hist`, `pie`, `fill_between` and `stackplot`. It also
@@ -57,9 +58,9 @@ fonts, browser and pixels. The sandbox has no network. Other tools, such as `run
 
 | Rule | How | Code |
 |---|---|---|
-| the code sandbox answers | one `POST /exec` through nucllei's sandbox client; a connection failure blocks | `sandbox_unreachable` |
-| program within the sandbox's time limit | requests 120 s for the run and waits at most 150 s for HTTP; the sandbox can apply a shorter limit | `sandbox_timeout` |
-| the sandbox run succeeds | an HTTP refusal or a nonzero `exit_code` blocks | `sandbox_error` |
+| the code sandbox answers | one `POST /files/write` per attached file, then one `POST /exec`, through nucllei's sandbox client; a connection failure blocks | `sandbox_unreachable` |
+| program within the sandbox's time limit | waits at most 120 s for each file write, requests 120 s for the run and waits at most 150 s for its reply; the sandbox can apply a shorter limit | `sandbox_timeout` |
+| the sandbox run succeeds | an HTTP refusal of a file write or the run, or a nonzero `exit_code`, blocks | `sandbox_error` |
 | complete reply in the expected format | `exit_code` is an integer, `stdout` is text within the reader's output bound, and `stdout_truncated` is false | `reply_malformed` |
 | run reports its figure | `stdout` holds one parsable, tagged description line | `no_description` |
 | valid Python | the reader compiles the program; no `SyntaxError` | `program_syntax_error` |
