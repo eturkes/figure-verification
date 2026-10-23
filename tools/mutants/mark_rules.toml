@@ -108,7 +108,7 @@ mutant = '''        any(not _clear(color) for color in geometry.colors)'''
 id = "luna-f6-widths-unread"
 predicate = "the bars of one series share one width (user ruling, luna F6)"
 kills = "tests/test_figure_corpus.py::test_corpus_case[bar-widths-vary]"
-anchor = '''            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):'''
+anchor = '''            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):'''
 mutant = '''            if False:'''
 
 [[mutant]]
@@ -124,3 +124,10 @@ predicate = "each bar series takes its own width (luna F6)"
 kills = "tests/test_figure_corpus.py::test_corpus_case[bar-series-own-widths]"
 anchor = '''            first, *rest = (bar.thickness for bar in bars(axes, mark))'''
 mutant = '''            first, *rest = (b.thickness for m in panel.marks if m.family == "bar" for b in bars(axes, m))'''
+
+[[mutant]]
+id = "rev1-f1-width-relative"
+predicate = "the width comparison is relative: widths below one unit still compare by ratio (reviewer-1 F1)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[bar-widths-vary-small-units]"
+anchor = '''            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):'''
+mutant = '''            if not all(math.isclose(other, first, rel_tol=_TOLERANCE, abs_tol=_TOLERANCE) for other in rest):'''

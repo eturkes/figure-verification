@@ -5223,12 +5223,15 @@ def _family(artist: Artist, axes: Axes, index: int) -> _Kind:
 
 
 def _outlined(artist: Artist, bands: dict[int, Artist]) -> list[int]:
-    """The bands a plotted line outlines: it equals one of their edges (pandas area outlines:
-    stack geometry, not data).
+    """The bands a plotted line outlines: drawn in data coordinates, point to point, it equals one
+    of their edges (pandas area outlines: stack geometry, not data). Equal arrays drawn in another
+    transform or as steps lie elsewhere.
 
     `artist` is a judged line and every `bands` value a judged band, so their geometry is known.
     """
     line = cast("LineGeometry", artist.geometry)
+    if artist.transform != "data" or line.drawstyle != "default":
+        return []
     outlined: list[int] = []
     for number, band in bands.items():
         arrays = cast("BandArrays", cast("BandGeometry", band.geometry).band)
@@ -7463,7 +7466,7 @@ def _check_widths(axes: Axes, panel: Panel) -> None:
     for mark in panel.marks:
         if mark.family == "bar":
             first, *rest = (bar.thickness for bar in bars(axes, mark))
-            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):
+            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):
                 block("bar_width_varies", _site(axes, mark))
 
 

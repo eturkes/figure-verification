@@ -186,9 +186,25 @@ free_port() {
   fi
 }
 
+mark_foreign() {
+  # mark_foreign <port> <service name>: a port something listens on that the named service's own
+  # group does not hold (it never started, or it died -- e.g. on EADDRINUSE -- while a process that
+  # bound the port after the preflight keeps it) is recorded so teardown never signals it.
+  local port=$1 name=$2 leader="" i
+  for i in "${!SERVICE_NAMES[@]}"; do
+    [[ ${SERVICE_NAMES[$i]} == "$name" ]] && leader=${SERVICE_PIDS[$i]}
+  done
+  if port_in_use "$port" && { [[ -z $leader ]] || ! port_owned "$port" "$leader"; }; then
+    FOREIGN_PORTS+=("$port")
+  fi
+}
+
 cleanup() {
   trap - EXIT INT TERM
   log "shutting down..."
+  # Classified while this launcher's groups still run: only their listeners are its own.
+  mark_foreign "$MODEL_BACKEND_PORT" model
+  mark_foreign "$WEBUI_PROVISION_PORT" webui
   local pid
   for pid in "${SERVICE_PIDS[@]}"; do
     kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true

@@ -466,3 +466,35 @@ def test_g18_an_untracked_pytest_skip_under_ci_fails_the_suite(tmp_path: Path) -
     assert tracked.returncode == 0, tracked.stdout
     outside = run("dependency absent", ci=False)
     assert outside.returncode == 0, outside.stdout
+
+
+def test_g18_a_collection_time_skip_under_ci_fails_the_suite(tmp_path: Path) -> None:
+    """G18: a module-level `pytest.importorskip` skips at collection, where no test report names it
+    (reviewer-1 F2). Acceptance: the suite's own `tests/conftest.py` beside one passing module and
+    one importing an absent dependency -> rc 1 naming `untracked skip under CI` serial and under
+    `-n 2`; outside CI -> rc 0."""
+    shutil.copy(_REPO_ROOT / "tests" / "conftest.py", tmp_path / "conftest.py")
+    (tmp_path / "test_present.py").write_text("def test_present() -> None:\n    pass\n")
+    (tmp_path / "test_absent.py").write_text(
+        "import pytest\n\npytest.importorskip('a_dependency_no_host_installs')\n\n\n"
+        "def test_absent() -> None:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    def run(*options: str, ci: bool) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603 - fixed argv
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *options],
+            cwd=tmp_path,
+            env=_ci_env(ci=ci),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    for options in ((), ("-n", "2")):
+        failed = run(*options, ci=True)
+        assert failed.returncode == 1 and "untracked skip under CI" in failed.stdout, (
+            f"a collection-time skip under CI passed the suite {options}: {failed.stdout}"
+        )
+    outside = run(ci=False)
+    assert outside.returncode == 0, outside.stdout

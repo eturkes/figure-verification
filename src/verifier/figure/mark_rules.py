@@ -158,7 +158,7 @@ def _check_widths(axes: Axes, panel: Panel) -> None:
     for mark in panel.marks:
         if mark.family == "bar":
             first, *rest = (bar.thickness for bar in bars(axes, mark))
-            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):
+            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):
                 block("bar_width_varies", _site(axes, mark))
 
 

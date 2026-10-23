@@ -138,3 +138,17 @@ predicate = "an outline equals a band edge, x and y alike (luna F5)"
 kills = "tests/test_figure_corpus.py::test_corpus_case[line-beside-another-band]"
 anchor = '''        if line.x == arrays.x and line.y in (arrays.y1, arrays.y2):'''
 mutant = '''        if line.x == arrays.x:'''
+
+[[mutant]]
+id = "rev1-f4-outline-transform"
+predicate = "an outline is drawn in data coordinates (reviewer-1 F4)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[outline-in-axes-coordinates]"
+anchor = '''    if artist.transform != "data" or line.drawstyle != "default":'''
+mutant = '''    if line.drawstyle != "default":'''
+
+[[mutant]]
+id = "rev1-f4-outline-drawstyle"
+predicate = "an outline is drawn point to point, never as steps (reviewer-1 F4)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[outline-as-steps]"
+anchor = '''    if artist.transform != "data" or line.drawstyle != "default":'''
+mutant = '''    if artist.transform != "data":'''

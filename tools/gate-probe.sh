@@ -350,6 +350,10 @@ probe g18-ci-untracked-skip tests/test_gate.py::test_g18_an_untracked_pytest_ski
     'an untracked skip under CI passed the suite' \
     sed -i 's/session.exitstatus = pytest.ExitCode.TESTS_FAILED/pass/' "$CONFTEST"
 
+probe g18-ci-collection-skip tests/test_gate.py::test_g18_a_collection_time_skip_under_ci_fails_the_suite \
+    'a collection-time skip under CI passed the suite' \
+    sed -i '/importorskip/{n;s/_collect(report)/pass/}' "$CONFTEST"
+
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \
     chmod a-x "$GATE"

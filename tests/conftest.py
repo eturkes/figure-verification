@@ -29,11 +29,20 @@ def pytest_configure(config: pytest.Config) -> None:
     _collecting = os.environ.get("CI") == "true" and not hasattr(config, "workerinput")
 
 
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+def _collect(report: pytest.TestReport | pytest.CollectReport) -> None:
     if _collecting and report.skipped:
         reason = report.longrepr[2] if isinstance(report.longrepr, tuple) else str(report.longrepr)
         if not _TRACKER.search(reason):
             _untracked.append(f"{report.nodeid}: {reason}")
+
+
+def pytest_runtest_logreport(report: pytest.TestReport) -> None:
+    _collect(report)
+
+
+def pytest_collectreport(report: pytest.CollectReport) -> None:
+    # A module-level `pytest.importorskip` skips at collection: no test report ever names it.
+    _collect(report)
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:

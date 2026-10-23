@@ -743,3 +743,41 @@ def test_l11_a_listener_bound_after_the_preflight_never_reaches_ready(tmp_path: 
             foreign.shutdown()
             foreign.server_close()
         _force_stop(process, harness)
+
+
+def test_l12_a_service_dying_on_a_taken_port_leaves_that_listener_alone(tmp_path: Path) -> None:
+    """L12 (reviewer-1 F3): a process binds the webui port after the preflight, the launcher's own
+    webui then dies on EADDRINUSE before its readiness poll succeeds, and teardown must still leave
+    that listener alone -- the strict fake `fuser` records any attempt to kill it."""
+    harness = _make_harness(tmp_path)
+    helper = tmp_path / "http_helper.py"
+    source = helper.read_text(encoding="utf-8")
+    gated = (
+        "name = sys.argv[2]\n"
+        'if name == "webui":\n'
+        "    import time\n\n"
+        '    while not (Path(os.environ["FAKE_PID_DIR"]) / "release").exists():\n'
+        "        time.sleep(0.02)\n"
+    )
+    helper.write_text(source.replace("name = sys.argv[2]\n", gated), encoding="utf-8")
+    process, stderr_path = _start_launcher(harness, "--stub")
+    foreign: socket.socket | None = None
+    try:
+        deadline = time.monotonic() + _READY_TIMEOUT_S
+        while not (harness.pid_dir / "model.pid").exists():
+            assert time.monotonic() < deadline, "the model helper never started"
+            time.sleep(0.02)
+        foreign = _listen(harness.ports[1])
+        (harness.pid_dir / "release").touch()
+        assert process.wait(timeout=_READY_TIMEOUT_S) != 0
+        stderr = stderr_path.read_text(encoding="utf-8")
+        assert "READY --" not in stderr
+        assert "Address already in use" in stderr
+        assert _log_lines(harness.fuser_log) == [], (
+            f"teardown targeted the foreign listener\n{stderr}"
+        )
+        assert _can_connect(harness.ports[1])
+    finally:
+        if foreign is not None:
+            foreign.close()
+        _force_stop(process, harness)

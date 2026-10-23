@@ -558,6 +558,16 @@ plt.bar(["a", "b", "c"], [3, 5, 4], width=[0.3, 0.8, 0.5])
 '''
 
 [[case]]
+id = "bar-widths-vary-small-units"
+expect = "bar_width_varies"
+site = 2
+request = "Plot 3, 5, 4"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([0, 1e-9, 2e-9], [3, 5, 4], width=[0.3e-9, 0.8e-9, 0.5e-9])
+'''
+
+[[case]]
 id = "barh-heights-vary"
 expect = "bar_width_varies"
 site = 2
@@ -899,6 +909,35 @@ plt.fill_between([1, 2, 3], 0, [2, 2, 2])
 plt.fill_between([1, 2, 3], [2, 2, 2], [5, 6, 4], label="upper")
 plt.plot([1, 2, 3], [2, 2, 2], label="lower")
 plt.legend()
+'''
+
+# Equal arrays alone do not make a line its band's edge: drawn in axes coordinates or as steps,
+# it lies elsewhere (reviewer-1 F4), so it stays a mark of its own.
+
+[[case]]
+id = "outline-in-axes-coordinates"
+expect = "mark_not_in_data"
+site = 4
+request = "Plot 4, 6, 5 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.fill_between([1, 2, 3], 0, [4, 6, 5])
+ax.plot([1, 2, 3], [4, 6, 5], label="actual", transform=ax.transAxes)
+ax.legend()
+'''
+
+[[case]]
+id = "outline-as-steps"
+expect = "legend_mismatch"
+site = 5
+request = "Plot 4, 6, 5 at 1, 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots()
+ax.fill_between([1, 2, 3], 0, [4, 6, 5])
+ax.plot([1, 2, 3], [4, 6, 5], label="actual", drawstyle="steps-pre")
+ax.legend()
 '''
 
 [[case]]
