@@ -23,8 +23,9 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+from model_backend.origin import hosts
 from webui import codex_bridge
-from webui.codex_bridge import BridgeSettings, ChatRequest, chunks, completion, create_app, hosts
+from webui.codex_bridge import BridgeSettings, ChatRequest, chunks, completion, create_app
 from webui.settings import Settings
 
 _TOKEN = "access-token-under-test"  # noqa: S105 - fixture value, never a credential

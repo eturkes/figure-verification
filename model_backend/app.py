@@ -40,6 +40,7 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
+from model_backend.origin import hosts, json_only
 from model_backend.settings import Settings
 
 _SELECTOR_MESSAGE_COUNT = 2
@@ -148,7 +149,7 @@ async def _selector_generation(
             turns = turns[1:]
 
 
-@post("/v1/chat/completions", status_code=HTTP_200_OK)
+@post("/v1/chat/completions", status_code=HTTP_200_OK, before_request=json_only)
 async def chat_completions(
     data: JSONBody[ChatCompletionRequest], state: State
 ) -> ChatCompletionResponse:
@@ -206,7 +207,8 @@ def _backend_error_handler(
 
 
 def create_app(settings: Settings) -> Litestar:
-    """Compile the model (blocking) and build the Litestar app around it."""
+    """Compile the model (blocking) and build the Litestar app around it, answering its bind's
+    origin alone (`model_backend/origin.py`)."""
     engine = Engine.load(settings)
     return Litestar(
         route_handlers=[health, chat_completions, list_models],
@@ -214,4 +216,5 @@ def create_app(settings: Settings) -> Litestar:
         openapi_config=None,
         exception_handlers={BackendError: _backend_error_handler},
         request_max_body_size=settings.max_body_bytes,
+        allowed_hosts=list(hosts(settings.host, settings.port)),
     )

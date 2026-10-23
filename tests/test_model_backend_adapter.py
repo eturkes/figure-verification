@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from model_backend.engine import GenResult
 
 _SELECTOR_SYSTEM = "Choose a tool. Available Tools: draw_figure"
+# Settings' default bind, the origin the backend answers (M23.1 F4).
+_URL = "http://127.0.0.1:8001"
 _PROGRAM = 'print("日本語 {brace} \\\\path and a \'quote\'")\nprint("next line")\n'
 
 
@@ -91,7 +93,7 @@ def _post(
     app = cast("Any", importlib.import_module("model_backend.app"))
 
     monkeypatch.setattr(app.Engine, "load", classmethod(lambda _cls, _settings: engine))
-    with TestClient(app=app.create_app(Settings(max_tokens=1024))) as client:
+    with TestClient(app=app.create_app(Settings(max_tokens=1024)), base_url=_URL) as client:
         return client.post(
             "/v1/chat/completions",
             json={

@@ -44,6 +44,7 @@ from litestar.datastructures import State
 from litestar.response import Stream
 from litestar.status_codes import HTTP_200_OK
 
+from model_backend.origin import hosts, json_only
 from webui.settings import Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -664,18 +665,12 @@ def list_models(state: State) -> dict[str, object]:
     }
 
 
-@post("/v1/chat/completions", status_code=HTTP_200_OK)
+@post("/v1/chat/completions", status_code=HTTP_200_OK, before_request=json_only)
 async def chat_completions(
     request: Request[object, object, State], state: State
 ) -> Response[object]:
-    """Run one completion through the app-server; reply whole (SSE when `stream`)."""
-    # A page in the operator's browser can post `text/plain` to loopback without a CORS preflight;
-    # Open WebUI + nucllei send JSON (M23.1 F2).
-    if request.content_type[0] != "application/json":
-        return cast(
-            "Response[object]",
-            _error(415, "the body must be application/json", "invalid_request_error"),
-        )
+    """Run one completion through the app-server; reply whole (SSE when `stream`). A non-JSON body
+    never gets here (`json_only`, M23.1 F2)."""
     raw = await request.body()
     try:
         body = msgspec.json.decode(raw, type=ChatRequest)
@@ -720,14 +715,6 @@ async def chat_completions(
 
         return cast("Response[object]", Stream(emit(), media_type="text/event-stream"))
     return Response(completion(outcome, model))
-
-
-def hosts(hostname: str, port: int) -> tuple[str, ...]:
-    """The `Host` headers the bridge answers: its bind name + the loopback spellings, at its port.
-    A DNS-rebound page names its own domain, so it reads no reply (M23.1 F2)."""
-    named = f"[{hostname}]" if ":" in hostname else hostname
-    spellings = dict.fromkeys((named, "127.0.0.1", "localhost", "[::1]"))
-    return tuple(f"{name}:{port}" for name in spellings)
 
 
 def create_app(

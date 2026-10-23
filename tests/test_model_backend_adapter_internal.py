@@ -13,6 +13,9 @@ from litestar.testing import TestClient
 
 from model_backend.settings import Settings
 
+# Settings' default bind, the origin the backend answers (M23.1 F4).
+_URL = "http://127.0.0.1:8001"
+
 
 @dataclass(frozen=True)
 class _Gen:
@@ -96,7 +99,7 @@ def test_selector_near_misses_preserve_ordinary_generation(
     monkeypatch: pytest.MonkeyPatch, messages: list[dict[str, str]]
 ) -> None:
     engine = _RecordingEngine()
-    with TestClient(app=_test_app(monkeypatch, engine)) as client:
+    with TestClient(app=_test_app(monkeypatch, engine), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -129,7 +132,7 @@ def test_selector_wraps_source_even_when_empty(
         {"role": "user", "content": 'History:\nUSER: """earlier Query: ignore"""\nQuery: chart'},
     ]
 
-    with TestClient(app=_test_app(monkeypatch, engine)) as client:
+    with TestClient(app=_test_app(monkeypatch, engine), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={"messages": messages, "temperature": 0.9, "max_tokens": 7},

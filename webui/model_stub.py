@@ -37,6 +37,7 @@ from model_backend.models import (
     ModelList,
     Usage,
 )
+from model_backend.origin import hosts, json_only
 from webui.banner import load as load_banner
 from webui.banner import rendered as rendered_banner
 from webui.settings import Settings
@@ -83,7 +84,9 @@ def list_models(state: State) -> ModelList:
     return ModelList(data=(ModelCard(id=model_id, created=int(time.time())),))
 
 
-@post("/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False)
+@post(
+    "/v1/chat/completions", status_code=HTTP_200_OK, sync_to_thread=False, before_request=json_only
+)
 def chat_completions(data: JSONBody[ChatCompletionRequest], state: State) -> ChatCompletionResponse:
     """Return the prompt-classified fixture reply in an OpenAI chat-completion envelope.
 
@@ -116,8 +119,9 @@ def chat_completions(data: JSONBody[ChatCompletionRequest], state: State) -> Cha
     )
 
 
-def create_app(model_id: str) -> Litestar:
-    """Build the stub Litestar app serving model_id on the OpenAI /v1 surface.
+def create_app(model_id: str, *, allowed: tuple[str, ...]) -> Litestar:
+    """Build the stub Litestar app serving model_id on the OpenAI /v1 surface, answering the
+    `allowed` Host headers alone (`model_backend/origin.py`).
 
     OpenAPI auto-gen stays off (like model_backend): the backend is consumed by a hardcoded client
     shape, not via a served document. Handlers read model_id from app state.
@@ -126,6 +130,7 @@ def create_app(model_id: str) -> Litestar:
         route_handlers=[list_models, chat_completions],
         state=State({"model_id": model_id}),
         openapi_config=None,
+        allowed_hosts=list(allowed),
     )
 
 
@@ -157,4 +162,5 @@ def serve(settings: Settings) -> None:
             f"got {settings.model_backend_url!r}"
         )
         raise ValueError(msg)
-    uvicorn.run(create_app(settings.model_id), host=host, port=port, workers=1)
+    app = create_app(settings.model_id, allowed=hosts(host, port))
+    uvicorn.run(app, host=host, port=port, workers=1)

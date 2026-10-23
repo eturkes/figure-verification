@@ -25,6 +25,8 @@ from model_backend.models import ChatMessage, ModelCard
 from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
+# What Open WebUI addresses: Settings' default bind (M23.1 F4).
+_URL = "http://127.0.0.1:8001"
 _ENGINE_PATH = _ROOT / "model_backend" / "engine.py"
 _SMOKE_PATH = _ROOT / "model_backend" / "smoke.py"
 # The package's probe runs only on the isolated .venv-model runtime and imports torch, which the
@@ -307,7 +309,7 @@ def test_p02_default_prompt_cap_emits_canonical_http_bytes(
     tokenizer = _Tokenizer(encoding=_Encoding(tuple(range(1537))))
     runtime = _patch_runtime(monkeypatch, tokenizer=tokenizer)
 
-    with TestClient(app=create_app(Settings())) as client:
+    with TestClient(app=create_app(Settings()), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
@@ -769,7 +771,7 @@ def test_p22_model_cards_are_backend_neutral_in_struct_and_http(
 ) -> None:
     assert ModelCard(id="model", created=0).owned_by == "local"
     _patch_runtime(monkeypatch)
-    with TestClient(app=create_app(Settings())) as client:
+    with TestClient(app=create_app(Settings()), base_url=_URL) as client:
         response = client.get("/v1/models")
     assert response.status_code == 200
     assert response.json()["data"][0]["owned_by"] == "local"
@@ -899,6 +901,7 @@ def test_p31_probe_only_imports_never_reach_a_served_module() -> None:
         "engine.py",
         "adapter.py",
         "models.py",
+        "origin.py",
         "settings.py",
         "snapshot.py",
     }
@@ -947,14 +950,14 @@ def test_backend_body_cap_accepts_boundary_and_rejects_plus_one_before_decode(
     payload = b'{"messages":[{"role":"user","content":"hello"}]}'
     settings = Settings(max_body_bytes=len(payload))
 
-    with TestClient(app=create_app(settings)) as client:
-        exact = client.post("/v1/chat/completions", content=payload)
+    with TestClient(app=create_app(settings), base_url=_URL) as client:
+        exact = client.post("/v1/chat/completions", content=payload, headers=_JSON)
 
         def over_limit() -> Iterator[bytes]:
             yield payload
             yield b" "
 
-        over = client.post("/v1/chat/completions", content=over_limit())
+        over = client.post("/v1/chat/completions", content=over_limit(), headers=_JSON)
 
     assert exact.status_code == 200
     assert over.status_code == 413
@@ -980,7 +983,7 @@ def test_backend_error_response_keeps_exact_openai_shape(
 ) -> None:
     engine = _RejectingAppEngine()
     monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
-    with TestClient(app=create_app(Settings())) as client:
+    with TestClient(app=create_app(Settings()), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello"}]},
@@ -993,6 +996,53 @@ def test_backend_error_response_keeps_exact_openai_shape(
     assert response.json() == {
         "error": {"message": "prompt is too long", "type": "prompt_too_long"}
     }
+
+
+_HELLO = b'{"messages":[{"role":"user","content":"hello"}]}'
+_JSON = {"content-type": "application/json"}
+_REBOUND = {"host": "rebound.example:8001"}
+
+
+def test_m23_f4_a_cross_site_or_rebound_request_reaches_no_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No route authenticates its caller. A page in the operator's browser posts `text/plain` (or
+    no type) to loopback with no CORS preflight; a DNS-rebound page names its own domain in `Host`,
+    on any route. Neither reaches the engine; Open WebUI's own request (JSON, the bind name)
+    does."""
+    engine = _AppEngine()
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: engine))
+    with TestClient(app=create_app(Settings()), base_url=_URL) as client:
+        plain = client.post(
+            "/v1/chat/completions", content=_HELLO, headers={"content-type": "text/plain"}
+        )
+        untyped = client.post("/v1/chat/completions", content=_HELLO)
+        rebound = client.post("/v1/chat/completions", content=_HELLO, headers=_JSON | _REBOUND)
+        listed = client.get("/v1/models", headers=_REBOUND)
+        health = client.get("/health", headers=_REBOUND)
+        statuses = [r.status_code for r in (plain, untyped, rebound, listed, health)]
+        assert statuses == [415, 415, 400, 400, 400]
+        assert plain.json() == {
+            "error": {
+                "message": "the body must be application/json",
+                "type": "invalid_request_error",
+            }
+        }
+        assert engine.generate_calls == 0
+        typed = {"content-type": "application/json; charset=utf-8"}
+        assert client.post("/v1/chat/completions", content=_HELLO, headers=typed).status_code == 200
+    assert engine.generate_calls == 1
+
+
+def test_m23_f4_the_backend_answers_its_bind_name_and_the_loopback_spellings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Engine, "load", classmethod(lambda _cls, _settings: _AppEngine()))
+    app = create_app(Settings(host="localhost", port=9))
+    names = ("localhost:9", "127.0.0.1:9", "[::1]:9", "127.0.0.1:8001", "localhost")
+    with TestClient(app=app, base_url="http://localhost:9") as client:
+        answered = [client.get("/v1/models", headers={"host": n}).status_code for n in names]
+    assert answered == [200, 200, 200, 400, 400]
 
 
 # --- Open WebUI post-verified-chart summarize turn -----------------------------------------

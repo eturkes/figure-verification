@@ -9,6 +9,7 @@ model_backend.models, so shape drift versus the live backend surfaces here witho
 """
 
 import json
+from typing import cast
 
 import pytest
 import uvicorn
@@ -20,12 +21,15 @@ from webui.model_stub import _FINAL_REPLY, _SELECTOR_MARKER, create_app, serve
 from webui.settings import Settings
 
 _ARMS = {arm.id: arm for arm in load().arms}
+# The default model_backend_url's origin + the Host headers the stub answers there (M23.1 F4).
+_URL = "http://127.0.0.1:8001"
+_ALLOWED = ("127.0.0.1:8001", "localhost:8001", "[::1]:8001")
 _SIMPLE_PROMPT = rendered(_ARMS["simple"])
 _COMPLICATED_PROMPT = rendered(_ARMS["misleading"])
 
 
 def _reply_to(user: str) -> str:
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -45,7 +49,7 @@ _HISTORY_PREFIX = 'History:\nUSER: """Earlier request"""\nASSISTANT: """Earlier 
 
 # --- /v1/models -----------------------------------------------------------------------------
 def test_models_lists_only_the_configured_id() -> None:
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.get("/v1/models")
     assert response.status_code == 200
     body = response.json()
@@ -63,7 +67,7 @@ def test_models_lists_only_the_configured_id() -> None:
 
 # --- /v1/chat/completions -------------------------------------------------------------------
 def test_chat_returns_final_reply_in_openai_envelope() -> None:
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "hello there world"}]},
@@ -107,7 +111,7 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
         "top_p": 0.9,
         "messages": [{"role": "user", "content": "hello there world"}],
     }
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.post("/v1/chat/completions", json=payload)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
@@ -161,7 +165,7 @@ def test_chat_tolerates_owui_extra_fields_without_streaming() -> None:
 )
 def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, kind: str) -> None:
     # OWUI 0.12.3 utils/middleware.py:1022-1044 sends one user message with these literal shapes.
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -185,7 +189,7 @@ def test_chat_selects_scripted_e2e_reply(selector: str, prompt: str, kind: str) 
 
 def test_chat_final_turn_does_not_repeat_tool_call() -> None:
     # A model turn after legacy tool execution is NOT the selector's `Query: ` message.
-    with TestClient(app=create_app("stub-model")) as client:
+    with TestClient(app=create_app("stub-model", allowed=_ALLOWED), base_url=_URL) as client:
         response = client.post(
             "/v1/chat/completions",
             json={
@@ -252,3 +256,43 @@ def test_serve_rejects_urls_the_stub_cannot_serve(
     monkeypatch.setattr(uvicorn, "run", unreachable)
     with pytest.raises(ValueError, match="bind and serve"):
         serve(Settings(model_backend_url=bad_url))
+
+
+def _served(monkeypatch: pytest.MonkeyPatch, url: str) -> Litestar:
+    """The app `serve` hands uvicorn for this model_backend_url."""
+    apps: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda app, **_: apps.append(app))
+    serve(Settings(model_backend_url=url))
+    return cast("Litestar", apps[0])
+
+
+def test_m23_f4_a_cross_site_or_rebound_request_gets_no_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stub authenticates no caller. A page in the operator's browser posts `text/plain` (or no
+    type) to loopback with no CORS preflight; a DNS-rebound page names its own domain in `Host`, on
+    any route. Neither gets a reply; Open WebUI's own request (JSON, the bind name) does."""
+    body = json.dumps({"messages": [{"role": "user", "content": "hello"}]})
+    as_json = {"content-type": "application/json"}
+    rebound = {"host": "rebound.example:8001"}
+    with TestClient(app=_served(monkeypatch, f"{_URL}/v1"), base_url=_URL) as client:
+        replies = (
+            client.post(
+                "/v1/chat/completions", content=body, headers={"content-type": "text/plain"}
+            ),
+            client.post("/v1/chat/completions", content=body),
+            client.post("/v1/chat/completions", content=body, headers=as_json | rebound),
+            client.get("/v1/models", headers=rebound),
+        )
+        assert [reply.status_code for reply in replies] == [415, 415, 400, 400]
+        assert client.post("/v1/chat/completions", content=body, headers=as_json).status_code == 200
+
+
+def test_m23_f4_the_stub_answers_its_bind_name_and_the_loopback_spellings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    names = ("localhost:9", "127.0.0.1:9", "[::1]:9", "127.0.0.1:8001", "localhost")
+    app = _served(monkeypatch, "http://localhost:9/v1")
+    with TestClient(app=app, base_url="http://localhost:9") as client:
+        answered = [client.get("/v1/models", headers={"host": n}).status_code for n in names]
+    assert answered == [200, 200, 200, 400, 400]
