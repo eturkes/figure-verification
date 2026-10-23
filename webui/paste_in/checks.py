@@ -78,6 +78,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "value_not_finite",
         "bar_not_from_zero",
         "bars_overlap",
+        "bar_width_varies",
         "x_not_ordered",
         "hist_counts",
         "pie_not_whole",
@@ -148,12 +149,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "marks": (
         (
             "Honest marks",
-            "visible finite values, bars and areas from zero, no overlapping bars, true"
-            " histograms and pies, ordered lines, keyed sizes and colors, a true legend",
+            "visible finite values, bars and areas from zero, no overlapping bars, one bar width"
+            " per series, true histograms and pies, ordered lines, keyed sizes and colors, a true"
+            " legend",
         ),
         (
             "正しいグラフ要素",
-            "見える有限の値、ゼロから始まる棒と面、重ならない棒、正しいヒストグラムと円、"
+            "見える有限の値、ゼロから始まる棒と面、重ならない棒、系列ごとに同じ棒の幅、正しいヒストグラムと円、"
             "順序どおりの折れ線、凡例のある大きさと色、正しい凡例",
         ),
     ),
@@ -250,11 +252,13 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "marks": (
         "Each mark must show its values honestly. Bars and filled areas start at zero or on"
-        " another bar or area, bars do not overlap, and histograms and pies match their data."
+        " another bar or area, bars do not overlap, the bars of one series share one width, and"
+        " histograms and pies match their data."
         " Lines run in one direction, varying sizes and colors have a legend or color bar, and"
         " the legend names the series.",
         "各グラフ要素は値を正しく示す必要があります。"
-        "棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、ヒストグラムと円はデータと一致します。"
+        "棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、1 つの系列の棒は同じ幅で、"
+        "ヒストグラムと円はデータと一致します。"
         "折れ線は一方向に進み、異なる大きさや色には凡例かカラーバーがあり、凡例は系列を正しく示します。",
     ),
     "values": (

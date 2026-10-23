@@ -37,6 +37,7 @@ FigureReason = Literal[
     "value_not_finite",
     "bar_not_from_zero",
     "bars_overlap",
+    "bar_width_varies",
     "category_not_unique",
     "x_not_ordered",
     "hist_counts",

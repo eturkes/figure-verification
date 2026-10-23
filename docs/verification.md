@@ -307,6 +307,8 @@ Each chart part must show its values honestly:
   infinite. A point that a chart part received but does not show stops the figure.
 - **Bars from zero.** Each bar starts at zero, or on top of another bar in a stack.
 - **No overlapping bars.** Grouped bars stand side by side.
+- **One width per bar series.** The bars of one series have the same width, so the area of a
+  bar never shows a second quantity. A histogram can have bins of different widths.
 - **True histograms.** The bars of a histogram show the counts, or the density, of its data over its
   bins.
 - **Whole pies.** The wedges of a pie fill the circle, and each wedge shows its share of the total.
@@ -330,6 +332,7 @@ Each chart part must show its values honestly:
 | `value_not_finite` | A drawn value is missing or not finite, or a point was dropped. |
 | `bar_not_from_zero` | A bar does not start at zero. |
 | `bars_overlap` | Two bars overlap. |
+| `bar_width_varies` | The bars of one series have different widths. |
 | `x_not_ordered` | The x values of a line are not in order. |
 | `hist_counts` | The histogram bars do not show the counts of its data. |
 | `pie_not_whole` | The pie wedges do not show the shares of its values. |

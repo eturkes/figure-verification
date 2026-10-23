@@ -73,7 +73,7 @@ summary { color: var(--link); cursor: pointer; padding: .4rem 0; }
 <li>チェック 3: <a href="#glyph_missing"><code>glyph_missing</code></a></li>
 <li>チェック 4: <a href="#raster_image"><code>raster_image</code></a>、<a href="#axes_not_judged"><code>axes_not_judged</code></a>、<a href="#axes_twin"><code>axes_twin</code></a>、<a href="#axes_overlap"><code>axes_overlap</code></a>、<a href="#artist_not_judged"><code>artist_not_judged</code></a>、<a href="#no_data"><code>no_data</code></a></li>
 <li>チェック 5: <a href="#mark_not_in_data"><code>mark_not_in_data</code></a>、<a href="#scale_not_linear"><code>scale_not_linear</code></a>、<a href="#axis_inverted"><code>axis_inverted</code></a>、<a href="#zero_not_in_limits"><code>zero_not_in_limits</code></a>、<a href="#tick_label_mismatch"><code>tick_label_mismatch</code></a>、<a href="#point_clipped"><code>point_clipped</code></a></li>
-<li>チェック 6: <a href="#mark_hidden"><code>mark_hidden</code></a>、<a href="#value_not_finite"><code>value_not_finite</code></a>、<a href="#bar_not_from_zero"><code>bar_not_from_zero</code></a>、<a href="#bars_overlap"><code>bars_overlap</code></a>、<a href="#x_not_ordered"><code>x_not_ordered</code></a>、<a href="#hist_counts"><code>hist_counts</code></a>、<a href="#pie_not_whole"><code>pie_not_whole</code></a>、<a href="#area_not_from_zero"><code>area_not_from_zero</code></a>、<a href="#marker_size_varies"><code>marker_size_varies</code></a>、<a href="#marker_color_varies"><code>marker_color_varies</code></a>、<a href="#legend_mismatch"><code>legend_mismatch</code></a></li>
+<li>チェック 6: <a href="#mark_hidden"><code>mark_hidden</code></a>、<a href="#value_not_finite"><code>value_not_finite</code></a>、<a href="#bar_not_from_zero"><code>bar_not_from_zero</code></a>、<a href="#bars_overlap"><code>bars_overlap</code></a>、<a href="#bar_width_varies"><code>bar_width_varies</code></a>、<a href="#x_not_ordered"><code>x_not_ordered</code></a>、<a href="#hist_counts"><code>hist_counts</code></a>、<a href="#pie_not_whole"><code>pie_not_whole</code></a>、<a href="#area_not_from_zero"><code>area_not_from_zero</code></a>、<a href="#marker_size_varies"><code>marker_size_varies</code></a>、<a href="#marker_color_varies"><code>marker_color_varies</code></a>、<a href="#legend_mismatch"><code>legend_mismatch</code></a></li>
 <li>チェック 7: <a href="#category_not_unique"><code>category_not_unique</code></a>、<a href="#value_not_found"><code>value_not_found</code></a>、<a href="#label_not_in_request"><code>label_not_in_request</code></a></li>
 <li>チェック 8: <a href="#column_not_requested"><code>column_not_requested</code></a>、<a href="#column_not_named"><code>column_not_named</code></a>、<a href="#label_not_consistent"><code>label_not_consistent</code></a></li>
 </ul>
@@ -615,6 +615,34 @@ plt.bar([-0.2, 0.8], [1, 2], width=0.4, label=&quot;first&quot;)
 plt.bar([0.2, 1.2], [3, 4], width=0.4, label=&quot;second&quot;)
 plt.xticks([0, 1], [&quot;a&quot;, &quot;b&quot;])
 plt.legend()
+</code></pre>
+</details>
+<p><a id="bar_width_varies"></a></p>
+<h3><code>bar_width_varies</code>: 系列ごとに同じ棒の幅</h3>
+<p>3 本の棒の幅が異なるため、面積が値に従いません。値は 5 と 3 ですが、b の面積は a の 4 倍を超えます。</p>
+<div class="table-scroll" tabindex="0" role="region" aria-label="規則の表" data-scroll-note="表を左右にスクロールすると、すべての列を読めます。"><table>
+<thead>
+<tr>
+<th>不合格</th>
+<th>合格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="gallery/bar-widths-vary.png"><img src="gallery/bar-widths-vary.png" alt="不合格: 系列ごとに同じ棒の幅" /></a></td>
+<td><a href="gallery/bar-widths-one-width.png"><img src="gallery/bar-widths-one-width.png" alt="合格: 系列ごとに同じ棒の幅" /></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>依頼文: <code>Plot 3, 5, 4 for a, b, c</code>。</p>
+<details><summary>プログラム</summary>
+<p>不合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;, &quot;c&quot;], [3, 5, 4], width=[0.3, 0.8, 0.5])
+</code></pre>
+<p>合格:</p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+plt.bar([&quot;a&quot;, &quot;b&quot;, &quot;c&quot;], [3, 5, 4], width=0.5)
 </code></pre>
 </details>
 <p><a id="x_not_ordered"></a></p>

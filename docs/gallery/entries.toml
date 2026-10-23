@@ -123,6 +123,13 @@ en = "The second series sits exactly on the first and hides it: the chart shows 
 ja = "2 つ目の系列が 1 つ目の系列にちょうど重なって隠しています。データには 4 本あるのに、グラフには 2 本しか見えません。"
 
 [[entry]]
+reason = "bar_width_varies"
+blocked = "bar-widths-vary"
+twin = "bar-widths-one-width"
+en = "The three bars have different widths, so their areas no longer follow the values: the area of b is more than four times the area of a, though the values are 5 and 3."
+ja = "3 本の棒の幅が異なるため、面積が値に従いません。値は 5 と 3 ですが、b の面積は a の 4 倍を超えます。"
+
+[[entry]]
 reason = "x_not_ordered"
 blocked = "unordered-line"
 twin = "unordered-line-sorted"

@@ -147,4 +147,7 @@ starved by another session's 8-worker job (load ≈ 17 on 4 cores ⇒ `browser_t
   series). The listing re-judge then reads t11-3 `pass`, every other run as after the F4 fix.
 - F6 bar width is an unjudged channel: t06's bars encode revenue in width (area ∝ width × height);
   it blocked only because its x label names `revenue` — the same program with a silent label
-  passes.
+  passes. Fixed (user ruling: block): the bars of one bar container share one width, else
+  `bar_width_varies` (`mark_rules.py::_check_widths`; histograms exempt). The listing re-judge then
+  reads t06-1 + t06-3 `bar_width_varies` (marks stage, ahead of the label rule), t06-2
+  `label_not_consistent` as before, every other run as after the F2 fix.

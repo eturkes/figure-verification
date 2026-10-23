@@ -2,7 +2,8 @@
 """Mark rules over one judged panel (`.claude/rules/figure.md` § Mark rules).
 
 Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_finite` → bars
-(`bar_not_from_zero`, `bars_overlap`) → `x_not_ordered` → `hist_counts` → `pie_not_whole` →
+(`bar_not_from_zero`, `bars_overlap`, `bar_width_varies`) → `x_not_ordered` → `hist_counts` →
+`pie_not_whole` →
 `area_not_from_zero` → scatter encodings. Each block marks the line that drew the offending mark.
 """
 
@@ -150,6 +151,17 @@ def _check_bars(axes: Axes, panel: Panel) -> None:
                 block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar
 
 
+def _check_widths(axes: Axes, panel: Panel) -> None:
+    """The bars of one series share one thickness: an area that varies with it shows a second
+    quantity no key explains (user ruling, luna F6). A histogram's widths are its bins, which
+    `hist_counts` reads."""
+    for mark in panel.marks:
+        if mark.family == "bar":
+            first, *rest = (bar.thickness for bar in bars(axes, mark))
+            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):
+                block("bar_width_varies", _site(axes, mark))
+
+
 def _box(rect: RectGeometry) -> tuple[float, float, float, float]:
     """A drawn rectangle in data x/y, whatever its orientation."""
     return (
@@ -259,6 +271,7 @@ def check_marks(
     grounded = band_edges(axes, panel)
     _check_drawn(axes, panel)
     _check_bars(axes, panel)
+    _check_widths(axes, panel)
     _check_order(axes, panel)
     for mark in panel.marks:
         if mark.family == "hist":

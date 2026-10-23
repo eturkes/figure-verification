@@ -103,3 +103,24 @@ predicate = "one scatter point with a clear face and no edge hides that point"
 kills = "tests/test_figure_corpus.py::test_corpus_case[one-faceless-point]"
 anchor = '''        (face is not None and not _clear(face))'''
 mutant = '''        any(not _clear(color) for color in geometry.colors)'''
+
+[[mutant]]
+id = "luna-f6-widths-unread"
+predicate = "the bars of one series share one width (user ruling, luna F6)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[bar-widths-vary]"
+anchor = '''            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):'''
+mutant = '''            if False:'''
+
+[[mutant]]
+id = "luna-f6-hist-exempt"
+predicate = "a histogram's bins may differ in width (luna F6)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[hist-unequal-bins]"
+anchor = '''        if mark.family == "bar":'''
+mutant = '''        if mark.family in ("bar", "hist"):'''
+
+[[mutant]]
+id = "luna-f6-per-series"
+predicate = "each bar series takes its own width (luna F6)"
+kills = "tests/test_figure_corpus.py::test_corpus_case[bar-series-own-widths]"
+anchor = '''            first, *rest = (bar.thickness for bar in bars(axes, mark))'''
+mutant = '''            first, *rest = (b.thickness for m in panel.marks if m.family == "bar" for b in bars(axes, m))'''

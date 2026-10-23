@@ -129,6 +129,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | every value finite; no point dropped | no NaN or infinity in the drawn data or the recorded call inputs; each band draws every point that its call received | `value_not_finite` |
 | bars from 0, or from the top of a stacked bar | each bar's base is 0, or exactly the far end of a bar at the same position and width | `bar_not_from_zero` |
 | no overlapping bars | no two bar rectangles intersect with an area above 0 | `bars_overlap` |
+| one width per bar series | every bar of one bar container has the thickness of its first bar (histograms exempt: their widths are the bins) | `bar_width_varies` |
 | line x values in one direction | each line's x positions are monotonic | `x_not_ordered` |
 | histogram heights = counts or density of its data over its bins | the judge recounts the recorded `hist` input over the drawn bin edges (numpy rules, last bin closed); all data inside the bins; no weights, no `cumulative` | `hist_counts` |
 | pie wedges fill 360°; each span = its share of the total | each wedge span = 360° × value / sum of the recorded `pie` input, within 0.0001°; one radius, no gaps | `pie_not_whole` |

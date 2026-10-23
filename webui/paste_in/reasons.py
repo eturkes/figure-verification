@@ -172,6 +172,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "A bar does not start at zero.",
         "ゼロから始まっていない棒があります。",
     ),
+    "bar_width_varies": (
+        "The bars of one series have different widths. Draw every bar of a series with one width.",
+        "1 つの系列の棒の幅が異なります。系列のすべての棒を同じ幅で描いてください。",
+    ),
     "bars_overlap": (
         "Two bars overlap.",
         "重なっている棒があります。",

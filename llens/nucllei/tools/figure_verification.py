@@ -2388,6 +2388,7 @@ FigureReason = Literal[
     "value_not_finite",
     "bar_not_from_zero",
     "bars_overlap",
+    "bar_width_varies",
     "category_not_unique",
     "x_not_ordered",
     "hist_counts",
@@ -3559,6 +3560,10 @@ REASONS: Final[dict[Reason, tuple[str, str]]] = {
         "A bar does not start at zero.",
         "ゼロから始まっていない棒があります。",
     ),
+    "bar_width_varies": (
+        "The bars of one series have different widths. Draw every bar of a series with one width.",
+        "1 つの系列の棒の幅が異なります。系列のすべての棒を同じ幅で描いてください。",
+    ),
     "bars_overlap": (
         "Two bars overlap.",
         "重なっている棒があります。",
@@ -4659,6 +4664,7 @@ _REASONS_OF: Final[dict[Check, tuple[Reason, ...]]] = {
         "value_not_finite",
         "bar_not_from_zero",
         "bars_overlap",
+        "bar_width_varies",
         "x_not_ordered",
         "hist_counts",
         "pie_not_whole",
@@ -4729,12 +4735,13 @@ TEXTS: Final[dict[Check, tuple[tuple[str, str], tuple[str, str]]]] = {
     "marks": (
         (
             "Honest marks",
-            "visible finite values, bars and areas from zero, no overlapping bars, true"
-            " histograms and pies, ordered lines, keyed sizes and colors, a true legend",
+            "visible finite values, bars and areas from zero, no overlapping bars, one bar width"
+            " per series, true histograms and pies, ordered lines, keyed sizes and colors, a true"
+            " legend",
         ),
         (
             "正しいグラフ要素",
-            "見える有限の値、ゼロから始まる棒と面、重ならない棒、正しいヒストグラムと円、"
+            "見える有限の値、ゼロから始まる棒と面、重ならない棒、系列ごとに同じ棒の幅、正しいヒストグラムと円、"
             "順序どおりの折れ線、凡例のある大きさと色、正しい凡例",
         ),
     ),
@@ -4831,11 +4838,13 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
     ),
     "marks": (
         "Each mark must show its values honestly. Bars and filled areas start at zero or on"
-        " another bar or area, bars do not overlap, and histograms and pies match their data."
+        " another bar or area, bars do not overlap, the bars of one series share one width, and"
+        " histograms and pies match their data."
         " Lines run in one direction, varying sizes and colors have a legend or color bar, and"
         " the legend names the series.",
         "各グラフ要素は値を正しく示す必要があります。"
-        "棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、ヒストグラムと円はデータと一致します。"
+        "棒と面はゼロまたは他の棒や面から始まり、棒は重ならず、1 つの系列の棒は同じ幅で、"
+        "ヒストグラムと円はデータと一致します。"
         "折れ線は一方向に進み、異なる大きさや色には凡例かカラーバーがあり、凡例は系列を正しく示します。",
     ),
     "values": (
@@ -6660,7 +6669,8 @@ _SOURCES["verifier.figure.mark_rules"] = r'''
 """Mark rules over one judged panel (`.claude/rules/figure.md` § Mark rules).
 
 Order (`.agent/archive/contracts/m19u3.md` U2): `mark_hidden` → `value_not_finite` → bars
-(`bar_not_from_zero`, `bars_overlap`) → `x_not_ordered` → `hist_counts` → `pie_not_whole` →
+(`bar_not_from_zero`, `bars_overlap`, `bar_width_varies`) → `x_not_ordered` → `hist_counts` →
+`pie_not_whole` →
 `area_not_from_zero` → scatter encodings. Each block marks the line that drew the offending mark.
 """
 
@@ -6808,6 +6818,17 @@ def _check_bars(axes: Axes, panel: Panel) -> None:
                 block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar
 
 
+def _check_widths(axes: Axes, panel: Panel) -> None:
+    """The bars of one series share one thickness: an area that varies with it shows a second
+    quantity no key explains (user ruling, luna F6). A histogram's widths are its bins, which
+    `hist_counts` reads."""
+    for mark in panel.marks:
+        if mark.family == "bar":
+            first, *rest = (bar.thickness for bar in bars(axes, mark))
+            if any(abs(other - first) > _TOLERANCE * max(1.0, abs(first)) for other in rest):
+                block("bar_width_varies", _site(axes, mark))
+
+
 def _box(rect: RectGeometry) -> tuple[float, float, float, float]:
     """A drawn rectangle in data x/y, whatever its orientation."""
     return (
@@ -6917,6 +6938,7 @@ def check_marks(
     grounded = band_edges(axes, panel)
     _check_drawn(axes, panel)
     _check_bars(axes, panel)
+    _check_widths(axes, panel)
     _check_order(axes, panel)
     for mark in panel.marks:
         if mark.family == "hist":

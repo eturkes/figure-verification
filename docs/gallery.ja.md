@@ -5,7 +5,7 @@
 - チェック 3: [`glyph_missing`](#glyph_missing)
 - チェック 4: [`raster_image`](#raster_image)、[`axes_not_judged`](#axes_not_judged)、[`axes_twin`](#axes_twin)、[`axes_overlap`](#axes_overlap)、[`artist_not_judged`](#artist_not_judged)、[`no_data`](#no_data)
 - チェック 5: [`mark_not_in_data`](#mark_not_in_data)、[`scale_not_linear`](#scale_not_linear)、[`axis_inverted`](#axis_inverted)、[`zero_not_in_limits`](#zero_not_in_limits)、[`tick_label_mismatch`](#tick_label_mismatch)、[`point_clipped`](#point_clipped)
-- チェック 6: [`mark_hidden`](#mark_hidden)、[`value_not_finite`](#value_not_finite)、[`bar_not_from_zero`](#bar_not_from_zero)、[`bars_overlap`](#bars_overlap)、[`x_not_ordered`](#x_not_ordered)、[`hist_counts`](#hist_counts)、[`pie_not_whole`](#pie_not_whole)、[`area_not_from_zero`](#area_not_from_zero)、[`marker_size_varies`](#marker_size_varies)、[`marker_color_varies`](#marker_color_varies)、[`legend_mismatch`](#legend_mismatch)
+- チェック 6: [`mark_hidden`](#mark_hidden)、[`value_not_finite`](#value_not_finite)、[`bar_not_from_zero`](#bar_not_from_zero)、[`bars_overlap`](#bars_overlap)、[`bar_width_varies`](#bar_width_varies)、[`x_not_ordered`](#x_not_ordered)、[`hist_counts`](#hist_counts)、[`pie_not_whole`](#pie_not_whole)、[`area_not_from_zero`](#area_not_from_zero)、[`marker_size_varies`](#marker_size_varies)、[`marker_color_varies`](#marker_color_varies)、[`legend_mismatch`](#legend_mismatch)
 - チェック 7: [`category_not_unique`](#category_not_unique)、[`value_not_found`](#value_not_found)、[`label_not_in_request`](#label_not_in_request)
 - チェック 8: [`column_not_requested`](#column_not_requested)、[`column_not_named`](#column_not_named)、[`label_not_consistent`](#label_not_consistent)
 
@@ -587,6 +587,36 @@ plt.bar([-0.2, 0.8], [1, 2], width=0.4, label="first")
 plt.bar([0.2, 1.2], [3, 4], width=0.4, label="second")
 plt.xticks([0, 1], ["a", "b"])
 plt.legend()
+```
+
+</details>
+
+<a id="bar_width_varies"></a>
+
+### `bar_width_varies`: 系列ごとに同じ棒の幅
+
+3 本の棒の幅が異なるため、面積が値に従いません。値は 5 と 3 ですが、b の面積は a の 4 倍を超えます。
+
+| 不合格 | 合格 |
+|---|---|
+| ![不合格: 系列ごとに同じ棒の幅](gallery/bar-widths-vary.png) | ![合格: 系列ごとに同じ棒の幅](gallery/bar-widths-one-width.png) |
+
+依頼文: `Plot 3, 5, 4 for a, b, c`。
+
+<details><summary>プログラム</summary>
+
+不合格:
+
+```python
+import matplotlib.pyplot as plt
+plt.bar(["a", "b", "c"], [3, 5, 4], width=[0.3, 0.8, 0.5])
+```
+
+合格:
+
+```python
+import matplotlib.pyplot as plt
+plt.bar(["a", "b", "c"], [3, 5, 4], width=0.5)
 ```
 
 </details>

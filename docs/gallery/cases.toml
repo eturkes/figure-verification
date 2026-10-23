@@ -62,3 +62,12 @@ plt.plot([1, 4, 9], label="first")
 plt.plot([2, 3, 5], label="second")
 plt.legend()
 '''
+
+[[case]]
+id = "bar-widths-one-width"
+expect = "pass"
+request = "Plot 3, 5, 4 for a, b, c"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b", "c"], [3, 5, 4], width=0.5)
+'''

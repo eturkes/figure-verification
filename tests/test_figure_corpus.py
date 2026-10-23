@@ -84,6 +84,7 @@ _RULES = (
     "value_not_finite",
     "bar_not_from_zero",
     "bars_overlap",
+    "bar_width_varies",
     "x_not_ordered",
     "hist_counts",
     "pie_not_whole",

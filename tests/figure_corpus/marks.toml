@@ -544,6 +544,64 @@ table.plot(kind="bar")
 plt.ylim(8000, 16000)
 '''
 
+# Unequal widths within one bar series put a second quantity into the bar area, which no key
+# explains (user ruling, luna F6); a histogram's widths are its bin edges, which `hist_counts` reads.
+
+[[case]]
+id = "bar-widths-vary"
+expect = "bar_width_varies"
+site = 2
+request = "Plot 3, 5, 4 for a, b, c"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar(["a", "b", "c"], [3, 5, 4], width=[0.3, 0.8, 0.5])
+'''
+
+[[case]]
+id = "barh-heights-vary"
+expect = "bar_width_varies"
+site = 2
+request = "Plot 3, 5, 4 for a, b, c"
+program = '''
+import matplotlib.pyplot as plt
+plt.barh(["a", "b", "c"], [3, 5, 4], height=[0.3, 0.8, 0.5])
+'''
+
+[[case]]
+id = "bar-width-encodes-a-column"
+expect = "bar_width_varies"
+site = 5
+csv = "sales.csv"
+request = "Orders by region"
+program = '''
+import pandas as pd
+import matplotlib.pyplot as plt
+totals = pd.read_csv("{data}/sales.csv").groupby("region")[["orders", "revenue"]].sum()
+widths = 0.8 * totals["revenue"] / totals["revenue"].max()
+plt.bar(totals.index, totals["orders"], width=widths)
+'''
+
+[[case]]
+id = "bar-series-own-widths"
+expect = "pass"
+rule = "bar_width_varies"
+request = "Plot 3, 5 at 0, 1 and 4, 6 at 2, 3"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([0, 1], [3, 5], width=0.4)
+plt.bar([2, 3], [4, 6], width=0.2)
+'''
+
+[[case]]
+id = "hist-unequal-bins"
+expect = "pass"
+rule = "bar_width_varies"
+request = "Histogram of 1, 2, 2, 3, 7 over bins 0, 1, 2, 4, 8"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1, 2, 2, 3, 7], bins=[0, 1, 2, 4, 8])
+'''
+
 [[case]]
 id = "second-panel-truncated"
 expect = "zero_not_in_limits"
