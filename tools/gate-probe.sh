@@ -343,7 +343,7 @@ probe g17-stage-argument tests/test_gate.py::test_g17_ci_fans_out_every_stage_on
 
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \
-    chmod -x "$GATE"
+    chmod a-x "$GATE"
 
 probe g10-blanket-disable tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'not in _GATE.read_text' \
