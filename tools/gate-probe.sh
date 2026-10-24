@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G17, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G19, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc

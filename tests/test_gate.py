@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G18: static-config invariants of the one gate command.
+"""G6-G19: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
