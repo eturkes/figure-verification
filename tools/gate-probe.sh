@@ -354,6 +354,10 @@ probe g18-ci-collection-skip tests/test_gate.py::test_g18_a_collection_time_skip
     'a collection-time skip under CI passed the suite' \
     sed -i '/importorskip/{n;s/_collect(report)/pass/}' "$CONFTEST"
 
+probe g19-early-secrets tests/test_gate.py::test_g19_the_secret_scan_runs_beside_the_earlier_stages \
+    'the secret scan did not start beside the earlier stages' \
+    sed -i '/^    early secrets secret_scan$/d' "$GATE"
+
 probe g10-exec-bit tests/test_gate.py::test_g10_gate_script_is_executable_and_free_of_blanket_disables \
     'S_IXUSR' \
     chmod a-x "$GATE"

@@ -27,6 +27,8 @@ skipped=()
 selected=()
 unselected=()
 seen=()
+# Stages started early, in the background, beside the suites: name -> pid, name -> output file.
+declare -A early_pid=() early_log=()
 
 # Every run blocks the critical path, so each result line carries its wall-clock (`CLAUDE.md`
 # `Execution`). A stamp = EPOCHREALTIME in microseconds; stripping every non-digit drops the
@@ -49,24 +51,52 @@ member() {
     return 1
 }
 
+wanted() {
+    [ "${#selected[@]}" -eq 0 ] || member "$1" "${selected[@]}"
+}
+
 is_selected() {
     seen+=("$1")
-    if [ "${#selected[@]}" -eq 0 ] || member "$1" "${selected[@]}"; then
-        return 0
-    fi
+    wanted "$1" && return 0
     unselected+=("$1")
     return 1
 }
 
+# A stage that reads tracked files alone (no shared mutable state) can run beside the suites: the
+# single-threaded secret scan took 72.8 s of a 231.7 s idle-host run, all of it in series. It starts
+# here, in the background, and `stage` reports it in its usual place, its output and wall-clock its
+# own.
+early() {
+    local name="$1"
+    shift
+    wanted "$name" || return 0
+    early_log[$name]="$(mktemp)"
+    (
+        start="$(stamp)"
+        "$@"
+        rc=$?
+        printf '%s rc=%d %ss\n' "$name" "$rc" "$(elapsed "$start")"
+        exit "$rc"
+    ) >"${early_log[$name]}" 2>&1 &
+    early_pid[$name]=$!
+}
+
 stage() {
-    local name="$1" start
+    local name="$1" start rc
     is_selected "$name" || return 0
     start="$(stamp)"
     shift
     printf '\n=== %s ===\n' "$name"
-    "$@"
-    local rc=$?
-    printf '%s rc=%d %ss\n' "$name" "$rc" "$(elapsed "$start")"
+    if [ -n "${early_pid[$name]:-}" ]; then
+        wait "${early_pid[$name]}"
+        rc=$?
+        cat -- "${early_log[$name]}"
+        rm -f -- "${early_log[$name]}"
+    else
+        "$@"
+        rc=$?
+        printf '%s rc=%d %ss\n' "$name" "$rc" "$(elapsed "$start")"
+    fi
     if [ "$rc" -ne 0 ]; then
         failed+=("$name")
     fi
@@ -183,6 +213,8 @@ main() {
     local gate_start name
     gate_start="$(stamp)"
     selected=("$@")
+    trap 'rm -f -- "${early_log[@]}"' EXIT
+    early secrets secret_scan
     stage format format_check
     stage lint lint_check
     stage types type_check

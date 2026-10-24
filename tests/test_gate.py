@@ -498,3 +498,47 @@ def test_g18_a_collection_time_skip_under_ci_fails_the_suite(tmp_path: Path) -> 
         )
     outside = run(ci=False)
     assert outside.returncode == 0, outside.stdout
+
+
+def test_g19_the_secret_scan_runs_beside_the_earlier_stages(tmp_path: Path) -> None:
+    """G19: the single-threaded secret scan starts at the gate's start, in the background, and
+    reports in its own place, so a local run pays it beside the suites. Acceptance (fake `uv`): a
+    `format` stage that waits for the scan to start finishes (`format rc=0`), and `secrets rc=0`
+    prints once; a scan started in its usual place leaves `format` waiting until it fails."""
+    tools = {
+        name: shutil.which(name) for name in ("dirname", "git", "mktemp", "cat", "rm", "sleep")
+    }
+    shell = shutil.which("sh")
+    assert shell is not None and all(tools.values()), tools
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    for name, path in tools.items():
+        (bin_dir / name).symlink_to(cast("str", path))
+    mark = tmp_path / "scan-started"
+    fake = bin_dir / "uv"
+    fake.write_text(
+        f"#!{shell}\n"
+        'case "$*" in\n'
+        f'  *detect-secrets-hook*) : > "{mark}"; exit 0 ;;\n'
+        f'  *"ruff format"*) i=0; while [ ! -e "{mark}" ]; do i=$((i + 1));'
+        " [ $i -gt 50 ] && exit 9; sleep 0.1; done; exit 0 ;;\n"
+        "esac\nexit 64\n",
+        encoding="utf-8",
+    )
+    fake.chmod(0o700)
+    bash = shutil.which("bash")
+    assert bash is not None
+    run = subprocess.run(  # noqa: S603 - fixed argv
+        [bash, str(_GATE), "format", "secrets"],
+        env=_ci_env(ci=False, PATH=str(bin_dir)),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    lines = run.stdout.splitlines()
+    assert run.returncode == 0 and any(line.startswith("format rc=0 ") for line in lines), (
+        f"the secret scan did not start beside the earlier stages: {run.stdout}"
+    )
+    assert [line for line in lines if line.startswith("secrets rc=")] == [
+        next(line for line in lines if line.startswith("secrets rc=0 "))
+    ], run.stdout
