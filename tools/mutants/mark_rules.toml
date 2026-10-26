@@ -66,8 +66,8 @@ mutant = '''            colorbar = bool(colorbars)'''
 id = "m19-ink-scatter"
 predicate = "a scatter with no size or no ink is hidden"
 kills = "tests/test_figure_corpus.py::test_corpus_case[zero-size-scatter]"
-anchor = '''        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))'''
-mutant = '''        return False'''
+anchor = '''            not _point_ink(geometry, index) for index in range(len(geometry.offsets))'''
+mutant = '''            False for index in range(len(geometry.offsets))'''
 
 [[mutant]]
 id = "m19-hidden-panel"
@@ -115,8 +115,14 @@ mutant = '''            if False:'''
 id = "luna-f6-hist-exempt"
 predicate = "a histogram's bins may differ in width (luna F6)"
 kills = "tests/test_figure_corpus.py::test_corpus_case[hist-unequal-bins]"
-anchor = '''        if mark.family == "bar":'''
-mutant = '''        if mark.family in ("bar", "hist"):'''
+anchor = '''
+        if mark.family == "bar":
+            first, *rest = (bar.thickness for bar in bars(axes, mark))
+'''
+mutant = '''
+        if mark.family in ("bar", "hist"):
+            first, *rest = (bar.thickness for bar in bars(axes, mark))
+'''
 
 [[mutant]]
 id = "luna-f6-per-series"
@@ -131,3 +137,52 @@ predicate = "the width comparison is relative: widths below one unit still compa
 kills = "tests/test_figure_corpus.py::test_corpus_case[bar-widths-vary-small-units]"
 anchor = '''            if not all(math.isclose(other, first, rel_tol=_TOLERANCE) for other in rest):'''
 mutant = '''            if not all(math.isclose(other, first, rel_tol=_TOLERANCE, abs_tol=_TOLERANCE) for other in rest):'''
+
+[[mutant]]
+id = "cr-r269-one-point-stroke"
+predicate = "a stroke needs two points"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-one-point-line]"
+anchor = '''        or len(geometry.x) < _SEGMENT'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "cr-r269-markevery-ignored"
+predicate = "markers on a chosen subset of a strokeless line hide its other points"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-markevery-subset]"
+anchor = '''        return not _marker_ink(geometry) or geometry.markevery'''
+mutant = '''        return not _marker_ink(geometry)'''
+
+[[mutant]]
+id = "cr-r269-zero-thickness"
+predicate = "a bar of zero thickness shows no area"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-zero-width-bars]"
+anchor = '''                if bar.thickness == 0.0:'''
+mutant = '''                if False:'''
+
+[[mutant]]
+id = "cr-r269-segments-ignored"
+predicate = "a scatter whose marker path draws nothing shows no point"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-empty-scatter-marker]"
+anchor = '''        return geometry.marker_segments == 0 or any('''
+mutant = '''        return False or any('''
+
+[[mutant]]
+id = "cr-r269-dash-ignored"
+predicate = "dashes of no length draw no stroke"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-zero-dash-line]"
+anchor = '''        or geometry.dash_on == 0.0'''
+mutant = '''        or False'''
+
+[[mutant]]
+id = "cr-r269-edge-width-ignored"
+predicate = "a marker edge of no width draws nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hollow-marker-no-edge]"
+anchor = '''            and (_clear(geometry.marker_edge) or geometry.marker_edge_width == 0.0)'''
+mutant = '''            and _clear(geometry.marker_edge)'''
+
+[[mutant]]
+id = "cr-r269-filled-ignored"
+predicate = "an unfilled marker's face draws nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-unfilled-marker-no-edge]"
+anchor = '''            (not geometry.marker_filled or _clear(geometry.marker_face))'''
+mutant = '''            _clear(geometry.marker_face)'''

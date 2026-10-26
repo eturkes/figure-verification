@@ -74,7 +74,8 @@ def test_v2_a_subset_publishes_n_of_m() -> None:
 
 
 def test_v3_request_dates_and_positions() -> None:
-    dated = _PLT + "import datetime as dt\nplt.plot([dt.date(2026, 1, 1)], [5])\n"
+    # One point draws no stroke: its marker shows it (code review R269, `mark_hidden` without).
+    dated = _PLT + "import datetime as dt\nplt.plot([dt.date(2026, 1, 1)], [5], marker='o')\n"
     assert isinstance(_judge(dated, Sources(request="5 on 2026-01-01")), Passed)
     assert _judge(dated, Sources(request="5 on another day")) == Blocked("label_not_in_request", 3)
 

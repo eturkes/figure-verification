@@ -313,6 +313,11 @@ filled, one data set), pies (<code>pie</code>), areas (<code>fill_between</code>
 <td>every drawn coordinate lies in <code>get_view_interval()</code>; a panel with a NaN or infinite coordinate goes to the next check</td>
 <td><code>point_clipped</code></td>
 </tr>
+<tr>
+<td>no mark clipped by its own clip</td>
+<td>the artist's clip box sits on the axes box and it has no clip path, or its clipping is off</td>
+<td><code>point_clipped</code></td>
+</tr>
 </tbody>
 </table></div>
 <p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.md#check-axes">Full rules (online)</a> <a href="gallery.html#check-axes">Examples</a></p>
@@ -329,7 +334,12 @@ filled, one data set), pies (<code>pie</code>), areas (<code>fill_between</code>
 <tbody>
 <tr>
 <td>every mark and panel visible, with ink</td>
-<td>visibility, alpha, face and edge colors, line style and marker size of each artist</td>
+<td>visibility, alpha, face and edge colors, line style, dash lengths, point count, marker size, fill, edge width and shape of each artist; bar widths</td>
+<td><code>mark_hidden</code></td>
+</tr>
+<tr>
+<td>every point of a line shown</td>
+<td>a line that draws no stroke carries a marker at every point (no <code>markevery</code>)</td>
 <td><code>mark_hidden</code></td>
 </tr>
 <tr>

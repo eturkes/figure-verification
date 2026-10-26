@@ -128,7 +128,13 @@ def _check_ticks(axes: Axes, panel: Panel) -> None:
 
 
 def _check_clipping(axes: Axes, panel: Panel) -> None:
-    # matplotlib draws wedges unclipped: no limit hides a share.
+    # A clip box or path the program set on a mark hides the part of it outside, whatever the
+    # limits (reviewer-1 F2); matplotlib draws wedges unclipped, so they carry none.
+    for mark in panel.marks:
+        for index in mark.artists:
+            if axes.artists[index].clipped:
+                block("point_clipped", axes.artists[index].site)
+    # No limit hides a wedge's share either.
     found = [
         coordinate
         for mark in panel.marks

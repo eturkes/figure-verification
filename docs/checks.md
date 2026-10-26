@@ -115,6 +115,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 | zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom) | `0` lies in the value axis's `get_view_interval()` | `zero_not_in_limits` |
 | each visible tick label = the value at its position | each label in view, read as a category, a date or a number (with the formatter's order and offset), equals its tick position, within half a unit of its last digit | `tick_label_mismatch` |
 | every data point, bar end and reference mark inside the axis limits (pies exempt) | every drawn coordinate lies in `get_view_interval()`; a panel with a NaN or infinite coordinate goes to the next check | `point_clipped` |
+| no mark clipped by its own clip | the artist's clip box sits on the axes box and it has no clip path, or its clipping is off | `point_clipped` |
 
 [Full rules](verification.md#check-axes) [Examples](gallery.md#check-axes)
 
@@ -124,7 +125,8 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 
 | Rule | How | Code |
 |---|---|---|
-| every mark and panel visible, with ink | visibility, alpha, face and edge colors, line style and marker size of each artist | `mark_hidden` |
+| every mark and panel visible, with ink | visibility, alpha, face and edge colors, line style, dash lengths, point count, marker size, fill, edge width and shape of each artist; bar widths | `mark_hidden` |
+| every point of a line shown | a line that draws no stroke carries a marker at every point (no `markevery`) | `mark_hidden` |
 | every value finite; no point dropped | no NaN or infinity in the drawn data or the recorded call inputs; each band draws every point that its call received | `value_not_finite` |
 | bars from 0, or from the top of a stacked bar | each bar's base is 0, or exactly the far end of a bar at the same position and width | `bar_not_from_zero` |
 | no overlapping bars | no two bar rectangles intersect with an area above 0 | `bars_overlap` |

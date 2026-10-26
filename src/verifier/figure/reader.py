@@ -35,12 +35,14 @@ from typing import Any, cast
 
 PROGRAM = "<verified-figure>"
 TAG = "FIGURE_VERIFICATION_DESCRIPTION:"
-VERSION = "figure-description/1"
+VERSION = "figure-description/2"
 PNG_PREFIX = "data:image/png;base64,"
 MAX_AXES = 24
 MAX_CHILDREN = 2_000
 MAX_COORDINATES = 20_000
 MAX_TEXT = 1_000
+# Display pixels a clip box may sit inside the axes box by float error alone.
+_CLIP_SLACK = 1e-6
 MAX_DESCRIPTION_BYTES = 400_000
 MAX_PNG_CHARACTERS = 500_000
 _HOLDER = "_figure_verification_hooks"
@@ -578,6 +580,8 @@ def _transform(artist: Any, axes: Any) -> str:
 def _line(artist: Any, run: _Run) -> dict[str, Any]:
     xy = artist.get_xydata()
     run.spend(len(xy))
+    markers = importlib.import_module("matplotlib.markers")
+    _offset, dashes = artist._unscaled_dash_pattern  # (offset, on/off lengths | None = solid)
     return {
         "kind": "line",
         "x": [_number(x) for x, _ in xy],
@@ -590,6 +594,12 @@ def _line(artist: Any, run: _Run) -> dict[str, Any]:
         "markersize": _number(artist.get_markersize()),
         "marker_face": _rgba(artist.get_markerfacecolor()),
         "marker_edge": _rgba(artist.get_markeredgecolor()),
+        "marker_edge_width": _number(artist.get_markeredgewidth()),
+        "marker_filled": bool(
+            markers.MarkerStyle(artist.get_marker(), artist.get_fillstyle()).is_filled()
+        ),
+        "markevery": artist.get_markevery() is not None,
+        "dash_on": None if dashes is None else _number(sum(dashes[0::2])),
     }
 
 
@@ -652,7 +662,15 @@ def _scatter(artist: Any, run: _Run) -> dict[str, Any]:
         "linewidths": [_number(w) for w in artist.get_linewidths()],
         "array": None if array is None else _floats(array),
         "colorbar": getattr(artist, "colorbar", None) is not None,
+        "marker_segments": sum(_segments(path) for path in artist.get_paths()),
     }
+
+
+def _segments(path: Any) -> int:
+    """The path codes that draw (every code but a move or a stop): 0 = a marker with no ink."""
+    if path.codes is None:
+        return max(len(path.vertices) - 1, 0)
+    return sum(1 for code in path.codes if code not in (path.MOVETO, path.STOP))
 
 
 def _band_arrays(path: list[list[float]]) -> dict[str, Any] | None:
@@ -738,6 +756,23 @@ def _children(axes: Any) -> list[Any]:
     return [child for child in axes.get_children() if id(child) not in structural]
 
 
+def _clipped(artist: Any, axes: Any) -> bool:
+    """Whether the artist's own clip hides part of the axes: a clip path, or a clip box narrower
+    than the axes on any side (matplotlib's default box IS the axes box; a looser one hides
+    nothing the limits keep)."""
+    if not artist.get_clip_on():
+        return False
+    if artist.get_clip_path() is not None:
+        return True
+    box = artist.get_clip_box()
+    if box is None:
+        return False
+    x0, y0, x1, y1 = (float(value) for value in box.extents)
+    ax0, ay0, ax1, ay1 = (float(value) for value in axes.bbox.extents)
+    inside = (x0 - ax0, y0 - ay0, ax1 - x1, ay1 - y1)
+    return any(margin > _CLIP_SLACK for margin in inside)
+
+
 def _artist(artist: Any, axes: Any, run: _Run) -> dict[str, Any]:
     alpha = artist.get_alpha()
     return {
@@ -748,6 +783,7 @@ def _artist(artist: Any, axes: Any, run: _Run) -> dict[str, Any]:
         "alpha": None if alpha is None else _number(alpha),
         "label": _cut(str(artist.get_label())),
         "transform": _transform(artist, axes),
+        "clipped": _clipped(artist, axes),
         "geometry": _geometry(artist, run),
     }
 

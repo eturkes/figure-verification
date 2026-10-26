@@ -99,3 +99,160 @@ import matplotlib.pyplot as plt
 plt.plot([1, 2], [100001, 100002])
 plt.gca().yaxis.get_offset_text().set_alpha(0)
 '''
+
+# --- R268: a mark's own clip hides part of it -----------------------------------------------------
+
+[[case]]
+id = "cr-clip-box-line"
+expect = "point_clipped"
+site = 3
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
+line, = plt.plot([1, 2], [3, 4])
+line.set_clip_box(mtransforms.TransformedBbox(mtransforms.Bbox([[0, 0], [1.5, 5]]), plt.gca().transData))
+'''
+
+[[case]]
+id = "cr-clip-box-scatter"
+expect = "point_clipped"
+site = 3
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
+dots = plt.scatter([1, 2], [3, 4])
+dots.set_clip_box(mtransforms.TransformedBbox(mtransforms.Bbox([[0, 0], [1.5, 5]]), plt.gca().transData))
+'''
+
+[[case]]
+id = "cr-clip-path-circle"
+expect = "point_clipped"
+site = 2
+program = '''
+import matplotlib.pyplot as plt
+line, = plt.plot([1, 2], [3, 4])
+line.set_clip_path(plt.Circle((1, 3), 0.2, transform=plt.gca().transData))
+'''
+
+[[case]]
+id = "cr-clip-off"
+expect = "pass"
+rule = "point_clipped"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], clip_on=False)
+'''
+
+# --- R269: marks that draw no ink, or ink at some of their points ---------------------------------
+
+[[case]]
+id = "cr-one-point-line"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([123])
+'''
+
+[[case]]
+id = "cr-one-point-marked"
+expect = "pass"
+rule = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([123], marker='o')
+'''
+
+[[case]]
+id = "cr-markevery-subset"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle='none', marker='o', markevery=[0])
+'''
+
+[[case]]
+id = "cr-markevery-on-a-line"
+expect = "pass"
+rule = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], marker='o', markevery=[0])
+'''
+
+[[case]]
+id = "cr-hollow-marker-no-edge"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle='none', marker='o', markerfacecolor='none', markeredgewidth=0)
+'''
+
+[[case]]
+id = "cr-unfilled-marker-no-edge"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle='none', marker='x', markeredgewidth=0)
+'''
+
+[[case]]
+id = "cr-hollow-marker-edged"
+expect = "pass"
+rule = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle='none', marker='o', markerfacecolor='none')
+'''
+
+[[case]]
+id = "cr-zero-dash-line"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle=(0, (0, 1000)))
+'''
+
+[[case]]
+id = "cr-dashed-line"
+expect = "pass"
+rule = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [3, 4], linestyle='--')
+'''
+
+[[case]]
+id = "cr-zero-width-bars"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([1, 2], [10, 20], width=0)
+'''
+
+[[case]]
+id = "cr-empty-scatter-marker"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+plt.scatter([1, 2], [3, 4], marker='')
+'''
+
+[[case]]
+id = "cr-move-only-scatter-marker"
+expect = "mark_hidden"
+program = '''
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+plt.scatter([1, 2], [3, 4], marker=Path([[0, 0]], [Path.MOVETO]))
+'''
+
+[[case]]
+id = "cr-clip-box-off"
+expect = "pass"
+rule = "point_clipped"
+program = '''
+import matplotlib.pyplot as plt
+import matplotlib.transforms as mtransforms
+line, = plt.plot([1, 2], [3, 4], clip_on=False)
+line.set_clip_box(mtransforms.TransformedBbox(mtransforms.Bbox([[0, 0], [1.5, 5]]), plt.gca().transData))
+'''

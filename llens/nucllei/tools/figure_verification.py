@@ -428,7 +428,7 @@ from typing import Final, TypeAlias, TypeVar
 _T = TypeVar("_T")
 
 TAG: Final = "FIGURE_VERIFICATION_DESCRIPTION:"
-VERSION: Final = "figure-description/1"
+VERSION: Final = "figure-description/2"
 MAX_BYTES: Final = 400_000
 _NON_FINITE: Final = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}
 _ERROR_KINDS: Final = frozenset({"syntax", "exception", "draw"})
@@ -466,6 +466,10 @@ class LineGeometry:
     markersize: float
     marker_face: Color
     marker_edge: Color
+    marker_edge_width: float
+    marker_filled: bool
+    markevery: bool  # the program picked which points carry a marker
+    dash_on: float | None  # the dash pattern's total "on" length; None = a solid line
 
 
 @dataclass(frozen=True, slots=True)
@@ -510,6 +514,7 @@ class ScatterGeometry:
     linewidths: tuple[float, ...]
     array: tuple[float, ...] | None
     colorbar: bool
+    marker_segments: int  # the marker path's drawing codes; 0 = no point draws
 
 
 @dataclass(frozen=True, slots=True)
@@ -562,6 +567,7 @@ class Artist:
     alpha: float | None
     label: str
     transform: str
+    clipped: bool  # its own clip path or box hides part of the axes
     geometry: Geometry
 
 
@@ -798,6 +804,10 @@ def _line(item: dict[str, object]) -> LineGeometry:
             "markersize",
             "marker_face",
             "marker_edge",
+            "marker_edge_width",
+            "marker_filled",
+            "markevery",
+            "dash_on",
         ),
     )
     x, y = _tuple(item["x"], _float), _tuple(item["y"], _float)
@@ -814,6 +824,10 @@ def _line(item: dict[str, object]) -> LineGeometry:
         _float(item["markersize"]),
         _color(item["marker_face"]),
         _color(item["marker_edge"]),
+        _float(item["marker_edge_width"]),
+        _bool(item["marker_filled"]),
+        _bool(item["markevery"]),
+        _optional(item["dash_on"], _float),
     )
 
 
@@ -864,7 +878,17 @@ def _polygon(item: dict[str, object]) -> PolygonGeometry:
 def _scatter(item: dict[str, object]) -> ScatterGeometry:
     item = _object(
         item,
-        ("kind", "offsets", "sizes", "colors", "edges", "linewidths", "array", "colorbar"),
+        (
+            "kind",
+            "offsets",
+            "sizes",
+            "colors",
+            "edges",
+            "linewidths",
+            "array",
+            "colorbar",
+            "marker_segments",
+        ),
     )
     return ScatterGeometry(
         _tuple(item["offsets"], _pair),
@@ -874,6 +898,7 @@ def _scatter(item: dict[str, object]) -> ScatterGeometry:
         _tuple(item["linewidths"], _float),
         _optional(item["array"], lambda value: _tuple(value, _float)),
         _bool(item["colorbar"]),
+        _int(item["marker_segments"]),
     )
 
 
@@ -929,7 +954,8 @@ def _geometry(value: object) -> Geometry:
 
 def _artist(value: object) -> Artist:
     item = _object(
-        value, ("cls", "origin", "site", "visible", "alpha", "label", "transform", "geometry")
+        value,
+        ("cls", "origin", "site", "visible", "alpha", "label", "transform", "clipped", "geometry"),
     )
     return Artist(
         _str(item["cls"]),
@@ -939,6 +965,7 @@ def _artist(value: object) -> Artist:
         _optional(item["alpha"], _float),
         _str(item["label"]),
         _choice(item["transform"], _TRANSFORMS),
+        _bool(item["clipped"]),
         _geometry(item["geometry"]),
     )
 
@@ -1286,12 +1313,14 @@ from typing import Any, cast
 
 PROGRAM = "<verified-figure>"
 TAG = "FIGURE_VERIFICATION_DESCRIPTION:"
-VERSION = "figure-description/1"
+VERSION = "figure-description/2"
 PNG_PREFIX = "data:image/png;base64,"
 MAX_AXES = 24
 MAX_CHILDREN = 2_000
 MAX_COORDINATES = 20_000
 MAX_TEXT = 1_000
+# Display pixels a clip box may sit inside the axes box by float error alone.
+_CLIP_SLACK = 1e-6
 MAX_DESCRIPTION_BYTES = 400_000
 MAX_PNG_CHARACTERS = 500_000
 _HOLDER = "_figure_verification_hooks"
@@ -1829,6 +1858,8 @@ def _transform(artist: Any, axes: Any) -> str:
 def _line(artist: Any, run: _Run) -> dict[str, Any]:
     xy = artist.get_xydata()
     run.spend(len(xy))
+    markers = importlib.import_module("matplotlib.markers")
+    _offset, dashes = artist._unscaled_dash_pattern  # (offset, on/off lengths | None = solid)
     return {
         "kind": "line",
         "x": [_number(x) for x, _ in xy],
@@ -1841,6 +1872,12 @@ def _line(artist: Any, run: _Run) -> dict[str, Any]:
         "markersize": _number(artist.get_markersize()),
         "marker_face": _rgba(artist.get_markerfacecolor()),
         "marker_edge": _rgba(artist.get_markeredgecolor()),
+        "marker_edge_width": _number(artist.get_markeredgewidth()),
+        "marker_filled": bool(
+            markers.MarkerStyle(artist.get_marker(), artist.get_fillstyle()).is_filled()
+        ),
+        "markevery": artist.get_markevery() is not None,
+        "dash_on": None if dashes is None else _number(sum(dashes[0::2])),
     }
 
 
@@ -1903,7 +1940,15 @@ def _scatter(artist: Any, run: _Run) -> dict[str, Any]:
         "linewidths": [_number(w) for w in artist.get_linewidths()],
         "array": None if array is None else _floats(array),
         "colorbar": getattr(artist, "colorbar", None) is not None,
+        "marker_segments": sum(_segments(path) for path in artist.get_paths()),
     }
+
+
+def _segments(path: Any) -> int:
+    """The path codes that draw (every code but a move or a stop): 0 = a marker with no ink."""
+    if path.codes is None:
+        return max(len(path.vertices) - 1, 0)
+    return sum(1 for code in path.codes if code not in (path.MOVETO, path.STOP))
 
 
 def _band_arrays(path: list[list[float]]) -> dict[str, Any] | None:
@@ -1989,6 +2034,23 @@ def _children(axes: Any) -> list[Any]:
     return [child for child in axes.get_children() if id(child) not in structural]
 
 
+def _clipped(artist: Any, axes: Any) -> bool:
+    """Whether the artist's own clip hides part of the axes: a clip path, or a clip box narrower
+    than the axes on any side (matplotlib's default box IS the axes box; a looser one hides
+    nothing the limits keep)."""
+    if not artist.get_clip_on():
+        return False
+    if artist.get_clip_path() is not None:
+        return True
+    box = artist.get_clip_box()
+    if box is None:
+        return False
+    x0, y0, x1, y1 = (float(value) for value in box.extents)
+    ax0, ay0, ax1, ay1 = (float(value) for value in axes.bbox.extents)
+    inside = (x0 - ax0, y0 - ay0, ax1 - x1, ay1 - y1)
+    return any(margin > _CLIP_SLACK for margin in inside)
+
+
 def _artist(artist: Any, axes: Any, run: _Run) -> dict[str, Any]:
     alpha = artist.get_alpha()
     return {
@@ -1999,6 +2061,7 @@ def _artist(artist: Any, axes: Any, run: _Run) -> dict[str, Any]:
         "alpha": None if alpha is None else _number(alpha),
         "label": _cut(str(artist.get_label())),
         "transform": _transform(artist, axes),
+        "clipped": _clipped(artist, axes),
         "geometry": _geometry(artist, run),
     }
 
@@ -6496,7 +6559,13 @@ def _check_ticks(axes: Axes, panel: Panel) -> None:
 
 
 def _check_clipping(axes: Axes, panel: Panel) -> None:
-    # matplotlib draws wedges unclipped: no limit hides a share.
+    # A clip box or path the program set on a mark hides the part of it outside, whatever the
+    # limits (reviewer-1 F2); matplotlib draws wedges unclipped, so they carry none.
+    for mark in panel.marks:
+        for index in mark.artists:
+            if axes.artists[index].clipped:
+                block("point_clipped", axes.artists[index].site)
+    # No limit hides a wedge's share either.
     found = [
         coordinate
         for mark in panel.marks
@@ -6768,6 +6837,7 @@ def _record_values(axes: Axes, mark: Mark) -> list[float]:
 
 
 _NO_LINE: Final = frozenset({"None", "none", "", " "})
+_SEGMENT: Final = 2  # points a stroke needs
 
 
 def _clear(rgba: tuple[float, ...] | None) -> bool:
@@ -6791,20 +6861,41 @@ def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
     )
 
 
+def _line_ink(geometry: LineGeometry) -> bool:
+    """A line draws a stroke: a style, a width, a colour, two points, and dashes with ink."""
+    return not (
+        geometry.linestyle in _NO_LINE
+        or geometry.linewidth == 0.0
+        or _clear(geometry.color)
+        or len(geometry.x) < _SEGMENT
+        or geometry.dash_on == 0.0
+    )
+
+
+def _marker_ink(geometry: LineGeometry) -> bool:
+    """A line's markers draw: a marker of some size, its face (a filled marker) or its edge."""
+    return not (
+        geometry.marker in _NO_LINE
+        or geometry.markersize == 0.0
+        or (
+            (not geometry.marker_filled or _clear(geometry.marker_face))
+            and (_clear(geometry.marker_edge) or geometry.marker_edge_width == 0.0)
+        )
+    )
+
+
 def _no_ink(geometry: Geometry) -> bool:
-    """The artist's final styling draws nothing: transparent, no line and no marker, zero size."""
+    """The artist's final styling draws nothing (or, a line, leaves points unshown): transparent,
+    no stroke and no marker, zero size, an empty marker path; markers on a chosen subset of a line
+    that draws no stroke hide the rest of its points (reviewer-1 F3, reviewer-2 F3)."""
     if isinstance(geometry, LineGeometry):
-        line = not (
-            geometry.linestyle in _NO_LINE or geometry.linewidth == 0.0 or _clear(geometry.color)
-        )
-        marker = not (
-            geometry.marker in _NO_LINE
-            or geometry.markersize == 0.0
-            or (_clear(geometry.marker_face) and _clear(geometry.marker_edge))
-        )
-        return not line and not marker
+        if _line_ink(geometry):
+            return False
+        return not _marker_ink(geometry) or geometry.markevery
     if isinstance(geometry, ScatterGeometry):
-        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))
+        return geometry.marker_segments == 0 or any(
+            not _point_ink(geometry, index) for index in range(len(geometry.offsets))
+        )
     patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
     return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
 
@@ -6818,6 +6909,10 @@ def _check_drawn(axes: Axes, panel: Panel) -> None:
             artist = axes.artists[index]
             if not artist.visible or artist.alpha == 0.0 or _no_ink(artist.geometry):
                 block("mark_hidden", artist.site)
+        if mark.family == "bar":  # a bar of zero thickness shows no area (reviewer-2 F3)
+            for bar in bars(axes, mark):
+                if bar.thickness == 0.0:
+                    block("mark_hidden", axes.artists[bar.index].site)
     for mark in panel.marks:
         values = [value for _, value, _ in coordinates(axes, mark)] + _record_values(axes, mark)
         geometry = axes.artists[mark.artists[0]].geometry

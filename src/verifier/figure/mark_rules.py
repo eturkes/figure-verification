@@ -51,6 +51,7 @@ def _record_values(axes: Axes, mark: Mark) -> list[float]:
 
 
 _NO_LINE: Final = frozenset({"None", "none", "", " "})
+_SEGMENT: Final = 2  # points a stroke needs
 
 
 def _clear(rgba: tuple[float, ...] | None) -> bool:
@@ -74,20 +75,41 @@ def _point_ink(geometry: ScatterGeometry, index: int) -> bool:
     )
 
 
+def _line_ink(geometry: LineGeometry) -> bool:
+    """A line draws a stroke: a style, a width, a colour, two points, and dashes with ink."""
+    return not (
+        geometry.linestyle in _NO_LINE
+        or geometry.linewidth == 0.0
+        or _clear(geometry.color)
+        or len(geometry.x) < _SEGMENT
+        or geometry.dash_on == 0.0
+    )
+
+
+def _marker_ink(geometry: LineGeometry) -> bool:
+    """A line's markers draw: a marker of some size, its face (a filled marker) or its edge."""
+    return not (
+        geometry.marker in _NO_LINE
+        or geometry.markersize == 0.0
+        or (
+            (not geometry.marker_filled or _clear(geometry.marker_face))
+            and (_clear(geometry.marker_edge) or geometry.marker_edge_width == 0.0)
+        )
+    )
+
+
 def _no_ink(geometry: Geometry) -> bool:
-    """The artist's final styling draws nothing: transparent, no line and no marker, zero size."""
+    """The artist's final styling draws nothing (or, a line, leaves points unshown): transparent,
+    no stroke and no marker, zero size, an empty marker path; markers on a chosen subset of a line
+    that draws no stroke hide the rest of its points (reviewer-1 F3, reviewer-2 F3)."""
     if isinstance(geometry, LineGeometry):
-        line = not (
-            geometry.linestyle in _NO_LINE or geometry.linewidth == 0.0 or _clear(geometry.color)
-        )
-        marker = not (
-            geometry.marker in _NO_LINE
-            or geometry.markersize == 0.0
-            or (_clear(geometry.marker_face) and _clear(geometry.marker_edge))
-        )
-        return not line and not marker
+        if _line_ink(geometry):
+            return False
+        return not _marker_ink(geometry) or geometry.markevery
     if isinstance(geometry, ScatterGeometry):
-        return any(not _point_ink(geometry, index) for index in range(len(geometry.offsets)))
+        return geometry.marker_segments == 0 or any(
+            not _point_ink(geometry, index) for index in range(len(geometry.offsets))
+        )
     patch = cast("RectGeometry | WedgeGeometry | PolygonGeometry | BandGeometry", geometry)
     return _clear(patch.color) and (_clear(patch.edge) or patch.linewidth == 0.0)
 
@@ -101,6 +123,10 @@ def _check_drawn(axes: Axes, panel: Panel) -> None:
             artist = axes.artists[index]
             if not artist.visible or artist.alpha == 0.0 or _no_ink(artist.geometry):
                 block("mark_hidden", artist.site)
+        if mark.family == "bar":  # a bar of zero thickness shows no area (reviewer-2 F3)
+            for bar in bars(axes, mark):
+                if bar.thickness == 0.0:
+                    block("mark_hidden", axes.artists[bar.index].site)
     for mark in panel.marks:
         values = [value for _, value, _ in coordinates(axes, mark)] + _record_values(axes, mark)
         geometry = axes.artists[mark.artists[0]].geometry

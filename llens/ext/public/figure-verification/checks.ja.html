@@ -312,6 +312,11 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 <td>描画したすべての座標が <code>get_view_interval()</code> の中にある。NaN または無限大の座標があるパネルは次のチェックに回す</td>
 <td><code>point_clipped</code></td>
 </tr>
+<tr>
+<td>部品が自分のクリップで隠れない</td>
+<td>描画要素のクリップの矩形が軸の矩形と同じでクリップのパスがない、またはクリップが無効</td>
+<td><code>point_clipped</code></td>
+</tr>
 </tbody>
 </table></div>
 <p><a href="https://github.com/eturkes/figure-verification/blob/main/docs/verification.ja.md#check-axes">詳細 (オンライン)</a> <a href="gallery.ja.html#check-axes">例</a></p>
@@ -328,7 +333,12 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 <tbody>
 <tr>
 <td>すべての部品とパネルが表示され、見える</td>
-<td>各描画要素の表示状態、アルファ、塗りと線の色、線の種類、マーカーの大きさ</td>
+<td>各描画要素の表示状態、アルファ、塗りと線の色、線の種類、破線の長さ、点の数、マーカーの大きさ、塗り、縁の幅、形、棒の幅</td>
+<td><code>mark_hidden</code></td>
+</tr>
+<tr>
+<td>折れ線のすべての点を表示</td>
+<td>線を描かない折れ線は、すべての点にマーカーがある (<code>markevery</code> なし)</td>
 <td><code>mark_hidden</code></td>
 </tr>
 <tr>

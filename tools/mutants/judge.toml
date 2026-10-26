@@ -138,3 +138,10 @@ predicate = "an unlabelled numeric key axis inverted reverses its scale"
 kills = "tests/test_figure_corpus.py::test_corpus_case[inverted-numeric-key-axis]"
 anchor = '''    return axis.kind == "category" or (keys and axis.kind == "numeric" and labelled(axis))'''
 mutant = '''    return axis.kind == "category" or (keys and axis.kind == "numeric")'''
+
+[[mutant]]
+id = "cr-r268-clip-ignored"
+predicate = "a mark its own clip hides blocks point_clipped"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-clip-box-line]"
+anchor = '''            if axes.artists[index].clipped:'''
+mutant = '''            if False:'''

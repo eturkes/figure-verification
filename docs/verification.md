@@ -283,10 +283,12 @@ Each axis must show the data honestly:
 - **Zero on value axes of bars, histograms and areas.** The value axis of these charts includes
   zero, so a bar's length shows its value. Line and scatter charts can zoom to their data.
 - **True tick labels.** Each visible tick label shows the value at its position. A category axis
-  shows its categories. A date axis shows its dates.
+  shows its categories. A date axis shows its dates. When the program hides the offset text of an
+  axis (such as `1e5`), each tick label must show its value without that offset.
 - **No data point outside the limits.** Every drawn point, bar end and reference line lies inside
   the axis limits. A panel with a missing value, such as the first point of a rolling mean, fails
-  the next check instead, because matplotlib sets the limits without that point.
+  the next check instead, because matplotlib sets the limits without that point. A chart part must
+  not hide part of itself with a clip box or a clip path that the program sets on it.
 
 | Reason | Meaning |
 |---|---|
@@ -295,7 +297,7 @@ Each axis must show the data honestly:
 | `axis_inverted` | An axis is inverted. |
 | `zero_not_in_limits` | The value axis of a bar, histogram or area chart does not include zero. |
 | `tick_label_mismatch` | A tick label does not show the value at its position. |
-| `point_clipped` | A data point is outside the axis limits. |
+| `point_clipped` | A data point is outside the axis limits, or a chart part hides part of itself with its own clip. |
 
 <a id="check-marks"></a>
 
@@ -304,7 +306,10 @@ Each axis must show the data honestly:
 Each chart part must show its values honestly:
 
 - **Visible values.** Every chart part and panel is visible, and no drawn value is missing or
-  infinite. A point that a chart part received but does not show stops the figure.
+  infinite. A point that a chart part received but does not show stops the figure. A line with one
+  point and no marker, a line with dashes of no length, a bar of no width, an empty marker shape
+  and a marker with no fill and no edge show nothing. Markers on only some points of a line that
+  draws no line leave the other points unshown.
 - **Bars from zero.** Each bar starts at zero, or on top of another bar in a stack.
 - **No overlapping bars.** Grouped bars stand side by side.
 - **One width per bar series.** The bars of one series have the same width, so the area of a
@@ -318,7 +323,8 @@ Each chart part must show its values honestly:
   legend or a color bar. A size legend can also use keys that the program draws as scatters with
   no point, such as `ax.scatter([], [], s=80, label="80")`. Each key must have a size that the
   chart draws, and its label must give that size as a number. The legend must draw its size keys
-  at the size of the points: a legend with a `markerscale` other than 1 stops the figure.
+  at the size of the points: a legend with a `markerscale` other than 1 stops the figure. A
+  legend, a legend entry or a color bar explains only while it shows.
 - **True legends.** Each legend entry names a series of the chart. With two or more series in a
   panel that has a legend, the legend names every series. A legend key without ink that the
   program adds to the panel (seaborn adds one for each `hue` value) names the one series of its

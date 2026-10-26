@@ -524,3 +524,84 @@ predicate = "a fully transparent artist does not show"
 kills = "tests/test_figure_corpus.py::test_corpus_case[cr-transparent-offset-text]"
 anchor = '''    return bool(artist.get_visible()) and (alpha is None or alpha > 0)'''
 mutant = '''    return bool(artist.get_visible())'''
+
+[[mutant]]
+id = "cr-r268-clip-path-unread"
+predicate = "a clip path the program set hides part of its mark"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-clip-path-circle]"
+anchor = '''
+    if artist.get_clip_path() is not None:
+        return True
+'''
+mutant = '''
+    if False:
+        return True
+'''
+
+[[mutant]]
+id = "cr-r268-clip-box-unread"
+predicate = "a clip box narrower than the axes hides part of its mark"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-clip-box-line]"
+anchor = '''    return any(margin > _CLIP_SLACK for margin in inside)'''
+mutant = '''    return False'''
+
+[[mutant]]
+id = "cr-r268-clip-off-ignored"
+predicate = "a mark drawn with clipping off hides nothing, whatever its clip box"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-clip-box-off]"
+anchor = '''
+    if not artist.get_clip_on():
+        return False
+'''
+mutant = '''
+    if False:
+        return False
+'''
+
+[[mutant]]
+id = "cr-r269-markevery-unread"
+predicate = "a line's chosen marker subset is reported"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-markevery-subset]"
+anchor = '''        "markevery": artist.get_markevery() is not None,'''
+mutant = '''        "markevery": False,'''
+
+[[mutant]]
+id = "cr-r269-edge-width-unread"
+predicate = "a marker's edge width is reported"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hollow-marker-no-edge]"
+anchor = '''        "marker_edge_width": _number(artist.get_markeredgewidth()),'''
+mutant = '''        "marker_edge_width": 1.0,'''
+
+[[mutant]]
+id = "cr-r269-filled-unread"
+predicate = "whether a marker fills is reported"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-unfilled-marker-no-edge]"
+anchor = '''
+        "marker_filled": bool(
+            markers.MarkerStyle(artist.get_marker(), artist.get_fillstyle()).is_filled()
+        ),
+'''
+mutant = '''
+        "marker_filled": True,
+'''
+
+[[mutant]]
+id = "cr-r269-dash-unread"
+predicate = "a line's dash pattern is reported"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-zero-dash-line]"
+anchor = '''        "dash_on": None if dashes is None else _number(sum(dashes[0::2])),'''
+mutant = '''        "dash_on": None,'''
+
+[[mutant]]
+id = "cr-r269-segments-unread"
+predicate = "a scatter marker path's drawing codes are reported"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-empty-scatter-marker]"
+anchor = '''        "marker_segments": sum(_segments(path) for path in artist.get_paths()),'''
+mutant = '''        "marker_segments": 1,'''
+
+[[mutant]]
+id = "cr-r269-move-counted"
+predicate = "a move draws nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-move-only-scatter-marker]"
+anchor = '''    return sum(1 for code in path.codes if code not in (path.MOVETO, path.STOP))'''
+mutant = '''    return len(path.codes)'''

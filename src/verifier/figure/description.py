@@ -16,7 +16,7 @@ from typing import Final, TypeAlias, TypeVar
 _T = TypeVar("_T")
 
 TAG: Final = "FIGURE_VERIFICATION_DESCRIPTION:"
-VERSION: Final = "figure-description/1"
+VERSION: Final = "figure-description/2"
 MAX_BYTES: Final = 400_000
 _NON_FINITE: Final = {"nan": math.nan, "inf": math.inf, "-inf": -math.inf}
 _ERROR_KINDS: Final = frozenset({"syntax", "exception", "draw"})
@@ -54,6 +54,10 @@ class LineGeometry:
     markersize: float
     marker_face: Color
     marker_edge: Color
+    marker_edge_width: float
+    marker_filled: bool
+    markevery: bool  # the program picked which points carry a marker
+    dash_on: float | None  # the dash pattern's total "on" length; None = a solid line
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +102,7 @@ class ScatterGeometry:
     linewidths: tuple[float, ...]
     array: tuple[float, ...] | None
     colorbar: bool
+    marker_segments: int  # the marker path's drawing codes; 0 = no point draws
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +155,7 @@ class Artist:
     alpha: float | None
     label: str
     transform: str
+    clipped: bool  # its own clip path or box hides part of the axes
     geometry: Geometry
 
 
@@ -386,6 +392,10 @@ def _line(item: dict[str, object]) -> LineGeometry:
             "markersize",
             "marker_face",
             "marker_edge",
+            "marker_edge_width",
+            "marker_filled",
+            "markevery",
+            "dash_on",
         ),
     )
     x, y = _tuple(item["x"], _float), _tuple(item["y"], _float)
@@ -402,6 +412,10 @@ def _line(item: dict[str, object]) -> LineGeometry:
         _float(item["markersize"]),
         _color(item["marker_face"]),
         _color(item["marker_edge"]),
+        _float(item["marker_edge_width"]),
+        _bool(item["marker_filled"]),
+        _bool(item["markevery"]),
+        _optional(item["dash_on"], _float),
     )
 
 
@@ -452,7 +466,17 @@ def _polygon(item: dict[str, object]) -> PolygonGeometry:
 def _scatter(item: dict[str, object]) -> ScatterGeometry:
     item = _object(
         item,
-        ("kind", "offsets", "sizes", "colors", "edges", "linewidths", "array", "colorbar"),
+        (
+            "kind",
+            "offsets",
+            "sizes",
+            "colors",
+            "edges",
+            "linewidths",
+            "array",
+            "colorbar",
+            "marker_segments",
+        ),
     )
     return ScatterGeometry(
         _tuple(item["offsets"], _pair),
@@ -462,6 +486,7 @@ def _scatter(item: dict[str, object]) -> ScatterGeometry:
         _tuple(item["linewidths"], _float),
         _optional(item["array"], lambda value: _tuple(value, _float)),
         _bool(item["colorbar"]),
+        _int(item["marker_segments"]),
     )
 
 
@@ -517,7 +542,8 @@ def _geometry(value: object) -> Geometry:
 
 def _artist(value: object) -> Artist:
     item = _object(
-        value, ("cls", "origin", "site", "visible", "alpha", "label", "transform", "geometry")
+        value,
+        ("cls", "origin", "site", "visible", "alpha", "label", "transform", "clipped", "geometry"),
     )
     return Artist(
         _str(item["cls"]),
@@ -527,6 +553,7 @@ def _artist(value: object) -> Artist:
         _optional(item["alpha"], _float),
         _str(item["label"]),
         _choice(item["transform"], _TRANSFORMS),
+        _bool(item["clipped"]),
         _geometry(item["geometry"]),
     )
 
