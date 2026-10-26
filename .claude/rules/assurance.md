@@ -4,7 +4,7 @@ paths:
   - "webui/launch.sh"
 ---
 
-# Assurance law — test design + process (earned across M1–M12)
+# Assurance law — test design + process
 
 Test design:
 - 100% branch coverage answers "did the line execute", never "does a red exist": it misses data-domain gaps, lookup-table entries, a line's EFFECT, and each conjunct of a compound guard. Coverage scope is package-NAME based ⇒ a test loading a MUTATED module copy registers it under a name OUTSIDE `verifier`. Pin EVERY applied fix by its own mutation, keyword flips included; the pin is a test reaching a DIFFERENT verdict under the mutant. MAIN's rerun: `-x --no-cov`, require nonzero rc, restore bytes + verify sha256 in a `finally`; a message-only mutation is NOT a predicate mutation — neuter the condition; where twin blocks make a whole-file anchor ambiguous, anchor on the enclosing function; clear `src/**/__pycache__` after a same-size mutate/restore (CPython invalidates on mtime+size, so a same-size restore reuses the MUTANT code object).
