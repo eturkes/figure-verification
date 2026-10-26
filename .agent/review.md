@@ -160,6 +160,80 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R259 | M23.1 | L-SEC | F3 (low): the live nucllei harness served its private stack on every interface with signup on, and kept its admin login at the umask. | closed | `62c2838`: loopback serve + `ENABLE_SIGNUP=false` + `stack.json` 0600; `tests/test_measurement_exposure.py`; CodeQL alert 2 = the user's. |
 | R260 | M23.1 | L-SEC | F4 (informational): the model backend + stub share F2's request-origin class with no credential behind them. | register | Queued in `.agent/deferred.md`. |
 | R261 | M23.1 | L-SEC | Register U1 + U2 (upstream, outside the contract): the nucllei sandbox's `/exec` imports write follows links; nucllei's frontend lock pins markdown-it 14.3.0 (quadratic-parse advisories). | register | Reported to the user; no repo action (the tool sends no `imports`; its own text cannot reach the inline-HTML parse, NR). |
+| R262 | CR | L-CORR | rev6 F1 (minor, publish-before-finalize): accept (internal-fault path only: note thread submit / rewrite after `files` emit ⇒ FAIL text beside a published PNG; nucllei's publish already builds first) | accepted | red rerun rc1 (test_1) |
+| R263 | CR | L-HARD | rev6 F2 (minor, test-infra fidelity): accept | accepted | red rerun rc1 (test_2) |
+| R264 | CR | L-CLAIM | rev6 F3 (minor, stale claim): accept: sandbox.py:5 `which raises before the program runs (A5)` = 0.10.2 behaviour | accepted | anchor (rev6) |
+| R265 | CR | L-HARD | rev6 F4 (minor, test-infra fidelity): accept: fake `file_id=` vs real `id` | accepted | red rerun rc1 (test_4) |
+| R266 | CR | L-CORR | rev6 F5 (minor, dead code): accept: `paste_in_support.invoke_tool` no caller, wrong signature | accepted | red rerun rc1 (test_5) |
+| R267 | CR | L-CORR | rev1 F1 + rev2 F6 (major, invisible explanation): accept: hidden legend / hidden entry labels / hidden colorbar still explain size+colour channels | accepted | red rerun rc1 (r1 test_1: 3 failed) |
+| R268 | CR | L-CORR | rev1 F2 (major, dropped data unread): accept: artist clip box/path hides received points; reader reports no clip facts | accepted | red rerun rc1 (r1 test_2: 2 failed) |
+| R269 | CR | L-CORR | rev1 F3 + rev2 F3 (major, no-ink): accept: markevery subset, edge width 0 hollow marker, empty marker path, zero dash, one-point unmarked line, width-0 bars, scatter marker '' pass | accepted | red rerun rc1 (r1 test_3 4 failed; r2 test_1 no-ink params failed) |
+| R270 | CR | L-CORR | rev1 F4 (major, invisible explanation): accept: hidden ScalarFormatter offset text, judge applies offset anyway | accepted | red rerun rc1 (r1 test_4: 2 failed) |
+| R271 | CR | L-CORR | rev1 F5 (minor, decoder closure): accept: calls-map slot keys unchecked | accepted | red rerun rc1 (r1 test_5: 3 failed) |
+| R272 | CR | L-CORR | rev1 F6 (major, date facts): accept: `_date` ignores converter tz ⇒ honest tz-aware chart blocks value_not_found | accepted | red rerun rc1 (r1 test_6: 2 failed) |
+| R273 | CR | L-CLAIM | rev1 register (minor, stale claim): accept: reader.py:83-84 names 3.8 sandbox / 3.9 host | accepted | anchor pending |
+| R274 | CR | L-CORR | rev2 F1 (minor, geometry tolerance): accept: bars_overlap tolerance scales with absolute key ⇒ translated overlapping bars pass (1e12 keys: rare) | accepted | red rerun rc1 (r2 test_1 translate params) |
+| R275 | CR | L-CORR | rev2 F2 (major, legend naming): accept: one mark named differently by two legends passes (names merged across legends) | accepted | red rerun rc1 (r2 test_1 legend params) |
+| R276 | CR | L-CORR | rev4 F1 (major, CSV profile divergence): accept: one-column unquoted whitespace-only record / first line kept vs pandas skip ⇒ fabricated count group VERIFIED | accepted | red rerun rc1 (r4 test_1: 4 failed) |
+| R277 | CR | L-CLAIM | rev4 F2 (minor, stale claim): accept: aggregate.py:12 + aggregate.toml:9 `Kahan matches on 0 of 16,062` (= mismatches) | accepted | anchor rc0 |
+| R278 | CR | L-CLAIM | rev4 F3 (minor, stale claim): accept: csvread.py:32 + table.py:9 NA spellings "refuse" (keys kept as text) | accepted | anchor rc0 |
+| R279 | CR | L-CLAIM | rev4 F4 (minor, stale claim): accept: limits.py:18 `before its groups exist` | accepted | anchor rc0 |
+| R280 | CR | L-CLAIM | rev4 register (minor, stale claim): accept: retired static-path vocabulary in anchoring.py:12, aggregate.py:7, test_pysrc_anchoring.py:202,215, test_pysrc_labels.py:4-6 | accepted | anchor pending |
+| R281 | CR | L-CORR | rev5 F1 (minor, publish-before-finalize): accept: note_line swallows a renderer fault ⇒ pass without the model's note (Intent: pass shows the note); stale "a failed reply builds it" | accepted | red rerun rc1 (r5 test_1) |
+| R282 | CR | L-HARD | rev5 F2 (minor, co-derived oracle): accept: CHART_SENT expectation read from production (test_paste_in_tool.py:62,94,119; test_paste_in_aliases.py:161,167; test_paste_in_request_text.py:227) | accepted | red rerun rc1 (r5 test_2) |
+| R283 | CR | L-HARD | rev5 F3 (minor, dead check): accept: test_guidance_claim_boundary encodes the retired schema-admission claim (retire = gate change, record firing) | accepted | anchor rc0 |
+| R284 | CR | L-CLAIM | rev7 F1 (minor, overclaim (UI)): accept: checks.py:276-277 columns explanation (EN+JA, nucllei) claims every named column drawn + every summary word refused | accepted | anchor rc0 |
+| R285 | CR | L-CORR | rev7 F2 (minor, excerpt widening): accept: else/finally headers dropped from listings | accepted | red rerun rc1 (r7 test_2: 3 failed) |
+| R286 | CR | L-CORR | rev7 F3 (major, sfnt closed dispatch): accept: loca format ∉{0,1} read as short ⇒ empty glyph cut, no whole-font fallback | accepted | red rerun rc1 (r7 test_3: 2 failed) |
+| R287 | CR | L-CORR | rev8 F1 (minor, attachment resolution (ALT)): accept: spec_overrides advertises every same-name ref, `_owned` keeps the last ⇒ stale header shown to the model | accepted | red rerun rc1 (r8 test_1) |
+| R288 | CR | L-CORR | rev8 F2 (minor, generation check fidelity): accept: `--check` compares read_text ⇒ a CR-only drift passes | accepted | red rerun rc1 (r8 test_2) |
+| R289 | CR | L-CORR | rev8 F3 (minor, generator closure): accept: an admitted `import a.b` first-party form generates but the loader binds no child on its parent | accepted | red rerun rc1 (r8 test_3) |
+| R290 | CR | L-CLAIM | rev8 F4 (minor, stale claim): accept: bundle.py:354 `Its one network call` (N writes + 1 exec); test_paste_in_bundle.py:9 core = pysrc; test_nucllei_tool.py:661 `always stay` | accepted | anchors rc0 |
+| R291 | CR | L-CORR | rev3 F1 (minor, value attribution): accept: unexplained reason read from one max candidate's coverage ⇒ `label_not_in_request` named for a point another candidate backs | accepted | red rerun rc1 (r3 test_1) |
+| R292 | CR | L-CORR | rev3 F2 (major, value matching): accept: slot-first greedy + count-only order choice spends the keyed row on a typed slot ⇒ honest mixed-source chart blocks | accepted | red rerun rc1 (r3 test_2) |
+| R293 | CR | L-CORR | rev3 F3 (major, value matching): accept (rev3 said blocker; major: needs duplicate (key, value) rows): colour + size channels bind to different rows of one point | accepted | red rerun rc1 (r3 test_3) |
+| R294 | CR | L-CORR | rev3 F4 (major, reference reduction): accept: whole-column sum/mean = group Kahan bits; pandas `Series.sum` is pairwise ⇒ honest `axhline(df.c.sum())` blocks | accepted | red rerun rc1 (r3 test_4) |
+| R295 | CR | L-CLAIM | rev3 F5 (minor, stale claim): accept: test_figure_values.py:224 `3.9 … (host), 3.8 … (sandbox)` | accepted | anchor (rev3) |
+| R296 | CR | L-CLAIM | rev3 F6 (minor, stale claim): accept: request.py:5 `a letter or digit right before it` (ASCII only) | accepted | anchor + probe (rev3) |
+| R297 | CR | L-CORR | rev3 register (—, —): reject: `pie([2,3], labels=['Alpha',''])` — a blank label = no key (figure.md § Values), and a keyless point of a keyed series is explained by no source (CSV: `_canon_key` = ∅); an unlabelled wedge beside labelled ones names no category ⇒ the block is the law; reason text = label_not_in_request is apt (the wedge's label is not in the request) | rejected | r3 test_5 red = current law |
+| R298 | CR | L-LAW | rev14 F1 (minor, LAW wiring): accept: no tracked-symlink liveness check | accepted | census (rev14) |
+| R299 | CR | L-LAW | rev14 F2 (minor, LAW provenance): accept: live rules carry origin stories (assurance.md:7 `(earned across M1–M12)`, ops.md `a narrowed run once shipped 3 errors`) | accepted | anchors |
+| R300 | CR | L-LAW | rev14 F3 (minor, LAW wiring): accept: no portability (machine path) check over live surfaces | accepted | census |
+| R301 | CR | L-LAW | rev14 F4 (minor, LAW wiring + dead glob): accept: no rules-frontmatter validator; figure.md glob `**/.agent/contracts/m19*.md` matches 0 tracked files | accepted | census |
+| R302 | CR | L-LAW | rev14 F5 (minor, LAW wiring): accept: no `@` import-target check | accepted | census |
+| R303 | CR | L-LAW | rev14 F6 (minor, LAW wiring): accept: suite argv (`-n auto`, `--durations=10`) + per-stage timing unpinned | accepted | read |
+| R304 | CR | L-LAW | rev14 F7 (minor, LAW wiring): accept: default Hypothesis profile (derandomized `ci`) unpinned | accepted | read |
+| R305 | CR | L-LAW | rev14 F8 (minor, LAW wiring): accept: demo CSVs' key columns never checked against NA spellings | accepted | read |
+| R306 | CR | L-LAW | rev14 F9 (minor, LAW wiring): accept: gate-probe restore lifecycle has no gate test | accepted | read |
+| R307 | CR | L-LAW | rev14 F10 (minor, LAW claim + wiring): accept: human-facing.md `lines + borders ≥ 4.7:1` false for cluster borders (1.606, 1.615); palette unchecked | accepted | red rerun rc1 (r14 test_contrast) |
+| R308 | CR | L-LAW | rev14 F11 (minor, LAW wiring): accept: fast-gate contract untested | accepted | read |
+| R309 | CR | L-HARD | rev2 F4 (minor, coverage inventory): accept: `csv_too_large` + `work_budget_exceeded` in no corpus case and outside `_RUN + _RULES + _SOURCE_FAULTS` ⇒ the reason partition is not pinned whole | accepted | red rerun rc1 (r2 test_3: 2 failed) |
+| R310 | CR | L-CORR | rev2 F5 (major, geometry tolerance): accept: tick tolerance floor `1e-12 * max(1, abs(position))` ⇒ `0.000…0` labels at 1e-13/2e-13 pass | accepted | red rerun rc1 (r2 test_2) |
+| R311 | CR | L-CORR | rev2 F7 (major, colorbar axes rules): accept: numeric colorbar inversion passes; colorbar ticks judged before parts finish (wrong stage); colorbar tick site ignores axis calls | accepted | red rerun rc1 (r2 test_5: 3 failed) |
+| R312 | CR | L-CLAIM | rev2 F8 (minor, stale claim): accept: parts.py:102 + shapes.py:74 `3.8 (the sandbox)`; test_figure_judge.py:4,128 | accepted | anchors rc0 |
+| R313 | CR | L-HARD | rev10 F1 (minor, S8 detection): accept: class decorator + class `pytestmark` skips unseen | accepted | red rerun rc1 (r10 test_1) |
+| R314 | CR | L-HARD | rev10 F2 (minor, CI skip guard): accept: tracker = spelling, never an open Tasks row; G18 control names absent **M1.1** | accepted | red rerun rc1 (r10 test_1) |
+| R315 | CR | L-CORR | rev10 F3 (minor, probe restore): accept: `cleanup` prints RESTORE FAILED, exit stays 0 | accepted | red rerun rc1 (r10 test_2) |
+| R316 | CR | L-CORR | rev10 F4 (minor, template flaw): template: spec-lint line 31 `^(Phase: )?` admits the retired prefix (S9 rejects it) ⇒ name to user + deferred row, no in-repo fix | open | red rerun rc1 (r10 test_3) |
+| R317 | CR | L-CLAIM | rev10 F5 (minor, stale claim): accept: pyproject.toml:122 `never imported by`, :154 `dev-only DuckDB oracle`; webui/runtime/pyproject.toml:4 `nothing in the gate imports it` | accepted | anchors rc0 |
+| R318 | CR | L-HARD | rev10 F6 (minor, catalogue selector check): accept: test_mutation_catalogues strips `[param]` ⇒ a stale parameter id stays green (202/775 selectors parametrized) | accepted | red rerun rc1 (r10 test_4) |
+| R319 | CR | L-CLAIM | rev10 register (minor, stale claim): accept: .gitignore:36-39 comments name retired harnesses (`python -m demo`); B5 "38" (ledger) → 39 | accepted | read |
+| R320 | CR | L-CLAIM | rev13 F1 (minor, Intent wording): needs user ruling: Intent S24 `its one network call is the host's own sandbox request` vs nucllei = one `/files/write` per attachment + one `/exec` (behavior correct) | open | red rerun (r13 C1) |
+| R321 | CR | L-CLAIM | rev13 F2 (minor, Intent wording): needs user ruling: Intent S12 `the request must name the drawn columns` vs strict trigger (a request naming/negating ≥1 header column) | open | red rerun (r13 C1) |
+| R322 | CR | L-CLAIM | rev13 F3 (minor, Intent + Decision wording): needs user ruling: S19 + D21(9) `prompts that ask for a misleading chart block` vs Q78 corrections that pass with a note (nucllei live 7/7 corrected) | open | red rerun (r13 C1) |
+| R323 | CR | L-CORR | rev13 F4 (minor, spec pin): accept: S14 no-inference has no direct pin ⇒ add an import-closure + repeatability check over the judge core | accepted | read |
+| R324 | CR | L-CORR | rev13 F5 (minor, Decision vs code): needs user ruling: D21(6) `listed under "Show checks"` vs code listing chart text in the reply's interpretation (embed lacks it) | open | red rerun (r13 C2) |
+| R325 | CR | L-CLAIM | rev12 F1 (minor, doc overclaim): accept: verifier-nucllei{,.ja}.dot:52 fail node `+ any note` / `あれば注記` (a block shows no note) | accepted | anchors rc0 |
+| R326 | CR | L-CLAIM | rev12 F2 (minor, doc overclaim): accept: checks{,.ja}.md:66 `imports only numpy, pandas, matplotlib, seaborn` = an allowlist no code enforces | accepted | anchors rc0 |
+| R327 | CR | L-CLAIM | rev12 F3 (minor, doc overclaim): accept: checks{,.ja}.md:112 transform row omits reference marks' blended transform (nucllei copies inherit) | accepted | anchors rc0 |
+| R328 | CR | L-CLAIM | rev12 F4 (minor, stale claim): accept: measurements README:6 `All 28 table IDs` (29) | accepted | anchor rc0 |
+| R329 | CR | L-CLAIM | rev12 F5 (minor, doc + law overclaim): accept: category uniqueness stated for every series; scatter exempt by pinned design (`m19-scatter-duplicates`) ⇒ qualify verification{,.ja}.md, checks{,.ja}.md + figure.md | accepted | anchors rc0 |
+| R330 | CR | L-CLAIM | rev9 F1 (minor, stale claim): accept: model_backend/__init__.py:9 py3.12; app.py:4,10, engine.py:74, models.py:12,71, smoke.py:13 retired JSON-spec client; test_model_backend_runtime.py:4 `stay red until MAIN implements`; test_model_backend.py:1050 dead summarize fixtures + :152 mask claim; webui/__init__.py:5 tool server; settings.py:83 banned-stem; bootstrap.py:141 omits model_note default; model_stub.py:4 three services | accepted | anchors rc0 (rev9 table) |
+| R331 | CR | L-CORR | rev9 F2 (major, launcher teardown): accept: `free_port` backstop `fuser -k` after the ownership snapshot ⇒ a listener that bound after our groups died is signalled (Queue ruling 4) | accepted | red rerun rc1 (r9 test_2) |
+| R332 | CR | L-CORR | rev9 F3 (minor, provenance report): accept: smoke `_accelerator_report` names `current_device()` for `cuda:1` | accepted | red rerun rc1 (r9 test_3) |
+| R333 | CR | L-CORR | rev9 F4 (minor, snapshot report): accept: a pinned file turned unreadable dir = mismatched AND unreadable (sets claimed disjoint) | accepted | red rerun rc1 (r9 test_4) |
+| R334 | CR | L-CORR | MAIN B10 (minor, generated artifact currency): accept: tests/fonts/NotoSansJP-subset.ttf lacks 55 characters its generator keeps today (`every other character in the tracked test inputs` claim false); no currency check | accepted | regen diff (B10) |
+| R335 | CR | L-CORR | MAIN B19 (minor, CLI argv): accept: `python -m model_backend --help` serves; render_gallery/render_diagrams `--help` regenerate; generate_paste_in `--help` rc 2 | accepted | run (B19) |
 
 ## Code review — check set (MAINTAIN code-review request)
 
@@ -183,203 +257,203 @@ Groups: G1 reader · G2 judge structure + corpus · G3 values · G4 anchoring + 
 
 | id | `Artifacts` entry | run | verdict | evidence |
 |---|---|---|---|---|
-| B1 | Gate | `bash tools/gate.sh` — CI fan-out on the check-set commit | pending | — |
-| B2 | Gate positive controls | `bash tools/gate-probe.sh` | pending | — |
-| B3 | Fast gate | `bash tools/fast-gate.sh <node>` | pending | — |
+| B1 | Gate | `bash tools/gate.sh` — CI fan-out on the check-set commit | pass | CI run 40275306471 (`ci/code-review` @ 07f04e3): 10/10 stage jobs rc 0 — format 0.2 · lint 0.2 · types 14.1 · tests 67.0 (2855 passed) · tests311 90.8 (2855 passed) · audit 3.4 · secrets 35.9 · workflows 0.3 · spec 0.0 · shell 0.8 s; `skipped:` none; pytest SKIPPED 0 (control: 10 `not selected:` lines) |
+| B2 | Gate positive controls | `bash tools/gate-probe.sh` | pass | nixbox pool run on 07f04e3: `probe rc=0 178s` |
+| B3 | Fast gate | `bash tools/fast-gate.sh <node>` | pass | `bash tools/fast-gate.sh tests/test_figure_inert.py` rc 0 17.2 s (27 passed; skipped: tests311 audit secrets coverage, as designed) |
 | B4 | Mutation-tool credit | `uv run --locked python tools/mutation_credit.py <tests/…::node>` (one node) | pending | — |
-| B5 | Mutation catalogues | `uv run --locked python tools/mutate.py tools/mutants/<module>.toml`, all 38 | pending | — |
-| B6 | Paste-in + nucllei generation | `uv run --locked python tools/generate_paste_in.py --check` (`paste-in/`, `webui/demo-paste-in/`, `llens/nucllei/`) | pending | — |
-| B7 | nucllei guide HTML | `uv run --locked python tools/render_nucllei_guide.py --check` | pending | — |
-| B8 | Diagrams | `uv run --locked python tools/render_diagrams.py` → committed SVG bytes | pending | — |
-| B9 | Gallery | `uv run --locked python tools/render_gallery.py` → committed pages + PNGs | pending | — |
-| B10 | Test fonts | `uv run --locked python tools/subset_test_font.py` (TTF + `--cff`) → committed bytes | pending | — |
+| B5 | Mutation catalogues | `uv run --locked python tools/mutate.py tools/mutants/<module>.toml`, all 39 | pending | — |
+| B6 | Paste-in + nucllei generation | `uv run --locked python tools/generate_paste_in.py --check` (`paste-in/`, `webui/demo-paste-in/`, `llens/nucllei/`) | pass | `6 artifact(s) current` rc 0 |
+| B7 | nucllei guide HTML | `uv run --locked python tools/render_nucllei_guide.py --check` | pass | `--check` rc 0 |
+| B8 | Diagrams | `uv run --locked python tools/render_diagrams.py` → committed SVG bytes | pass | re-render in a clean worktree @ 07f04e3: 4 SVGs written, `git status --porcelain` empty |
+| B9 | Gallery | `uv run --locked python tools/render_gallery.py` → committed pages + PNGs | pass | re-render in the same worktree: 57 images + 2 pages written, porcelain empty |
+| B10 | Test fonts | `uv run --locked python tools/subset_test_font.py` (TTF + `--cff`) → committed bytes | R334 | TTF regen (Noto Sans JP 2.004-H2) keeps 779 characters vs 724 committed (55 tracked characters missing; shared 724 glyph outlines + advances identical); CFF regen byte-identical |
 | B11 | NS (nucllei sandbox corpus) | `uv run --locked python .agent/measurements/ns_sandbox.py` | pending | — |
 | B12 | nucllei live | `uv run --locked python .agent/measurements/nucllei_live.py <llens checkout> <out> [arm …]` | pending | — |
 | B13 | Measurement replay | `uv run --locked python .agent/measurements/rerun_all.py` | pending | — |
 | B14 | Demo stub | `webui/launch.sh --stub` + `node .agent/measurements/m10u3_demo.mjs …` per banner arm | pending | — |
 | B15 | Demo real model | `webui/launch.sh` (MX150) + one banner arm | pending | — |
 | B16 | Demo codex | `webui/launch.sh --codex` + one banner arm | pending | — |
-| B17 | Model backend | `.venv-model/bin/python -m model_backend` (:8001) + one request | pending | — |
-| B18 | CodeQL | `.github/workflows/codeql.yml` result on `main` | pending | — |
-| B19 | CLI help | every `ArgumentParser` entry point `--help`: rc 0 | pending | — |
+| B17 | Model backend | `.venv-model/bin/python -m model_backend` (:8001) + one request | pass | backend served :8001 (started by the B19 `--help` call): `/v1/models` 200, one chat completion 10 tokens `finish_reason: stop` 3 s; stopped by PID, port refuses (curl rc 7) |
+| B18 | CodeQL | `.github/workflows/codeql.yml` result on `main` | pass | CodeQL run 40274426695 success on `main` 13cb23c; open code-scanning alerts 0 |
+| B19 | CLI help | every `ArgumentParser` entry point `--help`: rc 0 | R335 | argparse entries rc 0 (`-m webui`, mutate, mutation_credit, render_nucllei_guide, `model_backend.snapshot`); `-m model_backend --help` loads weights + serves; `render_gallery.py --help` + `render_diagrams.py --help` run + write tracked files; `generate_paste_in.py --help` rc 2 |
 
 ### Modules
 
 | id | group | path | CORR | CLEAN | ALT | CLAIM | HARD | SPEC |
 |---|---|---|---|---|---|---|---|---|
-| M1 | G1 | `src/verifier/figure/reader.py` | pending | pending | pending | pending | pending | pending |
-| M2 | G1 | `src/verifier/figure/description.py` | pending | pending | pending | pending | pending | pending |
-| M3 | G1 | `tests/test_figure_reader.py` | pending | pending | pending | pending | pending | pending |
-| M4 | G1 | `tests/test_figure_description.py` | pending | pending | pending | pending | pending | pending |
-| M5 | G2 | `src/verifier/figure/judge.py` | pending | pending | pending | pending | pending | pending |
-| M6 | G2 | `src/verifier/figure/parts.py` | pending | pending | pending | pending | pending | pending |
-| M7 | G2 | `src/verifier/figure/shapes.py` | pending | pending | pending | pending | pending | pending |
-| M8 | G2 | `src/verifier/figure/axes_rules.py` | pending | pending | pending | pending | pending | pending |
-| M9 | G2 | `src/verifier/figure/ticks.py` | pending | pending | pending | pending | pending | pending |
-| M10 | G2 | `src/verifier/figure/mark_rules.py` | pending | pending | pending | pending | pending | pending |
-| M11 | G2 | `src/verifier/figure/legends.py` | pending | pending | pending | pending | pending | pending |
-| M12 | G2 | `src/verifier/figure/series.py` | pending | pending | pending | pending | pending | pending |
-| M13 | G2 | `src/verifier/figure/keys.py` | pending | pending | pending | pending | pending | pending |
-| M14 | G2 | `src/verifier/figure/reasons.py` | pending | pending | pending | pending | pending | pending |
-| M15 | G2 | `src/verifier/figure/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M16 | G2 | `src/verifier/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M17 | G2 | `tests/test_figure_judge.py` | pending | pending | pending | pending | pending | pending |
-| M18 | G2 | `tests/test_figure_corpus.py` | pending | pending | pending | pending | pending | pending |
-| M19 | G2 | `tests/test_figure_coverage.py` | pending | pending | pending | pending | pending | pending |
-| M20 | G2 | `tests/figure_corpus/*` | pending | pending | pending | pending | pending | pending |
-| M21 | G3 | `src/verifier/figure/explain.py` | pending | pending | pending | pending | pending | pending |
-| M22 | G3 | `src/verifier/figure/computed.py` | pending | pending | pending | pending | pending | pending |
-| M23 | G3 | `src/verifier/figure/sources.py` | pending | pending | pending | pending | pending | pending |
-| M24 | G3 | `src/verifier/figure/request.py` | pending | pending | pending | pending | pending | pending |
-| M25 | G3 | `tests/test_figure_values.py` | pending | pending | pending | pending | pending | pending |
-| M26 | G3 | `tests/test_figure_computed.py` | pending | pending | pending | pending | pending | pending |
-| M27 | G4 | `src/verifier/figure/anchoring.py` | pending | pending | pending | pending | pending | pending |
-| M28 | G4 | `src/verifier/figure/columns.py` | pending | pending | pending | pending | pending | pending |
-| M29 | G4 | `src/verifier/pysrc/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M30 | G4 | `src/verifier/pysrc/aggregate.py` | pending | pending | pending | pending | pending | pending |
-| M31 | G4 | `src/verifier/pysrc/budget.py` | pending | pending | pending | pending | pending | pending |
-| M32 | G4 | `src/verifier/pysrc/csvread.py` | pending | pending | pending | pending | pending | pending |
-| M33 | G4 | `src/verifier/pysrc/errors.py` | pending | pending | pending | pending | pending | pending |
-| M34 | G4 | `src/verifier/pysrc/limits.py` | pending | pending | pending | pending | pending | pending |
-| M35 | G4 | `src/verifier/pysrc/table.py` | pending | pending | pending | pending | pending | pending |
-| M36 | G4 | `tests/anchoring_support.py` | pending | pending | pending | pending | pending | pending |
-| M37 | G4 | `tests/test_pysrc_aggregate.py` | pending | pending | pending | pending | pending | pending |
-| M38 | G4 | `tests/test_pysrc_anchoring.py` | pending | pending | pending | pending | pending | pending |
-| M39 | G4 | `tests/test_pysrc_anchoring_aliases.py` | pending | pending | pending | pending | pending | pending |
-| M40 | G4 | `tests/test_pysrc_anchoring_short.py` | pending | pending | pending | pending | pending | pending |
-| M41 | G4 | `tests/test_pysrc_anchoring_strict.py` | pending | pending | pending | pending | pending | pending |
-| M42 | G4 | `tests/test_pysrc_anchoring_suffix.py` | pending | pending | pending | pending | pending | pending |
-| M43 | G4 | `tests/test_pysrc_budget.py` | pending | pending | pending | pending | pending | pending |
-| M44 | G4 | `tests/test_pysrc_csv.py` | pending | pending | pending | pending | pending | pending |
-| M45 | G4 | `tests/test_pysrc_labels.py` | pending | pending | pending | pending | pending | pending |
-| M46 | G5 | `src/verifier/figure/interpret.py` | pending | pending | pending | pending | pending | pending |
-| M47 | G5 | `src/verifier/figure/inert.py` | pending | pending | pending | pending | pending | pending |
-| M48 | G5 | `webui/paste_in/reply.py` | pending | pending | pending | pending | pending | pending |
-| M49 | G5 | `webui/paste_in/reasons.py` | pending | pending | pending | pending | pending | pending |
-| M50 | G5 | `webui/paste_in/verdicts.py` | pending | pending | pending | pending | pending | pending |
-| M51 | G5 | `webui/paste_in/templates.py` | pending | pending | pending | pending | pending | pending |
-| M52 | G5 | `webui/paste_in/tool.py` | pending | pending | pending | pending | pending | pending |
-| M53 | G5 | `webui/paste_in/aliases.py` | pending | pending | pending | pending | pending | pending |
-| M54 | G5 | `webui/paste_in/receipt.py` | pending | pending | pending | pending | pending | pending |
-| M55 | G5 | `webui/paste_in/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M56 | G5 | `tests/test_figure_inert.py` | pending | pending | pending | pending | pending | pending |
-| M57 | G5 | `tests/test_paste_in_reasons.py` | pending | pending | pending | pending | pending | pending |
-| M58 | G5 | `tests/test_paste_in_receipt.py` | pending | pending | pending | pending | pending | pending |
-| M59 | G5 | `tests/test_paste_in_templates.py` | pending | pending | pending | pending | pending | pending |
-| M60 | G5 | `tests/test_paste_in_texts.py` | pending | pending | pending | pending | pending | pending |
-| M61 | G5 | `tests/test_paste_in_tool.py` | pending | pending | pending | pending | pending | pending |
-| M62 | G5 | `tests/test_paste_in_aliases.py` | pending | pending | pending | pending | pending | pending |
-| M63 | G5 | `tests/test_paste_in_note.py` | pending | pending | pending | pending | pending | pending |
-| M64 | G5 | `tests/test_guidance_claim_boundary.py` | pending | pending | pending | pending | pending | pending |
-| M65 | G6 | `webui/paste_in/filter.py` | pending | pending | pending | pending | pending | pending |
-| M66 | G6 | `webui/paste_in/owui_files.py` | pending | pending | pending | pending | pending | pending |
-| M67 | G6 | `webui/paste_in/sandbox.py` | pending | pending | pending | pending | pending | pending |
-| M68 | G6 | `webui/paste_in/fonts.py` | pending | pending | pending | pending | pending | pending |
-| M69 | G6 | `webui/paste_in/reader_text.py` | pending | pending | pending | pending | pending | pending |
-| M70 | G6 | `webui/paste_in/demo_filter.py` | pending | pending | pending | pending | pending | pending |
-| M71 | G6 | `webui/paste_in/demo_tool.py` | pending | pending | pending | pending | pending | pending |
-| M72 | G6 | `tests/paste_in_support.py` | pending | pending | pending | pending | pending | pending |
-| M73 | G6 | `tests/outlet_support.py` | pending | pending | pending | pending | pending | pending |
-| M74 | G6 | `tests/test_paste_in_outlet.py` | pending | pending | pending | pending | pending | pending |
-| M75 | G6 | `tests/test_paste_in_inlet.py` | pending | pending | pending | pending | pending | pending |
-| M76 | G6 | `tests/test_paste_in_request_text.py` | pending | pending | pending | pending | pending | pending |
-| M77 | G6 | `tests/test_paste_in_sandbox.py` | pending | pending | pending | pending | pending | pending |
-| M78 | G6 | `tests/test_paste_in_font.py` | pending | pending | pending | pending | pending | pending |
-| M79 | G6 | `tests/test_paste_in_filter_edges.py` | pending | pending | pending | pending | pending | pending |
-| M80 | G6 | `tests/test_paste_in_owui_files.py` | pending | pending | pending | pending | pending | pending |
-| M81 | G6 | `tests/test_paste_in_demo_pair.py` | pending | pending | pending | pending | pending | pending |
-| M82 | G6 | `tests/test_paste_in_filter_packaging.py` | pending | pending | pending | pending | pending | pending |
-| M83 | G7 | `webui/paste_in/checks.py` | pending | pending | pending | pending | pending | pending |
-| M84 | G7 | `webui/paste_in/excerpts.py` | pending | pending | pending | pending | pending | pending |
-| M85 | G7 | `webui/paste_in/sfnt.py` | pending | pending | pending | pending | pending | pending |
-| M86 | G7 | `tests/test_paste_in_checks.py` | pending | pending | pending | pending | pending | pending |
-| M87 | G7 | `tests/test_paste_in_embed.py` | pending | pending | pending | pending | pending | pending |
-| M88 | G7 | `tests/test_paste_in_excerpts.py` | pending | pending | pending | pending | pending | pending |
-| M89 | G7 | `tests/test_paste_in_sfnt.py` | pending | pending | pending | pending | pending | pending |
-| M90 | G7 | `tests/fonts/*` | pending | pending | pending | pending | pending | pending |
-| M91 | G8 | `nucllei_skill/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M92 | G8 | `nucllei_skill/checks.py` | pending | pending | pending | pending | pending | pending |
-| M93 | G8 | `nucllei_skill/host.py` | pending | pending | pending | pending | pending | pending |
-| M94 | G8 | `nucllei_skill/reasons.py` | pending | pending | pending | pending | pending | pending |
-| M95 | G8 | `nucllei_skill/run.py` | pending | pending | pending | pending | pending | pending |
-| M96 | G8 | `nucllei_skill/skill.py` | pending | pending | pending | pending | pending | pending |
-| M97 | G8 | `nucllei_skill/texts.py` | pending | pending | pending | pending | pending | pending |
-| M98 | G8 | `nucllei_skill/tool.py` | pending | pending | pending | pending | pending | pending |
-| M99 | G8 | `webui/paste_in/bundle.py` | pending | pending | pending | pending | pending | pending |
-| M100 | G8 | `tools/generate_paste_in.py` | pending | pending | pending | pending | pending | pending |
-| M101 | G8 | `tools/render_nucllei_guide.py` | pending | pending | pending | pending | pending | pending |
-| M102 | G8 | `tests/nucllei_support.py` | pending | pending | pending | pending | pending | pending |
-| M103 | G8 | `tests/test_nucllei_artifacts.py` | pending | pending | pending | pending | pending | pending |
-| M104 | G8 | `tests/test_nucllei_checks.py` | pending | pending | pending | pending | pending | pending |
-| M105 | G8 | `tests/test_nucllei_docs.py` | pending | pending | pending | pending | pending | pending |
-| M106 | G8 | `tests/test_nucllei_tool.py` | pending | pending | pending | pending | pending | pending |
-| M107 | G8 | `tests/test_paste_in_bundle.py` | pending | pending | pending | pending | pending | pending |
-| M108 | G9 | `webui/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M109 | G9 | `webui/__main__.py` | pending | pending | pending | pending | pending | pending |
-| M110 | G9 | `webui/banner.py` | pending | pending | pending | pending | pending | pending |
-| M111 | G9 | `webui/banner.json` | pending | pending | pending | pending | pending | pending |
-| M112 | G9 | `webui/bootstrap.py` | pending | pending | pending | pending | pending | pending |
-| M113 | G9 | `webui/client.py` | pending | pending | pending | pending | pending | pending |
-| M114 | G9 | `webui/settings.py` | pending | pending | pending | pending | pending | pending |
-| M115 | G9 | `webui/model_stub.py` | pending | pending | pending | pending | pending | pending |
-| M116 | G9 | `webui/codex_bridge.py` | pending | pending | pending | pending | pending | pending |
-| M117 | G9 | `webui/launch.sh` | pending | pending | pending | pending | pending | pending |
-| M118 | G9 | `model_backend/__init__.py` | pending | pending | pending | pending | pending | pending |
-| M119 | G9 | `model_backend/__main__.py` | pending | pending | pending | pending | pending | pending |
-| M120 | G9 | `model_backend/adapter.py` | pending | pending | pending | pending | pending | pending |
-| M121 | G9 | `model_backend/app.py` | pending | pending | pending | pending | pending | pending |
-| M122 | G9 | `model_backend/engine.py` | pending | pending | pending | pending | pending | pending |
-| M123 | G9 | `model_backend/models.py` | pending | pending | pending | pending | pending | pending |
-| M124 | G9 | `model_backend/origin.py` | pending | pending | pending | pending | pending | pending |
-| M125 | G9 | `model_backend/runtime/pyproject.toml` | pending | pending | pending | pending | pending | pending |
-| M126 | G9 | `model_backend/settings.py` | pending | pending | pending | pending | pending | pending |
-| M127 | G9 | `model_backend/smoke.py` | pending | pending | pending | pending | pending | pending |
-| M128 | G9 | `model_backend/snapshot.py` | pending | pending | pending | pending | pending | pending |
-| M129 | G9 | `model_backend/runtime/snapshot.json` | pending | pending | pending | pending | pending | pending |
-| M130 | G9 | `tests/test_webui_banner_prompts.py` | pending | pending | pending | pending | pending | pending |
-| M131 | G9 | `tests/test_webui_cli.py` | pending | pending | pending | pending | pending | pending |
-| M132 | G9 | `tests/test_webui_client.py` | pending | pending | pending | pending | pending | pending |
-| M133 | G9 | `tests/test_webui_codex_bridge.py` | pending | pending | pending | pending | pending | pending |
-| M134 | G9 | `tests/test_webui_launch.py` | pending | pending | pending | pending | pending | pending |
-| M135 | G9 | `tests/test_webui_model_stub.py` | pending | pending | pending | pending | pending | pending |
-| M136 | G9 | `tests/test_webui_python_exposure.py` | pending | pending | pending | pending | pending | pending |
-| M137 | G9 | `tests/test_webui_settings.py` | pending | pending | pending | pending | pending | pending |
-| M138 | G9 | `tests/test_model_backend_adapter.py` | pending | pending | pending | pending | pending | pending |
-| M139 | G9 | `tests/test_model_backend_adapter_internal.py` | pending | pending | pending | pending | pending | pending |
-| M140 | G9 | `tests/test_model_backend_runtime.py` | pending | pending | pending | pending | pending | pending |
-| M141 | G9 | `tests/test_model_backend.py` | pending | pending | pending | pending | pending | pending |
-| M142 | G10 | `tools/gate.sh` | pending | pending | pending | pending | pending | pending |
-| M143 | G10 | `tools/fast-gate.sh` | pending | pending | pending | pending | pending | pending |
-| M144 | G10 | `tools/gate-probe.sh` | pending | pending | pending | pending | pending | pending |
-| M145 | G10 | `tools/mutate.py` | pending | pending | pending | pending | pending | pending |
-| M146 | G10 | `tools/mutation_credit.py` | pending | pending | pending | pending | pending | pending |
-| M147 | G10 | `tools/render_diagrams.py` | pending | pending | pending | pending | pending | pending |
-| M148 | G10 | `tools/render_gallery.py` | pending | pending | pending | pending | pending | pending |
-| M149 | G10 | `tools/subset_test_font.py` | pending | pending | pending | pending | pending | pending |
-| M150 | G10 | `tools/mutants/*` | pending | pending | pending | pending | pending | pending |
-| M151 | G10 | `tools/py311/pyproject.toml` | pending | pending | pending | pending | pending | pending |
-| M152 | G10 | `webui/runtime/pyproject.toml` | pending | pending | pending | pending | pending | pending |
-| M153 | G10 | `pyproject.toml` | pending | pending | pending | pending | pending | pending |
-| M154 | G10 | `.python-version` | pending | pending | pending | pending | pending | pending |
-| M155 | G10 | `.gitignore` | pending | pending | pending | pending | pending | pending |
-| M156 | G10 | `.env.example` | pending | pending | pending | pending | pending | pending |
-| M157 | G10 | `.github/dependabot.yml` | pending | pending | pending | pending | pending | pending |
-| M158 | G10 | `.github/workflows/codeql.yml` | pending | pending | pending | pending | pending | pending |
-| M159 | G10 | `.github/workflows/gate.yml` | pending | pending | pending | pending | pending | pending |
-| M160 | G10 | `tests/conftest.py` | pending | pending | pending | pending | pending | pending |
-| M161 | G10 | `tests/test_gate.py` | pending | pending | pending | pending | pending | pending |
-| M162 | G10 | `tests/test_spec.py` | pending | pending | pending | pending | pending | pending |
-| M163 | G10 | `tests/test_symbol_citations.py` | pending | pending | pending | pending | pending | pending |
-| M164 | G10 | `tests/test_mutation_catalogues.py` | pending | pending | pending | pending | pending | pending |
-| M165 | G10 | `tests/test_measurement_exposure.py` | pending | pending | pending | pending | pending | pending |
-| M166 | G10 | `tests/test_readme_register.py` | pending | pending | pending | pending | pending | pending |
-| M167 | G10 | `tests/test_verification_docs.py` | pending | pending | pending | pending | pending | pending |
-| M168 | G10 | `tests/test_admin_docs.py` | pending | pending | pending | pending | pending | pending |
-| M169 | G10 | `tests/test_gallery.py` | pending | pending | pending | pending | pending | pending |
-| M170 | G10 | `.agent/spec-lint` | pending | pending | pending | pending | pending | pending |
-| M171 | G10 | `.secrets.baseline` | pending | pending | pending | pending | pending | pending |
-| M172 | G10 | `docs/gallery/entries.toml` | pending | pending | pending | pending | pending | pending |
-| M173 | G10 | `docs/gallery/cases.toml` | pending | pending | pending | pending | pending | pending |
+| M1 | G1 | `src/verifier/figure/reader.py` | R267 R268 R269 R270 R272 | pass | pass | R267 R268 R269 R270 R272 R273 | pass | R267 R268 R269 R270 R272 |
+| M2 | G1 | `src/verifier/figure/description.py` | R271 | pass | pass | R271 | pass | R271 |
+| M3 | G1 | `tests/test_figure_reader.py` | pass | pass | pass | pass | pass | pass |
+| M4 | G1 | `tests/test_figure_description.py` | pass | pass | pass | pass | pass | pass |
+| M5 | G2 | `src/verifier/figure/judge.py` | R267 R311 | pass | R267 R311 | R267 R311 | R267 R311 | R267 R311 |
+| M6 | G2 | `src/verifier/figure/parts.py` | R311 | pass | R311 | R311 R312 | R311 | R311 |
+| M7 | G2 | `src/verifier/figure/shapes.py` | pass | pass | pass | R312 | pass | pass |
+| M8 | G2 | `src/verifier/figure/axes_rules.py` | pass | pass | pass | pass | pass | pass |
+| M9 | G2 | `src/verifier/figure/ticks.py` | R310 | pass | pass | R310 | R310 | R310 |
+| M10 | G2 | `src/verifier/figure/mark_rules.py` | R274 R269 | pass | pass | R274 R269 | R274 R269 | R274 R269 |
+| M11 | G2 | `src/verifier/figure/legends.py` | R275 R267 | pass | R267 | R275 R267 | R275 R267 | R275 R267 |
+| M12 | G2 | `src/verifier/figure/series.py` | pass | pass | pass | pass | pass | pass |
+| M13 | G2 | `src/verifier/figure/keys.py` | pass | pass | pass | pass | pass | pass |
+| M14 | G2 | `src/verifier/figure/reasons.py` | pass | pass | n/a: closed reason data | pass | pass | pass |
+| M15 | G2 | `src/verifier/figure/__init__.py` | n/a: package docstring | pass | n/a: package docstring | pass | n/a: no behavior | pass |
+| M16 | G2 | `src/verifier/__init__.py` | n/a: version constant only | pass | n/a: version constant only | pass | n/a: no predicate | pass |
+| M17 | G2 | `tests/test_figure_judge.py` | pass | pass | pass | R312 | R275 R311 | pass |
+| M18 | G2 | `tests/test_figure_corpus.py` | R309 | pass | pass | R309 | R309 | R309 |
+| M19 | G2 | `tests/test_figure_coverage.py` | pass | pass | pass | pass | R309 | pass |
+| M20 | G2 | `tests/figure_corpus/*` | pass | pass | n/a: acceptance input data | pass | R309 | R309 |
+| M21 | G3 | `src/verifier/figure/explain.py` | R291 R292 R293 R294 | pass | R293 | R291 R293 R294 | pass | R291 R292 R293 R294 |
+| M22 | G3 | `src/verifier/figure/computed.py` | pass | pass | pass | pass | pass | pass |
+| M23 | G3 | `src/verifier/figure/sources.py` | pass | pass | pass | pass | pass | pass |
+| M24 | G3 | `src/verifier/figure/request.py` | pass | pass | pass | R296 | pass | pass |
+| M25 | G3 | `tests/test_figure_values.py` | pass | pass | pass | R295 | pass | pass |
+| M26 | G3 | `tests/test_figure_computed.py` | pass | pass | pass | pass | pass | pass |
+| M27 | G4 | `src/verifier/figure/anchoring.py` | pass | pass | pass | R280 | pass | pass |
+| M28 | G4 | `src/verifier/figure/columns.py` | pass | pass | pass | pass | pass | pass |
+| M29 | G4 | `src/verifier/pysrc/__init__.py` | n/a: docstring only | pass | n/a: no mechanism | pass | n/a: no behavior | pass |
+| M30 | G4 | `src/verifier/pysrc/aggregate.py` | pass | pass | pass | R277 R280 | pass | pass |
+| M31 | G4 | `src/verifier/pysrc/budget.py` | pass | pass | pass | pass | pass | pass |
+| M32 | G4 | `src/verifier/pysrc/csvread.py` | R276 | pass | pass | R276 R278 | pass | R276 |
+| M33 | G4 | `src/verifier/pysrc/errors.py` | pass | pass | pass | pass | pass | pass |
+| M34 | G4 | `src/verifier/pysrc/limits.py` | pass | pass | pass | R279 | pass | pass |
+| M35 | G4 | `src/verifier/pysrc/table.py` | pass | pass | pass | R278 | pass | pass |
+| M36 | G4 | `tests/anchoring_support.py` | pass | pass | pass | pass | pass | pass |
+| M37 | G4 | `tests/test_pysrc_aggregate.py` | pass | pass | pass | pass | pass | pass |
+| M38 | G4 | `tests/test_pysrc_anchoring.py` | pass | pass | pass | R280 | pass | pass |
+| M39 | G4 | `tests/test_pysrc_anchoring_aliases.py` | pass | pass | pass | pass | pass | pass |
+| M40 | G4 | `tests/test_pysrc_anchoring_short.py` | pass | pass | pass | pass | pass | pass |
+| M41 | G4 | `tests/test_pysrc_anchoring_strict.py` | pass | pass | pass | pass | pass | pass |
+| M42 | G4 | `tests/test_pysrc_anchoring_suffix.py` | pass | pass | pass | pass | pass | pass |
+| M43 | G4 | `tests/test_pysrc_budget.py` | pass | pass | pass | pass | pass | pass |
+| M44 | G4 | `tests/test_pysrc_csv.py` | pass | pass | pass | R276 | pass | pass |
+| M45 | G4 | `tests/test_pysrc_labels.py` | pass | pass | pass | R280 | pass | pass |
+| M46 | G5 | `src/verifier/figure/interpret.py` | pass | pass | pass | pass | pass | pass |
+| M47 | G5 | `src/verifier/figure/inert.py` | pass | pass | pass | pass | pass | pass |
+| M48 | G5 | `webui/paste_in/reply.py` | R281 | pass | pass | R281 | R281 | R281 |
+| M49 | G5 | `webui/paste_in/reasons.py` | pass | pass | pass | pass | pass | pass |
+| M50 | G5 | `webui/paste_in/verdicts.py` | pass | pass | pass | pass | R282 | pass |
+| M51 | G5 | `webui/paste_in/templates.py` | pass | pass | pass | pass | pass | pass |
+| M52 | G5 | `webui/paste_in/tool.py` | pass | pass | pass | pass | R282 | pass |
+| M53 | G5 | `webui/paste_in/aliases.py` | pass | pass | pass | pass | pass | pass |
+| M54 | G5 | `webui/paste_in/receipt.py` | pass | pass | pass | pass | pass | pass |
+| M55 | G5 | `webui/paste_in/__init__.py` | pass | pass | pass | pass | pass | pass |
+| M56 | G5 | `tests/test_figure_inert.py` | pass | pass | pass | pass | pass | pass |
+| M57 | G5 | `tests/test_paste_in_reasons.py` | pass | pass | pass | pass | pass | pass |
+| M58 | G5 | `tests/test_paste_in_receipt.py` | pass | pass | pass | pass | pass | pass |
+| M59 | G5 | `tests/test_paste_in_templates.py` | pass | pass | pass | pass | pass | pass |
+| M60 | G5 | `tests/test_paste_in_texts.py` | pass | pass | pass | pass | pass | pass |
+| M61 | G5 | `tests/test_paste_in_tool.py` | R282 | pass | pass | pass | R282 | pass |
+| M62 | G5 | `tests/test_paste_in_aliases.py` | pass | pass | pass | pass | R282 | pass |
+| M63 | G5 | `tests/test_paste_in_note.py` | pass | pass | pass | pass | R281 | pass |
+| M64 | G5 | `tests/test_guidance_claim_boundary.py` | pass | R283 | pass | R283 | pass | pass |
+| M65 | G6 | `webui/paste_in/filter.py` | R262 | pass | pass | pass | pass | R262 |
+| M66 | G6 | `webui/paste_in/owui_files.py` | pass | pass | pass | pass | pass | pass |
+| M67 | G6 | `webui/paste_in/sandbox.py` | pass | pass | pass | R264 | pass | pass |
+| M68 | G6 | `webui/paste_in/fonts.py` | pass | pass | pass | pass | pass | pass |
+| M69 | G6 | `webui/paste_in/reader_text.py` | pass | pass | pass | pass | pass | pass |
+| M70 | G6 | `webui/paste_in/demo_filter.py` | pass | pass | pass | pass | pass | pass |
+| M71 | G6 | `webui/paste_in/demo_tool.py` | pass | pass | pass | pass | pass | pass |
+| M72 | G6 | `tests/paste_in_support.py` | R263 R266 | R266 | pass | R263 | R265 | pass |
+| M73 | G6 | `tests/outlet_support.py` | pass | pass | pass | pass | pass | pass |
+| M74 | G6 | `tests/test_paste_in_outlet.py` | pass | pass | pass | pass | pass | pass |
+| M75 | G6 | `tests/test_paste_in_inlet.py` | pass | pass | pass | pass | pass | pass |
+| M76 | G6 | `tests/test_paste_in_request_text.py` | pass | pass | pass | pass | pass | pass |
+| M77 | G6 | `tests/test_paste_in_sandbox.py` | pass | pass | pass | pass | pass | pass |
+| M78 | G6 | `tests/test_paste_in_font.py` | pass | pass | pass | pass | pass | pass |
+| M79 | G6 | `tests/test_paste_in_filter_edges.py` | pass | pass | pass | pass | pass | pass |
+| M80 | G6 | `tests/test_paste_in_owui_files.py` | pass | pass | pass | pass | pass | pass |
+| M81 | G6 | `tests/test_paste_in_demo_pair.py` | pass | pass | pass | pass | pass | pass |
+| M82 | G6 | `tests/test_paste_in_filter_packaging.py` | pass | pass | pass | pass | pass | pass |
+| M83 | G7 | `webui/paste_in/checks.py` | pass | pass | pass | R284 | pass | R284 |
+| M84 | G7 | `webui/paste_in/excerpts.py` | R285 | pass | pass | R285 | pass | R285 |
+| M85 | G7 | `webui/paste_in/sfnt.py` | R286 | pass | pass | R286 | pass | R286 |
+| M86 | G7 | `tests/test_paste_in_checks.py` | pass | pass | pass | pass | pass | pass |
+| M87 | G7 | `tests/test_paste_in_embed.py` | pass | pass | pass | pass | pass | pass |
+| M88 | G7 | `tests/test_paste_in_excerpts.py` | pass | pass | pass | pass | pass | pass |
+| M89 | G7 | `tests/test_paste_in_sfnt.py` | pass | pass | pass | pass | pass | pass |
+| M90 | G7 | `tests/fonts/*` | pass | n/a: binary fixtures + license | n/a: no infrastructure | pass | pass | pass |
+| M91 | G8 | `nucllei_skill/__init__.py` | pass | pass | pass | pass | pass | pass |
+| M92 | G8 | `nucllei_skill/checks.py` | pass | pass | pass | pass | pass | pass |
+| M93 | G8 | `nucllei_skill/host.py` | pass | pass | pass | pass | pass | pass |
+| M94 | G8 | `nucllei_skill/reasons.py` | pass | pass | pass | pass | pass | pass |
+| M95 | G8 | `nucllei_skill/run.py` | pass | pass | pass | pass | pass | pass |
+| M96 | G8 | `nucllei_skill/skill.py` | pass | pass | pass | pass | pass | pass |
+| M97 | G8 | `nucllei_skill/texts.py` | pass | pass | pass | pass | pass | pass |
+| M98 | G8 | `nucllei_skill/tool.py` | R287 | R287 | R287 | R287 | pass | R287 |
+| M99 | G8 | `webui/paste_in/bundle.py` | R289 | pass | R289 | R289 R290 | pass | R289 |
+| M100 | G8 | `tools/generate_paste_in.py` | R288 | pass | pass | R288 | pass | R288 |
+| M101 | G8 | `tools/render_nucllei_guide.py` | pass | pass | pass | pass | pass | pass |
+| M102 | G8 | `tests/nucllei_support.py` | pass | pass | pass | pass | pass | pass |
+| M103 | G8 | `tests/test_nucllei_artifacts.py` | pass | pass | pass | pass | pass | pass |
+| M104 | G8 | `tests/test_nucllei_checks.py` | pass | pass | pass | pass | pass | pass |
+| M105 | G8 | `tests/test_nucllei_docs.py` | pass | pass | pass | pass | pass | pass |
+| M106 | G8 | `tests/test_nucllei_tool.py` | pass | pass | pass | R290 | pass | pass |
+| M107 | G8 | `tests/test_paste_in_bundle.py` | pass | pass | pass | R290 | pass | pass |
+| M108 | G9 | `webui/__init__.py` | n/a: prose only | pass | n/a: prose only | R330 | n/a: prose only | R330 |
+| M109 | G9 | `webui/__main__.py` | pass | pass | pass | pass | pass | pass |
+| M110 | G9 | `webui/banner.py` | pass | pass | pass | pass | pass | pass |
+| M111 | G9 | `webui/banner.json` | pass | pass | n/a: corpus data | pass | pass | pass |
+| M112 | G9 | `webui/bootstrap.py` | pass | pass | pass | R330 | pass | pass |
+| M113 | G9 | `webui/client.py` | pass | pass | pass | pass | pass | pass |
+| M114 | G9 | `webui/settings.py` | pass | pass | pass | R330 | pass | pass |
+| M115 | G9 | `webui/model_stub.py` | pass | pass | pass | R330 | pass | pass |
+| M116 | G9 | `webui/codex_bridge.py` | pass | pass | pass | pass | pass | pass |
+| M117 | G9 | `webui/launch.sh` | R331 | pass | pass | R331 | R331 | R331 |
+| M118 | G9 | `model_backend/__init__.py` | n/a: no executable body | pass | n/a: exports only | R330 | n/a: prose only | pass |
+| M119 | G9 | `model_backend/__main__.py` | pass | pass | pass | pass | pass | pass |
+| M120 | G9 | `model_backend/adapter.py` | pass | pass | pass | pass | pass | pass |
+| M121 | G9 | `model_backend/app.py` | pass | pass | pass | R330 | pass | pass |
+| M122 | G9 | `model_backend/engine.py` | pass | pass | pass | R330 | pass | pass |
+| M123 | G9 | `model_backend/models.py` | pass | pass | pass | R330 | pass | pass |
+| M124 | G9 | `model_backend/origin.py` | pass | pass | pass | pass (MAIN: docstring = behavior; `origin.toml` 5 mutants; host-runtime.md request-origin bullet) | pass (MAIN: docstring = behavior; `origin.toml` 5 mutants; host-runtime.md request-origin bullet) | pass (MAIN: docstring = behavior; `origin.toml` 5 mutants; host-runtime.md request-origin bullet) |
+| M125 | G9 | `model_backend/runtime/pyproject.toml` | pass | pass | pass | pass | pass | pass |
+| M126 | G9 | `model_backend/settings.py` | pass | pass | pass | pass | pass | pass |
+| M127 | G9 | `model_backend/smoke.py` | R332 | pass | pass | R330 R332 | pass | pass |
+| M128 | G9 | `model_backend/snapshot.py` | R333 | pass | pass | R333 | pass | pass |
+| M129 | G9 | `model_backend/runtime/snapshot.json` | pass | pass | n/a: static content | pass | pass | pass |
+| M130 | G9 | `tests/test_webui_banner_prompts.py` | pass | pass | pass | pass | pass | pass |
+| M131 | G9 | `tests/test_webui_cli.py` | pass | pass | pass | pass | pass | pass |
+| M132 | G9 | `tests/test_webui_client.py` | pass | pass | pass | pass | pass | pass |
+| M133 | G9 | `tests/test_webui_codex_bridge.py` | pass | pass | pass | pass | pass | pass |
+| M134 | G9 | `tests/test_webui_launch.py` | pass | pass | pass | pass | R331 | pass |
+| M135 | G9 | `tests/test_webui_model_stub.py` | pass | pass | pass | pass | pass | pass |
+| M136 | G9 | `tests/test_webui_python_exposure.py` | pass | pass | pass | pass | pass | pass |
+| M137 | G9 | `tests/test_webui_settings.py` | pass | pass | pass | pass | pass | pass |
+| M138 | G9 | `tests/test_model_backend_adapter.py` | pass | pass | pass | pass | pass | pass |
+| M139 | G9 | `tests/test_model_backend_adapter_internal.py` | pass | pass | pass | pass | pass | pass |
+| M140 | G9 | `tests/test_model_backend_runtime.py` | pass | pass | pass | R330 | pass | pass |
+| M141 | G9 | `tests/test_model_backend.py` | pass | R330 | pass | R330 | pass | pass |
+| M142 | G10 | `tools/gate.sh` | pass | pass | pass | pass | pass | pass |
+| M143 | G10 | `tools/fast-gate.sh` | pass | pass | pass | pass | pass | pass |
+| M144 | G10 | `tools/gate-probe.sh` | R315 | pass | pass | R315 | R315 | R315 |
+| M145 | G10 | `tools/mutate.py` | pass | pass | pass | pass | pass | pass |
+| M146 | G10 | `tools/mutation_credit.py` | pass | pass | pass | pass | pass | pass |
+| M147 | G10 | `tools/render_diagrams.py` | pass | pass | pass | pass | pass | pass |
+| M148 | G10 | `tools/render_gallery.py` | pass | pass | pass | pass | pass | pass |
+| M149 | G10 | `tools/subset_test_font.py` | pass | pass | pass | pass | pass | pass |
+| M150 | G10 | `tools/mutants/*` | pass | pass | pass | pass | pass | pass |
+| M151 | G10 | `tools/py311/pyproject.toml` | pass | pass | pass | pass | pass | pass |
+| M152 | G10 | `webui/runtime/pyproject.toml` | pass | pass | pass | R317 | pass | pass |
+| M153 | G10 | `pyproject.toml` | pass | pass | pass | R317 | pass | pass |
+| M154 | G10 | `.python-version` | pass | pass | pass | pass | pass | pass |
+| M155 | G10 | `.gitignore` | pass | pass | pass | R319 | pass | pass |
+| M156 | G10 | `.env.example` | pass | pass | pass | pass | pass | pass |
+| M157 | G10 | `.github/dependabot.yml` | pass | pass | pass | pass | pass | pass |
+| M158 | G10 | `.github/workflows/codeql.yml` | pass | pass | pass | pass | pass | pass |
+| M159 | G10 | `.github/workflows/gate.yml` | pass | pass | pass | pass | pass | pass |
+| M160 | G10 | `tests/conftest.py` | R314 | pass | pass | R314 | R314 | R314 |
+| M161 | G10 | `tests/test_gate.py` | R314 | pass | pass | R314 | R314 | R314 |
+| M162 | G10 | `tests/test_spec.py` | R313 | pass | pass | R313 | R313 | R313 |
+| M163 | G10 | `tests/test_symbol_citations.py` | pass | pass | pass | pass | pass | pass |
+| M164 | G10 | `tests/test_mutation_catalogues.py` | R318 | pass | pass | R318 | R318 | R318 |
+| M165 | G10 | `tests/test_measurement_exposure.py` | pass | pass | pass | pass | pass | n/a: security contract excluded |
+| M166 | G10 | `tests/test_readme_register.py` | pass | pass | pass | pass | pass | pass |
+| M167 | G10 | `tests/test_verification_docs.py` | pass | pass | pass | pass | pass | pass |
+| M168 | G10 | `tests/test_admin_docs.py` | pass | pass | pass | pass | pass | pass |
+| M169 | G10 | `tests/test_gallery.py` | pass | pass | pass | pass | pass | pass |
+| M170 | G10 | `.agent/spec-lint` | R316 | pass | pass | R316 | R316 | R316 |
+| M171 | G10 | `.secrets.baseline` | pass | pass | pass | pass | n/a: secret disposition MAIN-only | pass |
+| M172 | G10 | `docs/gallery/entries.toml` | pass | pass | pass | pass | pass | pass |
+| M173 | G10 | `docs/gallery/cases.toml` | pass | pass | pass | pass | pass | pass |
 | M174 | G11 | `.agent/measurements/all_results.py` | pending | pending | pending | pending | pending | pending |
 | M175 | G11 | `.agent/measurements/c1_export.py` | pending | pending | pending | pending | pending | pending |
 | M176 | G11 | `.agent/measurements/c1_pyodide.mjs` | pending | pending | pending | pending | pending | pending |
@@ -441,28 +515,28 @@ Generated artifacts (`paste-in/*`, `webui/demo-paste-in/*`, `llens/nucllei/**`, 
 
 | id | path | CLAIM | SPEC | REG |
 |---|---|---|---|---|
-| P1 | `.agent/measurements/README.md` | pending | pending | pending |
-| P2 | `.agent/measurements/luna/README.md` | pending | pending | pending |
-| P3 | `.agent/measurements/nucllei/README.md` | pending | pending | pending |
-| P4 | `README.md` | pending | pending | pending |
-| P5 | `docs/admin/README.ja.md` | pending | pending | pending |
-| P6 | `docs/admin/README.md` | pending | pending | pending |
-| P7 | `docs/admin/nucllei.ja.md` | pending | pending | pending |
-| P8 | `docs/admin/nucllei.md` | pending | pending | pending |
-| P9 | `docs/checks.ja.md` | pending | pending | pending |
-| P10 | `docs/checks.md` | pending | pending | pending |
-| P11 | `docs/diagrams/verifier-nucllei.dot` | pending | pending | pending |
-| P12 | `docs/diagrams/verifier-nucllei.ja.dot` | pending | pending | pending |
-| P13 | `docs/diagrams/verifier.dot` | pending | pending | pending |
-| P14 | `docs/diagrams/verifier.ja.dot` | pending | pending | pending |
-| P15 | `docs/gallery.ja.md` | pending | pending | pending |
-| P16 | `docs/gallery.md` | pending | pending | pending |
-| P17 | `docs/nucllei/checks.ja.md` | pending | pending | pending |
-| P18 | `docs/nucllei/checks.md` | pending | pending | pending |
-| P19 | `docs/verification.ja.md` | pending | pending | pending |
-| P20 | `docs/verification.md` | pending | pending | pending |
-| P21 | `model_backend/runtime/README.md` | pending | pending | pending |
-| P22 | `webui/README.md` | pending | pending | pending |
+| P1 | `.agent/measurements/README.md` | R328 | pass | pass |
+| P2 | `.agent/measurements/luna/README.md` | pass | pass | pass |
+| P3 | `.agent/measurements/nucllei/README.md` | pass | pass | pass |
+| P4 | `README.md` | pass | pass | pass |
+| P5 | `docs/admin/README.ja.md` | pass | pass | pass |
+| P6 | `docs/admin/README.md` | pass | pass | pass |
+| P7 | `docs/admin/nucllei.ja.md` | pass | pass | pass |
+| P8 | `docs/admin/nucllei.md` | pass | pass | pass |
+| P9 | `docs/checks.ja.md` | R326 R327 R329 | R326 R327 | pass |
+| P10 | `docs/checks.md` | R326 R327 R329 | R326 R327 | pass |
+| P11 | `docs/diagrams/verifier-nucllei.dot` | R325 | R325 | pass |
+| P12 | `docs/diagrams/verifier-nucllei.ja.dot` | R325 | R325 | pass |
+| P13 | `docs/diagrams/verifier.dot` | pass | pass | pass |
+| P14 | `docs/diagrams/verifier.ja.dot` | pass | pass | pass |
+| P15 | `docs/gallery.ja.md` | pass | pass | pass |
+| P16 | `docs/gallery.md` | pass | pass | pass |
+| P17 | `docs/nucllei/checks.ja.md` | R327 R329 | R327 | pass |
+| P18 | `docs/nucllei/checks.md` | R327 R329 | R327 | pass |
+| P19 | `docs/verification.ja.md` | R329 | pass | pass |
+| P20 | `docs/verification.md` | R329 | pass | pass |
+| P21 | `model_backend/runtime/README.md` | pass | pass | pass |
+| P22 | `webui/README.md` | pass | pass | pass |
 
 ### Spec index
 
@@ -470,70 +544,70 @@ One row per `Intent` sentence (S) + `Decisions` bullet (D): the check that pins 
 
 | id | text | pinning check | verdict |
 |---|---|---|---|
-| S1 | A chat assistant where a model writes the Python that draws a … | pending | pending |
-| S2 | The model proposes only code, plus an optional note: when the request, … | pending | pending |
-| S3 | The program runs unchanged in the host's code sandbox (the nucllei sandbox, … | pending | pending |
-| S4 | The verifier inspects the finished matplotlib figure. | pending | pending |
-| S5 | Every artist must belong to a closed set that the verifier judges. | pending | pending |
-| S6 | A figure that matplotlib did not draw, or that holds an artist … | pending | pending |
-| S7 | Every judged artist must obey a comprehensive, closed set of integrity rules: … | pending | pending |
-| S8 | Where the user supplied data, the verifier also checks that the drawn … | pending | pending |
-| S9 | The data is an attached CSV's raw values or one group-and-reduce of … | pending | pending |
-| S10 | A value that the verifier cannot find blocks the figure. | pending | pending |
-| S11 | A figure with no data source is checked for integrity alone, and … | pending | pending |
-| S12 | For CSV figures, column anchoring stays: the request must name the drawn … | pending | pending |
-| S13 | Text on the chart is listed, never judged. | pending | pending |
-| S14 | Verification uses no inference: every decision is a deterministic rule. | pending | pending |
-| S15 | Pass ⇒ inline PNG + `Figure verification passed` + the list of … | pending | pending |
-| S16 | Fail ⇒ blocked + `Figure verification failed, no image produced` + the … | pending | pending |
-| S17 | When the latest message holds a kana letter, the verifier writes its … | pending | pending |
-| S18 | Acceptance: a committed rule corpus, with at least one misleading program per … | pending | pending |
-| S19 | Live runs add to it: honest prompts pass, and prompts that ask … | pending | pending |
-| S20 | The verifier alone decides. | pending | pending |
-| S21 | Model guidance (on nucllei, the skill text and the tool description; on … | pending | pending |
-| S22 | Production artifact: the nucllei skill, two generated files (the skill text and … | pending | pending |
-| S23 | Open WebUI keeps its two generated files (a tool and a filter) … | pending | pending |
-| S24 | The verifier is embedded and needs nothing beyond stdlib + what the … | pending | pending |
-| S25 | The target instance has no outside network, so nothing may require a … | pending | pending |
-| S26 | The repo's own stack is the demo harness, not the deliverable. | pending | pending |
-| S27 | Demo-grade: correctness testing yes; crypto sealing, escrow and tamper-evidence ceremonies no. | pending | pending |
-| S28 | The claim stays modest: verified = the drawn figure obeys every integrity … | pending | pending |
-| S29 | The program is assumed non-adversarial: it runs before any check, in the … | pending | pending |
-| S30 | The renderer, browser, code sandbox, matplotlib and pixels are trusted, not verified. | pending | pending |
-| S31 | On nucllei, the verifier decides the figures that `draw_figure` shows; the model's … | pending | pending |
-| S32 | Fidelity to intent (the right quantity for the question) is never claimed … | pending | pending |
-| D1 | Trust spine: the model supplies a program, never data; the … | pending | pending |
-| D2 | Program rulings (kept from python mode): (1) the model authors … | pending | pending |
-| D3 | Demo shape: the launcher's OWUI runs the demo pair = … | pending | pending |
-| D4 | **IMPLEMENT-close rulings (user; the kept four).** (4) G10 deferred, then … | pending | pending |
-| D5 | M10 mechanism (M19.5 form): trusted outlet filter → backend-recorded receipt … | pending | pending |
-| D6 | **M10 rulings (user, four).** (1) PASS transport = **tool call … | pending | pending |
-| D7 | **M10 transport ruling (user).** Demo transport = a paste-in filter … | pending | pending |
-| D8 | **Template ruling (user; L1 narrowed by Q40 + the System-prompt … | pending | pending |
-| D9 | **Admin-docs ruling (user, phase close (4)).** The admin docs live … | pending | pending |
-| D10 | Proposer: fp16 `Qwen2.5-Coder-0.5B-Instruct` on the MX150 (device record `model_backend/runtime/README.md` § … | pending | pending |
-| D11 | **Codex-arm ruling (user, session 13).** A stronger live proposer = … | pending | pending |
-| D12 | Stack: `uv` + py 3.14 cap · stdlib verifier core … | pending | pending |
-| D13 | **Failure-reason rulings (user, M15).** (1) A FAIL reply = one … | pending | pending |
-| D14 | **Check-breakdown rulings (user, M16).** (1) Surface = ONE OWUI message … | pending | pending |
-| D15 | **Production-vs-demo rulings (user, session 6).** (1) "Strict rules in general … | pending | pending |
-| D16 | **Japanese-demo rulings (user, M17).** (1) `data/clinic_ja.csv` = the Japanese-header CSV … | pending | pending |
-| D17 | **Check-detail rulings (user, M18).** (1) Each "Show checks" row opens … | pending | pending |
-| D18 | **Short-guide ruling (user, Q72).** `docs/verification.md` stays the complete reference; the … | pending | pending |
-| D19 | **Row-excerpt rulings (user, session 9; M20).** (1) Every "Show checks" … | pending | pending |
-| D20 | OWUI integration = the M10 units, all closed (records `.agent/archive/implement.md`, … | pending | pending |
-| D21 | **Integrity-redesign rulings (user, thirteen; the shipped product since the M19 … | pending | pending |
-| D22 | **Computed-values rulings (user, session 10; Q45, contract `.agent/archive/contracts/q45.md`).** (1) Admitted: … | pending | pending |
-| D23 | **Security-review rulings (user, session 11; record `.agent/archive/contracts/m21u1.md`).** (1) A security … | pending | pending |
-| D24 | **Second security-review rulings (user, session 12; record `.agent/archive/contracts/m22u1.md`).** (1) No … | pending | pending |
-| D25 | **Model-note rulings (user, Q78; contract `.agent/archive/contracts/q78.md`).** (1) The chart rules … | pending | pending |
-| D26 | **Verdict-language ruling (user, Q81; contract `.agent/archive/contracts/q81.md`).** A kana request (the … | pending | pending |
-| D27 | **nucllei-skill rulings (user, session 14; Q82; contract `.agent/archive/contracts/q82.md`, law `.claude/rules/nucllei.md`).** … | pending | pending |
-| D28 | **Request-scope ruling (user, Q66; contract `.agent/archive/contracts/q66.md`).** The request (anchoring, typed … | pending | pending |
-| D29 | **System-prompt ruling (user, session 8).** Nothing from this repository enters … | pending | pending |
-| D30 | **M19 readings (user, session 8; the integrity redesign's open forks; … | pending | pending |
-| D31 | **Queue rulings (user, queue session question round).** (1) An inverted … | pending | pending |
-| D32 | **Upgrade rulings (user, upgrade request).** (1) Open WebUI → latest … | pending | pending |
+| S1 | A chat assistant where a model writes the Python that draws a … | `tests/test_paste_in_outlet.py::test_o1_clean_browser_reply_runs_real_judge_before_publication`; `tests/test_nucllei_tool.py::test_q82_t10_a_pass_stores_the_png_and_shows_it_once`; `tests/test_nucllei_tool.py::test_q82_t7_a_csv_an_inlet_stripped_from_the_body_still_binds_the_values` | pass |
+| S2 | The model proposes only code, plus an optional note: when the request, … | `tests/test_paste_in_tool.py::test_o6_one_model_operation_takes_a_program_and_an_optional_note`; `tests/test_paste_in_note.py::test_q78_n3_the_inlet_asks_for_the_note_only_while_the_valve_is_on`; `tests/test_nucllei_artifacts.py::test_q82_t2_the_skill_states_each_rule` (note = model guidance, optional by D25.5) | pass |
+| S3 | The program runs unchanged in the host's code sandbox (the nucllei sandbox, … | `tests/test_paste_in_sandbox.py::test_u3_program_bytes_survive_exactly`; `tests/test_paste_in_outlet.py::test_o1_python_and_figure_faults_are_decided_after_unchanged_rpc`; `tests/test_nucllei_tool.py::test_q82_t6_the_wrapper_runs_the_exact_program_through_the_reader` | pass |
+| S4 | The verifier inspects the finished matplotlib figure. | `tests/test_figure_reader.py::test_p2_each_show_captures_the_figures_open_at_that_moment`; `tests/test_figure_reader.py::test_p2_open_figures_are_captured_at_the_end`; `tests/test_figure_corpus.py::test_corpus_case[pie-radius-changed]` (post-call final state) | pass |
+| S5 | Every artist must belong to a closed set that the verifier judges. | `tests/test_figure_corpus.py::test_corpus_case` (`integrity.toml`: `user-patch`, `user-line`, `judged-families`) | pass |
+| S6 | A figure that matplotlib did not draw, or that holds an artist … | `tests/figure_corpus/integrity.toml`: `image-not-figure`, `imshow`, `user-line` (through `test_corpus_case`) | pass |
+| S7 | Every judged artist must obey a comprehensive, closed set of integrity rules: … | `tests/test_figure_corpus.py::test_corpus_case` over `marks.toml`; `tests/test_figure_judge.py::test_j4_pie_rules`; `tests/test_figure_corpus.py::test_corpus_case[second-panel-truncated]` — see S7 detail | pass |
+| S8 | Where the user supplied data, the verifier also checks that the drawn … | `tests/test_paste_in_outlet.py::test_o3_owned_csv_bytes_decide_values`; `tests/test_figure_corpus.py::test_corpus_case[raw-changed-value]` | pass |
+| S9 | The data is an attached CSV's raw values or one group-and-reduce of … | `tests/test_figure_corpus.py::test_corpus_case` over `values.toml` + `computed.toml`; `tests/test_figure_values.py::test_v3_ranges_and_numbers`; `tests/test_figure_computed.py::test_the_sequence_is_the_typed_order` | pass |
+| S10 | A value that the verifier cannot find blocks the figure. | `tests/test_figure_corpus.py::test_corpus_case[made-up-values]`; `tests/test_figure_values.py::test_keyless_series_need_values_alone`; `tests/test_figure_computed.py::test_one_ulp_off_blocks` | pass |
+| S11 | A figure with no data source is checked for integrity alone, and … | `tests/test_figure_values.py::test_v6_integrity_alone_is_disclosed`; `tests/test_figure_values.py::test_v9_interpretation_sentences[integrity-only-listed-text]` | pass |
+| S12 | For CSV figures, column anchoring stays: the request must name the drawn … | Counter-pin: `tests/test_figure_values.py::test_strict_anchoring_needs_a_named_column_first`; red `reviewer-13/test_2.py` | R321 |
+| S13 | Text on the chart is listed, never judged. | `tests/test_figure_values.py::test_v9_interpretation_sentences[integrity-only-listed-text]`; `tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels` (category labels judged, free text listed) | pass |
+| S14 | Verification uses no inference: every decision is a deterministic rule. | No direct deterministic/no-inference assertion located; corpus tests judge outcomes, B6 tests import envelope only | R323 |
+| S15 | Pass ⇒ inline PNG + `Figure verification passed` + the list of … | `tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log`; `tests/test_nucllei_tool.py::test_q82_t10_a_pass_stores_the_png_and_shows_it_once`; `tests/test_nucllei_checks.py::test_q82_t12_a_pass_lists_every_check_passed_in_japanese` | pass |
+| S16 | Fail ⇒ blocked + `Figure verification failed, no image produced` + the … | `tests/test_paste_in_outlet.py::test_o1_blocked_judge_precedes_missing_png_and_threads_site`; `tests/test_nucllei_tool.py::test_q82_t7_a_csv_an_inlet_stripped_from_the_body_still_binds_the_values`; `tests/test_nucllei_tool.py::test_q82_t12_the_result_holds_every_check_then_the_model_s_tail` | pass |
+| S17 | When the latest message holds a kana letter, the verifier writes its … | `tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path`; `tests/test_paste_in_reasons.py::test_m22_the_kana_class_holds_exactly_the_kana_letters`; `tests/test_nucllei_tool.py::test_q82_t16_a_japanese_request_reads_one_language_and_the_tail_stays_japanese` | pass |
+| S18 | Acceptance: a committed rule corpus, with at least one misleading program per … | `tests/test_figure_corpus.py::test_every_integrity_reason_has_a_blocking_case`; `tests/test_figure_corpus.py::test_every_integrity_rule_has_an_honest_twin`; `tests/test_figure_corpus.py::test_corpus_case` | pass |
+| S19 | Live runs add to it: honest prompts pass, and prompts that ask … | Counter-record: `.agent/measurements/nucllei/README.md` NL runs 2–3 = corrections, 0 live first-draw blocks; red `reviewer-13/test_3.py` | R322 |
+| S20 | The verifier alone decides. | `tests/test_paste_in_outlet.py::test_o3_receipt_request_not_mutated_metadata_decides_values`; `tests/test_paste_in_outlet.py::test_o3_sources_field_values_reach_public_judge_seam`; `tests/test_nucllei_tool.py::test_q82_t13_a_judge_fault_fails_closed` | pass |
+| S21 | Model guidance (on nucllei, the skill text and the tool description; on … | `tests/test_paste_in_outlet.py::test_o3_sources_field_values_reach_public_judge_seam`; `tests/test_paste_in_note.py::test_q78_n5_the_note_never_moves_the_verdict_or_the_diagnostics`; `tests/test_paste_in_templates.py::test_q76_g1_both_carriers_state_the_seaborn_guidance` | pass |
+| S22 | Production artifact: the nucllei skill, two generated files (the skill text and … | `tests/test_nucllei_artifacts.py::test_q82_t1_both_files_are_their_sources_rendered`; `tests/test_nucllei_artifacts.py::test_q82_t2_the_skill_row_llens_creates`; `tests/test_nucllei_docs.py::test_generated_files_equal_a_fresh_render` | pass |
+| S23 | Open WebUI keeps its two generated files (a tool and a filter) … | `tests/test_paste_in_bundle.py::test_b1_committed_artifact_equals_a_fresh_generation`; `tests/test_paste_in_bundle.py::test_b7_artifact_is_self_contained_without_the_repo` | pass |
+| S24 | The verifier is embedded and needs nothing beyond stdlib + what the … | Dependency envelope: B6 + Q82 T1; counter-pin `tests/test_nucllei_tool.py::test_q82_t6_each_owned_csv_is_written_then_one_exec_runs_the_exact_program`; red `reviewer-13/test_1.py` | R320 |
+| S25 | The target instance has no outside network, so nothing may require a … | `tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_pydantic`; `tests/test_paste_in_bundle.py::test_b7_artifact_is_self_contained_without_the_repo`; `tests/test_nucllei_artifacts.py::test_q82_t1_each_artifact_reaches_only_its_own_host` | pass |
+| S26 | The repo's own stack is the demo harness, not the deliverable. | — | n/a: deliverable scope; executable artifact boundary pinned by S22–S25 |
+| S27 | Demo-grade: correctness testing yes; crypto sealing, escrow and tamper-evidence ceremonies no. | — | n/a: assurance/threat-scope ruling; no runtime behavior |
+| S28 | The claim stays modest: verified = the drawn figure obeys every integrity … | `tests/test_figure_corpus.py::test_corpus_case`; `tests/test_figure_values.py::test_v6_integrity_alone_is_disclosed`; `tests/test_figure_computed.py::test_one_ulp_off_blocks` | pass |
+| S29 | The program is assumed non-adversarial: it runs before any check, in the … | `tests/test_paste_in_outlet.py::test_o1_python_and_figure_faults_are_decided_after_unchanged_rpc`; `tests/test_nucllei_tool.py::test_q82_t6_the_wrapper_runs_the_exact_program_through_the_reader` (execution portion; assumption = scope) | pass |
+| S30 | The renderer, browser, code sandbox, matplotlib and pixels are trusted, not verified. | — | n/a: explicit trusted-component scope |
+| S31 | On nucllei, the verifier decides the figures that `draw_figure` shows; the model's … | — | n/a: explicitly limits verification to this tool, excludes other surfaces |
+| S32 | Fidelity to intent (the right quantity for the question) is never claimed … | — | n/a: explicitly limits intent-fidelity claim |
+| D1 | Trust spine: the model supplies a program, never data; the … | `tests/test_paste_in_outlet.py::test_o3_owned_csv_bytes_decide_values`; `tests/test_paste_in_outlet.py::test_o3_receipt_request_not_mutated_metadata_decides_values`; `tests/test_nucllei_tool.py::test_q82_t6_the_wrapper_runs_the_exact_program_through_the_reader` | pass |
+| D2 | Program rulings (kept from python mode): (1) the model authors … | (1) S3; (4) S15–S17; (7) n/a: rejected assurance ceremony | pass |
+| D3 | Demo shape: the launcher's OWUI runs the demo pair = … | `tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list`; `tests/test_webui_launch.py::test_l11_codex_runs_the_bridge_with_the_production_pair_and_native_calls`; `tests/test_paste_in_bundle.py::test_b2_each_embedded_source_is_its_tracked_file_plus_one_newline` — sole callable/dependency pins below | pass |
+| D4 | **IMPLEMENT-close rulings (user; the kept four).** (4) G10 deferred, then … | `tests/test_figure_corpus.py::test_corpus_case[title-names-another-reduction]`; `tests/test_model_backend_runtime.py::test_p15_runtime_pyproject_pins`; gate `audit` + hosted CodeQL — four numbered clauses below | pass |
+| D5 | M10 mechanism (M19.5 form): trusted outlet filter → backend-recorded receipt … | `tests/test_paste_in_outlet.py::test_o1_receipt_precedes_user_files_font_and_rpc`; `tests/test_paste_in_sandbox.py::test_u3_the_wrapper_prints_what_the_reader_returns`; `tests/test_paste_in_outlet.py::test_o1_clean_browser_reply_runs_real_judge_before_publication` | pass |
+| D6 | **M10 rulings (user, four).** (1) PASS transport = **tool call … | (1) `tests/test_paste_in_outlet.py::test_o1_receipt_precedes_user_files_font_and_rpc`; (2) `tests/test_paste_in_outlet.py::test_o3_owned_csv_bytes_decide_values`; (3) `tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_pydantic` (exact artifact set) | pass |
+| D7 | **M10 transport ruling (user).** Demo transport = a paste-in filter … | `tests/test_paste_in_inlet.py::test_o7_template_parameters_preserve_generated_task_filename_and_header`; `tests/test_model_backend_adapter_internal.py::test_selector_wraps_source_even_when_empty`; `tests/test_model_backend_adapter.py::test_x4_non_selector_keeps_original_generation_and_reply` | pass |
+| D8 | **Template ruling (user; L1 narrowed by Q40 + the System-prompt … | `tests/test_paste_in_inlet.py::test_o7_production_and_demo_templates_share_rules_but_not_bare_source_format`; `tests/test_paste_in_templates.py::test_q68_no_file_templates_keep_the_measured_bytes`; `tests/test_paste_in_templates.py::test_q68_file_templates_keep_their_bytes` | pass |
+| D9 | **Admin-docs ruling (user, phase close (4)).** The admin docs live … | — | n/a: artifact/document location ruling, not behavior; generated-set pins in S23 |
+| D10 | Proposer: fp16 `Qwen2.5-Coder-0.5B-Instruct` on the MX150 (device record `model_backend/runtime/README.md` § … | `tests/test_webui_settings.py::test_model_identity_agrees_across_the_three_tiers`; `tests/test_model_backend.py::test_p16_pretrained_calls_and_model_placement_are_exact`; measurement `deps U3` + `Q46` (device tuple; not rerun) | pass |
+| D11 | **Codex-arm ruling (user, session 13).** A stronger live proposer = … | `tests/test_webui_launch.py::test_l11_codex_runs_the_bridge_with_the_production_pair_and_native_calls`; `tests/test_webui_codex_bridge.py::test_the_child_runs_isolated_with_every_context_layer_off`; `tests/test_webui_codex_bridge.py::test_the_default_effort_is_low_and_empty_means_the_model_default` | pass |
+| D12 | Stack: `uv` + py 3.14 cap · stdlib verifier core … | Gate `format`, `lint`, `types`, `tests`, `tests311`, `audit`; `tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_pydantic` (selected stack + unit-contract/ledger clause = architecture/process) | pass |
+| D13 | **Failure-reason rulings (user, M15).** (1) A FAIL reply = one … | `tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log`; `tests/test_paste_in_reasons.py::test_o8_every_reason_has_one_cause_and_at_most_one_fix`; `tests/test_paste_in_reasons.py::test_o8_reason_anchors_are_exact` — each numbered clause below | pass |
+| D14 | **Check-breakdown rulings (user, M16).** (1) Surface = ONE OWUI message … | `tests/test_paste_in_checks.py::test_o9_all_reasons_have_exact_completed_prefix_and_one_cause`; `tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log`; measurement M16 — see detail | pass |
+| D15 | **Production-vs-demo rulings (user, session 6).** (1) "Strict rules in general … | `tests/test_paste_in_demo_pair.py::test_q37_s3_the_outlet_threads_its_rule_to_verdict_and_check_list`; `tests/test_pysrc_anchoring_short.py::test_q41_t1_a_short_word_names_its_column_under_strict`; `tests/test_pysrc_anchoring_suffix.py::test_q42_u1_a_suffixed_short_word_names_its_column_under_strict` — six numbered clauses below | pass |
+| D16 | **Japanese-demo rulings (user, M17).** (1) `data/clinic_ja.csv` = the Japanese-header CSV … | `tests/test_webui_banner_prompts.py::test_x5_each_stub_program_reaches_its_verdict`; `tests/test_paste_in_font.py::test_q44_outlet_sends_the_cut_made_off_the_event_loop`; `tests/test_figure_values.py::test_v9_interpretation_sentences` — three numbered clauses below | pass |
+| D17 | **Check-detail rulings (user, M18).** (1) Each "Show checks" row opens … | `tests/test_paste_in_checks.py::test_o9_all_reasons_have_exact_completed_prefix_and_one_cause`; `tests/test_paste_in_outlet.py::test_m20_2_a_blocked_reply_lists_the_failing_row_s_lines_with_the_mark`; `tests/test_verification_docs.py::test_d4_each_reason_sits_in_its_check_section` — five numbered clauses below | pass |
+| D18 | **Short-guide ruling (user, Q72).** `docs/verification.md` stays the complete reference; the … | `tests/test_verification_docs.py::test_q72_each_guide_rule_states_how_it_is_checked`; `tests/test_verification_docs.py::test_q72_g2_the_guide_and_the_reference_link_each_other`; `tests/test_verification_docs.py::test_q72_each_diagram_renders_its_current_source` — gallery pins below | pass |
+| D19 | **Row-excerpt rulings (user, session 9; M20).** (1) Every "Show checks" … | `tests/test_paste_in_checks.py::test_m20_2_each_row_that_ran_lists_its_related_lines`; `tests/test_paste_in_excerpts.py::test_r3_f1_every_binding_that_may_reach_the_drawing_line`; `tests/test_paste_in_excerpts.py::test_m20_4_t5_tick_style_calls_join_the_figure_and_axes_rows` — five numbered clauses below | pass |
+| D20 | OWUI integration = the M10 units, all closed (records `.agent/archive/implement.md`, … | — | n/a: historical integration status + references; active behavior pinned by D5–D8 |
+| D21 | **Integrity-redesign rulings (user, thirteen; the shipped product since the M19 … | S3–S18 + D15/D16/D19; `tests/test_figure_coverage.py::test_every_chart_kind_passes_honest_and_blocks_misleading`; red `reviewer-13/test_5.py` — each of 13 numbered rulings below | R322 R323 R324 |
+| D22 | **Computed-values rulings (user, session 10; Q45, contract `.agent/archive/contracts/q45.md`).** (1) Admitted: … | `tests/test_figure_corpus.py::test_corpus_case` over `computed.toml`; `tests/test_figure_coverage.py::test_every_computation_passes_honest_and_blocks_a_wrong_value`; measurement X1 (one-point candidate matcher, scope below) | pass |
+| D23 | **Security-review rulings (user, session 11; record `.agent/archive/contracts/m21u1.md`).** (1) A security … | (1) n/a: reviewer-role/process ruling; (2) `tests/test_figure_values.py::test_m21_hostile_names_and_chart_text_stay_inert_markdown` (literal inline-code token assertion only; no threat analysis) | pass |
+| D24 | **Second security-review rulings (user, session 12; record `.agent/archive/contracts/m22u1.md`).** (1) No … | (1) `tests/test_figure_values.py::test_the_request_parse_streams_its_matches`; (2) `tests/test_paste_in_outlet.py::test_o2_every_owned_file_reaches_rpc_in_receipt_order` + duplicate/last-owned pins below | pass |
+| D25 | **Model-note rulings (user, Q78; contract `.agent/archive/contracts/q78.md`).** (1) The chart rules … | `tests/test_paste_in_note.py::test_q78_n5_the_note_never_moves_the_verdict_or_the_diagnostics`; `tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation`; `tests/test_nucllei_tool.py::test_q82_t15_the_note_is_shown_on_a_pass_alone_and_read_by_nothing` — six numbered clauses below | pass |
+| D26 | **Verdict-language ruling (user, Q81; contract `.agent/archive/contracts/q81.md`).** A kana request (the … | `tests/test_paste_in_outlet.py::test_q81_the_verdict_reads_the_status_line_s_language_on_every_path`; `tests/test_paste_in_reasons.py::test_m22_the_kana_class_holds_exactly_the_kana_letters`; `tests/test_paste_in_note.py::test_q78_n4_a_pass_shows_the_note_under_the_interpretation` | pass |
+| D27 | **nucllei-skill rulings (user, session 14; Q82; contract `.agent/archive/contracts/q82.md`, law `.claude/rules/nucllei.md`).** … | `tests/test_nucllei_artifacts.py::test_q82_t2_the_skill_row_llens_creates`; `tests/test_nucllei_tool.py::test_q82_t6_each_owned_csv_is_written_then_one_exec_runs_the_exact_program`; `tests/test_nucllei_tool.py::test_q82_t10_a_pass_stores_the_png_and_shows_it_once` — ten numbered rulings below | pass |
+| D28 | **Request-scope ruling (user, Q66; contract `.agent/archive/contracts/q66.md`).** The request (anchoring, typed … | `tests/test_paste_in_request_text.py::test_q66_r1_r4_the_branch_user_texts_join_oldest_first`; `tests/test_paste_in_request_text.py::test_q66_r2_a_branch_not_ending_in_the_current_message_reads_it_alone`; `tests/test_paste_in_request_text.py::test_q66_r5_the_receipt_carries_the_thread_under_the_requesting_user` — effect/fallback pins below | pass |
+| D29 | **System-prompt ruling (user, session 8).** Nothing from this repository enters … | `tests/test_paste_in_inlet.py::test_o7_last_owned_file_and_last_user_win_without_mutation`; `tests/test_paste_in_inlet.py::test_o7_production_and_demo_templates_share_rules_but_not_bare_source_format` (inlet behavior); retirement/admin guidance = scope | pass |
+| D30 | **M19 readings (user, session 8; the integrity redesign's open forks; … | `tests/test_figure_corpus.py::test_corpus_case` over `marks.toml` + `values.toml`; `tests/test_figure_values.py::test_r8_a_channel_stays_with_its_own_point`; `tests/test_figure_values.py::test_matching_is_injective` — R1–R8 below | pass |
+| D31 | **Queue rulings (user, queue session question round).** (1) An inverted … | (1–2) `tests/test_figure_corpus.py::test_corpus_case` (`inverted-category-axis`, `bar-widths-vary`, `hist-unequal-bins`); (3) `tests/test_paste_in_note.py::test_queue_a_failure_shows_no_note`; (4) `tests/test_webui_launch.py::test_l11_a_listener_bound_after_the_preflight_never_reaches_ready` + L12 below | pass |
+| D32 | **Upgrade rulings (user, upgrade request).** (1) Open WebUI → latest … | (1) measurement Image; (2) `tests/test_paste_in_owui_files.py::test_u2_d1_the_admins_font_file_wins_and_skips_the_walk`; (3–4) measurement `deps U3` + gate `audit` — policy-vs-behavior split below | pass |
 
 ### Conformance map
 
@@ -541,250 +615,250 @@ One row per `Intent` sentence (S) + `Decisions` bullet (D): the check that pins 
 
 | id | clause | text | decidable | check | firing | verdict |
 |---|---|---|---|---|---|---|
-| L1 | CLAUDE.md § Collaboration 1 | Uncertain / needs a decision / benefits from my … | pending | pending | pending | pending |
-| L2 | CLAUDE.md § Collaboration 2 | When discussion may improve the work, open one proactively: … | pending | pending | pending | pending |
-| L3 | CLAUDE.md § Collaboration 3 | Stay objective; push back on my ideas when warranted … | pending | pending | pending | pending |
-| L4 | CLAUDE.md § Collaboration 4 | A failed attempt is a valid result: report it … | pending | pending | pending | pending |
-| L5 | CLAUDE.md § Execution 1 | Install/configure project-local; work within the launch dir + children; … | pending | pending | pending | pending |
-| L6 | CLAUDE.md § Execution 2 | Long horizon → orient, then execute: one session carries … | pending | pending | pending | pending |
-| L7 | CLAUDE.md § Execution 3 | Finish line = a pasted body's `Met when`, else … | pending | pending | pending | pending |
-| L8 | CLAUDE.md § Execution 4 | Research, whenever a tooling, method or design choice is … | pending | pending | pending | pending |
-| L9 | CLAUDE.md § Execution 5 | Git: creds in the global gitconfig; standing permission for … | pending | pending | pending | pending |
-| L10 | CLAUDE.md § Execution 6 | Gate command = the full check chain `.claude/rules/` records; … | pending | pending | pending | pending |
-| L11 | CLAUDE.md § Execution 7 | CI gate: a public GitHub repo whose `main` CI … | pending | pending | pending | pending |
-| L12 | CLAUDE.md § Execution 8 | Evidence: capture rc on the spot (`cmd; rc=$?`); an … | pending | pending | pending | pending |
-| L13 | CLAUDE.md § Execution 9 | Command output rides the context → the quietest useful … | pending | pending | pending | pending |
-| L14 | CLAUDE.md § Execution 10 | Task close → remove the temporary + stale artifacts … | pending | pending | pending | pending |
-| L15 | CLAUDE.md § Execution 11 | UI design (artifact, variant or unit): the subject's domain, … | pending | pending | pending | pending |
-| L16 | CLAUDE.md § Execution 12 | Charts + figures: the data's job picks the form, … | pending | pending | pending | pending |
-| L17 | CLAUDE.md § Authoring 1 | AI agents = the sole developers ⇒ agent-optimized = … | pending | pending | pending | pending |
-| L18 | CLAUDE.md § Authoring 2 | State rules, facts + warnings plainly; omit provenance — … | pending | pending | pending | pending |
-| L19 | CLAUDE.md § Authoring 3 | Future-facing text, esp. prompts → state the desired action … | pending | pending | pending | pending |
-| L20 | CLAUDE.md § Authoring 4 | Prompts + instruction files state task, finish line + … | pending | pending | pending | pending |
-| L21 | CLAUDE.md § Authoring 5 | Guidance + checks on text = goals + reasons, … | pending | pending | pending | pending |
-| L22 | CLAUDE.md § Authoring 6 | Instruction files = yours to maintain → update any … | pending | pending | pending | pending |
-| L23 | CLAUDE.md § Authoring 7 | `.claude/rules/` reaches MAIN + every teammate of an interactive … | pending | pending | pending | pending |
-| L24 | CLAUDE.md § Authoring 8 | `@path` imports (instruction files) + attaches (my messages) a … | pending | pending | pending | pending |
-| L25 | CLAUDE.md § Authoring 9 | Human-facing = strictly user-facing surfaces a person reads at … | pending | pending | pending | pending |
-| L26 | CLAUDE.md § Engineering 1 | Elegant, tightly-scoped modular components; deduplicate; KISS + UNIX where … | pending | pending | pending | pending |
-| L27 | CLAUDE.md § Engineering 2 | Code = agent-read artifact → concise within three bounds: … | pending | pending | pending | pending |
-| L28 | CLAUDE.md § Engineering 3 | Comments cost tokens → spend them on the `why` … | pending | pending | pending | pending |
-| L29 | CLAUDE.md § Engineering 4 | Target sufficient scope, evidence-backed claims + real success criteria. | pending | pending | pending | pending |
-| L30 | CLAUDE.md § Engineering 5 | Established methods (TDD red-green-refactor, differential oracles, adversarial review) + … | pending | pending | pending | pending |
-| L31 | CLAUDE.md § Engineering 6 | Open tooling decisions (language/library/package…) → research (`Execution`) + select … | pending | pending | pending | pending |
-| L32 | CLAUDE.md § Engineering 7 | Deterministic checks own every rule a tool can decide: … | pending | pending | pending | pending |
-| L33 | CLAUDE.md § Engineering 8 | Tests/verification: derive scope from requested outcome + regression risk … | pending | pending | pending | pending |
-| L34 | CLAUDE.md § Engineering 9 | Runnable change → run the real app by its … | pending | pending | pending | pending |
-| L35 | CLAUDE.md § Engineering 10 | Verification integrity binds every check on the implementation; a … | pending | pending | pending | pending |
-| L36 | CLAUDE.md § Engineering 11 | Assurance tier, declared per unit with its contract: `kernel` … | pending | pending | pending | pending |
-| L37 | CLAUDE.md § Engineering 12 | Units = the shortest path to the consumable artifact, … | pending | pending | pending | pending |
-| L38 | CLAUDE.md § Engineering 13 | A gate backing a durable claim must rerun from … | pending | pending | pending | pending |
-| L39 | CLAUDE.md § Engineering 14 | Repairs to a generated artifact land as one idempotent … | pending | pending | pending | pending |
-| L40 | CLAUDE.md § Engineering 15 | Adversarial review (code or session) → scrutinize correctness + … | pending | pending | pending | pending |
-| L41 | CLAUDE.md § Engineering 16 | Code diff lenses = the author's self-review before each … | pending | pending | pending | pending |
-| L42 | CLAUDE.md § Engineering 17 | Split assurance by what it costs the decider: mechanical … | pending | pending | pending | pending |
-| L43 | CLAUDE.md § Engineering 18 | Review terminates on a check set fixed before the … | pending | pending | pending | pending |
-| L44 | CLAUDE.md § Engineering 19 | Delegated reports are two-tier: a verdict table the decider … | pending | pending | pending | pending |
-| L45 | CLAUDE.md § Engineering 20 | Remotely-exploitable code → highest security standard: periodically audit, update … | pending | pending | pending | pending |
-| L46 | CLAUDE.md § Teammates 1 | MAIN does the work: a planned unit's code, docs … | pending | pending | pending | pending |
-| L47 | CLAUDE.md § Teammates 2 | Offload economics: fresh-context + blindness fits pay at any … | pending | pending | pending | pending |
-| L48 | CLAUDE.md § Teammates 3 | Briefs + prompts (teammates, `SendMessage`, `claude -p`) = broader … | pending | pending | pending | pending |
-| L49 | CLAUDE.md § Teammates 4 | Names = role + gapless ordinal (`reviewer-2`), so `SendMessage` … | pending | pending | pending | pending |
-| L50 | CLAUDE.md § Teammates 5 | Harvest: marker + turn end → read the deliverable … | pending | pending | pending | pending |
-| L51 | CLAUDE.md § Teammates 6 | A code-writing teammate works in `git worktree add -b … | pending | pending | pending | pending |
-| L52 | CLAUDE.md § Teammates 7 | Shared mutable resources (build stores, DBs, ports, work tree, … | pending | pending | pending | pending |
-| L53 | CLAUDE.md § Teammates 8 | Advisor, where present = MAIN's call per case at … | pending | pending | pending | pending |
-| L54 | CLAUDE.md § Session flow 1 | Phases, `Phase:` in `.agent/spec.md` = the phase + its … | pending | pending | pending | pending |
-| L55 | CLAUDE.md § Session flow 2 | `.agent/spec.md` = the sole attached state, imported by the … | pending | pending | pending | pending |
-| L56 | CLAUDE.md § Session flow 3 | PROTOTYPE = the fastest path to an artifact I … | pending | pending | pending | pending |
-| L57 | CLAUDE.md § Session flow 4 | IMPLEMENT = the best version of the intended software, … | pending | pending | pending | pending |
-| L58 | CLAUDE.md § Session flow 5 | Routing: phase per kind of work — an open … | pending | pending | pending | pending |
-| L59 | CLAUDE.md § Session flow 6 | Routed state: `Phase` line 1 = `<PHASE> — <scope>`; … | pending | pending | pending | pending |
-| L60 | CLAUDE.md § Session flow 7 | This file + `.claude/agents/` = copies of a shared … | pending | pending | pending | pending |
-| L61 | CLAUDE.md § Session flow 8 | Rules upkeep rides the `Tasks` clearing: each phase close … | pending | pending | pending | pending |
-| L62 | CLAUDE.md § Session flow 9 | Checkpointing: a phase session compacts many times ⇒ state … | pending | pending | pending | pending |
-| L63 | CLAUDE.md § Session flow 10 | Teammates: fits, reasons + mechanics = `Teammates`; the phase … | pending | pending | pending | pending |
-| L64 | CLAUDE.md § Session flow 10a | PROTOTYPE + ITERATE: teammates = cheap + shallow, artifacts … | pending | pending | pending | pending |
-| L65 | CLAUDE.md § Session flow 10b | IMPLEMENT + MAINTAIN: teammates = deep; each unit's depth … | pending | pending | pending | pending |
-| L66 | CLAUDE.md § Session flow 10c | IMPLEMENT phase fits, any depth: `researcher` = SOTA survey … | pending | pending | pending | pending |
-| L67 | CLAUDE.md § Session flow 11 | Advisor (fits + rulings = `Teammates`; its bar follows … | pending | pending | pending | pending |
-| L68 | CLAUDE.md § Session flow 12 | Read cost control = `.gitignore` kept current — content … | pending | pending | pending | pending |
-| L69 | assurance.md 1 | 100% branch coverage answers "did the line execute", never … | pending | pending | pending | pending |
-| L70 | assurance.md 2 | A test that reads a production constant to build … | pending | pending | pending | pending |
-| L71 | assurance.md 3 | CLOSED dispatch enumerates every admitted variant: an `else:` tail … | pending | pending | pending | pending |
-| L72 | assurance.md 4 | ORDERING needs call-counting bombs on the downstream work, one … | pending | pending | pending | pending |
-| L73 | assurance.md 5 | A FAKE must match the real API's strictness: a … | pending | pending | pending | pending |
-| L74 | assurance.md 6 | Module-level dispatch maps bind function objects at import ⇒ … | pending | pending | pending | pending |
-| L75 | assurance.md 7 | A purity bomb on a global PYTEST ITSELF uses … | pending | pending | pending | pending |
-| L76 | assurance.md 8 | Split canonical FORM (byte-exact under an injected fixed TCB, … | pending | pending | pending | pending |
-| L77 | assurance.md 9 | Guard witnesses MIXED not uniform; independent bounds need their … | pending | pending | pending | pending |
-| L78 | assurance.md 10 | A differential that sets no `PYTHONPATH` can compare a … | pending | pending | pending | pending |
-| L79 | assurance.md 11 | Hypothesis: profiles in `tests/conftest.py` (`ci` derandomized default; `HYPOTHESIS_PROFILE=dev`); import … | pending | pending | pending | pending |
-| L80 | assurance.md 12 | The gate runs the suite under pytest-xdist (`-n auto`, … | pending | pending | pending | pending |
-| L81 | assurance.md 13 | Shipped sources spell an alias `X: TypeAlias = Literal[...]` … | pending | pending | pending | pending |
-| L82 | assurance.md 14 | `cast`, not `assert`, narrows `X \| None` at a … | pending | pending | pending | pending |
-| L83 | assurance.md 15 | A "no edit needed" list is an assertion ⇒ … | pending | pending | pending | pending |
-| L84 | assurance.md 16 | A diff-blind suite states a contract READING: where a … | pending | pending | pending | pending |
-| L85 | assurance.md 17 | Doc guarantee strings (READMEs, the reference, the short guide, … | pending | pending | pending | pending |
-| L86 | assurance.md 18 | Verification integrity (`CLAUDE.md` `Engineering`), project bindings: a unit's grading … | pending | pending | pending | pending |
-| L87 | assurance.md 19 | Claim discipline: cite only retained-log numbers; frame unproven root … | pending | pending | pending | pending |
-| L88 | claims.md 1 | Verified = the drawn figure obeys every integrity check … | pending | pending | pending | pending |
-| L89 | claims.md 2 | Trusted, NOT verified: the renderer, browser, pixels, the code … | pending | pending | pending | pending |
-| L90 | claims.md 3 | Fidelity to INTENT (the right quantity for the question) … | pending | pending | pending | pending |
-| L91 | claims.md 4 | Model guidance (filter inlet template, `draw_figure` description) MAY state … | pending | pending | pending | pending |
-| L92 | claims.md 5 | nucllei scope (Q82): the verifier decides the figures `draw_figure` … | pending | pending | pending | pending |
-| L93 | claims.md 6 | Corpus claims are scoped: the rule corpus's both-ways 100% … | pending | pending | pending | pending |
-| L94 | claims.md 7 | Human-facing text at a demo boundary inherits claim discipline: … | pending | pending | pending | pending |
-| L95 | codex-bridge.md 1 | Shape: OpenAI `/v1` (`GET /models`, `POST /chat/completions`, stream or … | pending | pending | pending | pending |
-| L96 | codex-bridge.md 2 | Clean context is MEASURED, never assumed: `uv run --locked … | pending | pending | pending | pending |
-| L97 | codex-bridge.md 3 | Isolation: own `CODEX_HOME` + `HOME` (`.codex-bridge/`, gitignored) ⇒ the … | pending | pending | pending | pending |
-| L98 | codex-bridge.md 4 | Request origin (M23.1 F2; law shared with the backend … | pending | pending | pending | pending |
-| L99 | codex-bridge.md 5 | Tool call: `item/tool/call` ⇒ `turn/interrupt` goes on the wire … | pending | pending | pending | pending |
-| L100 | codex-bridge.md 6 | Provisioning: `--codex` = `WEBUI_PROVISION_MODEL_ID=gpt-6-luna` + `WEBUI_PROVISION_PASTE_IN=production` (`paste-in/` pair, strict … | pending | pending | pending | pending |
-| L101 | codex-bridge.md 7 | Live record = `.agent/measurements/luna/` (`luna_live.mjs` drives, `luna_classify.py` re-judges each … | pending | pending | pending | pending |
-| L102 | codex-bridge.md 8 | Live batches need the CPU: the browser's Pyodide run … | pending | pending | pending | pending |
-| L103 | figure.md 1 | Program = model-authored bytes, run UNCHANGED in the host's … | pending | pending | pending | pending |
-| L104 | figure.md 2 | `CLAUDE.md` `Execution` Charts + figures clause INAPPLICABLE to verification … | pending | pending | pending | pending |
-| L105 | figure.md 3 | Wrapper (RPC code) = loader prelude → reader source … | pending | pending | pending | pending |
-| L106 | figure.md 4 | Reader = trusted FACT reporter (`src/verifier/figure/reader.py`, matplotlib + pandas … | pending | pending | pending | pending |
-| L107 | figure.md 5 | Hooks: `Text.set_text` → a text's `site` = the last … | pending | pending | pending | pending |
-| L108 | figure.md 6 | Sandbox = Open WebUI 0.12.3's Pyodide 314.0.3 (CPython 3.14.2; … | pending | pending | pending | pending |
-| L109 | figure.md 7 | table: \| check \| reasons \| | pending | pending | pending | pending |
-| L110 | figure.md 8 | Figure: exactly one shown figure (`no_figure` / `multiple_figures`). Children: … | pending | pending | pending | pending |
-| L111 | figure.md 9 | Axes: class exactly `Axes`, owned by the figure (`fig.axes`), … | pending | pending | pending | pending |
-| L112 | figure.md 10 | Axes children = structural slots (patch, 4 spines, x/y … | pending | pending | pending | pending |
-| L113 | figure.md 11 | table: \| family \| class \| origin … | pending | pending | pending | pending |
-| L114 | figure.md 12 | `mark_not_in_data`: a data artist's data-bearing transform ≠ `transData` (line/area/pie: … | pending | pending | pending | pending |
-| L115 | figure.md 13 | `scale_not_linear` (R3): a non-linear axis passes only when it … | pending | pending | pending | pending |
-| L116 | figure.md 14 | `axis_inverted`: either axis inverted (ruling 3; both axes), except … | pending | pending | pending | pending |
-| L117 | figure.md 15 | `tick_label_mismatch`: a visible non-empty tick label in view — … | pending | pending | pending | pending |
-| L118 | figure.md 16 | `point_clipped`: any drawn data coordinate (points, bar base + … | pending | pending | pending | pending |
-| L119 | figure.md 17 | `zero_not_in_limits` (R1): a magnitude mark (bar, hist, area) ⇒ … | pending | pending | pending | pending |
-| L120 | figure.md 18 | `mark_hidden`: a hidden axes, or a data artist not … | pending | pending | pending | pending |
-| L121 | figure.md 19 | `value_not_finite`: NaN / ±inf among drawn data or recorded … | pending | pending | pending | pending |
-| L122 | figure.md 20 | `bar_not_from_zero` (G1, R1): every bar's base = 0, or … | pending | pending | pending | pending |
-| L123 | figure.md 21 | `bars_overlap`: two bars' rectangles overlap with positive area (grouped … | pending | pending | pending | pending |
-| L124 | figure.md 22 | `bar_width_varies` (user ruling, luna F6): every bar of one … | pending | pending | pending | pending |
-| L125 | figure.md 23 | `category_not_unique`: two points of one series share a key … | pending | pending | pending | pending |
-| L126 | figure.md 24 | `x_not_ordered` (G9): a line's key positions run both ways … | pending | pending | pending | pending |
-| L127 | figure.md 25 | `hist_counts`: hist rects contiguous on the recorded bin edges, … | pending | pending | pending | pending |
-| L128 | figure.md 26 | `pie_not_whole`: wedges share one radius + width (an exploded … | pending | pending | pending | pending |
-| L129 | figure.md 27 | `area_not_from_zero`: each band GROUNDED: its base edge all zero, … | pending | pending | pending | pending |
-| L130 | figure.md 28 | `marker_size_varies` / `marker_color_varies`: a scatter collection whose sizes / … | pending | pending | pending | pending |
-| L131 | figure.md 29 | `legend_mismatch`: each legend entry names one judged mark (handle … | pending | pending | pending | pending |
-| L132 | figure.md 30 | Reference marks: each value = zero, a request number, … | pending | pending | pending | pending |
-| L133 | figure.md 31 | Pie keys = each wedge's drawn label Text (final … | pending | pending | pending | pending |
-| L134 | figure.md 32 | Series = one line · scatter collection · bar … | pending | pending | pending | pending |
-| L135 | figure.md 33 | Sources: each attached CSV (`csvread` profile; non-profile columns unusable) … | pending | pending | pending | pending |
-| L136 | figure.md 34 | CSV explanations (closed): `raw(K,V)` (incl. `raw(K,K)`: a channel encoding … | pending | pending | pending | pending |
-| L137 | figure.md 35 | Per value EITHER (ruling 4): one CSV explanation per … | pending | pending | pending | pending |
-| L138 | figure.md 36 | Ties: ≥ 2 explanations with different column sets fully … | pending | pending | pending | pending |
-| L139 | figure.md 37 | **Computed values (Q45, user, session 10; contract `.agent/archive/contracts/q45.md`).** The … | pending | pending | pending | pending |
-| L140 | figure.md 38 | Drawn columns per CSV = every explanation's K and … | pending | pending | pending | pending |
-| L141 | figure.md 39 | G10 (`label_not_consistent`): titles, axis labels, axes legend entries, the … | pending | pending | pending | pending |
-| L142 | figure.md 40 | Publication (tier 3): per-group counts beside every reduction (G11), … | pending | pending | pending | pending |
-| L143 | gate-checks.md 1 | Probe mechanics (`tools/gate-probe.sh`): each probe mutates ONE tracked file … | pending | pending | pending | pending |
-| L144 | gate-checks.md 2 | Firing records — attribution rides the message, eleven tests … | pending | pending | pending | pending |
-| L145 | gate-checks.md 3 | A widened sweep splits its probe with the widening: … | pending | pending | pending | pending |
-| L146 | gate-checks.md 4 | Assemble every firing-input literal at run time (`shellcheck disable=`, … | pending | pending | pending | pending |
-| L147 | gate-checks.md 5 | Three shapes to hold: YAML types a bare `run: … | pending | pending | pending | pending |
-| L148 | gate-checks.md 6 | S4 reads `.agent/{spec,deferred,review}.md` + every `.claude/rules/*.md`, deciding only ROOTED … | pending | pending | pending | pending |
-| L149 | gate-checks.md 7 | S6 reads PROSE, not headings: `_UNIT = re.compile(r"M(\d+)\.(\d+)([a-z]?)")` matches … | pending | pending | pending | pending |
-| L150 | gate-checks.md 8 | S8 reads `tests/` rather than the state files, because … | pending | pending | pending | pending |
-| L151 | gate-checks.md 9 | Measurement replay (`.agent/measurements/rerun_all.py`) positive control: plant R1's expected Kahan … | pending | pending | pending | pending |
-| L152 | host-runtime.md 1 | Two tiers, incompatible hosts. ORIGIN (source of all M3–M8 … | pending | pending | pending | pending |
-| L153 | host-runtime.md 2 | Runtime GO on CURRENT = FUNCTIONAL (user, upgrade request: … | pending | pending | pending | pending |
-| L154 | host-runtime.md 3 | ORIGIN-tuple evidence (M3/M4/M6/M7/M8 live-stack gates) cannot be re-taken on … | pending | pending | pending | pending |
-| L155 | host-runtime.md 4 | **The BROWSER tier runs on any host.** `.venv-webui` (uv-managed … | pending | pending | pending | pending |
-| L156 | host-runtime.md 5 | **Request origin (M23.1 F2 + F4).** No model-tier server … | pending | pending | pending | pending |
-| L157 | host-runtime.md 6 | **Browser automation + remote browsing = `.claude/rules/owui.md`** (direct CDP … | pending | pending | pending | pending |
-| L158 | host-runtime.md 7 | **Port seam is small + isolated**: `app.py` touches only … | pending | pending | pending | pending |
-| L159 | host-runtime.md 8 | **Any replacement engine must reproduce two contracts byte-exactly**: (1) … | pending | pending | pending | pending |
-| L160 | host-runtime.md 9 | Model IDENTITY is duplicated beyond `model_backend/`: `webui/settings.py` + `webui/README.md`, … | pending | pending | pending | pending |
-| L161 | host-runtime.md 10 | The demo proposer is deliberately small; its live arms … | pending | pending | pending | pending |
-| L162 | human-facing.md 1 | Authoring audience split (`CLAUDE.md` `Authoring` `Human-facing`). HUMAN-FACING ⇒ ASD-STE100 … | pending | pending | pending | pending |
-| L163 | human-facing.md 2 | Diagrams (Q72, user: Graphviz `dot`, no image generation; "elaborate … | pending | pending | pending | pending |
-| L164 | human-facing.md 3 | Gallery (Q72, user: "a gallery that showcases all the … | pending | pending | pending | pending |
-| L165 | human-facing.md 4 | Length = judgment under `L-LAW`, never a count (`CLAUDE.md` … | pending | pending | pending | pending |
-| L166 | human-facing.md 5 | `CLAUDE.md` `Authoring` agent-optimized default ADAPTED (user ruling): its `prompts` … | pending | pending | pending | pending |
-| L167 | human-facing.md 6 | `CLAUDE.md` `Authoring` UI-copy clause ADAPTED: the status line's ` … | pending | pending | pending | pending |
-| L168 | human-facing.md 7 | nucllei surfaces (Q82): HUMAN-FACING = `docs/admin/nucllei{,.ja}.md`, `docs/nucllei/checks{,.ja}.md` + its … | pending | pending | pending | pending |
-| L169 | human-facing.md 8 | AGENT-OPTIMIZED as a CLASS (never re-litigate string by string): … | pending | pending | pending | pending |
-| L170 | nucllei.md 1 | Shape (rulings 1, 10): skill `figure-verification` (`llens/nucllei/skills/figure-verification.md`, from `nucllei_skill/skill.py`) … | pending | pending | pending | pending |
-| L171 | nucllei.md 2 | llens `scripts/nucllei/sync.py` = the deployment path: tool id = … | pending | pending | pending | pending |
-| L172 | nucllei.md 3 | Model-facing surfaces (Japanese, ruling 7): the skill body, the … | pending | pending | pending | pending |
-| L173 | nucllei.md 4 | No outlet hook, no Pyodide: `draw_figure` = one `POST … | pending | pending | pending | pending |
-| L174 | nucllei.md 5 | User data (consultant-1 T7, T8): request text + attachments … | pending | pending | pending | pending |
-| L175 | nucllei.md 6 | Publication: the PNG → `Storage.upload_file` + `Files.insert_new_file` (a `None` … | pending | pending | pending | pending |
-| L176 | nucllei.md 7 | Tests: `tests/nucllei_support.py` fakes keep the real signatures (`Files.get_file_by_id(id, include_deleted=False)`, … | pending | pending | pending | pending |
-| L177 | nucllei.md 8 | Target stack = measurement NS (`ns_sandbox.py`, replay id `NS`): … | pending | pending | pending | pending |
-| L178 | nucllei.md 9 | Images: `sudo podman build --network=host -t localhost/nucllei{,-sandbox}:v20261020-01` from the … | pending | pending | pending | pending |
-| L179 | ops.md 1 | Env: `uv sync --locked` builds `.venv` (py 3.14, gitignored); … | pending | pending | pending | pending |
-| L180 | ops.md 2 | **Gate = `bash tools/gate.sh`** — the ONE invocation; a … | pending | pending | pending | pending |
-| L181 | ops.md 3 | **CI gate** (`CLAUDE.md` `CI gate`) = the full gate's … | pending | pending | pending | pending |
-| L182 | ops.md 4 | **Fresh-host form** (a local full run with every stage … | pending | pending | pending | pending |
-| L183 | ops.md 5 | **Fast gate (iteration) = `bash tools/fast-gate.sh [<pytest node\|path> …]`**: … | pending | pending | pending | pending |
-| L184 | ops.md 6 | **Gate positive controls = `bash tools/gate-probe.sh`**: every PURPOSE-BUILT check … | pending | pending | pending | pending |
-| L185 | ops.md 7 | **Measurement harnesses = `.agent/measurements/`**, NOT in the gate and … | pending | pending | pending | pending |
-| L186 | ops.md 8 | Gate internals = `uv run --locked ruff format --check … | pending | pending | pending | pending |
-| L187 | ops.md 9 | Shared live resources, one named holder per wave: ports … | pending | pending | pending | pending |
-| L188 | ops.md 10 | Teammate worktrees: `.scratch/worktrees/<name>` on `wt/<name>`; from `<wt>` gate with … | pending | pending | pending | pending |
-| L189 | ops.md 11 | Running the FULL `tools/gate.sh` from a worktree resyncs the … | pending | pending | pending | pending |
-| L190 | ops.md 12 | Read-and-conform-to set for every brief: gate above · oracles … | pending | pending | pending | pending |
-| L191 | ops.md 13 | Unit lifecycle (IMPLEMENT): contract `.agent/contracts/<unit>.md` (testable predicates + invariant … | pending | pending | pending | pending |
-| L192 | ops.md 14 | License `Apache-2.0 WITH LLVM-exception`; SPDX header in every tracked … | pending | pending | pending | pending |
-| L193 | ops.md 15 | Census the instruction surface off `git ls-files`, never bare … | pending | pending | pending | pending |
-| L194 | ops.md 16 | Live law (`.claude/rules/*.md`) cites tracked code as `<file>.py::<name>` (`<file>.py::<Class>.<member>` … | pending | pending | pending | pending |
-| L195 | ops.md 17 | Template drift (`CLAUDE.md`, `.claude/agents/`, `.agent/spec-lint`): a widened template rule … | pending | pending | pending | pending |
-| L196 | owui.md 1 | Sandbox mechanism (shipped = `webui/paste_in/filter.py`, M19.5; measured on 0.10.2, … | pending | pending | pending | pending |
-| L197 | owui.md 2 | Pyodide **`314.0.3`** (runtime CPython 3.14.2, wasm32; 0.10.2 shipped 0.28.3) … | pending | pending | pending | pending |
-| L198 | owui.md 3 | `execute:python` needs a LIVE browser socket: the headless harness … | pending | pending | pending | pending |
-| L199 | owui.md 4 | Current surface: `webui/settings.py` provisions the PASTE-IN tool (`tool_id=figure_verification`, operation … | pending | pending | pending | pending |
-| L200 | owui.md 5 | **`function_name_filter_list` cannot narrow a tool server and must never … | pending | pending | pending | pending |
-| L201 | owui.md 6 | **Paste-in law (M10.0 onward).** The pasted artifact is GENERATED … | pending | pending | pending | pending |
-| L202 | owui.md 7 | **Demo transport (M10.6; Q40; ruling 8).** The paste-in filter's … | pending | pending | pending | pending |
-| L203 | owui.md 8 | Tool provisioning REST shapes (settled on 0.10.2; the 0.12.3 … | pending | pending | pending | pending |
-| L204 | owui.md 9 | CSV bytes in-process (CSV ruling): `await Files.get_file_by_id_and_user_id(id, user_id, db=None)` … | pending | pending | pending | pending |
-| L205 | owui.md 10 | OWUI's OWN narration path cannot carry the verdict: under … | pending | pending | pending | pending |
-| L206 | owui.md 11 | Verdict totality (F4): the filter rewrites the LAST assistant … | pending | pending | pending | pending |
-| L207 | owui.md 12 | **Failure reasons (M15.1, `.agent/archive/contracts/m15u1.md`).** Every FAIL outlet call = … | pending | pending | pending | pending |
-| L208 | owui.md 13 | **Check breakdown (M16.1, re-keyed by M19.5).** Every FAIL (after … | pending | pending | pending | pending |
-| L209 | owui.md 14 | **Row disclosures (M18.2 + M20.2; ruling 13).** Each row … | pending | pending | pending | pending |
-| L210 | owui.md 15 | The harness client reads a persisted reply's final text … | pending | pending | pending | pending |
-| L211 | owui.md 16 | Browser automation = direct CDP over a scratch profile, … | pending | pending | pending | pending |
-| L212 | owui.md 17 | **Signing key = one per instance** (`webui/settings.py::Settings.signing_key`: the operator's … | pending | pending | pending | pending |
-| L213 | owui.md 18 | Remote browsing forwards 8080 ALONE: the python-mode PNG is … | pending | pending | pending | pending |
-| L214 | owui.md 19 | **Japanese text = the server's Japanese font, cut per … | pending | pending | pending | pending |
-| L215 | owui.md 20 | **Client content blockers kill the PASS arm silently.** `ENABLE_PYODIDE_FILE_PERSISTENCE` … | pending | pending | pending | pending |
-| L216 | owui.md 21 | **A real-model `-m webui chat` needs `WEBUI_PROVISION_READY_TIMEOUT=600`.** The persisted-chat … | pending | pending | pending | pending |
-| L217 | owui.md 22 | **Banner arms (M19.5).** `webui/banner.json` = six arms — `simple` … | pending | pending | pending | pending |
-| L218 | pysrc.md 1 | Drawn columns = the columns whose explanation backs the … | pending | pending | pending | pending |
-| L219 | pysrc.md 2 | **Substitution (the demo's rule, Q8):** refuse `column_not_requested` only on … | pending | pending | pending | pending |
-| L220 | pysrc.md 3 | **Strict (production's rule, Q37):** the substitution check, then: a … | pending | pending | pending | pending |
-| L221 | pysrc.md 4 | **Matcher.** Safe because the model gets no vote: the … | pending | pending | pending | pending |
-| L222 | pysrc.md 5 | **Stops + negation (Q38).** Before naming, `anchoring.py::_unnamed_places` consumes the … | pending | pending | pending | pending |
-| L223 | pysrc.md 6 | **Japanese short words (Q41, strict alone).** `anchoring.py::_short_names`: a whole … | pending | pending | pending | pending |
-| L224 | pysrc.md 7 | **Admin aliases (Q43).** `Aliases` = (column, alias) pairs — … | pending | pending | pending | pending |
-| L225 | pysrc.md 8 | A model-produced translation of the request may never become … | pending | pending | pending | pending |
-| L226 | pysrc.md 9 | **G10 labels** (`columns.py::check_labels`, law `.claude/rules/figure.md` § Columns): a label … | pending | pending | pending | pending |
-| L227 | pysrc.md 10 | **Restrict, never reimplement.** The sandbox calls plain `pd.read_csv`, whose … | pending | pending | pending | pending |
-| L228 | pysrc.md 11 | A STRUCTURAL fault refuses the whole file (`Unreadable`: `csv_not_parsable` … | pending | pending | pending | pending |
-| L229 | pysrc.md 12 | A demo dataset never spells a group key with … | pending | pending | pending | pending |
-| L230 | pysrc.md 13 | pandas reduces a float64 group with ordered binary64 Kahan … | pending | pending | pending | pending |
-| L231 | tooling.md 1 | ruff `S603` fires when argv is not visibly constant: … | pending | pending | pending | pending |
-| L232 | tooling.md 2 | `httpx` imports directly in tests (transitive via Litestar's TestClient, … | pending | pending | pending | pending |
-| L233 | tooling.md 3 | `requires-python = ">=3.14,<3.15"` + `.python-version` pin the line; the … | pending | pending | pending | pending |
-| L234 | tooling.md 4 | Shipped sources (`src/verifier`, `webui/paste_in`, both generated pairs) = CPython … | pending | pending | pending | pending |
-| L235 | tooling.md 5 | Second interpreter: `UV_PROJECT_ENVIRONMENT=.scratch/venv-py3142 UV_LINK_MODE=copy COVERAGE_FILE=.scratch/coverage-py3142 uv run --locked --python … | pending | pending | pending | pending |
-| L236 | transformers.md 1 | **`dtype=` takes a STRING** (`getattr(torch, dtype)`, `modeling_utils.py:858`, documented `:3967`) | pending | pending | pending | pending |
-| L237 | transformers.md 2 | **`generate` is already `@torch.no_grad()`** (`generation/utils.py:2568-2570`) and | pending | pending | pending | pending |
-| L238 | transformers.md 3 | **`pad_token_id` is SCALAR-ONLY; `eos_token_id` accepts `int \| list[int]`** | pending | pending | pending | pending |
-| L239 | transformers.md 4 | **No finish-reason exists in `generate`'s output or its stopping … | pending | pending | pending | pending |
-| L240 | transformers.md 5 | **`do_sample=False` + a non-default `temperature` = logged warning, never … | pending | pending | pending | pending |
-| L241 | transformers.md 6 | **`apply_chat_template(tokenize=True, return_dict=True)` returns a `BatchEncoding`** with exactly | pending | pending | pending | pending |
-| L242 | transformers.md 7 | **`BatchEncoding.to(device)` returns `self` but REBUILDS `.data`** | pending | pending | pending | pending |
-| L243 | transformers.md 8 | **Decoder-only `generate` returns prompt+suffix and does not mutate the … | pending | pending | pending | pending |
-| L244 | transformers.md 9 | **`local_files_only=True` is NOT needed to resolve a valid local … | pending | pending | pending | pending |
-| L245 | transformers.md 10 | **`device_map` requires accelerate** (`integrations/accelerate.py:96-141`); a device STRING | pending | pending | pending | pending |
-| L246 | transformers.md 11 | **Concurrent `generate` on one model = UNSETTLED BY EVIDENCE, … | pending | pending | pending | pending |
-| L247 | transformers.md 12 | **A single unpadded sequence needs no `attention_mask`** — `generate` … | pending | pending | pending | pending |
+| L1 | CLAUDE.md § Collaboration 1 | Uncertain / needs a decision / benefits from my … | n/a: binds no tracked file | none | — | n/a: session questions |
+| L2 | CLAUDE.md § Collaboration 2 | When discussion may improve the work, open one proactively: … | n/a: binds no tracked file | none | — | n/a: discussion practice |
+| L3 | CLAUDE.md § Collaboration 3 | Stay objective; push back on my ideas when warranted … | n/a: binds no tracked file | none | — | n/a: collaboration judgment |
+| L4 | CLAUDE.md § Collaboration 4 | A failed attempt is a valid result: report it … | n/a: binds no tracked file | none | — | n/a: reporting practice |
+| L5 | CLAUDE.md § Execution 1 | Install/configure project-local; work within the launch dir + children; … | n/a: binds no tracked file | none | — | n/a: filesystem authorization |
+| L6 | CLAUDE.md § Execution 2 | Long horizon → orient, then execute: one session carries … | n/a: binds no tracked file | none | — | n/a: session execution |
+| L7 | CLAUDE.md § Execution 3 | Finish line = a pasted body's `Met when`, else … | n/a: binds no tracked file | none | — | n/a: session finish/notification |
+| L8 | CLAUDE.md § Execution 4 | Research, whenever a tooling, method or design choice is … | n/a: binds no tracked file | none | — | n/a: research method |
+| L9 | CLAUDE.md § Execution 5 | Git: creds in the global gitconfig; standing permission for … | n/a: binds no tracked file | none | — | n/a: git workflow/history, not tracked contents |
+| L10 | CLAUDE.md § Execution 6 | Gate command = the full check chain `.claude/rules/` records; … | partly: gate identity, stage/suite timing | tests/test_gate.py::test_g6_gate_script_runs_every_expected_stage + test_g11_ops_rules_record_the_gate_invocation; timing pin none | g6-stage-list + g11-ops-records-the-gate; timing plant needed: P1 | R303 |
+| L11 | CLAUDE.md § Execution 7 | CI gate: a public GitHub repo whose `main` CI … | partly: CI trigger/fan-out | tests/test_gate.py::test_g17_ci_fans_out_every_stage_on_ci_branches | g17-ci-trigger + g17-stage-matrix + g17-fail-fast + g17-stage-argument | pass |
+| L12 | CLAUDE.md § Execution 8 | Evidence: capture rc on the spot (`cmd; rc=$?`); an … | n/a: binds no tracked file | none | — | n/a: command evidence practice |
+| L13 | CLAUDE.md § Execution 9 | Command output rides the context → the quietest useful … | n/a: binds no tracked file | none | — | n/a: command output practice |
+| L14 | CLAUDE.md § Execution 10 | Task close → remove the temporary + stale artifacts … | partly: dangling tracked symlinks; staleness needs judgment | none | plant needed: add dangling tracked link; expect named dangling target | R298 |
+| L15 | CLAUDE.md § Execution 11 | UI design (artifact, variant or unit): the subject's domain, … | partly: shipped embed contrast/focus; design choices judgment | tests/test_paste_in_embed.py; remaining visual QA manual | checks:q62-dark-muted-dim + q62-light-link-pale + q62-no-focus-ring + q62-id-selector | pass |
+| L16 | CLAUDE.md § Execution 12 | Charts + figures: the data's job picks the form, … | n/a: binds no tracked file | none | — | n/a: figure.md ruling exempts every test/banner input; no own data figure deliverable |
+| L17 | CLAUDE.md § Authoring 1 | AI agents = the sole developers ⇒ agent-optimized = … | no | none | — | pass |
+| L18 | CLAUDE.md § Authoring 2 | State rules, facts + warnings plainly; omit provenance — … | no | none | — | R299 |
+| L19 | CLAUDE.md § Authoring 3 | Future-facing text, esp. prompts → state the desired action … | no | none | — | pass |
+| L20 | CLAUDE.md § Authoring 4 | Prompts + instruction files state task, finish line + … | no | none | — | pass |
+| L21 | CLAUDE.md § Authoring 5 | Guidance + checks on text = goals + reasons, … | no | none | — | pass |
+| L22 | CLAUDE.md § Authoring 6 | Instruction files = yours to maintain → update any … | partly: machine-specific paths in live tracked surfaces | none | plant needed: live rule/source gets /home/law-probe/private; expect portability failure | R300 |
+| L23 | CLAUDE.md § Authoring 7 | `.claude/rules/` reaches MAIN + every teammate of an interactive … | partly: YAML frontmatter + quoted globs + matching tracked targets | none | plant needed: unquoted glob, malformed YAML, zero-match glob; expect file/pattern failures | R301 |
+| L24 | CLAUDE.md § Authoring 8 | `@path` imports (instruction files) + attaches (my messages) a … | yes | none | plant needed: instruction import @CLAUDE.md; expect already-autoloaded import failure | R302 |
+| L25 | CLAUDE.md § Authoring 9 | Human-facing = strictly user-facing surfaces a person reads at … | partly: passive-shape/register pins; prose judgment | tests/test_readme_register.py + tests/test_paste_in_texts.py + tests/test_admin_docs.py | test_the_check_fires_on_a_passive_sentence; text/admin plants P3/P4 | pass |
+| L26 | CLAUDE.md § Engineering 1 | Elegant, tightly-scoped modular components; deduplicate; KISS + UNIX where … | no | none | — | pass |
+| L27 | CLAUDE.md § Engineering 2 | Code = agent-read artifact → concise within three bounds: … | no | none | — | pass |
+| L28 | CLAUDE.md § Engineering 3 | Comments cost tokens → spend them on the `why` … | no | none | — | pass |
+| L29 | CLAUDE.md § Engineering 4 | Target sufficient scope, evidence-backed claims + real success criteria. | no | none | — | pass |
+| L30 | CLAUDE.md § Engineering 5 | Established methods (TDD red-green-refactor, differential oracles, adversarial review) + … | n/a: binds no tracked file | none | — | n/a: engineering method choice |
+| L31 | CLAUDE.md § Engineering 6 | Open tooling decisions (language/library/package…) → research (`Execution`) + select … | n/a: binds no tracked file | none | — | n/a: tooling-selection process |
+| L32 | CLAUDE.md § Engineering 7 | Deterministic checks own every rule a tool can decide: … | partly: mechanically enforceable tracked-file invariants | format/lint/types/tests/tests311/audit/secrets/workflows/spec/shell; missing policy checks below | upstream suites + gate probes + named mutants; prospective plants for missing checks | R298 R300 R301 R302 R303 R304 R305 R306 R307 R308 |
+| L33 | CLAUDE.md § Engineering 8 | Tests/verification: derive scope from requested outcome + regression risk … | no | none | — | pass |
+| L34 | CLAUDE.md § Engineering 9 | Runnable change → run the real app by its … | n/a: binds no tracked file | none | — | n/a: live-driving process |
+| L35 | CLAUDE.md § Engineering 10 | Verification integrity binds every check on the implementation; a … | partly: skip tracking + catalogue/test liveness; semantic hardcoding/credit judgment | tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it; tests/test_gate.py G18; tests/test_mutation_catalogues.py | s8-untracked-{skip-marker,body-skip,param-marks,module-pytestmark}; s8-ticked-row-not-a-tracker; g18-ci-*; test_a_non_test_helper_is_not_a_kill | pass |
+| L36 | CLAUDE.md § Engineering 11 | Assurance tier, declared per unit with its contract: `kernel` … | no | none | — | pass |
+| L37 | CLAUDE.md § Engineering 12 | Units = the shortest path to the consumable artifact, … | partly: deferred acceptance fields | tests/test_spec.py::test_s3_every_deferral_carries_an_acceptance_check | s3-acceptance-check + s3-row-shape + s3-blank-line-ends-row | pass |
+| L38 | CLAUDE.md § Engineering 13 | A gate backing a durable claim must rerun from … | partly: tracked gate/artifact sources + source-generation equality; live measurement exemption ops.md | tests/test_spec.py S2/S4/S7; tests/test_paste_in_bundle.py B1/B2 | s2-artifacts-path + s4-* + s7-stranded-contract-citation + b1-artifact-freshness + b2-embedded-identity | pass |
+| L39 | CLAUDE.md § Engineering 14 | Repairs to a generated artifact land as one idempotent … | partly: generated artifact currency | tests/test_paste_in_bundle.py B1/B2; tests/test_gallery.py; tests/test_nucllei_docs.py; tests/test_verification_docs.py diagram currency | b1-artifact-freshness + b2-embedded-identity; generator plants P5/P6/P7 | pass |
+| L40 | CLAUDE.md § Engineering 15 | Adversarial review (code or session) → scrutinize correctness + … | n/a: binds no tracked file | none | — | n/a: review attention |
+| L41 | CLAUDE.md § Engineering 16 | Code diff lenses = the author's self-review before each … | no | lint (partial mechanical aid) | — | pass |
+| L42 | CLAUDE.md § Engineering 17 | Split assurance by what it costs the decider: mechanical … | n/a: binds no tracked file | none | — | n/a: pass separation/session ledger practice |
+| L43 | CLAUDE.md § Engineering 18 | Review terminates on a check set fixed before the … | n/a: binds no tracked file | none | — | n/a: review convergence practice |
+| L44 | CLAUDE.md § Engineering 19 | Delegated reports are two-tier: a verdict table the decider … | n/a: binds no tracked file | none | — | n/a: delegated scratch-report structure |
+| L45 | CLAUDE.md § Engineering 20 | Remotely-exploitable code → highest security standard: periodically audit, update … | n/a: reserved scope | none | — | n/a: security-only analysis assigned to MAIN |
+| L46 | CLAUDE.md § Teammates 1 | MAIN does the work: a planned unit's code, docs … | n/a: binds no tracked file | none | — | n/a: teammate ownership |
+| L47 | CLAUDE.md § Teammates 2 | Offload economics: fresh-context + blindness fits pay at any … | n/a: binds no tracked file | none | — | n/a: dispatch economics |
+| L48 | CLAUDE.md § Teammates 3 | Briefs + prompts (teammates, `SendMessage`, `claude -p`) = broader … | n/a: binds no tracked file | none | — | n/a: session briefs |
+| L49 | CLAUDE.md § Teammates 4 | Names = role + gapless ordinal (`reviewer-2`), so `SendMessage` … | n/a: binds no tracked file | none | — | n/a: teammate names/directives |
+| L50 | CLAUDE.md § Teammates 5 | Harvest: marker + turn end → read the deliverable … | n/a: binds no tracked file | none | — | n/a: harvest process |
+| L51 | CLAUDE.md § Teammates 6 | A code-writing teammate works in `git worktree add -b … | n/a: binds no tracked file | none | — | n/a: teammate git process |
+| L52 | CLAUDE.md § Teammates 7 | Shared mutable resources (build stores, DBs, ports, work tree, … | n/a: binds no tracked file | none | — | n/a: runtime resource ownership |
+| L53 | CLAUDE.md § Teammates 8 | Advisor, where present = MAIN's call per case at … | n/a: binds no tracked file | none | — | n/a: advisor use |
+| L54 | CLAUDE.md § Session flow 1 | Phases, `Phase:` in `.agent/spec.md` = the phase + its … | partly: phase/state syntax | spec; tests/test_spec.py S1/S6/S9 | s1-section-set + s6-* + s9-phase-without-name + s9-phase-without-scope | pass |
+| L55 | CLAUDE.md § Session flow 2 | `.agent/spec.md` = the sole attached state, imported by the … | partly: five-section schema + tracked paths + task shapes + queue pointer | spec; tests/test_spec.py S1-S9; import surface none (R302) | s1-* through s9-*; @import plant for R302 | R302 |
+| L56 | CLAUDE.md § Session flow 3 | PROTOTYPE = the fastest path to an artifact I … | n/a: binds no current tracked file | none | — | n/a: no active prototype scope |
+| L57 | CLAUDE.md § Session flow 4 | IMPLEMENT = the best version of the intended software, … | partly: shipped gate/CI + tracked phase state; quality judgment | tests/test_gate.py G6/G7/G17 + tests/test_spec.py | g6-* + g7-* + g17-* + s1-* through s9-* | pass |
+| L58 | CLAUDE.md § Session flow 5 | Routing: phase per kind of work — an open … | n/a: binds no tracked file | none | — | n/a: routing decision/process |
+| L59 | CLAUDE.md § Session flow 6 | Routed state: `Phase` line 1 = `<PHASE> — <scope>`; … | partly: routed-state shape | spec (.agent/spec-lint); tests/test_spec.py S6/S9 | plant needed: P8: unquoted history after Phase; expected Phase = phase line + routed state alone | pass |
+| L60 | CLAUDE.md § Session flow 7 | This file + `.claude/agents/` = copies of a shared … | no | none | — | pass |
+| L61 | CLAUDE.md § Session flow 8 | Rules upkeep rides the `Tasks` clearing: each phase close … | no | none | — | R299 R301 |
+| L62 | CLAUDE.md § Session flow 9 | Checkpointing: a phase session compacts many times ⇒ state … | n/a: binds no tracked file | none | — | n/a: checkpoint timing |
+| L63 | CLAUDE.md § Session flow 10 | Teammates: fits, reasons + mechanics = `Teammates`; the phase … | n/a: binds no tracked file | none | — | n/a: reviewer dispatch |
+| L64 | CLAUDE.md § Session flow 10a | PROTOTYPE + ITERATE: teammates = cheap + shallow, artifacts … | n/a: binds no tracked file | none | — | n/a: prototype dispatch |
+| L65 | CLAUDE.md § Session flow 10b | IMPLEMENT + MAINTAIN: teammates = deep; each unit's depth … | n/a: binds no tracked file | none | — | n/a: assurance dispatch |
+| L66 | CLAUDE.md § Session flow 10c | IMPLEMENT phase fits, any depth: `researcher` = SOTA survey … | n/a: binds no tracked file | none | — | n/a: implement dispatch |
+| L67 | CLAUDE.md § Session flow 11 | Advisor (fits + rulings = `Teammates`; its bar follows … | n/a: binds no tracked file | none | — | n/a: advisor dispatch |
+| L68 | CLAUDE.md § Session flow 12 | Read cost control = `.gitignore` kept current — content … | no | none | — | pass |
+| L69 | assurance.md 1 | 100% branch coverage answers "did the line execute", never … | partly: core coverage + catalogue node liveness; applied-fix credit is historical judgment | tests + tests/test_mutation_catalogues.py | pytest-cov upstream; test_a_non_test_helper_is_not_a_kill; mutant ids mapped below | pass |
+| L70 | assurance.md 2 | A test that reads a production constant to build … | no | none | — | pass |
+| L71 | assurance.md 3 | CLOSED dispatch enumerates every admitted variant: an `else:` tail … | no | none | — | pass |
+| L72 | assurance.md 4 | ORDERING needs call-counting bombs on the downstream work, one … | no | none | — | pass |
+| L73 | assurance.md 5 | A FAKE must match the real API's strictness: a … | no | none | — | pass |
+| L74 | assurance.md 6 | Module-level dispatch maps bind function objects at import ⇒ … | partly: strict typing of patched/imported objects | types (mypy strict) | mypy upstream suite | pass |
+| L75 | assurance.md 7 | A purity bomb on a global PYTEST ITSELF uses … | no | none | — | pass |
+| L76 | assurance.md 8 | Split canonical FORM (byte-exact under an injected fixed TCB, … | no | none | — | pass |
+| L77 | assurance.md 9 | Guard witnesses MIXED not uniform; independent bounds need their … | no | none | — | pass |
+| L78 | assurance.md 10 | A differential that sets no `PYTHONPATH` can compare a … | n/a: binds no tracked execution state | none | — | n/a: mutation/differential runtime protocol |
+| L79 | assurance.md 11 | Hypothesis: profiles in `tests/conftest.py` (`ci` derandomized default; `HYPOTHESIS_PROFILE=dev`); import … | partly: default deterministic Hypothesis profile | none | plant needed: conftest derandomize=True → False; expected profile invariant red | R304 |
+| L80 | assurance.md 12 | The gate runs the suite under pytest-xdist (`-n auto`, … | partly: suite xdist invocation; state independence judgment | tests/tests311 (-n auto); command-shape pin none | plant needed: P1 includes dropping -n auto; concurrent suite run not repeated here | R303 |
+| L81 | assurance.md 13 | Shipped sources spell an alias `X: TypeAlias = Literal[...]` … | partly: py311 syntax + tracking/ignore behavior | lint/types/tests311; tests/test_model_backend_runtime.py::test_p17_runtime_files_tracked_not_ignored | ruff/mypy upstream; plant needed: P9: ignore model_backend/runtime/snapshot.json | pass |
+| L82 | assurance.md 14 | `cast`, not `assert`, narrows `X \| None` at a … | yes | lint S101; types warn_unreachable; tests 100% branch | ruff/mypy/pytest-cov upstream suites | pass |
+| L83 | assurance.md 15 | A "no edit needed" list is an assertion ⇒ … | no | none | — | pass |
+| L84 | assurance.md 16 | A diff-blind suite states a contract READING: where a … | no | none | — | pass |
+| L85 | assurance.md 17 | Doc guarantee strings (READMEs, the reference, the short guide, … | no | none | — | pass |
+| L86 | assurance.md 18 | Verification integrity (`CLAUDE.md` `Engineering`), project bindings: a unit's grading … | partly: static disabled cases + catalogue node validity; mutation-credit process historical | tests/test_spec.py S8; tests/test_mutation_catalogues.py | s8-*; test_a_non_test_helper_is_not_a_kill | pass |
+| L87 | assurance.md 19 | Claim discipline: cite only retained-log numbers; frame unproven root … | no | none | — | pass |
+| L88 | claims.md 1 | Verified = the drawn figure obeys every integrity check … | no | none | — | pass |
+| L89 | claims.md 2 | Trusted, NOT verified: the renderer, browser, pixels, the code … | no | none | — | pass |
+| L90 | claims.md 3 | Fidelity to INTENT (the right quantity for the question) … | no | none | — | pass |
+| L91 | claims.md 4 | Model guidance (filter inlet template, `draw_figure` description) MAY state … | partly: guidance excluded from judge inputs; product guidance wording judgment | tests/test_paste_in_note.py; tests/test_paste_in_outlet.py; tests/test_paste_in_templates.py | filter:m19-request-unthreaded; receipt:f1-request-text-erased; system-prompt absence inspected | pass |
+| L92 | claims.md 5 | nucllei scope (Q82): the verifier decides the figures `draw_figure` … | no | none | — | pass |
+| L93 | claims.md 6 | Corpus claims are scoped: the rule corpus's both-ways 100% … | no | none | — | pass |
+| L94 | claims.md 7 | Human-facing text at a demo boundary inherits claim discipline: … | no | none | — | pass |
+| L95 | codex-bridge.md 1 | Shape: OpenAI `/v1` (`GET /models`, `POST /chat/completions`, stream or … | yes | tests/test_webui_codex_bridge.py::test_history_replays_the_tool_round_and_text_turns_stop + test_a_failed_turn_is_an_http_error_naming_the_cause | plant needed: P11: omit thread/inject_items or change failure status 502→200 | pass |
+| L96 | codex-bridge.md 2 | Clean context is MEASURED, never assumed: `uv run --locked … | n/a: measurement exemption | none (ops.md explicitly keeps measurement replay outside gate) | — | n/a: measured external binary; no local policy check can establish upstream context |
+| L97 | codex-bridge.md 3 | Isolation: own `CODEX_HOME` + `HOME` (`.codex-bridge/`, gitignored) ⇒ the … | yes | tests/test_webui_codex_bridge.py::test_the_child_runs_isolated_with_every_context_layer_off + test_a_token_refresh_rereads_the_auth_file_and_noise_is_dropped | plant needed: P11: remove child HOME override or reuse cached token | pass |
+| L98 | codex-bridge.md 4 | Request origin (M23.1 F2; law shared with the backend … | yes | tests/test_webui_codex_bridge.py::test_m23_f2_a_cross_site_or_rebound_request_reaches_no_thread + test_the_bridge_refuses_a_bind_beyond_loopback | origin:every-name-loopback-bridge + json-only-admits-any-type (mapping only; security analysis reserved) | pass |
+| L99 | codex-bridge.md 5 | Tool call: `item/tool/call` ⇒ `turn/interrupt` goes on the wire … | yes | tests/test_webui_codex_bridge.py::test_a_tool_call_ends_the_completion_and_interrupts_the_turn + test_a_streamed_reply_carries_the_call_after_an_empty_content_delta | plant needed: P11: move interrupt after call answer | pass |
+| L100 | codex-bridge.md 6 | Provisioning: `--codex` = `WEBUI_PROVISION_MODEL_ID=gpt-6-luna` + `WEBUI_PROVISION_PASTE_IN=production` (`paste-in/` pair, strict … | yes | tests/test_webui_launch.py::test_l11_codex_runs_the_bridge_with_the_production_pair_and_native_calls; tests/test_webui_codex_bridge.py::test_the_default_effort_is_low_and_empty_means_the_model_default + test_the_bridge_refuses_a_model_its_catalog_lacks | plant needed: P11: low→medium; P12: production→demo in codex branch | pass |
+| L101 | codex-bridge.md 7 | Live record = `.agent/measurements/luna/` (`luna_live.mjs` drives, `luna_classify.py` re-judges each … | n/a: measurement exemption | none (ops.md measurement ruling) | — | n/a: observation harness outside gate by ruling |
+| L102 | codex-bridge.md 8 | Live batches need the CPU: the browser's Pyodide run … | n/a: binds no tracked file | none | — | n/a: live batch host scheduling |
+| L103 | figure.md 1 | Program = model-authored bytes, run UNCHANGED in the host's … | yes | tests/test_figure_reader.py; tests/test_paste_in_outlet.py; tests/test_nucllei_tool.py | reader:m19-stdout-sink; nucllei_tool:m23-files-not-written; corpus syntax-error/runtime-error | pass |
+| L104 | figure.md 2 | `CLAUDE.md` `Execution` Charts + figures clause INAPPLICABLE to verification … | no | none | — | pass |
+| L105 | figure.md 3 | Wrapper (RPC code) = loader prelude → reader source … | yes | tests/test_figure_reader.py; tests/test_paste_in_bundle.py | reader:m19-capture-at-end + m19-stdout-sink + m19-png-one-figure | pass |
+| L106 | figure.md 4 | Reader = trusted FACT reporter (`src/verifier/figure/reader.py`, matplotlib + pandas … | partly: import envelope + reader facts; semantic decision boundary judgment | tests/test_paste_in_bundle.py::test_b6_import_surface_is_stdlib_open_webui_pydantic; tests/test_figure_reader.py; tests/test_figure_judge.py | b6-import-surface; reader:m19-scatter-offset-transform + m19-origin-outermost | pass |
+| L107 | figure.md 5 | Hooks: `Text.set_text` → a text's `site` = the last … | yes | tests/test_figure_reader.py; tests/test_paste_in_excerpts.py | reader:m19-site-innermost + m20-text-site-in-draw + m20-calls-latest-start + m20-calls-clock-at-start + m20-style-recipient | pass |
+| L108 | figure.md 6 | Sandbox = Open WebUI 0.12.3's Pyodide 314.0.3 (CPython 3.14.2; … | partly: local compatibility cases; external bundle measurements exempt | tests/test_figure_reader.py; tests/test_figure_judge.py; tests/test_paste_in_font.py; corpus seaborn.toml | parts:m21-band-fill-between-class + m21-band-poly-class; reader:m19-glyph-host-wording-only + q44-mathtext-level-gated + q44-path-text-notdef-uncounted | pass |
+| L109 | figure.md 7 | table: \| check \| reasons \| | yes | tests/test_paste_in_checks.py; tests/test_verification_docs.py::test_d4_each_reason_sits_in_its_check_section | checks:m19-g8-under-marks + m19-no-image-under-run; plant needed: P13 | pass |
+| L110 | figure.md 8 | Figure: exactly one shown figure (`no_figure` / `multiple_figures`). Children: … | yes | tests/test_figure_corpus.py::test_corpus_case; tests/test_figure_judge.py | corpus image-not-figure + two-figures + figimage; reader:m19-png-one-figure | pass |
+| L111 | figure.md 9 | Axes: class exactly `Axes`, owned by the figure (`fig.axes`), … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus polar + overlapping-axes + twin-axes + colorbar-user-patch; parts:m19-twin-same-position + m19-colorbar-contents | pass |
+| L112 | figure.md 10 | Axes children = structural slots (patch, 4 spines, x/y … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus errorbar + boxplot + violin + empty-axes; parts:q75-proxy-targeted | pass |
+| L113 | figure.md 11 | table: \| family \| class \| origin … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | parts:q75-proxy-zero-width + q75-proxy-line-empty + luna-f4-size-key-with-points + rev1-f4-outline-transform + rev1-f4-outline-drawstyle | pass |
+| L114 | figure.md 12 | `mark_not_in_data`: a data artist's data-bearing transform ≠ `transData` (line/area/pie: … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus line-in-axes-coordinates + outline-in-axes-coordinates; parts:rev1-f4-outline-transform | pass |
+| L115 | figure.md 13 | `scale_not_linear` (R3): a non-linear axis passes only when it … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus log-scale-unstated + symlog-labelled-log | pass |
+| L116 | figure.md 14 | `axis_inverted`: either axis inverted (ruling 3; both axes), except … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus inverted-value-axis + inverted-numeric-key-axis + inverted-labelled-value-axis; honest category inversion cases | pass |
+| L117 | figure.md 15 | `tick_label_mismatch`: a visible non-empty tick label in view — … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | ticks:m19-half-unit + m19-minor-date-trusted + m19-minor-labels-skipped + m19-category-label | pass |
+| L118 | figure.md 16 | `point_clipped`: any drawn data coordinate (points, bar base + … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus clipped-reference-end + clipped-point + clipped-scatter + finite-point-past-limits | pass |
+| L119 | figure.md 17 | `zero_not_in_limits` (R1): a magnitude mark (bar, hist, area) ⇒ … | yes | tests/test_figure_corpus.py | corpus truncated-bars + truncated-area + stacked-bars-truncated + second-panel-truncated | pass |
+| L120 | figure.md 18 | `mark_hidden`: a hidden axes, or a data artist not … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | mark_rules:m19-hidden-panel + m19-scatter-ink-collection-wide + m19-scatter-face-collection-wide | pass |
+| L121 | figure.md 19 | `value_not_finite`: NaN / ±inf among drawn data or recorded … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus gap-in-line + nan-first-point + nan-first-bar; mark_rules:m19-band-inputs | pass |
+| L122 | figure.md 20 | `bar_not_from_zero` (G1, R1): every bar's base = 0, or … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus floating-bars; mark_rules:m19-stack-same-side | pass |
+| L123 | figure.md 21 | `bars_overlap`: two bars' rectangles overlap with positive area (grouped … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | mark_rules:m19-overlap-later-bar + m19-overlap-height-own-scale; corpus mixed-bars-overlap | pass |
+| L124 | figure.md 22 | `bar_width_varies` (user ruling, luna F6): every bar of one … | yes | tests/test_figure_corpus.py | mark_rules:luna-f6-widths-unread + luna-f6-hist-exempt + luna-f6-per-series + rev1-f1-width-relative | pass |
+| L125 | figure.md 23 | `category_not_unique`: two points of one series share a key … | yes | tests/test_figure_corpus.py; tests/test_figure_values.py | corpus repeated-category + source-free-duplicate-category; figure_judge:m19-g8-source-free-skipped | pass |
+| L126 | figure.md 24 | `x_not_ordered` (G9): a line's key positions run both ways … | yes | tests/test_figure_corpus.py | corpus unordered-line; mark_rules:m19-monotone-either-way | pass |
+| L127 | figure.md 25 | `hist_counts`: hist rects contiguous on the recorded bin edges, … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | mark_rules:m19-hist-dropped-input + m19-hist-last-bin-closed; corpus hist-weighted + hist-cumulative | pass |
+| L128 | figure.md 26 | `pie_not_whole`: wedges share one radius + width (an exploded … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus partial-pie + pie-radius-changed; mark_rules:m19-pie-span | pass |
+| L129 | figure.md 27 | `area_not_from_zero`: each band GROUNDED: its base edge all zero, … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | corpus floating-area + floating-area-cycle; shapes:m19-band-base | pass |
+| L130 | figure.md 28 | `marker_size_varies` / `marker_color_varies`: a scatter collection whose sizes / … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | mark_rules:m19-size-varies + m19-colorbar-own-collection; legends:luna-f4-label-unread + markerscale-size-key | pass |
+| L131 | figure.md 29 | `legend_mismatch`: each legend entry names one judged mark (handle … | yes | tests/test_figure_corpus.py; tests/test_figure_judge.py | legends:m19-legend-names-every-series + m19-proxy-colour + q75-proxied-unique + luna-f5-one-name-per-series | pass |
+| L132 | figure.md 30 | Reference marks: each value = zero, a request number, … | yes | tests/test_figure_values.py | explain:m19-reference-zero-unexplained + m19-reference-reductions-dropped + m19-reference-any-holder + m19-reference-per-value | pass |
+| L133 | figure.md 31 | Pie keys = each wedge's drawn label Text (final … | yes | tests/test_figure_values.py::test_pie_keys_are_the_drawn_labels + test_series_unlabelled_pie_takes_legend_names | series:m19-pie-call-labels + m19-pie-legend-unread; reader:m19-pie-texts-unrecorded | pass |
+| L134 | figure.md 32 | Series = one line · scatter collection · bar … | yes | tests/test_figure_values.py; tests/test_figure_corpus.py | series:m19-legend-name-unread + m19-channels-unread + m19-channel-not-cycled; explain:m19-pivot-order-dropped | pass |
+| L135 | figure.md 33 | Sources: each attached CSV (`csvread` profile; non-profile columns unusable) … | yes | tests/test_figure_values.py; tests/test_figure_computed.py; tests/test_paste_in_request_text.py | figure_request:m19-comma-one-reading + m19-hyphen-range + m21-range-budget-per-range; figure_judge:m22-request-read-per-pass | pass |
+| L136 | figure.md 34 | CSV explanations (closed): `raw(K,V)` (incl. `raw(K,K)`: a channel encoding … | yes | tests/test_figure_values.py; tests/test_figure_corpus.py | explain:m19-keyed-not-injective + m19-values-not-injective + m19-filter-dropped + m19-partner-unchecked + m19-channel-groups-unbound | pass |
+| L137 | figure.md 35 | Per value EITHER (ruling 4): one CSV explanation per … | yes | tests/test_figure_values.py; tests/test_figure_corpus.py | explain:m19-partial-unbacked + m19-typed-label-unread + m19-typed-key-unread; figure_judge:m19-integrity-only-widened | pass |
+| L138 | figure.md 36 | Ties: ≥ 2 explanations with different column sets fully … | yes | tests/test_figure_values.py; tests/test_figure_corpus.py | explain:m19-tie-both-named + m19-tie-unbroken + m19-preference-reversed | pass |
+| L139 | figure.md 37 | **Computed values (Q45, user, session 10; contract `.agent/archive/contracts/q45.md`).** The … | yes | tests/test_figure_computed.py; tests/test_figure_corpus.py | figure_judge:q45-second-pass + q45-keep-first-reason; computed:q45-ratio-zero + q45-total-fsum + q45-percent-order; explain:q45-channel-main-is-the-scatter | pass |
+| L140 | figure.md 38 | Drawn columns per CSV = every explanation's K and … | yes | tests/test_figure_values.py; tests/test_pysrc_anchoring*.py | figure_judge:m19-anchoring-unthreaded + m19-aliases-unthreaded; explain:q45-other-drawn | pass |
+| L141 | figure.md 39 | G10 (`label_not_consistent`): titles, axis labels, axes legend entries, the … | yes | tests/test_pysrc_labels.py; tests/test_figure_values.py; tests/test_figure_corpus.py | columns:m19-g10-columns-unread + m19-g10-summaries-unread + m19-g10-colorbar-label + luna-f1-filter-unread | pass |
+| L142 | figure.md 40 | Publication (tier 3): per-group counts beside every reduction (G11), … | yes | tests/test_figure_values.py; tests/test_figure_computed.py; tests/test_paste_in_outlet.py | interpret:m19-subset-unpublished + m19-counts-unpublished + m19-typed-unpublished; filter:m19-pass-without-interpretation | pass |
+| L143 | gate-checks.md 1 | Probe mechanics (`tools/gate-probe.sh`): each probe mutates ONE tracked file … | partly: probe node liveness; probe restore behavior has no gate pin | tests/test_gate.py G12/G15; restore contract check none | g12-probe-coverage + g15-probe-node; plant needed: P15: remove trap/restore | R306 |
+| L144 | gate-checks.md 2 | Firing records — attribution rides the message, eleven tests … | partly: every static test covered + named nodes live; historical firing record | tests/test_gate.py::test_g12_every_static_config_check_ships_a_positive_control + test_g15_every_probe_node_names_a_test | g12-probe-coverage + g15-probe-node | pass |
+| L145 | gate-checks.md 3 | A widened sweep splits its probe with the widening: … | no | none | — | pass |
+| L146 | gate-checks.md 4 | Assemble every firing-input literal at run time (`shellcheck disable=`, … | yes | shell; tests/test_gate.py G10/G12; tests/test_spec.py S7 | shell-ban + g10-blanket-disable + g12-probe-coverage + s7-stranded-contract-citation | pass |
+| L147 | gate-checks.md 5 | Three shapes to hold: YAML types a bare `run: … | partly: workflow scalar handling + shell syntax | tests/test_gate.py G6; shell | g6-ci-gate-step; shellcheck upstream suite | pass |
+| L148 | gate-checks.md 6 | S4 reads `.agent/{spec,deferred,review}.md` + every `.claude/rules/*.md`, deciding only ROOTED … | yes | tests/test_spec.py::test_s4_every_rules_docs_and_archive_pointer_resolves | s4-dangling-pointer + s4-live-law-pointer + s4-rules-pointer + s4-queue-pointer + s4-queue-line-scan + s4-rules-accept-tail | pass |
+| L149 | gate-checks.md 7 | S6 reads PROSE, not headings: `_UNIT = re.compile(r"M(\d+)\.(\d+)([a-z]?)")` matches … | yes | tests/test_spec.py::test_s6_the_spine_lives_in_tasks_and_phase_records_only_closed_units | s6-open-unit-in-phase + s6-open-unit-in-record + s6-closed-unit-in-tasks + s6-ticked-row-without-sha + s6-row-neither-shape | pass |
+| L150 | gate-checks.md 8 | S8 reads `tests/` rather than the state files, because … | yes | tests/test_spec.py::test_s8_every_disabled_case_names_what_re_enables_it | s8-untracked-skip-marker + s8-untracked-body-skip + s8-untracked-param-marks + s8-untracked-module-pytestmark + s8-ticked-row-not-a-tracker | pass |
+| L151 | gate-checks.md 9 | Measurement replay (`.agent/measurements/rerun_all.py`) positive control: plant R1's expected Kahan … | partly: harness lint; replay explicitly outside gate | lint; measurement exemption ops.md | ruff upstream suite; replay positive-control R1 0→1 documented, not run here | pass |
+| L152 | host-runtime.md 1 | Two tiers, incompatible hosts. ORIGIN (source of all M3–M8 … | partly: runtime versions/identity/ignored environments | tests/test_model_backend_runtime.py P15/P16/P17; audit | plant needed: P16: runtime version/digest mismatch; audit upstream suite | pass |
+| L153 | host-runtime.md 2 | Runtime GO on CURRENT = FUNCTIONAL (user, upgrade request: … | no | none | — | pass |
+| L154 | host-runtime.md 3 | ORIGIN-tuple evidence (M3/M4/M6/M7/M8 live-stack gates) cannot be re-taken on … | n/a: binds no current artifact behavior | none | — | n/a: historical evidence scope |
+| L155 | host-runtime.md 4 | **The BROWSER tier runs on any host.** `.venv-webui` (uv-managed … | partly: launcher arms and teardown; cold-start timing observation | tests/test_webui_launch.py L1/L5/L7; tests/test_gate.py G16 | plant needed: P12: stub branch invokes CUDA or default branch invokes stub; g16-demo-floor | pass |
+| L156 | host-runtime.md 5 | **Request origin (M23.1 F2 + F4).** No model-tier server … | yes | tests/test_model_backend.py; tests/test_webui_model_stub.py; tests/test_webui_codex_bridge.py; tests/test_webui_settings.py | origin:hosts-without-bind-name + json-only-admits-any-type + every-name-loopback-backend + every-name-loopback-launcher + every-name-loopback-bridge (mapping only) | pass |
+| L157 | host-runtime.md 6 | **Browser automation + remote browsing = `.claude/rules/owui.md`** (direct CDP … | n/a: binds session activity | none | — | n/a: browser ownership/forwarding practice |
+| L158 | host-runtime.md 7 | **Port seam is small + isolated**: `app.py` touches only … | partly: exact model API calls + retired imports | tests/test_model_backend.py::test_p16_pretrained_calls_and_model_placement_are_exact + test_p21_engine_source_has_no_retired_runtime_terms + test_p31_probe_only_imports_never_reach_a_served_module | plant needed: P17: change model load kwargs or import torch into engine | pass |
+| L159 | host-runtime.md 8 | **Any replacement engine must reproduce two contracts byte-exactly**: (1) … | yes | tests/test_model_backend.py::test_p02_default_prompt_cap_emits_canonical_http_bytes + test_p03_over_cap_prompt_never_calls_model_generate + test_p04_generate_receives_the_post_move_input_object_by_identity | plant needed: P17: regenerate token buffer or call generate before cap refusal | pass |
+| L160 | host-runtime.md 9 | Model IDENTITY is duplicated beyond `model_backend/`: `webui/settings.py` + `webui/README.md`, … | yes | tests/test_webui_settings.py::test_model_identity_agrees_across_the_three_tiers; tests/test_model_backend_runtime.py::test_p20_snapshot_identity_is_bound_across_surfaces | plant needed: P16: alter one served-model identity | pass |
+| L161 | host-runtime.md 10 | The demo proposer is deliberately small; its live arms … | no | none | — | pass |
+| L162 | human-facing.md 1 | Authoring audience split (`CLAUDE.md` `Authoring` `Human-facing`). HUMAN-FACING ⇒ ASD-STE100 … | partly: register shapes/docs coverage/verdict bytes; semantics judgment | tests/test_readme_register.py; tests/test_verification_docs.py; tests/test_admin_docs.py; tests/test_paste_in_texts.py; tests/test_paste_in_reasons.py | test_the_check_fires_on_a_passive_sentence; plants P3/P4/P13; filter:q81-pass-always-english | pass |
+| L163 | human-facing.md 2 | Diagrams (Q72, user: Graphviz `dot`, no image generation; "elaborate … | partly: source currency + EN/JA structure; stated diagram contrast not gated | tests/test_verification_docs.py diagram checks; contrast checker none | P6 currency/structure plant; R307 scratch contrast test red rc1 on 07f04e3 | R307 |
+| L164 | human-facing.md 3 | Gallery (Q72, user: "a gallery that showcases all the … | yes | tests/test_gallery.py | plant needed: P5: edit caption only/remove reason entry; corpus misleading/honest pairs rejudged | pass |
+| L165 | human-facing.md 4 | Length = judgment under `L-LAW`, never a count (`CLAUDE.md` … | partly: status shape/markup/kana/ASCII, not length | tests/test_paste_in_texts.py; tests/test_readme_register.py | plant needed: P3: title markup, English non-ASCII, kana-free JA, third status sentence; passive positive control | pass |
+| L166 | human-facing.md 5 | `CLAUDE.md` `Authoring` agent-optimized default ADAPTED (user ruling): its `prompts` … | no | none | — | pass |
+| L167 | human-facing.md 6 | `CLAUDE.md` `Authoring` UI-copy clause ADAPTED: the status line's ` … | partly: fixed reason suffix bytes; prose judgment | tests/test_paste_in_reasons.py; tests/test_paste_in_outlet.py::test_o5_exact_events_and_one_code_only_log | filter:m19-status-without-code | pass |
+| L168 | human-facing.md 7 | nucllei surfaces (Q82): HUMAN-FACING = `docs/admin/nucllei{,.ja}.md`, `docs/nucllei/checks{,.ja}.md` + its … | partly: generated docs/copy/identifier parity/text shape | tests/test_nucllei_docs.py; tests/test_nucllei_checks.py; tests/test_nucllei_tool.py | plant needed: P7: one generated doc byte/one JA identifier; nucllei_texts:q82-fatal-as-failure + q82-no-retry | pass |
+| L169 | human-facing.md 8 | AGENT-OPTIMIZED as a CLASS (never re-litigate string by string): … | no | none | — | pass |
+| L170 | nucllei.md 1 | Shape (rulings 1, 10): skill `figure-verification` (`llens/nucllei/skills/figure-verification.md`, from `nucllei_skill/skill.py`) … | yes | tests/test_nucllei_artifacts.py::test_q82_t2_the_skill_row_llens_creates + test_q82_t1_the_generated_file_runs_as_nucllei_loads_it | plant needed: P19: delete tool_ids or auto_load_content_types entry | pass |
+| L171 | nucllei.md 2 | llens `scripts/nucllei/sync.py` = the deployment path: tool id = … | yes | tests/test_nucllei_artifacts.py::test_q82_t1_the_tool_row_llens_creates_has_this_name_and_description; tests/test_paste_in_bundle.py B8 | plant needed: P19: add unintended docstring key; B8 rejected import-prefix cases | pass |
+| L172 | nucllei.md 3 | Model-facing surfaces (Japanese, ruling 7): the skill body, the … | yes | tests/test_nucllei_artifacts.py; tests/test_nucllei_tool.py T4/T5/T11 | nucllei_tool:q82-note-param-kept; nucllei_texts:q82-no-retry; plant needed: P19: Tools class docstring | pass |
+| L173 | nucllei.md 4 | No outlet hook, no Pyodide: `draw_figure` = one `POST … | partly: generated RPC/wrapper + local fake contract; upstream jail facts measured | tests/test_nucllei_tool.py::test_q82_t6_each_owned_csv_is_written_then_one_exec_runs_the_exact_program + test_q82_t6_the_wrapper_runs_the_exact_program_through_the_reader | nucllei_tool:m23-files-not-written + m23-written-after-run; nucllei_run:m23-exec-carries-imports | pass |
+| L174 | nucllei.md 5 | User data (consultant-1 T7, T8): request text + attachments … | yes | tests/test_nucllei_tool.py T7/T8 | nucllei_tool:q82-branch-ignored + q82-first-name-wins; nucllei_host:q82-notice-is-human + q82-latest-skips-textless | pass |
+| L175 | nucllei.md 6 | Publication: the PNG → `Storage.upload_file` + `Files.insert_new_file` (a `None` … | yes | tests/test_nucllei_tool.py T10/T11/T12; tests/test_nucllei_checks.py | nucllei_tool:q82-show-before-prepare + q82-refused-push-ignored + q82-result-unbounded; nucllei_host:q82-unstored-record-accepted | pass |
+| L176 | nucllei.md 7 | Tests: `tests/nucllei_support.py` fakes keep the real signatures (`Files.get_file_by_id(id, include_deleted=False)`, … | partly: fake signatures + wrapper execution; fake/upstream equivalence judgment | tests/test_nucllei_tool.py T6; tests/test_nucllei_artifacts.py T1 | nucllei_run:m23-exec-carries-imports + m23-write-outside-imports; nucllei_host:q82-unstored-record-accepted | pass |
+| L177 | nucllei.md 8 | Target stack = measurement NS (`ns_sandbox.py`, replay id `NS`): … | partly: shipped Python floor; external package versions measured | tests/test_gate.py G16; lint/types/tests311 | g16-ruff-floor + g16-mypy-floor + g16-demo-floor; ruff/mypy upstream | pass |
+| L178 | nucllei.md 9 | Images: `sudo podman build --network=host -t localhost/nucllei{,-sandbox}:v20261020-01` from the … | n/a: measurement exemption | none (ops.md measurement ruling) | — | n/a: host/image setup; harness exposure check owned by MAIN |
+| L179 | ops.md 1 | Env: `uv sync --locked` builds `.venv` (py 3.14, gitignored); … | partly: nested project interpreter/runtime locks; shell env practice n/a | tests/test_gate.py G16; tests/test_model_backend_runtime.py P15/P16; audit | g16-demo-floor; plant needed: P16; audit upstream suite | pass |
+| L180 | ops.md 2 | **Gate = `bash tools/gate.sh`** — the ONE invocation; a … | partly: gate shape/stage inclusion/CI guards; timing and xdist pins absent | tests/test_gate.py G6-G19; tests/test_spec.py S1-S9; spec; timing/xdist pin none | g6-* through g19-* + s1-* through s9-*; plant needed: P1 | R303 |
+| L181 | ops.md 3 | **CI gate** (`CLAUDE.md` `CI gate`) = the full gate's … | partly: CI fan-out; remote/git operation process n/a | tests/test_gate.py G17/G18 | g17-* + g18-* | pass |
+| L182 | ops.md 4 | **Fresh-host form** (a local full run with every stage … | n/a: binds no tracked executable | none | — | n/a: setup recipe; full bootstrap run belongs to MAIN BASE |
+| L183 | ops.md 5 | **Fast gate (iteration) = `bash tools/fast-gate.sh [<pytest node\|path> …]`**: … | yes | none | plant needed: P20: fast-gate drops named test invocation or skipped announcement; expect red fast-gate shape check | R308 |
+| L184 | ops.md 6 | **Gate positive controls = `bash tools/gate-probe.sh`**: every PURPOSE-BUILT check … | yes | tests/test_gate.py G12/G15; tools/gate-probe.sh | g12-probe-coverage + g15-probe-node; probe firing execution belongs to MAIN | pass |
+| L185 | ops.md 7 | **Measurement harnesses = `.agent/measurements/`**, NOT in the gate and … | partly: lint coverage; explicit measurement exemption governs replay + mypy exclusion | lint; mypy files list inspected | ruff upstream suite; no replay rerun here by brief | pass |
+| L186 | ops.md 8 | Gate internals = `uv run --locked ruff format --check … | partly: gate invocations + coverage settings; coverage itself executes in tests | format/lint/types/tests/tests311; tests/test_gate.py G6/G16 | upstream ruff/mypy/pytest-cov; g6-stage-list + g16-*; no additional stage-content meta-check claimed | pass |
+| L187 | ops.md 9 | Shared live resources, one named holder per wave: ports … | n/a: binds no tracked file | none | — | n/a: runtime ownership |
+| L188 | ops.md 10 | Teammate worktrees: `.scratch/worktrees/<name>` on `wt/<name>`; from `<wt>` gate with … | n/a: binds no tracked file | none | — | n/a: teammate worktree protocol |
+| L189 | ops.md 11 | Running the FULL `tools/gate.sh` from a worktree resyncs the … | n/a: binds no tracked file | none | — | n/a: editable install/runtime ownership |
+| L190 | ops.md 12 | Read-and-conform-to set for every brief: gate above · oracles … | n/a: binds no tracked file | none | — | n/a: session briefing |
+| L191 | ops.md 13 | Unit lifecycle (IMPLEMENT): contract `.agent/contracts/<unit>.md` (testable predicates + invariant … | partly: archived contract paths + live skip trackers; unit lifecycle process n/a | tests/test_spec.py S5/S7/S8 | s5-unarchived-contract + s7-stranded-contract-citation + s8-* | pass |
+| L192 | ops.md 14 | License `Apache-2.0 WITH LLVM-exception`; SPDX header in every tracked … | yes | tests/test_gate.py::test_g14_tracked_sources_carry_spdx_header | g14-spdx-header | pass |
+| L193 | ops.md 15 | Census the instruction surface off `git ls-files`, never bare … | n/a: binds no tracked file | none | — | n/a: reviewer search protocol |
+| L194 | ops.md 16 | Live law (`.claude/rules/*.md`) cites tracked code as `<file>.py::<name>` (`<file>.py::<Class>.<member>` … | yes | tests/test_symbol_citations.py::test_every_scoped_code_citation_is_a_resolvable_symbol | test_the_check_fires_on_planted_citations_and_passes_resolvable_ones; ran rc=0, 2 passed | pass |
+| L195 | ops.md 17 | Template drift (`CLAUDE.md`, `.claude/agents/`, `.agent/spec-lint`): a widened template rule … | no | none | — | pass |
+| L196 | owui.md 1 | Sandbox mechanism (shipped = `webui/paste_in/filter.py`, M19.5; measured on 0.10.2, … | partly: receipt/run/judge/publish mechanics; upstream/bundle measurements exempt | tests/test_paste_in_outlet.py; tests/test_paste_in_receipt.py; tests/test_paste_in_sandbox.py; tests/test_paste_in_request_text.py | filter:m19-receipt-unguarded + m19-request-unthreaded + m19-blocked-published + m19-png-unguarded; receipt:f1-first-call-persists | pass |
+| L197 | owui.md 2 | Pyodide **`314.0.3`** (runtime CPython 3.14.2, wasm32; 0.10.2 shipped 0.28.3) … | partly: wrapper package/file payload; measured upstream inventory | tests/test_paste_in_sandbox.py; tests/test_paste_in_outlet.py | filter:m19-one-file-sent; corpus seaborn.toml; plant needed: P21: omit conditional seaborn load | pass |
+| L198 | owui.md 3 | `execute:python` needs a LIVE browser socket: the headless harness … | partly: missing browser refusal; actual browser behavior measured | tests/test_paste_in_outlet.py::test_o1_no_browser_precedes_file_fetch_and_font | filter:m19-session-type-unchecked + m19-emitter-unchecked | pass |
+| L199 | owui.md 4 | Current surface: `webui/settings.py` provisions the PASTE-IN tool (`tool_id=figure_verification`, operation … | yes | tests/test_webui_python_exposure.py; tests/test_webui_client.py; tests/test_webui_model_stub.py; tests/test_webui_banner_prompts.py; tests/test_paste_in_bundle.py | e3-description-rule + b6-import-surface; plant needed: P22: alter smoke filter id/exclusive set | pass |
+| L200 | owui.md 5 | **`function_name_filter_list` cannot narrow a tool server and must never … | yes | tests/test_webui_client.py; tests/test_webui_python_exposure.py | plant needed: P22: accept one server:-prefixed tool in no_tool_servers | pass |
+| L201 | owui.md 6 | **Paste-in law (M10.0 onward).** The pasted artifact is GENERATED … | yes | tests/test_paste_in_bundle.py B1-B8; tests/test_paste_in_demo_pair.py; tests/test_paste_in_aliases.py | b1-artifact-freshness + b2-embedded-identity + b6-import-surface; aliases:q43-no-equals-admitted | pass |
+| L202 | owui.md 7 | **Demo transport (M10.6; Q40; ruling 8).** The paste-in filter's … | yes | tests/test_paste_in_inlet.py; tests/test_paste_in_templates.py; tests/test_model_backend_adapter.py; tests/test_paste_in_demo_pair.py | filter:m19-inlet-no-file-ignored + m19-inlet-refused-header + m19-inlet-non-text; adapter:x4-history-carried + x4-first-query + x4-cap-floor | pass |
+| L203 | owui.md 8 | Tool provisioning REST shapes (settled on 0.10.2; the 0.12.3 … | yes | tests/test_webui_client.py; tests/test_webui_settings.py::test_tool_id_satisfies_the_open_webui_id_rule | plant needed: P22: missing-tool 404 treated as success or content readback skipped | pass |
+| L204 | owui.md 9 | CSV bytes in-process (CSV ruling): `await Files.get_file_by_id_and_user_id(id, user_id, db=None)` … | yes | tests/test_paste_in_owui_files.py; tests/test_paste_in_outlet.py::test_o3_owned_csv_bytes_decide_values | filter:m19-files-unthreaded; owui_files:m21-read-whole + m21-read-to-the-limit + m22-ids-repeat | pass |
+| L205 | owui.md 10 | OWUI's OWN narration path cannot carry the verdict: under … | yes | tests/test_paste_in_outlet.py::test_o4_multiturn_rewrites_only_last_assistant_with_localized_interpretation; tests/test_paste_in_filter_edges.py | filter:m19-earlier-message-rewritten + m19-pass-without-interpretation | pass |
+| L206 | owui.md 11 | Verdict totality (F4): the filter rewrites the LAST assistant … | yes | tests/test_paste_in_outlet.py; tests/test_paste_in_note.py; tests/test_figure_inert.py | filter:queue-fail-shows-no-note + q78-pass-drops-note + q78-note-language-fixed; reply:q78-blank-note-shown + q79-label-not-bold + q80-ja-label-strong | pass |
+| L207 | owui.md 12 | **Failure reasons (M15.1, `.agent/archive/contracts/m15u1.md`).** Every FAIL outlet call = … | yes | tests/test_paste_in_reasons.py; tests/test_paste_in_outlet.py; tests/test_paste_in_texts.py | filter:m19-status-on-pass + m19-status-without-code + m19-deadline-ignored; reply:m22-kana-block-dropped | pass |
+| L208 | owui.md 13 | **Check breakdown (M16.1, re-keyed by M19.5).** Every FAIL (after … | yes | tests/test_paste_in_checks.py; tests/test_paste_in_embed.py; tests/test_paste_in_outlet.py | filter:m19-embed-appends + m19-deadline-ignored; checks:m19-prefix-shifted + m19-cause-dropped + q62-light-link-pale + q62-no-focus-ring | pass |
+| L209 | owui.md 14 | **Row disclosures (M18.2 + M20.2; ruling 13).** Each row … | yes | tests/test_paste_in_checks.py; tests/test_paste_in_excerpts.py; tests/test_paste_in_outlet.py | filter:m20-evidence-lines-dropped + m20-evidence-failing-check + m20-evidence-unguarded; checks:m20-related-on-skip + m20-elided-program-lines + m19-context-narrowed | pass |
+| L210 | owui.md 15 | The harness client reads a persisted reply's final text … | yes | tests/test_webui_client.py | plant needed: P22: read first output item instead of typed message/output_text | pass |
+| L211 | owui.md 16 | Browser automation = direct CDP over a scratch profile, … | n/a: binds no tracked delivery file | none | — | n/a: browser driving recipe; measurement exemption |
+| L212 | owui.md 17 | **Signing key = one per instance** (`webui/settings.py::Settings.signing_key`: the operator's … | yes | tests/test_webui_settings.py::test_the_instance_key_lives_and_dies_with_its_data_dir + test_an_existing_instance_key_is_kept + test_the_operator_key_wins_and_writes_no_file | webui_settings:key-outside-data-dir + key-operator-ignored; mapping only, no security analysis | pass |
+| L213 | owui.md 18 | Remote browsing forwards 8080 ALONE: the python-mode PNG is … | partly: launcher ownership/teardown; forwarding session practice; timing observations | tests/test_webui_launch.py L6/L7/L11/L12 | plant needed: P12: omit listener-owner gate or foreign-port teardown exclusion | pass |
+| L214 | owui.md 19 | **Japanese text = the server's Japanese font, cut per … | yes | tests/test_paste_in_font.py; tests/test_paste_in_sfnt.py; tests/test_paste_in_owui_files.py; tests/test_paste_in_outlet.py | reader:q44-earlier-cut-kept + q44-mathtext-cache-kept + q44-path-text-unhooked; filter:q44-whole-font-sent + q44-cut-on-loop; fonts:q44-keep-ignored + q44-shared-path | pass |
+| L215 | owui.md 20 | **Client content blockers kill the PASS arm silently.** `ENABLE_PYODIDE_FILE_PERSISTENCE` … | partly: failure signature classification; extension behavior measurement exempt | tests/test_paste_in_reasons.py; tests/test_paste_in_outlet.py::test_o1_reply_faults_precede_description_and_judge | filter:m19-fault-ignored; plant needed: P10: classify loadPyodide failure as generic sandbox_error | pass |
+| L216 | owui.md 21 | **A real-model `-m webui chat` needs `WEBUI_PROVISION_READY_TIMEOUT=600`.** The persisted-chat … | partly: configured persisted-chat timeout; recommended value measured | tests/test_webui_client.py::test_run_persisted_chat_times_out; tests/test_webui_settings.py::test_from_env_override | plant needed: P22: use request_timeout instead of ready_timeout | pass |
+| L217 | owui.md 22 | **Banner arms (M19.5).** `webui/banner.json` = six arms — `simple` … | yes | tests/test_webui_banner_prompts.py | plant needed: P23: launcher prompt drift or scripted distortion removed; real-model counts not re-measured | pass |
+| L218 | pysrc.md 1 | Drawn columns = the columns whose explanation backs the … | yes | tests/test_figure_values.py; tests/test_pysrc_anchoring.py; tests/test_pysrc_anchoring_strict.py | columns:m19-strict-without-a-name; figure_judge:m19-anchoring-unthreaded | pass |
+| L219 | pysrc.md 2 | **Substitution (the demo's rule, Q8):** refuse `column_not_requested` only on … | yes | tests/test_pysrc_anchoring.py; tests/test_figure_corpus.py | columns:m19-substitution-tightened; corpus substituted-column + unnamed-column-substitution | pass |
+| L220 | pysrc.md 3 | **Strict (production's rule, Q37):** the substitution check, then: a … | yes | tests/test_pysrc_anchoring_strict.py; tests/test_paste_in_demo_pair.py; tests/test_figure_corpus.py | anchoring:q37-unnameable-required + q37-negation-unreported; columns:m19-strict-everywhere | pass |
+| L221 | pysrc.md 4 | **Matcher.** Safe because the model gets no vote: the … | yes | tests/test_pysrc_anchoring.py | anchoring:q8-width-fold-dropped + q8-case-fold-dropped + q8-script-boundary-dropped + q8-tie-admitted + q8-longest-first-dropped | pass |
+| L222 | pysrc.md 5 | **Stops + negation (Q38).** Before naming, `anchoring.py::_unnamed_places` consumes the … | yes | tests/test_pysrc_anchoring.py; tests/test_pysrc_labels.py | anchoring:q38-stop-phrases-unread + q38-english-negation-unread + q38-japanese-negation-unread + q38-filler-read-first | pass |
+| L223 | pysrc.md 6 | **Japanese short words (Q41, strict alone).** `anchoring.py::_short_names`: a whole … | yes | tests/test_pysrc_anchoring_short.py; tests/test_pysrc_anchoring_suffix.py | anchoring:q41-drop-last-unread + q41-two-fits-name-one + q41-supplementary-ideographs-split-a-run + q42-betsu-dropped + q42-cut-repeatedly | pass |
+| L224 | pysrc.md 7 | **Admin aliases (Q43).** `Aliases` = (column, alias) pairs — … | yes | tests/test_pysrc_anchoring_aliases.py; tests/test_paste_in_aliases.py | anchoring:q43-aliases-unread + q43-self-alias-ties + q43-summary-exemption-unthreaded; receipt:q43-aliases-erased; aliases:q43-empty-alias-admitted | pass |
+| L225 | pysrc.md 8 | A model-produced translation of the request may never become … | yes | tests/test_paste_in_request_text.py; tests/test_paste_in_outlet.py::test_o3_receipt_request_not_mutated_metadata_decides_values | filter:m19-request-unthreaded; receipt:f1-request-text-erased | pass |
+| L226 | pysrc.md 9 | **G10 labels** (`columns.py::check_labels`, law `.claude/rules/figure.md` § Columns): a label … | yes | tests/test_pysrc_labels.py; tests/test_figure_values.py | anchoring:q16-median-unread + q16-header-word-read-as-summary + q16-japanese-summary-unread; columns:luna-f1-filter-unread | pass |
+| L227 | pysrc.md 10 | **Restrict, never reimplement.** The sandbox calls plain `pd.read_csv`, whose … | yes | tests/test_pysrc_csv.py; tests/test_pysrc_aggregate.py | csvread:c10-fixed-point-shape-dropped + c10-int32-max-exclusive + q12-float-column-bound-to-int32 + q12-column-dtype-ignored; bundle numerical census exempt | pass |
+| L228 | pysrc.md 11 | A STRUCTURAL fault refuses the whole file (`Unreadable`: `csv_not_parsable` … | yes | tests/test_pysrc_csv.py; tests/test_figure_values.py | csvread:c6-bom-gate-dropped + c6-ragged-row-accepted + c6-header-only-accepted; test_c10_profile_boundaries_leave_no_numbers | pass |
+| L229 | pysrc.md 12 | A demo dataset never spells a group key with … | yes | none | plant needed: demo CSV group key US→NA; expect dataset-profile invariant red | R305 |
+| L230 | pysrc.md 13 | pandas reduces a float64 group with ordered binary64 Kahan … | yes | tests/test_pysrc_aggregate.py | aggregate:r1-naive-sum + r1-fsum + r3-exact-int-mean + r4-tie-takes-the-last + r7-keys-in-file-order + r11-no-compensation-reset | pass |
+| L231 | tooling.md 1 | ruff `S603` fires when argv is not visibly constant: … | yes | format; lint S603/RUF100/ARG001 | ruff upstream suite | pass |
+| L232 | tooling.md 2 | `httpx` imports directly in tests (transitive via Litestar's TestClient, … | yes | tests/test_webui_settings.py::test_rejects_bad_config; tests/test_webui_client.py; types | plant needed: P24 (finite-positive timeout guard); mypy upstream suite | pass |
+| L233 | tooling.md 3 | `requires-python = ">=3.14,<3.15"` + `.python-version` pin the line; the … | partly: interpreter/lock agreement + pinned root lock | uv run --locked; tests/test_model_backend_runtime.py::test_p19_root_lock_matches_ratified_digest | uv upstream lock consistency; plant needed: P26 (incompatible Python pin or coherent lock drift) | pass |
+| L234 | tooling.md 4 | Shipped sources (`src/verifier`, `webui/paste_in`, both generated pairs) = CPython … | yes | tests/test_gate.py G16; lint per-file-target-version; types py311; tests311 | g16-ruff-floor + g16-mypy-floor + g16-bare-mypy + g16-demo-floor; ruff/mypy upstream | pass |
+| L235 | tooling.md 5 | Second interpreter: `UV_PROJECT_ENVIRONMENT=.scratch/venv-py3142 UV_LINK_MODE=copy COVERAGE_FILE=.scratch/coverage-py3142 uv run --locked --python … | n/a: binds no tracked artifact | none | — | n/a: optional second-interpreter command |
+| L236 | transformers.md 1 | **`dtype=` takes a STRING** (`getattr(torch, dtype)`, `modeling_utils.py:858`, documented `:3967`) | yes | tests/test_model_backend.py::test_p16_pretrained_calls_and_model_placement_are_exact | plant needed: P17: dtype string→different string/torch_dtype kwarg | pass |
+| L237 | transformers.md 2 | **`generate` is already `@torch.no_grad()`** (`generation/utils.py:2568-2570`) and | partly: no redundant caller imports/API operations; upstream implementation factual | tests/test_model_backend.py::test_p16_pretrained_calls_and_model_placement_are_exact; strict fake model | plant needed: P17: add extra model.eval() call | pass |
+| L238 | transformers.md 3 | **`pad_token_id` is SCALAR-ONLY; `eos_token_id` accepts `int \| list[int]`** | yes | tests/test_model_backend.py P17/P17b/P18/P18b/P26/P27 | plant needed: P17: accept bool EOS, forward list PAD, or read tokenizer EOS | pass |
+| L239 | transformers.md 4 | **No finish-reason exists in `generate`'s output or its stopping … | yes | tests/test_model_backend.py P07/P08/P09/P10/P10b | plant needed: P17: terminal-token check→any-token membership | pass |
+| L240 | transformers.md 5 | **`do_sample=False` + a non-default `temperature` = logged warning, never … | yes | tests/test_model_backend.py::test_p19_generation_kwargs_are_exact_for_greedy_and_sampling | plant needed: P17: always pass temperature or drop num_beams | pass |
+| L241 | transformers.md 6 | **`apply_chat_template(tokenize=True, return_dict=True)` returns a `BatchEncoding`** with exactly | yes | tests/test_model_backend.py::test_p05_chat_template_call_is_single_and_exact + test_p29_admission_forwards_maskless_mapping_but_requires_input_ids | plant needed: P17: return_dict=False or second tokenization | pass |
+| L242 | transformers.md 7 | **`BatchEncoding.to(device)` returns `self` but REBUILDS `.data`** | yes | tests/test_model_backend.py::test_p04_generate_receives_the_post_move_input_object_by_identity + test_p06_encoding_move_uses_the_configured_nondefault_device | plant needed: P17: capture input_ids before .to() | pass |
+| L243 | transformers.md 8 | **Decoder-only `generate` returns prompt+suffix and does not mutate the … | yes | tests/test_model_backend.py::test_p11_usage_counts_are_hand_stated_from_prompt_and_suffix + test_p11b_decode_reads_the_suffix_once_with_special_tokens_skipped | plant needed: P17: slice from prompt_tokens-1 | pass |
+| L244 | transformers.md 9 | **`local_files_only=True` is NOT needed to resolve a valid local … | yes | tests/test_model_backend.py::test_p16_pretrained_calls_and_model_placement_are_exact + test_p30_load_order_costs_nothing_downstream_of_each_fault | plant needed: P17: local_files_only=False | pass |
+| L245 | transformers.md 10 | **`device_map` requires accelerate** (`integrations/accelerate.py:96-141`); a device STRING | no | none | — | pass |
+| L246 | transformers.md 11 | **Concurrent `generate` on one model = UNSETTLED BY EVIDENCE, … | yes | tests/test_model_backend.py::test_p20_concurrent_generation_never_overlaps_model_access | plant needed: P17: replace shared lock with independent locks; expected model.generate calls overlapped | pass |
+| L247 | transformers.md 12 | **A single unpadded sequence needs no `attention_mask`** — `generate` … | yes | tests/test_model_backend.py::test_p19_generation_kwargs_are_exact_for_greedy_and_sampling + test_p29_admission_forwards_maskless_mapping_but_requires_input_ids | plant needed: P17: remove attention_mask from admitted mapping before generate | pass |
