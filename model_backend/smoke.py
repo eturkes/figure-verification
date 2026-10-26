@@ -113,11 +113,11 @@ def _accelerator_report(settings: Settings) -> str:
 
     if not settings.device.startswith("cuda") or not torch.cuda.is_available():
         return f'gpu="none" capability="none" cuda_available={torch.cuda.is_available()}'
-    index = torch.cuda.current_device()
-    major, minor = torch.cuda.get_device_capability(index)
-    return (
-        f'gpu="{torch.cuda.get_device_name(index)}" capability={major}.{minor} cuda_available=True'
-    )
+    # The configured device, never `current_device()`: under `cuda:1` the model runs on GPU 1 while
+    # this probe's own default stays GPU 0. torch reads a bare `cuda` as the current device.
+    major, minor = torch.cuda.get_device_capability(settings.device)
+    name = torch.cuda.get_device_name(settings.device)
+    return f'gpu="{name}" capability={major}.{minor} cuda_available=True'
 
 
 def main() -> int:

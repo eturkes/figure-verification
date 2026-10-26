@@ -15,7 +15,7 @@ import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any, Literal, cast
 
 import pytest
@@ -1055,3 +1055,25 @@ _OWUI_SUMMARIZE_SYSTEM = f'<source id="1" name="verifier/proposeSpec">{_VERIFIER
 
 def _msg(role: Literal["system", "user", "assistant"], content: str) -> ChatMessage:
     return ChatMessage(role=role, content=content)
+
+
+def test_p32_smoke_names_the_configured_cuda_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P32: the smoke line names the device the model was configured on, not torch's current
+    device. Acceptance: `cuda:1` with current device 0 reports GPU one's name + capability; a bare
+    `cuda` passes through for torch to resolve."""
+    from model_backend.smoke import _accelerator_report  # noqa: PLC0415 - imports torch lazily
+
+    gpus = {"cuda:0": ("GPU zero", (6, 1)), "cuda:1": ("GPU one", (8, 6)), "cuda": ("GPU", (7, 0))}
+    cuda = SimpleNamespace(
+        is_available=lambda: True,
+        current_device=lambda: 0,
+        get_device_name=lambda device: gpus[device][0],
+        get_device_capability=lambda device: gpus[device][1],
+    )
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=cuda))
+    assert _accelerator_report(Settings(device="cuda:1")) == (
+        'gpu="GPU one" capability=8.6 cuda_available=True'
+    )
+    assert _accelerator_report(Settings(device="cuda")) == (
+        'gpu="GPU" capability=7.0 cuda_available=True'
+    )
