@@ -107,3 +107,10 @@ predicate = "markerscale binds size keys alone: a colour key keeps its colours (
 kills = "tests/test_figure_corpus.py::test_corpus_case[color-elements-markerscale]"
 anchor = '''            if encoding is None or (encoding[2] == "sizes" and legend.markerscale != 1):'''
 mutant = '''            if encoding is None or legend.markerscale != 1:'''
+
+[[mutant]]
+id = "cr-r275-last-name-wins"
+predicate = "a series named otherwise by a second legend blocks"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-axes-and-figure-legend-rename]"
+anchor = '''        if names.get(mark, text) != text:'''
+mutant = '''        if False:'''

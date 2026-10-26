@@ -256,3 +256,36 @@ import matplotlib.transforms as mtransforms
 line, = plt.plot([1, 2], [3, 4], clip_on=False)
 line.set_clip_box(mtransforms.TransformedBbox(mtransforms.Bbox([[0, 0], [1.5, 5]]), plt.gca().transData))
 '''
+
+# --- R275: a series takes one name across every legend --------------------------------------------
+
+[[case]]
+id = "cr-axes-and-figure-legend-rename"
+expect = "legend_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+line, = plt.plot([1, 2])
+plt.legend([line], ['first'])
+plt.gcf().legend([line], ['second'])
+'''
+
+[[case]]
+id = "cr-two-figure-legends-rename"
+expect = "legend_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+line, = plt.plot([1, 2])
+plt.gcf().legend([line], ['first'])
+plt.gcf().legend([line], ['second'])
+'''
+
+[[case]]
+id = "cr-axes-and-figure-legend-same-name"
+expect = "pass"
+rule = "legend_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+line, = plt.plot([1, 2])
+plt.legend([line], ['first'])
+plt.gcf().legend([line], ['first'])
+'''

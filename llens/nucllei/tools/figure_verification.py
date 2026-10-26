@@ -6773,6 +6773,15 @@ def _read(
     return names, encodings
 
 
+def _merge(names: Names, found: Names, legend: Legend) -> None:
+    """A series takes ONE name: another legend naming it otherwise is a mismatch (reviewer-2 F2:
+    an axes legend + a figure legend, or two figure legends, merged with the last name winning)."""
+    for mark, text in found.items():
+        if names.get(mark, text) != text:
+            block("legend_mismatch", legend.site)
+    names |= found
+
+
 def read_legends(panels: tuple[Panel, ...], figure_legends: tuple[Legend, ...]) -> Legends:
     by_axes = {panel.index: position for position, panel in enumerate(panels)}
     names: Names = {}
@@ -6782,7 +6791,7 @@ def read_legends(panels: tuple[Panel, ...], figure_legends: tuple[Legend, ...]) 
         if legend is None:
             continue
         found, keys = _read(legend, panels, by_axes, _candidates(panels, [position]))
-        names |= found
+        _merge(names, found, legend)
         encodings |= keys
         series = series_marks(panel)
         named = [mark for mark in series if (position, mark.artists[0]) in found]
@@ -6791,7 +6800,7 @@ def read_legends(panels: tuple[Panel, ...], figure_legends: tuple[Legend, ...]) 
     everywhere = _candidates(panels, list(range(len(panels))))
     for legend in figure_legends:
         found, keys = _read(legend, panels, by_axes, everywhere)
-        names |= found
+        _merge(names, found, legend)
         encodings |= keys
     return Legends(names, frozenset(encodings))
 '''
