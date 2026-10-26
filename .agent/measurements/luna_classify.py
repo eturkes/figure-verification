@@ -233,7 +233,10 @@ def _facts(program, case):
             check=False,
         )
     lines = done.stdout.strip().splitlines()
-    return json.loads(lines[-1]) if done.returncode == 0 and lines else None
+    facts = json.loads(lines[-1]) if done.returncode == 0 and lines else None
+    # A program that raised, or drew no figure, shows nothing to classify: unreadable, never "not
+    # distorted" (`.claude/rules/codex-bridge.md`).
+    return facts if facts and not facts["error"] and facts["figures"] else None
 
 
 def main():

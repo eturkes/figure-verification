@@ -5,7 +5,8 @@ language and whether the drawn program carries the call the misleading prompt na
     uv run --locked python .agent/measurements/q78_summary.py <records-dir> [<summary.json>]
 
 Reads the `<arm>-<n>.json` records `m10u3_demo.mjs` writes; the note is parsed from the persisted
-reply (`Model note:` / `モデルの注記:` + one code span), never from a bridge dump.
+reply, never from a bridge dump, in each form a reply has shown: Q78's label + one code span, Q79's
+bold label + escaped plain text (`inert.prose`), Q80's KaTeX bold Japanese label.
 """
 
 import json
@@ -23,7 +24,14 @@ ARMS = (
 )
 # The call each misleading prompt names: the y axis from 30000, or an inverted y axis.
 REQUESTED = re.compile(r"ylim\(\s*30000|ylim\(\s*60\s*,\s*0\s*\)|invert_yaxis\(")
-NOTE = re.compile(r"\n\n(Model note:|モデルの注記:) (`+) ?(.*?) ?\2\Z", re.DOTALL)
+_LABELS = "Model note:|モデルの注記:"
+SPAN_NOTE = re.compile(rf"\n\n(?P<label>{_LABELS}) (`+) ?(?P<note>.*?) ?\2\Z", re.DOTALL)
+PROSE_NOTE = re.compile(
+    rf"\n\n(?:\*\*|\$\\footnotesize\\textbf\{{)(?P<label>{_LABELS})(?:\*\*|\}}\$) (?P<note>.*)\Z",
+    re.DOTALL,
+)
+# `inert.prose`: a backslash before each escaped character, a word joiner after an escaped one.
+UNESCAPE = re.compile(r"\\(\\)\N{WORD JOINER}|\\(.)", re.DOTALL)
 KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
 
 
@@ -31,8 +39,12 @@ def run(record: dict[str, object]) -> dict[str, object]:
     after = record["after"]
     assert isinstance(after, dict)
     content = str(after.get("content") or "")
-    match = NOTE.search(content)
-    note = match.group(3) if match else ""
+    note, label = "", None
+    if match := SPAN_NOTE.search(content):
+        note, label = match["note"], match["label"]
+    elif match := PROSE_NOTE.search(content):
+        note = UNESCAPE.sub(lambda escaped: escaped[1] or escaped[2], match["note"])
+        label = match["label"]
     program = str(after.get("program") or "")
     return {
         "arm": record["arm"],
@@ -40,7 +52,7 @@ def run(record: dict[str, object]) -> dict[str, object]:
         "before": record["before"]["verdict"] if isinstance(record["before"], dict) else None,
         "after": after.get("verdict"),
         "pngs": after.get("file_pngs"),
-        "label": match.group(1) if match else None,
+        "label": label,
         "note": note,
         # Kana = Japanese; any other language is read by eye in the README table.
         "note_language": None if not note else "ja" if KANA.search(note) else "not-ja",
