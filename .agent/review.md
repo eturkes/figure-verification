@@ -204,7 +204,7 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R303 | CR | L-LAW | rev14 F6 (minor, LAW wiring): accept: suite argv (`-n auto`, `--durations=10`) + per-stage timing unpinned | accepted | read |
 | R304 | CR | L-LAW | rev14 F7 (minor, LAW wiring): accept: default Hypothesis profile (derandomized `ci`) unpinned | accepted | read |
 | R305 | CR | L-LAW | rev14 F8 (minor, LAW wiring): accept: demo CSVs' key columns never checked against NA spellings | accepted | read |
-| R306 | CR | L-LAW | rev14 F9 (minor, LAW wiring): accept: gate-probe restore lifecycle has no gate test | accepted | read |
+| R306 | CR | L-LAW | rev14 F9 (minor, LAW wiring): accept: gate-probe restore lifecycle has no gate test | closed | fix-19 (G20 `tests/test_gate.py::test_g20_a_probe_run_whose_targets_did_not_restore_fails` over the extracted `tools/probe-restore.sh`; probe `g20-restore-exit` fired by hand) |
 | R307 | CR | L-LAW | rev14 F10 (minor, LAW claim + wiring): accept: human-facing.md `lines + borders ≥ 4.7:1` false for cluster borders (1.606, 1.615); palette unchecked | accepted | red rerun rc1 (r14 test_contrast) |
 | R308 | CR | L-LAW | rev14 F11 (minor, LAW wiring): accept: fast-gate contract untested | accepted | read |
 | R309 | CR | L-HARD | rev2 F4 (minor, coverage inventory): accept: `csv_too_large` + `work_budget_exceeded` in no corpus case and outside `_RUN + _RULES + _SOURCE_FAULTS` ⇒ the reason partition is not pinned whole | closed | fix-12 (`tests/test_figure_corpus.py::test_cr_r309_every_figure_reason_has_a_witness`: corpus lists + named judge tests = every `FigureReason`; `tests/test_figure_values.py::test_cr_r309_an_oversize_file_blocks_csv_too_large` end to end) — red on 07f04e3 (no judge test for `csv_too_large`) |
@@ -213,7 +213,7 @@ Status vocabulary: `open` · `accepted` (fix required, named) · `rejected` (wit
 | R312 | CR | L-CLAIM | rev2 F8 (minor, stale claim): accept: parts.py:102 + shapes.py:74 `3.8 (the sandbox)`; test_figure_judge.py:4,128 | accepted | anchors rc0 |
 | R313 | CR | L-HARD | rev10 F1 (minor, S8 detection): accept: class decorator + class `pytestmark` skips unseen | accepted | red rerun rc1 (r10 test_1) |
 | R314 | CR | L-HARD | rev10 F2 (minor, CI skip guard): accept: tracker = spelling, never an open Tasks row; G18 control names absent **M1.1** | accepted | red rerun rc1 (r10 test_1) |
-| R315 | CR | L-CORR | rev10 F3 (minor, probe restore): accept: `cleanup` prints RESTORE FAILED, exit stays 0 | accepted | red rerun rc1 (r10 test_2) |
+| R315 | CR | L-CORR | rev10 F3 (minor, probe restore): accept: `cleanup` prints RESTORE FAILED, exit stays 0 | closed | fix-19 (`probe-restore.sh::cleanup` keeps the run rc, exits 3 on a failed restore): reviewer-10 test_2 shape red on 07f04e3 (rc 0) = G20 |
 | R316 | CR | L-CORR | rev10 F4 (minor, template flaw): template: spec-lint line 31 `^(Phase: )?` admits the retired prefix (S9 rejects it) ⇒ name to user + deferred row, no in-repo fix | open | red rerun rc1 (r10 test_3) |
 | R317 | CR | L-CLAIM | rev10 F5 (minor, stale claim): accept: pyproject.toml:122 `never imported by`, :154 `dev-only DuckDB oracle`; webui/runtime/pyproject.toml:4 `nothing in the gate imports it` | accepted | anchors rc0 |
 | R318 | CR | L-HARD | rev10 F6 (minor, catalogue selector check): accept: test_mutation_catalogues strips `[param]` ⇒ a stale parameter id stays green (202/775 selectors parametrized) | accepted | red rerun rc1 (r10 test_4) |

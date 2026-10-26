@@ -6,7 +6,7 @@
 # A check that cannot fire and a clean tree emit the same green. The proven scanners (ruff,
 # mypy, uv audit, detect-secrets, zizmor, shellcheck) carry their own upstream suites; the
 # checks written HERE have no such backstop, so each ships the input that makes it fail and this
-# script fires it: tests/test_gate.py G6-G19, tests/test_spec.py S1-S9, shell_lint's ban.
+# script fires it: tests/test_gate.py G6-G20, tests/test_spec.py S1-S9, shell_lint's ban.
 #
 # Each probe mutates one tracked file (s8-ticked-row-not-a-tracker alone writes two: the skip and
 # its ticked Tasks row), runs the single check that owns the invariant, and demands a nonzero rc
@@ -41,7 +41,8 @@ SPDX_PROBE=tools/mutate.py
 PYPROJECT=pyproject.toml
 WEBUI_RUNTIME=webui/runtime/pyproject.toml
 CONFTEST=tests/conftest.py
-TARGETS=("$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST")
+RESTORE=tools/probe-restore.sh
+TARGETS=("$RESTORE" "$GATE" "$LAUNCH" "$WORKFLOW" "$DEPENDABOT" "$OPS" "$OWUI" "$TEST_GATE" "$SPEC" "$PHASE_RECORD" "$DEFERRED" "$REVIEW" "$ARTIFACT" "$SPDX_PROBE" "$PYPROJECT" "$WEBUI_RUNTIME" "$CONFTEST")
 
 BACKUP="$(mktemp -d)"
 sha256sum "${TARGETS[@]}" >"$BACKUP/sha256"
@@ -54,20 +55,8 @@ fired=()
 missed=()
 skipped=()
 
-restore() {
-    for target in "${TARGETS[@]}"; do
-        cp -a -- "$BACKUP/$target" "$target"
-    done
-}
-
-cleanup() {
-    restore
-    if sha256sum -c --quiet "$BACKUP/sha256" && [ -x "$GATE" ]; then
-        rm -rf -- "$BACKUP"
-    else
-        printf 'RESTORE FAILED -- byte backup kept at %s\n' "$BACKUP" >&2
-    fi
-}
+# shellcheck source=tools/probe-restore.sh
+source "tools/probe-restore.sh"
 trap cleanup EXIT
 
 verdict() {
@@ -353,6 +342,10 @@ probe g18-ci-untracked-skip tests/test_gate.py::test_g18_an_untracked_pytest_ski
 probe g18-ci-collection-skip tests/test_gate.py::test_g18_a_collection_time_skip_under_ci_fails_the_suite \
     'a collection-time skip under CI passed the suite' \
     sed -i '/importorskip/{n;s/_collect(report)/pass/}' "$CONFTEST"
+
+probe g20-restore-exit tests/test_gate.py::test_g20_a_probe_run_whose_targets_did_not_restore_fails \
+    'a failed restore kept the run green' \
+    sed -i '/|| rc=3$/d' "$RESTORE"
 
 probe g19-early-secrets tests/test_gate.py::test_g19_the_secret_scan_runs_beside_the_earlier_stages \
     'the secret scan did not start beside the earlier stages' \

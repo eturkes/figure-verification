@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""G6-G19: static-config invariants of the one gate command.
+"""G6-G20: static-config invariants of the one gate command.
 
 Contracts: `.agent/archive/contracts/m13u0.md` (G6-G12), `.agent/archive/contracts/m10u5.md` (G13),
 `.agent/archive/contracts/m10u7.md` (G14), `.agent/archive/contracts/m21u2.md` P1 (G16); G15 = queue
@@ -16,6 +16,7 @@ This file imports no `verifier` symbol: coverage measures the verifier core, so 
 would add gate-tooling lines to a suite that never runs them.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -542,3 +543,38 @@ def test_g19_the_secret_scan_runs_beside_the_earlier_stages(tmp_path: Path) -> N
     assert [line for line in lines if line.startswith("secrets rc=")] == [
         next(line for line in lines if line.startswith("secrets rc=0 "))
     ], run.stdout
+
+
+def test_g20_a_probe_run_whose_targets_did_not_restore_fails(tmp_path: Path) -> None:
+    """G20 (code review R306 + R315): the probe script's EXIT cleanup (`tools/probe-restore.sh`)
+    fails a run whose restored targets do not check out; it printed `RESTORE FAILED` and kept rc
+    0. Acceptance: `cleanup` under its EXIT trap: a failing checksum => rc 3 + the message + the
+    backup kept; a passing one => rc 0 + the backup gone; a probe failure's rc survives."""
+    helper = (_REPO_ROOT / "tools" / "probe-restore.sh").read_text()
+    target = tmp_path / "target"
+    target.write_text("x")
+
+    def run(checksum: str, rc: int, name: str) -> subprocess.CompletedProcess[str]:
+        backup = tmp_path / name
+        backup.mkdir()
+        (backup / "sha256").write_text(f"{checksum}  {target}\n")
+        source = f"BACKUP={str(backup)!r}; GATE=/bin/sh; TARGETS=()\n{helper}\n"
+        source += "restore() { :; }\ntrap cleanup EXIT\n" + f"exit {rc}\n"
+        return subprocess.run(  # noqa: S603 - the tracked helper + a fixed harness
+            ["bash", "-c", source],  # noqa: S607 - bash from PATH, as the gate runs it
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    good = hashlib.sha256(b"x").hexdigest()
+    failed = run("0" * 64, 0, "failed")
+    assert (failed.returncode, "RESTORE FAILED" in failed.stderr) == (3, True), (
+        "a failed restore kept the run green",
+        failed.returncode,
+    )
+    assert (tmp_path / "failed").is_dir()
+    assert run(good, 0, "good").returncode == 0
+    assert not (tmp_path / "good").exists()
+    assert run(good, 1, "probe-failed").returncode == 1
