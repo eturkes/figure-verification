@@ -87,8 +87,8 @@ mutant = '''        if not all(math.isfinite(value) for value in values):'''
 id = "m19-overlap-height-own-scale"
 predicate = "the key-axis overlap tolerance never scales with the values"
 kills = "tests/test_figure_corpus.py::test_corpus_case[large-bars-overlap]"
-anchor = '''            if width > _TOLERANCE * max(1.0, abs(x1)) and height > _TOLERANCE * max('''
-mutant = '''            if width > _TOLERANCE * max(1.0, abs(x1), abs(y1)) and height > _TOLERANCE * max('''
+anchor = '''                x0, x1, other_x0, other_x1, size=min(x1 - x0, other_x1 - other_x0)'''
+mutant = '''                x0, x1, other_x0, other_x1, size=max(abs(y1), abs(other_y1))'''
 
 [[mutant]]
 id = "m19-scatter-ink-collection-wide"
@@ -186,3 +186,24 @@ predicate = "an unfilled marker's face draws nothing"
 kills = "tests/test_figure_corpus.py::test_corpus_case[cr-unfilled-marker-no-edge]"
 anchor = '''            (not geometry.marker_filled or _clear(geometry.marker_face))'''
 mutant = '''            _clear(geometry.marker_face)'''
+
+[[mutant]]
+id = "cr-r274-magnitude-slack"
+predicate = "the overlap slack scales with the bars, never the coordinate's magnitude"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-translated-bars-overlap]"
+anchor = '''    return max(_ULPS * math.ulp(max(abs(value) for value in coordinates)), _TOLERANCE * size)'''
+mutant = '''    return _TOLERANCE * max(1.0, max(abs(value) for value in coordinates))'''
+
+[[mutant]]
+id = "cr-r274-ulp-slack-dropped"
+predicate = "rounding at a large coordinate never reads as an overlap"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-adjacent-bars-one-ulp-apart]"
+anchor = '''    return max(_ULPS * math.ulp(max(abs(value) for value in coordinates)), _TOLERANCE * size)'''
+mutant = '''    return _TOLERANCE * size'''
+
+[[mutant]]
+id = "cr-r274-hist-center-magnitude"
+predicate = "a histogram bar sits on its bin within float error of the bin, never of its magnitude"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-translated-hist-bar-moved]"
+anchor = '''            abs(bar.center - (low + high) / 2) <= _slack(low, high, size=width)'''
+mutant = '''            abs(bar.center - (low + high) / 2) <= _TOLERANCE * max(1.0, abs(low))'''

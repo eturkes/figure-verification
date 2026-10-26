@@ -3892,7 +3892,9 @@ def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
         return False
     for value, half in readings:
         shown = value * scale + (axis.offset if axis is not None else 0.0)
-        tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))
+        # Half a unit of the last shown digit, plus float error at the compared magnitudes: an
+        # absolute floor of 1e-12 let `0.000…0` stand for 1e-13 (reviewer-2 F5).
+        tolerance = half * scale + _ABSOLUTE * max(abs(position), abs(shown))
         if math.isfinite(shown) and abs(shown - position) <= tolerance:
             return True
     return False
@@ -7461,6 +7463,7 @@ from verifier.figure.shapes import Bar, band_edges, bars, coordinates
 _T = TypeVar("_T")
 
 _TOLERANCE: Final = 1e-9
+_ULPS: Final = 64
 # matplotlib computes wedge angles in float32 (`np.asarray(x, np.float32)` in `Axes.pie`).
 _PIE_DEGREES: Final = 1e-4
 
@@ -7469,8 +7472,11 @@ def _site(axes: Axes, mark: Mark) -> int | None:
     return axes.artists[mark.artists[0]].site
 
 
-def _near(a: float, b: float) -> bool:
-    return abs(a - b) <= _TOLERANCE * max(1.0, abs(a), abs(b))
+def _slack(*coordinates: float, size: float) -> float:
+    """What float error alone can move a coordinate by: a few ulps at its magnitude, or a
+    billionth of the part's own size. A slack scaled by the magnitude alone let bars at 1e12
+    overlap by half their width (reviewer-2 F1)."""
+    return max(_ULPS * math.ulp(max(abs(value) for value in coordinates)), _TOLERANCE * size)
 
 
 def _record_values(axes: Axes, mark: Mark) -> list[float]:
@@ -7596,14 +7602,16 @@ def _check_bars(axes: Axes, panel: Panel) -> None:
         (*_box(cast("RectGeometry", axes.artists[bar.index].geometry)), bar.index)
         for _, bar in every
     )
-    for position, (_x0, x1, y0, y1, index) in enumerate(boxes):
+    for position, (x0, x1, y0, y1, index) in enumerate(boxes):
         for other_x0, other_x1, other_y0, other_y1, other in boxes[position + 1 :]:
-            if other_x0 >= x1 - _TOLERANCE * max(1.0, abs(x1)):
+            if other_x0 >= x1 - _slack(x1, other_x0, size=x1 - x0):
                 break
             width = min(x1, other_x1) - other_x0
             height = min(y1, other_y1) - max(y0, other_y0)
-            if width > _TOLERANCE * max(1.0, abs(x1)) and height > _TOLERANCE * max(
-                1.0, abs(y1), abs(other_y1)
+            if width > _slack(
+                x0, x1, other_x0, other_x1, size=min(x1 - x0, other_x1 - other_x0)
+            ) and height > _slack(
+                y0, y1, other_y0, other_y1, size=min(y1 - y0, other_y1 - other_y0)
             ):
                 block("bars_overlap", axes.artists[max(index, other)].site)  # the later bar
 
@@ -7668,7 +7676,7 @@ def _hist_ok(axes: Axes, mark: Mark, record: HistRecord) -> bool:
         count = counts[position]
         expected = (count / width) / total if record.density else float(count)
         if not (
-            _near(bar.center, (low + high) / 2)
+            abs(bar.center - (low + high) / 2) <= _slack(low, high, size=width)
             and bar.thickness <= width * (1 + _TOLERANCE)
             and bar.extent == expected
         ):

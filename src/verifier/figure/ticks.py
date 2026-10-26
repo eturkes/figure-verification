@@ -114,7 +114,9 @@ def _numeric_ok(position: float, text: str, axis: Axis | None) -> bool:
         return False
     for value, half in readings:
         shown = value * scale + (axis.offset if axis is not None else 0.0)
-        tolerance = half * scale + _ABSOLUTE * max(1.0, abs(position))
+        # Half a unit of the last shown digit, plus float error at the compared magnitudes: an
+        # absolute floor of 1e-12 let `0.000…0` stand for 1e-13 (reviewer-2 F5).
+        tolerance = half * scale + _ABSOLUTE * max(abs(position), abs(shown))
         if math.isfinite(shown) and abs(shown - position) <= tolerance:
             return True
     return False

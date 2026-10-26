@@ -289,3 +289,78 @@ line, = plt.plot([1, 2])
 plt.legend([line], ['first'])
 plt.gcf().legend([line], ['first'])
 '''
+
+# --- R274 + R310: float slack scales with the part, not the coordinate's magnitude ---------------
+
+[[case]]
+id = "cr-translated-bars-overlap"
+expect = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([1000000000000, 1000000000000.4], [2, 3], width=0.8)
+'''
+
+[[case]]
+id = "cr-translated-barh-overlap"
+expect = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.barh([1000000000000, 1000000000000.4], [2, 3], height=0.8)
+'''
+
+[[case]]
+id = "cr-translated-bars-apart"
+expect = "pass"
+rule = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+plt.bar([1000000000000, 1000000000001], [2, 3], width=0.8)
+'''
+
+[[case]]
+id = "cr-tiny-ticks-labelled-zero"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1e-13, 2e-13])
+plt.yticks([1e-13, 2e-13], ['0.000000000000000000', '0.000000000000000000'])
+'''
+
+[[case]]
+id = "cr-tiny-ticks-labelled-true"
+expect = "pass"
+rule = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1e-13, 2e-13])
+plt.yticks([1e-13, 2e-13], ['0.000000000000100000', '0.000000000000200000'])
+'''
+
+[[case]]
+id = "cr-translated-hist-bar-moved"
+expect = "hist_counts"
+program = '''
+import matplotlib.pyplot as plt
+counts, edges, bars = plt.hist([1e12, 1e12 + 1, 1e12 + 3], bins=2)
+bars[1].set_x(bars[1].get_x() + 0.3)
+plt.xlim(1e12 - 1, 1e12 + 5)
+'''
+
+[[case]]
+id = "cr-translated-hist"
+expect = "pass"
+rule = "hist_counts"
+program = '''
+import matplotlib.pyplot as plt
+plt.hist([1e12, 1e12 + 1, 1e12 + 3], bins=2)
+'''
+
+[[case]]
+id = "cr-adjacent-bars-one-ulp-apart"
+expect = "pass"
+rule = "bars_overlap"
+program = '''
+import matplotlib.pyplot as plt
+base = 92483207.20945702
+plt.bar([base + 32 * 0.2, base + 33 * 0.2], [1, 2], width=0.2)
+'''
