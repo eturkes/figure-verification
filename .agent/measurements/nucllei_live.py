@@ -3,17 +3,16 @@
 
 `uv run --locked python .agent/measurements/nucllei_live.py <llens checkout> <out dir> [arm …]`
 starts, on free loopback ports: the sandbox image (privileged, a fresh token), the codex bridge
-(`python -m webui codex`, gpt-6-luna on the operator's ChatGPT subscription), and the nucllei
-image (`--network=host`, a private data dir). It provisions the way llens deploys: an admin, the
-llens functions `markitdown_extract` + `large_file_gate` and this repo's generated tool + skill
-through the CHECKOUT's own `scripts/nucllei/sync.py` (`sync_one`), the attachment hook, and one
-preset (`skillIds` = the skill, `toolIds` = `builtin_sandbox` as llens' preset carries it,
-`filterIds` = `large_file_gate`). Each arm = one chat through nucllei's chat-wire API (the UI's
-own wire): upload, `chats/new`, `chat/completions`, read the stream to its end, read the stored
-chat back. Written per arm: every tool exchange's call + `results[]` (display, error_kind,
-render), the published images' file references (`/api/v1/files/<id>/content`), the final reply
-text. `<out dir>/summary.json` = the first
-`draw_figure` verdict + reason per arm, the call count, faults. Images in root's podman store
+(`python -m webui codex`, gpt-6-luna on the operator's ChatGPT subscription), and the nucllei image
+(`--network=host`, a private data dir). It provisions the way llens deploys: an admin, the llens
+functions `markitdown_extract` + `large_file_gate` and this repo's generated tool + skill through
+the CHECKOUT's own `scripts/nucllei/sync.py` (`sync_one`), the attachment hook, and one preset
+(`skillIds` = the skill, `toolIds` = `builtin_sandbox` as llens' preset carries it, `filterIds` =
+`large_file_gate`). Each arm = one chat through nucllei's chat-wire API (the UI's own wire): upload,
+`chats/new`, `chat/completions`, read the stream to its end, read the stored chat back. Written per
+arm: every tool exchange's call + `results[]` (display, error_kind, render), the published images'
+file references (`/api/v1/files/<id>/content`), the final reply text. `<out dir>/summary.json` = the
+first `draw_figure` verdict + reason per arm, the call count, faults. Images in root's podman store
 (`localhost/nucllei:v20261020-01`, `localhost/nucllei-sandbox:v20261020-01`).
 """
 
