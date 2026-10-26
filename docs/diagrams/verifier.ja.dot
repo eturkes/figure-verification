@@ -15,7 +15,7 @@ digraph verifier {
 
   subgraph cluster_server {
     label=<<b>Open WebUI のサーバー</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>Open WebUI の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">受領記録を残す。判定はしない</td></tr></table>>];
     c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
@@ -41,7 +41,7 @@ digraph verifier {
 
   subgraph cluster_browser {
     label=<<b>ブラウザ: Pyodide サンドボックス</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];

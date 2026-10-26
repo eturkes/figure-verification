@@ -17,7 +17,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_server {
     label=<<b>nucllei のサーバー</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>nucllei の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
     skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>figure-verification スキル</b></td></tr><tr><td height="24">load_skill または CSV で自動読み込み</td></tr></table>>];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">依頼文 + 所有するファイルを読む</td></tr></table>>];
@@ -44,7 +44,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_sandbox {
     label=<<b>コード実行のサンドボックス: ネットワークなし</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
@@ -1224,7 +1224,7 @@ digraph verifier_nucllei {
 </g>
 </defs>
 <rect x="-119.3" y="-100.1" width="1431.6" height="1201.2" fill="rgb(100%, 100%, 100%)" fill-opacity="1"/>
-<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(71.372549%, 76.470588%, 81.960784%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -103.961563 C 20.001563 -103.961563 572.001563 -103.961563 572.001563 -103.961563 C 578.001563 -103.961563 584.001563 -109.961563 584.001563 -115.961563 C 584.001563 -115.961563 584.001563 -853.621719 584.001563 -853.621719 C 584.001563 -859.621719 578.001563 -865.621719 572.001563 -865.621719 C 572.001563 -865.621719 20.001563 -865.621719 20.001563 -865.621719 C 14.001563 -865.621719 8.001563 -859.621719 8.001563 -853.621719 C 8.001563 -853.621719 8.001563 -115.961563 8.001563 -115.961563 C 8.001563 -109.961563 14.001563 -103.961563 20.001563 -103.961563 " transform="matrix(1, 0, 0, 1, 21.6, 979.86)"/>
+<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(35.294118%, 41.960784%, 50.196078%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -103.961563 C 20.001563 -103.961563 572.001563 -103.961563 572.001563 -103.961563 C 578.001563 -103.961563 584.001563 -109.961563 584.001563 -115.961563 C 584.001563 -115.961563 584.001563 -853.621719 584.001563 -853.621719 C 584.001563 -859.621719 578.001563 -865.621719 572.001563 -865.621719 C 572.001563 -865.621719 20.001563 -865.621719 20.001563 -865.621719 C 14.001563 -865.621719 8.001563 -859.621719 8.001563 -853.621719 C 8.001563 -853.621719 8.001563 -115.961563 8.001563 -115.961563 C 8.001563 -109.961563 14.001563 -103.961563 20.001563 -103.961563 " transform="matrix(1, 0, 0, 1, 21.6, 979.86)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-0" x="37.601562" y="131.488281"/>
 <use xlink:href="#glyph-0-1" x="47.351562" y="131.488281"/>
@@ -1244,7 +1244,7 @@ digraph verifier_nucllei {
 <use xlink:href="#glyph-0-10" x="136.601562" y="131.488281"/>
 <use xlink:href="#glyph-0-9" x="151.601562" y="131.488281"/>
 </g>
-<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(80.392157%, 74.901961%, 62.352941%)" stroke-opacity="1" stroke-miterlimit="10" d="M 815.001563 -256.961563 C 815.001563 -256.961563 1130.001563 -256.961563 1130.001563 -256.961563 C 1136.001563 -256.961563 1142.001563 -262.961563 1142.001563 -268.961563 C 1142.001563 -268.961563 1142.001563 -623.598281 1142.001563 -623.598281 C 1142.001563 -629.598281 1136.001563 -635.598281 1130.001563 -635.598281 C 1130.001563 -635.598281 815.001563 -635.598281 815.001563 -635.598281 C 809.001563 -635.598281 803.001563 -629.598281 803.001563 -623.598281 C 803.001563 -623.598281 803.001563 -268.961563 803.001563 -268.961563 C 803.001563 -262.961563 809.001563 -256.961563 815.001563 -256.961563 " transform="matrix(1, 0, 0, 1, 21.6, 979.86)"/>
+<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(46.27451%, 40%, 24.705882%)" stroke-opacity="1" stroke-miterlimit="10" d="M 815.001563 -256.961563 C 815.001563 -256.961563 1130.001563 -256.961563 1130.001563 -256.961563 C 1136.001563 -256.961563 1142.001563 -262.961563 1142.001563 -268.961563 C 1142.001563 -268.961563 1142.001563 -623.598281 1142.001563 -623.598281 C 1142.001563 -629.598281 1136.001563 -635.598281 1130.001563 -635.598281 C 1130.001563 -635.598281 815.001563 -635.598281 815.001563 -635.598281 C 809.001563 -635.598281 803.001563 -629.598281 803.001563 -623.598281 C 803.001563 -623.598281 803.001563 -268.961563 803.001563 -268.961563 C 803.001563 -262.961563 809.001563 -256.961563 815.001563 -256.961563 " transform="matrix(1, 0, 0, 1, 21.6, 979.86)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-11" x="832.601562" y="709.648438"/>
 <use xlink:href="#glyph-0-9" x="847.601562" y="709.648438"/>

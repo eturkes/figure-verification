@@ -17,7 +17,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_server {
     label=<<b>nucllei server</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>nucllei storage</b></td></tr><tr><td height="21">your messages + files</td></tr></table>>, shape=cylinder, style=filled];
     skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>figure-verification skill</b></td></tr><tr><td height="21">load_skill or CSV auto-load</td></tr></table>>];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>draw_figure tool</b></td></tr><tr><td height="21">reads your request + owned files</td></tr></table>>];
@@ -44,7 +44,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_sandbox {
     label=<<b>Your code sandbox: no network</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">hooks matplotlib</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Model's program</b></td></tr><tr><td height="21">runs unchanged</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">describes every artist as JSON</td></tr><tr><td height="21">+ one PNG</td></tr></table>>];
@@ -558,7 +558,7 @@ digraph verifier_nucllei {
 </g>
 </defs>
 <rect x="-106.2" y="-94" width="1274.4" height="1128" fill="rgb(100%, 100%, 100%)" fill-opacity="1"/>
-<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(71.372549%, 76.470588%, 81.960784%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -95.711563 C 20.001563 -95.711563 566.001563 -95.711563 566.001563 -95.711563 C 572.001563 -95.711563 578.001563 -101.711563 578.001563 -107.711563 C 578.001563 -107.711563 578.001563 -797.996719 578.001563 -797.996719 C 578.001563 -803.996719 572.001563 -809.996719 566.001563 -809.996719 C 566.001563 -809.996719 20.001563 -809.996719 20.001563 -809.996719 C 14.001563 -809.996719 8.001563 -803.996719 8.001563 -797.996719 C 8.001563 -797.996719 8.001563 -107.711563 8.001563 -107.711563 C 8.001563 -101.711563 14.001563 -95.711563 20.001563 -95.711563 " transform="matrix(1, 0, 0, 1, 21.6, 918.485)"/>
+<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(35.294118%, 41.960784%, 50.196078%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -95.711563 C 20.001563 -95.711563 566.001563 -95.711563 566.001563 -95.711563 C 572.001563 -95.711563 578.001563 -101.711563 578.001563 -107.711563 C 578.001563 -107.711563 578.001563 -797.996719 578.001563 -797.996719 C 578.001563 -803.996719 572.001563 -809.996719 566.001563 -809.996719 C 566.001563 -809.996719 20.001563 -809.996719 20.001563 -809.996719 C 14.001563 -809.996719 8.001563 -803.996719 8.001563 -797.996719 C 8.001563 -797.996719 8.001563 -107.711563 8.001563 -107.711563 C 8.001563 -101.711563 14.001563 -95.711563 20.001563 -95.711563 " transform="matrix(1, 0, 0, 1, 21.6, 918.485)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-0" x="37.601562" y="125.738281"/>
 <use xlink:href="#glyph-0-1" x="47.351562" y="125.738281"/>
@@ -575,7 +575,7 @@ digraph verifier_nucllei {
 <use xlink:href="#glyph-0-4" x="122.351562" y="125.738281"/>
 <use xlink:href="#glyph-0-8" x="131.351562" y="125.738281"/>
 </g>
-<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(80.392157%, 74.901961%, 62.352941%)" stroke-opacity="1" stroke-miterlimit="10" d="M 769.001563 -238.211563 C 769.001563 -238.211563 999.001563 -238.211563 999.001563 -238.211563 C 1005.001563 -238.211563 1011.001563 -244.211563 1011.001563 -250.211563 C 1011.001563 -250.211563 1011.001563 -582.098281 1011.001563 -582.098281 C 1011.001563 -588.098281 1005.001563 -594.098281 999.001563 -594.098281 C 999.001563 -594.098281 769.001563 -594.098281 769.001563 -594.098281 C 763.001563 -594.098281 757.001563 -588.098281 757.001563 -582.098281 C 757.001563 -582.098281 757.001563 -250.211563 757.001563 -250.211563 C 757.001563 -244.211563 763.001563 -238.211563 769.001563 -238.211563 " transform="matrix(1, 0, 0, 1, 21.6, 918.485)"/>
+<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(46.27451%, 40%, 24.705882%)" stroke-opacity="1" stroke-miterlimit="10" d="M 769.001563 -238.211563 C 769.001563 -238.211563 999.001563 -238.211563 999.001563 -238.211563 C 1005.001563 -238.211563 1011.001563 -244.211563 1011.001563 -250.211563 C 1011.001563 -250.211563 1011.001563 -582.098281 1011.001563 -582.098281 C 1011.001563 -588.098281 1005.001563 -594.098281 999.001563 -594.098281 C 999.001563 -594.098281 769.001563 -594.098281 769.001563 -594.098281 C 763.001563 -594.098281 757.001563 -588.098281 757.001563 -582.098281 C 757.001563 -582.098281 757.001563 -250.211563 757.001563 -250.211563 C 757.001563 -244.211563 763.001563 -238.211563 769.001563 -238.211563 " transform="matrix(1, 0, 0, 1, 21.6, 918.485)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-10" x="786.601562" y="668.523438"/>
 <use xlink:href="#glyph-0-11" x="795.601562" y="668.523438"/>

@@ -17,7 +17,7 @@ digraph verifier {
 
   subgraph cluster_server {
     label=<<b>Open WebUI のサーバー</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>Open WebUI の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">受領記録を残す。判定はしない</td></tr></table>>];
     c1 [shape=plain, label=<<table border="1" cellborder="0" cellspacing="0" cellpadding="2" style="rounded" color="#57606a" bgcolor="white">
@@ -43,7 +43,7 @@ digraph verifier {
 
   subgraph cluster_browser {
     label=<<b>ブラウザ: Pyodide サンドボックス</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];
@@ -1197,7 +1197,7 @@ digraph verifier {
 </g>
 </defs>
 <rect x="-110.8" y="-88.5" width="1329.6" height="1062" fill="rgb(100%, 100%, 100%)" fill-opacity="1"/>
-<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(71.372549%, 76.470588%, 81.960784%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -75.638594 C 20.001563 -75.638594 572.001563 -75.638594 572.001563 -75.638594 C 578.001563 -75.638594 584.001563 -81.638594 584.001563 -87.638594 C 584.001563 -87.638594 584.001563 -737.341719 584.001563 -737.341719 C 584.001563 -743.341719 578.001563 -749.341719 572.001563 -749.341719 C 572.001563 -749.341719 20.001563 -749.341719 20.001563 -749.341719 C 14.001563 -749.341719 8.001563 -743.341719 8.001563 -737.341719 C 8.001563 -737.341719 8.001563 -87.638594 8.001563 -87.638594 C 8.001563 -81.638594 14.001563 -75.638594 20.001563 -75.638594 " transform="matrix(1, 0, 0, 1, 21.6, 863.58)"/>
+<path fill-rule="nonzero" fill="rgb(93.333333%, 95.294118%, 97.254902%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(35.294118%, 41.960784%, 50.196078%)" stroke-opacity="1" stroke-miterlimit="10" d="M 20.001563 -75.638594 C 20.001563 -75.638594 572.001563 -75.638594 572.001563 -75.638594 C 578.001563 -75.638594 584.001563 -81.638594 584.001563 -87.638594 C 584.001563 -87.638594 584.001563 -737.341719 584.001563 -737.341719 C 584.001563 -743.341719 578.001563 -749.341719 572.001563 -749.341719 C 572.001563 -749.341719 20.001563 -749.341719 20.001563 -749.341719 C 14.001563 -749.341719 8.001563 -743.341719 8.001563 -737.341719 C 8.001563 -737.341719 8.001563 -87.638594 8.001563 -87.638594 C 8.001563 -81.638594 14.001563 -75.638594 20.001563 -75.638594 " transform="matrix(1, 0, 0, 1, 21.6, 863.58)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-0" x="37.601562" y="131.488281"/>
 <use xlink:href="#glyph-0-1" x="48.851562" y="131.488281"/>
@@ -1220,7 +1220,7 @@ digraph verifier {
 <use xlink:href="#glyph-0-12" x="178.601562" y="131.488281"/>
 <use xlink:href="#glyph-0-11" x="193.601562" y="131.488281"/>
 </g>
-<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(80.392157%, 74.901961%, 62.352941%)" stroke-opacity="1" stroke-miterlimit="10" d="M 815.001563 -218.318281 C 815.001563 -218.318281 1045.001563 -218.318281 1045.001563 -218.318281 C 1051.001563 -218.318281 1057.001563 -224.318281 1057.001563 -230.318281 C 1057.001563 -230.318281 1057.001563 -584.958906 1057.001563 -584.958906 C 1057.001563 -590.958906 1051.001563 -596.958906 1045.001563 -596.958906 C 1045.001563 -596.958906 815.001563 -596.958906 815.001563 -596.958906 C 809.001563 -596.958906 803.001563 -590.958906 803.001563 -584.958906 C 803.001563 -584.958906 803.001563 -230.318281 803.001563 -230.318281 C 803.001563 -224.318281 809.001563 -218.318281 815.001563 -218.318281 " transform="matrix(1, 0, 0, 1, 21.6, 863.58)"/>
+<path fill-rule="nonzero" fill="rgb(96.470588%, 94.509804%, 90.588235%)" fill-opacity="1" stroke-width="1" stroke-linecap="butt" stroke-linejoin="miter" stroke="rgb(46.27451%, 40%, 24.705882%)" stroke-opacity="1" stroke-miterlimit="10" d="M 815.001563 -218.318281 C 815.001563 -218.318281 1045.001563 -218.318281 1045.001563 -218.318281 C 1051.001563 -218.318281 1057.001563 -224.318281 1057.001563 -230.318281 C 1057.001563 -230.318281 1057.001563 -584.958906 1057.001563 -584.958906 C 1057.001563 -590.958906 1051.001563 -596.958906 1045.001563 -596.958906 C 1045.001563 -596.958906 815.001563 -596.958906 815.001563 -596.958906 C 809.001563 -596.958906 803.001563 -590.958906 803.001563 -584.958906 C 803.001563 -584.958906 803.001563 -230.318281 803.001563 -230.318281 C 803.001563 -224.318281 809.001563 -218.318281 815.001563 -218.318281 " transform="matrix(1, 0, 0, 1, 21.6, 863.58)"/>
 <g fill="rgb(12.156863%, 13.72549%, 15.686275%)" fill-opacity="1">
 <use xlink:href="#glyph-0-13" x="832.601562" y="632.011719"/>
 <use xlink:href="#glyph-0-14" x="847.601562" y="632.011719"/>

@@ -15,7 +15,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_server {
     label=<<b>nucllei server</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>nucllei storage</b></td></tr><tr><td height="21">your messages + files</td></tr></table>>, shape=cylinder, style=filled];
     skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>figure-verification skill</b></td></tr><tr><td height="21">load_skill or CSV auto-load</td></tr></table>>];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>draw_figure tool</b></td></tr><tr><td height="21">reads your request + owned files</td></tr></table>>];
@@ -42,7 +42,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_sandbox {
     label=<<b>Your code sandbox: no network</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">hooks matplotlib</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Model's program</b></td></tr><tr><td height="21">runs unchanged</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>Trusted figure reader</b></td></tr><tr><td height="21">describes every artist as JSON</td></tr><tr><td height="21">+ one PNG</td></tr></table>>];

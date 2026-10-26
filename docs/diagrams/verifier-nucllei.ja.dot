@@ -15,7 +15,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_server {
     label=<<b>nucllei のサーバー</b>>; labeljust=l; style="rounded,filled";
-    fillcolor="#eef3f8"; color="#b6c3d1";
+    fillcolor="#eef3f8"; color="#5a6b80";
     storage [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>nucllei の保存データ</b></td></tr><tr><td height="24">メッセージ + ファイル</td></tr></table>>, shape=cylinder, style=filled];
     skill [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>figure-verification スキル</b></td></tr><tr><td height="24">load_skill または CSV で自動読み込み</td></tr></table>>];
     tool [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>draw_figure ツール</b></td></tr><tr><td height="24">依頼文 + 所有するファイルを読む</td></tr></table>>];
@@ -42,7 +42,7 @@ digraph verifier_nucllei {
 
   subgraph cluster_sandbox {
     label=<<b>コード実行のサンドボックス: ネットワークなし</b>>; labeljust=l; labelloc=b; style="rounded,filled";
-    fillcolor="#f6f1e7"; color="#cdbf9f";
+    fillcolor="#f6f1e7"; color="#76663f";
     hook [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">matplotlib にフックを入れる</td></tr></table>>];
     program [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>モデルのプログラム</b></td></tr><tr><td height="24">変更せずに実行</td></tr></table>>, style="rounded,dashed,filled"];
     describe [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>信頼できる図の読み取り処理</b></td></tr><tr><td height="24">すべての描画要素を JSON で記述</td></tr><tr><td height="24">+ PNG を 1 枚</td></tr></table>>];

@@ -254,3 +254,59 @@ def test_q72_both_diagrams_draw_the_same_structure() -> None:
         text = (_DIAGRAMS / name).read_text(encoding="utf-8")
         assert all(f"<b>{word} {number}:" in text for number in (1, 2, 9)), name
         assert all(f"<b>{number} " in text for number in range(3, 9)), name
+
+
+# The diagram palette (`.claude/rules/human-facing.md` Diagrams), hand-stated: each colour with the
+# fills it sits on and the floor the law states for it. Fills: page + card rows, the card header
+# band, the server and browser clusters, the pass and fail nodes.
+_FILLS = {
+    "page": "#ffffff",
+    "band": "#dde5ee",
+    "server": "#eef3f8",
+    "browser": "#f6f1e7",
+    "pass": "#dafbe1",
+    "fail": "#ffebe9",
+}
+_EVERY_FILL = tuple(_FILLS)
+_PALETTE = {
+    "#1f2328": (_EVERY_FILL, 12.4),  # text
+    "#0a3069": (("page",), 12.8),  # code identifiers, in card rows
+    "#424a53": (("page", "server", "browser"), 7.9),  # edge labels
+    "#a40e26": (("page", "server"), 7.0),  # failure-edge labels
+    "#57606a": (("page", "band", "server", "browser"), 4.5),  # node + card borders, edges
+    "#5a6b80": (("page", "server"), 4.5),  # server cluster border
+    "#76663f": (("page", "browser"), 4.5),  # browser cluster border
+    "#1a7f37": (("page", "pass"), 4.5),  # pass border
+    "#cf222e": (("page", "fail", "server", "browser"), 4.5),  # failure edges + fail border
+}
+
+
+def _luminance(colour: str) -> float:
+    channels = [int(colour[index : index + 2], 16) / 255 for index in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _contrast(first: str, second: str) -> float:
+    light, dark = sorted((_luminance(first), _luminance(second)), reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def test_q72_every_diagram_colour_meets_its_contrast_floor() -> None:
+    """Q72 (code review R307): each diagram source draws with the stated palette alone, and each
+    colour meets its floor on every fill it sits on (WCAG relative luminance), so the law's numbers
+    are computed, never asserted. Acceptance: a cluster border at its old `#b6c3d1` (1.6:1) fails;
+    an unlisted colour fails."""
+    assert round(_contrast("#000000", "#ffffff"), 6) == 21
+    listed = set(_PALETTE) | set(_FILLS.values())
+    for source in sorted(_DIAGRAMS.glob("*.dot")):
+        used = {colour.lower() for colour in re.findall(r"#[0-9a-fA-F]{6}", source.read_text())}
+        assert used <= listed, f"{source.name}: colours outside the palette: {used - listed}"
+    below = [
+        (colour, fill, round(_contrast(colour, _FILLS[fill]), 2))
+        for colour, (fills, floor) in _PALETTE.items()
+        for fill in fills
+        if _contrast(colour, _FILLS[fill]) < floor
+    ]
+    assert not below, f"diagram colours below their floor: {below}"
+    assert _contrast("#b6c3d1", _FILLS["server"]) < 3
