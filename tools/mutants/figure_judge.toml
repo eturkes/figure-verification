@@ -24,8 +24,8 @@ mutant = '''        True,
 id = "m19-colorbars-unshown"
 predicate = "a colorbar shows its scatter's colour values"
 kills = "tests/test_figure_corpus.py::test_corpus_case[colour-made-up]"
-anchor = '''        (*axes.colorbar_of, "colors") for axes in judged.figure.axes if axes.colorbar_of is not None'''
-mutant = '''        (*axes.colorbar_of, "none") for axes in judged.figure.axes if axes.colorbar_of is not None'''
+anchor = '''        (*axes.colorbar_shown, "colors") for axes in judged.figure.axes if axes.colorbar_shown'''
+mutant = '''        (*axes.colorbar_shown, "none") for axes in judged.figure.axes if axes.colorbar_shown'''
 
 [[mutant]]
 id = "m19-pie-labels-listed"

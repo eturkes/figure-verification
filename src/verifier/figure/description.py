@@ -236,6 +236,12 @@ class Axes:
     pies: tuple[PieRecord, ...]
     legend: Legend | None
 
+    @property
+    def colorbar_shown(self) -> tuple[int, int] | None:
+        """The scatter this axes keys as its colorbar, while it shows: a hidden colorbar keys no
+        colour (reviewer-1 F1)."""
+        return self.colorbar_of if self.visible else None
+
 
 @dataclass(frozen=True, slots=True)
 class Part:

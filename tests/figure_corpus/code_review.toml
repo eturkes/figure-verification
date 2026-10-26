@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Code-review witnesses (MAINTAIN code-review request, `.agent/review.md` § Code review): each
+# blocks for its rule or passes as its honest twin. Format = `integrity.toml`'s.
+
+# --- R267: a key that does not show explains nothing ---------------------------------------------
+
+[[case]]
+id = "cr-hidden-size-legend"
+expect = "marker_size_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 40])
+plt.legend(*dots.legend_elements('sizes')).set_visible(False)
+'''
+
+[[case]]
+id = "cr-hidden-size-legend-labels"
+expect = "marker_size_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 40])
+key = plt.legend(*dots.legend_elements('sizes'))
+for text in key.get_texts():
+    text.set_visible(False)
+'''
+
+[[case]]
+id = "cr-shown-size-legend"
+expect = "pass"
+rule = "marker_size_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 40])
+plt.legend(*dots.legend_elements('sizes'))
+'''
+
+[[case]]
+id = "cr-hidden-colorbar"
+expect = "marker_color_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], c=[10, 40])
+plt.colorbar(dots).ax.set_visible(False)
+'''
+
+[[case]]
+id = "cr-shown-colorbar"
+expect = "pass"
+rule = "marker_color_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], c=[10, 40])
+plt.colorbar(dots)
+'''
+
+# --- R270: tick labels read without the offset text they need ------------------------------------
+
+[[case]]
+id = "cr-hidden-offset-text"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [100001, 100002])
+plt.gca().yaxis.get_offset_text().set_visible(False)
+'''
+
+[[case]]
+id = "cr-hidden-order-text"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [1e7, 3e7])
+plt.gca().yaxis.get_offset_text().set_visible(False)
+'''
+
+[[case]]
+id = "cr-shown-offset-text"
+expect = "pass"
+rule = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [100001, 100002])
+'''
+
+[[case]]
+id = "cr-hidden-figure-size-legend"
+expect = "marker_size_varies"
+program = '''
+import matplotlib.pyplot as plt
+dots = plt.scatter([1, 2], [3, 4], s=[10, 40])
+plt.gcf().legend(*dots.legend_elements('sizes')).set_visible(False)
+'''
+
+[[case]]
+id = "cr-transparent-offset-text"
+expect = "tick_label_mismatch"
+program = '''
+import matplotlib.pyplot as plt
+plt.plot([1, 2], [100001, 100002])
+plt.gca().yaxis.get_offset_text().set_alpha(0)
+'''

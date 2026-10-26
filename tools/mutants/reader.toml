@@ -160,7 +160,7 @@ mutant = '''            shown = [label for label in (tick.label1,) if label.get_
 id = "m19-legend-displayed-text"
 predicate = "a legend entry's text is the text it displays"
 kills = "tests/test_figure_reader.py::test_f5_legend_entries_read_their_displayed_text"
-anchor = '''        label = next(shown).get_text()'''
+anchor = '''        label = text.get_text()'''
 mutant = '''        label = _labels[handles.index(handle)]'''
 
 [[mutant]]
@@ -489,3 +489,38 @@ predicate = "the reader reports each legend's markerscale (size-key scale)"
 kills = "tests/test_figure_corpus.py::test_corpus_case[size-elements-markerscale]"
 anchor = '''        "markerscale": _number(legend.markerscale),'''
 mutant = '''        "markerscale": 1.0,'''
+
+[[mutant]]
+id = "cr-r267-hidden-legend-read"
+predicate = "an axes legend that does not show keys and names nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-size-legend]"
+anchor = '''        if axes.legend_ is None or not _shown(axes.legend_)'''
+mutant = '''        if axes.legend_ is None'''
+
+[[mutant]]
+id = "cr-r267-hidden-figure-legend-read"
+predicate = "a figure legend that does not show keys and names nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-figure-size-legend]"
+anchor = '''        "legends": [_legend(legend, figure) for legend in figure.legends if _shown(legend)],'''
+mutant = '''        "legends": [_legend(legend, figure) for legend in figure.legends],'''
+
+[[mutant]]
+id = "cr-r267-hidden-entry-read"
+predicate = "a legend entry whose label does not show keys and names nothing"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-size-legend-labels]"
+anchor = '''        if not _shown(text):  # an entry whose label does not show names and keys nothing'''
+mutant = '''        if False:  # an entry whose label does not show names and keys nothing'''
+
+[[mutant]]
+id = "cr-r270-hidden-offset-applied"
+predicate = "tick labels read with the offset + order only while the offset text shows"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-offset-text]"
+anchor = '''    scalar = name == "ScalarFormatter" and _shown(axis.get_offset_text())'''
+mutant = '''    scalar = name == "ScalarFormatter"'''
+
+[[mutant]]
+id = "cr-r270-transparent-shown"
+predicate = "a fully transparent artist does not show"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-transparent-offset-text]"
+anchor = '''    return bool(artist.get_visible()) and (alpha is None or alpha > 0)'''
+mutant = '''    return bool(artist.get_visible())'''

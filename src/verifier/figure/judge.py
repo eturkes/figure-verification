@@ -64,7 +64,7 @@ def integrity(description: Description) -> Judged | Blocked:
         figure, judged = panels(description)
         for panel in judged:
             check_axes(panel)
-        colorbars = {axes.colorbar_of for axes in figure.axes if axes.colorbar_of is not None}
+        colorbars = {axes.colorbar_shown for axes in figure.axes if axes.colorbar_shown}
         legends = read_legends(judged, figure.legends)
         for panel in judged:
             check_marks(panel, colorbars, legends.encodings)
@@ -148,7 +148,7 @@ def _values(
     (so a block after it is a column's)."""
     integrity_only = not sources.files and not context.request.numbers
     colorbars = {
-        (*axes.colorbar_of, "colors") for axes in judged.figure.axes if axes.colorbar_of is not None
+        (*axes.colorbar_shown, "colors") for axes in judged.figure.axes if axes.colorbar_shown
     }
     every = series(
         judged.panels, judged.legends.names, judged.legends.encodings | frozenset(colorbars)

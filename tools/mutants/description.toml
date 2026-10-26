@@ -94,3 +94,10 @@ predicate = "the decoder carries each legend's markerscale to the judge (size-ke
 kills = "tests/test_figure_corpus.py::test_corpus_case[size-keys-markerscale]"
 anchor = '''        _optional(item["site"], _int), _tuple(item["entries"], _entry), _float(item["markerscale"])'''
 mutant = '''        _optional(item["site"], _int), _tuple(item["entries"], _entry), 1.0'''
+
+[[mutant]]
+id = "cr-r267-hidden-colorbar-keys"
+predicate = "a hidden colorbar keys no colour"
+kills = "tests/test_figure_corpus.py::test_corpus_case[cr-hidden-colorbar]"
+anchor = '''        return self.colorbar_of if self.visible else None'''
+mutant = '''        return self.colorbar_of'''

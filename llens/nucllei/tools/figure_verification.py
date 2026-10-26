@@ -648,6 +648,12 @@ class Axes:
     pies: tuple[PieRecord, ...]
     legend: Legend | None
 
+    @property
+    def colorbar_shown(self) -> tuple[int, int] | None:
+        """The scatter this axes keys as its colorbar, while it shows: a hidden colorbar keys no
+        colour (reviewer-1 F1)."""
+        return self.colorbar_of if self.visible else None
+
 
 @dataclass(frozen=True, slots=True)
 class Part:
@@ -1787,8 +1793,14 @@ def _cut(text: str) -> str:
     return text
 
 
+def _shown(artist: Any) -> bool:
+    """The artist draws: visible and not fully transparent (its own alpha)."""
+    alpha = artist.get_alpha()
+    return bool(artist.get_visible()) and (alpha is None or alpha > 0)
+
+
 def _text(artist: Any) -> dict[str, Any] | None:
-    if artist is None or not artist.get_visible() or artist.get_text() == "":
+    if artist is None or not _shown(artist) or artist.get_text() == "":
         return None
     return {"text": _cut(artist.get_text()), "site": getattr(artist, "_fv_site", None)}
 
@@ -2063,7 +2075,9 @@ def _axis(axes: Any, axis: Any, positions: Iterable[object]) -> dict[str, Any]:
         wanted = {p for p in positions if isinstance(p, float)}
         wanted |= {t[0] for t in (*ticks, *minor) if isinstance(t[0], float)}
         dates = [[p, _date(axes, axis, p)] for p in sorted(wanted)]
-    scalar = name == "ScalarFormatter"
+    # The offset/order text is what tells a reader to add the offset and scale: hidden, the labels
+    # show their unscaled numbers (reviewer-1 F4).
+    scalar = name == "ScalarFormatter" and _shown(axis.get_offset_text())
     return {
         "label": _text(axis.label),
         "scale": str(axis.get_scale()),
@@ -2141,7 +2155,10 @@ def _legend(legend: Any, figure: Any) -> dict[str, Any]:
     for handle, drawn in zip(handles, legend.legend_handles, strict=False):
         if drawn is None:
             continue
-        label = next(shown).get_text()
+        text = next(shown)
+        if not _shown(text):  # an entry whose label does not show names and keys nothing
+            continue
+        label = text.get_text()
         found = _find(figure, handle)
         elements = getattr(handle, "_fv_elements", None)
         keyed = None if elements is None else _find(figure, elements[0])
@@ -2219,7 +2236,9 @@ def _axes(axes: Any, figure: Any, run: _Run) -> dict[str, Any]:
         "artists": artists,
         "containers": described,
         "pies": pies,
-        "legend": None if axes.legend_ is None else _legend(axes.legend_, figure),
+        "legend": None
+        if axes.legend_ is None or not _shown(axes.legend_)
+        else _legend(axes.legend_, figure),
     }
 
 
@@ -2252,7 +2271,7 @@ def _figure(figure: Any, run: _Run) -> dict[str, Any]:
             for t in (_text(text) for text in figure.texts if all(text is not s for s in supers))
             if t is not None
         ],
-        "legends": [_legend(legend, figure) for legend in figure.legends],
+        "legends": [_legend(legend, figure) for legend in figure.legends if _shown(legend)],
         "others": [
             {
                 "cls": type(child).__name__,
@@ -8681,7 +8700,7 @@ def integrity(description: Description) -> Judged | Blocked:
         figure, judged = panels(description)
         for panel in judged:
             check_axes(panel)
-        colorbars = {axes.colorbar_of for axes in figure.axes if axes.colorbar_of is not None}
+        colorbars = {axes.colorbar_shown for axes in figure.axes if axes.colorbar_shown}
         legends = read_legends(judged, figure.legends)
         for panel in judged:
             check_marks(panel, colorbars, legends.encodings)
@@ -8765,7 +8784,7 @@ def _values(
     (so a block after it is a column's)."""
     integrity_only = not sources.files and not context.request.numbers
     colorbars = {
-        (*axes.colorbar_of, "colors") for axes in judged.figure.axes if axes.colorbar_of is not None
+        (*axes.colorbar_shown, "colors") for axes in judged.figure.axes if axes.colorbar_shown
     }
     every = series(
         judged.panels, judged.legends.names, judged.legends.encodings | frozenset(colorbars)
