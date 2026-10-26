@@ -79,8 +79,7 @@ _CLEAN_HOST = re.compile(r"[A-Za-z0-9._-]+")
 # The provisioned paste-in tool: python mode is the demo's ONE operation (.agent/spec.md § Decisions
 # demo shape). The id must be a lower-case Python identifier -- OWUI rejects anything else and
 # lower-cases what it accepts (routers/tools.py). name + description are ADMIN-facing workspace
-# labels; the string the MODEL reads is the method docstring inside the artifact, which is why
-# ruling 6's banned-stem check runs over that and not over these.
+# labels; the string the MODEL reads is the method docstring inside the artifact.
 _TOOL_ID = "figure_verification"
 _TOOL_NAME = "Figure Verification"
 _TOOL_DESCRIPTION = "Draws a chart from a Python program and an attached CSV file."

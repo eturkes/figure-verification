@@ -2,14 +2,14 @@
 """The numbers a request types, ranges expanded (ruling 4; stdlib, deterministic).
 
 Read after NFKC. A number = optional sign, digits with optional `,` thousands groups, optional
-decimals and exponent; a letter or digit right before it, or a digit right after it, makes it part
-of a word (`Q1`, `x2`). `1,200` reads both ways (1200, and 1 and 200), since a list and a thousands
-group look alike. An integer range expands to every integer between its ends: `a through b`,
-`a to b`, `a thru b`, a U+2013/U+2014 dash, `a~b`, `a〜b`, `aからbまで`; an ASCII hyphen is
-never a range,
-because dates and negative numbers use it. Ranges expand to `MAX_RANGE` terms per request in total,
-since the request is any length (`plot 1 to 9999` x 1,000 built 9,999,000 terms, 478 MB); a range
-past what is left adds its ends alone.
+decimals and exponent; an ASCII letter or digit right before it, or a digit right after it, makes it
+part of a word (`Q1`, `x2`; `値2` reads 2, since Japanese runs digits into words). `1,200` reads
+both ways (1200, and 1 and 200), since a list and a thousands group look alike. An integer range
+expands to every integer between its ends: `a through b`, `a to b`, `a thru b`, a U+2013/U+2014
+dash, `a~b`, `a〜b`, `aからbまで`; an ASCII hyphen is never a range, because dates and negative
+numbers use it. Ranges expand to `MAX_RANGE` terms per request in total, since the request is any
+length (`plot 1 to 9999` x 1,000 built 9,999,000 terms, 478 MB); a range past what is left adds its
+ends alone.
 
 `sequence` keeps the numbers in typed order for the computations on typed numbers (Q45): each
 number's whole reading, a range expanded in place in its typed direction.

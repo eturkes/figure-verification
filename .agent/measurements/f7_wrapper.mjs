@@ -234,10 +234,10 @@ const report = {
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report));
 // Every plot, the two glyph legs included, replies one parseable description line + one PNG line
-// with an empty stderr (the reader catches the program's warnings). ja-no-font (control) +
-// ja-mathtext (declared limit) report missing glyphs in the description; every other plot none.
-// Q44: ja-miss draws a character outside its cut (glyphs > 0); ja-second's earlier reply is clean
-// too; both replies of ja-marker-repeat count the text marker's missing glyph. The cut lacks FreeType's CJK autohinter reference glyphs, so its PNG differs from ja-whole's
+// with an empty stderr (the reader catches the program's warnings). Five glyph controls report
+// missing glyphs in the description: ja-no-font (no font), ja-mathtext (declared limit), ja-miss (a
+// character outside its cut), both replies of ja-marker-repeat (the text marker) and ja-textpath
+// (a `TextPath` marker); every other plot none, ja-second's earlier reply included. The cut lacks FreeType's CJK autohinter reference glyphs, so its PNG differs from ja-whole's
 // in antialiasing alone (inspect both PNGs).
 const controls = ["ja-no-font", "ja-mathtext", "ja-miss", "ja-marker-repeat", "ja-textpath"];
 const plots = Object.entries(results).filter(([name]) => name !== "literal-control");

@@ -111,7 +111,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 
 | Rule | How | Code |
 |---|---|---|
-| each mark at its data values | each data artist's transform is the axes' `transData` (bars: the data transform; scatter: the offset transform) | `mark_not_in_data` |
+| each mark at its data values | each data artist's transform is the axes' `transData` (bars: the data transform; scatter: the offset transform); a reference mark's data axis is its blended transform's (`axhline`, `axhspan`: y; `axvline`, `axvspan`: x) | `mark_not_in_data` |
 | linear scales; log only when the axis label or panel title says `log`, `logarithmic` or `対数` | `axis.get_scale()`; for `log`, the label and title text after NFKC and case folding | `scale_not_linear` |
 | no inverted numeric or date axis | `axis.get_inverted()` + the axis kind; a key axis of text categories (a category axis, or slots that pandas or the program labelled) may be inverted: it lists them in reverse | `axis_inverted` |
 | zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom) | `0` lies in the value axis's `get_view_interval()` | `zero_not_in_limits` |
@@ -169,7 +169,7 @@ that it leaves must be a typed number.
 | CSV at most 8 MB, 100,000 rows, 128 columns, 512 bytes per cell | the tool reads the user's own files from the stored chat branch and checks each file's owner before reading its bytes; the judge checks the caps | `csv_too_large` |
 | CSV readable | a reader restricted to what `pandas.read_csv` reads the same way | `csv_not_parsable` |
 | matching within the work limit | the judge counts work units, 5,000,000 at most (`MAX_WORK`) | `work_budget_exceeded` |
-| each category once per series | no two points of one series share a key | `category_not_unique` |
+| each category once per series (a scatter series may repeat one) | no two points of one series other than a scatter share a text key | `category_not_unique` |
 | every drawn value found in a source | the search above finds an explanation for every point | `value_not_found` |
 | every typed category label in the request | the label occurs in the request after NFKC and case folding | `label_not_in_request` |
 

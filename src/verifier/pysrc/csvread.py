@@ -29,8 +29,9 @@ from verifier.pysrc.table import CellValue
 __all__ = ["NA_SPELLINGS", "key_values"]
 
 # Every default NA spelling pandas recognises, measured on the target build. A cell matching one of
-# these -- quoted or plain -- refuses rather than becoming a null: the verifier has no null, and
-# that absence is what makes G8's row coverage true by construction. Coverage, not point-count
+# these -- quoted or plain -- never becomes a number or a null: its column has no numeric reading,
+# and the cell stays a text key. The verifier has no null, and that absence is what makes G8's row
+# coverage true by construction. Coverage, not point-count
 # equality: an aggregate collapses its rows into one point per group and G11 publishes the counts.
 NA_SPELLINGS: frozenset[str] = frozenset(
     {

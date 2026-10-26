@@ -9,7 +9,8 @@ import re
 import unicodedata
 from typing import Literal, TypeAlias
 
-# The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
+# `Reduction` = `verifier.pysrc.aggregate.Reduction`'s values, spelled here so this module imports
+# no pysrc code.
 Aliases: TypeAlias = tuple[tuple[str, str], ...]
 Anchoring: TypeAlias = Literal["strict", "substitution"]  # production | demo (Q37)
 Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]

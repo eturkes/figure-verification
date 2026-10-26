@@ -6,7 +6,8 @@
 //   node q79_render.mjs <browser-url> <webui-url> <corpus.json> <result.json>
 //
 // Signs in with FV_WEBUI_EMAIL / FV_WEBUI_PASSWORD when the page asks. Exit 1 on any case whose
-// paragraph text differs, which holds a markup element, or whose label is not the one `strong`.
+// paragraph text differs, which holds a markup element, or whose label is not its language's kind:
+// the one `strong` (EN) or the KaTeX `\textbf` label (JA, Q80).
 import { readFileSync, writeFileSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 

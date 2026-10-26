@@ -47,7 +47,8 @@ import re
 import unicodedata
 from typing import Literal, TypeAlias
 
-# The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
+# `Reduction` = `verifier.pysrc.aggregate.Reduction`'s values, spelled here so this module imports
+# no pysrc code.
 Aliases: TypeAlias = tuple[tuple[str, str], ...]
 Anchoring: TypeAlias = Literal["strict", "substitution"]  # production | demo (Q37)
 Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
@@ -1351,8 +1352,8 @@ _AXIS_CALLS = {
     "set_inverted": "invert",
     "set_tick_params": _STYLE,
 }
-# A missing glyph's warning: "Glyph <n> (<c>) missing from current font." (matplotlib 3.8, the
-# sandbox) or "Glyph <n> (<c>) missing from font(s) <names>." (3.9, the gate host).
+# A missing glyph's warning: "Glyph <n> (<c>) missing from font(s) <names>." (matplotlib 3.9 +
+# 3.10: the sandbox + the gate host) or "Glyph <n> (<c>) missing from current font." (3.8).
 _GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)
 # Mathtext reports a glyph its font set lacks through matplotlib's LOGGER, never `warnings`:
 # "Font 'default' does not have a glyph for '\u5e74' [U+5e74], substituting with a dummy symbol."
@@ -2512,14 +2513,14 @@ _SOURCES["verifier.figure.request"] = r'''
 """The numbers a request types, ranges expanded (ruling 4; stdlib, deterministic).
 
 Read after NFKC. A number = optional sign, digits with optional `,` thousands groups, optional
-decimals and exponent; a letter or digit right before it, or a digit right after it, makes it part
-of a word (`Q1`, `x2`). `1,200` reads both ways (1200, and 1 and 200), since a list and a thousands
-group look alike. An integer range expands to every integer between its ends: `a through b`,
-`a to b`, `a thru b`, a U+2013/U+2014 dash, `a~b`, `a〜b`, `aからbまで`; an ASCII hyphen is
-never a range,
-because dates and negative numbers use it. Ranges expand to `MAX_RANGE` terms per request in total,
-since the request is any length (`plot 1 to 9999` x 1,000 built 9,999,000 terms, 478 MB); a range
-past what is left adds its ends alone.
+decimals and exponent; an ASCII letter or digit right before it, or a digit right after it, makes it
+part of a word (`Q1`, `x2`; `値2` reads 2, since Japanese runs digits into words). `1,200` reads
+both ways (1200, and 1 and 200), since a list and a thousands group look alike. An integer range
+expands to every integer between its ends: `a through b`, `a to b`, `a thru b`, a U+2013/U+2014
+dash, `a~b`, `a〜b`, `aからbまで`; an ASCII hyphen is never a range, because dates and negative
+numbers use it. Ranges expand to `MAX_RANGE` terms per request in total, since the request is any
+length (`plot 1 to 9999` x 1,000 built 9,999,000 terms, 478 MB); a range past what is left adds its
+ends alone.
 
 `sequence` keeps the numbers in typed order for the computations on typed numbers (Q45): each
 number's whole reading, a range expanded in place in its typed direction.
@@ -2731,7 +2732,7 @@ class PysrcLimits:
     max_csv_cell_bytes: int = 512
     max_table_rows: int = 100_000
     # Groups are drawn marks, so this is a legibility ceiling before it is a cost one, and it binds
-    # ahead of the reduction, so a high-cardinality key column refuses before its groups exist.
+    # ahead of the reduction, so a high-cardinality key column refuses before any group is reduced.
     max_groups: int = 1_000
     # The binding ceiling in practice: about one second of reading on the host of record. Work
     # binds before `max_table_rows` on purpose: it is size-aware and the row cap is not.
@@ -2749,8 +2750,8 @@ from typing import TypeAlias
 
 __all__ = ["CellValue"]
 
-# A text key is a string; every other cell is float64. There is no null and no NaN: the CSV
-# profile refuses every NA spelling before a cell reaches here.
+# A text key is a string; every other cell is float64. There is no null and no NaN: an NA spelling
+# reaches here as its text, never as a number.
 CellValue: TypeAlias = float | str
 '''
 
@@ -2758,10 +2759,10 @@ _SOURCES["webui"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """webui — the Open WebUI integration harness.
 
-Provisions and drives a headless Open WebUI over its REST API: it registers the verifier as an
-OpenAPI tool server, bootstraps an admin, and launches OWUI under a canonical hermetic env so the
-weak local model proposes chart specs the verifier certifies before render. NOT part of the
-verifier trust claim: an out-of-tree harness like model_backend and bench -- type-checked under
+Provisions and drives a headless Open WebUI over its REST API: it installs the generated paste-in
+pair (the `draw_figure` tool + the global filter), bootstraps an admin, and launches OWUI under a
+canonical hermetic env, so the model's program is drawn and the filter judges the figure. NOT part
+of the verifier trust claim: an out-of-tree harness like model_backend -- type-checked under
 mypy --strict but excluded from coverage and the wheel, importing only gate-venv deps (the
 .venv-webui open-webui binary is exec'd, never imported).
 
@@ -3881,7 +3882,8 @@ def _rectangle(artist: Artist, axes: Axes, index: int) -> _Kind:
 
 
 def _polygon(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    # matplotlib 3.8 (the sandbox) draws a span as a Polygon; any other Polygon is unjudged.
+    # matplotlib 3.8 draws a span as a Polygon (3.9 + 3.10: a Rectangle); any other Polygon is
+    # unjudged.
     return "reference" if (artist.origin or "") in _REFERENCE_SPANS else None
 
 
@@ -4269,15 +4271,15 @@ _SOURCES["verifier.pysrc.aggregate"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Grouped reduction, reproducing what the EXECUTED program plots.
 
-pandas is not importable here and never will be: the core is stdlib-only so M14 can inline it. So
-this module reimplements the reductions pandas performs, and every choice below is fixed by
-MEASUREMENT against pandas rather than by what is arithmetically nicest -- the more precise engine
-is the less faithful one, exactly as in `expr.py`'s ruling.
+pandas is not importable here and never will be: the core is stdlib-only so the paste-ins can
+inline it. So this module reimplements the reductions pandas performs, and every choice below is
+fixed by MEASUREMENT against pandas rather than by what is arithmetically nicest -- the more precise
+engine is the less faithful one.
 
 The four decisions that carry the module, all measured:
 
 - a float64 `sum` is ORDERED binary64 Kahan compensation in file-row order. Naive left-to-right
-  differs on 2,761 of 4,000 admitted-profile CSV groups, `math.fsum` on 1,483; Kahan matches on
+  differs on 2,761 of 4,000 admitted-profile CSV groups, `math.fsum` on 1,483; Kahan disagrees on
   0 of 16,062.
 - an int64 `mean` casts each value to float64 BEFORE summing, so it is NOT the exact integer mean:
   `[2**53, 1, 0]` splits the two orders by 1 ulp.
@@ -5541,7 +5543,7 @@ def _reference(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
         extent = geometry.width if dimension == 0 else geometry.height
         yield dimension, start, artist.site
         yield dimension, start + extent, artist.site
-    else:  # matplotlib 3.8 (the sandbox) draws a span as a Polygon
+    else:  # matplotlib 3.8 draws a span as a Polygon
         polygon = cast("PolygonGeometry", geometry)
         yield from ((dimension, pair[dimension], artist.site) for pair in polygon.xy)
 
@@ -5676,8 +5678,9 @@ from verifier.pysrc.table import CellValue
 __all__ = ["NA_SPELLINGS", "key_values"]
 
 # Every default NA spelling pandas recognises, measured on the target build. A cell matching one of
-# these -- quoted or plain -- refuses rather than becoming a null: the verifier has no null, and
-# that absence is what makes G8's row coverage true by construction. Coverage, not point-count
+# these -- quoted or plain -- never becomes a number or a null: its column has no numeric reading,
+# and the cell stays a text key. The verifier has no null, and that absence is what makes G8's row
+# coverage true by construction. Coverage, not point-count
 # equality: an aggregate collapses its rows into one point per group and G11 publishes the counts.
 NA_SPELLINGS: frozenset[str] = frozenset(
     {
@@ -6143,11 +6146,13 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
         "カテゴリのラベルは、同じ行または依頼文にある必要があります。",
     ),
     "columns": (
-        "When your request names columns, the chart must draw those columns. A title, axis label"
-        " or legend must not name a column or summary that the chart does not draw. It can name"
-        " the column whose values the legend shows as series names.",
-        "依頼文に列名がある場合、グラフはその列を描く必要があります。"
-        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。"
+        "When your request names columns, the chart must not draw another column in their place."
+        " A title, axis label or legend must not name a column that the chart does not draw, and"
+        " a label over a reduction must not name another reduction. It can name the column whose"
+        " values the legend shows as series names.",
+        "依頼文に列名がある場合、グラフはその列の代わりに別の列を描いてはいけません。"
+        "タイトル、軸ラベル、凡例は、グラフが描いていない列を挙げてはいけません。"
+        "集計した値のラベルは、別の集計を挙げてはいけません。"
         "凡例が系列名として示す値の列は挙げてもかまいません。",
     ),
     "attach": (
@@ -6448,7 +6453,8 @@ _SOURCES["webui.paste_in.sandbox"] = r'''
 """The code the outlet sends to the browser: the reader, then the model's program, unchanged.
 
 OWUI picks the sandbox packages from literal imports in the RPC source and patches the plotting
-library when the source spells that library's name, which raises before the program runs (A5).
+library when the source spells that library's name: its prelude replaces `pyplot.show` with one
+that prints its own PNG and clears the figure (A5).
 So the plotting name is never literal here: the wrapper loads the packages itself, quietly, and
 carries the reader and the program as base64, split wherever the encoding spells that name.
 """

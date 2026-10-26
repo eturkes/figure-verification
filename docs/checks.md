@@ -63,7 +63,7 @@ your browser's network.
 | run reports its figure | `stdout` holds one parsable, tagged description line | `no_description` |
 | valid Python | the reader compiles the program; no `SyntaxError` | `program_syntax_error` |
 | program runs to its end without an exception | the reader runs the program and catches any exception with its line | `program_error` |
-| imports only numpy, pandas, matplotlib, seaborn and the standard library | the exception is no missing-module error | `module_not_available` |
+| imports only what the sandbox loads: numpy, pandas, matplotlib (with the packages they need), seaborn when the program names it, and the standard library | the exception is no missing-module error | `module_not_available` |
 | at most 24 axes, 2,000 parts, 20,000 coordinates and 1,000 characters per text; description at most 400,000 bytes, PNG at most 500,000 characters | the reader counts as it describes, and reports a figure past a cap as too large | `figure_too_large` |
 
 [Full rules](verification.md#check-run)
@@ -109,7 +109,7 @@ filled, one data set), pies (`pie`), areas (`fill_between`, `stackplot`), refere
 
 | Rule | How | Code |
 |---|---|---|
-| each mark at its data values | each data artist's transform is the axes' `transData` (bars: the data transform; scatter: the offset transform) | `mark_not_in_data` |
+| each mark at its data values | each data artist's transform is the axes' `transData` (bars: the data transform; scatter: the offset transform); a reference mark's data axis is its blended transform's (`axhline`, `axhspan`: y; `axvline`, `axvspan`: x) | `mark_not_in_data` |
 | linear scales; log only when the axis label or panel title says `log`, `logarithmic` or `対数` | `axis.get_scale()`; for `log`, the label and title text after NFKC and case folding | `scale_not_linear` |
 | no inverted numeric or date axis | `axis.get_inverted()` + the axis kind; a key axis of text categories (a category axis, or slots that pandas or the program labelled) may be inverted: it lists them in reverse | `axis_inverted` |
 | zero inside the value-axis limits of bars, histograms and areas (line and scatter may zoom) | `0` lies in the value axis's `get_view_interval()` | `zero_not_in_limits` |
@@ -167,7 +167,7 @@ that it leaves must be a typed number.
 | CSV at most 8 MB, 100,000 rows, 128 columns, 512 bytes per cell | the filter reads your file's bytes from Open WebUI storage (owner checked); the judge checks the caps | `csv_too_large` |
 | CSV readable | a reader restricted to what `pandas.read_csv` reads the same way | `csv_not_parsable` |
 | matching within the work limit | the judge counts work units, 5,000,000 at most (`MAX_WORK`) | `work_budget_exceeded` |
-| each category once per series | no two points of one series share a key | `category_not_unique` |
+| each category once per series (a scatter series may repeat one) | no two points of one series other than a scatter share a text key | `category_not_unique` |
 | every drawn value found in a source | the search above finds an explanation for every point | `value_not_found` |
 | every typed category label in the request | the label occurs in the request after NFKC and case folding | `label_not_in_request` |
 

@@ -5,6 +5,6 @@ from typing import TypeAlias
 
 __all__ = ["CellValue"]
 
-# A text key is a string; every other cell is float64. There is no null and no NaN: the CSV
-# profile refuses every NA spelling before a cell reaches here.
+# A text key is a string; every other cell is float64. There is no null and no NaN: an NA spelling
+# reaches here as its text, never as a number.
 CellValue: TypeAlias = float | str

@@ -659,7 +659,8 @@ def test_q82_t12_the_result_fits_the_server_s_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """nucllei cuts a result past `TOOL_RESULT_MAX_CHARS` (an admin can lower it) and drops its
-    render: the listings go first, then the rows; the cause and the model's tail always stay."""
+    render: the listings go first, then the rows; the cause and the model's tail stay while the
+    cap holds them (`_bounded`)."""
     full = _capped(tmp_path, monkeypatch, 65_536)
     assert "ax.set_ylim(80, 130)" in full
     lowered = _capped(tmp_path, monkeypatch, len(full) + 511)

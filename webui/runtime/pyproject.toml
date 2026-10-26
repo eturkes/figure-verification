@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # The demo's Open WebUI, locked + audited (M21.2). NOT a member of the root uv project: it syncs on
-# its own into .venv-webui, and nothing in the gate imports it — the launcher runs its binary.
+# its own into .venv-webui; the launcher runs its binary, and the gate reaches it only through
+# that interpreter in subprocesses (`tests/paste_in_support.py`), never by an import.
 #
 # The interpreter line is the official image's (CPython 3.11), so the demo runs the paste-in pair
 # under the Python production runs it under.

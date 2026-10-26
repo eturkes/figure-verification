@@ -199,7 +199,7 @@ _UNREADABLE_HEADER = {
 
 @pytest.mark.parametrize("content", _UNREADABLE_HEADER.values(), ids=_UNREADABLE_HEADER)
 def test_q8_an_unreadable_header_leaves_recompute_refusal(content: bytes) -> None:
-    """A header `read_columns` refuses to read anchors nothing: its own refusal names the fault."""
+    """A header the CSV reader cannot read anchors nothing: its own refusal names the fault."""
     alone = _verdict(_bar("month"), None, content)
     assert alone not in {"VERIFIED", "column_not_requested"}
     assert _verdict(_bar("month"), _BY_REGION, content) == alone

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-"""Same executable experiment on host and both pinned Pyodide builds."""
+"""Same executable experiment on the host and the installed Open WebUI Pyodide bundle."""
 
 import csv
 import hashlib

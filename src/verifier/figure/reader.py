@@ -83,8 +83,8 @@ _AXIS_CALLS = {
     "set_inverted": "invert",
     "set_tick_params": _STYLE,
 }
-# A missing glyph's warning: "Glyph <n> (<c>) missing from current font." (matplotlib 3.8, the
-# sandbox) or "Glyph <n> (<c>) missing from font(s) <names>." (3.9, the gate host).
+# A missing glyph's warning: "Glyph <n> (<c>) missing from font(s) <names>." (matplotlib 3.9 +
+# 3.10: the sandbox + the gate host) or "Glyph <n> (<c>) missing from current font." (3.8).
 _GLYPH = re.compile(r"\AGlyph \d+ .* missing from (?:current )?font", re.DOTALL)
 # Mathtext reports a glyph its font set lacks through matplotlib's LOGGER, never `warnings`:
 # "Font 'default' does not have a glyph for '\u5e74' [U+5e74], substituting with a dummy symbol."

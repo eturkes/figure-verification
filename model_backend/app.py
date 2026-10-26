@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Litestar app for the local model backend — OpenAI /v1 surface.
 
-Two routes the verifier client and Open WebUI use — POST /v1/chat/completions
-(one non-streaming completion) and GET /v1/models (the single served model) — plus /health.
+Two routes Open WebUI uses — POST /v1/chat/completions (one non-streaming completion) and
+GET /v1/models (the single served model) — plus /health.
 The model compiles once at create_app time (Engine.load, blocking); each generation runs off
 the event loop in a worker thread behind the engine lock (asyncio.to_thread — one pipeline,
 one accelerator). This is the UNTRUSTED proposer: request parsing is lenient (OpenAI-compat via the
-typed msgspec body, unknown fields tolerated), and the verifier re-decodes every reply
-strictly (POC_SCOPE). Litestar bounds a request before body decode. A BackendError renders as an
-OpenAI-style error body via the handler below; the verifier recognizes only the exact
-``prompt_too_long`` shape as policy refusal and treats every other non-2xx as an upstream fault.
+typed msgspec body, unknown fields tolerated), since the verifier judges the figure the program
+draws, never this reply. Litestar bounds a request before body decode. A BackendError renders as
+an OpenAI-style error body via the handler below; the demo adapter reads the exact
+``prompt_too_long`` refusal as its cue to drop the oldest turn.
 Streaming is out of scope for this unit. Litestar's OpenAPI auto-gen stays off — the backend
 is consumed by a hardcoded client shape, not via a served document.
 """

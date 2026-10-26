@@ -285,7 +285,7 @@ filled, one data set), pies (<code>pie</code>), areas (<code>fill_between</code>
 <tbody>
 <tr>
 <td>each mark at its data values</td>
-<td>each data artist's transform is the axes' <code>transData</code> (bars: the data transform; scatter: the offset transform)</td>
+<td>each data artist's transform is the axes' <code>transData</code> (bars: the data transform; scatter: the offset transform); a reference mark's data axis is its blended transform's (<code>axhline</code>, <code>axhspan</code>: y; <code>axvline</code>, <code>axvspan</code>: x)</td>
 <td><code>mark_not_in_data</code></td>
 </tr>
 <tr>
@@ -444,8 +444,8 @@ ratio, difference, product or sum of two CSV columns, per row or per group.</li>
 <td><code>work_budget_exceeded</code></td>
 </tr>
 <tr>
-<td>each category once per series</td>
-<td>no two points of one series share a key</td>
+<td>each category once per series (a scatter series may repeat one)</td>
+<td>no two points of one series other than a scatter share a text key</td>
 <td><code>category_not_unique</code></td>
 </tr>
 <tr>

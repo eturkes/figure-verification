@@ -104,8 +104,8 @@ stage() {
 }
 
 secret_scan() {
-    # Tracked files only: .verifier-state/signing.key and every other gitignored local
-    # artifact must never be read, let alone hashed into the baseline.
+    # Tracked files only: a gitignored local artifact must never be read, let alone hashed into the
+    # baseline.
     local files=()
     mapfile -t files < <(git ls-files)
     uv run --locked detect-secrets-hook --baseline .secrets.baseline "${files[@]}"

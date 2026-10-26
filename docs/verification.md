@@ -353,7 +353,8 @@ Each chart part must show its values honestly:
 
 The verifier compares each drawn value with your data, as [Where the values come
 from](#where-the-values-come-from) describes. One series cannot show the same category twice,
-because one value would cover the other.
+because one value would cover the other. A scatter series is the exception: each of its points
+shows.
 
 | Reason | Meaning |
 |---|---|

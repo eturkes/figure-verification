@@ -138,8 +138,9 @@ def run_bootstrap(client: _Provisioner, settings: Settings) -> SmokeResult:
     """Wait, authenticate, converge the filter, tool + model attachment, then smoke every readback.
 
     The pair is the COMMITTED generated artifact `settings.paste_in` names: the demo's differs from
-    production's in its anchoring constant + filter inlet template alone, so either is a live test
-    of the shared code rather than a second wiring.
+    production's in its anchoring constant, its filter inlet template and its `model_note` Valve
+    default (off; production on) alone, so either is a live test of the shared code rather than a
+    second wiring.
     """
     tool, filter_ = _PAIRS[settings.paste_in]
     client.wait_ready()

@@ -10,8 +10,8 @@ Three assertions, then one machine-readable report line:
 2. POST /v1/chat/completions returns non-empty content for a fixed greedy prompt, timed for a
    generated-tokens-per-second figure.
 3. POST with a repetition-built over-cap prompt returns 400 and the byte-exact refusal envelope
-   the verifier's model client re-encodes and compares. Any drift there silently reclassifies a
-   policy refusal into an upstream fault, so the comparison is on bytes, never on a decoded dict.
+   (`.claude/rules/host-runtime.md`: any replacement engine reproduces it byte-exactly), so the
+   comparison is on bytes, never on a decoded dict.
 
 Exit code 0 means every assertion held.
 """

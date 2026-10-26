@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """M19.3 judge: stage order, sites and the branch witnesses the corpus does not reach.
 
-Programs run through the real reader. Where a fact only the sandbox's matplotlib 3.8 writes is
-needed (a span drawn as a Polygon) or a shape no program reaches, one field of a real description
-is edited, since the judge reads descriptions alone.
+Programs run through the real reader. Where a fact only matplotlib 3.8 writes is needed (a span
+drawn as a Polygon) or a shape no program reaches, one field of a real description is edited,
+since the judge reads descriptions alone.
 """
 
 import json
@@ -125,7 +125,7 @@ def test_j3_horizontal_bars_read_their_value_on_x() -> None:
 
 
 def test_j3_reference_spans_in_either_shape() -> None:
-    """3.9 draws `axhspan` as a Rectangle (host), 3.8 as a Polygon (sandbox): both judged."""
+    """3.9 + 3.10 draw `axhspan` as a Rectangle (host + sandbox), 3.8 as a Polygon: both judged."""
     source = _PLT + "plt.plot([1, 2], [1, 4])\nplt.axhspan(2, 3)\n"
     assert isinstance(_judge(source), Judged)
 

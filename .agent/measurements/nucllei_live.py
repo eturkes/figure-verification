@@ -11,7 +11,8 @@ preset (`skillIds` = the skill, `toolIds` = `builtin_sandbox` as llens' preset c
 `filterIds` = `large_file_gate`). Each arm = one chat through nucllei's chat-wire API (the UI's
 own wire): upload, `chats/new`, `chat/completions`, read the stream to its end, read the stored
 chat back. Written per arm: every tool exchange's call + `results[]` (display, error_kind,
-render), the published PNGs, the final reply text. `<out dir>/summary.json` = the first
+render), the published images' file references (`/api/v1/files/<id>/content`), the final reply
+text. `<out dir>/summary.json` = the first
 `draw_figure` verdict + reason per arm, the call count, faults. Images in root's podman store
 (`localhost/nucllei:v20261020-01`, `localhost/nucllei-sandbox:v20261020-01`).
 """

@@ -845,13 +845,13 @@ plt.legend()
 
 <a id="category_not_unique"></a>
 
-### `category_not_unique`: each category once per series
+### `category_not_unique`: each category once per series (a scatter series may repeat one)
 
 Two bars carry the label a, so the reader cannot tell which value belongs to a.
 
 | Blocked | Passes |
 |---|---|
-| ![Blocked: each category once per series](gallery/repeated-category.png) | ![Passes: each category once per series](gallery/unique-categories.png) |
+| ![Blocked: each category once per series (a scatter series may repeat one)](gallery/repeated-category.png) | ![Passes: each category once per series (a scatter series may repeat one)](gallery/unique-categories.png) |
 
 Blocked chart's request: `Bars a 1 and a 2`. Passing chart's request: `Bars a 1 and b 2`.
 

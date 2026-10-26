@@ -232,7 +232,7 @@ def test_explain_edge_keys_and_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_spans_explain_both_edges_in_either_shape() -> None:
-    """3.9 draws `axhspan` as a Rectangle (host), 3.8 as a Polygon (sandbox): both edges count."""
+    """3.9 + 3.10 draw `axhspan` as a Rectangle (host + sandbox), 3.8 as a Polygon: both count."""
     program = _PLT + "plt.plot([1, 2], [1, 4])\nplt.axhspan(2, 3)\n"
     assert isinstance(_judge(program, Sources(request="1 to 4, band 2 to 3")), Passed)
     raw = json.loads(reader.run(program).splitlines()[0][len(TAG) :])

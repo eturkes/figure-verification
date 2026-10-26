@@ -6,7 +6,7 @@ Qwen2.5-Coder-0.5B-Instruct snapshot on settings.device, run by transformers + t
 content in model_backend/runtime/snapshot.json. NOT the trusted verifier: it only PROPOSES a chart
 program; the verifier judges the figure that program draws. So request parsing here is lenient by
 design — the trust boundary is the verifier, not this server. Hardware-gated (the isolated
-.venv-model py3.12 runtime project, never the portable uv gate) and shipped separately from the
+.venv-model py3.15 runtime project, never the portable uv gate) and shipped separately from the
 verifier package: type-checked under mypy --strict but excluded from coverage and the wheel. Run
 recipe: model_backend/runtime/README.md.
 """

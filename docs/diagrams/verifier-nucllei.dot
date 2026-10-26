@@ -49,7 +49,7 @@ digraph verifier_nucllei {
   }
 
   pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✓ Pass</b></td></tr><tr><td height="21">chart + verdict + interpretation + any note</td></tr><tr><td height="21">check list inside the tool block</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
-  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✗ Fail</b></td></tr><tr><td height="21">no image; verdict + cause + any note</td></tr><tr><td height="21">check list inside the tool block</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="21"><b>✗ Fail</b></td></tr><tr><td height="21">no image; verdict + cause</td></tr><tr><td height="21">check list inside the tool block</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
   { rank=same; storage; tool; }

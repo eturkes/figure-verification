@@ -273,11 +273,13 @@ EXPLAIN: Final[dict[Check, tuple[str, str]]] = {
         "カテゴリのラベルは、同じ行または依頼文にある必要があります。",
     ),
     "columns": (
-        "When your request names columns, the chart must draw those columns. A title, axis label"
-        " or legend must not name a column or summary that the chart does not draw. It can name"
-        " the column whose values the legend shows as series names.",
-        "依頼文に列名がある場合、グラフはその列を描く必要があります。"
-        "タイトル、軸ラベル、凡例は、グラフが描いていない列や集計を挙げてはいけません。"
+        "When your request names columns, the chart must not draw another column in their place."
+        " A title, axis label or legend must not name a column that the chart does not draw, and"
+        " a label over a reduction must not name another reduction. It can name the column whose"
+        " values the legend shows as series names.",
+        "依頼文に列名がある場合、グラフはその列の代わりに別の列を描いてはいけません。"
+        "タイトル、軸ラベル、凡例は、グラフが描いていない列を挙げてはいけません。"
+        "集計した値のラベルは、別の集計を挙げてはいけません。"
         "凡例が系列名として示す値の列は挙げてもかまいません。",
     ),
     "attach": (

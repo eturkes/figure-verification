@@ -63,7 +63,7 @@
 | 実行結果が図を報告 | `stdout` に、読み取れるタグ付きの記述の行が 1 つある | `no_description` |
 | 正しい Python | 読み取り処理がプログラムをコンパイルし、`SyntaxError` がない | `program_syntax_error` |
 | プログラムが例外なく最後まで実行 | 読み取り処理がプログラムを実行し、例外とその行をとらえる | `program_error` |
-| 読み込むのは numpy、pandas、matplotlib、seaborn、標準ライブラリだけ | 例外がモジュール不足のエラーではない | `module_not_available` |
+| 読み込むのはサンドボックスが用意するものだけ: numpy、pandas、matplotlib (それぞれが必要とするパッケージを含む)、プログラムが名前を挙げたときの seaborn、標準ライブラリ | 例外がモジュール不足のエラーではない | `module_not_available` |
 | 軸 24 個、部品 2,000 個、座標 20,000 個、1 つのテキスト 1,000 文字まで。図の記述 400,000 バイト、PNG 500,000 文字まで | 読み取り処理が記述しながら数え、上限を超えた図を大きすぎると報告する | `figure_too_large` |
 
 [詳細](verification.ja.md#check-run)
@@ -109,7 +109,7 @@
 
 | 規則 | 方法 | コード |
 |---|---|---|
-| 各部品がデータの値の位置にある | 各データの描画要素の変換が軸の `transData` (棒: データの変換、散布図: オフセットの変換) | `mark_not_in_data` |
+| 各部品がデータの値の位置にある | 各データの描画要素の変換が軸の `transData` (棒: データの変換、散布図: オフセットの変換)。参照の印は、ブレンドした変換のデータ軸がその軸 (`axhline`、`axhspan`: y、`axvline`、`axvspan`: x) | `mark_not_in_data` |
 | 線形の目盛り。対数は、軸ラベルかパネルのタイトルに `log`、`logarithmic`、`対数` がある場合だけ | `axis.get_scale()`。`log` の場合は、NFKC と大文字小文字の統一の後のラベルとタイトル | `scale_not_linear` |
 | 数値と日付の軸は反転なし | `axis.get_inverted()` と軸の種類。テキストのカテゴリのキー軸（カテゴリ軸、または pandas かプログラムがラベルを付けた位置）は反転してよい（カテゴリを逆の順に並べるだけ） | `axis_inverted` |
 | 棒、ヒストグラム、面の値の軸の範囲にゼロ (折れ線と散布図は拡大可) | `0` が値の軸の `get_view_interval()` の中にある | `zero_not_in_limits` |
@@ -167,7 +167,7 @@
 | CSV は 8 MB、100,000 行、128 列、1 セル 512 バイトまで | フィルターがファイルのバイトを Open WebUI の保存データから読み (所有者を確認)、判定処理が上限を確認 | `csv_too_large` |
 | CSV を読み取れる | `pandas.read_csv` が同じように読む範囲に限った読み取り | `csv_not_parsable` |
 | 照合が作業上限内 | 判定処理が作業量を数える。最大 5,000,000 (`MAX_WORK`) | `work_budget_exceeded` |
-| 1 つの系列で各カテゴリは 1 回 | 1 つの系列で同じキーを持つ 2 点がない | `category_not_unique` |
+| 1 つの系列で各カテゴリは 1 回 (散布図の系列は繰り返してもよい) | 散布図以外の 1 つの系列で同じテキストのキーを持つ 2 点がない | `category_not_unique` |
 | 描画したすべての値が出所にある | 上の探索がすべての点の説明を見つける | `value_not_found` |
 | 入力したすべてのカテゴリのラベルが依頼文にある | NFKC と大文字小文字の統一の後、ラベルが依頼文にある | `label_not_in_request` |
 

@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Grouped reduction, reproducing what the EXECUTED program plots.
 
-pandas is not importable here and never will be: the core is stdlib-only so M14 can inline it. So
-this module reimplements the reductions pandas performs, and every choice below is fixed by
-MEASUREMENT against pandas rather than by what is arithmetically nicest -- the more precise engine
-is the less faithful one, exactly as in `expr.py`'s ruling.
+pandas is not importable here and never will be: the core is stdlib-only so the paste-ins can
+inline it. So this module reimplements the reductions pandas performs, and every choice below is
+fixed by MEASUREMENT against pandas rather than by what is arithmetically nicest -- the more precise
+engine is the less faithful one.
 
 The four decisions that carry the module, all measured:
 
 - a float64 `sum` is ORDERED binary64 Kahan compensation in file-row order. Naive left-to-right
-  differs on 2,761 of 4,000 admitted-profile CSV groups, `math.fsum` on 1,483; Kahan matches on
+  differs on 2,761 of 4,000 admitted-profile CSV groups, `math.fsum` on 1,483; Kahan disagrees on
   0 of 16,062.
 - an int64 `mean` casts each value to float64 BEFORE summing, so it is NOT the exact integer mean:
   `[2**53, 1, 0]` splits the two orders by 1 ulp.

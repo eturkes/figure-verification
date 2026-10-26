@@ -9,8 +9,8 @@ verifier judges the figure its program draws. RESPONSE structs are built here an
 serialized by Litestar's msgspec encoder.
 
 Arrays are tuples (deeply immutable + hashable — the msgspec house rule; see memory Stack).
-temperature is a real float here (unlike VPlot specs, which forbid floats): msgspec strict
-accepts a JSON int token for a float field (0 -> 0.0), so a caller may send either.
+temperature is a real float: msgspec strict accepts a JSON int token for a float field
+(0 -> 0.0), so a caller may send either.
 """
 
 from typing import Annotated, Literal
@@ -34,10 +34,10 @@ __all__ = [
 class ChatMessage(msgspec.Struct, frozen=True, kw_only=True):
     """One chat message. role is the closed set {system, user, assistant}, enforced at decode
     (an unknown role — e.g. a control-token string — is rejected 400, never rendered into the
-    chat template); content is text (this PoC is text-only, no multimodal content array). The
-    set matches this proposer's traffic (the verifier's client sends system+user, the reply is
-    assistant); widen it if a tool/multimodal role is ever needed. Content-level control tokens
-    are NOT sanitized here — harmless, since the verifier re-decodes every reply strictly."""
+    chat template); content is text (text-only, no multimodal content array). The set matches
+    this proposer's traffic (Open WebUI sends system + user + assistant turns); widen it if a
+    tool/multimodal role is ever needed. Content-level control tokens are NOT sanitized here —
+    harmless, since the verifier judges the figure the program draws, never this reply."""
 
     role: Literal["system", "user", "assistant"]
     content: str
@@ -68,7 +68,7 @@ class Choice(msgspec.Struct, frozen=True, kw_only=True):
 
 
 class Usage(msgspec.Struct, frozen=True, kw_only=True):
-    """Token accounting (prompt + completion tokens, from the pipeline's perf metrics)."""
+    """Token accounting: prompt + completion token counts, from the engine's own buffers."""
 
     prompt_tokens: int
     completion_tokens: int
@@ -120,7 +120,7 @@ class ErrorDetail(msgspec.Struct, frozen=True, kw_only=True, omit_defaults=True)
 
 
 class ErrorResponse(msgspec.Struct, frozen=True, kw_only=True):
-    """An OpenAI-style error envelope. The verifier recognizes only canonical HTTP-400
-    ``prompt_too_long`` as policy refusal; every other non-success shape is an upstream fault."""
+    """An OpenAI-style error envelope. Its canonical HTTP-400 ``prompt_too_long`` form is the
+    refusal the demo adapter reads; every other non-success shape is a fault."""
 
     error: ErrorDetail

@@ -351,7 +351,8 @@ description: {description}
 Copy this file to `nucllei/tools/figure_verification.py` of a llens checkout, beside the skill
 `nucllei/skills/figure-verification.md`, and push both with `make nuc-sync`. It imports the
 standard library and packages the nucllei image already carries -- `nucllei` and `pydantic` --
-and nothing else. Its one network call is nucllei's own sandbox request.
+and nothing else. Its network calls are nucllei's own sandbox requests: one file write per
+attached CSV, then one run.
 
 Regenerate with `uv run --locked python tools/generate_paste_in.py` in the figure-verification
 repository; `--check` fails when this file and its sources disagree, so an edit made here is lost

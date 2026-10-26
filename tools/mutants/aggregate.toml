@@ -6,7 +6,7 @@
 # R1 is what prices this unit. Every choice in `aggregate.py` is fixed by MEASUREMENT against
 # pandas rather than by what is arithmetically nicest, and a plausible implementation gets exactly
 # this one wrong: naive left-to-right summation differs from pandas on 2,761 of 4,000
-# admitted-profile CSV groups and `math.fsum` on 1,483, while Kahan matches on 0 of 16,062. So the
+# admitted-profile CSV groups and `math.fsum` on 1,483, while Kahan disagrees on 0 of 16,062. So the
 # naive mutant and the `fsum` mutant BOTH ship, against the same test, because "not naive" and
 # "not more precise than pandas" are two different claims and a suite can pin one without the other.
 #

@@ -71,7 +71,7 @@ def _reference(axes: Axes, mark: Mark) -> Iterator[Coordinate]:
         extent = geometry.width if dimension == 0 else geometry.height
         yield dimension, start, artist.site
         yield dimension, start + extent, artist.site
-    else:  # matplotlib 3.8 (the sandbox) draws a span as a Polygon
+    else:  # matplotlib 3.8 draws a span as a Polygon
         polygon = cast("PolygonGeometry", geometry)
         yield from ((dimension, pair[dimension], artist.site) for pair in polygon.xy)
 

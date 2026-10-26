@@ -284,7 +284,7 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 <tbody>
 <tr>
 <td>各部品がデータの値の位置にある</td>
-<td>各データの描画要素の変換が軸の <code>transData</code> (棒: データの変換、散布図: オフセットの変換)</td>
+<td>各データの描画要素の変換が軸の <code>transData</code> (棒: データの変換、散布図: オフセットの変換)。参照の印は、ブレンドした変換のデータ軸がその軸 (<code>axhline</code>、<code>axhspan</code>: y、<code>axvline</code>、<code>axvspan</code>: x)</td>
 <td><code>mark_not_in_data</code></td>
 </tr>
 <tr>
@@ -443,8 +443,8 @@ PNG も 1 枚返します。別の受領記録やブラウザ内のコード実�
 <td><code>work_budget_exceeded</code></td>
 </tr>
 <tr>
-<td>1 つの系列で各カテゴリは 1 回</td>
-<td>1 つの系列で同じキーを持つ 2 点がない</td>
+<td>1 つの系列で各カテゴリは 1 回 (散布図の系列は繰り返してもよい)</td>
+<td>散布図以外の 1 つの系列で同じテキストのキーを持つ 2 点がない</td>
 <td><code>category_not_unique</code></td>
 </tr>
 <tr>

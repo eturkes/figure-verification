@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Q16: G10 refuses a label naming what the chart does not show, as `label_not_consistent`.
 
-Row acceptance: a committed check refuses a label naming a column or aggregation the projection
+Row acceptance: a committed check refuses a label naming a column or reduction the drawn figure
 does not use, and a planted mismatch fires it. The verdict carries no free text (`errors.py`), so
 "naming the label" is read as the plant sitting in the label: each label position fires alone.
 Contract `.agent/archive/contracts/q16.md`.

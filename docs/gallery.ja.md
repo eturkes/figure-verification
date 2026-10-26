@@ -845,13 +845,13 @@ plt.legend()
 
 <a id="category_not_unique"></a>
 
-### `category_not_unique`: 1 つの系列で各カテゴリは 1 回
+### `category_not_unique`: 1 つの系列で各カテゴリは 1 回 (散布図の系列は繰り返してもよい)
 
 2 本の棒に同じラベル a があるため、どちらの値が a のものかがわかりません。
 
 | 不合格 | 合格 |
 |---|---|
-| ![不合格: 1 つの系列で各カテゴリは 1 回](gallery/repeated-category.png) | ![合格: 1 つの系列で各カテゴリは 1 回](gallery/unique-categories.png) |
+| ![不合格: 1 つの系列で各カテゴリは 1 回 (散布図の系列は繰り返してもよい)](gallery/repeated-category.png) | ![合格: 1 つの系列で各カテゴリは 1 回 (散布図の系列は繰り返してもよい)](gallery/unique-categories.png) |
 
 不合格のグラフの依頼文: `Bars a 1 and a 2`。合格するグラフの依頼文: `Bars a 1 and b 2`。
 

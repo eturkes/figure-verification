@@ -6,9 +6,9 @@ predicate's acceptance check; the check is the test's specification and the cont
 wins wherever a body would assert more.
 
 The single-source ruling is what these predicates defend. The verification core is written once
-under `src/verifier/pysrc/`; the pasted artifact embeds it BY GENERATION, and a hand fork is
-banned. A generator whose output drifts from its inputs recreates the fork silently, so freshness,
-byte identity, closure, order and the import surface are each pinned separately.
+under `src/verifier/` (`pysrc/` + `figure/`); the pasted artifact embeds it BY GENERATION, and a
+hand fork is banned. A generator whose output drifts from its inputs recreates the fork silently, so
+freshness, byte identity, closure, order and the import surface are each pinned separately.
 """
 
 import importlib.util

@@ -49,7 +49,7 @@ digraph verifier_nucllei {
   }
 
   pass [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✓ 合格</b></td></tr><tr><td height="24">グラフ + 判定 + 解釈 + あれば注記</td></tr><tr><td height="24">チェック項目はツール欄の中</td></tr></table>>, color="#1a7f37", fillcolor="#dafbe1", penwidth=1.6];
-  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。判定 + 理由 + あれば注記</td></tr><tr><td height="24">チェック項目はツール欄の中</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
+  fail [label=<<table border="0" cellborder="0" cellspacing="0" cellpadding="1"><tr><td height="24"><b>✗ 不合格</b></td></tr><tr><td height="24">画像なし。判定 + 理由</td></tr><tr><td height="24">チェック項目はツール欄の中</td></tr></table>>, color="#cf222e", fillcolor="#ffebe9", penwidth=1.6];
 
   { rank=same; you; model; }
   { rank=same; storage; tool; }

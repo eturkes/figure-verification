@@ -3,7 +3,7 @@
 Committed scripts re-derive the numeric bands and profiles cited in `.claude/rules/pysrc.md` and
 `.agent/archive/contracts/m13u5.md` + `m13u6.md`. Gate + `mypy` exclude them; Pyodide legs need
 Node + package downloads. Generated corpora/results are gitignored; `expected/` is tracked.
-All 28 table IDs compare against hand-stated published predicates in `expected/<id>.json`, X1
+All 29 table IDs compare against hand-stated published predicates in `expected/<id>.json`, X1
 aside: its expectation is its own first run's full projection (seeded, so a replay reproduces it
 exactly), a reproducibility record of the rates `docs/verification.md` publishes.
 `all_results.py` projects raw measurements without reading expectations. `check.py` compares exact
@@ -23,7 +23,7 @@ run. README table IDs, driver IDs and expected-file IDs must match. Optional pos
 an explicit subset; `--check-only` compares prior results without rerunning measurements.
 
 Logs + raw results → `all-data/`; reduction evidence → `r-data/`. The driver shares successful
-input generators within one invocation. Both npm builds run wherever the table names both.
+input generators within one invocation. Every Node leg runs the one installed bundle.
 F7/T8/I1/I3/C1 read the installed Open WebUI bundle through the repository's common Git directory.
 
 M15/M16 start a private `webui/launch.sh --stub` stack with fresh loopback ports and a headless
@@ -502,7 +502,7 @@ probes. Every decimal token has a point and 1–6 fractional digits; magnitudes 
 contain the same sampled rows, not independent samples. Host references and corpora are hash-bound;
 one injected bit flip checks each comparison observer. Sandbox legs also draw clipped-limit bar
 artists and read their heights before and after the canvas draw. `owui` uses the installed bundle
-through `o8_bundle.mjs`; T8 directs cache writes into its own `node_modules/t8-owui-cache/`.
+through `o8_bundle.mjs`, which loads every package from that directory (no cache of its own).
 Q12 changes C10 by column branch: integer columns keep int32; float64 cells keep the ≤15-digit
 cap and all other C10 clauses; float64 bar reductions stay within ±2**53. Host↔Pyodide agreement
 alone does not establish the stdlib recomputation's agreement. The ≤15-digit cap's measured maxima

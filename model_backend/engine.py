@@ -71,8 +71,8 @@ def _admit_token_ids(value: object) -> frozenset[int] | None:
 
 class BackendError(Exception):
     """A backend fault carrying an HTTP status + machine-readable type; app.py renders it as
-    an OpenAI-style error body. The verifier recognizes only the exact prompt-too-long protocol
-    shape as policy refusal; every other backend error stays an upstream fault."""
+    an OpenAI-style error body. The demo adapter reads the exact prompt-too-long shape as its cue
+    to drop the oldest turn; every other backend error stays a fault."""
 
     def __init__(self, message: str, *, status: int, error_type: str) -> None:
         super().__init__(message)

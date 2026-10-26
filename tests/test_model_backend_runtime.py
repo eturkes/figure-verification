@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Diff-blind M12.1 runtime-lock and settings-port contract suite.
 
-Predicates P1, P6-P13, and P15-P18 stay red until MAIN implements the feature. P2-P5 and P19 pin
-ratified invariants that are green at the seed. Expectations are hand-stated and never read from
-the production constants that they pin.
+Each predicate pins the shipped runtime lock + settings port. Expectations are hand-stated and
+never read from the production constants that they pin.
 """
 
 import ast

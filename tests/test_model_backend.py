@@ -16,12 +16,12 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import pytest
 from litestar.testing import TestClient
 
-from model_backend.models import ChatMessage, ModelCard
+from model_backend.models import ModelCard
 from model_backend.settings import Settings
 
 _ROOT = Path(__file__).resolve().parent.parent
@@ -148,17 +148,6 @@ class _GenerationConfig:
         self.pad_token_id = pad_token_id
 
 
-class _ModelConfig:
-    """The model's declared vocabulary width: the engine's sole authority for the mask width.
-
-    Deliberately DISAGREES with the tokenizer's length, exactly as the pinned snapshot does.
-    Reading the tokenizer's width instead is silent and leaves the excess logits unmasked.
-    """
-
-    def __init__(self, vocab_size: object = 151936) -> None:
-        self.vocab_size = vocab_size
-
-
 class _Model:
     def __init__(
         self,
@@ -170,7 +159,6 @@ class _Model:
     ) -> None:
         self.suffixes = suffixes
         self.generation_config = _GenerationConfig(eos_token_id, pad_token_id)
-        self.config = _ModelConfig()
         self.generate_hook = generate_hook
         self.to_calls: list[str] = []
         self.generate_calls: list[dict[str, object]] = []
@@ -1043,18 +1031,6 @@ def test_m23_f4_the_backend_answers_its_bind_name_and_the_loopback_spellings(
     with TestClient(app=app, base_url="http://localhost:9") as client:
         answered = [client.get("/v1/models", headers={"host": n}).status_code for n in names]
     assert answered == [200, 200, 200, 400, 400]
-
-
-# --- Open WebUI post-verified-chart summarize turn -----------------------------------------
-
-# The verifier success summary (src/verifier/service/app.py), as OWUI str()-ifies it into the
-# post-chart summarize turn's citation context (a <source> block in the system prompt).
-_VERIFIER_SUMMARY = "Verified chart for sales.csv: all 5 checks passed."
-_OWUI_SUMMARIZE_SYSTEM = f'<source id="1" name="verifier/proposeSpec">{_VERIFIER_SUMMARY}</source>'
-
-
-def _msg(role: Literal["system", "user", "assistant"], content: str) -> ChatMessage:
-    return ChatMessage(role=role, content=content)
 
 
 def test_p32_smoke_names_the_configured_cuda_device(monkeypatch: pytest.MonkeyPatch) -> None:

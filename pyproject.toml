@@ -119,8 +119,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # asserts + bare magic values are idiomatic in tests; TID251 lets tests import numpy.
 "tests/**" = ["S101", "PLR2004", "TID251"]
-# Measurement harnesses: frozen records of how a published number was obtained, never imported by
-# anything. Each of these four rules is inapplicable BY CONSTRUCTION here, not merely inconvenient.
+# Measurement harnesses: frozen records of how a published number was obtained, imported by no
+# shipped code (one test loads `nucllei_live.py` by path). Each of these four rules is inapplicable BY CONSTRUCTION here, not merely inconvenient.
 # numpy/pandas ARE the subject under measurement (TID251); stdout IS the result (T201); the stratum
 # bounds and sample counts are literal by design and reading them from a constant would hide the
 # corpus shape (PLR2004); and the corpus invariants are asserted where they are built (S101). These
@@ -151,7 +151,7 @@ strict = true
 # The four repo-root packages above type-check under --strict but ship separately
 # (coverage-excluded, absent from the wheel).
 files = ["src", "tests", "tools", "model_backend", "webui", "nucllei_skill"]
-# tests/ on the path so mypy resolves `import oracle` (the dev-only DuckDB oracle).
+# tests/ on the path so mypy resolves the support modules tests import (`paste_in_support`, …).
 mypy_path = ["src", "tests"]
 warn_unreachable = true
 enable_error_code = [

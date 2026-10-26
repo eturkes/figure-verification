@@ -98,7 +98,8 @@ def _rectangle(artist: Artist, axes: Axes, index: int) -> _Kind:
 
 
 def _polygon(artist: Artist, _axes: Axes, _index: int) -> _Kind:
-    # matplotlib 3.8 (the sandbox) draws a span as a Polygon; any other Polygon is unjudged.
+    # matplotlib 3.8 draws a span as a Polygon (3.9 + 3.10: a Rectangle); any other Polygon is
+    # unjudged.
     return "reference" if (artist.origin or "") in _REFERENCE_SPANS else None
 
 

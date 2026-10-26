@@ -47,7 +47,8 @@ import re
 import unicodedata
 from typing import Literal, TypeAlias
 
-# The same shapes `verifier.pysrc.spec` names; spelled here so this module imports no pysrc code.
+# `Reduction` = `verifier.pysrc.aggregate.Reduction`'s values, spelled here so this module imports
+# no pysrc code.
 Aliases: TypeAlias = tuple[tuple[str, str], ...]
 Anchoring: TypeAlias = Literal["strict", "substitution"]  # production | demo (Q37)
 Reduction: TypeAlias = Literal["sum", "mean", "min", "max"]
@@ -418,7 +419,7 @@ class PysrcLimits:
     max_csv_cell_bytes: int = 512
     max_table_rows: int = 100_000
     # Groups are drawn marks, so this is a legibility ceiling before it is a cost one, and it binds
-    # ahead of the reduction, so a high-cardinality key column refuses before its groups exist.
+    # ahead of the reduction, so a high-cardinality key column refuses before any group is reduced.
     max_groups: int = 1_000
     # The binding ceiling in practice: about one second of reading on the host of record. Work
     # binds before `max_table_rows` on purpose: it is size-aware and the row cap is not.
@@ -432,10 +433,10 @@ _SOURCES["webui"] = r'''
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """webui — the Open WebUI integration harness.
 
-Provisions and drives a headless Open WebUI over its REST API: it registers the verifier as an
-OpenAPI tool server, bootstraps an admin, and launches OWUI under a canonical hermetic env so the
-weak local model proposes chart specs the verifier certifies before render. NOT part of the
-verifier trust claim: an out-of-tree harness like model_backend and bench -- type-checked under
+Provisions and drives a headless Open WebUI over its REST API: it installs the generated paste-in
+pair (the `draw_figure` tool + the global filter), bootstraps an admin, and launches OWUI under a
+canonical hermetic env, so the model's program is drawn and the filter judges the figure. NOT part
+of the verifier trust claim: an out-of-tree harness like model_backend -- type-checked under
 mypy --strict but excluded from coverage and the wheel, importing only gate-venv deps (the
 .venv-webui open-webui binary is exec'd, never imported).
 

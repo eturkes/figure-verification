@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Hardware-free OpenAI /v1 stub — provisioning stand-in + scripted E2E fixture.
 
-The three-service smoke needs an OpenAI-compatible backend on :8001, but the live model_backend is
+The two-service demo needs an OpenAI-compatible backend on :8001, but the live model_backend is
 dGPU-gated (torch CUDA + model weights, in its own .venv-model runtime). This stub serves the two
 routes OWUI touches -- GET /v1/models (the LOAD-BEARING one: OWUI enumerates it into /api/models)
 and POST /v1/chat/completions -- with NO accelerator: it REUSES model_backend.models (msgspec

@@ -2,7 +2,8 @@
 """The code the outlet sends to the browser: the reader, then the model's program, unchanged.
 
 OWUI picks the sandbox packages from literal imports in the RPC source and patches the plotting
-library when the source spells that library's name, which raises before the program runs (A5).
+library when the source spells that library's name: its prelude replaces `pyplot.show` with one
+that prints its own PNG and clears the figure (A5).
 So the plotting name is never literal here: the wrapper loads the packages itself, quietly, and
 carries the reader and the program as base64, split wherever the encoding spells that name.
 """
