@@ -13,6 +13,7 @@ checklist tables (`docs/checks{,.ja}.md`), the check titles from `webui/paste_in
 without rendering.
 """
 
+import argparse
 import base64
 import re
 import sys
@@ -207,7 +208,11 @@ def _render(case: dict[str, Any]) -> bytes:
     return base64.b64decode(pngs[0][len(reader.PNG_PREFIX) :])
 
 
-def main() -> None:
+def main(argv: list[str]) -> None:
+    argparse.ArgumentParser(
+        description="Render the gallery images and pages from the gallery cases in docs/gallery.",
+        allow_abbrev=False,
+    ).parse_args(argv)
     every = cases()
     wanted = sorted(
         {entry["blocked"] for entry in entries()} | {e["twin"] for e in entries() if "twin" in e}
@@ -223,4 +228,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

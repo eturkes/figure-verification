@@ -16,8 +16,10 @@ Three assertions, then one machine-readable report line:
 Exit code 0 means every assertion held.
 """
 
+import argparse
 import sys
 import time
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
@@ -120,8 +122,16 @@ def _accelerator_report(settings: Settings) -> str:
     return f'gpu="{name}" capability={major}.{minor} cuda_available=True'
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Probe the running backend and print one report line. Returns a process exit code."""
+    argparse.ArgumentParser(
+        prog="python -m model_backend.smoke",
+        description=(
+            "Probe the running model backend and print one report line. "
+            "The MODEL_BACKEND_* environment variables name the backend."
+        ),
+        allow_abbrev=False,
+    ).parse_args(argv)
     settings = Settings.from_env()
     base_url = f"http://{settings.host}:{settings.port}"
     with httpx.Client(base_url=base_url, timeout=_TIMEOUT) as client:
@@ -138,4 +148,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

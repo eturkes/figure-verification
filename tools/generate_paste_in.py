@@ -13,6 +13,7 @@ Generation is deterministic in the tracked sources -- one emission order, one em
 no clock, no environment -- so a rerun on an already-current tree writes byte-identical files.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -41,10 +42,16 @@ def _artifact_text(module: str, *, text: bool = False) -> str:
 
 
 def main(argv: list[str]) -> int:
-    check = argv == ["--check"]
-    if argv and not check:
-        sys.stderr.write(f"usage: {Path(__file__).name} [--check]\n")
-        return 2
+    parser = argparse.ArgumentParser(
+        description="Write each generated paste-in file and nucllei skill file from its sources.",
+        allow_abbrev=False,
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Write nothing. Name each file that differs from its sources, and exit with status 1.",
+    )
+    check = bool(parser.parse_args(argv).check)
 
     root = repo_root()
     drifted: list[str] = []

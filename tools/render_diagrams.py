@@ -11,6 +11,7 @@ source edited without a re-render and needs no Graphviz itself. Graphviz = a hos
 from the system package manager; the comment records its version.
 """
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -35,7 +36,11 @@ def render(source: Path, version: str) -> str:
     return f"{declaration}\n{MARKER}{name} ({version})\n{text}-->\n{rest}"
 
 
-def main() -> None:
+def main(argv: list[str]) -> None:
+    argparse.ArgumentParser(
+        description="Render each Graphviz source in docs/diagrams to the SVG file beside it.",
+        allow_abbrev=False,
+    ).parse_args(argv)
     version = subprocess.run(
         ["dot", "-V"],  # noqa: S607 - Graphviz from PATH
         capture_output=True,
@@ -49,4 +54,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
