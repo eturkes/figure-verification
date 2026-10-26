@@ -19,6 +19,7 @@ from typing import cast
 import pytest
 
 from nucllei_skill import run as jail
+from nucllei_skill import tool as nucllei_tool
 from nucllei_support import (
     ASSISTANT_ID,
     CHAT_ID,
@@ -769,3 +770,20 @@ def test_q82_t16_a_japanese_request_reads_one_language_and_the_tail_stays_japane
     english = text_of(invoke(world))
     assert "**Checks**" in english
     assert english.endswith(OK_TAIL)
+
+
+def test_cr_r287_a_replaced_file_shows_the_model_its_new_header(world: World) -> None:
+    """R287 (code review): the jail keeps the later of two same-name files (`_owned`), so the
+    model's file list shows that file's header alone, never the replaced one's."""
+    world.attach("old", "sales.csv", b"month,old_revenue\nJan,100\n")
+    world.attach("new", "sales.csv", b"month,new_revenue\nJan,200\n")
+    world.chats[(CHAT_ID, USER_ID)] = history(
+        {"role": "user", "content": "Plot the old file", "files": [ref("old", "sales.csv")]},
+        {"role": "user", "content": "Use the replacement", "files": [ref("new", "sales.csv")]},
+    )
+    metadata = {"chat_id": CHAT_ID, "message_id": ASSISTANT_ID}
+    patch = nucllei_tool.Tools().spec_overrides(None, {"id": USER_ID}, None, metadata)[
+        "draw_figure"
+    ]
+    lines = [line for line in str(patch["description"]).splitlines() if line.startswith("- /")]
+    assert lines == ["- /workspace/imports/sales.csv (列: month, new_revenue)"]

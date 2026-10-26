@@ -104,3 +104,10 @@ kills = "tests/test_nucllei_tool.py::test_m23_f1_a_failed_file_write_names_its_c
 anchor = '''                    await host.sandbox_call("/files/write", write, run.WRITE_TIMEOUT_SECONDS)'''
 mutant = '''                    with contextlib.suppress(Exception):
                         await host.sandbox_call("/files/write", write, run.WRITE_TIMEOUT_SECONDS)'''
+
+[[mutant]]
+id = "cr-r287-replaced-header-listed"
+predicate = "the model's file list holds one line per jail name, the later file's"
+kills = "tests/test_nucllei_tool.py::test_cr_r287_a_replaced_file_shows_the_model_its_new_header"
+anchor = '''            lines = list(shown.values())'''
+mutant = '''            lines = [*shown.values(), *shown.values()][: len(refs)]'''

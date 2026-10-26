@@ -219,14 +219,17 @@ class Tools:
                 if user_id
                 else ()
             )
-            lines: list[str] = []
+            # One line per jail name, the later file replacing the earlier one, as `_owned` and
+            # the jail do: else a replaced upload showed the model a header it no longer has.
+            shown: dict[str, str] = {}
             for file_id, name in refs:
                 found = host.owned_attachment(file_id, name, user_id or "", _HEADER_BYTES)
                 if found is None:
                     continue
                 header = _header(found.content)
                 columns = f" (列: {', '.join(header)})" if header else ""
-                lines.append(f"- /workspace/imports/{found.name}{columns}")
+                shown[found.name] = f"- /workspace/imports/{found.name}{columns}"
+            lines = list(shown.values())
             doc = self.draw_figure.__doc__ or ""
             base = _PARAMS.split(doc, maxsplit=1)[0]
             description = base.strip() + (_FILES + "\n" + "\n".join(lines) if lines else _NO_FILE)
