@@ -459,3 +459,26 @@ def test_r3_f2_finding_a_helper_s_caller_spends_the_budget(
     assert _rows(program)["values"] == (2, 3, 4)
     monkeypatch.setattr(excerpts_module, "_WORK", 20)
     assert _rows(program)["values"] == (3, 4)
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("if False:\n    pass\nelse:\n    plt.plot([1, 2])\n", {2, 4, 5}),
+        ("try:\n    pass\nexcept ValueError:\n    pass\nelse:\n    plt.plot([1, 2])\n", {2, 6, 7}),
+        ("try:\n    pass\nfinally:\n    plt.plot([1, 2])\n", {2, 4, 5}),
+        ("for _ in ():\n    pass\nelse:\n    plt.plot([1, 2])\n", {2, 4, 5}),
+        ("if False:\n    pass\nelif True:\n    plt.plot([1, 2])\n", {2, 4, 5}),
+    ],
+    ids=["if-else", "try-else", "try-finally", "for-else", "elif"],
+)
+def test_cr_r285_a_statement_shows_the_else_or_finally_header_it_sits_under(
+    body: str, expected: set[int]
+) -> None:
+    """R285 (code review): an `else:` / `finally:` header carries no node of its own, so its block
+    widened to the opening `if` / `try` alone and the listing read as the plot ran in the false
+    arm; each continuation header now joins the lines shown."""
+    program = "import matplotlib.pyplot as plt\n" + body
+    described = parse_description(run(program))
+    assert described is not None and described.error is None
+    assert dict(excerpts(program, described, None, None))["marks"] == expected

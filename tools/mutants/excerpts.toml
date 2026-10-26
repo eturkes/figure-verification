@@ -382,3 +382,10 @@ predicate = "the figure row lists the tick-style calls (closing review R180)"
 kills = "tests/test_paste_in_excerpts.py::test_r180_a_tick_font_that_drops_a_glyph_shows_in_the_figure_row"
 anchor = '''            rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS)'''
 mutant = '''            rows["figure"] |= labels | words | legend | _calls(axes, _TICK_SLOTS - {"style"})'''
+
+[[mutant]]
+id = "cr-r285-continuation-headers-dropped"
+predicate = "an else/finally block widens to its own header line"
+kills = "tests/test_paste_in_excerpts.py::test_cr_r285_a_statement_shows_the_else_or_finally_header_it_sits_under[if-else]"
+anchor = '''            blocks.append((_span(end + 1, block), block))'''
+mutant = '''            blocks.append((None, block))'''

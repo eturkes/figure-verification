@@ -278,11 +278,20 @@ def _span(first: int, body: list[ast.stmt]) -> range:
 
 
 def _blocks(node: ast.stmt) -> list[tuple[range | None, list[ast.stmt]]]:
-    """Each block a statement holds, with the header of the `except` or `case` that opens it."""
-    blocks: list[tuple[range | None, list[ast.stmt]]] = [
-        (None, getattr(node, name, [])) for name in ("body", "orelse", "finalbody")
-    ]
-    blocks += [(_span(h.lineno, h.body), h.body) for h in getattr(node, "handlers", ())]
+    """Each block a statement holds, in source order, with the header that opens it: an `except`
+    or `case`, or the `else:` / `finally:` line, which no node carries (it runs from the line after
+    the block before it); the body's header is the statement's own line."""
+    body: list[ast.stmt] = getattr(node, "body", [])
+    blocks: list[tuple[range | None, list[ast.stmt]]] = [(None, body)]
+    end = (body[-1].end_lineno or node.lineno) if body else node.lineno
+    for handler in getattr(node, "handlers", ()):
+        blocks.append((_span(handler.lineno, handler.body), handler.body))
+        end = handler.body[-1].end_lineno or end
+    for name in ("orelse", "finalbody"):
+        block: list[ast.stmt] = getattr(node, name, [])
+        if block:
+            blocks.append((_span(end + 1, block), block))
+            end = block[-1].end_lineno or end
     if isinstance(node, ast.Match):
         # A `case` carries no line of its own: its header runs from the line after the subject
         # or the previous case's body.
