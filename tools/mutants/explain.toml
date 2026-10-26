@@ -163,7 +163,7 @@ mutant = '''        if point.value in context.request.numbers:'''
 [[mutant]]
 id = "m19-reference-reductions-dropped"
 predicate = "a reference line may be a whole-column reduction"
-kills = "tests/test_figure_values.py::test_v6_reference_values_from_a_column"
+kills = "tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[group-sum]"
 anchor = '''    for explanation in _group(table, whole, column, rows, budget):'''
 mutant = '''    for explanation in ():'''
 
@@ -210,8 +210,14 @@ mutant = '''        outcome = Choice(series, None, 0, len(series.points))'''
 id = "m19-slots-not-first"
 predicate = "slot points bind before keyed points"
 kills = "tests/test_figure_values.py::test_slots_take_their_rows_before_keyed_points"
-anchor = '''    slots_first = sorted(range(len(points)), key=lambda i: points[i].key.slot is None)'''
-mutant = '''    slots_first = list(range(len(points)))'''
+anchor = '''
+    slots_first = sorted(indices, key=lambda i: points[i].key.slot is None)
+    unbacked_first = sorted(indices, key=lambda i: (by_request[i], points[i].key.slot is None))
+'''
+mutant = '''
+    slots_first = list(indices)
+    unbacked_first = sorted(indices, key=lambda i: by_request[i])
+'''
 
 [[mutant]]
 id = "m19-attribution-every-point"
@@ -465,3 +471,38 @@ predicate = "a grouped scatter's channel takes each group's row count and its co
 kills = "tests/test_figure_computed.py::test_a_grouped_scatter_s_channel_takes_a_computed_row_count"
 anchor = '''    variants += computed.unary(numbers)'''
 mutant = '''    variants += ()'''
+
+[[mutant]]
+id = "cr-r291-attribution-best-only"
+predicate = "a point some file explanation backs never names a missing request label"
+kills = "tests/test_figure_values.py::test_cr_r291_attribution_reads_every_file_explanation"
+anchor = '''        backed = [b or m for b, m in zip(backed, matched, strict=True)]'''
+mutant = '''        backed = matched if sum(matched) > sum(backed) else backed'''
+
+[[mutant]]
+id = "cr-r292-request-blind-binding"
+predicate = "points the request backs bind after the points only a file can back"
+kills = "tests/test_figure_values.py::test_cr_r292_a_typed_slot_never_takes_the_row_a_keyed_point_needs"
+anchor = '''    return [slots_first] if unbacked_first == slots_first else [slots_first, unbacked_first]'''
+mutant = '''    return [slots_first]'''
+
+[[mutant]]
+id = "cr-r292-count-only-order"
+predicate = "an order leaving only request-backed points unmatched beats one that backs more"
+kills = "tests/test_figure_values.py::test_cr_r292_a_typed_slot_leaves_the_row_to_the_point_only_the_file_backs"
+anchor = '''            found = (all(m or r for m, r in zip(matched, by_request, strict=True)), sum(matched))'''
+mutant = '''            found = (False, sum(matched))'''
+
+[[mutant]]
+id = "cr-r294-whole-column-group-only"
+predicate = "a whole-column reference reads pandas' own sum + mean (numpy pairwise)"
+kills = "tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[sum]"
+anchor = '''    found |= {total, total / len(numbers)}'''
+mutant = '''    found |= {total / len(numbers)}'''
+
+[[mutant]]
+id = "cr-r294-whole-column-mean-missing"
+predicate = "a whole-column reference reads pandas' own mean (pairwise sum / count)"
+kills = "tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[mean]"
+anchor = '''    found |= {total, total / len(numbers)}'''
+mutant = '''    found |= {total}'''

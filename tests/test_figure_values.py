@@ -661,6 +661,62 @@ def test_attribution_reads_only_unbacked_points() -> None:
     assert _judge(program, sources) == Blocked("value_not_found", 2)
 
 
+def test_cr_r291_attribution_reads_every_file_explanation() -> None:
+    """R291 (code review): a typed value whose label the request lacks names the cause only when NO
+    file explanation backs it; here a.csv backs Alpha, b.csv backs Beta, and Gamma's 83 is found
+    nowhere (the most-backing candidate alone left Beta looking unbacked)."""
+    program = _PLT + "plt.bar(['Alpha', 'Beta', 'Gamma'], [5, 6, 83])\n"
+    files = (
+        ("a.csv", b"key,value\nAlpha,5\nDelta,7\n"),
+        ("b.csv", b"key,value\nBeta,6\nZeta,11\n"),
+    )
+    assert _judge(program, Sources(files, "Draw value by key and target 6")) == Blocked(
+        "value_not_found", 2
+    )
+
+
+def test_cr_r292_a_typed_slot_leaves_the_row_to_the_point_only_the_file_backs() -> None:
+    """R292 (code review): the unlabelled slot's 10 is a typed target, Alpha's 10 is the file's one
+    `Alpha,10` row; binding the slot first spent that row and blocked an honest chart."""
+    program = _PLT + "plt.scatter([0, 1], [10, 10])\nplt.xticks([0], ['Alpha'])\n"
+    content = b"key,value\nBeta,20\nAlpha,10\nAlpha,5\nAlpha,30\n"
+    verdict = _judge(program, Sources((("t.csv", content),), "value by key with a target 10"))
+    assert isinstance(verdict, Passed), verdict
+    assert (verdict.choices[0].matched, verdict.choices[0].from_request) == (1, 1)
+
+
+def test_cr_r292_a_typed_slot_never_takes_the_row_a_keyed_point_needs() -> None:
+    """R292 (code review): with one pair order (a raw table already in key order), the slot at 0
+    took `Alpha,10` before the point labelled Alpha could; request-backed points now bind last."""
+    program = _PLT + "plt.scatter([0, 1], [10, 10])\nplt.xticks([1], ['Alpha'])\n"
+    content = b"key,value\nAlpha,10\nBeta,20\n"
+    verdict = _judge(program, Sources((("t.csv", content),), "value by key with a target 10"))
+    assert isinstance(verdict, Passed), verdict
+    assert (verdict.choices[0].matched, verdict.choices[0].from_request) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "total",
+    [
+        "df['amount'].sum()",
+        "df['amount'].mean()",
+        "df.groupby(lambda _: 0)['amount'].sum().iloc[0]",
+    ],
+    ids=["sum", "mean", "group-sum"],
+)
+def test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction(total: str) -> None:
+    """R294 (code review): `Series.sum()` + `.mean()` reduce a whole column with numpy's pairwise
+    sum, `groupby().sum()` with Kahan; over these eight cells the two differ in the last bits, and
+    only the group's was read, so `axhline(df['amount'].sum())` blocked. Both spellings pass; one
+    ulp off either blocks."""
+    content = b"amount\n731.48\n-96.335\n-620.196\n-48.474\n586.0\n-106.8\n-818.659\n268.906\n"
+    frame = _PD + f"from io import StringIO\ndf = pd.read_csv(StringIO({content.decode()!r}))\n"
+    sources = Sources((("t.csv", content),), "total amount")
+    assert isinstance(_judge(frame + f"plt.axhline({total})\n", sources), Passed)
+    off = frame + f"plt.axhline({total} * (1 + 2**-52))\n"
+    assert _judge(off, sources) == Blocked("value_not_found", 5)
+
+
 def test_v1_a_column_against_itself() -> None:
     program = _PD + _DF + "plt.scatter(df['orders'], df['orders'])\n"
     verdict = _judge(program, _sales("orders against orders"))

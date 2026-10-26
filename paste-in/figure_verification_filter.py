@@ -8112,9 +8112,10 @@ def _fits(point: Point, explanation: Explanation, position: int) -> bool:
 
 
 def _matched_keyed(
-    points: tuple[Point, ...], explanation: Explanation, order: list[int]
+    points: tuple[Point, ...], explanation: Explanation, order: list[int], first: list[int]
 ) -> list[bool]:
-    """Injective: each pair (row or group) backs one point; `order` = the pairs a slot counts."""
+    """Injective: each pair (row or group) backs one point, binding points in `first`'s order;
+    `order` = the pairs a slot counts."""
     pairs = explanation.pairs
     index: dict[Canon, list[int]] = {}
     for position, (key, _value) in enumerate(pairs):
@@ -8122,10 +8123,7 @@ def _matched_keyed(
             index.setdefault(form, []).append(position)
     used: set[int] = set()
     matched = [False] * len(points)
-    # A slot binds one row; a keyed point any row of its key class (rows sharing key + value are
-    # interchangeable), so binding the slots first keeps the greedy assignment maximal.
-    slots_first = sorted(range(len(points)), key=lambda i: points[i].key.slot is None)
-    for at in slots_first:
+    for at in first:
         point = points[at]
         found = None
         if point.key.slot is not None:
@@ -8163,16 +8161,31 @@ def _matched_values(points: tuple[Point, ...], explanation: Explanation) -> list
     return matched
 
 
-def _coverage(series: Series, explanation: Explanation) -> list[bool]:
-    """Per point, whether `explanation` backs it; the best of its pair orders."""
+def _bindings(points: tuple[Point, ...], by_request: list[bool]) -> list[list[int]]:
+    """The point orders the greedy match binds in. A slot binds one row, a keyed point any row of
+    its key class (rows sharing key + value are interchangeable), so slots first keeps the match
+    maximal; a point the request backs can fall back on it, so binding the others first keeps a
+    row for each point that only the file can back (reviewer-3 F2)."""
+    indices = range(len(points))
+    slots_first = sorted(indices, key=lambda i: points[i].key.slot is None)
+    unbacked_first = sorted(indices, key=lambda i: (by_request[i], points[i].key.slot is None))
+    return [slots_first] if unbacked_first == slots_first else [slots_first, unbacked_first]
+
+
+def _coverage(series: Series, explanation: Explanation, by_request: list[bool]) -> list[bool]:
+    """Per point, whether `explanation` backs it: of its pair orders + binding orders, the one
+    leaving only request-backed points unmatched, else the one backing the most points."""
     if series.shape == "values":
         return _matched_values(series.points, explanation)
-    best: list[bool] = []
+    best: list[bool] = [False] * len(series.points)
+    rank = (False, 0)
     for order in _orders(explanation):
-        matched = _matched_keyed(series.points, explanation, order)
-        if sum(matched) > sum(best):
-            best = matched
-    return best or [False] * len(series.points)
+        for first in _bindings(series.points, by_request):
+            matched = _matched_keyed(series.points, explanation, order, first)
+            found = (all(m or r for m, r in zip(matched, by_request, strict=True)), sum(matched))
+            if found > rank:
+                best, rank = matched, found
+    return best
 
 
 @dataclass(frozen=True, slots=True)
@@ -8469,7 +8482,7 @@ def _explain_series(
     ]
     full: list[Explanation] = []
     partial: list[tuple[int, Explanation]] = []
-    backed = [False] * len(series.points)  # the most points any one explanation backs
+    backed = [False] * len(series.points)  # the points some file explanation backs
     # A candidate holding none of the drawn values backs no point: skip its matching (a stacked
     # point's drawn value is its top, so stacked series are matched in full).
     points = series.points
@@ -8477,9 +8490,8 @@ def _explain_series(
     for explanation in candidates:
         if drawn is not None and drawn.isdisjoint(value for _key, value in explanation.pairs):
             continue
-        matched = _coverage(series, explanation)
-        if sum(matched) > sum(backed):
-            backed = matched
+        matched = _coverage(series, explanation, by_request)
+        backed = [b or m for b, m in zip(backed, matched, strict=True)]
         if all(matched):
             full.append(explanation)
         elif any(matched) and all(m or r for m, r in zip(matched, by_request, strict=True)):
@@ -8496,7 +8508,7 @@ def _explain_series(
         return Unexplained(series, reason)
     if isinstance(picked, Unexplained):
         return picked
-    matched = _coverage(series, picked)
+    matched = _coverage(series, picked, by_request)
     return Choice(series, picked, sum(matched), len(matched) - sum(matched))
 
 
@@ -8717,6 +8729,12 @@ def _column_values(table: Table, column: Column, budget: WorkBudget) -> set[floa
     whole = Column("", ("",) * table.rows, ("",) * table.rows, None, integer=False)
     for explanation in _group(table, whole, column, rows, budget):
         found.update(value for _key, value in explanation.pairs)
+    # `Series.sum()` / `.mean()` (and `np.sum`) reduce a whole column with numpy's pairwise sum, a
+    # group (`groupby().sum()`) with Kahan: their bits differ (reviewer-3 F4), and both spell one
+    # whole-column reduction.
+    budget.charge(len(numbers))
+    total = computed.pairwise_sum(numbers)
+    found |= {total, total / len(numbers)}
     return found
 
 
