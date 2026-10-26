@@ -975,6 +975,10 @@ def _load() -> types.ModuleType:
         module.__path__ = []  # treat every name as a package so submodule lookups resolve
         modules[name] = module
         sys.modules[name] = module
+    for name, module in modules.items():  # `import a.b` reads `b` off `a`, as Python binds it
+        parent, _dot, child = name.rpartition(".")
+        if parent in modules:
+            setattr(modules[parent], child, module)
     try:
         for name, source in _SOURCES.items():
             # The figure reader ships its own text to the browser (M19), so each module keeps it.

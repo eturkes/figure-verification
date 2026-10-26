@@ -55,13 +55,14 @@ def main(argv: list[str]) -> int:
     ]
     for relative, text in outputs:
         target = root / relative
+        # Bytes, not text: a universal-newline read hides a CR the committed file gained.
         if check:
-            current = target.read_text(encoding="utf-8") if target.is_file() else None
-            if current != text:
+            current = target.read_bytes() if target.is_file() else None
+            if current != text.encode("utf-8"):
                 drifted.append(relative)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+        target.write_bytes(text.encode("utf-8"))
         sys.stdout.write(f"wrote {relative} ({len(text.encode())} bytes)\n")
 
     if drifted:

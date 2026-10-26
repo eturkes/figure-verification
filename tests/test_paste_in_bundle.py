@@ -18,6 +18,7 @@ import sys
 import textwrap
 from pathlib import Path
 from types import ModuleType
+from typing import Any, cast
 
 import pytest
 
@@ -385,3 +386,57 @@ def test_b8_generation_rejects_a_source_without_triple_double_quote(tmp_path: Pa
     result = run_generator(clone)
     assert result.returncode != 0
     assert relative.as_posix() in result.stdout + result.stderr
+
+
+def test_cr_r288_check_reads_bytes_so_a_cr_drift_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """R288 (code review): `--check` compared universal-newline text, so one CR added to a
+    committed artifact read as current; it compares bytes."""
+    spec = importlib.util.spec_from_file_location(
+        "cr_generator", REPO_ROOT / "tools/generate_paste_in.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    relative = "llens/nucllei/skills/figure-verification.md"
+    expected = (REPO_ROOT / relative).read_bytes()
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(expected.replace(b"\n", b"\r\n", 1))
+    monkeypatch.setattr(module, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(module, "ARTIFACTS", {})
+    assert module.main(["--check"]) == 1
+    assert relative in capsys.readouterr().err
+    target.write_bytes(expected)
+    assert module.main(["--check"]) == 0
+
+
+def test_cr_r289_an_embedded_dotted_import_resolves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R289 (code review): the loader registered every embedded module but bound no child on its
+    parent, so an admitted `import a.b` then `a.b.NAME` raised `AttributeError` in the artifact."""
+    sources = {
+        "webui/__init__.py": '"""Web package."""\n',
+        "webui/paste_in/__init__.py": '"""Paste-in package."""\n',
+        "webui/paste_in/tool.py": (
+            '"""A tool using a dotted import."""\n'
+            "import verifier.pysrc.child\n"
+            "class Tools:\n"
+            "    value = verifier.pysrc.child.VALUE\n"
+        ),
+        "src/verifier/__init__.py": '"""Verifier package."""\n',
+        "src/verifier/pysrc/__init__.py": '"""Core package."""\n',
+        "src/verifier/pysrc/child.py": '"""A dependency."""\nVALUE = 17\n',
+    }
+    for relative, source in sources.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    bundle = load_bundle()
+    monkeypatch.setattr(bundle, "repo_root", lambda: tmp_path)
+    artifact = bundle.render("webui.paste_in.tool")
+    namespace: dict[str, object] = {"__name__": "cr_artifact"}
+    exec(compile(artifact, "<cr-artifact>", "exec"), namespace)  # noqa: S102 - the artifact under test
+    assert cast(Any, namespace["Tools"]).value == 17
