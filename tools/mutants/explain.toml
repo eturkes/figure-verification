@@ -506,3 +506,17 @@ predicate = "a whole-column reference reads pandas' own mean (pairwise sum / cou
 kills = "tests/test_figure_values.py::test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction[mean]"
 anchor = '''    found |= {total, total / len(numbers)}'''
 mutant = '''    found |= {total}'''
+
+[[mutant]]
+id = "cr-r293-channels-unbound"
+predicate = "a later channel binds to the rows the channels before it took"
+kills = "tests/test_figure_values.py::test_cr_r293_a_point_s_colour_and_size_come_from_one_row[sizes-swapped]"
+anchor = '''        bound = tuple(cast("Explanation", choice.explanation) for choice in prior)'''
+mutant = '''        bound = ()'''
+
+[[mutant]]
+id = "cr-r293-bound-to-another-point"
+predicate = "a point's bound channel values are its own"
+kills = "tests/test_figure_values.py::test_cr_r293_a_point_s_colour_and_size_come_from_one_row[rows-reversed]"
+anchor = '''                        + tuple(choice.series.points[at].value for choice in prior),'''
+mutant = '''                        + tuple(choice.series.points[0].value for choice in prior),'''

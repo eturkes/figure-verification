@@ -717,6 +717,55 @@ def test_cr_r294_a_reference_reads_pandas_own_whole_column_reduction(total: str)
     assert _judge(off, sources) == Blocked("value_not_found", 5)
 
 
+@pytest.mark.parametrize(
+    ("colours", "sizes", "shown"),
+    [
+        ([3, 4], [11, 17], True),
+        ([4, 3], [17, 11], True),
+        ([3, 4], [17, 11], False),
+        ([4, 3], [11, 17], False),
+    ],
+    ids=["rows-in-order", "rows-reversed", "sizes-swapped", "colours-swapped"],
+)
+def test_cr_r293_a_point_s_colour_and_size_come_from_one_row(
+    colours: list[int], sizes: list[int], *, shown: bool
+) -> None:
+    """R293 (code review): two rows share key 1 + value 2, so each channel bound to its point by
+    (key, value) alone could take another row: a colour from one row beside a size from the other
+    passed. The size channel now binds to the rows the colour channel took."""
+    program = (
+        _PLT + f"dots = plt.scatter([1, 1], [2, 2], c={colours!r}, s={sizes!r})\n"
+        "plt.colorbar(dots)\n"
+        "plt.legend(*dots.legend_elements(prop='sizes'), title='size')\n"
+    )
+    content = b"key,value,colour,size\n1,2,3,11\n1,2,4,17\n"
+    verdict = _judge(program, Sources((("t.csv", content),), "value by key with colour and size"))
+    if shown:
+        assert isinstance(verdict, Passed), verdict
+    else:
+        assert verdict == Blocked("value_not_found", 2)
+
+
+def test_cr_r293_grouped_channels_bind_to_one_group() -> None:
+    """R293 (code review): a grouped scatter's colour + size bind per group, the size channel's
+    partners carrying the colour of the same group."""
+    content = b"k,v,c,s\na,1,3,10\na,2,4,20\nb,5,6,70\n"
+    program = (
+        _PD + "from io import StringIO\n"
+        f"g = pd.read_csv(StringIO({content.decode()!r})).groupby('k').sum()\n"
+        "dots = plt.scatter(g.index, g['v'], c=g['c'], s=g['s'])\n"
+        "plt.colorbar(dots)\n"
+        "plt.legend(*dots.legend_elements(prop='sizes'), title='s')\n"
+    )
+    verdict = _judge(program, Sources((("t.csv", content),), "v by k with c and s"))
+    assert isinstance(verdict, Passed), verdict
+    assert [choice.explanation.family for choice in verdict.choices if choice.explanation] == [
+        "sum",
+        "sum",
+        "sum",
+    ]
+
+
 def test_v1_a_column_against_itself() -> None:
     program = _PD + _DF + "plt.scatter(df['orders'], df['orders'])\n"
     verdict = _judge(program, _sales("orders against orders"))

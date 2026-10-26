@@ -35,7 +35,8 @@ class Point:
     key: Key
     value: float
     base: float | None = None  # a stacked point: drawn value = far end, base = what it sits on
-    partner: float | None = None  # a channel point: its scatter point's value (same row)
+    # A channel point: its scatter point's value, then each channel bound before it (one row).
+    partner: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +133,7 @@ def _channels(
     for channel, values in (("colors", geometry.array), ("sizes", geometry.sizes)):
         if values and (panel.index, mark.artists[0], channel) in shown:
             points = tuple(
-                Point(point.key, values[i % len(values)], partner=point.value)
+                Point(point.key, values[i % len(values)], partner=(point.value,))
                 for i, point in enumerate(marks)
             )
             found.append((cast("Channel", channel), points))

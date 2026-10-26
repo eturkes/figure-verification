@@ -62,9 +62,9 @@ class Explanation:
     where: tuple[str, str] | None
     pairs: tuple[tuple[CellValue | int, float], ...]
     counts: tuple[int, ...] | None
-    # A channel explanation (R8): per pair, the main series' value of the same row or group, so a
-    # colour or size binds to its own point, never to another point with the same key.
-    partners: tuple[float, ...] | None = None
+    # A channel explanation (R8): per pair, the main series' value of the same row or group, then
+    # each channel bound before it there, so a colour or size binds to its own point's row.
+    partners: tuple[tuple[float, ...], ...] | None = None
     # Q45: the admitted computation, a two-column computation's second column (`value` = its
     # first), and a row-keyed computation's source row per pair (a pair can drop out).
     transform: Transform | None = None
@@ -759,7 +759,7 @@ def _row_channels(
     at_row = {row: at for at, row in enumerate(every)}
     key = None if main.key is None else table.columns[table.header.index(main.key)]
     keys = list(rows) if key is None else [key.keys[row] for row in rows]
-    partners = tuple(value for _key, value in main.pairs)
+    partners = tuple((value,) for _key, value in main.pairs)
     for column in table.columns:
         numbers = column.numbers
         if numbers is None:
@@ -823,7 +823,8 @@ def _group_channels(
 ) -> Iterator[Explanation]:
     rows = _rows(table, main.where)
     key = table.columns[table.header.index(cast("str", main.key))]
-    partner = dict(main.pairs)  # a computation can drop a group (`diff`'s first): it binds none
+    # A computation can drop a group (`diff`'s first): it binds none.
+    partner = {group: (value,) for group, value in main.pairs}
     for column in table.columns:
         if column.numbers is None:
             continue
@@ -909,17 +910,66 @@ def _explain_admitted(series: Series, context: Context, budget: WorkBudget) -> C
     return outcome
 
 
-def _explain_channel(
-    series: Series, main: Choice, context: Context, budget: WorkBudget, *, admitted: bool
+def _bound(
+    explanation: Explanation, rows: Sequence[int], bound: tuple[Explanation, ...]
+) -> Explanation:
+    """`explanation`'s partners extended by each channel already explained at the same row or
+    group: a colour and a size of ONE point come from one row, never two rows that share its key
+    and value (reviewer-3 F3). A row or group a bound channel dropped binds nothing (NaN)."""
+    if not bound or explanation.partners is None:
+        return explanation
+
+    def where(other: Explanation) -> Sequence[object]:
+        if other.family in ("raw", "index"):
+            return other.rows if other.rows is not None else rows
+        return [group for group, _value in other.pairs]
+
+    found = [
+        dict(zip(where(other), (value for _key, value in other.pairs), strict=True))
+        for other in bound
+    ]
+    partners = tuple(
+        partner + tuple(values.get(at, math.nan) for values in found)
+        for partner, at in zip(explanation.partners, where(explanation), strict=True)
+    )
+    return dataclasses.replace(explanation, partners=partners)
+
+
+def _explain_channel(  # noqa: PLR0913 - the series, its scatter, the bound channels + the pass
+    series: Series,
+    main: Choice,
+    prior: tuple[Choice, ...],
+    context: Context,
+    budget: WorkBudget,
+    *,
+    admitted: bool,
 ) -> Choice | Unexplained:
-    """A colour or size channel: from the rows or groups of its scatter's own explanation, else
-    request numbers alone (a scatter typed in the request types its channels too)."""
+    """A colour or size channel: from the rows or groups of its scatter's own explanation, bound
+    to the rows the channels before it (`prior`) take, else request numbers alone (a scatter
+    typed in the request types its channels too)."""
     explanation = main.explanation
     if explanation is None:
         outcome = _explain_series(series, iter(()), context)
     else:
         table = next(table for table in context.tables if table.name == explanation.table)
-        candidates = _channel_explanations(table, explanation, budget, admitted=admitted)
+        bound = tuple(cast("Explanation", choice.explanation) for choice in prior)
+        if bound:
+            series = dataclasses.replace(
+                series,
+                points=tuple(
+                    dataclasses.replace(
+                        point,
+                        partner=cast("tuple[float, ...]", point.partner)
+                        + tuple(choice.series.points[at].value for choice in prior),
+                    )
+                    for at, point in enumerate(series.points)
+                ),
+            )
+        rows = list(explanation.rows or ()) or _rows(table, explanation.where)
+        candidates = (
+            _bound(candidate, rows, bound)
+            for candidate in _channel_explanations(table, explanation, budget, admitted=admitted)
+        )
         outcome = _explain_series(series, candidates, context)
     if admitted and isinstance(outcome, Unexplained) and outcome.reason != "column_not_requested":
         return _typed(series, context.request, budget) or outcome
@@ -1007,7 +1057,14 @@ def explain(
                     for c in reversed(choices)
                     if c.series.mark is series.mark and c.series.channel == "value"
                 )
-                outcome = _explain_channel(series, main, context, budget, admitted=admitted)
+                prior = tuple(
+                    c
+                    for c in choices
+                    if c.series.mark is series.mark
+                    and c.series.channel != "value"
+                    and c.explanation is not None
+                )
+                outcome = _explain_channel(series, main, prior, context, budget, admitted=admitted)
             elif admitted:
                 outcome = _explain_admitted(series, context, budget)
             else:
