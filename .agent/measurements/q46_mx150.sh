@@ -12,10 +12,21 @@ out=$1
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." || exit 1
 .venv-model/bin/python -m model_backend >"$out.server.log" 2>&1 &
 pid=$!
+ready=0
 for _ in $(seq 1 120); do
-    curl -sS -o /dev/null http://127.0.0.1:8001/v1/models 2>/dev/null && break
+    if curl -sS -o /dev/null http://127.0.0.1:8001/v1/models 2>/dev/null; then
+        ready=1
+        break
+    fi
     sleep 1
 done
+if ((!ready)); then
+    printf 'q46: the backend never answered /v1/models; see %s\n' "$out.server.log" >&2
+    kill "$pid" 2>/dev/null
+    exit 1
+fi
+# Every probe runs; any that fails makes the run fail.
+failed=0
 digest='import hashlib, json, sys
 body = json.loads(open(sys.argv[1]).read().split("\n")[0])
 text = body["choices"][0]["message"]["content"]
@@ -24,20 +35,20 @@ print(sys.argv[2], hashlib.sha256(text.encode()).hexdigest(), tokens, "tokens")'
 for i in 1 2 3; do
     curl -sS http://127.0.0.1:8001/v1/chat/completions -H 'content-type: application/json' \
         -d '{"messages":[{"role":"system","content":"Reply with one Python statement only."},{"role":"user","content":"Print the sum of 2 and 3."}],"temperature":0.0,"max_tokens":64}' \
-        >"$out.short$i.json"
-    python3 -c "$digest" "$out.short$i.json" "short$i"
+        >"$out.short$i.json" || failed=1
+    python3 -c "$digest" "$out.short$i.json" "short$i" || failed=1
 done
 for i in ${LONG:-1 2 3}; do
     curl -sS http://127.0.0.1:8001/v1/chat/completions -H 'content-type: application/json' \
         -d '{"messages":[{"role":"user","content":"Write a complete Python program that reads /mnt/uploads/sales.csv with pandas and draws a bar chart of total revenue by region with matplotlib."}],"temperature":0.0,"max_tokens":512}' \
-        -w '\n%{time_total}\n' >"$out.long$i.json"
-    python3 -c "$digest" "$out.long$i.json" "long$i"
+        -w '\n%{time_total}\n' >"$out.long$i.json" || failed=1
+    python3 -c "$digest" "$out.long$i.json" "long$i" || failed=1
     printf 'long%s seconds=%s\n' "$i" "$(sed -n 2p "$out.long$i.json")"
 done
 for _ in 1 2 3; do
-    .venv-model/bin/python -m model_backend.smoke
-    nvidia-smi --query-gpu=temperature.gpu,clocks.sm --format=csv,noheader
+    .venv-model/bin/python -m model_backend.smoke || failed=1
+    nvidia-smi --query-gpu=temperature.gpu,clocks.sm --format=csv,noheader || failed=1
 done
 kill "$pid"
 wait "$pid" 2>/dev/null
-exit 0
+exit "$failed"

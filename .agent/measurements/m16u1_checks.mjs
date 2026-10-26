@@ -442,10 +442,12 @@ async function focusWalk(frame, shot) {
     if (steps.length === 2) await page.screenshot({ path: shot });
   }
   const summaries = steps.filter((step) => step.tag === "summary").length;
+  const links = steps.filter((step) => step.tag === "a").length;
   return {
     steps: steps.length,
     summaries,
-    ok: summaries === table.checks.length + 1 &&
+    links,
+    ok: summaries === table.checks.length + 1 && links === 1 &&
       steps.every((step) => step.visible && step.outline !== "none" && step.width >= 2),
   };
 }
