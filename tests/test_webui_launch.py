@@ -8,8 +8,8 @@ tier, preflights the CUDA runtime, refuses foreign listeners, and tears both pro
 M12.4a shipped its CUDA arm with L1-L3 smoked by hand and L4-L9 unencoded; this file is where every
 one of them becomes a rerunnable predicate.
 
-Every dependency is redirected rather than installed (`map-m12u4` D4): `PATH` carries a fake `uv`
-and a fake `fuser`, `MODEL_BACKEND_PYTHON` carries a fake interpreter, and each fake service is a
+Every dependency is redirected rather than installed (`map-m12u4` D4): `PATH` carries a fake `uv`,
+`MODEL_BACKEND_PYTHON` carries a fake interpreter, and each fake service is a
 real loopback HTTP listener so the launcher's own `curl` readiness poll runs unmodified. Real
 `setsid` stays — the lifecycle test asserts process-group teardown, which a stub would forge.
 
@@ -17,9 +17,8 @@ Two design rules bind every case here:
 
 - A fake must refuse whatever the real command refuses. A tolerant fake un-pins the predicate it
   was built for (`.claude/rules/assurance.md`, test design).
-- L4 is an ORDERING predicate, so it needs a call-counting bomb on the teardown, never an exit
-  code: hoisting `trap cleanup EXIT` above the port refusal leaves every exit status unchanged
-  while the launcher starts `fuser -k`-ing a listener it never bound.
+- L4 is an ORDERING predicate, so it reads the teardown's own first log line, never an exit code:
+  hoisting `trap cleanup EXIT` above the port refusal leaves every exit status unchanged.
 
 This file imports no `verifier` symbol: coverage source stays `verifier` only, so an import here
 would add launcher lines to a gate that never runs them.
@@ -56,7 +55,6 @@ _CONNECT_TIMEOUT_S = 0.25
 class _Harness:
     env: dict[str, str]
     ports: tuple[int, int]
-    fuser_log: Path
     model_log: Path
     uv_log: Path
     pid_dir: Path
@@ -107,7 +105,6 @@ def _make_harness(tmp_path: Path) -> _Harness:
     pid_dir = tmp_path / "pids"
     pid_dir.mkdir()
     log_dir = tmp_path / "launch-logs"
-    fuser_log = tmp_path / "fuser.log"
     model_log = tmp_path / "model.log"
     uv_log = tmp_path / "uv.log"
     helper = tmp_path / "http_helper.py"
@@ -181,24 +178,6 @@ raise SystemExit(64)
 """,
     )
     _write_executable(
-        fake_bin / "fuser",
-        shebang
-        + """import json
-import os
-import re
-import sys
-from pathlib import Path
-
-args = sys.argv[1:]
-with Path(os.environ["FAKE_FUSER_LOG"]).open("a", encoding="utf-8") as stream:
-    print(json.dumps(args), file=stream)
-if len(args) == 2 and args[0] == "-k" and re.fullmatch(r"[0-9]+/tcp", args[1]):
-    raise SystemExit(0)
-print(f"fake fuser refused argv: {args!r}", file=sys.stderr)
-raise SystemExit(64)
-""",
-    )
-    _write_executable(
         model_python,
         shebang
         + """import json
@@ -263,7 +242,6 @@ raise SystemExit(64)
             "WEBUI_PROVISION_MODEL_BACKEND_URL": f"http://127.0.0.1:{ports[0]}/v1",
             "FAKE_HTTP_HELPER": str(helper),
             "FAKE_PID_DIR": str(pid_dir),
-            "FAKE_FUSER_LOG": str(fuser_log),
             "FAKE_MODEL_LOG": str(model_log),
             "FAKE_UV_LOG": str(uv_log),
             "FAKE_BOOTSTRAP_ENV_LOG": str(tmp_path / "bootstrap-env.log"),
@@ -271,7 +249,7 @@ raise SystemExit(64)
             "FAKE_BOOTSTRAP_RC": "0",
         }
     )
-    return _Harness(env, ports, fuser_log, model_log, uv_log, pid_dir, log_dir)
+    return _Harness(env, ports, model_log, uv_log, pid_dir, log_dir)
 
 
 def _run_launcher(
@@ -423,7 +401,7 @@ def test_l3_preflight_refuses_in_order_with_an_actionable_message(tmp_path: Path
             assert fragment in result.stderr
         for fragment in forbidden:
             assert fragment not in result.stderr
-        assert _log_lines(harness.fuser_log) == []
+        assert "shutting down" not in result.stderr
         assert _log_lines(harness.uv_log) == []
 
     venv_first = _make_harness(tmp_path / "venv-first")
@@ -482,8 +460,8 @@ def test_l3_preflight_refuses_in_order_with_an_actionable_message(tmp_path: Path
 
 def test_l4_a_refusal_installs_no_teardown_trap(tmp_path: Path) -> None:
     """L4: every preflight refusal and the port-already-in-use refusal exit non-zero having
-    installed no `trap cleanup EXIT`. Acceptance: a call-counting fake `fuser` records ZERO calls
-    across every refusal path, and the pre-existing foreign listener is still connectable
+    installed no `trap cleanup EXIT`. Acceptance: the teardown's first log line (`shutting down`)
+    appears on no refusal path, and the pre-existing foreign listener is still connectable
     afterwards. Exit code alone proves nothing — the trap changes no status."""
     for case in ("missing-venv", "missing-owui", "missing-model", "probe", "port"):
         harness = _make_harness(tmp_path / case)
@@ -511,7 +489,7 @@ def test_l4_a_refusal_installs_no_teardown_trap(tmp_path: Path) -> None:
             result = _run_launcher(harness)
             assert result.returncode != 0
             assert expected in result.stderr
-            assert _log_lines(harness.fuser_log) == []
+            assert "shutting down" not in result.stderr
             assert _can_connect(listener_port)
         finally:
             listener.close()
@@ -537,7 +515,7 @@ def test_l5_stub_bypasses_every_cuda_preflight(tmp_path: Path) -> None:
             assert "missing -- rebuild it" not in result.stderr
             assert "CUDA preflight failed" not in result.stderr
             assert _model_calls(harness.model_log) == []
-            assert _log_lines(harness.fuser_log) == []
+            assert "shutting down" not in result.stderr
             assert _can_connect(occupied_port)
         finally:
             listener.close()
@@ -546,7 +524,7 @@ def test_l5_stub_bypasses_every_cuda_preflight(tmp_path: Path) -> None:
 def test_l6_a_foreign_listener_is_refused_and_survives(tmp_path: Path) -> None:
     """L6: a foreign listener on `MODEL_BACKEND_PORT` / `WEBUI_PROVISION_PORT` is refused, not
     adopted, and survives. Acceptance: over both ports — non-zero exit naming that port, the socket
-    still accepting a connection, and zero fake-`fuser` calls."""
+    still accepting a connection, and no teardown run."""
     for index, port_name in enumerate(("MODEL_BACKEND_PORT", "WEBUI_PROVISION_PORT")):
         harness = _make_harness(tmp_path / port_name.lower())
         occupied_port = harness.ports[index]
@@ -557,7 +535,7 @@ def test_l6_a_foreign_listener_is_refused_and_survives(tmp_path: Path) -> None:
             assert f"port {occupied_port} is already in use" in result.stderr
             assert harness.env[port_name] == str(occupied_port)
             assert _can_connect(occupied_port)
-            assert _log_lines(harness.fuser_log) == []
+            assert "shutting down" not in result.stderr
             assert _log_lines(harness.uv_log) == []
         finally:
             listener.close()
@@ -586,7 +564,7 @@ def test_l7_teardown_frees_both_ports_and_removes_the_pidfile(tmp_path: Path) ->
         assert not pidfile.exists()
         assert not any(_can_connect(port) for port in harness.ports)
         assert not any(_pid_is_alive(pid) for pid in helper_pids.values())
-        assert _log_lines(harness.fuser_log) == []
+        assert "backstop" not in stderr_path.read_text(encoding="utf-8")
     finally:
         _force_stop(process, harness)
 
@@ -737,7 +715,7 @@ def test_l11_a_listener_bound_after_the_preflight_never_reaches_ready(tmp_path: 
         assert "READY --" not in stderr
         assert f"webui port {harness.ports[1]} answered from a process this launcher" in stderr
         assert _can_connect(harness.ports[1])
-        assert _log_lines(harness.fuser_log) == []
+        assert "backstop" not in stderr
     finally:
         if foreign is not None:
             foreign.shutdown()
@@ -748,7 +726,7 @@ def test_l11_a_listener_bound_after_the_preflight_never_reaches_ready(tmp_path: 
 def test_l12_a_service_dying_on_a_taken_port_leaves_that_listener_alone(tmp_path: Path) -> None:
     """L12 (reviewer-1 F3): a process binds the webui port after the preflight, the launcher's own
     webui then dies on EADDRINUSE before its readiness poll succeeds, and teardown must still leave
-    that listener alone -- the strict fake `fuser` records any attempt to kill it."""
+    that listener alone: no backstop line, and the listener still accepts."""
     harness = _make_harness(tmp_path)
     helper = tmp_path / "http_helper.py"
     source = helper.read_text(encoding="utf-8")
@@ -773,11 +751,102 @@ def test_l12_a_service_dying_on_a_taken_port_leaves_that_listener_alone(tmp_path
         stderr = stderr_path.read_text(encoding="utf-8")
         assert "READY --" not in stderr
         assert "Address already in use" in stderr
-        assert _log_lines(harness.fuser_log) == [], (
-            f"teardown targeted the foreign listener\n{stderr}"
-        )
+        assert "backstop" not in stderr, f"teardown targeted the foreign listener\n{stderr}"
         assert _can_connect(harness.ports[1])
     finally:
         if foreign is not None:
             foreign.close()
         _force_stop(process, harness)
+
+
+_LISTENER = """import socket
+import sys
+import time
+
+listener = socket.socket()
+listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+listener.bind(("127.0.0.1", int(sys.argv[1])))
+listener.listen()
+time.sleep(60)
+"""
+
+
+def _teardown_scenario(tmp_path: Path, port: int, body: str) -> dict[str, str]:
+    """Run the launcher's own definitions, then `body`, over real processes listening on `port`;
+    returns `body`'s `key=value` lines + `stderr`."""
+    definitions, marker, _ = _LAUNCHER.read_text(encoding="utf-8").partition(
+        '\nfor arg in "$@"; do\n'
+    )
+    assert marker, "launch.sh no longer parses its arguments after its definitions"
+    listener = tmp_path / "listener.py"
+    listener.write_text(_LISTENER, encoding="utf-8")
+    helpers = 'listening() { port_in_use "$PORT"; }\n'
+    result = subprocess.run(  # noqa: S603 - fixed argv
+        ["/bin/bash", "-c", definitions + "\n" + helpers + body],
+        env=os.environ
+        | {"PYTHON": sys.executable, "LISTENER": str(listener), "PORT": str(port)}
+        | {"SERVICE_LOG": str(tmp_path / "service.log"), "LAUNCH_LOG_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_TIMEOUT_S,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    facts = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    return facts | {"stderr": result.stderr}
+
+
+def test_l13_teardown_never_signals_a_listener_bound_after_its_classification(
+    tmp_path: Path,
+) -> None:
+    """L13 (Queue ruling 4): teardown records its own service's listener while the group runs; a
+    process binding the port after the group dies is no recorded holder, so the backstop leaves
+    it alone. Acceptance: the recorded holder = the service's pid, no backstop line, and the
+    replacement alive + accepting afterwards."""
+    port = _free_ports()[0]
+    facts = _teardown_scenario(
+        tmp_path,
+        port,
+        'start_bg webui "$SERVICE_LOG" "$PYTHON" "$LISTENER" "$PORT"\n'
+        "until listening; do sleep 0.02; done\n"
+        'record_listeners "$PORT" webui\n'
+        'kill -KILL -- "-${SERVICE_PIDS[0]}"\n'
+        "while listening; do sleep 0.02; done\n"
+        '"$PYTHON" "$LISTENER" "$PORT" >/dev/null 2>&1 &\n'  # its pipes would hold `run` open
+        "replacement=$!\n"
+        "until listening; do sleep 0.02; done\n"
+        'free_port "$PORT"\n'
+        'echo "service=${SERVICE_PIDS[0]}"\n'
+        'echo "recorded=${OWNED_LISTENERS[$PORT]:-}"\n'
+        'echo "replacement=$replacement"\n',
+    )
+    replacement = int(facts["replacement"])
+    try:
+        assert facts["recorded"] == facts["service"]
+        assert "backstop" not in facts["stderr"]
+        assert _pid_is_alive(replacement)
+        assert _can_connect(port)
+    finally:
+        with suppress(ProcessLookupError):
+            os.kill(replacement, signal.SIGKILL)
+
+
+def test_l13_the_backstop_kills_a_recorded_holder_still_listening(tmp_path: Path) -> None:
+    """L13: a recorded holder that outlived its group's SIGKILL (it left the group) and still
+    listens is the backstop's one target. Acceptance: a backstop line naming its pid, the process
+    gone (`wait` = 137, SIGKILL) and the port refusing."""
+    port = _free_ports()[0]
+    facts = _teardown_scenario(
+        tmp_path,
+        port,
+        '"$PYTHON" "$LISTENER" "$PORT" &\n'
+        "holder=$!\n"
+        "until listening; do sleep 0.02; done\n"
+        'OWNED_LISTENERS[$PORT]="$holder"\n'
+        'free_port "$PORT"\n'
+        'wait "$holder" || echo "status=$?"\n'
+        'echo "holder=$holder"\n',
+    )
+    assert f"backstop kill -KILL {facts['holder']}" in facts["stderr"]
+    assert facts["status"] == "137"
+    assert not _can_connect(port)

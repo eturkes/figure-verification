@@ -88,8 +88,10 @@ die() { printf '[launch] ERROR: %s\n' "$*" >&2; exit 1; }
 SERVICE_PIDS=()
 SERVICE_NAMES=()
 LAST_SERVICE_PID=""
-# Ports a process outside this launcher answered on: teardown never signals them.
-FOREIGN_PORTS=()
+# Port -> the pids that held its listeners for this launcher's own service when teardown began: its
+# backstop signals those alone.
+declare -A OWNED_LISTENERS=()
+OWNED_HOLDERS=()
 
 start_bg() {
   # start_bg <name> <logfile> <cmd...>: launch cmd in its OWN session/process group so only this
@@ -134,31 +136,49 @@ listener_inodes() {
   done
 }
 
-port_owned() {
-  # port_owned <port> <leader>: something listens on <port>, and every listening socket there is a
-  # file descriptor of a process in <leader>'s process group (start_bg's setsid makes the leader's
-  # pid that group's id). The preflight refuses a listener present at launch; this refuses one that
-  # bound the port after it, before the service did, and answered the readiness poll in its place.
-  local port=$1 leader=$2 inode pid stat rest pgid fd found
-  local -a group=()
+group_pids() {
+  # group_pids <leader>: each process in <leader>'s process group (start_bg's setsid makes the
+  # leader's pid that group's id).
+  local stat rest pgid pid
   for stat in /proc/[0-9]*/stat; do
     read -r rest 2>/dev/null <"$stat" || continue
     read -r _ _ pgid _ <<<"${rest##*) }"
-    if [[ $pgid == "$leader" ]]; then
+    if [[ $pgid == "$1" ]]; then
       pid=${stat#/proc/}
-      group+=("${pid%/stat}")
+      printf '%s\n' "${pid%/stat}"
     fi
   done
-  found=0
+}
+
+holders() {
+  # holders <inode> <pid...>: each <pid> holding a file descriptor of socket <inode>.
+  local inode=$1 pid fd
+  shift
+  for pid in "$@"; do
+    for fd in "/proc/${pid}/fd/"*; do
+      if [[ $(readlink "$fd" 2>/dev/null) == "socket:[${inode}]" ]]; then
+        printf '%s\n' "$pid"
+        break
+      fi
+    done
+  done
+}
+
+port_owned() {
+  # port_owned <port> <leader>: something listens on <port>, and every listening socket there is a
+  # file descriptor of a process in <leader>'s process group; OWNED_HOLDERS = those processes. The
+  # preflight refuses a listener present at launch; this refuses one that bound the port after it,
+  # before the service did, and answered the readiness poll in its place.
+  local port=$1 leader=$2 inode found=0
+  local -a group held
+  mapfile -t group < <(group_pids "$leader")
+  OWNED_HOLDERS=()
   while read -r inode; do
     [[ -n $inode ]] || continue
-    found=0
-    for pid in "${group[@]}"; do
-      for fd in "/proc/${pid}/fd/"*; do
-        if [[ $(readlink "$fd" 2>/dev/null) == "socket:[${inode}]" ]]; then found=1; break 2; fi
-      done
-    done
-    (( found )) || return 1
+    mapfile -t held < <(holders "$inode" "${group[@]}")
+    (( ${#held[@]} )) || return 1
+    OWNED_HOLDERS+=("${held[@]}")
+    found=1
   done < <(listener_inodes "$port")
   (( found ))
 }
@@ -166,36 +186,38 @@ port_owned() {
 require_own_listener() {
   # require_own_listener <name> <port> <leader>: READY must rest on this launcher's own service.
   if ! port_owned "$2" "$3"; then
-    FOREIGN_PORTS+=("$2")
     die "${1} port ${2} answered from a process this launcher did not start -- stop it (or override the port) and launch again"
   fi
 }
 
 free_port() {
-  # Best-effort orphan backstop: only touch a port STILL bound after precise process-group kills
-  # above (fuser -k on a free port is already a no-op, but this means we never signal a port we never
-  # bound; the start-time preflight refuses launch atop a pre-existing listener, and a port a foreign
-  # process took after it is recorded in FOREIGN_PORTS). Log if the backstop actually kills something.
-  local port=$1 foreign
-  for foreign in "${FOREIGN_PORTS[@]}"; do
-    [[ $foreign == "$port" ]] && return 0
-  done
-  if port_in_use "$port" && command -v fuser >/dev/null 2>&1; then
-    log "port ${port} still bound after group teardown; backstop fuser -k ${port}/tcp"
-    fuser -k "${port}/tcp" >/dev/null 2>&1 || true
-  fi
+  # Orphan backstop after the group kills: a process that held this port's listener for its own
+  # service when teardown began, and holds one still (it left the group, or its SIGKILL has not
+  # landed yet), gets SIGKILL. Any other listener -- one present at launch, or bound after the
+  # classification -- is never signalled.
+  local port=$1 inode pid
+  local -a recorded
+  read -ra recorded <<<"${OWNED_LISTENERS[$port]:-}"
+  (( ${#recorded[@]} )) || return 0
+  while read -r inode; do
+    [[ -n $inode ]] || continue
+    while read -r pid; do
+      log "port ${port} still held by pid ${pid} after group teardown; backstop kill -KILL ${pid}"
+      kill -KILL "$pid" 2>/dev/null || true
+    done < <(holders "$inode" "${recorded[@]}")
+  done < <(listener_inodes "$port")
 }
 
-mark_foreign() {
-  # mark_foreign <port> <service name>: a port something listens on that the named service's own
-  # group does not hold (it never started, or it died -- e.g. on EADDRINUSE -- while a process that
-  # bound the port after the preflight keeps it) is recorded so teardown never signals it.
+record_listeners() {
+  # record_listeners <port> <service name>: when the named service's group holds every listener on
+  # <port>, record the processes holding them. A port the service never bound, or lost to a process
+  # that bound it after the preflight (the service then died, e.g. on EADDRINUSE), records nothing.
   local port=$1 name=$2 leader="" i
   for i in "${!SERVICE_NAMES[@]}"; do
     [[ ${SERVICE_NAMES[$i]} == "$name" ]] && leader=${SERVICE_PIDS[$i]}
   done
-  if port_in_use "$port" && { [[ -z $leader ]] || ! port_owned "$port" "$leader"; }; then
-    FOREIGN_PORTS+=("$port")
+  if [[ -n $leader ]] && port_owned "$port" "$leader"; then
+    OWNED_LISTENERS[$port]="${OWNED_HOLDERS[*]}"
   fi
 }
 
@@ -203,8 +225,8 @@ cleanup() {
   trap - EXIT INT TERM
   log "shutting down..."
   # Classified while this launcher's groups still run: only their listeners are its own.
-  mark_foreign "$MODEL_BACKEND_PORT" model
-  mark_foreign "$WEBUI_PROVISION_PORT" webui
+  record_listeners "$MODEL_BACKEND_PORT" model
+  record_listeners "$WEBUI_PROVISION_PORT" webui
   local pid
   for pid in "${SERVICE_PIDS[@]}"; do
     kill -TERM -- "-${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
@@ -282,8 +304,7 @@ if (( ! USE_STUB && ! USE_CODEX )); then
 fi
 
 # Refuse to start if a target port is already taken: keeps the readiness poll from adopting a
-# foreign listener and keeps the fuser -k teardown scoped to this launcher's own children. This runs
-# BEFORE the cleanup trap is installed so a refusal never fuser -k's the pre-existing listener.
+# foreign listener. This runs BEFORE the cleanup trap is installed, so a refusal runs no teardown.
 for _port in "$MODEL_BACKEND_PORT" "$WEBUI_PROVISION_PORT"; do
   if port_in_use "$_port"; then
     die "port ${_port} is already in use -- stop whatever is bound there (or override the port) before launching"
